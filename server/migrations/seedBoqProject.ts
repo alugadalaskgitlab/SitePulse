@@ -213,16 +213,16 @@ export async function seedBoqProjectIfNeeded(): Promise<void> {
 
   const client = await pool.connect();
   try {
-    // Guard: only migrate when table is empty
-    const { rows: countRows } = await client.query<{ cnt: number }>(
+    // Fast-exit optimisation (un-locked) — avoids acquiring a connection for the common case
+    const { rows: fastCheck } = await client.query<{ cnt: number }>(
       "SELECT COUNT(*)::int AS cnt FROM boq_projects"
     );
-    if (countRows[0].cnt > 0) {
-      console.log(`[seed-boq] ${countRows[0].cnt} project(s) already present — skipping`);
+    if (fastCheck[0].cnt > 0) {
+      console.log(`[seed-boq] ${fastCheck[0].cnt} project(s) already present — skipping`);
       return;
     }
 
-    // Find site TAKKADPALLY-SIRUR
+    // Find site TAKKADPALLY-SIRUR (read before entering the lock — read-only, safe)
     const { rows: siteRows } = await client.query<{ id: number }>(
       "SELECT id FROM sites WHERE name ILIKE $1 LIMIT 1",
       ["%takkad%"]
@@ -232,9 +232,28 @@ export async function seedBoqProjectIfNeeded(): Promise<void> {
       return;
     }
     const siteId = siteRows[0].id;
-    console.log(`[seed-boq] Site id=${siteId} found, beginning migration...`);
 
     await client.query("BEGIN");
+
+    // ── Race-condition guard ──────────────────────────────────────────────────
+    // pg_advisory_xact_lock is transaction-scoped: it blocks any second instance
+    // that starts simultaneously until this transaction commits or rolls back.
+    // After the first instance commits, the second acquires the lock, re-checks
+    // the count (now > 0), and exits cleanly.  The lock is released automatically
+    // on COMMIT/ROLLBACK — no manual cleanup needed even with connection pooling.
+    await client.query("SELECT pg_advisory_xact_lock(20260719)");
+
+    // Definitive count check — inside the lock, guaranteed atomic
+    const { rows: countInTx } = await client.query<{ cnt: number }>(
+      "SELECT COUNT(*)::int AS cnt FROM boq_projects"
+    );
+    if (countInTx[0].cnt > 0) {
+      await client.query("ROLLBACK");
+      console.log(`[seed-boq] ${countInTx[0].cnt} project(s) present inside lock — another instance already migrated, skipping`);
+      return;
+    }
+
+    console.log(`[seed-boq] Site id=${siteId} found, lock acquired — beginning migration...`);
 
     // ── 1. boq_projects ───────────────────────────────────────────────────
     const { rows: [{ id: projectId }] } = await client.query<{ id: number }>(`
