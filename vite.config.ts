@@ -30,6 +30,28 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // React runtime — changes only when React upgrades
+          if (id.includes("node_modules/react/") || id.includes("node_modules/react-dom/") || id.includes("node_modules/scheduler/")) {
+            return "vendor-react";
+          }
+          // TanStack Query — changes rarely
+          if (id.includes("node_modules/@tanstack/")) {
+            return "vendor-query";
+          }
+          // Radix UI primitives — large, stable, shared across every page
+          if (id.includes("node_modules/@radix-ui/")) {
+            return "vendor-radix";
+          }
+          // date-fns — pulled in by eagerly-loaded components (AdminNotifications, DraftRestoredBanner, ReportHeader)
+          if (id.includes("node_modules/date-fns")) {
+            return "vendor-datefns";
+          }
+        },
+      },
+    },
   },
   server: {
     fs: {
