@@ -5,7 +5,7 @@ import {
   Truck, ShoppingBag,
   BookOpen, LayoutDashboard, MapPin,
   ArrowRight, AlertTriangle, CheckCircle2, Circle, AlertCircle,
-  Target, Zap, ClipboardList, Home, FileText, BarChart2, User,
+  Target, Zap, ClipboardList, Home, FileText, User,
   ChevronRight, Bell, ChevronDown, CalendarPlus,
   Package, Wrench, Users, CheckCheck, XCircle, Clock, ChevronUp,
   Boxes, Info,
@@ -329,6 +329,13 @@ function ReadinessSection() {
 
           {req && (
             <>
+              {/* Submission timestamp */}
+              {req.createdAt && (
+                <p className="text-[11px] text-gray-400 -mt-1">
+                  Submitted on {format(new Date(req.createdAt), "d MMM yyyy, h:mm a")}
+                </p>
+              )}
+
               {/* Planned work */}
               {req.plannedWork?.activity && (
                 <div className="bg-orange-50 rounded-lg px-3 py-2.5">
@@ -379,7 +386,7 @@ function ReadinessSection() {
               {/* Arrangement status — per item (item-level) or section-level fallback */}
               {req.allocationStatus && (
                 <div className="bg-slate-50 rounded-lg px-3 py-2.5 space-y-1.5">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stores / Equipment / PM Status</p>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Arrangement Status</p>
 
                   {/* Material items */}
                   {req.materials?.map((m: any, i: number) => {
@@ -1607,8 +1614,8 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
             {[
               { label: "Work",     icon: Home,      href: "/"              },
               { label: "Reports",  icon: FileText,  href: "/site/hub"      },
-              { label: "Progress", icon: BarChart2, href: "/site/dashboard"},
-              { label: "Profile",  icon: User,      href: "/profile"       },
+              { label: "My Plans", icon: ClipboardList, href: "/my-plans"     },
+              { label: "Profile",  icon: User,        href: "/account"      },
             ].map(n => {
               const active = n.href === "/";
               return (

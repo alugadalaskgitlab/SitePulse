@@ -49,6 +49,7 @@ const SiteMaterialsReceived = lazy(() => import("@/pages/SiteMaterialsReceived")
 const SitePurchasesReport   = lazy(() => import("@/pages/SitePurchasesReport"));
 const SiteRequirementNew    = lazy(() => import("@/pages/SiteRequirementNew"));
 const SiteRequirementsList  = lazy(() => import("@/pages/SiteRequirementsList"));
+const MyPlans               = lazy(() => import("@/pages/MyPlans"));
 const SiteBackfill          = lazy(() => import("@/pages/SiteBackfill"));
 
 // Plant pages
@@ -266,6 +267,7 @@ function AuthedShell() {
           <Route path="/site/purchases" component={gatedEither(SitePurchasesReport, "report_site_purchases", "site_procurement")} />
           <Route path="/site/requirements/new" component={gated(SiteRequirementNew, "site_dprs")} />
           <Route path="/site/requirements" component={gated(SiteRequirementsList, "site_dprs")} />
+          <Route path="/my-plans" component={gated(MyPlans, "site_dprs")} />
 
           {/* Plant pages */}
           <Route path="/plant" component={PlantHome} />
