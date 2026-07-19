@@ -735,8 +735,22 @@ function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow)
     return raw; // pipes keep their size/class label
   }
 
-  if (/gsb material/i.test(raw)) return "GSB Material";
-  if (/wmm material/i.test(raw)) return "WMM Material";
+  // Mirrors isGsbContext() / isWmmContext(): collapse into a single canonical line when
+  // the BOQ item *description* identifies the layer type, even if the SDB norm names the
+  // bulk granular component something else (e.g. "Granular Material" instead of
+  // "WMM Material").  Regex borrowed from those helpers; normaliseBomMaterial() is
+  // deliberately NOT called here because it can misclassify other material types
+  // (e.g. rename steel as cement) in this context.
+  if (
+    /gsb material/i.test(raw) ||
+    /\bgsb\b|granular\s*sub[-\s]*base/i.test(desc) ||
+    /\bgsb\b|granular\s*sub[-\s]*base/i.test(raw)
+  ) return "GSB Material";
+  if (
+    /wmm material/i.test(raw) ||
+    /\bwmm\b|wet\s*mix\s*macadam|wet\s*mix/i.test(desc) ||
+    /\bwmm\b|wet\s*mix\s*macadam|wet\s*mix/i.test(raw)
+  ) return "WMM Material";
 
   // Emulsion naming must NEVER apply to a BC/DBM/SDBC/BM mix item that merely mentions
   // "after applying prime coat" / "over tack coat" — those keep their VG-grade binder.
