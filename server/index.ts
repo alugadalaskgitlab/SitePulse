@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { initPush, sendPushToAudience } from "./push";
 import { storage } from "./storage";
 import { ensureBootstrapAdmin, backfillSplitPermissions, migrateEmailPhoneSchema, backfillPlantSubPermissions } from "./auth";
+import { seedBoqProjectIfNeeded } from "./migrations/seedBoqProject";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 
@@ -142,6 +143,13 @@ app.use((req, res, next) => {
     console.log("Startup: boq_program_settings and boq_mix_template_links tables ensured");
   } catch (e) {
     console.error("Startup: Failed to ensure BOQ program settings tables:", e);
+  }
+
+  // ONE-TIME: seed Takkadpally-sirur BOQ project into production when empty
+  try {
+    await seedBoqProjectIfNeeded();
+  } catch (e) {
+    console.error("Startup: seedBoqProjectIfNeeded failed:", e);
   }
 
   try {
