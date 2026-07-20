@@ -8,7 +8,7 @@ import {
   Target, Zap, ClipboardList, Home, FileText, User,
   ChevronRight, Bell, ChevronDown, CalendarPlus,
   Package, Wrench, Users, CheckCheck, XCircle, Clock, ChevronUp,
-  Boxes, Info,
+  Boxes, Info, Activity,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
@@ -685,6 +685,22 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
     enabled: sectionVisible("site_dprs"),
   });
 
+  const { data: todayReqs = [] } = useQuery<any[]>({
+    queryKey: ["/api/site-requirements", todayStr],
+    queryFn: () =>
+      fetch(`/api/site-requirements?dateFrom=${todayStr}&dateTo=${todayStr}`)
+        .then(r => r.json()),
+    enabled: sectionVisible("site_dprs"),
+  });
+
+  const { data: todayTrips = [] } = useQuery<any[]>({
+    queryKey: ["/api/site-material-trips", todayStr],
+    queryFn: () =>
+      fetch(`/api/site-material-trips?dateFrom=${todayStr}&dateTo=${todayStr}`)
+        .then(r => r.json()),
+    enabled: sectionVisible("site_materials"),
+  });
+
   const { data: stockRows = [] } = useQuery<any[]>({
     queryKey: ["/api/site-material-stock"],
     enabled: sectionVisible("site_materials"),
@@ -989,6 +1005,39 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
       a.materialItems?.length || a.equipmentItems?.length ||
       a.labourItems?.length || a.immediateItems?.length);
   }
+
+  // ── Today's Activity derived state ───────────────────────────────────────
+  // Equipment: count closed vs open from today's DPR
+  const eqEntries = myDpr?.equipment ?? [];
+  const eqTotal  = eqEntries.length;
+  const eqClosed = eqEntries.filter((e: any) =>
+    e.closingReading !== null || (e.endTime && e.endTime !== "")
+  ).length;
+  const eqOpen   = eqTotal - eqClosed;
+
+  // Material trips: today's trips scoped to this site
+  const siteTrips = (todayTrips as any[]).filter(
+    t => normSite(t.site ?? "") === currentSiteName
+  );
+  const tripCount = siteTrips.length;
+  const tripQty   = siteTrips.reduce((sum, t) => sum + (Number(t.quantity) || 0), 0);
+
+  // Immediate requirements: live allocation status from today's site requirements
+  const todaySiteReqs = (todayReqs as any[]).filter(
+    r => normSite(r.site ?? "") === currentSiteName || r.siteId === currentSiteId
+  );
+  interface ImmediateRow { description: string; status: string | null }
+  const immRows: ImmediateRow[] = todaySiteReqs.flatMap((req: any) => {
+    const items: any[] = req.immediateRequirements ?? [];
+    return items.map((item: any, i: number) => {
+      const perItem = req.allocationStatus?.immediateItems?.[i]?.status ?? null;
+      const legacy  = req.allocationStatus?.immediate ? "allocated" : null;
+      return {
+        description: item.description ?? item.item ?? "Immediate item",
+        status: perItem ?? legacy,
+      };
+    });
+  });
 
   // ── Quick actions ──────────────────────────────────────────────────────────
   const editHref = myDpr ? `/site/edit/${myDpr.id}` : "/site/new?returnTo=/";
@@ -1308,6 +1357,107 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
                     </a>
                   </Link>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════
+              5. TODAY'S ACTIVITY
+              ══════════════════════════════════════════════════════ */}
+          {(sectionVisible("site_dprs") || sectionVisible("site_materials")) && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden" data-testid="section-today-activity">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-indigo-500" />
+                  Today's Activity
+                </h2>
+                <span className="text-xs text-gray-400">{todayDisplay}</span>
+              </div>
+              <div className="divide-y divide-gray-50">
+
+                {/* Equipment row */}
+                {sectionVisible("site_dprs") && (
+                  <Link href={myDpr ? `/site/edit/${myDpr.id}` : "/site/new?returnTo=/"}>
+                    <a className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors" data-testid="activity-row-equipment">
+                      <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+                        <Wrench className="w-4 h-4 text-amber-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Equipment logs</p>
+                        {eqTotal === 0 ? (
+                          <p className="text-xs text-gray-400">None recorded yet</p>
+                        ) : (
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-100">
+                              {eqClosed} closed
+                            </span>
+                            {eqOpen > 0 && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+                                {eqOpen} open — needs closing reading
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+                    </a>
+                  </Link>
+                )}
+
+                {/* Materials received row */}
+                {sectionVisible("site_materials") && (
+                  <Link href="/site/material-trips?returnTo=/">
+                    <a className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors" data-testid="activity-row-materials">
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                        <Truck className="w-4 h-4 text-blue-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Materials received</p>
+                        {tripCount === 0 ? (
+                          <p className="text-xs text-gray-400">No deliveries recorded today</p>
+                        ) : (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {tripCount} trip{tripCount !== 1 ? "s" : ""}
+                            {tripQty > 0 && ` · ${tripQty.toLocaleString("en-IN", { maximumFractionDigits: 2 })} MT`}
+                          </p>
+                        )}
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+                    </a>
+                  </Link>
+                )}
+
+                {/* Immediate requirements row — only when today's plan has immediate items */}
+                {sectionVisible("site_dprs") && immRows.length > 0 && (
+                  <Link href="/site/requirements">
+                    <a className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors" data-testid="activity-row-immediate">
+                      <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0">
+                        <AlertCircle className="w-4 h-4 text-rose-500" />
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <p className="text-sm font-medium text-gray-800">Immediate requirements</p>
+                        {immRows.map((row, i) => {
+                          const s = row.status;
+                          const badge =
+                            s === "allocated" || s === "arranged" || s === "sent_store" ||
+                            s === "sent_purchase" || s === "sent_plant"
+                              ? { label: s.replace(/_/g, " "), cls: "bg-green-50 text-green-700 border-green-100" }
+                              : { label: "Pending", cls: "bg-amber-50 text-amber-700 border-amber-100" };
+                          return (
+                            <div key={i} className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs text-gray-600 truncate max-w-[160px]">{row.description}</span>
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border capitalize ${badge.cls}`}>
+                                {badge.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-gray-300 flex-shrink-0 mt-1" />
+                    </a>
+                  </Link>
+                )}
+
               </div>
             </div>
           )}

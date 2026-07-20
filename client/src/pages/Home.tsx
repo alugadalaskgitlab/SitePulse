@@ -198,19 +198,21 @@ function HomeDashboard({
             </div>
           </div>
 
-          {/* Dispatches */}
-          <div className="bg-white rounded-xl border border-teal-200 p-4 flex flex-col gap-3" data-testid="stat-dispatches">
-            <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center">
-              <Truck className="w-4 h-4 text-teal-600" />
+          {/* Dispatches — plant/HMP metric; hidden for field-engineer-only viewers */}
+          {!isFieldEngineer && (
+            <div className="bg-white rounded-xl border border-teal-200 p-4 flex flex-col gap-3" data-testid="stat-dispatches">
+              <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center">
+                <Truck className="w-4 h-4 text-teal-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-slate-900 leading-none">{todayDispatchCount}</p>
+                <p className="text-sm text-slate-700 mt-1 font-medium">Dispatches Today</p>
+                <p className="text-xs mt-0.5 font-medium text-slate-500">
+                  {todayDispatchMT > 0 ? `${todayDispatchMT.toFixed(1)} MT total` : "No dispatches yet"}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900 leading-none">{todayDispatchCount}</p>
-              <p className="text-sm text-slate-700 mt-1 font-medium">Dispatches Today</p>
-              <p className="text-xs mt-0.5 font-medium text-slate-500">
-                {todayDispatchMT > 0 ? `${todayDispatchMT.toFixed(1)} MT total` : "No dispatches yet"}
-              </p>
-            </div>
-          </div>
+          )}
 
           {/* Pending Approvals */}
           <div className="bg-white rounded-xl border border-rose-200 p-4 flex flex-col gap-3 relative overflow-hidden" data-testid="stat-pending">
