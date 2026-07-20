@@ -255,6 +255,26 @@ function HomeDashboard({
           {/* Left 2/3: Site DPR Status + Recent Activity */}
           <div className="col-span-1 md:col-span-2 space-y-4">
 
+            {/* Site Requirements Queue shortcut — fast path for PM/Admin */}
+            {canSeeSite && (
+              <Link href="/site/requirements?context=dashboard&returnTo=/">
+                <a className="block bg-white rounded-xl border border-teal-200 px-5 py-4 hover:bg-teal-50/40 transition-colors group" data-testid="shortcut-site-requirements">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center flex-shrink-0">
+                        <CalendarCheck className="w-4 h-4 text-teal-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">Tomorrow's Site Plans</p>
+                        <p className="text-xs text-slate-400 mt-0.5">Review & arrange — materials, equipment, labour</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-teal-500 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+                  </div>
+                </a>
+              </Link>
+            )}
+
             {/* Site DPR Status */}
             {canSeeSite && (
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">

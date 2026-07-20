@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -1039,6 +1039,56 @@ export default function SiteRequirementsList() {
     refetchInterval: 30_000,
   });
 
+  // ── PM/Admin rollup: tomorrow's plans grouped by site ─────────────────────
+  const tomorrowStr = format(addDays(new Date(), 1), "yyyy-MM-dd");
+
+  // Positive statuses per category (item has been acted upon)
+  const MAT_DONE = new Set(["available_in_store","issued","expected_at_site","direct_supply_arranged","sent_to_purchase"]);
+  const EQ_DONE  = new Set(["allocated","available_at_site","expected_at_site","alternative_arranged"]);
+  const LAB_DONE = new Set(["arranged","partly_arranged","expected_by_time"]);
+
+  function countActed(items: any[], allocItems: any[] | undefined, doneSet: Set<string>): [number, number] {
+    const total = items?.length ?? 0;
+    const acted = (allocItems ?? []).filter(a => doneSet.has(a?.status)).length;
+    return [acted, total];
+  }
+
+  interface SiteRollup {
+    site: string;
+    reqCount: number;
+    matActed: number; matTotal: number;
+    eqActed:  number; eqTotal:  number;
+    labActed: number; labTotal: number;
+    badge: "ready" | "partly" | "not-ready";
+  }
+
+  const tomorrowReqs = (reqs as any[]).filter(r => r.date === tomorrowStr);
+  const siteNames = [...new Set<string>(tomorrowReqs.map(r => r.site ?? `Site ${r.siteId}`))];
+
+  const siteRollups: SiteRollup[] = siteNames.map(site => {
+    const sReqs = tomorrowReqs.filter(r => (r.site ?? `Site ${r.siteId}`) === site);
+
+    let matActed = 0, matTotal = 0, eqActed = 0, eqTotal = 0, labActed = 0, labTotal = 0;
+    for (const req of sReqs) {
+      const a = req.allocationStatus ?? {};
+      const [ma, mt] = countActed(req.materials ?? [], a.materialItems, MAT_DONE);
+      const [ea, et] = countActed(req.equipment ?? [], a.equipmentItems, EQ_DONE);
+      const [la, lt] = countActed(req.labour ?? [], a.labourItems, LAB_DONE);
+      matActed += ma; matTotal += mt;
+      eqActed  += ea; eqTotal  += et;
+      labActed += la; labTotal += lt;
+    }
+
+    const totalItems  = matTotal + eqTotal + labTotal;
+    const totalActed  = matActed + eqActed + labActed;
+    const badge: SiteRollup["badge"] =
+      totalItems === 0 || totalActed === totalItems ? "ready"
+      : totalActed === 0 ? "not-ready"
+      : "partly";
+
+    return { site, reqCount: sReqs.length, matActed, matTotal, eqActed, eqTotal, labActed, labTotal, badge };
+  });
+
   function handleRefresh() {
     if (isRefreshing) return;
     setIsRefreshing(true);
@@ -1124,6 +1174,61 @@ export default function SiteRequirementsList() {
                 </a>
               </Link>
             )}
+          </div>
+        )}
+
+        {/* ── PM/Admin: Tomorrow's site-wise rollup summary ───────────────── */}
+        {isManager && !isLoading && siteRollups.length > 0 && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4">
+            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Tomorrow's Plans — Site Overview</h2>
+                <p className="text-xs text-slate-400 mt-0.5">{format(addDays(new Date(), 1), "EEE, d MMM yyyy")}</p>
+              </div>
+              <span className="text-xs text-slate-400">{siteRollups.length} site{siteRollups.length !== 1 ? "s" : ""}</span>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {siteRollups.map(row => {
+                const badgeCls =
+                  row.badge === "ready"     ? "bg-green-50 text-green-700 border-green-200" :
+                  row.badge === "partly"    ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                              "bg-red-50 text-red-700 border-red-200";
+                const badgeLabel =
+                  row.badge === "ready"  ? "Ready" :
+                  row.badge === "partly" ? "Partly Ready" : "Not Ready";
+
+                const chips: string[] = [];
+                if (row.matTotal > 0)
+                  chips.push(`Materials: ${row.matActed}/${row.matTotal}`);
+                if (row.eqTotal > 0)
+                  chips.push(`Equipment: ${row.eqActed}/${row.eqTotal}`);
+                if (row.labTotal > 0)
+                  chips.push(`Labour: ${row.labActed}/${row.labTotal}`);
+                if (chips.length === 0)
+                  chips.push("Plan submitted — no items to arrange");
+
+                return (
+                  <div key={row.site} className="px-4 py-3 flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-semibold text-slate-800 truncate">{row.site}</p>
+                        {row.reqCount > 1 && (
+                          <span className="text-[10px] text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-full">
+                            {row.reqCount} plans
+                          </span>
+                        )}
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ml-auto ${badgeCls}`}>
+                          {badgeLabel}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {chips.join(" · ")}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

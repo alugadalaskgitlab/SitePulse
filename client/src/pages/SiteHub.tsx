@@ -198,7 +198,10 @@ export default function SiteHub() {
               description="Review all tomorrow's plans, immediate requirements, material & equipment needs — update allocation and arrangement status"
               accent="teal"
               iconBg="bg-teal-100"
-              enabled={sectionVisible("site_dprs")}
+              enabled={
+                sectionVisible("site_dprs") || sectionVisible("stores_inventory") ||
+                sectionVisible("plant_equipment") || sectionVisible("labour_management")
+              }
             />
           </div>
         </div>
