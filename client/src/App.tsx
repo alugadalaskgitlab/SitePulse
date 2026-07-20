@@ -266,7 +266,7 @@ function AuthedShell() {
           <Route path="/site/material-stock" component={gated(SiteMaterialStock, "site_materials")} />
           <Route path="/site/purchases" component={gatedEither(SitePurchasesReport, "report_site_purchases", "site_procurement")} />
           <Route path="/site/requirements/new" component={gated(SiteRequirementNew, "site_dprs")} />
-          <Route path="/site/requirements" component={gated(SiteRequirementsList, "site_dprs")} />
+          <Route path="/site/requirements" component={gatedEither(SiteRequirementsList, "site_dprs", "stores_inventory", "plant_equipment", "labour_management")} />
           <Route path="/my-plans" component={gated(MyPlans, "site_dprs")} />
 
           {/* Plant pages */}
