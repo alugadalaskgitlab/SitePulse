@@ -27,6 +27,10 @@ function KpiCard({ label, value, sub, warn }: {
 export default function EquipmentHub() {
   const { sectionVisible } = useAuth();
 
+  // Anyone who can reach the hub (equipment_hub OR plant_equipment) sees core content
+  const canSeeEquip = sectionVisible("equipment_hub") || sectionVisible("plant_equipment");
+
+  // Standalone equipment usage logs (plant/HMP source)
   const { data: equipmentUsage = [] } = useQuery<any[]>({
     queryKey: ["/api/plant/equipment-usage", TODAY],
     queryFn: async () => {
@@ -34,7 +38,16 @@ export default function EquipmentHub() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: sectionVisible("plant_equipment"),
+    enabled: canSeeEquip,
+  });
+
+  // Equipment embedded in today's submitted DPRs (site/road source)
+  const { data: todayDprs = [] } = useQuery<any[]>({
+    queryKey: ["/api/dprs/with-details", TODAY],
+    queryFn: () =>
+      fetch(`/api/dprs/with-details?dateFrom=${TODAY}&dateTo=${TODAY}`)
+        .then(r => r.json()),
+    enabled: canSeeEquip,
   });
 
   const { data: maintenance = [] } = useQuery<any[]>({
@@ -45,12 +58,26 @@ export default function EquipmentHub() {
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     },
-    enabled: sectionVisible("plant_equipment"),
+    enabled: canSeeEquip,
   });
 
-  const activeCount = equipmentUsage.length;
-  const breakdownCount = maintenance.filter((m: any) =>
-    m.status === "breakdown" || m.status === "pending" || m.status === "open"
+  // Combined "Active Today": standalone logs + DPR equipment entries
+  const dprEquipmentToday = (todayDprs as any[]).flatMap((d: any) => d.equipment ?? []);
+  const standaloneCount  = (equipmentUsage as any[]).length;
+  const dprEqCount       = dprEquipmentToday.length;
+  const activeCount      = standaloneCount + dprEqCount;
+  const activeSub =
+    standaloneCount > 0 && dprEqCount > 0
+      ? `${standaloneCount} plant · ${dprEqCount} site (DPR)`
+      : standaloneCount > 0
+        ? `${standaloneCount} plant logs`
+        : dprEqCount > 0
+          ? `${dprEqCount} from site DPRs`
+          : "none logged yet";
+
+  // Breakdowns: only actual open breakdown events, not scheduled service/PM records
+  const breakdownCount = (maintenance as any[]).filter(
+    (m: any) => m.eventType === "breakdown" && m.status === "open"
   ).length;
 
   return (
@@ -66,12 +93,12 @@ export default function EquipmentHub() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <KpiCard
             label="Active Today"
-            value={sectionVisible("plant_equipment") ? activeCount : undefined}
-            sub="equipment logged"
+            value={canSeeEquip ? activeCount : undefined}
+            sub={canSeeEquip ? activeSub : undefined}
           />
           <KpiCard
             label="Breakdowns"
-            value={sectionVisible("plant_equipment") ? breakdownCount : undefined}
+            value={canSeeEquip ? breakdownCount : undefined}
             sub="open items"
             warn={breakdownCount > 0}
           />
@@ -101,7 +128,7 @@ export default function EquipmentHub() {
               description="Record daily equipment hours, fuel usage & operator details"
               accent="blue"
               iconBg="bg-blue-100"
-              enabled={sectionVisible("plant_equipment")}
+              enabled={canSeeEquip}
             />
             <HubActionTile
               href={`/plant/maintenance?returnTo=${HUB}&context=equipment`}
@@ -111,7 +138,7 @@ export default function EquipmentHub() {
               accent="red"
               iconBg="bg-red-100"
               badge={breakdownCount > 0 ? `${breakdownCount} open` : undefined}
-              enabled={sectionVisible("plant_equipment")}
+              enabled={canSeeEquip}
             />
             <HubActionTile
               href={`/plant/generator-logs?returnTo=${HUB}&context=equipment`}
@@ -120,7 +147,7 @@ export default function EquipmentHub() {
               description="Record diesel generator run logs & fuel consumption"
               accent="yellow"
               iconBg="bg-yellow-100"
-              enabled={sectionVisible("plant_equipment")}
+              enabled={canSeeEquip}
             />
             <HubActionTile
               href={`/plant/diesel-requirements?returnTo=${HUB}`}
@@ -156,7 +183,7 @@ export default function EquipmentHub() {
               description="View tomorrow's equipment requirements from site — mark as arranged, allocated or sent to plant"
               accent="teal"
               iconBg="bg-teal-100"
-              enabled={sectionVisible("plant_equipment")}
+              enabled={canSeeEquip}
             />
           </div>
         </div>

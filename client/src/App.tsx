@@ -215,7 +215,7 @@ function Router() {
             <HmpHub />
           </RequireAuth>
         </Route>
-        <Route path="/equipment/hub" component={gated(EquipmentHub, "equipment_hub")} />
+        <Route path="/equipment/hub" component={gatedEither(EquipmentHub, "equipment_hub", "plant_equipment")} />
         <Route path="/reports/hub" component={gated(ReportsHub, "reports_hub")} />
         <Route path="/site/hub" component={gated(SiteHub, "site_hub")} />
         <Route path="/admin/hub">
