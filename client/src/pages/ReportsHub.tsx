@@ -24,6 +24,7 @@ export default function ReportsHub() {
 
   const canReports    = isAdmin || isManager || sectionVisible("reports");
   const canDailyRep   = sectionVisible("plant_daily_reports");
+  const canSiteDprs   = sectionVisible("site_dprs");
   const canHeating    = sectionVisible("plant_heating");
   const canProd       = sectionVisible("plant_production");
   const canDieselProc = sectionVisible("plant_diesel_proc");
@@ -37,7 +38,7 @@ export default function ReportsHub() {
   const canDieselReq  = sectionVisible("site_diesel");
   const canBills      = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view") || sectionVisible("vendor_bills_raise") || sectionVisible("vendor_bills_verify") || sectionVisible("vendor_bills_approve");
 
-  const hasSiteReports  = canDailyRep || canSiteMat || canSiteProcure || canReports;
+  const hasSiteReports  = canSiteDprs || canSiteMat || canSiteProcure || canReports;
   const hasHmpReports   = canDailyRep || canHeating || canProd || canDieselProc || canShift;
   const hasRmcReports   = rmcEnabled && canProd;
   const hasStockReports = canMaterials || canStock || canVariance || canAudit;
@@ -58,13 +59,13 @@ export default function ReportsHub() {
             <SectionHeading>Site Reports</SectionHeading>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <HubActionTile
-                href={`/plant/daily-report?returnTo=${HUB}`}
+                href="/site/dashboard"
                 icon={BarChart3}
                 title="Daily DPR"
                 description="Complete production summary for any given day"
                 accent="orange"
                 iconBg="bg-orange-100"
-                enabled={canDailyRep}
+                enabled={canSiteDprs}
               />
               <HubActionTile
                 href={`/site/materials-received?returnTo=${HUB}`}

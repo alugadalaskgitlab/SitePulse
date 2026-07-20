@@ -141,7 +141,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
   const bottomNavItems: NavItem[] = [
     ...(canSeeEstimator ? [{ href: "/estimator-login", icon: Calculator, label: "Estimator" }] : []),
-    ...(isAdmin ? [{ href: "/masters/hub", icon: Database, label: "Masters", matchPrefix: "/masters" }] : []),
+    ...(isAdmin || sectionVisible("master_parties") || sectionVisible("master_materials") || sectionVisible("master_equipment") || sectionVisible("master_personnel") ? [{ href: "/masters/hub", icon: Database, label: "Masters", matchPrefix: "/masters" }] : []),
     ...(isAdmin ? [{ href: "/admin/hub", icon: Settings, label: "Settings", matchPrefix: "/admin" }] : []),
   ];
 
