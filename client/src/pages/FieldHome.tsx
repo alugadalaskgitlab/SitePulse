@@ -976,15 +976,28 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   })();
 
   // ── Shortcut derived state ────────────────────────────────────────────────
-  const tomorrowPlan = (tomorrowReqs as any[]).find(
+  const tomorrowPlans = (tomorrowReqs as any[]).filter(
     r => normSite(r.site ?? "") === currentSiteName || r.siteId === currentSiteId
-  ) ?? null;
+  );
+
+  function isPlanLocked(plan: any): boolean {
+    const actioned = ["approved", "arranged", "sent_store", "sent_purchase", "sent_plant"];
+    if (actioned.includes(plan.status)) return true;
+    const a = plan.allocationStatus;
+    if (!a) return false;
+    return !!(a.materials || a.equipment || a.labour || a.immediate ||
+      a.materialItems?.length || a.equipmentItems?.length ||
+      a.labourItems?.length || a.immediateItems?.length);
+  }
 
   // ── Quick actions ──────────────────────────────────────────────────────────
   const editHref = myDpr ? `/site/edit/${myDpr.id}` : "/site/new?returnTo=/";
-  const tomorrowPlanHref = tomorrowPlan
-    ? `/site/requirements/new?editId=${tomorrowPlan.id}&returnTo=/`
-    : "/site/requirements/new?returnTo=/";
+  const firstEditablePlan = tomorrowPlans.find(p => !isPlanLocked(p));
+  const tomorrowPlanHref = firstEditablePlan
+    ? `/site/requirements/new?editId=${firstEditablePlan.id}&returnTo=/`
+    : tomorrowPlans.length > 0
+      ? "/site/requirements"
+      : "/site/requirements/new?returnTo=/";
 
   interface QuickAction { label: string; icon: any; color: string; href: string; perm?: boolean }
   const allQuickActions: QuickAction[] = [
@@ -1308,19 +1321,19 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
                 <div>
                   <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                     <CalendarPlus className="w-4 h-4 text-teal-500" />
-                    Tomorrow's Plan
+                    Tomorrow's Plans
                   </h2>
                   <p className="text-xs text-gray-400 mt-0.5">{tomorrowDisplay}</p>
                 </div>
-                <Link href={tomorrowPlanHref}>
+                <Link href="/site/requirements/new?returnTo=/">
                   <a className="text-xs font-semibold text-teal-600 flex items-center gap-0.5 hover:text-teal-700 transition-colors"
-                     data-testid="link-tomorrow-plan">
-                    {tomorrowPlan ? "Edit" : "Create"} plan <ChevronRight className="w-3 h-3" />
+                     data-testid="link-add-tomorrow-plan">
+                    + Add plan <ChevronRight className="w-3 h-3" />
                   </a>
                 </Link>
               </div>
 
-              {!tomorrowPlan ? (
+              {tomorrowPlans.length === 0 ? (
                 <div className="px-4 py-4 flex items-start gap-3">
                   <div className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0 mt-1.5" />
                   <div>
@@ -1331,48 +1344,64 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
                   </div>
                 </div>
               ) : (
-                <div className="px-4 py-3 space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Status badge */}
-                    {(() => {
-                      const cfg: Record<string, string> = {
-                        submitted:          "bg-blue-50 text-blue-700 border-blue-100",
-                        reviewed:           "bg-teal-50 text-teal-700 border-teal-100",
-                        approved:           "bg-green-50 text-green-700 border-green-100",
-                        rejected:           "bg-red-50 text-red-700 border-red-100",
-                        revision_requested: "bg-amber-50 text-amber-700 border-amber-100",
-                      };
-                      const label: Record<string, string> = {
-                        submitted: "Submitted", reviewed: "Reviewed", approved: "Approved",
-                        rejected: "Rejected", revision_requested: "Revision requested",
-                      };
-                      const s = tomorrowPlan.status ?? "submitted";
-                      return (
-                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${cfg[s] ?? "bg-gray-50 text-gray-600 border-gray-100"}`}>
-                          {label[s] ?? s}
-                        </span>
-                      );
-                    })()}
-                    {/* Quick item counts */}
-                    {[
-                      { key: "workItems",           label: "work item",   val: (tomorrowPlan.workItems ?? tomorrowPlan.plannedWork?.workItems)?.length },
-                      { key: "materials",           label: "material",    val: tomorrowPlan.materials?.length },
-                      { key: "equipment",           label: "equipment",   val: tomorrowPlan.equipment?.length },
-                      { key: "immediateRequirements", label: "immediate", val: tomorrowPlan.immediateRequirements?.length },
-                    ]
-                      .filter(x => x.val > 0)
-                      .map(x => (
-                        <span key={x.key} className="text-[10px] text-gray-500 bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded-full">
-                          {x.val} {x.label}{x.val !== 1 ? "s" : ""}
-                        </span>
-                      ))
-                    }
-                  </div>
-                  {tomorrowPlan.pmRemarks && (
-                    <p className="text-xs text-gray-500 italic border-l-2 border-teal-200 pl-2">
-                      PM: {tomorrowPlan.pmRemarks}
-                    </p>
-                  )}
+                <div className="divide-y divide-gray-50">
+                  {tomorrowPlans.map((plan: any) => {
+                    const locked = isPlanLocked(plan);
+                    const planHref = locked
+                      ? "/site/requirements"
+                      : `/site/requirements/new?editId=${plan.id}&returnTo=/`;
+                    const s = plan.status ?? "submitted";
+                    const statusCfg: Record<string, string> = {
+                      submitted:          "bg-blue-50 text-blue-700 border-blue-100",
+                      reviewed:           "bg-teal-50 text-teal-700 border-teal-100",
+                      approved:           "bg-green-50 text-green-700 border-green-100",
+                      rejected:           "bg-red-50 text-red-700 border-red-100",
+                      revision_requested: "bg-amber-50 text-amber-700 border-amber-100",
+                    };
+                    const statusLabel: Record<string, string> = {
+                      submitted: "Submitted", reviewed: "Reviewed", approved: "Approved",
+                      rejected: "Rejected", revision_requested: "Revision requested",
+                    };
+                    const desc = plan.plannedWork?.workItems?.[0]?.description ?? plan.workDescription ?? "";
+                    return (
+                      <div key={plan.id} className="px-4 py-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0 space-y-1.5">
+                            {desc && <p className="text-xs font-medium text-gray-700 truncate">{desc}</p>}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${statusCfg[s] ?? "bg-gray-50 text-gray-600 border-gray-100"}`}>
+                                {statusLabel[s] ?? s}
+                              </span>
+                              {[
+                                { key: "workItems",             label: "work item",  val: (plan.workItems ?? plan.plannedWork?.workItems)?.length },
+                                { key: "materials",             label: "material",   val: plan.materials?.length },
+                                { key: "equipment",             label: "equipment",  val: plan.equipment?.length },
+                                { key: "immediateRequirements", label: "immediate",  val: plan.immediateRequirements?.length },
+                              ]
+                                .filter(x => (x.val ?? 0) > 0)
+                                .map(x => (
+                                  <span key={x.key} className="text-[10px] text-gray-500 bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded-full">
+                                    {x.val} {x.label}{x.val !== 1 ? "s" : ""}
+                                  </span>
+                                ))
+                              }
+                            </div>
+                            {plan.pmRemarks && (
+                              <p className="text-xs text-gray-500 italic border-l-2 border-teal-200 pl-2">
+                                PM: {plan.pmRemarks}
+                              </p>
+                            )}
+                          </div>
+                          <Link href={planHref}>
+                            <a className="text-xs font-semibold text-teal-600 flex items-center gap-0.5 hover:text-teal-700 transition-colors flex-shrink-0"
+                               data-testid={`link-plan-${plan.id}`}>
+                              {locked ? "View" : "Edit"} <ChevronRight className="w-3 h-3" />
+                            </a>
+                          </Link>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

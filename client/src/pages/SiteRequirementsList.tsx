@@ -220,7 +220,7 @@ function ItemEditPanel({
 // ── RequirementCard ───────────────────────────────────────────────────────────
 
 function RequirementCard({
-  req, canReview, canUpdateMaterials, canUpdateEquipment, canUpdateLabour, canUpdateImmediate, filterContext,
+  req, canReview, canUpdateMaterials, canUpdateEquipment, canUpdateLabour, canUpdateImmediate, filterContext, allReqs,
 }: {
   req: any;
   canReview: boolean;
@@ -229,6 +229,7 @@ function RequirementCard({
   canUpdateLabour: boolean;
   canUpdateImmediate: boolean;
   filterContext: string;
+  allReqs: any[];
 }) {
   const [open, setOpen] = useState(false);
   const [newStatus, setNewStatus] = useState(req.status);
@@ -500,6 +501,20 @@ function RequirementCard({
                 {req.equipment.map((e: any, i: number) => {
                   const alloc = getItemAlloc(req.allocationStatus, "equipment", i);
                   const isEditingThis = editingItem?.category === "equipment" && editingItem.index === i;
+                  const eqConflicts = allReqs.filter(other =>
+                    other.id !== req.id &&
+                    other.date === req.date &&
+                    (other.siteId != null ? other.siteId === req.siteId : other.site === req.site) &&
+                    other.equipment?.some((oe: any) => oe.equipmentType === e.equipmentType)
+                  );
+                  const eqTotalNeeded = eqConflicts.length > 0
+                    ? [req, ...eqConflicts].reduce((sum, r) =>
+                        sum + (r.equipment ?? [])
+                          .filter((oe: any) => oe.equipmentType === e.equipmentType)
+                          .reduce((s: number, oe: any) => s + (parseInt(oe.numberRequired) || 1), 0), 0)
+                    : 0;
+                  const eqConflictDesc = eqConflicts[0]?.plannedWork?.workItems?.[0]?.description
+                    ?? eqConflicts[0]?.workDescription ?? "another plan";
                   return (
                     <div key={i} className="border-b border-slate-50 dark:border-slate-800 pb-1.5 last:border-0">
                       <div className="flex items-start gap-2">
@@ -511,6 +526,11 @@ function RequirementCard({
                             {e.expectedDuration && <span className="text-xs text-slate-400">· {e.expectedDuration}</span>}
                             {e.operatorRequired && <span className="text-xs text-slate-400">· operator needed</span>}
                           </div>
+                          {eqConflicts.length > 0 && (
+                            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 mt-1">
+                              ⚠ '{e.equipmentType}' also requested in "{eqConflictDesc}" today — total requested: {eqTotalNeeded}
+                            </p>
+                          )}
                           {renderItemAlloc(alloc)}
                         </div>
                         {canUpdateEquipment && !isEditingThis && (
@@ -550,6 +570,20 @@ function RequirementCard({
                 {req.labour.map((l: any, i: number) => {
                   const alloc = getItemAlloc(req.allocationStatus, "labour", i);
                   const isEditingThis = editingItem?.category === "labour" && editingItem.index === i;
+                  const labConflicts = allReqs.filter(other =>
+                    other.id !== req.id &&
+                    other.date === req.date &&
+                    (other.siteId != null ? other.siteId === req.siteId : other.site === req.site) &&
+                    other.labour?.some((ol: any) => ol.labourType === l.labourType)
+                  );
+                  const labTotalNeeded = labConflicts.length > 0
+                    ? [req, ...labConflicts].reduce((sum, r) =>
+                        sum + (r.labour ?? [])
+                          .filter((ol: any) => ol.labourType === l.labourType)
+                          .reduce((s: number, ol: any) => s + (parseInt(ol.count) || 1), 0), 0)
+                    : 0;
+                  const labConflictDesc = labConflicts[0]?.plannedWork?.workItems?.[0]?.description
+                    ?? labConflicts[0]?.workDescription ?? "another plan";
                   return (
                     <div key={i} className="border-b border-slate-50 dark:border-slate-800 pb-1.5 last:border-0">
                       <div className="flex items-start gap-2">
@@ -560,6 +594,11 @@ function RequirementCard({
                             {l.skilledType && <span className="text-xs text-slate-400">({l.skilledType})</span>}
                             {l.requiredFromTime && <span className="text-xs text-slate-400">from {l.requiredFromTime}</span>}
                           </div>
+                          {labConflicts.length > 0 && (
+                            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 mt-1">
+                              ⚠ '{l.labourType}' also requested in "{labConflictDesc}" today — total requested: {labTotalNeeded}
+                            </p>
+                          )}
                           {renderItemAlloc(alloc)}
                         </div>
                         {canUpdateLabour && !isEditingThis && (
@@ -1099,6 +1138,7 @@ export default function SiteRequirementsList() {
               canUpdateLabour={canUpdateLabour}
               canUpdateImmediate={canUpdateImmediate}
               filterContext={context}
+              allReqs={reqs}
             />
           ))}
         </div>

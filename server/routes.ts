@@ -13833,7 +13833,10 @@ export function registerSiteRequirementRoutes(app: Express) {
     if (actionedStatuses.includes(row.status)) return true;
     const alloc = row.allocationStatus;
     if (!alloc) return false;
-    return !!(alloc.materials || alloc.equipment || alloc.labour || alloc.immediate);
+    if (alloc.materials || alloc.equipment || alloc.labour || alloc.immediate) return true;
+    const anyItemActed = (arr: any[]) => Array.isArray(arr) && arr.some((x: any) => !!x?.status);
+    return anyItemActed(alloc.materialItems) || anyItemActed(alloc.equipmentItems) ||
+      anyItemActed(alloc.labourItems) || anyItemActed(alloc.immediateItems);
   }
 
   // PUT /api/site-requirements/:id — direct content update (owner if not acted upon, or PM/admin)
