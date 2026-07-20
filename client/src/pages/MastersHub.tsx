@@ -1,5 +1,5 @@
 import {
-  Users, RefreshCw, Shield, MapPin, Lock, CalendarCheck,
+  Users, RefreshCw, Shield, MapPin, Lock,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { HubShell } from "@/components/HubShell";
@@ -47,22 +47,6 @@ export default function MastersHub() {
       backLabel="Dashboard"
     >
       <div className="p-6 max-w-5xl mx-auto space-y-8">
-
-        <div>
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-            Site Operations
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <HubActionTile
-              href="/site/requirements?returnTo=/admin/hub"
-              icon={CalendarCheck}
-              title="Site Requirements Queue"
-              description="Review tomorrow's plans & immediate requirements — approve, arrange, update allocation status and respond to site needs"
-              accent="teal"
-              iconBg="bg-teal-50"
-            />
-          </div>
-        </div>
 
         <div>
           <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">

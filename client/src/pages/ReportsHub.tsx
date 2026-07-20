@@ -59,7 +59,7 @@ export default function ReportsHub() {
             <SectionHeading>Site Reports</SectionHeading>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <HubActionTile
-                href="/site/dashboard"
+                href="/site/dashboard?returnTo=/reports/hub"
                 icon={BarChart3}
                 title="Daily DPR"
                 description="Complete production summary for any given day"
