@@ -480,6 +480,7 @@ export default function SiteEdit() {
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/plant-module/stock-ledger") || false });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      queryClient.invalidateQueries({ predicate: (q) => { const key = q.queryKey; return Array.isArray(key) && key[0] === "/api/boq/projects" && key[2] === "plan-vs-actual"; } });
       toast({
         title: "New Version Created",
         description: "Your edited version has been saved successfully.",
@@ -651,6 +652,7 @@ export default function SiteEdit() {
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/plant-module/stock-ledger") || false });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      queryClient.invalidateQueries({ predicate: (q) => { const key = q.queryKey; return Array.isArray(key) && key[0] === "/api/boq/projects" && key[2] === "plan-vs-actual"; } });
       toast({ title: "DPR Submitted", description: "Your daily progress report has been submitted successfully." });
       const returnToParam = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("returnTo");
       setLocation(returnToParam ?? appendOrigin(`/site/report/${data.id}`));
