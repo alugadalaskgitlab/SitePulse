@@ -975,22 +975,25 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
     }
   })();
 
+  // ── Shortcut derived state ────────────────────────────────────────────────
+  const tomorrowPlan = (tomorrowReqs as any[]).find(
+    r => normSite(r.site ?? "") === currentSiteName || r.siteId === currentSiteId
+  ) ?? null;
+
   // ── Quick actions ──────────────────────────────────────────────────────────
   const editHref = myDpr ? `/site/edit/${myDpr.id}` : "/site/new?returnTo=/";
+  const tomorrowPlanHref = tomorrowPlan
+    ? `/site/requirements/new?editId=${tomorrowPlan.id}&returnTo=/`
+    : "/site/requirements/new?returnTo=/";
 
   interface QuickAction { label: string; icon: any; color: string; href: string; perm?: boolean }
   const allQuickActions: QuickAction[] = [
     { label: "Material Trip",        icon: Truck,          color: "bg-blue-600",   href: "/site/material-trips?returnTo=/",                              perm: sectionVisible("site_materials") },
     { label: "Raise IRN",            icon: BookOpen,       color: "bg-indigo-600", href: "/irn/new?from=site&returnTo=/",                                perm: canRaiseIrn },
-    { label: "Tomorrow's Plan",      icon: CalendarPlus,   color: "bg-teal-600",   href: "/site/requirements/new?returnTo=/",                            perm: sectionVisible("site_dprs") },
+    { label: "Tomorrow's Plan",      icon: CalendarPlus,   color: "bg-teal-600",   href: tomorrowPlanHref,                                               perm: sectionVisible("site_dprs") },
     { label: "Immediate Req.",       icon: AlertTriangle,  color: "bg-red-600",    href: "/site/requirements/new?mode=immediate&returnTo=/",             perm: sectionVisible("site_dprs") },
   ];
   const visibleActions = allQuickActions.filter(a => a.perm !== false);
-
-  // ── Shortcut derived state ────────────────────────────────────────────────
-  const tomorrowPlan = (tomorrowReqs as any[]).find(
-    r => normSite(r.site ?? "") === currentSiteName || r.siteId === currentSiteId
-  ) ?? null;
 
   const siteStockItems = (stockRows as any[])
     .filter(r => r.site === currentSiteName)
@@ -1309,11 +1312,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
                   </h2>
                   <p className="text-xs text-gray-400 mt-0.5">{tomorrowDisplay}</p>
                 </div>
-                <Link href={
-                  tomorrowPlan
-                    ? `/site/requirements/${tomorrowPlan.id}`
-                    : `/site/requirements/new?returnTo=/`
-                }>
+                <Link href={tomorrowPlanHref}>
                   <a className="text-xs font-semibold text-teal-600 flex items-center gap-0.5 hover:text-teal-700 transition-colors"
                      data-testid="link-tomorrow-plan">
                     {tomorrowPlan ? "Edit" : "Create"} plan <ChevronRight className="w-3 h-3" />
