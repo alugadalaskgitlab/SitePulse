@@ -76,8 +76,8 @@ export default function RmcHub() {
 
   const canProduction = sectionVisible("plant_production");
   const canReports = sectionVisible("plant_daily_reports");
-  const canProcure = sectionVisible("site_procurement");
-  const canDieselReq = sectionVisible("site_diesel");
+  const canProcure   = sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve");
+  const canDieselReq = sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve");
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const sevenDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);

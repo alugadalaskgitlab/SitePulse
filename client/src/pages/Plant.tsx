@@ -163,10 +163,10 @@ function PlantHomeCards({
       sectionVisible("plant_production") ||
       sectionVisible("plant_shift_logs") ||
       sectionVisible("plant_heating") ||
-      sectionVisible("site_procurement") ||
-      sectionVisible("site_diesel")
+      (sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve")) ||
+      (sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve"))
     );
-  const fleetVisible = sectionVisible("plant_equipment") || sectionVisible("site_diesel");
+  const fleetVisible = sectionVisible("plant_equipment") || sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve");
   const reportsVisible =
     sectionVisible("plant_daily_reports") ||
     sectionVisible("plant_heating") ||
@@ -345,7 +345,7 @@ function HMPOpsView({ plantType = "hma", plantName }: { plantType?: string; plan
         </Link>
       )}
 
-      {sectionVisible("site_procurement") && (
+      {(sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve")) && (
         <Link href={opLink("/plant/purchase-indents")}>
           <Card className="hover-elevate cursor-pointer h-full" data-testid="card-purchase-indents">
             <CardContent className="p-6 flex items-center gap-4">
@@ -362,7 +362,7 @@ function HMPOpsView({ plantType = "hma", plantName }: { plantType?: string; plan
         </Link>
       )}
 
-      {sectionVisible("site_diesel") && (
+      {(sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve")) && (
         <Link href={opLink("/plant/diesel-requirements")}>
           <Card className="hover-elevate cursor-pointer h-full" data-testid="card-diesel-requirements">
             <CardContent className="p-6 flex items-center gap-4">
@@ -437,7 +437,7 @@ function EquipmentFleetView({ plantName }: { plantName?: string }) {
         </Link>
       )}
 
-      {sectionVisible("site_diesel") && (
+      {(sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve")) && (
         <Link href={opLink("/plant/diesel-requirements")}>
           <Card className="hover-elevate cursor-pointer h-full">
             <CardContent className="p-6 flex items-center gap-4">
@@ -575,7 +575,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
 
       )}
 
-      {sectionVisible("site_procurement") && (
+      {(sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve")) && (
       <Link href={opLink("/plant/purchase-indents")}>
         <Card className="hover-elevate cursor-pointer h-full" data-testid="card-purchase-indents">
           <CardContent className="p-6 flex items-center gap-4">
@@ -629,7 +629,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
 
       )}
 
-      {sectionVisible("site_diesel") && (
+      {(sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve")) && (
       <Link href={opLink("/plant/diesel-requirements")}>
         <Card className="hover-elevate cursor-pointer h-full" data-testid="card-diesel-requirements">
           <CardContent className="p-6 flex items-center gap-4">

@@ -44,8 +44,8 @@ export default function SiteHome() {
   const { companyName } = useFeatureFlags();
   const canDprs       = sectionVisible("site_dprs");
   const canMaterials  = sectionVisible("site_materials");
-  const canProcure    = sectionVisible("site_procurement");
-  const canDiesel     = sectionVisible("site_diesel");
+  const canProcure    = sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve");
+  const canDiesel     = sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve");
 
   // Recent DPRs
   const { data: dprs = [] } = useQuery<any[]>({

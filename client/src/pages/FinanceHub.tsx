@@ -27,6 +27,9 @@ function KpiCard({ label, value, sub, warn }: {
 export default function FinanceHub() {
   const { sectionVisible } = useAuth();
 
+  const canProcure  = sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve");
+  const canDieselReq = sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve");
+
   const { data: indents = [] } = useQuery<any[]>({
     queryKey: ["/api/purchase-indents", TODAY],
     queryFn: async () => {
@@ -34,7 +37,7 @@ export default function FinanceHub() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: sectionVisible("site_procurement"),
+    enabled: canProcure,
   });
 
   const { data: irns = [] } = useQuery<any[]>({
@@ -64,13 +67,13 @@ export default function FinanceHub() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <KpiCard
             label="Pending Indents"
-            value={sectionVisible("site_procurement") ? pendingIndents : undefined}
+            value={canProcure ? pendingIndents : undefined}
             sub="awaiting approval"
             warn={pendingIndents > 0}
           />
           <KpiCard
             label="Approved Indents"
-            value={sectionVisible("site_procurement") ? approvedIndents : undefined}
+            value={canProcure ? approvedIndents : undefined}
             sub="ready to purchase"
           />
           <KpiCard
@@ -100,7 +103,7 @@ export default function FinanceHub() {
               accent="blue"
               iconBg="bg-blue-100"
               badge={pendingIndents > 0 ? `${pendingIndents} pending` : undefined}
-              enabled={sectionVisible("site_procurement")}
+              enabled={canProcure}
             />
             <HubActionTile
               href={`/plant/diesel-requirements?returnTo=${HUB}`}
@@ -109,7 +112,7 @@ export default function FinanceHub() {
               description="Plan diesel allocation per equipment & get approval"
               accent="amber"
               iconBg="bg-amber-100"
-              enabled={sectionVisible("site_diesel")}
+              enabled={canDieselReq}
             />
           </div>
         </div>

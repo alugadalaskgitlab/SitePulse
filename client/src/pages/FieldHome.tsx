@@ -666,9 +666,11 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
         .then(r => r.json()),
   });
 
+  const canProcure  = sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve");
+
   const { data: purchaseIndents = [] } = useQuery<any[]>({
     queryKey: ["/api/purchase-indents"],
-    enabled: sectionVisible("site_procurement"),
+    enabled: canProcure,
   });
 
   const canRaiseIrn = sectionVisible("irn_raise");
@@ -877,7 +879,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   }
 
   // Append pending indents note if any
-  if (sectionVisible("site_procurement")) {
+  if (canProcure) {
     const pendingPi = (purchaseIndents as any[]).filter(
       p => p.status === "pending" || p.status === "submitted" || p.status === "stores_check"
     ).length;
@@ -1625,7 +1627,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
           {/* ══════════════════════════════════════════════════════
               8. MY RAISED IRNs / PIs
               ══════════════════════════════════════════════════════ */}
-          {(canRaiseIrn || sectionVisible("site_procurement")) && showMyItems && (
+          {(canRaiseIrn || canProcure) && showMyItems && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden" data-testid="section-my-raised">
               <div className="px-4 py-3 border-b border-gray-100">
                 <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
@@ -1697,7 +1699,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
                     </a>
                   </Link>
                 )}
-                {sectionVisible("site_procurement") && (
+                {canProcure && (
                   <Link href="/procurement/indents">
                     <a className="text-xs font-medium text-violet-600 hover:text-violet-700 transition-colors">
                       All PIs →

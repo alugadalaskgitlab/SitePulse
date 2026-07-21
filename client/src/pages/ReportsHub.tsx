@@ -30,12 +30,12 @@ export default function ReportsHub() {
   const canDieselProc = sectionVisible("plant_diesel_proc");
   const canShift      = sectionVisible("plant_shift_logs");
   const canSiteMat    = sectionVisible("site_materials");
-  const canSiteProcure = sectionVisible("site_procurement");
+  const canSiteProcure = sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve");
   const canMaterials  = sectionVisible("plant_materials");
   const canStock      = sectionVisible("plant_stock");
   const canVariance   = sectionVisible("plant_variance");
   const canAudit      = sectionVisible("plant_audit");
-  const canDieselReq  = sectionVisible("site_diesel");
+  const canDieselReq  = sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve");
   const canBills      = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view") || sectionVisible("vendor_bills_raise") || sectionVisible("vendor_bills_verify") || sectionVisible("vendor_bills_approve");
 
   const hasSiteReports  = canSiteDprs || canSiteMat || canSiteProcure || canReports;

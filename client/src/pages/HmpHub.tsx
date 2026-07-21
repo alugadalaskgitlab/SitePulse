@@ -60,8 +60,8 @@ export default function HmpHub() {
   const canStock    = sectionVisible("plant_stock");
   const canBitumen  = sectionVisible("plant_bitumen");
   const canLdo      = sectionVisible("plant_ldo");
-  const canProcure  = sectionVisible("site_procurement");
-  const canDieselReq = sectionVisible("site_diesel");
+  const canProcure   = sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve");
+  const canDieselReq = sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve");
 
   const sevenDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 

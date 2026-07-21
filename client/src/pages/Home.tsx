@@ -145,7 +145,9 @@ function HomeDashboard({
 
 
   // Permission visibility
-  const canSeeSite = sectionVisible("site_dprs") || sectionVisible("site_materials") || sectionVisible("site_procurement") || sectionVisible("site_diesel");
+  const canProcure  = sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve");
+  const canDiesel   = sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve");
+  const canSeeSite  = sectionVisible("site_dprs") || sectionVisible("site_materials") || canProcure || canDiesel;
 
   return (
     <HubShell title="Home Dashboard">
