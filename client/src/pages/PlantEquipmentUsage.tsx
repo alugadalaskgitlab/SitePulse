@@ -30,7 +30,7 @@ import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, isAdmin, user } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_equipment", "create");
   const canEdit = sectionCan("plant_equipment", "edit");
@@ -72,6 +72,9 @@ export default function PlantEquipmentUsage() {
   const [shiftTo, setShiftTo] = useState("");
   const [transportEquipmentId, setTransportEquipmentId] = useState("");
   const [transportDistance, setTransportDistance] = useState("");
+  // Batch 6: "Send to Site" mode — create an open record for the site engineer to close
+  const [sendToSite, setSendToSite] = useState(false);
+  const [destinationSite, setDestinationSite] = useState("");
   
   const [newEquipmentDialogOpen, setNewEquipmentDialogOpen] = useState(false);
   const [newEquipmentName, setNewEquipmentName] = useState("");
@@ -361,6 +364,8 @@ export default function PlantEquipmentUsage() {
     setShiftTo("");
     setTransportEquipmentId("");
     setTransportDistance("");
+    setSendToSite(false);
+    setDestinationSite("");
   };
 
   const openEditDialog = (entry: EquipmentUsage) => {
@@ -448,6 +453,37 @@ export default function PlantEquipmentUsage() {
   };
 
   const handleSubmit = () => {
+    // Batch 6: "Send to Site" mode — open record, site engineer will close it
+    if (sendToSite && entryType !== "shifting") {
+      if (!equipmentId || !openingReading) {
+        toast({ title: "Please fill in equipment and opening meter reading before dispatching", variant: "destructive" });
+        return;
+      }
+      const effectiveDieselSource = dieselIncluded ? "contractor" : dieselSource;
+      const data = {
+        date,
+        equipmentId: parseInt(equipmentId),
+        entryType,
+        openingReading: parseFloat(openingReading),
+        closingReading: null,
+        startTime: startTime || null,
+        endTime: null,
+        openingDiesel: effectiveDieselSource === "contractor" ? null : (openingDiesel ? parseFloat(openingDiesel) : 0),
+        dieselIssued: effectiveDieselSource === "contractor" ? null : (dieselIssued ? parseFloat(dieselIssued) : 0),
+        dieselIncluded,
+        dieselSource: effectiveDieselSource,
+        siteName: workingPlant === "OTHER" ? (siteName.toUpperCase() || null) : workingPlant,
+        remarks: remarks ? remarks.toUpperCase() : null,
+        status: "open",
+        openedByUserId: user?.id ?? null,
+        openedByUserName: user?.fullName ?? null,
+        openedAt: new Date().toISOString(),
+        destinationSite: destinationSite ? destinationSite.toUpperCase() : null,
+      };
+      createMutation.mutate(data as any);
+      return;
+    }
+
     if (entryType === "shifting") {
       if (!equipmentId || !shiftFrom || !shiftTo || !transportEquipmentId) {
         toast({ title: "Please fill in equipment, from, to, and transport vehicle", variant: "destructive" });
@@ -1178,18 +1214,49 @@ export default function PlantEquipmentUsage() {
 
               {entryType !== "shifting" && (
               <>
+              {/* Batch 6: Send to Site toggle */}
+              <div className="flex items-center justify-between border rounded-md p-3 bg-muted/30">
+                <div>
+                  <p className="text-sm font-medium">Send to Site</p>
+                  <p className="text-xs text-muted-foreground">Equipment will be dispatched — site engineer closes the entry in DPR</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={sendToSite}
+                  data-testid="toggle-send-to-site"
+                  onClick={() => setSendToSite(v => !v)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${sendToSite ? "bg-amber-500" : "bg-muted-foreground/30"}`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${sendToSite ? "translate-x-5" : "translate-x-0"}`} />
+                </button>
+              </div>
+              {sendToSite && (
+                <div>
+                  <Label>Destination Site</Label>
+                  <Input
+                    value={destinationSite}
+                    onChange={(e) => setDestinationSite(e.target.value.toUpperCase())}
+                    placeholder="e.g. BYPASS KM 12"
+                    data-testid="input-destination-site"
+                  />
+                </div>
+              )}
+
               <div className="text-sm font-semibold text-muted-foreground border-b pb-1">Morning Entry</div>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className={`grid gap-4 ${sendToSite ? "grid-cols-1" : "grid-cols-2"}`}>
                 <div>
                   <Label>Opening {selectedEquipment?.meterType === "hour_meter" ? "Hrs" : "KM"}</Label>
                   <Input type="number" step="0.1" value={openingReading} onChange={(e) => setOpeningReading(e.target.value)} placeholder="0.0" data-testid="input-opening-reading" />
                 </div>
+                {!sendToSite && (
                 <div className="flex flex-col">
                   <div className="text-sm font-semibold text-muted-foreground border-b pb-1 mb-2">Evening Entry (can be added later)</div>
                   <Label>Closing {selectedEquipment?.meterType === "hour_meter" ? "Hrs" : "KM"}</Label>
                   <Input type="number" step="0.1" value={closingReading} onChange={(e) => setClosingReading(e.target.value)} placeholder="0.0" data-testid="input-closing-reading" />
                 </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1810,7 +1877,8 @@ export default function PlantEquipmentUsage() {
                                   {(entry as any).entryType === "trip_based" && <Badge variant="outline" className="text-sm bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>}
                                   {(entry as any).entryType === "shifting" && <Badge variant="outline" className="text-sm bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700">Mobilization</Badge>}
                                   {isDieselIncluded && <Badge variant="outline" className="text-sm bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Diesel by Contractor</Badge>}
-                                  {isPartialEntry(entry) && <Badge variant="outline" className="text-sm bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700">Pending Closing</Badge>}
+                                  {(entry as any).status === 'open' && <Badge variant="outline" className="text-sm bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Open → Site{(entry as any).destinationSite ? `: ${(entry as any).destinationSite}` : ""}</Badge>}
+                                  {isPartialEntry(entry) && !((entry as any).status === 'open') && <Badge variant="outline" className="text-sm bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700">Pending Closing</Badge>}
                                 </div>
                                 {/* Line 2: inline operational detail */}
                                 {(entry as any).entryType === "shifting" ? (

@@ -1280,6 +1280,7 @@ export async function registerRoutes(
       if (!isDraft) {
         await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${input.engineer || 'Engineer'} submitted DPR for ${input.site} (${input.date})`, isRead: 0 });
         sendPushToSection("site_dprs", "New DPR Submitted", `${input.engineer || 'Engineer'} - ${input.site} - ${input.date}`, "/site-reports").catch(() => {});
+        await closePlantUsageLinkedToEquipment((input as any).equipment, dpr.id, req);
       }
       res.status(201).json(dpr);
     } catch (err) {
@@ -1335,6 +1336,7 @@ export async function registerRoutes(
       if (!submitted) return res.status(404).json({ message: "DPR not found or not a draft" });
       await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${submitted.engineer || 'Engineer'} submitted DPR for ${submitted.site} (${submitted.date})`, isRead: 0 });
       sendPushToSection("site_dprs", "New DPR Submitted", `${submitted.engineer || 'Engineer'} - ${submitted.site} - ${submitted.date}`, "/site-reports").catch(() => {});
+      await closePlantUsageLinkedToEquipment((input as any).equipment, submitted.id, req);
       res.json(submitted);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
@@ -2699,6 +2701,49 @@ export async function registerRoutes(
     }
   });
 
+  // Batch 6: helper — closes open plant equipment_usage records that were linked by a DPR submission
+  async function closePlantUsageLinkedToEquipment(
+    equipment: any[] | undefined,
+    dprId: number,
+    req: any,
+  ): Promise<void> {
+    if (!equipment?.length) return;
+    const now = new Date();
+    const closedByUserId = (req as any).authUser?.id ?? null;
+    const closedByUserName = (req as any).authUser ? currentUserName(req) : null;
+    for (const entry of equipment) {
+      const puid = (entry as any).plantUsageId;
+      if (!puid) continue;
+      try {
+        await storage.updateEquipmentUsage(Number(puid), {
+          closingReading: entry.closingReading ?? undefined,
+          endTime: entry.endTime || undefined,
+          operator: entry.operator || undefined,
+          task: entry.task || undefined,
+          status: "closed" as any,
+          closedByDprId: dprId as any,
+          closedByUserId: closedByUserId as any,
+          closedByUserName: closedByUserName as any,
+          closedAt: now as any,
+        } as any);
+      } catch (e) {
+        console.error(`Batch6 closePlantUsage: failed to close equipment_usage #${puid}:`, e);
+      }
+    }
+  }
+
+  // EquipmentHub uses this shorter /plant/ prefix alias
+  app.get("/api/plant/equipment-usage", async (req, res) => {
+    try {
+      const dateParam = req.query.date as string | undefined;
+      const filters = dateParam ? { dateFrom: dateParam, dateTo: dateParam } : {};
+      const usageData = await storage.getEquipmentUsage(filters);
+      res.json(usageData);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch equipment usage" });
+    }
+  });
+
   // Equipment Usage
   app.get("/api/plant-module/equipment-usage", async (req, res) => {
     try {
@@ -2711,6 +2756,22 @@ export async function registerRoutes(
       res.json(usage);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch equipment usage" });
+    }
+  });
+
+  // Batch 6: open plant records for a given date + equipmentIds — used by SiteEntry to detect P&M-dispatched equipment
+  app.get("/api/plant-module/equipment-usage/open-today", async (req, res) => {
+    try {
+      const date = req.query.date as string;
+      if (!date) return res.status(400).json({ message: "date is required" });
+      const ids = req.query.equipmentIds;
+      const equipmentIds: number[] = Array.isArray(ids)
+        ? (ids as string[]).map(Number).filter(Boolean)
+        : ids ? [Number(ids)].filter(Boolean) : [];
+      const records = await (storage as any).getOpenEquipmentUsageForDate(date, equipmentIds);
+      res.json(records);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch open equipment records" });
     }
   });
 

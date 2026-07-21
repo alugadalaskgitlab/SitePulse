@@ -165,6 +165,8 @@ export const equipmentLogs = pgTable("equipment_logs", {
   // comparison. Nullable — most equipment rows remain unlinked.
   boqItemId: integer("boq_item_id"),
   structureId: text("structure_id"),
+  // Batch 6: link back to the equipment_usage row this DPR entry closed
+  plantUsageId: integer("plant_usage_id"),
 });
 
 // Labour Log
@@ -515,6 +517,16 @@ export const equipmentUsage = pgTable("equipment_usage", {
   unlockedByUserId: integer("unlocked_by_user_id"),
   unlockedAt: timestamp("unlocked_at"),
   unlockReason: text("unlock_reason"),
+  // Batch 6: single shared record — audit trail & lifecycle status
+  status: text("status").notNull().default("closed"), // 'open' (pending site closure) | 'closed'
+  openedByUserId: integer("opened_by_user_id"),
+  openedByUserName: text("opened_by_user_name"),
+  openedAt: timestamp("opened_at"),
+  closedByDprId: integer("closed_by_dpr_id"),
+  closedByUserId: integer("closed_by_user_id"),
+  closedByUserName: text("closed_by_user_name"),
+  closedAt: timestamp("closed_at"),
+  destinationSite: text("destination_site"), // where equipment is sent when status='open'
 }, (table) => ({
   dateIdx: index("equipment_usage_date_idx").on(table.date),
   sourceHeatingSessionIdx: index("equipment_usage_source_heating_session_idx").on(table.sourceHeatingSessionId),

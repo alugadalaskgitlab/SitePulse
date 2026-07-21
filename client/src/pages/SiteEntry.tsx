@@ -79,6 +79,8 @@ interface EquipmentEntry {
   // charged against, for planned vs actual comparison.
   boqItemId: number | null;
   structureId: string | null;
+  // Batch 6: links this DPR equipment row back to the plant equipment_usage record it closes
+  plantUsageId: number | null;
 }
 
 interface LabourEntry {
@@ -762,8 +764,9 @@ export default function SiteEntry() {
     { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }
   ]);
 
+  const [openPlantMap, setOpenPlantMap] = useState<Record<number, any>>({});
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
@@ -927,7 +930,7 @@ export default function SiteEntry() {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
     } else if (section === 'materials') {
@@ -1051,6 +1054,35 @@ export default function SiteEntry() {
       return;
     }
     setShowPreview(true);
+  };
+
+  // Batch 6: fetch open plant equipment_usage record for a given equipment on today's date
+  const fetchOpenPlantRecord = async (equipmentId: number, rowIdx: number) => {
+    if (!header.date || !equipmentId) return;
+    try {
+      const res = await fetch(
+        `/api/plant-module/equipment-usage/open-today?date=${header.date}&equipmentIds=${equipmentId}`
+      );
+      if (!res.ok) return;
+      const records: any[] = await res.json();
+      const record = records[0] ?? null;
+      setOpenPlantMap(prev => ({ ...prev, [equipmentId]: record }));
+      if (record) {
+        setEquipment(prev => {
+          const updated = [...prev];
+          if (updated[rowIdx]) {
+            updated[rowIdx] = {
+              ...updated[rowIdx],
+              openingReading: record.openingReading ?? updated[rowIdx].openingReading,
+              plantUsageId: record.id,
+            };
+          }
+          return updated;
+        });
+      }
+    } catch {
+      // silently ignore — falls back to manual entry
+    }
   };
 
   // Returns true when all "end-of-day" mandatory fields are filled and
@@ -2041,6 +2073,7 @@ export default function SiteEntry() {
                           updated[idx].equipmentId = selectedEquip.id;
                           updated[idx].machine = selectedEquip.name;
                           updated[idx].vehicleNo = selectedEquip.registrationNumber || "";
+                          updated[idx].plantUsageId = null; // reset until fetch resolves
                           if (selectedEquip.ownership !== "hired") {
                             updated[idx].entryType = "time_meter";
                             updated[idx].numberOfTrips = null;
@@ -2049,6 +2082,8 @@ export default function SiteEntry() {
                           }
                         }
                         setEquipment(updated);
+                        // Batch 6: check if there's an open plant record for this equipment today
+                        if (selectedEquip) fetchOpenPlantRecord(selectedEquip.id, idx);
                       }}
                     >
                       <SelectTrigger data-testid={`select-equipment-${idx}`}>
@@ -2249,13 +2284,21 @@ export default function SiteEntry() {
                         </div>
                       </div>
                       <div>
-                        <Label className="text-sm">{isOdometer ? "Opening Odometer (km)" : "Opening Hour Meter"}</Label>
+                        <Label className="text-sm">
+                          {isOdometer ? "Opening Odometer (km)" : "Opening Hour Meter"}
+                          {entry.plantUsageId && (
+                            <span className="ml-2 text-xs font-normal text-amber-600 dark:text-amber-400">(from plant — locked)</span>
+                          )}
+                        </Label>
                         <Input
                           type="number"
                           step="0.1"
                           placeholder={isOdometer ? "e.g. 45230" : "e.g. 1234.5"}
                           value={entry.openingReading ?? ""}
+                          readOnly={!!entry.plantUsageId}
+                          className={entry.plantUsageId ? "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-600 cursor-not-allowed" : ""}
                           onChange={(e) => {
+                            if (entry.plantUsageId) return; // locked — comes from plant record
                             const updated = [...equipment];
                             updated[idx].openingReading = e.target.value ? parseFloat(e.target.value) : null;
                             setEquipment(updated);

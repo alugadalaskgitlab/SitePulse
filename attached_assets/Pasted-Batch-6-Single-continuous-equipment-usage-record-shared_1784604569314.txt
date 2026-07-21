@@ -1,0 +1,12 @@
+Batch 6: Single continuous equipment-usage record, shared between P&M and Site
+
+Goal: eliminate the duplicate/disconnected-reading risk when equipment moves from P&M to a site and back — one physical day of usage should be one record, opened by whoever dispatches it and closed by whoever finishes using it, rather than two separate, blind records.
+
+When P&M sends equipment to a site (via PlantEquipmentUsage.tsx), the record they create should be explicitly markable as "open — pending site closure": equipment ID, date, destination site, opening reading, opening diesel/fuel filled — but no closing reading yet, since the site hasn't used it yet.
+On the DPR's equipment section (SiteEntry.tsx), before letting the Engineer type in a fresh opening reading for a piece of equipment, check whether an open, unclosed record already exists for that equipment ID and today's date (created by P&M in step 1).
+If one exists: show its opening reading as read-only (not re-enterable), and only ask the Engineer for the closing reading, task worked, and any diesel added on-site. On DPR submit, this updates the same existing record — adding the closing data — rather than creating a new, separate one.
+If none exists (equipment that's permanently site-based and never goes through P&M dispatch): fall back to today's current behavior exactly as-is — the Engineer enters both opening and closing readings themselves, creating their own record.
+Equipment Hub's combined "Active Today" KPI (from Batch 4) should now count each such record once, not twice, since there's only one record per equipment per day regardless of who touched it.
+Please add a small audit trail on each record — who opened it (P&M) and who closed it (Engineer/DPR), with timestamps — so if a reading discrepancy ever comes up, it's traceable to exactly who entered what and when.
+
+Given this touches core DPR and Equipment Usage data flows on both the P&M and site sides, please test this thoroughly on the dev database with a real end-to-end scenario (dispatch equipment → log a DPR against it → confirm the record closes correctly and shows in both P&M's and the site's views) before this goes anywhere near production.

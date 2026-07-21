@@ -540,6 +540,8 @@ export interface IStorage {
   createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage>;
   updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined>;
   deleteEquipmentUsage(id: number): Promise<boolean>;
+  getOpenEquipmentUsageForDate(date: string, equipmentIds: number[]): Promise<EquipmentUsage[]>;
+  ensureEquipmentUsageAuditColumns(): Promise<void>;
   
   getGeneratorLogs(filters?: { dateFrom?: string; dateTo?: string }): Promise<GeneratorLog[]>;
   createGeneratorLog(log: InsertGeneratorLog): Promise<GeneratorLog>;
@@ -3821,6 +3823,35 @@ export class DatabaseStorage implements IStorage {
 
   async updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined> {
     return this._updateEquipmentUsageTxn(id, usage);
+  }
+
+  async getOpenEquipmentUsageForDate(date: string, equipmentIds: number[]): Promise<EquipmentUsage[]> {
+    if (!equipmentIds.length) return [];
+    return db.select().from(equipmentUsage)
+      .where(and(
+        eq(equipmentUsage.date, date),
+        eq((equipmentUsage as any).status, 'open'),
+        inArray(equipmentUsage.equipmentId, equipmentIds)
+      ));
+  }
+
+  async ensureEquipmentUsageAuditColumns(): Promise<void> {
+    const stmts = [
+      "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'closed'",
+      "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS opened_by_user_id integer",
+      "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS opened_by_user_name text",
+      "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS opened_at timestamp",
+      "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS closed_by_dpr_id integer",
+      "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS closed_by_user_id integer",
+      "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS closed_by_user_name text",
+      "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS closed_at timestamp",
+      "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS destination_site text",
+      "ALTER TABLE equipment_logs ADD COLUMN IF NOT EXISTS plant_usage_id integer",
+    ];
+    for (const stmt of stmts) {
+      try { await db.execute(sql.raw(stmt)); } catch (_) {}
+    }
+    console.log("ensureEquipmentUsageAuditColumns: all audit columns verified/added");
   }
 
   private async _updateEquipmentUsageTxn(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined> {

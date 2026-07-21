@@ -62,15 +62,19 @@ export default function EquipmentHub() {
   });
 
   // Combined "Active Today": standalone logs + DPR equipment entries
+  // Batch 6: exclude plant records that were closed by a DPR — they're already counted in dprEqCount
   const dprEquipmentToday = (todayDprs as any[]).flatMap((d: any) => d.equipment ?? []);
-  const standaloneCount  = (equipmentUsage as any[]).length;
-  const dprEqCount       = dprEquipmentToday.length;
-  const activeCount      = standaloneCount + dprEqCount;
+  const standaloneLogs    = (equipmentUsage as any[]).filter((u: any) => !u.closedByDprId);
+  const standaloneCount   = standaloneLogs.length;
+  const dprEqCount        = dprEquipmentToday.length;
+  const activeCount       = standaloneCount + dprEqCount;
+  // Also surface open (pending site closure) count as a warning signal
+  const openPendingCount  = (equipmentUsage as any[]).filter((u: any) => u.status === 'open').length;
   const activeSub =
     standaloneCount > 0 && dprEqCount > 0
-      ? `${standaloneCount} plant · ${dprEqCount} site (DPR)`
+      ? `${standaloneCount} plant · ${dprEqCount} site (DPR)${openPendingCount > 0 ? ` · ${openPendingCount} pending closure` : ''}`
       : standaloneCount > 0
-        ? `${standaloneCount} plant logs`
+        ? `${standaloneCount} plant logs${openPendingCount > 0 ? ` (${openPendingCount} pending site closure)` : ''}`
         : dprEqCount > 0
           ? `${dprEqCount} from site DPRs`
           : "none logged yet";

@@ -193,6 +193,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    await (storage as any).ensureEquipmentUsageAuditColumns();
+    console.log("Startup: ensureEquipmentUsageAuditColumns — audit columns verified");
+  } catch (e) {
+    console.error("Startup: Failed to ensure equipment usage audit columns:", e);
+  }
+
+  try {
     await (storage as any).ensureSiteEnabledModulesColumn();
   } catch (e) {
     console.error("Startup: Failed to ensure enabled_modules column on sites:", e);
