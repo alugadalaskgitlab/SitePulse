@@ -153,7 +153,12 @@ export default function SiteHub() {
               description="Purchases, expenses & procurement analysis for the site"
               accent="rose"
               iconBg="bg-rose-100"
-              enabled={sectionVisible("site_procurement")}
+              enabled={
+                sectionVisible("site_procurement") ||
+                sectionVisible("purchase_indents_view") ||
+                sectionVisible("purchase_indents_raise") ||
+                sectionVisible("purchase_indents_approve")
+              }
             />
             <HubActionTile
               href="/plant/purchase-indents?returnTo=/site/hub&from=site"
@@ -162,7 +167,12 @@ export default function SiteHub() {
               description="Raise and track purchase indents for site materials & requirements"
               accent="blue"
               iconBg="bg-blue-100"
-              enabled={sectionVisible("site_procurement")}
+              enabled={
+                sectionVisible("site_procurement") ||
+                sectionVisible("purchase_indents_view") ||
+                sectionVisible("purchase_indents_raise") ||
+                sectionVisible("purchase_indents_approve")
+              }
             />
             <HubActionTile
               href="/plant/diesel-requirements?returnTo=/site/hub"
@@ -171,7 +181,12 @@ export default function SiteHub() {
               description="Plan & approve diesel allocation for site equipment"
               accent="amber"
               iconBg="bg-amber-100"
-              enabled={sectionVisible("site_diesel")}
+              enabled={
+                sectionVisible("site_diesel") ||
+                sectionVisible("diesel_req_view") ||
+                sectionVisible("diesel_req_raise") ||
+                sectionVisible("diesel_req_approve")
+              }
             />
             <HubActionTile
               href="/irn/new?from=site&returnTo=/site/hub"
