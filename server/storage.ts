@@ -18415,26 +18415,65 @@ export class DatabaseStorage implements IStorage {
   }
 
   async cancelStoreGrn(id: number, userId: number, reason: string): Promise<StoreGrn | undefined> {
-    const [grn] = await db.update(storeGrns)
-      .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
-      .where(and(eq(storeGrns.id, id), eq(storeGrns.isCancelled, false)))
-      .returning();
-    return grn;
+    return await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(storeGrns).where(eq(storeGrns.id, id));
+      if (!existing) return undefined;
+      if (existing.isCancelled) {
+        throw Object.assign(new Error("GRN is already cancelled"), { code: "ALREADY_CANCELLED" });
+      }
+
+      const [grn] = await tx.update(storeGrns)
+        .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
+        .where(eq(storeGrns.id, id))
+        .returning();
+
+      // Write explicit cancellation audit log entry
+      const [actor] = await tx.select({ fullName: users.fullName, role: users.role })
+        .from(users).where(eq(users.id, userId));
+      await tx.insert(auditLogs).values({
+        module: "store_grn",
+        transactionId: id,
+        action: "cancel",
+        userId,
+        userName: actor?.fullName ?? `User #${userId}`,
+        userRole: actor?.role ?? null,
+        reason,
+        stockImpact: `GRN ${grn.grnNumber ?? String(id)} cancelled; quantities excluded from stock totals.`,
+      });
+
+      return grn;
+    });
   }
 
   async cancelStoreIssue(id: number, userId: number, reason: string): Promise<StoreIssue | undefined> {
-    // Fetch existing record to get irnId before we cancel
-    const [existing] = await db.select().from(storeIssues)
-      .where(and(eq(storeIssues.id, id), eq(storeIssues.isCancelled, false)));
-    if (!existing) return undefined;
-
     return await db.transaction(async (tx) => {
+      // Fetch existing record to get irnId before we cancel
+      const [existing] = await tx.select().from(storeIssues).where(eq(storeIssues.id, id));
+      if (!existing) return undefined;
+      if (existing.isCancelled) {
+        throw Object.assign(new Error("Issue voucher is already cancelled"), { code: "ALREADY_CANCELLED" });
+      }
+
       // Cancel the issue voucher
       const [issue] = await tx.update(storeIssues)
         .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
-        .where(and(eq(storeIssues.id, id), eq(storeIssues.isCancelled, false)))
+        .where(eq(storeIssues.id, id))
         .returning();
       if (!issue) return undefined;
+
+      // Write explicit cancellation audit log entry
+      const [actorForAudit] = await tx.select({ fullName: users.fullName, role: users.role })
+        .from(users).where(eq(users.id, userId));
+      await tx.insert(auditLogs).values({
+        module: "store_issue",
+        transactionId: id,
+        action: "cancel",
+        userId,
+        userName: actorForAudit?.fullName ?? `User #${userId}`,
+        userRole: actorForAudit?.role ?? null,
+        reason,
+        stockImpact: `Issue Voucher ${issue.issueNumber ?? String(id)} cancelled; quantities returned to available stock.`,
+      });
 
       // If linked to an IRN, revert IRN status based on remaining active vouchers
       if (existing.irnId != null) {
@@ -19003,6 +19042,7 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(storeGrnItems.itemId, itemId),
         ne(storeGrns.status, 'draft'),
+        eq(storeGrns.isCancelled, false),
         ...(filters?.dateFrom ? [gte(storeGrns.date, filters.dateFrom)] : []),
         ...(filters?.dateTo ? [lte(storeGrns.date, filters.dateTo)] : []),
       ));
@@ -19021,6 +19061,7 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(storeIssues, eq(storeIssueItems.issueId, storeIssues.id))
       .where(and(
         eq(storeIssueItems.itemId, itemId),
+        eq(storeIssues.isCancelled, false),
         ...(filters?.dateFrom ? [gte(storeIssues.date, filters.dateFrom)] : []),
         ...(filters?.dateTo ? [lte(storeIssues.date, filters.dateTo)] : []),
       ));

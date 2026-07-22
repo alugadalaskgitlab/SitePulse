@@ -8880,9 +8880,12 @@ export async function registerRoutes(
       }
       const userId = req.authUser!.id;
       const grn = await storage.cancelStoreGrn(id, userId, reason.trim());
-      if (!grn) return res.status(404).json({ error: "GRN not found or already cancelled" });
+      if (!grn) return res.status(404).json({ error: "GRN not found" });
       res.json(grn);
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.code === "ALREADY_CANCELLED") {
+        return res.status(409).json({ error: err.message });
+      }
       console.error("POST /api/stores/grns/:id/cancel:", err);
       res.status(500).json({ error: "Failed to cancel GRN" });
     }
@@ -8997,9 +9000,12 @@ export async function registerRoutes(
       }
       const userId = req.authUser!.id;
       const issue = await storage.cancelStoreIssue(id, userId, reason.trim());
-      if (!issue) return res.status(404).json({ error: "Issue not found or already cancelled" });
+      if (!issue) return res.status(404).json({ error: "Issue not found" });
       res.json(issue);
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.code === "ALREADY_CANCELLED") {
+        return res.status(409).json({ error: err.message });
+      }
       console.error("POST /api/stores/issues/:id/cancel:", err);
       res.status(500).json({ error: "Failed to cancel issue" });
     }
