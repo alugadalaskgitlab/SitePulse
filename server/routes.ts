@@ -8883,7 +8883,7 @@ export async function registerRoutes(
       if (!grn) return res.status(404).json({ error: "GRN not found" });
       res.json(grn);
     } catch (err: any) {
-      if (err?.code === "ALREADY_CANCELLED") {
+      if (err?.code === "ALREADY_CANCELLED" || err?.code === "LINKED_INDENT_CLOSED") {
         return res.status(409).json({ error: err.message });
       }
       console.error("POST /api/stores/grns/:id/cancel:", err);
@@ -9003,7 +9003,7 @@ export async function registerRoutes(
       if (!issue) return res.status(404).json({ error: "Issue not found" });
       res.json(issue);
     } catch (err: any) {
-      if (err?.code === "ALREADY_CANCELLED") {
+      if (err?.code === "ALREADY_CANCELLED" || err?.code === "LINKED_IRN_UNRESOLVABLE") {
         return res.status(409).json({ error: err.message });
       }
       console.error("POST /api/stores/issues/:id/cancel:", err);
@@ -9164,7 +9164,7 @@ export async function registerRoutes(
       if (!assertAdmin(req, res)) return;
       const id = Number(req.params.id);
       const before = await storage.getMaintenanceLog(id);
-      const deleted = await storage.deleteMaintenanceLog(id);
+      const deleted = await storage.deleteMaintenanceLog(id, req.authUser!.id);
       if (!deleted) return res.status(404).json({ error: "Not found" });
       await storage.logAudit({
         module: "equipment_maintenance_logs",

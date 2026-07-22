@@ -970,7 +970,7 @@ export interface IStorage {
   getMaintenanceLog(id: number): Promise<EquipmentMaintenanceLogWithDetails | undefined>;
   createMaintenanceLog(log: InsertEquipmentMaintenanceLog, parts?: InsertMaintenancePartUsed[]): Promise<EquipmentMaintenanceLogWithDetails>;
   updateMaintenanceLog(id: number, log: Partial<InsertEquipmentMaintenanceLog>): Promise<EquipmentMaintenanceLogWithDetails | undefined>;
-  deleteMaintenanceLog(id: number): Promise<boolean>;
+  deleteMaintenanceLog(id: number, userId: number): Promise<boolean>;
   addMaintenanceParts(logId: number, parts: InsertMaintenancePartUsed[]): Promise<EquipmentMaintenanceLogWithDetails>;
   removeMaintenancePart(partId: number): Promise<boolean>;
   getEquipmentHealthSummary(): Promise<EquipmentHealthSummary[]>;
@@ -18422,6 +18422,28 @@ export class DatabaseStorage implements IStorage {
         throw Object.assign(new Error("GRN is already cancelled"), { code: "ALREADY_CANCELLED" });
       }
 
+      // Inspect linked purchase-indent items and block if any parent indent is closed
+      const linkedIndentItems = await tx
+        .select({
+          indentItemId: storeGrnItems.indentItemId,
+          indentId: purchaseIndentItems.indentId,
+          indentStatus: purchaseIndents.status,
+          indentRef: purchaseIndents.indentNo,
+        })
+        .from(storeGrnItems)
+        .innerJoin(purchaseIndentItems, eq(storeGrnItems.indentItemId, purchaseIndentItems.id))
+        .innerJoin(purchaseIndents, eq(purchaseIndentItems.indentId, purchaseIndents.id))
+        .where(and(eq(storeGrnItems.grnId, id), isNotNull(storeGrnItems.indentItemId)));
+
+      const closedIndents = linkedIndentItems.filter(li => li.indentStatus === "closed");
+      if (closedIndents.length > 0) {
+        const refs = [...new Set(closedIndents.map(li => li.indentRef ?? `#${li.indentId}`))].join(", ");
+        throw Object.assign(
+          new Error(`Cannot cancel GRN: linked purchase indent(s) are already closed (${refs}). Re-open the indent before cancelling this GRN.`),
+          { code: "LINKED_INDENT_CLOSED" }
+        );
+      }
+
       const [grn] = await tx.update(storeGrns)
         .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
         .where(eq(storeGrns.id, id))
@@ -18430,6 +18452,9 @@ export class DatabaseStorage implements IStorage {
       // Write explicit cancellation audit log entry
       const [actor] = await tx.select({ fullName: users.fullName, role: users.role })
         .from(users).where(eq(users.id, userId));
+      const linkedNote = linkedIndentItems.length > 0
+        ? ` Affected indent items: [${linkedIndentItems.map(li => `indentItem #${li.indentItemId}`).join(", ")}].`
+        : "";
       await tx.insert(auditLogs).values({
         module: "store_grn",
         transactionId: id,
@@ -18438,7 +18463,7 @@ export class DatabaseStorage implements IStorage {
         userName: actor?.fullName ?? `User #${userId}`,
         userRole: actor?.role ?? null,
         reason,
-        stockImpact: `GRN ${grn.grnNumber ?? String(id)} cancelled; quantities excluded from stock totals.`,
+        stockImpact: `GRN ${grn.grnNumber ?? String(id)} cancelled; quantities excluded from stock totals.${linkedNote}`,
       });
 
       return grn;
@@ -18475,9 +18500,19 @@ export class DatabaseStorage implements IStorage {
         stockImpact: `Issue Voucher ${issue.issueNumber ?? String(id)} cancelled; quantities returned to available stock.`,
       });
 
-      // If linked to an IRN, revert IRN status based on remaining active vouchers
+      // If linked to an IRN, validate its current state and revert status based on remaining active vouchers
       if (existing.irnId != null) {
         const irnId = existing.irnId;
+
+        // Validate the IRN is in a state that allows reversal; block if closed or rejected
+        const [irnRow] = await tx.select({ status: internalRequisitions.status, irnNo: internalRequisitions.irnNo })
+          .from(internalRequisitions).where(eq(internalRequisitions.id, irnId));
+        if (irnRow && (irnRow.status === "closed" || irnRow.status === "rejected")) {
+          throw Object.assign(
+            new Error(`Cannot cancel issue: linked IRN ${irnRow.irnNo ?? `#${irnId}`} is ${irnRow.status}. Cancellation cannot be applied to a ${irnRow.status} requisition.`),
+            { code: "LINKED_IRN_UNRESOLVABLE" }
+          );
+        }
 
         // Fetch remaining active (non-cancelled) vouchers for this IRN
         const activeVouchers = await tx.select({ id: storeIssues.id })
@@ -19225,12 +19260,31 @@ export class DatabaseStorage implements IStorage {
     return this.buildMaintenanceLogWithDetails(updated);
   }
 
-  async deleteMaintenanceLog(id: number): Promise<boolean> {
+  async deleteMaintenanceLog(id: number, userId: number): Promise<boolean> {
     const [log] = await db.select().from(equipmentMaintenanceLogs).where(eq(equipmentMaintenanceLogs.id, id));
     if (!log) return false;
     await db.delete(maintenancePartsUsed).where(eq(maintenancePartsUsed.maintenanceLogId, id));
     if (log.autoIssueId) {
-      await this.deleteStoreIssue(log.autoIssueId);
+      // Soft-cancel the associated store issue instead of hard-deleting it
+      const [issueRow] = await db.select({ isCancelled: storeIssues.isCancelled })
+        .from(storeIssues).where(eq(storeIssues.id, log.autoIssueId));
+      if (issueRow && !issueRow.isCancelled) {
+        const [actor] = await db.select({ fullName: users.fullName, role: users.role })
+          .from(users).where(eq(users.id, userId));
+        await db.update(storeIssues)
+          .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: "Maintenance log deleted" })
+          .where(eq(storeIssues.id, log.autoIssueId));
+        await db.insert(auditLogs).values({
+          module: "store_issue",
+          transactionId: log.autoIssueId,
+          action: "cancel",
+          userId,
+          userName: actor?.fullName ?? `User #${userId}`,
+          userRole: actor?.role ?? null,
+          reason: "Maintenance log deleted",
+          stockImpact: `Auto-issue cancelled when maintenance log #${id} was deleted.`,
+        });
+      }
     }
     const result = await db.delete(equipmentMaintenanceLogs).where(eq(equipmentMaintenanceLogs.id, id));
     return ((result as any).rowCount ?? 0) > 0;
