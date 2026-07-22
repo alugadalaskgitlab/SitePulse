@@ -932,11 +932,14 @@ export interface IStorage {
 
   // Stores & Inventory Module
   getStoreItems(includeInactive?: boolean): Promise<StoreItem[]>;
+  ensureStoreCancellationColumns(): Promise<void>;
   getStoreItemsWithBalance(): Promise<Array<StoreItem & { balance: number }>>;
+  cancelStoreGrn(id: number, userId: number, reason: string): Promise<StoreGrn | undefined>;
+  cancelStoreIssue(id: number, userId: number, reason: string): Promise<StoreIssue | undefined>;
   createStoreItem(data: InsertStoreItem): Promise<StoreItem>;
   updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined>;
   toggleStoreItemActive(id: number): Promise<StoreItem | undefined>;
-  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string; awaitingPi?: boolean }): Promise<StoreGrnWithItems[]>;
+  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string; awaitingPi?: boolean; showCancelled?: boolean }): Promise<StoreGrnWithItems[]>;
   getStaleGrns(thresholdHours?: number, permittedSiteIds?: number[]): Promise<StoreGrnWithItems[]>;
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
   getIndentFulfilmentStatus(): Promise<Record<string, boolean>>;
@@ -951,7 +954,7 @@ export interface IStorage {
   updateStoreGrn(id: number, data: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null }): Promise<StoreGrnWithItems | undefined>;
   replaceStoreGrn(id: number, grnData: Partial<InsertStoreGrn>, items: Omit<InsertStoreGrnItem, 'grnId'>[]): Promise<StoreGrnWithItems | undefined>;
   deleteStoreGrn(id: number): Promise<boolean>;
-  getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[]; item?: string; category?: string }): Promise<StoreIssueWithItems[]>;
+  getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[]; item?: string; category?: string; showCancelled?: boolean }): Promise<StoreIssueWithItems[]>;
   getStoreIssue(id: number): Promise<StoreIssueWithItems | undefined>;
   getRecentIssueItemIds(limit?: number): Promise<number[]>;
   createStoreIssue(issue: Omit<InsertStoreIssue, 'issueNumber'>, items: Omit<InsertStoreIssueItem, 'issueId'>[]): Promise<StoreIssueWithItems>;
@@ -18400,26 +18403,62 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(storeItems.category), asc(storeItems.name));
   }
 
+  async ensureStoreCancellationColumns(): Promise<void> {
+    await db.execute(sql`ALTER TABLE store_grns ADD COLUMN IF NOT EXISTS is_cancelled boolean NOT NULL DEFAULT false`);
+    await db.execute(sql`ALTER TABLE store_grns ADD COLUMN IF NOT EXISTS cancelled_at timestamp`);
+    await db.execute(sql`ALTER TABLE store_grns ADD COLUMN IF NOT EXISTS cancelled_by integer`);
+    await db.execute(sql`ALTER TABLE store_grns ADD COLUMN IF NOT EXISTS cancellation_reason text`);
+    await db.execute(sql`ALTER TABLE store_issues ADD COLUMN IF NOT EXISTS is_cancelled boolean NOT NULL DEFAULT false`);
+    await db.execute(sql`ALTER TABLE store_issues ADD COLUMN IF NOT EXISTS cancelled_at timestamp`);
+    await db.execute(sql`ALTER TABLE store_issues ADD COLUMN IF NOT EXISTS cancelled_by integer`);
+    await db.execute(sql`ALTER TABLE store_issues ADD COLUMN IF NOT EXISTS cancellation_reason text`);
+  }
+
+  async cancelStoreGrn(id: number, userId: number, reason: string): Promise<StoreGrn | undefined> {
+    const [grn] = await db.update(storeGrns)
+      .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
+      .where(and(eq(storeGrns.id, id), eq(storeGrns.isCancelled, false)))
+      .returning();
+    return grn;
+  }
+
+  async cancelStoreIssue(id: number, userId: number, reason: string): Promise<StoreIssue | undefined> {
+    const [issue] = await db.update(storeIssues)
+      .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
+      .where(and(eq(storeIssues.id, id), eq(storeIssues.isCancelled, false)))
+      .returning();
+    return issue;
+  }
+
   async getStoreItemsWithBalance(): Promise<Array<StoreItem & { balance: number }>> {
     const items = await db.select().from(storeItems)
       .where(eq(storeItems.isActive, 1))
       .orderBy(asc(storeItems.category), asc(storeItems.name));
 
+    // Exclude cancelled GRNs from received totals
     const grnTotals = await db.select({
       itemId: storeGrnItems.itemId,
       total: sql<number>`COALESCE(SUM(${storeGrnItems.qty}), 0)`,
-    }).from(storeGrnItems).groupBy(storeGrnItems.itemId);
+    })
+      .from(storeGrnItems)
+      .innerJoin(storeGrns, and(eq(storeGrnItems.grnId, storeGrns.id), eq(storeGrns.isCancelled, false), ne(storeGrns.status, "draft")))
+      .groupBy(storeGrnItems.itemId);
 
+    // Exclude cancelled issues from issued totals
     const issueTotals = await db.select({
       itemId: storeIssueItems.itemId,
       total: sql<number>`COALESCE(SUM(${storeIssueItems.qty}), 0)`,
-    }).from(storeIssueItems).groupBy(storeIssueItems.itemId);
+    })
+      .from(storeIssueItems)
+      .innerJoin(storeIssues, and(eq(storeIssueItems.issueId, storeIssues.id), eq(storeIssues.isCancelled, false)))
+      .where(isNotNull(storeIssueItems.itemId))
+      .groupBy(storeIssueItems.itemId);
 
     const grnMap: Record<number, number> = {};
     grnTotals.forEach(g => { grnMap[g.itemId] = Number(g.total); });
 
     const issueMap: Record<number, number> = {};
-    issueTotals.forEach(i => { issueMap[i.itemId] = Number(i.total); });
+    issueTotals.forEach(i => { if (i.itemId !== null) issueMap[i.itemId] = Number(i.total); });
 
     return items.map(item => ({
       ...item,
@@ -18464,9 +18503,11 @@ export class DatabaseStorage implements IStorage {
     return { ...grn, items: items as (StoreGrnItem & { itemName: string; category: string })[] };
   }
 
-  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string; awaitingPi?: boolean }): Promise<StoreGrnWithItems[]> {
+  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string; awaitingPi?: boolean; showCancelled?: boolean }): Promise<StoreGrnWithItems[]> {
     if (filters?.permittedSiteIds !== undefined && filters.permittedSiteIds.length === 0) return [];
     const conds: any[] = [];
+    // By default exclude cancelled records; only include them when showCancelled=true
+    if (!filters?.showCancelled) conds.push(eq(storeGrns.isCancelled, false));
     if (filters?.dateFrom) conds.push(gte(storeGrns.date, filters.dateFrom));
     if (filters?.dateTo) conds.push(lte(storeGrns.date, filters.dateTo));
     if (filters?.supplier) conds.push(ilike(storeGrns.supplier, `%${filters.supplier}%`));
@@ -18814,9 +18855,11 @@ export class DatabaseStorage implements IStorage {
     return { ...issue, items: items as (StoreIssueItem & { itemName: string | null; category: string | null })[] };
   }
 
-  async getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[]; item?: string; category?: string }): Promise<StoreIssueWithItems[]> {
+  async getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[]; item?: string; category?: string; showCancelled?: boolean }): Promise<StoreIssueWithItems[]> {
     if (filters?.permittedSiteIds !== undefined && filters.permittedSiteIds.length === 0) return [];
     const conds: any[] = [];
+    // By default exclude cancelled records; only include them when showCancelled=true
+    if (!filters?.showCancelled) conds.push(eq(storeIssues.isCancelled, false));
     if (filters?.dateFrom) conds.push(gte(storeIssues.date, filters.dateFrom));
     if (filters?.dateTo) conds.push(lte(storeIssues.date, filters.dateTo));
     if (filters?.section) conds.push(eq(storeIssues.issuedToSection, filters.section));
@@ -18873,14 +18916,15 @@ export class DatabaseStorage implements IStorage {
       SELECT gi.item_id, COALESCE(SUM(gi.qty), 0) AS total_in
       FROM store_grn_items gi
       JOIN store_grns g ON g.id = gi.grn_id
-      WHERE g.status != 'draft'
+      WHERE g.status != 'draft' AND NOT COALESCE(g.is_cancelled, false)
       GROUP BY gi.item_id
     `);
     const issueTotals = await db.execute(sql`
-      SELECT item_id, COALESCE(SUM(qty), 0) AS total_out
-      FROM store_issue_items
-      WHERE item_id IS NOT NULL
-      GROUP BY item_id
+      SELECT si.item_id, COALESCE(SUM(si.qty), 0) AS total_out
+      FROM store_issue_items si
+      JOIN store_issues s ON s.id = si.issue_id
+      WHERE si.item_id IS NOT NULL AND NOT COALESCE(s.is_cancelled, false)
+      GROUP BY si.item_id
     `);
     const inMap: Record<number, number> = {};
     const outMap: Record<number, number> = {};

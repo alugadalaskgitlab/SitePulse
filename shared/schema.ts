@@ -2169,6 +2169,10 @@ export const storeGrns = pgTable("store_grns", {
   status: text("status").notNull().default("finalized"), // "draft" | "finalized"
   acceptanceStatus: text("acceptance_status").notNull().default("accepted"), // "accepted" | "partial" | "rejected"
   acceptanceRemarks: text("acceptance_remarks"),
+  isCancelled: boolean("is_cancelled").notNull().default(false),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelledBy: integer("cancelled_by"),
+  cancellationReason: text("cancellation_reason"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   dateIdx: index("store_grns_date_idx").on(t.date),
@@ -2202,6 +2206,10 @@ export const storeIssues = pgTable("store_issues", {
   vehicleNo: text("vehicle_no"),
   driverName: text("driver_name"),
   movementRemarks: text("movement_remarks"),
+  isCancelled: boolean("is_cancelled").notNull().default(false),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelledBy: integer("cancelled_by"),
+  cancellationReason: text("cancellation_reason"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   dateIdx: index("store_issues_date_idx").on(t.date),

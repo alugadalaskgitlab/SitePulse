@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check, Clock, Zap, Bell } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check, Clock, Zap, Bell, Ban } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,6 +66,7 @@ type GrnWithItems = {
   invoiceNo: string | null; invoiceDate: string | null; siteId: number | null;
   indentRef: string | null; remarks: string | null;
   status: string; acceptanceStatus: string; acceptanceRemarks: string | null;
+  isCancelled?: boolean; cancelledAt?: string | null; cancellationReason?: string | null;
   items: { itemId: number; itemName: string; category: string; qty: number; rate: number | null; uom: string }[];
 };
 
@@ -101,6 +103,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [itemFilter, setItemFilter] = useState("");
   const [draftOnly, setDraftOnly] = useState(false);
   const [awaitingPiFilter, setAwaitingPiFilter] = useState(false);
+  const [showCancelled, setShowCancelled] = useState(false);
+  const [cancelDialogId, setCancelDialogId] = useState<number | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
   const [editingAcceptance, setEditingAcceptance] = useState(false);
@@ -277,7 +282,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const noPiForItem = !!firstItemName && itemApprovedIndents.length === 0;
 
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
-    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, supplierFilter, siteFilter, statusFilter, categoryFilter, itemFilter, draftOnly, awaitingPiFilter],
+    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, supplierFilter, siteFilter, statusFilter, categoryFilter, itemFilter, draftOnly, awaitingPiFilter, showCancelled],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
@@ -288,6 +293,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       if (statusFilter) p.set("acceptanceStatus", statusFilter);
       if (categoryFilter) p.set("category", categoryFilter);
       if (itemFilter) p.set("item", itemFilter);
+      if (showCancelled) p.set("showCancelled", "true");
       if (awaitingPiFilter) {
         p.set("awaitingPi", "true");
       } else if (draftOnly) {
@@ -483,6 +489,19 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       if (selectedId && selectedId === deleteMutation.variables) setSelectedId(null);
     },
     onError: () => toast({ title: "Error", variant: "destructive" }),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason: string }) =>
+      apiRequest("POST", `/api/stores/grns/${id}/cancel`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      toast({ title: "GRN cancelled" });
+      setCancelDialogId(null);
+      setCancelReason("");
+      if (selectedId && selectedId === cancelMutation.variables?.id) setSelectedId(null);
+    },
+    onError: () => toast({ title: "Failed to cancel GRN", variant: "destructive" }),
   });
 
   const patchAcceptanceMutation = useMutation({
@@ -1680,6 +1699,16 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               {(dateFrom || dateTo || indentFilter || supplierFilter || siteFilter || statusFilter || categoryFilter || itemFilter || draftOnly || awaitingPiFilter) && (
                 <Button variant="ghost" size="sm" className="text-sm h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSupplierFilter(""); setSiteFilter(""); setStatusFilter(""); setCategoryFilter(""); setItemFilter(""); setDraftOnly(false); setAwaitingPiFilter(false); }}>Clear</Button>
               )}
+              <Button
+                variant={showCancelled ? "secondary" : "ghost"}
+                size="sm"
+                className={`text-sm h-8 gap-1 ${showCancelled ? "text-red-700 dark:text-red-400" : "text-muted-foreground"}`}
+                onClick={() => setShowCancelled(v => !v)}
+                data-testid="button-toggle-cancelled-grns"
+              >
+                <Ban className="w-3.5 h-3.5" />
+                {showCancelled ? "Hide Cancelled" : "Show Cancelled"}
+              </Button>
             </div>
 
             {/* GRN List */}
@@ -1747,12 +1776,17 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           })()}
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                          {grn.isCancelled && (
+                            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700 text-[12px] px-1.5 py-0">CANCELLED</Badge>
+                          )}
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDetail(grn)} data-testid={`button-view-grn-${grn.id}`}>
                             <Eye className="w-4 h-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (confirm("Delete this GRN?")) deleteMutation.mutate(grn.id); }} data-testid={`button-delete-grn-${grn.id}`}>
-                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                          </Button>
+                          {!grn.isCancelled && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setCancelDialogId(grn.id); setCancelReason(""); }} data-testid={`button-cancel-grn-${grn.id}`}>
+                              <Ban className="w-3.5 h-3.5 text-amber-600" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </CardContent>
@@ -1763,6 +1797,38 @@ export default function StoresGrn({ isNew, detailId }: Props) {
           </>
         )}
       </div>
+
+      {/* Cancel GRN dialog */}
+      <Dialog open={cancelDialogId !== null} onOpenChange={open => { if (!open) { setCancelDialogId(null); setCancelReason(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel GRN</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">This GRN will be marked as cancelled and its quantities will be removed from stock. This cannot be undone.</p>
+          <div className="space-y-2 mt-2">
+            <Label className="text-sm">Reason for Cancellation *</Label>
+            <Textarea
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              placeholder="Enter reason…"
+              rows={3}
+              data-testid="textarea-cancel-reason-grn"
+            />
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="ghost" onClick={() => { setCancelDialogId(null); setCancelReason(""); }}>Close</Button>
+            <Button
+              variant="destructive"
+              disabled={!cancelReason.trim() || cancelMutation.isPending}
+              onClick={() => { if (cancelDialogId !== null) cancelMutation.mutate({ id: cancelDialogId, reason: cancelReason }); }}
+              data-testid="button-confirm-cancel-grn"
+            >
+              {cancelMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+              Confirm Cancellation
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

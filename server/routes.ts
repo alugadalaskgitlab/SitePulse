@@ -8673,6 +8673,7 @@ export async function registerRoutes(
         item: req.query.item as string | undefined,
         category: req.query.category as string | undefined,
         awaitingPi: req.query.awaitingPi === "true",
+        showCancelled: req.query.showCancelled === "true",
         ...(permittedIds !== null ? { permittedSiteIds: permittedIds } : {}),
       });
       res.json(grns);
@@ -8865,6 +8866,24 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/stores/grns/:id/cancel", async (req, res) => {
+    try {
+      if (!assertDeleteOrCancel(req, res, "stores_inventory")) return;
+      const id = parseInt(req.params.id);
+      const { reason } = req.body;
+      if (!reason || typeof reason !== "string" || !reason.trim()) {
+        return res.status(400).json({ error: "Cancellation reason is required" });
+      }
+      const userId = req.authUser!.id;
+      const grn = await storage.cancelStoreGrn(id, userId, reason.trim());
+      if (!grn) return res.status(404).json({ error: "GRN not found or already cancelled" });
+      res.json(grn);
+    } catch (err) {
+      console.error("POST /api/stores/grns/:id/cancel:", err);
+      res.status(500).json({ error: "Failed to cancel GRN" });
+    }
+  });
+
   app.delete("/api/stores/grns/:id", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
@@ -8902,6 +8921,7 @@ export async function registerRoutes(
         siteId: req.query.siteId ? parseInt(req.query.siteId as string) : undefined,
         item: req.query.item as string | undefined,
         category: req.query.category as string | undefined,
+        showCancelled: req.query.showCancelled === "true",
         ...(permittedIds !== null ? { permittedSiteIds: permittedIds } : {}),
       });
       res.json(issues);
@@ -8970,6 +8990,24 @@ export async function registerRoutes(
     } catch (err) {
       console.error("POST /api/stores/issues:", err);
       res.status(500).json({ error: "Failed to create issue voucher" });
+    }
+  });
+
+  app.post("/api/stores/issues/:id/cancel", async (req, res) => {
+    try {
+      if (!assertDeleteOrCancel(req, res, "stores_inventory")) return;
+      const id = parseInt(req.params.id);
+      const { reason } = req.body;
+      if (!reason || typeof reason !== "string" || !reason.trim()) {
+        return res.status(400).json({ error: "Cancellation reason is required" });
+      }
+      const userId = req.authUser!.id;
+      const issue = await storage.cancelStoreIssue(id, userId, reason.trim());
+      if (!issue) return res.status(404).json({ error: "Issue not found or already cancelled" });
+      res.json(issue);
+    } catch (err) {
+      console.error("POST /api/stores/issues/:id/cancel:", err);
+      res.status(500).json({ error: "Failed to cancel issue" });
     }
   });
 

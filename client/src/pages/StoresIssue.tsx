@@ -2,13 +2,15 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, Trash2, ArrowUpFromLine, X, Loader2, Eye } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, ArrowUpFromLine, X, Loader2, Eye, Ban } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -25,6 +27,7 @@ type IssueWithItems = {
   issuedToSection: string; issuedToDetail: string | null;
   siteId: number | null;
   purpose: string | null; remarks: string | null;
+  isCancelled?: boolean; cancelledAt?: string | null; cancellationReason?: string | null;
   items: { itemId: number; itemName: string; category: string; qty: number; uom: string }[];
 };
 
@@ -44,6 +47,9 @@ export default function StoresIssue({ isNew, detailId }: Props) {
   const [siteFilter, setSiteFilter] = useState("__all__");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
+  const [showCancelled, setShowCancelled] = useState(false);
+  const [cancelDialogId, setCancelDialogId] = useState<number | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
   const [form, setForm] = useState({
@@ -80,7 +86,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
   const stockMap = stock.reduce<Record<number, number>>((acc, s) => { acc[s.itemId] = s.balance; return acc; }, {});
 
   const { data: issues = [], isLoading } = useQuery<IssueWithItems[]>({
-    queryKey: ["/api/stores/issues", dateFrom, dateTo, sectionFilter, siteFilter, categoryFilter, itemFilter],
+    queryKey: ["/api/stores/issues", dateFrom, dateTo, sectionFilter, siteFilter, categoryFilter, itemFilter, showCancelled],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
@@ -89,6 +95,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
       if (siteFilter !== "__all__") p.set("siteId", siteFilter);
       if (categoryFilter) p.set("category", categoryFilter);
       if (itemFilter) p.set("item", itemFilter);
+      if (showCancelled) p.set("showCancelled", "true");
       const res = await fetch(`/api/stores/issues${p.toString() ? "?" + p : ""}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -124,6 +131,19 @@ export default function StoresIssue({ isNew, detailId }: Props) {
       toast({ title: "Issue deleted" });
     },
     onError: () => toast({ title: "Error", variant: "destructive" }),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason: string }) =>
+      apiRequest("POST", `/api/stores/issues/${id}/cancel`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      toast({ title: "Issue Voucher cancelled" });
+      setCancelDialogId(null);
+      setCancelReason("");
+      if (selectedId && selectedId === cancelMutation.variables?.id) setSelectedId(null);
+    },
+    onError: () => toast({ title: "Failed to cancel Issue Voucher", variant: "destructive" }),
   });
 
   function updateLine(idx: number, key: keyof IssueLine, val: string) {
@@ -253,11 +273,17 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                 <Button variant="outline" size="sm" onClick={closeDetail} data-testid="button-back-to-list" className="gap-1">
                   <ChevronLeft className="w-4 h-4" /> Back to list
                 </Button>
-                <Button variant="ghost" size="sm" className="text-destructive gap-1"
-                  onClick={() => { if (confirm("Delete this Issue Voucher?")) { deleteMutation.mutate(selectedIssue.id); closeDetail(); } }}
-                  data-testid="button-delete-detail-issue">
-                  <Trash2 className="w-4 h-4" /> Delete
-                </Button>
+                {selectedIssue.isCancelled ? (
+                  <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700 text-[12px] px-2 py-1">
+                    CANCELLED{selectedIssue.cancellationReason ? `: ${selectedIssue.cancellationReason}` : ""}
+                  </Badge>
+                ) : (
+                  <Button variant="ghost" size="sm" className="text-amber-600 gap-1"
+                    onClick={() => { setCancelDialogId(selectedIssue.id); setCancelReason(""); }}
+                    data-testid="button-cancel-detail-issue">
+                    <Ban className="w-4 h-4" /> Cancel Voucher
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -524,6 +550,16 @@ export default function StoresIssue({ isNew, detailId }: Props) {
               {hasFilters && (
                 <Button variant="ghost" size="sm" className="text-sm h-8" onClick={() => { setDateFrom(""); setDateTo(""); setSectionFilter("__all__"); setSiteFilter("__all__"); setCategoryFilter(""); setItemFilter(""); }}>Clear</Button>
               )}
+              <Button
+                variant={showCancelled ? "secondary" : "ghost"}
+                size="sm"
+                className={`text-sm h-8 gap-1 ${showCancelled ? "text-red-700 dark:text-red-400" : "text-muted-foreground"}`}
+                onClick={() => setShowCancelled(v => !v)}
+                data-testid="button-toggle-cancelled-issues"
+              >
+                <Ban className="w-3.5 h-3.5" />
+                {showCancelled ? "Hide Cancelled" : "Show Cancelled"}
+              </Button>
             </div>
 
             {/* Issue List */}
@@ -570,12 +606,17 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                             </div>
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                            {issue.isCancelled && (
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700 text-[12px] px-1.5 py-0">CANCELLED</Badge>
+                            )}
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDetail(issue)} data-testid={`button-view-issue-${issue.id}`}>
                               <Eye className="w-4 h-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (confirm("Delete this Issue Voucher?")) deleteMutation.mutate(issue.id); }} data-testid={`button-delete-issue-${issue.id}`}>
-                              <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                            </Button>
+                            {!issue.isCancelled && (
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setCancelDialogId(issue.id); setCancelReason(""); }} data-testid={`button-cancel-issue-${issue.id}`}>
+                                <Ban className="w-3.5 h-3.5 text-amber-600" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </CardContent>
@@ -587,6 +628,38 @@ export default function StoresIssue({ isNew, detailId }: Props) {
           </>
         )}
       </div>
+
+      {/* Cancel Issue dialog */}
+      <Dialog open={cancelDialogId !== null} onOpenChange={open => { if (!open) { setCancelDialogId(null); setCancelReason(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Issue Voucher</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">This Issue Voucher will be marked as cancelled and the issued quantities will be returned to stock. This cannot be undone.</p>
+          <div className="space-y-2 mt-2">
+            <Label className="text-sm">Reason for Cancellation *</Label>
+            <Textarea
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              placeholder="Enter reason…"
+              rows={3}
+              data-testid="textarea-cancel-reason-issue"
+            />
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="ghost" onClick={() => { setCancelDialogId(null); setCancelReason(""); }}>Close</Button>
+            <Button
+              variant="destructive"
+              disabled={!cancelReason.trim() || cancelMutation.isPending}
+              onClick={() => { if (cancelDialogId !== null) cancelMutation.mutate({ id: cancelDialogId, reason: cancelReason }); }}
+              data-testid="button-confirm-cancel-issue"
+            >
+              {cancelMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+              Confirm Cancellation
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
