@@ -1016,7 +1016,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       </Button>
                     </>
                   )}
-                  {(isAdmin || isManager) && !editingAcceptance && selectedGrn.status !== "draft" && (
+                  {(isAdmin || isManager) && !editingAcceptance && selectedGrn.status !== "draft" && !selectedGrn.isCancelled && (
                     <Button
                       variant="outline"
                       size="sm"

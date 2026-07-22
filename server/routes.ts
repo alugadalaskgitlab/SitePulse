@@ -8872,7 +8872,7 @@ export async function registerRoutes(
 
   app.post("/api/stores/grns/:id/cancel", async (req, res) => {
     try {
-      if (!assertDeleteOrCancel(req, res, "stores_inventory")) return;
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const reason = (req.body?.cancellationReason || req.body?.reason || "");
       if (!reason || typeof reason !== "string" || !reason.trim()) {
@@ -8992,7 +8992,7 @@ export async function registerRoutes(
 
   app.post("/api/stores/issues/:id/cancel", async (req, res) => {
     try {
-      if (!assertDeleteOrCancel(req, res, "stores_inventory")) return;
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const reason = (req.body?.cancellationReason || req.body?.reason || "");
       if (!reason || typeof reason !== "string" || !reason.trim()) {
