@@ -8874,7 +8874,7 @@ export async function registerRoutes(
     try {
       if (!assertDeleteOrCancel(req, res, "stores_inventory")) return;
       const id = parseInt(req.params.id);
-      const { reason } = req.body;
+      const reason = (req.body?.cancellationReason || req.body?.reason || "");
       if (!reason || typeof reason !== "string" || !reason.trim()) {
         return res.status(400).json({ error: "Cancellation reason is required" });
       }
@@ -8994,7 +8994,7 @@ export async function registerRoutes(
     try {
       if (!assertDeleteOrCancel(req, res, "stores_inventory")) return;
       const id = parseInt(req.params.id);
-      const { reason } = req.body;
+      const reason = (req.body?.cancellationReason || req.body?.reason || "");
       if (!reason || typeof reason !== "string" || !reason.trim()) {
         return res.status(400).json({ error: "Cancellation reason is required" });
       }

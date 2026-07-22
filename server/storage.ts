@@ -18792,7 +18792,7 @@ export class DatabaseStorage implements IStorage {
       FROM purchase_indent_items pii
       JOIN purchase_indents pi ON pi.id = pii.indent_id
       LEFT JOIN store_grn_items gi ON gi.indent_item_id = pii.id
-        AND gi.grn_id IN (SELECT id FROM store_grns WHERE is_cancelled = false OR is_cancelled IS NULL)
+        AND gi.grn_id IN (SELECT id FROM store_grns WHERE (is_cancelled = false OR is_cancelled IS NULL) AND status != 'draft')
       WHERE
         (pii.purchase_status IS NULL OR UPPER(pii.purchase_status) NOT IN ('REJECTED','CANCELLED','NOT_PURCHASED'))
         AND COALESCE(pii.approved_qty, pii.qty) > 0
@@ -18833,7 +18833,7 @@ export class DatabaseStorage implements IStorage {
       SELECT pii.id AS indent_item_id, COALESCE(SUM(gi.qty), 0) AS received_qty
       FROM purchase_indent_items pii
       LEFT JOIN store_grn_items gi ON gi.indent_item_id = pii.id
-        AND gi.grn_id IN (SELECT id FROM store_grns WHERE is_cancelled = false OR is_cancelled IS NULL)
+        AND gi.grn_id IN (SELECT id FROM store_grns WHERE (is_cancelled = false OR is_cancelled IS NULL) AND status != 'draft')
       WHERE pii.indent_id = ${indentId}
       GROUP BY pii.id
     `);
@@ -18855,7 +18855,7 @@ export class DatabaseStorage implements IStorage {
         COALESCE(SUM(gi.qty), 0) AS received_qty
       FROM purchase_indent_items pii
       LEFT JOIN store_grn_items gi ON gi.indent_item_id = pii.id
-        AND gi.grn_id IN (SELECT id FROM store_grns WHERE is_cancelled = false OR is_cancelled IS NULL)
+        AND gi.grn_id IN (SELECT id FROM store_grns WHERE (is_cancelled = false OR is_cancelled IS NULL) AND status != 'draft')
       WHERE pii.id = ANY(${indentItemIds}::int[])
       GROUP BY pii.id, pii.description, approved_qty
     `);
