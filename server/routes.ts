@@ -8813,8 +8813,11 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "stores_inventory")) return;
       const id = parseInt(req.params.id);
-      const { acceptanceStatus, acceptanceRemarks, status, indentRef } = req.body;
+      const existing = await storage.getStoreGrn(id);
+      if (!existing) return res.status(404).json({ error: "GRN not found" });
+      if (existing.isCancelled) return res.status(409).json({ error: "Cannot edit a cancelled GRN" });
 
+      const { acceptanceStatus, acceptanceRemarks, status, indentRef } = req.body;
       const updateData: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null } = {};
 
       if (acceptanceStatus !== undefined) {
@@ -8856,6 +8859,7 @@ export async function registerRoutes(
       }
       const existing = await storage.getStoreGrn(id);
       if (!existing) return res.status(404).json({ error: "GRN not found" });
+      if (existing.isCancelled) return res.status(409).json({ error: "Cannot edit a cancelled GRN" });
       if (existing.status !== "draft") return res.status(400).json({ error: "Only draft GRNs can be replaced" });
       const result = await storage.replaceStoreGrn(id, grn, items);
       if (!result) return res.status(404).json({ error: "GRN not found" });
@@ -8884,16 +8888,6 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/stores/grns/:id", async (req, res) => {
-    try {
-      if (!assertAdmin(req, res)) return;
-      const deleted = await storage.deleteStoreGrn(parseInt(req.params.id));
-      res.json({ success: deleted });
-    } catch (err) {
-      console.error("DELETE /api/stores/grns/:id:", err);
-      res.status(500).json({ error: "Failed to delete GRN" });
-    }
-  });
 
   // Issue Vouchers
   app.get("/api/stores/issues/recent-items", async (req, res) => {
@@ -9011,16 +9005,6 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/stores/issues/:id", async (req, res) => {
-    try {
-      if (!assertAdmin(req, res)) return;
-      const deleted = await storage.deleteStoreIssue(parseInt(req.params.id));
-      res.json({ success: deleted });
-    } catch (err) {
-      console.error("DELETE /api/stores/issues/:id:", err);
-      res.status(500).json({ error: "Failed to delete issue" });
-    }
-  });
 
   // Stock Summary
   app.get("/api/stores/stock-summary", async (req, res) => {

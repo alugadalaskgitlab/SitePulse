@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check, Clock, Zap, Bell, Ban } from "lucide-react";
+import { ChevronLeft, Plus, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check, Clock, Zap, Bell, Ban } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { Button } from "@/components/ui/button";
@@ -66,7 +66,7 @@ type GrnWithItems = {
   invoiceNo: string | null; invoiceDate: string | null; siteId: number | null;
   indentRef: string | null; remarks: string | null;
   status: string; acceptanceStatus: string; acceptanceRemarks: string | null;
-  isCancelled?: boolean; cancelledAt?: string | null; cancellationReason?: string | null;
+  isCancelled?: boolean; cancelledAt?: string | null; cancelledBy?: number | null; cancellationReason?: string | null;
   items: { itemId: number; itemName: string; category: string; qty: number; rate: number | null; uom: string }[];
 };
 
@@ -206,6 +206,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
   const { data: recentItemIds = [] } = useQuery<number[]>({ queryKey: ["/api/stores/grns/recent-items"] });
   const { data: recentSuppliers = [] } = useQuery<string[]>({ queryKey: ["/api/stores/grns/recent-suppliers"] });
+  const { data: usersDir = [] } = useQuery<{ id: number; fullName: string }[]>({ queryKey: ["/api/users/directory"] });
+  const userNameMap = useMemo(() => new Map(usersDir.map(u => [u.id, u.fullName])), [usersDir]);
 
   const formItemIds = useMemo(() => {
     const ids = lines
@@ -481,15 +483,6 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     onError: () => toast({ title: "Error adding item", variant: "destructive" }),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/stores/grns/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
-      toast({ title: "GRN deleted" });
-      if (selectedId && selectedId === deleteMutation.variables) setSelectedId(null);
-    },
-    onError: () => toast({ title: "Error", variant: "destructive" }),
-  });
 
   const cancelMutation = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) =>
@@ -1040,11 +1033,13 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       <Pencil className="w-3 h-3" /> Edit Acceptance
                     </Button>
                   )}
-                  <Button variant="ghost" size="sm" className="text-destructive gap-1"
-                    onClick={() => { if (confirm("Delete this GRN?")) { deleteMutation.mutate(selectedGrn.id); closeDetail(); } }}
-                    data-testid="button-delete-detail-grn">
-                    <Trash2 className="w-4 h-4" /> Delete
-                  </Button>
+                  {!selectedGrn.isCancelled && (
+                    <Button variant="ghost" size="sm" className="text-destructive gap-1"
+                      onClick={() => setCancelDialogId(selectedGrn.id)}
+                      data-testid="button-cancel-detail-grn">
+                      <Ban className="w-4 h-4" /> Cancel GRN
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -1753,6 +1748,18 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             {" — "}
                             {grn.items.map(it => `${it.itemName} (${it.qty} ${it.uom})`).join(", ")}
                           </div>
+                          {grn.isCancelled && (
+                            <div className="mt-1.5 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded px-2 py-1 space-y-0.5">
+                              <div>
+                                <span className="font-semibold">Cancelled</span>
+                                {grn.cancelledAt ? ` on ${format(new Date(grn.cancelledAt), "dd MMM yyyy, HH:mm")}` : ""}
+                                {grn.cancelledBy && userNameMap.get(grn.cancelledBy) ? ` by ${userNameMap.get(grn.cancelledBy)}` : ""}
+                              </div>
+                              {grn.cancellationReason && (
+                                <div className="text-red-500 dark:text-red-400">Reason: {grn.cancellationReason}</div>
+                              )}
+                            </div>
+                          )}
                           {(itemFilter || categoryFilter) && (() => {
                             const matched = grn.items.filter(it => {
                               const nameMatch = itemFilter ? it.itemName.toLowerCase().includes(itemFilter.toLowerCase()) : true;

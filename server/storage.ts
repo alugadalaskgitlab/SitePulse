@@ -18423,11 +18423,50 @@ export class DatabaseStorage implements IStorage {
   }
 
   async cancelStoreIssue(id: number, userId: number, reason: string): Promise<StoreIssue | undefined> {
-    const [issue] = await db.update(storeIssues)
-      .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
-      .where(and(eq(storeIssues.id, id), eq(storeIssues.isCancelled, false)))
-      .returning();
-    return issue;
+    // Fetch existing record to get irnId before we cancel
+    const [existing] = await db.select().from(storeIssues)
+      .where(and(eq(storeIssues.id, id), eq(storeIssues.isCancelled, false)));
+    if (!existing) return undefined;
+
+    return await db.transaction(async (tx) => {
+      // Cancel the issue voucher
+      const [issue] = await tx.update(storeIssues)
+        .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
+        .where(and(eq(storeIssues.id, id), eq(storeIssues.isCancelled, false)))
+        .returning();
+      if (!issue) return undefined;
+
+      // If linked to an IRN, revert IRN status based on remaining active vouchers
+      if (existing.irnId != null) {
+        const irnId = existing.irnId;
+
+        // Fetch remaining active (non-cancelled) vouchers for this IRN
+        const activeVouchers = await tx.select({ id: storeIssues.id })
+          .from(storeIssues)
+          .where(and(eq(storeIssues.irnId, irnId), eq(storeIssues.isCancelled, false)));
+
+        // Determine new IRN status
+        const newStatus = activeVouchers.length === 0 ? "approved" : "partially_issued";
+        const latestActiveId = activeVouchers.length > 0
+          ? Math.max(...activeVouchers.map(v => v.id))
+          : null;
+
+        await tx.update(internalRequisitions)
+          .set({ status: newStatus, linkedIssueId: latestActiveId })
+          .where(eq(internalRequisitions.id, irnId));
+
+        // Fetch the cancelling user's name for the audit log
+        const [actor] = await tx.select({ fullName: users.fullName }).from(users).where(eq(users.id, userId));
+        await tx.insert(irnAuditLogs).values({
+          irnId,
+          event: "issue_cancelled",
+          actorName: actor?.fullName ?? `User #${userId}`,
+          notes: `Issue Voucher #${issue.issueNumber ?? id} cancelled. Reason: ${reason}. IRN status reverted to ${newStatus}.`,
+        });
+      }
+
+      return issue;
+    });
   }
 
   async getStoreItemsWithBalance(): Promise<Array<StoreItem & { balance: number }>> {
@@ -18506,8 +18545,9 @@ export class DatabaseStorage implements IStorage {
   async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string; awaitingPi?: boolean; showCancelled?: boolean }): Promise<StoreGrnWithItems[]> {
     if (filters?.permittedSiteIds !== undefined && filters.permittedSiteIds.length === 0) return [];
     const conds: any[] = [];
-    // By default exclude cancelled records; only include them when showCancelled=true
-    if (!filters?.showCancelled) conds.push(eq(storeGrns.isCancelled, false));
+    // showCancelled=true → show only cancelled; default → show only active
+    if (filters?.showCancelled) conds.push(eq(storeGrns.isCancelled, true));
+    else conds.push(eq(storeGrns.isCancelled, false));
     if (filters?.dateFrom) conds.push(gte(storeGrns.date, filters.dateFrom));
     if (filters?.dateTo) conds.push(lte(storeGrns.date, filters.dateTo));
     if (filters?.supplier) conds.push(ilike(storeGrns.supplier, `%${filters.supplier}%`));
@@ -18678,6 +18718,7 @@ export class DatabaseStorage implements IStorage {
       FROM purchase_indent_items pii
       JOIN purchase_indents pi ON pi.id = pii.indent_id
       LEFT JOIN store_grn_items gi ON gi.indent_item_id = pii.id
+        AND gi.grn_id IN (SELECT id FROM store_grns WHERE is_cancelled = false OR is_cancelled IS NULL)
       WHERE
         (pii.purchase_status IS NULL OR UPPER(pii.purchase_status) NOT IN ('REJECTED','CANCELLED','NOT_PURCHASED'))
         AND COALESCE(pii.approved_qty, pii.qty) > 0
@@ -18718,6 +18759,7 @@ export class DatabaseStorage implements IStorage {
       SELECT pii.id AS indent_item_id, COALESCE(SUM(gi.qty), 0) AS received_qty
       FROM purchase_indent_items pii
       LEFT JOIN store_grn_items gi ON gi.indent_item_id = pii.id
+        AND gi.grn_id IN (SELECT id FROM store_grns WHERE is_cancelled = false OR is_cancelled IS NULL)
       WHERE pii.indent_id = ${indentId}
       GROUP BY pii.id
     `);
@@ -18739,6 +18781,7 @@ export class DatabaseStorage implements IStorage {
         COALESCE(SUM(gi.qty), 0) AS received_qty
       FROM purchase_indent_items pii
       LEFT JOIN store_grn_items gi ON gi.indent_item_id = pii.id
+        AND gi.grn_id IN (SELECT id FROM store_grns WHERE is_cancelled = false OR is_cancelled IS NULL)
       WHERE pii.id = ANY(${indentItemIds}::int[])
       GROUP BY pii.id, pii.description, approved_qty
     `);
@@ -18858,8 +18901,9 @@ export class DatabaseStorage implements IStorage {
   async getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[]; item?: string; category?: string; showCancelled?: boolean }): Promise<StoreIssueWithItems[]> {
     if (filters?.permittedSiteIds !== undefined && filters.permittedSiteIds.length === 0) return [];
     const conds: any[] = [];
-    // By default exclude cancelled records; only include them when showCancelled=true
-    if (!filters?.showCancelled) conds.push(eq(storeIssues.isCancelled, false));
+    // showCancelled=true → show only cancelled; default → show only active
+    if (filters?.showCancelled) conds.push(eq(storeIssues.isCancelled, true));
+    else conds.push(eq(storeIssues.isCancelled, false));
     if (filters?.dateFrom) conds.push(gte(storeIssues.date, filters.dateFrom));
     if (filters?.dateTo) conds.push(lte(storeIssues.date, filters.dateTo));
     if (filters?.section) conds.push(eq(storeIssues.issuedToSection, filters.section));

@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, Trash2, ArrowUpFromLine, X, Loader2, Eye, Ban } from "lucide-react";
+import { ChevronLeft, Plus, ArrowUpFromLine, X, Loader2, Eye, Ban } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +27,7 @@ type IssueWithItems = {
   issuedToSection: string; issuedToDetail: string | null;
   siteId: number | null;
   purpose: string | null; remarks: string | null;
-  isCancelled?: boolean; cancelledAt?: string | null; cancellationReason?: string | null;
+  isCancelled?: boolean; cancelledAt?: string | null; cancelledBy?: number | null; cancellationReason?: string | null;
   items: { itemId: number; itemName: string; category: string; qty: number; uom: string }[];
 };
 
@@ -81,6 +81,8 @@ export default function StoresIssue({ isNew, detailId }: Props) {
   const { data: items = [] } = useQuery<StoreItem[]>({ queryKey: ["/api/stores/items"] });
   const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
   const { data: recentItemIds = [] } = useQuery<number[]>({ queryKey: ["/api/stores/issues/recent-items"] });
+  const { data: usersDir = [] } = useQuery<{ id: number; fullName: string }[]>({ queryKey: ["/api/users/directory"] });
+  const userNameMap = useMemo(() => new Map(usersDir.map(u => [u.id, u.fullName])), [usersDir]);
 
   const { data: stock = [] } = useQuery<any[]>({ queryKey: ["/api/stores/stock-summary"] });
   const stockMap = stock.reduce<Record<number, number>>((acc, s) => { acc[s.itemId] = s.balance; return acc; }, {});
@@ -124,14 +126,6 @@ export default function StoresIssue({ isNew, detailId }: Props) {
     onError: () => toast({ title: "Error creating Issue Voucher", variant: "destructive" }),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/stores/issues/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
-      toast({ title: "Issue deleted" });
-    },
-    onError: () => toast({ title: "Error", variant: "destructive" }),
-  });
 
   const cancelMutation = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) =>
@@ -604,6 +598,18 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                               {" — "}
                               {issue.items.map(it => `${it.itemName} (${it.qty} ${it.uom})`).join(", ")}
                             </div>
+                            {issue.isCancelled && (
+                              <div className="mt-1.5 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded px-2 py-1 space-y-0.5">
+                                <div>
+                                  <span className="font-semibold">Cancelled</span>
+                                  {issue.cancelledAt ? ` on ${format(new Date(issue.cancelledAt), "dd MMM yyyy, HH:mm")}` : ""}
+                                  {issue.cancelledBy && userNameMap.get(issue.cancelledBy) ? ` by ${userNameMap.get(issue.cancelledBy)}` : ""}
+                                </div>
+                                {issue.cancellationReason && (
+                                  <div className="text-red-500 dark:text-red-400">Reason: {issue.cancellationReason}</div>
+                                )}
+                              </div>
+                            )}
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
                             {issue.isCancelled && (
