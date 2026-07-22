@@ -1,0 +1,51 @@
+Let me verify each safeguard against the actual code before finalizing — especially #2 and #3, since those are the ones most likely to reveal something I missed.
+
+Uncovering inconsistent stock calculation filtering across functions
+Uncovering inconsistent stock calculation filtering across functions
+
+Found exactly what Krishna's safeguard #2 warns about — and it's a real, pre-existing bug even before cancellation comes into the picture.
+
+Scrutinizing stock calculation risks in Purchase Indents verification
+Scrutinizing stock calculation risks in Purchase Indents verification
+
+Found something significant. Let me check one more thing — whether cancelling a linked Issue should also affect the requisition it came from.
+
+Synthesized linked-record dependencies and consolidated four safeguards for Batch 8
+Synthesized linked-record dependencies and consolidated four safeguards for Batch 8
+
+Checked it — Krishna's safeguard #3 is concretely real too, not just theoretical. Here's the full picture, and then the final batch.
+
+What I confirmed, in plain terms
+
+Safeguard #2 (search everywhere stock is calculated) just caught a real, pre-existing bug — separate from cancellation entirely. There are actually two different places in this app that calculate Store Items stock, and they don't agree with each other:
+
+The correct one (used on the Stores Hub dashboard) properly leaves out draft GRNs that haven't been finalized yet.
+A second, different one — used specifically on the Purchase Indents verification screen, where a Stores person checks "do we actually have enough of this to approve the indent" — does not leave out drafts. It counts a draft GRN (something not yet confirmed as actually received) as if it were real, in-hand stock.
+
+That means, right now, a Stores person could see an inflated "available" number while verifying an indent and approve it thinking there's enough material, when part of what's being counted hasn't actually arrived yet. This is exactly the kind of thing Krishna's caution was pointing at, and it's real — worth fixing regardless of the cancellation work.
+
+Safeguard #3 (check linked records before cancelling) is also concretely real. I found two genuine links:
+
+An Issue Voucher can be tied to an Internal Requisition (IRN) it was created to fulfill.
+A GRN item can be tied to a Purchase Indent it was received against.
+
+If either gets cancelled without checking this, the requisition or indent it was linked to could be left silently showing "fulfilled" or "received" when it actually wasn't — a real, financially-relevant gap Krishna was right to flag.
+
+Final Batch 8
+
+Batch 8 (final): Replace GRN/Issue Voucher delete with a proper, safe Cancel
+
+This applies to the Store Items system (store_grns/store_issues) — not Plant Bulk Materials, which already has cancellation handled separately.
+
+Add cancellation fields: isCancelled, cancelledAt, cancelledBy, cancellationReason on both store_grns and store_issues, using the same shared pattern already used elsewhere in the app. Migrate existing rows to isCancelled = false, applied safely to both dev and production.
+Replace the delete endpoints — remove DELETE /api/stores/grns/:id and DELETE /api/stores/issues/:id entirely (don't leave them active as a hidden back door). Add POST /api/stores/grns/:id/cancel and POST /api/stores/issues/:id/cancel instead, each requiring a cancellation reason, using the same permission currently required for delete.
+Fix every place stock gets calculated, not just one. This specifically includes the known second calculation (getStoreItemsWithBalance, used by the Purchase Indents verification screen at /api/stores/stock-balance), which currently wrongly includes drafts and needs the same draft-and-cancelled exclusion as the main Stores Hub summary. Please also search for and fix any other dropdown, report, or export anywhere in Store Items that shows a quantity or balance, so all of them consistently leave out drafts and cancelled records.
+Check linked records before allowing cancellation:
+If a GRN item is linked to a Purchase Indent (indentItemId), cancelling it should also correctly update that indent's received-quantity status rather than leaving it silently wrong.
+If an Issue Voucher is linked to an Internal Requisition (irnId), cancelling it should also correctly revert that requisition's fulfilled status.
+If cancelling would leave any such linked record in an inconsistent state, block the cancellation with a clear message rather than doing it silently.
+History and safety: cancelled records stay visible in a "Show Cancelled / History" view — with who cancelled it, when, and why — but excluded from active lists, dropdowns, and stock totals. No editing or re-cancelling something already cancelled. Record an audit-log entry for every cancellation.
+
+Given how sensitive this is financially, please test end-to-end on the dev database before touching production: create a GRN, cancel it, confirm stock drops correctly and the linked indent (if any) shows the right status; do the same for an Issue Voucher linked to a requisition.
+
+This should now be something a Stores person with no technical background can use without confusion: one clear "Cancel" button, a reason box, and a separate place to see what's been cancelled and why — nothing hidden, nothing silently wrong underneath.
