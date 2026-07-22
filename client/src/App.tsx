@@ -228,7 +228,7 @@ function Router() {
             <AdminMastersHub />
           </RequireAuth>
         </Route>
-        <Route path="/stores/hub" component={gated(StoresHub, "stores_hub")} />
+        <Route path="/stores/hub" component={gatedEither(StoresHub, "stores_hub", "stores_inventory")} />
         <Route path="/finance/hub" component={gated(FinanceHub, "finance_hub")} />
         <Route path="/rmc/hub">
           <RequireAuth>
@@ -287,7 +287,7 @@ function AuthedShell() {
           {rmcEnabled && <Route path="/plant/rmc/cube-tests" component={gatedEither(RmcCubeTests, "rmc_cube_tests", "rmc_operations", "plant_production")} />}
           {rmcEnabled && <Route path="/plant/rmc/daily-report" component={gatedEither(RmcDailyReport, "rmc_daily_report", "plant_daily_reports")} />}
           {rmcEnabled && <Route path="/plant/rmc/delivery-challans" component={gatedEither(RmcDeliveryChallans, "rmc_delivery_challans", "rmc_operations", "plant_production")} />}
-          <Route path="/plant/stock" component={gated(PlantStock, "plant_stock")} />
+          <Route path="/plant/stock" component={gatedEither(PlantStock, "plant_stock", "plant_materials")} />
           <Route path="/plant/variance-report" component={gated(PlantVarianceReport, "plant_variance")} />
           <Route path="/plant/audit-report" component={gated(PlantAuditReport, "plant_audit")} />
           <Route path="/plant/diesel-procurement" component={gated(PlantDieselProcurementReport, "plant_diesel_proc")} />
