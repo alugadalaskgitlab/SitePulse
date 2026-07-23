@@ -18673,7 +18673,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getRecentGrnSuppliers(limit = 5, permittedSiteIds?: number[]): Promise<string[]> {
-    const conds = [ne(storeGrns.status, "draft"), ne(storeGrns.supplier, "—")];
+    const conds = [ne(storeGrns.status, "draft"), ne(storeGrns.supplier, "—"), eq(storeGrns.isCancelled, false)];
     if (permittedSiteIds !== undefined) {
       if (permittedSiteIds.length === 0) return [];
       conds.push(inArray(storeGrns.siteId, permittedSiteIds));

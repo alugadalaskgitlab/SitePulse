@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth-context";
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
 const SECTIONS = [{ value: "plant", label: "Plant" }, { value: "site", label: "Site" }, { value: "other", label: "Other" }];
@@ -37,6 +38,7 @@ interface Props { isNew?: boolean; detailId?: number }
 
 export default function StoresIssue({ isNew, detailId }: Props) {
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const [, navigate] = useLocation();
   const search = useSearch();
   const returnTo = new URLSearchParams(search).get("returnTo") || "/stores";
@@ -271,13 +273,13 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                   <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700 text-[12px] px-2 py-1">
                     CANCELLED{selectedIssue.cancellationReason ? `: ${selectedIssue.cancellationReason}` : ""}
                   </Badge>
-                ) : (
+                ) : isAdmin ? (
                   <Button variant="ghost" size="sm" className="text-amber-600 gap-1"
                     onClick={() => { setCancelDialogId(selectedIssue.id); setCancelReason(""); }}
                     data-testid="button-cancel-detail-issue">
                     <Ban className="w-4 h-4" /> Cancel Voucher
                   </Button>
-                )}
+                ) : null}
               </div>
             </CardContent>
           </Card>

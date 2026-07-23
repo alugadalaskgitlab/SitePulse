@@ -1058,7 +1058,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       <Pencil className="w-3 h-3" /> Edit Acceptance
                     </Button>
                   )}
-                  {!selectedGrn.isCancelled && (
+                  {isAdmin && !selectedGrn.isCancelled && (
                     <Button variant="ghost" size="sm" className="text-destructive gap-1"
                       onClick={() => setCancelDialogId(selectedGrn.id)}
                       data-testid="button-cancel-detail-grn">
@@ -1844,7 +1844,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDetail(grn)} data-testid={`button-view-grn-${grn.id}`}>
                             <Eye className="w-4 h-4" />
                           </Button>
-                          {!grn.isCancelled && (
+                          {isAdmin && !grn.isCancelled && (
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setCancelDialogId(grn.id); setCancelReason(""); }} data-testid={`button-cancel-grn-${grn.id}`}>
                               <Ban className="w-3.5 h-3.5 text-amber-600" />
                             </Button>
