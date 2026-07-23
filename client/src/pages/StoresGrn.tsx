@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check, Clock, Zap, Bell, Ban } from "lucide-react";
+import { ChevronLeft, Plus, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check, Clock, Zap, Bell, Ban, TrendingUp } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { Button } from "@/components/ui/button";
@@ -232,6 +232,31 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     enabled: (showForm || !!editingDraftId) && formItemIds.length > 0,
     staleTime: 60_000,
   });
+
+  const { data: stockBalances = [] } = useQuery<Array<StoreItem & { balance: number }>>({
+    queryKey: ["/api/stores/stock-balance"],
+    enabled: showForm || !!editingDraftId,
+    staleTime: 30_000,
+  });
+
+  const stockBalanceMap = useMemo(
+    () => new Map(stockBalances.map(s => [s.id, s.balance])),
+    [stockBalances]
+  );
+
+  const stockPreview = useMemo(() => {
+    return lines
+      .filter(l => l.itemId && l.qty && !isNaN(parseFloat(l.qty)) && parseFloat(l.qty) > 0)
+      .map(l => {
+        const itemId = parseInt(l.itemId, 10);
+        const item = items.find(i => i.id === itemId);
+        if (!item) return null;
+        const current = stockBalanceMap.get(itemId) ?? 0;
+        const incoming = parseFloat(l.qty);
+        return { itemId, name: item.name, uom: l.uom || item.uom, current, incoming, after: current + incoming };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+  }, [lines, items, stockBalanceMap]);
 
   const { data: allIndentsGlobal = [] } = useQuery<PurchaseIndentFull[]>({
     queryKey: ["/api/purchase-indents"],
@@ -1525,6 +1550,36 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     </div>
                   )}
                 </div>
+
+                {/* ── Stock Update Preview ── */}
+                {stockPreview.length > 0 && (
+                  <div className="rounded-md border bg-muted/20 p-3 space-y-2" data-testid="stock-update-preview">
+                    <p className="text-sm font-semibold flex items-center gap-1.5 text-muted-foreground uppercase tracking-wide">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      Stock Update Preview
+                    </p>
+                    <div className="hidden sm:grid grid-cols-12 gap-x-2 px-1 pb-0.5 border-b">
+                      <span className="col-span-5 text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Item</span>
+                      <span className="col-span-2 text-[11px] text-muted-foreground font-medium uppercase tracking-wide text-right">Current</span>
+                      <span className="col-span-2 text-[11px] text-muted-foreground font-medium uppercase tracking-wide text-right">Incoming</span>
+                      <span className="col-span-3 text-[11px] text-muted-foreground font-medium uppercase tracking-wide text-right">After Save</span>
+                    </div>
+                    {stockPreview.map(row => (
+                      <div key={row.itemId} className="grid grid-cols-12 gap-x-2 px-1 items-center text-sm" data-testid={`preview-row-${row.itemId}`}>
+                        <span className="col-span-5 truncate font-medium">{row.name}</span>
+                        <span className="col-span-2 text-right text-muted-foreground tabular-nums">
+                          {row.current % 1 === 0 ? row.current : row.current.toFixed(2)} <span className="text-[11px]">{row.uom}</span>
+                        </span>
+                        <span className="col-span-2 text-right text-green-700 dark:text-green-400 font-medium tabular-nums">
+                          +{row.incoming % 1 === 0 ? row.incoming : row.incoming.toFixed(2)}
+                        </span>
+                        <span className="col-span-3 text-right font-semibold tabular-nums">
+                          {row.after % 1 === 0 ? row.after : row.after.toFixed(2)} <span className="text-[11px] text-muted-foreground">{row.uom}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-2 pt-2 border-t">
                   <Button type="button" variant="ghost" onClick={cancelForm}>Cancel</Button>
