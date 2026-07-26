@@ -10188,12 +10188,19 @@ export class DatabaseStorage implements IStorage {
       indentRef: ppr.indentNo ?? undefined,
       plantName: "Main Plant",
     } as any);
-    await db.update(piItemTransactions)
-      .set({ transactionType: "bulk_receipt" })
-      .where(and(
-        eq(piItemTransactions.indentItemId, ppr.indentItemId),
-        eq(piItemTransactions.transactionType, "bulk_receipt_pending")
-      ));
+    // Update the most-recent matching pending transaction to bulk_receipt (row-specific to avoid broad updates)
+    await db.execute(sql.raw(`
+      UPDATE pi_item_transactions
+      SET transaction_type = 'bulk_receipt'
+      WHERE id = (
+        SELECT id FROM pi_item_transactions
+        WHERE indent_item_id = ${ppr.indentItemId}
+          AND indent_id = ${ppr.indentId}
+          AND transaction_type = 'bulk_receipt_pending'
+        ORDER BY id DESC
+        LIMIT 1
+      )
+    `));
     const [existingItem] = await db.select({
       totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
       approvedQty: purchaseIndentItems.approvedQty,
@@ -10222,14 +10229,22 @@ export class DatabaseStorage implements IStorage {
     const [ppr] = await db.select().from(pendingPlantReceipts).where(eq(pendingPlantReceipts.id, id)).limit(1);
     if (!ppr) throw new Error(`Pending plant receipt #${id} not found`);
     if (ppr.status !== "pending") throw new Error(`Receipt #${id} is already ${ppr.status}`);
+    // Revert PI item status to PURCHASER_ACTIONED so purchaser can re-submit with corrections
     await db.update(purchaseIndentItems)
-      .set({ purchaseStatus: null })
+      .set({ purchaseStatus: "PURCHASER_ACTIONED" })
       .where(eq(purchaseIndentItems.id, ppr.indentItemId));
-    await db.delete(piItemTransactions)
-      .where(and(
-        eq(piItemTransactions.indentItemId, ppr.indentItemId),
-        eq(piItemTransactions.transactionType, "bulk_receipt_pending")
-      ));
+    // Delete only the most-recent matching pending transaction (row-specific to avoid broad deletes)
+    await db.execute(sql.raw(`
+      DELETE FROM pi_item_transactions
+      WHERE id = (
+        SELECT id FROM pi_item_transactions
+        WHERE indent_item_id = ${ppr.indentItemId}
+          AND indent_id = ${ppr.indentId}
+          AND transaction_type = 'bulk_receipt_pending'
+        ORDER BY id DESC
+        LIMIT 1
+      )
+    `));
     const [updated] = await db.update(pendingPlantReceipts)
       .set({ status: "rejected", rejectionReason })
       .where(eq(pendingPlantReceipts.id, id))

@@ -6905,6 +6905,13 @@ export async function registerRoutes(
       if (action === "confirm") {
         const confirmedByUserId = req.authUser?.id ?? 0;
         const confirmedBy = currentUserName(req);
+        // Server-side SoD enforcement: creator cannot confirm their own submission
+        // unless they are an admin (and even then it should be logged via frontend override)
+        const receipts = await storage.getPendingPlantReceipts({ status: "pending" });
+        const target = receipts.find(r => r.id === id);
+        if (target && target.createdByUserId === confirmedByUserId && !req.authUser?.isAdmin) {
+          return res.status(409).json({ error: "Separation of Duties: you cannot confirm a receipt you submitted yourself. Ask another plant staff member to confirm." });
+        }
         const result = await storage.confirmPendingPlantReceipt(id, confirmedByUserId, confirmedBy);
         res.json(result);
       } else {
