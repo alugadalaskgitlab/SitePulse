@@ -2572,6 +2572,11 @@ export default function PurchaseIndents() {
                             <Badge variant="outline" className="text-[12px] px-1.5 py-0 bg-slate-50 text-slate-600 border-slate-300 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-700" data-testid={`badge-pi-type-${indent.id}`}>STORE</Badge>
                           )}
                           {getStatusBadge(indent.status, (indent as any).storesStatus, (indent as any).piType)}
+                          {(indent as any).items?.some((i: any) => i.purchaseStatus === "AWAITING_SERVICE_VERIFICATION") && (
+                            <Badge variant="outline" className="text-[12px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-700 animate-pulse" data-testid={`badge-service-pending-${indent.id}`}>
+                              ⏳ SERVICE PENDING
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </CardContent>
@@ -2847,6 +2852,7 @@ export default function PurchaseIndents() {
                             <SelectContent>
                               <SelectItem value="stores">STORES</SelectItem>
                               <SelectItem value="bulk_plant">BULK MATERIAL</SelectItem>
+                              <SelectItem value="service">SERVICE / HIRE</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -4494,8 +4500,8 @@ export default function PurchaseIndents() {
                               }
                               if (ps === "AWAITING_SERVICE_VERIFICATION") {
                                 const purchasedBy = (item as any).purchasedBy ?? "";
-                                const isSelf = !isAdmin && purchasedBy && purchasedBy.toUpperCase() === (currentUser?.fullName || "").toUpperCase();
-                                if (isSelf) {
+                                const isSelf = purchasedBy && purchasedBy.toUpperCase() === (currentUser?.fullName || "").toUpperCase();
+                                if (isSelf || !isApprover) {
                                   return (
                                     <div className="pt-1">
                                       <div className="flex items-center gap-2 p-2 rounded-lg bg-violet-50 border border-violet-200 text-violet-700 text-sm">

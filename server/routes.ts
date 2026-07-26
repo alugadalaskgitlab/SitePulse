@@ -6833,21 +6833,29 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/service-completion", async (req, res) => {
     try {
+      if (!assertApprove(req, res, "purchase_indents_approve")) return;
       const indentId = Number(req.params.id);
       const verifiedBy = currentUserName(req);
       const verifiedByUserId = req.authUser?.id ?? 0;
-      const isAdmin = req.authUser?.isAdmin ?? false;
       const { indentItemId, completionStatus, completionDate, qty, hours, remarks, documentUrl } = req.body;
       if (!indentItemId || !completionStatus) {
         return res.status(400).json({ message: "indentItemId and completionStatus required" });
       }
-      // SoD: verifier cannot be the same person who submitted PA
-      if (!isAdmin) {
-        const [piItem] = await db.select({ purchasedBy: purchaseIndentItems.purchasedBy })
-          .from(purchaseIndentItems).where(eq(purchaseIndentItems.id, Number(indentItemId))).limit(1);
-        if (piItem?.purchasedBy && piItem.purchasedBy.toUpperCase() === verifiedBy.toUpperCase()) {
-          return res.status(409).json({ message: "Separation of Duties: You cannot verify a service you submitted. Ask another authorised user to confirm." });
-        }
+      // Data integrity: validate the item belongs to this indent, is service route, and is in the expected status
+      const [piItem] = await db.select({
+        id: purchaseIndentItems.id,
+        indentId: purchaseIndentItems.indentId,
+        procurementRoute: purchaseIndentItems.procurementRoute,
+        purchaseStatus: purchaseIndentItems.purchaseStatus,
+        purchasedBy: purchaseIndentItems.purchasedBy,
+      }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, Number(indentItemId))).limit(1);
+      if (!piItem) return res.status(404).json({ message: "Item not found" });
+      if (piItem.indentId !== indentId) return res.status(400).json({ message: "Item does not belong to this indent" });
+      if (piItem.procurementRoute !== "service") return res.status(400).json({ message: "Item is not a service-route item" });
+      if (piItem.purchaseStatus !== "AWAITING_SERVICE_VERIFICATION") return res.status(409).json({ message: `Item is not awaiting service verification (current status: ${piItem.purchaseStatus})` });
+      // SoD: verifier must never be the same person who submitted PA — no admin bypass
+      if (piItem.purchasedBy && piItem.purchasedBy.toUpperCase() === verifiedBy.toUpperCase()) {
+        return res.status(409).json({ message: "Separation of Duties: You cannot verify a service you submitted. Ask another authorised user to confirm." });
       }
       const result = await storage.createServiceCompletion({
         indentId,
