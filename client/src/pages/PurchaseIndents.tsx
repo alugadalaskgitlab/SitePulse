@@ -795,11 +795,8 @@ export default function PurchaseIndents() {
 
   // Dual-route: Purchaser Action dialog
   const [purchaserActionOpen, setPurchaserActionOpen] = useState(false);
-  type PurchaserActionItemData = { qty: string; vendor: string; rate: string; paymentMode: string; expectedDeliveryDate: string; remarks: string; shortfallReason: string };
+  type PurchaserActionItemData = { qty: string; vendor: string; rate: string; paymentMode: string; paidBy: string; purchaseDate: string; expectedDeliveryDate: string; remarks: string; shortfallReason: string };
   const [purchaserActionData, setPurchaserActionData] = useState<Record<number, PurchaserActionItemData>>({});
-  // Dual-route: Handover dialog (Route A — Stores)
-  const [handoverDialogItemId, setHandoverDialogItemId] = useState<number | null>(null);
-  const [handoverData, setHandoverData] = useState({ handoverQty: "", acceptedQty: "", rejectedQty: "0", handoverDate: format(new Date(), "yyyy-MM-dd"), receivedBy: "", storesRemarks: "", remarks: "" });
   // Dual-route: Bulk plant receipt dialog (Route B)
   const [bulkReceiptOpen, setBulkReceiptOpen] = useState(false);
   type BulkReceiptItemData = { qty: string; uom: string; vendor: string; rate: string; receiptDate: string; remarks: string; partyId: string };
@@ -1226,23 +1223,6 @@ export default function PurchaseIndents() {
     },
     onError: (err: Error) => {
       toast({ title: "Failed to record purchaser action", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const handoverMutation = useMutation({
-    mutationFn: ({ indentItemId, ...rest }: any) => apiRequest("POST", `/api/purchase-indent-items/${indentItemId}/handover`, { indentItemId, ...rest }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
-      if (selectedIndentId) {
-        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
-        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId, "transactions"] });
-      }
-      setHandoverDialogItemId(null);
-      setHandoverData({ handoverQty: "", acceptedQty: "", rejectedQty: "0", handoverDate: format(new Date(), "yyyy-MM-dd"), receivedBy: "", storesRemarks: "", remarks: "" });
-      toast({ title: "Handover to Stores recorded" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to record handover", description: err.message, variant: "destructive" });
     },
   });
 
@@ -3657,7 +3637,7 @@ export default function PurchaseIndents() {
                             .map(item => {
                               const route = ((item as any).procurementRoute as string) || "stores";
                               const approvedQty = item.approvedQty ?? item.qty;
-                              const pd = purchaserActionData[item.id] ?? { qty: String(approvedQty), vendor: "", rate: "", paymentMode: "cash", expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
+                              const pd = purchaserActionData[item.id] ?? { qty: String(approvedQty), vendor: "", rate: "", paymentMode: "cash", paidBy: "company", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
                               const purchaseQtyNum = parseFloat(pd.qty) || 0;
                               const isShort = purchaseQtyNum < approvedQty;
                               const updField = (field: string, val: string) => {
@@ -3705,7 +3685,7 @@ export default function PurchaseIndents() {
                                   </div>
                                   {/* Form fields */}
                                   <div className="p-3 space-y-3">
-                                    {/* Row 1: Qty + shortfall reason + expected date */}
+                                    {/* Row 1: Qty + shortfall reason + date */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                       <div>
                                         <Label className="text-sm">QTY PURCHASING <span className="text-red-500">*</span></Label>
@@ -3729,18 +3709,25 @@ export default function PurchaseIndents() {
                                           </Select>
                                         </div>
                                       )}
-                                      {pd.shortfallReason === "ordered" && (
+                                      {pd.shortfallReason === "ordered" ? (
                                         <div>
                                           <Label className="text-sm">EXPECTED DELIVERY <span className="text-red-500">*</span></Label>
                                           <Input type="date" value={pd.expectedDeliveryDate}
                                             onChange={e => updField("expectedDeliveryDate", e.target.value)}
                                             data-testid={`input-pa-delivery-${item.id}`} />
                                         </div>
+                                      ) : pd.shortfallReason !== "not_available" && (
+                                        <div>
+                                          <Label className="text-sm">PURCHASE DATE</Label>
+                                          <Input type="date" value={pd.purchaseDate}
+                                            onChange={e => updField("purchaseDate", e.target.value)}
+                                            data-testid={`input-pa-purchase-date-${item.id}`} />
+                                        </div>
                                       )}
                                     </div>
-                                    {/* Row 2: Vendor / Rate / Payment (hidden when not_available) */}
+                                    {/* Row 2: Vendor / Rate / Payment / Paid By (hidden when not_available) */}
                                     {pd.shortfallReason !== "not_available" && (
-                                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                         <div>
                                           <Label className="text-sm">VENDOR / SUPPLIER</Label>
                                           <Input value={pd.vendor} onChange={e => updField("vendor", e.target.value)}
@@ -3769,6 +3756,16 @@ export default function PurchaseIndents() {
                                             </SelectContent>
                                           </Select>
                                         </div>
+                                        <div>
+                                          <Label className="text-sm">PAID BY</Label>
+                                          <Select value={pd.paidBy || "company"} onValueChange={v => updField("paidBy", v)}>
+                                            <SelectTrigger data-testid={`select-pa-paidby-${item.id}`}><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="company">Company Account</SelectItem>
+                                              <SelectItem value="personal">Personal (Reimbursement)</SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
                                       </div>
                                     )}
                                     {pd.shortfallReason === "not_available" && (
@@ -3794,16 +3791,18 @@ export default function PurchaseIndents() {
                               const items = selectedIndent.items
                                 .filter(i => !["cancelled", "closed"].includes((i as any).status || "") && (i.approvedQty ?? i.qty) > 0)
                                 .map(item => {
-                                  const pd = purchaserActionData[item.id] ?? { qty: String(item.approvedQty ?? item.qty), vendor: "", rate: "", paymentMode: "cash", expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
+                                  const pd = purchaserActionData[item.id] ?? { qty: String(item.approvedQty ?? item.qty), vendor: "", rate: "", paymentMode: "cash", paidBy: "company", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
                                   return {
                                     itemId: item.id,
                                     qty: parseFloat(pd.qty) || (item.approvedQty ?? item.qty),
                                     vendor: pd.vendor || null,
                                     rate: parseFloat(pd.rate) || null,
                                     paymentMode: pd.paymentMode,
-                                    expectedDeliveryDate: pd.expectedDeliveryDate || null,
+                                    paidBy: pd.paidBy || "company",
+                                    expectedDeliveryDate: pd.shortfallReason === "ordered" ? (pd.expectedDeliveryDate || null) : (pd.purchaseDate || null),
                                     reasonCode: pd.shortfallReason !== "full" ? pd.shortfallReason : null,
                                     remarks: pd.remarks || null,
+                                    procurementRoute: ((item as any).procurementRoute as string) || "stores",
                                   };
                                 });
                               purchaserActionMutation.mutate({ items });
@@ -4414,18 +4413,18 @@ export default function PurchaseIndents() {
                             </div>
                             {(((item as any).procurementRoute === "stores" || !(item as any).procurementRoute)) && selectedIndent.status === "purchaser_actioned" ? (
                               <div className="pt-1">
-                                <Button
-                                  className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold"
-                                  onClick={() => {
-                                    const paTx = piTxns.filter((t: any) => t.indentItemId === item.id && t.transactionType === "purchaser_action").slice(-1)[0] as any;
-                                    setHandoverData({ handoverQty: paTx?.qty?.toString() || (item.approvedQty ?? item.qty).toString(), acceptedQty: "", rejectedQty: "0", handoverDate: format(new Date(), "yyyy-MM-dd"), receivedBy: "", storesRemarks: "", remarks: "" });
-                                    setHandoverDialogItemId(item.id);
-                                  }}
-                                  data-testid={`button-handover-${item.id}`}
-                                >
-                                  <PackageCheck className="w-3.5 h-3.5 mr-1.5" />
-                                  Handover to Stores
-                                </Button>
+                                {(item as any).linkedGrnId ? (
+                                  <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800 text-sm text-emerald-700 dark:text-emerald-300" data-testid={`grn-pending-receipt-${item.id}`}>
+                                    <PackageCheck className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="font-semibold">Pending Store Receipt</span>
+                                    <span className="text-xs text-emerald-600 dark:text-emerald-400 ml-auto">Draft GRN created — awaiting Stores finalization</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-300">
+                                    <Loader2 className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="text-xs">Draft GRN being created — check Stores GRN list</span>
+                                  </div>
+                                )}
                               </div>
                             ) : (item as any).procurementRoute === "bulk_plant" && selectedIndent.status === "purchaser_actioned" ? (
                               <div className="pt-1">
@@ -4499,81 +4498,7 @@ export default function PurchaseIndents() {
         </>
       )}
 
-      {/* ── Handover to Stores Dialog (Route A) ── */}
-      <Dialog open={handoverDialogItemId !== null} onOpenChange={open => { if (!open) setHandoverDialogItemId(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>HANDOVER TO STORES</DialogTitle>
-          </DialogHeader>
-          {(() => {
-            const handoverItem = selectedIndent?.items.find(i => i.id === handoverDialogItemId);
-            if (!handoverItem) return null;
-            return (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold">{handoverItem.description}</span>
-                  <span className="text-sm text-muted-foreground ml-auto">Approved: {handoverItem.approvedQty ?? handoverItem.qty} {handoverItem.uom}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-sm">QTY SENT TO STORES</Label>
-                    <Input type="number" value={handoverData.handoverQty} onChange={e => setHandoverData(prev => ({ ...prev, handoverQty: e.target.value }))} data-testid="input-handover-qty" />
-                  </div>
-                  <div>
-                    <Label className="text-sm">QTY ACCEPTED BY STORES</Label>
-                    <Input type="number" value={handoverData.acceptedQty} onChange={e => setHandoverData(prev => ({ ...prev, acceptedQty: e.target.value }))} data-testid="input-accepted-qty" />
-                  </div>
-                  <div>
-                    <Label className="text-sm">QTY REJECTED</Label>
-                    <Input type="number" value={handoverData.rejectedQty} onChange={e => setHandoverData(prev => ({ ...prev, rejectedQty: e.target.value }))} data-testid="input-rejected-qty" />
-                  </div>
-                  <div>
-                    <Label className="text-sm">HANDOVER DATE</Label>
-                    <Input type="date" value={handoverData.handoverDate} onChange={e => setHandoverData(prev => ({ ...prev, handoverDate: e.target.value }))} data-testid="input-handover-date" />
-                  </div>
-                  <div className="col-span-2">
-                    <Label className="text-sm">RECEIVED BY (STORES)</Label>
-                    <Input value={handoverData.receivedBy} onChange={e => setHandoverData(prev => ({ ...prev, receivedBy: e.target.value }))} placeholder="Name of stores person accepting" data-testid="input-received-by" />
-                  </div>
-                  {parseFloat(handoverData.rejectedQty) > 0 && (
-                    <div className="col-span-2">
-                      <Label className="text-sm">REJECTION REASON <span className="text-red-500">*</span></Label>
-                      <Input value={handoverData.storesRemarks} onChange={e => setHandoverData(prev => ({ ...prev, storesRemarks: e.target.value }))} placeholder="e.g. Damaged packaging, wrong spec" data-testid="input-rejection-reason" />
-                    </div>
-                  )}
-                  <div className="col-span-2">
-                    <Label className="text-sm">REMARKS</Label>
-                    <Input value={handoverData.remarks} onChange={e => setHandoverData(prev => ({ ...prev, remarks: e.target.value }))} data-testid="input-handover-remarks" />
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground">After recording the handover, you can create a GRN using the accepted qty to add items to stores stock.</p>
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="outline" onClick={() => setHandoverDialogItemId(null)} data-testid="button-cancel-handover">Cancel</Button>
-                  <Button
-                    className="bg-violet-600 hover:bg-violet-700 text-white"
-                    disabled={handoverMutation.isPending || !handoverData.acceptedQty}
-                    onClick={() => handoverMutation.mutate({
-                      indentItemId: handoverDialogItemId!,
-                      indentId: selectedIndentId!,
-                      handoverQty: parseFloat(handoverData.handoverQty) || 0,
-                      acceptedQty: parseFloat(handoverData.acceptedQty) || 0,
-                      rejectedQty: parseFloat(handoverData.rejectedQty) || 0,
-                      handoverDate: handoverData.handoverDate,
-                      receivedBy: handoverData.receivedBy || null,
-                      storesRemarks: handoverData.storesRemarks || null,
-                      remarks: handoverData.remarks || null,
-                    })}
-                    data-testid="button-submit-handover"
-                  >
-                    {handoverMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <PackageCheck className="w-4 h-4 mr-1" />}
-                    RECORD HANDOVER
-                  </Button>
-                </div>
-              </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
+      {/* Handover dialog removed — replaced by auto-draft GRN creation (Batch 11) */}
 
       {/* ── Bulk Plant Receipt Dialog (Route B) ── */}
       <Dialog open={bulkReceiptOpen} onOpenChange={setBulkReceiptOpen}>

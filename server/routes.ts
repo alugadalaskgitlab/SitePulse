@@ -6817,11 +6817,12 @@ export async function registerRoutes(
     try {
       const indentId = Number(req.params.id);
       const actionBy = currentUserName(req);
+      const userId = req.authUser?.id;
       const { items } = req.body;
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "items array is required" });
       }
-      await storage.submitPurchaserAction(indentId, items, actionBy);
+      await storage.submitPurchaserAction(indentId, items, actionBy, userId);
       const indent = await storage.getPurchaseIndent(indentId);
       res.json(indent);
     } catch (err) {
@@ -8673,6 +8674,7 @@ export async function registerRoutes(
         item: req.query.item as string | undefined,
         category: req.query.category as string | undefined,
         awaitingPi: req.query.awaitingPi === "true",
+        piSourced: req.query.piSourced === "true",
         showCancelled: req.query.showCancelled === "true",
         ...(permittedIds !== null ? { permittedSiteIds: permittedIds } : {}),
       });
@@ -8817,8 +8819,8 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ error: "GRN not found" });
       if (existing.isCancelled) return res.status(409).json({ error: "Cannot edit a cancelled GRN" });
 
-      const { acceptanceStatus, acceptanceRemarks, status, indentRef } = req.body;
-      const updateData: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null } = {};
+      const { acceptanceStatus, acceptanceRemarks, status, indentRef, overrideReason, itemAcceptance } = req.body;
+      const updateData: Parameters<typeof storage.updateStoreGrn>[1] = {};
 
       if (acceptanceStatus !== undefined) {
         if (!["accepted", "partial", "rejected"].includes(acceptanceStatus)) {
@@ -8831,16 +8833,39 @@ export async function registerRoutes(
         if (!["draft", "finalized"].includes(status)) {
           return res.status(400).json({ error: "Invalid status value" });
         }
+        // Separation-of-duties check: the person who auto-created this GRN (the purchaser)
+        // cannot finalize it — that must be done by someone in Stores.
+        if (status === "finalized" && (existing as any).createdByUserId && req.authUser) {
+          const isSelf = req.authUser.id === (existing as any).createdByUserId;
+          if (isSelf) {
+            if (!req.authUser.isAdmin) {
+              return res.status(409).json({
+                error: "Separation of duties: the purchaser who raised this GRN cannot finalize it. Ask a Stores/Admin user to finalize.",
+                code: "SELF_FINALIZE_BLOCKED",
+              });
+            }
+            // Admin override — require an explicit reason
+            if (!overrideReason || typeof overrideReason !== "string" || !overrideReason.trim()) {
+              return res.status(409).json({
+                error: "Admin override required: provide an overrideReason to bypass separation-of-duties.",
+                code: "OVERRIDE_REASON_REQUIRED",
+              });
+            }
+            updateData.selfApprovalOverrideReason = overrideReason.trim();
+            updateData.selfApprovalOverriddenBy = req.authUser.id;
+            updateData.selfApprovalOverriddenAt = new Date();
+          }
+        }
         updateData.status = status;
       }
       if (indentRef !== undefined) {
         updateData.indentRef = indentRef ?? null;
       }
 
-      if (Object.keys(updateData).length === 0) {
+      if (Object.keys(updateData).length === 0 && (!itemAcceptance || itemAcceptance.length === 0)) {
         return res.status(400).json({ error: "No valid fields to update" });
       }
-      const result = await storage.updateStoreGrn(id, updateData);
+      const result = await storage.updateStoreGrn(id, updateData, itemAcceptance ?? undefined);
       if (!result) return res.status(404).json({ error: "GRN not found" });
       res.json(result);
     } catch (err) {

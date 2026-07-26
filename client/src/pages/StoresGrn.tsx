@@ -67,7 +67,8 @@ type GrnWithItems = {
   indentRef: string | null; remarks: string | null;
   status: string; acceptanceStatus: string; acceptanceRemarks: string | null;
   isCancelled?: boolean; cancelledAt?: string | null; cancelledBy?: number | null; cancellationReason?: string | null;
-  items: { itemId: number; itemName: string; category: string; qty: number; rate: number | null; uom: string }[];
+  sourcePiIndentId?: number | null; createdByUserId?: number | null;
+  items: { itemId: number; itemName: string; category: string; qty: number; rate: number | null; uom: string; sourcePiItemId?: number | null; itemDescription?: string | null; acceptedQty?: number | null; rejectedQty?: number | null; acceptanceNotes?: string | null }[];
 };
 
 type PurchaseIndentFull = {
@@ -85,7 +86,7 @@ interface Props { isNew?: boolean; detailId?: number }
 
 export default function StoresGrn({ isNew, detailId }: Props) {
   const { toast } = useToast();
-  const { isAdmin, isManager } = useAuth();
+  const { isAdmin, isManager, user } = useAuth();
   const [, navigate] = useLocation();
   const search = useSearch();
   const searchParams = new URLSearchParams(search);
@@ -103,6 +104,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [itemFilter, setItemFilter] = useState("");
   const [draftOnly, setDraftOnly] = useState(false);
   const [awaitingPiFilter, setAwaitingPiFilter] = useState(false);
+  const [piSourcedFilter, setPiSourcedFilter] = useState(false);
   const [showCancelled, setShowCancelled] = useState(false);
   const [cancelDialogId, setCancelDialogId] = useState<number | null>(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -309,7 +311,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const noPiForItem = !!firstItemName && itemApprovedIndents.length === 0;
 
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
-    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, supplierFilter, siteFilter, statusFilter, categoryFilter, itemFilter, draftOnly, awaitingPiFilter, showCancelled],
+    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, supplierFilter, siteFilter, statusFilter, categoryFilter, itemFilter, draftOnly, awaitingPiFilter, piSourcedFilter, showCancelled],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
@@ -323,6 +325,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       if (showCancelled) p.set("showCancelled", "true");
       if (awaitingPiFilter) {
         p.set("awaitingPi", "true");
+      } else if (piSourcedFilter) {
+        p.set("piSourced", "true");
+        p.set("status", "draft");
       } else if (draftOnly) {
         p.set("status", "draft");
       }
@@ -713,11 +718,17 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     <span className="font-mono text-lg font-bold text-green-700 dark:text-green-400" data-testid="text-grn-detail-number">{selectedGrn.grnNumber}</span>
                     <span className="text-sm text-muted-foreground">{format(new Date(selectedGrn.date + "T00:00:00"), "dd MMM yyyy")}</span>
                     {selectedGrn.status === "draft" ? getDraftBadge() : getAcceptanceBadge(selectedGrn.acceptanceStatus || "accepted")}
-                    {selectedGrn.status === "draft" && !selectedGrn.indentRef && (
+                    {selectedGrn.status === "draft" && !selectedGrn.indentRef && !selectedGrn.sourcePiIndentId && (
                       <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-awaiting-pi">Awaiting PI</Badge>
                     )}
                     {selectedGrn.status === "draft" && selectedGrn.indentRef && (
                       <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-ready-finalise">Ready to Finalise</Badge>
+                    )}
+                    {selectedGrn.sourcePiIndentId && (
+                      <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-pi-sourced">PI-SOURCED</Badge>
+                    )}
+                    {selectedGrn.sourcePiIndentId && selectedGrn.status === "draft" && (
+                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-pending-receipt">Pending Store Receipt</Badge>
                     )}
                     {(() => { const s = selectedGrn.siteId ? sites.find(x => x.id === selectedGrn.siteId) : null; return s ? <Badge variant="outline" className="text-[12px] border-amber-400 text-amber-700 dark:text-amber-400">{s.name}</Badge> : <span className="text-sm text-muted-foreground">— No site assigned</span>; })()}
                     {selectedGrn.indentRef && (
@@ -1018,6 +1029,12 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <div className="flex items-center gap-2">
                   {selectedGrn.status === "draft" && !finalisingDraft && (
                     <>
+                      {selectedGrn.sourcePiIndentId && selectedGrn.createdByUserId && user && selectedGrn.createdByUserId === user.id && !isAdmin && (
+                        <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-300 w-full" data-testid="banner-sod-warning">
+                          <AlertTriangle className="w-4 h-4 shrink-0" />
+                          <span className="text-xs"><strong>Separation of duties:</strong> You raised the purchase indent for this GRN. A different Stores person should finalise it. Ask your Admin to override if needed.</span>
+                        </div>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -1031,6 +1048,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                         size="sm"
                         className="gap-1 text-sm bg-green-600 hover:bg-green-700 text-white"
                         data-testid="button-finalise-grn"
+                        disabled={!!(selectedGrn.sourcePiIndentId && selectedGrn.createdByUserId && user && selectedGrn.createdByUserId === user.id && !isAdmin)}
                         onClick={() => {
                           setDraftFinaliseIndentRef(selectedGrn.indentRef || "");
                           setDraftFinaliseOverride(false);
@@ -1681,7 +1699,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   variant={draftOnly ? "default" : "outline"}
                   size="sm"
                   className={`text-sm h-8 gap-1 ${draftOnly ? "bg-amber-600 hover:bg-amber-700 text-white border-0" : "text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700"}`}
-                  onClick={() => { setDraftOnly(v => !v); setAwaitingPiFilter(false); }}
+                  onClick={() => { setDraftOnly(v => !v); setAwaitingPiFilter(false); setPiSourcedFilter(false); }}
                   data-testid="button-drafts-only"
                 >
                   <Clock className="w-3 h-3" />
@@ -1691,7 +1709,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   variant={awaitingPiFilter ? "default" : "outline"}
                   size="sm"
                   className={`text-sm h-8 gap-1.5 ${awaitingPiFilter ? "bg-orange-600 hover:bg-orange-700 text-white border-0" : "text-orange-700 border-orange-300 hover:bg-orange-50 dark:text-orange-300 dark:border-orange-700"}`}
-                  onClick={() => { setAwaitingPiFilter(v => !v); setDraftOnly(false); }}
+                  onClick={() => { setAwaitingPiFilter(v => !v); setDraftOnly(false); setPiSourcedFilter(false); }}
                   data-testid="button-awaiting-pi-filter"
                 >
                   <AlertTriangle className="w-3 h-3" />
@@ -1701,6 +1719,16 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       {awaitingPiCount}
                     </span>
                   )}
+                </Button>
+                <Button
+                  variant={piSourcedFilter ? "default" : "outline"}
+                  size="sm"
+                  className={`text-sm h-8 gap-1 ${piSourcedFilter ? "bg-emerald-600 hover:bg-emerald-700 text-white border-0" : "text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:text-emerald-300 dark:border-emerald-700"}`}
+                  onClick={() => { setPiSourcedFilter(v => !v); setDraftOnly(false); setAwaitingPiFilter(false); }}
+                  data-testid="button-pi-sourced-filter"
+                >
+                  <Check className="w-3 h-3" />
+                  {piSourcedFilter ? "Pending Receipt ×" : "Pending Receipt"}
                 </Button>
                 <Select value={statusFilter || "__all__"} onValueChange={v => setStatusFilter(v === "__all__" ? "" : v)}>
                   <SelectTrigger className="h-8 w-44 text-sm" data-testid="select-status-filter">

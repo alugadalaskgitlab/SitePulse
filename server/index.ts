@@ -194,6 +194,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    await storage.ensurePendingStoreReceiptColumns();
+    console.log("Startup: ensurePendingStoreReceiptColumns — Batch 11 columns verified/added");
+  } catch (e) {
+    console.error("Startup: Failed to ensure Batch 11 Pending Store Receipt columns:", e);
+  }
+
+  try {
     await (storage as any).ensureEquipmentUsageAuditColumns();
     console.log("Startup: ensureEquipmentUsageAuditColumns — audit columns verified");
   } catch (e) {

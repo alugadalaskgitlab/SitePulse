@@ -1525,6 +1525,9 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   totalAcceptedQty: real("total_accepted_qty"),   // running total across all handover/receipt transactions
   totalRejectedQty: real("total_rejected_qty"),   // running total of rejected/damaged qty
   linkedReceiptId: integer("linked_receipt_id"),   // links to material_receipts.id for Material Indent receipts
+  // Batch 11 — Pending Store Receipt
+  paidBy: text("paid_by"),                         // "company" | named person for reimbursement tracking
+  linkedGrnId: integer("linked_grn_id"),           // auto-created draft store_grn from purchaser action
 });
 
 export const purchaseIndentItemHistory = pgTable("purchase_indent_item_history", {
@@ -1598,6 +1601,7 @@ export const piItemTransactions = pgTable("pi_item_transactions", {
   rate: real("rate"),
   amount: real("amount"),
   paymentMode: text("payment_mode"),
+  paidBy: text("paid_by"),                  // "company" | named person for reimbursement tracking (Batch 11)
   expectedDeliveryDate: date("expected_delivery_date"),
   reasonCode: text("reason_code"),          // mandatory when qty < approvedQty
   // Handover fields (Route A)
@@ -2174,6 +2178,12 @@ export const storeGrns = pgTable("store_grns", {
   cancelledBy: integer("cancelled_by"),
   cancellationReason: text("cancellation_reason"),
   createdAt: timestamp("created_at").defaultNow(),
+  // PI-sourced GRN tracking (Batch 11)
+  createdByUserId: integer("created_by_user_id"),     // userId who triggered auto-creation (the purchaser)
+  sourcePiIndentId: integer("source_pi_indent_id"),   // links back to purchase_indents.id
+  selfApprovalOverrideReason: text("self_approval_override_reason"),
+  selfApprovalOverriddenBy: integer("self_approval_overridden_by"),
+  selfApprovalOverriddenAt: timestamp("self_approval_overridden_at"),
 }, (t) => ({
   dateIdx: index("store_grns_date_idx").on(t.date),
 }));
@@ -2181,11 +2191,17 @@ export const storeGrns = pgTable("store_grns", {
 export const storeGrnItems = pgTable("store_grn_items", {
   id: serial("id").primaryKey(),
   grnId: integer("grn_id").notNull(),
-  itemId: integer("item_id").notNull(),
+  itemId: integer("item_id"),                         // nullable for PI-sourced items matched at finalization
   qty: real("qty").notNull(),
   rate: real("rate"),
   uom: text("uom").notNull(),
   indentItemId: integer("indent_item_id"),
+  // PI-sourced item tracking + item-wise acceptance (Batch 11)
+  sourcePiItemId: integer("source_pi_item_id"),       // links to purchase_indent_items.id
+  itemDescription: text("item_description"),          // pre-filled PI item description
+  acceptedQty: real("accepted_qty"),                  // stores-confirmed accepted quantity
+  rejectedQty: real("rejected_qty"),                  // stores-confirmed rejected quantity
+  acceptanceNotes: text("acceptance_notes"),          // QC / rejection remarks per line
 });
 
 export const storeIssues = pgTable("store_issues", {

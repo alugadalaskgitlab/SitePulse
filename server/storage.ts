@@ -724,6 +724,10 @@ export interface IStorage {
   // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
   ensureSiteIdColumns(): Promise<void>;
 
+  // Batch 11 — Pending Store Receipt: ensures new columns on store_grns, store_grn_items,
+  // purchase_indent_items, and pi_item_transactions. Safe to run multiple times.
+  ensurePendingStoreReceiptColumns(): Promise<void>;
+
   // Removes duplicate dip rows from bitumen_dip_readings before the unique index is enforced,
   // keeping the lowest id per (date, tank_number, reading_type, plant_name).
   deduplicateBitumenDipReadings(): Promise<{ removed: number }>;
@@ -939,7 +943,7 @@ export interface IStorage {
   createStoreItem(data: InsertStoreItem): Promise<StoreItem>;
   updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined>;
   toggleStoreItemActive(id: number): Promise<StoreItem | undefined>;
-  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string; awaitingPi?: boolean; showCancelled?: boolean }): Promise<StoreGrnWithItems[]>;
+  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string; awaitingPi?: boolean; piSourced?: boolean; showCancelled?: boolean }): Promise<StoreGrnWithItems[]>;
   getStaleGrns(thresholdHours?: number, permittedSiteIds?: number[]): Promise<StoreGrnWithItems[]>;
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
   getIndentFulfilmentStatus(): Promise<Record<string, boolean>>;
@@ -9810,8 +9814,9 @@ export class DatabaseStorage implements IStorage {
 
   async submitPurchaserAction(
     indentId: number,
-    items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string }[],
-    actionBy: string
+    items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string; procurementRoute?: string }[],
+    actionBy: string,
+    userId?: number
   ): Promise<void> {
     await db.transaction(async (tx) => {
       for (const item of items) {
@@ -9825,6 +9830,7 @@ export class DatabaseStorage implements IStorage {
           rate: item.rate ?? null,
           amount: item.amount ?? null,
           paymentMode: item.paymentMode ?? null,
+          paidBy: item.paidBy ?? null,
           expectedDeliveryDate: item.expectedDeliveryDate ?? null,
           reasonCode: item.reasonCode ?? null,
           remarks: item.remarks ?? null,
@@ -9841,6 +9847,7 @@ export class DatabaseStorage implements IStorage {
             vendor: item.vendor?.toUpperCase() ?? null,
             rate: item.rate ?? null,
             paymentMode: item.paymentMode ?? null,
+            paidBy: item.paidBy ?? null,
             purchasedBy: actionBy.toUpperCase(),
           })
           .where(eq(purchaseIndentItems.id, item.itemId));
@@ -9853,6 +9860,118 @@ export class DatabaseStorage implements IStorage {
           inArray(purchaseIndents.status, ["approved", "purchasing"])
         ));
     });
+
+    // Auto-create a draft GRN for stores-route items that are actually purchased (not ordered/not-available)
+    if (userId) {
+      const storesItems = items.filter(item =>
+        (item.procurementRoute === "stores" || !item.procurementRoute) &&
+        item.qty > 0 &&
+        item.reasonCode !== "not_available" &&
+        item.reasonCode !== "ordered"
+      );
+      if (storesItems.length > 0) {
+        // Load PI item descriptions and UOM for each item
+        const piItemRows = await db.select({
+          id: purchaseIndentItems.id,
+          description: purchaseIndentItems.description,
+          uom: purchaseIndentItems.uom,
+        }).from(purchaseIndentItems)
+          .where(inArray(purchaseIndentItems.id, storesItems.map(i => i.itemId)));
+
+        const piItemMap = new Map(piItemRows.map(r => [r.id, r]));
+        const vendor = storesItems.find(i => i.vendor)?.vendor ?? "SUPPLIER";
+
+        const grnItems = storesItems.map(item => {
+          const piItem = piItemMap.get(item.itemId);
+          return {
+            itemId: item.itemId,
+            description: piItem?.description ?? "",
+            uom: piItem?.uom ?? "NOS",
+            qty: item.qty,
+            rate: item.rate,
+            vendor: item.vendor,
+          };
+        });
+
+        try {
+          const draftGrn = await this.createDraftGrnFromPi(indentId, grnItems, vendor, userId, actionBy);
+          // Link the GRN back to each PI item
+          for (const item of storesItems) {
+            await db.update(purchaseIndentItems)
+              .set({ linkedGrnId: draftGrn.id })
+              .where(eq(purchaseIndentItems.id, item.itemId));
+          }
+        } catch (err) {
+          console.error("submitPurchaserAction: auto-GRN creation failed (non-fatal):", err);
+        }
+      }
+    }
+  }
+
+  async createDraftGrnFromPi(
+    indentId: number,
+    items: { itemId: number; description: string; uom: string; qty: number; rate?: number | null; vendor?: string | null }[],
+    vendor: string,
+    createdByUserId: number,
+    actionBy: string
+  ): Promise<StoreGrnWithItems> {
+    const today = new Date().toISOString().split("T")[0];
+
+    // Find or create a store_item for each PI item (match by name, case-insensitive)
+    const grnItemsData: Omit<InsertStoreGrnItem, "grnId">[] = [];
+    for (const item of items) {
+      const descUpper = (item.description || "").trim().toUpperCase();
+      let storeItemId: number | null = null;
+
+      if (descUpper) {
+        const [found] = await db.select({ id: storeItems.id })
+          .from(storeItems)
+          .where(sql`UPPER(${storeItems.name}) = ${descUpper}`)
+          .limit(1);
+
+        if (found) {
+          storeItemId = found.id;
+        } else {
+          // Auto-create store item so GRN can reference it in stock ledger
+          const [created] = await db.insert(storeItems).values({
+            name: item.description.trim(),
+            category: "General",
+            uom: item.uom,
+            isActive: 1,
+          }).returning({ id: storeItems.id });
+          storeItemId = created.id;
+        }
+      }
+
+      grnItemsData.push({
+        itemId: storeItemId ?? undefined as any,
+        qty: item.qty,
+        rate: item.rate ?? null,
+        uom: item.uom,
+        indentItemId: item.itemId,
+        sourcePiItemId: item.itemId,
+        itemDescription: item.description,
+      });
+    }
+
+    // Generate GRN number and create the draft GRN
+    const grnNumber = await this.generateStoreDocNumber("GRN", "STORE");
+    const [grn] = await db.insert(storeGrns).values({
+      grnNumber,
+      date: today,
+      supplier: vendor.toUpperCase(),
+      status: "draft",
+      acceptanceStatus: "accepted",
+      indentRef: `PI-${indentId}`,
+      createdByUserId,
+      sourcePiIndentId: indentId,
+    }).returning();
+
+    if (grnItemsData.length > 0) {
+      await db.insert(storeGrnItems).values(grnItemsData.map(it => ({ ...it, grnId: grn.id })));
+    }
+
+    return this.buildGrnWithItems(grn);
   }
 
   async submitHandover(
@@ -12042,6 +12161,29 @@ export class DatabaseStorage implements IStorage {
     async ensureSiteEnabledModulesColumn(): Promise<void> {
       await db.execute(sql.raw(`ALTER TABLE sites ADD COLUMN IF NOT EXISTS enabled_modules text[] NOT NULL DEFAULT '{}'`));
       console.log("ensureSiteEnabledModulesColumn: enabled_modules column verified/added on sites");
+    }
+
+    async ensurePendingStoreReceiptColumns(): Promise<void> {
+      // store_grns — PI-sourced tracking + separation-of-duties
+      await db.execute(sql.raw(`ALTER TABLE store_grns ADD COLUMN IF NOT EXISTS created_by_user_id integer`));
+      await db.execute(sql.raw(`ALTER TABLE store_grns ADD COLUMN IF NOT EXISTS source_pi_indent_id integer`));
+      await db.execute(sql.raw(`ALTER TABLE store_grns ADD COLUMN IF NOT EXISTS self_approval_override_reason text`));
+      await db.execute(sql.raw(`ALTER TABLE store_grns ADD COLUMN IF NOT EXISTS self_approval_overridden_by integer`));
+      await db.execute(sql.raw(`ALTER TABLE store_grns ADD COLUMN IF NOT EXISTS self_approval_overridden_at timestamp`));
+      // store_grn_items — item-wise acceptance + PI item link
+      await db.execute(sql.raw(`ALTER TABLE store_grn_items ADD COLUMN IF NOT EXISTS source_pi_item_id integer`));
+      await db.execute(sql.raw(`ALTER TABLE store_grn_items ADD COLUMN IF NOT EXISTS item_description text`));
+      await db.execute(sql.raw(`ALTER TABLE store_grn_items ADD COLUMN IF NOT EXISTS accepted_qty real`));
+      await db.execute(sql.raw(`ALTER TABLE store_grn_items ADD COLUMN IF NOT EXISTS rejected_qty real`));
+      await db.execute(sql.raw(`ALTER TABLE store_grn_items ADD COLUMN IF NOT EXISTS acceptance_notes text`));
+      // Make item_id nullable (was NOT NULL) — for PI-sourced items matched at finalization
+      await db.execute(sql.raw(`ALTER TABLE store_grn_items ALTER COLUMN item_id DROP NOT NULL`));
+      // purchase_indent_items — paid_by + linked_grn_id
+      await db.execute(sql.raw(`ALTER TABLE purchase_indent_items ADD COLUMN IF NOT EXISTS paid_by text`));
+      await db.execute(sql.raw(`ALTER TABLE purchase_indent_items ADD COLUMN IF NOT EXISTS linked_grn_id integer`));
+      // pi_item_transactions — paid_by
+      await db.execute(sql.raw(`ALTER TABLE pi_item_transactions ADD COLUMN IF NOT EXISTS paid_by text`));
+      console.log("ensurePendingStoreReceiptColumns: all Batch 11 columns verified/added");
     }
 
   async backfillSiteIdsOnDieselAndIndents(): Promise<{ dieselScanned: number; dieselResolved: number; dieselUnresolved: number; indentsScanned: number; indentsResolved: number; indentsUnresolved: number }> {
@@ -18607,6 +18749,12 @@ export class DatabaseStorage implements IStorage {
         qty: storeGrnItems.qty,
         rate: storeGrnItems.rate,
         uom: storeGrnItems.uom,
+        indentItemId: storeGrnItems.indentItemId,
+        sourcePiItemId: storeGrnItems.sourcePiItemId,
+        itemDescription: storeGrnItems.itemDescription,
+        acceptedQty: storeGrnItems.acceptedQty,
+        rejectedQty: storeGrnItems.rejectedQty,
+        acceptanceNotes: storeGrnItems.acceptanceNotes,
         itemName: storeItems.name,
         category: storeItems.category,
       })
@@ -18616,7 +18764,7 @@ export class DatabaseStorage implements IStorage {
     return { ...grn, items: items as (StoreGrnItem & { itemName: string; category: string })[] };
   }
 
-  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string; awaitingPi?: boolean; showCancelled?: boolean }): Promise<StoreGrnWithItems[]> {
+  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string; awaitingPi?: boolean; piSourced?: boolean; showCancelled?: boolean }): Promise<StoreGrnWithItems[]> {
     if (filters?.permittedSiteIds !== undefined && filters.permittedSiteIds.length === 0) return [];
     const conds: any[] = [];
     // showCancelled=true → show only cancelled; default → show only active
@@ -18632,6 +18780,10 @@ export class DatabaseStorage implements IStorage {
     if (filters?.awaitingPi) {
       conds.push(eq(storeGrns.status, "draft"));
       conds.push(or(isNull(storeGrns.indentRef), eq(storeGrns.indentRef, "")));
+      conds.push(isNull(storeGrns.sourcePiIndentId));
+    }
+    if (filters?.piSourced) {
+      conds.push(isNotNull(storeGrns.sourcePiIndentId));
     }
     if (filters?.permittedSiteIds && filters.permittedSiteIds.length > 0) {
       conds.push(inArray(storeGrns.siteId, filters.permittedSiteIds));
@@ -18932,9 +19084,34 @@ export class DatabaseStorage implements IStorage {
     return this.buildGrnWithItems(grn);
   }
 
-  async updateStoreGrn(id: number, data: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null }): Promise<StoreGrnWithItems | undefined> {
+  async updateStoreGrn(
+    id: number,
+    data: {
+      acceptanceStatus?: string;
+      acceptanceRemarks?: string | null;
+      status?: string;
+      indentRef?: string | null;
+      selfApprovalOverrideReason?: string;
+      selfApprovalOverriddenBy?: number;
+      selfApprovalOverriddenAt?: Date;
+    },
+    itemAcceptance?: { id: number; acceptedQty?: number | null; rejectedQty?: number | null; acceptanceNotes?: string | null; itemId?: number | null }[]
+  ): Promise<StoreGrnWithItems | undefined> {
     const [grn] = await db.update(storeGrns).set(data).where(eq(storeGrns.id, id)).returning();
     if (!grn) return undefined;
+    // Apply per-item acceptance updates if provided
+    if (itemAcceptance && itemAcceptance.length > 0) {
+      for (const ia of itemAcceptance) {
+        const itemUpdate: any = {};
+        if (ia.acceptedQty !== undefined) itemUpdate.acceptedQty = ia.acceptedQty;
+        if (ia.rejectedQty !== undefined) itemUpdate.rejectedQty = ia.rejectedQty;
+        if (ia.acceptanceNotes !== undefined) itemUpdate.acceptanceNotes = ia.acceptanceNotes;
+        if (ia.itemId !== undefined) itemUpdate.itemId = ia.itemId;
+        if (Object.keys(itemUpdate).length > 0) {
+          await db.update(storeGrnItems).set(itemUpdate).where(eq(storeGrnItems.id, ia.id));
+        }
+      }
+    }
     return this.buildGrnWithItems(grn);
   }
 
