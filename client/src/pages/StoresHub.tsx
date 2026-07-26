@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownToLine, ArrowUpFromLine, ClipboardList,
-  Package, Layers, BarChart3, ArrowLeftRight, Settings, CalendarCheck, ShoppingCart, AlertTriangle,
+  Package, Layers, BarChart3, ArrowLeftRight, Settings, CalendarCheck, ShoppingCart, AlertTriangle, Inbox,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { HubShell } from "@/components/HubShell";
@@ -39,6 +39,12 @@ export default function StoresHub() {
     queryKey: ["/api/stores/stock-summary"],
     enabled: canStores,
   });
+
+  const { data: pendingReceiptData } = useQuery<{ count: number }>({
+    queryKey: ["/api/stores/grns/pending-receipt-count"],
+    enabled: canStores,
+  });
+  const pendingReceiptCount = pendingReceiptData?.count ?? 0;
 
   const { data: irns = [] } = useQuery<any[]>({
     queryKey: ["/api/irn"],
@@ -141,6 +147,17 @@ export default function StoresHub() {
               accent="violet"
               iconBg="bg-violet-100"
               enabled={canStores}
+            />
+            <HubActionTile
+              href="/stores/grns?piSourced=true"
+              icon={Inbox}
+              title="Pending Store Receipts"
+              description="PI-sourced GRNs awaiting stores acceptance — raised by purchasers, ready to receive into stock"
+              accent="amber"
+              iconBg="bg-amber-100"
+              badge={pendingReceiptCount > 0 ? `${pendingReceiptCount} pending` : undefined}
+              enabled={canStores}
+              data-testid="tile-pending-store-receipts"
             />
           </div>
         </div>

@@ -8656,6 +8656,26 @@ export async function registerRoutes(
     }
   });
 
+  // GRNs — pending store receipt count (PI-sourced draft GRNs)
+  app.get("/api/stores/grns/pending-receipt-count", async (req, res) => {
+    try {
+      if (!assertView(req, res, "stores_inventory")) return;
+      const permittedIds = req.authUser && !req.authUser.isAdmin
+        ? await storage.getUserPermittedSiteIds(req.authUser.id)
+        : null;
+      const grns = await storage.getStoreGrns({
+        piSourced: true,
+        status: "draft",
+        showCancelled: false,
+        ...(permittedIds !== null ? { permittedSiteIds: permittedIds } : {}),
+      });
+      res.json({ count: grns.length });
+    } catch (err) {
+      console.error("GET /api/stores/grns/pending-receipt-count:", err);
+      res.status(500).json({ error: "Failed to fetch count" });
+    }
+  });
+
   // GRNs
   app.get("/api/stores/grns", async (req, res) => {
     try {
