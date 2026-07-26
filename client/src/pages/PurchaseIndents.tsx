@@ -4518,7 +4518,14 @@ export default function PurchaseIndents() {
                                       className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold"
                                       onClick={() => {
                                         setServiceCompletionItemId(item.id);
-                                        setServiceCompletionForm({ completionStatus: "completed", completionDate: format(new Date(), "yyyy-MM-dd"), qty: "", hours: "", remarks: "", documentUrl: "" });
+                                        setServiceCompletionForm({
+                                          completionStatus: "completed",
+                                          completionDate: format(new Date(), "yyyy-MM-dd"),
+                                          qty: String((item as any).orderedQty ?? (item as any).totalPurchasedQty ?? item.qty ?? ""),
+                                          hours: "",
+                                          remarks: (item as any).vendor ? `Service by: ${(item as any).vendor}` : "",
+                                          documentUrl: "",
+                                        });
                                       }}
                                       data-testid={`button-verify-service-${item.id}`}
                                     >

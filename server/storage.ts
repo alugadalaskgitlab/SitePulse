@@ -9864,6 +9864,7 @@ export class DatabaseStorage implements IStorage {
             paymentMode: item.paymentMode ?? null,
             paidBy: item.paidBy ?? null,
             purchasedBy: actionBy.toUpperCase(),
+            purchasedByUserId: userId ?? null,
             ...serviceStatusPatch,
           })
           .where(eq(purchaseIndentItems.id, item.itemId));
@@ -10529,8 +10530,8 @@ export class DatabaseStorage implements IStorage {
     // Material Indents require full receipt before completion — PARTIAL is not terminal
     const isMaterialIndent = indent?.piType === "material";
     const terminalStatuses = isMaterialIndent
-      ? ["PURCHASED", "NOT_PURCHASED", "CANCELLED"]
-      : ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED"];
+      ? ["PURCHASED", "NOT_PURCHASED", "CANCELLED", "SERVICE_COMPLETED"]
+      : ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED", "SERVICE_COMPLETED"];
     const allTerminal = allItems.every(item =>
       // Manager-rejected items (approvedQty === 0) are treated as terminal — no procurement needed
       (item.approvedQty != null && item.approvedQty <= 0) ||
@@ -10543,7 +10544,7 @@ export class DatabaseStorage implements IStorage {
         .set({ status: "completed" })
         .where(and(
           eq(purchaseIndents.id, indentId),
-          inArray(purchaseIndents.status, ["approved", "purchasing", "ordered"])
+          inArray(purchaseIndents.status, ["approved", "purchasing", "ordered", "purchaser_actioned"])
         ));
     }
   }
@@ -12388,6 +12389,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     async ensureServiceCompletionsTable(): Promise<void> {
+      await db.execute(sql.raw(`ALTER TABLE purchase_indent_items ADD COLUMN IF NOT EXISTS purchased_by_user_id integer`));
       await db.execute(sql.raw(`
         CREATE TABLE IF NOT EXISTS service_completions (
           id serial PRIMARY KEY,

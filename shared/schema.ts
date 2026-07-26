@@ -1518,6 +1518,7 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   partNo: text("part_no"),
   // Who physically purchased this item
   purchasedBy: text("purchased_by"),
+  purchasedByUserId: integer("purchased_by_user_id"),
   // Dual-route procurement fields
   procurementRoute: text("procurement_route"), // 'stores' | 'bulk_plant' — auto-filled from plant_materials
   orderedQty: real("ordered_qty"),             // qty placed on order with supplier
