@@ -804,6 +804,11 @@ export default function PurchaseIndents() {
   const [bulkReceivingLocation, setBulkReceivingLocation] = useState<string>("hmp_plant");
   const [bulkReceivingSiteId, setBulkReceivingSiteId] = useState<number | null>(null);
 
+  // Service / Hire route — completion verification dialog
+  const [serviceCompletionItemId, setServiceCompletionItemId] = useState<number | null>(null);
+  type ServiceCompletionForm = { completionStatus: string; completionDate: string; qty: string; hours: string; remarks: string; documentUrl: string };
+  const [serviceCompletionForm, setServiceCompletionForm] = useState<ServiceCompletionForm>({ completionStatus: "completed", completionDate: format(new Date(), "yyyy-MM-dd"), qty: "", hours: "", remarks: "", documentUrl: "" });
+
   // Material Indent: Place Order & Record Receipt
   type PlaceOrderItemData = { vendor: string; expectedDelivery: string; orderedQty: string; orderedBy: string; rate: string; paymentMode: string; remarks: string };
   const [placeOrderVendorMap, setPlaceOrderVendorMap] = useState<Record<number, PlaceOrderItemData>>({});
@@ -868,6 +873,16 @@ export default function PurchaseIndents() {
     queryKey: ["/api/pending-plant-receipts", { indentId: selectedIndentId, status: "pending" }],
     queryFn: async () => {
       const res = await fetch(`/api/pending-plant-receipts?indentId=${selectedIndentId}&status=pending`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedIndentId,
+  });
+
+  const { data: indentServiceCompletions = [] } = useQuery<any[]>({
+    queryKey: ["/api/service-completions", { indentId: selectedIndentId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/service-completions?indentId=${selectedIndentId}`, { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
@@ -1239,6 +1254,22 @@ export default function PurchaseIndents() {
     },
     onError: (err: Error) => {
       toast({ title: "Failed to record purchaser action", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const serviceCompletionMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/service-completion`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/service-completions", { indentId: selectedIndentId }] });
+      if (selectedIndentId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
+      }
+      setServiceCompletionItemId(null);
+      toast({ title: "Service completion recorded" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Verification failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -3689,8 +3720,12 @@ export default function PurchaseIndents() {
                                     <div>
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-sm font-semibold">{item.description}</span>
-                                        <Badge variant="outline" className={route === "bulk_plant" ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300" : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"}>
-                                          {route === "bulk_plant" ? "BULK MATERIAL" : "STORES"}
+                                        <Badge variant="outline" className={
+                                          route === "bulk_plant" ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300"
+                                          : route === "service" ? "text-violet-700 border-violet-300 bg-violet-50 dark:bg-violet-900/20 dark:text-violet-300"
+                                          : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"
+                                        }>
+                                          {route === "bulk_plant" ? "BULK MATERIAL" : route === "service" ? "SERVICE / HIRE" : "STORES"}
                                         </Badge>
                                       </div>
                                       <div className="flex gap-4 mt-1 text-sm text-muted-foreground">
@@ -4443,6 +4478,52 @@ export default function PurchaseIndents() {
                                   </div>
                                 )}
                               </div>
+                            ) : (item as any).procurementRoute === "service" && selectedIndent.status === "purchaser_actioned" ? (() => {
+                              const ps = (item.purchaseStatus || "").toUpperCase();
+                              const completion = indentServiceCompletions.find((c: any) => c.indentItemId === item.id);
+                              if (ps === "SERVICE_COMPLETED" || ps === "SERVICE_PARTLY_COMPLETED") {
+                                return (
+                                  <div className="pt-1">
+                                    <div className={`flex items-center gap-2 p-2 rounded-lg border text-sm ${ps === "SERVICE_COMPLETED" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
+                                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                      <span className="font-semibold text-xs">{ps === "SERVICE_COMPLETED" ? "Service Completed" : "Service Partly Completed"}</span>
+                                      {completion?.verifiedByName && <span className="text-xs ml-auto opacity-70">Verified by {completion.verifiedByName}</span>}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              if (ps === "AWAITING_SERVICE_VERIFICATION") {
+                                const purchasedBy = (item as any).purchasedBy ?? "";
+                                const isSelf = !isAdmin && purchasedBy && purchasedBy.toUpperCase() === (currentUser?.fullName || "").toUpperCase();
+                                if (isSelf) {
+                                  return (
+                                    <div className="pt-1">
+                                      <div className="flex items-center gap-2 p-2 rounded-lg bg-violet-50 border border-violet-200 text-violet-700 text-sm">
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                        <span className="font-semibold text-xs">Service — Awaiting Verification</span>
+                                        <span className="text-xs ml-auto opacity-70">Another approver must verify</span>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <div className="pt-1">
+                                    <Button
+                                      className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold"
+                                      onClick={() => {
+                                        setServiceCompletionItemId(item.id);
+                                        setServiceCompletionForm({ completionStatus: "completed", completionDate: format(new Date(), "yyyy-MM-dd"), qty: "", hours: "", remarks: "", documentUrl: "" });
+                                      }}
+                                      data-testid={`button-verify-service-${item.id}`}
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                                      Record Service Completion
+                                    </Button>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()
                             ) : (item as any).procurementRoute === "bulk_plant" && selectedIndent.status === "purchaser_actioned" ? (
                               <div className="pt-1">
                                 {(item.purchaseStatus || "").toLowerCase() === "pending_plant_receipt" ? (() => {
@@ -5164,6 +5245,78 @@ export default function PurchaseIndents() {
                 data-testid="button-save-new-store-item"
               >
                 {addStoreItemMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save as New Item"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Service / Hire — Completion Verification Dialog */}
+      <Dialog open={serviceCompletionItemId !== null} onOpenChange={(open) => { if (!open) setServiceCompletionItemId(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-violet-600" />
+              Record Service Completion
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-sm">COMPLETION STATUS *</Label>
+              <Select value={serviceCompletionForm.completionStatus} onValueChange={v => setServiceCompletionForm(f => ({ ...f, completionStatus: v }))}>
+                <SelectTrigger data-testid="select-service-completion-status"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="completed">Fully Completed</SelectItem>
+                  <SelectItem value="partly_completed">Partly Completed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">COMPLETION DATE</Label>
+              <Input type="date" value={serviceCompletionForm.completionDate} onChange={e => setServiceCompletionForm(f => ({ ...f, completionDate: e.target.value }))} data-testid="input-service-completion-date" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-sm">QTY / VALUE</Label>
+                <Input type="number" placeholder="e.g. 1" value={serviceCompletionForm.qty} onChange={e => setServiceCompletionForm(f => ({ ...f, qty: e.target.value }))} data-testid="input-service-completion-qty" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">HOURS (if applicable)</Label>
+                <Input type="number" placeholder="e.g. 8" value={serviceCompletionForm.hours} onChange={e => setServiceCompletionForm(f => ({ ...f, hours: e.target.value }))} data-testid="input-service-completion-hours" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">REMARKS</Label>
+              <Input placeholder="Any notes on service delivery" value={serviceCompletionForm.remarks} onChange={e => setServiceCompletionForm(f => ({ ...f, remarks: e.target.value }))} data-testid="input-service-completion-remarks" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">DOCUMENT URL</Label>
+              <Input placeholder="https://..." value={serviceCompletionForm.documentUrl} onChange={e => setServiceCompletionForm(f => ({ ...f, documentUrl: e.target.value }))} data-testid="input-service-completion-doc-url" />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setServiceCompletionItemId(null)}>Cancel</Button>
+              <Button
+                type="button"
+                className="bg-violet-600 hover:bg-violet-700 text-white"
+                disabled={!serviceCompletionForm.completionStatus || serviceCompletionMutation.isPending}
+                onClick={() => {
+                  if (!serviceCompletionItemId) return;
+                  const activeItem = selectedIndent?.items?.find((i: any) => i.id === serviceCompletionItemId);
+                  serviceCompletionMutation.mutate({
+                    indentItemId: serviceCompletionItemId,
+                    itemDescription: activeItem?.description,
+                    completionStatus: serviceCompletionForm.completionStatus,
+                    completionDate: serviceCompletionForm.completionDate || undefined,
+                    qty: serviceCompletionForm.qty ? Number(serviceCompletionForm.qty) : undefined,
+                    hours: serviceCompletionForm.hours ? Number(serviceCompletionForm.hours) : undefined,
+                    remarks: serviceCompletionForm.remarks || undefined,
+                    documentUrl: serviceCompletionForm.documentUrl || undefined,
+                  });
+                }}
+                data-testid="button-submit-service-completion"
+              >
+                {serviceCompletionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                Confirm Completion
               </Button>
             </div>
           </div>

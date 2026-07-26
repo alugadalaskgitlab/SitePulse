@@ -13,3 +13,4 @@
 - [Stock Ledger Locking](stock-ledger-locking.md) — _adjustStockBalance helper + numeric(20,6) columns; drizzle-kit push is interactive (--force not sufficient), use direct ALTER TABLE for unblocked schema migrations.
 - [Roads Pilot Role Templates](roads-pilot-role-templates.md) — ROLE_TEMPLATES + applyRoleTemplate() in shared/permissions.ts; Site Engineer has irn_raise but NOT purchase_indents_raise; PM has both.
 - [Dev/Prod Database Split](dev-prod-db-split.md) — Dev server uses sitelog_dev (DEV_DATABASE_URL, development-scoped env var); prod uses heliumdb (DATABASE_URL); server/db.ts reads DEV_DATABASE_URL||DATABASE_URL.
+- [Service Route SoD Pattern](service-route-sod.md) — purchaseIndentItems must be explicitly imported in routes.ts (not just aliased as purchaseIndentsTable); service items skip GRN/PPR, go to serviceCompletions with SoD-gated POST.

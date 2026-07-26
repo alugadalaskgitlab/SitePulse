@@ -68,6 +68,8 @@ import {
   type EditPermissionRequest,
   type InsertEditPermissionRequest,
   siteRequirements,
+  serviceCompletions,
+  type ServiceCompletion,
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
@@ -1170,6 +1172,8 @@ export interface IStorage {
   countPendingPlantReceipts(filters?: { status?: string }): Promise<number>;
   confirmPendingPlantReceipt(id: number, confirmedByUserId: number, confirmedBy: string): Promise<PendingPlantReceipt>;
   rejectPendingPlantReceipt(id: number, rejectionReason: string): Promise<PendingPlantReceipt>;
+  createServiceCompletion(data: { indentId: number; indentItemId: number; itemDescription?: string; completionStatus: string; completionDate?: string; qty?: number | null; hours?: number | null; remarks?: string; documentUrl?: string | null; verifiedByUserId: number; verifiedByName: string; createdByUserId: number }): Promise<ServiceCompletion>;
+  getServiceCompletions(indentId?: number): Promise<ServiceCompletion[]>;
   placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string; orderedQty?: number; orderedBy?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
   recordMaterialIndentReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; notes?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
   getPendingIndentsForMaterial(materialId: number): Promise<{ indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string; status: string; vendor: string | null; expectedDelivery: string | null; orderedQty: number | null }[]>;
@@ -9848,6 +9852,9 @@ export class DatabaseStorage implements IStorage {
         const [existing] = await tx.select({ totalPurchasedQty: purchaseIndentItems.totalPurchasedQty })
           .from(purchaseIndentItems).where(eq(purchaseIndentItems.id, item.itemId)).limit(1);
         const prevTotal = (existing?.totalPurchasedQty ?? 0);
+        const serviceStatusPatch = item.procurementRoute === "service"
+          ? { purchaseStatus: "AWAITING_SERVICE_VERIFICATION" as const }
+          : {};
         await tx.update(purchaseIndentItems)
           .set({
             totalPurchasedQty: prevTotal + item.qty,
@@ -9857,6 +9864,7 @@ export class DatabaseStorage implements IStorage {
             paymentMode: item.paymentMode ?? null,
             paidBy: item.paidBy ?? null,
             purchasedBy: actionBy.toUpperCase(),
+            ...serviceStatusPatch,
           })
           .where(eq(purchaseIndentItems.id, item.itemId));
       }
@@ -10225,6 +10233,51 @@ export class DatabaseStorage implements IStorage {
       .where(eq(pendingPlantReceipts.id, id))
       .returning();
     return updated;
+  }
+
+  async createServiceCompletion(data: {
+    indentId: number; indentItemId: number; itemDescription?: string;
+    completionStatus: string; completionDate?: string;
+    qty?: number | null; hours?: number | null; remarks?: string;
+    documentUrl?: string | null; verifiedByUserId: number; verifiedByName: string; createdByUserId: number;
+  }): Promise<ServiceCompletion> {
+    const [row] = await db.insert(serviceCompletions).values({
+      indentId: data.indentId,
+      indentItemId: data.indentItemId,
+      itemDescription: data.itemDescription ?? null,
+      completionStatus: data.completionStatus,
+      completionDate: data.completionDate ?? null,
+      qty: data.qty ?? null,
+      hours: data.hours ?? null,
+      remarks: data.remarks ?? null,
+      documentUrl: data.documentUrl ?? null,
+      verifiedByUserId: data.verifiedByUserId,
+      verifiedByName: data.verifiedByName.toUpperCase(),
+      createdByUserId: data.createdByUserId,
+    }).returning();
+    // Record transaction
+    await db.insert(piItemTransactions).values({
+      indentId: data.indentId,
+      indentItemId: data.indentItemId,
+      transactionType: "service_completion",
+      qty: data.qty ?? null,
+      remarks: data.remarks ?? null,
+      createdBy: data.verifiedByName.toUpperCase(),
+    });
+    // Update PI item purchase status
+    const newStatus = data.completionStatus === "completed" ? "SERVICE_COMPLETED" : "SERVICE_PARTLY_COMPLETED";
+    await db.update(purchaseIndentItems)
+      .set({ purchaseStatus: newStatus })
+      .where(eq(purchaseIndentItems.id, data.indentItemId));
+    await this.checkAndCompleteIndent(data.indentId);
+    return row;
+  }
+
+  async getServiceCompletions(indentId?: number): Promise<ServiceCompletion[]> {
+    const conds = indentId ? [eq(serviceCompletions.indentId, indentId)] : [];
+    return db.select().from(serviceCompletions)
+      .where(conds.length ? and(...conds) : undefined)
+      .orderBy(desc(serviceCompletions.createdAt));
   }
 
   async rejectPendingPlantReceipt(id: number, rejectionReason: string): Promise<PendingPlantReceipt> {
@@ -12332,6 +12385,28 @@ export class DatabaseStorage implements IStorage {
     async ensureSiteEnabledModulesColumn(): Promise<void> {
       await db.execute(sql.raw(`ALTER TABLE sites ADD COLUMN IF NOT EXISTS enabled_modules text[] NOT NULL DEFAULT '{}'`));
       console.log("ensureSiteEnabledModulesColumn: enabled_modules column verified/added on sites");
+    }
+
+    async ensureServiceCompletionsTable(): Promise<void> {
+      await db.execute(sql.raw(`
+        CREATE TABLE IF NOT EXISTS service_completions (
+          id serial PRIMARY KEY,
+          indent_id integer NOT NULL,
+          indent_item_id integer NOT NULL,
+          item_description text,
+          completion_status text NOT NULL,
+          completion_date date,
+          qty real,
+          hours real,
+          remarks text,
+          document_url text,
+          verified_by_user_id integer,
+          verified_by_name text,
+          created_by_user_id integer,
+          created_at timestamp DEFAULT now()
+        )
+      `));
+      console.log("ensureServiceCompletionsTable: table ensured");
     }
 
     async ensurePendingPlantReceiptsTable(): Promise<void> {

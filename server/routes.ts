@@ -16,7 +16,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems } from "@shared/schema";
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -6827,6 +6827,57 @@ export async function registerRoutes(
       res.json(indent);
     } catch (err) {
       console.error("POST /api/purchase-indents/:id/purchaser-action:", err);
+      res.status(500).json({ message: String((err as Error).message) });
+    }
+  });
+
+  app.post("/api/purchase-indents/:id/service-completion", async (req, res) => {
+    try {
+      const indentId = Number(req.params.id);
+      const verifiedBy = currentUserName(req);
+      const verifiedByUserId = req.authUser?.id ?? 0;
+      const isAdmin = req.authUser?.isAdmin ?? false;
+      const { indentItemId, completionStatus, completionDate, qty, hours, remarks, documentUrl } = req.body;
+      if (!indentItemId || !completionStatus) {
+        return res.status(400).json({ message: "indentItemId and completionStatus required" });
+      }
+      // SoD: verifier cannot be the same person who submitted PA
+      if (!isAdmin) {
+        const [piItem] = await db.select({ purchasedBy: purchaseIndentItems.purchasedBy })
+          .from(purchaseIndentItems).where(eq(purchaseIndentItems.id, Number(indentItemId))).limit(1);
+        if (piItem?.purchasedBy && piItem.purchasedBy.toUpperCase() === verifiedBy.toUpperCase()) {
+          return res.status(409).json({ message: "Separation of Duties: You cannot verify a service you submitted. Ask another authorised user to confirm." });
+        }
+      }
+      const result = await storage.createServiceCompletion({
+        indentId,
+        indentItemId: Number(indentItemId),
+        itemDescription: req.body.itemDescription,
+        completionStatus,
+        completionDate: completionDate ?? null,
+        qty: qty != null ? Number(qty) : null,
+        hours: hours != null ? Number(hours) : null,
+        remarks: remarks ?? null,
+        documentUrl: documentUrl ?? null,
+        verifiedByUserId,
+        verifiedByName: verifiedBy,
+        createdByUserId: verifiedByUserId,
+      });
+      const indent = await storage.getPurchaseIndent(indentId);
+      res.json({ completion: result, indent });
+    } catch (err) {
+      console.error("POST /api/purchase-indents/:id/service-completion:", err);
+      res.status(500).json({ message: String((err as Error).message) });
+    }
+  });
+
+  app.get("/api/service-completions", async (req, res) => {
+    try {
+      const indentId = req.query.indentId ? parseInt(req.query.indentId as string) : undefined;
+      const completions = await storage.getServiceCompletions(indentId);
+      res.json(completions);
+    } catch (err) {
+      console.error("GET /api/service-completions:", err);
       res.status(500).json({ message: String((err as Error).message) });
     }
   });

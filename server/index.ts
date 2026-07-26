@@ -208,6 +208,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    await (storage as any).ensureServiceCompletionsTable();
+    console.log("Startup: ensureServiceCompletionsTable — Batch 13 table ensured");
+  } catch (e) {
+    console.error("Startup: Failed to ensure service_completions table:", e);
+  }
+
+  try {
     await (storage as any).ensureEquipmentUsageAuditColumns();
     console.log("Startup: ensureEquipmentUsageAuditColumns — audit columns verified");
   } catch (e) {

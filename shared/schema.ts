@@ -3244,6 +3244,33 @@ export type InsertPendingPlantReceipt = z.infer<typeof insertPendingPlantReceipt
 
 // ============================================
 
+// ============================================
+// SERVICE COMPLETIONS
+// Verification events for service/hire PI items (no GRN — completion verified by non-submitter)
+// ============================================
+export const serviceCompletions = pgTable("service_completions", {
+  id: serial("id").primaryKey(),
+  indentId: integer("indent_id").notNull(),
+  indentItemId: integer("indent_item_id").notNull(),
+  itemDescription: text("item_description"),
+  completionStatus: text("completion_status").notNull(), // "completed" | "partly_completed"
+  completionDate: date("completion_date"),
+  qty: real("qty"),
+  hours: real("hours"),
+  remarks: text("remarks"),
+  documentUrl: text("document_url"),
+  verifiedByUserId: integer("verified_by_user_id"),
+  verifiedByName: text("verified_by_name"),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertServiceCompletionSchema = createInsertSchema(serviceCompletions).omit({ id: true, createdAt: true });
+export type ServiceCompletion = typeof serviceCompletions.$inferSelect;
+export type InsertServiceCompletion = z.infer<typeof insertServiceCompletionSchema>;
+
+// ============================================
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
