@@ -669,6 +669,11 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   enteredBy: text("entered_by"), // Supervisor name
   notes: text("notes"),
   workType: text("work_type"), // "road" | "structure"
+  // PI linkage — set when this trip is logged against a Purchase Indent (material route, site destination)
+  indentId: integer("indent_id"),
+  indentItemId: integer("indent_item_id"),
+  piTransactionId: integer("pi_transaction_id"),
+  pendingReceiptId: integer("pending_receipt_id"),
   createdAt: timestamp("created_at").defaultNow(),
   ...cancellationFields,
 }, (table) => ({

@@ -468,7 +468,9 @@ export async function registerRoutes(
         material: req.query.material as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
-        ...(permittedSiteNames !== null ? { permittedSiteNames } : {}),
+        indentItemId: req.query.indentItemId ? parseInt(req.query.indentItemId as string) : undefined,
+        indentId: req.query.indentId ? parseInt(req.query.indentId as string) : undefined,
+        ...(permittedSiteNames !== null && !req.query.indentItemId && !req.query.indentId ? { permittedSiteNames } : {}),
       };
       const trips = await storage.getSiteMaterialTrips(filters);
       res.json(trips);

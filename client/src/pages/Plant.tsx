@@ -2934,11 +2934,11 @@ export function MaterialMaster() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="stores">Stores / Spares / Tools / Consumables</SelectItem>
-                    <SelectItem value="bulk_plant">Bulk Material</SelectItem>
+                    <SelectItem value="material">Bulk Material</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  {procurementRoute === "bulk_plant" ? "Goes directly to Plant Material Receipt after purchaser action." : "Goes through Stores handover → GRN after purchaser action."}
+                  {(procurementRoute === "material" || procurementRoute === "bulk_plant") ? "Goes directly to Plant/Site Material Receipt after purchaser action." : "Goes through Stores handover → GRN after purchaser action."}
                 </p>
               </div>
 

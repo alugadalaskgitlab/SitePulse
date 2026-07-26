@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link, useSearch } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { format } from "date-fns";
 import { Plus, Trash2, Loader2, ArrowLeft, Truck, Package, Camera, ImagePlus, X, History, Ban } from "lucide-react";
 import CancelDialog from "@/components/CancelDialog";
@@ -27,14 +27,28 @@ export default function SiteMaterialTrips() {
   const { toast } = useToast();
   const { companyName, logoFile } = useFeatureFlags();
   const searchString = useSearch();
-  const returnTo = (() => {
+  const [, navigate] = useLocation();
+  const piParams = (() => {
     try {
       const p = new URLSearchParams(searchString || "");
-      return decodeURIComponent(p.get("returnTo") || "") || "/site/hub";
+      return {
+        piIndentId: p.get("piIndentId") ? parseInt(p.get("piIndentId")!) : null,
+        piItemId: p.get("piItemId") ? parseInt(p.get("piItemId")!) : null,
+        pendingReceiptId: p.get("pendingReceiptId") ? parseInt(p.get("pendingReceiptId")!) : null,
+        material: decodeURIComponent(p.get("material") || ""),
+        supplier: decodeURIComponent(p.get("supplier") || ""),
+        qty: p.get("qty") || "",
+        uom: decodeURIComponent(p.get("uom") || ""),
+        site: decodeURIComponent(p.get("site") || ""),
+        returnTo: decodeURIComponent(p.get("returnTo") || "") || "/site/hub",
+      };
     } catch {
-      return "/site/hub";
+      return { piIndentId: null, piItemId: null, pendingReceiptId: null, material: "", supplier: "", qty: "", uom: "", site: "", returnTo: "/site/hub" };
     }
   })();
+  const isPILinked = !!piParams.piIndentId && !!piParams.piItemId;
+  const returnTo = piParams.returnTo;
+
   const { data: sitesList = [] } = useQuery<Site[]>({
     queryKey: ["/api/sites"],
   });
@@ -43,17 +57,17 @@ export default function SiteMaterialTrips() {
   const currentTime = format(new Date(), "HH:mm");
 
   const [dateFilter, setDateFilter] = useState(today);
-  const [siteFilter, setSiteFilter] = useState("");
-  
+  const [siteFilter, setSiteFilter] = useState(piParams.site || "");
+
   const [newTrip, setNewTrip] = useState({
     date: today,
     time: currentTime,
-    site: "",
-    material: "",
-    supplier: "",
+    site: piParams.site || "",
+    material: piParams.material || "",
+    supplier: piParams.supplier || "",
     vehicleNumber: "",
-    quantity: "",
-    uom: "CFT",
+    quantity: piParams.qty || "",
+    uom: piParams.uom || "CFT",
     location: "",
     receiptNumber: "",
     enteredBy: "",
@@ -118,10 +132,16 @@ export default function SiteMaterialTrips() {
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof newTrip) => {
-      const res = await apiRequest("POST", "/api/site-material-trips", {
+      const payload: Record<string, any> = {
         ...data,
         quantity: parseFloat(data.quantity) || 0,
-      });
+      };
+      if (isPILinked) {
+        payload.indentId = piParams.piIndentId;
+        payload.indentItemId = piParams.piItemId;
+        payload.pendingReceiptId = piParams.pendingReceiptId || undefined;
+      }
+      const res = await apiRequest("POST", "/api/site-material-trips", payload);
       return res.json();
     },
     onSuccess: async (trip: any) => {
@@ -134,21 +154,38 @@ export default function SiteMaterialTrips() {
       queryClient.invalidateQueries({ predicate: (q) =>
         typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/materials-received")
       });
+      if (isPILinked) {
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+        queryClient.invalidateQueries({ predicate: (q) =>
+          typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/purchase-indents")
+        });
+      }
       toast({ title: "Trip Logged", description: "Material trip has been recorded successfully." });
-      setNewTrip({
-        date: today,
-        time: format(new Date(), "HH:mm"),
-        site: newTrip.site,
-        material: "",
-        supplier: "",
-        vehicleNumber: "",
-        quantity: "",
-        uom: "CFT",
-        location: "",
-        receiptNumber: "",
-        enteredBy: newTrip.enteredBy,
-        notes: "",
-      });
+      if (isPILinked) {
+        // In PI-linked mode reset material/qty but keep site + PI context for next truckload
+        setNewTrip(prev => ({
+          ...prev,
+          vehicleNumber: "",
+          quantity: "",
+          receiptNumber: "",
+          notes: "",
+        }));
+      } else {
+        setNewTrip({
+          date: today,
+          time: format(new Date(), "HH:mm"),
+          site: newTrip.site,
+          material: "",
+          supplier: "",
+          vehicleNumber: "",
+          quantity: "",
+          uom: "CFT",
+          location: "",
+          receiptNumber: "",
+          enteredBy: newTrip.enteredBy,
+          notes: "",
+        });
+      }
     },
     onError: (error) => {
       toast({ title: "Error", description: "Failed to log material trip.", variant: "destructive" });
@@ -230,6 +267,18 @@ export default function SiteMaterialTrips() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {isPILinked && (
+              <div className="mb-4 p-3 rounded-lg bg-teal-50 border border-teal-200 dark:bg-teal-900/20 dark:border-teal-800 text-sm text-teal-700 dark:text-teal-300 flex items-start gap-2">
+                <Truck className="w-4 h-4 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold">PI-Linked Delivery — log each truckload below</p>
+                  <p className="text-xs mt-0.5 text-teal-600 dark:text-teal-400">
+                    Material: <strong>{piParams.material}</strong> · Site: <strong>{piParams.site}</strong> · Remaining: <strong>{piParams.qty} {piParams.uom}</strong>
+                  </p>
+                </div>
+                <button type="button" onClick={() => navigate(returnTo)} className="text-teal-500 hover:text-teal-700 text-xs underline shrink-0">← Back to PI</button>
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>

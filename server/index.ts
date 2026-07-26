@@ -215,6 +215,20 @@ app.use((req, res, next) => {
   }
 
   try {
+    await (storage as any).ensureSiteMaterialTripsLinkageColumns();
+    console.log("Startup: ensureSiteMaterialTripsLinkageColumns — Batch 14 columns ensured");
+  } catch (e) {
+    console.error("Startup: Failed to ensure site_material_trips linkage columns:", e);
+  }
+
+  try {
+    const updated = await (storage as any).migrateBulkPlantToMaterial();
+    if (updated > 0) console.log(`Startup: migrateBulkPlantToMaterial — renamed ${updated} item(s) from bulk_plant → material`);
+  } catch (e) {
+    console.error("Startup: Failed to migrate bulk_plant → material:", e);
+  }
+
+  try {
     await (storage as any).ensureEquipmentUsageAuditColumns();
     console.log("Startup: ensureEquipmentUsageAuditColumns — audit columns verified");
   } catch (e) {

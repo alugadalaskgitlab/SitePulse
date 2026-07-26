@@ -1100,7 +1100,7 @@ export interface IStorage {
   updateSitePurchase(id: number, data: { itemDescription?: string; quantity?: number | null; uom?: string | null; vendor?: string | null; billNo?: string | null; amount?: number | null }): Promise<any>;
 
   // Site Material Trips (Quick Entry)
-  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
+  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; indentItemId?: number; indentId?: number; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
@@ -7862,13 +7862,15 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<SiteMaterialTrip[]> {
+  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; indentItemId?: number; indentId?: number; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<SiteMaterialTrip[]> {
     let conditions = [];
     
     if (filters?.site) conditions.push(eq(siteMaterialTrips.site, filters.site));
     if (filters?.material) conditions.push(eq(siteMaterialTrips.material, filters.material));
     if (filters?.dateFrom) conditions.push(gte(siteMaterialTrips.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(siteMaterialTrips.date, filters.dateTo));
+    if (filters?.indentItemId) conditions.push(eq(siteMaterialTrips.indentItemId, filters.indentItemId));
+    if (filters?.indentId) conditions.push(eq(siteMaterialTrips.indentId, filters.indentId));
     if (!filters?.includeCancelled) {
       conditions.push(eq(siteMaterialTrips.isCancelled, false));
       conditions.push(eq(siteMaterialTrips.isDeleted, false));
@@ -7888,7 +7890,60 @@ export class DatabaseStorage implements IStorage {
 
   async createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip> {
     const [trip] = await db.insert(siteMaterialTrips).values(data).returning();
+    // If this trip is linked to a PI item, recompute receipt completion
+    if (trip.indentItemId) {
+      await this.checkSiteDeliveryCompletion(trip.indentItemId).catch(e =>
+        console.error("checkSiteDeliveryCompletion error:", e)
+      );
+    }
     return trip;
+  }
+
+  private async checkSiteDeliveryCompletion(indentItemId: number): Promise<void> {
+    // Sum all non-cancelled trips linked to this PI item
+    const [sumRow] = await db.select({
+      total: sql<number>`COALESCE(SUM(${siteMaterialTrips.quantity}), 0)::real`,
+    })
+      .from(siteMaterialTrips)
+      .where(and(
+        eq(siteMaterialTrips.indentItemId, indentItemId),
+        eq(siteMaterialTrips.isCancelled, false),
+        eq(siteMaterialTrips.isDeleted, false),
+      ));
+    const totalDelivered = sumRow?.total ?? 0;
+
+    const [piItem] = await db.select({
+      id: purchaseIndentItems.id,
+      indentId: purchaseIndentItems.indentId,
+      totalPurchasedQty: purchaseIndentItems.totalPurchasedQty,
+      purchaseStatus: purchaseIndentItems.purchaseStatus,
+    }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, indentItemId)).limit(1);
+    if (!piItem?.indentId) return;
+
+    const purchasedQty = piItem.totalPurchasedQty ?? 0;
+    if (purchasedQty <= 0) return;
+
+    const newStatus = totalDelivered >= purchasedQty ? "PURCHASED" : "PARTIAL";
+    await db.update(purchaseIndentItems)
+      .set({ totalAcceptedQty: totalDelivered, purchaseStatus: newStatus })
+      .where(eq(purchaseIndentItems.id, indentItemId));
+
+    if (newStatus === "PURCHASED") {
+      // Auto-confirm the linked pending receipt
+      await db.update(pendingPlantReceipts)
+        .set({ status: "confirmed", confirmedAt: new Date(), confirmedBy: "SITE-AUTO", confirmedByUserId: 0 })
+        .where(and(
+          eq(pendingPlantReceipts.indentItemId, indentItemId),
+          eq(pendingPlantReceipts.status, "pending"),
+        ));
+      await db.update(purchaseIndents)
+        .set({ status: "purchasing" })
+        .where(and(
+          eq(purchaseIndents.id, piItem.indentId),
+          inArray(purchaseIndents.status, ["purchaser_actioned", "purchasing", "approved"])
+        ));
+      await this.checkAndCompleteIndent(piItem.indentId);
+    }
   }
 
   async updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip> {
@@ -9594,7 +9649,7 @@ export class DatabaseStorage implements IStorage {
             estRate: item.estRate ?? null,
             estAmount: item.estAmount ?? null,
             requiredBy: item.requiredBy || null,
-            procurementRoute: piType === "material" ? "bulk_plant" : ((item as any).procurementRoute || null),
+            procurementRoute: piType === "material" ? "material" : ((item as any).procurementRoute || null),
           }))
         ).returning();
       }
@@ -10190,6 +10245,7 @@ export class DatabaseStorage implements IStorage {
     const [ppr] = await db.select().from(pendingPlantReceipts).where(eq(pendingPlantReceipts.id, id)).limit(1);
     if (!ppr) throw new Error(`Pending plant receipt #${id} not found`);
     if (ppr.status !== "pending") throw new Error(`Receipt #${id} is already ${ppr.status}`);
+    if (ppr.receivingLocation === "site") throw new Error(`Receipt #${id} is a site-destination receipt and must be fulfilled via Site Material Received logs, not plant confirmation.`);
     if (!ppr.materialId) throw new Error(`Receipt #${id} has no plant material linked — cannot post to stock. Ask an admin to link the material.`);
     const receipt = await this.createMaterialReceipt({
       date: ppr.purchaseDate ?? format(new Date(), "yyyy-MM-dd"),
@@ -10285,6 +10341,25 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(serviceCompletions)
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(desc(serviceCompletions.createdAt));
+  }
+
+  async ensureSiteMaterialTripsLinkageColumns() {
+    await db.execute(sql.raw(`
+      ALTER TABLE site_material_trips
+        ADD COLUMN IF NOT EXISTS indent_id integer,
+        ADD COLUMN IF NOT EXISTS indent_item_id integer,
+        ADD COLUMN IF NOT EXISTS pi_transaction_id integer,
+        ADD COLUMN IF NOT EXISTS pending_receipt_id integer
+    `));
+  }
+
+  async migrateBulkPlantToMaterial(): Promise<number> {
+    const result = await db.execute(sql.raw(`
+      UPDATE purchase_indent_items
+      SET procurement_route = 'material'
+      WHERE procurement_route = 'bulk_plant'
+    `));
+    return (result as any).rowCount ?? 0;
   }
 
   async rejectPendingPlantReceipt(id: number, rejectionReason: string): Promise<PendingPlantReceipt> {

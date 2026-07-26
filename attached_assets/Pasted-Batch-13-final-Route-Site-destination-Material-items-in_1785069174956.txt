@@ -1,0 +1,12 @@
+Batch 13 (final): Route Site-destination Material items into the existing Site Material Received flow
+
+Priority fix — do not touch the Store GRN or Service/Hire paths, both already correct.
+
+When a Material item's receiving location is "Site", its pending receipt must not go through confirmPendingPlantReceipt/createMaterialReceipt (which always posts to plant stock, ignoring the actual site). Instead, open the existing Site Material Received form, pre-filled with vendor, quantity, and rate already captured.
+Add proper linkage fields to site_material_trips: PI ID, PI item ID, the purchase action/transaction ID, and the pending receipt ID. Every Site Material Received entry created from a PI must carry these, so purchased/received/balance quantities and pending-receipt status can be tracked by these IDs — never by matching material name or description alone.
+Support multiple truckloads against one PI item. The pending Site receipt should stay open, and multiple Site Material Received entries can be logged against the same linked PI item, each adding to the received quantity. The PI item should only be marked fully received once the total received quantity meets the purchased quantity — or the remaining balance is formally closed/cancelled with a reason. The first truckload must not automatically close out the whole line.
+Only when the receiving location is "HMP Plant" or "RMC Plant" should the current confirmation path (requiring plant_materials permission) apply — that part is correct as-is.
+Fix the label wherever it currently always says "Awaiting Plant Receipt" — it should read "Awaiting Site Material Receipt — [site name]" when the destination is a site.
+Rename the underlying route value from bulk_plant to material, since it now legitimately covers both plant and site destinations.
+
+Given this touches real stock posting and now spans multiple deliveries against one purchase, please test end-to-end on dev: create a Material PI item with Site destination and a purchased quantity of, say, 100 units; log two separate Site Material Received entries of 60 and 40; confirm the PI item only shows fully received after both, with the balance correctly tracked in between — and confirm nothing posts to "Main Plant" for a site destination.

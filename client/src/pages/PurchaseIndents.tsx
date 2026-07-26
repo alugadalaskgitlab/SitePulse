@@ -1066,6 +1066,13 @@ export default function PurchaseIndents() {
     },
   });
 
+  // Site trips linked to the currently selected indent (for balance tracking on site-destination material items)
+  const { data: indentSiteTrips = [] } = useQuery<any[]>({
+    queryKey: ["/api/site-material-trips", { indentId: selectedIndentId }],
+    queryFn: () => fetch(`/api/site-material-trips?indentId=${selectedIndentId}`, { credentials: "include" }).then(r => r.json()),
+    enabled: !!selectedIndentId && (view === "purchase" || view === "procurement"),
+  });
+
   const indentRefForGrns = (view === "purchase" || view === "procurement") ? selectedIndent?.indentNo : undefined;
   const { data: linkedGrns = [] } = useQuery<{ id: number; grnNumber: string; date: string; supplier: string; acceptanceStatus: string; itemCount: number }[]>({
     queryKey: ["/api/stores/grns", "linked", indentRefForGrns ?? ""],
@@ -1284,7 +1291,7 @@ export default function PurchaseIndents() {
       }
       setBulkReceiptOpen(false);
       setBulkReceiptData({});
-      toast({ title: "Receipt submitted — awaiting plant staff confirmation", description: "The receipt will appear in the Pending Plant Receipts queue for a plant authority to confirm." });
+      toast({ title: "Receipt submitted", description: "For plant destinations it will appear in the Pending Plant Receipts queue. For site destinations, use 'Log Site Delivery' to record each truckload." });
     },
     onError: (err: Error) => {
       toast({ title: "Failed to submit plant receipt", description: err.message, variant: "destructive" });
@@ -1601,7 +1608,7 @@ export default function PurchaseIndents() {
   };
 
   const openIndentForm = (type: "stores" | "material") => {
-    const defaultRoute = type === "material" ? "bulk_plant" : "stores";
+    const defaultRoute = type === "material" ? "material" : "stores";
     setFormDate(format(new Date(), "yyyy-MM-dd"));
     setFormProposedBy("");
     setFormRaisedBy("");
@@ -1615,7 +1622,7 @@ export default function PurchaseIndents() {
   };
 
   const addItemRow = () => {
-    const defaultRoute = formPiType === "material" ? "bulk_plant" : "stores";
+    const defaultRoute = formPiType === "material" ? "material" : "stores";
     setFormItems([...formItems, { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: defaultRoute }]);
   };
 
@@ -2677,7 +2684,7 @@ export default function PurchaseIndents() {
                       onClick={() => {
                         const next = formPiType === "material" ? "stores" : "material";
                         setFormPiType(next);
-                        const defaultRoute = next === "material" ? "bulk_plant" : "stores";
+                        const defaultRoute = next === "material" ? "material" : "stores";
                         setFormItems(prev => prev.map(it => ({ ...it, procurementRoute: defaultRoute })));
                       }}
                       data-testid="button-change-pi-type"
@@ -2851,7 +2858,7 @@ export default function PurchaseIndents() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="stores">STORES</SelectItem>
-                              <SelectItem value="bulk_plant">BULK MATERIAL</SelectItem>
+                              <SelectItem value="material">BULK MATERIAL</SelectItem>
                               <SelectItem value="service">SERVICE / HIRE</SelectItem>
                             </SelectContent>
                           </Select>
@@ -3727,11 +3734,11 @@ export default function PurchaseIndents() {
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-sm font-semibold">{item.description}</span>
                                         <Badge variant="outline" className={
-                                          route === "bulk_plant" ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300"
+                                          (route === "material" || route === "bulk_plant") ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300"
                                           : route === "service" ? "text-violet-700 border-violet-300 bg-violet-50 dark:bg-violet-900/20 dark:text-violet-300"
                                           : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"
                                         }>
-                                          {route === "bulk_plant" ? "BULK MATERIAL" : route === "service" ? "SERVICE / HIRE" : "STORES"}
+                                          {(route === "material" || route === "bulk_plant") ? "BULK MATERIAL" : route === "service" ? "SERVICE / HIRE" : "STORES"}
                                         </Badge>
                                       </div>
                                       <div className="flex gap-4 mt-1 text-sm text-muted-foreground">
@@ -3881,8 +3888,8 @@ export default function PurchaseIndents() {
                           const route = (relItem as any).procurementRoute as string;
                           return (
                             <div key={idx} className="flex items-center gap-3 text-sm p-2 bg-violet-50 dark:bg-violet-900/10 rounded-lg flex-wrap">
-                              <Badge variant="outline" className={route === "bulk_plant" ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300" : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"} >
-                                {route === "bulk_plant" ? "BULK MATERIAL" : "STORES"}
+                              <Badge variant="outline" className={(route === "material" || route === "bulk_plant") ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300" : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"} >
+                                {(route === "material" || route === "bulk_plant") ? "BULK MATERIAL" : "STORES"}
                               </Badge>
                               <span className="font-medium flex-1 min-w-0 truncate">{relItem.description}</span>
                               <span className="text-muted-foreground">{tx.qty} {relItem.uom}</span>
@@ -4537,23 +4544,54 @@ export default function PurchaseIndents() {
                               }
                               return null;
                             })()
-                            ) : (item as any).procurementRoute === "bulk_plant" && selectedIndent.status === "purchaser_actioned" ? (
+                            : ((item as any).procurementRoute === "material" || (item as any).procurementRoute === "bulk_plant") && selectedIndent.status === "purchaser_actioned" ? (
                               <div className="pt-1">
                                 {(item.purchaseStatus || "").toLowerCase() === "pending_plant_receipt" ? (() => {
                                   const ppr = indentPendingPPRs.find((r: any) => r.indentItemId === item.id);
-                                  const locLabels: Record<string, string> = { hmp_plant: "HMP Plant", rmc_plant: "RMC Plant", site: "Site" };
-                                  const locName = ppr?.receivingLocation === "site" && ppr?.receivingSiteId
-                                    ? (allSites.find(s => s.id === ppr.receivingSiteId)?.name ?? `Site #${ppr.receivingSiteId}`)
+                                  const isSite = ppr?.receivingLocation === "site";
+                                  const receivingSite = allSites.find(s => s.id === ppr?.receivingSiteId);
+                                  const locLabels: Record<string, string> = { hmp_plant: "HMP Plant", rmc_plant: "RMC Plant" };
+                                  const locName = isSite
+                                    ? (receivingSite?.name ?? `Site #${ppr?.receivingSiteId}`)
                                     : (locLabels[ppr?.receivingLocation ?? "hmp_plant"] ?? "HMP Plant");
+                                  if (isSite) {
+                                    const itemTrips = indentSiteTrips.filter((t: any) => t.indentItemId === item.id);
+                                    const totalDelivered = itemTrips.reduce((sum: number, t: any) => sum + (t.quantity || 0), 0);
+                                    const purchasedQty = ppr?.qty ?? (item as any).totalPurchasedQty ?? 0;
+                                    const balance = Math.max(0, purchasedQty - totalDelivered);
+                                    return (
+                                      <div className="space-y-1.5">
+                                        <div className="flex items-center gap-2 p-2 rounded-lg bg-teal-50 border border-teal-200 dark:bg-teal-900/20 dark:border-teal-800 text-sm text-teal-700 dark:text-teal-300">
+                                          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                          <span className="font-semibold text-xs">Awaiting Site Material Receipt — {locName}</span>
+                                          <span className="text-xs ml-auto text-teal-600">{totalDelivered}/{purchasedQty} {item.uom} received</span>
+                                        </div>
+                                        {balance > 0 && (
+                                          <Button
+                                            size="sm"
+                                            className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs"
+                                            onClick={() => {
+                                              const url = `/site/material-trips?piIndentId=${selectedIndentId}&piItemId=${item.id}&pendingReceiptId=${ppr?.id ?? ""}&material=${encodeURIComponent(item.description)}&supplier=${encodeURIComponent(ppr?.vendor || "")}&qty=${balance}&uom=${encodeURIComponent(item.uom)}&site=${encodeURIComponent(receivingSite?.name ?? "")}`;
+                                              navigate(url);
+                                            }}
+                                            data-testid={`button-log-site-delivery-${item.id}`}
+                                          >
+                                            <Warehouse className="w-3 h-3 mr-1.5" />
+                                            Log Site Delivery ({balance} {item.uom} remaining)
+                                          </Button>
+                                        )}
+                                      </div>
+                                    );
+                                  }
                                   return (
-                                  <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-300">
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                                    <span className="font-semibold text-xs">Awaiting Plant Receipt — {locName}</span>
-                                    <span className="text-xs ml-auto text-amber-500">Pending confirmation</span>
-                                  </div>
+                                    <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-300">
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                      <span className="font-semibold text-xs">Awaiting Plant Receipt — {locName}</span>
+                                      <span className="text-xs ml-auto text-amber-500">Pending plant confirmation</span>
+                                    </div>
                                   );
                                 })()
-                                ) : (
+                                : (
                                   <Button
                                     className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold"
                                     onClick={() => {
@@ -4566,7 +4604,7 @@ export default function PurchaseIndents() {
                                     data-testid={`button-bulk-receipt-${item.id}`}
                                   >
                                     <Warehouse className="w-3.5 h-3.5 mr-1.5" />
-                                    Submit Plant Receipt
+                                    Submit Material Receipt
                                   </Button>
                                 )}
                               </div>
@@ -4636,7 +4674,7 @@ export default function PurchaseIndents() {
             <DialogTitle>SUBMIT PLANT MATERIAL RECEIPT</DialogTitle>
           </DialogHeader>
           {selectedIndent && (() => {
-            const bulkItems = selectedIndent.items.filter(i => (i as any).procurementRoute === "bulk_plant" && !["cancelled", "closed"].includes((i as any).status || "") && (i.purchaseStatus || "").toLowerCase() !== "pending_plant_receipt");
+            const bulkItems = selectedIndent.items.filter(i => ((i as any).procurementRoute === "material" || (i as any).procurementRoute === "bulk_plant") && !["cancelled", "closed"].includes((i as any).status || "") && (i.purchaseStatus || "").toLowerCase() !== "pending_plant_receipt");
             if (bulkItems.length === 0) return <p className="text-sm text-muted-foreground">No bulk plant items pending receipt.</p>;
             return (
               <div className="space-y-4">
