@@ -46,6 +46,12 @@ export default function StoresHub() {
   });
   const pendingReceiptCount = pendingReceiptData?.count ?? 0;
 
+  const { data: pendingPlantReceiptData } = useQuery<{ count: number }>({
+    queryKey: ["/api/pending-plant-receipts/count"],
+    enabled: canBulk,
+  });
+  const pendingPlantReceiptCount = pendingPlantReceiptData?.count ?? 0;
+
   const { data: irns = [] } = useQuery<any[]>({
     queryKey: ["/api/irn"],
     queryFn: async () => {
@@ -254,6 +260,16 @@ export default function StoresHub() {
                 description="Return borrowed material between contractor parties"
                 accent="slate"
                 iconBg="bg-slate-100"
+                enabled={canBulk}
+              />
+              <HubActionTile
+                href="/stores/pending-plant-receipts"
+                icon={Inbox}
+                title="Pending Plant Receipts"
+                description="Bulk material receipts submitted by purchasers awaiting plant-staff confirmation before entering stock"
+                accent="amber"
+                iconBg="bg-amber-100"
+                badge={pendingPlantReceiptCount > 0 ? `${pendingPlantReceiptCount} pending` : undefined}
                 enabled={canBulk}
               />
             </div>

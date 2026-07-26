@@ -147,6 +147,9 @@ import {
   purchaseIndentItems,
   purchaseIndentItemHistory,
   piItemTransactions,
+  pendingPlantReceipts,
+  type PendingPlantReceipt,
+  type InsertPendingPlantReceipt,
   type PiItemTransaction,
   type PurchaseIndent,
   type PurchaseIndentItem,
@@ -1162,6 +1165,11 @@ export interface IStorage {
   submitPurchaserAction(indentId: number, items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string }[], actionBy: string): Promise<void>;
   submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
   recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<void>;
+  submitBulkReceiptAsPending(indentId: number, receivingLocation: string, items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string }[], createdByUserId: number, createdBy: string): Promise<void>;
+  getPendingPlantReceipts(filters?: { status?: string; receivingLocation?: string; siteId?: number; indentId?: number }): Promise<PendingPlantReceipt[]>;
+  countPendingPlantReceipts(filters?: { status?: string }): Promise<number>;
+  confirmPendingPlantReceipt(id: number, confirmedByUserId: number, confirmedBy: string): Promise<PendingPlantReceipt>;
+  rejectPendingPlantReceipt(id: number, rejectionReason: string): Promise<PendingPlantReceipt>;
   placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string; orderedQty?: number; orderedBy?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
   recordMaterialIndentReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; notes?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
   getPendingIndentsForMaterial(materialId: number): Promise<{ indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string; status: string; vendor: string | null; expectedDelivery: string | null; orderedQty: number | null }[]>;
@@ -10083,6 +10091,152 @@ export class DatabaseStorage implements IStorage {
     await this.checkAndCompleteIndent(indentId);
   }
 
+  async submitBulkReceiptAsPending(
+    indentId: number,
+    receivingLocation: string,
+    items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string }[],
+    createdByUserId: number,
+    createdBy: string
+  ): Promise<void> {
+    const existing = await this.getPurchaseIndent(indentId);
+    if (!existing) throw new Error(`Indent ${indentId} not found`);
+    const validItemIds = new Set(existing.items.map(i => i.id));
+    for (const item of items) {
+      if (!validItemIds.has(item.itemId)) {
+        throw new Error(`Item ${item.itemId} does not belong to indent ${indentId}`);
+      }
+    }
+    for (const item of items) {
+      const piItem = existing.items.find(i => i.id === item.itemId);
+      await db.insert(pendingPlantReceipts).values({
+        indentId,
+        indentNo: existing.indentNo,
+        indentItemId: item.itemId,
+        materialName: item.materialName || piItem?.description || "",
+        materialId: item.materialId ?? piItem?.materialId ?? null,
+        qty: item.qty,
+        uom: item.uom,
+        vendor: item.vendor?.toUpperCase() ?? null,
+        rate: item.rate ?? null,
+        paymentMode: item.paymentMode ?? null,
+        purchaseDate: item.purchaseDate ?? null,
+        receivingLocation,
+        remarks: item.remarks ?? null,
+        createdByUserId,
+        createdBy: createdBy.toUpperCase(),
+        status: "pending",
+      });
+      await db.update(purchaseIndentItems)
+        .set({ purchaseStatus: "PENDING_PLANT_RECEIPT" })
+        .where(eq(purchaseIndentItems.id, item.itemId));
+      await db.insert(piItemTransactions).values({
+        indentId,
+        indentItemId: item.itemId,
+        transactionType: "bulk_receipt_pending",
+        qty: item.qty,
+        vendor: item.vendor?.toUpperCase() ?? null,
+        rate: item.rate ?? null,
+        amount: item.rate != null ? item.rate * item.qty : null,
+        remarks: item.remarks ?? null,
+        createdBy: createdBy.toUpperCase(),
+      });
+    }
+    await db.update(purchaseIndents)
+      .set({ status: "purchasing" })
+      .where(and(
+        eq(purchaseIndents.id, indentId),
+        inArray(purchaseIndents.status, ["purchaser_actioned", "approved"])
+      ));
+  }
+
+  async getPendingPlantReceipts(filters?: { status?: string; receivingLocation?: string; siteId?: number; indentId?: number }): Promise<PendingPlantReceipt[]> {
+    const conds: any[] = [];
+    if (filters?.status) conds.push(eq(pendingPlantReceipts.status, filters.status));
+    if (filters?.receivingLocation) conds.push(eq(pendingPlantReceipts.receivingLocation, filters.receivingLocation));
+    if (filters?.siteId) conds.push(eq(pendingPlantReceipts.siteId, filters.siteId));
+    if (filters?.indentId) conds.push(eq(pendingPlantReceipts.indentId, filters.indentId));
+    return db.select().from(pendingPlantReceipts)
+      .where(conds.length ? and(...conds) : undefined)
+      .orderBy(desc(pendingPlantReceipts.createdAt));
+  }
+
+  async countPendingPlantReceipts(filters?: { status?: string }): Promise<number> {
+    const conds: any[] = [];
+    if (filters?.status) conds.push(eq(pendingPlantReceipts.status, filters.status));
+    const [result] = await db.select({ count: sql<number>`COUNT(*)::int` })
+      .from(pendingPlantReceipts)
+      .where(conds.length ? and(...conds) : undefined);
+    return result?.count ?? 0;
+  }
+
+  async confirmPendingPlantReceipt(id: number, confirmedByUserId: number, confirmedBy: string): Promise<PendingPlantReceipt> {
+    const [ppr] = await db.select().from(pendingPlantReceipts).where(eq(pendingPlantReceipts.id, id)).limit(1);
+    if (!ppr) throw new Error(`Pending plant receipt #${id} not found`);
+    if (ppr.status !== "pending") throw new Error(`Receipt #${id} is already ${ppr.status}`);
+    if (!ppr.materialId) throw new Error(`Receipt #${id} has no plant material linked — cannot post to stock. Ask an admin to link the material.`);
+    const receipt = await this.createMaterialReceipt({
+      date: ppr.purchaseDate ?? format(new Date(), "yyyy-MM-dd"),
+      materialId: ppr.materialId,
+      quantity: ppr.qty,
+      uom: ppr.uom,
+      supplier: ppr.vendor ?? null,
+      partyId: null,
+      isPlantCommon: 0,
+      rate: ppr.rate ?? null,
+      amount: ppr.rate != null ? ppr.rate * ppr.qty : null,
+      remarks: ppr.remarks ?? null,
+      indentRef: ppr.indentNo ?? undefined,
+      plantName: "Main Plant",
+    } as any);
+    await db.update(piItemTransactions)
+      .set({ transactionType: "bulk_receipt" })
+      .where(and(
+        eq(piItemTransactions.indentItemId, ppr.indentItemId),
+        eq(piItemTransactions.transactionType, "bulk_receipt_pending")
+      ));
+    const [existingItem] = await db.select({
+      totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
+      approvedQty: purchaseIndentItems.approvedQty,
+    }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, ppr.indentItemId)).limit(1);
+    const newAccepted = (existingItem?.totalAcceptedQty ?? 0) + ppr.qty;
+    const approved = existingItem?.approvedQty ?? 0;
+    const purchaseStatus = newAccepted >= approved ? "PURCHASED" : "PARTIAL";
+    await db.update(purchaseIndentItems)
+      .set({ totalAcceptedQty: newAccepted, purchaseStatus, linkedReceiptId: receipt.id, vendor: ppr.vendor ?? null })
+      .where(eq(purchaseIndentItems.id, ppr.indentItemId));
+    await db.update(purchaseIndents)
+      .set({ status: "purchasing" })
+      .where(and(
+        eq(purchaseIndents.id, ppr.indentId),
+        inArray(purchaseIndents.status, ["purchaser_actioned", "purchasing", "approved"])
+      ));
+    await this.checkAndCompleteIndent(ppr.indentId);
+    const [updated] = await db.update(pendingPlantReceipts)
+      .set({ status: "confirmed", confirmedByUserId, confirmedBy: confirmedBy.toUpperCase(), confirmedAt: new Date(), linkedReceiptId: receipt.id })
+      .where(eq(pendingPlantReceipts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async rejectPendingPlantReceipt(id: number, rejectionReason: string): Promise<PendingPlantReceipt> {
+    const [ppr] = await db.select().from(pendingPlantReceipts).where(eq(pendingPlantReceipts.id, id)).limit(1);
+    if (!ppr) throw new Error(`Pending plant receipt #${id} not found`);
+    if (ppr.status !== "pending") throw new Error(`Receipt #${id} is already ${ppr.status}`);
+    await db.update(purchaseIndentItems)
+      .set({ purchaseStatus: null })
+      .where(eq(purchaseIndentItems.id, ppr.indentItemId));
+    await db.delete(piItemTransactions)
+      .where(and(
+        eq(piItemTransactions.indentItemId, ppr.indentItemId),
+        eq(piItemTransactions.transactionType, "bulk_receipt_pending")
+      ));
+    const [updated] = await db.update(pendingPlantReceipts)
+      .set({ status: "rejected", rejectionReason })
+      .where(eq(pendingPlantReceipts.id, id))
+      .returning();
+    return updated;
+  }
+
   async placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string; orderedQty?: number; orderedBy?: string; rate?: number; paymentMode?: string; remarks?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined> {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
@@ -12161,6 +12315,40 @@ export class DatabaseStorage implements IStorage {
     async ensureSiteEnabledModulesColumn(): Promise<void> {
       await db.execute(sql.raw(`ALTER TABLE sites ADD COLUMN IF NOT EXISTS enabled_modules text[] NOT NULL DEFAULT '{}'`));
       console.log("ensureSiteEnabledModulesColumn: enabled_modules column verified/added on sites");
+    }
+
+    async ensurePendingPlantReceiptsTable(): Promise<void> {
+      await db.execute(sql.raw(`
+        CREATE TABLE IF NOT EXISTS pending_plant_receipts (
+          id serial PRIMARY KEY,
+          indent_id integer NOT NULL,
+          indent_no text,
+          indent_item_id integer NOT NULL,
+          material_name text NOT NULL,
+          material_id integer,
+          qty real NOT NULL,
+          uom text NOT NULL,
+          vendor text,
+          rate real,
+          payment_mode text,
+          paid_by text,
+          purchase_date date,
+          receiving_location text NOT NULL DEFAULT 'hmp_plant',
+          receiving_site_id integer,
+          remarks text,
+          created_by_user_id integer NOT NULL,
+          created_by text NOT NULL,
+          site_id integer,
+          status text NOT NULL DEFAULT 'pending',
+          confirmed_by_user_id integer,
+          confirmed_by text,
+          confirmed_at timestamp,
+          rejection_reason text,
+          linked_receipt_id integer,
+          created_at timestamp DEFAULT now()
+        )
+      `));
+      console.log("ensurePendingPlantReceiptsTable: table ensured");
     }
 
     async ensurePendingStoreReceiptColumns(): Promise<void> {

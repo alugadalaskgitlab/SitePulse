@@ -6851,16 +6851,74 @@ export async function registerRoutes(
     try {
       const indentId = Number(req.params.id);
       const actionBy = currentUserName(req);
-      const { items } = req.body;
+      const createdByUserId = req.authUser?.id ?? 0;
+      const { items, receivingLocation } = req.body;
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "items array is required" });
       }
-      await storage.recordBulkMaterialReceipt(indentId, items, actionBy);
+      const location = (receivingLocation as string) || "hmp_plant";
+      await storage.submitBulkReceiptAsPending(indentId, location, items, createdByUserId, actionBy);
       const indent = await storage.getPurchaseIndent(indentId);
       res.json(indent);
     } catch (err) {
       console.error("POST /api/purchase-indents/:id/bulk-receipt:", err);
       res.status(500).json({ message: String((err as Error).message) });
+    }
+  });
+
+  // ── Pending Plant Receipts (SoD queue) ──
+  app.get("/api/pending-plant-receipts/count", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_materials")) return;
+      const count = await storage.countPendingPlantReceipts({ status: "pending" });
+      res.json({ count });
+    } catch (err) {
+      console.error("GET /api/pending-plant-receipts/count:", err);
+      res.status(500).json({ error: "Failed to fetch count" });
+    }
+  });
+
+  app.get("/api/pending-plant-receipts", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_materials")) return;
+      const receipts = await storage.getPendingPlantReceipts({
+        status: req.query.status as string | undefined,
+        receivingLocation: req.query.receivingLocation as string | undefined,
+        siteId: req.query.siteId ? parseInt(req.query.siteId as string) : undefined,
+        indentId: req.query.indentId ? parseInt(req.query.indentId as string) : undefined,
+      });
+      res.json(receipts);
+    } catch (err) {
+      console.error("GET /api/pending-plant-receipts:", err);
+      res.status(500).json({ error: "Failed to fetch pending plant receipts" });
+    }
+  });
+
+  app.patch("/api/pending-plant-receipts/:id", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_materials")) return;
+      const id = parseInt(req.params.id);
+      const { action, rejectionReason } = req.body;
+      if (!action || !["confirm", "reject"].includes(action)) {
+        return res.status(400).json({ error: "action must be 'confirm' or 'reject'" });
+      }
+      if (action === "confirm") {
+        const confirmedByUserId = req.authUser?.id ?? 0;
+        const confirmedBy = currentUserName(req);
+        const result = await storage.confirmPendingPlantReceipt(id, confirmedByUserId, confirmedBy);
+        res.json(result);
+      } else {
+        if (!rejectionReason?.trim()) {
+          return res.status(400).json({ error: "rejectionReason is required for rejection" });
+        }
+        const result = await storage.rejectPendingPlantReceipt(id, rejectionReason.trim());
+        res.json(result);
+      }
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.includes("already")) return res.status(409).json({ error: msg });
+      console.error("PATCH /api/pending-plant-receipts/:id:", err);
+      res.status(500).json({ error: msg });
     }
   });
 

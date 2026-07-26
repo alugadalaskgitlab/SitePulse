@@ -3206,6 +3206,43 @@ export type SiteRequirement = typeof siteRequirements.$inferSelect;
 export type InsertSiteRequirement = z.infer<typeof insertSiteRequirementSchema>;
 
 // ============================================
+// PENDING PLANT RECEIPTS
+// Bulk-plant PI items awaiting plant-authority confirmation (SoD gap closed)
+// ============================================
+export const pendingPlantReceipts = pgTable("pending_plant_receipts", {
+  id: serial("id").primaryKey(),
+  indentId: integer("indent_id").notNull(),
+  indentNo: text("indent_no"),
+  indentItemId: integer("indent_item_id").notNull(),
+  materialName: text("material_name").notNull(),
+  materialId: integer("material_id"),
+  qty: real("qty").notNull(),
+  uom: text("uom").notNull(),
+  vendor: text("vendor"),
+  rate: real("rate"),
+  paymentMode: text("payment_mode"),
+  paidBy: text("paid_by"),
+  purchaseDate: date("purchase_date"),
+  receivingLocation: text("receiving_location").notNull().default("hmp_plant"), // "hmp_plant" | "rmc_plant" | "site"
+  receivingSiteId: integer("receiving_site_id"),
+  remarks: text("remarks"),
+  createdByUserId: integer("created_by_user_id").notNull(),
+  createdBy: text("created_by").notNull(),
+  siteId: integer("site_id"),
+  status: text("status").notNull().default("pending"), // "pending" | "confirmed" | "rejected"
+  confirmedByUserId: integer("confirmed_by_user_id"),
+  confirmedBy: text("confirmed_by"),
+  confirmedAt: timestamp("confirmed_at"),
+  rejectionReason: text("rejection_reason"),
+  linkedReceiptId: integer("linked_receipt_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPendingPlantReceiptSchema = createInsertSchema(pendingPlantReceipts).omit({ id: true, createdAt: true });
+export type PendingPlantReceipt = typeof pendingPlantReceipts.$inferSelect;
+export type InsertPendingPlantReceipt = z.infer<typeof insertPendingPlantReceiptSchema>;
+
+// ============================================
 
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,

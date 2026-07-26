@@ -801,6 +801,7 @@ export default function PurchaseIndents() {
   const [bulkReceiptOpen, setBulkReceiptOpen] = useState(false);
   type BulkReceiptItemData = { qty: string; uom: string; vendor: string; rate: string; receiptDate: string; remarks: string; partyId: string };
   const [bulkReceiptData, setBulkReceiptData] = useState<Record<number, BulkReceiptItemData>>({});
+  const [bulkReceivingLocation, setBulkReceivingLocation] = useState<string>("hmp_plant");
 
   // Material Indent: Place Order & Record Receipt
   type PlaceOrderItemData = { vendor: string; expectedDelivery: string; orderedQty: string; orderedBy: string; rate: string; paymentMode: string; remarks: string };
@@ -1230,16 +1231,17 @@ export default function PurchaseIndents() {
     mutationFn: (data: any) => apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/bulk-receipt`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pending-plant-receipts"] });
       if (selectedIndentId) {
         queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
         queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId, "transactions"] });
       }
       setBulkReceiptOpen(false);
       setBulkReceiptData({});
-      toast({ title: "Plant material receipt recorded — stock updated" });
+      toast({ title: "Receipt submitted — awaiting plant staff confirmation", description: "The receipt will appear in the Pending Plant Receipts queue for a plant authority to confirm." });
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to record plant receipt", description: err.message, variant: "destructive" });
+      toast({ title: "Failed to submit plant receipt", description: err.message, variant: "destructive" });
     },
   });
 
@@ -4428,18 +4430,27 @@ export default function PurchaseIndents() {
                               </div>
                             ) : (item as any).procurementRoute === "bulk_plant" && selectedIndent.status === "purchaser_actioned" ? (
                               <div className="pt-1">
-                                <Button
-                                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold"
-                                  onClick={() => {
-                                    const paTx = piTxns.filter((t: any) => t.indentItemId === item.id && t.transactionType === "purchaser_action").slice(-1)[0] as any;
-                                    setBulkReceiptData(prev => ({ ...prev, [item.id]: { qty: paTx?.qty?.toString() || (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: paTx?.vendor || "", rate: paTx?.rate?.toString() || "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" } }));
-                                    setBulkReceiptOpen(true);
-                                  }}
-                                  data-testid={`button-bulk-receipt-${item.id}`}
-                                >
-                                  <Warehouse className="w-3.5 h-3.5 mr-1.5" />
-                                  Record Plant Receipt
-                                </Button>
+                                {(item.purchaseStatus || "").toLowerCase() === "pending_plant_receipt" ? (
+                                  <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-300">
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                    <span className="font-semibold text-xs">Awaiting Plant Receipt Confirmation</span>
+                                    <span className="text-xs ml-auto text-amber-500">Submitted — pending plant staff confirmation</span>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+                                    onClick={() => {
+                                      const paTx = piTxns.filter((t: any) => t.indentItemId === item.id && t.transactionType === "purchaser_action").slice(-1)[0] as any;
+                                      setBulkReceiptData(prev => ({ ...prev, [item.id]: { qty: paTx?.qty?.toString() || (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: paTx?.vendor || "", rate: paTx?.rate?.toString() || "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" } }));
+                                      setBulkReceivingLocation("hmp_plant");
+                                      setBulkReceiptOpen(true);
+                                    }}
+                                    data-testid={`button-bulk-receipt-${item.id}`}
+                                  >
+                                    <Warehouse className="w-3.5 h-3.5 mr-1.5" />
+                                    Submit Plant Receipt
+                                  </Button>
+                                )}
                               </div>
                             ) : (
                               <div className="grid grid-cols-2 gap-2 pt-1">
@@ -4504,13 +4515,35 @@ export default function PurchaseIndents() {
       <Dialog open={bulkReceiptOpen} onOpenChange={setBulkReceiptOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>RECORD PLANT MATERIAL RECEIPT</DialogTitle>
+            <DialogTitle>SUBMIT PLANT MATERIAL RECEIPT</DialogTitle>
           </DialogHeader>
           {selectedIndent && (() => {
-            const bulkItems = selectedIndent.items.filter(i => (i as any).procurementRoute === "bulk_plant" && !["cancelled", "closed"].includes((i as any).status || ""));
-            if (bulkItems.length === 0) return <p className="text-sm text-muted-foreground">No bulk plant items found.</p>;
+            const bulkItems = selectedIndent.items.filter(i => (i as any).procurementRoute === "bulk_plant" && !["cancelled", "closed"].includes((i as any).status || "") && (i.purchaseStatus || "").toLowerCase() !== "pending_plant_receipt");
+            if (bulkItems.length === 0) return <p className="text-sm text-muted-foreground">No bulk plant items pending receipt.</p>;
             return (
               <div className="space-y-4">
+                {/* Receiving Location — applies to all items in this receipt */}
+                <div className="border rounded-lg p-3 bg-slate-50 dark:bg-slate-900/30 space-y-2">
+                  <Label className="text-sm font-semibold uppercase tracking-wide">RECEIVING LOCATION</Label>
+                  <div className="flex gap-2">
+                    {([["hmp_plant", "HMP Plant"], ["rmc_plant", "RMC Plant"], ["site", "Site"]] as const).map(([val, label]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setBulkReceivingLocation(val)}
+                        className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                          bulkReceivingLocation === val
+                            ? "bg-amber-600 text-white border-amber-600"
+                            : "bg-white dark:bg-slate-800 border-slate-200 text-slate-600 hover:border-amber-400"
+                        }`}
+                        data-testid={`button-rl-${val}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {bulkItems.map(item => {
                   const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" };
                   const upd = (field: string, val: string) => setBulkReceiptData(prev => ({ ...prev, [item.id]: { ...rd, [field]: val } }));
@@ -4546,23 +4579,27 @@ export default function PurchaseIndents() {
                     </div>
                   );
                 })}
-                <p className="text-sm text-muted-foreground">Plant material receipts are posted directly to plant stock under the material's assigned party.</p>
+                <p className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-md p-2">
+                  This receipt will be queued for confirmation by a plant staff member (Separation of Duties). Material will be posted to stock only after confirmation.
+                </p>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button variant="outline" onClick={() => setBulkReceiptOpen(false)} data-testid="button-cancel-bulk-receipt">Cancel</Button>
                   <Button
                     className="bg-amber-600 hover:bg-amber-700 text-white"
                     disabled={bulkReceiptMutation.isPending}
                     onClick={() => bulkReceiptMutation.mutate({
+                      receivingLocation: bulkReceivingLocation,
                       items: bulkItems.map(item => {
                         const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" };
                         return {
                           itemId: item.id,
                           materialId: item.materialId,
+                          materialName: item.description,
                           qty: parseFloat(rd.qty) || 0,
                           uom: rd.uom,
                           vendor: rd.vendor || null,
                           rate: parseFloat(rd.rate) || null,
-                          receiptDate: rd.receiptDate,
+                          purchaseDate: rd.receiptDate,
                           remarks: rd.remarks || null,
                         };
                       }),
@@ -4570,7 +4607,7 @@ export default function PurchaseIndents() {
                     data-testid="button-submit-bulk-receipt"
                   >
                     {bulkReceiptMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Warehouse className="w-4 h-4 mr-1" />}
-                    RECORD PLANT RECEIPT
+                    SUBMIT FOR CONFIRMATION
                   </Button>
                 </div>
               </div>

@@ -201,6 +201,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    await (storage as any).ensurePendingPlantReceiptsTable();
+    console.log("Startup: ensurePendingPlantReceiptsTable — Batch 12 table ensured");
+  } catch (e) {
+    console.error("Startup: Failed to ensure pending_plant_receipts table:", e);
+  }
+
+  try {
     await (storage as any).ensureEquipmentUsageAuditColumns();
     console.log("Startup: ensureEquipmentUsageAuditColumns — audit columns verified");
   } catch (e) {

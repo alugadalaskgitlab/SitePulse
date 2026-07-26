@@ -96,11 +96,12 @@ const RmcDailyReport      = lazy(() => import("@/pages/RmcDailyReport"));
 const RmcDeliveryChallans = lazy(() => import("@/pages/RmcDeliveryChallans"));
 
 // Stores pages
-const StoresHome   = lazy(() => import("@/pages/StoresHome"));
-const StoresItems  = lazy(() => import("@/pages/StoresItems"));
-const StoresGrn    = lazy(() => import("@/pages/StoresGrn"));
-const StoresIssue  = lazy(() => import("@/pages/StoresIssue"));
-const StoresLedger = lazy(() => import("@/pages/StoresLedger"));
+const StoresHome              = lazy(() => import("@/pages/StoresHome"));
+const StoresItems             = lazy(() => import("@/pages/StoresItems"));
+const StoresGrn               = lazy(() => import("@/pages/StoresGrn"));
+const StoresIssue             = lazy(() => import("@/pages/StoresIssue"));
+const StoresLedger            = lazy(() => import("@/pages/StoresLedger"));
+const PendingPlantReceipts    = lazy(() => import("@/pages/PendingPlantReceipts"));
 
 // Finance / procurement pages
 const PurchaseIndents    = lazy(() => import("@/pages/PurchaseIndents"));
@@ -297,6 +298,7 @@ function AuthedShell() {
           <Route path="/plant/ldo-dip-backfill" component={gatedEither(PlantLdoDipBackfill, "admin_ldo_tools", "admin_settings")} />
           <Route path="/plant/stock-reassign" component={gatedEither(PlantStockReassign, "admin_ledger_tools", "plant_stock")} />
           <Route path="/plant/stock-transfer" component={gatedEither(PlantStockTransfer, "admin_ledger_tools", "plant_stock")} />
+          <Route path="/stores/pending-plant-receipts" component={gated(PendingPlantReceipts, "plant_materials")} />
           <Route path="/plant/ledger-rebuild" component={gatedEither(PlantLedgerRebuild, "admin_ledger_tools", "plant_stock")} />
           <Route path="/plant/shift-log-manpower-review" component={gatedEither(PlantShiftLogManpowerReview, "plant_manpower_review", "plant_shift_logs")} />
           <Route path="/plant/shift-log" component={gated(PlantShiftLog, "plant_shift_logs")} />
