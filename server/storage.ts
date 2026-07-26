@@ -9848,11 +9848,14 @@ export class DatabaseStorage implements IStorage {
           remarks: item.remarks ?? null,
           createdBy: actionBy.toUpperCase(),
         });
-        // Update running totals on the item itself
-        const [existing] = await tx.select({ totalPurchasedQty: purchaseIndentItems.totalPurchasedQty })
-          .from(purchaseIndentItems).where(eq(purchaseIndentItems.id, item.itemId)).limit(1);
+        // Load authoritative procurement route from DB — do not trust client payload
+        const [existing] = await tx.select({
+          totalPurchasedQty: purchaseIndentItems.totalPurchasedQty,
+          procurementRoute: purchaseIndentItems.procurementRoute,
+        }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, item.itemId)).limit(1);
         const prevTotal = (existing?.totalPurchasedQty ?? 0);
-        const serviceStatusPatch = item.procurementRoute === "service"
+        const dbRoute = existing?.procurementRoute ?? null;
+        const serviceStatusPatch = dbRoute === "service"
           ? { purchaseStatus: "AWAITING_SERVICE_VERIFICATION" as const }
           : {};
         await tx.update(purchaseIndentItems)
@@ -9880,22 +9883,25 @@ export class DatabaseStorage implements IStorage {
 
     // Auto-create a draft GRN for stores-route items that are actually purchased (not ordered/not-available)
     if (userId) {
-      const storesItems = items.filter(item =>
-        (item.procurementRoute === "stores" || !item.procurementRoute) &&
-        item.qty > 0 &&
-        item.reasonCode !== "not_available" &&
-        item.reasonCode !== "ordered"
-      );
-      if (storesItems.length > 0) {
-        // Load PI item descriptions and UOM for each item
-        const piItemRows = await db.select({
-          id: purchaseIndentItems.id,
-          description: purchaseIndentItems.description,
-          uom: purchaseIndentItems.uom,
-        }).from(purchaseIndentItems)
-          .where(inArray(purchaseIndentItems.id, storesItems.map(i => i.itemId)));
+      // Load authoritative procurement route from DB for all items
+      const allItemDbRows = await db.select({
+        id: purchaseIndentItems.id,
+        procurementRoute: purchaseIndentItems.procurementRoute,
+        description: purchaseIndentItems.description,
+        uom: purchaseIndentItems.uom,
+      }).from(purchaseIndentItems)
+        .where(inArray(purchaseIndentItems.id, items.map(i => i.itemId)));
+      const allItemDbMap = new Map(allItemDbRows.map(r => [r.id, r]));
 
-        const piItemMap = new Map(piItemRows.map(r => [r.id, r]));
+      const storesItems = items.filter(item => {
+        const dbRoute = allItemDbMap.get(item.itemId)?.procurementRoute ?? null;
+        return (dbRoute === "stores" || dbRoute === null) &&
+          item.qty > 0 &&
+          item.reasonCode !== "not_available" &&
+          item.reasonCode !== "ordered";
+      });
+      if (storesItems.length > 0) {
+        const piItemMap = allItemDbMap;
         const vendor = storesItems.find(i => i.vendor)?.vendor ?? "SUPPLIER";
 
         const grnItems = storesItems.map(item => {
@@ -10530,8 +10536,8 @@ export class DatabaseStorage implements IStorage {
     // Material Indents require full receipt before completion — PARTIAL is not terminal
     const isMaterialIndent = indent?.piType === "material";
     const terminalStatuses = isMaterialIndent
-      ? ["PURCHASED", "NOT_PURCHASED", "CANCELLED", "SERVICE_COMPLETED"]
-      : ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED", "SERVICE_COMPLETED"];
+      ? ["PURCHASED", "NOT_PURCHASED", "CANCELLED", "SERVICE_COMPLETED", "SERVICE_PARTLY_COMPLETED"]
+      : ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED", "SERVICE_COMPLETED", "SERVICE_PARTLY_COMPLETED"];
     const allTerminal = allItems.every(item =>
       // Manager-rejected items (approvedQty === 0) are treated as terminal — no procurement needed
       (item.approvedQty != null && item.approvedQty <= 0) ||
