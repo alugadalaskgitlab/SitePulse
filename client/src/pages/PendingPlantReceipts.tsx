@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  CheckCircle2, XCircle, AlertTriangle, ArrowLeft, Inbox, MapPin, User, Calendar, Package,
+  CheckCircle2, XCircle, AlertTriangle, ArrowLeft, Inbox, MapPin, User, Calendar, Package, Filter,
 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ type PendingPlantReceipt = {
   paidBy: string | null;
   purchaseDate: string | null;
   receivingLocation: string;
+  receivingSiteId: number | null;
   remarks: string | null;
   createdByUserId: number;
   createdBy: string;
@@ -67,14 +69,21 @@ export default function PendingPlantReceipts() {
   const { toast } = useToast();
   const { user, isAdmin } = useAuth();
   const [statusFilter, setStatusFilter] = useState<"pending" | "confirmed" | "rejected">("pending");
+  const [locationFilter, setLocationFilter] = useState<string>("all");
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
 
+  const { data: allSites = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/sites"],
+  });
+
   const { data: receipts = [], isLoading } = useQuery<PendingPlantReceipt[]>({
-    queryKey: ["/api/pending-plant-receipts", statusFilter],
+    queryKey: ["/api/pending-plant-receipts", statusFilter, locationFilter],
     queryFn: async () => {
-      const res = await fetch(`/api/pending-plant-receipts?status=${statusFilter}`);
+      const params = new URLSearchParams({ status: statusFilter });
+      if (locationFilter !== "all") params.set("receivingLocation", locationFilter);
+      const res = await fetch(`/api/pending-plant-receipts?${params}`);
       if (!res.ok) throw new Error("Failed to load");
       return res.json();
     },
@@ -133,22 +142,38 @@ export default function PendingPlantReceipts() {
         </div>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2">
-        {(["pending", "confirmed", "rejected"] as const).map(s => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              statusFilter === s
-                ? "bg-slate-800 text-white"
-                : "bg-white border border-slate-200 text-slate-600 hover:border-slate-400"
-            }`}
-            data-testid={`filter-${s}`}
-          >
-            {s.charAt(0).toUpperCase() + s.slice(1)}
-          </button>
-        ))}
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-2">
+          {(["pending", "confirmed", "rejected"] as const).map(s => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                statusFilter === s
+                  ? "bg-slate-800 text-white"
+                  : "bg-white border border-slate-200 text-slate-600 hover:border-slate-400"
+              }`}
+              data-testid={`filter-${s}`}
+            >
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 ml-auto">
+          <Filter className="w-4 h-4 text-slate-400" />
+          <Select value={locationFilter} onValueChange={setLocationFilter}>
+            <SelectTrigger className="h-8 text-sm w-40" data-testid="select-location-filter">
+              <SelectValue placeholder="All locations" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All locations</SelectItem>
+              <SelectItem value="hmp_plant">HMP Plant</SelectItem>
+              <SelectItem value="rmc_plant">RMC Plant</SelectItem>
+              <SelectItem value="site">Site</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {isLoading && (
@@ -186,7 +211,9 @@ export default function PendingPlantReceipts() {
                       <StatusBadge status={receipt.status} />
                       <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${LOCATION_COLORS[receipt.receivingLocation] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
                         <MapPin className="w-3 h-3" />
-                        {LOCATION_LABELS[receipt.receivingLocation] ?? receipt.receivingLocation}
+                        {receipt.receivingLocation === "site" && receipt.receivingSiteId
+                          ? (allSites.find(s => s.id === receipt.receivingSiteId)?.name ?? `Site #${receipt.receivingSiteId}`)
+                          : (LOCATION_LABELS[receipt.receivingLocation] ?? receipt.receivingLocation)}
                       </span>
                     </div>
 

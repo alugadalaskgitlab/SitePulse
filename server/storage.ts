@@ -1165,8 +1165,8 @@ export interface IStorage {
   submitPurchaserAction(indentId: number, items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string }[], actionBy: string): Promise<void>;
   submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
   recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<void>;
-  submitBulkReceiptAsPending(indentId: number, receivingLocation: string, items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string }[], createdByUserId: number, createdBy: string): Promise<void>;
-  getPendingPlantReceipts(filters?: { status?: string; receivingLocation?: string; siteId?: number; indentId?: number }): Promise<PendingPlantReceipt[]>;
+  submitBulkReceiptAsPending(indentId: number, receivingLocation: string, receivingSiteId: number | null, items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string }[], createdByUserId: number, createdBy: string): Promise<void>;
+  getPendingPlantReceipts(filters?: { status?: string; receivingLocation?: string; receivingSiteId?: number; indentId?: number }): Promise<PendingPlantReceipt[]>;
   countPendingPlantReceipts(filters?: { status?: string }): Promise<number>;
   confirmPendingPlantReceipt(id: number, confirmedByUserId: number, confirmedBy: string): Promise<PendingPlantReceipt>;
   rejectPendingPlantReceipt(id: number, rejectionReason: string): Promise<PendingPlantReceipt>;
@@ -10094,6 +10094,7 @@ export class DatabaseStorage implements IStorage {
   async submitBulkReceiptAsPending(
     indentId: number,
     receivingLocation: string,
+    receivingSiteId: number | null,
     items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string }[],
     createdByUserId: number,
     createdBy: string
@@ -10121,6 +10122,7 @@ export class DatabaseStorage implements IStorage {
         paymentMode: item.paymentMode ?? null,
         purchaseDate: item.purchaseDate ?? null,
         receivingLocation,
+        receivingSiteId: receivingSiteId ?? null,
         remarks: item.remarks ?? null,
         createdByUserId,
         createdBy: createdBy.toUpperCase(),
@@ -10149,11 +10151,11 @@ export class DatabaseStorage implements IStorage {
       ));
   }
 
-  async getPendingPlantReceipts(filters?: { status?: string; receivingLocation?: string; siteId?: number; indentId?: number }): Promise<PendingPlantReceipt[]> {
+  async getPendingPlantReceipts(filters?: { status?: string; receivingLocation?: string; receivingSiteId?: number; indentId?: number }): Promise<PendingPlantReceipt[]> {
     const conds: any[] = [];
     if (filters?.status) conds.push(eq(pendingPlantReceipts.status, filters.status));
     if (filters?.receivingLocation) conds.push(eq(pendingPlantReceipts.receivingLocation, filters.receivingLocation));
-    if (filters?.siteId) conds.push(eq(pendingPlantReceipts.siteId, filters.siteId));
+    if (filters?.receivingSiteId) conds.push(eq(pendingPlantReceipts.receivingSiteId, filters.receivingSiteId));
     if (filters?.indentId) conds.push(eq(pendingPlantReceipts.indentId, filters.indentId));
     return db.select().from(pendingPlantReceipts)
       .where(conds.length ? and(...conds) : undefined)

@@ -802,6 +802,7 @@ export default function PurchaseIndents() {
   type BulkReceiptItemData = { qty: string; uom: string; vendor: string; rate: string; receiptDate: string; remarks: string; partyId: string };
   const [bulkReceiptData, setBulkReceiptData] = useState<Record<number, BulkReceiptItemData>>({});
   const [bulkReceivingLocation, setBulkReceivingLocation] = useState<string>("hmp_plant");
+  const [bulkReceivingSiteId, setBulkReceivingSiteId] = useState<number | null>(null);
 
   // Material Indent: Place Order & Record Receipt
   type PlaceOrderItemData = { vendor: string; expectedDelivery: string; orderedQty: string; orderedBy: string; rate: string; paymentMode: string; remarks: string };
@@ -857,6 +858,20 @@ export default function PurchaseIndents() {
 
   const { data: indents, isLoading } = useQuery<PurchaseIndentWithItems[]>({
     queryKey: ["/api/purchase-indents"],
+  });
+
+  const { data: allSites = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/sites"],
+  });
+
+  const { data: indentPendingPPRs = [] } = useQuery<any[]>({
+    queryKey: ["/api/pending-plant-receipts", { indentId: selectedIndentId, status: "pending" }],
+    queryFn: async () => {
+      const res = await fetch(`/api/pending-plant-receipts?indentId=${selectedIndentId}&status=pending`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedIndentId,
   });
 
   // Fetch source IRN for pre-filling when navigated from IrnDetailPage
@@ -4430,12 +4445,20 @@ export default function PurchaseIndents() {
                               </div>
                             ) : (item as any).procurementRoute === "bulk_plant" && selectedIndent.status === "purchaser_actioned" ? (
                               <div className="pt-1">
-                                {(item.purchaseStatus || "").toLowerCase() === "pending_plant_receipt" ? (
+                                {(item.purchaseStatus || "").toLowerCase() === "pending_plant_receipt" ? (() => {
+                                  const ppr = indentPendingPPRs.find((r: any) => r.indentItemId === item.id);
+                                  const locLabels: Record<string, string> = { hmp_plant: "HMP Plant", rmc_plant: "RMC Plant", site: "Site" };
+                                  const locName = ppr?.receivingLocation === "site" && ppr?.receivingSiteId
+                                    ? (allSites.find(s => s.id === ppr.receivingSiteId)?.name ?? `Site #${ppr.receivingSiteId}`)
+                                    : (locLabels[ppr?.receivingLocation ?? "hmp_plant"] ?? "HMP Plant");
+                                  return (
                                   <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-300">
                                     <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                                    <span className="font-semibold text-xs">Awaiting Plant Receipt Confirmation</span>
-                                    <span className="text-xs ml-auto text-amber-500">Submitted — pending plant staff confirmation</span>
+                                    <span className="font-semibold text-xs">Awaiting Plant Receipt — {locName}</span>
+                                    <span className="text-xs ml-auto text-amber-500">Pending confirmation</span>
                                   </div>
+                                  );
+                                })()
                                 ) : (
                                   <Button
                                     className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold"
@@ -4443,6 +4466,7 @@ export default function PurchaseIndents() {
                                       const paTx = piTxns.filter((t: any) => t.indentItemId === item.id && t.transactionType === "purchaser_action").slice(-1)[0] as any;
                                       setBulkReceiptData(prev => ({ ...prev, [item.id]: { qty: paTx?.qty?.toString() || (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: paTx?.vendor || "", rate: paTx?.rate?.toString() || "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" } }));
                                       setBulkReceivingLocation("hmp_plant");
+                                      setBulkReceivingSiteId(null);
                                       setBulkReceiptOpen(true);
                                     }}
                                     data-testid={`button-bulk-receipt-${item.id}`}
@@ -4530,7 +4554,7 @@ export default function PurchaseIndents() {
                       <button
                         key={val}
                         type="button"
-                        onClick={() => setBulkReceivingLocation(val)}
+                        onClick={() => { setBulkReceivingLocation(val); if (val !== "site") setBulkReceivingSiteId(null); }}
                         className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
                           bulkReceivingLocation === val
                             ? "bg-amber-600 text-white border-amber-600"
@@ -4542,6 +4566,24 @@ export default function PurchaseIndents() {
                       </button>
                     ))}
                   </div>
+                  {bulkReceivingLocation === "site" && (
+                    <div className="pt-1">
+                      <Label className="text-xs text-slate-500 mb-1 block">Select Site</Label>
+                      <Select
+                        value={bulkReceivingSiteId?.toString() ?? ""}
+                        onValueChange={v => setBulkReceivingSiteId(v ? parseInt(v) : null)}
+                      >
+                        <SelectTrigger data-testid="select-receiving-site" className="h-8 text-sm">
+                          <SelectValue placeholder="Choose site…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allSites.map(site => (
+                            <SelectItem key={site.id} value={site.id.toString()}>{site.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
 
                 {bulkItems.map(item => {
@@ -4589,6 +4631,7 @@ export default function PurchaseIndents() {
                     disabled={bulkReceiptMutation.isPending}
                     onClick={() => bulkReceiptMutation.mutate({
                       receivingLocation: bulkReceivingLocation,
+                      receivingSiteId: bulkReceivingSiteId,
                       items: bulkItems.map(item => {
                         const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" };
                         return {

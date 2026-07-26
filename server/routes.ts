@@ -6852,12 +6852,13 @@ export async function registerRoutes(
       const indentId = Number(req.params.id);
       const actionBy = currentUserName(req);
       const createdByUserId = req.authUser?.id ?? 0;
-      const { items, receivingLocation } = req.body;
+      const { items, receivingLocation, receivingSiteId } = req.body;
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "items array is required" });
       }
       const location = (receivingLocation as string) || "hmp_plant";
-      await storage.submitBulkReceiptAsPending(indentId, location, items, createdByUserId, actionBy);
+      const siteId = receivingSiteId ? parseInt(String(receivingSiteId)) : null;
+      await storage.submitBulkReceiptAsPending(indentId, location, siteId, items, createdByUserId, actionBy);
       const indent = await storage.getPurchaseIndent(indentId);
       res.json(indent);
     } catch (err) {
@@ -6884,7 +6885,7 @@ export async function registerRoutes(
       const receipts = await storage.getPendingPlantReceipts({
         status: req.query.status as string | undefined,
         receivingLocation: req.query.receivingLocation as string | undefined,
-        siteId: req.query.siteId ? parseInt(req.query.siteId as string) : undefined,
+        receivingSiteId: req.query.receivingSiteId ? parseInt(req.query.receivingSiteId as string) : undefined,
         indentId: req.query.indentId ? parseInt(req.query.indentId as string) : undefined,
       });
       res.json(receipts);
