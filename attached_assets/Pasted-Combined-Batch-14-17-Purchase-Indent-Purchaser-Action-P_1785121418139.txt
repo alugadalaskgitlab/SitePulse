@@ -1,0 +1,27 @@
+Combined Batch 14–17: Purchase Indent → Purchaser Action → Pending Receipt → GRN lifecycle fixes
+
+1. Named payer for personal reimbursement (Batch 14)
+When "Paid By" is set to "Personal," add a required field to select or enter the actual employee/person who paid — not a generic label — so any reimbursement is tied to a specific person.
+
+2. Photo attachment for invoice/bill/challan (Batch 15)
+Add photo attachment, reusing the existing DPR-photo pattern (stage locally, upload once the record has a database ID), to: Purchaser Action (photo of invoice/bill), Store GRN (photo of invoice/bill/challan at finalization), and Site Material Received (photo of delivery challan/invoice). Not mandatory by default, unless the person wants to require it specifically for Rejected/Partially Accepted items.
+
+3. Enforce valid Purchaser Action before any draft GRN is created
+The Purchaser Action submission currently accepts empty vendor/rate and silently creates a draft GRN with a placeholder vendor name ("SUPPLIER"). Add proper validation, both client and server side: vendor name, quantity, rate, and purchase/expected delivery date must all be genuinely filled in — not blank, not a placeholder — before a Purchaser Action can be submitted and before any draft GRN or pending receipt is created from it. An approved PI item that hasn't had a valid Purchaser Action submitted must not have any draft GRN or pending receipt associated with it.
+
+4. Correct per-item PI display once a linked draft GRN/pending receipt exists (Batch 16, refined)
+Once a PI item has a properly linked draft GRN or pending receipt, its own detail card must become read-only, showing "Purchased/Ordered — Awaiting Receipt" (with the actual vendor, quantity, rate captured) — not a blank, re-editable "Pending Order" form. The overall Workflow Status bar must correctly recognize all current lifecycle states (Purchaser Actioned, Pending Store/Plant/Site Receipt, etc.), derived from the real state of each item — especially for multi-item PIs where items may be at different stages simultaneously.
+
+5. Robust PI–GRN linking, ID-first (Batch 17, corrected)
+This applies specifically to GRNs created manually (via "New GRN" in Stores, not auto-created from a Purchaser Action — those are already correctly ID-linked via indentItemId). When linking such a manual GRN to an approved PI, match in this order, falling through only when the previous step finds nothing:
+
+Linked PI item ID (if the GRN was created with one already selected)
+Store Item Catalogue / material ID match
+Any existing purchase-action/pending-receipt link for that material
+Item code, where available
+Intelligent description matching (shared significant words, not literal substring) — fallback only
+Manual PI selection — final fallback, always available
+
+This avoids two different items with similar-sounding names (e.g., two different kinds of "ink cartridge") being incorrectly matched to each other.
+
+Please test end-to-end on dev before this reaches production: raise a PI, attempt to submit a Purchaser Action with a blank vendor (should be rejected), submit one properly (should create a correctly-linked draft GRN and switch that item's card to read-only), and separately create a manual GRN and confirm it correctly finds a genuinely matching approved PI via the ID-first matching order above.

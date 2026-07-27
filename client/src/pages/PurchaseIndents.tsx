@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, type ComponentType } from "react";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useUpload } from "@/hooks/use-upload";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, LockOpen, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package, Printer, Warehouse } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, LockOpen, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package, Printer, Warehouse, Camera, Image as ImageIcon } from "lucide-react";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -433,22 +434,24 @@ function StatusSteps({ status, storesStatus, piType }: { status: string; storesS
     { key: "raised", label: "RAISED" },
     { key: "stores", label: "STORES" },
     { key: "approved", label: "APPROVED" },
-    { key: "purchasing", label: "PURCHASING" },
+    { key: "actioned", label: "ACTIONED" },
+    { key: "purchasing", label: "RECEIPT" },
     { key: "completed", label: "COMPLETED" },
   ];
 
 
   // null on an approved/completed indent = stores step was skipped entirely (legacy or pre-stores-workflow)
-  const isBypassed = (storesStatus === "bypassed" || storesStatus === null) && (status === "approved" || status === "completed");
+  const isBypassed = (storesStatus === "bypassed" || storesStatus === null) && (status === "approved" || status === "completed" || status === "purchaser_actioned");
 
   const getStepState = (stepKey: string) => {
     if (status === "rejected") {
       return stepKey === "raised" ? "done" : stepKey === "stores" ? "rejected" : "pending";
     }
     if (isBypassed && stepKey === "stores") return "bypassed";
-    const statusOrder = ["stores_check", "approved", "purchasing", "completed"];
+    // statusOrder: indices 0..4
+    const statusOrder = ["stores_check", "approved", "purchaser_actioned", "purchasing", "completed"];
     const currentIdx = statusOrder.indexOf(status);
-    const stepMap: Record<string, number> = { raised: -1, stores: 0, approved: 1, purchasing: 2, completed: 3 };
+    const stepMap: Record<string, number> = { raised: -1, stores: 0, approved: 1, actioned: 2, purchasing: 3, completed: 4 };
     const stepIdx = stepMap[stepKey];
     if (stepIdx < 0) return "done"; // "raised" is always done
     if (stepIdx < currentIdx) return "done";
@@ -795,8 +798,12 @@ export default function PurchaseIndents() {
 
   // Dual-route: Purchaser Action dialog
   const [purchaserActionOpen, setPurchaserActionOpen] = useState(false);
-  type PurchaserActionItemData = { qty: string; vendor: string; rate: string; paymentMode: string; paidBy: string; purchaseDate: string; expectedDeliveryDate: string; remarks: string; shortfallReason: string };
+  type PurchaserActionItemData = { qty: string; vendor: string; rate: string; paymentMode: string; paidBy: string; payerName: string; purchaseDate: string; expectedDeliveryDate: string; remarks: string; shortfallReason: string };
   const [purchaserActionData, setPurchaserActionData] = useState<Record<number, PurchaserActionItemData>>({});
+  // Staged photos for Purchaser Action — uploaded after the record is saved
+  const [paPhotos, setPaPhotos] = useState<File[]>([]);
+  const paPhotoInputRef = useRef<HTMLInputElement>(null);
+  const { uploadFile } = useUpload();
   // Dual-route: Bulk plant receipt dialog (Route B)
   const [bulkReceiptOpen, setBulkReceiptOpen] = useState(false);
   type BulkReceiptItemData = { qty: string; uom: string; vendor: string; rate: string; receiptDate: string; remarks: string; partyId: string };
@@ -1249,7 +1256,27 @@ export default function PurchaseIndents() {
 
   const purchaserActionMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/purchaser-action`, data),
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Upload any staged photos (invoice/bill attachments)
+      if (paPhotos.length > 0 && selectedIndentId) {
+        for (const file of paPhotos) {
+          const up = await uploadFile(file);
+          if (!up) continue;
+          try {
+            await apiRequest("POST", "/api/attachments", {
+              moduleType: "pi_purchaser_action",
+              linkedRecordId: selectedIndentId,
+              fileName: file.name,
+              objectPath: up.objectPath,
+              mimeType: file.type || "application/octet-stream",
+              fileSize: file.size,
+            });
+          } catch {
+            toast({ title: "Some attachments failed to upload", description: file.name, variant: "destructive" });
+          }
+        }
+        setPaPhotos([]);
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
       if (selectedIndentId) {
         queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
@@ -3698,7 +3725,7 @@ export default function PurchaseIndents() {
                             .map(item => {
                               const route = ((item as any).procurementRoute as string) || "stores";
                               const approvedQty = item.approvedQty ?? item.qty;
-                              const pd = purchaserActionData[item.id] ?? { qty: String(approvedQty), vendor: "", rate: "", paymentMode: "cash", paidBy: "company", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
+                              const pd = purchaserActionData[item.id] ?? { qty: String(approvedQty), vendor: "", rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
                               const purchaseQtyNum = parseFloat(pd.qty) || 0;
                               const isShort = purchaseQtyNum < approvedQty;
                               const updField = (field: string, val: string) => {
@@ -3833,6 +3860,18 @@ export default function PurchaseIndents() {
                                         </div>
                                       </div>
                                     )}
+                                    {pd.shortfallReason !== "not_available" && pd.paidBy === "personal" && (
+                                      <div>
+                                        <Label className="text-sm">PAID BY — PERSON NAME <span className="text-red-500">*</span></Label>
+                                        <Input
+                                          value={pd.payerName || ""}
+                                          onChange={e => updField("payerName", e.target.value)}
+                                          placeholder="Name of employee who paid (for reimbursement)"
+                                          data-testid={`input-pa-payer-name-${item.id}`}
+                                        />
+                                        <p className="text-xs text-amber-600 mt-0.5">Reimbursement will be tracked to this person.</p>
+                                      </div>
+                                    )}
                                     {pd.shortfallReason === "not_available" && (
                                       <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded p-2">
                                         Item not available in market — no purchase details required. This item will be marked as not procured.
@@ -3848,28 +3887,60 @@ export default function PurchaseIndents() {
                               );
                             })}
                         </div>
+                        {/* Photo attachment for invoice/bill (Batch 15) */}
+                        <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
+                          <Label className="text-sm font-medium">Invoice / Bill Photos <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                          <p className="text-xs text-muted-foreground">Attach a photo of the invoice or bill for record-keeping.</p>
+                          <input ref={paPhotoInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" data-testid="input-pa-photo"
+                            onChange={e => { if (e.target.files) { setPaPhotos(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = ""; } }} />
+                          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => paPhotoInputRef.current?.click()} data-testid="button-pa-attach-photo">
+                            <Camera className="w-3.5 h-3.5" /> Attach Photo / PDF
+                          </Button>
+                          {paPhotos.length > 0 && (
+                            <div className="space-y-1">
+                              {paPhotos.map((f, i) => (
+                                <div key={i} className="flex items-center gap-2 text-sm bg-white dark:bg-gray-900 rounded px-2 py-1 border">
+                                  <ImageIcon className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                                  <span className="flex-1 truncate text-xs">{f.name}</span>
+                                  <button type="button" onClick={() => setPaPhotos(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-700"><X className="w-3 h-3" /></button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                         <div className="flex justify-end mt-3">
                           <Button
                             className="bg-violet-600 hover:bg-violet-700 text-white"
                             disabled={purchaserActionMutation.isPending}
                             onClick={() => {
-                              const items = selectedIndent.items
-                                .filter(i => !["cancelled", "closed"].includes((i as any).status || "") && (i.approvedQty ?? i.qty) > 0)
-                                .map(item => {
-                                  const pd = purchaserActionData[item.id] ?? { qty: String(item.approvedQty ?? item.qty), vendor: "", rate: "", paymentMode: "cash", paidBy: "company", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
-                                  return {
-                                    itemId: item.id,
-                                    qty: parseFloat(pd.qty) || (item.approvedQty ?? item.qty),
-                                    vendor: pd.vendor || null,
-                                    rate: parseFloat(pd.rate) || null,
-                                    paymentMode: pd.paymentMode,
-                                    paidBy: pd.paidBy || "company",
-                                    expectedDeliveryDate: pd.shortfallReason === "ordered" ? (pd.expectedDeliveryDate || null) : (pd.purchaseDate || null),
-                                    reasonCode: pd.shortfallReason !== "full" ? pd.shortfallReason : null,
-                                    remarks: pd.remarks || null,
-                                    procurementRoute: ((item as any).procurementRoute as string) || "stores",
-                                  };
-                                });
+                              const activeItems = selectedIndent.items
+                                .filter(i => !["cancelled", "closed"].includes((i as any).status || "") && (i.approvedQty ?? i.qty) > 0);
+                              // Client-side validation (Batch 16)
+                              for (const aItem of activeItems) {
+                                const pd = purchaserActionData[aItem.id] ?? { qty: String(aItem.approvedQty ?? aItem.qty), vendor: "", rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
+                                if (pd.shortfallReason === "not_available") continue;
+                                if (!parseFloat(pd.qty) || parseFloat(pd.qty) <= 0) { toast({ title: "Invalid quantity", description: `Enter a valid quantity for: ${aItem.description}`, variant: "destructive" }); return; }
+                                if (!pd.vendor.trim()) { toast({ title: "Vendor required", description: `Enter vendor/supplier for: ${aItem.description}`, variant: "destructive" }); return; }
+                                if (!parseFloat(pd.rate) || parseFloat(pd.rate) <= 0) { toast({ title: "Rate required", description: `Enter rate for: ${aItem.description}`, variant: "destructive" }); return; }
+                                if (pd.shortfallReason === "ordered" && !pd.expectedDeliveryDate) { toast({ title: "Expected delivery required", description: `Enter expected delivery date for: ${aItem.description}`, variant: "destructive" }); return; }
+                                if (pd.paidBy === "personal" && !pd.payerName.trim()) { toast({ title: "Payer name required", description: `Enter the person who paid for: ${aItem.description}`, variant: "destructive" }); return; }
+                              }
+                              const items = activeItems.map(item => {
+                                const pd = purchaserActionData[item.id] ?? { qty: String(item.approvedQty ?? item.qty), vendor: "", rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
+                                const paidByEncoded = pd.paidBy === "personal" ? (pd.payerName.trim() || "PERSONAL") : "company";
+                                return {
+                                  itemId: item.id,
+                                  qty: parseFloat(pd.qty) || (item.approvedQty ?? item.qty),
+                                  vendor: pd.vendor || null,
+                                  rate: parseFloat(pd.rate) || null,
+                                  paymentMode: pd.paymentMode,
+                                  paidBy: paidByEncoded,
+                                  expectedDeliveryDate: pd.shortfallReason === "ordered" ? (pd.expectedDeliveryDate || null) : (pd.purchaseDate || null),
+                                  reasonCode: pd.shortfallReason !== "full" ? pd.shortfallReason : null,
+                                  remarks: pd.remarks || null,
+                                  procurementRoute: ((item as any).procurementRoute as string) || "stores",
+                                };
+                              });
                               purchaserActionMutation.mutate({ items });
                             }}
                             data-testid="button-submit-purchaser-action"
@@ -4389,6 +4460,45 @@ export default function PurchaseIndents() {
                             </div>
                           </div>
                         );
+                      }
+
+                      /* Purchaser actioned — show read-only card when PA transaction exists (Batch 16) */
+                      if (selectedIndent.status === "purchaser_actioned") {
+                        const paTx = piTxns.filter((t: any) => t.indentItemId === item.id && t.transactionType === "purchaser_action").slice(-1)[0] as any;
+                        if (paTx) {
+                          const paidByLabel = paTx.paidBy === "company" ? "Company Account" : paTx.paidBy ? `Personal — ${paTx.paidBy}` : "—";
+                          return (
+                            <div key={item.id} className="border border-violet-200 dark:border-violet-800 rounded-xl bg-violet-50 dark:bg-violet-950/30 p-4" data-testid={`card-procure-item-${item.id}`}>
+                              <div className="flex justify-between items-start mb-1.5">
+                                <div>
+                                  <h3 className="font-semibold text-violet-900 dark:text-violet-300">{realIndex + 1}. {item.description}</h3>
+                                  {(item as any).spec && <p className="text-sm italic text-violet-700 dark:text-violet-400">{(item as any).spec}</p>}
+                                  <p className="text-sm text-violet-600 dark:text-violet-400 mt-0.5">{approvedQty} {item.uom} approved · FOR: {item.purpose}</p>
+                                </div>
+                                <span className="shrink-0 inline-flex items-center text-xs font-bold text-violet-700 bg-violet-100 border border-violet-300 rounded-full px-2.5 py-1 ml-2">Purchaser Actioned</span>
+                              </div>
+                              {stockBadge && <div className="mb-2">{stockBadge}</div>}
+                              <div className="bg-violet-100/60 dark:bg-violet-900/40 border border-violet-200 dark:border-violet-800 rounded-lg px-3 py-2.5 space-y-1.5 text-sm">
+                                <div className="flex items-center gap-1.5 border-b border-violet-200 dark:border-violet-700 pb-1.5 mb-1.5">
+                                  <ClipboardList className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                                  <span className="font-semibold text-violet-800 dark:text-violet-200 text-sm">Purchased / Ordered — Awaiting Receipt</span>
+                                </div>
+                                {paTx.vendor && <div className="flex justify-between"><span className="text-gray-500">Vendor</span><span className="font-semibold">{paTx.vendor}</span></div>}
+                                {paTx.qty != null && <div className="flex justify-between"><span className="text-gray-500">Qty</span><span className="font-semibold">{paTx.qty} {item.uom}</span></div>}
+                                {paTx.rate != null && <div className="flex justify-between"><span className="text-gray-500">Rate</span><span className="font-semibold">₹{paTx.rate}/{item.uom}</span></div>}
+                                {paTx.paymentMode && <div className="flex justify-between"><span className="text-gray-500">Payment</span><span className="font-semibold uppercase">{paTx.paymentMode}</span></div>}
+                                {paTx.paidBy && <div className="flex justify-between"><span className="text-gray-500">Paid By</span><span className="font-semibold">{paidByLabel}</span></div>}
+                                {paTx.expectedDeliveryDate && <div className="flex justify-between"><span className="text-gray-500">Expected</span><span className="font-semibold flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{format(new Date(paTx.expectedDeliveryDate + "T00:00:00"), "dd MMM yyyy")}</span></div>}
+                              </div>
+                              <div className="mt-2">
+                                <Button variant="ghost" size="sm" className="text-sm text-muted-foreground" onClick={() => toggleHistoryItem(item.id)} data-testid={`button-toggle-history-${item.id}`}>
+                                  <Clock className="w-3 h-3 mr-1" />{expandedHistoryItems.has(item.id) ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />} HISTORY
+                                </Button>
+                                {expandedHistoryItems.has(item.id) && <ItemHistoryTimeline itemId={item.id} />}
+                              </div>
+                            </div>
+                          );
+                        }
                       }
 
                       /* Pending → action form */

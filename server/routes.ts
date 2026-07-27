@@ -6824,6 +6824,20 @@ export async function registerRoutes(
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "items array is required" });
       }
+      // Server-side validation (Batch 16): purchased items must have vendor + rate + qty
+      for (const item of items as any[]) {
+        if (item.reasonCode === "not_available") continue;
+        if (!item.qty || Number(item.qty) <= 0) {
+          return res.status(400).json({ message: `Invalid quantity for item ${item.itemId}` });
+        }
+        const vendorStr = String(item.vendor ?? "").trim().toUpperCase();
+        if (!vendorStr || vendorStr === "SUPPLIER") {
+          return res.status(400).json({ message: "Vendor name is required for all purchased items" });
+        }
+        if (!item.rate || Number(item.rate) <= 0) {
+          return res.status(400).json({ message: "Rate must be greater than zero for all purchased items" });
+        }
+      }
       await storage.submitPurchaserAction(indentId, items, actionBy, userId);
       const indent = await storage.getPurchaseIndent(indentId);
       res.json(indent);
@@ -8927,21 +8941,20 @@ export async function registerRoutes(
       }
 
       // Server-side over-receipt guard: reject if any line would exceed its approved qty.
-      // When grn.indentRef is set, all line items must carry indentItemId so the guard
-      // cannot be bypassed by simply omitting the field on a crafted request.
+      // For manually-created GRNs (Batch 17): items may omit indentItemId — only items
+      // that DO carry indentItemId are subject to the over-receipt guard. When indentItemId
+      // is provided, validate it actually belongs to the referenced indent.
       if (grn.indentRef) {
-        const missingLink = (items as any[]).some(it => it.indentItemId == null);
-        if (missingLink) {
-          return res.status(400).json({ error: "All GRN line items must include indentItemId when creating against an indent" });
-        }
-        // Validate that every provided indentItemId actually belongs to this indent
-        const validIndentItemIds = await storage.getIndentItemIdsForIndentNo(grn.indentRef);
-        if (validIndentItemIds.size === 0) {
-          return res.status(400).json({ error: `Indent "${grn.indentRef}" not found or has no items` });
-        }
-        const foreignIds = (items as any[]).filter(it => !validIndentItemIds.has(Number(it.indentItemId)));
-        if (foreignIds.length > 0) {
-          return res.status(400).json({ error: "One or more indentItemId values do not belong to the referenced indent" });
+        const linkedWithId = (items as any[]).filter(it => it.indentItemId != null);
+        if (linkedWithId.length > 0) {
+          // Validate that every provided indentItemId actually belongs to this indent
+          const validIndentItemIds = await storage.getIndentItemIdsForIndentNo(grn.indentRef);
+          if (validIndentItemIds.size > 0) {
+            const foreignIds = linkedWithId.filter(it => !validIndentItemIds.has(Number(it.indentItemId)));
+            if (foreignIds.length > 0) {
+              return res.status(400).json({ error: "One or more indentItemId values do not belong to the referenced indent" });
+            }
+          }
         }
       }
       const linkedItems = (items as any[]).filter(it => it.indentItemId != null);

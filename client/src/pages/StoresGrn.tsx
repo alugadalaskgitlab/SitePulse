@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check, Clock, Zap, Bell, Ban, TrendingUp } from "lucide-react";
+import { ChevronLeft, Plus, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check, Clock, Zap, Bell, Ban, TrendingUp, Camera, Image as ImageIcon } from "lucide-react";
+import { useUpload } from "@/hooks/use-upload";
 import { Textarea } from "@/components/ui/textarea";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { Button } from "@/components/ui/button";
@@ -60,7 +61,7 @@ const TODAY = format(new Date(), "yyyy-MM-dd");
 
 type StoreItem = { id: number; name: string; category: string; uom: string };
 type Site = { id: number; name: string; isActive: number };
-type GrnLine = { itemId: string; qty: string; rate: string; uom: string };
+type GrnLine = { itemId: string; qty: string; rate: string; uom: string; indentItemId?: number };
 type GrnWithItems = {
   id: number; grnNumber: string; date: string; supplier: string;
   invoiceNo: string | null; invoiceDate: string | null; siteId: number | null;
@@ -77,7 +78,7 @@ type PurchaseIndentFull = {
   status: string;
   date?: string;
   raisedBy?: string;
-  items: { description: string; qty: number; uom: string; approvedQty: number | null }[];
+  items: { id?: number; description: string; qty: number; uom: string; approvedQty: number | null }[];
 };
 
 const emptyLine = (): GrnLine => ({ itemId: "", qty: "", rate: "", uom: "" });
@@ -87,6 +88,30 @@ interface Props { isNew?: boolean; detailId?: number }
 export default function StoresGrn({ isNew, detailId }: Props) {
   const { toast } = useToast();
   const { isAdmin, isManager, user } = useAuth();
+  const { uploadFile } = useUpload();
+  const [stagedGrnPhotos, setStagedGrnPhotos] = useState<File[]>([]);
+  const grnPhotoInputRef = useRef<HTMLInputElement>(null);
+  const addGrnPhotos = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const valid = Array.from(files).filter(f => {
+      if (f.size > 15 * 1024 * 1024) { toast({ title: "File too large", description: `${f.name} exceeds 15MB`, variant: "destructive" }); return false; }
+      if (!f.type.startsWith("image/") && f.type !== "application/pdf") { toast({ title: "Unsupported file type", description: f.name, variant: "destructive" }); return false; }
+      return true;
+    });
+    setStagedGrnPhotos(prev => [...prev, ...valid]);
+  };
+  const uploadGrnPhotos = async (grnId: number) => {
+    for (const file of stagedGrnPhotos) {
+      const up = await uploadFile(file);
+      if (!up) continue;
+      try {
+        await apiRequest("POST", "/api/attachments", {
+          moduleType: "store_grn", linkedRecordId: grnId, fileName: file.name,
+          objectPath: up.objectPath, mimeType: file.type || "application/octet-stream", fileSize: file.size,
+        });
+      } catch { toast({ title: "Some attachments failed to upload", description: file.name, variant: "destructive" }); }
+    }
+  };
   const [, navigate] = useLocation();
   const search = useSearch();
   const searchParams = new URLSearchParams(search);
@@ -270,6 +295,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
         date: d.date,
         raisedBy: d.raisedBy,
         items: (d.items || []).map((it: any) => ({
+          id: it.id,
           description: it.description || "",
           qty: it.qty,
           uom: it.uom,
@@ -390,6 +416,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       date: d.date,
       raisedBy: d.raisedBy,
       items: (d.items || []).map((it: any) => ({
+        id: it.id,
         description: it.description || "",
         qty: it.qty,
         uom: it.uom,
@@ -441,7 +468,12 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/stores/grns", data),
-    onSuccess: () => {
+    onSuccess: async (res: Response) => {
+      const created = await res.json().catch(() => null);
+      if (!isSavingDraft && created?.id && stagedGrnPhotos.length > 0) {
+        await uploadGrnPhotos(created.id);
+        setStagedGrnPhotos([]);
+      }
       queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
       if (isSavingDraft) {
         toast({ title: "Draft saved", description: "Find it in the GRN list to finalise later." });
@@ -452,6 +484,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setShowForm(false);
       setForm({ date: TODAY, supplier: "", invoiceNo: "", invoiceDate: "", siteId: "", indentRef: "", remarks: "", acceptanceStatus: "accepted", acceptanceRemarks: "" });
       setLines([emptyLine()]);
+      setStagedGrnPhotos([]);
       setGrnCategory("Spares");
       setIndentOverride(false);
       setIndentComboSearch("");
@@ -538,6 +571,41 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     onError: () => toast({ title: "Failed to update acceptance status", variant: "destructive" }),
   });
 
+  // Auto-match GRN lines to PI item IDs when indentRef is set (Batch 17: ID-first matching)
+  useEffect(() => {
+    if (!form.indentRef) return;
+    const pi = allIndentsGlobal.find(p => p.indentNo === form.indentRef);
+    if (!pi) return;
+    const norm = (s: string) => s.toUpperCase().trim().replace(/\s+/g, " ");
+    setLines(prev => prev.map(line => {
+      if (line.indentItemId != null) return line; // already matched
+      const selectedItem = items.find(i => String(i.id) === line.itemId);
+      if (!selectedItem) return line;
+      // 1. Exact name match
+      let piItem = pi.items.find(pi => norm(pi.description) === norm(selectedItem.name));
+      // 2. Substring / word-overlap match
+      if (!piItem) {
+        const descWords = new Set(norm(selectedItem.name).split(" ").filter(w => w.length > 2));
+        let best: typeof pi.items[0] | null = null; let bestScore = 0;
+        for (const it of pi.items) {
+          const itWords = norm(it.description).split(" ").filter(w => w.length > 2);
+          let matches = 0;
+          for (const w of itWords) { if (descWords.has(w)) matches++; }
+          const score = matches / Math.max(descWords.size, itWords.length || 1);
+          if (score > bestScore && score >= 0.5) { bestScore = score; best = it; }
+        }
+        piItem = best ?? undefined;
+      }
+      if (!piItem) return line;
+      // piItem matched — but we need the actual PI item id, not just description
+      // We embed it via the allIndentsGlobal lookup (items carry id from the full PI data)
+      const piItemWithId = piItem as any;
+      if (piItemWithId.id == null) return line;
+      return { ...line, indentItemId: piItemWithId.id };
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.indentRef, allIndentsGlobal.length]);
+
   function buildGrnPayload(status: "draft" | "finalized") {
     const validLines = lines.filter(l => l.itemId && l.qty);
     return {
@@ -558,6 +626,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
         qty: parseFloat(l.qty),
         rate: l.rate ? parseFloat(l.rate) : null,
         uom: l.uom,
+        ...(l.indentItemId != null ? { indentItemId: l.indentItemId } : {}),
       })),
       grnCategory: STORE_CATEGORY_CODES[grnCategory] || "GRN",
     };
@@ -649,6 +718,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     setShowForm(false);
     setEditingDraftId(null);
     setEditingDraftNumber("");
+    setStagedGrnPhotos([]);
     if (isNew) navigate(searchParams.get("returnTo") || "/stores/grns");
   }
 
@@ -1599,6 +1669,27 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   </div>
                 )}
 
+                {/* Attachment photos for GRN (Batch 15) */}
+                <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
+                  <Label className="text-sm font-medium">Invoice / Challan Photos <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <p className="text-xs text-muted-foreground">Attach delivery challan or invoice photos for this GRN.</p>
+                  <input ref={grnPhotoInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" data-testid="input-grn-photo"
+                    onChange={e => { addGrnPhotos(e.target.files); e.target.value = ""; }} />
+                  <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => grnPhotoInputRef.current?.click()} data-testid="button-grn-attach-photo">
+                    <Camera className="w-3.5 h-3.5" /> Attach Photo / PDF
+                  </Button>
+                  {stagedGrnPhotos.length > 0 && (
+                    <div className="space-y-1">
+                      {stagedGrnPhotos.map((f, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm bg-white dark:bg-gray-900 rounded px-2 py-1 border">
+                          <ImageIcon className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                          <span className="flex-1 truncate text-xs">{f.name}</span>
+                          <button type="button" onClick={() => setStagedGrnPhotos(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-700"><X className="w-3 h-3" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div className="flex justify-end gap-2 pt-2 border-t">
                   <Button type="button" variant="ghost" onClick={cancelForm}>Cancel</Button>
                   <Button
