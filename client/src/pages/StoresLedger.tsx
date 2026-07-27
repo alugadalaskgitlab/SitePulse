@@ -12,6 +12,7 @@ type LedgerEntry = {
   date: string; docNumber: string; type: "GRN" | "ISSUE";
   qty: number; direction: "in" | "out"; runningBalance: number;
   counterparty: string; purpose?: string;
+  irnId?: number | null; irnNo?: string | null;
 };
 type StockItem = { itemId: number; itemName: string; category: string; uom: string; balance: number };
 
@@ -132,6 +133,16 @@ export default function StoresLedger() {
                       <td className="px-4 py-2.5 text-sm">
                         <div>{entry.counterparty || "—"}</div>
                         {entry.purpose && <div className="text-muted-foreground">{entry.purpose}</div>}
+                        {entry.irnId && entry.irnNo && (
+                          <Link href={`/irn/${entry.irnId}`}>
+                            <span
+                              className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 cursor-pointer dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800"
+                              data-testid={`link-irn-${entry.irnId}`}
+                            >
+                              IRN {entry.irnNo}
+                            </span>
+                          </Link>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono">
                         {entry.direction === "in"

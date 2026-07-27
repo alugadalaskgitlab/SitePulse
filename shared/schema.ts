@@ -2287,6 +2287,8 @@ export type StoreLedgerEntry = {
   runningBalance: number;
   counterparty: string;
   purpose?: string;
+  irnId?: number | null;
+  irnNo?: string | null;
 };
 
 // ============================================

@@ -19631,9 +19631,12 @@ export class DatabaseStorage implements IStorage {
         issuedToDetail: storeIssues.issuedToDetail,
         purpose: storeIssues.purpose,
         createdAt: storeIssues.createdAt,
+        irnId: storeIssues.irnId,
+        irnNo: internalRequisitions.irnNo,
       })
       .from(storeIssueItems)
       .innerJoin(storeIssues, eq(storeIssueItems.issueId, storeIssues.id))
+      .leftJoin(internalRequisitions, eq(storeIssues.irnId, internalRequisitions.id))
       .where(and(
         eq(storeIssueItems.itemId, itemId),
         eq(storeIssues.isCancelled, false),
@@ -19661,6 +19664,8 @@ export class DatabaseStorage implements IStorage {
         runningBalance: 0,
         counterparty: r.issuedToDetail ?? '',
         purpose: r.purpose ?? undefined,
+        irnId: r.irnId ?? null,
+        irnNo: r.irnNo ?? null,
         sortKey: r.date + r.createdAt?.toISOString(),
       })),
     ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
