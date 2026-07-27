@@ -800,10 +800,16 @@ export default function PurchaseIndents() {
   const [purchaserActionOpen, setPurchaserActionOpen] = useState(false);
   type PurchaserActionItemData = { qty: string; vendor: string; rate: string; paymentMode: string; paidBy: string; payerName: string; purchaseDate: string; expectedDeliveryDate: string; remarks: string; shortfallReason: string };
   const [purchaserActionData, setPurchaserActionData] = useState<Record<number, PurchaserActionItemData>>({});
-  // Staged photos for Purchaser Action — uploaded after the record is saved
-  const [paPhotos, setPaPhotos] = useState<File[]>([]);
-  const paPhotoInputRef = useRef<HTMLInputElement>(null);
+  // Staged photos for Purchaser Action — per-item, keyed by PI item ID (Batch 17)
+  const [paPhotos, setPaPhotos] = useState<Record<number, File[]>>({});
   const { uploadFile } = useUpload();
+  const addPaPhotos = (itemId: number, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setPaPhotos(prev => ({ ...prev, [itemId]: [...(prev[itemId] || []), ...Array.from(files)] }));
+  };
+  const removePaPhoto = (itemId: number, idx: number) => {
+    setPaPhotos(prev => { const copy = { ...prev }; copy[itemId] = (copy[itemId] || []).filter((_, j) => j !== idx); return copy; });
+  };
   // Dual-route: Bulk plant receipt dialog (Route B)
   const [bulkReceiptOpen, setBulkReceiptOpen] = useState(false);
   type BulkReceiptItemData = { qty: string; uom: string; vendor: string; rate: string; receiptDate: string; remarks: string; partyId: string };
@@ -1255,33 +1261,43 @@ export default function PurchaseIndents() {
   });
 
   const purchaserActionMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/purchaser-action`, data),
-    onSuccess: async () => {
-      // Upload any staged photos (invoice/bill attachments)
-      if (paPhotos.length > 0 && selectedIndentId) {
-        for (const file of paPhotos) {
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/purchaser-action`, data);
+      return res.json() as Promise<{ indent: any; txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number> }>;
+    },
+    onSuccess: async (result) => {
+      // Upload per-item invoice photos — tag to PI transaction AND draft GRN (Batch 17)
+      const { txnIdsByItemId = {}, grnIdsByItemId = {} } = result ?? {};
+      const allItemIds = new Set([
+        ...Object.keys(txnIdsByItemId).map(Number),
+        ...Object.keys(paPhotos).map(Number),
+      ]);
+      for (const itemId of allItemIds) {
+        const files = paPhotos[itemId] || [];
+        if (files.length === 0) continue;
+        const txnId = txnIdsByItemId[itemId];
+        const grnId = grnIdsByItemId[itemId];
+        for (const file of files) {
           const up = await uploadFile(file);
           if (!up) continue;
-          try {
-            await apiRequest("POST", "/api/attachments", {
-              moduleType: "pi_purchaser_action",
-              linkedRecordId: selectedIndentId,
-              fileName: file.name,
-              objectPath: up.objectPath,
-              mimeType: file.type || "application/octet-stream",
-              fileSize: file.size,
-            });
-          } catch {
-            toast({ title: "Some attachments failed to upload", description: file.name, variant: "destructive" });
+          const base = { fileName: file.name, objectPath: up.objectPath, mimeType: file.type || "application/octet-stream", fileSize: file.size };
+          // Tag to the PI purchaser-action transaction (for PI history)
+          if (txnId) {
+            apiRequest("POST", "/api/attachments", { ...base, moduleType: "pi_purchaser_action", linkedRecordId: txnId }).catch(() => {});
+          }
+          // Also tag to the draft GRN so Stores sees it without re-uploading
+          if (grnId) {
+            apiRequest("POST", "/api/attachments", { ...base, moduleType: "store_grn", linkedRecordId: grnId }).catch(() => {});
           }
         }
-        setPaPhotos([]);
       }
+      setPaPhotos({});
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
       if (selectedIndentId) {
         queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
         queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId, "transactions"] });
       }
+      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
       setPurchaserActionOpen(false);
       setPurchaserActionData({});
       toast({ title: "Purchaser action recorded" });
@@ -3882,31 +3898,41 @@ export default function PurchaseIndents() {
                                       <Input value={pd.remarks} onChange={e => updField("remarks", e.target.value)}
                                         placeholder="Optional notes" data-testid={`input-pa-remarks-${item.id}`} />
                                     </div>
+                                    {/* Per-item photo pickers (Batch 17) */}
+                                    {pd.shortfallReason !== "not_available" && (
+                                      <div className="border rounded-lg p-2.5 bg-muted/20 space-y-1.5 mt-1">
+                                        <p className="text-xs font-medium text-muted-foreground">Invoice / Bill Photo <span className="text-gray-400 font-normal">(optional)</span></p>
+                                        <input type="file" id={`pa-cam-${item.id}`} accept="image/*" capture="environment" className="hidden" onChange={e => { addPaPhotos(item.id, e.target.files); e.target.value = ""; }} />
+                                        <input type="file" id={`pa-gal-${item.id}`} accept="image/*" multiple className="hidden" onChange={e => { addPaPhotos(item.id, e.target.files); e.target.value = ""; }} />
+                                        <input type="file" id={`pa-pdf-${item.id}`} accept="application/pdf,.pdf" multiple className="hidden" onChange={e => { addPaPhotos(item.id, e.target.files); e.target.value = ""; }} />
+                                        <div className="flex flex-wrap gap-1.5">
+                                          <Button type="button" variant="outline" size="sm" className="gap-1 text-xs h-7 px-2" onClick={() => (document.getElementById(`pa-cam-${item.id}`) as HTMLInputElement)?.click()} data-testid={`button-pa-cam-${item.id}`}>
+                                            <Camera className="w-3 h-3" /> Take Photo
+                                          </Button>
+                                          <Button type="button" variant="outline" size="sm" className="gap-1 text-xs h-7 px-2" onClick={() => (document.getElementById(`pa-gal-${item.id}`) as HTMLInputElement)?.click()} data-testid={`button-pa-gal-${item.id}`}>
+                                            <ImageIcon className="w-3 h-3" /> Gallery
+                                          </Button>
+                                          <Button type="button" variant="outline" size="sm" className="gap-1 text-xs h-7 px-2" onClick={() => (document.getElementById(`pa-pdf-${item.id}`) as HTMLInputElement)?.click()} data-testid={`button-pa-pdf-${item.id}`}>
+                                            <FileText className="w-3 h-3" /> PDF / File
+                                          </Button>
+                                        </div>
+                                        {(paPhotos[item.id] || []).length > 0 && (
+                                          <div className="space-y-1">
+                                            {(paPhotos[item.id] || []).map((f, i) => (
+                                              <div key={i} className="flex items-center gap-2 bg-white dark:bg-gray-900 rounded px-2 py-1 border">
+                                                <ImageIcon className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                                                <span className="flex-1 truncate text-xs">{f.name}</span>
+                                                <button type="button" onClick={() => removePaPhoto(item.id, i)} className="text-red-500 hover:text-red-700"><X className="w-3 h-3" /></button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               );
                             })}
-                        </div>
-                        {/* Photo attachment for invoice/bill (Batch 15) */}
-                        <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
-                          <Label className="text-sm font-medium">Invoice / Bill Photos <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                          <p className="text-xs text-muted-foreground">Attach a photo of the invoice or bill for record-keeping.</p>
-                          <input ref={paPhotoInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" data-testid="input-pa-photo"
-                            onChange={e => { if (e.target.files) { setPaPhotos(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = ""; } }} />
-                          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => paPhotoInputRef.current?.click()} data-testid="button-pa-attach-photo">
-                            <Camera className="w-3.5 h-3.5" /> Attach Photo / PDF
-                          </Button>
-                          {paPhotos.length > 0 && (
-                            <div className="space-y-1">
-                              {paPhotos.map((f, i) => (
-                                <div key={i} className="flex items-center gap-2 text-sm bg-white dark:bg-gray-900 rounded px-2 py-1 border">
-                                  <ImageIcon className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-                                  <span className="flex-1 truncate text-xs">{f.name}</span>
-                                  <button type="button" onClick={() => setPaPhotos(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-700"><X className="w-3 h-3" /></button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
                         </div>
                         <div className="flex justify-end mt-3">
                           <Button

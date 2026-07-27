@@ -1164,7 +1164,7 @@ export interface IStorage {
 
   // PI Item Transactions (dual-route)
   getPiItemTransactions(indentId: number): Promise<PiItemTransaction[]>;
-  submitPurchaserAction(indentId: number, items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string }[], actionBy: string): Promise<void>;
+  submitPurchaserAction(indentId: number, items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string }[], actionBy: string, userId?: number): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number> }>;
   submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
   recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<void>;
   submitBulkReceiptAsPending(indentId: number, receivingLocation: string, receivingSiteId: number | null, items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string }[], createdByUserId: number, createdBy: string): Promise<void>;
@@ -9884,10 +9884,12 @@ export class DatabaseStorage implements IStorage {
     items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string; procurementRoute?: string }[],
     actionBy: string,
     userId?: number
-  ): Promise<void> {
+  ): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number> }> {
+    const txnIdsByItemId: Record<number, number> = {};
+    const grnIdsByItemId: Record<number, number> = {};
     await db.transaction(async (tx) => {
       for (const item of items) {
-        await tx.insert(piItemTransactions).values({
+        const [txRow] = await tx.insert(piItemTransactions).values({
           indentId,
           indentItemId: item.itemId,
           transactionType: "purchaser_action",
@@ -9902,7 +9904,8 @@ export class DatabaseStorage implements IStorage {
           reasonCode: item.reasonCode ?? null,
           remarks: item.remarks ?? null,
           createdBy: actionBy.toUpperCase(),
-        });
+        }).returning({ id: piItemTransactions.id });
+        txnIdsByItemId[item.itemId] = txRow.id;
         // Load authoritative procurement route from DB — do not trust client payload
         const [existing] = await tx.select({
           totalPurchasedQty: purchaseIndentItems.totalPurchasedQty,
@@ -9948,42 +9951,31 @@ export class DatabaseStorage implements IStorage {
         .where(inArray(purchaseIndentItems.id, items.map(i => i.itemId)));
       const allItemDbMap = new Map(allItemDbRows.map(r => [r.id, r]));
 
-      const storesItems = items.filter(item => {
+      // One draft GRN per stores-route item (Batch 17 final revision)
+      for (const item of items) {
         const dbRoute = allItemDbMap.get(item.itemId)?.procurementRoute ?? null;
-        return (dbRoute === "stores" || dbRoute === null) &&
-          item.qty > 0 &&
-          item.reasonCode !== "not_available" &&
-          item.reasonCode !== "ordered";
-      });
-      if (storesItems.length > 0) {
-        const piItemMap = allItemDbMap;
-        const vendor = storesItems.find(i => i.vendor)?.vendor ?? "SUPPLIER";
-
-        const grnItems = storesItems.map(item => {
-          const piItem = piItemMap.get(item.itemId);
-          return {
-            itemId: item.itemId,
-            description: piItem?.description ?? "",
-            uom: piItem?.uom ?? "NOS",
-            qty: item.qty,
-            rate: item.rate,
-            vendor: item.vendor,
-          };
-        });
-
+        if (!((dbRoute === "stores" || dbRoute === null) && item.qty > 0 && item.reasonCode !== "not_available" && item.reasonCode !== "ordered")) continue;
+        const piItem = allItemDbMap.get(item.itemId);
+        const grnItem = {
+          itemId: item.itemId,
+          description: piItem?.description ?? "",
+          uom: piItem?.uom ?? "NOS",
+          qty: item.qty,
+          rate: item.rate,
+          vendor: item.vendor,
+        };
         try {
-          const draftGrn = await this.createDraftGrnFromPi(indentId, grnItems, vendor, userId, actionBy);
-          // Link the GRN back to each PI item
-          for (const item of storesItems) {
-            await db.update(purchaseIndentItems)
-              .set({ linkedGrnId: draftGrn.id })
-              .where(eq(purchaseIndentItems.id, item.itemId));
-          }
+          const draftGrn = await this.createDraftGrnFromPi(indentId, [grnItem], item.vendor ?? "SUPPLIER", userId, actionBy);
+          grnIdsByItemId[item.itemId] = draftGrn.id;
+          await db.update(purchaseIndentItems)
+            .set({ linkedGrnId: draftGrn.id })
+            .where(eq(purchaseIndentItems.id, item.itemId));
         } catch (err) {
-          console.error("submitPurchaserAction: auto-GRN creation failed (non-fatal):", err);
+          console.error(`submitPurchaserAction: auto-GRN creation failed for item ${item.itemId} (non-fatal):`, err);
         }
       }
     }
+    return { txnIdsByItemId, grnIdsByItemId };
   }
 
   async createDraftGrnFromPi(

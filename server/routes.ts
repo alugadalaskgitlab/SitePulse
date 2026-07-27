@@ -6838,9 +6838,9 @@ export async function registerRoutes(
           return res.status(400).json({ message: "Rate must be greater than zero for all purchased items" });
         }
       }
-      await storage.submitPurchaserAction(indentId, items, actionBy, userId);
+      const paResult = await storage.submitPurchaserAction(indentId, items, actionBy, userId);
       const indent = await storage.getPurchaseIndent(indentId);
-      res.json(indent);
+      res.json({ indent, txnIdsByItemId: paResult.txnIdsByItemId, grnIdsByItemId: paResult.grnIdsByItemId });
     } catch (err) {
       console.error("POST /api/purchase-indents/:id/purchaser-action:", err);
       res.status(500).json({ message: String((err as Error).message) });

@@ -1,0 +1,15 @@
+Batch 17 (final revision): Item-wise photo linkage, one GRN per item, and ID-first PI–GRN matching
+
+1. Proper photo/document picker — Replace the single generic file input in Purchaser Action with three clear options: "Take Photo" (camera, accept="image/*" capture="environment"), "Choose from Gallery" (image picker, no forced capture), and "Choose PDF/File" (document picker). On desktop, "Take Photo" can be hidden or fall back to whatever camera access the browser supports.
+
+2. Item-level attachment linkage — Move the photo controls inside each item's own Purchaser Action card (not one shared uploader for the whole PI). Each attachment must be tagged with the PI ID, the specific PI item ID, and the purchaser-action transaction ID — so a multi-item PI can tell exactly which invoice belongs to which item. When that item's draft GRN is created, carry its attachments forward automatically so Stores sees them without re-uploading; Stores can still add their own delivery-time photos separately.
+
+3. One draft GRN per purchaser-actioned item, by default — When a Purchaser Action is submitted for multiple Stores-route items at once, create one linked pending GRN per item, not a single combined GRN. Grouping multiple items into one multi-line GRN (e.g., when genuinely purchased together under one invoice) should be a deliberate, separate action later — never the automatic default.
+
+4. No matching needed for auto-created GRNs — since the system already knows the PI ID, PI item ID, Store Item Catalogue/material ID, and purchaser-action ID at creation time, write all of these directly onto the draft GRN. No search or match should ever be needed for this path.
+
+5. ID-first matching for manually-created GRNs only — in this order, falling through only when the previous step finds nothing: (1) Store Item Catalogue/material ID; (2) an exact PI-item ID, if one was already supplied; (3) item code, where available; (4) description similarity — fallback only, not the primary method; (5) manual approved-PI selection, final fallback.
+
+6. Acceptance check for the Ink Cartridge case: if an approved PI item has no valid Purchaser Action yet, it must show "Awaiting Purchaser Action" and have no draft GRN at all. If someone then creates a manual GRN for that same item, the system should find and offer the matching approved PI via the catalogue/material ID — not fail just because the wording differs ("Printer Ink Cartridge" vs. "Ink Cartridges – Colour").
+
+Test end-to-end on dev before production: submit a Purchaser Action for two different Stores items on the same PI with photos attached to each — confirm two separate draft GRNs are created, each carrying only its own item's photo; then create a manual GRN for an approved-but-not-yet-actioned item and confirm it's found via catalogue ID, not text matching.
