@@ -392,7 +392,7 @@ export default function HmpHub() {
             <SectionHeading>Procurement</SectionHeading>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <HubActionTile
-                href={`/plant/purchase-indents?returnTo=${HUB}&from=hmp`}
+                href={`/plant/purchase-indents?returnTo=${HUB}&from=hmp&context=hmp`}
                 icon={ShoppingCart}
                 title="Purchase Indent"
                 description="Raise and track purchase indents for HMP materials & spares"

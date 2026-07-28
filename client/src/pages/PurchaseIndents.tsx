@@ -24,6 +24,8 @@ import { LocationPicker, locationLabel, SECTION_OPTIONS } from "@/components/Loc
 import type { LocationValue } from "@/components/LocationPicker";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { PersonnelCombobox } from "@/components/PersonnelCombobox";
+import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { AttachmentUploader } from "@/components/AttachmentUploader";
 
 type StoreItem = { id: number; name: string; uom: string; category: string };
 
@@ -277,7 +279,7 @@ function getStatusBadge(status: string, storesStatus?: string | null, piType?: s
     case "ordered":
       return <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700" data-testid="badge-status-ordered">ORDER PLACED</Badge>;
     case "purchaser_actioned":
-      return <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-700" data-testid="badge-status-purchaser-actioned">PURCHASER ACTIONED</Badge>;
+      return <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-700" data-testid="badge-status-purchaser-actioned">PURCHASE IN PROGRESS</Badge>;
     case "handover_pending":
       return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700" data-testid="badge-status-handover-pending">HANDOVER PENDING</Badge>;
     case "partially_received":
@@ -4501,13 +4503,13 @@ export default function PurchaseIndents() {
                                   {(item as any).spec && <p className="text-sm italic text-violet-700 dark:text-violet-400">{(item as any).spec}</p>}
                                   <p className="text-sm text-violet-600 dark:text-violet-400 mt-0.5">{approvedQty} {item.uom} approved · FOR: {item.purpose}</p>
                                 </div>
-                                <span className="shrink-0 inline-flex items-center text-xs font-bold text-violet-700 bg-violet-100 border border-violet-300 rounded-full px-2.5 py-1 ml-2">Purchaser Actioned</span>
+                                <span className="shrink-0 inline-flex items-center text-xs font-bold text-violet-700 bg-violet-100 border border-violet-300 rounded-full px-2.5 py-1 ml-2">{paTx.expectedDeliveryDate ? "Ordered — Awaiting Delivery" : "Purchase Recorded — Awaiting Receipt"}</span>
                               </div>
                               {stockBadge && <div className="mb-2">{stockBadge}</div>}
                               <div className="bg-violet-100/60 dark:bg-violet-900/40 border border-violet-200 dark:border-violet-800 rounded-lg px-3 py-2.5 space-y-1.5 text-sm">
                                 <div className="flex items-center gap-1.5 border-b border-violet-200 dark:border-violet-700 pb-1.5 mb-1.5">
                                   <ClipboardList className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-                                  <span className="font-semibold text-violet-800 dark:text-violet-200 text-sm">Purchased / Ordered — Awaiting Receipt</span>
+                                  <span className="font-semibold text-violet-800 dark:text-violet-200 text-sm">{paTx.expectedDeliveryDate ? "Ordered — Awaiting Delivery" : "Purchase Recorded — Awaiting Receipt"}</span>
                                 </div>
                                 {paTx.vendor && <div className="flex justify-between"><span className="text-gray-500">Vendor</span><span className="font-semibold">{paTx.vendor}</span></div>}
                                 {paTx.qty != null && <div className="flex justify-between"><span className="text-gray-500">Qty</span><span className="font-semibold">{paTx.qty} {item.uom}</span></div>}
@@ -4516,6 +4518,27 @@ export default function PurchaseIndents() {
                                 {paTx.paidBy && <div className="flex justify-between"><span className="text-gray-500">Paid By</span><span className="font-semibold">{paidByLabel}</span></div>}
                                 {paTx.expectedDeliveryDate && <div className="flex justify-between"><span className="text-gray-500">Expected</span><span className="font-semibold flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{format(new Date(paTx.expectedDeliveryDate + "T00:00:00"), "dd MMM yyyy")}</span></div>}
                               </div>
+                              {/* Attachments — invoice / challan photos linked during Purchaser Action */}
+                              {paTx.id && (
+                                <div className="mt-3 space-y-2">
+                                  <p className="text-xs font-semibold text-violet-700 dark:text-violet-400 uppercase tracking-wide">Documents / Photos</p>
+                                  <AttachmentGallery
+                                    moduleType="pi_purchaser_action"
+                                    linkedRecordId={paTx.id}
+                                    allowDelete={false}
+                                    emptyText="No invoice or challan attached yet."
+                                    className="grid grid-cols-3 sm:grid-cols-4 gap-2"
+                                  />
+                                  {(canEdit || isAdmin) && (
+                                    <AttachmentUploader
+                                      moduleType="pi_purchaser_action"
+                                      linkedRecordId={paTx.id}
+                                      label="Add Document"
+                                      showCamera={true}
+                                    />
+                                  )}
+                                </div>
+                              )}
                               <div className="mt-2">
                                 <Button variant="ghost" size="sm" className="text-sm text-muted-foreground" onClick={() => toggleHistoryItem(item.id)} data-testid={`button-toggle-history-${item.id}`}>
                                   <Clock className="w-3 h-3 mr-1" />{expandedHistoryItems.has(item.id) ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />} HISTORY

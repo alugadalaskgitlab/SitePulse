@@ -206,7 +206,7 @@ export default function StoresHub() {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <HubActionTile
-                href={`/plant/purchase-indents?status=stores_check&returnTo=${HUB}`}
+                href={`/plant/purchase-indents?status=stores_check&returnTo=${HUB}&context=stores`}
                 icon={ShoppingCart}
                 title="Purchase Indents"
                 description="Verify stock availability for indents raised by HMP & site teams — awaiting stores check before manager approval"

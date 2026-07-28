@@ -161,7 +161,7 @@ export default function SiteHub() {
               }
             />
             <HubActionTile
-              href="/plant/purchase-indents?returnTo=/site/hub&from=site"
+              href="/plant/purchase-indents?returnTo=/site/hub&from=site&context=site"
               icon={ShoppingCart}
               title="Purchase Indent"
               description="Raise and track purchase indents for site materials & requirements"

@@ -230,7 +230,7 @@ export default function ReportsHub() {
             <SectionHeading>Procurement & Billing</SectionHeading>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <HubActionTile
-                href={`/plant/purchase-indents?returnTo=${HUB}`}
+                href={`/plant/purchase-indents?returnTo=${HUB}&context=reports`}
                 icon={ShoppingCart}
                 title="Purchase Indents"
                 description="View and approve purchase indents across all sites"

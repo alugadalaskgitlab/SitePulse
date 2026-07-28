@@ -126,7 +126,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
   const mainNavItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-    ...(sectionVisible("site_hub") || isAdmin ? [{ href: "/site/hub", icon: HardHat, label: "Site Operations", matchPrefix: "/site" }] : []),
+    ...(sectionVisible("site_hub") || isAdmin ? [{ href: "/site/hub", icon: HardHat, label: "Site Operations", matchPrefix: "/site", contextKey: "site" }] : []),
     ...(moduleAllowed("hmp") ? [{ href: "/plant/hub", icon: Factory, label: "HMP Operations", matchPrefix: "/plant", contextKey: "hmp" }] : []),
     ...(rmcEnabled && moduleAllowed("rmc") ? [{ href: "/rmc/hub", icon: Building2, label: "RMC Operations", matchPrefix: "/rmc", contextKey: "rmc" }] : []),
     ...(sectionVisible("equipment_hub") || sectionVisible("plant_equipment") || isAdmin ? [{ href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment", contextKey: "equipment" }] : []),
@@ -135,7 +135,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     ...(canSeeIrn ? [{ href: "/irn", icon: ClipboardList, label: "Requisitions", matchPrefix: "/irn" }] : []),
     ...(WP_ENABLED && (sectionVisible("qto_boq") || isAdmin) ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
     ...(WP_ENABLED && (sectionVisible("qto_boq") || isAdmin) ? [{ href: "/norms", icon: BookOpen, label: "Norms Library (SNL)", matchPrefix: "/norms" }] : []),
-    ...(sectionVisible("reports_hub") || isAdmin ? [{ href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports" }] : []),
+    ...(sectionVisible("reports_hub") || isAdmin ? [{ href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports", contextKey: "reports" }] : []),
     ...(isAdmin ? [{ href: "/edit-requests", icon: ShieldCheck, label: "Edit Requests", matchPrefix: "/edit-requests" }] : []),
   ];
 

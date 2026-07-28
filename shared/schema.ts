@@ -3068,6 +3068,8 @@ export const attachmentModuleTypes = [
   "site_purchase",
   "irn",
   "pi",
+  "pi_purchaser_action",
+  "store_grn",
   "vendor_bill",
   "plant_production",
   "hmp_rmc_stock_receipt",
