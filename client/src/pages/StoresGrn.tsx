@@ -557,7 +557,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setCancelReason("");
       if (selectedId && selectedId === cancelMutation.variables?.id) setSelectedId(null);
     },
-    onError: () => toast({ title: "Failed to cancel GRN", variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Failed to cancel GRN", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
 
   const patchAcceptanceMutation = useMutation({
