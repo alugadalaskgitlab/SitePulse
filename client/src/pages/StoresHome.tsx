@@ -2,7 +2,7 @@ import { useLocation, useSearch, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   Package, AlertTriangle, ChevronRight, Plus, ClipboardList,
-  ArrowDownToLine, ArrowUpFromLine, Home, Layers, RotateCcw,
+  ArrowDownToLine, ArrowUpFromLine, ChevronLeft, Layers, RotateCcw,
   BarChart3,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,23 +42,17 @@ export default function StoresHome() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      {/* Header */}
-      <header className="bg-slate-900 text-white px-4 md:px-6 py-3 flex items-center justify-between shadow-lg">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 bg-orange-500 rounded-lg flex items-center justify-center">
-            <Package className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <span className="font-bold text-sm md:text-base tracking-tight">Stores</span>
-            <span className="ml-2 text-slate-400 text-sm hidden sm:inline">Inventory & Issue Tracking</span>
-          </div>
-        </div>
-        <Link href={params.get("returnTo") || "/"}>
-          <Button variant="ghost" size="icon" className="w-9 h-9 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-600" data-testid="button-home">
-            <Home className="w-5 h-5" />
+      {/* Back link — this page is a detail view under Stores Hub, not a second dashboard */}
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2.5 flex items-center gap-2">
+        <Link href="/stores/hub">
+          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground h-8" data-testid="button-back-stores-hub">
+            <ChevronLeft className="w-4 h-4" />
+            Back to Stores Hub
           </Button>
         </Link>
-      </header>
+        <span className="text-slate-300 dark:text-slate-600">·</span>
+        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Current Stock &amp; Inventory</span>
+      </div>
 
       <div className="max-w-5xl mx-auto p-4">
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-5">

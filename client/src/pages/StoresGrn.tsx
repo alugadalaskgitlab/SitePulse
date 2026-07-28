@@ -124,13 +124,13 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [indentFilter, setIndentFilter] = useState(indentRefFilter);
   const [supplierFilter, setSupplierFilter] = useState("");
   const [siteFilter, setSiteFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  // Single status-mode control replacing the old mix of chips + acceptance dropdown
+  // Values: "" | "pending_receipt" | "draft_manual" | "awaiting_pi" | "finalized" | "cancelled"
+  const [statusMode, setStatusMode] = useState<string>(
+    () => searchParams.get("piSourced") === "true" ? "pending_receipt" : ""
+  );
   const [categoryFilter, setCategoryFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
-  const [draftOnly, setDraftOnly] = useState(false);
-  const [awaitingPiFilter, setAwaitingPiFilter] = useState(false);
-  const [piSourcedFilter, setPiSourcedFilter] = useState(false);
-  const [showCancelled, setShowCancelled] = useState(false);
   const [cancelDialogId, setCancelDialogId] = useState<number | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
@@ -217,6 +217,42 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [addItemTargetIdx, setAddItemTargetIdx] = useState<number | null>(null);
   const [addItemForm, setAddItemForm] = useState({ name: "", category: "Spares", uom: "Nos" });
+  // Fuzzy-match suggestions shown before allowing a new catalogue entry to be created
+  const [addItemSuggestions, setAddItemSuggestions] = useState<StoreItem[]>([]);
+  const [addItemShowCreate, setAddItemShowCreate] = useState(false);
+
+  /** Returns existing catalogue items that are similar enough to `query` to be offered as alternatives. */
+  function findSimilarItems(query: string, catalogue: StoreItem[]): StoreItem[] {
+    if (!query.trim()) return [];
+    const norm = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ");
+    const qWords = norm(query).split(" ").filter(w => w.length > 2);
+    if (qWords.length === 0) return [];
+    return catalogue
+      .map(item => {
+        const iWords = norm(item.name).split(" ").filter(w => w.length > 2);
+        const hits = qWords.filter(qw => iWords.some(iw => iw.includes(qw) || qw.includes(iw)));
+        const score = hits.length / Math.max(qWords.length, iWords.length || 1);
+        return { item, score };
+      })
+      .filter(({ score }) => score >= 0.4)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map(({ item }) => item);
+  }
+
+  function openAddItemDialog(idx: number, searchTerm: string) {
+    const suggestions = findSimilarItems(searchTerm, items);
+    setAddItemTargetIdx(idx);
+    setAddItemForm({ name: searchTerm, category: "Spares", uom: "Nos" });
+    if (suggestions.length > 0) {
+      setAddItemSuggestions(suggestions);
+      setAddItemShowCreate(false);
+    } else {
+      setAddItemSuggestions([]);
+      setAddItemShowCreate(true);
+    }
+    setAddItemOpen(true);
+  }
 
   useEffect(() => {
     if (detailId) setSelectedId(detailId);
@@ -337,7 +373,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const noPiForItem = !!firstItemName && itemApprovedIndents.length === 0;
 
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
-    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, supplierFilter, siteFilter, statusFilter, categoryFilter, itemFilter, draftOnly, awaitingPiFilter, piSourcedFilter, showCancelled],
+    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, supplierFilter, siteFilter, statusMode, categoryFilter, itemFilter],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
@@ -345,17 +381,19 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       if (indentFilter) p.set("indentRef", indentFilter);
       if (supplierFilter) p.set("supplier", supplierFilter);
       if (siteFilter) p.set("siteId", siteFilter);
-      if (statusFilter) p.set("acceptanceStatus", statusFilter);
       if (categoryFilter) p.set("category", categoryFilter);
       if (itemFilter) p.set("item", itemFilter);
-      if (showCancelled) p.set("showCancelled", "true");
-      if (awaitingPiFilter) {
+      if (statusMode === "cancelled") {
+        p.set("showCancelled", "true");
+      } else if (statusMode === "awaiting_pi") {
         p.set("awaitingPi", "true");
-      } else if (piSourcedFilter) {
+      } else if (statusMode === "pending_receipt") {
         p.set("piSourced", "true");
         p.set("status", "draft");
-      } else if (draftOnly) {
+      } else if (statusMode === "draft_manual") {
         p.set("status", "draft");
+      } else if (statusMode === "finalized") {
+        p.set("status", "finalized");
       }
       const res = await fetch(`/api/stores/grns${p.toString() ? "?" + p : ""}`);
       if (!res.ok) throw new Error("Failed");
@@ -490,9 +528,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setIndentComboSearch("");
       if (isNew) navigate(searchParams.get("returnTo") || "/stores/grns");
     },
-    onError: () => {
+    onError: (err: any) => {
       setIsSavingDraft(false);
-      toast({ title: "Error creating GRN", variant: "destructive" });
+      toast({ title: "Error creating GRN", description: err?.message ?? "Unknown error", variant: "destructive" });
     },
   });
 
@@ -506,7 +544,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setDraftFinaliseIndentRef("");
       setDraftFinaliseOverride(false);
     },
-    onError: () => toast({ title: "Failed to finalise GRN", variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Failed to finalise GRN", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
 
   const replaceMutation = useMutation({
@@ -525,9 +563,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setIndentOverride(false);
       setIndentComboSearch("");
     },
-    onError: () => {
+    onError: (err: any) => {
       setIsSavingDraft(false);
-      toast({ title: "Failed to update draft", variant: "destructive" });
+      toast({ title: "Failed to update draft", description: err?.message ?? "Unknown error", variant: "destructive" });
     },
   });
 
@@ -543,7 +581,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setAddItemForm({ name: "", category: "Spares", uom: "Nos" });
       setAddItemTargetIdx(null);
     },
-    onError: () => toast({ title: "Error adding item", variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Error adding item", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
 
 
@@ -568,7 +606,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       toast({ title: "Acceptance status updated" });
       setEditingAcceptance(false);
     },
-    onError: () => toast({ title: "Failed to update acceptance status", variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Failed to update acceptance status", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
 
   // Auto-match GRN lines to PI item IDs when indentRef is set (Batch 17: ID-first matching)
@@ -1323,9 +1361,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                           className="px-3 py-2 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium border-t flex items-center gap-1"
                                           onMouseDown={e => {
                                             e.preventDefault();
-                                            setAddItemTargetIdx(idx);
-                                            setAddItemForm({ name: search, category: "Spares", uom: "Nos" });
-                                            setAddItemOpen(true);
+                                            openAddItemDialog(idx, search);
                                             setItemComboOpen(prev => ({ ...prev, [idx]: false }));
                                           }}
                                           data-testid={`option-add-new-item-${idx}`}
@@ -1345,7 +1381,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                               size="icon"
                               className="h-8 w-8 flex-shrink-0"
                               title="Add new item to catalogue"
-                              onClick={() => { setAddItemTargetIdx(idx); setAddItemForm({ name: "", category: "Spares", uom: "Nos" }); setAddItemOpen(true); }}
+                              onClick={() => openAddItemDialog(idx, "")}
                               data-testid={`button-add-item-inline-${idx}`}
                             >
                               <Plus className="w-3 h-3" />
@@ -1715,52 +1751,96 @@ export default function StoresGrn({ isNew, detailId }: Props) {
           </Card>
         )}
 
-        {/* Inline add-item dialog */}
-        <Dialog open={addItemOpen} onOpenChange={open => { setAddItemOpen(open); if (!open) setAddItemTargetIdx(null); }}>
+        {/* Inline add-item dialog — shows close-match suggestions before allowing a new entry */}
+        <Dialog open={addItemOpen} onOpenChange={open => {
+          setAddItemOpen(open);
+          if (!open) { setAddItemTargetIdx(null); setAddItemSuggestions([]); setAddItemShowCreate(false); }
+        }}>
           <DialogContent className="max-w-sm">
             <DialogHeader>
-              <DialogTitle>Add New Item to Catalogue</DialogTitle>
+              <DialogTitle>{addItemShowCreate ? "Add New Item to Catalogue" : "Similar Items Found"}</DialogTitle>
             </DialogHeader>
-            <div className="space-y-3 pt-2">
-              <div className="space-y-1.5">
-                <Label className="text-sm">Item Name *</Label>
-                <Input
-                  value={addItemForm.name}
-                  onChange={e => setAddItemForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Engine Oil 15W40"
-                  data-testid="input-new-item-name"
-                  autoFocus
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-sm">Category *</Label>
-                  <Select value={addItemForm.category} onValueChange={v => setAddItemForm(f => ({ ...f, category: v }))}>
-                    <SelectTrigger className="text-sm" data-testid="select-new-item-category"><SelectValue /></SelectTrigger>
-                    <SelectContent>{STORE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                  </Select>
+
+            {/* ── Step 1: show suggestions when close matches exist ── */}
+            {!addItemShowCreate && addItemSuggestions.length > 0 && (
+              <div className="space-y-3 pt-1">
+                <p className="text-sm text-muted-foreground">
+                  These items already exist in the catalogue and may be what you meant.
+                  Select one to use it, or confirm creating a brand-new entry.
+                </p>
+                <div className="space-y-1.5 max-h-52 overflow-y-auto" data-testid="item-suggestions-list">
+                  {addItemSuggestions.map(it => (
+                    <button
+                      key={it.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors"
+                      onClick={() => {
+                        if (addItemTargetIdx !== null) updateLine(addItemTargetIdx, "itemId", String(it.id));
+                        setAddItemOpen(false);
+                      }}
+                      data-testid={`button-use-suggestion-${it.id}`}
+                    >
+                      <div className="font-medium text-sm">{it.name}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{it.category} · {it.uom}</div>
+                    </button>
+                  ))}
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm">UOM *</Label>
-                  <Select value={addItemForm.uom} onValueChange={v => setAddItemForm(f => ({ ...f, uom: v }))}>
-                    <SelectTrigger className="text-sm" data-testid="select-new-item-uom"><SelectValue /></SelectTrigger>
-                    <SelectContent>{STORE_UOMS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                  </Select>
+                <div className="flex justify-between items-center pt-1 border-t">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setAddItemOpen(false)}>Cancel</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setAddItemShowCreate(true)} data-testid="button-create-new-anyway">
+                    None of these — create new
+                  </Button>
                 </div>
               </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setAddItemOpen(false)}>Cancel</Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!addItemForm.name.trim() || addStoreItemMutation.isPending}
-                  onClick={() => addStoreItemMutation.mutate({ name: addItemForm.name.trim(), category: addItemForm.category, uom: addItemForm.uom, isActive: 1 })}
-                  data-testid="button-save-new-item"
-                >
-                  {addStoreItemMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add & Select"}
-                </Button>
+            )}
+
+            {/* ── Step 2: create form ── */}
+            {addItemShowCreate && (
+              <div className="space-y-3 pt-2">
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Item Name *</Label>
+                  <Input
+                    value={addItemForm.name}
+                    onChange={e => setAddItemForm(f => ({ ...f, name: e.target.value }))}
+                    placeholder="e.g. Engine Oil 15W40"
+                    data-testid="input-new-item-name"
+                    autoFocus
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Category *</Label>
+                    <Select value={addItemForm.category} onValueChange={v => setAddItemForm(f => ({ ...f, category: v }))}>
+                      <SelectTrigger className="text-sm" data-testid="select-new-item-category"><SelectValue /></SelectTrigger>
+                      <SelectContent>{STORE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">UOM *</Label>
+                    <Select value={addItemForm.uom} onValueChange={v => setAddItemForm(f => ({ ...f, uom: v }))}>
+                      <SelectTrigger className="text-sm" data-testid="select-new-item-uom"><SelectValue /></SelectTrigger>
+                      <SelectContent>{STORE_UOMS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex justify-between gap-2 pt-1">
+                  {addItemSuggestions.length > 0 ? (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setAddItemShowCreate(false)}>← Back</Button>
+                  ) : (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setAddItemOpen(false)}>Cancel</Button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!addItemForm.name.trim() || addStoreItemMutation.isPending}
+                    onClick={() => addStoreItemMutation.mutate({ name: addItemForm.name.trim(), category: addItemForm.category, uom: addItemForm.uom, isActive: 1 })}
+                    data-testid="button-save-new-item"
+                  >
+                    {addStoreItemMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add & Select"}
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
           </DialogContent>
         </Dialog>
 
@@ -1777,61 +1857,30 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <Input type="date" className="h-8 w-36 text-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid="input-date-to" />
               </div>
               <div className="flex items-center gap-2">
+                <Label className="text-sm text-muted-foreground">Status</Label>
+                <Select value={statusMode || "__all__"} onValueChange={v => setStatusMode(v === "__all__" ? "" : v)} data-testid="select-status-mode">
+                  <SelectTrigger className="h-8 w-52 text-sm" data-testid="select-status-filter">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All</SelectItem>
+                    <SelectItem value="pending_receipt">Pending Store Receipt</SelectItem>
+                    <SelectItem value="draft_manual">Draft Manual GRN</SelectItem>
+                    <SelectItem value="awaiting_pi">
+                      Awaiting PI{awaitingPiCount > 0 ? ` (${awaitingPiCount})` : ""}
+                    </SelectItem>
+                    <SelectItem value="finalized">Finalised</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
                 <Label className="text-sm text-muted-foreground">Indent</Label>
                 <Input className="h-8 w-36 text-sm" placeholder="PI-YYYY-NNN" value={indentFilter} onChange={e => setIndentFilter(e.target.value)} data-testid="input-indent-filter" />
               </div>
               <div className="flex items-center gap-2">
                 <Label className="text-sm text-muted-foreground">Supplier</Label>
                 <Input className="h-8 w-40 text-sm" placeholder="Supplier name" value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} data-testid="input-supplier-filter" />
-              </div>
-              <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground">Status</Label>
-                <Button
-                  variant={draftOnly ? "default" : "outline"}
-                  size="sm"
-                  className={`text-sm h-8 gap-1 ${draftOnly ? "bg-amber-600 hover:bg-amber-700 text-white border-0" : "text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700"}`}
-                  onClick={() => { setDraftOnly(v => !v); setAwaitingPiFilter(false); setPiSourcedFilter(false); }}
-                  data-testid="button-drafts-only"
-                >
-                  <Clock className="w-3 h-3" />
-                  {draftOnly ? "Drafts only ×" : "Drafts only"}
-                </Button>
-                <Button
-                  variant={awaitingPiFilter ? "default" : "outline"}
-                  size="sm"
-                  className={`text-sm h-8 gap-1.5 ${awaitingPiFilter ? "bg-orange-600 hover:bg-orange-700 text-white border-0" : "text-orange-700 border-orange-300 hover:bg-orange-50 dark:text-orange-300 dark:border-orange-700"}`}
-                  onClick={() => { setAwaitingPiFilter(v => !v); setDraftOnly(false); setPiSourcedFilter(false); }}
-                  data-testid="button-awaiting-pi-filter"
-                >
-                  <AlertTriangle className="w-3 h-3" />
-                  {awaitingPiFilter ? "Awaiting PI ×" : "Awaiting PI"}
-                  {!awaitingPiFilter && awaitingPiCount > 0 && (
-                    <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-orange-600 text-white text-[12px] font-bold leading-none" data-testid="badge-awaiting-pi-count">
-                      {awaitingPiCount}
-                    </span>
-                  )}
-                </Button>
-                <Button
-                  variant={piSourcedFilter ? "default" : "outline"}
-                  size="sm"
-                  className={`text-sm h-8 gap-1 ${piSourcedFilter ? "bg-emerald-600 hover:bg-emerald-700 text-white border-0" : "text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:text-emerald-300 dark:border-emerald-700"}`}
-                  onClick={() => { setPiSourcedFilter(v => !v); setDraftOnly(false); setAwaitingPiFilter(false); }}
-                  data-testid="button-pi-sourced-filter"
-                >
-                  <Check className="w-3 h-3" />
-                  {piSourcedFilter ? "Pending Receipt ×" : "Pending Receipt"}
-                </Button>
-                <Select value={statusFilter || "__all__"} onValueChange={v => setStatusFilter(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="h-8 w-44 text-sm" data-testid="select-status-filter">
-                    <SelectValue placeholder="All statuses" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All statuses</SelectItem>
-                    <SelectItem value="accepted">Accepted</SelectItem>
-                    <SelectItem value="partial">Partially Accepted</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
               <div className="flex items-center gap-2">
                 <Label className="text-sm text-muted-foreground">Site</Label>
@@ -1865,19 +1914,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <Label className="text-sm text-muted-foreground">Item</Label>
                 <Input className="h-8 w-36 text-sm" placeholder="Item name" value={itemFilter} onChange={e => setItemFilter(e.target.value)} data-testid="input-item-filter" />
               </div>
-              {(dateFrom || dateTo || indentFilter || supplierFilter || siteFilter || statusFilter || categoryFilter || itemFilter || draftOnly || awaitingPiFilter) && (
-                <Button variant="ghost" size="sm" className="text-sm h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSupplierFilter(""); setSiteFilter(""); setStatusFilter(""); setCategoryFilter(""); setItemFilter(""); setDraftOnly(false); setAwaitingPiFilter(false); }}>Clear</Button>
+              {(dateFrom || dateTo || statusMode || indentFilter || supplierFilter || siteFilter || categoryFilter || itemFilter) && (
+                <Button variant="ghost" size="sm" className="text-sm h-8" onClick={() => { setDateFrom(""); setDateTo(""); setStatusMode(""); setIndentFilter(""); setSupplierFilter(""); setSiteFilter(""); setCategoryFilter(""); setItemFilter(""); }}>Clear</Button>
               )}
-              <Button
-                variant={showCancelled ? "secondary" : "ghost"}
-                size="sm"
-                className={`text-sm h-8 gap-1 ${showCancelled ? "text-red-700 dark:text-red-400" : "text-muted-foreground"}`}
-                onClick={() => setShowCancelled(v => !v)}
-                data-testid="button-toggle-cancelled-grns"
-              >
-                <Ban className="w-3.5 h-3.5" />
-                {showCancelled ? "Hide Cancelled" : "Show Cancelled"}
-              </Button>
             </div>
 
             {/* GRN List */}
@@ -1895,18 +1934,26 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono text-sm font-bold text-green-700 dark:text-green-400">{grn.grnNumber}</span>
                             <span className="text-sm text-muted-foreground">{format(new Date(grn.date + "T00:00:00"), "dd MMM yyyy")}</span>
-                            {grn.status === "draft" ? getDraftBadge() : (grn.acceptanceStatus && grn.acceptanceStatus !== "accepted" && getAcceptanceBadge(grn.acceptanceStatus))}
-                            {grn.status === "draft" && !grn.indentRef && (
+                            {/* Single consolidated status badge */}
+                            {!grn.isCancelled && grn.status === "draft" && grn.sourcePiIndentId != null && (
+                              <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700 text-[12px] px-1.5 py-0" data-testid={`badge-pending-receipt-${grn.id}`}>Awaiting Stores Verification</Badge>
+                            )}
+                            {!grn.isCancelled && grn.status === "draft" && grn.sourcePiIndentId == null && !grn.indentRef && (
                               <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[12px] px-1.5 py-0" data-testid={`badge-awaiting-pi-${grn.id}`}>Awaiting PI</Badge>
                             )}
-                            {grn.status === "draft" && grn.indentRef && (
+                            {!grn.isCancelled && grn.status === "draft" && grn.sourcePiIndentId == null && grn.indentRef && (
                               <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700 text-[12px] px-1.5 py-0" data-testid={`badge-ready-finalise-${grn.id}`}>Ready to Finalise</Badge>
                             )}
-                            {(() => { const s = grn.siteId ? sites.find(x => x.id === grn.siteId) : null; return s ? <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{s.name}</span> : <span className="text-[12px] text-muted-foreground">—</span>; })()}
+                            {!grn.isCancelled && grn.status !== "draft" && grn.acceptanceStatus && getAcceptanceBadge(grn.acceptanceStatus)}
+                            {/* Site destination — only shown when a site is actually set */}
+                            {grn.siteId && (() => { const s = sites.find(x => x.id === grn.siteId); return s ? <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{s.name}</span> : null; })()}
+                            {/* Linked PI — full reference as a clickable link */}
                             {grn.indentRef && (
-                              <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">
-                                {grn.indentRef}
-                              </span>
+                              <Link href={`/plant/purchase-indents?indentRef=${encodeURIComponent(grn.indentRef)}&context=stores`} onClick={e => e.stopPropagation()}>
+                                <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-800/60 transition-colors cursor-pointer">
+                                  Linked PI: {grn.indentRef}
+                                </span>
+                              </Link>
                             )}
                           </div>
                           <div className="text-sm font-medium mt-1">{grn.supplier}</div>
@@ -1985,7 +2032,19 @@ export default function StoresGrn({ isNew, detailId }: Props) {
           <DialogHeader>
             <DialogTitle>Cancel GRN</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">This GRN will be marked as cancelled and its quantities will be removed from stock. This cannot be undone.</p>
+          {(() => {
+            const cancelGrn = cancelDialogId != null ? grns.find(g => g.id === cancelDialogId) : null;
+            const isDraft = cancelGrn?.status === "draft";
+            return isDraft ? (
+              <p className="text-sm text-muted-foreground">
+                This GRN is still a draft — no stock has been added yet. Cancelling it will simply remove this pending receipt. This cannot be undone.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                This GRN has already been finalised and its quantities are in stock. Cancelling it will reverse those stock entries. This cannot be undone.
+              </p>
+            );
+          })()}
           <div className="space-y-2 mt-2">
             <Label className="text-sm">Reason for Cancellation *</Label>
             <Textarea
