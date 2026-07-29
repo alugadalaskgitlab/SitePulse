@@ -1534,6 +1534,10 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   // Batch 11 — Pending Store Receipt
   paidBy: text("paid_by"),                         // "company" | named person for reimbursement tracking
   linkedGrnId: integer("linked_grn_id"),           // auto-created draft store_grn from purchaser action
+  // Ordered-awaiting-delivery tracking (Task #1302)
+  orderNo: text("order_no"),                       // PO / order reference provided when action = "ordered"
+  orderedByUserId: integer("ordered_by_user_id"),  // user who placed the order
+  orderedByName: text("ordered_by_name"),          // display name of person who placed the order
 });
 
 export const purchaseIndentItemHistory = pgTable("purchase_indent_item_history", {

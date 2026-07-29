@@ -280,6 +280,8 @@ function getStatusBadge(status: string, storesStatus?: string | null, piType?: s
       return <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700" data-testid="badge-status-ordered">ORDER PLACED</Badge>;
     case "purchaser_actioned":
       return <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-700" data-testid="badge-status-purchaser-actioned">PURCHASE IN PROGRESS</Badge>;
+    case "awaiting_delivery":
+      return <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-300 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-700" data-testid="badge-status-awaiting-delivery">AWAITING DELIVERY</Badge>;
     case "handover_pending":
       return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700" data-testid="badge-status-handover-pending">HANDOVER PENDING</Badge>;
     case "partially_received":
@@ -313,6 +315,8 @@ function getItemStatusBadge(status: string | null) {
       return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300">PURCHASED</Badge>;
     case "partial":
       return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300">PARTIAL</Badge>;
+    case "ordered":
+      return <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-300 dark:bg-sky-900/30 dark:text-sky-300">ORDER PLACED</Badge>;
     case "not_purchased":
       return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300">NOT PURCHASED</Badge>;
     case "cancelled":
@@ -324,6 +328,7 @@ function getItemStatusBadge(status: string | null) {
 
 function isTerminalStatus(status: string | null): boolean {
   const s = (status || "").toLowerCase();
+  // "ordered" is intentionally excluded — ORDERED items await delivery and are never terminal on the client
   return ["purchased", "partial", "not_purchased", "cancelled"].includes(s);
 }
 
@@ -798,10 +803,28 @@ export default function PurchaseIndents() {
   const [procureItemData, setProcureItemData] = useState<Record<number, ProcureItemData>>({});
   const [itemApprovalStates, setItemApprovalStates] = useState<Record<number, ItemApprovalState>>({});
 
-  // Dual-route: Purchaser Action dialog
+  // Unified purchaser-action form state — one action type per item
   const [purchaserActionOpen, setPurchaserActionOpen] = useState(false);
-  type PurchaserActionItemData = { qty: string; vendor: string; rate: string; paymentMode: string; paidBy: string; payerName: string; purchaseDate: string; expectedDeliveryDate: string; remarks: string; shortfallReason: string };
+  type PurchaserActionItemData = {
+    purchaseActionType: string;   // "already_purchased" | "ordered" | "not_available" | "recommend_cancellation"
+    qty: string;
+    orderNo: string;
+    orderedByName: string;
+    vendor: string;
+    rate: string;
+    paymentMode: string;
+    paidBy: string;
+    payerName: string;
+    purchaseDate: string;
+    expectedDeliveryDate: string;
+    billNo: string;
+    remarks: string;
+  };
   const [purchaserActionData, setPurchaserActionData] = useState<Record<number, PurchaserActionItemData>>({});
+  // Record-delivery form state — per ORDERED item
+  type DeliveryFormData = { deliveredQty: string; deliveryDate: string; challanNo: string; paymentMode: string; remarks: string };
+  const [deliveryForms, setDeliveryForms] = useState<Record<number, DeliveryFormData>>({});
+  const [deliveryExpanded, setDeliveryExpanded] = useState<Set<number>>(new Set());
   // Staged photos for Purchaser Action — per-item, keyed by PI item ID (Batch 17)
   const [paPhotos, setPaPhotos] = useState<Record<number, File[]>>({});
   const { uploadFile } = useUpload();
@@ -824,9 +847,7 @@ export default function PurchaseIndents() {
   type ServiceCompletionForm = { completionStatus: string; completionDate: string; qty: string; hours: string; remarks: string; documentUrl: string };
   const [serviceCompletionForm, setServiceCompletionForm] = useState<ServiceCompletionForm>({ completionStatus: "completed", completionDate: format(new Date(), "yyyy-MM-dd"), qty: "", hours: "", remarks: "", documentUrl: "" });
 
-  // Material Indent: Place Order & Record Receipt
-  type PlaceOrderItemData = { vendor: string; expectedDelivery: string; orderedQty: string; orderedBy: string; rate: string; paymentMode: string; remarks: string };
-  const [placeOrderVendorMap, setPlaceOrderVendorMap] = useState<Record<number, PlaceOrderItemData>>({});
+  // Material Indent: Record Receipt (place-order now unified with purchaser-action card above)
   type MatReceiptForm = { qty: string; vendor: string; rate: string; receiptDate: string; notes: string };
   const [matReceiptForms, setMatReceiptForms] = useState<Record<number, MatReceiptForm>>({});
   const [matReceiptExpanded, setMatReceiptExpanded] = useState<Set<number>>(new Set());
@@ -1343,16 +1364,22 @@ export default function PurchaseIndents() {
     },
   });
 
-  const placeOrderMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/place-order`, data),
-    onSuccess: () => {
+  const recordDeliveryMutation = useMutation({
+    mutationFn: ({ itemId, data }: { itemId: number; data: any }) =>
+      apiRequest("POST", `/api/purchase-indent-items/${itemId}/record-delivery`, data),
+    onSuccess: (_result, { itemId }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
-      if (selectedIndentId) queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
-      setPlaceOrderVendorMap({});
-      toast({ title: "Order placed — indent status updated to Ordered" });
+      if (selectedIndentId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId, "transactions"] });
+      }
+      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      setDeliveryExpanded(prev => { const next = new Set(prev); next.delete(itemId); return next; });
+      setDeliveryForms(prev => { const next = { ...prev }; delete next[itemId]; return next; });
+      toast({ title: "Delivery recorded", description: "Item status and GRN updated." });
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to place order", description: err.message, variant: "destructive" });
+      toast({ title: "Failed to record delivery", description: err.message, variant: "destructive" });
     },
   });
 
@@ -3721,14 +3748,14 @@ export default function PurchaseIndents() {
                 </div>
               )}
 
-              {/* ── Purchaser Action Card (Dual Route: Stores / Bulk Plant) ── */}
-              {["approved", "purchaser_actioned"].includes(selectedIndent.status) && (
+              {/* ── Unified Purchase Action Card (all PI types and routes) ── */}
+              {["approved", "purchaser_actioned", "awaiting_delivery", "partially_received"].includes(selectedIndent.status) && canCreate && (
                 <Card className="border-violet-200 dark:border-violet-800">
                   <CardHeader className="py-3 px-4 bg-violet-50 dark:bg-violet-900/20 rounded-t-lg">
                     <CardTitle className="text-sm font-semibold text-violet-800 dark:text-violet-200 flex items-center gap-2">
                       <ClipboardList className="w-4 h-4" />
-                      PURCHASER ACTION
-                      {selectedIndent.status === "purchaser_actioned" && (
+                      PURCHASE ACTION
+                      {selectedIndent.status !== "approved" && (
                         <Badge variant="outline" className="ml-2 text-sm bg-green-50 text-green-700 border-green-300 dark:bg-green-900/20 dark:text-green-300 dark:border-green-700">SUBMITTED</Badge>
                       )}
                     </CardTitle>
@@ -3736,41 +3763,26 @@ export default function PurchaseIndents() {
                   <CardContent className="p-4">
                     {selectedIndent.status === "approved" ? (
                       <>
-                        <p className="text-sm text-muted-foreground mb-3">Fill in procurement details for each item below, then submit all at once.</p>
+                        <p className="text-sm text-muted-foreground mb-3">Select the action type for each item and fill in the required details, then submit all at once.</p>
                         <div className="space-y-3">
                           {selectedIndent.items
                             .filter(i => !["cancelled", "closed"].includes((i as any).status || "") && (i.approvedQty ?? i.qty) > 0)
                             .map(item => {
                               const route = ((item as any).procurementRoute as string) || "stores";
                               const approvedQty = item.approvedQty ?? item.qty;
-                              const pd = purchaserActionData[item.id] ?? { qty: String(approvedQty), vendor: "", rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
-                              const purchaseQtyNum = parseFloat(pd.qty) || 0;
-                              const isShort = purchaseQtyNum < approvedQty;
+                              const isMat = (selectedIndent as any).piType === "material";
+                              const defaultActionType = (isMat || route === "bulk_plant") ? "ordered" : "already_purchased";
+                              const pd = purchaserActionData[item.id] ?? { purchaseActionType: defaultActionType, qty: String(approvedQty), orderNo: "", orderedByName: "", vendor: "", rate: "", paymentMode: isMat ? "credit" : "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", billNo: "", remarks: "" };
                               const updField = (field: string, val: string) => {
-                                const next: PurchaserActionItemData = { ...pd, [field]: val };
-                                if (field === "qty") {
-                                  const q = parseFloat(val) || 0;
-                                  if (q >= approvedQty) next.shortfallReason = "full";
-                                  else if (q === 0) next.shortfallReason = "not_available";
-                                  else if (next.shortfallReason === "full") next.shortfallReason = "partial";
-                                }
-                                if (field === "shortfallReason") {
-                                  if (val === "not_available") next.qty = "0";
-                                  if (val === "full") next.qty = String(approvedQty);
-                                }
-                                setPurchaserActionData(prev => ({ ...prev, [item.id]: next }));
+                                setPurchaserActionData(prev => ({ ...prev, [item.id]: { ...pd, [field]: val } }));
                               };
-                              const shortfallBadge = pd.shortfallReason === "full"
-                                ? "bg-green-50 text-green-700 border-green-200"
-                                : pd.shortfallReason === "not_available"
-                                ? "bg-red-50 text-red-700 border-red-200"
-                                : pd.shortfallReason === "ordered"
-                                ? "bg-blue-50 text-blue-700 border-blue-200"
-                                : "bg-amber-50 text-amber-700 border-amber-200";
-                              const shortfallLabel = pd.shortfallReason === "full" ? "Purchasing in Full"
-                                : pd.shortfallReason === "not_available" ? "Not Available"
-                                : pd.shortfallReason === "ordered" ? "Ordered"
-                                : "Partial";
+                              const at = pd.purchaseActionType;
+                              const isOrdered = at === "ordered";
+                              const isNotAvailable = at === "not_available";
+                              const isRecommendCancel = at === "recommend_cancellation";
+                              const isPurchased = !isOrdered && !isNotAvailable && !isRecommendCancel;
+                              const badgeStyle = isOrdered ? "bg-sky-50 text-sky-700 border-sky-200" : isNotAvailable ? "bg-red-50 text-red-700 border-red-200" : isRecommendCancel ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-green-50 text-green-700 border-green-200";
+                              const badgeLabel = isOrdered ? "Ordering" : isNotAvailable ? "Not Available" : isRecommendCancel ? "Recommend Cancel" : "Purchasing";
                               return (
                                 <div key={item.id} className="border rounded-lg overflow-hidden bg-white dark:bg-gray-950">
                                   {/* Item header row */}
@@ -3791,145 +3803,126 @@ export default function PurchaseIndents() {
                                         <span>Approved: <strong className="text-green-700 dark:text-green-400">{approvedQty} {item.uom}</strong></span>
                                       </div>
                                     </div>
-                                    <Badge variant="outline" className={`text-sm ${shortfallBadge}`}>{shortfallLabel}</Badge>
+                                    <Badge variant="outline" className={`text-sm ${badgeStyle}`}>{badgeLabel}</Badge>
                                   </div>
                                   {/* Form fields */}
                                   <div className="p-3 space-y-3">
-                                    {/* Row 1: Qty + shortfall reason + date */}
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                      <div>
-                                        <Label className="text-sm">QTY PURCHASING <span className="text-red-500">*</span></Label>
-                                        <Input type="number" min={0} max={approvedQty} value={pd.qty}
-                                          onChange={e => updField("qty", e.target.value)}
-                                          data-testid={`input-pa-qty-${item.id}`} />
-                                        {isShort && purchaseQtyNum > 0 && (
-                                          <p className="text-xs text-amber-600 mt-0.5">Shortfall: {approvedQty - purchaseQtyNum} {item.uom}</p>
-                                        )}
-                                      </div>
-                                      {isShort && (
-                                        <div>
-                                          <Label className="text-sm">SHORTFALL REASON <span className="text-red-500">*</span></Label>
-                                          <Select value={pd.shortfallReason} onValueChange={v => updField("shortfallReason", v)}>
-                                            <SelectTrigger data-testid={`select-pa-reason-${item.id}`}><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="partial">Partially Available</SelectItem>
-                                              <SelectItem value="not_available">Not Available in Market</SelectItem>
-                                              <SelectItem value="ordered">Ordered — Awaiting Delivery</SelectItem>
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                      )}
-                                      {pd.shortfallReason === "ordered" ? (
-                                        <div>
-                                          <Label className="text-sm">EXPECTED DELIVERY <span className="text-red-500">*</span></Label>
-                                          <Input type="date" value={pd.expectedDeliveryDate}
-                                            onChange={e => updField("expectedDeliveryDate", e.target.value)}
-                                            data-testid={`input-pa-delivery-${item.id}`} />
-                                        </div>
-                                      ) : pd.shortfallReason !== "not_available" && (
-                                        <div>
-                                          <Label className="text-sm">PURCHASE DATE</Label>
-                                          <Input type="date" value={pd.purchaseDate}
-                                            onChange={e => updField("purchaseDate", e.target.value)}
-                                            data-testid={`input-pa-purchase-date-${item.id}`} />
-                                        </div>
-                                      )}
-                                    </div>
-                                    {/* Row 2: Vendor / Rate / Payment / Paid By (hidden when not_available) */}
-                                    {pd.shortfallReason !== "not_available" && (
-                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                        <div>
-                                          <Label className="text-sm">VENDOR / SUPPLIER</Label>
-                                          <Input value={pd.vendor} onChange={e => updField("vendor", e.target.value)}
-                                            placeholder="Supplier name" data-testid={`input-pa-vendor-${item.id}`} />
-                                        </div>
-                                        <div>
-                                          <Label className="text-sm">RATE (₹/{item.uom})</Label>
-                                          <Input type="number" value={pd.rate} onChange={e => updField("rate", e.target.value)}
-                                            data-testid={`input-pa-rate-${item.id}`} />
-                                          {pd.rate && purchaseQtyNum > 0 && (
-                                            <p className="text-xs text-muted-foreground mt-0.5">
-                                              Total: ₹{(parseFloat(pd.rate) * purchaseQtyNum).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                                            </p>
-                                          )}
-                                        </div>
-                                        <div>
-                                          <Label className="text-sm">PAYMENT MODE</Label>
-                                          <Select value={pd.paymentMode} onValueChange={v => updField("paymentMode", v)}>
-                                            <SelectTrigger data-testid={`select-pa-payment-${item.id}`}><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="cash">Cash</SelectItem>
-                                              <SelectItem value="credit">Credit</SelectItem>
-                                              <SelectItem value="upi">UPI</SelectItem>
-                                              <SelectItem value="cheque">Cheque</SelectItem>
-                                              <SelectItem value="rtgs">RTGS / NEFT</SelectItem>
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                        <div>
-                                          <Label className="text-sm">PAID BY</Label>
-                                          <Select value={pd.paidBy || "company"} onValueChange={v => updField("paidBy", v)}>
-                                            <SelectTrigger data-testid={`select-pa-paidby-${item.id}`}><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="company">Company Account</SelectItem>
-                                              <SelectItem value="personal">Personal (Reimbursement)</SelectItem>
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                      </div>
-                                    )}
-                                    {pd.shortfallReason !== "not_available" && pd.paidBy === "personal" && (
-                                      <div>
-                                        <Label className="text-sm">PAID BY — PERSON NAME <span className="text-red-500">*</span></Label>
-                                        <Input
-                                          value={pd.payerName || ""}
-                                          onChange={e => updField("payerName", e.target.value)}
-                                          placeholder="Name of employee who paid (for reimbursement)"
-                                          data-testid={`input-pa-payer-name-${item.id}`}
-                                        />
-                                        <p className="text-xs text-amber-600 mt-0.5">Reimbursement will be tracked to this person.</p>
-                                      </div>
-                                    )}
-                                    {pd.shortfallReason === "not_available" && (
-                                      <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded p-2">
-                                        Item not available in market — no purchase details required. This item will be marked as not procured.
-                                      </p>
-                                    )}
+                                    {/* Action type selector */}
                                     <div>
-                                      <Label className="text-sm">REMARKS</Label>
-                                      <Input value={pd.remarks} onChange={e => updField("remarks", e.target.value)}
-                                        placeholder="Optional notes" data-testid={`input-pa-remarks-${item.id}`} />
+                                      <Label className="text-sm">PURCHASE ACTION TYPE <span className="text-red-500">*</span></Label>
+                                      <Select value={pd.purchaseActionType} onValueChange={v => updField("purchaseActionType", v)}>
+                                        <SelectTrigger data-testid={`select-pa-action-${item.id}`}><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="already_purchased">✓ Already Purchased / Paid</SelectItem>
+                                          <SelectItem value="ordered">📦 Ordered — Awaiting Delivery</SelectItem>
+                                          <SelectItem value="not_available">✗ Not Available in Market</SelectItem>
+                                          <SelectItem value="recommend_cancellation">⚠ Recommend Cancellation (PM to decide)</SelectItem>
+                                        </SelectContent>
+                                      </Select>
                                     </div>
-                                    {/* Per-item photo pickers (Batch 17) */}
-                                    {pd.shortfallReason !== "not_available" && (
-                                      <div className="border rounded-lg p-2.5 bg-muted/20 space-y-1.5 mt-1">
-                                        <p className="text-xs font-medium text-muted-foreground">Invoice / Bill Photo <span className="text-gray-400 font-normal">(optional)</span></p>
-                                        <input type="file" id={`pa-cam-${item.id}`} accept="image/*" capture="environment" className="hidden" onChange={e => { addPaPhotos(item.id, e.target.files); e.target.value = ""; }} />
-                                        <input type="file" id={`pa-gal-${item.id}`} accept="image/*" multiple className="hidden" onChange={e => { addPaPhotos(item.id, e.target.files); e.target.value = ""; }} />
-                                        <input type="file" id={`pa-pdf-${item.id}`} accept="application/pdf,.pdf" multiple className="hidden" onChange={e => { addPaPhotos(item.id, e.target.files); e.target.value = ""; }} />
-                                        <div className="flex flex-wrap gap-1.5">
-                                          <Button type="button" variant="outline" size="sm" className="gap-1 text-xs h-7 px-2" onClick={() => (document.getElementById(`pa-cam-${item.id}`) as HTMLInputElement)?.click()} data-testid={`button-pa-cam-${item.id}`}>
-                                            <Camera className="w-3 h-3" /> Take Photo
-                                          </Button>
-                                          <Button type="button" variant="outline" size="sm" className="gap-1 text-xs h-7 px-2" onClick={() => (document.getElementById(`pa-gal-${item.id}`) as HTMLInputElement)?.click()} data-testid={`button-pa-gal-${item.id}`}>
-                                            <ImageIcon className="w-3 h-3" /> Gallery
-                                          </Button>
-                                          <Button type="button" variant="outline" size="sm" className="gap-1 text-xs h-7 px-2" onClick={() => (document.getElementById(`pa-pdf-${item.id}`) as HTMLInputElement)?.click()} data-testid={`button-pa-pdf-${item.id}`}>
-                                            <FileText className="w-3 h-3" /> PDF / File
-                                          </Button>
+                                    {/* Fields for "ordered" */}
+                                    {isOrdered && (
+                                      <>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                          <div><Label className="text-sm">QTY ORDERED ({item.uom})</Label><Input type="number" min={0} max={approvedQty} value={pd.qty} onChange={e => updField("qty", e.target.value)} data-testid={`input-pa-qty-${item.id}`} /></div>
+                                          <div><Label className="text-sm">VENDOR / SUPPLIER</Label><Input value={pd.vendor} onChange={e => updField("vendor", e.target.value)} onBlur={e => updField("vendor", e.target.value.toUpperCase())} placeholder="Optional" className="uppercase" data-testid={`input-pa-vendor-${item.id}`} /></div>
+                                          <div><Label className="text-sm">ORDER / PO NO.</Label><Input value={pd.orderNo} onChange={e => updField("orderNo", e.target.value)} placeholder="Optional" data-testid={`input-pa-order-no-${item.id}`} /></div>
+                                          <div>
+                                            <Label className="text-sm">RATE (₹/{item.uom}) <span className="text-red-500">*</span></Label>
+                                            <Input type="number" value={pd.rate} onChange={e => updField("rate", e.target.value)} data-testid={`input-pa-rate-${item.id}`} />
+                                            {pd.rate && parseFloat(pd.qty) > 0 && <p className="text-xs text-muted-foreground mt-0.5">Est: ₹{(parseFloat(pd.rate) * parseFloat(pd.qty)).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</p>}
+                                          </div>
+                                          <div><Label className="text-sm">EXPECTED DELIVERY <span className="text-red-500">*</span></Label><Input type="date" value={pd.expectedDeliveryDate} onChange={e => updField("expectedDeliveryDate", e.target.value)} data-testid={`input-pa-delivery-${item.id}`} /></div>
+                                          <div>
+                                            <Label className="text-sm">PAYMENT MODE</Label>
+                                            <Select value={pd.paymentMode || "credit"} onValueChange={v => updField("paymentMode", v)}>
+                                              <SelectTrigger data-testid={`select-pa-payment-${item.id}`}><SelectValue /></SelectTrigger>
+                                              <SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="credit">Credit</SelectItem><SelectItem value="advance">Advance</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="cheque">Cheque</SelectItem><SelectItem value="rtgs">RTGS / NEFT</SelectItem></SelectContent>
+                                            </Select>
+                                          </div>
                                         </div>
-                                        {(paPhotos[item.id] || []).length > 0 && (
-                                          <div className="space-y-1">
-                                            {(paPhotos[item.id] || []).map((f, i) => (
-                                              <div key={i} className="flex items-center gap-2 bg-white dark:bg-gray-900 rounded px-2 py-1 border">
-                                                <ImageIcon className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-                                                <span className="flex-1 truncate text-xs">{f.name}</span>
-                                                <button type="button" onClick={() => removePaPhoto(item.id, i)} className="text-red-500 hover:text-red-700"><X className="w-3 h-3" /></button>
-                                              </div>
-                                            ))}
+                                        <div><Label className="text-sm">REMARKS</Label><Input value={pd.remarks} onChange={e => updField("remarks", e.target.value)} placeholder="Optional notes" data-testid={`input-pa-remarks-${item.id}`} /></div>
+                                        <p className="text-xs text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/20 rounded p-2">Marking as ordered will NOT create a GRN or update stock. Use "Record Delivery" on the item card when goods arrive.</p>
+                                      </>
+                                    )}
+                                    {/* Fields for "already_purchased" */}
+                                    {isPurchased && (
+                                      <>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                          <div>
+                                            <Label className="text-sm">QTY PURCHASING <span className="text-red-500">*</span></Label>
+                                            <Input type="number" min={0} max={approvedQty} value={pd.qty} onChange={e => updField("qty", e.target.value)} data-testid={`input-pa-qty-${item.id}`} />
+                                            {parseFloat(pd.qty) < approvedQty && parseFloat(pd.qty) > 0 && <p className="text-xs text-amber-600 mt-0.5">Shortfall: {approvedQty - parseFloat(pd.qty)} {item.uom}</p>}
+                                          </div>
+                                          <div><Label className="text-sm">VENDOR / SUPPLIER <span className="text-red-500">*</span></Label><Input value={pd.vendor} onChange={e => updField("vendor", e.target.value)} onBlur={e => updField("vendor", e.target.value.toUpperCase())} placeholder="Supplier name" className="uppercase" data-testid={`input-pa-vendor-${item.id}`} /></div>
+                                          <div>
+                                            <Label className="text-sm">RATE (₹/{item.uom}) <span className="text-red-500">*</span></Label>
+                                            <Input type="number" value={pd.rate} onChange={e => updField("rate", e.target.value)} data-testid={`input-pa-rate-${item.id}`} />
+                                            {pd.rate && parseFloat(pd.qty) > 0 && <p className="text-xs text-muted-foreground mt-0.5">Total: ₹{(parseFloat(pd.rate) * parseFloat(pd.qty)).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</p>}
+                                          </div>
+                                          <div><Label className="text-sm">PURCHASE DATE</Label><Input type="date" value={pd.purchaseDate} onChange={e => updField("purchaseDate", e.target.value)} data-testid={`input-pa-purchase-date-${item.id}`} /></div>
+                                          <div><Label className="text-sm">BILL / INVOICE NO.</Label><Input value={pd.billNo} onChange={e => updField("billNo", e.target.value)} placeholder="Optional" data-testid={`input-pa-bill-no-${item.id}`} /></div>
+                                          <div>
+                                            <Label className="text-sm">PAYMENT MODE</Label>
+                                            <Select value={pd.paymentMode || "cash"} onValueChange={v => updField("paymentMode", v)}>
+                                              <SelectTrigger data-testid={`select-pa-payment-${item.id}`}><SelectValue /></SelectTrigger>
+                                              <SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="credit">Credit</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="cheque">Cheque</SelectItem><SelectItem value="rtgs">RTGS / NEFT</SelectItem></SelectContent>
+                                            </Select>
+                                          </div>
+                                          <div>
+                                            <Label className="text-sm">PAID BY</Label>
+                                            <Select value={pd.paidBy || "company"} onValueChange={v => updField("paidBy", v)}>
+                                              <SelectTrigger data-testid={`select-pa-paidby-${item.id}`}><SelectValue /></SelectTrigger>
+                                              <SelectContent><SelectItem value="company">Company Account</SelectItem><SelectItem value="personal">Personal (Reimbursement)</SelectItem></SelectContent>
+                                            </Select>
+                                          </div>
+                                        </div>
+                                        {pd.paidBy === "personal" && (
+                                          <div>
+                                            <Label className="text-sm">PAID BY — PERSON NAME <span className="text-red-500">*</span></Label>
+                                            <Input value={pd.payerName || ""} onChange={e => updField("payerName", e.target.value)} placeholder="Name of employee who paid (for reimbursement)" data-testid={`input-pa-payer-name-${item.id}`} />
+                                            <p className="text-xs text-amber-600 mt-0.5">Reimbursement will be tracked to this person.</p>
                                           </div>
                                         )}
-                                      </div>
+                                        <div><Label className="text-sm">REMARKS</Label><Input value={pd.remarks} onChange={e => updField("remarks", e.target.value)} placeholder="Optional notes" data-testid={`input-pa-remarks-${item.id}`} /></div>
+                                        {/* Per-item photo pickers */}
+                                        <div className="border rounded-lg p-2.5 bg-muted/20 space-y-1.5 mt-1">
+                                          <p className="text-xs font-medium text-muted-foreground">Invoice / Bill Photo <span className="text-gray-400 font-normal">(optional)</span></p>
+                                          <input type="file" id={`pa-cam-${item.id}`} accept="image/*" capture="environment" className="hidden" onChange={e => { addPaPhotos(item.id, e.target.files); e.target.value = ""; }} />
+                                          <input type="file" id={`pa-gal-${item.id}`} accept="image/*" multiple className="hidden" onChange={e => { addPaPhotos(item.id, e.target.files); e.target.value = ""; }} />
+                                          <input type="file" id={`pa-pdf-${item.id}`} accept="application/pdf,.pdf" multiple className="hidden" onChange={e => { addPaPhotos(item.id, e.target.files); e.target.value = ""; }} />
+                                          <div className="flex flex-wrap gap-1.5">
+                                            <Button type="button" variant="outline" size="sm" className="gap-1 text-xs h-7 px-2" onClick={() => (document.getElementById(`pa-cam-${item.id}`) as HTMLInputElement)?.click()} data-testid={`button-pa-cam-${item.id}`}><Camera className="w-3 h-3" /> Take Photo</Button>
+                                            <Button type="button" variant="outline" size="sm" className="gap-1 text-xs h-7 px-2" onClick={() => (document.getElementById(`pa-gal-${item.id}`) as HTMLInputElement)?.click()} data-testid={`button-pa-gal-${item.id}`}><ImageIcon className="w-3 h-3" /> Gallery</Button>
+                                            <Button type="button" variant="outline" size="sm" className="gap-1 text-xs h-7 px-2" onClick={() => (document.getElementById(`pa-pdf-${item.id}`) as HTMLInputElement)?.click()} data-testid={`button-pa-pdf-${item.id}`}><FileText className="w-3 h-3" /> PDF / File</Button>
+                                          </div>
+                                          {(paPhotos[item.id] || []).length > 0 && (
+                                            <div className="space-y-1">
+                                              {(paPhotos[item.id] || []).map((f, i) => (
+                                                <div key={i} className="flex items-center gap-2 bg-white dark:bg-gray-900 rounded px-2 py-1 border">
+                                                  <ImageIcon className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                                                  <span className="flex-1 truncate text-xs">{f.name}</span>
+                                                  <button type="button" onClick={() => removePaPhoto(item.id, i)} className="text-red-500 hover:text-red-700"><X className="w-3 h-3" /></button>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </>
+                                    )}
+                                    {/* Not available */}
+                                    {isNotAvailable && (
+                                      <>
+                                        <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded p-2">Item not available in market — no purchase details required. This item will be marked as not procured.</p>
+                                        <div><Label className="text-sm">REMARKS</Label><Input value={pd.remarks} onChange={e => updField("remarks", e.target.value)} placeholder="Optional notes" data-testid={`input-pa-remarks-${item.id}`} /></div>
+                                      </>
+                                    )}
+                                    {/* Recommend cancellation */}
+                                    {isRecommendCancel && (
+                                      <>
+                                        <p className="text-sm text-amber-600 bg-amber-50 dark:bg-amber-900/20 rounded p-2">Flagging for PM / Admin review — actual cancellation requires PM or Admin approval.</p>
+                                        <div><Label className="text-sm">REASON FOR RECOMMENDATION <span className="text-red-500">*</span></Label><Input value={pd.remarks} onChange={e => updField("remarks", e.target.value)} placeholder="Why are you recommending cancellation?" data-testid={`input-pa-remarks-${item.id}`} /></div>
+                                      </>
                                     )}
                                   </div>
                                 </div>
@@ -3941,30 +3934,37 @@ export default function PurchaseIndents() {
                             className="bg-violet-600 hover:bg-violet-700 text-white"
                             disabled={purchaserActionMutation.isPending}
                             onClick={() => {
-                              const activeItems = selectedIndent.items
-                                .filter(i => !["cancelled", "closed"].includes((i as any).status || "") && (i.approvedQty ?? i.qty) > 0);
-                              // Client-side validation (Batch 16)
+                              const activeItems = selectedIndent.items.filter(i => !["cancelled", "closed"].includes((i as any).status || "") && (i.approvedQty ?? i.qty) > 0);
+                              const isMat = (selectedIndent as any).piType === "material";
                               for (const aItem of activeItems) {
-                                const pd = purchaserActionData[aItem.id] ?? { qty: String(aItem.approvedQty ?? aItem.qty), vendor: "", rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
-                                if (pd.shortfallReason === "not_available") continue;
+                                const defaultAt = (isMat || (aItem as any).procurementRoute === "bulk_plant") ? "ordered" : "already_purchased";
+                                const pd = purchaserActionData[aItem.id] ?? { purchaseActionType: defaultAt, qty: String(aItem.approvedQty ?? aItem.qty), orderNo: "", orderedByName: "", vendor: "", rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", billNo: "", remarks: "" };
+                                const at = pd.purchaseActionType;
+                                if (at === "not_available") continue;
+                                if (at === "recommend_cancellation") { if (!pd.remarks.trim()) { toast({ title: "Reason required", description: `Enter reason for recommending cancellation: ${aItem.description}`, variant: "destructive" }); return; } continue; }
                                 if (!parseFloat(pd.qty) || parseFloat(pd.qty) <= 0) { toast({ title: "Invalid quantity", description: `Enter a valid quantity for: ${aItem.description}`, variant: "destructive" }); return; }
-                                if (!pd.vendor.trim()) { toast({ title: "Vendor required", description: `Enter vendor/supplier for: ${aItem.description}`, variant: "destructive" }); return; }
                                 if (!parseFloat(pd.rate) || parseFloat(pd.rate) <= 0) { toast({ title: "Rate required", description: `Enter rate for: ${aItem.description}`, variant: "destructive" }); return; }
-                                if (pd.shortfallReason === "ordered" && !pd.expectedDeliveryDate) { toast({ title: "Expected delivery required", description: `Enter expected delivery date for: ${aItem.description}`, variant: "destructive" }); return; }
-                                if (pd.paidBy === "personal" && !pd.payerName.trim()) { toast({ title: "Payer name required", description: `Enter the person who paid for: ${aItem.description}`, variant: "destructive" }); return; }
+                                if (at === "already_purchased" && !pd.vendor.trim()) { toast({ title: "Vendor required", description: `Enter vendor/supplier for: ${aItem.description}`, variant: "destructive" }); return; }
+                                if (at === "already_purchased" && pd.paidBy === "personal" && !pd.payerName.trim()) { toast({ title: "Payer name required", description: `Enter the person who paid for: ${aItem.description}`, variant: "destructive" }); return; }
+                                if (at === "ordered" && !pd.expectedDeliveryDate) { toast({ title: "Expected delivery required", description: `Enter expected delivery date for: ${aItem.description}`, variant: "destructive" }); return; }
                               }
                               const items = activeItems.map(item => {
-                                const pd = purchaserActionData[item.id] ?? { qty: String(item.approvedQty ?? item.qty), vendor: "", rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
+                                const defaultAt = (isMat || (item as any).procurementRoute === "bulk_plant") ? "ordered" : "already_purchased";
+                                const pd = purchaserActionData[item.id] ?? { purchaseActionType: defaultAt, qty: String(item.approvedQty ?? item.qty), orderNo: "", orderedByName: "", vendor: "", rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", billNo: "", remarks: "" };
+                                const at = pd.purchaseActionType;
                                 const paidByEncoded = pd.paidBy === "personal" ? (pd.payerName.trim() || "PERSONAL") : "company";
                                 return {
                                   itemId: item.id,
-                                  qty: parseFloat(pd.qty) || (item.approvedQty ?? item.qty),
+                                  purchaseActionType: at,
+                                  qty: (at === "not_available" || at === "recommend_cancellation") ? 0 : (parseFloat(pd.qty) || (item.approvedQty ?? item.qty)),
+                                  orderNo: pd.orderNo || null,
+                                  orderedByName: pd.orderedByName || currentUser?.fullName || null,
                                   vendor: pd.vendor || null,
                                   rate: parseFloat(pd.rate) || null,
                                   paymentMode: pd.paymentMode,
-                                  paidBy: paidByEncoded,
-                                  expectedDeliveryDate: pd.shortfallReason === "ordered" ? (pd.expectedDeliveryDate || null) : (pd.purchaseDate || null),
-                                  reasonCode: pd.shortfallReason !== "full" ? pd.shortfallReason : null,
+                                  paidBy: at === "already_purchased" ? paidByEncoded : null,
+                                  expectedDeliveryDate: at === "ordered" ? (pd.expectedDeliveryDate || null) : (at === "already_purchased" ? (pd.purchaseDate || null) : null),
+                                  billNo: pd.billNo || null,
                                   remarks: pd.remarks || null,
                                   procurementRoute: ((item as any).procurementRoute as string) || "stores",
                                 };
@@ -3974,26 +3974,28 @@ export default function PurchaseIndents() {
                             data-testid="button-submit-purchaser-action"
                           >
                             {purchaserActionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <ClipboardList className="w-4 h-4 mr-1" />}
-                            RECORD PURCHASER ACTION
+                            RECORD PURCHASE ACTION
                           </Button>
                         </div>
                       </>
                     ) : (
                       <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground mb-2">Purchaser actions recorded for dual-route items.</p>
+                        <p className="text-sm text-muted-foreground mb-2">Purchase actions recorded.</p>
                         {piTxns.filter((t: any) => t.transactionType === "purchaser_action").map((tx: any, idx: number) => {
                           const relItem = selectedIndent.items.find(i => i.id === tx.indentItemId);
                           if (!relItem) return null;
                           const route = (relItem as any).procurementRoute as string;
+                          const actionLabel = tx.reasonCode === "ordered" ? "ORDERED" : tx.reasonCode === "not_available" ? "NOT AVAIL." : tx.reasonCode === "recommend_cancellation" ? "REC. CANCEL" : "PURCHASED";
                           return (
                             <div key={idx} className="flex items-center gap-3 text-sm p-2 bg-violet-50 dark:bg-violet-900/10 rounded-lg flex-wrap">
-                              <Badge variant="outline" className={(route === "material" || route === "bulk_plant") ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300" : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"} >
+                              <Badge variant="outline" className={(route === "material" || route === "bulk_plant") ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300" : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"}>
                                 {(route === "material" || route === "bulk_plant") ? "BULK MATERIAL" : "STORES"}
                               </Badge>
+                              <Badge variant="outline" className={tx.reasonCode === "ordered" ? "text-sky-700 border-sky-200 bg-sky-50" : tx.reasonCode === "not_available" ? "text-red-700 border-red-200 bg-red-50" : "text-green-700 border-green-200 bg-green-50"}>{actionLabel}</Badge>
                               <span className="font-medium flex-1 min-w-0 truncate">{relItem.description}</span>
-                              <span className="text-muted-foreground">{tx.qty} {relItem.uom}</span>
-                              <span className="text-muted-foreground">@₹{tx.rate ?? "—"}</span>
-                              <span className="font-medium">{tx.vendor || "—"}</span>
+                              {tx.qty > 0 && <span className="text-muted-foreground">{tx.qty} {relItem.uom}</span>}
+                              {tx.rate != null && <span className="text-muted-foreground">@₹{tx.rate}</span>}
+                              {tx.vendor && <span className="font-medium">{tx.vendor}</span>}
                             </div>
                           );
                         })}
@@ -4003,191 +4005,6 @@ export default function PurchaseIndents() {
                 </Card>
               )}
 
-              {/* ── Bulk Material Indent: Order / Procurement Action Card ── */}
-              {(selectedIndent as any).piType === "material" && selectedIndent.status === "approved" && canCreate && (
-                <Card className="border-teal-200 dark:border-teal-800" data-testid="card-place-order">
-                  <CardHeader className="py-3 px-4 bg-teal-50 dark:bg-teal-900/20 rounded-t-lg">
-                    <CardTitle className="text-sm font-semibold text-teal-800 dark:text-teal-200 flex items-center gap-2">
-                      <ClipboardList className="w-4 h-4" />
-                      ORDER / PROCUREMENT ACTION
-                    </CardTitle>
-                    <p className="text-sm text-teal-600 dark:text-teal-400 mt-0.5">Fill in order details below and click Mark Ordered. Receipt must be recorded via Plant Material Receipts — this action does not update stock.</p>
-                  </CardHeader>
-                  <CardContent className="py-3 px-4 space-y-4">
-                    {/* Prefilled PI metadata header */}
-                    <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
-                      <div>
-                        <span className="text-muted-foreground uppercase font-semibold">PI No.</span>
-                        <p className="font-mono font-bold text-foreground">{selectedIndent.indentNo}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground uppercase font-semibold">Raised By</span>
-                        <p className="font-semibold text-foreground">{selectedIndent.raisedBy}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground uppercase font-semibold">Raised On</span>
-                        <p className="text-foreground">{selectedIndent.createdAt ? format(new Date(selectedIndent.createdAt as any), "dd-MMM-yy HH:mm") : "—"}</p>
-                      </div>
-                      {(selectedIndent as any).approvedBy && (
-                        <div>
-                          <span className="text-muted-foreground uppercase font-semibold">Approved By</span>
-                          <p className="font-semibold text-foreground">{(selectedIndent as any).approvedBy}</p>
-                        </div>
-                      )}
-                      {(selectedIndent as any).approvedAt && (
-                        <div>
-                          <span className="text-muted-foreground uppercase font-semibold">Approved On</span>
-                          <p className="text-foreground">{format(new Date((selectedIndent as any).approvedAt as string), "dd-MMM-yy HH:mm")}</p>
-                        </div>
-                      )}
-                      {((selectedIndent as any).siteId || (selectedIndent as any).raisedFrom) && (
-                        <div>
-                          <span className="text-muted-foreground uppercase font-semibold">Project / Site</span>
-                          <p className="text-foreground">{locationLabel({ siteId: (selectedIndent as any).siteId ?? null, raisedFrom: (selectedIndent as any).raisedFrom ?? null }, sitesList)}</p>
-                        </div>
-                      )}
-                      {(selectedIndent as any).sourceIrnId && (
-                        <div>
-                          <span className="text-muted-foreground uppercase font-semibold">Source IRN</span>
-                          <p className="font-mono text-indigo-700 dark:text-indigo-400">{(selectedIndent as any).sourceIrnNo ?? `IRN-${(selectedIndent as any).sourceIrnId}`}</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Per-item order detail form */}
-                    {selectedIndent.items.filter(item => (item.approvedQty ?? 0) > 0).map(item => {
-                      const pom: PlaceOrderItemData = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "", orderedQty: String(item.approvedQty ?? item.qty), orderedBy: "", rate: "", paymentMode: "credit", remarks: "" };
-                      const setPom = (patch: Partial<PlaceOrderItemData>) => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, ...patch } }));
-                      return (
-                        <div key={item.id} className="border rounded-lg overflow-hidden">
-                          {/* Item header */}
-                          <div className="flex items-start justify-between gap-2 px-4 py-2.5 bg-muted/30 border-b">
-                            <div>
-                              <p className="text-sm font-semibold">{item.description}</p>
-                              {item.spec && <p className="text-sm text-muted-foreground">{item.spec}</p>}
-                            </div>
-                            <div className="text-right text-sm shrink-0">
-                              <p className="text-muted-foreground">APPROVED QTY</p>
-                              <p className="font-bold text-teal-700 dark:text-teal-400">{item.approvedQty ?? item.qty} {item.uom}</p>
-                              {item.purpose && <p className="text-muted-foreground mt-0.5">For: {item.purpose}</p>}
-                              {item.requiredBy && <p className="text-muted-foreground">Required: {format(new Date(item.requiredBy + "T00:00:00"), "dd-MMM-yy")}</p>}
-                            </div>
-                          </div>
-                          {/* Editable fields */}
-                          <div className="p-3 space-y-2">
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                              <div>
-                                <Label className="text-sm">SUPPLIER / VENDOR</Label>
-                                <Input
-                                  value={pom.vendor}
-                                  onChange={e => setPom({ vendor: e.target.value })}
-                                  onBlur={e => setPom({ vendor: e.target.value.toUpperCase() })}
-                                  placeholder="SUPPLIER NAME"
-                                  className="uppercase text-sm h-8"
-                                  data-testid={`input-po-vendor-${item.id}`}
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-sm">ORDER QTY ({item.uom})</Label>
-                                <Input
-                                  type="number"
-                                  value={pom.orderedQty}
-                                  onChange={e => setPom({ orderedQty: e.target.value })}
-                                  min={0}
-                                  className="text-sm h-8"
-                                  data-testid={`input-po-qty-${item.id}`}
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-sm">RATE (₹ / {item.uom})</Label>
-                                <Input
-                                  type="number"
-                                  value={pom.rate}
-                                  onChange={e => setPom({ rate: e.target.value })}
-                                  placeholder="0.00"
-                                  className="text-sm h-8"
-                                  data-testid={`input-po-rate-${item.id}`}
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-sm">EXPECTED DELIVERY</Label>
-                                <Input
-                                  type="date"
-                                  value={pom.expectedDelivery}
-                                  onChange={e => setPom({ expectedDelivery: e.target.value })}
-                                  className="text-sm h-8"
-                                  data-testid={`input-po-delivery-${item.id}`}
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-sm">PAYMENT MODE</Label>
-                                <Select value={pom.paymentMode || "credit"} onValueChange={v => setPom({ paymentMode: v })}>
-                                  <SelectTrigger className="text-sm h-8" data-testid={`select-po-payment-${item.id}`}>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="credit">CREDIT</SelectItem>
-                                    <SelectItem value="cash">CASH</SelectItem>
-                                    <SelectItem value="advance">ADVANCE</SelectItem>
-                                    <SelectItem value="lc">LC</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div>
-                                <Label className="text-sm">TRANSPORT / REMARKS</Label>
-                                <Input
-                                  value={pom.remarks}
-                                  onChange={e => setPom({ remarks: e.target.value })}
-                                  onBlur={e => setPom({ remarks: e.target.value.toUpperCase() })}
-                                  placeholder="e.g. SUPPLIER TRANSPORT, FOB..."
-                                  className="uppercase text-sm h-8"
-                                  data-testid={`input-po-remarks-${item.id}`}
-                                />
-                              </div>
-                            </div>
-                            {pom.rate && pom.orderedQty ? (
-                              <p className="text-sm text-teal-700 dark:text-teal-400 font-semibold text-right">
-                                Est. Order Value: ₹ {(parseFloat(pom.rate) * parseFloat(pom.orderedQty)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    <div className="flex items-center justify-between pt-1 border-t">
-                      <p className="text-sm text-muted-foreground italic">Marking ordered will NOT create a GRN or update stock. Record actual receipt via Plant Material Receipts.</p>
-                      <Button
-                        size="sm"
-                        className="bg-teal-600 hover:bg-teal-700 text-white ml-4 shrink-0"
-                        disabled={placeOrderMutation.isPending}
-                        onClick={() => {
-                          const items = selectedIndent.items
-                            .filter(item => (item.approvedQty ?? 0) > 0)
-                            .map(item => {
-                              const pom: PlaceOrderItemData = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "", orderedQty: String(item.approvedQty ?? item.qty), orderedBy: "", rate: "", paymentMode: "credit", remarks: "" };
-                              return {
-                                itemId: item.id,
-                                vendor: pom.vendor || undefined,
-                                expectedDelivery: pom.expectedDelivery || undefined,
-                                orderedQty: pom.orderedQty ? parseFloat(pom.orderedQty) : undefined,
-                                orderedBy: pom.orderedBy || currentUser?.fullName || undefined,
-                                rate: pom.rate ? parseFloat(pom.rate) : undefined,
-                                paymentMode: pom.paymentMode || undefined,
-                                remarks: pom.remarks || undefined,
-                              };
-                            });
-                          placeOrderMutation.mutate({ items });
-                        }}
-                        data-testid="button-place-order"
-                      >
-                        {placeOrderMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <ClipboardList className="w-4 h-4 mr-1" />}
-                        MARK ORDERED
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
 
               {/* ── Material Indent: Record Material Receipt Card ── */}
               {(selectedIndent as any).piType === "material" && selectedIndent.status === "ordered" && canCreate && (
@@ -4285,8 +4102,8 @@ export default function PurchaseIndents() {
                   const rankItem = (i: typeof selectedIndent.items[0]) => {
                     if ((i.approvedQty ?? i.qty) === 0) return 4;
                     const ps = (i.purchaseStatus || "").toLowerCase();
-                    if (ps === "purchased" || ps === "partial") return 3;
-                    if (ps === "ordered") return 2;
+                    if (ps === "purchased") return 3;
+                    if (ps === "ordered" || ps === "partial") return 2;
                     return 1;
                   };
                   return [...selectedIndent.items]
@@ -4296,8 +4113,9 @@ export default function PurchaseIndents() {
                       const ps = (item.purchaseStatus || "").toLowerCase();
                       const approvedQty = item.approvedQty ?? item.qty;
                       const isRejected = approvedQty === 0;
-                      const isPurchased = ps === "purchased" || ps === "partial";
-                      const isOrdered = ps === "ordered";
+                      const isPurchased = ps === "purchased";
+                      // PARTIAL = partial delivery received, more still in-flight — same card as ordered
+                      const isOrdered = ps === "ordered" || ps === "partial";
                       const isCancelled = ps === "cancelled";
                       const isPending = !isRejected && !isPurchased && !isOrdered && !isCancelled;
                       const canCancel = canCancelItem(item.purchaseStatus);
@@ -4415,20 +4233,26 @@ export default function PurchaseIndents() {
                       }
 
                       if (isOrdered) {
+                        const isPartialDelivery = ps === "partial";
+                        const deliveredSoFar = (item as any).totalAcceptedQty ?? 0;
                         return (
-                          <div key={item.id} className="border border-blue-200 dark:border-blue-800 rounded-xl bg-blue-50 dark:bg-blue-950/30 p-4" data-testid={`card-procure-item-${item.id}`}>
+                          <div key={item.id} className={`border rounded-xl p-4 ${isPartialDelivery ? "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30" : "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30"}`} data-testid={`card-procure-item-${item.id}`}>
                             <div className="flex justify-between items-start mb-1.5">
                               <div>
-                                <h3 className="font-semibold text-blue-900 dark:text-blue-300">{realIndex + 1}. {item.description}</h3>
+                                <h3 className={`font-semibold ${isPartialDelivery ? "text-amber-900 dark:text-amber-300" : "text-blue-900 dark:text-blue-300"}`}>{realIndex + 1}. {item.description}</h3>
                                 {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
-                                <p className="text-sm text-blue-600 dark:text-blue-400 mt-0.5">{approvedQty} {item.uom}{approvedQty < item.qty ? ` (req: ${item.qty})` : ""}</p>
+                                <p className={`text-sm mt-0.5 ${isPartialDelivery ? "text-amber-700 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"}`}>
+                                  {approvedQty} {item.uom}
+                                  {isPartialDelivery && deliveredSoFar > 0 && ` · ${deliveredSoFar} received, ${Number((approvedQty - deliveredSoFar).toFixed(2))} remaining`}
+                                </p>
                               </div>
+                              {isPartialDelivery && <Badge variant="outline" className="shrink-0 text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300">PARTIAL</Badge>}
                             </div>
                             {stockBadge && <div className="mb-2">{stockBadge}</div>}
-                            <div className="bg-blue-100 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-800 rounded-lg overflow-hidden">
-                              <div className="flex items-center gap-2 px-3 py-2 border-b border-blue-200 dark:border-blue-800 bg-blue-200/60 dark:bg-blue-900/60">
-                                <ClipboardList className="w-4 h-4 text-blue-600" />
-                                <span className="font-semibold text-blue-800 dark:text-blue-200 text-sm">Order Placed</span>
+                            <div className={`border rounded-lg overflow-hidden ${isPartialDelivery ? "bg-amber-100 dark:bg-amber-900/40 border-amber-200 dark:border-amber-700" : "bg-blue-100 dark:bg-blue-900/40 border-blue-200 dark:border-blue-800"}`}>
+                              <div className={`flex items-center gap-2 px-3 py-2 border-b ${isPartialDelivery ? "border-amber-200 dark:border-amber-700 bg-amber-200/60 dark:bg-amber-900/60" : "border-blue-200 dark:border-blue-800 bg-blue-200/60 dark:bg-blue-900/60"}`}>
+                                <ClipboardList className={`w-4 h-4 ${isPartialDelivery ? "text-amber-600" : "text-blue-600"}`} />
+                                <span className={`font-semibold text-sm ${isPartialDelivery ? "text-amber-800 dark:text-amber-200" : "text-blue-800 dark:text-blue-200"}`}>{isPartialDelivery ? "Partial Delivery — Balance Due" : "Order Placed"}</span>
                               </div>
                               <div className="px-3 py-2.5 space-y-1.5 text-sm">
                                 {item.vendor && (
@@ -4466,16 +4290,69 @@ export default function PurchaseIndents() {
                                     </span>
                                   </div>
                                 )}
-                                <Button
-                                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white mt-2"
-                                  size="sm"
-                                  onClick={() => procureMutation.mutate({ itemId: item.id, data: { action: "received" } })}
-                                  disabled={procureMutation.isPending}
-                                  data-testid={`button-mark-received-${item.id}`}
-                                >
-                                  {procureMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <PackageCheck className="w-3.5 h-3.5 mr-1.5" />}
-                                  Mark Received → Create GRN
-                                </Button>
+                                {/* Record Delivery expandable panel — stores/service route only; material route uses Plant Material Receipts */}
+                                {canCreate && ((item as any).procurementRoute !== "material" && (item as any).procurementRoute !== "bulk_plant") && (
+                                  <div className="mt-3 border-t border-blue-200 dark:border-blue-800 pt-3">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="w-full border-emerald-400 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 gap-1.5"
+                                      onClick={() => setDeliveryExpanded(prev => { const next = new Set(prev); next.has(item.id) ? next.delete(item.id) : next.add(item.id); return next; })}
+                                      data-testid={`button-expand-delivery-${item.id}`}
+                                    >
+                                      <PackageCheck className="w-3.5 h-3.5" />
+                                      {deliveryExpanded.has(item.id) ? "Cancel" : "Record Delivery"}
+                                      {deliveryExpanded.has(item.id) ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
+                                    </Button>
+                                    {deliveryExpanded.has(item.id) && (() => {
+                                      const df = deliveryForms[item.id] ?? { deliveredQty: String(approvedQty), deliveryDate: format(new Date(), "yyyy-MM-dd"), challanNo: "", paymentMode: (item as any).paymentMode || "credit", remarks: "" };
+                                      const setDf = (patch: Partial<typeof df>) => setDeliveryForms(prev => ({ ...prev, [item.id]: { ...df, ...patch } }));
+                                      return (
+                                        <div className="mt-2 space-y-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 border border-emerald-200 dark:border-emerald-800">
+                                          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 uppercase">Delivery Details</p>
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                              <Label className="text-xs">QTY DELIVERED ({item.uom}) <span className="text-red-500">*</span></Label>
+                                              <Input type="number" min={0} max={approvedQty} value={df.deliveredQty} onChange={e => setDf({ deliveredQty: e.target.value })} className="h-8 text-sm" data-testid={`input-delivery-qty-${item.id}`} />
+                                            </div>
+                                            <div>
+                                              <Label className="text-xs">DELIVERY DATE</Label>
+                                              <Input type="date" value={df.deliveryDate} onChange={e => setDf({ deliveryDate: e.target.value })} className="h-8 text-sm" data-testid={`input-delivery-date-${item.id}`} />
+                                            </div>
+                                            <div>
+                                              <Label className="text-xs">CHALLAN / DC NO.</Label>
+                                              <Input value={df.challanNo} onChange={e => setDf({ challanNo: e.target.value })} placeholder="Optional" className="h-8 text-sm" data-testid={`input-delivery-challan-${item.id}`} />
+                                            </div>
+                                            <div>
+                                              <Label className="text-xs">PAYMENT MODE</Label>
+                                              <Select value={df.paymentMode || "credit"} onValueChange={v => setDf({ paymentMode: v })}>
+                                                <SelectTrigger className="h-8 text-sm" data-testid={`select-delivery-payment-${item.id}`}><SelectValue /></SelectTrigger>
+                                                <SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="credit">Credit</SelectItem><SelectItem value="advance">Advance</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="cheque">Cheque</SelectItem><SelectItem value="rtgs">RTGS / NEFT</SelectItem></SelectContent>
+                                              </Select>
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">REMARKS</Label>
+                                            <Input value={df.remarks} onChange={e => setDf({ remarks: e.target.value })} placeholder="Optional notes" className="h-8 text-sm" data-testid={`input-delivery-remarks-${item.id}`} />
+                                          </div>
+                                          <Button
+                                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                                            size="sm"
+                                            disabled={recordDeliveryMutation.isPending}
+                                            onClick={() => {
+                                              if (!parseFloat(df.deliveredQty) || parseFloat(df.deliveredQty) <= 0) { toast({ title: "Invalid quantity", description: "Enter a valid delivered quantity", variant: "destructive" }); return; }
+                                              recordDeliveryMutation.mutate({ itemId: item.id, data: { deliveredQty: parseFloat(df.deliveredQty), deliveryDate: df.deliveryDate || null, challanNo: df.challanNo || null, paymentMode: df.paymentMode || null, remarks: df.remarks || null } });
+                                            }}
+                                            data-testid={`button-submit-delivery-${item.id}`}
+                                          >
+                                            {recordDeliveryMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <PackageCheck className="w-3.5 h-3.5 mr-1.5" />}
+                                            Confirm Delivery &amp; Create GRN
+                                          </Button>
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <div className="mt-2">

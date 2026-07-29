@@ -1164,7 +1164,9 @@ export interface IStorage {
 
   // PI Item Transactions (dual-route)
   getPiItemTransactions(indentId: number): Promise<PiItemTransaction[]>;
-  submitPurchaserAction(indentId: number, items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string }[], actionBy: string, userId?: number): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number> }>;
+  submitPurchaserAction(indentId: number, items: { itemId: number; purchaseActionType?: string; qty: number; orderedQty?: number; orderNo?: string; orderedByName?: string; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; billNo?: string; remarks?: string }[], actionBy: string, userId?: number): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number> }>;
+  recordDelivery(itemId: number, data: { deliveredQty: number; deliveryDate?: string; challanNo?: string; paymentMode?: string; paidBy?: string; remarks?: string }, actionBy: string, userId?: number): Promise<{ item: PurchaseIndentItem; grnId?: number }>;
+  ensureOrderColumns(): Promise<void>;
   submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
   recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<void>;
   submitBulkReceiptAsPending(indentId: number, receivingLocation: string, receivingSiteId: number | null, items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string }[], createdByUserId: number, createdBy: string): Promise<void>;
@@ -9881,80 +9883,162 @@ export class DatabaseStorage implements IStorage {
 
   async submitPurchaserAction(
     indentId: number,
-    items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string; procurementRoute?: string }[],
+    items: { itemId: number; purchaseActionType?: string; qty: number; orderedQty?: number; orderNo?: string; orderedByName?: string; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; billNo?: string; remarks?: string; procurementRoute?: string }[],
     actionBy: string,
     userId?: number
   ): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number> }> {
     const txnIdsByItemId: Record<number, number> = {};
     const grnIdsByItemId: Record<number, number> = {};
+
+    // Load authoritative procurement routes from DB for all items
+    const allItemDbRows = await db.select({
+      id: purchaseIndentItems.id,
+      procurementRoute: purchaseIndentItems.procurementRoute,
+      description: purchaseIndentItems.description,
+      uom: purchaseIndentItems.uom,
+      approvedQty: purchaseIndentItems.approvedQty,
+      totalPurchasedQty: purchaseIndentItems.totalPurchasedQty,
+    }).from(purchaseIndentItems)
+      .where(inArray(purchaseIndentItems.id, items.map(i => i.itemId)));
+    const allItemDbMap = new Map(allItemDbRows.map(r => [r.id, r]));
+
     await db.transaction(async (tx) => {
       for (const item of items) {
-        const [txRow] = await tx.insert(piItemTransactions).values({
-          indentId,
-          indentItemId: item.itemId,
-          transactionType: "purchaser_action",
-          qty: item.qty,
-          orderedQty: item.orderedQty ?? item.qty,
-          vendor: item.vendor?.toUpperCase() ?? null,
-          rate: item.rate ?? null,
-          amount: item.amount ?? null,
-          paymentMode: item.paymentMode ?? null,
-          paidBy: item.paidBy ?? null,
-          expectedDeliveryDate: item.expectedDeliveryDate ?? null,
-          reasonCode: item.reasonCode ?? null,
-          remarks: item.remarks ?? null,
-          createdBy: actionBy.toUpperCase(),
-        }).returning({ id: piItemTransactions.id });
-        txnIdsByItemId[item.itemId] = txRow.id;
-        // Load authoritative procurement route from DB — do not trust client payload
-        const [existing] = await tx.select({
-          totalPurchasedQty: purchaseIndentItems.totalPurchasedQty,
-          procurementRoute: purchaseIndentItems.procurementRoute,
-        }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, item.itemId)).limit(1);
-        const prevTotal = (existing?.totalPurchasedQty ?? 0);
+        const existing = allItemDbMap.get(item.itemId);
         const dbRoute = existing?.procurementRoute ?? null;
-        const serviceStatusPatch = dbRoute === "service"
-          ? { purchaseStatus: "AWAITING_SERVICE_VERIFICATION" as const }
-          : {};
-        await tx.update(purchaseIndentItems)
-          .set({
-            totalPurchasedQty: prevTotal + item.qty,
-            orderedQty: item.orderedQty ?? item.qty,
+        // Normalize purchaseActionType — backward-compat: treat old reasonCode="ordered" as "ordered" type
+        const actionType = item.purchaseActionType
+          ?? (item.reasonCode === "ordered" ? "ordered"
+            : item.reasonCode === "not_available" ? "not_available"
+            : "already_purchased");
+
+        if (actionType === "ordered") {
+          // ── ORDERED PATH: record order, do NOT create GRN, do NOT bump totalPurchasedQty ──
+          const [txRow] = await tx.insert(piItemTransactions).values({
+            indentId,
+            indentItemId: item.itemId,
+            transactionType: "purchaser_action",
+            qty: item.qty,
+            orderedQty: item.qty,
             vendor: item.vendor?.toUpperCase() ?? null,
             rate: item.rate ?? null,
             paymentMode: item.paymentMode ?? null,
+            expectedDeliveryDate: item.expectedDeliveryDate ?? null,
+            reasonCode: "ordered",
+            remarks: item.remarks ?? null,
+            createdBy: actionBy.toUpperCase(),
+          }).returning({ id: piItemTransactions.id });
+          txnIdsByItemId[item.itemId] = txRow.id;
+          await tx.update(purchaseIndentItems)
+            .set({
+              purchaseStatus: "ORDERED",
+              orderedQty: item.qty,
+              vendor: item.vendor?.toUpperCase() ?? null,
+              rate: item.rate ?? null,
+              paymentMode: item.paymentMode ?? null,
+              expectedDelivery: item.expectedDeliveryDate ?? null,
+              purchasedBy: actionBy.toUpperCase(),
+              purchasedByUserId: userId ?? null,
+              orderNo: item.orderNo ?? null,
+              orderedByUserId: userId ?? null,
+              orderedByName: item.orderedByName ?? null,
+            })
+            .where(eq(purchaseIndentItems.id, item.itemId));
+
+        } else if (actionType === "not_available") {
+          // ── NOT AVAILABLE PATH: mark as NOT_PURCHASED, no GRN ──
+          const [txRow] = await tx.insert(piItemTransactions).values({
+            indentId,
+            indentItemId: item.itemId,
+            transactionType: "purchaser_action",
+            qty: 0,
+            reasonCode: "not_available",
+            remarks: item.remarks ?? null,
+            createdBy: actionBy.toUpperCase(),
+          }).returning({ id: piItemTransactions.id });
+          txnIdsByItemId[item.itemId] = txRow.id;
+          await tx.update(purchaseIndentItems)
+            .set({
+              purchaseStatus: "NOT_PURCHASED",
+              purchasedBy: actionBy.toUpperCase(),
+              purchasedByUserId: userId ?? null,
+            })
+            .where(eq(purchaseIndentItems.id, item.itemId));
+
+        } else if (actionType === "recommend_cancellation") {
+          // ── RECOMMEND CANCELLATION: flag for PM review, don't change purchaseStatus ──
+          const [txRow] = await tx.insert(piItemTransactions).values({
+            indentId,
+            indentItemId: item.itemId,
+            transactionType: "purchaser_action",
+            qty: 0,
+            reasonCode: "recommend_cancellation",
+            remarks: item.remarks ?? null,
+            createdBy: actionBy.toUpperCase(),
+          }).returning({ id: piItemTransactions.id });
+          txnIdsByItemId[item.itemId] = txRow.id;
+          // Do not change purchaseStatus — item remains actionable for PM to decide
+
+        } else {
+          // ── ALREADY PURCHASED PATH (default): existing accumulation + GRN ──
+          const [txRow] = await tx.insert(piItemTransactions).values({
+            indentId,
+            indentItemId: item.itemId,
+            transactionType: "purchaser_action",
+            qty: item.qty,
+            orderedQty: item.orderedQty ?? item.qty,
+            vendor: item.vendor?.toUpperCase() ?? null,
+            rate: item.rate ?? null,
+            amount: item.amount ?? null,
+            paymentMode: item.paymentMode ?? null,
             paidBy: item.paidBy ?? null,
-            purchasedBy: actionBy.toUpperCase(),
-            purchasedByUserId: userId ?? null,
-            ...serviceStatusPatch,
-          })
-          .where(eq(purchaseIndentItems.id, item.itemId));
+            expectedDeliveryDate: item.expectedDeliveryDate ?? null,
+            reasonCode: item.reasonCode ?? null,
+            remarks: item.remarks ?? null,
+            createdBy: actionBy.toUpperCase(),
+          }).returning({ id: piItemTransactions.id });
+          txnIdsByItemId[item.itemId] = txRow.id;
+
+          const prevTotal = (existing?.totalPurchasedQty ?? 0);
+          const serviceStatusPatch = dbRoute === "service"
+            ? { purchaseStatus: "AWAITING_SERVICE_VERIFICATION" as const }
+            : {};
+          await tx.update(purchaseIndentItems)
+            .set({
+              totalPurchasedQty: prevTotal + item.qty,
+              orderedQty: item.orderedQty ?? item.qty,
+              vendor: item.vendor?.toUpperCase() ?? null,
+              rate: item.rate ?? null,
+              paymentMode: item.paymentMode ?? null,
+              paidBy: item.paidBy ?? null,
+              purchasedBy: actionBy.toUpperCase(),
+              purchasedByUserId: userId ?? null,
+              ...serviceStatusPatch,
+            })
+            .where(eq(purchaseIndentItems.id, item.itemId));
+        }
       }
-      // Transition indent → purchaser_actioned
-      await tx.update(purchaseIndents)
-        .set({ status: "purchaser_actioned" })
-        .where(and(
-          eq(purchaseIndents.id, indentId),
-          inArray(purchaseIndents.status, ["approved", "purchasing"])
-        ));
     });
 
-    // Auto-create a draft GRN for stores-route items that are actually purchased (not ordered/not-available)
-    if (userId) {
-      // Load authoritative procurement route from DB for all items
-      const allItemDbRows = await db.select({
-        id: purchaseIndentItems.id,
-        procurementRoute: purchaseIndentItems.procurementRoute,
-        description: purchaseIndentItems.description,
-        uom: purchaseIndentItems.uom,
-      }).from(purchaseIndentItems)
-        .where(inArray(purchaseIndentItems.id, items.map(i => i.itemId)));
-      const allItemDbMap = new Map(allItemDbRows.map(r => [r.id, r]));
+    // Derive and write PI-level status
+    const piStatus = await this.derivePiStatus(indentId);
+    await db.update(purchaseIndents)
+      .set({ status: piStatus })
+      .where(and(
+        eq(purchaseIndents.id, indentId),
+        inArray(purchaseIndents.status, ["approved", "purchasing", "purchaser_actioned", "awaiting_delivery"])
+      ));
 
-      // One draft GRN per stores-route item (Batch 17 final revision)
+    // Auto-create draft GRNs for stores-route "already_purchased" items
+    if (userId) {
       for (const item of items) {
         const dbRoute = allItemDbMap.get(item.itemId)?.procurementRoute ?? null;
-        if (!((dbRoute === "stores" || dbRoute === null) && item.qty > 0 && item.reasonCode !== "not_available" && item.reasonCode !== "ordered")) continue;
+        const actionType = item.purchaseActionType
+          ?? (item.reasonCode === "ordered" ? "ordered"
+            : item.reasonCode === "not_available" ? "not_available"
+            : "already_purchased");
+        if (actionType !== "already_purchased") continue;
+        if (!((dbRoute === "stores" || dbRoute === null) && item.qty > 0)) continue;
         const piItem = allItemDbMap.get(item.itemId);
         const grnItem = {
           itemId: item.itemId,
@@ -9976,6 +10060,45 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return { txnIdsByItemId, grnIdsByItemId };
+  }
+
+  /** Compute PI-level status from current item states and return the string (does not write to DB). */
+  private async derivePiStatus(indentId: number): Promise<string> {
+    const [indent] = await db.select({ piType: purchaseIndents.piType })
+      .from(purchaseIndents).where(eq(purchaseIndents.id, indentId)).limit(1);
+    const allItems = await db.select({
+      approvedQty: purchaseIndentItems.approvedQty,
+      purchaseStatus: purchaseIndentItems.purchaseStatus,
+      totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
+      orderedQty: purchaseIndentItems.orderedQty,
+    }).from(purchaseIndentItems).where(eq(purchaseIndentItems.indentId, indentId));
+
+    const activeItems = allItems.filter(i => (i.approvedQty ?? 0) > 0);
+    if (activeItems.length === 0) return "purchaser_actioned";
+
+    const piType = indent?.piType ?? "stores";
+
+    // All items terminal?
+    const allTerminal = activeItems.every(i => {
+      const s = (i.purchaseStatus ?? "").toUpperCase();
+      if (s === "ORDERED") return false;
+      if (s === "PARTIAL" && i.orderedQty && i.totalAcceptedQty != null && i.totalAcceptedQty < i.orderedQty) return false;
+      return ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED", "SERVICE_COMPLETED", "SERVICE_PARTLY_COMPLETED"].includes(s);
+    });
+    if (allTerminal) return "completed";
+
+    // Any ORDERED items?
+    const anyOrdered = activeItems.some(i => (i.purchaseStatus ?? "").toUpperCase() === "ORDERED");
+    if (anyOrdered) {
+      // Material indents keep "ordered"; others use "awaiting_delivery"
+      return piType === "material" ? "ordered" : "awaiting_delivery";
+    }
+
+    // Any partial deliveries?
+    const anyPartiallyReceived = activeItems.some(i => (i.totalAcceptedQty ?? 0) > 0 && (i.purchaseStatus ?? "").toUpperCase() !== "PURCHASED");
+    if (anyPartiallyReceived) return "partially_received";
+
+    return "purchaser_actioned";
   }
 
   async createDraftGrnFromPi(
@@ -10595,21 +10718,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async checkAndCompleteIndent(indentId: number): Promise<void> {
-    const [indent] = await db.select({ piType: purchaseIndents.piType })
-      .from(purchaseIndents).where(eq(purchaseIndents.id, indentId)).limit(1);
-    const allItems = await db.select().from(purchaseIndentItems)
-      .where(eq(purchaseIndentItems.indentId, indentId));
+    const allItems = await db.select({
+      approvedQty: purchaseIndentItems.approvedQty,
+      purchaseStatus: purchaseIndentItems.purchaseStatus,
+      totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
+      orderedQty: purchaseIndentItems.orderedQty,
+    }).from(purchaseIndentItems).where(eq(purchaseIndentItems.indentId, indentId));
 
-    // Material Indents require full receipt before completion — PARTIAL is not terminal
-    const isMaterialIndent = indent?.piType === "material";
-    const terminalStatuses = isMaterialIndent
-      ? ["PURCHASED", "NOT_PURCHASED", "CANCELLED", "SERVICE_COMPLETED", "SERVICE_PARTLY_COMPLETED"]
-      : ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED", "SERVICE_COMPLETED", "SERVICE_PARTLY_COMPLETED"];
-    const allTerminal = allItems.every(item =>
+    const allTerminal = allItems.every(item => {
       // Manager-rejected items (approvedQty === 0) are treated as terminal — no procurement needed
-      (item.approvedQty != null && item.approvedQty <= 0) ||
-      (item.purchaseStatus != null && terminalStatuses.includes(item.purchaseStatus.toUpperCase()))
-    );
+      if (item.approvedQty != null && item.approvedQty <= 0) return true;
+      const s = (item.purchaseStatus ?? "").toUpperCase();
+      // ORDERED is never terminal — awaiting delivery
+      if (s === "ORDERED") return false;
+      // PARTIAL with active order and undelivered qty is not terminal
+      if (s === "PARTIAL" && item.orderedQty && item.totalAcceptedQty != null && item.totalAcceptedQty < item.orderedQty) return false;
+      return ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED", "SERVICE_COMPLETED", "SERVICE_PARTLY_COMPLETED"].includes(s);
+    });
 
     if (allTerminal && allItems.length > 0) {
       // Only advance from in-progress procurement states; never overwrite rejected/pending
@@ -10617,9 +10742,137 @@ export class DatabaseStorage implements IStorage {
         .set({ status: "completed" })
         .where(and(
           eq(purchaseIndents.id, indentId),
-          inArray(purchaseIndents.status, ["approved", "purchasing", "ordered", "purchaser_actioned"])
+          inArray(purchaseIndents.status, ["approved", "purchasing", "ordered", "purchaser_actioned", "awaiting_delivery", "partially_received"])
         ));
     }
+  }
+
+  async recordDelivery(
+    itemId: number,
+    data: { deliveredQty: number; deliveryDate?: string; challanNo?: string; paymentMode?: string; paidBy?: string; remarks?: string },
+    actionBy: string,
+    userId?: number
+  ): Promise<{ item: PurchaseIndentItem; grnId?: number }> {
+    const [existingItem] = await db.select().from(purchaseIndentItems)
+      .where(eq(purchaseIndentItems.id, itemId)).limit(1);
+    if (!existingItem) throw new Error(`PI item ${itemId} not found`);
+
+    const currentStatus = (existingItem.purchaseStatus ?? "").toUpperCase();
+    if (currentStatus !== "ORDERED" && currentStatus !== "PARTIAL") {
+      throw new Error(`Cannot record delivery: item is in status '${existingItem.purchaseStatus}'. Only ORDERED or PARTIAL items accept delivery.`);
+    }
+    // Material and bulk-plant route items must go through the material receipt flow (stock posting)
+    if (existingItem.procurementRoute === "material" || existingItem.procurementRoute === "bulk_plant") {
+      throw new Error(`Cannot use record-delivery for material/bulk-plant route items. Use Plant Material Receipts to post delivery and update stock.`);
+    }
+
+    const orderedQty = existingItem.orderedQty ?? existingItem.approvedQty ?? 0;
+    const prevAccepted = existingItem.totalAcceptedQty ?? 0;
+    if (data.deliveredQty <= 0) throw new Error("Delivered quantity must be greater than zero");
+    if (prevAccepted + data.deliveredQty > orderedQty + 0.001) {
+      throw new Error(`Cannot record delivery of ${data.deliveredQty} — total would exceed ordered quantity of ${orderedQty}`);
+    }
+
+    const newAccepted = prevAccepted + data.deliveredQty;
+    const newStatus = newAccepted >= orderedQty - 0.001 ? "PURCHASED" : "PARTIAL";
+
+    // Insert delivery transaction
+    await db.insert(piItemTransactions).values({
+      indentId: existingItem.indentId,
+      indentItemId: itemId,
+      transactionType: "delivery_receipt",
+      qty: data.deliveredQty,
+      vendor: existingItem.vendor ?? null,
+      rate: existingItem.rate ?? null,
+      paymentMode: data.paymentMode ?? existingItem.paymentMode ?? null,
+      paidBy: data.paidBy ?? null,
+      expectedDeliveryDate: data.deliveryDate ?? null,
+      reasonCode: data.challanNo ? `challan:${data.challanNo}` : null,
+      remarks: data.remarks ?? null,
+      createdBy: actionBy.toUpperCase(),
+    });
+
+    // Update item
+    const [updatedItem] = await db.update(purchaseIndentItems)
+      .set({
+        totalAcceptedQty: newAccepted,
+        purchaseStatus: newStatus,
+        paymentMode: data.paymentMode ?? existingItem.paymentMode ?? null,
+      })
+      .where(eq(purchaseIndentItems.id, itemId))
+      .returning();
+    if (!updatedItem) throw new Error("Failed to update PI item");
+
+    // Audit log
+    await db.insert(purchaseIndentItemHistory).values({
+      itemId,
+      action: `DELIVERY_${newStatus}`,
+      actionBy: actionBy.toUpperCase(),
+      notes: data.remarks ? data.remarks.toUpperCase() : null,
+      qtyValue: data.deliveredQty,
+      vendor: existingItem.vendor ?? null,
+      rate: existingItem.rate ?? null,
+    });
+
+    let grnId: number | undefined;
+    // For stores-route items: create or update linked GRN
+    if (userId && (existingItem.procurementRoute === "stores" || existingItem.procurementRoute === null)) {
+      if (existingItem.linkedGrnId) {
+        // GRN already exists — update the line qty to the new running total
+        grnId = existingItem.linkedGrnId;
+        try {
+          await db.update(storeGrnItems)
+            .set({ qty: newAccepted })
+            .where(and(
+              eq(storeGrnItems.grnId, existingItem.linkedGrnId),
+              eq(storeGrnItems.sourcePiItemId, itemId)
+            ));
+        } catch (err) {
+          console.error(`recordDelivery: GRN line update failed for item ${itemId} (non-fatal):`, err);
+        }
+      } else {
+        // Create a new draft GRN for this delivery
+        try {
+          const grnItem = {
+            itemId,
+            description: existingItem.description,
+            uom: existingItem.uom,
+            qty: data.deliveredQty,
+            rate: existingItem.rate,
+            vendor: existingItem.vendor,
+          };
+          const draftGrn = await this.createDraftGrnFromPi(existingItem.indentId, [grnItem], existingItem.vendor ?? "SUPPLIER", userId, actionBy);
+          grnId = draftGrn.id;
+          await db.update(purchaseIndentItems)
+            .set({ linkedGrnId: draftGrn.id })
+            .where(eq(purchaseIndentItems.id, itemId));
+        } catch (err) {
+          console.error(`recordDelivery: auto-GRN creation failed for item ${itemId} (non-fatal):`, err);
+        }
+      }
+    }
+
+    // Update PI-level status and check completion
+    const newPiStatus = await this.derivePiStatus(existingItem.indentId);
+    await db.update(purchaseIndents)
+      .set({ status: newPiStatus })
+      .where(and(
+        eq(purchaseIndents.id, existingItem.indentId),
+        inArray(purchaseIndents.status, ["purchaser_actioned", "awaiting_delivery", "partially_received", "ordered", "approved"])
+      ));
+    await this.checkAndCompleteIndent(existingItem.indentId);
+
+    return { item: updatedItem, grnId };
+  }
+
+  async ensureOrderColumns(): Promise<void> {
+    // Idempotent: ADD COLUMN IF NOT EXISTS — safe to re-run
+    await db.execute(sql`
+      ALTER TABLE purchase_indent_items
+        ADD COLUMN IF NOT EXISTS order_no TEXT,
+        ADD COLUMN IF NOT EXISTS ordered_by_user_id INTEGER,
+        ADD COLUMN IF NOT EXISTS ordered_by_name TEXT
+    `);
   }
 
   async updatePurchaseItemStatus(itemId: number, purchaseData: { purchaseStatus?: string; qtyPurchased?: number; vendor?: string; billNo?: string; rate?: number; amount?: number; purchaseRemarks?: string }, actionBy?: string): Promise<PurchaseIndentItem | undefined> {

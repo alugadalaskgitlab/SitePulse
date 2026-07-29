@@ -71,6 +71,7 @@ app.use((req, res, next) => {
   // Run schema-additive migrations BEFORE routes/seed so new columns exist at seed time
   try { await storage.ensureBulkDensityColumn(); } catch (e) { console.error("Pre-routes: Failed to ensure bulk_density column:", e); }
   try { await storage.ensureStoreCancellationColumns(); console.log("Startup: ensureStoreCancellationColumns — store_grns cancellation + self-approval columns verified/added"); } catch (e) { console.error("Pre-routes: Failed to ensure store cancellation columns:", e); }
+  try { await storage.ensureOrderColumns(); console.log("Startup: ensureOrderColumns — purchase_indent_items order tracking columns verified/added"); } catch (e) { console.error("Pre-routes: Failed to ensure order columns:", e); }
   await registerRoutes(httpServer, app);
 
   // Auto-seed MoRTH defaults only when the equipment types table is empty (first deploy)

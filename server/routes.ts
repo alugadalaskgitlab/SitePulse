@@ -6691,7 +6691,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Cancellation reason is required" });
       }
 
-      if (!assertEdit(req, res, "site_procurement")) return;
+      // Hard-cancel requires PM/Admin (purchase_indents_approve) — purchasers use "Not Available" or "Recommend Cancellation" via purchaser-action instead
+      if (!assertApprove(req, res, "purchase_indents_approve")) return;
       const cancelledBy = currentUserName(req);
       const item = await storage.cancelPurchaseItem(itemId, cancelledBy, reason);
       if (!item) {
@@ -6817,6 +6818,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/purchaser-action", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "site_procurement")) return;
       const indentId = Number(req.params.id);
       const actionBy = currentUserName(req);
       const userId = req.authUser?.id;
@@ -6824,18 +6826,35 @@ export async function registerRoutes(
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "items array is required" });
       }
-      // Server-side validation (Batch 16): purchased items must have vendor + rate + qty
+      // Server-side validation: validate per purchaseActionType
       for (const item of items as any[]) {
-        if (item.reasonCode === "not_available") continue;
+        const actionType: string = item.purchaseActionType
+          ?? (item.reasonCode === "ordered" ? "ordered"
+            : item.reasonCode === "not_available" ? "not_available"
+            : "already_purchased");
+        // Not-available and recommend-cancellation need no purchase details
+        if (actionType === "not_available" || actionType === "recommend_cancellation") continue;
+        // All actioned types need a positive qty
         if (!item.qty || Number(item.qty) <= 0) {
           return res.status(400).json({ message: `Invalid quantity for item ${item.itemId}` });
         }
-        const vendorStr = String(item.vendor ?? "").trim().toUpperCase();
-        if (!vendorStr || vendorStr === "SUPPLIER") {
-          return res.status(400).json({ message: "Vendor name is required for all purchased items" });
-        }
-        if (!item.rate || Number(item.rate) <= 0) {
-          return res.status(400).json({ message: "Rate must be greater than zero for all purchased items" });
+        if (actionType === "already_purchased") {
+          // Purchased items require vendor + rate
+          const vendorStr = String(item.vendor ?? "").trim().toUpperCase();
+          if (!vendorStr || vendorStr === "SUPPLIER") {
+            return res.status(400).json({ message: "Vendor name is required for purchased items" });
+          }
+          if (!item.rate || Number(item.rate) <= 0) {
+            return res.status(400).json({ message: "Rate must be greater than zero for purchased items" });
+          }
+        } else if (actionType === "ordered") {
+          // Ordered items require expected delivery date + rate
+          if (!item.expectedDeliveryDate) {
+            return res.status(400).json({ message: "Expected delivery date is required for ordered items" });
+          }
+          if (!item.rate || Number(item.rate) <= 0) {
+            return res.status(400).json({ message: "Rate must be greater than zero for ordered items" });
+          }
         }
       }
       const paResult = await storage.submitPurchaserAction(indentId, items, actionBy, userId);
@@ -6844,6 +6863,43 @@ export async function registerRoutes(
     } catch (err) {
       console.error("POST /api/purchase-indents/:id/purchaser-action:", err);
       res.status(500).json({ message: String((err as Error).message) });
+    }
+  });
+
+  app.post("/api/purchase-indent-items/:id/record-delivery", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_procurement")) return;
+      const itemId = Number(req.params.id);
+      const { deliveredQty, deliveryDate, challanNo, paymentMode, paidBy, remarks } = req.body;
+      if (!deliveredQty || Number(deliveredQty) <= 0) {
+        return res.status(400).json({ message: "deliveredQty must be greater than zero" });
+      }
+      const actionBy = currentUserName(req);
+      const userId = req.authUser?.id;
+      const result = await storage.recordDelivery(itemId, {
+        deliveredQty: Number(deliveredQty),
+        deliveryDate: deliveryDate ?? undefined,
+        challanNo: challanNo ?? undefined,
+        paymentMode: paymentMode ?? undefined,
+        paidBy: paidBy ?? undefined,
+        remarks: remarks ?? undefined,
+      }, actionBy, userId);
+      res.json(result);
+    } catch (err: any) {
+      console.error("POST /api/purchase-indent-items/:id/record-delivery:", err);
+      // All known business-rule failures thrown by recordDelivery() are user/input errors → 400
+      const BUSINESS_RULE_PREFIXES = [
+        "Cannot record",
+        "Cannot use record-delivery",
+        "PI item",
+        "Delivered quantity",
+        "Cannot record delivery",
+        "Failed to update",
+      ];
+      if (BUSINESS_RULE_PREFIXES.some(p => err?.message?.startsWith(p))) {
+        return res.status(400).json({ message: err.message });
+      }
+      res.status(500).json({ message: String(err.message) });
     }
   });
 
