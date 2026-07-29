@@ -1,0 +1,141 @@
+Instruction 014 (rev 2) — Separate Ordered and Already Purchased flows, derive
+PI completion strictly from receipt/verification status, with safeguards
+
+Scope: client/src/pages/PurchaseIndents.tsx, server/storage.ts
+(checkAndCompleteIndent ~10597, linkReceiptToIndentItem ~10547,
+createDraftGrnFromPi ~9981, cancelPurchaseItem ~10658, submitPurchaserAction),
+server/routes.ts (PI item routes, PATCH .../cancel ~6685), shared/schema.ts.
+
+1. One Purchase Action Type selector, for every PI item, regardless of route
+   - Replace the current split (generic "Purchaser Action" card w/ buried
+     shortfall "ordered" option vs. material-only "ORDER/PROCUREMENT ACTION"
+     card) with ONE card, ONE flow, route-aware internally.
+   - First question per item, not conditional on quantity being short:
+       - Ordered — Awaiting Delivery
+       - Already Purchased — Awaiting Receipt
+       - Partially Ordered — Awaiting Delivery
+       - Partially Purchased — Awaiting Receipt
+       - Not Available
+       - Recommend Cancellation
+   - "Partially Ordered" and "Partially Purchased" are distinct options (not
+     one ambiguous "Partial") specifically so the app knows whether to expect
+     a delivery-linking action later or create a pending receipt now.
+
+2. "Ordered" fields — no receipt created yet
+   - Quantity ordered, Vendor, Rate, Order date, Order/reference number,
+     Expected delivery date, Payment terms/mode, Ordered by (auto-filled from
+     logged-in user, stored explicitly — add a dedicated field; don't reuse
+     purchasedBy/purchasedByUserId, which mean "who purchased," not "who
+     ordered"), Remarks, Attachment.
+   - Sets item purchaseStatus = "ORDERED" (already exists, storage.ts:9811).
+   - Do NOT create a draft GRN / pending receipt at this point.
+
+3. Record Delivery / Purchase Receipt — the required second action
+   - Once an item is "ORDERED" (or "PARTIAL" with an outstanding balance),
+     its read-only summary must show a "Record Delivery / Purchase Receipt"
+     action. Do not leave the order with no next step.
+   - Captures: quantity now delivered, actual delivery date, invoice/challan
+     number, payment details (if not already recorded), attachment, receiving
+     destination.
+   - Reuse the existing accumulation pattern from linkReceiptToIndentItem
+     (storage.ts ~10547) rather than building new logic: increment
+     totalAcceptedQty, compute purchaseStatus as PURCHASED once
+     totalAcceptedQty >= orderedQty else PARTIAL, block the action once the
+     item is already terminal, and reject any receipt that would push
+     totalAcceptedQty past orderedQty (or approvedQty for non-order paths).
+   - Currently this function only works for piType === "material" and links
+     against materialReceipts. Extend the same guard/accumulation logic to
+     store-route items, but have it create/update a GRN pending receipt
+     (createDraftGrnFromPi target) instead of a materialReceipts row.
+   - Every delivery against the same order must stay linked to the same PI
+     item and the same order reference — not spawn a disconnected new draft
+     GRN per partial delivery.
+
+4. "Already Purchased" fields (Purchase Action Type = Already Purchased or
+   Partially Purchased)
+   - Quantity purchased, Vendor, Rate, Purchase date, Invoice/bill number,
+     Payment mode, Paid by, Attachment, Receiving destination.
+   - This path creates the pending receipt (draft GRN) immediately, same as
+     today's createDraftGrnFromPi — since goods are already in hand, not
+     merely ordered.
+
+5. Order identity — extend existing item fields rather than a new table
+   - purchaseIndentItems already carries orderedQty, totalPurchasedQty,
+     totalAcceptedQty, totalRejectedQty, orderPlacedAt, linkedReceiptId —
+     reuse these for "ordered qty / received-to-date / outstanding qty."
+   - Add: an explicit orderNo/orderReference field, and a distinct
+     orderedByUserId/orderedByName (don't overload purchasedBy for this).
+   - Keep piItemTransactions as the append-only audit log (it already is) —
+     don't duplicate order state there; it should only record what happened
+     and when, while purchaseIndentItems holds current state.
+
+6. checkAndCompleteIndent — completion rule per item type
+   - material/store item → requires confirmed receipt (totalAcceptedQty
+     meeting the ordered/approved qty) — currently non-material items wrongly
+     treat a bare "PARTIAL" purchaseStatus as terminal on its own (storage.ts
+     ~10607). Fix so "PARTIAL"/"PURCHASED" only count once backed by an
+     actual accepted receipt, for every route.
+   - service/hire → requires SERVICE_COMPLETED or SERVICE_PARTLY_COMPLETED,
+     which already requires authorised verification with a separation-of-
+     duties check (routes.ts:6874) — this already works correctly, do not
+     regress it while unifying the action cards in #1.
+   - cancelled/formally closed → requires PM/Admin closure (see #7).
+   - "ORDERED" must never be terminal for any route.
+   - PI-level status derived from item states (single shared function, see
+     #9): Approved — Awaiting Purchase / Purchase in Progress / Awaiting
+     Delivery / Partially Received / Completed.
+
+7. Cancellation needs authority — fix the current gap
+   - PATCH /api/purchase-indent-items/:id/cancel (routes.ts:6685) is
+     currently gated only by generic site_procurement edit permission — any
+     purchaser can cancel their own approved item, no PM/Admin check, no
+     separation-of-duties check.
+   - Change: a purchaser can only record "Not Available" or "Recommend
+     Cancellation" on their own item. Actually cancelling/closing an approved
+     item requires PM or Admin role, with a required reason, same audit-trail
+     pattern already used elsewhere (cancelPurchaseItem already writes to
+     purchaseIndentItemHistory — keep that, just add the role gate).
+
+8. Preserve old `purchaser_actioned` records
+   - Existing PI rows/items may already carry status "purchaser_actioned".
+     Add a fallback mapping in the shared status-label function (map it to
+     whichever new bucket best fits, likely "Purchase in Progress") so old
+     records keep displaying and remain visible in filters/reports — don't
+     require a hard backfill migration before this ships, but do add one to
+     properly reclassify historical rows once the new statuses are live.
+
+9. One shared, server-side PI-status derivation function
+   - All of checkAndCompleteIndent's derived states (Awaiting Delivery,
+     Partially Received, etc.) must be written back to purchaseIndents.status
+     via one function, not computed differently on the client per screen.
+   - The detail page, list view, KPI counts, and reports must all read the
+     same persisted status column — no separate client-side recomputation
+     that could disagree with what the list/KPIs show.
+
+10. Remove the duplicate card for material-route items (from original draft)
+    - Delete the separate piType === "material"-gated "ORDER/PROCUREMENT
+      ACTION" card once #1 unifies the flow. Two cards live at once on the
+      same item is what let Cement get recorded through the wrong path,
+      landing on "purchaser_actioned" instead of "ordered".
+
+Acceptance tests:
+   a) STORE-type PI, 10 approved, mark "Ordered" for all 10 with vendor/order
+      no/expected delivery — PI shows "Awaiting Delivery", no draft GRN yet.
+   b) Record delivery of 4 of those 10 — a pending GRN receipt for 4 is
+      created/updated, item shows "Partially Received", 6 still outstanding,
+      PI stays non-Completed.
+   c) Record delivery of the remaining 6 against the SAME order reference —
+      no second disconnected GRN, item reaches PURCHASED, PI recalculates to
+      Completed only if no other items are outstanding.
+   d) Attempt to record delivery totaling more than 10 — rejected.
+   e) MATERIAL-type PI (Cement) has exactly one action card; recording an
+      order sets status "ordered" / badge "ORDER PLACED", never
+      "purchaser_actioned".
+   f) Service/Hire item still requires a different user to verify completion
+      than the one who recorded the purchase — confirm this still works
+      after the card unification.
+   g) A purchaser attempts to cancel their own approved item directly — 403;
+      they can only flag "Not Available"/"Recommend Cancellation". A PM/Admin
+      can cancel with a reason, and it's recorded in history.
+   h) List view KPI counts and the detail page status badge agree for every
+      PI, including ones with the legacy "purchaser_actioned" status.
