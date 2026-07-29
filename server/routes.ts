@@ -9032,6 +9032,27 @@ export async function registerRoutes(
       }
       const result = await storage.updateStoreGrn(id, updateData, itemAcceptance ?? undefined);
       if (!result) return res.status(404).json({ error: "GRN not found" });
+
+      // Write audit log when a GRN is finalised (including admin override path)
+      if (updateData.status === "finalized" && req.authUser) {
+        try {
+          await storage.logAudit({
+            module: "store_grn",
+            transactionId: id,
+            action: updateData.selfApprovalOverrideReason ? "finalize_override" : "finalize",
+            userId: req.authUser.id,
+            userName: req.authUser.fullName ?? `User #${req.authUser.id}`,
+            userRole: (req.authUser as any).role ?? null,
+            reason: updateData.selfApprovalOverrideReason
+              ? `Admin override — ${updateData.selfApprovalOverrideReason}`
+              : null,
+            stockImpact: `GRN ${result.grnNumber} finalised — items added to stock.`,
+          });
+        } catch (auditErr) {
+          console.error("PATCH /api/stores/grns/:id: audit log write failed (non-fatal):", auditErr);
+        }
+      }
+
       res.json(result);
     } catch (err) {
       console.error("PATCH /api/stores/grns/:id:", err);
@@ -9077,6 +9098,11 @@ export async function registerRoutes(
         return res.status(409).json({ error: err.message });
       }
       console.error("POST /api/stores/grns/:id/cancel:", err);
+      // Surface schema-gap errors with a more helpful code so the UI can distinguish them
+      const msg = (err as any)?.message ?? "";
+      if (msg.includes("does not exist") || msg.includes("column") || msg.includes("relation")) {
+        return res.status(500).json({ error: "Cancel failed due to a database schema issue — contact an admin.", code: "SCHEMA_ERROR", detail: msg });
+      }
       res.status(500).json({ error: "Failed to cancel GRN" });
     }
   });

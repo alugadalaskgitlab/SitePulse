@@ -1,0 +1,95 @@
+BATCH 20 — Stores/GRN finalise & cancel flow: close out to zero-bug spec
+(continues numbering from Batch 19; incorporates Krishna's corrections)
+
+Scope: client/src/pages/StoresGrn.tsx, client/src/lib/queryClient.ts (or new
+client/src/lib/apiError.ts), server/routes.ts (GRN routes ~8979-9082),
+server/storage.ts (cancelStoreGrn ~18914, buildGrnWithItems ~19098),
+shared/schema.ts.
+
+1. Admin self-finalise override
+   - When finaliseMutation's onError receives a 409 with code
+     "OVERRIDE_REASON_REQUIRED" (see shared error parser in #5), open a dialog
+     titled "Admin Override — you recorded the related purchase" with a
+     required textarea for the reason. Do NOT say "you raised this GRN
+     yourself" — createdByUserId is the user who triggered auto-creation of
+     the GRN, not necessarily someone who acted on the GRN itself.
+   - On submit, re-call finaliseMutation with { status: "finalized", indentRef,
+     overrideReason }. Add overrideReason to the mutationFn payload.
+   - On success, render selfApprovalOverrideReason / selfApprovalOverriddenBy /
+     selfApprovalOverriddenAt (already on the GRN record) visibly on the detail
+     view.
+   - Confirm server/storage.ts writes an audit_logs row for this override
+     (module: "store_grn", action: "finalize" or similar); add one if missing.
+
+2. Skip PI search only when the PI link is fully intact — otherwise flag it
+   - First, add indentItemId to the `items` array in StoresGrn.tsx's
+     GrnWithItems type (server already returns it — see buildGrnWithItems in
+     storage.ts, it's just missing from the client type).
+   - In the "Finalise GRN — Link Indent & Confirm" panel (~line 864), before
+     skipping the PI search UI, check ALL of:
+       a) selectedGrn.sourcePiIndentId is set, AND
+       b) every item has sourcePiItemId OR indentItemId set.
+   - If (a) is true but (b) fails for any item, do NOT silently fall back to
+     name-based indent matching. Show instead:
+     "This pending receipt has an incomplete PI link. Please repair the link
+     before finalising." — and block the Finalise button until resolved
+     (either a repair action, or an explicit admin override path — your call
+     on which, but it must not be silent).
+   - Only when both (a) and (b) hold, skip the search box and show the linked
+     PI read-only with a single "Finalise GRN" button.
+   - The existing name-based search/override flow continues to apply only to
+     true manual GRNs (sourcePiIndentId null).
+
+3. Diagnose Cancel GRN 500 — dev-first, no blind prod schema changes
+   - Do NOT tell Replit to just run db:push against production. Instead:
+     a) In development, run `npm run db:push` and confirm store_grns /
+        audit_logs match shared/schema.ts (cancelled_by, cancellation_reason,
+        self_approval_override_reason, self_approval_overridden_by/at, etc).
+     b) Reproduce the cancel on a PI-sourced draft (e.g. STORE/26-27/0002) in
+        dev and capture the actual stack trace behind the console.error at
+        routes.ts ~9079 — the UI's generic 500 is not the real error.
+     c) Once the root cause is identified, write and review a proper migration
+        for whatever schema gap caused it (don't rely on push alone if it
+        touches production).
+     d) Back up production before applying anything there.
+     e) Apply the migration to production deliberately, only after the dev
+        repro/fix is confirmed working — not as part of debugging.
+   - Once fixed, add a specific error code for this failure mode instead of
+     falling through to the generic "Failed to cancel GRN" 500 handler.
+
+4. Broaden / verify manual-GRN PI matching
+   - itemApprovedIndents and draftItemApprovedIndents both filter strictly to
+     pi.status === "approved". Confirm this correctly includes PIs that are
+     approved-but-partially-received and only excludes pending/rejected/closed
+     ones. If a legitimately valid post-approval PI is being excluded, loosen
+     the filter — don't widen it blindly without a concrete failing case.
+
+5. One shared API-error parser — use it everywhere
+   - Create a single utility (e.g. client/src/lib/apiError.ts):
+     parseApiError(error: unknown) -> { status?: number; code?: string;
+     message: string }, parsing the "{status}: {jsonBody}" format that
+     apiRequest's throwIfResNotOk produces, falling back to raw text if JSON
+     parsing fails.
+   - Replace the onError handlers in finaliseMutation, cancelMutation,
+     replaceMutation, and addStoreItemMutation in StoresGrn.tsx with calls to
+     this shared parser, and show parsed.message (and branch on parsed.code
+     where needed, e.g. OVERRIDE_REASON_REQUIRED in #1) instead of each
+     mutation writing its own ad hoc parsing/toast logic.
+
+6. Consolidate status display
+   - Detail panel (~line 787) and list rows (~line 1893): replace the stack of
+     up to 5 badges with ONE primary status badge:
+       - PI-created draft GRNs (sourcePiIndentId set): "Awaiting Stores
+         Verification" (not "Ready to Finalise" — clearer for this case).
+       - Manual draft GRNs with a matched indentRef: "Ready to Finalise".
+       - Manual draft GRNs with no indent yet: "Awaiting PI".
+       - Finalized / Cancelled: as today.
+     Keep "PI-SOURCED" + the full PI number as at most one secondary chip —
+     not two separate badges.
+   - Full indentRef/PI number stays as-is (already not truncated).
+   - Remove "— No site assigned" text entirely when siteId is null; omit the
+     site chip rather than showing filler text.
+
+Acceptance: re-run Krishna's 7 tests after each numbered fix, in order.
+Items 1-2 are the two live bugs from the screenshots, 3 needs dev-first
+diagnosis before any prod schema change, 4-6 are hardening/UX cleanup.

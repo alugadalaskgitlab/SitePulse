@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { parseApiError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth-context";
 
 const STORE_CATEGORIES = ["Spares", "Lubricants", "Consumables", "Electricals", "Tools", "HMA", "RMC", "Office", "General", "Others"];
@@ -69,7 +70,8 @@ type GrnWithItems = {
   status: string; acceptanceStatus: string; acceptanceRemarks: string | null;
   isCancelled?: boolean; cancelledAt?: string | null; cancelledBy?: number | null; cancellationReason?: string | null;
   sourcePiIndentId?: number | null; createdByUserId?: number | null;
-  items: { itemId: number; itemName: string; category: string; qty: number; rate: number | null; uom: string; sourcePiItemId?: number | null; itemDescription?: string | null; acceptedQty?: number | null; rejectedQty?: number | null; acceptanceNotes?: string | null }[];
+  selfApprovalOverrideReason?: string | null; selfApprovalOverriddenBy?: number | null; selfApprovalOverriddenAt?: string | null;
+  items: { itemId: number; itemName: string; category: string; qty: number; rate: number | null; uom: string; indentItemId?: number | null; sourcePiItemId?: number | null; itemDescription?: string | null; acceptedQty?: number | null; rejectedQty?: number | null; acceptanceNotes?: string | null }[];
 };
 
 type PurchaseIndentFull = {
@@ -133,6 +135,11 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [itemFilter, setItemFilter] = useState("");
   const [cancelDialogId, setCancelDialogId] = useState<number | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+  // Admin self-finalise override dialog (triggered by OVERRIDE_REASON_REQUIRED 409)
+  const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
+  const [overrideReasonText, setOverrideReasonText] = useState("");
+  const [overridePendingId, setOverridePendingId] = useState<number | null>(null);
+  const [overridePendingIndentRef, setOverridePendingIndentRef] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
   const [editingAcceptance, setEditingAcceptance] = useState(false);
@@ -535,16 +542,30 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   });
 
   const finaliseMutation = useMutation({
-    mutationFn: ({ id, indentRef }: { id: number; indentRef: string | null }) =>
-      apiRequest("PATCH", `/api/stores/grns/${id}`, { status: "finalized", indentRef }),
+    mutationFn: ({ id, indentRef, overrideReason }: { id: number; indentRef: string | null; overrideReason?: string }) =>
+      apiRequest("PATCH", `/api/stores/grns/${id}`, { status: "finalized", indentRef, ...(overrideReason ? { overrideReason } : {}) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
       toast({ title: "GRN finalised — items added to stock" });
       setFinalisingDraft(false);
       setDraftFinaliseIndentRef("");
       setDraftFinaliseOverride(false);
+      setOverrideDialogOpen(false);
+      setOverrideReasonText("");
+      setOverridePendingId(null);
+      setOverridePendingIndentRef(null);
     },
-    onError: (err: any) => toast({ title: "Failed to finalise GRN", description: err?.message ?? "Unknown error", variant: "destructive" }),
+    onError: (err: any) => {
+      const parsed = parseApiError(err);
+      if (parsed.code === "OVERRIDE_REASON_REQUIRED" && selectedGrn) {
+        // Admin is the purchaser — open override reason dialog rather than toasting
+        setOverridePendingId(selectedGrn.id);
+        setOverridePendingIndentRef(draftFinaliseIndentRef || draftFinaliseComboSearch.trim() || null);
+        setOverrideDialogOpen(true);
+        return;
+      }
+      toast({ title: "Failed to finalise GRN", description: parsed.message, variant: "destructive" });
+    },
   });
 
   const replaceMutation = useMutation({
@@ -565,7 +586,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     },
     onError: (err: any) => {
       setIsSavingDraft(false);
-      toast({ title: "Failed to update draft", description: err?.message ?? "Unknown error", variant: "destructive" });
+      const p = parseApiError(err);
+      toast({ title: "Failed to update draft", description: p.message, variant: "destructive" });
     },
   });
 
@@ -581,7 +603,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setAddItemForm({ name: "", category: "Spares", uom: "Nos" });
       setAddItemTargetIdx(null);
     },
-    onError: (err: any) => toast({ title: "Error adding item", description: err?.message ?? "Unknown error", variant: "destructive" }),
+    onError: (err: any) => { const p = parseApiError(err); toast({ title: "Error adding item", description: p.message, variant: "destructive" }); },
   });
 
 
@@ -595,7 +617,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setCancelReason("");
       if (selectedId && selectedId === cancelMutation.variables?.id) setSelectedId(null);
     },
-    onError: (err: any) => toast({ title: "Failed to cancel GRN", description: err?.message ?? "Unknown error", variant: "destructive" }),
+    onError: (err: any) => { const p = parseApiError(err); toast({ title: "Failed to cancel GRN", description: p.message, variant: "destructive" }); },
   });
 
   const patchAcceptanceMutation = useMutation({
@@ -825,22 +847,25 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-lg font-bold text-green-700 dark:text-green-400" data-testid="text-grn-detail-number">{selectedGrn.grnNumber}</span>
                     <span className="text-sm text-muted-foreground">{format(new Date(selectedGrn.date + "T00:00:00"), "dd MMM yyyy")}</span>
-                    {selectedGrn.status === "draft" ? getDraftBadge() : getAcceptanceBadge(selectedGrn.acceptanceStatus || "accepted")}
-                    {selectedGrn.status === "draft" && !selectedGrn.indentRef && !selectedGrn.sourcePiIndentId && (
+                    {/* Primary status badge — one per card */}
+                    {!selectedGrn.isCancelled && selectedGrn.status === "draft" && selectedGrn.sourcePiIndentId != null && (
+                      <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-pending-receipt">Awaiting Stores Verification</Badge>
+                    )}
+                    {!selectedGrn.isCancelled && selectedGrn.status === "draft" && selectedGrn.sourcePiIndentId == null && !selectedGrn.indentRef && (
                       <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-awaiting-pi">Awaiting PI</Badge>
                     )}
-                    {selectedGrn.status === "draft" && selectedGrn.indentRef && (
+                    {!selectedGrn.isCancelled && selectedGrn.status === "draft" && selectedGrn.sourcePiIndentId == null && selectedGrn.indentRef && (
                       <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-ready-finalise">Ready to Finalise</Badge>
                     )}
-                    {selectedGrn.sourcePiIndentId && (
-                      <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-pi-sourced">PI-SOURCED</Badge>
+                    {!selectedGrn.isCancelled && selectedGrn.status !== "draft" && getAcceptanceBadge(selectedGrn.acceptanceStatus || "accepted")}
+                    {selectedGrn.isCancelled && (
+                      <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-cancelled">CANCELLED</Badge>
                     )}
-                    {selectedGrn.sourcePiIndentId && selectedGrn.status === "draft" && (
-                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-pending-receipt">Pending Store Receipt</Badge>
-                    )}
-                    {(() => { const s = selectedGrn.siteId ? sites.find(x => x.id === selectedGrn.siteId) : null; return s ? <Badge variant="outline" className="text-[12px] border-amber-400 text-amber-700 dark:text-amber-400">{s.name}</Badge> : <span className="text-sm text-muted-foreground">— No site assigned</span>; })()}
+                    {/* Site badge — only when a site is actually set */}
+                    {selectedGrn.siteId && (() => { const s = sites.find(x => x.id === selectedGrn.siteId); return s ? <Badge variant="outline" className="text-[12px] border-amber-400 text-amber-700 dark:text-amber-400">{s.name}</Badge> : null; })()}
+                    {/* Secondary PI reference chip */}
                     {selectedGrn.indentRef && (
-                      <Badge variant="outline" className="text-[12px] border-violet-400 text-violet-700 dark:text-violet-400">{selectedGrn.indentRef}</Badge>
+                      <Badge variant="outline" className="text-[12px] border-violet-400 text-violet-700 dark:text-violet-400">Linked PI: {selectedGrn.indentRef}</Badge>
                     )}
                   </div>
                   <p className="text-base font-semibold mt-1">{selectedGrn.supplier}</p>
@@ -857,6 +882,18 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     </p>
                   )}
                   {selectedGrn.remarks && <p className="text-sm text-muted-foreground italic mt-1">{selectedGrn.remarks}</p>}
+                  {selectedGrn.selfApprovalOverrideReason && (
+                    <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2" data-testid="panel-override-info">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                      <div className="text-sm text-amber-700 dark:text-amber-300 space-y-0.5">
+                        <p className="font-medium">Admin override applied</p>
+                        <p className="text-xs">{selectedGrn.selfApprovalOverrideReason}</p>
+                        {selectedGrn.selfApprovalOverriddenAt && (
+                          <p className="text-xs text-muted-foreground">{format(new Date(selectedGrn.selfApprovalOverriddenAt), "dd MMM yyyy, HH:mm")}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {selectedGrn.status === "finalized" && (
@@ -900,12 +937,72 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               </div>
               {/* Inline draft finalise panel */}
               {selectedGrn.status === "draft" && finalisingDraft && (() => {
+                // ── PI-sourced path: only skip the search when the link is FULLY intact ──
+                // "Fully intact" = sourcePiIndentId is set AND every item has sourcePiItemId or indentItemId
+                const isPiSourced = selectedGrn.sourcePiIndentId != null;
+                const allItemsLinked = selectedGrn.items.length > 0 &&
+                  selectedGrn.items.every(it => (it.sourcePiItemId != null) || (it.indentItemId != null));
+                const piLinkIncomplete = isPiSourced && !allItemsLinked;
+
                 const pi = draftFinaliseIndentRef ? (draftItemIndents.find(p => p.indentNo === draftFinaliseIndentRef) ?? allIndentsGlobal.find(p => p.indentNo === draftFinaliseIndentRef) ?? null) : null;
                 const isNotApproved = pi && pi.status !== "approved";
                 const noDraftPi = !!draftFirstItemName && draftItemApprovedIndents.length === 0;
                 const filteredDraftPIs = draftItemApprovedIndents.filter(p =>
                   !draftFinaliseComboSearch || p.indentNo.toLowerCase().includes(draftFinaliseComboSearch.toLowerCase())
                 );
+
+                // Broken PI link — show error and block
+                if (piLinkIncomplete) {
+                  return (
+                    <div className="border rounded-md p-3 space-y-3 bg-red-50/60 dark:bg-red-950/20 border-red-300 dark:border-red-800" data-testid="panel-finalise-draft-broken-link">
+                      <p className="text-sm font-semibold text-red-700 dark:text-red-400 uppercase tracking-wide flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Incomplete PI Link
+                      </p>
+                      <p className="text-sm text-red-700 dark:text-red-300">
+                        This pending receipt has an incomplete PI link — some items are not fully matched back to their source Purchase Indent items.
+                        Please repair the link before finalising, or ask an Admin to investigate.
+                      </p>
+                      <Button size="sm" variant="ghost" className="h-7 text-sm" onClick={() => setFinalisingDraft(false)} data-testid="button-cancel-finalise">
+                        Close
+                      </Button>
+                    </div>
+                  );
+                }
+
+                // Fully intact PI-sourced path — skip the search and go straight to finalise
+                if (isPiSourced && allItemsLinked) {
+                  return (
+                    <div className="border rounded-md p-3 space-y-3 bg-green-50/60 dark:bg-green-950/20 border-green-300 dark:border-green-800" data-testid="panel-finalise-draft">
+                      <p className="text-sm font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5" /> Finalise Store Receipt
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        This receipt is fully linked to Purchase Indent items. Finalising will record the stock receipt against each PI item.
+                      </p>
+                      {selectedGrn.indentRef && (
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-[12px] border-violet-400 text-violet-700 dark:text-violet-400">{selectedGrn.indentRef}</Badge>
+                          <span className="text-sm text-muted-foreground">{selectedGrn.items.length} item{selectedGrn.items.length !== 1 ? "s" : ""} linked</span>
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="gap-1 h-7 text-sm bg-green-600 hover:bg-green-700 text-white"
+                          disabled={finaliseMutation.isPending}
+                          data-testid="button-confirm-finalise"
+                          onClick={() => finaliseMutation.mutate({ id: selectedGrn.id, indentRef: selectedGrn.indentRef })}
+                        >
+                          {finaliseMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                          Finalise GRN
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-sm" onClick={() => setFinalisingDraft(false)} data-testid="button-cancel-finalise">Cancel</Button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Manual GRN path — show the search / override flow as before
                 return (
                   <div className="border rounded-md p-3 space-y-3 bg-green-50/60 dark:bg-green-950/20 border-green-300 dark:border-green-800" data-testid="panel-finalise-draft">
                     <p className="text-sm font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide flex items-center gap-1.5">
@@ -2025,6 +2122,52 @@ export default function StoresGrn({ isNew, detailId }: Props) {
           </>
         )}
       </div>
+
+      {/* Admin self-finalise override dialog */}
+      <Dialog open={overrideDialogOpen} onOpenChange={open => { if (!open) { setOverrideDialogOpen(false); setOverrideReasonText(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Admin Override — you recorded the related purchase</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                You are both the purchaser who created this purchase record and the person finalising the receipt.
+                Provide a reason to override the separation-of-duties check. This override will be logged.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Override Reason *</Label>
+              <Textarea
+                value={overrideReasonText}
+                onChange={e => setOverrideReasonText(e.target.value)}
+                placeholder="e.g. No other stores staff available — verified receipt personally"
+                rows={3}
+                data-testid="textarea-override-reason"
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="ghost" size="sm" onClick={() => { setOverrideDialogOpen(false); setOverrideReasonText(""); }}>Cancel</Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={!overrideReasonText.trim() || finaliseMutation.isPending}
+                onClick={() => {
+                  if (overridePendingId !== null) {
+                    finaliseMutation.mutate({ id: overridePendingId, indentRef: overridePendingIndentRef, overrideReason: overrideReasonText.trim() });
+                  }
+                }}
+                data-testid="button-confirm-override"
+              >
+                {finaliseMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                Finalise with Override
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Cancel GRN dialog */}
       <Dialog open={cancelDialogId !== null} onOpenChange={open => { if (!open) { setCancelDialogId(null); setCancelReason(""); } }}>
