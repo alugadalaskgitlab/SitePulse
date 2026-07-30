@@ -1,0 +1,82 @@
+Instruction 015 — Persistent Material Requirement record + fix IRN/PI suggestion logic
+
+Scope: shared/schema.ts (new table), server/storage.ts, server/routes.ts,
+shared/planningEngine.ts (computeShortageRow), client/src/pages/WorkDemand.tsx.
+
+DO NOT TOUCH: submitPurchaserAction, recordDelivery, checkAndCompleteIndent,
+derivePiStatus, createDraftGrnFromPi, submitBulkReceiptAsPending,
+confirmPendingPlantReceipt, or anything in StoresGrn.tsx. This instruction adds
+a new record type and links to it — it does not change how PIs, IRNs, or
+receipts already work.
+
+1. New table: material_requirements (additive only)
+   Fields: id, materialId (references plant_materials.id — the existing shared
+   material catalog), requiredQty, uom, requiredByDate, destinationType
+   ("store" | "hmp" | "rmc" | "site"), destinationSiteId, boqProjectId,
+   sourceType ("bom" | "tomorrow_plan" | "immediate" | "manual"),
+   sourceBoqItemId (nullable), allocatedQty, orderedQty, receivedQty,
+   balanceQty, status (default "raised"), createdByUserId, createdAt,
+   reviewedBy, reviewedAt, remarks.
+   Use the same idempotent startup-migration pattern as ensureOrderColumns()
+   (ADD COLUMN IF NOT EXISTS / CREATE TABLE IF NOT EXISTS), called once at
+   server startup alongside the existing ensureOrderColumns() call.
+
+2. Add requirementId to Purchase Indents and Internal Requisitions
+   - Add nullable requirementId column to purchase_indents and
+     internal_requisitions (additive, idempotent migration as above).
+   - This is optional/backward-compatible: existing PI/IRN creation flows that
+     don't pass a requirementId must continue to work exactly as today.
+   - When a requirementId IS provided at creation, store it and use it to
+     update material_requirements.orderedQty / status on that requirement
+     (simple increment, no other side effects yet).
+
+3. Fix the IRN-vs-PI suggestion logic in computeShortageRow
+   - Currently (shared/planningEngine.ts) it suggests "raise_irn" if
+     matRow.totalQty <= 500, else "raise_pi" — a pure quantity cutoff with no
+     stock check. Replace this with an actual stock-elsewhere check: if the
+     shortfall for this material can be covered by stock sitting at another
+     site/store/plant (the shortage-check endpoint already loads
+     storage.getStockBalances() "all parties" — use that per-location, not
+     just the summed total), suggest "raise_irn". Only suggest "raise_pi" for
+     the portion that genuinely can't be covered by stock anywhere in the
+     company.
+   - If it's a mix (some coverable internally, some not), the suggestion
+     should indicate both are relevant — don't force a single either/or badge
+     if the honest answer is "transfer some, buy some." A simple version: add
+     a third suggestion value "raise_both" when internal-stock-elsewhere > 0
+     AND shortfall-after-that > 0.
+
+4. Wire "Raise IRN" / "Raise PI" in WorkDemand.tsx through a requirement first
+   - Add POST /api/material-requirements — creates a material_requirements row
+     from a shortage row (materialId, requiredQty, uom, requiredByDate,
+     boqProjectId, sourceType: "bom", sourceBoqItemId if resolvable,
+     destinationType inferred from the project/site).
+   - Change the "Raise IRN"/"Raise PI" buttons: instead of linking straight to
+     /irn/new or /plant/purchase-indents with raw material/qty params, first
+     call POST /api/material-requirements, then carry the returned
+     requirementId through to the existing IRN/PI creation form as an
+     additional (optional) query param, same pass-through pattern already
+     used for material/qty/uom/boqProjectId.
+   - The IRN/PI creation forms need one small change: if a requirementId is
+     present in the URL, include it in the create payload (server already
+     stores it per #2). No other UI change to those forms.
+
+5. Display only — no automation yet
+   - Show the requirement's status/quantities somewhere reasonable (e.g. on
+     the PI/IRN detail page, a small "Linked requirement" chip showing
+     required/ordered/balance). Do not build fulfilment automation, action
+     queues, or the Stores Hub changes yet — that's later instructions once
+     this foundation is confirmed working.
+
+Acceptance tests:
+   a) Existing IRN/PI creation (not via Work Programme) is completely
+      unaffected — no requirementId, works exactly as before.
+   b) From the Work Programme shortfall screen, a material with real stock
+      sitting at another site now suggests IRN for the coverable portion
+      instead of always defaulting by quantity size.
+   c) Clicking "Raise IRN" or "Raise PI" from a shortfall row creates a
+      material_requirements row first, and the resulting IRN/PI carries that
+      requirementId.
+   d) All previously-verified GRN, PI purchaser-action, and receipt flows
+      (Batch 20 + Instruction 014) behave identically — re-run a couple of
+      those acceptance tests as a regression check after this ships.

@@ -70,6 +70,9 @@ import {
   siteRequirements,
   serviceCompletions,
   type ServiceCompletion,
+  materialRequirements,
+  type MaterialRequirement,
+  type InsertMaterialRequirement,
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
@@ -1167,6 +1170,11 @@ export interface IStorage {
   submitPurchaserAction(indentId: number, items: { itemId: number; purchaseActionType?: string; qty: number; orderedQty?: number; orderNo?: string; orderedByName?: string; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; billNo?: string; remarks?: string }[], actionBy: string, userId?: number): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number> }>;
   recordDelivery(itemId: number, data: { deliveredQty: number; deliveryDate?: string; challanNo?: string; paymentMode?: string; paidBy?: string; remarks?: string }, actionBy: string, userId?: number): Promise<{ item: PurchaseIndentItem; grnId?: number }>;
   ensureOrderColumns(): Promise<void>;
+  // Material Requirements
+  ensureMaterialRequirementsTable(): Promise<void>;
+  createMaterialRequirement(data: InsertMaterialRequirement): Promise<MaterialRequirement>;
+  getMaterialRequirement(id: number): Promise<MaterialRequirement | undefined>;
+  updateMaterialRequirementOrdered(id: number, orderedQtyDelta: number): Promise<void>;
   submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
   recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<void>;
   submitBulkReceiptAsPending(indentId: number, receivingLocation: string, receivingSiteId: number | null, items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string }[], createdByUserId: number, createdBy: string): Promise<void>;
@@ -9622,6 +9630,7 @@ export class DatabaseStorage implements IStorage {
       const indentNo = await this.generateIndentNo(tx);
 
       const piType = (data as any).piType ?? "stores";
+      const requirementId: number | null = (data as any).requirementId ?? null;
       const [indent] = await tx.insert(purchaseIndents).values({
         date: data.date,
         indentNo,
@@ -9633,7 +9642,15 @@ export class DatabaseStorage implements IStorage {
         raisedFrom: (data as any).raisedFrom ?? null,
         sourceIrnId: (data as any).sourceIrnId ?? null,
         piType,
+        ...(requirementId ? { requirementId } : {}),
       }).returning();
+      // Link to material requirement if provided
+      if (requirementId) {
+        const totalQty = data.items?.reduce((sum, i) => sum + (i.qty ?? 0), 0) ?? 0;
+        if (totalQty > 0) {
+          await this.updateMaterialRequirementOrdered(requirementId, totalQty).catch(() => {});
+        }
+      }
 
       let items: PurchaseIndentItem[] = [];
       if (data.items?.length) {
@@ -10873,6 +10890,71 @@ export class DatabaseStorage implements IStorage {
         ADD COLUMN IF NOT EXISTS ordered_by_user_id INTEGER,
         ADD COLUMN IF NOT EXISTS ordered_by_name TEXT
     `);
+  }
+
+  // ── Material Requirements ─────────────────────────────────────────────────
+
+  async ensureMaterialRequirementsTable(): Promise<void> {
+    // Create the table idempotently
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS material_requirements (
+        id              SERIAL PRIMARY KEY,
+        material_id     INTEGER REFERENCES plant_materials(id),
+        required_qty    REAL NOT NULL,
+        uom             TEXT NOT NULL,
+        required_by_date DATE,
+        destination_type TEXT NOT NULL DEFAULT 'hmp',
+        destination_site_id INTEGER,
+        boq_project_id  INTEGER,
+        source_type     TEXT NOT NULL DEFAULT 'manual',
+        source_boq_item_id INTEGER,
+        allocated_qty   REAL NOT NULL DEFAULT 0,
+        ordered_qty     REAL NOT NULL DEFAULT 0,
+        received_qty    REAL NOT NULL DEFAULT 0,
+        balance_qty     REAL NOT NULL DEFAULT 0,
+        status          TEXT NOT NULL DEFAULT 'raised',
+        created_by_user_id INTEGER,
+        created_at      TIMESTAMP DEFAULT NOW(),
+        reviewed_by     TEXT,
+        reviewed_at     TIMESTAMP,
+        remarks         TEXT
+      )
+    `);
+    // Add requirementId column to purchase_indents and internal_requisitions
+    await db.execute(sql`
+      ALTER TABLE purchase_indents
+        ADD COLUMN IF NOT EXISTS requirement_id INTEGER REFERENCES material_requirements(id)
+    `);
+    await db.execute(sql`
+      ALTER TABLE internal_requisitions
+        ADD COLUMN IF NOT EXISTS requirement_id INTEGER REFERENCES material_requirements(id)
+    `);
+  }
+
+  async createMaterialRequirement(data: InsertMaterialRequirement): Promise<MaterialRequirement> {
+    const [row] = await db.insert(materialRequirements).values({
+      ...data,
+      balanceQty: data.requiredQty,  // balance starts equal to required
+    }).returning();
+    return row;
+  }
+
+  async getMaterialRequirement(id: number): Promise<MaterialRequirement | undefined> {
+    const [row] = await db.select().from(materialRequirements).where(eq(materialRequirements.id, id)).limit(1);
+    return row;
+  }
+
+  async updateMaterialRequirementOrdered(id: number, orderedQtyDelta: number): Promise<void> {
+    const [current] = await db.select().from(materialRequirements).where(eq(materialRequirements.id, id)).limit(1);
+    if (!current) return;
+    const newOrdered = (current.orderedQty ?? 0) + orderedQtyDelta;
+    const newBalance = Math.max(0, (current.requiredQty ?? 0) - newOrdered);
+    const newStatus = newOrdered <= 0 ? "raised"
+      : newOrdered < (current.requiredQty ?? 0) - 0.001 ? "partially_ordered"
+      : "ordered";
+    await db.update(materialRequirements)
+      .set({ orderedQty: newOrdered, balanceQty: newBalance, status: newStatus })
+      .where(eq(materialRequirements.id, id));
   }
 
   async updatePurchaseItemStatus(itemId: number, purchaseData: { purchaseStatus?: string; qtyPurchased?: number; vendor?: string; billNo?: string; rate?: number; amount?: number; purchaseRemarks?: string }, actionBy?: string): Promise<PurchaseIndentItem | undefined> {
@@ -20889,6 +20971,7 @@ export class DatabaseStorage implements IStorage {
       const firstMaterial = data.items[0]?.material ?? "MISC";
       const irnNo = await this.generateIrnNo(tx, data.raisedFrom, data.raisedBy, firstMaterial);
 
+      const irnRequirementId: number | null = (data as any).requirementId ?? null;
       const [irn] = await tx
         .insert(internalRequisitions)
         .values({
@@ -20900,8 +20983,16 @@ export class DatabaseStorage implements IStorage {
           siteId: data.siteId ?? null,
           status: "pending_stores",
           remarks: data.remarks?.toUpperCase() ?? null,
+          ...(irnRequirementId ? { requirementId: irnRequirementId } : {}),
         })
         .returning();
+      // Link to material requirement if provided
+      if (irnRequirementId) {
+        const totalQty = data.items?.reduce((sum, i) => sum + (i.qty ?? 0), 0) ?? 0;
+        if (totalQty > 0) {
+          await this.updateMaterialRequirementOrdered(irnRequirementId, totalQty).catch(() => {});
+        }
+      }
 
       const items = await tx
         .insert(internalRequisitionItems)

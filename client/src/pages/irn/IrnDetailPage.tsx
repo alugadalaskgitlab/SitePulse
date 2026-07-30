@@ -633,6 +633,12 @@ export default function IrnDetailPage() {
                   <div><p className="text-sm text-gray-500">Site / Location</p><p className="font-semibold text-gray-800 text-sm">{getSiteName(irn.siteId)}</p></div>
                 </div>
               )}
+              {(irn as any).requirementId && (
+                <div className="flex items-center gap-2 col-span-3 pt-1 border-t mt-1">
+                  <Hash className="h-4 w-4 text-indigo-400" />
+                  <div><p className="text-sm text-gray-500">Linked Requirement</p><p className="font-mono font-semibold text-indigo-700 text-sm">REQ-{(irn as any).requirementId}</p></div>
+                </div>
+              )}
             </div>
           </div>
 

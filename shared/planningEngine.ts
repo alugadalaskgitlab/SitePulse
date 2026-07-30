@@ -1918,7 +1918,7 @@ export interface ShortageMonthlyBreakdown {
   isCurrentOrPast: boolean;
 }
 
-export type ShortageSuggestion = "adequate" | "monitor" | "raise_irn" | "raise_pi";
+export type ShortageSuggestion = "adequate" | "monitor" | "raise_irn" | "raise_pi" | "raise_both";
 
 export interface ShortageRowResult {
   materialName: string;
@@ -1946,6 +1946,7 @@ export function computeShortageRow(
   stockMatched: boolean,
   pendingProcurement: number,
   currentMonth: number,
+  stockElsewhere: number = 0, // stock at non-local parties that can be requested via IRN
 ): ShortageRowResult {
   const months = Object.keys(matRow.monthlyQty).map(Number).sort((a, b) => a - b);
   let runningAvailable = currentStock + pendingProcurement;
@@ -1968,8 +1969,17 @@ export function computeShortageRow(
     suggestion = "adequate";
   } else if (nearTermShortfall <= 0 && shortfall <= matRow.totalQty * 0.1) {
     suggestion = "monitor";
-  } else if (matRow.totalQty <= 500) {
-    suggestion = "raise_irn";
+  } else if (stockElsewhere > 0) {
+    // Check how much of the shortfall can be covered by stock at other locations
+    const coverableByIrn = Math.min(stockElsewhere, shortfall);
+    const uncoveredByIrn = shortfall - coverableByIrn;
+    if (uncoveredByIrn > 0.001) {
+      // Partial coverage: transfer some internally + buy the rest
+      suggestion = "raise_both";
+    } else {
+      // Full coverage via internal transfer
+      suggestion = "raise_irn";
+    }
   } else {
     suggestion = "raise_pi";
   }

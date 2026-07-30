@@ -29,10 +29,25 @@ describe("computeShortageRow", () => {
     expect(row.stockMatched).toBe(false);
   });
 
-  it("flags raise_irn for a small-quantity shortfall (<=500 total)", () => {
-    const row = computeShortageRow(demand({ totalQty: 400, monthlyQty: { 1: 200, 2: 200 } }), 0, true, 0, 1);
+  it("flags raise_pi when there is no stock elsewhere, regardless of quantity", () => {
+    // Old logic suggested raise_irn for <=500, new logic requires stock elsewhere
+    const row = computeShortageRow(demand({ totalQty: 400, monthlyQty: { 1: 200, 2: 200 } }), 0, true, 0, 1, 0);
+    expect(row.shortfall).toBe(400);
+    expect(row.suggestion).toBe("raise_pi");
+  });
+
+  it("flags raise_irn when all shortfall is coverable by stock elsewhere", () => {
+    // 400 shortfall, 500 stock elsewhere → full coverage via internal transfer
+    const row = computeShortageRow(demand({ totalQty: 400, monthlyQty: { 1: 200, 2: 200 } }), 0, true, 0, 1, 500);
     expect(row.shortfall).toBe(400);
     expect(row.suggestion).toBe("raise_irn");
+  });
+
+  it("flags raise_both when stock elsewhere covers part of the shortfall", () => {
+    // 300 shortfall, only 200 stock elsewhere → transfer 200, buy 100
+    const row = computeShortageRow(demand(), 0, true, 0, 1, 200);
+    expect(row.shortfall).toBe(300);
+    expect(row.suggestion).toBe("raise_both");
   });
 
   it("nets pending PI/IRN procurement against demand before computing shortfall", () => {

@@ -1584,6 +1584,7 @@ export type PurchaseIndentWithItems = PurchaseIndent & {
 export const createPurchaseIndentRequestSchema = insertPurchaseIndentSchema.extend({
   siteId: z.number().int().nullish(),
   raisedFrom: z.string().nullish(),
+  requirementId: z.number().int().nullish(), // optional link to material_requirements
   items: z.array(insertPurchaseIndentItemSchema.omit({ indentId: true })),
 }).refine(
   (d) => (d.siteId != null && d.siteId > 0) || (d.raisedFrom != null && d.raisedFrom.trim().length > 0),
@@ -1721,6 +1722,7 @@ export const createIrnRequestSchema = z.object({
   siteId: z.number().int().nullish(),
   raisedBy: z.string().min(1),
   raisedByUserId: z.number().int().optional(),
+  requirementId: z.number().int().nullish(), // optional link to material_requirements
   remarks: z.string().optional(),
   items: z.array(z.object({
     material: z.string().min(1, "Material is required"),
@@ -3301,3 +3303,32 @@ export type RecordUnlockLog = typeof recordUnlockLog.$inferSelect;
 
 // Public user shape (no password hash) returned to the client.
 export type SafeUser = Omit<User, "passwordHash">;
+
+// ── Material Requirements ────────────────────────────────────────────────────
+// Central record created before raising an IRN or PI from the Work Programme
+// shortage screen, so procurement can be tracked back to its demand source.
+export const materialRequirements = pgTable("material_requirements", {
+  id: serial("id").primaryKey(),
+  materialId: integer("material_id").references(() => plantMaterials.id),
+  requiredQty: real("required_qty").notNull(),
+  uom: text("uom").notNull(),
+  requiredByDate: date("required_by_date"),
+  destinationType: text("destination_type").notNull().default("hmp"), // "store" | "hmp" | "rmc" | "site"
+  destinationSiteId: integer("destination_site_id"),
+  boqProjectId: integer("boq_project_id"),
+  sourceType: text("source_type").notNull().default("manual"), // "bom" | "tomorrow_plan" | "immediate" | "manual"
+  sourceBoqItemId: integer("source_boq_item_id"),
+  allocatedQty: real("allocated_qty").notNull().default(0),
+  orderedQty: real("ordered_qty").notNull().default(0),
+  receivedQty: real("received_qty").notNull().default(0),
+  balanceQty: real("balance_qty").notNull().default(0),
+  status: text("status").notNull().default("raised"), // "raised" | "partially_ordered" | "ordered" | "received" | "closed"
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+  remarks: text("remarks"),
+});
+export const insertMaterialRequirementSchema = createInsertSchema(materialRequirements).omit({ id: true, createdAt: true });
+export type MaterialRequirement = typeof materialRequirements.$inferSelect;
+export type InsertMaterialRequirement = z.infer<typeof insertMaterialRequirementSchema>;

@@ -708,6 +708,12 @@ export default function PurchaseIndents() {
     return sp.get("boqProjectId") || "";
   })();
 
+  const prefillRequirementId = (() => {
+    const sp = new URLSearchParams(searchString);
+    const v = sp.get("requirementId");
+    return v ? Number(v) : null;
+  })();
+
   const [view, setView] = useState<ViewMode>(() => (fromIrnId || prefill ? "form" : "list"));
   const [selectedIndentId, setSelectedIndentId] = useState<number | null>(null);
   const [sourceIrnId, setSourceIrnId] = useState<number | null>(fromIrnId);
@@ -1733,6 +1739,7 @@ export default function PurchaseIndents() {
       siteId: formSiteId ?? null,
       raisedFrom: formRaisedFrom ?? null,
       sourceIrnId: sourceIrnId ?? undefined,
+      requirementId: prefillRequirementId ?? undefined,
       piType: formPiType,
       items: validItems.map(item => ({
         description: item.description.toUpperCase(),
@@ -2676,6 +2683,17 @@ export default function PurchaseIndents() {
                 <p className="font-semibold">Pre-filled from IRN <span className="font-mono">{sourceIrn.irnNo}</span></p>
                 <p className="text-sm text-indigo-600 mt-0.5">
                   Items with procurement quantity have been populated below. Review and fill in Proposed By before submitting.
+                </p>
+              </div>
+            </div>
+          )}
+          {prefillRequirementId && (
+            <div className="flex items-start gap-3 bg-violet-50 border border-violet-200 rounded-lg px-4 py-3 text-sm text-violet-800">
+              <ClipboardList className="h-4 w-4 mt-0.5 shrink-0 text-violet-600" />
+              <div>
+                <p className="font-semibold">Linked to Material Requirement <span className="font-mono">REQ-{prefillRequirementId}</span></p>
+                <p className="text-sm text-violet-600 mt-0.5">
+                  This PI will be tracked against the demand requirement from the Work Programme shortage screen.
                 </p>
               </div>
             </div>

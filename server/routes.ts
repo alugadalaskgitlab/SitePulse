@@ -11753,16 +11753,21 @@ export async function registerRoutes(
       ]);
 
       // Build name → current stock lookup (sum across all parties)
+      // Also track "stock elsewhere" (partyId != null) separately for IRN-vs-PI suggestion.
       const stockByName = new Map<string, { balance: number; uom: string }>();
+      const stockElsewhereByName = new Map<string, number>(); // stock at third-party / site locations
       for (const mat of allMaterials) {
         const balRows = allStockBalances.filter(sb => sb.materialId === mat.id);
         const totalBalance = balRows.reduce((sum, sb) => sum + (sb.balance ?? 0), 0);
+        const elsewhereBalance = balRows.filter(sb => sb.partyId != null).reduce((sum, sb) => sum + (sb.balance ?? 0), 0);
         const key = mat.name.trim().toLowerCase();
         const existing = stockByName.get(key);
         if (existing) {
           existing.balance += totalBalance;
+          stockElsewhereByName.set(key, (stockElsewhereByName.get(key) ?? 0) + elsewhereBalance);
         } else {
           stockByName.set(key, { balance: totalBalance, uom: mat.uom ?? "" });
+          if (elsewhereBalance > 0) stockElsewhereByName.set(key, elsewhereBalance);
         }
       }
 
@@ -11819,7 +11824,8 @@ export async function registerRoutes(
         const currentStock = stock?.balance ?? 0;
         const stockMatched = stockByName.has(nameKey);
         const pendingProcurement = pendingByName.get(nameKey) ?? 0;
-        return computeShortageRow(matRow, currentStock, stockMatched, pendingProcurement, currentMonth);
+        const stockElsewhere = stockElsewhereByName.get(nameKey) ?? 0;
+        return computeShortageRow(matRow, currentStock, stockMatched, pendingProcurement, currentMonth, stockElsewhere);
       });
 
       // Sort: near-term/actionable shortage first, then aggregate shortage, then adequate
@@ -11836,6 +11842,50 @@ export async function registerRoutes(
     } catch (err) {
       console.error("GET /api/boq/projects/:id/shortage-check:", err);
       res.status(500).json({ error: "Failed to compute shortage check" });
+    }
+  });
+
+  // ── Material Requirements ───────────────────────────────────────────────────
+  app.post("/api/material-requirements", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "site_procurement")) return;
+      const { requiredQty, uom, requiredByDate, destinationType, destinationSiteId, boqProjectId,
+              sourceType, sourceBoqItemId, remarks } = req.body;
+      if (!requiredQty || Number(requiredQty) <= 0) return res.status(400).json({ message: "requiredQty must be > 0" });
+      if (!uom) return res.status(400).json({ message: "uom is required" });
+      const userId = req.authUser?.id;
+      const req_record = await storage.createMaterialRequirement({
+        requiredQty: Number(requiredQty),
+        uom: String(uom).toUpperCase(),
+        requiredByDate: requiredByDate ?? null,
+        destinationType: destinationType ?? "hmp",
+        destinationSiteId: destinationSiteId ? Number(destinationSiteId) : null,
+        boqProjectId: boqProjectId ? Number(boqProjectId) : null,
+        sourceType: sourceType ?? "manual",
+        sourceBoqItemId: sourceBoqItemId ? Number(sourceBoqItemId) : null,
+        allocatedQty: 0,
+        orderedQty: 0,
+        receivedQty: 0,
+        balanceQty: Number(requiredQty),
+        status: "raised",
+        createdByUserId: userId ?? null,
+        remarks: remarks ?? null,
+      });
+      res.status(201).json(req_record);
+    } catch (err) {
+      console.error("POST /api/material-requirements:", err);
+      res.status(500).json({ message: "Failed to create material requirement" });
+    }
+  });
+
+  app.get("/api/material-requirements/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const req_record = await storage.getMaterialRequirement(id);
+      if (!req_record) return res.status(404).json({ message: "Not found" });
+      res.json(req_record);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch material requirement" });
     }
   });
 

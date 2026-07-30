@@ -1,5 +1,5 @@
-import { useMemo, useState, Fragment } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState, Fragment, useCallback } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import {
   ChevronRight, FileSpreadsheet, BookOpen, Loader2,
@@ -1148,7 +1148,7 @@ interface ShortageRow {
   shortfall: number;
   nearTermShortfall?: number;
   monthlyBreakdown?: { month: number; demand: number; shortfall: number; isCurrentOrPast: boolean }[];
-  suggestion: "adequate" | "monitor" | "raise_irn" | "raise_pi";
+  suggestion: "adequate" | "monitor" | "raise_irn" | "raise_pi" | "raise_both";
 }
 
 interface ShortageData {
@@ -1160,7 +1160,7 @@ interface ShortageData {
 
 // Task #1240: pass material/qty/uom context through to the IRN/PI creation
 // forms (pass-through only — no change to IRN/PI schemas or approval workflow).
-function buildProcureLink(row: ShortageRow, projectId: number): string {
+function buildProcureLink(row: ShortageRow, projectId: number, requirementId?: number | null): string {
   const qty = Math.max(0, row.shortfall > 0 ? row.shortfall : row.totalDemand);
   const params = new URLSearchParams({
     material: row.materialName,
@@ -1168,11 +1168,46 @@ function buildProcureLink(row: ShortageRow, projectId: number): string {
     uom: row.uom ?? "",
     boqProjectId: String(projectId),
   });
+  if (requirementId) params.set("requirementId", String(requirementId));
   return params.toString();
 }
 
 function SuggestionBadge({ row, projectId }: { row: ShortageRow; projectId: number }) {
+  const [, navigate] = useLocation();
   const suggestion = row.suggestion;
+
+  // Create a material_requirements record first, then navigate to IRN/PI form
+  const createRequirementMutation = useMutation({
+    mutationFn: async (destination: "irn" | "pi") => {
+      const qty = Math.max(0, row.shortfall > 0 ? row.shortfall : row.totalDemand);
+      const res = await fetch("/api/material-requirements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          requiredQty: Math.round(qty * 1000) / 1000,
+          uom: row.uom ?? "",
+          boqProjectId: projectId,
+          sourceType: "bom",
+          destinationType: "hmp",
+        }),
+      });
+      const data = await res.json();
+      return { requirementId: data.id as number, destination };
+    },
+    onSuccess: ({ requirementId, destination }) => {
+      const qs = buildProcureLink(row, projectId, requirementId);
+      if (destination === "irn") navigate(`/irn/new?${qs}`);
+      else navigate(`/plant/purchase-indents?${qs}`);
+    },
+    onError: () => {
+      // Fallback: navigate without requirement if API fails
+      const qs = buildProcureLink(row, projectId);
+      if (suggestion === "raise_pi" || suggestion === "raise_both") navigate(`/plant/purchase-indents?${qs}`);
+      else navigate(`/irn/new?${qs}`);
+    },
+  });
+
   if (suggestion === "adequate") return (
     <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
       <CheckCircle2 className="w-3 h-3" /> Adequate
@@ -1183,22 +1218,35 @@ function SuggestionBadge({ row, projectId }: { row: ShortageRow; projectId: numb
       <Info className="w-3 h-3" /> Monitor stock
     </span>
   );
-  const qs = buildProcureLink(row, projectId);
+
+  const isPending = createRequirementMutation.isPending;
+
   return (
     <div className="flex flex-wrap gap-1">
-      {suggestion === "raise_irn" && (
-        <Link href={`/irn/new?${qs}`}>
-          <a className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 hover:bg-orange-100 transition-colors">
-            <ShoppingCart className="w-3 h-3" /> Raise IRN
-          </a>
-        </Link>
+      {(suggestion === "raise_irn" || suggestion === "raise_both") && (
+        <button
+          onClick={() => createRequirementMutation.mutate("irn")}
+          disabled={isPending}
+          className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 hover:bg-orange-100 transition-colors disabled:opacity-60"
+        >
+          {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShoppingCart className="w-3 h-3" />}
+          Raise IRN
+        </button>
       )}
-      {suggestion === "raise_pi" && (
-        <Link href={`/plant/purchase-indents?${qs}`}>
-          <a className="inline-flex items-center gap-1 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-100 transition-colors">
-            <ShoppingCart className="w-3 h-3" /> Raise PI
-          </a>
-        </Link>
+      {(suggestion === "raise_pi" || suggestion === "raise_both") && (
+        <button
+          onClick={() => createRequirementMutation.mutate("pi")}
+          disabled={isPending}
+          className="inline-flex items-center gap-1 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-100 transition-colors disabled:opacity-60"
+        >
+          {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShoppingCart className="w-3 h-3" />}
+          Raise PI
+        </button>
+      )}
+      {suggestion === "raise_both" && (
+        <span className="inline-flex items-center text-[11px] text-gray-500 italic px-1">
+          (transfer some · buy rest)
+        </span>
       )}
     </div>
   );
