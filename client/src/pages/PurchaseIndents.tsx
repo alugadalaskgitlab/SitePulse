@@ -714,6 +714,12 @@ export default function PurchaseIndents() {
     return v ? Number(v) : null;
   })();
 
+  const prefillAllocationId = (() => {
+    const sp = new URLSearchParams(searchString);
+    const v = sp.get("allocationId");
+    return v ? Number(v) : null;
+  })();
+
   const [view, setView] = useState<ViewMode>(() => (fromIrnId || prefill ? "form" : "list"));
   const [selectedIndentId, setSelectedIndentId] = useState<number | null>(null);
   const [sourceIrnId, setSourceIrnId] = useState<number | null>(fromIrnId);
@@ -1740,6 +1746,7 @@ export default function PurchaseIndents() {
       raisedFrom: formRaisedFrom ?? null,
       sourceIrnId: sourceIrnId ?? undefined,
       requirementId: prefillRequirementId ?? undefined,
+      allocationId: prefillAllocationId ?? undefined,
       piType: formPiType,
       items: validItems.map(item => ({
         description: item.description.toUpperCase(),
@@ -3315,6 +3322,17 @@ export default function PurchaseIndents() {
                     <p className="text-sm font-semibold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
                     <StatusSteps status={selectedIndent.status} storesStatus={(selectedIndent as any).storesStatus} piType={(selectedIndent as any).piType} />
                   </div>
+                  {(selectedIndent as any).requirementId && (
+                    <div className="flex items-start gap-2 bg-violet-50 border border-violet-200 rounded px-3 py-2 text-sm text-violet-800">
+                      <ClipboardList className="h-4 w-4 shrink-0 mt-0.5 text-violet-600" />
+                      <div>
+                        <p className="font-semibold">Linked to Requirement <span className="font-mono">REQ-{(selectedIndent as any).requirementId}</span></p>
+                        {(selectedIndent as any).allocationId && (
+                          <p className="text-[12px] text-violet-600 mt-0.5">Allocation: <span className="font-mono">ALLOC-{(selectedIndent as any).allocationId}</span></p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 

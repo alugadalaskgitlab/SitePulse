@@ -47,6 +47,7 @@ function parseQueryParams() {
     prefillBoqProjectId: params.get("boqProjectId") ?? "",
     prefillSiteId: siteIdRaw ? Number(siteIdRaw) : null,
     prefillRequirementId: params.get("requirementId") ? Number(params.get("requirementId")) : null,
+    prefillAllocationId: params.get("allocationId") ? Number(params.get("allocationId")) : null,
   };
 }
 
@@ -189,7 +190,7 @@ export default function IrnRaisePage() {
   const { toast } = useToast();
   const today = format(new Date(), "yyyy-MM-dd");
 
-  const { fromParam, returnTo, editId, prefillMaterial, prefillQty, prefillUom, prefillBoqProjectId, prefillSiteId, prefillRequirementId } = parseQueryParams();
+  const { fromParam, returnTo, editId, prefillMaterial, prefillQty, prefillUom, prefillBoqProjectId, prefillSiteId, prefillRequirementId, prefillAllocationId } = parseQueryParams();
   const prefillLabel = FROM_MAP[fromParam] ?? "";
   const isLocked = !!prefillLabel && !editId;
   const backHref = returnTo || "/finance/hub";
@@ -300,6 +301,7 @@ export default function IrnRaisePage() {
         raisedBy: data.raisedBy || user?.fullName || user?.email || "Unknown",
         raisedByUserId: editIrn?.raisedByUserId ?? user?.id,
         ...(prefillRequirementId ? { requirementId: prefillRequirementId } : {}),
+        ...(prefillAllocationId ? { allocationId: prefillAllocationId } : {}),
         remarks: data.remarks,
         items: data.items.map((item) => ({
           ...item,

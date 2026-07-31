@@ -1,0 +1,508 @@
+Instruction 016 — Correct Material Requirement Linkage and Allocation Foundation
+
+Purpose:
+Complete the Material Requirement foundation introduced in Instruction 015 without changing the already-working PI, IRN, purchaser-action, receipt, GRN, or completion workflows.
+
+This batch must create a reliable traceable chain:
+
+Work Programme/BOM
+→ Material Requirement
+→ Internal allocation and/or procurement allocation
+→ IRN and/or PI
+→ later issue/order/receipt updates
+
+Files expected to touch:
+- shared/schema.ts
+- shared/planningEngine.ts
+- client/src/pages/WorkDemand.tsx
+- client/src/pages/PurchaseIndents.tsx
+- server/routes.ts
+- server/storage.ts
+
+DO NOT TOUCH OR REWRITE:
+- recordDelivery
+- derivePiStatus
+- checkAndCompleteIndent
+- createDraftGrnFromPi
+- Store GRN finalisation
+- Admin override flow
+- PI-linked GRN skip-search logic
+- cancelStoreGrn, which remains a separate known issue
+- general manual multi-item PI/IRN creation
+- existing receipt quantity and PI-completion rules
+
+The existing business logic inside submitPurchaserAction, placeOrderIndent, storesVerifyIrn and actual issue-recording must not be rewritten. Only narrow additive synchronization calls may be added for requirement-linked documents, as specified below.
+
+1. Fix the missing reverse link in the Drizzle schema
+
+The physical requirement_id columns already exist through the startup migration, but the Drizzle definitions do not declare them.
+
+Add:
+
+- purchaseIndents.requirementId
+- internalRequisitions.requirementId
+
+as nullable foreign keys to materialRequirements.id.
+
+Existing PI/IRN records without requirementId must continue working exactly as today.
+
+2. Add stable Store Catalogue identity support
+
+The existing material_requirements.materialId references plant_materials and cannot represent store_items such as spares, tools and consumables.
+
+Add to material_requirements:
+
+- materialType:
+  - "plant_material"
+  - "store_item"
+- storeItemId, nullable FK to store_items.id
+
+Keep the existing materialId for plant materials.
+
+Add an idempotent database constraint enforcing exactly one identity:
+
+- plant_material → materialId present and storeItemId null
+- store_item → storeItemId present and materialId null
+
+Use the same safe CREATE/ALTER/DO-block migration pattern already used by the application.
+
+The Store Catalogue UI entry point is not part of this batch. Only schema/API readiness is required.
+
+3. Add real receiving-location fields
+
+Do not use one polymorphic destinationRefId.
+
+Use:
+
+- destinationType:
+  - "store"
+  - "hmp"
+  - "rmc"
+  - "site"
+- destinationSiteId for site destination
+- destinationPlantId, nullable FK to plant_settings.id, for HMP/RMC
+- no destinationStoreId because the present application has only one implicit central Store and no store-location table
+
+Validation rules:
+
+- site → destinationSiteId required
+- hmp/rmc → destinationPlantId required
+- store → both destinationSiteId and destinationPlantId null
+
+The Material Master procurement route may suggest a destination, but it must not silently decide the final location.
+
+4. Thread canonical IDs through the Work Demand result
+
+Extend ShortageRowResult and computeShortageRow so each shortage row carries, where resolvable:
+
+- materialId
+- sourceBoqItemId/boqItemId
+- material name
+- UOM
+- required quantity
+- required-by date or work-program period
+- procurement route
+- project/site context
+- stock at required location
+- potential stock elsewhere
+- remaining external shortfall
+
+Do not rely on material-name matching after the requirement has been created.
+
+If the canonical material ID cannot be resolved, block requirement creation and show a clear review message. Do not create an unlinked requirement.
+
+5. Require visible destination confirmation in WorkDemand
+
+When the user clicks Raise IRN, Raise PI or Raise Both:
+
+- open a small requirement-confirmation step before POSTing;
+- show material, quantity, UOM, required-by date and receiving destination;
+- preselect a destination only when the project/material context gives one clear candidate;
+- the user must still visibly confirm it;
+- when multiple sites/plants are possible, leave the destination empty and require selection;
+- never hard-code destinationType as HMP;
+- never submit a placeholder destination.
+
+The requirement POST must carry:
+
+- materialType
+- materialId or storeItemId
+- requiredQty
+- uom
+- requiredByDate
+- destinationType
+- destinationSiteId or destinationPlantId as applicable
+- boqProjectId
+- sourceType: "bom"
+- sourceBoqItemId
+- createdByUserId
+- clientRequestId
+
+6. Fail fast when requirement creation fails
+
+Remove the present fallback that opens the old PI/IRN form after Material Requirement creation fails.
+
+On failure:
+
+- show the real server error in a toast/message;
+- remain on Work Demand;
+- do not navigate;
+- do not create an orphan PI or IRN.
+
+7. Add idempotency for requirement creation
+
+Generate one clientRequestId UUID for each deliberate Raise IRN/Raise PI/Raise Both action.
+
+Add material_requirements.clientRequestId with a unique index.
+
+POST /api/material-requirements must:
+
+- create the row on the first request;
+- return the existing row when the same clientRequestId is retried;
+- never create duplicate requirements from double-clicks, retries or multi-tab races.
+
+Keep the existing isPending button-disable behaviour as an additional UI guard.
+
+8. Create a separate Material Requirement Allocation table
+
+Do not store one temporary split-authorisation slot directly on material_requirements.
+
+Add a new additive table:
+
+material_requirement_allocations
+
+Fields:
+
+- id
+- requirementId
+- allocationType:
+  - "internal"
+  - "procurement"
+- authorizedQty
+- status:
+  - "authorized"
+  - "linked"
+  - "committed"
+  - "partly_fulfilled"
+  - "fulfilled"
+  - "cancelled"
+- linkedDocumentType:
+  - "irn"
+  - "pi"
+- linkedDocumentId, nullable
+- linkedDocumentItemId, nullable where available
+- authorizedByUserId
+- authorizedAt
+- reason
+- linkedAt
+- committedQty, default 0
+- fulfilledQty, default 0
+- cancelledQty, default 0
+- createdAt
+- updatedAt
+
+Each internal or procurement portion must have its own durable allocation record.
+
+Example:
+
+Required: 1,000
+- Internal allocation: 300 → IRN
+- Procurement allocation: 700 → PI
+
+Both must coexist without overwriting each other.
+
+Do not use piItemTransactions as the primary audit record for an allocation authorised before a PI item exists. The allocation row itself is the durable authorisation and audit record.
+
+9. Add an allocation-authorisation endpoint
+
+Add:
+
+POST /api/material-requirements/:id/allocations
+
+Body:
+
+- allocationType
+- authorizedQty
+- reason
+
+Permissions:
+
+- procurement allocation uses the existing PI approval permission
+- internal allocation uses the existing IRN approval permission
+- Admin/Owner remain permitted through the existing approval framework
+
+Validation:
+
+- authorizedQty > 0
+- total active allocation quantity must not exceed the requirement quantity
+- quantity must not exceed the current unallocated planning balance
+- user must have the relevant approval permission
+- reason required when creating a split or additional allocation
+- no allocation may be created against a fulfilled/cancelled requirement
+
+Return the created allocation ID.
+
+10. Keep internal and vendor quantities separate
+
+Do not use orderedQty for IRN quantities.
+
+Use clear meanings:
+
+On material_requirements:
+
+- requiredQty
+- internallyAllocatedQty
+- internallyIssuedQty
+- procurementRequestedQty
+- orderedQty
+- receivedQty
+- unallocatedBalanceQty
+- physicallyUnfulfilledQty
+
+The existing allocatedQty and balanceQty fields may be migrated/renamed or retained for backward compatibility, but the new code must use unambiguous business meanings.
+
+Definitions:
+
+- internallyAllocatedQty:
+  quantity authorised for internal issue/transfer
+- internallyIssuedQty:
+  quantity actually issued/transferred
+- procurementRequestedQty:
+  quantity linked to approved/authorised PI allocation
+- orderedQty:
+  quantity actually ordered or purchased through purchaser action
+- receivedQty:
+  quantity physically received and accepted; full wiring will be handled in a later receipt batch
+- unallocatedBalanceQty:
+  max(0, requiredQty - internallyAllocatedQty - procurementRequestedQty)
+- physicallyUnfulfilledQty:
+  max(0, requiredQty - internallyIssuedQty - receivedQty)
+
+Do not represent an internally issued quantity as vendor-ordered quantity.
+
+11. Link PI/IRN creation through an allocation
+
+For a requirement-linked PI or IRN, require:
+
+- requirementId
+- allocationId
+
+The allocation must:
+
+- belong to that requirement;
+- match the document type:
+  - internal → IRN
+  - procurement → PI
+- be in authorized status;
+- not already be linked or consumed;
+- have sufficient authorised quantity.
+
+When requirementId is present:
+
+- document must contain exactly one item;
+- the item material identity must match the requirement;
+- item quantity must equal or be within the allocation’s authorised quantity;
+- unrelated additional items are not allowed.
+
+On successful creation, in the same database transaction:
+
+- create the PI/IRN;
+- store requirementId on the document;
+- mark the allocation as linked;
+- store linkedDocumentType and linkedDocumentId;
+- update:
+  - internallyAllocatedQty for IRN allocation
+  - procurementRequestedQty for PI allocation
+- recalculate unallocatedBalanceQty.
+
+Do not update orderedQty when a PI is merely raised.
+
+Do not update internallyIssuedQty when an IRN is merely raised.
+
+Manual PI/IRN creation without requirementId/allocationId must remain exactly as today, including multi-item documents.
+
+12. Add narrow, transactional commitment updates
+
+For requirement-linked documents only:
+
+PI:
+- when the purchaser actually records Ordered or Already Purchased through the existing valid purchaser-action path:
+  - increase orderedQty by that document’s actual confirmed quantity;
+  - update the linked procurement allocation.committedQty/status.
+
+IRN:
+- when Stores actually verifies/commits stock:
+  - update the linked internal allocation.committedQty/status;
+- when stock is actually issued/transferred:
+  - increase internallyIssuedQty;
+  - update allocation.fulfilledQty/status.
+
+These must be additive hooks only. Do not alter the existing validation, branching, status, response, receipt or completion logic.
+
+Do not use silent:
+
+.catch(() => {})
+
+For requirement-linked documents, the document action and requirement/allocation synchronization should run in the same transaction wherever possible.
+
+If synchronization fails:
+
+- roll back the linked action where technically possible; or
+- return a clear RECONCILIATION_REQUIRED error and log full context.
+
+Never silently leave a successful PI/IRN action with an inaccurate requirement balance.
+
+Unlinked legacy PI/IRN actions must remain unaffected.
+
+13. Prevent overlapping or excessive allocations
+
+Do not use a blanket rule that blocks every second document.
+
+A PI and IRN may coexist for one requirement through separate authorised allocations.
+
+Block only when:
+
+- total active internal + procurement allocations exceed requiredQty;
+- the chosen allocation is already linked/consumed;
+- document quantity exceeds authorisedQty;
+- the material does not match;
+- the requirement is already fully allocated/fulfilled/cancelled.
+
+Any additional allocation requires a new authorised allocation record.
+
+14. Add linked-requirement display
+
+IRN:
+- confirm the existing Linked Requirement chip now receives requirementId after the Drizzle reverse-link fix.
+
+PI:
+- add a small chip on the PI detail page:
+  "Linked to Requirement #N"
+
+Where practical, show:
+
+- required quantity
+- internal allocation
+- procurement requested
+- ordered
+- received
+- unallocated balance
+
+Display only; do not redesign the PI/IRN pages.
+
+15. Soften the remote-stock recommendation language
+
+Replace wording that implies stock elsewhere is definitely transferable.
+
+Use wording such as:
+
+- "Potential stock available elsewhere — confirm for transfer"
+- "Internal transfer may cover X; purchase may still be required for Y"
+
+The recommendation may show:
+
+- Raise IRN
+- Raise PI
+- Review split: IRN + PI
+
+But Stores/PM must confirm the actual allocation through material_requirement_allocations.
+
+16. Requirement status calculation
+
+Use one shared function to derive requirement status from its allocations and fulfilment quantities.
+
+Initial statuses:
+
+- raised
+- awaiting_review
+- partly_allocated
+- fully_allocated
+- internally_committed
+- procurement_in_progress
+- partly_fulfilled
+- fulfilled
+- deferred
+- cancelled
+- reconciliation_required
+
+Do not derive status independently in multiple UI screens.
+
+This batch does not wire receivedQty from GRN, Plant Receipt or Site Material Received yet. Until the later receipt-link batch, receivedQty remains unchanged except where already safely available without touching receipt logic.
+
+Acceptance tests:
+
+A. Existing manual PI/IRN creation
+- No requirementId/allocationId
+- Multi-item creation works exactly as before
+- No regression
+
+B. Work Demand material identity
+- Shortage row contains canonical materialId and BOQ source ID
+- Unresolved material is blocked with a clear error
+- No name-only requirement is created
+
+C. Destination confirmation
+- Clear destination is preselected but visibly confirmed
+- Ambiguous destination blocks submission until selection
+- Site uses destinationSiteId
+- HMP/RMC uses destinationPlantId
+- Store uses the implicit central Store route
+
+D. Requirement creation failure
+- API failure shows error
+- No navigation
+- No orphan PI/IRN
+
+E. Idempotency
+- Rapid double-click/retry with the same clientRequestId creates one requirement only
+
+F. Internal plus procurement split
+- Requirement 1,000
+- Authorised internal allocation 300
+- Authorised procurement allocation 700
+- Linked IRN and PI both succeed
+- Unallocated balance becomes zero
+- orderedQty remains zero until purchaser action
+- internallyIssuedQty remains zero until actual issue
+
+G. Unauthorized allocation
+- Site Engineer without approve permission cannot authorise a split
+- Supplying a quantity directly in the PI/IRN request without a valid allocationId is rejected
+
+H. Excess allocation
+- Combined active allocations above requiredQty are rejected
+- Reusing an allocation is rejected
+- Wrong material or unrelated extra line is rejected
+
+I. Commitment transitions
+- PI creation increases procurementRequestedQty only
+- Purchaser Order action later increases orderedQty
+- IRN creation increases internallyAllocatedQty only
+- Stores issue later increases internallyIssuedQty
+- Internal issue never increases orderedQty
+
+J. Linked display
+- PI detail shows Linked Requirement chip
+- IRN detail shows Linked Requirement chip
+
+K. Store Catalogue readiness
+- API/database-level test creates a requirement with storeItemId and materialId null
+- plant-material requirement uses materialId and storeItemId null
+- both populated or both null is rejected
+- no new Store Catalogue UI is added in this batch
+
+L. Regression
+Re-run and confirm unchanged:
+
+- PI purchaser-action flow
+- Ordered vs Already Purchased
+- recordDelivery
+- partial delivery and balance handling
+- derivePiStatus
+- checkAndCompleteIndent
+- IRN verification/issue
+- GRN finalise
+- Admin override
+- PI-linked GRN skip-search
+
+Do not proceed to Tomorrow’s Plan integration, Site Material Received linkage, Stores Hub redesign or receipt-driven requirement fulfilment until Instruction 016 is implemented and these tests pass.

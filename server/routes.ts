@@ -11818,6 +11818,12 @@ export async function registerRoutes(
       // Build shortage rows — time-phased: current stock covers the earliest
       // months first (running balance), pending procurement is netted against
       // remaining demand before flagging a shortfall.
+      // Build name → materialId for canonical ID threading into shortage rows
+      const materialIdByName = new Map<string, number>();
+      for (const mat of allMaterials) {
+        materialIdByName.set(mat.name.trim().toLowerCase(), mat.id);
+      }
+
       const shortageRows = demand.materials.map(matRow => {
         const nameKey = matRow.materialName.trim().toLowerCase();
         const stock = stockByName.get(nameKey);
@@ -11825,7 +11831,12 @@ export async function registerRoutes(
         const stockMatched = stockByName.has(nameKey);
         const pendingProcurement = pendingByName.get(nameKey) ?? 0;
         const stockElsewhere = stockElsewhereByName.get(nameKey) ?? 0;
-        return computeShortageRow(matRow, currentStock, stockMatched, pendingProcurement, currentMonth, stockElsewhere);
+        // Resolve canonical materialId from plant_materials master
+        const materialId = materialIdByName.get(nameKey) ?? null;
+        // sourceBoqItemId: primary BOQ item from breakdown (first contributor)
+        const sourceBoqItemId = (matRow as any).breakdown?.[0]?.boqItemId ?? null;
+        const enrichedMatRow = { ...matRow, materialId, sourceBoqItemId };
+        return computeShortageRow(enrichedMatRow, currentStock, stockMatched, pendingProcurement, currentMonth, stockElsewhere);
       });
 
       // Sort: near-term/actionable shortage first, then aggregate shortage, then adequate
@@ -11849,29 +11860,79 @@ export async function registerRoutes(
   app.post("/api/material-requirements", async (req, res) => {
     try {
       if (!assertCreate(req, res, "site_procurement")) return;
-      const { requiredQty, uom, requiredByDate, destinationType, destinationSiteId, boqProjectId,
-              sourceType, sourceBoqItemId, remarks } = req.body;
+      const {
+        requiredQty, uom, requiredByDate,
+        destinationType, destinationSiteId, destinationPlantId,
+        boqProjectId, sourceType, sourceBoqItemId,
+        materialType, materialId, storeItemId,
+        clientRequestId,
+        remarks,
+        // Auto-create an allocation in the same call when the requester has the right permission
+        withAllocation, allocationQty,
+      } = req.body;
+
       if (!requiredQty || Number(requiredQty) <= 0) return res.status(400).json({ message: "requiredQty must be > 0" });
       if (!uom) return res.status(400).json({ message: "uom is required" });
+
+      // Validate destination
+      const destType = destinationType ?? "hmp";
+      if (destType === "site" && !destinationSiteId) return res.status(400).json({ message: "destinationSiteId required for site destination" });
+      if ((destType === "hmp" || destType === "rmc") && !destinationPlantId) return res.status(400).json({ message: "destinationPlantId required for hmp/rmc destination" });
+      if (destType === "store" && (destinationSiteId || destinationPlantId)) return res.status(400).json({ message: "store destination must have null site and plant IDs" });
+
+      // Validate material identity
+      const matType = materialType ?? "plant_material";
+      if (matType === "plant_material" && !materialId) return res.status(400).json({ message: "materialId required for plant_material" });
+      if (matType === "store_item" && !storeItemId) return res.status(400).json({ message: "storeItemId required for store_item" });
+      if (matType === "plant_material" && storeItemId) return res.status(400).json({ message: "storeItemId must be null for plant_material" });
+      if (matType === "store_item" && materialId) return res.status(400).json({ message: "materialId must be null for store_item" });
+
       const userId = req.authUser?.id;
       const req_record = await storage.createMaterialRequirement({
+        materialType: matType,
+        materialId: materialId ? Number(materialId) : null,
+        storeItemId: storeItemId ? Number(storeItemId) : null,
         requiredQty: Number(requiredQty),
         uom: String(uom).toUpperCase(),
         requiredByDate: requiredByDate ?? null,
-        destinationType: destinationType ?? "hmp",
+        destinationType: destType,
         destinationSiteId: destinationSiteId ? Number(destinationSiteId) : null,
+        destinationPlantId: destinationPlantId ? Number(destinationPlantId) : null,
         boqProjectId: boqProjectId ? Number(boqProjectId) : null,
         sourceType: sourceType ?? "manual",
         sourceBoqItemId: sourceBoqItemId ? Number(sourceBoqItemId) : null,
+        clientRequestId: clientRequestId ?? null,
         allocatedQty: 0,
         orderedQty: 0,
         receivedQty: 0,
         balanceQty: Number(requiredQty),
+        internallyAllocatedQty: 0,
+        internallyIssuedQty: 0,
+        procurementRequestedQty: 0,
+        unallocatedBalanceQty: Number(requiredQty),
+        physicallyUnfulfilledQty: Number(requiredQty),
         status: "raised",
         createdByUserId: userId ?? null,
         remarks: remarks ?? null,
       });
-      res.status(201).json(req_record);
+
+      // Auto-create allocation if requested (requester is PM/procurement manager)
+      let allocation = null;
+      if (withAllocation && allocationQty && Number(allocationQty) > 0) {
+        const allocType = withAllocation; // "internal" | "procurement"
+        if (allocType === "procurement" || allocType === "internal") {
+          allocation = await storage.createMaterialRequirementAllocation({
+            requirementId: req_record.id,
+            allocationType: allocType,
+            authorizedQty: Number(allocationQty),
+            authorizedByUserId: userId ?? null,
+            status: "authorized",
+            reason: "Auto-authorized from Work Programme",
+          });
+        }
+      }
+
+      res.status(201).json({ ...req_record, allocation });
     } catch (err) {
       console.error("POST /api/material-requirements:", err);
       res.status(500).json({ message: "Failed to create material requirement" });
@@ -11883,9 +11944,68 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const req_record = await storage.getMaterialRequirement(id);
       if (!req_record) return res.status(404).json({ message: "Not found" });
-      res.json(req_record);
+      const allocations = await storage.listMaterialRequirementAllocations(id);
+      res.json({ ...req_record, allocations });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch material requirement" });
+    }
+  });
+
+  // Allocation sub-resource
+  app.post("/api/material-requirements/:id/allocations", async (req, res) => {
+    try {
+      const requirementId = Number(req.params.id);
+      const { allocationType, authorizedQty, reason } = req.body;
+      if (!allocationType || !["internal", "procurement"].includes(allocationType)) {
+        return res.status(400).json({ message: "allocationType must be 'internal' or 'procurement'" });
+      }
+      if (!authorizedQty || Number(authorizedQty) <= 0) {
+        return res.status(400).json({ message: "authorizedQty must be > 0" });
+      }
+
+      // Permission check
+      const sectionKey = allocationType === "procurement" ? "purchase_indents" : "irn";
+      const actionKey = "approve";
+      if (!assertAction(req, res, sectionKey, actionKey)) return;
+
+      const req_record = await storage.getMaterialRequirement(requirementId);
+      if (!req_record) return res.status(404).json({ message: "Requirement not found" });
+      if (req_record.status === "cancelled" || req_record.status === "fulfilled") {
+        return res.status(400).json({ message: `Cannot allocate against a ${req_record.status} requirement` });
+      }
+
+      // Check combined active allocation does not exceed requiredQty
+      const existingAllocs = await storage.listMaterialRequirementAllocations(requirementId);
+      const activeTotal = existingAllocs
+        .filter(a => !["cancelled"].includes(a.status))
+        .reduce((s, a) => s + (a.authorizedQty ?? 0), 0);
+      if (activeTotal + Number(authorizedQty) > (req_record.requiredQty ?? 0) + 0.001) {
+        return res.status(400).json({ message: `Combined allocation (${activeTotal + Number(authorizedQty)}) would exceed required qty (${req_record.requiredQty})` });
+      }
+
+      const userId = req.authUser?.id;
+      const allocation = await storage.createMaterialRequirementAllocation({
+        requirementId,
+        allocationType,
+        authorizedQty: Number(authorizedQty),
+        authorizedByUserId: userId ?? null,
+        status: "authorized",
+        reason: reason ?? null,
+      });
+      res.status(201).json(allocation);
+    } catch (err) {
+      console.error("POST /api/material-requirements/:id/allocations:", err);
+      res.status(500).json({ message: "Failed to create allocation" });
+    }
+  });
+
+  app.get("/api/material-requirements/:id/allocations", async (req, res) => {
+    try {
+      const requirementId = Number(req.params.id);
+      const allocations = await storage.listMaterialRequirementAllocations(requirementId);
+      res.json(allocations);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch allocations" });
     }
   });
 

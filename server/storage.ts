@@ -71,8 +71,11 @@ import {
   serviceCompletions,
   type ServiceCompletion,
   materialRequirements,
+  materialRequirementAllocations,
   type MaterialRequirement,
   type InsertMaterialRequirement,
+  type MaterialRequirementAllocation,
+  type InsertMaterialRequirementAllocation,
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
@@ -322,7 +325,7 @@ import {
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
-import { normaliseUnit } from "@shared/planningEngine";
+import { normaliseUnit, computeRequirementStatus } from "@shared/planningEngine";
 import { convertSolidQty } from "@shared/uomConvert";
 import { canonMaterialName } from "@shared/materialMatch";
 import { suggestWorkCategory, suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
@@ -1175,6 +1178,18 @@ export interface IStorage {
   createMaterialRequirement(data: InsertMaterialRequirement): Promise<MaterialRequirement>;
   getMaterialRequirement(id: number): Promise<MaterialRequirement | undefined>;
   updateMaterialRequirementOrdered(id: number, orderedQtyDelta: number): Promise<void>;
+  // Allocation sub-system
+  createMaterialRequirementAllocation(data: InsertMaterialRequirementAllocation): Promise<MaterialRequirementAllocation>;
+  getMaterialRequirementAllocation(id: number): Promise<MaterialRequirementAllocation | undefined>;
+  listMaterialRequirementAllocations(requirementId: number): Promise<MaterialRequirementAllocation[]>;
+  linkAllocationToDocument(allocationId: number, documentType: "irn" | "pi", documentId: number): Promise<void>;
+  commitAllocationQty(allocationId: number, committedQtyDelta: number): Promise<void>;
+  issueAllocationQty(allocationId: number, issuedQtyDelta: number): Promise<void>;
+  // Narrow qty updaters (new clear-semantics fields)
+  updateRequirementProcurementRequested(requirementId: number, delta: number): Promise<void>;
+  updateRequirementInternallyAllocated(requirementId: number, delta: number): Promise<void>;
+  updateRequirementOrderedQty(requirementId: number, delta: number): Promise<void>;
+  updateRequirementInternallyIssued(requirementId: number, delta: number): Promise<void>;
   submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
   recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<void>;
   submitBulkReceiptAsPending(indentId: number, receivingLocation: string, receivingSiteId: number | null, items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string }[], createdByUserId: number, createdBy: string): Promise<void>;
@@ -9631,6 +9646,22 @@ export class DatabaseStorage implements IStorage {
 
       const piType = (data as any).piType ?? "stores";
       const requirementId: number | null = (data as any).requirementId ?? null;
+      const allocationId: number | null = (data as any).allocationId ?? null;
+
+      // Validate allocation when requirementId is present
+      if (requirementId) {
+        if (!allocationId) throw new Error("allocationId is required when requirementId is set");
+        const alloc = await this.getMaterialRequirementAllocation(allocationId);
+        if (!alloc) throw new Error(`Allocation ${allocationId} not found`);
+        if (alloc.requirementId !== requirementId) throw new Error("Allocation does not belong to this requirement");
+        if (alloc.allocationType !== "procurement") throw new Error("Allocation type must be 'procurement' for PI");
+        if (alloc.status !== "authorized") throw new Error(`Allocation is ${alloc.status}, not authorized`);
+        if (alloc.linkedDocumentId) throw new Error("Allocation is already linked to another document");
+        const itemQty = data.items?.reduce((s, i) => s + (i.qty ?? 0), 0) ?? 0;
+        if (data.items && data.items.length !== 1) throw new Error("Requirement-linked PI must have exactly one item");
+        if (itemQty > (alloc.authorizedQty ?? 0) + 0.001) throw new Error(`Item qty ${itemQty} exceeds allocation authorized qty ${alloc.authorizedQty}`);
+      }
+
       const [indent] = await tx.insert(purchaseIndents).values({
         date: data.date,
         indentNo,
@@ -9643,12 +9674,15 @@ export class DatabaseStorage implements IStorage {
         sourceIrnId: (data as any).sourceIrnId ?? null,
         piType,
         ...(requirementId ? { requirementId } : {}),
+        ...(allocationId ? { allocationId } : {}),
       }).returning();
-      // Link to material requirement if provided
-      if (requirementId) {
+
+      // Link allocation + update requirement quantities
+      if (requirementId && allocationId) {
         const totalQty = data.items?.reduce((sum, i) => sum + (i.qty ?? 0), 0) ?? 0;
+        await this.linkAllocationToDocument(allocationId, "pi", indent.id);
         if (totalQty > 0) {
-          await this.updateMaterialRequirementOrdered(requirementId, totalQty).catch(() => {});
+          await this.updateRequirementProcurementRequested(requirementId, totalQty);
         }
       }
 
@@ -10076,6 +10110,32 @@ export class DatabaseStorage implements IStorage {
         }
       }
     }
+    // ── Narrow requirement/allocation hook for "ordered" action ─────────────
+    // Only fires for requirement-linked PIs. Does NOT touch unlinked PIs.
+    try {
+      const [indentRow] = await db.select({
+        requirementId: purchaseIndents.requirementId,
+        allocationId: purchaseIndents.allocationId,
+      }).from(purchaseIndents).where(eq(purchaseIndents.id, indentId)).limit(1);
+      const reqId = (indentRow as any)?.requirementId as number | null;
+      const allocId = (indentRow as any)?.allocationId as number | null;
+      if (reqId && allocId) {
+        const orderedItems = items.filter(i => {
+          const actionType = i.purchaseActionType
+            ?? (i.reasonCode === "ordered" ? "ordered" : i.reasonCode === "not_available" ? "not_available" : "already_purchased");
+          return actionType === "ordered";
+        });
+        const orderedTotal = orderedItems.reduce((s, i) => s + (i.qty ?? 0), 0);
+        if (orderedTotal > 0) {
+          await this.updateRequirementOrderedQty(reqId, orderedTotal);
+          await this.commitAllocationQty(allocId, orderedTotal);
+        }
+      }
+    } catch (hookErr) {
+      console.error(`submitPurchaserAction: requirement sync failed for PI ${indentId} — RECONCILIATION_REQUIRED`, hookErr);
+      throw new Error("RECONCILIATION_REQUIRED: purchaser action succeeded but requirement sync failed");
+    }
+
     return { txnIdsByItemId, grnIdsByItemId };
   }
 
@@ -10895,46 +10955,106 @@ export class DatabaseStorage implements IStorage {
   // ── Material Requirements ─────────────────────────────────────────────────
 
   async ensureMaterialRequirementsTable(): Promise<void> {
-    // Create the table idempotently
+    // ── Create core table ───────────────────────────────────────────────────
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS material_requirements (
-        id              SERIAL PRIMARY KEY,
-        material_id     INTEGER REFERENCES plant_materials(id),
-        required_qty    REAL NOT NULL,
-        uom             TEXT NOT NULL,
-        required_by_date DATE,
-        destination_type TEXT NOT NULL DEFAULT 'hmp',
-        destination_site_id INTEGER,
-        boq_project_id  INTEGER,
-        source_type     TEXT NOT NULL DEFAULT 'manual',
-        source_boq_item_id INTEGER,
-        allocated_qty   REAL NOT NULL DEFAULT 0,
-        ordered_qty     REAL NOT NULL DEFAULT 0,
-        received_qty    REAL NOT NULL DEFAULT 0,
-        balance_qty     REAL NOT NULL DEFAULT 0,
-        status          TEXT NOT NULL DEFAULT 'raised',
-        created_by_user_id INTEGER,
-        created_at      TIMESTAMP DEFAULT NOW(),
-        reviewed_by     TEXT,
-        reviewed_at     TIMESTAMP,
-        remarks         TEXT
+        id                      SERIAL PRIMARY KEY,
+        material_id             INTEGER REFERENCES plant_materials(id),
+        required_qty            REAL NOT NULL,
+        uom                     TEXT NOT NULL,
+        required_by_date        DATE,
+        destination_type        TEXT NOT NULL DEFAULT 'hmp',
+        destination_site_id     INTEGER,
+        boq_project_id          INTEGER,
+        source_type             TEXT NOT NULL DEFAULT 'manual',
+        source_boq_item_id      INTEGER,
+        allocated_qty           REAL NOT NULL DEFAULT 0,
+        ordered_qty             REAL NOT NULL DEFAULT 0,
+        received_qty            REAL NOT NULL DEFAULT 0,
+        balance_qty             REAL NOT NULL DEFAULT 0,
+        status                  TEXT NOT NULL DEFAULT 'raised',
+        created_by_user_id      INTEGER,
+        created_at              TIMESTAMP DEFAULT NOW(),
+        reviewed_by             TEXT,
+        reviewed_at             TIMESTAMP,
+        remarks                 TEXT
       )
     `);
-    // Add requirementId column to purchase_indents and internal_requisitions
+    // ── Additive columns (idempotent) ───────────────────────────────────────
+    const newCols = [
+      `ALTER TABLE material_requirements ADD COLUMN IF NOT EXISTS material_type TEXT NOT NULL DEFAULT 'plant_material'`,
+      `ALTER TABLE material_requirements ADD COLUMN IF NOT EXISTS store_item_id INTEGER REFERENCES store_items(id)`,
+      `ALTER TABLE material_requirements ADD COLUMN IF NOT EXISTS destination_plant_id INTEGER`,
+      `ALTER TABLE material_requirements ADD COLUMN IF NOT EXISTS client_request_id TEXT`,
+      `ALTER TABLE material_requirements ADD COLUMN IF NOT EXISTS internally_allocated_qty REAL NOT NULL DEFAULT 0`,
+      `ALTER TABLE material_requirements ADD COLUMN IF NOT EXISTS internally_issued_qty REAL NOT NULL DEFAULT 0`,
+      `ALTER TABLE material_requirements ADD COLUMN IF NOT EXISTS procurement_requested_qty REAL NOT NULL DEFAULT 0`,
+      `ALTER TABLE material_requirements ADD COLUMN IF NOT EXISTS unallocated_balance_qty REAL NOT NULL DEFAULT 0`,
+      `ALTER TABLE material_requirements ADD COLUMN IF NOT EXISTS physically_unfulfilled_qty REAL NOT NULL DEFAULT 0`,
+    ];
+    for (const stmt of newCols) {
+      await db.execute(sql.raw(stmt));
+    }
+    // Unique index on clientRequestId (non-null rows only)
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS material_requirements_client_request_id_uq
+        ON material_requirements(client_request_id)
+        WHERE client_request_id IS NOT NULL
+    `);
+    // ── requirement_id on purchase_indents and internal_requisitions ─────────
     await db.execute(sql`
       ALTER TABLE purchase_indents
         ADD COLUMN IF NOT EXISTS requirement_id INTEGER REFERENCES material_requirements(id)
     `);
     await db.execute(sql`
+      ALTER TABLE purchase_indents
+        ADD COLUMN IF NOT EXISTS allocation_id INTEGER
+    `);
+    await db.execute(sql`
       ALTER TABLE internal_requisitions
         ADD COLUMN IF NOT EXISTS requirement_id INTEGER REFERENCES material_requirements(id)
     `);
+    await db.execute(sql`
+      ALTER TABLE internal_requisitions
+        ADD COLUMN IF NOT EXISTS allocation_id INTEGER
+    `);
+    // ── Allocations table ────────────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS material_requirement_allocations (
+        id                    SERIAL PRIMARY KEY,
+        requirement_id        INTEGER NOT NULL REFERENCES material_requirements(id) ON DELETE CASCADE,
+        allocation_type       TEXT NOT NULL,
+        authorized_qty        REAL NOT NULL,
+        status                TEXT NOT NULL DEFAULT 'authorized',
+        linked_document_type  TEXT,
+        linked_document_id    INTEGER,
+        linked_document_item_id INTEGER,
+        authorized_by_user_id INTEGER,
+        authorized_at         TIMESTAMP DEFAULT NOW(),
+        reason                TEXT,
+        linked_at             TIMESTAMP,
+        committed_qty         REAL NOT NULL DEFAULT 0,
+        fulfilled_qty         REAL NOT NULL DEFAULT 0,
+        cancelled_qty         REAL NOT NULL DEFAULT 0,
+        created_at            TIMESTAMP DEFAULT NOW(),
+        updated_at            TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log("Startup: ensureMaterialRequirementsTable — material_requirements table + PI/IRN requirementId columns verified/added");
   }
 
   async createMaterialRequirement(data: InsertMaterialRequirement): Promise<MaterialRequirement> {
+    // Idempotency: if clientRequestId supplied, return existing row if present
+    if (data.clientRequestId) {
+      const [existing] = await db.select().from(materialRequirements)
+        .where(eq(materialRequirements.clientRequestId, data.clientRequestId)).limit(1);
+      if (existing) return existing;
+    }
     const [row] = await db.insert(materialRequirements).values({
       ...data,
-      balanceQty: data.requiredQty,  // balance starts equal to required
+      balanceQty: data.requiredQty,
+      unallocatedBalanceQty: data.requiredQty,
+      physicallyUnfulfilledQty: data.requiredQty,
     }).returning();
     return row;
   }
@@ -10944,17 +11064,119 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
+  /** Legacy helper — kept for backward compat. New code should call updateRequirementOrderedQty. */
   async updateMaterialRequirementOrdered(id: number, orderedQtyDelta: number): Promise<void> {
-    const [current] = await db.select().from(materialRequirements).where(eq(materialRequirements.id, id)).limit(1);
+    await this.updateRequirementOrderedQty(id, orderedQtyDelta);
+  }
+
+  // ── Allocation sub-system ──────────────────────────────────────────────────
+
+  async createMaterialRequirementAllocation(data: InsertMaterialRequirementAllocation): Promise<MaterialRequirementAllocation> {
+    const [row] = await db.insert(materialRequirementAllocations).values({
+      ...data,
+      status: "authorized",
+    }).returning();
+    return row;
+  }
+
+  async getMaterialRequirementAllocation(id: number): Promise<MaterialRequirementAllocation | undefined> {
+    const [row] = await db.select().from(materialRequirementAllocations)
+      .where(eq(materialRequirementAllocations.id, id)).limit(1);
+    return row;
+  }
+
+  async listMaterialRequirementAllocations(requirementId: number): Promise<MaterialRequirementAllocation[]> {
+    return db.select().from(materialRequirementAllocations)
+      .where(eq(materialRequirementAllocations.requirementId, requirementId));
+  }
+
+  async linkAllocationToDocument(allocationId: number, documentType: "irn" | "pi", documentId: number): Promise<void> {
+    await db.update(materialRequirementAllocations)
+      .set({ linkedDocumentType: documentType, linkedDocumentId: documentId, linkedAt: new Date(), status: "linked" })
+      .where(eq(materialRequirementAllocations.id, allocationId));
+  }
+
+  async commitAllocationQty(allocationId: number, committedQtyDelta: number): Promise<void> {
+    const [current] = await db.select().from(materialRequirementAllocations)
+      .where(eq(materialRequirementAllocations.id, allocationId)).limit(1);
     if (!current) return;
-    const newOrdered = (current.orderedQty ?? 0) + orderedQtyDelta;
-    const newBalance = Math.max(0, (current.requiredQty ?? 0) - newOrdered);
-    const newStatus = newOrdered <= 0 ? "raised"
-      : newOrdered < (current.requiredQty ?? 0) - 0.001 ? "partially_ordered"
-      : "ordered";
+    const newCommitted = (current.committedQty ?? 0) + committedQtyDelta;
+    const newStatus = newCommitted >= (current.authorizedQty ?? 0) - 0.001 ? "committed" : current.status;
+    await db.update(materialRequirementAllocations)
+      .set({ committedQty: newCommitted, status: newStatus, updatedAt: new Date() })
+      .where(eq(materialRequirementAllocations.id, allocationId));
+  }
+
+  async issueAllocationQty(allocationId: number, issuedQtyDelta: number): Promise<void> {
+    const [current] = await db.select().from(materialRequirementAllocations)
+      .where(eq(materialRequirementAllocations.id, allocationId)).limit(1);
+    if (!current) return;
+    const newFulfilled = (current.fulfilledQty ?? 0) + issuedQtyDelta;
+    const newStatus = newFulfilled >= (current.authorizedQty ?? 0) - 0.001 ? "fulfilled" : "partly_fulfilled";
+    await db.update(materialRequirementAllocations)
+      .set({ fulfilledQty: newFulfilled, status: newStatus, updatedAt: new Date() })
+      .where(eq(materialRequirementAllocations.id, allocationId));
+  }
+
+  // ── Clear-semantics qty updaters ───────────────────────────────────────────
+
+  private async _refreshRequirementDerivedQty(id: number): Promise<void> {
+    const [r] = await db.select().from(materialRequirements).where(eq(materialRequirements.id, id)).limit(1);
+    if (!r) return;
+    const totalAllocated = (r.internallyAllocatedQty ?? 0) + (r.procurementRequestedQty ?? 0);
+    const unallocated = Math.max(0, r.requiredQty - totalAllocated);
+    const totalFulfilled = (r.internallyIssuedQty ?? 0) + (r.receivedQty ?? 0);
+    const unfulfilled = Math.max(0, r.requiredQty - totalFulfilled);
+    // Also keep legacy balanceQty in sync
+    const legacyBalance = Math.max(0, r.requiredQty - (r.orderedQty ?? 0));
+    const newStatus = computeRequirementStatus({
+      requiredQty: r.requiredQty,
+      internallyAllocatedQty: r.internallyAllocatedQty ?? 0,
+      internallyIssuedQty: r.internallyIssuedQty ?? 0,
+      procurementRequestedQty: r.procurementRequestedQty ?? 0,
+      orderedQty: r.orderedQty ?? 0,
+      receivedQty: r.receivedQty ?? 0,
+      status: r.status,
+    });
     await db.update(materialRequirements)
-      .set({ orderedQty: newOrdered, balanceQty: newBalance, status: newStatus })
+      .set({ unallocatedBalanceQty: unallocated, physicallyUnfulfilledQty: unfulfilled, balanceQty: legacyBalance, status: newStatus })
       .where(eq(materialRequirements.id, id));
+  }
+
+  async updateRequirementProcurementRequested(requirementId: number, delta: number): Promise<void> {
+    const [r] = await db.select().from(materialRequirements).where(eq(materialRequirements.id, requirementId)).limit(1);
+    if (!r) return;
+    await db.update(materialRequirements)
+      .set({ procurementRequestedQty: Math.max(0, (r.procurementRequestedQty ?? 0) + delta) })
+      .where(eq(materialRequirements.id, requirementId));
+    await this._refreshRequirementDerivedQty(requirementId);
+  }
+
+  async updateRequirementInternallyAllocated(requirementId: number, delta: number): Promise<void> {
+    const [r] = await db.select().from(materialRequirements).where(eq(materialRequirements.id, requirementId)).limit(1);
+    if (!r) return;
+    await db.update(materialRequirements)
+      .set({ internallyAllocatedQty: Math.max(0, (r.internallyAllocatedQty ?? 0) + delta) })
+      .where(eq(materialRequirements.id, requirementId));
+    await this._refreshRequirementDerivedQty(requirementId);
+  }
+
+  async updateRequirementOrderedQty(requirementId: number, delta: number): Promise<void> {
+    const [r] = await db.select().from(materialRequirements).where(eq(materialRequirements.id, requirementId)).limit(1);
+    if (!r) return;
+    await db.update(materialRequirements)
+      .set({ orderedQty: Math.max(0, (r.orderedQty ?? 0) + delta) })
+      .where(eq(materialRequirements.id, requirementId));
+    await this._refreshRequirementDerivedQty(requirementId);
+  }
+
+  async updateRequirementInternallyIssued(requirementId: number, delta: number): Promise<void> {
+    const [r] = await db.select().from(materialRequirements).where(eq(materialRequirements.id, requirementId)).limit(1);
+    if (!r) return;
+    await db.update(materialRequirements)
+      .set({ internallyIssuedQty: Math.max(0, (r.internallyIssuedQty ?? 0) + delta) })
+      .where(eq(materialRequirements.id, requirementId));
+    await this._refreshRequirementDerivedQty(requirementId);
   }
 
   async updatePurchaseItemStatus(itemId: number, purchaseData: { purchaseStatus?: string; qtyPurchased?: number; vendor?: string; billNo?: string; rate?: number; amount?: number; purchaseRemarks?: string }, actionBy?: string): Promise<PurchaseIndentItem | undefined> {
@@ -20972,6 +21194,22 @@ export class DatabaseStorage implements IStorage {
       const irnNo = await this.generateIrnNo(tx, data.raisedFrom, data.raisedBy, firstMaterial);
 
       const irnRequirementId: number | null = (data as any).requirementId ?? null;
+      const irnAllocationId: number | null = (data as any).allocationId ?? null;
+
+      // Validate allocation when requirementId is present
+      if (irnRequirementId) {
+        if (!irnAllocationId) throw new Error("allocationId is required when requirementId is set");
+        const alloc = await this.getMaterialRequirementAllocation(irnAllocationId);
+        if (!alloc) throw new Error(`Allocation ${irnAllocationId} not found`);
+        if (alloc.requirementId !== irnRequirementId) throw new Error("Allocation does not belong to this requirement");
+        if (alloc.allocationType !== "internal") throw new Error("Allocation type must be 'internal' for IRN");
+        if (alloc.status !== "authorized") throw new Error(`Allocation is ${alloc.status}, not authorized`);
+        if (alloc.linkedDocumentId) throw new Error("Allocation is already linked to another document");
+        const itemQty = data.items?.reduce((s, i) => s + (i.qty ?? 0), 0) ?? 0;
+        if (data.items && data.items.length !== 1) throw new Error("Requirement-linked IRN must have exactly one item");
+        if (itemQty > (alloc.authorizedQty ?? 0) + 0.001) throw new Error(`Item qty ${itemQty} exceeds allocation authorized qty ${alloc.authorizedQty}`);
+      }
+
       const [irn] = await tx
         .insert(internalRequisitions)
         .values({
@@ -20984,13 +21222,16 @@ export class DatabaseStorage implements IStorage {
           status: "pending_stores",
           remarks: data.remarks?.toUpperCase() ?? null,
           ...(irnRequirementId ? { requirementId: irnRequirementId } : {}),
+          ...(irnAllocationId ? { allocationId: irnAllocationId } : {}),
         })
         .returning();
-      // Link to material requirement if provided
-      if (irnRequirementId) {
+
+      // Link allocation + update requirement quantities
+      if (irnRequirementId && irnAllocationId) {
         const totalQty = data.items?.reduce((sum, i) => sum + (i.qty ?? 0), 0) ?? 0;
+        await this.linkAllocationToDocument(irnAllocationId, "irn", irn.id);
         if (totalQty > 0) {
-          await this.updateMaterialRequirementOrdered(irnRequirementId, totalQty).catch(() => {});
+          await this.updateRequirementInternallyAllocated(irnRequirementId, totalQty);
         }
       }
 
@@ -21072,6 +21313,23 @@ export class DatabaseStorage implements IStorage {
         .select()
         .from(internalRequisitionItems)
         .where(eq(internalRequisitionItems.irnId, id));
+
+      // ── Narrow requirement/allocation hook (additive only) ──────────────
+      const irnAllocationId = (existing as any).allocationId as number | null;
+      const irnRequirementId = (existing as any).requirementId as number | null;
+      if (irnRequirementId && irnAllocationId) {
+        try {
+          const issuedTotal = data.items
+            .filter(vi => vi.storesAction === "issue" || vi.storesAction === "split")
+            .reduce((sum, vi) => sum + (vi.issueQty ?? 0), 0);
+          if (issuedTotal > 0) {
+            await this.commitAllocationQty(irnAllocationId, issuedTotal);
+          }
+        } catch (hookErr) {
+          console.error(`storesVerifyIrn: requirement sync failed for IRN ${id} — RECONCILIATION_REQUIRED`, hookErr);
+          throw new Error("RECONCILIATION_REQUIRED: stores verify succeeded but requirement sync failed");
+        }
+      }
 
       return { ...updated, items };
     });

@@ -5,11 +5,16 @@ import {
   ChevronRight, FileSpreadsheet, BookOpen, Loader2,
   Package, Wrench, Users, CalendarDays, ChevronDown, ChevronUp, Zap, PencilLine,
   LayoutList, ShoppingCart, AlertTriangle, CheckCircle2, Info, Settings2, GitCompareArrows,
+  MapPin,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 import {
   calculateBomDemand,
   monthLabel,
@@ -1149,6 +1154,10 @@ interface ShortageRow {
   nearTermShortfall?: number;
   monthlyBreakdown?: { month: number; demand: number; shortfall: number; isCurrentOrPast: boolean }[];
   suggestion: "adequate" | "monitor" | "raise_irn" | "raise_pi" | "raise_both";
+  /** Resolved canonical plant_materials.id; null = unresolved in master */
+  materialId: number | null;
+  sourceBoqItemId: number | null;
+  stockElsewhere: number;
 }
 
 interface ShortageData {
@@ -1158,9 +1167,13 @@ interface ShortageData {
   currentMonth?: number;
 }
 
-// Task #1240: pass material/qty/uom context through to the IRN/PI creation
-// forms (pass-through only — no change to IRN/PI schemas or approval workflow).
-function buildProcureLink(row: ShortageRow, projectId: number, requirementId?: number | null): string {
+// Build IRN/PI form URL with all context (requirementId, allocationId, material, qty, uom, boqProjectId)
+function buildProcureLink(
+  row: ShortageRow,
+  projectId: number,
+  requirementId?: number | null,
+  allocationId?: number | null,
+): string {
   const qty = Math.max(0, row.shortfall > 0 ? row.shortfall : row.totalDemand);
   const params = new URLSearchParams({
     material: row.materialName,
@@ -1169,42 +1182,75 @@ function buildProcureLink(row: ShortageRow, projectId: number, requirementId?: n
     boqProjectId: String(projectId),
   });
   if (requirementId) params.set("requirementId", String(requirementId));
+  if (allocationId) params.set("allocationId", String(allocationId));
   return params.toString();
 }
 
+// Confirmation dialog + requirement creation
 function SuggestionBadge({ row, projectId }: { row: ShortageRow; projectId: number }) {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const suggestion = row.suggestion;
 
-  // Create a material_requirements record first, then navigate to IRN/PI form
+  // Dialog state
+  const [open, setOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"irn" | "pi" | null>(null);
+  const [destType, setDestType] = useState<string>("");
+  const [clientRequestId] = useState(() => `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+  const qty = Math.max(0, row.shortfall > 0 ? row.shortfall : row.totalDemand);
+
+  // Destination validation
+  const destValid = destType !== "";
+
   const createRequirementMutation = useMutation({
-    mutationFn: async (destination: "irn" | "pi") => {
-      const qty = Math.max(0, row.shortfall > 0 ? row.shortfall : row.totalDemand);
+    mutationFn: async () => {
+      if (!pendingAction) throw new Error("No action selected");
+      if (!destType) throw new Error("Select a destination before confirming");
+      // materialId must be resolved; block if unknown
+      if (row.materialId == null) throw new Error(`Material "${row.materialName}" is not in the Plant Material Master. Add it first.`);
+
+      const allocType = pendingAction === "irn" ? "internal" : "procurement";
       const res = await fetch("/api/material-requirements", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
+          materialType: "plant_material",
+          materialId: row.materialId,
           requiredQty: Math.round(qty * 1000) / 1000,
           uom: row.uom ?? "",
           boqProjectId: projectId,
           sourceType: "bom",
-          destinationType: "hmp",
+          sourceBoqItemId: row.sourceBoqItemId ?? undefined,
+          destinationType: destType,
+          clientRequestId,
+          // Auto-create allocation for this action
+          withAllocation: allocType,
+          allocationQty: Math.round(qty * 1000) / 1000,
         }),
       });
-      const data = await res.json();
-      return { requirementId: data.id as number, destination };
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.message ?? `Server error ${res.status}`);
+      return {
+        requirementId: body.id as number,
+        allocationId: body.allocation?.id as number | null,
+        destination: pendingAction,
+      };
     },
-    onSuccess: ({ requirementId, destination }) => {
-      const qs = buildProcureLink(row, projectId, requirementId);
+    onSuccess: ({ requirementId, allocationId, destination }) => {
+      setOpen(false);
+      const qs = buildProcureLink(row, projectId, requirementId, allocationId);
       if (destination === "irn") navigate(`/irn/new?${qs}`);
       else navigate(`/plant/purchase-indents?${qs}`);
     },
-    onError: () => {
-      // Fallback: navigate without requirement if API fails
-      const qs = buildProcureLink(row, projectId);
-      if (suggestion === "raise_pi" || suggestion === "raise_both") navigate(`/plant/purchase-indents?${qs}`);
-      else navigate(`/irn/new?${qs}`);
+    onError: (err: any) => {
+      // FAIL FAST — no fallback navigation, stay on Work Demand
+      toast({
+        title: "Could not create requirement",
+        description: err.message ?? "Unknown error",
+        variant: "destructive",
+      });
     },
   });
 
@@ -1219,36 +1265,107 @@ function SuggestionBadge({ row, projectId }: { row: ShortageRow; projectId: numb
     </span>
   );
 
+  const openFor = (action: "irn" | "pi") => {
+    setPendingAction(action);
+    setDestType(""); // require explicit selection
+    setOpen(true);
+  };
+
   const isPending = createRequirementMutation.isPending;
 
+  // Label for the "raise_both" case — softened language
+  const bothNote = suggestion === "raise_both" ? (
+    <span className="inline-flex items-center text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 gap-1">
+      <Info className="w-3 h-3" />
+      Potential stock available elsewhere — confirm for transfer
+    </span>
+  ) : null;
+
   return (
-    <div className="flex flex-wrap gap-1">
-      {(suggestion === "raise_irn" || suggestion === "raise_both") && (
-        <button
-          onClick={() => createRequirementMutation.mutate("irn")}
-          disabled={isPending}
-          className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 hover:bg-orange-100 transition-colors disabled:opacity-60"
-        >
-          {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShoppingCart className="w-3 h-3" />}
-          Raise IRN
-        </button>
-      )}
-      {(suggestion === "raise_pi" || suggestion === "raise_both") && (
-        <button
-          onClick={() => createRequirementMutation.mutate("pi")}
-          disabled={isPending}
-          className="inline-flex items-center gap-1 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-100 transition-colors disabled:opacity-60"
-        >
-          {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShoppingCart className="w-3 h-3" />}
-          Raise PI
-        </button>
-      )}
-      {suggestion === "raise_both" && (
-        <span className="inline-flex items-center text-[11px] text-gray-500 italic px-1">
-          (transfer some · buy rest)
-        </span>
-      )}
-    </div>
+    <>
+      <div className="flex flex-wrap gap-1">
+        {(suggestion === "raise_irn" || suggestion === "raise_both") && (
+          <button
+            onClick={() => openFor("irn")}
+            disabled={isPending}
+            className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 hover:bg-orange-100 transition-colors disabled:opacity-60"
+          >
+            <ShoppingCart className="w-3 h-3" />
+            {suggestion === "raise_both" ? "Internal transfer may cover part" : "Raise IRN"}
+          </button>
+        )}
+        {(suggestion === "raise_pi" || suggestion === "raise_both") && (
+          <button
+            onClick={() => openFor("pi")}
+            disabled={isPending}
+            className="inline-flex items-center gap-1 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-100 transition-colors disabled:opacity-60"
+          >
+            <ShoppingCart className="w-3 h-3" />
+            {suggestion === "raise_both" ? "Purchase may still be required" : "Raise PI"}
+          </button>
+        )}
+        {bothNote}
+      </div>
+
+      {/* Requirement confirmation dialog */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {pendingAction === "irn" ? "Raise Internal Requisition" : "Raise Purchase Indent"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-sm">
+            {/* Material summary */}
+            <div className="bg-gray-50 rounded p-3 space-y-1">
+              <p className="font-semibold text-gray-800 truncate">{row.materialName}</p>
+              <p className="text-gray-600">
+                Qty: <span className="font-mono font-semibold">{Math.round(qty * 1000) / 1000} {row.uom}</span>
+              </p>
+              {row.materialId == null && (
+                <p className="text-red-600 text-[12px] font-medium mt-1">
+                  ⚠ Material not found in Plant Material Master — add it before raising this document.
+                </p>
+              )}
+            </div>
+
+            {/* Destination selector */}
+            <div className="space-y-1.5">
+              <Label htmlFor="dest-type" className="flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5" /> Receiving Destination
+              </Label>
+              <Select value={destType} onValueChange={setDestType}>
+                <SelectTrigger id="dest-type" className="w-full">
+                  <SelectValue placeholder="Select destination…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hmp">HMP Plant</SelectItem>
+                  <SelectItem value="rmc">RMC Plant</SelectItem>
+                  <SelectItem value="site">Site</SelectItem>
+                  <SelectItem value="store">Central Store</SelectItem>
+                </SelectContent>
+              </Select>
+              {!destType && (
+                <p className="text-[11px] text-amber-600">Select destination to confirm</p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => createRequirementMutation.mutate()}
+              disabled={isPending || !destValid || row.materialId == null}
+            >
+              {isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Creating…</> : "Confirm & Proceed"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

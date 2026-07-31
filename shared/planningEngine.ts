@@ -1909,6 +1909,10 @@ export interface ShortageMaterialDemand {
   totalQty: number;
   /** month index (1-based) -> demand qty for that month */
   monthlyQty: Record<number, number>;
+  /** Canonical plant_materials.id if resolved; null means unresolved (block requirement creation) */
+  materialId?: number | null;
+  /** Primary BOQ item contributing to this demand row */
+  sourceBoqItemId?: number | null;
 }
 
 export interface ShortageMonthlyBreakdown {
@@ -1932,6 +1936,12 @@ export interface ShortageRowResult {
   nearTermShortfall: number;
   monthlyBreakdown: ShortageMonthlyBreakdown[];
   suggestion: ShortageSuggestion;
+  /** Canonical plant_materials.id; null = unresolved in master */
+  materialId: number | null;
+  /** Primary BOQ item driving this demand */
+  sourceBoqItemId: number | null;
+  /** Quantity of this material available at non-local parties (potential IRN source) */
+  stockElsewhere: number;
 }
 
 /**
@@ -1996,5 +2006,54 @@ export function computeShortageRow(
     nearTermShortfall,
     monthlyBreakdown,
     suggestion,
+    materialId: matRow.materialId ?? null,
+    sourceBoqItemId: matRow.sourceBoqItemId ?? null,
+    stockElsewhere,
   };
+}
+
+// ─── Requirement Status ───────────────────────────────────────────────────────
+
+export type RequirementStatus =
+  | "raised"
+  | "awaiting_review"
+  | "partly_allocated"
+  | "fully_allocated"
+  | "internally_committed"
+  | "procurement_in_progress"
+  | "partly_fulfilled"
+  | "fulfilled"
+  | "deferred"
+  | "cancelled"
+  | "reconciliation_required";
+
+export interface RequirementStatusInput {
+  requiredQty: number;
+  internallyAllocatedQty: number;
+  internallyIssuedQty: number;
+  procurementRequestedQty: number;
+  orderedQty: number;
+  receivedQty: number;
+  status: string; // current persisted status (for cancelled/deferred overrides)
+}
+
+/**
+ * Single authoritative function to derive requirement status from its
+ * allocation and fulfilment quantities. Do not derive status independently in
+ * multiple UI screens or route handlers.
+ */
+export function computeRequirementStatus(r: RequirementStatusInput): RequirementStatus {
+  if (r.status === "cancelled") return "cancelled";
+  if (r.status === "deferred") return "deferred";
+
+  const totalFulfilled = (r.internallyIssuedQty ?? 0) + (r.receivedQty ?? 0);
+  if (totalFulfilled >= r.requiredQty - 0.001) return "fulfilled";
+  if (totalFulfilled > 0) return "partly_fulfilled";
+
+  const totalAllocated = (r.internallyAllocatedQty ?? 0) + (r.procurementRequestedQty ?? 0);
+  if (r.orderedQty > 0 && r.procurementRequestedQty > 0) return "procurement_in_progress";
+  if (r.internallyAllocatedQty > 0 && r.procurementRequestedQty <= 0 && r.orderedQty <= 0) return "internally_committed";
+  if (totalAllocated >= r.requiredQty - 0.001) return "fully_allocated";
+  if (totalAllocated > 0) return "partly_allocated";
+  return "raised";
 }

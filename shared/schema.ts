@@ -1485,6 +1485,10 @@ export const purchaseIndents = pgTable("purchase_indents", {
   // Material Indent type: 'stores' (default) or 'material' — material bypasses stores verification
   piType: text("pi_type").notNull().default("stores"),
   orderedAt: text("ordered_at"),
+  // nullable FK to material_requirements.id — column added via ensureMaterialRequirementsTable
+  requirementId: integer("requirement_id"),
+  // allocationId references material_requirement_allocations.id — column added via ensureMaterialRequirementsTable
+  allocationId: integer("allocation_id"),
 });
 
 export const purchaseIndentItems = pgTable("purchase_indent_items", {
@@ -1659,6 +1663,9 @@ export const internalRequisitions = pgTable("internal_requisitions", {
   closedAt: timestamp("closed_at"),
   linkedIssueId: integer("linked_issue_id"), // FK → store_issues (set when Issue Voucher is recorded)
   createdAt: timestamp("created_at").defaultNow(),
+  // nullable FK to material_requirements.id — column added via ensureMaterialRequirementsTable
+  requirementId: integer("requirement_id"),
+  allocationId: integer("allocation_id"),
 });
 
 export const internalRequisitionItems = pgTable("internal_requisition_items", {
@@ -3309,26 +3316,91 @@ export type SafeUser = Omit<User, "passwordHash">;
 // shortage screen, so procurement can be tracked back to its demand source.
 export const materialRequirements = pgTable("material_requirements", {
   id: serial("id").primaryKey(),
+
+  // Identity — exactly one of materialId / storeItemId must be set
+  materialType: text("material_type").notNull().default("plant_material"), // "plant_material" | "store_item"
   materialId: integer("material_id").references(() => plantMaterials.id),
+  storeItemId: integer("store_item_id").references(() => storeItems.id),
+
   requiredQty: real("required_qty").notNull(),
   uom: text("uom").notNull(),
   requiredByDate: date("required_by_date"),
+
+  // Destination — use explicit columns, not a polymorphic id
   destinationType: text("destination_type").notNull().default("hmp"), // "store" | "hmp" | "rmc" | "site"
-  destinationSiteId: integer("destination_site_id"),
+  destinationSiteId: integer("destination_site_id"),   // used when destinationType = "site"
+  destinationPlantId: integer("destination_plant_id"), // FK plant_settings.id; used when destinationType = "hmp"|"rmc"
+
   boqProjectId: integer("boq_project_id"),
   sourceType: text("source_type").notNull().default("manual"), // "bom" | "tomorrow_plan" | "immediate" | "manual"
   sourceBoqItemId: integer("source_boq_item_id"),
-  allocatedQty: real("allocated_qty").notNull().default(0),
+
+  // Idempotency — one UUID per deliberate Raise action; server returns existing row on retry
+  clientRequestId: text("client_request_id"),
+
+  // ── Quantity breakdown (unambiguous business meanings) ────────────────────
+  // Quantities allocated for internal issue/transfer (via IRN)
+  internallyAllocatedQty: real("internally_allocated_qty").notNull().default(0),
+  // Quantities actually issued/transferred
+  internallyIssuedQty: real("internally_issued_qty").notNull().default(0),
+  // Quantities linked to approved PI allocations (PI raised but not yet ordered)
+  procurementRequestedQty: real("procurement_requested_qty").notNull().default(0),
+  // Quantities actually ordered by purchaser
   orderedQty: real("ordered_qty").notNull().default(0),
+  // Quantities physically received and accepted
   receivedQty: real("received_qty").notNull().default(0),
+  // max(0, requiredQty - internallyAllocatedQty - procurementRequestedQty)
+  unallocatedBalanceQty: real("unallocated_balance_qty").notNull().default(0),
+  // max(0, requiredQty - internallyIssuedQty - receivedQty)
+  physicallyUnfulfilledQty: real("physically_unfulfilled_qty").notNull().default(0),
+
+  // Legacy fields kept for backward compatibility
+  allocatedQty: real("allocated_qty").notNull().default(0),
   balanceQty: real("balance_qty").notNull().default(0),
-  status: text("status").notNull().default("raised"), // "raised" | "partially_ordered" | "ordered" | "received" | "closed"
+
+  // Status derived from allocations and fulfilment
+  // "raised" | "awaiting_review" | "partly_allocated" | "fully_allocated" |
+  // "internally_committed" | "procurement_in_progress" | "partly_fulfilled" |
+  // "fulfilled" | "deferred" | "cancelled" | "reconciliation_required"
+  status: text("status").notNull().default("raised"),
+
   createdByUserId: integer("created_by_user_id"),
   createdAt: timestamp("created_at").defaultNow(),
   reviewedBy: text("reviewed_by"),
   reviewedAt: timestamp("reviewed_at"),
   remarks: text("remarks"),
-});
+}, (table) => ({
+  clientRequestIdUq: uniqueIndex("material_requirements_client_request_id_uq").on(table.clientRequestId),
+}));
+
 export const insertMaterialRequirementSchema = createInsertSchema(materialRequirements).omit({ id: true, createdAt: true });
 export type MaterialRequirement = typeof materialRequirements.$inferSelect;
 export type InsertMaterialRequirement = z.infer<typeof insertMaterialRequirementSchema>;
+
+// ── Material Requirement Allocations ─────────────────────────────────────────
+// One allocation per internal or procurement portion of a requirement.
+// Internal (IRN) and procurement (PI) allocations coexist for split fulfilment.
+export const materialRequirementAllocations = pgTable("material_requirement_allocations", {
+  id: serial("id").primaryKey(),
+  requirementId: integer("requirement_id").notNull(),
+  allocationType: text("allocation_type").notNull(), // "internal" | "procurement"
+  authorizedQty: real("authorized_qty").notNull(),
+  // "authorized" | "linked" | "committed" | "partly_fulfilled" | "fulfilled" | "cancelled"
+  status: text("status").notNull().default("authorized"),
+  linkedDocumentType: text("linked_document_type"),  // "irn" | "pi"
+  linkedDocumentId: integer("linked_document_id"),
+  linkedDocumentItemId: integer("linked_document_item_id"),
+  authorizedByUserId: integer("authorized_by_user_id"),
+  authorizedAt: timestamp("authorized_at").defaultNow(),
+  reason: text("reason"),
+  linkedAt: timestamp("linked_at"),
+  committedQty: real("committed_qty").notNull().default(0),
+  fulfilledQty: real("fulfilled_qty").notNull().default(0),
+  cancelledQty: real("cancelled_qty").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMaterialRequirementAllocationSchema = createInsertSchema(materialRequirementAllocations).omit({ id: true, createdAt: true, updatedAt: true });
+export type MaterialRequirementAllocation = typeof materialRequirementAllocations.$inferSelect;
+export type InsertMaterialRequirementAllocation = z.infer<typeof insertMaterialRequirementAllocationSchema>;

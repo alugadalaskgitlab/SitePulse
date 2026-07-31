@@ -14,3 +14,4 @@
 - [Roads Pilot Role Templates](roads-pilot-role-templates.md) — ROLE_TEMPLATES + applyRoleTemplate() in shared/permissions.ts; Site Engineer has irn_raise but NOT purchase_indents_raise; PM has both.
 - [Dev/Prod Database Split](dev-prod-db-split.md) — Dev server uses sitelog_dev (DEV_DATABASE_URL, development-scoped env var); prod uses heliumdb (DATABASE_URL); server/db.ts reads DEV_DATABASE_URL||DATABASE_URL.
 - [Service Route SoD Pattern](service-route-sod.md) — purchaseIndentItems must be explicitly imported in routes.ts (not just aliased as purchaseIndentsTable); service items skip GRN/PPR, go to serviceCompletions with SoD-gated POST.
+- [Material Req Allocation System](material-req-allocation-system.md) — allocation required (allocationId) alongside requirementId on PI/IRN; strict quantity semantics; clientRequestId idempotency; RECONCILIATION_REQUIRED error pattern.
