@@ -5,7 +5,7 @@ import {
   ChevronRight, FileSpreadsheet, BookOpen, Loader2,
   Package, Wrench, Users, CalendarDays, ChevronDown, ChevronUp, Zap, PencilLine,
   LayoutList, ShoppingCart, AlertTriangle, CheckCircle2, Info, Settings2, GitCompareArrows,
-  MapPin,
+  MapPin, SplitSquareHorizontal,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,7 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import {
   calculateBomDemand,
   monthLabel,
@@ -1158,6 +1160,8 @@ interface ShortageRow {
   materialId: number | null;
   sourceBoqItemId: number | null;
   stockElsewhere: number;
+  /** ISO date (YYYY-MM-DD) from the Work Programme — first month this material is short */
+  requiredByDate?: string | null;
 }
 
 interface ShortageData {
@@ -1166,6 +1170,15 @@ interface ShortageData {
   hasRecipes: boolean;
   currentMonth?: number;
 }
+
+// ── Fresh client-request-ID ─────────────────────────────────────────────────
+// Generated per deliberate action (not at mount). Retained through retries;
+// cleared when the dialog closes so a later action gets a new key.
+function newClientRequestId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+interface PlantSetting { id?: number; plantName: string; plantType?: string | null }
 
 // Build IRN/PI form URL with all context (requirementId, allocationId, material, qty, uom, boqProjectId)
 function buildProcureLink(
@@ -1186,73 +1199,178 @@ function buildProcureLink(
   return params.toString();
 }
 
-// Confirmation dialog + requirement creation
-function SuggestionBadge({ row, projectId }: { row: ShortageRow; projectId: number }) {
+type DialogStep = "closed" | "confirm_dest" | "awaiting_review" | "authorize_alloc";
+
+function SuggestionBadge({
+  row,
+  projectId,
+  projectLinkedSiteId,
+}: {
+  row: ShortageRow;
+  projectId: number;
+  projectLinkedSiteId?: number | null;
+}) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { permissions, isAdmin } = useAuth();
   const suggestion = row.suggestion;
 
-  // Dialog state
-  const [open, setOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"irn" | "pi" | null>(null);
+  // Permission flags — server enforces authoritatively; UI is a convenience
+  const canApprovePi = isAdmin || (permissions as any)?.purchase_indents_approve?.approve === true;
+  const canApproveIrn = isAdmin || (permissions as any)?.irn_approve?.approve === true;
+
+  // ── Step machine ────────────────────────────────────────────────────────────
+  const [step, setStep] = useState<DialogStep>("closed");
+  const [pendingAction, setPendingAction] = useState<"irn" | "pi" | "both" | null>(null);
+  const [clientRequestId, setClientRequestId] = useState<string | null>(null);
+
+  // Step 1: destination
   const [destType, setDestType] = useState<string>("");
-  const [clientRequestId] = useState(() => `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const [destPlantId, setDestPlantId] = useState<string>("");
+  const [destSiteId, setDestSiteId] = useState<string>("");
 
-  const qty = Math.max(0, row.shortfall > 0 ? row.shortfall : row.totalDemand);
+  // After requirement created
+  const [createdReqId, setCreatedReqId] = useState<number | null>(null);
 
-  // Destination validation
-  const destValid = destType !== "";
+  // Split (raise_both) quantities
+  const totalQty = Math.max(0, row.shortfall > 0 ? row.shortfall : row.totalDemand);
+  const [internalQtyStr, setInternalQtyStr] = useState<string>("");
+  const [procQtyStr, setProcQtyStr] = useState<string>("");
+  const [splitAllocInternal, setSplitAllocInternal] = useState<number | null>(null);
+  const [splitAllocProc, setSplitAllocProc] = useState<number | null>(null);
 
-  const createRequirementMutation = useMutation({
+  // ── Lazy data fetches ───────────────────────────────────────────────────────
+  const { data: plantsList = [] } = useQuery<PlantSetting[]>({
+    queryKey: ["/api/plant-module/plant-settings"],
+    queryFn: async () => {
+      const r = await fetch("/api/plant-module/plant-settings", { credentials: "include" });
+      return r.ok ? r.json() : [];
+    },
+    enabled: step !== "closed",
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: sitesList = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/sites"],
+    queryFn: async () => {
+      const r = await fetch("/api/sites", { credentials: "include" });
+      return r.ok ? r.json() : [];
+    },
+    enabled: step !== "closed",
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Filter plants by type where possible, fall back to all
+  const plantsForDest = useMemo(() => {
+    if (!destType || destType === "site" || destType === "store") return [];
+    const kws = destType === "hmp" ? ["hmp", "hot", "asphalt"] : ["rmc", "concrete", "batch"];
+    const filtered = plantsList.filter((p: any) => kws.some(k => (p.plantType ?? "").toLowerCase().includes(k)));
+    return (filtered.length > 0 ? filtered : plantsList) as PlantSetting[];
+  }, [plantsList, destType]);
+
+  // Destination validity
+  const destValid = destType === "store" ? true
+    : destType === "site" ? Boolean(destSiteId)
+    : (destType === "hmp" || destType === "rmc") ? Boolean(destPlantId)
+    : false;
+
+  // ── Open / close ────────────────────────────────────────────────────────────
+  const openFor = (action: "irn" | "pi" | "both") => {
+    setPendingAction(action);
+    setClientRequestId(newClientRequestId()); // fresh per action
+    setDestType(""); setDestPlantId("");
+    setDestSiteId(projectLinkedSiteId ? String(projectLinkedSiteId) : "");
+    setCreatedReqId(null); setSplitAllocInternal(null); setSplitAllocProc(null);
+    if (action === "both") {
+      const irnSugg = Math.round(Math.min(row.stockElsewhere, totalQty) * 1000) / 1000;
+      setInternalQtyStr(String(irnSugg));
+      setProcQtyStr(String(Math.round(Math.max(0, totalQty - irnSugg) * 1000) / 1000));
+    }
+    setStep("confirm_dest");
+  };
+  const handleClose = () => { setStep("closed"); setClientRequestId(null); };
+
+  // ── Requirement creation ────────────────────────────────────────────────────
+  const createReqMutation = useMutation({
     mutationFn: async () => {
-      if (!pendingAction) throw new Error("No action selected");
-      if (!destType) throw new Error("Select a destination before confirming");
-      // materialId must be resolved; block if unknown
-      if (row.materialId == null) throw new Error(`Material "${row.materialName}" is not in the Plant Material Master. Add it first.`);
+      if (!destType) throw new Error("Select a destination type first");
+      if (!destValid) throw new Error("Complete the destination selection");
+      if (row.materialId == null) throw new Error(`"${row.materialName}" is not in the Plant Material Master — add it before raising a requirement`);
+      const body: Record<string, any> = {
+        materialType: "plant_material",
+        materialId: row.materialId,
+        requiredQty: Math.round(totalQty * 1000) / 1000,
+        uom: row.uom ?? "",
+        boqProjectId: projectId,
+        sourceType: "bom",
+        sourceBoqItemId: row.sourceBoqItemId ?? undefined,
+        destinationType: destType,
+        clientRequestId: clientRequestId!,
+      };
+      // Use Work Programme required-by date — never substitute today's date
+      if (row.requiredByDate) body.requiredByDate = row.requiredByDate;
+      if (destType === "site") body.destinationSiteId = Number(destSiteId);
+      else if (destType === "hmp" || destType === "rmc") body.destinationPlantId = Number(destPlantId);
 
-      const allocType = pendingAction === "irn" ? "internal" : "procurement";
       const res = await fetch("/api/material-requirements", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          materialType: "plant_material",
-          materialId: row.materialId,
-          requiredQty: Math.round(qty * 1000) / 1000,
-          uom: row.uom ?? "",
-          boqProjectId: projectId,
-          sourceType: "bom",
-          sourceBoqItemId: row.sourceBoqItemId ?? undefined,
-          destinationType: destType,
-          clientRequestId,
-          // Auto-create allocation for this action
-          withAllocation: allocType,
-          allocationQty: Math.round(qty * 1000) / 1000,
-        }),
+        body: JSON.stringify(body),
       });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.message ?? `Server error ${res.status}`);
-      return {
-        requirementId: body.id as number,
-        allocationId: body.allocation?.id as number | null,
-        destination: pendingAction,
-      };
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? `Server error ${res.status}`);
+      return data.id as number;
     },
-    onSuccess: ({ requirementId, allocationId, destination }) => {
-      setOpen(false);
-      const qs = buildProcureLink(row, projectId, requirementId, allocationId);
-      if (destination === "irn") navigate(`/irn/new?${qs}`);
-      else navigate(`/plant/purchase-indents?${qs}`);
+    onSuccess: (reqId) => {
+      setCreatedReqId(reqId);
+      const hasAnyApprove =
+        pendingAction === "irn" ? canApproveIrn
+        : pendingAction === "pi" ? canApprovePi
+        : (canApproveIrn || canApprovePi);
+      setStep(hasAnyApprove ? "authorize_alloc" : "awaiting_review");
     },
     onError: (err: any) => {
       // FAIL FAST — no fallback navigation, stay on Work Demand
-      toast({
-        title: "Could not create requirement",
-        description: err.message ?? "Unknown error",
-        variant: "destructive",
-      });
+      toast({ title: "Could not create requirement", description: err.message ?? "Unknown error", variant: "destructive" });
     },
   });
+
+  // ── Allocation creation (dedicated endpoint only) ───────────────────────────
+  const createAllocMutation = useMutation({
+    mutationFn: async ({ allocType, qty, reason }: { allocType: "internal" | "procurement"; qty: number; reason?: string }) => {
+      const res = await fetch(`/api/material-requirements/${createdReqId}/allocations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ allocationType: allocType, authorizedQty: qty, reason: reason ?? undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? `Allocation failed: ${res.status}`);
+      return { allocId: data.id as number, allocType };
+    },
+    onSuccess: ({ allocId, allocType }) => {
+      if (pendingAction === "both") {
+        if (allocType === "internal") setSplitAllocInternal(allocId);
+        else setSplitAllocProc(allocId);
+        // Navigation links shown inside dialog — user clicks when ready
+      } else {
+        const qs = buildProcureLink(row, projectId, createdReqId, allocId);
+        if (allocType === "internal") navigate(`/irn/new?${qs}`);
+        else navigate(`/plant/purchase-indents?${qs}`);
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not authorise allocation", description: err.message ?? "Unknown error", variant: "destructive" });
+    },
+  });
+
+  const fmtN = (n: number) => Math.round(n * 1000) / 1000;
+  const isPending = createReqMutation.isPending || createAllocMutation.isPending;
+  const internalQty = parseFloat(internalQtyStr) || 0;
+  const procQty = parseFloat(procQtyStr) || 0;
+  const splitTotal = internalQty + procQty;
+  const splitBalance = Math.max(0, totalQty - splitTotal);
+  const splitValid = (internalQty >= 0 && procQty >= 0) && (internalQty > 0 || procQty > 0) && splitTotal <= totalQty + 0.001;
 
   if (suggestion === "adequate") return (
     <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
@@ -1265,111 +1383,239 @@ function SuggestionBadge({ row, projectId }: { row: ShortageRow; projectId: numb
     </span>
   );
 
-  const openFor = (action: "irn" | "pi") => {
-    setPendingAction(action);
-    setDestType(""); // require explicit selection
-    setOpen(true);
-  };
-
-  const isPending = createRequirementMutation.isPending;
-
-  // Label for the "raise_both" case — softened language
-  const bothNote = suggestion === "raise_both" ? (
-    <span className="inline-flex items-center text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 gap-1">
-      <Info className="w-3 h-3" />
-      Potential stock available elsewhere — confirm for transfer
-    </span>
-  ) : null;
-
   return (
     <>
+      {/* ── Action buttons ── */}
       <div className="flex flex-wrap gap-1">
-        {(suggestion === "raise_irn" || suggestion === "raise_both") && (
-          <button
-            onClick={() => openFor("irn")}
-            disabled={isPending}
-            className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 hover:bg-orange-100 transition-colors disabled:opacity-60"
-          >
-            <ShoppingCart className="w-3 h-3" />
-            {suggestion === "raise_both" ? "Internal transfer may cover part" : "Raise IRN"}
+        {suggestion === "raise_irn" && (
+          <button onClick={() => openFor("irn")} disabled={isPending}
+            className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 hover:bg-orange-100 transition-colors disabled:opacity-60">
+            <ShoppingCart className="w-3 h-3" /> Raise IRN
           </button>
         )}
-        {(suggestion === "raise_pi" || suggestion === "raise_both") && (
-          <button
-            onClick={() => openFor("pi")}
-            disabled={isPending}
-            className="inline-flex items-center gap-1 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-100 transition-colors disabled:opacity-60"
-          >
-            <ShoppingCart className="w-3 h-3" />
-            {suggestion === "raise_both" ? "Purchase may still be required" : "Raise PI"}
+        {suggestion === "raise_pi" && (
+          <button onClick={() => openFor("pi")} disabled={isPending}
+            className="inline-flex items-center gap-1 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-100 transition-colors disabled:opacity-60">
+            <ShoppingCart className="w-3 h-3" /> Raise PI
           </button>
         )}
-        {bothNote}
+        {suggestion === "raise_both" && (
+          <>
+            <button onClick={() => openFor("both")} disabled={isPending}
+              className="inline-flex items-center gap-1 text-[12px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5 hover:bg-violet-100 transition-colors disabled:opacity-60">
+              <SplitSquareHorizontal className="w-3 h-3" /> Review Internal + Purchase Split
+            </button>
+            <span className="inline-flex items-center text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 gap-1">
+              <Info className="w-3 h-3" /> Potential stock available elsewhere — confirm for transfer
+            </span>
+          </>
+        )}
       </div>
 
-      {/* Requirement confirmation dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
+      {/* ── Multi-step dialog ── */}
+      <Dialog open={step !== "closed"} onOpenChange={(o) => { if (!o) handleClose(); }}>
         <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>
-              {pendingAction === "irn" ? "Raise Internal Requisition" : "Raise Purchase Indent"}
-            </DialogTitle>
-          </DialogHeader>
 
-          <div className="space-y-4 py-2 text-sm">
-            {/* Material summary */}
-            <div className="bg-gray-50 rounded p-3 space-y-1">
-              <p className="font-semibold text-gray-800 truncate">{row.materialName}</p>
-              <p className="text-gray-600">
-                Qty: <span className="font-mono font-semibold">{Math.round(qty * 1000) / 1000} {row.uom}</span>
+          {/* Step 1: destination + material summary */}
+          {step === "confirm_dest" && (<>
+            <DialogHeader>
+              <DialogTitle>
+                {pendingAction === "irn" ? "Raise Internal Requisition"
+                  : pendingAction === "pi" ? "Raise Purchase Indent"
+                  : "Review Internal + Purchase Split"}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2 text-sm">
+              <div className="bg-gray-50 rounded p-3 space-y-1">
+                <p className="font-semibold text-gray-800 truncate">{row.materialName}</p>
+                <p className="text-gray-600">Qty: <span className="font-mono font-semibold">{fmtN(totalQty)} {row.uom}</span></p>
+                {row.requiredByDate && <p className="text-gray-500 text-[12px]">Required by: <span className="font-medium">{row.requiredByDate}</span></p>}
+                {row.materialId == null && (
+                  <p className="text-red-600 text-[12px] font-medium mt-1">⚠ Not in Plant Material Master — add it before raising a requirement.</p>
+                )}
+              </div>
+              {/* Destination type */}
+              <div className="space-y-1.5">
+                <Label htmlFor="dest-type" className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Receiving Destination</Label>
+                <Select value={destType} onValueChange={(v) => { setDestType(v); setDestPlantId(""); }}>
+                  <SelectTrigger id="dest-type" className="w-full"><SelectValue placeholder="Select destination type…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hmp">HMP Plant</SelectItem>
+                    <SelectItem value="rmc">RMC Plant</SelectItem>
+                    <SelectItem value="site">Site</SelectItem>
+                    <SelectItem value="store">Central Store</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Plant sub-picker */}
+              {(destType === "hmp" || destType === "rmc") && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="dest-plant">Plant</Label>
+                  <Select value={destPlantId} onValueChange={setDestPlantId}>
+                    <SelectTrigger id="dest-plant" className="w-full"><SelectValue placeholder="Select plant…" /></SelectTrigger>
+                    <SelectContent>
+                      {plantsForDest.map((p: any) => (
+                        <SelectItem key={p.plantName ?? p.id} value={String(p.id ?? p.plantName)}>{p.plantName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {plantsForDest.length === 0 && <p className="text-[11px] text-amber-600">No plant records found — check Plant module settings.</p>}
+                </div>
+              )}
+              {/* Site sub-picker */}
+              {destType === "site" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="dest-site">Site</Label>
+                  <Select value={destSiteId} onValueChange={setDestSiteId}>
+                    <SelectTrigger id="dest-site" className="w-full"><SelectValue placeholder="Select site…" /></SelectTrigger>
+                    <SelectContent>
+                      {sitesList.map((s: any) => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {destType === "store" && <p className="text-[12px] text-muted-foreground">Will be received at Central Store — no specific location required.</p>}
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={handleClose} disabled={isPending}>Cancel</Button>
+              <Button onClick={() => createReqMutation.mutate()} disabled={isPending || !destValid || row.materialId == null}>
+                {isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Creating…</> : "Create Requirement"}
+              </Button>
+            </DialogFooter>
+          </>)}
+
+          {/* Step 2a: awaiting review */}
+          {step === "awaiting_review" && (<>
+            <DialogHeader><DialogTitle>Requirement Created</DialogTitle></DialogHeader>
+            <div className="py-4 space-y-3 text-sm">
+              <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded p-3">
+                <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-blue-800">Requirement created and sent for review.</p>
+                  <p className="text-blue-700 mt-0.5">REQ-{createdReqId} is awaiting allocation approval from your PM or manager.</p>
+                </div>
+              </div>
+              <p className="text-muted-foreground text-[12px]">
+                {row.materialName} · {fmtN(totalQty)} {row.uom}{row.requiredByDate ? ` · Required by ${row.requiredByDate}` : ""}
               </p>
-              {row.materialId == null && (
-                <p className="text-red-600 text-[12px] font-medium mt-1">
-                  ⚠ Material not found in Plant Material Master — add it before raising this document.
-                </p>
+            </div>
+            <DialogFooter><Button onClick={handleClose}>Okay</Button></DialogFooter>
+          </>)}
+
+          {/* Step 2b: authorise (single action — irn or pi) */}
+          {step === "authorize_alloc" && pendingAction !== "both" && (<>
+            <DialogHeader>
+              <DialogTitle>{pendingAction === "irn" ? "Authorise Internal Allocation" : "Authorise Procurement Allocation"}</DialogTitle>
+            </DialogHeader>
+            <div className="py-4 space-y-3 text-sm">
+              <div className="bg-gray-50 rounded p-3 space-y-1">
+                <p className="text-[12px] text-muted-foreground">Requirement REQ-{createdReqId} created ✓</p>
+                <p className="font-semibold">{row.materialName}</p>
+                <p className="text-gray-600">Authorised qty: <span className="font-mono font-semibold">{fmtN(totalQty)} {row.uom}</span></p>
+                {row.requiredByDate && <p className="text-gray-500 text-[12px]">Required by: {row.requiredByDate}</p>}
+              </div>
+              {(pendingAction === "irn" && !canApproveIrn) && <p className="text-amber-600 text-[12px]">You do not have IRN approval permission. The requirement has been raised for review.</p>}
+              {(pendingAction === "pi" && !canApprovePi) && <p className="text-amber-600 text-[12px]">You do not have PI approval permission. The requirement has been raised for review.</p>}
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={handleClose} disabled={isPending}>
+                {((pendingAction === "irn" && !canApproveIrn) || (pendingAction === "pi" && !canApprovePi)) ? "Close" : "Cancel"}
+              </Button>
+              {((pendingAction === "irn" && canApproveIrn) || (pendingAction === "pi" && canApprovePi)) && (
+                <Button
+                  onClick={() => createAllocMutation.mutate({ allocType: pendingAction === "irn" ? "internal" : "procurement", qty: totalQty })}
+                  disabled={isPending}
+                >
+                  {isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Authorising…</> : `Authorise & Open ${pendingAction === "irn" ? "IRN" : "PI"} Form`}
+                </Button>
+              )}
+            </DialogFooter>
+          </>)}
+
+          {/* Step 2b: split (raise_both) */}
+          {step === "authorize_alloc" && pendingAction === "both" && (<>
+            <DialogHeader><DialogTitle>Review Internal + Purchase Split</DialogTitle></DialogHeader>
+            <div className="py-3 space-y-3 text-sm">
+              <div className="bg-gray-50 rounded p-3 space-y-1">
+                <p className="text-[12px] text-muted-foreground">Requirement REQ-{createdReqId} created ✓</p>
+                <p className="font-semibold">{row.materialName}</p>
+                <p className="text-gray-600">Total required: <span className="font-mono font-semibold">{fmtN(totalQty)} {row.uom}</span></p>
+                {row.stockElsewhere > 0 && (
+                  <p className="text-amber-700 text-[12px]">Suggested internal transfer: {fmtN(Math.min(row.stockElsewhere, totalQty))} {row.uom}</p>
+                )}
+              </div>
+              {/* Internal qty */}
+              <div className="space-y-1">
+                <Label className="text-[12px]">Internal Transfer Qty (IRN){!canApproveIrn ? " — no IRN approve permission" : ""}</Label>
+                <div className="flex items-center gap-2">
+                  <Input type="number" min="0" step="0.001" value={internalQtyStr} onChange={(e) => setInternalQtyStr(e.target.value)}
+                    disabled={!canApproveIrn || splitAllocInternal != null} className="font-mono" />
+                  <span className="text-[12px] text-muted-foreground shrink-0">{row.uom}</span>
+                </div>
+                {splitAllocInternal != null && <p className="text-emerald-600 text-[12px]">✓ Internal allocation authorised (ALLOC-{splitAllocInternal})</p>}
+              </div>
+              {/* Procurement qty */}
+              <div className="space-y-1">
+                <Label className="text-[12px]">Procurement Qty (PI){!canApprovePi ? " — no PI approve permission" : ""}</Label>
+                <div className="flex items-center gap-2">
+                  <Input type="number" min="0" step="0.001" value={procQtyStr} onChange={(e) => setProcQtyStr(e.target.value)}
+                    disabled={!canApprovePi || splitAllocProc != null} className="font-mono" />
+                  <span className="text-[12px] text-muted-foreground shrink-0">{row.uom}</span>
+                </div>
+                {splitAllocProc != null && <p className="text-emerald-600 text-[12px]">✓ Procurement allocation authorised (ALLOC-{splitAllocProc})</p>}
+              </div>
+              {/* Balance */}
+              <p className={`text-[12px] font-semibold ${splitBalance > 0.001 ? "text-amber-600" : "text-emerald-600"}`}>
+                Unallocated balance: {fmtN(splitBalance)} {row.uom}
+              </p>
+              {splitTotal > totalQty + 0.001 && <p className="text-red-600 text-[12px]">Combined qty exceeds required qty.</p>}
+              {/* Navigation links */}
+              {(splitAllocInternal != null || splitAllocProc != null) && (
+                <div className="bg-blue-50 border border-blue-200 rounded p-2 space-y-1.5">
+                  <p className="text-[12px] font-semibold text-blue-800">Open linked forms:</p>
+                  {splitAllocInternal != null && (
+                    <button className="text-[12px] text-orange-700 underline block" onClick={() => { handleClose(); navigate(`/irn/new?${buildProcureLink(row, projectId, createdReqId, splitAllocInternal)}`); }}>
+                      → Open IRN form (ALLOC-{splitAllocInternal})
+                    </button>
+                  )}
+                  {splitAllocProc != null && (
+                    <button className="text-[12px] text-red-700 underline block" onClick={() => { handleClose(); navigate(`/plant/purchase-indents?${buildProcureLink(row, projectId, createdReqId, splitAllocProc)}`); }}>
+                      → Open PI form (ALLOC-{splitAllocProc})
+                    </button>
+                  )}
+                </div>
               )}
             </div>
-
-            {/* Destination selector */}
-            <div className="space-y-1.5">
-              <Label htmlFor="dest-type" className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5" /> Receiving Destination
-              </Label>
-              <Select value={destType} onValueChange={setDestType}>
-                <SelectTrigger id="dest-type" className="w-full">
-                  <SelectValue placeholder="Select destination…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="hmp">HMP Plant</SelectItem>
-                  <SelectItem value="rmc">RMC Plant</SelectItem>
-                  <SelectItem value="site">Site</SelectItem>
-                  <SelectItem value="store">Central Store</SelectItem>
-                </SelectContent>
-              </Select>
-              {!destType && (
-                <p className="text-[11px] text-amber-600">Select destination to confirm</p>
+            <DialogFooter className="gap-2 flex-wrap">
+              <Button variant="outline" onClick={handleClose} disabled={isPending}>
+                {(splitAllocInternal != null || splitAllocProc != null) ? "Done" : "Cancel"}
+              </Button>
+              {canApproveIrn && splitAllocInternal == null && internalQty > 0 && (
+                <Button size="sm" variant="outline" className="text-orange-700 border-orange-300"
+                  onClick={() => createAllocMutation.mutate({ allocType: "internal", qty: internalQty, reason: "Internal transfer portion of IRN+PI split" })}
+                  disabled={isPending || !splitValid}>
+                  {isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                  Authorise IRN ({fmtN(internalQty)} {row.uom})
+                </Button>
               )}
-            </div>
-          </div>
+              {canApprovePi && splitAllocProc == null && procQty > 0 && (
+                <Button size="sm" className="text-white bg-red-600 hover:bg-red-700"
+                  onClick={() => createAllocMutation.mutate({ allocType: "procurement", qty: procQty, reason: "Procurement portion of IRN+PI split" })}
+                  disabled={isPending || !splitValid}>
+                  {isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                  Authorise PI ({fmtN(procQty)} {row.uom})
+                </Button>
+              )}
+            </DialogFooter>
+          </>)}
 
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => createRequirementMutation.mutate()}
-              disabled={isPending || !destValid || row.materialId == null}
-            >
-              {isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Creating…</> : "Confirm & Proceed"}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
   );
 }
 
-function ProcurementTable({ data, projectId }: { data: ShortageData; projectId: number }) {
+function ProcurementTable({ data, projectId, projectLinkedSiteId }: { data: ShortageData; projectId: number; projectLinkedSiteId?: number | null }) {
   if (!data.hasBars) return (
     <EmptyState label="Add stretches to the Work Programme first to generate demand." />
   );
@@ -1467,7 +1713,7 @@ function ProcurementTable({ data, projectId }: { data: ShortageData; projectId: 
                   {(row.nearTermShortfall ?? 0) > 0 ? fmtQty(row.nearTermShortfall!, 1) : "—"}
                 </td>
                 <td className="px-3 py-2">
-                  <SuggestionBadge row={row} projectId={projectId} />
+                  <SuggestionBadge row={row} projectId={projectId} projectLinkedSiteId={projectLinkedSiteId} />
                 </td>
               </tr>
             ))}
@@ -1904,7 +2150,7 @@ export default function WorkDemand() {
                 </div>
               )}
               {!shortageLoading && shortageData && (
-                <ProcurementTable data={shortageData} projectId={projectId} />
+                <ProcurementTable data={shortageData} projectId={projectId} projectLinkedSiteId={project?.siteId} />
               )}
             </TabsContent>
           </Tabs>

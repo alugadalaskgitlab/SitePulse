@@ -1942,6 +1942,8 @@ export interface ShortageRowResult {
   sourceBoqItemId: number | null;
   /** Quantity of this material available at non-local parties (potential IRN source) */
   stockElsewhere: number;
+  /** ISO date (YYYY-MM-DD) when this material is first needed (first shortage month) */
+  requiredByDate: string | null;
 }
 
 /**

@@ -1,0 +1,509 @@
+Instruction 016B — Correct Work Demand → Material Requirement → Allocation → PI/IRN Flow
+
+Purpose
+
+Correct the remaining defects in Instruction 016 without rebuilding the Material Requirement foundation or disturbing the working PI, IRN, purchaser-action, receipt, GRN or completion flows.
+
+The intended sequence is:
+
+Work Demand/BOM
+→ Material Requirement created as Awaiting Review
+→ authorised internal and/or procurement allocation
+→ linked IRN and/or PI
+→ later order, issue and receipt updates
+
+Files to touch
+
+- client/src/pages/WorkDemand.tsx
+- server/routes.ts
+- server/storage.ts
+- shared/planningEngine.ts
+
+Touch shared/schema.ts only if a small additive correction is genuinely required for the existing implementation.
+
+DO NOT TOUCH OR REDESIGN
+
+- material_requirements table structure already implemented
+- material_requirement_allocations table structure already implemented
+- requirementId/allocationId threading already implemented
+- canonical materialId and BOQ-item threading already implemented
+- fail-fast requirement-creation behaviour already implemented
+- PI linked-requirement chip already implemented
+- softened “potential stock elsewhere” wording already implemented
+- submitPurchaserAction business branches
+- placeOrderIndent business branches
+- recordDelivery
+- derivePiStatus
+- checkAndCompleteIndent
+- createDraftGrnFromPi
+- storesVerifyIrn and issue-recording business logic, except transaction-safe requirement synchronisation where already required
+- GRN finalisation
+- Admin override
+- PI-linked GRN skip-search logic
+- cancelStoreGrn, which remains a separate known defect
+- general manual multi-item PI/IRN creation
+- existing purchaser-action, receipt and PI-completion rules
+
+1. Add the actual receiving-location selector
+
+The current Work Demand confirmation dialog selects only destination type. It must also select the actual destination record.
+
+For destinationType = "hmp" or "rmc":
+
+- show a required Plant selector;
+- load rows from plant_settings;
+- filter by plant type wherever the existing plantType data supports it;
+- send destinationPlantId;
+- do not submit without a valid plant ID.
+
+For destinationType = "site":
+
+- show a required Site selector;
+- preselect the Work Programme project’s linked site only where the mapping is unambiguous;
+- keep the selected site visible for confirmation;
+- send destinationSiteId;
+- do not submit without a valid site ID.
+
+For destinationType = "store":
+
+- use the current implicit Central Store;
+- destinationPlantId and destinationSiteId must remain null;
+- do not invent a store-location table or destinationStoreId.
+
+The material procurement route may suggest destination type, but it must not silently submit the final receiving location.
+
+Acceptance:
+
+- HMP requirement stores a valid destinationPlantId.
+- RMC requirement stores a valid destinationPlantId.
+- Site requirement stores a valid destinationSiteId.
+- Store requirement stores neither plant nor site ID.
+- Missing or placeholder destination IDs are blocked in the UI and rejected by the server.
+
+2. Pass the correct required-by date
+
+ShortageRowResult currently has a month index but WorkDemand does not send a real requiredByDate.
+
+Use the existing monthIndexToDate() helper in shared/planningEngine.ts to attach a real calendar date to every shortage row.
+
+Send that value as requiredByDate when creating the Material Requirement.
+
+Rules:
+
+- use the relevant Work Programme month/period;
+- do not substitute today’s date;
+- do not leave requiredByDate null where the programme period is known;
+- continue sending canonical materialId, sourceBoqItemId, boqProjectId, quantity, UOM and destination details.
+
+3. Remove automatic allocation from requirement creation
+
+POST /api/material-requirements must create only the Material Requirement.
+
+Remove withAllocation/allocationQty handling from this endpoint and stop sending those fields from WorkDemand.tsx.
+
+Plain requirement creation must:
+
+- create no internal allocation;
+- create no procurement allocation;
+- set and return status = "awaiting_review";
+- show the user:
+  “Requirement created and sent for review.”
+
+A create-only user must not be able to authorise a PI or IRN allocation merely by raising a requirement.
+
+4. Repair and secure the dedicated allocation endpoint
+
+The dedicated endpoint:
+
+POST /api/material-requirements/:id/allocations
+
+must become the only path that creates an authorised allocation.
+
+Replace the non-existent assertAction call.
+
+Server-side permissions:
+
+For allocationType = "procurement":
+
+- enforce assertApprove(req, res, "purchase_indents_approve").
+
+For allocationType = "internal":
+
+- enforce assertApprove(req, res, "irn_approve").
+
+Use the real existing permission framework and valid permission keys.
+
+The server-side assertApprove check is authoritative on every request.
+
+Frontend visibility based on permissions is only a convenience and must not be treated as security.
+
+Request body:
+
+- allocationType: "internal" | "procurement"
+- authorizedQty
+- reason
+
+Validation:
+
+- authorizedQty > 0;
+- requirement exists;
+- requirement is not fulfilled, cancelled or closed;
+- authorizedQty does not exceed the unallocated balance;
+- combined active internal and procurement allocations do not exceed requiredQty;
+- reason is required for a split or any additional allocation;
+- allocation type uses the correct approval permission.
+
+Return clear API errors rather than a generic 500.
+
+5. Make allocation authorisation concurrency-safe
+
+Allocation creation must be transactional.
+
+Inside one database transaction:
+
+- lock the relevant material_requirements row;
+- reload the requirement after obtaining the lock;
+- calculate active allocation totals;
+- validate the new authorised quantity;
+- insert the allocation;
+- refresh requirement quantities/status;
+- commit together.
+
+Use the appropriate PostgreSQL row-locking pattern, such as SELECT ... FOR UPDATE, through the project’s existing database layer.
+
+This must prevent simultaneous internal and procurement authorisations from both passing stale balance checks and exceeding requiredQty.
+
+No allocation may be created outside this locked transactional path.
+
+6. Correct the Raise IRN / Raise PI behaviour
+
+When a user starts an action from Work Demand:
+
+First:
+
+- show the requirement confirmation dialog;
+- confirm material, quantity, UOM, required-by date and actual destination;
+- create one Material Requirement with status awaiting_review.
+
+After requirement creation:
+
+For users without the relevant approve permission:
+
+- do not create an allocation;
+- do not open the PI/IRN form;
+- show “Requirement created and sent for review.”
+
+For users with the relevant approve permission:
+
+- offer a clear second step:
+  - Authorise Internal Allocation; or
+  - Authorise Procurement Allocation;
+- show the authorised quantity and remaining unallocated balance;
+- call only the dedicated allocation endpoint;
+- after allocation succeeds, open the existing IRN or PI form with:
+  - requirementId;
+  - allocationId;
+  - canonical material ID;
+  - authorised quantity;
+  - UOM;
+  - project/site context.
+
+The generic requirement-create endpoint must never create or authorise an allocation.
+
+7. Implement one proper Raise Both split flow
+
+Replace the two independent full-quantity Raise IRN/Raise PI actions for raise_both with one action:
+
+“Review Internal + Purchase Split”
+
+The split dialog must show:
+
+- total required quantity;
+- potential stock elsewhere;
+- suggested internal quantity;
+- suggested procurement quantity;
+- editable internal quantity;
+- editable procurement quantity;
+- unallocated balance;
+- destination;
+- required-by date.
+
+Validation:
+
+- internalQty >= 0;
+- procurementQty >= 0;
+- at least one quantity must be greater than zero;
+- internalQty + procurementQty must not exceed requiredQty;
+- remaining unallocated quantity must be clearly shown;
+- each allocation must pass its own server-side permission check.
+
+Flow:
+
+- create one Material Requirement only;
+- create one internal allocation where internalQty > 0;
+- create one procurement allocation where procurementQty > 0;
+- both allocations must use the dedicated, locked and permission-gated allocation endpoint;
+- do not create two Material Requirements;
+- do not submit the full quantity twice;
+- allow the linked IRN and PI to be opened separately after their respective allocations succeed.
+
+Where the current user has only one of the two approval permissions:
+
+- allow only the allocation type they are authorised to approve;
+- leave the other portion awaiting review;
+- do not bypass the missing permission.
+
+Where the current user has neither approval permission:
+
+- create the requirement only;
+- show the suggested split for review;
+- create no authorised allocations.
+
+8. Generate clientRequestId per deliberate action
+
+Do not create clientRequestId once when the shortage-row component mounts.
+
+Generate a new UUID when the user opens a new Raise IRN, Raise PI or Review Split action.
+
+Rules:
+
+- retain that ID for retries of the same pending requirement-create request;
+- reuse it only when retrying that same action;
+- after successful creation, clear it;
+- when the dialog is closed and a genuinely new action is started, generate a new ID;
+- Raise IRN and a later Raise PI action must not accidentally share a stale key.
+
+Acceptance:
+
+- rapid double-click on one confirmation creates one requirement;
+- retrying the same network request returns the same requirement;
+- closing and later starting a new action generates a new requirement request;
+- no stale row-level ID deduplicates a separate legitimate action.
+
+9. Make PI/IRN linkage truly transactional
+
+The current linked PI/IRN creation uses a transaction, but these helpers use the module-level db and escape the transaction:
+
+- linkAllocationToDocument
+- updateRequirementProcurementRequested
+- updateRequirementInternallyAllocated
+- _refreshRequirementDerivedQty
+- any requirement-status helper called during the same create flow
+
+Refactor these helpers to accept a database executor or transaction parameter.
+
+When createPurchaseIndent or createInternalRequisition runs inside tx, all of the following must use that same tx:
+
+- insert document header;
+- insert document item;
+- store requirementId;
+- store allocationId;
+- link allocation to document;
+- update procurementRequestedQty or internallyAllocatedQty;
+- refresh derived quantities;
+- refresh requirement status.
+
+If any step fails:
+
+- roll back the document;
+- roll back the allocation link;
+- roll back requirement quantity/status changes.
+
+Do not leave:
+
+- a PI/IRN without its allocation link;
+- a linked allocation pointing to a rolled-back document;
+- requirement quantities updated for a failed document.
+
+Manual unlinked PI/IRN creation must remain unchanged.
+
+10. Validate exact material identity
+
+For every requirement-linked PI or IRN, fetch the parent material_requirements row through the allocation/requirement link.
+
+Validate:
+
+For materialType = "plant_material":
+
+- the PI/IRN item materialId must exactly equal requirement.materialId;
+- storeItemId must be null where applicable.
+
+For materialType = "store_item":
+
+- the item storeItemId must exactly equal requirement.storeItemId;
+- materialId must be null where applicable.
+
+Also validate:
+
+- exactly one item;
+- allocation belongs to the requirement;
+- allocation type matches document type:
+  - internal allocation → IRN;
+  - procurement allocation → PI;
+- allocation status is authorised and unused;
+- item quantity does not exceed authorizedQty;
+- item UOM is compatible with the requirement UOM using the existing canonical UOM normalisation;
+- no unrelated extra item is present.
+
+Do not rely on description or material-name matching.
+
+Return clear errors:
+
+- MATERIAL_MISMATCH
+- REQUIREMENT_ITEM_MISMATCH
+- REQUIREMENT_UOM_MISMATCH
+- ALLOCATION_DOCUMENT_TYPE_MISMATCH
+- ALLOCATION_QUANTITY_EXCEEDED
+- ALLOCATION_ALREADY_LINKED
+- REQUIREMENT_FULLY_ALLOCATED
+
+11. Preserve the confirmed advisory stock wording
+
+Keep stock elsewhere advisory, not guaranteed.
+
+Use wording such as:
+
+- “Potential stock available elsewhere — confirm for transfer”
+- “Suggested internal transfer: X”
+- “Suggested procurement balance: Y”
+- “Review split: internal transfer + purchase”
+
+The planning engine may suggest quantities, but only an authorised allocation confirms them.
+
+12. Error handling
+
+Use the shared API error parser where available.
+
+Show the real server error for:
+
+- destination validation;
+- requirement creation;
+- allocation authorisation;
+- linked PI/IRN creation;
+- material mismatch;
+- allocation excess;
+- transaction failure.
+
+Do not silently:
+
+- navigate without a requirement;
+- continue without an allocation;
+- swallow permission failures;
+- swallow transaction failures;
+- create an orphan PI/IRN;
+- create an unauthorised allocation.
+
+13. Backward compatibility
+
+Manual PI/IRN creation without requirementId/allocationId must remain exactly as today:
+
+- multi-item documents remain allowed;
+- no requirement allocation validation applies;
+- no forced Work Demand destination dialog applies;
+- existing purchaser-action, order, receipt and completion logic remains unchanged.
+
+Acceptance tests
+
+A. Destination IDs
+
+- HMP requirement succeeds with a valid destinationPlantId.
+- RMC requirement succeeds with a valid destinationPlantId.
+- Site requirement succeeds with a valid destinationSiteId.
+- Store requirement succeeds with neither destination ID.
+- Missing required destination ID is blocked by the UI and rejected by the API.
+
+B. Required-by date
+
+- Every WorkDemand-originated requirement has requiredByDate.
+- The date comes from the relevant Work Programme month/period.
+- Today’s date is not substituted.
+- The date is visible when the requirement is reviewed.
+
+C. Create-only user
+
+- User with site_procurement create permission can create a requirement.
+- Requirement status is awaiting_review.
+- No allocation is created.
+- No PI/IRN form opens.
+- Direct call to the allocation endpoint is rejected without the relevant approve permission.
+
+D. Procurement approver
+
+- PM/Admin explicitly authorises procurement allocation through the dedicated endpoint.
+- Server enforces purchase_indents_approve.
+- PI opens with requirementId and allocationId.
+- PI creation increases procurementRequestedQty only.
+- orderedQty remains zero until the existing purchaser action later records Ordered or Already Purchased.
+
+E. Internal approver
+
+- PM/Admin explicitly authorises internal allocation through the dedicated endpoint.
+- Server enforces irn_approve.
+- IRN opens with requirementId and allocationId.
+- IRN creation increases internallyAllocatedQty only.
+- internallyIssuedQty remains zero until the existing verify/issue flow records actual commitment/issue.
+
+F. Raise Both
+
+- Required quantity: 1,000.
+- Suggested internal quantity: 300.
+- Suggested procurement quantity: 700.
+- One Material Requirement is created.
+- One internal allocation for 300 is created after IRN approval permission.
+- One procurement allocation for 700 is created after PI approval permission.
+- Both linked documents may coexist.
+- Combined active allocations cannot exceed 1,000.
+- The full 1,000 is not allocated twice.
+
+G. Concurrency
+
+- Run simultaneous internal and procurement allocation requests against the same remaining balance.
+- Requirement row locking allows only quantities within requiredQty.
+- One request is rejected where both would otherwise exceed the balance.
+- No over-allocation remains in the database.
+
+H. Client idempotency
+
+- Rapid double-click creates one requirement.
+- Retry with the same clientRequestId returns the existing requirement.
+- A separate later action gets a new clientRequestId.
+- No stale row-level ID suppresses a legitimate later action.
+
+I. Transaction rollback
+
+- Force a failure after the PI/IRN header insert but before allocation linkage completes.
+- No document remains.
+- No allocation link remains.
+- No requirement quantity/status update remains.
+- Successful creation commits all related changes together.
+
+J. Material validation
+
+- Correct plant material succeeds.
+- Wrong materialId is rejected.
+- Correct Store Catalogue item succeeds through API/database test.
+- Wrong storeItemId is rejected.
+- Extra unrelated item is rejected.
+- UOM mismatch is rejected clearly.
+- Allocation type/document mismatch is rejected.
+
+K. Regression
+
+Confirm unchanged and passing:
+
+- manual multi-item PI creation;
+- manual multi-item IRN creation;
+- Ordered versus Already Purchased;
+- submitPurchaserAction;
+- placeOrderIndent;
+- recordDelivery;
+- partial delivery and balance handling;
+- derivePiStatus;
+- checkAndCompleteIndent;
+- storesVerifyIrn;
+- issue recording;
+- GRN finalisation;
+- Admin override;
+- PI-linked GRN skip-search.
+
+Do not start Instruction 017, Tomorrow’s Plan integration, Site Material Received linkage, Stores Hub redesign or receipt-driven Material Requirement fulfilment until Instruction 016B passes all acceptance tests.

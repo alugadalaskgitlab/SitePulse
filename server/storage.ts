@@ -1182,12 +1182,19 @@ export interface IStorage {
   createMaterialRequirementAllocation(data: InsertMaterialRequirementAllocation): Promise<MaterialRequirementAllocation>;
   getMaterialRequirementAllocation(id: number): Promise<MaterialRequirementAllocation | undefined>;
   listMaterialRequirementAllocations(requirementId: number): Promise<MaterialRequirementAllocation[]>;
-  linkAllocationToDocument(allocationId: number, documentType: "irn" | "pi", documentId: number): Promise<void>;
+  linkAllocationToDocument(allocationId: number, documentType: "irn" | "pi", documentId: number, _db?: any): Promise<void>;
   commitAllocationQty(allocationId: number, committedQtyDelta: number): Promise<void>;
   issueAllocationQty(allocationId: number, issuedQtyDelta: number): Promise<void>;
   // Narrow qty updaters (new clear-semantics fields)
-  updateRequirementProcurementRequested(requirementId: number, delta: number): Promise<void>;
-  updateRequirementInternallyAllocated(requirementId: number, delta: number): Promise<void>;
+  updateRequirementProcurementRequested(requirementId: number, delta: number, _db?: any): Promise<void>;
+  updateRequirementInternallyAllocated(requirementId: number, delta: number, _db?: any): Promise<void>;
+  createMaterialRequirementAllocationSafe(params: {
+    requirementId: number;
+    allocationType: "internal" | "procurement";
+    authorizedQty: number;
+    authorizedByUserId: number | null;
+    reason: string | null;
+  }): Promise<MaterialRequirementAllocation>;
   updateRequirementOrderedQty(requirementId: number, delta: number): Promise<void>;
   updateRequirementInternallyIssued(requirementId: number, delta: number): Promise<void>;
   submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
@@ -9653,13 +9660,27 @@ export class DatabaseStorage implements IStorage {
         if (!allocationId) throw new Error("allocationId is required when requirementId is set");
         const alloc = await this.getMaterialRequirementAllocation(allocationId);
         if (!alloc) throw new Error(`Allocation ${allocationId} not found`);
-        if (alloc.requirementId !== requirementId) throw new Error("Allocation does not belong to this requirement");
-        if (alloc.allocationType !== "procurement") throw new Error("Allocation type must be 'procurement' for PI");
-        if (alloc.status !== "authorized") throw new Error(`Allocation is ${alloc.status}, not authorized`);
-        if (alloc.linkedDocumentId) throw new Error("Allocation is already linked to another document");
+        if (alloc.requirementId !== requirementId) throw new Error("ALLOCATION_ALREADY_LINKED: Allocation does not belong to this requirement");
+        if (alloc.allocationType !== "procurement") throw new Error("ALLOCATION_DOCUMENT_TYPE_MISMATCH: Allocation type must be 'procurement' for PI");
+        if (alloc.status !== "authorized") throw new Error(`ALLOCATION_ALREADY_LINKED: Allocation is ${alloc.status}, not authorized`);
+        if (alloc.linkedDocumentId) throw new Error("ALLOCATION_ALREADY_LINKED: Allocation is already linked to another document");
         const itemQty = data.items?.reduce((s, i) => s + (i.qty ?? 0), 0) ?? 0;
-        if (data.items && data.items.length !== 1) throw new Error("Requirement-linked PI must have exactly one item");
-        if (itemQty > (alloc.authorizedQty ?? 0) + 0.001) throw new Error(`Item qty ${itemQty} exceeds allocation authorized qty ${alloc.authorizedQty}`);
+        if (data.items && data.items.length !== 1) throw new Error("REQUIREMENT_ITEM_MISMATCH: Requirement-linked PI must have exactly one item");
+        if (itemQty > (alloc.authorizedQty ?? 0) + 0.001) throw new Error(`ALLOCATION_QUANTITY_EXCEEDED: Item qty ${itemQty} exceeds allocation authorized qty ${alloc.authorizedQty}`);
+        // Validate exact material identity against requirement
+        const req = await db.select().from(materialRequirements).where(eq(materialRequirements.id, requirementId)).limit(1).then(r => r[0]);
+        if (req) {
+          const piItem = data.items?.[0];
+          if (req.materialType === "plant_material" && piItem?.materialId) {
+            if (Number(piItem.materialId) !== Number(req.materialId)) {
+              throw new Error(`MATERIAL_MISMATCH: PI item materialId (${piItem.materialId}) does not match requirement materialId (${req.materialId})`);
+            }
+          }
+          const normalise = normaliseUnit;
+          if (piItem?.uom && normalise(piItem.uom) !== normalise(req.uom)) {
+            throw new Error(`REQUIREMENT_UOM_MISMATCH: PI item UOM (${piItem.uom}) is incompatible with requirement UOM (${req.uom})`);
+          }
+        }
       }
 
       const [indent] = await tx.insert(purchaseIndents).values({
@@ -9677,12 +9698,12 @@ export class DatabaseStorage implements IStorage {
         ...(allocationId ? { allocationId } : {}),
       }).returning();
 
-      // Link allocation + update requirement quantities
+      // Link allocation + update requirement quantities — all inside the same tx
       if (requirementId && allocationId) {
         const totalQty = data.items?.reduce((sum, i) => sum + (i.qty ?? 0), 0) ?? 0;
-        await this.linkAllocationToDocument(allocationId, "pi", indent.id);
+        await this.linkAllocationToDocument(allocationId, "pi", indent.id, tx);
         if (totalQty > 0) {
-          await this.updateRequirementProcurementRequested(requirementId, totalQty);
+          await this.updateRequirementProcurementRequested(requirementId, totalQty, tx);
         }
       }
 
@@ -11052,6 +11073,8 @@ export class DatabaseStorage implements IStorage {
     }
     const [row] = await db.insert(materialRequirements).values({
       ...data,
+      // Work Demand requirements start as awaiting_review; manual entry keeps whatever status is passed
+      status: data.status ?? "awaiting_review",
       balanceQty: data.requiredQty,
       unallocatedBalanceQty: data.requiredQty,
       physicallyUnfulfilledQty: data.requiredQty,
@@ -11090,10 +11113,68 @@ export class DatabaseStorage implements IStorage {
       .where(eq(materialRequirementAllocations.requirementId, requirementId));
   }
 
-  async linkAllocationToDocument(allocationId: number, documentType: "irn" | "pi", documentId: number): Promise<void> {
-    await db.update(materialRequirementAllocations)
+  async linkAllocationToDocument(allocationId: number, documentType: "irn" | "pi", documentId: number, _db: any = db): Promise<void> {
+    await _db.update(materialRequirementAllocations)
       .set({ linkedDocumentType: documentType, linkedDocumentId: documentId, linkedAt: new Date(), status: "linked" })
       .where(eq(materialRequirementAllocations.id, allocationId));
+  }
+
+  /** Concurrency-safe allocation creation: locks the requirement row with SELECT FOR UPDATE
+   *  so simultaneous authorisations cannot both pass stale balance checks. */
+  async createMaterialRequirementAllocationSafe(params: {
+    requirementId: number;
+    allocationType: "internal" | "procurement";
+    authorizedQty: number;
+    authorizedByUserId: number | null;
+    reason: string | null;
+  }): Promise<MaterialRequirementAllocation> {
+    return await db.transaction(async (tx) => {
+      // Lock the requirement row to prevent concurrent over-allocation
+      const locked = await tx.execute(sql`
+        SELECT id, required_qty, status
+        FROM material_requirements
+        WHERE id = ${params.requirementId}
+        FOR UPDATE
+      `);
+      const reqRow = locked.rows?.[0] as { id: number; required_qty: string | number; status: string } | undefined;
+      if (!reqRow) throw new Error("REQUIREMENT_NOT_FOUND: Requirement not found");
+
+      const terminalStatuses = ["cancelled", "fulfilled", "closed"];
+      if (terminalStatuses.includes(reqRow.status)) {
+        throw new Error(`REQUIREMENT_FULLY_ALLOCATED: Cannot allocate against a ${reqRow.status} requirement`);
+      }
+      const requiredQty = Number(reqRow.required_qty);
+
+      // Recount active allocations inside the lock
+      const activeAllocs = await tx
+        .select({ authorizedQty: materialRequirementAllocations.authorizedQty })
+        .from(materialRequirementAllocations)
+        .where(
+          and(
+            eq(materialRequirementAllocations.requirementId, params.requirementId),
+            sql`${materialRequirementAllocations.status} != 'cancelled'`,
+          ),
+        );
+      const activeTotal = activeAllocs.reduce((s, a) => s + (a.authorizedQty ?? 0), 0);
+      if (activeTotal + params.authorizedQty > requiredQty + 0.001) {
+        throw new Error(`REQUIREMENT_FULLY_ALLOCATED: Combined allocation (${(activeTotal + params.authorizedQty).toFixed(3)}) would exceed required qty (${requiredQty})`);
+      }
+
+      // Insert the allocation
+      const [allocation] = await tx.insert(materialRequirementAllocations).values({
+        requirementId: params.requirementId,
+        allocationType: params.allocationType,
+        authorizedQty: params.authorizedQty,
+        authorizedByUserId: params.authorizedByUserId,
+        status: "authorized",
+        reason: params.reason,
+      }).returning();
+
+      // Refresh derived quantities / status inside the same transaction
+      await this._refreshRequirementDerivedQty(params.requirementId, tx);
+
+      return allocation;
+    });
   }
 
   async commitAllocationQty(allocationId: number, committedQtyDelta: number): Promise<void> {
@@ -11120,8 +11201,8 @@ export class DatabaseStorage implements IStorage {
 
   // ── Clear-semantics qty updaters ───────────────────────────────────────────
 
-  private async _refreshRequirementDerivedQty(id: number): Promise<void> {
-    const [r] = await db.select().from(materialRequirements).where(eq(materialRequirements.id, id)).limit(1);
+  private async _refreshRequirementDerivedQty(id: number, _db: any = db): Promise<void> {
+    const [r] = await _db.select().from(materialRequirements).where(eq(materialRequirements.id, id)).limit(1);
     if (!r) return;
     const totalAllocated = (r.internallyAllocatedQty ?? 0) + (r.procurementRequestedQty ?? 0);
     const unallocated = Math.max(0, r.requiredQty - totalAllocated);
@@ -11138,27 +11219,27 @@ export class DatabaseStorage implements IStorage {
       receivedQty: r.receivedQty ?? 0,
       status: r.status,
     });
-    await db.update(materialRequirements)
+    await _db.update(materialRequirements)
       .set({ unallocatedBalanceQty: unallocated, physicallyUnfulfilledQty: unfulfilled, balanceQty: legacyBalance, status: newStatus })
       .where(eq(materialRequirements.id, id));
   }
 
-  async updateRequirementProcurementRequested(requirementId: number, delta: number): Promise<void> {
-    const [r] = await db.select().from(materialRequirements).where(eq(materialRequirements.id, requirementId)).limit(1);
+  async updateRequirementProcurementRequested(requirementId: number, delta: number, _db: any = db): Promise<void> {
+    const [r] = await _db.select().from(materialRequirements).where(eq(materialRequirements.id, requirementId)).limit(1);
     if (!r) return;
-    await db.update(materialRequirements)
+    await _db.update(materialRequirements)
       .set({ procurementRequestedQty: Math.max(0, (r.procurementRequestedQty ?? 0) + delta) })
       .where(eq(materialRequirements.id, requirementId));
-    await this._refreshRequirementDerivedQty(requirementId);
+    await this._refreshRequirementDerivedQty(requirementId, _db);
   }
 
-  async updateRequirementInternallyAllocated(requirementId: number, delta: number): Promise<void> {
-    const [r] = await db.select().from(materialRequirements).where(eq(materialRequirements.id, requirementId)).limit(1);
+  async updateRequirementInternallyAllocated(requirementId: number, delta: number, _db: any = db): Promise<void> {
+    const [r] = await _db.select().from(materialRequirements).where(eq(materialRequirements.id, requirementId)).limit(1);
     if (!r) return;
-    await db.update(materialRequirements)
+    await _db.update(materialRequirements)
       .set({ internallyAllocatedQty: Math.max(0, (r.internallyAllocatedQty ?? 0) + delta) })
       .where(eq(materialRequirements.id, requirementId));
-    await this._refreshRequirementDerivedQty(requirementId);
+    await this._refreshRequirementDerivedQty(requirementId, _db);
   }
 
   async updateRequirementOrderedQty(requirementId: number, delta: number): Promise<void> {
@@ -21201,13 +21282,27 @@ export class DatabaseStorage implements IStorage {
         if (!irnAllocationId) throw new Error("allocationId is required when requirementId is set");
         const alloc = await this.getMaterialRequirementAllocation(irnAllocationId);
         if (!alloc) throw new Error(`Allocation ${irnAllocationId} not found`);
-        if (alloc.requirementId !== irnRequirementId) throw new Error("Allocation does not belong to this requirement");
-        if (alloc.allocationType !== "internal") throw new Error("Allocation type must be 'internal' for IRN");
-        if (alloc.status !== "authorized") throw new Error(`Allocation is ${alloc.status}, not authorized`);
-        if (alloc.linkedDocumentId) throw new Error("Allocation is already linked to another document");
+        if (alloc.requirementId !== irnRequirementId) throw new Error("ALLOCATION_ALREADY_LINKED: Allocation does not belong to this requirement");
+        if (alloc.allocationType !== "internal") throw new Error("ALLOCATION_DOCUMENT_TYPE_MISMATCH: Allocation type must be 'internal' for IRN");
+        if (alloc.status !== "authorized") throw new Error(`ALLOCATION_ALREADY_LINKED: Allocation is ${alloc.status}, not authorized`);
+        if (alloc.linkedDocumentId) throw new Error("ALLOCATION_ALREADY_LINKED: Allocation is already linked to another document");
         const itemQty = data.items?.reduce((s, i) => s + (i.qty ?? 0), 0) ?? 0;
-        if (data.items && data.items.length !== 1) throw new Error("Requirement-linked IRN must have exactly one item");
-        if (itemQty > (alloc.authorizedQty ?? 0) + 0.001) throw new Error(`Item qty ${itemQty} exceeds allocation authorized qty ${alloc.authorizedQty}`);
+        if (data.items && data.items.length !== 1) throw new Error("REQUIREMENT_ITEM_MISMATCH: Requirement-linked IRN must have exactly one item");
+        if (itemQty > (alloc.authorizedQty ?? 0) + 0.001) throw new Error(`ALLOCATION_QUANTITY_EXCEEDED: Item qty ${itemQty} exceeds allocation authorized qty ${alloc.authorizedQty}`);
+        // Validate exact material identity against requirement
+        const req = await db.select().from(materialRequirements).where(eq(materialRequirements.id, irnRequirementId)).limit(1).then(r => r[0]);
+        if (req) {
+          const irnItem = data.items?.[0];
+          if (req.materialType === "plant_material" && irnItem?.materialId) {
+            if (Number(irnItem.materialId) !== Number(req.materialId)) {
+              throw new Error(`MATERIAL_MISMATCH: IRN item materialId (${irnItem.materialId}) does not match requirement materialId (${req.materialId})`);
+            }
+          }
+          const normalise = normaliseUnit;
+          if (irnItem?.uom && normalise(irnItem.uom) !== normalise(req.uom)) {
+            throw new Error(`REQUIREMENT_UOM_MISMATCH: IRN item UOM (${irnItem.uom}) is incompatible with requirement UOM (${req.uom})`);
+          }
+        }
       }
 
       const [irn] = await tx
@@ -21226,12 +21321,12 @@ export class DatabaseStorage implements IStorage {
         })
         .returning();
 
-      // Link allocation + update requirement quantities
+      // Link allocation + update requirement quantities — all inside the same tx
       if (irnRequirementId && irnAllocationId) {
         const totalQty = data.items?.reduce((sum, i) => sum + (i.qty ?? 0), 0) ?? 0;
-        await this.linkAllocationToDocument(irnAllocationId, "irn", irn.id);
+        await this.linkAllocationToDocument(irnAllocationId, "irn", irn.id, tx);
         if (totalQty > 0) {
-          await this.updateRequirementInternallyAllocated(irnRequirementId, totalQty);
+          await this.updateRequirementInternallyAllocated(irnRequirementId, totalQty, tx);
         }
       }
 

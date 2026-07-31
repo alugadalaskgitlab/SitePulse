@@ -20,7 +20,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, type LayerConfig } from "@shared/planningEngine";
+import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, type LayerConfig } from "@shared/planningEngine";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
 import { classifyWorkType, STANDARD_CONCRETE_DESIGNS, isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
@@ -11842,10 +11842,20 @@ export async function registerRoutes(
       // Sort: near-term/actionable shortage first, then aggregate shortage, then adequate
       shortageRows.sort((a, b) => (b.nearTermShortfall - a.nearTermShortfall) || (b.shortfall - a.shortfall));
 
+      // Attach requiredByDate: the real calendar date of the first month where this material has a shortfall.
+      // Uses the Work Programme project start date so the date is always programme-relative, never today.
+      const enrichedRows = shortageRows.map(row => {
+        const firstShortfallMonth = row.monthlyBreakdown.find(mb => mb.shortfall > 0)?.month ?? null;
+        const requiredByDate = (firstShortfallMonth && project.startDate)
+          ? monthIndexToDate(firstShortfallMonth, project.startDate).toISOString().split("T")[0]
+          : null;
+        return { ...row, requiredByDate };
+      });
+
       res.json({
         projectId,
         projectName: project.name,
-        rows: shortageRows,
+        rows: enrichedRows,
         hasBars: bars.length > 0,
         hasRecipes: expandedItems.some(it => it.materials.length > 0),
         currentMonth,
@@ -11867,8 +11877,6 @@ export async function registerRoutes(
         materialType, materialId, storeItemId,
         clientRequestId,
         remarks,
-        // Auto-create an allocation in the same call when the requester has the right permission
-        withAllocation, allocationQty,
       } = req.body;
 
       if (!requiredQty || Number(requiredQty) <= 0) return res.status(400).json({ message: "requiredQty must be > 0" });
@@ -11911,28 +11919,15 @@ export async function registerRoutes(
         procurementRequestedQty: 0,
         unallocatedBalanceQty: Number(requiredQty),
         physicallyUnfulfilledQty: Number(requiredQty),
-        status: "raised",
+        status: "awaiting_review",
         createdByUserId: userId ?? null,
         remarks: remarks ?? null,
       });
 
-      // Auto-create allocation if requested (requester is PM/procurement manager)
-      let allocation = null;
-      if (withAllocation && allocationQty && Number(allocationQty) > 0) {
-        const allocType = withAllocation; // "internal" | "procurement"
-        if (allocType === "procurement" || allocType === "internal") {
-          allocation = await storage.createMaterialRequirementAllocation({
-            requirementId: req_record.id,
-            allocationType: allocType,
-            authorizedQty: Number(allocationQty),
-            authorizedByUserId: userId ?? null,
-            status: "authorized",
-            reason: "Auto-authorized from Work Programme",
-          });
-        }
-      }
-
-      res.status(201).json({ ...req_record, allocation });
+      // Requirement creation only — no auto-allocation.
+      // Allocation authorisation is a separate step via POST /api/material-requirements/:id/allocations
+      // requiring the appropriate approve permission.
+      res.status(201).json(req_record);
     } catch (err) {
       console.error("POST /api/material-requirements:", err);
       res.status(500).json({ message: "Failed to create material requirement" });
@@ -11951,11 +11946,13 @@ export async function registerRoutes(
     }
   });
 
-  // Allocation sub-resource
+  // Allocation sub-resource — the ONLY path that creates an authorised allocation.
+  // Uses a locked database transaction to prevent concurrent over-allocation.
   app.post("/api/material-requirements/:id/allocations", async (req, res) => {
     try {
       const requirementId = Number(req.params.id);
       const { allocationType, authorizedQty, reason } = req.body;
+
       if (!allocationType || !["internal", "procurement"].includes(allocationType)) {
         return res.status(400).json({ message: "allocationType must be 'internal' or 'procurement'" });
       }
@@ -11963,39 +11960,51 @@ export async function registerRoutes(
         return res.status(400).json({ message: "authorizedQty must be > 0" });
       }
 
-      // Permission check
-      const sectionKey = allocationType === "procurement" ? "purchase_indents" : "irn";
-      const actionKey = "approve";
-      if (!assertAction(req, res, sectionKey, actionKey)) return;
+      // Enforce the correct approve permission for each allocation type.
+      // Server-side check is authoritative — frontend visibility is a convenience only.
+      if (allocationType === "procurement") {
+        if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      } else {
+        if (!assertApprove(req, res, "irn_approve")) return;
+      }
 
+      // Validate that the requirement exists and is not in a terminal state.
+      // The transactional method does a final locked re-check inside the DB transaction.
       const req_record = await storage.getMaterialRequirement(requirementId);
       if (!req_record) return res.status(404).json({ message: "Requirement not found" });
-      if (req_record.status === "cancelled" || req_record.status === "fulfilled") {
+      const terminalStatuses = ["cancelled", "fulfilled", "closed"];
+      if (terminalStatuses.includes(req_record.status ?? "")) {
         return res.status(400).json({ message: `Cannot allocate against a ${req_record.status} requirement` });
       }
 
-      // Check combined active allocation does not exceed requiredQty
+      // Additional allocation requires a reason (split or supplementary)
       const existingAllocs = await storage.listMaterialRequirementAllocations(requirementId);
-      const activeTotal = existingAllocs
-        .filter(a => !["cancelled"].includes(a.status))
-        .reduce((s, a) => s + (a.authorizedQty ?? 0), 0);
-      if (activeTotal + Number(authorizedQty) > (req_record.requiredQty ?? 0) + 0.001) {
-        return res.status(400).json({ message: `Combined allocation (${activeTotal + Number(authorizedQty)}) would exceed required qty (${req_record.requiredQty})` });
+      const hasExistingActive = existingAllocs.some(a => a.status !== "cancelled");
+      if (hasExistingActive && !reason) {
+        return res.status(400).json({ message: "reason is required when adding an additional allocation to an existing requirement" });
       }
 
       const userId = req.authUser?.id;
-      const allocation = await storage.createMaterialRequirementAllocation({
+      // createMaterialRequirementAllocationSafe uses SELECT FOR UPDATE — concurrency-safe
+      const allocation = await storage.createMaterialRequirementAllocationSafe({
         requirementId,
         allocationType,
         authorizedQty: Number(authorizedQty),
         authorizedByUserId: userId ?? null,
-        status: "authorized",
         reason: reason ?? null,
       });
       res.status(201).json(allocation);
-    } catch (err) {
+    } catch (err: any) {
       console.error("POST /api/material-requirements/:id/allocations:", err);
-      res.status(500).json({ message: "Failed to create allocation" });
+      // Propagate named error codes clearly to the client
+      const msg = err.message ?? "Failed to create allocation";
+      const isKnownError = [
+        "REQUIREMENT_FULLY_ALLOCATED",
+        "REQUIREMENT_NOT_FOUND",
+        "MATERIAL_MISMATCH",
+        "ALLOCATION_ALREADY_LINKED",
+      ].some(code => msg.startsWith(code));
+      res.status(isKnownError ? 400 : 500).json({ message: msg });
     }
   });
 
