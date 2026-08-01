@@ -1922,16 +1922,44 @@ export interface ShortageMonthlyBreakdown {
   isCurrentOrPast: boolean;
 }
 
-export type ShortageSuggestion = "adequate" | "monitor" | "raise_irn" | "raise_pi" | "raise_both";
+export type ShortageSuggestion =
+  | "adequate"
+  | "adequate_selected_horizon"
+  | "monitor"
+  | "raise_irn"
+  | "raise_pi"
+  | "raise_both"
+  | "review_hlc_stock"
+  | "review_internal_issue"
+  | "resolve_mapping";
 
 export interface ShortageRowResult {
   materialName: string;
   uom: string;
+  /** Total demand across the full Work Programme (all months). */
   totalDemand: number;
+  /** Cumulative demand up to and including the selected horizon month. */
+  demandUpToSelectedDate: number;
+  /** max(0, totalDemand − demandUpToSelectedDate) — future pipeline after horizon. */
+  futureRequirement: number;
   monthlyDemand: Record<number, number>;
+  /** @deprecated use hlcRecordedStock */
   currentStock: number;
+  /** Stock held under HLC/company custody (partyId IS NULL in stock_balances). */
+  hlcRecordedStock: number;
+  /** Stock with external parties — informational only, not auto-deducted. */
+  stockWithOtherParties: number;
   stockMatched: boolean;
+  /** @deprecated use confirmedIncomingPurchase */
   pendingProcurement: number;
+  /** Only real operational purchase commitments (ordered/purchased-awaiting-receipt). */
+  confirmedIncomingPurchase: number;
+  /** Stores-committed IRN balance (stores_verified stage only). */
+  confirmedInternalIncoming: number;
+  /** hlcRecordedStock + confirmedIncomingPurchase + confirmedInternalIncoming */
+  usableCommittedCoverage: number;
+  /** max(0, demandUpToSelectedDate − usableCommittedCoverage) */
+  actionableShortfall: number;
   shortfall: number;
   nearTermShortfall: number;
   monthlyBreakdown: ShortageMonthlyBreakdown[];
@@ -1940,17 +1968,53 @@ export interface ShortageRowResult {
   materialId: number | null;
   /** Primary BOQ item driving this demand */
   sourceBoqItemId: number | null;
-  /** Quantity of this material available at non-local parties (potential IRN source) */
+  /** @deprecated use stockWithOtherParties */
   stockElsewhere: number;
-  /** ISO date (YYYY-MM-DD) when this material is first needed (first shortage month) */
+  /** Whether the BOQ item has at least one Work Programme bar. */
+  isProgrammed: boolean;
+  /** True when no canonical materialId was resolved from the mapping table or master. */
+  materialMappingUnresolved: boolean;
+  /** ISO date (YYYY-MM-DD) — first programme month where this material has a shortfall. */
   requiredByDate: string | null;
 }
 
 /**
- * Computes a single material's time-phased shortage row: current stock +
- * pending PI/IRN procurement is drawn down month-by-month against demand
- * (chronological running balance), then netted against total demand to
- * classify a suggested action. Never mutates any input.
+ * Extended options for the v2 procurement intelligence path (Instruction 017).
+ * All fields are optional so existing callers without opts still work.
+ */
+export interface ShortageRowOpts {
+  /** Programme month index (1-based) up to which demandUpToSelectedDate is computed. */
+  horizonMonthIndex?: number;
+  /** Project start date for requiredByDate derivation — no longer bolt-on in route. */
+  projectStartDate?: string | null;
+  /** Stock held by HLC/company (partyId IS NULL) — replaces positional currentStock. */
+  hlcRecordedStock?: number;
+  /** Stock with external parties — informational, never auto-deducted from shortfall. */
+  stockWithOtherParties?: number;
+  /** Confirmed purchase incoming (ORDERED/PURCHASED-awaiting-receipt items only). */
+  confirmedIncomingPurchase?: number;
+  /** Confirmed internal incoming (stores_verified IRN balance only). */
+  confirmedInternalIncoming?: number;
+  /** Whether the BOQ item has at least one Work Programme bar. */
+  isProgrammed?: boolean;
+  /** True when no canonical materialId was found for this BOM label. */
+  materialMappingUnresolved?: boolean;
+}
+
+/**
+ * Computes a single material's time-phased shortage row.
+ *
+ * Backward-compatible: all positional params are unchanged; existing test
+ * callers that omit `opts` continue to work and get the v1 suggestion logic.
+ *
+ * New callers (Instruction 017 route) pass `opts` to activate v2 behaviour:
+ *   – horizon-bounded demandUpToSelectedDate
+ *   – renamed/split stock and incoming fields
+ *   – new recommendation taxonomy (resolve_mapping, adequate_selected_horizon,
+ *     review_hlc_stock, review_internal_issue)
+ *   – requiredByDate derived here — no route-level mutation needed
+ *
+ * Never mutates any input.
  */
 export function computeShortageRow(
   matRow: ShortageMaterialDemand,
@@ -1958,7 +2022,8 @@ export function computeShortageRow(
   stockMatched: boolean,
   pendingProcurement: number,
   currentMonth: number,
-  stockElsewhere: number = 0, // stock at non-local parties that can be requested via IRN
+  stockElsewhere: number = 0,
+  opts?: ShortageRowOpts,
 ): ShortageRowResult {
   const months = Object.keys(matRow.monthlyQty).map(Number).sort((a, b) => a - b);
   let runningAvailable = currentStock + pendingProcurement;
@@ -1976,34 +2041,83 @@ export function computeShortageRow(
     .filter((mb) => mb.isCurrentOrPast)
     .reduce((sum, mb) => sum + mb.shortfall, 0);
 
+  // ── v2 extended fields (populated when opts is supplied) ─────────────────
+  const hlcRecordedStock = opts?.hlcRecordedStock ?? currentStock;
+  const stockWithOtherParties = opts?.stockWithOtherParties ?? stockElsewhere;
+  const confirmedIncomingPurchase = opts?.confirmedIncomingPurchase ?? pendingProcurement;
+  const confirmedInternalIncoming = opts?.confirmedInternalIncoming ?? 0;
+  const isProgrammed = opts?.isProgrammed ?? true;
+  const materialMappingUnresolved = opts?.materialMappingUnresolved ?? (matRow.materialId == null);
+
+  // Demand up to the horizon month (cumulative sum of months ≤ horizonIdx)
+  const horizonIdx = opts?.horizonMonthIndex ?? (months.length ? Math.max(...months) : currentMonth);
+  const demandUpToSelectedDate = months
+    .filter(m => m <= horizonIdx)
+    .reduce((sum, m) => sum + (matRow.monthlyQty[m] ?? 0), 0);
+  const futureRequirement = Math.max(0, matRow.totalQty - demandUpToSelectedDate);
+
+  const usableCommittedCoverage = hlcRecordedStock + confirmedIncomingPurchase + confirmedInternalIncoming;
+  const actionableShortfall = Math.max(0, demandUpToSelectedDate - usableCommittedCoverage);
+
+  // requiredByDate — derived here so no route-level mutation is needed (Instruction 017 §16)
+  let requiredByDate: string | null = null;
+  if (opts?.projectStartDate) {
+    const firstShortfallMonth = monthlyBreakdown.find(mb => mb.shortfall > 0)?.month ?? null;
+    if (firstShortfallMonth) {
+      requiredByDate = monthIndexToDate(firstShortfallMonth, opts.projectStartDate)
+        .toISOString().split("T")[0];
+    }
+  }
+
+  // ── Suggestion logic ─────────────────────────────────────────────────────
   let suggestion: ShortageSuggestion;
-  if (shortfall <= 0) {
-    suggestion = "adequate";
-  } else if (nearTermShortfall <= 0 && shortfall <= matRow.totalQty * 0.1) {
-    suggestion = "monitor";
-  } else if (stockElsewhere > 0) {
-    // Check how much of the shortfall can be covered by stock at other locations
-    const coverableByIrn = Math.min(stockElsewhere, shortfall);
-    const uncoveredByIrn = shortfall - coverableByIrn;
-    if (uncoveredByIrn > 0.001) {
-      // Partial coverage: transfer some internally + buy the rest
-      suggestion = "raise_both";
+  if (opts) {
+    // v2 logic — Instruction 017 §11
+    if (materialMappingUnresolved) {
+      suggestion = "resolve_mapping";
+    } else if (actionableShortfall <= 0) {
+      suggestion = "adequate_selected_horizon";
+    } else if (hlcRecordedStock <= 0) {
+      // No HLC stock at all — must purchase
+      suggestion = "raise_pi";
+    } else if (hlcRecordedStock >= demandUpToSelectedDate) {
+      // HLC stock alone covers horizon demand — review whether it can be issued
+      suggestion = "review_internal_issue";
     } else {
-      // Full coverage via internal transfer
-      suggestion = "raise_irn";
+      // Some HLC stock exists but not enough — review stock + purchase the balance
+      suggestion = "review_hlc_stock";
     }
   } else {
-    suggestion = "raise_pi";
+    // v1 backward-compatible logic — existing tests and legacy callers
+    if (shortfall <= 0) {
+      suggestion = "adequate";
+    } else if (nearTermShortfall <= 0 && shortfall <= matRow.totalQty * 0.1) {
+      suggestion = "monitor";
+    } else if (stockElsewhere > 0) {
+      const coverableByIrn = Math.min(stockElsewhere, shortfall);
+      const uncoveredByIrn = shortfall - coverableByIrn;
+      suggestion = uncoveredByIrn > 0.001 ? "raise_both" : "raise_irn";
+    } else {
+      suggestion = "raise_pi";
+    }
   }
 
   return {
     materialName: matRow.materialName,
     uom: matRow.uom,
     totalDemand: matRow.totalQty,
+    demandUpToSelectedDate,
+    futureRequirement,
     monthlyDemand: matRow.monthlyQty,
     currentStock,
+    hlcRecordedStock,
+    stockWithOtherParties,
     stockMatched,
     pendingProcurement,
+    confirmedIncomingPurchase,
+    confirmedInternalIncoming,
+    usableCommittedCoverage,
+    actionableShortfall,
     shortfall,
     nearTermShortfall,
     monthlyBreakdown,
@@ -2011,6 +2125,9 @@ export function computeShortageRow(
     materialId: matRow.materialId ?? null,
     sourceBoqItemId: matRow.sourceBoqItemId ?? null,
     stockElsewhere,
+    isProgrammed,
+    materialMappingUnresolved,
+    requiredByDate,
   };
 }
 

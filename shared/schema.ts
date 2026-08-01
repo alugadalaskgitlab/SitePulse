@@ -3404,3 +3404,23 @@ export const materialRequirementAllocations = pgTable("material_requirement_allo
 export const insertMaterialRequirementAllocationSchema = createInsertSchema(materialRequirementAllocations).omit({ id: true, createdAt: true, updatedAt: true });
 export type MaterialRequirementAllocation = typeof materialRequirementAllocations.$inferSelect;
 export type InsertMaterialRequirementAllocation = z.infer<typeof insertMaterialRequirementAllocationSchema>;
+
+// ── BOQ Material Mappings (Instruction 017) ───────────────────────────────────
+// Maps a BOM-derived material label (e.g. "Bitumen VG-30", "10mm Aggregate")
+// to a canonical plant_materials.id for procurement intelligence.
+// boqProjectId = null means the mapping is global (all projects).
+export const boqMaterialMappings = pgTable("boq_material_mappings", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id"),           // null = global
+  materialLabel: text("material_label").notNull(),    // normalised BOM label from planningEngine
+  materialId: integer("material_id").notNull(),       // canonical plant_materials.id
+  mappedByUserId: integer("mapped_by_user_id"),
+  mappedAt: timestamp("mapped_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  labelProjectUq: uniqueIndex("boq_material_mappings_label_project_uq").on(table.boqProjectId, table.materialLabel),
+}));
+
+export const insertBoqMaterialMappingSchema = createInsertSchema(boqMaterialMappings).omit({ id: true, createdAt: true, mappedAt: true });
+export type BoqMaterialMapping = typeof boqMaterialMappings.$inferSelect;
+export type InsertBoqMaterialMapping = z.infer<typeof insertBoqMaterialMappingSchema>;

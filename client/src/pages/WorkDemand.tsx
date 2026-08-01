@@ -1149,17 +1149,27 @@ interface ShortageRow {
   materialName: string;
   uom: string;
   totalDemand: number;
+  demandUpToSelectedDate: number;
+  futureRequirement: number;
   currentStock: number;
+  hlcRecordedStock: number;
+  stockWithOtherParties: number;
   stockMatched: boolean;
   pendingProcurement?: number;
+  confirmedIncomingPurchase: number;
+  confirmedInternalIncoming: number;
+  usableCommittedCoverage: number;
+  actionableShortfall: number;
   shortfall: number;
   nearTermShortfall?: number;
   monthlyBreakdown?: { month: number; demand: number; shortfall: number; isCurrentOrPast: boolean }[];
-  suggestion: "adequate" | "monitor" | "raise_irn" | "raise_pi" | "raise_both";
+  suggestion: "adequate" | "adequate_selected_horizon" | "monitor" | "raise_irn" | "raise_pi" | "raise_both" | "review_hlc_stock" | "review_internal_issue" | "resolve_mapping";
   /** Resolved canonical plant_materials.id; null = unresolved in master */
   materialId: number | null;
   sourceBoqItemId: number | null;
   stockElsewhere: number;
+  isProgrammed: boolean;
+  materialMappingUnresolved: boolean;
   /** ISO date (YYYY-MM-DD) from the Work Programme — first month this material is short */
   requiredByDate?: string | null;
 }
@@ -1169,6 +1179,9 @@ interface ShortageData {
   hasBars: boolean;
   hasRecipes: boolean;
   currentMonth?: number;
+  projectStartDate?: string | null;
+  horizonMonthIndex?: number;
+  maxProgrammeMonth?: number;
 }
 
 // ── Fresh client-request-ID ─────────────────────────────────────────────────
@@ -1187,7 +1200,8 @@ function buildProcureLink(
   requirementId?: number | null,
   allocationId?: number | null,
 ): string {
-  const qty = Math.max(0, row.shortfall > 0 ? row.shortfall : row.totalDemand);
+  // v2: use actionableShortfall for the horizon-bounded demand
+  const qty = Math.max(0, row.actionableShortfall > 0 ? row.actionableShortfall : row.demandUpToSelectedDate);
   const params = new URLSearchParams({
     material: row.materialName,
     qty: String(Math.round(qty * 1000) / 1000),
@@ -1199,16 +1213,131 @@ function buildProcureLink(
   return params.toString();
 }
 
+// ── Resolve Mapping Dialog ──────────────────────────────────────────────────────
+interface PlantMaterialResult { id: number; name: string; defaultUom: string | null; category: string | null }
+
+function ResolveMappingDialog({
+  row,
+  projectId,
+  open,
+  onClose,
+  onMapped,
+}: {
+  row: ShortageRow;
+  projectId: number;
+  open: boolean;
+  onClose: () => void;
+  onMapped: () => void;
+}) {
+  const { toast } = useToast();
+  const [searchQ, setSearchQ] = useState("");
+  const [selected, setSelected] = useState<PlantMaterialResult | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const { data: results = [], isFetching } = useQuery<PlantMaterialResult[]>({
+    queryKey: ["/api/plant-materials/search", searchQ],
+    queryFn: async () => {
+      if (searchQ.trim().length < 2) return [];
+      const r = await fetch(`/api/plant-materials/search?q=${encodeURIComponent(searchQ)}`, { credentials: "include" });
+      return r.ok ? r.json() : [];
+    },
+    enabled: searchQ.trim().length >= 2,
+    staleTime: 30_000,
+  });
+
+  const handleSave = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      const r = await fetch(`/api/boq/projects/${projectId}/material-mappings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ materialLabel: row.materialName, materialId: selected.id }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message ?? `Server error ${r.status}`);
+      toast({ title: "Mapping saved", description: `"${row.materialName}" → "${selected.name}"` });
+      onMapped();
+      onClose();
+    } catch (e: any) {
+      toast({ title: "Failed to save mapping", description: e.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Resolve Material Mapping</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2 text-sm">
+          <div className="bg-amber-50 border border-amber-200 rounded p-3">
+            <p className="font-semibold text-amber-900">BOM Label</p>
+            <p className="text-amber-800 font-mono text-[13px]">{row.materialName} · {row.uom}</p>
+            <p className="text-amber-700 text-[12px] mt-1">This BOM material has no canonical match in the Plant Material Master. Search below to link it.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="mat-search">Search Plant Materials</Label>
+            <Input
+              id="mat-search"
+              placeholder="Type at least 2 characters…"
+              value={searchQ}
+              onChange={e => { setSearchQ(e.target.value); setSelected(null); }}
+            />
+          </div>
+          {isFetching && <p className="text-[12px] text-muted-foreground">Searching…</p>}
+          {!isFetching && searchQ.length >= 2 && results.length === 0 && (
+            <p className="text-[12px] text-amber-700">No plant materials found matching "{searchQ}". Add the material in the Plant module first.</p>
+          )}
+          {results.length > 0 && (
+            <div className="max-h-48 overflow-auto rounded border divide-y">
+              {results.map(m => (
+                <button
+                  key={m.id}
+                  className={`w-full text-left px-3 py-2 text-[13px] hover:bg-teal-50 transition-colors ${selected?.id === m.id ? "bg-teal-100 font-semibold" : ""}`}
+                  onClick={() => setSelected(m)}
+                >
+                  <span className="font-medium text-slate-800">{m.name}</span>
+                  {m.category && <span className="ml-1.5 text-[11px] text-slate-500">{m.category}</span>}
+                  {m.defaultUom && <span className="ml-1.5 text-[11px] text-muted-foreground">({m.defaultUom})</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          {selected && (
+            <div className="bg-teal-50 border border-teal-200 rounded p-2 text-[12px]">
+              <span className="font-semibold text-teal-800">Will map to: </span>
+              <span className="text-teal-700">{selected.name}</span>
+              {selected.defaultUom && <span className="text-teal-600"> ({selected.defaultUom})</span>}
+            </div>
+          )}
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={handleSave} disabled={!selected || saving}>
+            {saving ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Saving…</> : "Save Mapping"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 type DialogStep = "closed" | "confirm_dest" | "awaiting_review" | "authorize_alloc";
 
 function SuggestionBadge({
   row,
   projectId,
   projectLinkedSiteId,
+  onMappingResolved,
 }: {
   row: ShortageRow;
   projectId: number;
   projectLinkedSiteId?: number | null;
+  onMappingResolved?: () => void;
 }) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -1218,6 +1347,9 @@ function SuggestionBadge({
   // Permission flags — server enforces authoritatively; UI is a convenience
   const canApprovePi = isAdmin || (permissions as any)?.purchase_indents_approve?.approve === true;
   const canApproveIrn = isAdmin || (permissions as any)?.irn_approve?.approve === true;
+
+  // ── Resolve mapping dialog ──────────────────────────────────────────────────
+  const [showResolveMap, setShowResolveMap] = useState(false);
 
   // ── Step machine ────────────────────────────────────────────────────────────
   const [step, setStep] = useState<DialogStep>("closed");
@@ -1232,8 +1364,8 @@ function SuggestionBadge({
   // After requirement created
   const [createdReqId, setCreatedReqId] = useState<number | null>(null);
 
-  // Split (raise_both) quantities
-  const totalQty = Math.max(0, row.shortfall > 0 ? row.shortfall : row.totalDemand);
+  // v2: use actionableShortfall for all qty calculations
+  const totalQty = Math.max(0, row.actionableShortfall > 0 ? row.actionableShortfall : row.demandUpToSelectedDate);
   const [internalQtyStr, setInternalQtyStr] = useState<string>("");
   const [procQtyStr, setProcQtyStr] = useState<string>("");
   const [splitAllocInternal, setSplitAllocInternal] = useState<number | null>(null);
@@ -1298,6 +1430,7 @@ function SuggestionBadge({
       const body: Record<string, any> = {
         materialType: "plant_material",
         materialId: row.materialId,
+        // v2: use actionableShortfall (horizon-bounded demand minus usable coverage)
         requiredQty: Math.round(totalQty * 1000) / 1000,
         uom: row.uom ?? "",
         boqProjectId: projectId,
@@ -1377,10 +1510,42 @@ function SuggestionBadge({
       <CheckCircle2 className="w-3 h-3" /> Adequate
     </span>
   );
+  if (suggestion === "adequate_selected_horizon") return (
+    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+      <CheckCircle2 className="w-3 h-3" /> Adequate for Horizon
+    </span>
+  );
   if (suggestion === "monitor") return (
     <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
       <Info className="w-3 h-3" /> Monitor stock
     </span>
+  );
+  if (suggestion === "review_hlc_stock") return (
+    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+      <Info className="w-3 h-3" /> Review HLC Stock + Purchase Balance
+    </span>
+  );
+  if (suggestion === "review_internal_issue") return (
+    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
+      <Info className="w-3 h-3" /> Review — Issue from HLC Stock
+    </span>
+  );
+  if (suggestion === "resolve_mapping") return (
+    <>
+      <button
+        className="inline-flex items-center gap-1 text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 hover:bg-amber-100 transition-colors"
+        onClick={() => setShowResolveMap(true)}
+      >
+        <Settings2 className="w-3 h-3" /> Resolve Material Mapping
+      </button>
+      <ResolveMappingDialog
+        row={row}
+        projectId={projectId}
+        open={showResolveMap}
+        onClose={() => setShowResolveMap(false)}
+        onMapped={() => { onMappingResolved?.(); }}
+      />
+    </>
   );
 
   return (
@@ -1428,7 +1593,11 @@ function SuggestionBadge({
             <div className="space-y-4 py-2 text-sm">
               <div className="bg-gray-50 rounded p-3 space-y-1">
                 <p className="font-semibold text-gray-800 truncate">{row.materialName}</p>
-                <p className="text-gray-600">Qty: <span className="font-mono font-semibold">{fmtN(totalQty)} {row.uom}</span></p>
+                {/* v2 breakdown */}
+                <p className="text-gray-600">Demand to horizon: <span className="font-mono font-semibold">{fmtN(row.demandUpToSelectedDate)} {row.uom}</span></p>
+                <p className="text-gray-600">HLC Stock: <span className="font-mono font-semibold">{fmtN(row.hlcRecordedStock)}</span> · Confirmed Incoming: <span className="font-mono font-semibold">{fmtN(row.confirmedIncomingPurchase)}</span></p>
+                <p className="text-gray-700 font-medium">Actionable Shortfall: <span className="font-mono text-red-700">{fmtN(row.actionableShortfall)} {row.uom}</span></p>
+                {row.futureRequirement > 0 && <p className="text-gray-500 text-[12px]">Future requirement (after horizon): {fmtN(row.futureRequirement)} {row.uom}</p>}
                 {row.requiredByDate && <p className="text-gray-500 text-[12px]">Required by: <span className="font-medium">{row.requiredByDate}</span></p>}
                 {row.materialId == null && (
                   <p className="text-red-600 text-[12px] font-medium mt-1">⚠ Not in Plant Material Master — add it before raising a requirement.</p>
@@ -1615,7 +1784,82 @@ function SuggestionBadge({
   );
 }
 
-function ProcurementTable({ data, projectId, projectLinkedSiteId }: { data: ShortageData; projectId: number; projectLinkedSiteId?: number | null }) {
+// ── Horizon selector ──────────────────────────────────────────────────────────
+type HorizonMode = "current_month" | "next_30_days" | "next_month" | "custom" | "entire_programme";
+
+function HorizonSelector({
+  mode, customDate, projectStartDate,
+  onChange,
+}: {
+  mode: HorizonMode;
+  customDate: string;
+  projectStartDate?: string | null;
+  onChange: (mode: HorizonMode, customDate: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-slate-50 border border-slate-200 text-sm">
+      <CalendarDays className="w-4 h-4 text-slate-500 flex-shrink-0" />
+      <span className="font-semibold text-slate-700 shrink-0">Procurement Horizon:</span>
+      <Select value={mode} onValueChange={(v) => onChange(v as HorizonMode, customDate)}>
+        <SelectTrigger className="h-7 text-[12px] w-[210px]"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="current_month">Up to Current Programme Month</SelectItem>
+          <SelectItem value="next_30_days">Next 30 Days</SelectItem>
+          <SelectItem value="next_month">Next Programme Month</SelectItem>
+          <SelectItem value="custom">Custom Date</SelectItem>
+          <SelectItem value="entire_programme">Entire Programme</SelectItem>
+        </SelectContent>
+      </Select>
+      {mode === "custom" && (
+        <Input
+          type="date"
+          value={customDate}
+          onChange={e => onChange(mode, e.target.value)}
+          className="h-7 text-[12px] w-36"
+          min={projectStartDate ?? undefined}
+        />
+      )}
+      {mode === "entire_programme" && (
+        <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+          ⚠ Shows full programme totals — may overstate near-term risk
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Compute the ISO date string for a given horizon mode (client-side for the query param).
+function horizonModeToDate(mode: HorizonMode, customDate: string, projectStartDate?: string | null): string | undefined {
+  const now = new Date();
+  if (mode === "entire_programme") return undefined; // no param = entire programme
+  if (mode === "current_month") {
+    return now.toISOString().split("T")[0];
+  }
+  if (mode === "next_30_days") {
+    const d = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    return d.toISOString().split("T")[0];
+  }
+  if (mode === "next_month") {
+    const d = new Date(now.getFullYear(), now.getMonth() + 2, 0); // end of next month
+    return d.toISOString().split("T")[0];
+  }
+  if (mode === "custom") return customDate || undefined;
+  return undefined;
+}
+
+function ProcurementTable({
+  data, projectId, projectLinkedSiteId,
+  horizonMode, horizonCustomDate,
+  onHorizonChange, onMappingResolved,
+}: {
+  data: ShortageData;
+  projectId: number;
+  projectLinkedSiteId?: number | null;
+  horizonMode: HorizonMode;
+  horizonCustomDate: string;
+  onHorizonChange: (mode: HorizonMode, custom: string) => void;
+  onMappingResolved: () => void;
+}) {
   if (!data.hasBars) return (
     <EmptyState label="Add stretches to the Work Programme first to generate demand." />
   );
@@ -1626,97 +1870,112 @@ function ProcurementTable({ data, projectId, projectLinkedSiteId }: { data: Shor
     <EmptyState label="No material demand found. Check recipes on BOQ items." />
   );
 
-  const shortageCount = data.rows.filter(r => r.shortfall > 0).length;
+  const actionableCount = data.rows.filter(r => r.actionableShortfall > 0).length;
+  const unresolvedCount = data.rows.filter(r => r.materialMappingUnresolved).length;
 
   return (
     <div className="space-y-3">
+      {/* Horizon selector */}
+      <HorizonSelector
+        mode={horizonMode}
+        customDate={horizonCustomDate}
+        projectStartDate={data.projectStartDate}
+        onChange={onHorizonChange}
+      />
+
       {/* Info note */}
       <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
         <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
         <div>
           <span className="font-semibold">Planning intelligence only.</span>{" "}
-          Existing manual IRN and PI creation is unchanged — you can raise them at any time from their respective pages.
-          This table shows shortfalls compared to current plant stock.
-          {!data.rows.some(r => r.stockMatched) && (
+          Stock shown is HLC/company custody only. Existing manual IRN and PI creation is unchanged.
+          {unresolvedCount > 0 && (
             <span className="block mt-1 text-amber-700">
-              ⚠ No stock records matched by name. Ensure plant materials are configured in the Plant module.
+              ⚠ {unresolvedCount} material{unresolvedCount > 1 ? "s" : ""} without a canonical material mapping — resolve to enable requirement creation.
             </span>
           )}
         </div>
       </div>
 
-      {shortageCount > 0 && (
+      {actionableCount > 0 && (
         <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200">
           <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
           <span className="text-sm text-red-800 font-semibold">
-            {shortageCount} material{shortageCount > 1 ? "s" : ""} below demand. Action recommended.
+            {actionableCount} material{actionableCount > 1 ? "s" : ""} with actionable shortfall in selected horizon.
           </span>
         </div>
       )}
 
       <div className="overflow-auto rounded-xl border max-h-[70vh]">
-        <table className="text-sm border-collapse w-full" style={{ minWidth: 600 }}>
-          {/* Sticky is applied per-<th> (not on <thead> itself) at top-0,
-              relative to the max-h-[70vh]/overflow-auto wrapper div, which is
-              the actual scrolling container (consistent with the other
-              demand tables in this file, e.g. Materials/Equipment/Labour).
-              IMPORTANT: an `overflow-x-auto`-only wrapper (no explicit
-              max-height) does NOT reliably create a working sticky scroll
-              context — browsers force its overflow-y to "auto" too, but with
-              no height constraint it never actually scrolls internally, so a
-              `top-14`-style offset (meant for page-level scroll) never
-              sticks and body rows bleed above the header. Always pair
-              sticky headers with an explicit `max-h-[...]` + `overflow-auto`
-              wrapper and `top-0`. Sticky positioning directly on a <thead>
-              element is also unreliable across browsers (Firefox/Safari can
-              fail to clip body rows underneath it); sticking each <th>
-              individually works consistently in every browser. */}
+        <table className="text-sm border-collapse" style={{ minWidth: 960 }}>
           <thead>
             <tr style={{ background: "#0F5F64" }}>
-              <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[200px]" style={{ background: "#0F5F64" }}>Material</th>
+              <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[180px]" style={{ background: "#0F5F64" }}>Material</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Unit</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Total Demand</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Current Stock</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Pending PI/IRN</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Shortfall</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Near-term Risk</th>
-              <th className="px-3 py-2 font-semibold text-white text-left min-w-[130px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Action</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Demand to Horizon</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>HLC Stock</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Other Parties</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Confirmed Incoming</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Actionable Shortfall</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Future Req.</th>
+              <th className="px-3 py-2 font-semibold text-white text-left min-w-[150px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Action</th>
             </tr>
           </thead>
           <tbody>
-            {data.rows.map(row => (
-              <tr
-                key={row.materialName}
-                className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${row.shortfall > 0 ? "bg-red-50/30" : ""}`}
-                data-testid={`shortage-row-${row.materialName}`}
-              >
-                <td className={`px-3 py-2 font-medium sticky left-0 z-10 ${row.shortfall > 0 ? "bg-red-50/50" : "bg-white"}`}>
-                  <span className="text-slate-700">{row.materialName}</span>
-                  {!row.stockMatched && (
-                    <span className="ml-1 text-xs text-amber-500 italic">(no stock match)</span>
-                  )}
-                </td>
-                <td className="px-2 py-2 text-right text-muted-foreground">{row.uom}</td>
-                <td className="px-2 py-2 text-right font-mono font-semibold text-teal-700">
-                  {fmtQty(row.totalDemand, 1)}
-                </td>
-                <td className={`px-2 py-2 text-right font-mono font-semibold ${row.currentStock > 0 ? "text-slate-700" : "text-slate-300"}`}>
-                  {row.stockMatched ? fmtQty(row.currentStock, 1) : "—"}
-                </td>
-                <td className="px-2 py-2 text-right font-mono text-blue-700">
-                  {row.pendingProcurement ? fmtQty(row.pendingProcurement, 1) : "—"}
-                </td>
-                <td className={`px-2 py-2 text-right font-mono font-semibold ${row.shortfall > 0 ? "text-red-700" : "text-emerald-600"}`}>
-                  {row.shortfall > 0 ? fmtQty(row.shortfall, 1) : "—"}
-                </td>
-                <td className={`px-2 py-2 text-right font-mono font-semibold ${(row.nearTermShortfall ?? 0) > 0 ? "text-red-700" : "text-slate-300"}`}>
-                  {(row.nearTermShortfall ?? 0) > 0 ? fmtQty(row.nearTermShortfall!, 1) : "—"}
-                </td>
-                <td className="px-3 py-2">
-                  <SuggestionBadge row={row} projectId={projectId} projectLinkedSiteId={projectLinkedSiteId} />
-                </td>
-              </tr>
-            ))}
+            {data.rows.map(row => {
+              const hasShortfall = row.actionableShortfall > 0;
+              const isUnresolved = row.materialMappingUnresolved;
+              return (
+                <tr
+                  key={row.materialName}
+                  className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${hasShortfall ? "bg-red-50/30" : isUnresolved ? "bg-amber-50/30" : ""}`}
+                  data-testid={`shortage-row-${row.materialName}`}
+                >
+                  <td className={`px-3 py-2 font-medium sticky left-0 z-10 ${hasShortfall ? "bg-red-50/50" : isUnresolved ? "bg-amber-50/50" : "bg-white"}`}>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-slate-700">{row.materialName}</span>
+                      {isUnresolved && (
+                        <span className="text-[10px] font-semibold text-amber-600 bg-amber-100 border border-amber-300 rounded px-1 py-0.5">Mapping Required</span>
+                      )}
+                      {!row.isProgrammed && (
+                        <span className="text-[10px] text-slate-400 italic">(unprogrammed)</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-2 py-2 text-right text-muted-foreground">{row.uom}</td>
+                  <td className="px-2 py-2 text-right font-mono font-semibold text-teal-700">
+                    {fmtQty(row.totalDemand, 1)}
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono font-semibold text-slate-700">
+                    {fmtQty(row.demandUpToSelectedDate, 1)}
+                  </td>
+                  <td className={`px-2 py-2 text-right font-mono ${row.hlcRecordedStock > 0 ? "text-slate-700 font-semibold" : "text-slate-300"}`}>
+                    {isUnresolved ? "—" : fmtQty(row.hlcRecordedStock, 1)}
+                  </td>
+                  <td className={`px-2 py-2 text-right font-mono text-[12px] ${row.stockWithOtherParties > 0 ? "text-indigo-600" : "text-slate-300"}`}>
+                    {isUnresolved ? "—" : row.stockWithOtherParties > 0 ? fmtQty(row.stockWithOtherParties, 1) : "—"}
+                  </td>
+                  <td className={`px-2 py-2 text-right font-mono ${row.confirmedIncomingPurchase > 0 ? "text-blue-700" : "text-slate-300"}`}>
+                    {isUnresolved ? "—" : row.confirmedIncomingPurchase > 0 ? fmtQty(row.confirmedIncomingPurchase, 1) : "—"}
+                  </td>
+                  <td className={`px-2 py-2 text-right font-mono font-semibold ${hasShortfall ? "text-red-700" : "text-emerald-600"}`}>
+                    {isUnresolved ? "—" : hasShortfall ? fmtQty(row.actionableShortfall, 1) : "✓"}
+                  </td>
+                  <td className={`px-2 py-2 text-right font-mono text-[12px] ${row.futureRequirement > 0 ? "text-amber-600" : "text-slate-300"}`}>
+                    {row.futureRequirement > 0 ? fmtQty(row.futureRequirement, 1) : "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <SuggestionBadge
+                      row={row}
+                      projectId={projectId}
+                      projectLinkedSiteId={projectLinkedSiteId}
+                      onMappingResolved={onMappingResolved}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -1766,10 +2025,18 @@ export default function WorkDemand() {
     enabled: !isNaN(projectId),
   });
 
-  const { data: shortageData, isLoading: shortageLoading } = useQuery<ShortageData>({
-    queryKey: ["/api/boq/projects", projectId, "shortage-check"],
+  // ── Procurement Horizon state ──────────────────────────────────────────────
+  const [horizonMode, setHorizonMode] = useState<HorizonMode>("entire_programme");
+  const [horizonCustomDate, setHorizonCustomDate] = useState<string>("");
+  const horizonDateParam = horizonModeToDate(horizonMode, horizonCustomDate);
+
+  const { data: shortageData, isLoading: shortageLoading, refetch: refetchShortage } = useQuery<ShortageData>({
+    queryKey: ["/api/boq/projects", projectId, "shortage-check", horizonDateParam ?? "all"],
     queryFn: async () => {
-      const res = await fetch(`/api/boq/projects/${projectId}/shortage-check`, { credentials: "include" });
+      const url = horizonDateParam
+        ? `/api/boq/projects/${projectId}/shortage-check?horizonDate=${encodeURIComponent(horizonDateParam)}`
+        : `/api/boq/projects/${projectId}/shortage-check`;
+      const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch shortage data");
       return res.json();
     },
@@ -1866,7 +2133,7 @@ export default function WorkDemand() {
     };
   }, [bomData]);
 
-  const shortageAlertCount = shortageData?.rows.filter(r => r.shortfall > 0).length ?? 0;
+  const shortageAlertCount = shortageData?.rows.filter(r => r.actionableShortfall > 0 || r.materialMappingUnresolved).length ?? 0;
 
   return (
     <div className="space-y-4">
@@ -2150,7 +2417,15 @@ export default function WorkDemand() {
                 </div>
               )}
               {!shortageLoading && shortageData && (
-                <ProcurementTable data={shortageData} projectId={projectId} projectLinkedSiteId={project?.siteId} />
+                <ProcurementTable
+                  data={shortageData}
+                  projectId={projectId}
+                  projectLinkedSiteId={project?.siteId}
+                  horizonMode={horizonMode}
+                  horizonCustomDate={horizonCustomDate}
+                  onHorizonChange={(mode, custom) => { setHorizonMode(mode); setHorizonCustomDate(custom); }}
+                  onMappingResolved={() => refetchShortage()}
+                />
               )}
             </TabsContent>
           </Tabs>

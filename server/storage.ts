@@ -76,6 +76,9 @@ import {
   type InsertMaterialRequirement,
   type MaterialRequirementAllocation,
   type InsertMaterialRequirementAllocation,
+  boqMaterialMappings,
+  type BoqMaterialMapping,
+  type InsertBoqMaterialMapping,
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
@@ -1405,6 +1408,11 @@ export interface IStorage {
   updateBoqItemWorkType(id: number, planningWorkType: string): Promise<void>;
   // Task #1206 — structure schedule import
   deleteStructureLocationBars(boqProjectId: number): Promise<number>;
+  // Instruction 017 — BOQ Material Mappings
+  ensureBoqMaterialMappings(): Promise<void>;
+  getMaterialMappings(boqProjectId: number): Promise<BoqMaterialMapping[]>;
+  upsertMaterialMapping(data: { boqProjectId: number | null; materialLabel: string; materialId: number; userId?: number }): Promise<BoqMaterialMapping>;
+  searchPlantMaterials(query: string, limit?: number): Promise<Array<{ id: number; name: string; defaultUom: string | null; category: string | null }>>;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -23796,6 +23804,96 @@ export class DatabaseStorage implements IStorage {
       .where(eq(siteRequirements.id, id))
       .returning();
     return row;
+  }
+
+  // ─── Instruction 017: BOQ Material Mappings ───────────────────────────────
+
+  /** Idempotent startup migration — creates boq_material_mappings table if absent. */
+  async ensureBoqMaterialMappings(): Promise<void> {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS boq_material_mappings (
+        id serial PRIMARY KEY,
+        boq_project_id integer,
+        material_label text NOT NULL,
+        material_id integer NOT NULL,
+        mapped_by_user_id integer,
+        mapped_at timestamp with time zone DEFAULT now(),
+        created_at timestamp with time zone DEFAULT now()
+      )
+    `));
+    // Unique partial index: one canonical mapping per (project, label).
+    // A NULL boq_project_id represents a global (cross-project) fallback.
+    // Using a DO block to skip if index already exists.
+    await db.execute(sql.raw(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes
+          WHERE indexname = 'boq_material_mappings_label_project_uq'
+        ) THEN
+          CREATE UNIQUE INDEX boq_material_mappings_label_project_uq
+            ON boq_material_mappings (COALESCE(boq_project_id, -1), material_label);
+        END IF;
+      END $$
+    `));
+  }
+
+  /** Returns all mappings for a project (project-specific first, then globals). */
+  async getMaterialMappings(boqProjectId: number): Promise<BoqMaterialMapping[]> {
+    return db.select().from(boqMaterialMappings).where(
+      or(
+        eq(boqMaterialMappings.boqProjectId, boqProjectId),
+        isNull(boqMaterialMappings.boqProjectId),
+      )
+    ).orderBy(boqMaterialMappings.materialLabel);
+  }
+
+  /** Insert or replace the mapping for (boqProjectId, materialLabel). */
+  async upsertMaterialMapping(data: {
+    boqProjectId: number | null;
+    materialLabel: string;
+    materialId: number;
+    userId?: number;
+  }): Promise<BoqMaterialMapping> {
+    const existing = await db.select().from(boqMaterialMappings).where(
+      and(
+        data.boqProjectId == null
+          ? isNull(boqMaterialMappings.boqProjectId)
+          : eq(boqMaterialMappings.boqProjectId, data.boqProjectId),
+        eq(boqMaterialMappings.materialLabel, data.materialLabel),
+      )
+    ).limit(1);
+    if (existing.length > 0) {
+      const [updated] = await db.update(boqMaterialMappings)
+        .set({ materialId: data.materialId, mappedByUserId: data.userId ?? null, mappedAt: new Date() })
+        .where(eq(boqMaterialMappings.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    const [inserted] = await db.insert(boqMaterialMappings).values({
+      boqProjectId: data.boqProjectId ?? null,
+      materialLabel: data.materialLabel,
+      materialId: data.materialId,
+      mappedByUserId: data.userId ?? null,
+    }).returning();
+    return inserted;
+  }
+
+  /** ILIKE search on plant_materials.name — used by the ResolveMappingDialog. */
+  async searchPlantMaterials(query: string, limit = 20): Promise<Array<{ id: number; name: string; defaultUom: string | null; category: string | null }>> {
+    return db.select({
+      id: plantMaterials.id,
+      name: plantMaterials.name,
+      defaultUom: plantMaterials.defaultUom,
+      category: plantMaterials.category,
+    }).from(plantMaterials)
+      .where(
+        and(
+          ilike(plantMaterials.name, `%${query}%`),
+          eq(plantMaterials.isActive, 1),
+        )
+      )
+      .orderBy(plantMaterials.name)
+      .limit(limit);
   }
 }
 

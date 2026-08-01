@@ -11744,70 +11744,106 @@ export async function registerRoutes(
       const project = await storage.getBoqProject(projectId);
       if (!project) return res.status(404).json({ error: "Project not found" });
 
-      const [{ expandedItems, bars }, allStockBalances, allMaterials, allIndents, allIrns] = await Promise.all([
+      // ── Horizon: which month index to use as the demand cut-off ─────────────
+      // horizonDate param = ISO date string; absent → entire programme (all months)
+      const horizonDateParam = req.query.horizonDate as string | undefined;
+
+      const [{ expandedItems, bars }, allStockBalances, allMaterials, allIndents, allIrns, materialMappings] = await Promise.all([
         computeProjectBom(projectId),
-        storage.getStockBalances(), // all parties
+        storage.getStockBalances(),
         storage.getPlantMaterials(),
         storage.getPurchaseIndents(),
         storage.getInternalRequisitions(),
+        storage.getMaterialMappings(projectId),
       ]);
 
-      // Build name → current stock lookup (sum across all parties)
-      // Also track "stock elsewhere" (partyId != null) separately for IRN-vs-PI suggestion.
-      const stockByName = new Map<string, { balance: number; uom: string }>();
-      const stockElsewhereByName = new Map<string, number>(); // stock at third-party / site locations
-      for (const mat of allMaterials) {
-        const balRows = allStockBalances.filter(sb => sb.materialId === mat.id);
-        const totalBalance = balRows.reduce((sum, sb) => sum + (sb.balance ?? 0), 0);
-        const elsewhereBalance = balRows.filter(sb => sb.partyId != null).reduce((sum, sb) => sum + (sb.balance ?? 0), 0);
-        const key = mat.name.trim().toLowerCase();
-        const existing = stockByName.get(key);
-        if (existing) {
-          existing.balance += totalBalance;
-          stockElsewhereByName.set(key, (stockElsewhereByName.get(key) ?? 0) + elsewhereBalance);
+      // ── materialId → HLC stock (partyId IS NULL) and elsewhere stock ────────
+      // v2: keyed by materialId, NOT by name string.
+      const hlcStockById = new Map<number, number>();      // partyId IS NULL
+      const elsewhereStockById = new Map<number, number>(); // partyId IS NOT NULL
+      for (const sb of allStockBalances) {
+        if (!sb.materialId) continue;
+        const bal = sb.balance ?? 0;
+        if (sb.partyId == null) {
+          hlcStockById.set(sb.materialId, (hlcStockById.get(sb.materialId) ?? 0) + bal);
         } else {
-          stockByName.set(key, { balance: totalBalance, uom: mat.uom ?? "" });
-          if (elsewhereBalance > 0) stockElsewhereByName.set(key, elsewhereBalance);
+          elsewhereStockById.set(sb.materialId, (elsewhereStockById.get(sb.materialId) ?? 0) + bal);
         }
       }
 
-      // Build name → pending procurement qty lookup. "Pending" = raised but not
-      // yet fully purchased/rejected/cancelled. This is read-only netting for
-      // the shortage view only — it never mutates PI/IRN records.
-      const TERMINAL_PI_STATUSES = new Set(["purchased", "not_purchased", "cancelled"]);
-      const pendingByName = new Map<string, number>();
-      const addPending = (name: string | null | undefined, qty: number) => {
-        if (!name || !(qty > 0)) return;
-        const key = name.trim().toLowerCase();
-        pendingByName.set(key, (pendingByName.get(key) ?? 0) + qty);
-      };
+      // ── Confirmed incoming purchase — only ORDERED / PURCHASED items ─────────
+      // Rule: orderedQty > 0 (set by placeOrderIndent) OR purchaseStatus ∈ {ORDERED, PURCHASED}
+      // AND outstanding unreceived balance > 0. Keyed by item.materialId.
+      const COMMITTED_PI_STATUSES = new Set(["ordered", "purchased"]); // lowercase
+      const confirmedPiById = new Map<number, number>();
       for (const pi of allIndents) {
-        if (pi.status === "rejected" || pi.status === "closed") continue;
+        if (pi.status === "rejected" || pi.status === "closed" || pi.status === "cancelled") continue;
         for (const item of pi.items ?? []) {
-          const itemStatus = (item.purchaseStatus ?? "").toLowerCase();
-          if (TERMINAL_PI_STATUSES.has(itemStatus)) continue;
-          const remaining = (item.approvedQty ?? item.qty) - (item.totalPurchasedQty ?? 0);
-          addPending(item.description ?? (item as any).material, remaining);
-        }
-      }
-      for (const irn of allIrns) {
-        if (irn.status === "rejected" || irn.status === "closed") continue;
-        for (const item of irn.items ?? []) {
-          if (item.itemStatus !== "queued_procurement") continue;
-          const remaining = (item.procureQty ?? item.qty) - (item.actualIssuedQty ?? 0);
-          addPending(item.material, remaining);
+          const mid = (item as any).materialId as number | undefined | null;
+          if (!mid) continue;
+          const statusLc = (item.purchaseStatus ?? "").toLowerCase();
+          const ordQty = (item as any).orderedQty as number | undefined | null;
+          const isCommitted = COMMITTED_PI_STATUSES.has(statusLc) || (ordQty != null && ordQty > 0);
+          if (!isCommitted) continue;
+          const purchased = (item as any).totalPurchasedQty as number ?? 0;
+          const committed = (ordQty ?? item.approvedQty ?? item.qty) - purchased;
+          if (committed <= 0) continue;
+          confirmedPiById.set(mid, (confirmedPiById.get(mid) ?? 0) + committed);
         }
       }
 
-      // Compute demand from the RESOLVED items (template/RMC-derived materials drive
-      // the numbers, not the legacy saved SDB rows).
+      // ── Confirmed internal incoming — stores_verified IRN items with balance ─
+      const confirmedIrnById = new Map<number, number>();
+      for (const irn of allIrns) {
+        if (irn.status !== "stores_verified") continue;
+        for (const item of irn.items ?? []) {
+          // item.material is a name string — we need the materialId
+          // IRN items don't directly carry materialId in the type; use master lookup below
+          if (item.itemStatus !== "partially_issued" && item.itemStatus !== "pending") continue;
+          // We'll match by material name → materialId after building the name map
+          const balance = (item.procureQty ?? item.qty) - (item.actualIssuedQty ?? 0);
+          if (balance <= 0) continue;
+          // Stash by name for now; resolve to ID after the master name→id map is ready
+          (confirmedIrnById as any).__nameMap = (confirmedIrnById as any).__nameMap ?? new Map<string, number>();
+          const nameMap = (confirmedIrnById as any).__nameMap as Map<string, number>;
+          const key = item.material?.trim().toLowerCase() ?? "";
+          if (key) nameMap.set(key, (nameMap.get(key) ?? 0) + balance);
+        }
+      }
+
+      // ── Material master lookups ──────────────────────────────────────────────
+      const materialIdByName = new Map<string, number>();
+      for (const mat of allMaterials) {
+        materialIdByName.set(mat.name.trim().toLowerCase(), mat.id);
+      }
+
+      // Resolve name-keyed IRN balances to materialId
+      const irnNameMap = (confirmedIrnById as any).__nameMap as Map<string, number> | undefined;
+      if (irnNameMap) {
+        for (const [name, qty] of irnNameMap) {
+          const mid = materialIdByName.get(name);
+          if (mid) confirmedIrnById.set(mid, (confirmedIrnById.get(mid) ?? 0) + qty);
+        }
+      }
+
+      // ── Mapping table: BOM label → materialId ────────────────────────────────
+      // Project-specific mapping wins over global (null boqProjectId) mapping.
+      const labelToMaterialId = new Map<string, number>();
+      // Load globals first (lower priority)
+      for (const m of materialMappings) {
+        if (m.boqProjectId == null) labelToMaterialId.set(m.materialLabel, m.materialId);
+      }
+      // Project-specific overrides
+      for (const m of materialMappings) {
+        if (m.boqProjectId != null) labelToMaterialId.set(m.materialLabel, m.materialId);
+      }
+
+      // ── Demand calculation ────────────────────────────────────────────────────
       const demand = expandedItems.length && bars.length
         ? calculateBomDemand(expandedItems as any, bars, project.totalMonths ?? 12)
         : { materials: [], equipment: [], labour: [] };
 
-      // Determine current project month (same convention as Plan vs Actual) so
-      // month-by-month shortage can flag near-term risk separately from
-      // aggregate totals.
+      // ── Current project month ─────────────────────────────────────────────────
       const startDate = project.startDate ? new Date(project.startDate) : null;
       let currentMonth = 1;
       if (startDate) {
@@ -11815,54 +11851,132 @@ export async function registerRoutes(
         currentMonth = Math.max(1, Math.ceil(diffMonths));
       }
 
-      // Build shortage rows — time-phased: current stock covers the earliest
-      // months first (running balance), pending procurement is netted against
-      // remaining demand before flagging a shortfall.
-      // Build name → materialId for canonical ID threading into shortage rows
-      const materialIdByName = new Map<string, number>();
-      for (const mat of allMaterials) {
-        materialIdByName.set(mat.name.trim().toLowerCase(), mat.id);
+      // ── Horizon month index ────────────────────────────────────────────────────
+      // If a horizonDate is given, convert it to a programme month index.
+      // Otherwise use the maximum month across all demand rows (entire programme).
+      const allProgrammeMonths = demand.materials.flatMap(r => Object.keys(r.monthlyQty).map(Number));
+      const maxProgrammeMonth = allProgrammeMonths.length ? Math.max(...allProgrammeMonths) : currentMonth;
+
+      let horizonMonthIndex = maxProgrammeMonth; // default: entire programme
+      if (horizonDateParam && project.startDate) {
+        const hDate = new Date(horizonDateParam);
+        const pStart = new Date(project.startDate);
+        const diffMs = hDate.getTime() - pStart.getTime();
+        const diffMonths = diffMs / (1000 * 60 * 60 * 24 * 30.44);
+        horizonMonthIndex = Math.max(1, Math.min(maxProgrammeMonth, Math.ceil(diffMonths)));
       }
 
+      // ── Build shortage rows ────────────────────────────────────────────────────
       const shortageRows = demand.materials.map(matRow => {
-        const nameKey = matRow.materialName.trim().toLowerCase();
-        const stock = stockByName.get(nameKey);
-        const currentStock = stock?.balance ?? 0;
-        const stockMatched = stockByName.has(nameKey);
-        const pendingProcurement = pendingByName.get(nameKey) ?? 0;
-        const stockElsewhere = stockElsewhereByName.get(nameKey) ?? 0;
-        // Resolve canonical materialId from plant_materials master
-        const materialId = materialIdByName.get(nameKey) ?? null;
-        // sourceBoqItemId: primary BOQ item from breakdown (first contributor)
+        // Resolve canonical materialId: mapping table wins over master name match
+        const labelKey = matRow.materialName.trim().toLowerCase();
+        const mappedId = labelToMaterialId.get(matRow.materialName) ?? labelToMaterialId.get(labelKey);
+        const masterMatchId = materialIdByName.get(labelKey);
+        const resolvedId = mappedId ?? masterMatchId ?? null;
+        const materialMappingUnresolved = resolvedId == null;
+
+        // Stock figures — all by materialId
+        const hlcRecordedStock = resolvedId != null ? (hlcStockById.get(resolvedId) ?? 0) : 0;
+        const stockWithOtherParties = resolvedId != null ? (elsewhereStockById.get(resolvedId) ?? 0) : 0;
+        const confirmedIncomingPurchase = resolvedId != null ? (confirmedPiById.get(resolvedId) ?? 0) : 0;
+        const confirmedInternalIncoming = resolvedId != null ? (confirmedIrnById.get(resolvedId) ?? 0) : 0;
+        const stockMatched = resolvedId != null && (hlcRecordedStock > 0 || stockWithOtherParties > 0);
+
         const sourceBoqItemId = (matRow as any).breakdown?.[0]?.boqItemId ?? null;
-        const enrichedMatRow = { ...matRow, materialId, sourceBoqItemId };
-        return computeShortageRow(enrichedMatRow, currentStock, stockMatched, pendingProcurement, currentMonth, stockElsewhere);
+        const hasProgrammeBars = bars.some(b =>
+          (matRow as any).breakdown?.some((bd: any) => bd.boqItemId === b.boqItemId)
+        );
+
+        const enrichedMatRow = { ...matRow, materialId: resolvedId, sourceBoqItemId };
+        return computeShortageRow(
+          enrichedMatRow,
+          hlcRecordedStock,     // positional currentStock (legacy compat)
+          stockMatched,
+          confirmedIncomingPurchase, // positional pendingProcurement (legacy compat)
+          currentMonth,
+          stockWithOtherParties,    // positional stockElsewhere (legacy compat)
+          {
+            horizonMonthIndex,
+            projectStartDate: project.startDate ?? null,
+            hlcRecordedStock,
+            stockWithOtherParties,
+            confirmedIncomingPurchase,
+            confirmedInternalIncoming,
+            isProgrammed: hasProgrammeBars,
+            materialMappingUnresolved,
+          },
+        );
       });
 
-      // Sort: near-term/actionable shortage first, then aggregate shortage, then adequate
-      shortageRows.sort((a, b) => (b.nearTermShortfall - a.nearTermShortfall) || (b.shortfall - a.shortfall));
-
-      // Attach requiredByDate: the real calendar date of the first month where this material has a shortfall.
-      // Uses the Work Programme project start date so the date is always programme-relative, never today.
-      const enrichedRows = shortageRows.map(row => {
-        const firstShortfallMonth = row.monthlyBreakdown.find(mb => mb.shortfall > 0)?.month ?? null;
-        const requiredByDate = (firstShortfallMonth && project.startDate)
-          ? monthIndexToDate(firstShortfallMonth, project.startDate).toISOString().split("T")[0]
-          : null;
-        return { ...row, requiredByDate };
+      // Sort: unresolved first, then by actionableShortfall desc, then totalDemand desc
+      shortageRows.sort((a, b) => {
+        if (a.materialMappingUnresolved !== b.materialMappingUnresolved) return a.materialMappingUnresolved ? -1 : 1;
+        return (b.actionableShortfall - a.actionableShortfall) || (b.totalDemand - a.totalDemand);
       });
 
       res.json({
         projectId,
         projectName: project.name,
-        rows: enrichedRows,
+        projectStartDate: project.startDate ?? null,
+        rows: shortageRows,
         hasBars: bars.length > 0,
         hasRecipes: expandedItems.some(it => it.materials.length > 0),
         currentMonth,
+        horizonMonthIndex,
+        maxProgrammeMonth,
       });
     } catch (err) {
       console.error("GET /api/boq/projects/:id/shortage-check:", err);
       res.status(500).json({ error: "Failed to compute shortage check" });
+    }
+  });
+
+  // ── Material Mapping routes (Instruction 017) ──────────────────────────────
+
+  /** List all mappings for a project (project-specific + globals). */
+  app.get("/api/boq/projects/:id/material-mappings", async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const mappings = await storage.getMaterialMappings(projectId);
+      res.json(mappings);
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/material-mappings:", err);
+      res.status(500).json({ error: "Failed to fetch material mappings" });
+    }
+  });
+
+  /** Save (upsert) a BOM label → plant_materials mapping. Requires PI approval permission. */
+  app.post("/api/boq/projects/:id/material-mappings", async (req, res) => {
+    try {
+      if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      const projectId = parseInt(req.params.id);
+      const { materialLabel, materialId, global: isGlobal } = req.body;
+      if (!materialLabel) return res.status(400).json({ message: "materialLabel required" });
+      if (!materialId || Number(materialId) <= 0) return res.status(400).json({ message: "materialId required" });
+      const userId = (req as any).user?.id ?? null;
+      const mapping = await storage.upsertMaterialMapping({
+        boqProjectId: isGlobal ? null : projectId,
+        materialLabel,
+        materialId: Number(materialId),
+        userId,
+      });
+      res.json(mapping);
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/material-mappings:", err);
+      res.status(500).json({ error: "Failed to save material mapping" });
+    }
+  });
+
+  /** Search plant_materials by name — used by the ResolveMappingDialog autocomplete. */
+  app.get("/api/plant-materials/search", async (req, res) => {
+    try {
+      const q = String(req.query.q ?? "").trim();
+      if (!q || q.length < 2) return res.json([]);
+      const results = await storage.searchPlantMaterials(q, 20);
+      res.json(results);
+    } catch (err) {
+      console.error("GET /api/plant-materials/search:", err);
+      res.status(500).json({ error: "Search failed" });
     }
   });
 
