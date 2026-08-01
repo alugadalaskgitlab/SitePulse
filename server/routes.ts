@@ -11850,23 +11850,30 @@ export async function registerRoutes(
         if (m.boqProjectId != null) labelToMaterialId.set(m.materialLabel, m.materialId);
       }
 
-      // ── Demand calculation ────────────────────────────────────────────────────
+      // ── (a) Demand calculation ────────────────────────────────────────────────
       const demand = expandedItems.length && bars.length
         ? calculateBomDemand(expandedItems as any, bars, project.totalMonths ?? 12)
         : { materials: [], equipment: [], labour: [] };
 
-      // ── Current project month (programme-relative, 1-based) ──────────────────
+      // ── (b) Collect all programme-month indexes ───────────────────────────────
+      const allProgrammeMonths = demand.materials.flatMap(r => Object.keys(r.monthlyQty).map(Number));
+
+      // ── (c) maxProgrammeMonth — must be declared before currentMonth ──────────
+      // Fallback to project.totalMonths to avoid the circular dependency that
+      // would occur if we used currentMonth as fallback (it isn't declared yet).
+      const maxProgrammeMonth = allProgrammeMonths.length
+        ? Math.max(...allProgrammeMonths)
+        : (project.totalMonths ?? 12);
+
+      // ── (d-e) Current project month ───────────────────────────────────────────
+      // Returns 0 before programme start, contained bucket during, maxProgrammeMonth after.
+      // No Math.max(1, ...) — before-start must yield 0 (Instruction 019A §2).
       const pStartDate = project.startDate ?? null;
-      let currentMonth = 1;
+      let currentMonth = 0;
       if (pStartDate) {
         const rawCurrent = dateToMonthIndex(new Date(), pStartDate);
-        // Use dateToMonthBucket (floor-based) so mid-month today doesn't resolve to M+1
-        currentMonth = Math.max(1, dateToMonthBucket(rawCurrent, maxProgrammeMonth));
+        currentMonth = dateToMonthBucket(rawCurrent, maxProgrammeMonth);
       }
-
-      // ── Horizon month index — server-authoritative ────────────────────────────
-      const allProgrammeMonths = demand.materials.flatMap(r => Object.keys(r.monthlyQty).map(Number));
-      const maxProgrammeMonth = allProgrammeMonths.length ? Math.max(...allProgrammeMonths) : currentMonth;
 
       // Helper: format a Date as YYYY-MM-DD ISO date string
       const toISODate = (d: Date): string => d.toISOString().split("T")[0];
@@ -11997,7 +12004,9 @@ export async function registerRoutes(
       });
     } catch (err) {
       console.error("GET /api/boq/projects/:id/shortage-check:", err);
-      res.status(500).json({ error: "Failed to compute shortage check" });
+      // Return a structured, safe error — no stack traces or secrets exposed to the client.
+      const detail = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: "Failed to compute shortage check", detail });
     }
   });
 

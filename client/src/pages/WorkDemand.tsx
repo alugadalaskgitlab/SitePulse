@@ -2161,17 +2161,32 @@ export default function WorkDemand() {
   const [horizonMode, setHorizonMode] = useState<HorizonMode>("current_month");
   const [horizonCustomDate, setHorizonCustomDate] = useState<string>("");
 
-  const { data: shortageData, isLoading: shortageLoading, refetch: refetchShortage } = useQuery<ShortageData>({
+  const {
+    data: shortageData,
+    isLoading: shortageLoading,
+    isError: shortageIsError,
+    error: shortageError,
+    refetch: refetchShortage,
+  } = useQuery<ShortageData>({
     queryKey: ["/api/boq/projects", projectId, "shortage-check", horizonMode, horizonCustomDate],
     queryFn: async () => {
       // The server is authoritative for horizon resolution — send mode + optional customDate.
       const params = new URLSearchParams({ horizonMode });
       if (horizonMode === "custom" && horizonCustomDate) params.set("customDate", horizonCustomDate);
       const res = await fetch(`/api/boq/projects/${projectId}/shortage-check?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch shortage data");
+      if (!res.ok) {
+        // Surface the server's structured error detail when available
+        let detail = `Server error ${res.status}`;
+        try {
+          const body = await res.json();
+          detail = body.detail ?? body.message ?? body.error ?? detail;
+        } catch { /* ignore parse errors */ }
+        throw new Error(detail);
+      }
       return res.json();
     },
     enabled: !isNaN(projectId) && activeTab === "procurement",
+    retry: 1,
   });
 
   // Actuals for Plan vs Actual: reuse the existing (read-only) DPR listing
@@ -2547,7 +2562,23 @@ export default function WorkDemand() {
                   <Loader2 className="w-5 h-5 animate-spin mr-2" /> Checking stock…
                 </div>
               )}
-              {!shortageLoading && shortageData && (
+              {shortageIsError && !shortageLoading && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-5 space-y-3">
+                  <p className="font-semibold text-red-800">Procurement analysis could not be loaded.</p>
+                  {shortageError instanceof Error && shortageError.message && (
+                    <p className="text-sm text-red-700 font-mono break-all">{shortageError.message}</p>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => refetchShortage()}
+                    className="border-red-300 text-red-700 hover:bg-red-100"
+                  >
+                    Retry
+                  </Button>
+                </div>
+              )}
+              {!shortageLoading && !shortageIsError && shortageData && (
                 <ProcurementTable
                   data={shortageData}
                   projectId={projectId}
