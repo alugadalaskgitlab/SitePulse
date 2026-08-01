@@ -1,0 +1,88 @@
+Instruction 019A — Restore Procurement Page and Show API Errors
+
+This is an urgent regression fix only.
+
+Files:
+- server/routes.ts
+- client/src/pages/WorkDemand.tsx
+
+DO NOT TOUCH:
+- material mapping logic
+- UOM conversion logic
+- BOM calculations
+- Work Programme/Gantt
+- Material Requirements
+- PI/IRN flows
+- purchaser actions
+- GRN flows
+- any Stores or Plant workflow
+
+1. Fix the shortage-check route crash
+
+In GET /api/boq/projects/:id/shortage-check, maxProgrammeMonth is currently used before it is declared.
+
+Reorder the logic exactly as follows:
+
+a. calculate demand;
+b. collect all programme-month indexes;
+c. calculate maxProgrammeMonth;
+d. calculate rawCurrent from project start date;
+e. calculate currentMonth;
+f. resolve the selected horizon;
+g. build shortage rows.
+
+Do not reference maxProgrammeMonth before its declaration.
+
+2. Correct the before-programme-start rule
+
+Do not use Math.max(1, ...) for currentMonth.
+
+Required behaviour:
+
+- before project/programme start → currentMonth = 0;
+- during programme → correct contained programme bucket;
+- after programme completion → maxProgrammeMonth.
+
+Keep the existing floor/bucket-containment logic.
+
+3. Add visible shortage-query error handling
+
+In WorkDemand.tsx, capture:
+
+- isError
+- error
+
+from the shortage-check useQuery.
+
+When the API fails, do not render a blank Procurement tab.
+
+Show a visible error panel containing:
+
+- “Procurement analysis could not be loaded.”
+- the server error message where available;
+- a Retry button calling refetchShortage();
+- no false empty-state message.
+
+Keep the normal loading spinner and normal table rendering unchanged.
+
+4. Return the real server error safely
+
+In the shortage-check route catch block:
+
+- log the full error server-side;
+- return a useful message such as:
+  { error: "Failed to compute shortage check", detail: safe error message }
+
+Do not expose stack traces or secrets.
+
+5. Run and prove
+
+- TypeScript/build must pass.
+- Open BOM & Demand → Procurement.
+- Table must load again.
+- Current Month must not crash.
+- Custom Date before programme start must return zero horizon demand.
+- Changing horizons must refetch without blanking the page.
+- Temporarily force the API to fail and confirm the UI shows the error panel and Retry button.
+
+Do not continue Instruction 019 enhancements until this regression is fixed and the Procurement table is visible again.
