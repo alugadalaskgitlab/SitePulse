@@ -20,7 +20,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, type LayerConfig } from "@shared/planningEngine";
+import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, type LayerConfig } from "@shared/planningEngine";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
 import { classifyWorkType, STANDARD_CONCRETE_DESIGNS, isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
@@ -11744,9 +11744,9 @@ export async function registerRoutes(
       const project = await storage.getBoqProject(projectId);
       if (!project) return res.status(404).json({ error: "Project not found" });
 
-      // ── Horizon: which month index to use as the demand cut-off ─────────────
-      // horizonDate param = ISO date string; absent → entire programme (all months)
-      const horizonDateParam = req.query.horizonDate as string | undefined;
+      // ── Horizon: server-authoritative — client sends mode + optional customDate ─
+      const horizonModeParam = (req.query.horizonMode as string | undefined) ?? "current_month";
+      const customDateParam = req.query.customDate as string | undefined;
 
       const [{ expandedItems, bars }, allStockBalances, allMaterials, allIndents, allIrns, materialMappings] = await Promise.all([
         computeProjectBom(projectId),
@@ -11792,37 +11792,33 @@ export async function registerRoutes(
         }
       }
 
-      // ── Confirmed internal incoming — stores_verified IRN items with balance ─
-      const confirmedIrnById = new Map<number, number>();
-      for (const irn of allIrns) {
-        if (irn.status !== "stores_verified") continue;
-        for (const item of irn.items ?? []) {
-          // item.material is a name string — we need the materialId
-          // IRN items don't directly carry materialId in the type; use master lookup below
-          if (item.itemStatus !== "partially_issued" && item.itemStatus !== "pending") continue;
-          // We'll match by material name → materialId after building the name map
-          const balance = (item.procureQty ?? item.qty) - (item.actualIssuedQty ?? 0);
-          if (balance <= 0) continue;
-          // Stash by name for now; resolve to ID after the master name→id map is ready
-          (confirmedIrnById as any).__nameMap = (confirmedIrnById as any).__nameMap ?? new Map<string, number>();
-          const nameMap = (confirmedIrnById as any).__nameMap as Map<string, number>;
-          const key = item.material?.trim().toLowerCase() ?? "";
-          if (key) nameMap.set(key, (nameMap.get(key) ?? 0) + balance);
-        }
-      }
-
       // ── Material master lookups ──────────────────────────────────────────────
       const materialIdByName = new Map<string, number>();
       for (const mat of allMaterials) {
         materialIdByName.set(mat.name.trim().toLowerCase(), mat.id);
       }
 
-      // Resolve name-keyed IRN balances to materialId
-      const irnNameMap = (confirmedIrnById as any).__nameMap as Map<string, number> | undefined;
-      if (irnNameMap) {
-        for (const [name, qty] of irnNameMap) {
-          const mid = materialIdByName.get(name);
-          if (mid) confirmedIrnById.set(mid, (confirmedIrnById.get(mid) ?? 0) + qty);
+      // ── Confirmed internal incoming — stores_verified IRN items with balance ─
+      // Primary key: item.materialId (canonical FK). Name fallback ONLY when materialId is null.
+      const confirmedIrnById = new Map<number, number>();
+      for (const irn of allIrns) {
+        if (irn.status !== "stores_verified") continue;
+        for (const item of irn.items ?? []) {
+          if (item.itemStatus !== "partially_issued" && item.itemStatus !== "pending") continue;
+          const balance = (item.procureQty ?? item.qty) - (item.actualIssuedQty ?? 0);
+          if (balance <= 0) continue;
+          const directMid = (item as any).materialId as number | null | undefined;
+          if (directMid) {
+            // Canonical path: materialId present on item — use directly
+            confirmedIrnById.set(directMid, (confirmedIrnById.get(directMid) ?? 0) + balance);
+          } else {
+            // Fallback: resolve by name (for legacy IRN items without materialId)
+            const key = item.material?.trim().toLowerCase() ?? "";
+            if (key) {
+              const mid = materialIdByName.get(key);
+              if (mid) confirmedIrnById.set(mid, (confirmedIrnById.get(mid) ?? 0) + balance);
+            }
+          }
         }
       }
 
@@ -11843,28 +11839,65 @@ export async function registerRoutes(
         ? calculateBomDemand(expandedItems as any, bars, project.totalMonths ?? 12)
         : { materials: [], equipment: [], labour: [] };
 
-      // ── Current project month ─────────────────────────────────────────────────
-      const startDate = project.startDate ? new Date(project.startDate) : null;
+      // ── Current project month (programme-relative, 1-based) ──────────────────
+      const pStartDate = project.startDate ?? null;
       let currentMonth = 1;
-      if (startDate) {
-        const diffMonths = (Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
-        currentMonth = Math.max(1, Math.ceil(diffMonths));
+      if (pStartDate) {
+        currentMonth = Math.max(1, Math.ceil(dateToMonthIndex(new Date(), pStartDate)));
       }
 
-      // ── Horizon month index ────────────────────────────────────────────────────
-      // If a horizonDate is given, convert it to a programme month index.
-      // Otherwise use the maximum month across all demand rows (entire programme).
+      // ── Horizon month index — server-authoritative ────────────────────────────
       const allProgrammeMonths = demand.materials.flatMap(r => Object.keys(r.monthlyQty).map(Number));
       const maxProgrammeMonth = allProgrammeMonths.length ? Math.max(...allProgrammeMonths) : currentMonth;
 
-      let horizonMonthIndex = maxProgrammeMonth; // default: entire programme
-      if (horizonDateParam && project.startDate) {
-        const hDate = new Date(horizonDateParam);
-        const pStart = new Date(project.startDate);
-        const diffMs = hDate.getTime() - pStart.getTime();
-        const diffMonths = diffMs / (1000 * 60 * 60 * 24 * 30.44);
-        horizonMonthIndex = Math.max(1, Math.min(maxProgrammeMonth, Math.ceil(diffMonths)));
-      }
+      // Helper: format a Date as YYYY-MM-DD ISO date string
+      const toISODate = (d: Date): string => d.toISOString().split("T")[0];
+      // Helper: end of programme month N = start of month N+1 minus 1 day
+      const endOfProgMonth = (idx: number): string | null => {
+        if (!pStartDate) return null;
+        const startOfNext = monthIndexToDate(idx + 1, pStartDate);
+        return toISODate(new Date(startOfNext.getTime() - 86_400_000));
+      };
+
+      type ResolvedHorizon = { horizonMonthIndex: number; resolvedHorizonDate: string | null };
+      const resolveHorizon = (): ResolvedHorizon => {
+        const mode = horizonModeParam as string;
+        if (!pStartDate) {
+          // No start date — always entire programme
+          return { horizonMonthIndex: maxProgrammeMonth, resolvedHorizonDate: null };
+        }
+        switch (mode) {
+          case "current_month": {
+            const idx = Math.min(currentMonth, maxProgrammeMonth);
+            return { horizonMonthIndex: idx, resolvedHorizonDate: endOfProgMonth(idx) };
+          }
+          case "next_30_days": {
+            const cutoff = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+            const rawIdx = dateToMonthIndex(cutoff, pStartDate);
+            const idx = Math.max(1, Math.min(maxProgrammeMonth, Math.ceil(rawIdx)));
+            return { horizonMonthIndex: idx, resolvedHorizonDate: toISODate(cutoff) };
+          }
+          case "next_programme_month": {
+            const idx = Math.min(currentMonth + 1, maxProgrammeMonth);
+            return { horizonMonthIndex: idx, resolvedHorizonDate: endOfProgMonth(idx) };
+          }
+          case "custom": {
+            if (customDateParam) {
+              const cutoff = new Date(customDateParam);
+              const rawIdx = dateToMonthIndex(cutoff, pStartDate);
+              const idx = Math.max(1, Math.min(maxProgrammeMonth, Math.ceil(rawIdx)));
+              return { horizonMonthIndex: idx, resolvedHorizonDate: customDateParam };
+            }
+            // No custom date provided — fall through to entire_programme
+            return { horizonMonthIndex: maxProgrammeMonth, resolvedHorizonDate: null };
+          }
+          case "entire_programme":
+          default:
+            return { horizonMonthIndex: maxProgrammeMonth, resolvedHorizonDate: null };
+        }
+      };
+
+      const { horizonMonthIndex, resolvedHorizonDate } = resolveHorizon();
 
       // ── Build shortage rows ────────────────────────────────────────────────────
       const shortageRows = demand.materials.map(matRow => {
@@ -11924,6 +11957,9 @@ export async function registerRoutes(
         currentMonth,
         horizonMonthIndex,
         maxProgrammeMonth,
+        selectedHorizonMode: horizonModeParam,
+        resolvedHorizonDate,
+        resolvedProgrammeMonthIndex: horizonMonthIndex,
       });
     } catch (err) {
       console.error("GET /api/boq/projects/:id/shortage-check:", err);

@@ -1182,6 +1182,9 @@ interface ShortageData {
   projectStartDate?: string | null;
   horizonMonthIndex?: number;
   maxProgrammeMonth?: number;
+  selectedHorizonMode?: string;
+  resolvedHorizonDate?: string | null;
+  resolvedProgrammeMonthIndex?: number;
 }
 
 // ── Fresh client-request-ID ─────────────────────────────────────────────────
@@ -1413,7 +1416,14 @@ function SuggestionBadge({
     setDestSiteId(projectLinkedSiteId ? String(projectLinkedSiteId) : "");
     setCreatedReqId(null); setSplitAllocInternal(null); setSplitAllocProc(null);
     if (action === "both") {
-      const irnSugg = Math.round(Math.min(row.stockElsewhere, totalQty) * 1000) / 1000;
+      // How much of the demand is not yet covered by confirmed incoming (PI or IRN)?
+      // Use that as the ceiling for what internal transfer (IRN) can cover.
+      // Only HLC-recorded stock (partyId = NULL) feeds an IRN — other-parties stock is informational.
+      const remainingAfterConfirmed = Math.max(
+        0,
+        (row.demandUpToSelectedDate) - (row.confirmedIncomingPurchase) - (row.confirmedInternalIncoming),
+      );
+      const irnSugg = Math.round(Math.min(remainingAfterConfirmed, row.hlcRecordedStock) * 1000) / 1000;
       setInternalQtyStr(String(irnSugg));
       setProcQtyStr(String(Math.round(Math.max(0, totalQty - irnSugg) * 1000) / 1000));
     }
@@ -1709,8 +1719,11 @@ function SuggestionBadge({
                 <p className="text-[12px] text-muted-foreground">Requirement REQ-{createdReqId} created ✓</p>
                 <p className="font-semibold">{row.materialName}</p>
                 <p className="text-gray-600">Total required: <span className="font-mono font-semibold">{fmtN(totalQty)} {row.uom}</span></p>
-                {row.stockElsewhere > 0 && (
-                  <p className="text-amber-700 text-[12px]">Suggested internal transfer: {fmtN(Math.min(row.stockElsewhere, totalQty))} {row.uom}</p>
+                {row.hlcRecordedStock > 0 && (
+                  <p className="text-blue-700 text-[12px]">Suggested internal allocation (from HLC stock): {fmtN(Math.min(row.hlcRecordedStock, Math.max(0, row.demandUpToSelectedDate - row.confirmedIncomingPurchase - row.confirmedInternalIncoming)))} {row.uom}</p>
+                )}
+                {row.stockWithOtherParties > 0 && (
+                  <p className="text-indigo-600 text-[12px]">ℹ Other parties hold {fmtN(row.stockWithOtherParties)} {row.uom} — confirm availability before requesting transfer.</p>
                 )}
               </div>
               {/* Internal qty */}
@@ -1785,15 +1798,18 @@ function SuggestionBadge({
 }
 
 // ── Horizon selector ──────────────────────────────────────────────────────────
-type HorizonMode = "current_month" | "next_30_days" | "next_month" | "custom" | "entire_programme";
+type HorizonMode = "current_month" | "next_30_days" | "next_programme_month" | "custom" | "entire_programme";
 
 function HorizonSelector({
   mode, customDate, projectStartDate,
+  resolvedHorizonDate,
   onChange,
 }: {
   mode: HorizonMode;
   customDate: string;
   projectStartDate?: string | null;
+  /** ISO date string resolved server-side — shown alongside the mode picker for clarity. */
+  resolvedHorizonDate?: string | null;
   onChange: (mode: HorizonMode, customDate: string) => void;
 }) {
   return (
@@ -1805,7 +1821,7 @@ function HorizonSelector({
         <SelectContent>
           <SelectItem value="current_month">Up to Current Programme Month</SelectItem>
           <SelectItem value="next_30_days">Next 30 Days</SelectItem>
-          <SelectItem value="next_month">Next Programme Month</SelectItem>
+          <SelectItem value="next_programme_month">Next Programme Month</SelectItem>
           <SelectItem value="custom">Custom Date</SelectItem>
           <SelectItem value="entire_programme">Entire Programme</SelectItem>
         </SelectContent>
@@ -1819,6 +1835,11 @@ function HorizonSelector({
           min={projectStartDate ?? undefined}
         />
       )}
+      {resolvedHorizonDate && mode !== "entire_programme" && (
+        <span className="text-[11px] text-slate-600 bg-white border border-slate-200 rounded px-1.5 py-0.5">
+          Through: <span className="font-semibold">{resolvedHorizonDate}</span>
+        </span>
+      )}
       {mode === "entire_programme" && (
         <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
           ⚠ Shows full programme totals — may overstate near-term risk
@@ -1826,25 +1847,6 @@ function HorizonSelector({
       )}
     </div>
   );
-}
-
-// Compute the ISO date string for a given horizon mode (client-side for the query param).
-function horizonModeToDate(mode: HorizonMode, customDate: string, projectStartDate?: string | null): string | undefined {
-  const now = new Date();
-  if (mode === "entire_programme") return undefined; // no param = entire programme
-  if (mode === "current_month") {
-    return now.toISOString().split("T")[0];
-  }
-  if (mode === "next_30_days") {
-    const d = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    return d.toISOString().split("T")[0];
-  }
-  if (mode === "next_month") {
-    const d = new Date(now.getFullYear(), now.getMonth() + 2, 0); // end of next month
-    return d.toISOString().split("T")[0];
-  }
-  if (mode === "custom") return customDate || undefined;
-  return undefined;
 }
 
 function ProcurementTable({
@@ -1880,6 +1882,7 @@ function ProcurementTable({
         mode={horizonMode}
         customDate={horizonCustomDate}
         projectStartDate={data.projectStartDate}
+        resolvedHorizonDate={data.resolvedHorizonDate}
         onChange={onHorizonChange}
       />
 
@@ -2026,17 +2029,17 @@ export default function WorkDemand() {
   });
 
   // ── Procurement Horizon state ──────────────────────────────────────────────
-  const [horizonMode, setHorizonMode] = useState<HorizonMode>("entire_programme");
+  // Default to current_month — server resolves the exact cutoff date programme-relatively.
+  const [horizonMode, setHorizonMode] = useState<HorizonMode>("current_month");
   const [horizonCustomDate, setHorizonCustomDate] = useState<string>("");
-  const horizonDateParam = horizonModeToDate(horizonMode, horizonCustomDate);
 
   const { data: shortageData, isLoading: shortageLoading, refetch: refetchShortage } = useQuery<ShortageData>({
-    queryKey: ["/api/boq/projects", projectId, "shortage-check", horizonDateParam ?? "all"],
+    queryKey: ["/api/boq/projects", projectId, "shortage-check", horizonMode, horizonCustomDate],
     queryFn: async () => {
-      const url = horizonDateParam
-        ? `/api/boq/projects/${projectId}/shortage-check?horizonDate=${encodeURIComponent(horizonDateParam)}`
-        : `/api/boq/projects/${projectId}/shortage-check`;
-      const res = await fetch(url, { credentials: "include" });
+      // The server is authoritative for horizon resolution — send mode + optional customDate.
+      const params = new URLSearchParams({ horizonMode });
+      if (horizonMode === "custom" && horizonCustomDate) params.set("customDate", horizonCustomDate);
+      const res = await fetch(`/api/boq/projects/${projectId}/shortage-check?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch shortage data");
       return res.json();
     },
