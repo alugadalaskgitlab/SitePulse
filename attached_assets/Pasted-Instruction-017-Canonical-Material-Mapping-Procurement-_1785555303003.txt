@@ -1,0 +1,714 @@
+Instruction 017 — Canonical Material Mapping, Procurement Horizon and Honest Actionable Shortfall
+
+Purpose
+
+Correct the Work Demand Procurement tab so that:
+
+1. BOM materials are matched to stock and procurement records through stable material IDs, not names.
+2. Unmapped materials are blocked from IRN/PI action instead of being treated as zero stock.
+3. Procurement recommendations are based on demand up to a selected planning horizon, not automatically on the entire Work Programme.
+4. Confirmed incoming includes only real operational commitments, not merely requirements, allocations or unapproved PI/IRN requests.
+5. The screen describes the present stock model honestly. SitePulse currently has company/custody-level stock, not a reliable physical stock ledger by Site/HMP/RMC/Store location.
+6. The quantity passed into the existing Material Requirement flow is the actionable quantity for the selected horizon.
+
+Expected files
+
+- shared/planningEngine.ts
+- server/routes.ts
+- server/storage.ts
+- client/src/pages/WorkDemand.tsx
+
+Touch shared/schema.ts only if a small additive mapping field or index is genuinely required after inspecting the existing schema.
+
+DO NOT TOUCH OR REDESIGN
+
+- material_requirements
+- material_requirement_allocations
+- requirementId/allocationId architecture
+- Instruction 016B destination-confirmation flow
+- allocation permission and authorisation flow
+- PI/IRN transactional linkage
+- submitPurchaserAction
+- placeOrderIndent
+- recordDelivery
+- derivePiStatus
+- checkAndCompleteIndent
+- storesVerifyIrn and issue-recording business logic
+- createDraftGrnFromPi
+- GRN finalisation
+- Admin override
+- PI-linked GRN skip-search logic
+- cancelStoreGrn
+- manual PI/IRN creation
+- Tomorrow’s Plan integration
+- Immediate Requirement integration
+- Site Material Received integration
+- Stores Hub redesign
+- physical stock-location ledger
+
+This instruction changes only Work Demand procurement intelligence, material resolution, table presentation and the suggested quantity passed into the existing requirement flow.
+
+1. Define the demand quantities clearly
+
+For every BOM material row, calculate and return:
+
+- totalProgrammeDemand
+- demandUpToSelectedDate
+- futureRequirement
+
+Definitions:
+
+totalProgrammeDemand:
+- total material demand across the full programmed Work Programme horizon.
+
+demandUpToSelectedDate:
+- cumulative programmed material demand due up to the selected procurement horizon.
+
+futureRequirement:
+- max(0, totalProgrammeDemand - demandUpToSelectedDate).
+
+For BOQ items with Work Programme bars:
+
+- derive demand from the programmed quantities distributed across the programmed periods.
+
+For BOQ items without programme bars:
+
+- retain the existing full-BOQ fallback only for Total Programme Demand;
+- flag the row:
+  “Not programmed — full BOQ quantity shown for planning only”;
+- do not automatically include the entire unprogrammed BOQ quantity in immediate/actionable procurement;
+- include it in actionable demand only when the user deliberately selects Entire Programme.
+
+Do not use totalProgrammeDemand as the default Raise PI/IRN quantity.
+
+2. Add a Procurement Horizon selector
+
+Add a visible selector above the Procurement table:
+
+- Up to Current Programme Month
+- Next 30 Days
+- Next Programme Month
+- Custom Date
+- Entire Programme
+
+Default:
+
+- Up to Current Programme Month
+
+Rules:
+
+Up to Current Programme Month:
+- include cumulative demand through the current Work Programme month.
+
+Next 30 Days:
+- include cumulative demand through today + 30 days based on the programme schedule.
+
+Next Programme Month:
+- include cumulative demand through the end of the next programme month.
+
+Custom Date:
+- require a date;
+- include cumulative demand through that date.
+
+Entire Programme:
+- include the entire programmed demand;
+- show a warning:
+  “Entire Programme selected — recommendations may include materials required several months later.”
+
+Changing the horizon must recalculate:
+
+- demandUpToSelectedDate
+- confirmed incoming relevant to that demand
+- actionable shortfall
+- future requirement
+- recommended action
+- quantity passed into Raise IRN/PI/Split.
+
+3. Use canonical material IDs from demand generation onward
+
+Every BOM procurement row must carry a stable material identity.
+
+For the live Work Demand/BOM path, use:
+
+- materialType = "plant_material"
+- canonical plant_materials.id
+
+Also carry:
+
+- sourceBoqItemId
+- canonical material name
+- displayed BOM material description
+- UOM
+- requiredByDate
+- procurement route
+- programme-month breakdown
+
+Do not resolve stock after the fact by matching displayed material names.
+
+The hardcoded/fallback material categories currently generated in planningEngine.ts, including examples such as:
+
+- GSB Material
+- WMM Material / WMM Processed
+- aggregates
+- Bitumen VG-30
+- bitumen emulsion
+- filler
+- fuel/process fuel
+
+must resolve through a stable material master mapping, code, category or stored BOQ/BOM mapping.
+
+Do not depend on an exact typed label in plant_materials.name.
+
+4. Mark unresolved mappings explicitly
+
+Where a BOM material cannot be resolved to a canonical material ID:
+
+Return:
+
+- materialMappingUnresolved = true
+- materialId = null
+- a clear reason where practical
+
+In the Procurement table show:
+
+- “Material mapping required”
+- action:
+  “Resolve Material Mapping”
+
+Do not show:
+
+- Raise PI
+- Raise IRN
+- Review Split
+- Current/HLC stock as zero
+- confirmed incoming as zero as though verified
+
+Use “—” for quantities that cannot be reliably calculated because the material is unresolved.
+
+Do not silently create a new material master record from the BOM description.
+
+5. Provide a focused Resolve Material Mapping action
+
+Use an existing BOQ/material mapping interface if one already exists and supports this source.
+
+If no suitable interface exists, add only a small focused dialog that:
+
+- shows the BOM/BOQ material description;
+- shows UOM;
+- searches existing compatible plant_materials;
+- allows an authorised user to select the canonical material;
+- saves the stable mapping against the BOQ/BOM source item or existing appropriate mapping entity;
+- does not create a duplicate material automatically.
+
+After mapping:
+
+- refresh the affected Procurement row;
+- recalculate stock, incoming and recommendation;
+- do not require a full browser reload.
+
+If there is no compatible master item, provide a separate route to the existing material-master management screen. Do not silently create one inside Work Demand.
+
+6. Replace name-based stock matching with materialId matching
+
+The present shortage handler builds stock maps using lower-cased material names even though stock_balances already has materialId.
+
+Replace this with canonical ID matching.
+
+For each mapped BOM row:
+
+- query/aggregate stock using stock_balances.materialId;
+- query pending PI/IRN/order records using their stable material identity;
+- do not fall back to name matching where a canonical ID exists.
+
+Name matching may be used only as a diagnostic suggestion for unresolved mapping, never as the final stock or procurement join.
+
+7. Present the current stock model honestly
+
+The present schema does not maintain a reliable physical running stock balance by:
+
+- specific Site
+- HMP
+- RMC
+- Central Store location
+
+stock_balances.partyId represents custody/accounting parties, not physical project or plant locations.
+
+Therefore, for this instruction, do not label quantities as:
+
+- Stock at Destination
+- Stock at Other Site
+- Stock at Plant
+- Transferable Site Stock
+
+Instead calculate and show only what the current data can support:
+
+- hlcRecordedStock
+- stockWithOtherParties
+
+Definitions:
+
+hlcRecordedStock:
+- stock recorded as held by HLC/company under the present custody model.
+
+stockWithOtherParties:
+- stock recorded against external parties/subcontractors/vendors under the present reconciliation model.
+
+Show a visible note:
+
+“Current stock figures are company/custody-level balances. Physical stock by Site, HMP, RMC and Store location is not yet maintained separately.”
+
+stockWithOtherParties must be informational only.
+
+Do not automatically treat it as available for internal issue or deduct it from actionable shortage.
+
+8. Calculate confirmed incoming from real commitments only
+
+Do not count the following as confirmed incoming:
+
+- Material Requirement raised
+- authorised procurement allocation
+- authorised internal allocation
+- PI merely raised
+- PI awaiting approval
+- IRN merely raised
+- rejected/cancelled/closed records
+- received/completed quantities
+- stock merely identified as potentially available
+
+Purchase confirmed incoming should include only real outstanding operational commitments such as:
+
+- Ordered — Awaiting Delivery
+- Already Purchased — Awaiting Receipt
+- outstanding balance of partially received purchase orders/actions
+
+Internal confirmed incoming should include only a real committed issue/transfer where the existing workflow has reached the actual commitment stage.
+
+Do not count a suggested or merely authorised internal allocation as incoming.
+
+Do not double-count the same quantity between:
+
+- PI approved quantity
+- purchaser-action ordered quantity
+- purchased quantity
+- pending receipt
+- partial receipt balance
+- received stock
+- IRN requested quantity
+- internal allocation
+- committed issue
+- completed issue
+
+Use stable document/item/action IDs and active statuses.
+
+9. Keep planning/request quantities visible but separate
+
+Where useful, expose separately:
+
+- procurementRequestedQty
+- internallyAllocatedQty
+
+These are workflow/planning commitments, not confirmed physical incoming.
+
+They may appear in a detail popover or secondary breakdown, but they must not reduce actionableShortfall as confirmed incoming.
+
+The screen must distinguish:
+
+- Requested/authorised
+- Operationally ordered/committed
+- Physically received/issued
+
+10. Define actionable shortfall using supported data
+
+Calculate:
+
+usableCommittedCoverage =
+hlcRecordedStock
++ confirmedIncomingPurchase
++ confirmedInternalIncoming
+
+actionableShortfall =
+max(0, demandUpToSelectedDate - usableCommittedCoverage)
+
+futureRequirement =
+max(0, totalProgrammeDemand - demandUpToSelectedDate)
+
+Do not subtract stockWithOtherParties automatically.
+
+Because the present system lacks physical location stock, any internal issue suggestion from HLC stock must be advisory and subject to review.
+
+11. Temporary recommendation logic until location-wise stock exists
+
+For a mapped material:
+
+If actionableShortfall <= 0:
+- Action = Adequate for Selected Horizon
+
+If actionableShortfall > 0 and hlcRecordedStock <= 0:
+- Action = Raise PI
+- suggestedProcurementQty = actionableShortfall
+
+If actionableShortfall > 0 and hlcRecordedStock > 0 but less than demandUpToSelectedDate:
+- Action = Review HLC Stock + Purchase Balance
+- suggestedInternalQty = min(demandUpToSelectedDate, hlcRecordedStock)
+- suggestedProcurementQty = actionableShortfall
+
+If HLC recorded stock alone covers demandUpToSelectedDate:
+- Action = Review Internal Issue
+- do not automatically create an IRN;
+- show:
+  “HLC recorded stock may cover the selected-period demand — confirm availability and location.”
+
+For unresolved material:
+- Action = Resolve Material Mapping
+
+Do not state that stock is available at another site or plant.
+
+Use wording such as:
+
+- “Review available HLC recorded stock”
+- “Physical location must be confirmed”
+- “Stock with other parties is informational and not automatically available”
+- “Internal issue/transfer subject to Stores/PM confirmation”
+
+12. Clarify the IRN recommendation limitation
+
+Until the physical location-stock ledger is implemented, Work Demand cannot reliably determine:
+
+- same-store issue
+- plant-to-site transfer
+- site-to-site transfer
+- exact transferable stock by location
+
+Therefore:
+
+- an IRN recommendation is a review prompt based on HLC recorded stock;
+- Stores/PM must confirm the physical availability and source;
+- the app must not claim a location-specific transfer automatically.
+
+Do not use stockWithOtherParties as a reason to raise an IRN.
+
+13. Correct the quantity passed into Material Requirement creation
+
+Raise PI:
+- pass suggestedProcurementQty for the selected horizon.
+
+Review Internal Issue / Raise IRN:
+- pass the reviewed internal quantity for the selected horizon;
+- do not automatically pass total programme demand.
+
+Review HLC Stock + Purchase Balance:
+- create one Material Requirement for the selected-horizon demand/shortfall;
+- show proposed internal review quantity and procurement quantity separately;
+- use the existing Instruction 016B allocation flow after authorised review.
+
+The confirmation dialog must show:
+
+- selected procurement horizon
+- total programme demand
+- demand up to selected date
+- HLC recorded stock
+- stock with other parties
+- confirmed incoming purchase
+- confirmed internal incoming
+- procurement requested, informational
+- internally allocated, informational
+- actionable shortfall
+- future requirement
+- proposed internal quantity
+- proposed procurement quantity
+
+Do not prefill a PI for the whole programme unless Entire Programme is deliberately selected.
+
+14. Rebuild the Procurement table using honest columns
+
+Use these columns:
+
+- Material
+- Unit
+- Total Programme Demand
+- Demand to Selected Date
+- HLC Recorded Stock
+- Stock with Other Parties
+- Confirmed Incoming
+- Actionable Shortfall
+- Future Requirement
+- Action
+
+Confirmed Incoming may show a compact total with a detail popover containing:
+
+- purchase incoming
+- internal committed incoming
+- ordered quantity
+- purchased awaiting receipt
+- outstanding partial-delivery balance
+
+Where screen width is limited:
+
+- preserve Material and Action;
+- use compact headings with tooltips;
+- allow horizontal scrolling;
+- do not hide essential quantities;
+- do not merge total programme demand with immediate actionable demand.
+
+15. Add clear warnings and explanations
+
+For unmapped material:
+
+“No canonical stock match. Map this BOM material before creating an IRN or PI.”
+
+For an unprogrammed BOQ item:
+
+“Not programmed — full BOQ quantity is shown under Total Programme Demand but excluded from immediate actionable demand unless Entire Programme is selected.”
+
+For the current stock model:
+
+“Stock shown here is company/custody-level stock. Physical Site/Plant/Store stock locations are not yet tracked separately.”
+
+For Entire Programme:
+
+“Entire Programme selected — recommendations may include materials required several months later.”
+
+For stock with other parties:
+
+“Informational only — not automatically available for internal issue.”
+
+16. Complete the requiredByDate type correction
+
+ShortageRowResult currently declares requiredByDate, but computeShortageRow does not itself return it consistently and it is added later in the route handler.
+
+Correct this so that:
+
+- computeShortageRow, or the immediate typed result builder responsible for the row, returns requiredByDate directly;
+- the type and implementation agree;
+- no required property is bolted on through an unsafe later mutation;
+- the existing correct runtime date calculation is preserved;
+- the TypeScript/build check passes.
+
+17. Complete store_item identity validation readiness
+
+Although the Store Catalogue UI entry point remains deferred, complete server-side identity validation for requirement-linked PI/IRN creation.
+
+For materialType = "plant_material":
+
+- materialId must be present and match the requirement;
+- storeItemId must be null.
+
+For materialType = "store_item":
+
+- storeItemId must be present and match the requirement;
+- materialId must be null.
+
+Reject:
+
+- mismatched storeItemId
+- mismatched materialId
+- both populated
+- neither populated
+
+Use the existing clear MATERIAL_MISMATCH/identity error handling.
+
+Do not add new Store Catalogue requirement UI in this instruction.
+
+18. Preserve the existing 016B lifecycle
+
+After the corrected recommendation:
+
+- Material Requirement is created through the existing flow;
+- status remains awaiting_review;
+- destination confirmation remains mandatory;
+- allocation authorisation remains permission-gated;
+- PI/IRN opens only after authorised allocation;
+- no automatic approval;
+- no automatic purchase order;
+- no automatic internal issue;
+- no automatic stock transfer.
+
+This instruction changes only:
+
+- material resolution
+- demand horizon
+- stock/incoming presentation
+- recommendation quantity
+
+19. Error handling
+
+Use the shared API error parser where available.
+
+Do not silently:
+
+- treat an unmapped material as zero stock;
+- create a requirement without canonical identity;
+- fall back to total programme demand;
+- count allocations as confirmed incoming;
+- count approved-but-unordered PI quantity as incoming;
+- count completed/received quantity as still incoming;
+- count stock with other parties as HLC-usable stock;
+- claim site/plant location accuracy that the schema does not support;
+- fall back to name joins when materialId exists.
+
+Acceptance tests
+
+A. Canonical mapping
+
+- A mapped material uses materialId for stock and pending joins.
+- Different display names with the same canonical materialId resolve to one stock identity.
+- No exact-name equality is required.
+- An unresolved material shows Resolve Material Mapping.
+- No Raise PI/IRN appears for unresolved rows.
+- No duplicate material master is auto-created.
+
+B. Known fallback materials
+
+Test at least:
+
+- GSB
+- WMM
+- 10 mm aggregate
+- 20 mm aggregate
+- Bitumen VG-30
+- Bitumen emulsion
+- filler
+
+Expected:
+
+- each either resolves to a canonical materialId;
+- or clearly shows Material Mapping Required;
+- none silently appears as verified zero stock merely because the label differs.
+
+C. Horizon calculation
+
+Use one material programmed over six months.
+
+Confirm:
+
+- Total Programme Demand remains the full six-month quantity.
+- Current Programme Month shows cumulative demand only through that month.
+- Next 30 Days changes demand correctly.
+- Next Programme Month includes the next period.
+- Custom Date uses the selected date.
+- Entire Programme equals full programmed demand.
+
+D. Near-term versus full programme
+
+Example:
+
+- Total Programme Demand: 6,840 MT
+- Demand to Selected Date: 238.6 MT
+- HLC Recorded Stock: 0
+- Confirmed Incoming: 0
+
+Expected:
+
+- Actionable Shortfall: 238.6 MT
+- Raise PI quantity: 238.6 MT
+- Future Requirement: 6,601.4 MT
+- PI is not prefilled for 6,840 MT.
+
+E. Adequate selected horizon
+
+Example:
+
+- Total Programme Demand: 1,000
+- Demand to Selected Date: 200
+- HLC Recorded Stock + Confirmed Incoming: 250
+
+Expected:
+
+- Actionable Shortfall: 0
+- Future Requirement: 800
+- Action: Adequate for Selected Horizon
+- No Raise PI because of the later programme demand.
+
+F. HLC recorded stock advisory
+
+Example:
+
+- Demand to Selected Date: 500
+- HLC Recorded Stock: 300
+- Confirmed Incoming: 0
+- Stock with Other Parties: 100
+
+Expected:
+
+- Stock with Other Parties remains informational.
+- It is not deducted automatically.
+- Actionable Shortfall reflects only supported usable coverage.
+- Action says Review HLC Stock + Purchase Balance.
+- No claim is made that 300 is located at a particular site or plant.
+
+G. Confirmed purchase incoming
+
+Confirm:
+
+- PI raised but not ordered is excluded.
+- PI approved but not ordered is excluded.
+- Ordered — Awaiting Delivery is included.
+- Already Purchased — Awaiting Receipt is included.
+- Partially received order includes only outstanding balance.
+- Cancelled purchase is excluded.
+- Fully received purchase is excluded from incoming and represented through stock where the existing stock flow posts it.
+- No duplicate action is counted twice.
+
+H. Requirement/allocation quantities
+
+Confirm:
+
+- procurementRequestedQty is not counted as confirmed incoming by itself.
+- internallyAllocatedQty is not counted as confirmed incoming by itself.
+- committed internal issue/transfer is counted only where the existing workflow genuinely records commitment.
+- the same IRN/PI quantity is not counted in both requested and confirmed incoming.
+
+I. Unprogrammed item
+
+- Total Programme Demand may show the full BOQ fallback.
+- Immediate actionable demand excludes that unscheduled full quantity.
+- Warning is visible.
+- Entire Programme deliberately includes it.
+
+J. Material Requirement quantity
+
+- Raise PI passes the selected-horizon actionable procurement quantity.
+- Internal review/IRN uses the selected-horizon reviewed internal quantity.
+- Split uses one selected-horizon requirement with separate suggested internal and procurement portions.
+- Full programme quantity is used only under Entire Programme.
+
+K. Required-by date/build
+
+- requiredByDate is returned consistently in the typed shortage result.
+- No route-handler mutation is needed to satisfy the required type.
+- TypeScript/build check passes.
+
+L. Store-item identity readiness
+
+- Correct storeItemId succeeds in an API/database-level linked-requirement test.
+- Wrong storeItemId is rejected.
+- Both identity IDs populated is rejected.
+- Neither populated is rejected.
+- No Store Catalogue requirement UI is added.
+
+M. Regression
+
+Confirm unchanged:
+
+- Work Programme bars
+- BOM total calculations
+- Material Requirement awaiting-review flow
+- destination confirmation
+- allocation permissions
+- Raise Both authorisation flow
+- PI/IRN transactional linkage
+- manual multi-item PI
+- manual multi-item IRN
+- Ordered versus Already Purchased
+- recordDelivery
+- partial delivery
+- derivePiStatus
+- checkAndCompleteIndent
+- storesVerifyIrn
+- GRN finalisation
+- Admin override
+- PI-linked GRN flow
+
+Do not add a physical Site/HMP/RMC/Store stock-location ledger in this instruction.
+
+Do not start Tomorrow’s Plan integration, Immediate Requirement integration, Site Material Received linkage, Stores Hub redesign or receipt-driven Material Requirement completion.
