@@ -134,3 +134,142 @@ export function canonicalizeUnit(raw: string): string {
 export function normaliseBoqUnit(raw: string): string {
   return canonicalizeUnit(raw).toUpperCase();
 }
+
+// ─── Material Label Normalization ─────────────────────────────────────────────
+
+/**
+ * Normalize a BOM material label for exact-match alias lookup.
+ * Centralised here so Work Demand mapping, stock matching, and receipt flows
+ * all use the same normalization.
+ *
+ * Steps:
+ *   1. Lowercase + trim
+ *   2. Collapse internal whitespace
+ *   3. Normalize spacing around "/" and "-"
+ *   4. Remove spaces between digits and immediately following unit suffixes
+ *      so "10 mm" and "10mm" resolve to the same token.
+ */
+export function normalizeMaterialLabel(label: string): string {
+  return label
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")                         // collapse whitespace
+    .replace(/\s*\/\s*/g, "/")                    // "A / B" → "A/B"
+    .replace(/\s*-\s*/g, "-")                     // "A - B" → "A-B"
+    .replace(/(\d)\s+(mm|cm|m)\b/gi, "$1$2");     // "10 mm" → "10mm"
+}
+
+// ─── UOM Compatibility Check ──────────────────────────────────────────────────
+
+/** Physical-unit groups used for mass↔volume conversion eligibility. */
+const MASS_UNITS = new Set(["MT", "Kg"]);
+const VOLUME_UNITS = new Set(["Cum", "CFT"]);
+
+export interface MappingUomCheck {
+  /** True when the source UOM can be used with the target material. */
+  compatible: boolean;
+  /**
+   * How compatibility is achieved:
+   *   "direct"           — UOM is directly in the material's allowedUoms
+   *   "bulk_density"     — mass↔volume via configured bulkDensity
+   *   "configured_factor"— explicit conversionFactor on the material
+   *   "incompatible"     — no compatible path found
+   */
+  mode: "direct" | "bulk_density" | "configured_factor" | "incompatible";
+  /** Conversion factor from sourceUom to the material's defaultUom (1 if direct). */
+  conversionFactor: number | null;
+  /** Human-readable explanation of the conversion basis shown in UI. */
+  basis: string | null;
+  /** Machine-readable error code returned to the client when incompatible. */
+  errorCode: "MATERIAL_UOM_MISMATCH" | "MATERIAL_CONVERSION_REQUIRED" | null;
+}
+
+/**
+ * Check whether a BOM source UOM is compatible with a target plant material.
+ * Returns the conversion mode and factor when a conversion is available.
+ *
+ * Blocked pairs (without configured density):
+ *   MT ↔ CFT, MT ↔ Cum, Litre ↔ MT, Bag ↔ MT — all require explicit density.
+ */
+export function checkMappingUomCompatibility(
+  sourceUom: string,
+  target: {
+    defaultUom?: string | null;
+    allowedUoms?: string | null;   // JSON array stored in DB
+    bulkDensity?: number | null;
+    conversionFactor?: number | null;
+    conversionFromUom?: string | null;
+    conversionToUom?: string | null;
+  },
+): MappingUomCheck {
+  const srcCanonical = canonicalizeUnit(sourceUom);
+
+  // Parse allowedUoms JSON array (stored as text in DB)
+  let allowedRaw: string[] = [];
+  try { allowedRaw = JSON.parse(target.allowedUoms ?? "[]"); } catch { /* ignore */ }
+  const allowedCanonical = allowedRaw.map(u => canonicalizeUnit(u));
+  const defaultCanonical = target.defaultUom ? canonicalizeUnit(target.defaultUom) : null;
+
+  // ── Step 1: Direct UOM match ────────────────────────────────────────────────
+  if (allowedCanonical.includes(srcCanonical) || (defaultCanonical && srcCanonical === defaultCanonical)) {
+    return { compatible: true, mode: "direct", conversionFactor: 1, basis: null, errorCode: null };
+  }
+
+  // ── Step 2: Explicit conversionFactor for this source UOM ──────────────────
+  if (target.conversionFactor && target.conversionFromUom) {
+    const fromCanonical = canonicalizeUnit(target.conversionFromUom);
+    if (fromCanonical === srcCanonical) {
+      return {
+        compatible: true,
+        mode: "configured_factor",
+        conversionFactor: target.conversionFactor,
+        basis: `Configured: 1 ${srcCanonical} = ${target.conversionFactor} ${defaultCanonical ?? "unit"}`,
+        errorCode: null,
+      };
+    }
+  }
+
+  // ── Step 3: Mass↔Volume via bulkDensity ────────────────────────────────────
+  const srcIsMass = MASS_UNITS.has(srcCanonical);
+  const srcIsVol = VOLUME_UNITS.has(srcCanonical);
+  const bd = target.bulkDensity ?? 0;
+
+  if ((srcIsMass || srcIsVol) && bd > 0) {
+    const targetHasMass = allowedCanonical.some(u => MASS_UNITS.has(u));
+    const targetHasVol = allowedCanonical.some(u => VOLUME_UNITS.has(u));
+    if ((srcIsMass && targetHasVol) || (srcIsVol && targetHasMass)) {
+      const convFromCanonical = target.conversionFromUom ? canonicalizeUnit(target.conversionFromUom) : "CFT";
+      let factor: number;
+      if (srcCanonical === "Cum") {
+        factor = bd;                   // Cum → MT: × bulkDensity
+      } else if (srcCanonical === "CFT") {
+        factor = bd / 35.3147;         // CFT → MT
+      } else if (srcIsMass && convFromCanonical === "Cum") {
+        factor = 1 / bd;               // MT → Cum
+      } else if (srcIsMass && convFromCanonical === "CFT") {
+        factor = 35.3147 / bd;         // MT → CFT
+      } else {
+        factor = bd;                   // generic fallback
+      }
+      const rounded = Math.round(factor * 10000) / 10000;
+      return {
+        compatible: true,
+        mode: "bulk_density",
+        conversionFactor: rounded,
+        basis: `Bulk density ${bd} T/m³ — 1 ${srcCanonical} ≈ ${Math.round(factor * 1000) / 1000} ${defaultCanonical ?? "MT"}`,
+        errorCode: null,
+      };
+    }
+  }
+
+  // ── Incompatible ────────────────────────────────────────────────────────────
+  const needsDensity = (srcIsMass || srcIsVol) &&
+    (allowedCanonical.some(u => MASS_UNITS.has(u)) || allowedCanonical.some(u => VOLUME_UNITS.has(u)));
+  return {
+    compatible: false,
+    mode: "incompatible",
+    conversionFactor: null,
+    basis: null,
+    errorCode: needsDensity ? "MATERIAL_CONVERSION_REQUIRED" : "MATERIAL_UOM_MISMATCH",
+  };
+}

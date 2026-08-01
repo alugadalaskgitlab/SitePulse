@@ -1847,6 +1847,27 @@ export function dateToMonthIndex(d: string | Date, projectStartDate: string | Da
 }
 
 /**
+ * Convert a fractional month index (1-based, from dateToMonthIndex) to an
+ * integer programme-month bucket using floor-based containment.
+ *
+ * This is the SOLE authoritative formula for horizon bucket resolution.
+ * Never call Math.ceil on a rawIdx — ceil rounds a mid-month cutoff into
+ * the next bucket, overstating demand.
+ *
+ * Contract:
+ *   rawIdx < 1                  → 0   (before programme start; zero demand)
+ *   rawIdx ∈ [N, N+1) for N≥1  → N   (cutoff inside programme month N)
+ *   rawIdx > maxProgrammeMonth  → maxProgrammeMonth (past programme end; full demand)
+ *
+ * Boundary rule: a date exactly at the start of month N (rawIdx == N) maps
+ * to N (inclusive), meaning month N demand IS included for that cutoff.
+ */
+export function dateToMonthBucket(rawIdx: number, maxProgrammeMonth: number): number {
+  if (rawIdx < 1) return 0;
+  return Math.min(maxProgrammeMonth, Math.floor(rawIdx));
+}
+
+/**
  * Convert a 1-based fractional month index back to a real calendar date.
  * M1 = projectStartDate exactly. Uses average-days-per-month for symmetry
  * with dateToMonthIndex.

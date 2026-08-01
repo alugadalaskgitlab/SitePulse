@@ -1411,8 +1411,21 @@ export interface IStorage {
   // Instruction 017 — BOQ Material Mappings
   ensureBoqMaterialMappings(): Promise<void>;
   getMaterialMappings(boqProjectId: number): Promise<BoqMaterialMapping[]>;
-  upsertMaterialMapping(data: { boqProjectId: number | null; materialLabel: string; materialId: number; userId?: number }): Promise<BoqMaterialMapping>;
-  searchPlantMaterials(query: string, limit?: number): Promise<Array<{ id: number; name: string; defaultUom: string | null; category: string | null }>>;
+  upsertMaterialMapping(data: {
+    boqProjectId: number | null;
+    materialLabel: string;
+    materialId: number;
+    userId?: number;
+    sourceUom?: string | null;
+    normalizedSourceLabel?: string | null;
+    conversionMode?: string | null;
+    conversionFactorUsed?: number | null;
+  }): Promise<BoqMaterialMapping>;
+  searchPlantMaterials(query: string, limit?: number): Promise<Array<{
+    id: number; name: string; defaultUom: string | null; category: string | null;
+    allowedUoms: string | null; bulkDensity: number | null;
+    conversionFactor: number | null; conversionFromUom: string | null; conversionToUom: string | null;
+  }>>;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -23837,8 +23850,6 @@ export class DatabaseStorage implements IStorage {
       )
     `));
     // Unique partial index: one canonical mapping per (project, label).
-    // A NULL boq_project_id represents a global (cross-project) fallback.
-    // Using a DO block to skip if index already exists.
     await db.execute(sql.raw(`
       DO $$ BEGIN
         IF NOT EXISTS (
@@ -23850,6 +23861,39 @@ export class DatabaseStorage implements IStorage {
         END IF;
       END $$
     `));
+    // ── Instruction 019: additive audit/context columns ─────────────────────
+    for (const stmt of [
+      `ALTER TABLE boq_material_mappings ADD COLUMN IF NOT EXISTS source_uom text`,
+      `ALTER TABLE boq_material_mappings ADD COLUMN IF NOT EXISTS normalized_source_label text`,
+      `ALTER TABLE boq_material_mappings ADD COLUMN IF NOT EXISTS conversion_mode text`,
+      `ALTER TABLE boq_material_mappings ADD COLUMN IF NOT EXISTS conversion_factor_used real`,
+      // Aliases column on plant_materials for standard road material alias lookup
+      `ALTER TABLE plant_materials ADD COLUMN IF NOT EXISTS aliases text`,
+    ]) {
+      await db.execute(sql.raw(stmt));
+    }
+    // ── Seed standard road material aliases (idempotent) ────────────────────
+    // Only updates rows where aliases IS NULL or '[]' — never overwrites user edits.
+    type AliasSeed = { name: string; aliases: string[] };
+    const ALIAS_SEEDS: AliasSeed[] = [
+      { name: "10/12MM",  aliases: ["10mm Aggregate", "10 mm Aggregate", "12mm Aggregate", "12 mm Aggregate", "10MM"] },
+      { name: "20MM",     aliases: ["20mm Aggregate", "20 mm Aggregate"] },
+      { name: "6MM DOWN", aliases: ["6mm Aggregate", "6 mm Aggregate", "6mm Stone"] },
+      { name: "DUST",     aliases: ["Stone Dust", "Crusher Dust", "Dust Aggregate"] },
+      { name: "GSB",      aliases: ["Granular Sub-Base", "GSB Material"] },
+      { name: "Filler",   aliases: ["Mineral Filler", "Hydrated Lime Filler"] },
+      { name: "BITUMEN",  aliases: ["Bitumen VG-30", "Bitumen VG-40", "Bitumen VG-10", "VG-30 Bitumen"] },
+      { name: "EMULSION", aliases: ["Bitumen Emulsion SS-1", "Bitumen Emulsion RS-1", "Emulsion SS-1", "Emulsion RS-1", "Bitumen Emulsion"] },
+      { name: "DIESEL",   aliases: ["Diesel / HSD", "Diesel/HSD", "HSD", "High Speed Diesel"] },
+      { name: "LDO",      aliases: ["LDO / Process Fuel", "LDO/Process Fuel", "Process Fuel", "Light Diesel Oil"] },
+    ];
+    for (const seed of ALIAS_SEEDS) {
+      await db.execute(sql.raw(
+        `UPDATE plant_materials SET aliases = '${JSON.stringify(seed.aliases).replace(/'/g, "''")}'
+         WHERE name = '${seed.name.replace(/'/g, "''")}' AND (aliases IS NULL OR aliases = '' OR aliases = '[]')`
+      ));
+    }
+    console.log("Startup: ensureBoqMaterialMappings — table + 019 columns + alias seeds verified");
   }
 
   /** Returns all mappings for a project (project-specific first, then globals). */
@@ -23862,13 +23906,26 @@ export class DatabaseStorage implements IStorage {
     ).orderBy(boqMaterialMappings.materialLabel);
   }
 
-  /** Insert or replace the mapping for (boqProjectId, materialLabel). */
+  /** Insert or replace the mapping for (boqProjectId, materialLabel). Stores audit context. */
   async upsertMaterialMapping(data: {
     boqProjectId: number | null;
     materialLabel: string;
     materialId: number;
     userId?: number;
+    sourceUom?: string | null;
+    normalizedSourceLabel?: string | null;
+    conversionMode?: string | null;
+    conversionFactorUsed?: number | null;
   }): Promise<BoqMaterialMapping> {
+    const updateFields = {
+      materialId: data.materialId,
+      mappedByUserId: data.userId ?? null,
+      mappedAt: new Date(),
+      sourceUom: data.sourceUom ?? null,
+      normalizedSourceLabel: data.normalizedSourceLabel ?? null,
+      conversionMode: data.conversionMode ?? null,
+      conversionFactorUsed: data.conversionFactorUsed ?? null,
+    };
     const existing = await db.select().from(boqMaterialMappings).where(
       and(
         data.boqProjectId == null
@@ -23879,7 +23936,7 @@ export class DatabaseStorage implements IStorage {
     ).limit(1);
     if (existing.length > 0) {
       const [updated] = await db.update(boqMaterialMappings)
-        .set({ materialId: data.materialId, mappedByUserId: data.userId ?? null, mappedAt: new Date() })
+        .set(updateFields)
         .where(eq(boqMaterialMappings.id, existing[0].id))
         .returning();
       return updated;
@@ -23887,19 +23944,27 @@ export class DatabaseStorage implements IStorage {
     const [inserted] = await db.insert(boqMaterialMappings).values({
       boqProjectId: data.boqProjectId ?? null,
       materialLabel: data.materialLabel,
-      materialId: data.materialId,
-      mappedByUserId: data.userId ?? null,
+      ...updateFields,
     }).returning();
     return inserted;
   }
 
-  /** ILIKE search on plant_materials.name — used by the ResolveMappingDialog. */
-  async searchPlantMaterials(query: string, limit = 20): Promise<Array<{ id: number; name: string; defaultUom: string | null; category: string | null }>> {
+  /** Search plant_materials by name — used by the ResolveMappingDialog. Returns UOM fields for compatibility check. */
+  async searchPlantMaterials(query: string, limit = 20): Promise<Array<{
+    id: number; name: string; defaultUom: string | null; category: string | null;
+    allowedUoms: string | null; bulkDensity: number | null;
+    conversionFactor: number | null; conversionFromUom: string | null; conversionToUom: string | null;
+  }>> {
     return db.select({
       id: plantMaterials.id,
       name: plantMaterials.name,
       defaultUom: plantMaterials.defaultUom,
       category: plantMaterials.category,
+      allowedUoms: plantMaterials.allowedUoms,
+      bulkDensity: plantMaterials.bulkDensity,
+      conversionFactor: plantMaterials.conversionFactor,
+      conversionFromUom: plantMaterials.conversionFromUom,
+      conversionToUom: plantMaterials.conversionToUom,
     }).from(plantMaterials)
       .where(
         and(

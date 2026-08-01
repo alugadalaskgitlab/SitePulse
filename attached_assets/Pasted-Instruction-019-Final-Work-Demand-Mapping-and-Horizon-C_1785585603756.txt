@@ -1,0 +1,509 @@
+Instruction 019 — Final Work Demand Mapping and Horizon Corrections
+
+Purpose
+
+Close the three remaining bounded defects in Work Demand before freezing this area:
+
+1. standard road materials are not auto-resolving because mapping search is only literal substring matching;
+2. material mappings can currently be saved without validating UOM compatibility;
+3. procurement horizons are resolving one programme bucket too far because of an off-by-one month-index calculation.
+
+This instruction must remain tightly focused. Do not introduce new earth-balance, borrow-source, royalty, subcontract, direct-to-site, plant-routing or five-way material-classification workflows in this batch.
+
+Expected files
+
+- server/routes.ts
+- server/storage.ts
+- shared/planningEngine.ts
+- client/src/pages/WorkDemand.tsx
+- shared/schema.ts only if a small additive alias/code field or mapping-UOM field is genuinely required after inspecting the existing schema
+
+DO NOT TOUCH OR REDESIGN
+
+- Work Programme/Gantt creation and sequencing
+- material_requirements
+- material_requirement_allocations
+- requirementId/allocationId linkage
+- destination confirmation
+- allocation permissions
+- PI/IRN transactional creation
+- submitPurchaserAction
+- placeOrderIndent
+- recordDelivery
+- derivePiStatus
+- checkAndCompleteIndent
+- storesVerifyIrn and issue-recording logic
+- createDraftGrnFromPi
+- GRN finalisation
+- Admin override
+- PI-linked GRN flow
+- cancelStoreGrn
+- manual PI/IRN creation
+- physical location-wise stock ledger
+- Store Hub redesign
+- Tomorrow’s Plan integration
+- Immediate Requirement integration
+- Site Material Received integration
+- five-way operational material classification
+- cut-to-fill or earth-balance engine
+
+This batch corrects only material resolution, UOM-safe mapping and horizon bucket calculation.
+
+1. Replace literal-substring auto-resolution with a safe matching sequence
+
+The current material search/autoresolution uses only:
+
+ILIKE '%query%'
+
+against plant_materials.name.
+
+That must not be the primary auto-resolution rule.
+
+Use this matching order:
+
+1. existing saved BOQ/material mapping;
+2. exact canonical material code, where available;
+3. exact approved alias;
+4. exact normalized material name;
+5. category-compatible and UOM-compatible candidate;
+6. otherwise manual review.
+
+Normalization may include:
+
+- case-insensitive comparison;
+- trimmed whitespace;
+- normalized punctuation;
+- common spacing variants such as 10mm / 10 mm;
+- approved standard aliases.
+
+Do not auto-map based only on substring overlap.
+
+Examples that must not auto-map merely from partial text:
+
+- “DUS” → “DUST Aggregate”
+- “SOIL” → any arbitrary soil-containing material
+- “EMULSION” → first emulsion row found
+
+If more than one plausible compatible candidate exists:
+
+- show the choices;
+- require user selection;
+- do not silently pick one.
+
+2. Auto-resolve standard road materials using stable codes/categories/aliases
+
+Standard materials already known to the system should resolve without repeated manual mapping where a compatible master row exists.
+
+At minimum inspect and support safe aliases/categories for:
+
+- GSB
+- WMM
+- WMM Processed
+- Stone Dust / Crusher Dust
+- 6 mm Aggregate
+- 10 mm Aggregate
+- 20 mm Aggregate
+- Bitumen VG-30
+- Bitumen Emulsion SS-1
+- Bitumen Emulsion RS-1
+- Filler
+- Diesel / HSD
+- LDO / Process Fuel
+- Selected Soil / Subgrade Material
+- Borrow Earth / Earth
+- Shoulder Earth / Soil
+
+Do not create duplicate material-master records automatically.
+
+Where a standard material has no compatible master record:
+
+- keep it unresolved;
+- show “Resolve Material Mapping”;
+- provide a route to the existing material-master screen;
+- do not invent or auto-create a new item.
+
+3. Use approved aliases, not hardcoded loose guesses
+
+If the existing schema already has:
+
+- material code;
+- category;
+- aliases;
+- normalized name;
+- allowedUoms;
+- conversionFactor;
+- bulkDensity;
+
+reuse those fields.
+
+If no alias mechanism exists and one small additive structure is needed, add the smallest safe option, such as:
+
+- material_aliases table, or
+- aliases array/json field on plant_materials,
+
+with:
+
+- materialId;
+- normalized alias;
+- active flag;
+- unique constraint on normalized alias where appropriate.
+
+Do not hardcode a large list of aliases only inside one UI component.
+
+The resolution logic must be centralized and reusable by:
+
+- Work Demand mapping;
+- stock matching;
+- pending PI/IRN matching;
+- later Site/Plant receipt flows.
+
+4. Enforce UOM compatibility before saving a mapping
+
+The mapping-save path must validate the BOM source UOM against the selected plant material.
+
+A mapping may be saved only when one of these is true:
+
+A. Direct compatible UOM
+
+- source and target UOM are the same after canonical normalization.
+
+B. Approved conversion exists
+
+- plant_materials.allowedUoms or conversion configuration explicitly supports the source UOM.
+
+C. Material-specific density conversion exists
+
+- the selected material has a valid configured bulkDensity or equivalent approved conversion;
+- the source/target pair is one that the application already supports safely, such as mass ↔ volume.
+
+Do not accept a mapping merely because the names look similar.
+
+5. Block unsafe MT/CFT, MT/CUM and similar mappings
+
+The following must not be treated as 1:1:
+
+- MT ↔ CFT
+- MT ↔ CUM
+- CFT ↔ CUM unless a standard geometric conversion is deliberately supported
+- Litre ↔ MT
+- Bag ↔ MT
+- loose volume ↔ compacted volume
+
+For material-specific mass/volume conversion:
+
+- require configured density for that exact material;
+- show the conversion basis;
+- use canonical internal units consistently.
+
+Example display:
+
+“Mapping uses configured bulk density:
+1 MT = X CFT for Stone Dust.”
+
+If no approved conversion exists:
+
+- disable Save Mapping;
+- show:
+  “UOM mismatch. Configure an approved conversion or choose a compatible material.”
+
+Do not silently save the mapping.
+
+6. Validate mapping compatibility on the server
+
+Client-side filtering is not sufficient.
+
+The mapping-save API must independently validate:
+
+- source BOM UOM;
+- target material allowed UOMs;
+- conversion configuration;
+- material/category compatibility where enforced;
+- duplicate/conflicting mappings.
+
+Return clear errors such as:
+
+- MATERIAL_UOM_MISMATCH
+- MATERIAL_CONVERSION_REQUIRED
+- MATERIAL_MAPPING_AMBIGUOUS
+- MATERIAL_MAPPING_CONFLICT
+
+Do not rely on UI-only checks.
+
+7. Store enough mapping context for future validation
+
+If boq_material_mappings currently stores only the source label and materialId, add only the minimal additive fields genuinely needed, such as:
+
+- sourceUom
+- normalizedSourceLabel
+- conversionMode:
+  - direct
+  - configured_factor
+  - bulk_density
+- conversionFactorUsed, nullable
+- mappedByUserId
+- mappedAt
+
+If equivalent data already exists elsewhere, reuse it instead of duplicating it.
+
+The saved mapping must remain auditable:
+
+- what source label/UOM was mapped;
+- to which canonical material;
+- under what conversion rule;
+- who approved it.
+
+8. Refresh the row after mapping
+
+After a valid mapping is saved:
+
+- refresh the affected Procurement row;
+- recalculate:
+  - HLC stock;
+  - other-party stock;
+  - confirmed incoming;
+  - actionable shortfall;
+  - action;
+- do not require a full browser reload.
+
+If the selected mapping uses a conversion:
+
+- display the normalized quantity consistently;
+- do not compare raw MT against raw CFT.
+
+9. Fix the horizon off-by-one error
+
+The present horizon resolver uses Math.ceil(dateToMonthIndex(...)), which moves a cutoff into the next programme-month bucket.
+
+Replace this with correct bucket-containment logic.
+
+Required behaviour:
+
+Date before programme start:
+- resolvedProgrammeMonthIndex = 0;
+- demandUpToSelectedDate = 0.
+
+Date inside programme month 1:
+- include only month-1 programmed demand;
+- do not include month 2.
+
+Date inside programme month N:
+- include cumulative demand through programme month N;
+- do not round up into N+1.
+
+Date exactly on a programme-period boundary:
+- define and document one consistent inclusive rule;
+- use the same rule for:
+  - current_month;
+  - next_30_days;
+  - custom_date;
+  - next_programme_month.
+
+Date after programme completion:
+- include full programmed demand.
+
+Entire Programme:
+- deliberately include full programme demand.
+
+Do not use Math.ceil where it causes the cutoff to move into the next bucket.
+
+10. Use one shared server-side horizon resolver
+
+The server remains authoritative.
+
+Use one shared function for:
+
+- current_month;
+- next_programme_month;
+- next_30_days;
+- custom_date;
+- entire_programme.
+
+The function should return:
+
+- selectedHorizonMode;
+- resolvedHorizonDate;
+- resolvedProgrammeMonthIndex;
+- relation to programme:
+  - before_start;
+  - within_programme;
+  - after_end;
+- cumulative included month indexes where useful.
+
+Do not maintain different month-index formulas in separate route branches.
+
+The client must display the server-returned result and must not recalculate its own programme bucket.
+
+11. Re-test actual programme phasing
+
+Use the real Takkadpally programme bars visible in the app.
+
+GSB:
+
+- cutoff before first GSB reach starts → 0 demand;
+- cutoff through September reach → Reach 1 only;
+- cutoff through October reach → Reach 1 + Reach 2;
+- Entire Programme → full 5,624 Cum.
+
+Subgrade:
+
+- July cutoff → only contribution due by July;
+- August/September cutoff → cumulative programmed contribution through that period;
+- Entire Programme → full 24,548 Cum.
+
+WMM:
+
+- quantities must appear only when the corresponding programmed reaches fall within the cutoff;
+- a later reach must not be pulled into Current Programme Month because of rounding up.
+
+12. Keep the dynamic demand heading
+
+Preserve the dynamic heading from Instruction 018.
+
+Examples:
+
+- Demand up to Current Programme Month
+- Demand up to 29 Sep 2026
+- Demand through Next 30 Days, ending 31 Aug 2026
+- Entire Programme Demand
+
+The displayed heading/date must use the server-resolved cutoff.
+
+13. Do not introduce operational material classification in this batch
+
+Do not yet implement or change flows for:
+
+- reusable excavation;
+- cut-to-fill;
+- borrow-source planning;
+- royalty/seigniorage;
+- haul planning;
+- subcontracted earthwork;
+- direct-to-site material receipt routing;
+- plant/store/site five-way classification.
+
+The BOM may continue to display these materials.
+
+The purpose of Instruction 019 is only to:
+
+- recognize known materials correctly;
+- prevent unsafe mappings;
+- correct horizon quantities.
+
+The broader operational classification will be designed separately after Stores closeout and Plant/User Template work begins.
+
+14. Error handling
+
+Use the shared API error parser where available.
+
+Do not silently:
+
+- auto-map on substring coincidence;
+- pick the first of multiple candidates;
+- save an incompatible UOM mapping;
+- treat MT and CFT as equal;
+- apply a density conversion without configured density;
+- create duplicate material masters;
+- round a horizon into the next programme month;
+- show full future demand under an earlier cutoff.
+
+Acceptance tests
+
+A. Exact and alias matching
+
+- “10mm Aggregate” resolves to the correct existing canonical 10 mm aggregate master.
+- “10 mm Aggregate” resolves to the same material.
+- “Stone Dust” resolves only to the approved Stone Dust/Crusher Dust alias.
+- “DUS” alone does not auto-select “DUST Aggregate.”
+- WMM resolves where a compatible canonical WMM master or approved alias exists.
+- If WMM truly does not exist, it remains unresolved and no duplicate is auto-created.
+
+B. Ambiguous matching
+
+- Two compatible soil materials exist.
+- Auto-resolution does not choose one silently.
+- User sees both candidates and must select.
+
+C. Direct UOM compatibility
+
+- MT source → MT target succeeds.
+- CUM source → CUM target succeeds.
+- normalized equivalent UOM labels succeed.
+
+D. Unsafe UOM mismatch
+
+- Stone Dust MT → Dust CFT without configured density is blocked.
+- WMM CUM → WMM MT without configured conversion is blocked.
+- clear server error is shown.
+
+E. Approved conversion
+
+- exact material has configured bulkDensity/conversionFactor;
+- mapping succeeds;
+- conversion basis is displayed;
+- recalculated stock/demand uses the approved conversion consistently.
+
+F. Mapping audit
+
+- saved mapping records source label/UOM, target material, conversion mode and mapper;
+- duplicate/conflicting mapping is rejected or explicitly updated through a controlled path.
+
+G. Horizon before programme start
+
+- custom date before programme start returns zero demand;
+- no first-month quantity appears.
+
+H. Current programme month
+
+- cutoff inside current programme bucket includes only that bucket and earlier buckets;
+- next bucket is not included through rounding.
+
+I. Next 30 days
+
+- uses today + 30 actual days;
+- includes only programme contributions due through that date;
+- does not automatically include the next full programme bucket unless the cutoff genuinely falls inside it according to the shared rule.
+
+J. Custom date
+
+- two dates in different programme buckets return different cumulative demand;
+- a date in September does not include October-only GSB/WMM work.
+
+K. Entire Programme
+
+- returns the full programmed quantity deliberately;
+- warning remains visible.
+
+L. Regression
+
+Confirm unchanged:
+
+- Work Programme/Gantt bars
+- BOQ quantities
+- canonical material mapping storage
+- Resolve Material Mapping dialog
+- Work Demand table
+- Material Requirement awaiting-review flow
+- destination confirmation
+- allocation permissions
+- Raise Both flow
+- PI/IRN transactional linkage
+- manual PI/IRN creation
+- Ordered versus Already Purchased
+- placeOrderIndent
+- recordDelivery
+- partial delivery handling
+- derivePiStatus
+- checkAndCompleteIndent
+- storesVerifyIrn
+- GRN finalisation
+- Admin override
+- PI-linked GRN flow
+
+After Instruction 019 passes:
+
+1. Freeze Work Demand procurement.
+2. Fix Cancel GRN failure.
+3. Fix Store Items back-navigation.
+4. Move to User/Designation Templates and HMP/RMC Plant workflows.
+
+Do not add further Work Demand features in this batch.

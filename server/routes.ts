@@ -20,7 +20,8 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, type LayerConfig } from "@shared/planningEngine";
+import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, type LayerConfig } from "@shared/planningEngine";
+import { normalizeMaterialLabel, checkMappingUomCompatibility } from "@shared/boqNormalise";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
 import { classifyWorkType, STANDARD_CONCRETE_DESIGNS, isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
@@ -11798,6 +11799,21 @@ export async function registerRoutes(
         materialIdByName.set(mat.name.trim().toLowerCase(), mat.id);
       }
 
+      // ── Alias map: normalized BOM label → materialId (Instruction 019) ───────
+      // Aliases are stored as a JSON array in plant_materials.aliases (seeded on startup).
+      // Exact normalized match only — no substring fallback.
+      const aliasToMaterialId = new Map<string, number>();
+      for (const mat of allMaterials) {
+        let aliases: string[] = [];
+        try { aliases = JSON.parse((mat as any).aliases ?? "[]"); } catch { /* skip */ }
+        for (const alias of aliases) {
+          const normAlias = normalizeMaterialLabel(alias);
+          if (normAlias) aliasToMaterialId.set(normAlias, mat.id);
+        }
+        // Also register the normalized material name itself (handles spacing variants)
+        aliasToMaterialId.set(normalizeMaterialLabel(mat.name), mat.id);
+      }
+
       // ── Confirmed internal incoming — stores_verified IRN items with balance ─
       // Primary key: item.materialId (canonical FK). Name fallback ONLY when materialId is null.
       const confirmedIrnById = new Map<number, number>();
@@ -11843,7 +11859,9 @@ export async function registerRoutes(
       const pStartDate = project.startDate ?? null;
       let currentMonth = 1;
       if (pStartDate) {
-        currentMonth = Math.max(1, Math.ceil(dateToMonthIndex(new Date(), pStartDate)));
+        const rawCurrent = dateToMonthIndex(new Date(), pStartDate);
+        // Use dateToMonthBucket (floor-based) so mid-month today doesn't resolve to M+1
+        currentMonth = Math.max(1, dateToMonthBucket(rawCurrent, maxProgrammeMonth));
       }
 
       // ── Horizon month index — server-authoritative ────────────────────────────
@@ -11874,8 +11892,7 @@ export async function registerRoutes(
           case "next_30_days": {
             const cutoff = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
             const rawIdx = dateToMonthIndex(cutoff, pStartDate);
-            // rawIdx < 1 means cutoff is before programme start → no demand yet
-            const idx = rawIdx < 1 ? 0 : Math.min(maxProgrammeMonth, Math.ceil(rawIdx));
+            const idx = dateToMonthBucket(rawIdx, maxProgrammeMonth);
             return { horizonMonthIndex: idx, resolvedHorizonDate: toISODate(cutoff) };
           }
           case "next_programme_month": {
@@ -11886,8 +11903,7 @@ export async function registerRoutes(
             if (customDateParam) {
               const cutoff = new Date(customDateParam);
               const rawIdx = dateToMonthIndex(cutoff, pStartDate);
-              // rawIdx < 1 means cutoff is before programme start → no demand yet
-              const idx = rawIdx < 1 ? 0 : Math.min(maxProgrammeMonth, Math.ceil(rawIdx));
+              const idx = dateToMonthBucket(rawIdx, maxProgrammeMonth);
               return { horizonMonthIndex: idx, resolvedHorizonDate: customDateParam };
             }
             // No custom date provided — fall through to entire_programme
@@ -11903,11 +11919,16 @@ export async function registerRoutes(
 
       // ── Build shortage rows ────────────────────────────────────────────────────
       const shortageRows = demand.materials.map(matRow => {
-        // Resolve canonical materialId: mapping table wins over master name match
+        // Resolve canonical materialId (Instruction 019 priority order):
+        // 1. Saved mapping (project-specific > global)
+        // 2. Exact normalised name match
+        // 3. Alias match (seeded standard aliases + normalized name variants)
         const labelKey = matRow.materialName.trim().toLowerCase();
+        const normLabel = normalizeMaterialLabel(matRow.materialName);
         const mappedId = labelToMaterialId.get(matRow.materialName) ?? labelToMaterialId.get(labelKey);
-        const masterMatchId = materialIdByName.get(labelKey);
-        const resolvedId = mappedId ?? masterMatchId ?? null;
+        const masterMatchId = materialIdByName.get(labelKey) ?? materialIdByName.get(normLabel);
+        const aliasMatchId = aliasToMaterialId.get(normLabel);
+        const resolvedId = mappedId ?? masterMatchId ?? aliasMatchId ?? null;
         const materialMappingUnresolved = resolvedId == null;
 
         // Stock figures — all by materialId
@@ -11994,20 +12015,54 @@ export async function registerRoutes(
     }
   });
 
-  /** Save (upsert) a BOM label → plant_materials mapping. Requires PI approval permission. */
+  /** Save (upsert) a BOM label → plant_materials mapping. Requires PI approval permission.
+   *  Validates UOM compatibility (Instruction 019); returns MATERIAL_UOM_MISMATCH when unsafe. */
   app.post("/api/boq/projects/:id/material-mappings", async (req, res) => {
     try {
       if (!assertApprove(req, res, "purchase_indents_approve")) return;
       const projectId = parseInt(req.params.id);
-      const { materialLabel, materialId, global: isGlobal } = req.body;
+      const { materialLabel, materialId, global: isGlobal, sourceUom } = req.body;
       if (!materialLabel) return res.status(400).json({ message: "materialLabel required" });
       if (!materialId || Number(materialId) <= 0) return res.status(400).json({ message: "materialId required" });
+
+      // ── UOM compatibility validation (server-authoritative) ────────────────
+      let conversionMode: string | null = null;
+      let conversionFactorUsed: number | null = null;
+      if (sourceUom) {
+        const [targetMat] = await db.select({
+          defaultUom: plantMaterials.defaultUom,
+          allowedUoms: plantMaterials.allowedUoms,
+          bulkDensity: plantMaterials.bulkDensity,
+          conversionFactor: plantMaterials.conversionFactor,
+          conversionFromUom: plantMaterials.conversionFromUom,
+          conversionToUom: plantMaterials.conversionToUom,
+        }).from(plantMaterials)
+          .where(eq(plantMaterials.id, Number(materialId)))
+          .limit(1);
+        if (!targetMat) return res.status(404).json({ message: "Material not found" });
+        const check = checkMappingUomCompatibility(sourceUom, targetMat);
+        if (!check.compatible) {
+          return res.status(400).json({
+            error: check.errorCode ?? "MATERIAL_UOM_MISMATCH",
+            message: check.errorCode === "MATERIAL_CONVERSION_REQUIRED"
+              ? `UOM mismatch. Configure an approved conversion or choose a compatible material. (${sourceUom} → ${targetMat.defaultUom ?? "?"})`
+              : `UOM mismatch. ${sourceUom} is not compatible with this material. Choose a material that supports ${sourceUom}.`,
+          });
+        }
+        conversionMode = check.mode;
+        conversionFactorUsed = check.conversionFactor;
+      }
+
       const userId = (req as any).user?.id ?? null;
       const mapping = await storage.upsertMaterialMapping({
         boqProjectId: isGlobal ? null : projectId,
         materialLabel,
         materialId: Number(materialId),
         userId,
+        sourceUom: sourceUom ?? null,
+        normalizedSourceLabel: normalizeMaterialLabel(materialLabel),
+        conversionMode,
+        conversionFactorUsed,
       });
       res.json(mapping);
     } catch (err) {

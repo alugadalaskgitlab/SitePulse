@@ -3409,10 +3409,16 @@ export const insertMaterialRequirementAllocationSchema = createInsertSchema(mate
 export type MaterialRequirementAllocation = typeof materialRequirementAllocations.$inferSelect;
 export type InsertMaterialRequirementAllocation = z.infer<typeof insertMaterialRequirementAllocationSchema>;
 
-// ── BOQ Material Mappings (Instruction 017) ───────────────────────────────────
+// ── BOQ Material Mappings (Instruction 017+019) ───────────────────────────────
 // Maps a BOM-derived material label (e.g. "Bitumen VG-30", "10mm Aggregate")
 // to a canonical plant_materials.id for procurement intelligence.
 // boqProjectId = null means the mapping is global (all projects).
+//
+// Instruction 019 additive columns (all nullable; added via ensureBoqMaterialMappings migration):
+//   sourceUom               — BOM UOM at time of mapping ("Cum", "MT", …)
+//   normalizedSourceLabel   — normalizeMaterialLabel(materialLabel) for alias lookup
+//   conversionMode          — "direct" | "configured_factor" | "bulk_density"
+//   conversionFactorUsed    — actual numeric factor applied (1 for direct)
 export const boqMaterialMappings = pgTable("boq_material_mappings", {
   id: serial("id").primaryKey(),
   boqProjectId: integer("boq_project_id"),           // null = global
@@ -3421,6 +3427,11 @@ export const boqMaterialMappings = pgTable("boq_material_mappings", {
   mappedByUserId: integer("mapped_by_user_id"),
   mappedAt: timestamp("mapped_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
+  // Instruction 019 audit/context columns (nullable; added via idempotent migration)
+  sourceUom: text("source_uom"),
+  normalizedSourceLabel: text("normalized_source_label"),
+  conversionMode: text("conversion_mode"),     // "direct" | "configured_factor" | "bulk_density"
+  conversionFactorUsed: real("conversion_factor_used"),
 }, (table) => ({
   labelProjectUq: uniqueIndex("boq_material_mappings_label_project_uq").on(table.boqProjectId, table.materialLabel),
 }));

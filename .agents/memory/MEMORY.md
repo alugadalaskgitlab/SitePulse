@@ -4,6 +4,7 @@
 - [Tank Calibration](tank-calibration.md) — Per-plant tank calibration fully built; fallback to hardcoded dip charts when no config set
 - [Mix Calculator Separation](mix-calculator-separation.md) — Calculator is a separate product (not SiteLog commercial copy); spin-out = new Repl + standalone auth + own DB
 - [Work Programme Planning Engine](work-programme-planning.md) — Full Gantt + BOM system: schema, planningEngine.ts, Layer Config, tipper fleet, unit conversion, Plan vs Actual. T005 (Equipment Master UI "Planning Output" section) still pending.
+- [Work Demand Mapping Fixes](work-demand-mapping-fixes.md) — Instruction 019: floor-based horizon, 3-stage alias resolution, UOM validation on mapping save, audit columns on boq_material_mappings.
 - [BOM Aggregate Misclassification](bom-aggregate-misclassification.md) — normaliseKeyMaterialName() bug: desc-based VG-grade check must be guarded by rawIsBinder; fix is in planningEngine.ts ~line 686.
 - [DPR form dead code trap](dpr-form-dead-code.md) — DprForm.tsx/NewDpr.tsx are unrouted dead code; the real live DPR form is SiteEntry.tsx.
 - [SiteEntry showPreview early-return trap](siteentry-preview-early-return.md) — any confirm dialog wired through handleSubmit must render in both the showPreview and main return branches, or it's unreachable from Preview.

@@ -1222,7 +1222,57 @@ function buildProcureLink(
 }
 
 // ── Resolve Mapping Dialog ──────────────────────────────────────────────────────
-interface PlantMaterialResult { id: number; name: string; defaultUom: string | null; category: string | null }
+interface PlantMaterialResult {
+  id: number;
+  name: string;
+  defaultUom: string | null;
+  category: string | null;
+  allowedUoms: string | null;          // JSON array stored as text
+  bulkDensity: number | null;
+  conversionFactor: number | null;
+  conversionFromUom: string | null;
+  conversionToUom: string | null;
+}
+
+/** Check BOM source UOM against a plant material's allowed units.
+ *  Client-side mirror of server checkMappingUomCompatibility — used for
+ *  real-time feedback only; server revalidates on save. */
+function clientCheckUomCompat(sourceUom: string, mat: PlantMaterialResult): {
+  compatible: boolean; mode: "direct" | "bulk_density" | "incompatible"; basis: string | null;
+} {
+  if (!sourceUom) return { compatible: true, mode: "direct", basis: null };
+  const norm = (u: string) => u.trim().toUpperCase()
+    .replace(/\s+/g, "").replace(/METRIC\s*TONNE?S?/gi, "MT")
+    .replace(/^LITR?E?S?$/, "LTR").replace(/^TONS?$/, "MT").replace(/^TONNES?$/, "MT");
+  const srcN = norm(sourceUom);
+  const allowed: string[] = (() => { try { return JSON.parse(mat.allowedUoms ?? "[]"); } catch { return []; } })();
+  const allowedN = allowed.map(norm);
+  const defaultN = mat.defaultUom ? norm(mat.defaultUom) : null;
+
+  if (allowedN.includes(srcN) || srcN === defaultN) return { compatible: true, mode: "direct", basis: null };
+
+  const MASS = ["MT", "KG", "TON", "TONNE"];
+  const VOL = ["CUM", "CFT", "M3"];
+  const srcIsMass = MASS.includes(srcN);
+  const srcIsVol = VOL.includes(srcN);
+  if ((srcIsMass || srcIsVol) && mat.bulkDensity && mat.bulkDensity > 0) {
+    const tgtHasMass = allowedN.some(u => MASS.includes(u));
+    const tgtHasVol = allowedN.some(u => VOL.includes(u));
+    if ((srcIsMass && tgtHasVol) || (srcIsVol && tgtHasMass)) {
+      return { compatible: true, mode: "bulk_density", basis: `Bulk density ${mat.bulkDensity} T/m³` };
+    }
+  }
+  return { compatible: false, mode: "incompatible", basis: null };
+}
+
+/** Format an ISO date string into a short human-readable form: "2026-09-29" → "29 Sep 2026" */
+function fmtHorizonDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso + "T00:00:00");
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  } catch { return iso; }
+}
 
 function ResolveMappingDialog({
   row,
@@ -1253,18 +1303,30 @@ function ResolveMappingDialog({
     staleTime: 30_000,
   });
 
+  // Real-time UOM compatibility check (mirrors server logic; server revalidates on save)
+  const uomCheck = selected ? clientCheckUomCompat(row.uom, selected) : null;
+  const canSave = !!selected && (!uomCheck || uomCheck.compatible);
+
   const handleSave = async () => {
-    if (!selected) return;
+    if (!selected || !canSave) return;
     setSaving(true);
     try {
       const r = await fetch(`/api/boq/projects/${projectId}/material-mappings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ materialLabel: row.materialName, materialId: selected.id }),
+        body: JSON.stringify({
+          materialLabel: row.materialName,
+          materialId: selected.id,
+          sourceUom: row.uom,          // passed for server-side UOM validation + audit
+        }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.message ?? `Server error ${r.status}`);
+      if (!r.ok) {
+        // Surface structured error codes from Instruction 019 server validation
+        const msg = d.message ?? d.error ?? `Server error ${r.status}`;
+        throw new Error(msg);
+      }
       toast({ title: "Mapping saved", description: `"${row.materialName}" → "${selected.name}"` });
       onMapped();
       onClose();
@@ -1302,30 +1364,57 @@ function ResolveMappingDialog({
           )}
           {results.length > 0 && (
             <div className="max-h-48 overflow-auto rounded border divide-y">
-              {results.map(m => (
-                <button
-                  key={m.id}
-                  className={`w-full text-left px-3 py-2 text-[13px] hover:bg-teal-50 transition-colors ${selected?.id === m.id ? "bg-teal-100 font-semibold" : ""}`}
-                  onClick={() => setSelected(m)}
-                >
-                  <span className="font-medium text-slate-800">{m.name}</span>
-                  {m.category && <span className="ml-1.5 text-[11px] text-slate-500">{m.category}</span>}
-                  {m.defaultUom && <span className="ml-1.5 text-[11px] text-muted-foreground">({m.defaultUom})</span>}
-                </button>
-              ))}
+              {results.map(m => {
+                const check = clientCheckUomCompat(row.uom, m);
+                return (
+                  <button
+                    key={m.id}
+                    className={`w-full text-left px-3 py-2 text-[13px] hover:bg-teal-50 transition-colors ${selected?.id === m.id ? "bg-teal-100 font-semibold" : ""} ${!check.compatible ? "opacity-60" : ""}`}
+                    onClick={() => setSelected(m)}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span>
+                        <span className="font-medium text-slate-800">{m.name}</span>
+                        {m.category && <span className="ml-1.5 text-[11px] text-slate-500">{m.category}</span>}
+                        {m.defaultUom && <span className="ml-1.5 text-[11px] text-muted-foreground">({m.defaultUom})</span>}
+                      </span>
+                      {check.mode === "bulk_density" && (
+                        <span className="text-[10px] text-blue-600 shrink-0">density conv.</span>
+                      )}
+                      {!check.compatible && (
+                        <span className="text-[10px] text-red-500 shrink-0">UOM mismatch</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
-          {selected && (
-            <div className="bg-teal-50 border border-teal-200 rounded p-2 text-[12px]">
-              <span className="font-semibold text-teal-800">Will map to: </span>
-              <span className="text-teal-700">{selected.name}</span>
-              {selected.defaultUom && <span className="text-teal-600"> ({selected.defaultUom})</span>}
-            </div>
+          {selected && uomCheck && (
+            uomCheck.compatible ? (
+              <div className={`rounded p-2 text-[12px] border ${uomCheck.mode === "bulk_density" ? "bg-blue-50 border-blue-200" : "bg-teal-50 border-teal-200"}`}>
+                <span className={`font-semibold ${uomCheck.mode === "bulk_density" ? "text-blue-800" : "text-teal-800"}`}>Will map to: </span>
+                <span className={uomCheck.mode === "bulk_density" ? "text-blue-700" : "text-teal-700"}>{selected.name}</span>
+                {selected.defaultUom && <span className="text-teal-600"> ({selected.defaultUom})</span>}
+                {uomCheck.mode === "bulk_density" && uomCheck.basis && (
+                  <p className="mt-1 text-blue-600">{uomCheck.basis}</p>
+                )}
+              </div>
+            ) : (
+              <div className="bg-red-50 border border-red-200 rounded p-2 text-[12px]">
+                <p className="font-semibold text-red-800">UOM mismatch — cannot save</p>
+                <p className="text-red-700 mt-0.5">
+                  BOM source is <strong>{row.uom}</strong>; this material requires one of:{" "}
+                  {(() => { try { return (JSON.parse(selected.allowedUoms ?? "[]") as string[]).join(", "); } catch { return selected.defaultUom ?? "?"; } })()}.
+                  Configure an approved conversion on this material or choose a compatible one.
+                </p>
+              </div>
+            )
           )}
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSave} disabled={!selected || saving}>
+          <Button onClick={handleSave} disabled={!canSave || saving}>
             {saving ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Saving…</> : "Save Mapping"}
           </Button>
         </DialogFooter>
@@ -1939,7 +2028,16 @@ function ProcurementTable({
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Unit</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Total Demand</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>
-                {data.selectedHorizonMode === "entire_programme" ? "Programme Demand" : "Demand to Horizon"}
+                {(() => {
+                  const mode = data.selectedHorizonMode;
+                  const hDate = data.resolvedHorizonDate;
+                  if (mode === "entire_programme") return "Programme Demand";
+                  if (mode === "current_month") return hDate ? `To ${fmtHorizonDate(hDate)}` : "Current Month";
+                  if (mode === "next_30_days") return hDate ? `Next 30 Days → ${fmtHorizonDate(hDate)}` : "Next 30 Days";
+                  if (mode === "next_programme_month") return hDate ? `To ${fmtHorizonDate(hDate)}` : "Next Prog. Month";
+                  if (hDate) return `To ${fmtHorizonDate(hDate)}`;
+                  return "Demand to Horizon";
+                })()}
               </th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>HLC Stock</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Other Parties</th>
