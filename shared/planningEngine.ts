@@ -450,7 +450,27 @@ export interface BomMaterialRow {
   materialGroup?: string;
   reviewNeeded?: boolean;
   normalisationReason?: string;
-  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; unit?: string; compositeLabel?: string; qtyPerUnit: number; workQty: number; lineQty: number; isAuto?: boolean }>;
+  breakdown: Array<{
+    /** Canonical BOQ item ID that generated this contribution. */
+    boqItemId?: number | null;
+    /** Whether the contributing BOQ item has Work Programme bars (undefined = fuel/equipment rows). */
+    isProgrammed?: boolean;
+    itemDescription: string;
+    fullDescription?: string;
+    itemCode?: string | null;
+    unit?: string;
+    compositeLabel?: string;
+    qtyPerUnit: number;
+    workQty: number;
+    lineQty: number;
+    isAuto?: boolean;
+  }>;
+  /** Three-state programming status derived from all contributing BOQ items. */
+  programmingStatus?: "fully_programmed" | "partly_programmed" | "not_programmed";
+  /** Demand attributable to programmed BOQ contributions. */
+  programmedTotalDemand?: number;
+  /** Demand attributable to BOQ contributions without programme bars. */
+  unprogrammedDemand?: number;
 }
 
 export interface MaterialNormalisationInput {
@@ -995,6 +1015,8 @@ export function calculateBomDemand(
           exB.lineQty += lineQty;
           exB.qtyPerUnit = exB.lineQty / exB.workQty;
         } else row.breakdown.push({
+          boqItemId: item.id,
+          isProgrammed: itemBars.length > 0,
           itemDescription: item.itemName || item.description,
           fullDescription: item.description,
           itemCode: item.itemCode,
@@ -1071,6 +1093,8 @@ export function calculateBomDemand(
         const fuelRow = matMap.get(fuelKey)!;
         fuelRow.totalQty += fuelPerBoqUnit * workQty;
         fuelRow.breakdown.push({
+          boqItemId: item.id,
+          isProgrammed: itemBars.length > 0,
           itemDescription: `${display} — fuel`,
           fullDescription: `${item.description} (${display} @ ${norm} L/hr)`,
           itemCode: item.itemCode,
@@ -1117,6 +1141,32 @@ export function calculateBomDemand(
   const materials = sortBomMaterials([...matMap.values()].filter(r => r.totalQty > 0));
   const equipment = [...eqMap.values()].filter(r => r.totalHours > 0).sort((a, b) => b.totalHours - a.totalHours);
   const labour = [...labMap.values()].filter(r => r.totalDays > 0).sort((a, b) => b.totalDays - a.totalDays);
+
+  // ── Derive 3-state programming status per material row ─────────────────────
+  // Uses the boqItemId + isProgrammed flags stamped on each breakdown entry.
+  for (const row of materials) {
+    // Only entries with an explicit isProgrammed flag count (materials/fuel have it;
+    // legacy entries without the flag are treated as unknown / excluded from the count).
+    const flagged = row.breakdown.filter(bd => bd.isProgrammed !== undefined);
+    if (flagged.length === 0) {
+      // No flag information — treat as fully programmed (fallback)
+      row.programmingStatus = "fully_programmed";
+      row.programmedTotalDemand = row.totalQty;
+      row.unprogrammedDemand = 0;
+    } else {
+      const prog = flagged.filter(bd => bd.isProgrammed === true);
+      const unprog = flagged.filter(bd => bd.isProgrammed === false);
+      if (unprog.length === 0) {
+        row.programmingStatus = "fully_programmed";
+      } else if (prog.length === 0) {
+        row.programmingStatus = "not_programmed";
+      } else {
+        row.programmingStatus = "partly_programmed";
+      }
+      row.programmedTotalDemand = prog.reduce((sum, bd) => sum + bd.lineQty, 0);
+      row.unprogrammedDemand = unprog.reduce((sum, bd) => sum + bd.lineQty, 0);
+    }
+  }
 
   return { materials, equipment, labour };
 }
@@ -1976,6 +2026,16 @@ export interface ShortageRowResult {
   materialMappingUnresolved: boolean;
   /** ISO date (YYYY-MM-DD) — first programme month where this material has a shortfall. */
   requiredByDate: string | null;
+  /** Three-state programming status derived from all contributing BOQ items. */
+  programmingStatus: "fully_programmed" | "partly_programmed" | "not_programmed";
+  /** Demand attributable to programmed BOQ contributions only. */
+  programmedTotalDemand: number;
+  /** Demand attributable to BOQ contributions without programme bars. */
+  unprogrammedDemand: number;
+  /** max(0, programmedTotalDemand − demandUpToSelectedDate) */
+  futureProgrammedRequirement: number;
+  /** Distinct source BOQ item IDs across all contributions (multi-source awareness). */
+  sourceBoqItemIds: number[];
 }
 
 /**
@@ -1999,6 +2059,14 @@ export interface ShortageRowOpts {
   isProgrammed?: boolean;
   /** True when no canonical materialId was found for this BOM label. */
   materialMappingUnresolved?: boolean;
+  /** Three-state programming status from calculateBomDemand. */
+  programmingStatus?: "fully_programmed" | "partly_programmed" | "not_programmed";
+  /** Demand attributable to programmed BOQ contributions only. */
+  programmedTotalDemand?: number;
+  /** Demand attributable to BOQ contributions without programme bars. */
+  unprogrammedDemand?: number;
+  /** Distinct source BOQ item IDs for multi-source traceability. */
+  sourceBoqItemIds?: number[];
 }
 
 /**
@@ -2048,6 +2116,10 @@ export function computeShortageRow(
   const confirmedInternalIncoming = opts?.confirmedInternalIncoming ?? 0;
   const isProgrammed = opts?.isProgrammed ?? true;
   const materialMappingUnresolved = opts?.materialMappingUnresolved ?? (matRow.materialId == null);
+  const programmingStatus = opts?.programmingStatus ?? (isProgrammed ? "fully_programmed" : "not_programmed");
+  const programmedTotalDemand = opts?.programmedTotalDemand ?? (isProgrammed ? matRow.totalQty : 0);
+  const unprogrammedDemand = opts?.unprogrammedDemand ?? (isProgrammed ? 0 : matRow.totalQty);
+  const sourceBoqItemIds = opts?.sourceBoqItemIds ?? [];
 
   // Demand up to the horizon month (cumulative sum of months ≤ horizonIdx)
   const horizonIdx = opts?.horizonMonthIndex ?? (months.length ? Math.max(...months) : currentMonth);
@@ -2055,6 +2127,7 @@ export function computeShortageRow(
     .filter(m => m <= horizonIdx)
     .reduce((sum, m) => sum + (matRow.monthlyQty[m] ?? 0), 0);
   const futureRequirement = Math.max(0, matRow.totalQty - demandUpToSelectedDate);
+  const futureProgrammedRequirement = Math.max(0, programmedTotalDemand - demandUpToSelectedDate);
 
   const usableCommittedCoverage = hlcRecordedStock + confirmedIncomingPurchase + confirmedInternalIncoming;
   const actionableShortfall = Math.max(0, demandUpToSelectedDate - usableCommittedCoverage);
@@ -2128,6 +2201,11 @@ export function computeShortageRow(
     isProgrammed,
     materialMappingUnresolved,
     requiredByDate,
+    programmingStatus,
+    programmedTotalDemand,
+    unprogrammedDemand,
+    futureProgrammedRequirement,
+    sourceBoqItemIds,
   };
 }
 

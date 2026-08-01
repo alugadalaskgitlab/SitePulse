@@ -1500,6 +1500,9 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   purpose: text("purpose").notNull(),
   priority: text("priority").default("normal").notNull(),
   materialId: integer("material_id").references(() => plantMaterials.id, { onDelete: "set null" }),
+  // nullable FK to store_items.id — set when PI item is linked to a store_item requirement;
+  // column added via ensureMaterialRequirementsTable (idempotent ALTER TABLE)
+  storeItemId: integer("store_item_id"),
   estRate: real("est_rate"),
   estAmount: real("est_amount"),
   requiredBy: date("required_by"),
@@ -1738,7 +1741,8 @@ export const createIrnRequestSchema = z.object({
     urgency: z.enum(["normal", "high", "urgent"]).default("normal"),
     purpose: z.string().min(1, "Purpose is required"),
     needByDate: z.string().optional(),
-    materialId: z.number().int().nullish(), // optional link to plant_materials
+    materialId: z.number().int().nullish(),   // optional link to plant_materials (plant_material requirements)
+    storeItemId: z.number().int().nullish(),  // optional link to store_items (store_item requirements)
   })).min(1, "At least one item is required"),
 });
 export type CreateIrnRequest = z.infer<typeof createIrnRequestSchema>;

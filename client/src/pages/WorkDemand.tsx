@@ -1167,11 +1167,16 @@ interface ShortageRow {
   /** Resolved canonical plant_materials.id; null = unresolved in master */
   materialId: number | null;
   sourceBoqItemId: number | null;
+  sourceBoqItemIds: number[];
   stockElsewhere: number;
   isProgrammed: boolean;
   materialMappingUnresolved: boolean;
   /** ISO date (YYYY-MM-DD) from the Work Programme — first month this material is short */
   requiredByDate?: string | null;
+  programmingStatus: "fully_programmed" | "partly_programmed" | "not_programmed";
+  programmedTotalDemand: number;
+  unprogrammedDemand: number;
+  futureProgrammedRequirement: number;
 }
 
 interface ShortageData {
@@ -1425,7 +1430,7 @@ function SuggestionBadge({
       );
       const irnSugg = Math.round(Math.min(remainingAfterConfirmed, row.hlcRecordedStock) * 1000) / 1000;
       setInternalQtyStr(String(irnSugg));
-      setProcQtyStr(String(Math.round(Math.max(0, totalQty - irnSugg) * 1000) / 1000));
+      setProcQtyStr(String(Math.round(Math.max(0, remainingAfterConfirmed - irnSugg) * 1000) / 1000));
     }
     setStep("confirm_dest");
   };
@@ -1512,8 +1517,10 @@ function SuggestionBadge({
   const internalQty = parseFloat(internalQtyStr) || 0;
   const procQty = parseFloat(procQtyStr) || 0;
   const splitTotal = internalQty + procQty;
-  const splitBalance = Math.max(0, totalQty - splitTotal);
-  const splitValid = (internalQty >= 0 && procQty >= 0) && (internalQty > 0 || procQty > 0) && splitTotal <= totalQty + 0.001;
+  // Ceiling = remaining after confirmed incoming (not post-HLC-stock totalQty) to prevent double-subtraction
+  const splitCeiling = Math.max(0, row.demandUpToSelectedDate - row.confirmedIncomingPurchase - row.confirmedInternalIncoming);
+  const splitBalance = Math.max(0, splitCeiling - splitTotal);
+  const splitValid = (internalQty >= 0 && procQty >= 0) && (internalQty > 0 || procQty > 0) && splitTotal <= splitCeiling + 0.001;
 
   if (suggestion === "adequate") return (
     <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
@@ -1872,8 +1879,15 @@ function ProcurementTable({
     <EmptyState label="No material demand found. Check recipes on BOQ items." />
   );
 
-  const actionableCount = data.rows.filter(r => r.actionableShortfall > 0).length;
+  const actionableCount = data.rows.filter(r =>
+    r.actionableShortfall > 0 &&
+    !r.materialMappingUnresolved &&
+    r.programmingStatus !== "not_programmed"
+  ).length;
   const unresolvedCount = data.rows.filter(r => r.materialMappingUnresolved).length;
+  const notProgrammedCount = data.rows.filter(r =>
+    !r.materialMappingUnresolved && r.programmingStatus === "not_programmed"
+  ).length;
 
   return (
     <div className="space-y-3">
@@ -1908,6 +1922,14 @@ function ProcurementTable({
           </span>
         </div>
       )}
+      {notProgrammedCount > 0 && (
+        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+          <Info className="w-4 h-4 text-slate-400 flex-shrink-0" />
+          <span className="text-sm text-slate-600">
+            {notProgrammedCount} material{notProgrammedCount > 1 ? "s" : ""} not yet in the work programme — demand shown but excluded from actionable count.
+          </span>
+        </div>
+      )}
 
       <div className="overflow-auto rounded-xl border max-h-[70vh]">
         <table className="text-sm border-collapse" style={{ minWidth: 960 }}>
@@ -1916,7 +1938,9 @@ function ProcurementTable({
               <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[180px]" style={{ background: "#0F5F64" }}>Material</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Unit</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Total Demand</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Demand to Horizon</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>
+                {data.selectedHorizonMode === "entire_programme" ? "Programme Demand" : "Demand to Horizon"}
+              </th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>HLC Stock</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Other Parties</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Confirmed Incoming</th>
@@ -1941,8 +1965,14 @@ function ProcurementTable({
                       {isUnresolved && (
                         <span className="text-[10px] font-semibold text-amber-600 bg-amber-100 border border-amber-300 rounded px-1 py-0.5">Mapping Required</span>
                       )}
-                      {!row.isProgrammed && (
-                        <span className="text-[10px] text-slate-400 italic">(unprogrammed)</span>
+                      {row.programmingStatus === "not_programmed" && (
+                        <span className="text-[10px] text-slate-400 italic">(not programmed)</span>
+                      )}
+                      {row.programmingStatus === "partly_programmed" && (
+                        <span
+                          className="text-[10px] text-amber-500 italic"
+                          title={`Programmed: ${fmtQty(row.programmedTotalDemand, 1)} · Unprogrammed: ${fmtQty(row.unprogrammedDemand, 1)} ${row.uom}`}
+                        >(partly programmed)</span>
                       )}
                     </div>
                   </td>

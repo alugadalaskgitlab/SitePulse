@@ -11874,7 +11874,8 @@ export async function registerRoutes(
           case "next_30_days": {
             const cutoff = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
             const rawIdx = dateToMonthIndex(cutoff, pStartDate);
-            const idx = Math.max(1, Math.min(maxProgrammeMonth, Math.ceil(rawIdx)));
+            // rawIdx < 1 means cutoff is before programme start → no demand yet
+            const idx = rawIdx < 1 ? 0 : Math.min(maxProgrammeMonth, Math.ceil(rawIdx));
             return { horizonMonthIndex: idx, resolvedHorizonDate: toISODate(cutoff) };
           }
           case "next_programme_month": {
@@ -11885,7 +11886,8 @@ export async function registerRoutes(
             if (customDateParam) {
               const cutoff = new Date(customDateParam);
               const rawIdx = dateToMonthIndex(cutoff, pStartDate);
-              const idx = Math.max(1, Math.min(maxProgrammeMonth, Math.ceil(rawIdx)));
+              // rawIdx < 1 means cutoff is before programme start → no demand yet
+              const idx = rawIdx < 1 ? 0 : Math.min(maxProgrammeMonth, Math.ceil(rawIdx));
               return { horizonMonthIndex: idx, resolvedHorizonDate: customDateParam };
             }
             // No custom date provided — fall through to entire_programme
@@ -11915,10 +11917,17 @@ export async function registerRoutes(
         const confirmedInternalIncoming = resolvedId != null ? (confirmedIrnById.get(resolvedId) ?? 0) : 0;
         const stockMatched = resolvedId != null && (hlcRecordedStock > 0 || stockWithOtherParties > 0);
 
-        const sourceBoqItemId = (matRow as any).breakdown?.[0]?.boqItemId ?? null;
-        const hasProgrammeBars = bars.some(b =>
-          (matRow as any).breakdown?.some((bd: any) => bd.boqItemId === b.boqItemId)
-        );
+        // sourceBoqItemId: non-null only when all breakdown entries trace to a single BOQ item
+        const distinctBoqItemIds: number[] = [...new Set<number>(
+          ((matRow as any).breakdown as Array<{ boqItemId?: number | null }> ?? [])
+            .map(bd => bd.boqItemId)
+            .filter((id): id is number => id != null)
+        )];
+        const sourceBoqItemId = distinctBoqItemIds.length === 1 ? distinctBoqItemIds[0] : null;
+        // programmingStatus from calculateBomDemand; fall back to simple bar-presence check
+        const matProgrammingStatus = (matRow as any).programmingStatus as
+          | "fully_programmed" | "partly_programmed" | "not_programmed" | undefined;
+        const hasProgrammeBars = matProgrammingStatus !== "not_programmed";
 
         const enrichedMatRow = { ...matRow, materialId: resolvedId, sourceBoqItemId };
         return computeShortageRow(
@@ -11937,6 +11946,10 @@ export async function registerRoutes(
             confirmedInternalIncoming,
             isProgrammed: hasProgrammeBars,
             materialMappingUnresolved,
+            programmingStatus: matProgrammingStatus,
+            programmedTotalDemand: (matRow as any).programmedTotalDemand as number | undefined,
+            unprogrammedDemand: (matRow as any).unprogrammedDemand as number | undefined,
+            sourceBoqItemIds: distinctBoqItemIds,
           },
         );
       });

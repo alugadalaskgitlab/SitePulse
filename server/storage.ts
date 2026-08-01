@@ -9679,10 +9679,14 @@ export class DatabaseStorage implements IStorage {
         const req = await db.select().from(materialRequirements).where(eq(materialRequirements.id, requirementId)).limit(1).then(r => r[0]);
         if (req) {
           const piItem = data.items?.[0];
-          if (req.materialType === "plant_material" && piItem?.materialId) {
-            if (Number(piItem.materialId) !== Number(req.materialId)) {
-              throw new Error(`MATERIAL_MISMATCH: PI item materialId (${piItem.materialId}) does not match requirement materialId (${req.materialId})`);
-            }
+          if (req.materialType === "plant_material") {
+            if (!piItem?.materialId) throw new Error("MATERIAL_IDENTITY_INVALID: plant_material requirement requires item.materialId");
+            if (Number(piItem.materialId) !== Number(req.materialId)) throw new Error(`MATERIAL_MISMATCH: PI item materialId (${piItem.materialId}) does not match requirement materialId (${req.materialId})`);
+            if ((piItem as any).storeItemId) throw new Error("MATERIAL_IDENTITY_INVALID: plant_material requirement must not have storeItemId");
+          } else if (req.materialType === "store_item") {
+            if (!(piItem as any).storeItemId) throw new Error("MATERIAL_IDENTITY_INVALID: store_item requirement requires item.storeItemId");
+            if (Number((piItem as any).storeItemId) !== Number(req.storeItemId)) throw new Error(`STORE_ITEM_MISMATCH: PI item storeItemId (${(piItem as any).storeItemId}) does not match requirement storeItemId (${req.storeItemId})`);
+            if (piItem?.materialId) throw new Error("MATERIAL_IDENTITY_INVALID: store_item requirement must not have materialId");
           }
           const normalise = normaliseUnit;
           if (piItem?.uom && normalise(piItem.uom) !== normalise(req.uom)) {
@@ -9728,6 +9732,7 @@ export class DatabaseStorage implements IStorage {
             purpose: item.purpose.toUpperCase(),
             priority: item.priority || "normal",
             materialId: item.materialId || null,
+            storeItemId: (item as any).storeItemId ?? null,
             estRate: item.estRate ?? null,
             estAmount: item.estAmount ?? null,
             requiredBy: item.requiredBy || null,
@@ -11046,6 +11051,11 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql`
       ALTER TABLE internal_requisitions
         ADD COLUMN IF NOT EXISTS allocation_id INTEGER
+    `);
+    // ── storeItemId on purchase_indent_items ─────────────────────────────────
+    await db.execute(sql`
+      ALTER TABLE purchase_indent_items
+        ADD COLUMN IF NOT EXISTS store_item_id INTEGER REFERENCES store_items(id)
     `);
     // ── Allocations table ────────────────────────────────────────────────────
     await db.execute(sql`
@@ -21301,10 +21311,14 @@ export class DatabaseStorage implements IStorage {
         const req = await db.select().from(materialRequirements).where(eq(materialRequirements.id, irnRequirementId)).limit(1).then(r => r[0]);
         if (req) {
           const irnItem = data.items?.[0];
-          if (req.materialType === "plant_material" && irnItem?.materialId) {
-            if (Number(irnItem.materialId) !== Number(req.materialId)) {
-              throw new Error(`MATERIAL_MISMATCH: IRN item materialId (${irnItem.materialId}) does not match requirement materialId (${req.materialId})`);
-            }
+          if (req.materialType === "plant_material") {
+            if (!irnItem?.materialId) throw new Error("MATERIAL_IDENTITY_INVALID: plant_material requirement requires item.materialId");
+            if (Number(irnItem.materialId) !== Number(req.materialId)) throw new Error(`MATERIAL_MISMATCH: IRN item materialId (${irnItem.materialId}) does not match requirement materialId (${req.materialId})`);
+            if ((irnItem as any).storeItemId) throw new Error("MATERIAL_IDENTITY_INVALID: plant_material requirement must not have storeItemId");
+          } else if (req.materialType === "store_item") {
+            if (!(irnItem as any).storeItemId) throw new Error("MATERIAL_IDENTITY_INVALID: store_item requirement requires item.storeItemId");
+            if (Number((irnItem as any).storeItemId) !== Number(req.storeItemId)) throw new Error(`STORE_ITEM_MISMATCH: IRN item storeItemId (${(irnItem as any).storeItemId}) does not match requirement storeItemId (${req.storeItemId})`);
+            if (irnItem?.materialId) throw new Error("MATERIAL_IDENTITY_INVALID: store_item requirement must not have materialId");
           }
           const normalise = normaliseUnit;
           if (irnItem?.uom && normalise(irnItem.uom) !== normalise(req.uom)) {
@@ -21351,6 +21365,7 @@ export class DatabaseStorage implements IStorage {
             needByDate: item.needByDate ?? null,
             itemStatus: "pending",
             materialId: item.materialId ?? null,
+            storeItemId: (item as any).storeItemId ?? null,
           })),
         )
         .returning();
