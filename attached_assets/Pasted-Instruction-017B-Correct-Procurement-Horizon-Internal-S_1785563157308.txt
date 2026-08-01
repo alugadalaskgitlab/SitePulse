@@ -1,0 +1,545 @@
+Instruction 017B — Correct Procurement Horizon, Internal Suggestion and Material Identity
+
+Purpose
+
+Correct the remaining defects in Instruction 017 without redesigning the Work Demand, Material Requirement, PI, IRN, purchaser-action, receipt or GRN flows.
+
+This is a focused corrective batch covering:
+
+1. the wrong default procurement horizon;
+2. calendar-based rather than programme-based horizon dates;
+3. the split dialog incorrectly using “Other Parties” stock as an internal-transfer suggestion;
+4. incomplete plant/store material identity validation and persistence;
+5. IRN confirmed-incoming aggregation still relying on material-name matching.
+
+Expected files
+
+- client/src/pages/WorkDemand.tsx
+- shared/planningEngine.ts
+- server/routes.ts
+- server/storage.ts
+- shared/schema.ts only if the existing PI/IRN item schema genuinely lacks the additive storeItemId field required below
+
+DO NOT TOUCH OR REDESIGN
+
+- material_requirements
+- material_requirement_allocations
+- canonical BOQ material-mapping flow
+- Resolve Material Mapping flow
+- Instruction 016B destination confirmation
+- allocation authorisation and permission flow
+- requirementId/allocationId linkage
+- PI/IRN transaction structure except the narrow material-ID persistence correction below
+- submitPurchaserAction
+- placeOrderIndent
+- recordDelivery
+- derivePiStatus
+- checkAndCompleteIndent
+- storesVerifyIrn and issue-recording business logic
+- createDraftGrnFromPi
+- GRN finalisation
+- Admin override
+- PI-linked GRN skip-search flow
+- cancelStoreGrn
+- manual multi-item PI/IRN creation
+- Tomorrow’s Plan integration
+- Immediate Requirement integration
+- Site Material Received integration
+- Stores Hub redesign
+- physical Site/HMP/RMC/Store stock-location ledger
+
+1. Change the default procurement horizon
+
+The Procurement tab currently initializes to Entire Programme.
+
+Change the default horizon to:
+
+- current_month
+
+The first view shown to the user must be:
+
+- Up to Current Programme Month
+
+Entire Programme must remain available only as a deliberate user selection.
+
+Keep the existing warning when Entire Programme is selected.
+
+Acceptance:
+
+- opening the Procurement tab defaults to Current Programme Month;
+- it does not initially recommend the full programme quantity;
+- selecting Entire Programme still works and shows its warning.
+
+2. Make the server authoritative for horizon calculation
+
+Do not calculate programme horizons independently in both client and server.
+
+The client should send only:
+
+- horizonMode:
+  - current_month
+  - next_30_days
+  - next_programme_month
+  - custom_date
+  - entire_programme
+- customDate only when horizonMode = custom_date
+- the existing project/work-program context
+
+The server must calculate the resolved cutoff date.
+
+Use the project/work-program start date and the existing programme-month conversion logic already used elsewhere, such as monthIndexToDate or its shared equivalent.
+
+Do not use:
+
+- end of the next calendar month;
+- a flat 30.44 days-per-month approximation;
+- duplicated client-side programme-date calculations.
+
+The shortage response should return:
+
+- selectedHorizonMode
+- resolvedHorizonDate, nullable only for entire_programme where appropriate
+- resolvedProgrammeMonthIndex where applicable
+
+The client should display the resolved date returned by the server and must not independently recalculate a second version.
+
+3. Correct each horizon mode
+
+current_month:
+- calculate the current programme month relative to the project/work-program start date;
+- include cumulative demand through the end of that programme month.
+
+next_programme_month:
+- calculate the next programme period relative to project start;
+- include cumulative demand through the end of that next programme month;
+- do not use the next calendar month.
+
+next_30_days:
+- use today + 30 actual calendar days;
+- then calculate cumulative programmed demand due through that date.
+
+custom_date:
+- require and validate the user-selected date;
+- calculate cumulative demand through that date.
+
+entire_programme:
+- include the full programmed horizon;
+- resolvedHorizonDate may be the programme end date if already available;
+- preserve the visible warning.
+
+4. Remove the obsolete client horizon date calculation
+
+Remove or stop using the current client helper that calculates next month from new Date() and ignores projectStartDate.
+
+The client may format the server-returned resolved date for display, but it must not decide the programme cutoff.
+
+Ensure query invalidation/refetch uses:
+
+- horizonMode;
+- customDate when applicable;
+- project/work-program identity.
+
+5. Correct the split/internal suggestion source
+
+The split dialog currently uses stockElsewhere, which represents stock recorded with other parties, as its suggested internal-transfer quantity.
+
+Remove that completely.
+
+Do not use:
+
+- stockElsewhere;
+- stockWithOtherParties;
+- subcontractor/vendor custody stock
+
+as an internal IRN or transfer suggestion.
+
+Other Parties stock must remain informational only.
+
+6. Use HLC recorded stock only as an advisory upper limit
+
+For the present non-location-aware stock model, the split/internal dialog may use:
+
+- hlcRecordedStock
+
+only as an advisory maximum.
+
+Suggested internal quantity may be initialized as:
+
+min(
+  remaining selected-horizon demand after confirmed incoming,
+  hlcRecordedStock
+)
+
+But it must remain editable and visibly unconfirmed.
+
+Show wording such as:
+
+- “HLC recorded stock: X”
+- “Physical location and availability are not verified”
+- “Confirm the quantity actually available for internal issue/transfer”
+- “Stock with other parties is informational only and is not included”
+
+Do not imply that HLC stock is located at the required site or plant.
+
+Do not automatically authorise or allocate the suggested value.
+
+7. Avoid double-counting confirmed coverage
+
+When calculating the advisory internal quantity, do not suggest internal stock against demand already covered by confirmed incoming.
+
+Use the remaining selected-horizon requirement after operationally confirmed incoming.
+
+Conceptually:
+
+remainingBeforeInternalReview =
+max(
+  0,
+  demandUpToSelectedDate
+  - confirmedIncomingPurchase
+  - confirmedInternalIncoming
+)
+
+suggestedInternalQty =
+min(
+  remainingBeforeInternalReview,
+  hlcRecordedStock
+)
+
+suggestedProcurementQty =
+max(
+  0,
+  remainingBeforeInternalReview
+  - suggestedInternalQty
+)
+
+Do not subtract Stock with Other Parties.
+
+The authorised user may reduce the internal quantity after checking actual physical availability.
+
+8. Update the split-dialog copy
+
+Replace any wording such as:
+
+- “Potential stock elsewhere”
+- “Suggested transfer from other locations”
+
+where it is based on party-held stock.
+
+Use:
+
+- “Review HLC recorded stock”
+- “Physical location must be confirmed”
+- “Proposed internal issue/transfer”
+- “Proposed purchase balance”
+- “Other-party stock is informational only”
+
+The dialog should clearly show:
+
+- demand to selected horizon;
+- confirmed incoming;
+- HLC recorded stock;
+- stock with other parties;
+- proposed internal quantity;
+- proposed procurement quantity;
+- unallocated balance.
+
+9. Complete strict material identity validation
+
+For every requirement-linked PI and IRN creation, load the parent Material Requirement and validate its materialType.
+
+For materialType = "plant_material":
+
+- requirement.materialId must be present;
+- requirement.storeItemId must be null;
+- document item.materialId must be present;
+- document item.materialId must exactly equal requirement.materialId;
+- document item.storeItemId must be null.
+
+For materialType = "store_item":
+
+- requirement.storeItemId must be present;
+- requirement.materialId must be null;
+- document item.storeItemId must be present;
+- document item.storeItemId must exactly equal requirement.storeItemId;
+- document item.materialId must be null.
+
+Reject all of the following:
+
+- both IDs absent;
+- both IDs populated;
+- plant-material requirement without materialId;
+- store-item requirement without storeItemId;
+- mismatched materialId;
+- mismatched storeItemId.
+
+Use clear existing errors or add clear codes such as:
+
+- MATERIAL_IDENTITY_INVALID
+- MATERIAL_MISMATCH
+- STORE_ITEM_MISMATCH
+
+Do not rely on material names.
+
+10. Persist storeItemId for valid requirement-linked items
+
+Claude confirmed that the PI/IRN item insert currently does not persist storeItemId.
+
+Correct this narrowly.
+
+For requirement-linked PI/IRN item creation:
+
+- write materialId for plant-material items;
+- write storeItemId for store-item items;
+- write only the applicable identity;
+- preserve the existing item description/name fields for display;
+- do not replace identity validation with description matching.
+
+If the relevant PI/IRN item table does not yet have storeItemId:
+
+- add a nullable additive storeItemId FK to store_items.id;
+- use the existing idempotent migration pattern;
+- update the Drizzle schema accordingly;
+- do not make it mandatory for legacy/manual rows.
+
+This must not change general manual multi-item PI/IRN behaviour unless those flows explicitly supply storeItemId.
+
+11. Keep requirement-linked one-item validation intact
+
+Preserve the current rule that a requirement-linked document contains exactly one matching item.
+
+Continue validating:
+
+- requirementId;
+- allocationId;
+- allocation type;
+- authorised quantity;
+- UOM compatibility;
+- exact material identity.
+
+Do not weaken any Instruction 016B safeguards while adding storeItemId persistence.
+
+12. Change IRN confirmed-incoming aggregation to materialId
+
+For Work-Demand-linked and modern IRNs:
+
+- aggregate by item.materialId directly;
+- do not group by item.material name;
+- do not reverse-resolve names back to IDs.
+
+Only use legacy name matching when:
+
+- the historical IRN item has no materialId;
+- there is no stable identity available;
+- the fallback is clearly isolated as backward compatibility.
+
+Legacy fallback rules:
+
+- use normalized name matching only for old rows with null materialId;
+- do not let fallback override or merge with a different canonical materialId;
+- log or expose unresolved legacy matches where practical;
+- silently dropping unmatched legacy rows should be avoided where possible, but must not create a false match.
+
+13. Prevent confirmed-incoming duplication
+
+For IRN incoming:
+
+- include only the genuinely committed/outstanding internal quantity according to the existing IRN workflow;
+- exclude merely raised or unapproved IRNs;
+- exclude cancelled/rejected/closed items;
+- exclude already fully issued/completed quantity;
+- include only the remaining committed balance once.
+
+Do not count the same internal quantity through:
+
+- material requirement allocation;
+- IRN requested quantity;
+- committed issue;
+- issued quantity
+
+more than once.
+
+This instruction changes the identity key, not the existing business definition of committed IRN incoming.
+
+14. Preserve purchase confirmed-incoming logic
+
+Do not change the PI/order confirmed-incoming rules already implemented in Instruction 017.
+
+Continue to include only:
+
+- Ordered — Awaiting Delivery;
+- Already Purchased — Awaiting Receipt;
+- outstanding partial-delivery balance.
+
+Continue to exclude:
+
+- PI raised only;
+- PI approved but unordered;
+- cancelled/rejected;
+- fully received/completed.
+
+15. Complete the requiredByDate type/build cleanup if still open
+
+Confirm that ShortageRowResult and the function that creates it agree on requiredByDate.
+
+If computeShortageRow or its immediate typed builder still omits the required field:
+
+- return requiredByDate directly in the typed result;
+- remove unsafe later mutation;
+- preserve the existing correct runtime programme date;
+- run TypeScript/build validation.
+
+Do not alter the business meaning of requiredByDate.
+
+16. Error handling
+
+Use the shared API error parser where available.
+
+Do not silently:
+
+- fall back to Entire Programme;
+- use calendar month where programme month is requested;
+- use Stock with Other Parties as internal stock;
+- create a requirement-linked store-item document without storeItemId;
+- accept both material IDs;
+- accept neither material ID;
+- count a name-matched IRN where a stable materialId exists;
+- hide horizon calculation failures.
+
+Return clear errors and keep the user on the current flow where appropriate.
+
+17. Backward compatibility
+
+Preserve:
+
+- manual multi-item PI creation;
+- manual multi-item IRN creation;
+- legacy PI/IRN rows without requirementId;
+- legacy IRN name fallback only when materialId is absent;
+- existing Material Requirement awaiting-review flow;
+- destination confirmation;
+- allocation permissions;
+- purchaser-action and receipt flows;
+- Work Demand canonical mapping;
+- Resolve Material Mapping.
+
+Acceptance tests
+
+A. Default horizon
+
+- Open Procurement tab.
+- Default is Up to Current Programme Month.
+- Entire Programme is not selected automatically.
+- Immediate action quantity is not the full programme quantity.
+
+B. Programme-relative month
+
+Use a project whose programme start date is not the first day of a calendar month.
+
+Confirm:
+
+- current_month follows the project programme period;
+- next_programme_month follows the next project programme period;
+- neither is calculated merely as calendar month-end;
+- server response returns resolvedHorizonDate and programme month index;
+- client displays the server-returned value.
+
+C. Next 30 Days and Custom Date
+
+- Next 30 Days uses today + 30 days.
+- Custom Date requires a date.
+- Demand to horizon changes correctly.
+- Entire Programme still shows the full total with warning.
+
+D. Internal suggestion source
+
+Example:
+
+- Demand to horizon: 500
+- Confirmed incoming: 100
+- HLC recorded stock: 250
+- Stock with other parties: 400
+
+Expected:
+
+- remaining before internal review = 400
+- suggested internal quantity = 250
+- suggested procurement quantity = 150
+- the 400 with other parties does not increase internal suggestion;
+- UI says physical location must be confirmed.
+
+E. Other-parties stock
+
+- Stock with Other Parties is visible.
+- It remains informational.
+- It is not deducted from actionable shortfall.
+- It is not used to prefill IRN or split quantities.
+
+F. Plant-material identity
+
+- Valid requirement-linked plant material succeeds.
+- Missing item.materialId is rejected.
+- Wrong materialId is rejected.
+- item.storeItemId populated at the same time is rejected.
+
+G. Store-item identity
+
+API/database-level test only; no Store Catalogue requirement UI is added.
+
+- Valid requirement-linked store item succeeds.
+- storeItemId is persisted on the PI/IRN item.
+- Missing storeItemId is rejected.
+- Wrong storeItemId is rejected.
+- materialId populated at the same time is rejected.
+- both IDs absent is rejected.
+
+H. IRN incoming by ID
+
+- Modern linked IRN with materialId contributes to the correct canonical material row.
+- A display-name variation does not break the match.
+- IRN for a different material ID does not merge because its name is similar.
+- Legacy IRN without materialId may use compatibility name fallback.
+- Modern materialId rows never fall back to name matching.
+
+I. Incoming quantity
+
+- Raised/unapproved IRN is excluded.
+- Genuinely committed outstanding internal quantity is included once.
+- Fully issued quantity is not still shown as incoming.
+- Cancelled/rejected IRN is excluded.
+- Requirement allocation alone is not counted as incoming.
+
+J. Required-by date/build
+
+- ShortageRowResult includes requiredByDate consistently.
+- No type mismatch remains.
+- TypeScript/build check passes.
+
+K. Regression
+
+Confirm unchanged and passing:
+
+- BOM canonical mapping
+- Resolve Material Mapping
+- Work Demand horizon table
+- Material Requirement creation
+- awaiting_review status
+- destination selection
+- allocation authorisation
+- Raise Both flow
+- PI/IRN transactional linkage
+- manual multi-item PI
+- manual multi-item IRN
+- Ordered versus Already Purchased
+- placeOrderIndent
+- recordDelivery
+- partial delivery
+- derivePiStatus
+- checkAndCompleteIndent
+- storesVerifyIrn
+- GRN finalisation
+- Admin override
+- PI-linked GRN flow
+
+Do not add physical Site/HMP/RMC/Store stock-location tracking in this instruction.
+
+Do not start Tomorrow’s Plan integration, Immediate Requirement integration, Site Material Received linkage, Stores Hub redesign or receipt-driven Material Requirement completion until Instruction 017B is implemented and verified.
