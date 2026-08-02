@@ -1862,6 +1862,72 @@ export async function registerRoutes(
     }
   });
 
+  // ── Instruction 021: UOM Conversion Profiles ────────────────────────────────
+  app.get("/api/plant-materials/:id/uom-conversions", async (req, res) => {
+    try {
+      const materialId = parseInt(req.params.id);
+      if (isNaN(materialId)) return res.status(400).json({ message: "Invalid materialId" });
+      const profiles = await storage.getMaterialUomConversions(materialId);
+      res.json(profiles);
+    } catch (err) {
+      console.error("GET /api/plant-materials/:id/uom-conversions:", err);
+      res.status(500).json({ message: "Failed to fetch UOM conversion profiles" });
+    }
+  });
+
+  app.post("/api/plant-materials/:id/uom-conversions", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "master_materials")) return;
+      const materialId = parseInt(req.params.id);
+      if (isNaN(materialId)) return res.status(400).json({ message: "Invalid materialId" });
+      const { fromUom, toUom, conversionFactor, conversionBasis, conversionType, notes } = req.body;
+      if (!fromUom || !toUom) return res.status(400).json({ message: "fromUom and toUom required" });
+      const factor = parseFloat(conversionFactor);
+      if (!factor || factor <= 0) return res.status(400).json({ message: "conversionFactor must be a positive number" });
+      if (fromUom.trim().toLowerCase() === toUom.trim().toLowerCase()) {
+        return res.status(400).json({ message: "fromUom and toUom must differ" });
+      }
+      const userId = (req as any).user?.id ?? null;
+      const profile = await storage.createMaterialUomConversion({
+        materialId, fromUom: fromUom.trim(), toUom: toUom.trim(),
+        conversionFactor: factor,
+        conversionBasis: conversionBasis?.trim() || null,
+        conversionType: conversionType ?? "fixed_factor",
+        notes: notes?.trim() || null,
+        createdBy: userId,
+      });
+      res.status(201).json(profile);
+    } catch (err: any) {
+      console.error("POST /api/plant-materials/:id/uom-conversions:", err);
+      if (err?.code === "23505") return res.status(409).json({ message: "A conversion profile for this fromUom already exists for this material. Deactivate it first." });
+      res.status(500).json({ message: "Failed to create UOM conversion profile" });
+    }
+  });
+
+  app.patch("/api/plant-materials/:id/uom-conversions/:convId", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "master_materials")) return;
+      const convId = parseInt(req.params.convId);
+      if (isNaN(convId)) return res.status(400).json({ message: "Invalid convId" });
+      const { conversionFactor, conversionBasis, conversionType, isActive, notes } = req.body;
+      const updates: Record<string, unknown> = {};
+      if (conversionFactor !== undefined) {
+        const f = parseFloat(conversionFactor);
+        if (!f || f <= 0) return res.status(400).json({ message: "conversionFactor must be a positive number" });
+        updates.conversionFactor = f;
+      }
+      if (conversionBasis !== undefined) updates.conversionBasis = conversionBasis?.trim() || null;
+      if (conversionType !== undefined) updates.conversionType = conversionType;
+      if (isActive !== undefined) updates.isActive = isActive ? 1 : 0;
+      if (notes !== undefined) updates.notes = notes?.trim() || null;
+      const profile = await storage.updateMaterialUomConversion(convId, updates as any);
+      res.json(profile);
+    } catch (err) {
+      console.error("PATCH /api/plant-materials/:id/uom-conversions/:convId:", err);
+      res.status(500).json({ message: "Failed to update UOM conversion profile" });
+    }
+  });
+
   // Mix Types
   app.get("/api/plant-module/mix-types", async (req, res) => {
     try {
@@ -11761,6 +11827,15 @@ export async function registerRoutes(
       const allMaterials = allMaterialsRaw.filter(m => m.isActive === 1);
       const inactiveMaterials = allMaterialsRaw.filter(m => m.isActive !== 1);
 
+      // Instruction 021: preload all active UOM conversion profiles, grouped by materialId
+      const allConvProfiles = await storage.getAllMaterialUomConversions();
+      const convProfilesByMaterialId = new Map<number, typeof allConvProfiles>();
+      for (const p of allConvProfiles) {
+        const arr = convProfilesByMaterialId.get(p.materialId) ?? [];
+        arr.push(p);
+        convProfilesByMaterialId.set(p.materialId, arr);
+      }
+
       // ── materialId → HLC stock (partyId IS NULL) and elsewhere stock ────────
       // v2: keyed by materialId, NOT by name string.
       const hlcStockById = new Map<number, number>();      // partyId IS NULL
@@ -11981,25 +12056,37 @@ export async function registerRoutes(
           ? (resolvedAliasToId.get(normLabel) ?? materialIdByName.get(labelKey) ?? null)
           : null;
 
-        // ── Instruction 020 §1: UOM compatibility check for auto-resolved material ─
-        // If the resolved material's UOM is incompatible (no conversion path exists),
-        // suppress auto-resolution for stock purposes and flag as uom_incompatible.
+        // ── Instruction 021 §1: UOM compatibility check for auto-resolved material ─
+        // Material identity is preserved even when UOM conversion is not yet configured.
+        // uomIncompatible = true only sets resolutionReason → "uom_incompatible" →
+        // procurementStatus → "uom_resolution_required"; it no longer suppresses materialId.
         let aliasOrNameMatchId: number | null = rawAliasOrNameMatchId;
         let uomIncompatible = false;
+        let autoConvFactor: number = 1;
+        let autoConvMode: string | null = null;
+        let autoConvBasis: string | null = null;
+        let autoConvProfileId: number | null = null;
         let resolutionDiagnostic: { inactiveMaterialName?: string; bomUom?: string; masterUom?: string | null; materialName?: string; message?: string; action?: string } = {};
 
         if (rawAliasOrNameMatchId != null && matRow.uom) {
           const candidateMat = allMaterials.find(m => m.id === rawAliasOrNameMatchId);
           if (candidateMat) {
-            const uomCheck = checkMappingUomCompatibility(matRow.uom, candidateMat);
+            const matProfiles = convProfilesByMaterialId.get(rawAliasOrNameMatchId) ?? [];
+            const uomCheck = checkMappingUomCompatibility(matRow.uom, candidateMat, matProfiles);
             if (!uomCheck.compatible) {
               uomIncompatible = true;
-              aliasOrNameMatchId = null; // suppress auto-resolution — stock would be in wrong unit
+              // 021: Do NOT suppress aliasOrNameMatchId — material identity still resolves.
+              // The "uom_resolution_required" procurementStatus will block stock comparison.
               resolutionDiagnostic = {
                 bomUom: matRow.uom,
                 masterUom: candidateMat.defaultUom ?? null,
                 materialName: candidateMat.name,
               };
+            } else {
+              autoConvFactor = uomCheck.conversionFactor ?? 1;
+              autoConvMode = uomCheck.mode;
+              autoConvBasis = uomCheck.basis;
+              autoConvProfileId = uomCheck.conversionProfileId ?? null;
             }
           }
         }
@@ -12037,40 +12124,44 @@ export async function registerRoutes(
           }
         }
 
-        // ── 019B §7: apply conversion when saved mapping has a factor ──────────
-        // Demand is in BOM sourceUom; stock is already in material's canonical UOM.
-        const convFactor: number = savedMapping?.conversionFactorUsed ?? 1;
-        const convMode: string | null = savedMapping?.conversionMode ?? null;
-        const convSourceUom: string | null = savedMapping?.sourceUom ?? null;
+        // ── 021 §12-13: Conversion factor and planning-UOM normalization ──────
+        // Precedence: (1) saved mapping factor, (2) auto-resolved profile/bulk-density factor.
+        // Factor meaning: 1 BOQ unit × convFactor = 1 stock unit  (e.g. 1 Cum × 2.20 = 2.20 MT).
+        // Approach: keep demand in planning/BOQ UOM; convert stock DOWN to planning UOM (÷ factor).
+        // This shows shortfall in the user's BOQ unit; add procurementEquivalentQty for stock UOM.
+        const convFactor: number = savedMapping?.conversionFactorUsed ?? autoConvFactor;
+        const convMode: string | null = savedMapping?.conversionMode ?? autoConvMode;
+        const convSourceUom: string | null = savedMapping?.sourceUom ?? (convFactor !== 1 ? matRow.uom : null);
+        const convProfileId: number | null = (savedMapping as any)?.conversionProfileId ?? autoConvProfileId;
         const resolvedMat = resolvedId != null ? allMaterials.find(m => m.id === resolvedId) : null;
         const canonicalUom: string | null = resolvedMat?.defaultUom ?? null;
-        let conversionBasis: string | null = null;
-        if (convFactor !== 1 && convSourceUom && canonicalUom) {
+        let conversionBasis: string | null = autoConvBasis ?? null;
+        if (convFactor !== 1 && convSourceUom && canonicalUom && !conversionBasis) {
           conversionBasis = convMode === "bulk_density"
-            ? `Using configured bulk density: 1 ${convSourceUom} = ${convFactor} ${canonicalUom}`
-            : `Configured conversion: 1 ${convSourceUom} = ${convFactor} ${canonicalUom}`;
+            ? `Bulk density: 1 ${convSourceUom} = ${convFactor} ${canonicalUom}`
+            : `1 ${convSourceUom} = ${convFactor} ${canonicalUom}`;
         }
-        // Scale all demand quantities to canonical UOM
-        const scaledMatRow = convFactor !== 1
-          ? {
-            ...matRow,
-            uom: canonicalUom ?? matRow.uom,
-            totalDemand: matRow.totalDemand * convFactor,
-            monthlyQty: Object.fromEntries(
-              Object.entries(matRow.monthlyQty as Record<string, number>).map(([k, v]) => [k, v * convFactor])
-            ),
-            ...(typeof (matRow as any).programmedTotalDemand === "number"
-              ? { programmedTotalDemand: (matRow as any).programmedTotalDemand * convFactor } : {}),
-            ...(typeof (matRow as any).unprogrammedDemand === "number"
-              ? { unprogrammedDemand: (matRow as any).unprogrammedDemand * convFactor } : {}),
-          }
-          : matRow;
 
-        // Stock figures — all by materialId (already in canonical UOM)
-        const hlcRecordedStock = resolvedId != null ? (hlcStockById.get(resolvedId) ?? 0) : 0;
-        const stockWithOtherParties = resolvedId != null ? (elsewhereStockById.get(resolvedId) ?? 0) : 0;
-        const confirmedIncomingPurchase = resolvedId != null ? (confirmedPiById.get(resolvedId) ?? 0) : 0;
-        const confirmedInternalIncoming = resolvedId != null ? (confirmedIrnById.get(resolvedId) ?? 0) : 0;
+        // Demand stays in BOQ/planning UOM (no scaling).
+        const scaledMatRow = matRow;
+
+        // Stock is stored in canonical/stock UOM; divide by convFactor to get planning UOM coverage.
+        // When uomIncompatible and no conversion found (uomBlocked), zero out stock so we don't
+        // compare incompatible units (the UOM-resolution-required status will be shown instead).
+        const uomBlocked = uomIncompatible && convFactor === 1;
+        const invFactor = convFactor !== 1 ? 1 / convFactor : 1;
+        const hlcRecordedStock = resolvedId != null && !uomBlocked
+          ? Math.round((hlcStockById.get(resolvedId) ?? 0) * invFactor * 1000) / 1000
+          : 0;
+        const stockWithOtherParties = resolvedId != null && !uomBlocked
+          ? Math.round((elsewhereStockById.get(resolvedId) ?? 0) * invFactor * 1000) / 1000
+          : 0;
+        const confirmedIncomingPurchase = resolvedId != null && !uomBlocked
+          ? Math.round((confirmedPiById.get(resolvedId) ?? 0) * invFactor * 1000) / 1000
+          : 0;
+        const confirmedInternalIncoming = resolvedId != null && !uomBlocked
+          ? Math.round((confirmedIrnById.get(resolvedId) ?? 0) * invFactor * 1000) / 1000
+          : 0;
         const stockMatched = resolvedId != null && (hlcRecordedStock > 0 || stockWithOtherParties > 0);
 
         // sourceBoqItemId: non-null only when all breakdown entries trace to a single BOQ item
@@ -12109,11 +12200,19 @@ export async function registerRoutes(
           },
         );
 
+        // 021 §13: procurement equivalent — shortfall in stock/canonical UOM (e.g. MT)
+        // = planning shortfall × convFactor. Shown alongside planning shortfall in UI.
+        const procurementEquivalentQty = convFactor !== 1 && !uomBlocked
+          ? Math.round(shortageRow.actionableShortfall * convFactor * 1000) / 1000
+          : null;
+        const procurementEquivalentUom = convFactor !== 1 && !uomBlocked ? canonicalUom : null;
+
         return {
           ...shortageRow,
           ...(materialMappingAmbiguous ? { materialMappingAmbiguous: true, ambiguousCandidates } : {}),
           resolvedVia: mappedId ? "mapping" as const : (aliasOrNameMatchId ? "alias" as const : null),
-          ...(conversionBasis ? { conversionBasis, canonicalUom } : {}),
+          ...(conversionBasis ? { conversionBasis, canonicalUom, conversionProfileId: convProfileId } : {}),
+          ...(procurementEquivalentQty != null ? { procurementEquivalentQty, procurementEquivalentUom } : {}),
           ...(Object.keys(resolutionDiagnostic).length > 0 ? { resolutionDiagnostic } : {}),
         };
       });
@@ -12200,8 +12299,11 @@ export async function registerRoutes(
       }
 
       // ── UOM compatibility validation (server-authoritative; always executed) ──
+      // 021: checks explicit conversion profiles first (highest precedence).
       let conversionMode: string | null = null;
       let conversionFactorUsed: number | null = null;
+      let conversionProfileId: number | null = null;
+      let conversionBasisSaved: string | null = null;
       {
         const [targetMat] = await db.select({
           defaultUom: plantMaterials.defaultUom,
@@ -12214,17 +12316,23 @@ export async function registerRoutes(
           .where(eq(plantMaterials.id, Number(materialId)))
           .limit(1);
         if (!targetMat) return res.status(404).json({ message: "Material not found" });
-        const check = checkMappingUomCompatibility(sourceUom, targetMat);
+        const matProfiles = await storage.getMaterialUomConversions(Number(materialId));
+        const activeProfiles = matProfiles.filter(p => p.isActive === 1);
+        const check = checkMappingUomCompatibility(sourceUom, targetMat, activeProfiles);
         if (!check.compatible) {
           return res.status(400).json({
             error: check.errorCode ?? "MATERIAL_UOM_MISMATCH",
-            message: check.errorCode === "MATERIAL_CONVERSION_REQUIRED"
-              ? `UOM mismatch. Configure an approved conversion or choose a compatible material. (${sourceUom} → ${targetMat.defaultUom ?? "?"})`
+            message: check.errorCode === "MATERIAL_CONVERSION_AMBIGUOUS"
+              ? `Multiple active conversion profiles exist for ${sourceUom} → ${targetMat.defaultUom ?? "?"}. Contact administrator to deactivate duplicates.`
+              : check.errorCode === "MATERIAL_CONVERSION_REQUIRED"
+              ? `Material found, but no approved conversion exists between ${sourceUom} and ${targetMat.defaultUom ?? "?"}. Configure a UOM Conversion Profile in Plant Material Master first.`
               : `UOM mismatch. ${sourceUom} is not compatible with this material. Choose a material that supports ${sourceUom}.`,
           });
         }
         conversionMode = check.mode;
         conversionFactorUsed = check.conversionFactor;
+        conversionProfileId = check.conversionProfileId ?? null;
+        conversionBasisSaved = check.basis ?? null;
       }
 
       const userId = (req as any).user?.id ?? null;
@@ -12237,6 +12345,8 @@ export async function registerRoutes(
         normalizedSourceLabel: normalizeMaterialLabel(materialLabel),
         conversionMode,
         conversionFactorUsed,
+        conversionProfileId,
+        conversionBasis: conversionBasisSaved,
       });
       res.json(mapping);
     } catch (err) {

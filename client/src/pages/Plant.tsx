@@ -2658,6 +2658,14 @@ export function MaterialMaster() {
   const [editingOpeningStock, setEditingOpeningStock] = useState<MaterialOpeningStock | null>(null);
   const [deleteOpeningStockId, setDeleteOpeningStockId] = useState<number | null>(null);
 
+  // ── Instruction 021: UOM Conversion Profile form state ───────────────────
+  const [showConvForm, setShowConvForm] = useState(false);
+  const [convFromUom, setConvFromUom] = useState("");
+  const [convToUom, setConvToUom] = useState("");
+  const [convFactor, setConvFactor] = useState("");
+  const [convType, setConvType] = useState("fixed_factor");
+  const [convBasis, setConvBasis] = useState("");
+
   const exportToExcel = (data: PlantMaterial[]) => {
     const ws = XLSX.utils.json_to_sheet(data.map(m => ({ Name: m.name, Category: m.category || "", UOM: m.defaultUom })));
     const wb = XLSX.utils.book_new();
@@ -2709,6 +2717,49 @@ export function MaterialMaster() {
       } else {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       }
+    },
+  });
+
+  // ── Instruction 021: UOM Conversion Profile queries and mutations ───────────
+  const { data: convProfiles = [], refetch: refetchConvProfiles } = useQuery<Array<{
+    id: number; materialId: number; fromUom: string; toUom: string; conversionFactor: number;
+    conversionBasis: string | null; conversionType: string; isActive: number; notes: string | null;
+  }>>({
+    queryKey: editingMaterial ? [`/api/plant-materials/${editingMaterial.id}/uom-conversions`] : ["uom-conv-noop"],
+    queryFn: async () => {
+      if (!editingMaterial) return [];
+      const r = await fetch(`/api/plant-materials/${editingMaterial.id}/uom-conversions`, { credentials: "include" });
+      return r.ok ? r.json() : [];
+    },
+    enabled: !!editingMaterial,
+    staleTime: 30_000,
+  });
+
+  const createConvProfileMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", `/api/plant-materials/${editingMaterial!.id}/uom-conversions`, {
+        fromUom: convFromUom.trim(), toUom: convToUom.trim(), conversionFactor: parseFloat(convFactor),
+        conversionBasis: convBasis.trim() || null, conversionType: convType,
+      }),
+    onSuccess: () => {
+      refetchConvProfiles();
+      setShowConvForm(false); setConvFromUom(""); setConvToUom(""); setConvFactor(""); setConvBasis(""); setConvType("fixed_factor");
+      toast({ title: "Conversion profile saved" });
+    },
+    onError: (e: any) => {
+      toast({ title: "Failed to save profile", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const toggleConvProfileMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
+      apiRequest("PATCH", `/api/plant-materials/${editingMaterial!.id}/uom-conversions/${id}`, { isActive: isActive ? 1 : 0 }),
+    onSuccess: () => {
+      refetchConvProfiles();
+      toast({ title: "Conversion profile updated" });
+    },
+    onError: (e: any) => {
+      toast({ title: "Failed to update profile", description: e.message, variant: "destructive" });
     },
   });
 
@@ -2993,6 +3044,95 @@ export function MaterialMaster() {
                   </div>
                 )}
               </div>
+
+              {/* ── Instruction 021: UOM Conversion Profiles (edit mode only) ── */}
+              {editingMaterial && (
+                <div className="rounded-md border border-dashed border-border p-3 space-y-2.5 bg-muted/20">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">UOM Conversion Profiles</p>
+                    <Button type="button" size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowConvForm(v => !v)}>
+                      <Plus className="w-3 h-3" />{showConvForm ? "Cancel" : "Add Profile"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Use profiles when the BOQ planning UOM differs from the stock UOM (e.g. BOM in <strong>CUM</strong>, stocked in <strong>MT</strong>). The system divides stock quantities by the factor to compare coverage in planning UOM.
+                  </p>
+                  {convProfiles.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {convProfiles.map(p => (
+                        <div key={p.id} className={`flex items-center justify-between gap-2 text-xs rounded border px-2 py-1.5 ${p.isActive ? "bg-background border-border" : "bg-muted/40 border-dashed opacity-60"}`}>
+                          <div className="flex-1 min-w-0">
+                            <span className="font-mono font-medium">1 {p.fromUom} = {p.conversionFactor} {p.toUom}</span>
+                            <span className="ml-2 text-[10px] uppercase font-semibold tracking-wide text-muted-foreground">({p.conversionType})</span>
+                            {p.conversionBasis && <span className="ml-1 text-muted-foreground italic truncate"> — {p.conversionBasis}</span>}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-[10px] font-semibold ${p.isActive ? "text-emerald-600" : "text-slate-400"}`}>{p.isActive ? "Active" : "Inactive"}</span>
+                            <Button type="button" size="sm" variant="ghost" className="h-6 text-[11px] px-2"
+                              onClick={() => toggleConvProfileMutation.mutate({ id: p.id, isActive: !p.isActive })}
+                              disabled={toggleConvProfileMutation.isPending}>
+                              {p.isActive ? "Deactivate" : "Activate"}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No profiles configured for this material.</p>
+                  )}
+                  {showConvForm && (
+                    <div className="rounded border border-teal-200 bg-teal-50/60 p-3 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs">From UOM (BOQ/planning)</Label>
+                          <input value={convFromUom} onChange={e => setConvFromUom(e.target.value)} placeholder="e.g. Cum" className="mt-0.5 flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">To UOM (stock/canonical)</Label>
+                          <input value={convToUom} onChange={e => setConvToUom(e.target.value)} placeholder="e.g. MT" className="mt-0.5 flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs">Factor (1 From = ? To)</Label>
+                          <input type="number" step="any" min="0.0001" value={convFactor} onChange={e => setConvFactor(e.target.value)} placeholder="e.g. 2.20" className="mt-0.5 flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Profile Type</Label>
+                          <Select value={convType} onValueChange={setConvType}>
+                            <SelectTrigger className="h-8 mt-0.5 text-sm"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="fixed_factor">Fixed Factor</SelectItem>
+                              <SelectItem value="bulk_density">Bulk Density</SelectItem>
+                              <SelectItem value="loose_to_compacted">Loose → Compacted</SelectItem>
+                              <SelectItem value="load_capacity">Load Capacity</SelectItem>
+                              <SelectItem value="standard_equivalence">Standard Equivalence</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Basis / Description (optional)</Label>
+                        <input value={convBasis} onChange={e => setConvBasis(e.target.value)} placeholder="e.g. Compacted density 2.20 MT/CUM (MoRTH 305)" className="mt-0.5 flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
+                      </div>
+                      {convFromUom.trim() && convToUom.trim() && parseFloat(convFactor) > 0 && (
+                        <div className="text-xs text-teal-700 bg-teal-100 rounded px-2 py-1">
+                          Preview: 100 {convFromUom} = {(100 * parseFloat(convFactor)).toFixed(3)} {convToUom} · Stock coverage shown in {convFromUom} (÷ {parseFloat(convFactor)})
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Button type="button" size="sm" className="h-7 text-xs gap-1"
+                          onClick={() => createConvProfileMutation.mutate()}
+                          disabled={createConvProfileMutation.isPending || !convFromUom.trim() || !convToUom.trim() || !parseFloat(convFactor) || convFromUom.trim().toLowerCase() === convToUom.trim().toLowerCase()}>
+                          {createConvProfileMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                          Save Profile
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowConvForm(false)}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !name.trim()} data-testid="button-save-material">
                 {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingMaterial ? "Update" : "Create"}

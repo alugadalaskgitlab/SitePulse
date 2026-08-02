@@ -3432,8 +3432,11 @@ export const boqMaterialMappings = pgTable("boq_material_mappings", {
   // Instruction 019 audit/context columns (nullable; added via idempotent migration)
   sourceUom: text("source_uom"),
   normalizedSourceLabel: text("normalized_source_label"),
-  conversionMode: text("conversion_mode"),     // "direct" | "configured_factor" | "bulk_density"
+  conversionMode: text("conversion_mode"),     // "direct" | "configured_factor" | "bulk_density" | "conversion_profile"
   conversionFactorUsed: real("conversion_factor_used"),
+  // Instruction 021: explicit conversion profile reference and human-readable basis (nullable)
+  conversionProfileId: integer("conversion_profile_id"),
+  conversionBasis: text("conversion_basis"),
 }, (table) => ({
   labelProjectUq: uniqueIndex("boq_material_mappings_label_project_uq").on(table.boqProjectId, table.materialLabel),
 }));
@@ -3441,3 +3444,28 @@ export const boqMaterialMappings = pgTable("boq_material_mappings", {
 export const insertBoqMaterialMappingSchema = createInsertSchema(boqMaterialMappings).omit({ id: true, createdAt: true, mappedAt: true });
 export type BoqMaterialMapping = typeof boqMaterialMappings.$inferSelect;
 export type InsertBoqMaterialMapping = z.infer<typeof insertBoqMaterialMappingSchema>;
+
+// ── Instruction 021: Explicit per-material UOM conversion profiles ────────────
+// Stores auditable conversions between planning UOM (BOQ unit, e.g. Cum)
+// and stock/procurement UOM (material canonical, e.g. MT).
+// converted_qty = source_qty × conversionFactor
+// conversionType: fixed_factor | bulk_density | loose_to_compacted | load_capacity | standard_equivalence
+export const materialUomConversions = pgTable("material_uom_conversions", {
+  id: serial("id").primaryKey(),
+  materialId: integer("material_id").notNull(),
+  fromUom: text("from_uom").notNull(),               // source/planning UOM (e.g. "Cum")
+  toUom: text("to_uom").notNull(),                   // target/stock UOM (e.g. "MT")
+  conversionFactor: real("conversion_factor").notNull(), // quantity(fromUom) × factor = quantity(toUom)
+  conversionBasis: text("conversion_basis"),          // human-readable e.g. "2.20 MT per compacted CUM"
+  conversionType: text("conversion_type").notNull().default("fixed_factor"),
+  isActive: integer("is_active").notNull().default(1),
+  effectiveFrom: timestamp("effective_from"),
+  effectiveTo: timestamp("effective_to"),
+  notes: text("notes"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertMaterialUomConversionSchema = createInsertSchema(materialUomConversions).omit({ id: true, createdAt: true, updatedAt: true });
+export type MaterialUomConversion = typeof materialUomConversions.$inferSelect;
+export type InsertMaterialUomConversion = z.infer<typeof insertMaterialUomConversionSchema>;

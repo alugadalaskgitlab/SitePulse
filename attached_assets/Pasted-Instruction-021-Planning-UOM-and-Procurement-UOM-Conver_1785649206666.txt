@@ -1,0 +1,652 @@
+Instruction 021 — Planning UOM and Procurement UOM Conversion Profiles
+
+Purpose
+
+Restore and properly complete UOM conversion for materials such as WMM, GSB, aggregates, soil and other bulk materials where:
+
+- BOQ/Work Demand is measured in one UOM;
+- the material master or vendor supply is recorded in another UOM;
+- stock, PI, order and receipt quantities must be converted safely;
+- the user must not be blocked merely because the BOQ UOM differs from the vendor’s supply UOM.
+
+Current example:
+
+- BOQ WMM/GSB demand: compacted CUM;
+- vendor may quote/supply: MT, loose CUM, CFT or Load;
+- the current mapping endpoint reports UOM mismatch even though the material identity is correctly resolved.
+
+This instruction must support explicit, auditable material-specific conversions. It must not implement the broader Execution & Supply Responsibility or subcontract-routing model.
+
+Expected files
+
+- shared/schema.ts
+- shared/boqNormalise.ts or the existing shared UOM/conversion utility
+- server/storage.ts
+- server/routes.ts
+- client/src/pages/WorkDemand.tsx
+- the existing Plant Material Master page/component used to add or edit WMM/GSB
+- database migration/startup compatibility code only where additive schema changes are required
+
+DO NOT TOUCH OR REDESIGN
+
+- Work Programme/Gantt
+- horizon bucket/date calculations
+- demand phasing
+- BOQ quantity calculations
+- material-resolution precedence and aliases from Instructions 019B–020A
+- procurement-status precedence from Instruction 020
+- material_requirements
+- material_requirement_allocations
+- PI/IRN/GRN workflow states
+- purchaser actions
+- physical stock transaction history
+- Store stock reconciliation
+- Site Material Received routing
+- subcontract/vendor execution workflows
+- HLC versus vendor diesel/equipment responsibility
+- HMP/RMC production logic
+- Cancel GRN
+- Stores navigation
+
+This batch is limited to:
+
+- planning UOM;
+- procurement/stock UOMs;
+- explicit conversion profiles;
+- safe conversion validation;
+- consistent conversion in Work Demand;
+- master-screen configuration and visibility.
+
+1. Separate material identity from UOM
+
+A material such as WMM or GSB must be capable of being mapped even when:
+
+- BOQ planning UOM is CUM;
+- master/default stock UOM is MT;
+- vendor procurement UOM may be MT, loose CUM, CFT or Load.
+
+Do not treat a UOM difference as a material-identity failure.
+
+The system must first resolve:
+
+- the canonical material;
+
+and then separately resolve:
+
+- whether a valid conversion exists between the BOQ/planning UOM and the selected stock/procurement UOM.
+
+Required outcome:
+
+- exact WMM master is recognised as WMM;
+- exact GSB master is recognised as GSB;
+- the row shows UOM conversion required only when no valid profile exists;
+- it must not revert to “No canonical material match.”
+
+2. Introduce or formalise Planning UOM
+
+For each canonical Plant Material, support:
+
+- planningUom
+
+This represents the UOM used for Work Demand and comparison with BOQ demand.
+
+Examples:
+
+- WMM: compacted CUM
+- GSB: compacted CUM
+- Stone Dust: MT or CUM, according to the configured planning basis
+- Bitumen: MT
+- Emulsion: Litre or MT, according to configured practice
+- Diesel: Litre
+
+If an existing equivalent canonical/default UOM already performs this role, reuse or rename it carefully rather than creating duplicate concepts.
+
+Do not overwrite existing master values automatically.
+
+3. Support multiple procurement/stock UOMs
+
+A canonical material may be purchased, stocked or received in one or more supported UOMs.
+
+Examples for WMM/GSB:
+
+- MT
+- loose CUM
+- CFT
+- Load
+
+Each supported UOM must have an explicit conversion profile to the planning/canonical UOM.
+
+Do not treat every value in `allowedUoms` as factor 1.
+
+Important correction:
+
+Presence of both `MT` and `CUM` in allowedUoms must never mean:
+
+1 MT = 1 CUM.
+
+Direct factor 1 is permitted only for canonically equivalent labels such as:
+
+- M3 and CUM;
+- L and Litre;
+- T and MT, if the application has deliberately defined them as equivalent.
+
+Different physical dimensions require an approved conversion profile.
+
+4. Add explicit material conversion profiles
+
+Use the smallest maintainable schema design.
+
+Preferred structure:
+
+material_uom_conversions
+
+Fields should include at minimum:
+
+- id
+- materialId
+- fromUom
+- toUom
+- conversionFactor
+- conversionBasis
+- conversionType
+- isActive
+- effectiveFrom, nullable
+- effectiveTo, nullable
+- notes, nullable
+- createdBy
+- createdAt
+- updatedAt
+
+Supported conversion types may include:
+
+- fixed_factor
+- bulk_density
+- loose_to_compacted
+- load_capacity
+- standard_equivalence
+
+Meaning:
+
+converted quantity = source quantity × conversionFactor
+
+Store and display clearly which direction the factor applies.
+
+Example:
+
+- fromUom: MT
+- toUom: compacted CUM
+- conversionFactor: 0.454545
+- basis: 2.20 MT per compacted CUM
+
+or equivalently:
+
+- fromUom: compacted CUM
+- toUom: MT
+- conversionFactor: 2.20
+
+Use one clear canonical convention throughout the code.
+
+Add a uniqueness rule preventing duplicate active profiles for the same:
+
+- materialId
+- fromUom
+- toUom
+- effective period
+
+Do not silently choose between multiple active conversion profiles.
+
+5. Support bulk-density conversion
+
+Where bulk density is used, the system must understand the conversion direction.
+
+Example:
+
+WMM compacted density = 2.20 MT/CUM
+
+Then:
+
+- 100 compacted CUM demand = 220 MT procurement equivalent;
+- 220 MT stock/incoming = 100 compacted CUM coverage.
+
+Do not apply bulk density to a different material.
+
+Do not use one aggregate density universally for WMM, GSB, Stone Dust or soil.
+
+The conversion must be attached to the exact canonical material.
+
+6. Support loose-to-compacted conversion
+
+For bulk materials supplied in loose volume but demanded in compacted volume, support an explicit factor.
+
+Example:
+
+- 1 compacted CUM requires 1.25 loose CUM.
+
+Required display:
+
+- Planning demand: 100 compacted CUM
+- Procurement equivalent: 125 loose CUM
+- Conversion basis: loose-to-compacted factor 1.25
+
+Do not treat loose CUM and compacted CUM as equivalent merely because both are written as CUM.
+
+The UOM/basis must distinguish them, for example:
+
+- CUM_COMPACTED
+- CUM_LOOSE
+
+or an equivalent structured measurement-basis field.
+
+7. Support load-based procurement only with configured capacity
+
+For a vendor supplying by Load/Trip:
+
+- require an approved material-specific load capacity;
+- optionally allow vehicle type or payload reference;
+- do not convert Load to CUM/MT without configured capacity.
+
+Example:
+
+- 1 Load = 16 MT;
+- WMM density = 2.20 MT/CUM;
+- therefore 1 Load = 7.2727 compacted CUM.
+
+The system may chain approved conversions only when every step is explicit and unambiguous.
+
+It must show the complete basis used.
+
+8. Reuse existing conversion data safely
+
+Inspect and reuse existing fields where valid:
+
+- allowedUoms
+- conversionFactor
+- conversionFromUom
+- conversionToUom
+- bulkDensity
+
+Migration rules:
+
+- preserve all existing values;
+- do not discard working conversions;
+- where an old conversion clearly identifies from/to UOM and factor, migrate or expose it as an explicit profile;
+- do not infer unsafe conversions from allowedUoms alone;
+- log old configurations that are incomplete or ambiguous.
+
+If the old single-conversion fields remain temporarily for backward compatibility, define clear precedence:
+
+1. exact active explicit conversion profile;
+2. valid legacy configured from/to conversion;
+3. valid material-specific bulk density;
+4. standard-equivalent UOM;
+5. otherwise block.
+
+Do not use `allowedUoms` as factor 1 for dimensionally different UOMs.
+
+9. Update Plant Material Master UI
+
+The Plant Material Master add/edit screen must allow an authorised user to configure:
+
+A. Planning UOM
+
+Example:
+
+- compacted CUM
+
+B. Supported procurement/stock UOMs
+
+Example:
+
+- MT
+- loose CUM
+- CFT
+- Load
+
+C. Conversion profiles
+
+For every profile show:
+
+- From UOM
+- To UOM
+- Factor
+- Basis/type
+- Human-readable explanation
+- Active/inactive status
+
+Examples:
+
+- 1 compacted CUM = 2.20 MT
+- 1 compacted CUM = 1.25 loose CUM
+- 1 Load = 16 MT
+
+D. Validation preview
+
+Before saving, show examples such as:
+
+- 100 compacted CUM = 220 MT
+- 100 compacted CUM = 125 loose CUM
+
+Do not allow saving:
+
+- zero or negative factors;
+- same from/to UOM with a non-1 factor unless an explicit measurement basis differs;
+- duplicate active profiles;
+- a Load conversion without capacity;
+- a bulk-density conversion without density.
+
+10. Improve the Resolve Material Mapping dialog
+
+When the user selects WMM/GSB and the BOQ UOM differs from the planning/master UOM:
+
+A. Valid conversion exists
+
+Show:
+
+- material identity;
+- BOQ UOM;
+- planning/canonical UOM;
+- conversion basis;
+- example converted quantity.
+
+Allow mapping.
+
+Example:
+
+“WMM found.
+BOQ demand: 1,000 compacted CUM.
+Master stock UOM: MT.
+Configured conversion: 1 compacted CUM = 2.20 MT.
+Procurement equivalent: 2,200 MT.”
+
+B. Multiple conversion profiles apply
+
+Do not choose silently.
+
+Show available active profiles and require explicit selection where the distinction is commercially meaningful, such as:
+
+- Vendor A load capacity;
+- loose CUM versus MT;
+- different effective dates.
+
+C. No valid conversion exists
+
+Show:
+
+“Material found, but no approved conversion exists between BOQ CUM and Master MT.”
+
+Action:
+
+- Configure UOM Conversion
+
+Do not show:
+
+- No canonical material match;
+- Add material again;
+- generic UOM mismatch without identifying the exact conversion needed.
+
+11. Save the selected conversion with the mapping
+
+The BOQ-material mapping must record enough context to remain auditable:
+
+- materialId
+- source/planning UOM
+- target/canonical or stock UOM
+- conversionProfileId, where used
+- conversionMode
+- conversionFactorUsed
+- conversionBasis
+- mappedBy
+- mappedAt
+
+A later change to the master conversion must not silently rewrite historical mappings or historical transaction quantities.
+
+For future demand recalculation, define whether the current active profile or the saved mapping profile is authoritative.
+
+Preferred rule:
+
+- mapping uses the selected saved conversion profile;
+- if the profile becomes inactive or changes, flag the mapping for review rather than silently changing it.
+
+12. Apply conversion consistently in Work Demand
+
+Convert every compared quantity into the material’s planning/canonical UOM before calculating coverage.
+
+Normalize:
+
+- horizon demand
+- total programme demand
+- HLC stock
+- other-party stock
+- confirmed purchase incoming
+- confirmed internal incoming
+- actionable shortfall
+- future requirement
+
+Example:
+
+- WMM horizon demand: 500 compacted CUM
+- stock: 440 MT
+- configured density: 2.20 MT/CUM
+- normalized stock: 200 compacted CUM
+- actionable shortfall: 300 compacted CUM
+- procurement equivalent: 660 MT
+
+Never compare:
+
+- 500 CUM demand directly with 440 MT stock.
+
+13. Display planning demand and procurement equivalent separately
+
+The Work Demand row should preserve the BOQ/planning view.
+
+Example columns/details:
+
+- Horizon Demand: 500 compacted CUM
+- Available Coverage: 200 compacted CUM
+- Actionable Shortfall: 300 compacted CUM
+- Procurement Equivalent: 660 MT
+
+If several procurement UOMs are supported, use:
+
+- the mapping/project-preferred procurement UOM;
+- otherwise let the user select when raising the requirement.
+
+Do not replace BOQ demand with the vendor unit.
+
+14. PI/IRN quantity preparation
+
+Do not redesign PI/IRN workflows.
+
+Where an existing Raise PI/IRN action is opened from Work Demand:
+
+- carry the planning quantity;
+- carry the selected procurement UOM;
+- carry the converted procurement quantity;
+- carry conversionProfileId/factor/basis for audit.
+
+Example:
+
+- planning shortfall: 300 compacted CUM;
+- PI quantity: 660 MT;
+- conversion: 2.20 MT/CUM.
+
+The user must be able to review both before submitting.
+
+Do not alter existing approval or lifecycle logic.
+
+15. Vendor-specific or project-specific conversion
+
+Do not build a full vendor-rate system in this batch.
+
+However, design the schema so future overrides can be added safely.
+
+For now support:
+
+- global material conversion profile;
+- optional project-specific override only if it can be implemented additively and without affecting existing PI flows.
+
+Vendor-specific capacity/density may be deferred, but do not hardcode the model in a way that prevents it later.
+
+16. Error handling
+
+Return clear errors such as:
+
+- MATERIAL_FOUND_CONVERSION_REQUIRED
+- MATERIAL_CONVERSION_AMBIGUOUS
+- MATERIAL_CONVERSION_INVALID
+- MATERIAL_CONVERSION_NOT_CONFIGURED
+- MATERIAL_CONVERSION_PROFILE_INACTIVE
+- MATERIAL_UOM_UNSUPPORTED
+
+Do not return `MATERIAL_UOM_MISMATCH` when the material is correctly identified but only the conversion profile is missing.
+
+17. No unsafe automatic assumptions
+
+Do not automatically assume:
+
+- 1 MT = 1 CUM;
+- 1 loose CUM = 1 compacted CUM;
+- 1 Load has a universal quantity;
+- one density applies to all road materials;
+- all vendors use the same payload;
+- allowedUoms means factor 1;
+- BOQ CUM always means loose CUM.
+
+Every non-equivalent UOM conversion must be explicit and material-specific.
+
+18. Backward compatibility
+
+Existing direct-compatible mappings such as:
+
+- MT → MT
+- Litre → Litre
+- CUM → CUM with the same measurement basis
+
+must continue to work without requiring a conversion profile.
+
+Existing valid configured conversions must remain usable.
+
+No existing mapping, stock record, PI, IRN or GRN should be deleted or rewritten.
+
+If an old mapping is unsafe or incomplete:
+
+- flag it for review;
+- do not silently recalculate historical quantities.
+
+19. Acceptance tests
+
+A. WMM in MT, BOQ in compacted CUM
+
+Configuration:
+
+- material: WMM
+- planning UOM: compacted CUM
+- stock/procurement UOM: MT
+- conversion: 1 compacted CUM = 2.20 MT
+
+Expected:
+
+- WMM maps successfully;
+- 100 CUM demand displays 220 MT procurement equivalent;
+- 110 MT stock covers 50 compacted CUM;
+- remaining shortfall is 50 compacted CUM / 110 MT.
+
+B. GSB in loose CUM, BOQ in compacted CUM
+
+Configuration:
+
+- 1 compacted CUM = 1.25 loose CUM
+
+Expected:
+
+- 100 compacted CUM demand = 125 loose CUM;
+- quantities are not treated 1:1.
+
+C. Missing conversion
+
+- exact WMM material exists;
+- BOQ CUM;
+- master MT;
+- no approved profile.
+
+Expected:
+
+- material identity resolves;
+- status is UOM Resolution Required;
+- message states the missing CUM ↔ MT conversion;
+- Configure UOM Conversion action is shown;
+- user is not asked to add WMM again.
+
+D. Multiple profiles
+
+- two active applicable profiles exist.
+
+Expected:
+
+- no silent selection;
+- mapping requires explicit profile selection;
+- selected profile is saved with the mapping.
+
+E. Load conversion
+
+- one load capacity is configured;
+- conversion succeeds and shows its basis.
+
+Without load capacity:
+
+- conversion is blocked.
+
+F. allowedUoms safety
+
+- material has MT and CUM listed as supported UOMs;
+- no factor/density exists.
+
+Expected:
+
+- system does not assume factor 1;
+- mapping remains blocked pending conversion.
+
+G. Existing direct mappings
+
+- MT → MT and Litre → Litre continue working.
+
+H. Work Demand normalization
+
+- demand, stock, incoming and shortfall are compared in one planning UOM;
+- no raw mixed-unit comparison occurs.
+
+I. PI preparation
+
+- planning shortfall and procurement equivalent both reach the existing PI/IRN form;
+- user can see and verify both;
+- approval flows remain unchanged.
+
+J. Regression
+
+Confirm unchanged:
+
+- Procurement page loads normally;
+- GSB/WMM aliases from 020A resolve material identity;
+- procurement status labels from 020/020A;
+- horizon switching;
+- Other Parties formatting;
+- Material Requirement creation;
+- Raise PI/IRN/Split;
+- purchaser actions;
+- GRN flows;
+- Work Programme/Gantt.
+
+After this passes
+
+1. Test WMM and GSB live using actual master UOMs.
+2. Freeze Work Demand material identity, status and UOM conversion.
+3. Fix Cancel GRN.
+4. Fix Store Items back-navigation.
+5. Continue User/Designation Templates.
+6. Design the broader Execution & Supply Responsibility model covering:
+   - direct-to-site GSB/WMM supply;
+   - outsourced earthwork;
+   - outsourced prime/tack/DBM/BC;
+   - outsourced RMC/concrete;
+   - client-supplied materials;
+   - HLC versus vendor equipment, labour and diesel.

@@ -1186,6 +1186,11 @@ interface ShortageRow {
   /** Human-readable conversion basis (e.g. "Using bulk density: 1 CFT = 0.05 MT") */
   conversionBasis?: string;
   canonicalUom?: string;
+  conversionProfileId?: number | null;
+  // ── Instruction 021 additions ─────────────────────────────────────────────
+  /** 021 §13: shortfall in stock/procurement UOM (e.g. MT) for materials with conversion. */
+  procurementEquivalentQty?: number | null;
+  procurementEquivalentUom?: string | null;
   // ── Instruction 020 additions ─────────────────────────────────────────────
   /** Instruction 020 §3: authoritative server-side procurement status. */
   procurementStatus?: "mapping_required" | "uom_resolution_required" | "multiple_matches" | "future_not_due" | "covered_by_stock" | "covered_by_incoming" | "partially_covered" | "action_required";
@@ -1335,9 +1340,30 @@ function ResolveMappingDialog({
     staleTime: 30_000,
   });
 
+  // Fetch conversion profiles for selected material (Instruction 021)
+  const { data: selectedProfiles = [] } = useQuery<Array<{ id: number; fromUom: string; toUom: string; conversionFactor: number; conversionBasis: string | null; conversionType: string; isActive: number }>>({
+    queryKey: [`/api/plant-materials/${selected?.id}/uom-conversions`],
+    queryFn: async () => {
+      if (!selected) return [];
+      const r = await fetch(`/api/plant-materials/${selected.id}/uom-conversions`, { credentials: "include" });
+      return r.ok ? r.json() : [];
+    },
+    enabled: selected != null,
+    staleTime: 30_000,
+  });
+
+  // Check if any active profile covers the BOQ UOM → stock UOM conversion
+  const activeProfiles = selectedProfiles.filter(p => p.isActive === 1);
+  const profileForBomUom = activeProfiles.find(p =>
+    p.fromUom.trim().toUpperCase() === row.uom.trim().toUpperCase() ||
+    p.fromUom.trim().toLowerCase() === row.uom.trim().toLowerCase()
+  );
+
   // Real-time UOM compatibility check (mirrors server logic; server revalidates on save)
+  // 021: if a profile exists for this BOM UOM, override client-side incompatibility
   const uomCheck = selected ? clientCheckUomCompat(row.uom, selected) : null;
-  const canSave = !!selected && (!uomCheck || uomCheck.compatible);
+  const hasProfileCompat = !!profileForBomUom;
+  const canSave = !!selected && (hasProfileCompat || !uomCheck || uomCheck.compatible);
 
   const handleSave = async () => {
     if (!selected || !canSave) return;
@@ -1456,13 +1482,25 @@ function ResolveMappingDialog({
                   <p className="mt-1 text-blue-600">{uomCheck.basis}</p>
                 )}
               </div>
+            ) : hasProfileCompat && profileForBomUom ? (
+              // 021: explicit conversion profile covers the UOM gap
+              <div className="rounded p-2 text-[12px] border bg-violet-50 border-violet-200">
+                <p className="font-semibold text-violet-800">Will map via UOM conversion profile</p>
+                <p className="text-violet-700 mt-0.5">
+                  <span className="font-mono">1 {profileForBomUom.fromUom} = {profileForBomUom.conversionFactor} {profileForBomUom.toUom}</span>
+                  {profileForBomUom.conversionBasis && <span className="text-violet-600 ml-1">({profileForBomUom.conversionBasis})</span>}
+                </p>
+                <p className="text-violet-600 mt-0.5 text-[11px]">Stock quantities will be shown in {profileForBomUom.fromUom} (BOQ unit).</p>
+              </div>
             ) : (
               <div className="bg-red-50 border border-red-200 rounded p-2 text-[12px]">
                 <p className="font-semibold text-red-800">UOM mismatch — cannot save</p>
                 <p className="text-red-700 mt-0.5">
                   BOM source is <strong>{row.uom}</strong>; this material requires one of:{" "}
                   {(() => { try { return (JSON.parse(selected.allowedUoms ?? "[]") as string[]).join(", "); } catch { return selected.defaultUom ?? "?"; } })()}.
-                  Configure an approved conversion on this material or choose a compatible one.
+                </p>
+                <p className="text-red-600 mt-0.5 text-[11px]">
+                  Configure a UOM Conversion Profile in <a href="/plant?tab=home" className="underline font-medium" target="_blank">Plant Material Master</a> for this material, then try again.
                 </p>
               </div>
             )
@@ -1692,8 +1730,17 @@ function SuggestionBadge({
           onClick={() => setShowResolveMap(true)}
         >
           <Settings2 className="w-3 h-3" />
-          {ps === "uom_resolution_required" ? "Fix UOM Mapping" : ps === "multiple_matches" ? "Resolve Ambiguous Match" : "Resolve Material Mapping"}
+          {ps === "uom_resolution_required" ? "Resolve Material Mapping" : ps === "multiple_matches" ? "Resolve Ambiguous Match" : "Resolve Material Mapping"}
         </button>
+        {ps === "uom_resolution_required" && rd?.materialName && (
+          <a
+            href="/plant?tab=home"
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5 hover:bg-teal-100 transition-colors"
+            title="Open Plant Material Master to add a UOM Conversion Profile for this material"
+          >
+            <Settings2 className="w-3 h-3" /> Configure UOM Conversion
+          </a>
+        )}
         {contextNote && (
           <span className="text-[11px] text-amber-600">{contextNote}</span>
         )}
@@ -1797,6 +1844,17 @@ function SuggestionBadge({
           </>
         )}
       </div>
+
+      {/* ── 021 §13: Procurement equivalent — shortfall in stock/canonical UOM ── */}
+      {row.procurementEquivalentQty != null && row.procurementEquivalentUom && (
+        <div className="text-[11px] text-blue-700 bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5 mt-0.5">
+          <span className="font-medium">Procurement equivalent:</span>{" "}
+          {fmtN(row.procurementEquivalentQty)} {row.procurementEquivalentUom}
+          {row.conversionBasis && (
+            <span className="text-[10px] text-blue-500 ml-1">({row.conversionBasis})</span>
+          )}
+        </div>
+      )}
 
       {/* ── Multi-step dialog ── */}
       <Dialog open={step !== "closed"} onOpenChange={(o) => { if (!o) handleClose(); }}>

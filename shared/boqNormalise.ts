@@ -165,23 +165,37 @@ export function normalizeMaterialLabel(label: string): string {
 const MASS_UNITS = new Set(["MT", "Kg"]);
 const VOLUME_UNITS = new Set(["Cum", "CFT"]);
 
+/** Minimal profile shape passed from the server — avoids importing the full Drizzle type. */
+export interface UomConversionProfile {
+  id: number;
+  fromUom: string;
+  toUom: string;
+  conversionFactor: number;
+  conversionBasis?: string | null;
+  conversionType: string;
+  isActive: number;
+}
+
 export interface MappingUomCheck {
   /** True when the source UOM can be used with the target material. */
   compatible: boolean;
   /**
    * How compatibility is achieved:
-   *   "direct"           — UOM is directly in the material's allowedUoms
-   *   "bulk_density"     — mass↔volume via configured bulkDensity
-   *   "configured_factor"— explicit conversionFactor on the material
-   *   "incompatible"     — no compatible path found
+   *   "conversion_profile" — explicit profile from material_uom_conversions table (highest)
+   *   "direct"             — UOM is directly in the material's allowedUoms
+   *   "configured_factor"  — explicit conversionFactor on the material (legacy)
+   *   "bulk_density"       — mass↔volume via configured bulkDensity
+   *   "incompatible"       — no compatible path found
    */
-  mode: "direct" | "bulk_density" | "configured_factor" | "incompatible";
+  mode: "conversion_profile" | "direct" | "bulk_density" | "configured_factor" | "incompatible";
   /** Conversion factor from sourceUom to the material's defaultUom (1 if direct). */
   conversionFactor: number | null;
+  /** ID of the matched explicit conversion profile, if used. */
+  conversionProfileId?: number | null;
   /** Human-readable explanation of the conversion basis shown in UI. */
   basis: string | null;
   /** Machine-readable error code returned to the client when incompatible. */
-  errorCode: "MATERIAL_UOM_MISMATCH" | "MATERIAL_CONVERSION_REQUIRED" | null;
+  errorCode: "MATERIAL_UOM_MISMATCH" | "MATERIAL_CONVERSION_REQUIRED" | "MATERIAL_CONVERSION_AMBIGUOUS" | null;
 }
 
 /**
@@ -201,8 +215,39 @@ export function checkMappingUomCompatibility(
     conversionFromUom?: string | null;
     conversionToUom?: string | null;
   },
+  /** Instruction 021: explicit conversion profiles (highest-precedence tier). */
+  profiles?: UomConversionProfile[],
 ): MappingUomCheck {
   const srcCanonical = canonicalizeUnit(sourceUom);
+
+  // ── Step 0: Explicit conversion profiles (highest precedence, Instruction 021) ─
+  // Profiles override all legacy conversion checks.
+  if (profiles && profiles.length > 0) {
+    const activeProfiles = profiles.filter(p => p.isActive === 1);
+    const matching = activeProfiles.filter(p => canonicalizeUnit(p.fromUom) === srcCanonical);
+    if (matching.length === 1) {
+      const p = matching[0];
+      return {
+        compatible: true,
+        mode: "conversion_profile",
+        conversionFactor: p.conversionFactor,
+        conversionProfileId: p.id,
+        basis: p.conversionBasis ?? `1 ${p.fromUom} = ${p.conversionFactor} ${p.toUom}`,
+        errorCode: null,
+      };
+    } else if (matching.length > 1) {
+      // Multiple active profiles for the same fromUom — user must disambiguate
+      return {
+        compatible: false,
+        mode: "incompatible",
+        conversionFactor: null,
+        conversionProfileId: null,
+        basis: null,
+        errorCode: "MATERIAL_CONVERSION_AMBIGUOUS",
+      };
+    }
+    // No matching active profile for this fromUom → fall through to legacy checks
+  }
 
   // Parse allowedUoms JSON array (stored as text in DB)
   let allowedRaw: string[] = [];

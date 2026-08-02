@@ -140,6 +140,7 @@ async function runBackgroundMigrations() {
     (async () => { try { await (storage as any).ensureSiteMaterialTripsLinkageColumns(); console.log("Startup: ensureSiteMaterialTripsLinkageColumns — Batch 14 columns ensured"); } catch (e) { console.error("Startup: Failed to ensure site_material_trips linkage columns:", e); } })(),
     (async () => { try { await (storage as any).ensureEquipmentUsageAuditColumns(); console.log("Startup: ensureEquipmentUsageAuditColumns — audit columns verified"); } catch (e) { console.error("Startup: Failed to ensure equipment usage audit columns:", e); } })(),
     (async () => { try { await (storage as any).ensureSiteEnabledModulesColumn(); } catch (e) { console.error("Startup: Failed to ensure enabled_modules column on sites:", e); } })(),
+    (async () => { try { await storage.ensureMaterialUomConversionsTable(); console.log("Startup: ensureMaterialUomConversionsTable — material_uom_conversions table + BOQ mapping columns verified/added"); } catch (e) { console.error("Startup: Failed to ensure material_uom_conversions table:", e); } })(),
   ]);
 
   // ── Phase 2: Seeding that depends on Phase 1 tables (parallel) ─────────────

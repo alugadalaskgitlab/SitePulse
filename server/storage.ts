@@ -79,6 +79,8 @@ import {
   boqMaterialMappings,
   type BoqMaterialMapping,
   type InsertBoqMaterialMapping,
+  materialUomConversions,
+  type MaterialUomConversion,
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
@@ -1422,7 +1424,21 @@ export interface IStorage {
     normalizedSourceLabel?: string | null;
     conversionMode?: string | null;
     conversionFactorUsed?: number | null;
+    conversionProfileId?: number | null;
+    conversionBasis?: string | null;
   }): Promise<BoqMaterialMapping>;
+  // Instruction 021: explicit per-material UOM conversion profiles
+  ensureMaterialUomConversionsTable(): Promise<void>;
+  getMaterialUomConversions(materialId: number): Promise<MaterialUomConversion[]>;
+  getAllMaterialUomConversions(): Promise<MaterialUomConversion[]>;
+  createMaterialUomConversion(data: {
+    materialId: number; fromUom: string; toUom: string; conversionFactor: number;
+    conversionBasis?: string | null; conversionType?: string; notes?: string | null; createdBy?: number | null;
+  }): Promise<MaterialUomConversion>;
+  updateMaterialUomConversion(id: number, data: Partial<{
+    conversionFactor: number; conversionBasis: string | null; conversionType: string;
+    isActive: number; notes: string | null;
+  }>): Promise<MaterialUomConversion>;
   searchPlantMaterials(query: string, limit?: number): Promise<Array<{
     id: number; name: string; defaultUom: string | null; category: string | null;
     allowedUoms: string | null; bulkDensity: number | null;
@@ -23966,6 +23982,8 @@ export class DatabaseStorage implements IStorage {
     normalizedSourceLabel?: string | null;
     conversionMode?: string | null;
     conversionFactorUsed?: number | null;
+    conversionProfileId?: number | null;
+    conversionBasis?: string | null;
   }): Promise<BoqMaterialMapping> {
     const updateFields = {
       materialId: data.materialId,
@@ -23975,6 +23993,8 @@ export class DatabaseStorage implements IStorage {
       normalizedSourceLabel: data.normalizedSourceLabel ?? null,
       conversionMode: data.conversionMode ?? null,
       conversionFactorUsed: data.conversionFactorUsed ?? null,
+      conversionProfileId: data.conversionProfileId ?? null,
+      conversionBasis: data.conversionBasis ?? null,
     };
     const existing = await db.select().from(boqMaterialMappings).where(
       and(
@@ -24025,6 +24045,78 @@ export class DatabaseStorage implements IStorage {
     }).from(plantMaterials)
       .where(eq(plantMaterials.isActive, 1))
       .orderBy(plantMaterials.name);
+  }
+
+  // ── Instruction 021: UOM Conversion Profiles ──────────────────────────────
+  async ensureMaterialUomConversionsTable(): Promise<void> {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS material_uom_conversions (
+        id SERIAL PRIMARY KEY,
+        material_id INTEGER NOT NULL,
+        from_uom TEXT NOT NULL,
+        to_uom TEXT NOT NULL,
+        conversion_factor REAL NOT NULL,
+        conversion_basis TEXT,
+        conversion_type TEXT NOT NULL DEFAULT 'fixed_factor',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        effective_from TIMESTAMP,
+        effective_to TIMESTAMP,
+        notes TEXT,
+        created_by INTEGER,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    // Unique index on (materialId, fromUom, toUom) — prevents duplicate active profiles
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS muom_mat_from_to_uq
+      ON material_uom_conversions (material_id, from_uom, to_uom)
+      WHERE is_active = 1
+    `);
+    // Add conversionProfileId and conversionBasis to boq_material_mappings if missing
+    await db.execute(sql`ALTER TABLE boq_material_mappings ADD COLUMN IF NOT EXISTS conversion_profile_id INTEGER`);
+    await db.execute(sql`ALTER TABLE boq_material_mappings ADD COLUMN IF NOT EXISTS conversion_basis TEXT`);
+  }
+
+  async getMaterialUomConversions(materialId: number): Promise<MaterialUomConversion[]> {
+    return db.select().from(materialUomConversions)
+      .where(eq(materialUomConversions.materialId, materialId))
+      .orderBy(materialUomConversions.fromUom);
+  }
+
+  async getAllMaterialUomConversions(): Promise<MaterialUomConversion[]> {
+    return db.select().from(materialUomConversions)
+      .where(eq(materialUomConversions.isActive, 1))
+      .orderBy(materialUomConversions.materialId);
+  }
+
+  async createMaterialUomConversion(data: {
+    materialId: number; fromUom: string; toUom: string; conversionFactor: number;
+    conversionBasis?: string | null; conversionType?: string; notes?: string | null; createdBy?: number | null;
+  }): Promise<MaterialUomConversion> {
+    const [created] = await db.insert(materialUomConversions).values({
+      materialId: data.materialId,
+      fromUom: data.fromUom,
+      toUom: data.toUom,
+      conversionFactor: data.conversionFactor,
+      conversionBasis: data.conversionBasis ?? null,
+      conversionType: data.conversionType ?? "fixed_factor",
+      notes: data.notes ?? null,
+      createdBy: data.createdBy ?? null,
+      updatedAt: new Date(),
+    }).returning();
+    return created;
+  }
+
+  async updateMaterialUomConversion(id: number, data: Partial<{
+    conversionFactor: number; conversionBasis: string | null; conversionType: string;
+    isActive: number; notes: string | null;
+  }>): Promise<MaterialUomConversion> {
+    const [updated] = await db.update(materialUomConversions)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(materialUomConversions.id, id))
+      .returning();
+    return updated;
   }
 }
 
