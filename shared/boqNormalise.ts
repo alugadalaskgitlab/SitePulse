@@ -317,36 +317,48 @@ export function checkMappingUomCompatibility(
   const bd = target.bulkDensity ?? 0;
 
   if ((srcIsMass || srcIsVol) && bd > 0) {
-    const targetHasMass = allowedCanonical.some(u => MASS_UNITS.has(u));
-    const targetHasVol = allowedCanonical.some(u => VOLUME_UNITS.has(u));
+    // 021C: include defaultCanonical in mass/volume target detection.
+    // A material with defaultUom=MT and empty allowedUoms MUST qualify here
+    // (allowedUoms alone was insufficient — it is optional on the material).
+    const targetHasMass = (defaultCanonical != null && MASS_UNITS.has(defaultCanonical))
+      || allowedCanonical.some(u => MASS_UNITS.has(u));
+    const targetHasVol = (defaultCanonical != null && VOLUME_UNITS.has(defaultCanonical))
+      || allowedCanonical.some(u => VOLUME_UNITS.has(u));
     if ((srcIsMass && targetHasVol) || (srcIsVol && targetHasMass)) {
-      const convFromCanonical = target.conversionFromUom ? canonicalizeUnit(target.conversionFromUom) : "CFT";
+      // 021C: compute factor based on defaultCanonical (the target stock UOM), not the
+      // legacy conversionFromUom field which is only relevant to the old CFT-specific setup.
       let factor: number;
       if (srcCanonical === "Cum") {
-        factor = bd;                   // Cum → MT: × bulkDensity
+        factor = bd;                         // Cum → MT: × bulkDensity
       } else if (srcCanonical === "CFT") {
-        factor = bd / 35.3147;         // CFT → MT
-      } else if (srcIsMass && convFromCanonical === "Cum") {
-        factor = 1 / bd;               // MT → Cum
-      } else if (srcIsMass && convFromCanonical === "CFT") {
-        factor = 35.3147 / bd;         // MT → CFT
+        factor = bd / 35.3147;               // CFT → MT
+      } else if (srcIsMass && defaultCanonical === "Cum") {
+        factor = 1 / bd;                     // MT → Cum
+      } else if (srcIsMass && defaultCanonical === "CFT") {
+        factor = 35.3147 / bd;               // MT → CFT
       } else {
-        factor = bd;                   // generic fallback
+        factor = bd;                         // generic fallback
       }
       const rounded = Math.round(factor * 10000) / 10000;
       return {
         compatible: true,
         mode: "bulk_density",
         conversionFactor: rounded,
-        basis: `Bulk density ${bd} T/m³ — 1 ${srcCanonical} ≈ ${Math.round(factor * 1000) / 1000} ${defaultCanonical ?? "MT"}`,
+        basis: `Bulk density ${bd} T/m³ — 1 ${srcCanonical} = ${Math.round(factor * 1000) / 1000} ${defaultCanonical ?? "MT"}`,
         errorCode: null,
       };
     }
   }
 
   // ── Incompatible ────────────────────────────────────────────────────────────
-  const needsDensity = (srcIsMass || srcIsVol) &&
-    (allowedCanonical.some(u => MASS_UNITS.has(u)) || allowedCanonical.some(u => VOLUME_UNITS.has(u)));
+  // 021C: include defaultCanonical in the density-needed check so a material with
+  // defaultUom=MT and empty allowedUoms correctly returns MATERIAL_CONVERSION_REQUIRED
+  // (instead of the generic UOM_MISMATCH) when no density is configured.
+  const needsDensity = (srcIsMass || srcIsVol) && (
+    (defaultCanonical != null && (MASS_UNITS.has(defaultCanonical) || VOLUME_UNITS.has(defaultCanonical))) ||
+    allowedCanonical.some(u => MASS_UNITS.has(u)) ||
+    allowedCanonical.some(u => VOLUME_UNITS.has(u))
+  );
   return {
     compatible: false,
     mode: "incompatible",

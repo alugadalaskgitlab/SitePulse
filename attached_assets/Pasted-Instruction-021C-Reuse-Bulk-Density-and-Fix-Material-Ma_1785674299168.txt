@@ -1,0 +1,249 @@
+Instruction 021C — Reuse Bulk Density and Fix Material Master Dialog Scrolling
+
+Purpose
+
+Close two live issues found while testing GSB/WMM:
+
+1. a separate UOM conversion profile is being required even when the material already has a valid bulk density capable of converting MT ↔ CUM;
+2. the Plant Material Master edit dialog does not fit the viewport or scroll correctly, causing Save Profile and Update Material buttons to fall outside the visible page.
+
+This is a narrow UOM usability and UI correction only.
+
+Expected files
+
+- shared/boqNormalise.ts
+- server/routes.ts only if conversion-source details must be returned
+- client/src/pages/WorkDemand.tsx
+- the Plant Material Master add/edit component
+- related tests
+
+DO NOT TOUCH
+
+- conversion-profile schema
+- existing saved conversion profiles
+- material aliases or identity resolution
+- Work Programme/Gantt
+- horizon calculations
+- procurement-status logic
+- demand quantities or phasing
+- material requirements/allocations
+- PI/IRN/GRN workflows
+- stock transaction records
+- execution/supply responsibility
+- Stores navigation
+- Cancel GRN
+
+1. Use material bulk density automatically for mass-volume conversion
+
+When:
+
+- the material identity is resolved;
+- BOQ/planning UOM and material default/stock UOM are a mass-volume pair;
+- the exact material has a valid positive bulkDensity;
+
+allow the conversion without requiring the user to create a duplicate fixed conversion profile.
+
+Examples:
+
+- CUM → MT
+- MT → CUM
+- CFT → MT
+- MT → CFT
+
+Use the existing canonical volume conversions where necessary.
+
+Example:
+
+Material bulk density:
+- 2.20 MT/CUM
+
+Expected:
+
+- 1 CUM = 2.20 MT
+- 1 MT = 0.454545 CUM
+- 1 CFT is first converted to CUM, then density is applied
+
+The conversion must remain material-specific.
+
+2. Define conversion precedence clearly
+
+Use this order:
+
+A. Exact applicable explicit conversion profile
+
+Use when a deliberate active profile exists for the exact source and target UOM.
+
+B. Valid material-specific bulk density
+
+Use automatically for compatible mass ↔ volume conversion when no explicit applicable profile exists.
+
+C. Valid legacy explicit conversion
+
+Use only where the old from/to/factor configuration is complete and unambiguous.
+
+D. Standard-equivalent UOM
+
+Use factor 1 only for true equivalent spellings such as MT/Ton, CUM/m3, Kg/kilogram, CFT/cubic feet and L/Litre.
+
+E. Otherwise block
+
+Return conversion required.
+
+Do not require a manual profile merely to repeat the existing bulk-density value.
+
+3. Prevent conflicting conversion sources
+
+If both an explicit profile and bulk density exist for the same source-target pair:
+
+- use the explicit profile according to the defined precedence;
+- show which source is being used;
+- warn when the explicit profile materially conflicts with the bulk-density-derived factor;
+- do not silently blend or average factors.
+
+Suggested warning:
+
+“An explicit conversion profile overrides the material bulk-density conversion for this mapping.”
+
+Do not delete either configuration automatically.
+
+4. Improve Work Demand mapping explanation
+
+When bulk density is used, show:
+
+- Material found
+- BOQ/planning UOM
+- material stock/default UOM
+- configured bulk density
+- derived conversion
+- example quantity
+
+Example:
+
+“WMM found.
+Bulk density: 2.20 MT/CUM.
+100 CUM planning demand = 220 MT procurement equivalent.”
+
+Allow Save Mapping without requiring creation of another profile.
+
+When an explicit profile is used, continue showing the profile basis.
+
+When neither exists, continue showing Configure UOM Conversion.
+
+5. Clarify the Material Master UI
+
+In the UOM Conversion section, explain:
+
+“Bulk density automatically supports mass-volume conversions for this material. Add a separate profile only for loose-to-compacted volume, Load/Trip, Bag, vendor-specific, project-specific or other special conversions.”
+
+Do not imply that every alternate UOM requires a profile.
+
+6. Fix the Material Master dialog layout
+
+The material add/edit dialog must fit within the browser viewport.
+
+Required layout:
+
+- dialog maximum height based on viewport, for example max-height: 90vh;
+- header remains visible;
+- content/body is vertically scrollable;
+- footer remains visible or sticky;
+- Save Profile, Cancel and Update Material buttons are always reachable;
+- no browser zoom-out should be required.
+
+Avoid nested scroll areas that trap the user.
+
+The conversion-profile form must be fully usable on:
+
+- standard desktop/laptop screens;
+- browser zoom at 100%;
+- smaller viewport heights.
+
+7. Protect unsaved data
+
+When the user enters a conversion profile and scrolls:
+
+- form values must remain intact;
+- saving a profile must not close the entire Material edit dialog unless that is the deliberate existing behaviour;
+- updating the material must not discard a newly saved profile;
+- closing with unsaved changes should retain the existing confirmation behaviour, if any.
+
+8. Acceptance tests
+
+A. Bulk density only
+
+Material:
+- default UOM = MT
+- bulk density = 2.20 MT/CUM
+- no explicit conversion profile
+- BOQ UOM = CUM
+
+Expected:
+- mapping is allowed;
+- conversion mode is bulk_density;
+- 100 CUM = 220 MT;
+- no instruction to create a profile appears.
+
+B. Reverse conversion
+
+- 110 MT stock converts to 50 CUM coverage using density 2.20 MT/CUM.
+
+C. CFT conversion
+
+- BOQ or stock in CFT converts through CFT ↔ CUM and then the material density;
+- no 1:1 assumption is used.
+
+D. Explicit profile override
+
+- exact CUM → MT profile exists;
+- bulk density also exists;
+- profile is used;
+- UI identifies the profile as the selected basis.
+
+E. Missing conversion
+
+- mass-volume UOM pair;
+- no profile;
+- no valid bulk density.
+
+Expected:
+- mapping remains blocked;
+- Configure UOM Conversion is shown.
+
+F. Invalid density
+
+- zero, negative or blank bulk density.
+
+Expected:
+- density conversion is not used.
+
+G. Dialog scrolling
+
+At 100% browser zoom:
+
+- open Material Master edit dialog;
+- expand UOM Conversion Profiles;
+- all fields are reachable by scrolling;
+- Save Profile remains reachable;
+- Update Material remains reachable;
+- footer does not disappear outside the viewport.
+
+H. Regression
+
+Confirm unchanged:
+
+- 021A allowedUoms safety;
+- 021B source-target profile matching and ambiguity handling;
+- WMM/GSB aliases;
+- Work Demand status labels;
+- stock normalization;
+- Raise PI/IRN/Split;
+- horizon switching;
+- GRN flows.
+
+After this passes
+
+1. Retest GSB and WMM using bulk density without adding duplicate profiles.
+2. Freeze Work Demand UOM conversion.
+3. Move to Cancel GRN.
+4. Fix Store Items back-navigation.
+5. Continue User/Designation Templates.

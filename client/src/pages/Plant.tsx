@@ -2930,11 +2930,11 @@ export function MaterialMaster() {
                 </Button>
               </DialogTrigger>
             )}
-            <DialogContent>
-              <DialogHeader>
+            <DialogContent className="sm:max-w-lg flex flex-col gap-0 p-0 max-h-[90vh]">
+              <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b">
                 <DialogTitle>{editingMaterial ? "Edit Material" : "Add New Material"}</DialogTitle>
               </DialogHeader>
-            <div className="space-y-4 pt-4">
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               <div>
                 <Label htmlFor="material-name">Material Name</Label>
                 <Input
@@ -3055,7 +3055,7 @@ export function MaterialMaster() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Use profiles when the BOQ planning UOM differs from the stock UOM (e.g. BOM in <strong>CUM</strong>, stocked in <strong>MT</strong>). The system divides stock quantities by the factor to compare coverage in planning UOM.
+                    Bulk density automatically supports mass-volume conversions for this material (e.g. BOQ in <strong>CUM</strong>, stocked in <strong>MT</strong>). Add a separate profile only for loose-to-compacted volume, Load/Trip, Bag, vendor-specific, project-specific or other special conversions.
                   </p>
                   {convProfiles.length > 0 ? (
                     <div className="space-y-1.5">
@@ -3134,8 +3134,11 @@ export function MaterialMaster() {
                 </div>
               )}
 
+            </div>
+            {/* Sticky footer — always reachable without scroll */}
+            <div className="px-6 pt-3 pb-5 shrink-0 border-t">
               <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !name.trim()} data-testid="button-save-material">
-                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingMaterial ? "Update" : "Create"}
+                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingMaterial ? "Update Material" : "Create Material"}
               </Button>
             </div>
           </DialogContent>

@@ -1265,36 +1265,46 @@ interface PlantMaterialResult {
  *  real-time feedback only; server revalidates on save.
  *  021A: allowedUoms does NOT grant factor-1 for dimensionally different UOMs. */
 function clientCheckUomCompat(sourceUom: string, mat: PlantMaterialResult): {
-  compatible: boolean; mode: "direct" | "bulk_density" | "incompatible"; basis: string | null;
+  compatible: boolean; mode: "direct" | "bulk_density" | "incompatible"; basis: string | null; conversionFactor: number | null;
 } {
-  if (!sourceUom) return { compatible: true, mode: "direct", basis: null };
-  const norm = (u: string) => u.trim().toUpperCase()
-    .replace(/\s+/g, "").replace(/METRIC\s*TONNE?S?/gi, "MT")
-    .replace(/^LITR?E?S?$/, "LTR").replace(/^TONS?$/, "MT").replace(/^TONNES?$/, "MT");
-  const srcN = norm(sourceUom);
+  if (!sourceUom) return { compatible: true, mode: "direct", basis: null, conversionFactor: 1 };
+  // 021C: use canonicalizeUnit (shared) so kilogram/cubic-feet spellings are handled uniformly.
+  // The sameGroup helper covers the one edge case canonicalizeUnit doesn't unify: "L" ↔ "Ltr".
+  const normC = (u: string) => canonicalizeUnit(u).toUpperCase();
+  const srcN = normC(sourceUom);
   const allowed: string[] = (() => { try { return JSON.parse(mat.allowedUoms ?? "[]"); } catch { return []; } })();
-  const allowedN = allowed.map(norm);
-  const defaultN = mat.defaultUom ? norm(mat.defaultUom) : null;
+  const allowedN = allowed.map(normC);
+  const defaultN = mat.defaultUom ? normC(mat.defaultUom) : null;
 
   // 021A: factor-1 ONLY when srcN === defaultN or they are a known standard-equivalent pair.
-  // "L" (bare litre abbreviation) ↔ "LTR" is the only pair that norm() doesn't already unify.
   // allowedUoms is intentionally NOT used for factor-1 — it only informs bulk-density eligibility.
   const sameGroup = (a: string, b: string) =>
     a === b || ((a === "L" || b === "L") && (a === "LTR" || b === "LTR"));
-  if (defaultN && sameGroup(srcN, defaultN)) return { compatible: true, mode: "direct", basis: null };
+  if (defaultN && sameGroup(srcN, defaultN)) return { compatible: true, mode: "direct", basis: null, conversionFactor: 1 };
 
-  const MASS = ["MT", "KG", "TON", "TONNE"];
-  const VOL = ["CUM", "CFT", "M3"];
-  const srcIsMass = MASS.includes(srcN);
-  const srcIsVol = VOL.includes(srcN);
-  if ((srcIsMass || srcIsVol) && mat.bulkDensity && mat.bulkDensity > 0) {
-    const tgtHasMass = allowedN.some(u => MASS.includes(u));
-    const tgtHasVol = allowedN.some(u => VOL.includes(u));
-    if ((srcIsMass && tgtHasVol) || (srcIsVol && tgtHasMass)) {
-      return { compatible: true, mode: "bulk_density", basis: `Bulk density ${mat.bulkDensity} T/m³` };
+  const MASS = new Set(["MT", "KG", "TON", "TONNE"]);
+  const VOL  = new Set(["CUM", "CFT", "M3"]);
+  const srcIsMass = MASS.has(srcN);
+  const srcIsVol  = VOL.has(srcN);
+  const bd = mat.bulkDensity ?? 0;
+  if ((srcIsMass || srcIsVol) && bd > 0) {
+    // 021C: include defaultN in mass/volume target detection — allowedUoms is optional.
+    const tgtHasMass = (defaultN != null && MASS.has(defaultN)) || allowedN.some(u => MASS.has(u));
+    const tgtHasVol  = (defaultN != null && VOL.has(defaultN))  || allowedN.some(u => VOL.has(u));
+    if ((srcIsVol && tgtHasMass) || (srcIsMass && tgtHasVol)) {
+      // 021C: factor based on defaultN (target stock UOM) not legacy conversionFromUom.
+      let factor: number;
+      if (srcN === "CUM")                    factor = bd;             // Cum → MT
+      else if (srcN === "CFT")               factor = bd / 35.3147;  // CFT → MT
+      else if (srcIsMass && defaultN === "CUM") factor = 1 / bd;     // MT → Cum
+      else if (srcIsMass && defaultN === "CFT") factor = 35.3147 / bd; // MT → CFT
+      else                                   factor = bd;
+      const rounded = Math.round(factor * 10000) / 10000;
+      const basis = `Bulk density ${bd} T/m³ — 1 ${canonicalizeUnit(sourceUom)} = ${Math.round(factor * 1000) / 1000} ${mat.defaultUom ?? "MT"}`;
+      return { compatible: true, mode: "bulk_density", basis, conversionFactor: rounded };
     }
   }
-  return { compatible: false, mode: "incompatible", basis: null };
+  return { compatible: false, mode: "incompatible", basis: null, conversionFactor: null };
 }
 
 /** Format an ISO date string into a short human-readable form: "2026-09-29" → "29 Sep 2026" */
@@ -1492,7 +1502,15 @@ function ResolveMappingDialog({
                 <span className={uomCheck.mode === "bulk_density" ? "text-blue-700" : "text-teal-700"}>{selected.name}</span>
                 {selected.defaultUom && <span className="text-teal-600"> ({selected.defaultUom})</span>}
                 {uomCheck.mode === "bulk_density" && uomCheck.basis && (
-                  <p className="mt-1 text-blue-600">{uomCheck.basis}</p>
+                  <>
+                    <p className="mt-1 text-blue-600">{uomCheck.basis}</p>
+                    {uomCheck.conversionFactor != null && (
+                      <p className="text-blue-500 mt-0.5 text-[11px]">
+                        Example: 100 {row.uom} planning demand = {Math.round(100 * uomCheck.conversionFactor * 100) / 100} {selected.defaultUom} procurement equivalent.
+                      </p>
+                    )}
+                    <p className="text-blue-500 mt-0.5 text-[11px]">Mapping allowed — no conversion profile required.</p>
+                  </>
                 )}
               </div>
             ) : profileAmbiguous ? (

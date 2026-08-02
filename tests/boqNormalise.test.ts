@@ -350,6 +350,107 @@ describe("checkMappingUomCompatibility — 021A: Test F arithmetic (UOM conversi
   });
 });
 
+// ─── Instruction 021C: Bulk density used automatically for mass↔volume ───────
+describe("checkMappingUomCompatibility — 021C: bulk density auto-conversion", () => {
+  // A: CUM → MT via bulk density (no profile, no allowedUoms)
+  it("A: CUM BOQ + MT defaultUom + bulkDensity=2.20 → compatible via bulk_density", () => {
+    const result = checkMappingUomCompatibility("CUM", {
+      defaultUom: "MT",
+      allowedUoms: null,
+      bulkDensity: 2.20,
+    });
+    expect(result.compatible).toBe(true);
+    expect(result.mode).toBe("bulk_density");
+    expect(result.conversionFactor).toBeCloseTo(2.20, 4);
+  });
+
+  it("A: 100 CUM × factor = 220 MT procurement equivalent", () => {
+    const result = checkMappingUomCompatibility("CUM", { defaultUom: "MT", bulkDensity: 2.20 });
+    expect(100 * result.conversionFactor!).toBeCloseTo(220, 2);
+  });
+
+  // B: Reverse conversion — MT → CUM
+  it("B: MT source + CUM defaultUom + bulkDensity=2.20 → 1/2.20 factor", () => {
+    const result = checkMappingUomCompatibility("MT", {
+      defaultUom: "Cum",
+      allowedUoms: null,
+      bulkDensity: 2.20,
+    });
+    expect(result.compatible).toBe(true);
+    expect(result.mode).toBe("bulk_density");
+    expect(result.conversionFactor).toBeCloseTo(1 / 2.20, 4);
+  });
+
+  it("B: 110 MT stock × (1/2.20) = 50 CUM coverage", () => {
+    const result = checkMappingUomCompatibility("MT", { defaultUom: "Cum", bulkDensity: 2.20 });
+    // factor = 1/2.20 = 0.4545; 110 MT × 0.4545 ≈ 50 Cum
+    expect(110 * result.conversionFactor!).toBeCloseTo(50, 2);
+  });
+
+  // C: CFT → MT via bulk density
+  it("C: CFT BOQ + MT defaultUom + bulkDensity=2.20 → factor = 2.20/35.3147", () => {
+    const result = checkMappingUomCompatibility("CFT", {
+      defaultUom: "MT",
+      allowedUoms: null,
+      bulkDensity: 2.20,
+    });
+    expect(result.compatible).toBe(true);
+    expect(result.mode).toBe("bulk_density");
+    expect(result.conversionFactor).toBeCloseTo(2.20 / 35.3147, 4);
+  });
+
+  it("C: CFT conversion never uses 1:1 assumption", () => {
+    const result = checkMappingUomCompatibility("CFT", { defaultUom: "MT", bulkDensity: 2.20 });
+    expect(result.conversionFactor).not.toBe(1);
+    expect(result.conversionFactor).not.toBe(null);
+  });
+
+  // D: Explicit profile takes precedence over bulk density
+  it("D: explicit CUM→MT profile (factor=2.50) overrides bulkDensity=2.20", () => {
+    const profile: UomConversionProfile[] = [
+      { id: 1, fromUom: "CUM", toUom: "MT", conversionFactor: 2.50, conversionType: "fixed_factor", isActive: 1 },
+    ];
+    const result = checkMappingUomCompatibility("CUM", {
+      defaultUom: "MT",
+      allowedUoms: null,
+      bulkDensity: 2.20,
+    }, profile);
+    expect(result.compatible).toBe(true);
+    expect(result.mode).toBe("conversion_profile");
+    expect(result.conversionFactor).toBe(2.50);
+  });
+
+  // E: Mass-volume pair with no profile and no bulk density → blocked
+  it("E: CUM + MT defaultUom + no bulkDensity + no profile → blocked", () => {
+    const result = checkMappingUomCompatibility("CUM", {
+      defaultUom: "MT",
+      allowedUoms: null,
+      bulkDensity: null,
+    });
+    expect(result.compatible).toBe(false);
+    expect(result.errorCode).toBe("MATERIAL_CONVERSION_REQUIRED");
+  });
+
+  // F: Invalid (zero/negative) bulk density must not be used
+  it("F: zero bulkDensity → density conversion not used", () => {
+    const result = checkMappingUomCompatibility("CUM", {
+      defaultUom: "MT",
+      allowedUoms: null,
+      bulkDensity: 0,
+    });
+    expect(result.compatible).toBe(false);
+  });
+
+  it("F: negative bulkDensity → density conversion not used", () => {
+    const result = checkMappingUomCompatibility("CUM", {
+      defaultUom: "MT",
+      allowedUoms: null,
+      bulkDensity: -1.5,
+    });
+    expect(result.compatible).toBe(false);
+  });
+});
+
 // ─── Instruction 021B: Kilogram spelling equivalents ─────────────────────────
 describe("canonicalizeUnit — 021B: kilogram spelling equivalents", () => {
   it.each([
