@@ -1263,45 +1263,51 @@ interface PlantMaterialResult {
 /** Check BOM source UOM against a plant material's allowed units.
  *  Client-side mirror of server checkMappingUomCompatibility — used for
  *  real-time feedback only; server revalidates on save.
- *  021A: allowedUoms does NOT grant factor-1 for dimensionally different UOMs. */
+ *  Eligibility for all conversion modes is based solely on defaultUom + bulkDensity.
+ *  allowedUoms plays no role in any conversion decision. */
 function clientCheckUomCompat(sourceUom: string, mat: PlantMaterialResult): {
   compatible: boolean; mode: "direct" | "bulk_density" | "incompatible"; basis: string | null; conversionFactor: number | null;
 } {
   if (!sourceUom) return { compatible: true, mode: "direct", basis: null, conversionFactor: 1 };
-  // 021C: use canonicalizeUnit (shared) so kilogram/cubic-feet spellings are handled uniformly.
-  // The sameGroup helper covers the one edge case canonicalizeUnit doesn't unify: "L" ↔ "Ltr".
+  // canonicalizeUnit handles all spelling variants (kilogram, cubic-feet, etc.).
+  // toUpperCase() gives stable tokens for comparison.
   const normC = (u: string) => canonicalizeUnit(u).toUpperCase();
-  const srcN = normC(sourceUom);
-  const allowed: string[] = (() => { try { return JSON.parse(mat.allowedUoms ?? "[]"); } catch { return []; } })();
-  const allowedN = allowed.map(normC);
+  const srcN    = normC(sourceUom);
   const defaultN = mat.defaultUom ? normC(mat.defaultUom) : null;
 
-  // 021A: factor-1 ONLY when srcN === defaultN or they are a known standard-equivalent pair.
-  // allowedUoms is intentionally NOT used for factor-1 — it only informs bulk-density eligibility.
+  // factor-1 ONLY when srcN === defaultN or they are a known standard-equivalent pair.
+  // allowedUoms is NOT used for factor-1.
   const sameGroup = (a: string, b: string) =>
     a === b || ((a === "L" || b === "L") && (a === "LTR" || b === "LTR"));
   if (defaultN && sameGroup(srcN, defaultN)) return { compatible: true, mode: "direct", basis: null, conversionFactor: 1 };
 
-  const MASS = new Set(["MT", "KG", "TON", "TONNE"]);
-  const VOL  = new Set(["CUM", "CFT", "M3"]);
+  // Bulk-density: eligibility based solely on srcN + defaultN + bulkDensity.
+  // Supported pairs only — no generic fallback:
+  //   Cum→MT, CFT→MT, MT→Cum, MT→CFT, Cum→Kg, CFT→Kg, Kg→Cum, Kg→CFT
+  const MASS = new Set(["MT", "KG"]);
+  const VOL  = new Set(["CUM", "CFT"]);
   const srcIsMass = MASS.has(srcN);
   const srcIsVol  = VOL.has(srcN);
   const bd = mat.bulkDensity ?? 0;
   if ((srcIsMass || srcIsVol) && bd > 0) {
-    // 021C: include defaultN in mass/volume target detection — allowedUoms is optional.
-    const tgtHasMass = (defaultN != null && MASS.has(defaultN)) || allowedN.some(u => MASS.has(u));
-    const tgtHasVol  = (defaultN != null && VOL.has(defaultN))  || allowedN.some(u => VOL.has(u));
-    if ((srcIsVol && tgtHasMass) || (srcIsMass && tgtHasVol)) {
-      // 021C: factor based on defaultN (target stock UOM) not legacy conversionFromUom.
-      let factor: number;
-      if (srcN === "CUM")                    factor = bd;             // Cum → MT
-      else if (srcN === "CFT")               factor = bd / 35.3147;  // CFT → MT
-      else if (srcIsMass && defaultN === "CUM") factor = 1 / bd;     // MT → Cum
-      else if (srcIsMass && defaultN === "CFT") factor = 35.3147 / bd; // MT → CFT
-      else                                   factor = bd;
-      const rounded = Math.round(factor * 10000) / 10000;
-      const basis = `Bulk density ${bd} T/m³ — 1 ${canonicalizeUnit(sourceUom)} = ${Math.round(factor * 1000) / 1000} ${mat.defaultUom ?? "MT"}`;
-      return { compatible: true, mode: "bulk_density", basis, conversionFactor: rounded };
+    const tgtIsMass = defaultN != null && MASS.has(defaultN);
+    const tgtIsVol  = defaultN != null && VOL.has(defaultN);
+    if ((srcIsVol && tgtIsMass) || (srcIsMass && tgtIsVol)) {
+      let factor: number | null = null;
+      if      (srcN === "CUM" && defaultN === "MT")  factor = bd;
+      else if (srcN === "CFT" && defaultN === "MT")  factor = bd / 35.3147;
+      else if (srcN === "MT"  && defaultN === "CUM") factor = 1 / bd;
+      else if (srcN === "MT"  && defaultN === "CFT") factor = 35.3147 / bd;
+      else if (srcN === "CUM" && defaultN === "KG")  factor = bd * 1000;
+      else if (srcN === "CFT" && defaultN === "KG")  factor = (bd / 35.3147) * 1000;
+      else if (srcN === "KG"  && defaultN === "CUM") factor = 1 / (bd * 1000);
+      else if (srcN === "KG"  && defaultN === "CFT") factor = 35.3147 / (bd * 1000);
+      // Any other pair (e.g. Kg↔MT) is not a supported bulk-density conversion.
+      if (factor !== null) {
+        const rounded = Math.round(factor * 10000) / 10000;
+        const basis = `Bulk density ${bd} T/m³ — 1 ${canonicalizeUnit(sourceUom)} = ${Math.round(factor * 1000) / 1000} ${mat.defaultUom ?? "MT"}`;
+        return { compatible: true, mode: "bulk_density", basis, conversionFactor: rounded };
+      }
     }
   }
   return { compatible: false, mode: "incompatible", basis: null, conversionFactor: null };

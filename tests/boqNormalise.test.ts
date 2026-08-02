@@ -492,6 +492,78 @@ describe("checkMappingUomCompatibility — 021C: bulk density auto-conversion", 
     });
     expect(result.compatible).toBe(false);
   });
+
+  // Required instruction tests ─────────────────────────────────────────────────
+
+  // Kg source + MT default + allowedUoms=[Cum] + density → blocked: both source and default are mass
+  it("Req: source=Kg + defaultUom=MT + allowedUoms=[Cum] + density=2.2 → blocked (both mass)", () => {
+    const result = checkMappingUomCompatibility("Kg", {
+      defaultUom: "MT",
+      allowedUoms: JSON.stringify(["Cum"]),
+      bulkDensity: 2.20,
+    });
+    expect(result.compatible).toBe(false);
+    expect(result.mode).toBe("incompatible");
+  });
+
+  // Cum source + Nos default + allowedUoms=[MT] + density → blocked: Nos is not a mass/volume unit
+  it("Req: source=Cum + defaultUom=Nos + allowedUoms=[MT] + density=2.2 → blocked (Nos not in MASS/VOL)", () => {
+    const result = checkMappingUomCompatibility("Cum", {
+      defaultUom: "Nos",
+      allowedUoms: JSON.stringify(["MT"]),
+      bulkDensity: 2.20,
+    });
+    expect(result.compatible).toBe(false);
+    expect(result.mode).toBe("incompatible");
+  });
+
+  // 1 Cum → 2200 Kg at density 2.2
+  it("Req: 1 Cum → 2200 Kg at density 2.2 (bd × 1000)", () => {
+    const result = checkMappingUomCompatibility("CUM", {
+      defaultUom: "Kg",
+      allowedUoms: null,
+      bulkDensity: 2.20,
+    });
+    expect(result.compatible).toBe(true);
+    expect(result.mode).toBe("bulk_density");
+    expect(1 * result.conversionFactor!).toBeCloseTo(2200, 1);
+  });
+
+  // 2200 Kg → 1 Cum at density 2.2: factor = 1 / (bd × 1000)
+  it("Req: 2200 Kg → 1 Cum at density 2.2 (factor = 1/(bd×1000))", () => {
+    const result = checkMappingUomCompatibility("Kg", {
+      defaultUom: "Cum",
+      allowedUoms: null,
+      bulkDensity: 2.20,
+    });
+    expect(result.compatible).toBe(true);
+    expect(result.mode).toBe("bulk_density");
+    // factor = 1/(2.2×1000) ≈ 0.000454545; 4-decimal rounding gives 0.0005
+    // so check the factor itself is close to the formula, not 2200×factor
+    expect(result.conversionFactor!).toBeCloseTo(1 / (2.20 * 1000), 4);
+  });
+
+  // No generic fallback: Kg→MT (both mass) must not produce a density conversion
+  it("Req: no generic fallback — Kg source + MT default + density → blocked (same dimension)", () => {
+    const result = checkMappingUomCompatibility("Kg", {
+      defaultUom: "MT",
+      allowedUoms: null,
+      bulkDensity: 2.20,
+    });
+    expect(result.compatible).toBe(false);
+    expect(result.mode).toBe("incompatible");
+  });
+
+  // No generic fallback: Cum→CFT (both volume, no density path) → blocked
+  it("Req: no generic fallback — Cum source + CFT default + density → blocked (same dimension)", () => {
+    const result = checkMappingUomCompatibility("CUM", {
+      defaultUom: "CFT",
+      allowedUoms: null,
+      bulkDensity: 2.20,
+    });
+    expect(result.compatible).toBe(false);
+    expect(result.mode).toBe("incompatible");
+  });
 });
 
 // ─── Instruction 021B: Kilogram spelling equivalents ─────────────────────────

@@ -19,12 +19,14 @@ Stock is divided by convFactor (`invFactor = 1/convFactor`) to express coverage 
 3. Bulk density conversion (uses `allowedUoms` to detect mass/volume eligibility)
 4. Direct UOM match — **only `areSameUomGroup(srcCanonical, defaultCanonical)`; allowedUoms does NOT grant factor-1 (021A)**
 
-## 021C bulk-density fix (critical)
-- `targetHasMass`/`targetHasVol` in Step 3 MUST check `defaultCanonical` as well as `allowedCanonical`. `allowedUoms` is optional — a material with `defaultUom=MT` and empty `allowedUoms` must still qualify for bulk-density conversion.
-- Same fix applies to `clientCheckUomCompat` in WorkDemand.tsx.
-- `needsDensity` (for error-code selection at incompatible fallback) also includes `defaultCanonical` so `MATERIAL_CONVERSION_REQUIRED` fires correctly for mass-volume pairs with no density.
-- Factor formula for mass→volume uses `defaultCanonical`, not the legacy `convFromCanonical` field: MT→Cum = `1/bd`, MT→CFT = `35.3147/bd`.
-- `allowedUoms` must NOT be a prerequisite for density eligibility, factor-1 equivalence, or any conversion gate (021A + 021C).
+## 021C bulk-density fix (canonical / frozen)
+- `allowedUoms` plays NO role in any conversion decision — not in eligibility, not in factor-1, not in needsDensity.
+- Bulk-density eligibility based ONLY on `srcCanonical + defaultCanonical + bulkDensity`.
+- Exactly 8 explicit pairs, no generic fallback: Cum↔MT, CFT↔MT, Cum↔Kg, CFT↔Kg (and reverses). Any other pair is incompatible.
+- Kg scaling: Cum→Kg = bd×1000, Kg→Cum = 1/(bd×1000), CFT→Kg = (bd/35.3147)×1000, Kg→CFT = 35.3147/(bd×1000).
+- `needsDensity` = srcIsMass/srcIsVol AND defaultCanonical ∈ MASS/VOLUME — returns MATERIAL_CONVERSION_REQUIRED; else MATERIAL_UOM_MISMATCH.
+- `clientCheckUomCompat` in WorkDemand.tsx is an identical mirror (no allowedUoms gate, same 8-pair dispatch).
+- Work Demand UOM conversion is FROZEN — no further enhancements.
 - Plant dialog layout: `DialogContent` uses `flex flex-col max-h-[90vh] p-0`; body = `flex-1 overflow-y-auto`; footer is `shrink-0 border-t` (always reachable).
 
 ## 021A safety rules (critical)
