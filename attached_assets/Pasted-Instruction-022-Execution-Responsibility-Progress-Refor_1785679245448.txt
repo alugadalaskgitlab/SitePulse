@@ -1,0 +1,641 @@
+Instruction 022 — Execution Responsibility, Progress Reforecasting and Daily Diesel Architecture
+
+Purpose
+
+Design a commercially strong project-controls feature that keeps SitePulse procurement, equipment, labour and diesel planning realistic when:
+
+- work is executed in-house, outsourced, partly outsourced or client-supplied;
+- actual progress falls behind the original programme;
+- overdue work cannot practically be executed all at once;
+- diesel is normally arranged daily from Tomorrow’s Plan rather than purchased only through bulk PI;
+- PM/Admin needs a realistic current forecast without losing the original baseline.
+
+THIS IS A DESIGN, DISCOVERY AND ARCHITECTURE TASK FIRST.
+
+Do not begin broad implementation until the existing system has been inspected and the architecture has been reviewed and approved.
+
+Primary objectives
+
+1. Preserve the original approved baseline programme permanently.
+2. Track actual progress separately from the baseline.
+3. Support a current operational forecast/revised programme without overwriting the baseline.
+4. Separate overdue backlog from realistically executable demand.
+5. Calculate materials, equipment, labour and diesel only for the party responsible for them.
+6. Support Daily Diesel Requirement from Tomorrow’s Plan.
+7. Retain Bulk Diesel PI for projects that purchase and store diesel in bulk.
+8. Prevent duplicate calculations or parallel features where similar logic already exists.
+
+DO NOT TOUCH OR IMPLEMENT YET
+
+- existing Work Programme dates or quantities
+- current Work Demand calculation
+- UOM conversion logic
+- material mapping
+- procurement-status logic
+- PI/IRN/GRN workflows
+- Stores stock
+- Plant production
+- DPR entry
+- Tomorrow’s Plan
+- equipment usage
+- diesel calculations
+- subcontract billing
+- profitability calculations
+- user permissions
+
+Do not create migrations, schema changes, pages or transactional records in this discovery stage.
+
+Phase 1 — Inspect the existing application
+
+Trace and document all existing code and workflows relating to:
+
+A. Work Programme
+
+- programme items and reaches
+- start and finish dates
+- duration
+- programmed quantity
+- monthly or daily phasing
+- whether programme records are editable in place
+- whether programme history or versions already exist
+
+B. Actual progress
+
+- DPR work quantities
+- site/reach/chainage linkage
+- BOQ-item linkage
+- daily and cumulative actual quantities
+- approved versus draft DPR quantities
+- whether progress is already compared against programme quantities
+
+C. Tomorrow’s Plan
+
+- tomorrow’s planned activities
+- planned work quantity
+- equipment plan
+- labour plan
+- material requirement
+- diesel requirement
+- shortage detection
+- PI, IRN or Immediate Requirement prompts
+- approval or confirmation flow
+
+D. Diesel
+
+- equipment fuel-consumption rates
+- equipment planned hours
+- actual diesel issue/usage
+- opening balance at site
+- diesel receipts
+- daily requirement calculations
+- existing IRN or PI linkage
+- HLC-owned versus hired equipment treatment
+
+E. Outsourcing/subcontracting
+
+- vendor or subcontractor records
+- outsourced BOQ items
+- piece-rate or composite-rate work
+- material supplied by HLC/vendor/client
+- equipment and diesel responsibility
+- subcontract work measurement
+- vendor bills
+
+F. Procurement and Work Demand
+
+- how overdue quantities are currently treated
+- whether demand is based only on baseline programme
+- whether actual progress reduces remaining demand
+- whether Tomorrow’s Plan can override or refine near-term demand
+- whether any existing function already separates backlog and executable demand
+
+Important:
+
+Before proposing new code, identify any existing Tomorrow’s Plan or diesel calculator that can be reused.
+
+Do not build a second parallel daily-diesel system.
+
+Phase 2 — Produce a current-state report
+
+Return a concise technical/business report containing:
+
+1. What already exists and works.
+2. What exists but is disconnected from other modules.
+3. What is duplicated.
+4. What is missing.
+5. What can be reused.
+6. What must be newly built.
+7. Main data-model risks.
+8. Main workflow risks.
+9. Recommended implementation sequence.
+
+Include a simple flow map:
+
+Baseline Programme
+→ Current Forecast
+→ Tomorrow’s Plan
+→ Daily Material/Equipment/Labour/Diesel Requirement
+→ DPR Actual Progress
+→ Forecast Update
+→ Procurement and Profitability
+
+Phase 3 — Design the Execution & Supply Responsibility model
+
+Design a common responsibility model applicable to:
+
+- earthwork
+- selected soil/subgrade/shoulders
+- gravel/moorum
+- GSB
+- WMM
+- prime coat
+- tack coat
+- DBM
+- BC
+- concrete/RMC
+- other BOQ activities
+
+The model must allow responsibility at BOQ item, reach/stretch or programmed-quantity level.
+
+Suggested execution arrangements:
+
+- fully_in_house
+- fully_outsourced_composite
+- partly_outsourced
+- vendor_material_supply_only
+- hlc_material_outsourced_execution
+- client_supplied_material
+- hired_equipment_fuel_by_hlc
+- hired_equipment_fuel_by_vendor
+- not_decided
+
+For partly outsourced work, design responsibility by component.
+
+Possible components:
+
+Earthwork:
+- material/source
+- excavation
+- loading
+- transport
+- dumping
+- spreading
+- watering
+- compaction
+- royalty/seigniorage
+- fuel
+
+Bituminous work:
+- aggregate/binder/filler supply
+- mix production
+- plant fuel
+- transport
+- prime/tack material
+- spraying
+- laying
+- compaction
+- equipment
+- labour
+- fuel
+
+Concrete/RMC:
+- cement/aggregate/admixture
+- batching
+- transit transport
+- pump
+- pouring
+- vibration
+- finishing
+- curing
+- labour
+- fuel
+
+Each component should be assignable to:
+
+- HLC
+- subcontractor/vendor
+- client
+- not applicable
+- not decided
+
+Required calculation principle:
+
+Only components assigned to HLC should generate HLC:
+
+- material demand
+- equipment demand
+- labour demand
+- diesel demand
+- internal production cost
+
+Outsourced components should instead generate:
+
+- subcontract quantity
+- unit rate
+- estimated subcontract value
+- measurement/progress obligation
+- vendor liability
+
+Do not double-count HLC materials, equipment or diesel where the agency’s composite rate includes them.
+
+Phase 4 — Design baseline, actual and forecast programme structure
+
+The system must maintain three separate concepts.
+
+A. Baseline Programme
+
+- original approved plan
+- permanently preserved
+- never overwritten
+- used for delay and performance comparison
+
+B. Actual Progress
+
+- derived from submitted/approved DPR quantities
+- linked to BOQ item, site, reach and dates
+- cumulative actual quantity
+- actual production rate
+- actual start and latest working date
+
+C. Current Forecast / Working Programme
+
+- realistic remaining execution plan
+- may be revised when work slips
+- does not alter the baseline
+- must carry:
+  - version number
+  - revision date
+  - reason
+  - prepared by
+  - approved by/status
+  - effective date
+
+Required comparison:
+
+- baseline start/finish
+- actual progress
+- current forecast finish
+- delay against baseline
+- current production rate
+- required recovery rate
+- balance quantity
+
+Do not call an edited baseline a revised baseline.
+
+Every operational change should create a new forecast version or controlled revision.
+
+Phase 5 — Design backlog versus executable demand
+
+The system must not move all overdue quantity into today or the selected horizon.
+
+For every activity/material, distinguish:
+
+1. Baseline Overdue Backlog
+
+Quantity that should have been completed under the baseline but remains incomplete.
+
+2. Executable Demand in Selected Horizon
+
+Quantity realistically planned under the current approved forecast or short-term programme.
+
+3. Future Balance
+
+Remaining quantity planned after the selected horizon.
+
+Example:
+
+- overdue backlog: 3,000 CUM
+- planned during next 7 days: 700 CUM
+- future balance after horizon: 2,300 CUM
+
+Procurement, equipment, labour and diesel action should normally be based on the executable 700 CUM, not the entire 3,000 CUM.
+
+The backlog must remain visible as a management warning.
+
+If no approved forecast exists:
+
+- do not assume all backlog is due immediately;
+- use the latest approved Tomorrow’s Plan or short-term programme for immediate requirements;
+- display:
+  “Reforecast required — near-term demand is based on the latest approved short-term plan.”
+
+Phase 6 — Design programme-drift detection
+
+Design a warning system that identifies when actual progress materially differs from the current programme.
+
+Possible triggers:
+
+- actual quantity behind planned quantity beyond tolerance
+- activity continuing after forecast finish date
+- no progress for a configurable number of days
+- actual average output materially below planned output
+- forecast completion moving beyond contractual milestone
+
+Suggested statuses:
+
+- on_track
+- watch
+- behind_schedule
+- critically_delayed
+- blocked
+- reforecast_required
+
+The PM/Admin should be offered:
+
+- Continue at current achieved rate
+- Enter revised production target
+- Record delay/constraint
+- Prepare recovery plan
+- Create new forecast version
+
+Delay reasons may include:
+
+- rain/weather
+- client instruction
+- land obstruction
+- utility shifting
+- drawing/approval delay
+- plant breakdown
+- equipment breakdown
+- material shortage
+- fund/payment constraint
+- subcontractor delay
+- labour shortage
+- traffic restriction
+- other
+
+Phase 7 — Design recovery planning
+
+For remaining quantity, calculate:
+
+- current achieved daily rate
+- rolling recent production rate
+- remaining working days
+- forecast completion date
+- production rate required to meet baseline
+- production rate required to meet current milestone
+
+Allow the PM to enter a realistic recovery target.
+
+Do not automatically assume the required recovery rate is achievable.
+
+Where equipment/resources are known, the system may later estimate:
+
+- additional equipment required
+- additional shifts
+- additional crews
+- increased plant production
+- increased daily diesel
+
+This calculation must respect Execution & Supply Responsibility.
+
+If the work is outsourced, do not assume HLC can increase production merely by adding HLC equipment.
+
+Phase 8 — Design Daily Diesel Requirement
+
+When Diesel/HSD action is clicked, offer:
+
+1. Prepare Daily Diesel Requirement
+2. Raise Bulk Purchase PI
+
+A. Prepare Daily Diesel Requirement
+
+Preferably connect to the existing Tomorrow’s Plan if such logic already exists.
+
+Calculate for the selected day:
+
+- equipment planned
+- expected working hours
+- consumption per hour
+- HLC fuel responsibility
+- planned trips or kilometres where applicable
+- opening diesel balance
+- diesel already arranged/confirmed
+- net quantity to arrange
+
+Example:
+
+- excavator: 80 L
+- grader: 120 L
+- roller: 70 L
+- tippers: 350 L
+- gross requirement: 620 L
+- opening balance: 90 L
+- already arranged: 0 L
+- net daily requirement: 530 L
+
+The PM/Site Engineer should be able to review and adjust with a reason.
+
+Do not include diesel for:
+
+- fully outsourced composite work where vendor provides fuel;
+- vendor transport where vendor bears fuel;
+- equipment not planned for that day;
+- non-working equipment.
+
+B. Raise Bulk Purchase PI
+
+Retain for:
+
+- project diesel tank
+- bulk tanker purchase
+- monthly/rate-contract arrangement
+- major projects storing diesel
+- advance procurement
+
+Do not force ordinary daily diesel through a long-term bulk PI process.
+
+Phase 9 — Define demand hierarchy
+
+Design SitePulse demand at four levels.
+
+Tomorrow:
+
+- driven by Tomorrow’s Plan
+- daily diesel
+- immediate material
+- equipment
+- labour
+
+Next 7/30 days:
+
+- driven by current approved forecast
+- procurement
+- vendor arrangement
+- plant production
+- equipment planning
+
+Entire Remaining Programme:
+
+- total balance requirement
+- budget
+- long-term procurement
+- profitability
+- capacity planning
+
+Overdue Backlog:
+
+- management warning
+- recovery-planning quantity
+- not automatically treated as tomorrow’s requirement
+
+Phase 10 — Permissions and approvals design
+
+Propose who may:
+
+- assign execution responsibility
+- revise component responsibility
+- prepare forecast
+- approve forecast
+- prepare Tomorrow’s Plan
+- approve Daily Diesel Requirement
+- revise diesel quantity
+- raise bulk PI
+- record delay reason
+- approve recovery plan
+
+Likely roles:
+
+- Site Engineer
+- Project Manager
+- Stores
+- Equipment/Fleet
+- Purchaser
+- Admin
+- Owner
+
+Do not implement permissions in this architecture batch.
+
+Phase 11 — Audit requirements
+
+Every change must be auditable.
+
+Capture:
+
+- previous value
+- new value
+- changed by
+- changed at
+- reason
+- approval status
+- related project/site/BOQ item/reach
+- forecast version
+- responsibility version where applicable
+
+The original baseline and past forecast versions must remain accessible.
+
+Phase 12 — Proposed user experience
+
+Prepare wireframe-level descriptions for:
+
+A. Work Programme
+
+Tabs or views:
+
+- Baseline
+- Actual
+- Current Forecast
+- Variance/Delay
+
+B. Work Demand
+
+Additional information:
+
+- overdue backlog
+- executable horizon demand
+- future balance
+- current forecast version
+- reforecast warning
+
+C. Tomorrow’s Plan
+
+- planned quantities
+- equipment
+- labour
+- material
+- daily diesel
+- responsibility exclusions
+
+D. Diesel action
+
+- Daily Diesel Requirement
+- Bulk Purchase PI
+
+E. PM dashboard
+
+- activities behind schedule
+- reforecast required
+- recovery rate required
+- expected finish versus baseline
+- critical material/equipment/diesel constraints
+
+Keep the UI understandable and practical for field and management users.
+
+Do not design it like a complex enterprise planning application.
+
+Phase 13 — Commercial outputs
+
+The design should ultimately support these management outputs:
+
+- planned versus actual progress
+- planned versus actual production rate
+- baseline versus forecast finish
+- delay days
+- overdue backlog
+- executable near-term demand
+- HLC resource demand
+- outsourced quantity/value
+- daily diesel requirement
+- bulk diesel procurement
+- recovery requirement
+- projected cost to complete
+- revised profitability forecast
+
+These features should become a commercial differentiator for SitePulse.
+
+Phase 14 — Deliverables from this instruction
+
+Return:
+
+1. Existing-feature inventory.
+2. Reuse versus new-development matrix.
+3. Current-state process diagram.
+4. Proposed future process diagram.
+5. Proposed data-model changes.
+6. Proposed UI/page changes.
+7. Proposed permission matrix.
+8. Risks and dependencies.
+9. Implementation phases.
+10. Acceptance criteria for each phase.
+11. Clear recommendation on what should be built first.
+12. Explicit list of existing code/functions that must be reused rather than duplicated.
+
+Do not implement the feature yet.
+
+Recommended later implementation sequence
+
+Phase A:
+Execution & Supply Responsibility foundation
+
+Phase B:
+Baseline/Actual/Forecast programme versioning
+
+Phase C:
+DPR progress linkage and drift alerts
+
+Phase D:
+Backlog versus executable demand
+
+Phase E:
+Tomorrow’s Plan and Daily Diesel integration
+
+Phase F:
+Recovery planning and management analytics
+
+Final instruction
+
+Do not write code in this batch.
+
+Inspect, document and propose the smallest safe phased architecture.
+
+Do not create a second Tomorrow’s Plan, diesel calculator, Work Programme or procurement engine where reusable functionality already exists.
