@@ -1546,13 +1546,12 @@ function ResolveMappingDialog({
               </div>
             ) : (
               <div className="bg-red-50 border border-red-200 rounded p-2 text-[12px]">
-                <p className="font-semibold text-red-800">UOM mismatch — cannot save</p>
+                <p className="font-semibold text-red-800">No approved conversion — cannot save</p>
                 <p className="text-red-700 mt-0.5">
-                  BOM source is <strong>{row.uom}</strong>; this material requires one of:{" "}
-                  {(() => { try { return (JSON.parse(selected.allowedUoms ?? "[]") as string[]).join(", "); } catch { return selected.defaultUom ?? "?"; } })()}.
+                  Material found, but no approved conversion exists between <strong>{row.uom}</strong> and <strong>{selected.defaultUom ?? "?"}</strong>.
                 </p>
                 <p className="text-red-600 mt-0.5 text-[11px]">
-                  Configure a UOM Conversion Profile in <a href="/plant?tab=home" className="underline font-medium" target="_blank">Plant Material Master</a> for this material, then try again.
+                  Add bulk density in <a href="/plant?tab=home" className="underline font-medium" target="_blank">Plant Material Master</a> for automatic mass-volume conversion, or add an explicit UOM Conversion Profile for other cases.
                 </p>
               </div>
             )

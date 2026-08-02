@@ -19,6 +19,14 @@ Stock is divided by convFactor (`invFactor = 1/convFactor`) to express coverage 
 3. Bulk density conversion (uses `allowedUoms` to detect mass/volume eligibility)
 4. Direct UOM match — **only `areSameUomGroup(srcCanonical, defaultCanonical)`; allowedUoms does NOT grant factor-1 (021A)**
 
+## 021C bulk-density fix (critical)
+- `targetHasMass`/`targetHasVol` in Step 3 MUST check `defaultCanonical` as well as `allowedCanonical`. `allowedUoms` is optional — a material with `defaultUom=MT` and empty `allowedUoms` must still qualify for bulk-density conversion.
+- Same fix applies to `clientCheckUomCompat` in WorkDemand.tsx.
+- `needsDensity` (for error-code selection at incompatible fallback) also includes `defaultCanonical` so `MATERIAL_CONVERSION_REQUIRED` fires correctly for mass-volume pairs with no density.
+- Factor formula for mass→volume uses `defaultCanonical`, not the legacy `convFromCanonical` field: MT→Cum = `1/bd`, MT→CFT = `35.3147/bd`.
+- `allowedUoms` must NOT be a prerequisite for density eligibility, factor-1 equivalence, or any conversion gate (021A + 021C).
+- Plant dialog layout: `DialogContent` uses `flex flex-col max-h-[90vh] p-0`; body = `flex-1 overflow-y-auto`; footer is `shrink-0 border-t` (always reachable).
+
 ## 021A safety rules (critical)
 - `allowedUoms` means "can transact in" — it does NOT imply numerical equivalence between dimensionally different UOMs.
 - Factor-1 is valid ONLY when canonical forms match OR they are a known standard-equivalent pair (`areSameUomGroup`).

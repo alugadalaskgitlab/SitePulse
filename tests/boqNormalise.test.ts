@@ -352,8 +352,8 @@ describe("checkMappingUomCompatibility — 021A: Test F arithmetic (UOM conversi
 
 // ─── Instruction 021C: Bulk density used automatically for mass↔volume ───────
 describe("checkMappingUomCompatibility — 021C: bulk density auto-conversion", () => {
-  // A: CUM → MT via bulk density (no profile, no allowedUoms)
-  it("A: CUM BOQ + MT defaultUom + bulkDensity=2.20 → compatible via bulk_density", () => {
+  // A: CUM → MT via bulk density, allowedUoms = null
+  it("A: CUM BOQ + MT defaultUom + bulkDensity=2.20 + null allowedUoms → compatible via bulk_density", () => {
     const result = checkMappingUomCompatibility("CUM", {
       defaultUom: "MT",
       allowedUoms: null,
@@ -367,6 +367,18 @@ describe("checkMappingUomCompatibility — 021C: bulk density auto-conversion", 
   it("A: 100 CUM × factor = 220 MT procurement equivalent", () => {
     const result = checkMappingUomCompatibility("CUM", { defaultUom: "MT", bulkDensity: 2.20 });
     expect(100 * result.conversionFactor!).toBeCloseTo(220, 2);
+  });
+
+  // B: empty allowedUoms [] must behave identically to null
+  it("B: CUM BOQ + MT defaultUom + bulkDensity=2.20 + empty allowedUoms → identical result to null", () => {
+    const result = checkMappingUomCompatibility("CUM", {
+      defaultUom: "MT",
+      allowedUoms: JSON.stringify([]),   // "[]"
+      bulkDensity: 2.20,
+    });
+    expect(result.compatible).toBe(true);
+    expect(result.mode).toBe("bulk_density");
+    expect(result.conversionFactor).toBeCloseTo(2.20, 4);
   });
 
   // B: Reverse conversion — MT → CUM
@@ -418,6 +430,37 @@ describe("checkMappingUomCompatibility — 021C: bulk density auto-conversion", 
     expect(result.compatible).toBe(true);
     expect(result.mode).toBe("conversion_profile");
     expect(result.conversionFactor).toBe(2.50);
+  });
+
+  // E (instruction): unrelated unit pair — density must not be used
+  it("E: Nos + MT defaultUom + bulkDensity exists → density not used, mapping blocked", () => {
+    const result = checkMappingUomCompatibility("Nos", {
+      defaultUom: "MT",
+      allowedUoms: null,
+      bulkDensity: 2.20,
+    });
+    expect(result.compatible).toBe(false);
+    expect(result.mode).toBe("incompatible");
+  });
+
+  it("E: Rmt + MT defaultUom + bulkDensity exists → density not used, mapping blocked", () => {
+    const result = checkMappingUomCompatibility("Rmt", {
+      defaultUom: "MT",
+      allowedUoms: null,
+      bulkDensity: 2.20,
+    });
+    expect(result.compatible).toBe(false);
+  });
+
+  // H (instruction): allowedUoms safety — no density, no profile, just allowedUoms containing opposite dimension
+  it("H: CUM + MT defaultUom + allowedUoms=[CUM] + no density + no profile → blocked (no factor-1)", () => {
+    const result = checkMappingUomCompatibility("CUM", {
+      defaultUom: "MT",
+      allowedUoms: JSON.stringify(["CUM"]),
+      bulkDensity: null,
+    });
+    expect(result.compatible).toBe(false);
+    expect(result.conversionFactor).toBeNull();
   });
 
   // E: Mass-volume pair with no profile and no bulk density → blocked

@@ -1,0 +1,297 @@
+Instruction 021C — Restore Bulk-Density Conversion and Fix Material Master Dialog
+
+Purpose
+
+Fix two live defects discovered while testing GSB/WMM:
+
+1. valid material bulk density is not being used automatically because the compatibility function incorrectly requires allowedUoms to contain the opposite physical dimension;
+2. the Plant Material Master edit dialog is taller than the viewport and does not scroll properly, leaving Save Profile and Update Material buttons inaccessible at normal browser zoom.
+
+This is a narrow UOM and UI closeout correction.
+
+Expected files
+
+- shared/boqNormalise.ts
+- client/src/pages/WorkDemand.tsx
+- client/src/pages/Plant.tsx
+- related tests
+- server/routes.ts only if additional conversion-source details must be returned
+
+DO NOT TOUCH
+
+- conversion-profile schema
+- material alias and identity resolution
+- horizon calculations
+- Work Programme/Gantt
+- procurement-status calculation
+- demand quantities or phasing
+- material requirements and allocations
+- PI/IRN/GRN workflows
+- stock transaction records
+- execution/supply responsibility
+- Stores navigation
+- Cancel GRN
+
+1. Remove the incorrect allowedUoms prerequisite from bulk-density conversion
+
+The current checkMappingUomCompatibility bulk-density step derives eligibility from allowedUoms:
+
+- targetHasMass
+- targetHasVol
+
+This prevents density conversion for real materials created through the UI when allowedUoms is null or empty, even when:
+
+- defaultUom is valid; and
+- bulkDensity is valid.
+
+Stop using allowedUoms as a prerequisite for bulk-density conversion.
+
+allowedUoms is an optional list of supported transaction units. It must not control whether the material’s own density can convert between its BOQ/source UOM and default/stock UOM.
+
+2. Determine bulk-density eligibility from source UOM and defaultUom
+
+Use:
+
+- canonical source/BOQ UOM;
+- canonical material defaultUom;
+- positive material bulkDensity.
+
+Allow bulk-density conversion only when one side is mass and the other is volume.
+
+Required compatible pairs include:
+
+- CUM → MT
+- CFT → MT
+- MT → CUM
+- MT → CFT
+- Kg → CUM/CFT where the calculation correctly accounts for kilograms versus metric tonnes
+- CUM/CFT → Kg where supported correctly
+
+Do not permit density conversion when:
+
+- both units are mass;
+- both units are volume;
+- either unit is unrelated, such as Nos, Bag, Litre or Rmt;
+- defaultUom is missing;
+- bulkDensity is blank, zero, negative or invalid.
+
+3. Use correct material-specific density formulas
+
+Assume bulkDensity is stored in MT per CUM unless the existing schema explicitly records another basis.
+
+Examples for density 2.20 MT/CUM:
+
+- 1 CUM → 2.20 MT
+- 1 MT → 0.454545 CUM
+- 1 CFT → 2.20 / 35.3147 MT
+- 1 MT → 35.3147 / 2.20 CFT
+
+Where Kg is supported:
+
+- 1 CUM → 2,200 Kg
+- 2,200 Kg → 1 CUM
+
+Do not use one generic fallback factor for unsupported directions.
+
+Remove or avoid any generic fallback that silently applies bulkDensity without proving the source-target direction.
+
+4. Keep allowedUoms semantically separate
+
+allowedUoms may indicate which transaction units are permitted for purchase, stock or receipt.
+
+It must not mean:
+
+- factor-1 equivalence;
+- density eligibility;
+- mandatory prerequisite for mass-volume conversion.
+
+Instruction 021A factor-1 safeguards must remain unchanged.
+
+5. Preserve conversion precedence
+
+Use the existing safe precedence:
+
+1. one exact active explicit conversion profile matching source and target UOM;
+2. valid legacy explicit from/to conversion, where deliberately retained;
+3. valid material-specific bulk-density conversion;
+4. true standard-equivalent UOM at factor 1;
+5. otherwise conversion required.
+
+If the present established order places bulk density before legacy conversion, preserve the documented application rule unless changing it is necessary. Do not make unrelated precedence changes.
+
+An explicit exact profile may override density for special commercial bases, but the UI must state that clearly.
+
+6. Explain the selected conversion source in Work Demand
+
+When density is used, show:
+
+- material found;
+- BOQ/planning UOM;
+- material default/stock UOM;
+- configured bulk density;
+- derived factor;
+- example converted quantity.
+
+Example:
+
+“GSB found.
+Bulk density: 2.20 MT/CUM.
+100 CUM planning demand = 220 MT procurement equivalent.”
+
+Do not ask the user to create a conversion profile when valid bulk density already supports the exact source-target pair.
+
+When no valid density or profile exists, continue showing:
+
+“Material found, but no approved conversion exists between {source UOM} and {target UOM}.”
+
+7. Clarify the Material Master conversion section
+
+Add a short note:
+
+“Bulk density automatically handles valid mass-volume conversions for this material. Add a separate conversion profile only for special cases such as loose-to-compacted volume, Load/Trip, Bag, vendor-specific capacity or another explicit commercial basis.”
+
+Do not imply that every alternate UOM needs a profile.
+
+8. Fix the Plant Material Master dialog layout
+
+The material add/edit dialog must fit within the viewport at 100% browser zoom.
+
+Required behaviour:
+
+- maximum dialog height approximately 90vh;
+- dialog header remains visible;
+- content/body scrolls vertically;
+- footer containing Cancel and Update Material remains visible or sticky;
+- Save Profile is reachable without zooming out;
+- Update Material is reachable without zooming out;
+- no nested scroll area traps the pointer or keyboard;
+- works on standard laptop-height screens.
+
+Preferred structure:
+
+- fixed/non-scrolling header;
+- flex-1 overflow-y-auto content body;
+- fixed or sticky footer.
+
+Do not allow the entire dialog to extend beyond the viewport.
+
+9. Preserve form state
+
+Scrolling must not reset entered values.
+
+Saving a conversion profile must not discard unsaved material edits.
+
+Updating the material must not lose a newly saved profile.
+
+Keep existing confirmation behaviour when closing with unsaved changes.
+
+10. Acceptance tests
+
+A. Bulk density without allowedUoms
+
+Material:
+- defaultUom = MT
+- allowedUoms = null
+- bulkDensity = 2.20
+- BOQ UOM = CUM
+- no conversion profile
+
+Expected:
+- mapping succeeds through bulk_density;
+- 100 CUM = 220 MT;
+- profile is not required.
+
+B. Empty allowedUoms
+
+Same as A with allowedUoms = [].
+
+Expected:
+- identical successful result.
+
+C. Reverse density conversion
+
+Material:
+- defaultUom = CUM
+- bulkDensity = 2.20 MT/CUM
+- BOQ/source UOM = MT
+
+Expected:
+- 110 MT = 50 CUM.
+
+D. CFT conversion
+
+Material defaultUom = MT, density 2.20 MT/CUM.
+
+Expected:
+- CFT → MT uses CFT-to-CUM conversion and density;
+- no factor-1 assumption.
+
+E. Invalid unrelated pair
+
+- source UOM = Nos;
+- defaultUom = MT;
+- bulkDensity exists.
+
+Expected:
+- density is not used;
+- mapping remains blocked.
+
+F. Invalid density
+
+- density blank, zero or negative.
+
+Expected:
+- density conversion is not used.
+
+G. Explicit profile
+
+- exact CUM → MT profile exists;
+- density also exists.
+
+Expected:
+- exact profile follows the established precedence;
+- UI states that the explicit profile is being used.
+
+H. allowedUoms safety regression
+
+- defaultUom = MT;
+- allowedUoms contains CUM;
+- no profile and no density.
+
+Expected:
+- mapping remains blocked;
+- 1 CUM = 1 MT is never assumed.
+
+I. Dialog viewport
+
+At 100% zoom on a normal laptop viewport:
+
+- open Add/Edit Material;
+- expand UOM Conversion Profiles;
+- all fields can be reached by scrolling;
+- Save Profile is reachable;
+- Update Material is reachable;
+- header/footer remain usable.
+
+J. Regression
+
+Confirm unchanged:
+
+- 021A source-target profile matching;
+- 021B profile ambiguity handling;
+- standard UOM canonicalisation;
+- GSB/WMM aliases;
+- Work Demand status labels;
+- stock normalization;
+- Raise PI/IRN/Split;
+- horizon switching;
+- GRN flows.
+
+After this passes
+
+1. Retest GSB and WMM using bulk density only, with no duplicate profile.
+2. Confirm the existing manually created GSB profile may remain but is not mandatory.
+3. Freeze Work Demand UOM conversion.
+4. Move to Cancel GRN.
+5. Fix Store Items back-navigation.
+6. Continue User/Designation Templates.

@@ -3055,7 +3055,7 @@ export function MaterialMaster() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Bulk density automatically supports mass-volume conversions for this material (e.g. BOQ in <strong>CUM</strong>, stocked in <strong>MT</strong>). Add a separate profile only for loose-to-compacted volume, Load/Trip, Bag, vendor-specific, project-specific or other special conversions.
+                    Bulk density automatically handles valid mass-volume conversions for this material. Add a separate conversion profile only for special cases such as loose-to-compacted volume, Load/Trip, Bag, vendor-specific capacity or another explicit commercial basis.
                   </p>
                   {convProfiles.length > 0 ? (
                     <div className="space-y-1.5">
