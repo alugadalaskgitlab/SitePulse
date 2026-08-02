@@ -1,0 +1,82 @@
+Instruction 019C — Close Remaining 019B Gaps
+
+This is a narrow correction only.
+
+Files:
+- server/storage.ts
+- server/routes.ts
+
+DO NOT TOUCH:
+- horizon bucket calculations
+- Work Programme/Gantt
+- BOM quantities
+- UOM validation or conversion formulas
+- Material Requirements
+- PI/IRN/GRN flows
+- Stores or Plant workflows
+
+1. Fix Plant Material manual search
+
+searchPlantMaterials currently filters only:
+
+plant_materials.name ILIKE '%query%'
+
+Extend retrieval so it can find active materials through either:
+
+- canonical name; or
+- approved aliases stored in plant_materials.aliases.
+
+Because aliases are currently stored as JSON text, implement the safest available query or fetch a bounded active-material set and evaluate aliases server-side.
+
+Required ranking:
+
+1. exact normalized canonical name;
+2. exact normalized alias;
+3. canonical-name substring;
+4. alias substring.
+
+Do not auto-select any substring result.
+
+Examples that must work:
+
+- “Wet Mix Macadam” finds the existing WMM material through its alias.
+- “Granular Sub-Base” finds GSB.
+- “High Speed Diesel” finds DIESEL.
+- “Crusher Dust” finds DUST.
+- “DUS” may return DUST as a low-confidence substring suggestion but never auto-selects it.
+
+Return matchType values clearly, for example:
+
+- exact_name
+- exact_alias
+- name_substring
+- alias_substring
+
+Update the existing frontend type only if required to display these values; do not redesign the dialog.
+
+2. Correct programmeRelation without changing horizon mathematics
+
+Derive:
+
+- before_start
+- within_programme
+- after_end
+
+using the resolved horizon/current date compared against the actual programme start and calculated programme end date.
+
+A date inside the final programme month must remain within_programme.
+
+Do not change:
+
+- currentMonth
+- horizonMonthIndex
+- dateToMonthBucket
+- resolved demand quantities
+
+Acceptance:
+
+- alias-only searches return the correct existing material;
+- exact aliases rank above substrings;
+- no result is auto-selected from substring matching;
+- final programme month is not incorrectly labelled after_end;
+- Procurement page, UOM validation and conversion calculations remain unchanged.

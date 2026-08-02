@@ -1244,7 +1244,7 @@ interface PlantMaterialResult {
   conversionFromUom: string | null;
   conversionToUom: string | null;
   aliases: string | null;             // JSON array; null = not yet seeded (019B §1)
-  matchType?: "exact_name" | "exact_alias" | "substring"; // 019B §8 — server-ranked
+  matchType?: "exact_name" | "exact_alias" | "name_substring" | "alias_substring"; // 019C §1 — server-ranked
 }
 
 /** Check BOM source UOM against a plant material's allowed units.

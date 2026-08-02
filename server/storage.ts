@@ -23992,13 +23992,18 @@ export class DatabaseStorage implements IStorage {
     return inserted;
   }
 
-  /** Search plant_materials by name — used by the ResolveMappingDialog. Returns UOM fields for compatibility check. */
-  async searchPlantMaterials(query: string, limit = 20): Promise<Array<{
+  /** Search plant_materials by canonical name or aliases — used by the ResolveMappingDialog.
+   *  Instruction 019C §1: aliases are JSON text so we fetch all active materials (bounded)
+   *  and evaluate name + alias matches server-side in the route layer.
+   *  Returns UOM fields for compatibility check. */
+  async searchPlantMaterials(_query: string, _limit = 20): Promise<Array<{
     id: number; name: string; defaultUom: string | null; category: string | null;
     allowedUoms: string | null; bulkDensity: number | null;
     conversionFactor: number | null; conversionFromUom: string | null; conversionToUom: string | null;
     aliases: string | null;
   }>> {
+    // Fetch ALL active materials (plant catalogues are bounded, typically <500 rows).
+    // The route layer applies query filtering, alias expansion, and 4-tier ranking.
     return db.select({
       id: plantMaterials.id,
       name: plantMaterials.name,
@@ -24011,14 +24016,8 @@ export class DatabaseStorage implements IStorage {
       conversionToUom: plantMaterials.conversionToUom,
       aliases: plantMaterials.aliases,
     }).from(plantMaterials)
-      .where(
-        and(
-          ilike(plantMaterials.name, `%${query}%`),
-          eq(plantMaterials.isActive, 1),
-        )
-      )
-      .orderBy(plantMaterials.name)
-      .limit(limit);
+      .where(eq(plantMaterials.isActive, 1))
+      .orderBy(plantMaterials.name);
   }
 }
 

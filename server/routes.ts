@@ -12061,11 +12061,24 @@ export async function registerRoutes(
         return (b.actionableShortfall - a.actionableShortfall) || (b.totalDemand - a.totalDemand);
       });
 
-      // Instruction 019B §11: programme relation (purely additive, no math touched)
-      const programmeRelation: "before_start" | "within_programme" | "after_end" =
-        currentMonth === 0 ? "before_start"
-        : currentMonth >= maxProgrammeMonth ? "after_end"
-        : "within_programme";
+      // Instruction 019C §2: derive programme relation from actual dates, not clamped
+      // currentMonth (which cannot distinguish "in last month" from "after programme end").
+      // pStartDate and maxProgrammeMonth are already defined above; no horizon math touched.
+      let programmeRelation: "before_start" | "within_programme" | "after_end" = "within_programme";
+      if (pStartDate) {
+        const today = new Date();
+        const progStart = new Date(pStartDate);
+        // Programme end = first day of the month AFTER the last programme month.
+        // e.g. starts Jan 1, maxProgrammeMonth=6 → end = Jul 1 → Jun 30 is within_programme.
+        const progEnd = new Date(progStart);
+        progEnd.setMonth(progEnd.getMonth() + maxProgrammeMonth);
+        if (today < progStart) {
+          programmeRelation = "before_start";
+        } else if (today >= progEnd) {
+          programmeRelation = "after_end";
+        }
+        // else: within_programme (default, covers today in the final month)
+      }
 
       res.json({
         projectId,
@@ -12167,28 +12180,48 @@ export async function registerRoutes(
     }
   });
 
-  /** Search plant_materials by name — used by the ResolveMappingDialog autocomplete.
-   *  Instruction 019B §8: results are ranked exact_name > exact_alias > substring.
-   *  The server never auto-selects a substring result — ranking is for UI guidance only. */
+  /** Search plant_materials by canonical name or aliases — used by the ResolveMappingDialog autocomplete.
+   *  Instruction 019C §1: 4-tier ranking: exact_name > exact_alias > name_substring > alias_substring.
+   *  Storage fetches all active materials; this route filters and ranks server-side so alias-only
+   *  queries (e.g. "Wet Mix Macadam" → WMM) are correctly resolved.
+   *  The server never auto-selects any substring result — ranking is for UI guidance only. */
   app.get("/api/plant-materials/search", async (req, res) => {
     try {
       const q = String(req.query.q ?? "").trim();
       if (!q || q.length < 2) return res.json([]);
-      const results = await storage.searchPlantMaterials(q, 25);
+      const allActive = await storage.searchPlantMaterials(q);
       const normQ = normalizeMaterialLabel(q);
-      const matchOrder = { exact_name: 0, exact_alias: 1, substring: 2 } as const;
-      type MatchType = keyof typeof matchOrder;
-      const ranked = results.map(r => {
-        let matchType: MatchType = "substring";
-        if (normalizeMaterialLabel(r.name) === normQ) {
+      const lowerQ = q.toLowerCase();
+
+      type MatchType = "exact_name" | "exact_alias" | "name_substring" | "alias_substring";
+      const matchOrder: Record<MatchType, number> = {
+        exact_name: 0, exact_alias: 1, name_substring: 2, alias_substring: 3,
+      };
+
+      const ranked: Array<typeof allActive[number] & { matchType: MatchType }> = [];
+
+      for (const r of allActive) {
+        const normName = normalizeMaterialLabel(r.name);
+        const rAliases: string[] = (() => { try { return JSON.parse(r.aliases ?? "[]"); } catch { return []; } })();
+
+        let matchType: MatchType | null = null;
+
+        if (normName === normQ) {
           matchType = "exact_name";
-        } else {
-          const rAliases: string[] = (() => { try { return JSON.parse(r.aliases ?? "[]"); } catch { return []; } })();
-          if (rAliases.some(a => normalizeMaterialLabel(a) === normQ)) matchType = "exact_alias";
+        } else if (rAliases.some(a => normalizeMaterialLabel(a) === normQ)) {
+          matchType = "exact_alias";
+        } else if (r.name.toLowerCase().includes(lowerQ)) {
+          matchType = "name_substring";
+        } else if (rAliases.some(a => a.toLowerCase().includes(lowerQ))) {
+          matchType = "alias_substring";
         }
-        return { ...r, matchType };
-      }).sort((a, b) => (matchOrder[a.matchType] ?? 2) - (matchOrder[b.matchType] ?? 2));
-      res.json(ranked);
+
+        if (matchType !== null) ranked.push({ ...r, matchType });
+      }
+
+      ranked.sort((a, b) => matchOrder[a.matchType] - matchOrder[b.matchType]);
+      // Cap result set after ranking so the most relevant rows are returned
+      res.json(ranked.slice(0, 25));
     } catch (err) {
       console.error("GET /api/plant-materials/search:", err);
       res.status(500).json({ error: "Search failed" });
