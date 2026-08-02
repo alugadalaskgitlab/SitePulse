@@ -165,6 +165,25 @@ export function normalizeMaterialLabel(label: string): string {
 const MASS_UNITS = new Set(["MT", "Kg"]);
 const VOLUME_UNITS = new Set(["Cum", "CFT"]);
 
+/**
+ * Returns true when two canonical UOM strings represent the same physical unit,
+ * covering the single case where canonicalizeUnit() produces different outputs
+ * for genuine synonyms: "L" (sometimes used in material master entries) ↔ "Ltr".
+ *
+ * "L" is deliberately excluded from CANONICAL_UNIT_MAP to avoid ambiguity when
+ * parsing raw BOQ text, but it is a legitimate litre abbreviation in a material's
+ * defaultUom field.  All other standard-equivalence pairs (MT/Ton/Tonne, Cum/m3,
+ * Nos/Number, …) already canonicalize to the same output and are handled by the
+ * plain equality check (canA === canB).
+ *
+ * 021A: used ONLY for the direct factor-1 compatibility check — not in BOQ import.
+ */
+function areSameUomGroup(canA: string, canB: string): boolean {
+  if (canA === canB) return true;
+  if ((canA === "L" || canB === "L") && (canA === "Ltr" || canB === "Ltr")) return true;
+  return false;
+}
+
 /** Minimal profile shape passed from the server — avoids importing the full Drizzle type. */
 export interface UomConversionProfile {
   id: number;
@@ -219,14 +238,20 @@ export function checkMappingUomCompatibility(
   profiles?: UomConversionProfile[],
 ): MappingUomCheck {
   const srcCanonical = canonicalizeUnit(sourceUom);
+  // Compute defaultCanonical early so Step 0 profile matching can use it.
+  const defaultCanonical = target.defaultUom ? canonicalizeUnit(target.defaultUom) : null;
 
   // ── Step 0: Explicit conversion profiles (highest precedence, Instruction 021) ─
-  // Profiles override all legacy conversion checks.
+  // 021A fix: require BOTH fromUom → srcCanonical AND toUom → defaultCanonical.
+  // A profile for "CUM → CFT" must NOT be selected when the material's defaultUom is "MT".
   if (profiles && profiles.length > 0) {
     const activeProfiles = profiles.filter(p => p.isActive === 1);
-    const matching = activeProfiles.filter(p => canonicalizeUnit(p.fromUom) === srcCanonical);
-    if (matching.length === 1) {
-      const p = matching[0];
+    const applicable = activeProfiles.filter(p =>
+      canonicalizeUnit(p.fromUom) === srcCanonical &&
+      (defaultCanonical == null || canonicalizeUnit(p.toUom) === defaultCanonical)
+    );
+    if (applicable.length === 1) {
+      const p = applicable[0];
       return {
         compatible: true,
         mode: "conversion_profile",
@@ -235,8 +260,10 @@ export function checkMappingUomCompatibility(
         basis: p.conversionBasis ?? `1 ${p.fromUom} = ${p.conversionFactor} ${p.toUom}`,
         errorCode: null,
       };
-    } else if (matching.length > 1) {
-      // Multiple active profiles for the same fromUom — user must disambiguate
+    } else if (applicable.length > 1) {
+      // Multiple active profiles for the same from→to pair — user must disambiguate.
+      // Profiles for different target UOMs (e.g. CUM→CFT alongside CUM→MT) are NOT
+      // ambiguous — only profiles with the same (from, to) pair cause ambiguity.
       return {
         compatible: false,
         mode: "incompatible",
@@ -246,17 +273,22 @@ export function checkMappingUomCompatibility(
         errorCode: "MATERIAL_CONVERSION_AMBIGUOUS",
       };
     }
-    // No matching active profile for this fromUom → fall through to legacy checks
+    // No applicable from→to profile → fall through to legacy checks.
   }
 
   // Parse allowedUoms JSON array (stored as text in DB)
   let allowedRaw: string[] = [];
   try { allowedRaw = JSON.parse(target.allowedUoms ?? "[]"); } catch { /* ignore */ }
   const allowedCanonical = allowedRaw.map(u => canonicalizeUnit(u));
-  const defaultCanonical = target.defaultUom ? canonicalizeUnit(target.defaultUom) : null;
 
-  // ── Step 1: Direct UOM match ────────────────────────────────────────────────
-  if (allowedCanonical.includes(srcCanonical) || (defaultCanonical && srcCanonical === defaultCanonical)) {
+  // ── Step 1: Direct UOM match (standard-equivalence only) ────────────────────
+  // 021A fix: allowedUoms DOES NOT grant factor-1 equivalence between dimensionally
+  // different UOMs.  "MT" in allowedUoms of a CUM-defaulted material must NOT
+  // allow CUM→MT at factor 1.  Factor-1 is valid only when:
+  //   (a) srcCanonical equals defaultCanonical (handled by areSameUomGroup), or
+  //   (b) they are a known standard-equivalent pair (e.g. "L" ↔ "Ltr").
+  // allowedUoms is still used in Step 3 to determine bulk-density eligibility.
+  if (defaultCanonical && areSameUomGroup(srcCanonical, defaultCanonical)) {
     return { compatible: true, mode: "direct", conversionFactor: 1, basis: null, errorCode: null };
   }
 

@@ -1,0 +1,199 @@
+Instruction 021A — Close UOM Conversion Safety Gaps
+
+Purpose
+
+Close two remaining safety defects in Instruction 021 before freezing Work Demand:
+
+1. allowedUoms can still cause dimensionally different UOMs to be treated as direct factor-1 equivalents;
+2. conversion profiles are selected only by fromUom and not by the required target stock/default UOM.
+
+This is a narrow correction only.
+
+Expected files
+
+- shared/boqNormalise.ts
+- server/routes.ts
+- client/src/pages/WorkDemand.tsx
+- tests for UOM compatibility
+
+DO NOT TOUCH
+
+- material identity/alias resolution
+- Work Programme/Gantt
+- horizon calculations
+- demand phasing
+- procurement-status logic
+- material_requirements or allocations
+- PI/IRN/GRN lifecycle
+- conversion-profile schema
+- Plant Material Master layout
+- Stores or Plant workflow routing
+- execution/supply responsibility
+
+1. Do not treat all allowedUoms as factor-1 equivalents
+
+Current behaviour permits a direct factor-1 mapping whenever the source UOM appears in allowedUoms.
+
+Change this rule.
+
+allowedUoms means only that the material may be transacted in those UOMs. It must not imply numerical equivalence between dimensionally different UOMs.
+
+Direct factor 1 is permitted only when:
+
+- canonical source UOM equals canonical target/default UOM; or
+- the two labels belong to the same approved standard-equivalence group.
+
+Examples of valid standard equivalence:
+
+- MT ↔ Ton/Tonne
+- Kg ↔ kilogram
+- CUM ↔ m3/cubic metre
+- CFT ↔ cubic feet
+- Litre ↔ L
+- Nos ↔ Number
+
+Examples that must never use factor 1 merely because both appear in allowedUoms:
+
+- MT ↔ CUM
+- MT ↔ CFT
+- CUM ↔ CFT
+- loose CUM ↔ compacted CUM
+- Bag ↔ MT
+- Load ↔ MT/CUM
+- Litre ↔ MT
+- Nos ↔ metre
+
+These require an explicit conversion profile, valid legacy factor or material-specific density.
+
+2. Match conversion profiles by both source and target UOM
+
+When checking an explicit profile, require:
+
+- profile.fromUom canonically matches the BOQ/source UOM; and
+- profile.toUom canonically matches the selected material’s default/stock UOM.
+
+Do not select a profile based only on fromUom.
+
+Example:
+
+Material default/stock UOM: MT
+
+Profiles:
+- CUM → MT
+- CUM → CFT
+- CUM → Load
+
+Only CUM → MT is applicable to the present mapping.
+
+3. Handle multiple applicable profiles correctly
+
+After matching both fromUom and toUom:
+
+- exactly one active profile → use it;
+- more than one active applicable profile → return MATERIAL_CONVERSION_AMBIGUOUS;
+- none → continue to valid legacy/density checks, otherwise return conversion required.
+
+Do not treat unrelated target-UOM profiles as ambiguity.
+
+4. Apply the same rule in WorkDemand.tsx
+
+The Resolve Material Mapping dialog currently finds a profile using only fromUom.
+
+Update it to match:
+
+- BOQ/source UOM; and
+- selected material default/stock UOM.
+
+The profile preview, Save button and conversion example must all use the exact same applicable profile as the server.
+
+The server remains authoritative.
+
+5. Planning-UOM clarification
+
+For the current version, formally document:
+
+- the BOM/BOQ row UOM is the planning UOM;
+- the selected material defaultUom is the canonical stock/procurement UOM;
+- the conversion profile converts planning UOM → stock/procurement UOM.
+
+Do not add a new planningUom schema field in this correction unless the existing implementation cannot function without it.
+
+6. Acceptance tests
+
+A. allowedUoms safety
+
+Material:
+- defaultUom = MT
+- allowedUoms = [MT, CUM]
+- no conversion profile or density
+
+BOQ UOM = CUM
+
+Expected:
+- mapping blocked;
+- factor 1 is not used;
+- status is UOM Resolution Required.
+
+B. Standard-equivalent direct mapping
+
+- Ton → MT succeeds at factor 1.
+- m3 → CUM succeeds at factor 1.
+- L → Litre succeeds at factor 1.
+
+C. Correct target profile
+
+Material defaultUom = MT.
+
+Profiles:
+- CUM → MT, factor 2.2
+- CUM → CFT, factor 35.3147
+
+Expected:
+- CUM → MT profile is selected;
+- CUM → CFT profile is ignored.
+
+D. No target match
+
+Material defaultUom = MT.
+
+Only profile:
+- CUM → CFT
+
+Expected:
+- mapping remains blocked;
+- unrelated profile is not used.
+
+E. True ambiguity
+
+Two active CUM → MT profiles exist.
+
+Expected:
+- MATERIAL_CONVERSION_AMBIGUOUS;
+- no silent selection.
+
+F. Work Demand
+
+- 100 CUM WMM with factor 2.2 displays 220 MT procurement equivalent;
+- 110 MT stock displays as 50 CUM coverage;
+- raw CUM and MT are never compared directly.
+
+G. Regression
+
+Confirm unchanged:
+
+- GSB/WMM alias resolution;
+- procurement status labels;
+- horizon switching;
+- Other Parties formatting;
+- mapping audit;
+- Raise PI/IRN/Split;
+- Plant Material Master conversion-profile management;
+- GRN flows.
+
+After this passes
+
+1. Test WMM and GSB live.
+2. Freeze Work Demand material identity, status and UOM conversion.
+3. Proceed to Cancel GRN.
+4. Fix Store Items back-navigation.
+5. Continue User/Designation Templates.

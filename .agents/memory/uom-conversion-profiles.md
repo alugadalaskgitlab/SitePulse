@@ -14,10 +14,18 @@ Stock is divided by convFactor (`invFactor = 1/convFactor`) to express coverage 
 **How to apply:** Any code comparing stock to demand (shortage check, §12-13 in routes.ts) must scale stock down, not scale demand up.
 
 ## 4-tier precedence in checkMappingUomCompatibility
-1. Explicit active profiles (Step 0) — `material_uom_conversions` table
+1. Explicit active profiles (Step 0) — `material_uom_conversions` table — **matches BOTH fromUom AND toUom (021A)**
 2. Legacy `conversionFactor`/`conversionFromUom` on `plant_materials`
-3. Bulk density conversion
-4. Direct UOM match
+3. Bulk density conversion (uses `allowedUoms` to detect mass/volume eligibility)
+4. Direct UOM match — **only `areSameUomGroup(srcCanonical, defaultCanonical)`; allowedUoms does NOT grant factor-1 (021A)**
+
+## 021A safety rules (critical)
+- `allowedUoms` means "can transact in" — it does NOT imply numerical equivalence between dimensionally different UOMs.
+- Factor-1 is valid ONLY when canonical forms match OR they are a known standard-equivalent pair (`areSameUomGroup`).
+- The only pair `areSameUomGroup()` handles beyond plain equality: `"L"` ↔ `"Ltr"` (bare "L" excluded from CANONICAL_UNIT_MAP to avoid BOQ parsing ambiguity, but valid in material master entries).
+- Profile matching (Step 0) requires BOTH `fromUom → srcCanonical` AND `toUom → defaultCanonical`. A CUM→CFT profile must NOT be selected when material's defaultUom is MT.
+- `clientCheckUomCompat` in WorkDemand.tsx mirrors these rules; `profileForBomUom` filter also matches both from and to.
+- Blocked pairs (MT↔CUM, MT↔CFT, etc.) with allowedUoms containing both units are explicitly tested in `tests/boqNormalise.test.ts` (021A block).
 
 ## Critical: material identity never suppressed for UOM
 021 removed the `aliasOrNameMatchId = null` suppression. UOM incompatibility now only sets `uomIncompatible = true` which drives `procurementStatus = "uom_resolution_required"`. The material ID is still resolved; stock comparison is zeroed when `uomBlocked` (incompatible AND no factor found).

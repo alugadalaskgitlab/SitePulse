@@ -1261,7 +1261,8 @@ interface PlantMaterialResult {
 
 /** Check BOM source UOM against a plant material's allowed units.
  *  Client-side mirror of server checkMappingUomCompatibility — used for
- *  real-time feedback only; server revalidates on save. */
+ *  real-time feedback only; server revalidates on save.
+ *  021A: allowedUoms does NOT grant factor-1 for dimensionally different UOMs. */
 function clientCheckUomCompat(sourceUom: string, mat: PlantMaterialResult): {
   compatible: boolean; mode: "direct" | "bulk_density" | "incompatible"; basis: string | null;
 } {
@@ -1274,7 +1275,12 @@ function clientCheckUomCompat(sourceUom: string, mat: PlantMaterialResult): {
   const allowedN = allowed.map(norm);
   const defaultN = mat.defaultUom ? norm(mat.defaultUom) : null;
 
-  if (allowedN.includes(srcN) || srcN === defaultN) return { compatible: true, mode: "direct", basis: null };
+  // 021A: factor-1 ONLY when srcN === defaultN or they are a known standard-equivalent pair.
+  // "L" (bare litre abbreviation) ↔ "LTR" is the only pair that norm() doesn't already unify.
+  // allowedUoms is intentionally NOT used for factor-1 — it only informs bulk-density eligibility.
+  const sameGroup = (a: string, b: string) =>
+    a === b || ((a === "L" || b === "L") && (a === "LTR" || b === "LTR"));
+  if (defaultN && sameGroup(srcN, defaultN)) return { compatible: true, mode: "direct", basis: null };
 
   const MASS = ["MT", "KG", "TON", "TONNE"];
   const VOL = ["CUM", "CFT", "M3"];
@@ -1352,12 +1358,14 @@ function ResolveMappingDialog({
     staleTime: 30_000,
   });
 
-  // Check if any active profile covers the BOQ UOM → stock UOM conversion
+  // 021A: match by BOTH fromUom (source/BOQ) AND toUom (selected material defaultUom).
+  // A profile CUM→CFT must NOT be used when the material's stock UOM is MT.
+  const normU = (u: string) => u.trim().toUpperCase().replace(/\s+/g, "");
   const activeProfiles = selectedProfiles.filter(p => p.isActive === 1);
-  const profileForBomUom = activeProfiles.find(p =>
-    p.fromUom.trim().toUpperCase() === row.uom.trim().toUpperCase() ||
-    p.fromUom.trim().toLowerCase() === row.uom.trim().toLowerCase()
-  );
+  const profileForBomUom = selected ? activeProfiles.find(p =>
+    normU(p.fromUom) === normU(row.uom) &&
+    normU(p.toUom) === normU(selected.defaultUom ?? "")
+  ) : undefined;
 
   // Real-time UOM compatibility check (mirrors server logic; server revalidates on save)
   // 021: if a profile exists for this BOM UOM, override client-side incompatibility
