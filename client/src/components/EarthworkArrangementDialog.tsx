@@ -1,0 +1,676 @@
+/**
+ * Instruction 023 — Earthwork Execution Arrangement Dialog
+ *
+ * Allows PM / Admin to record how earthwork / bulk-fill BOQ items will be
+ * executed (agency, in-house, client-supplied, etc.).  The dialog is opened
+ * from the Work Demand page's "Execution Arrangement Required" cell.
+ */
+
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { AlertCircle, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
+import type { EarthworkArrangementSummary } from "@shared/planningEngine";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type ArrangementType =
+  | "fully_outsourced_composite"
+  | "vendor_material_delivered"
+  | "hlc_source_outsourced_execution"
+  | "hlc_in_house"
+  | "client_supplied"
+  | "reused_excavated"
+  | "not_decided";
+
+export type ComponentResponsibility = "hlc" | "agency" | "client" | "not_applicable" | "not_decided";
+
+export const COMPONENT_KEYS = [
+  "material_source",
+  "source_identification",
+  "excavation",
+  "loading",
+  "transport",
+  "dumping",
+  "spreading",
+  "watering",
+  "compaction",
+  "royalty_seigniorage",
+  "permits_approvals",
+  "equipment",
+  "tippers",
+  "operators_drivers",
+  "diesel_fuel",
+  "survey_setting_out",
+  "quality_testing",
+] as const;
+
+export type ComponentKey = typeof COMPONENT_KEYS[number];
+
+const COMPONENT_LABELS: Record<ComponentKey, string> = {
+  material_source: "Material Source",
+  source_identification: "Source Identification",
+  excavation: "Excavation",
+  loading: "Loading",
+  transport: "Transport",
+  dumping: "Dumping & Spreading",
+  spreading: "Spreading",
+  watering: "Watering / Compaction Fluid",
+  compaction: "Compaction",
+  royalty_seigniorage: "Royalty / Seigniorage",
+  permits_approvals: "Permits & Approvals",
+  equipment: "Equipment (Excavator etc.)",
+  tippers: "Tippers",
+  operators_drivers: "Operators & Drivers",
+  diesel_fuel: "Diesel / Fuel",
+  survey_setting_out: "Survey & Setting Out",
+  quality_testing: "Quality Testing",
+};
+
+const ARRANGEMENT_TYPE_LABELS: Record<ArrangementType, string> = {
+  fully_outsourced_composite: "Fully Outsourced (Composite Rate)",
+  vendor_material_delivered: "Vendor Material — Delivered to Site",
+  hlc_source_outsourced_execution: "HLC Source + Outsourced Execution",
+  hlc_in_house: "HLC In-House",
+  client_supplied: "Client Supplied",
+  reused_excavated: "Reuse of Excavated Material",
+  not_decided: "Not Decided",
+};
+
+/** Default component responsibility templates per arrangement type. */
+function defaultComponents(type: ArrangementType): Record<ComponentKey, ComponentResponsibility> {
+  const notDecided = () =>
+    Object.fromEntries(COMPONENT_KEYS.map(k => [k, "not_decided"])) as Record<ComponentKey, ComponentResponsibility>;
+
+  switch (type) {
+    case "fully_outsourced_composite":
+      return {
+        material_source: "agency", source_identification: "agency",
+        excavation: "agency", loading: "agency", transport: "agency", dumping: "agency",
+        spreading: "agency", watering: "agency", compaction: "agency",
+        royalty_seigniorage: "agency", permits_approvals: "hlc",
+        equipment: "agency", tippers: "agency", operators_drivers: "agency",
+        diesel_fuel: "agency", survey_setting_out: "hlc", quality_testing: "hlc",
+      };
+    case "vendor_material_delivered":
+      return {
+        material_source: "agency", source_identification: "agency",
+        excavation: "agency", loading: "agency", transport: "agency", dumping: "agency",
+        spreading: "not_decided", watering: "not_decided", compaction: "not_decided",
+        royalty_seigniorage: "agency", permits_approvals: "not_decided",
+        equipment: "not_decided", tippers: "agency", operators_drivers: "agency",
+        diesel_fuel: "agency", survey_setting_out: "hlc", quality_testing: "hlc",
+      };
+    case "hlc_source_outsourced_execution":
+      return {
+        material_source: "hlc", source_identification: "hlc",
+        excavation: "agency", loading: "agency", transport: "agency", dumping: "agency",
+        spreading: "agency", watering: "agency", compaction: "agency",
+        royalty_seigniorage: "hlc", permits_approvals: "hlc",
+        equipment: "agency", tippers: "agency", operators_drivers: "agency",
+        diesel_fuel: "agency", survey_setting_out: "hlc", quality_testing: "hlc",
+      };
+    case "hlc_in_house":
+      return Object.fromEntries(COMPONENT_KEYS.map(k => [k, "hlc"])) as Record<ComponentKey, ComponentResponsibility>;
+    case "client_supplied":
+      return {
+        material_source: "client", source_identification: "client",
+        excavation: "not_decided", loading: "not_decided", transport: "not_decided", dumping: "not_decided",
+        spreading: "not_decided", watering: "not_decided", compaction: "not_decided",
+        royalty_seigniorage: "client", permits_approvals: "client",
+        equipment: "not_decided", tippers: "not_decided", operators_drivers: "not_decided",
+        diesel_fuel: "not_decided", survey_setting_out: "hlc", quality_testing: "hlc",
+      };
+    case "reused_excavated":
+      return {
+        material_source: "hlc", source_identification: "hlc",
+        excavation: "hlc", loading: "hlc", transport: "hlc", dumping: "hlc",
+        spreading: "not_decided", watering: "not_decided", compaction: "not_decided",
+        royalty_seigniorage: "not_applicable", permits_approvals: "hlc",
+        equipment: "hlc", tippers: "hlc", operators_drivers: "hlc",
+        diesel_fuel: "hlc", survey_setting_out: "hlc", quality_testing: "hlc",
+      };
+    default:
+      return notDecided();
+  }
+}
+
+const RESPONSIBILITY_LABELS: Record<ComponentResponsibility, string> = {
+  hlc: "HLC / Company",
+  agency: "Agency / Contractor",
+  client: "Client",
+  not_applicable: "N/A",
+  not_decided: "Not Decided",
+};
+
+const RESPONSIBILITY_COLORS: Record<ComponentResponsibility, string> = {
+  hlc: "text-blue-700 bg-blue-50 border-blue-200",
+  agency: "text-green-700 bg-green-50 border-green-200",
+  client: "text-violet-700 bg-violet-50 border-violet-200",
+  not_applicable: "text-slate-400 bg-slate-50 border-slate-200",
+  not_decided: "text-amber-600 bg-amber-50 border-amber-200",
+};
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
+
+export function ArrangementStatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    draft: "text-amber-700 bg-amber-50 border-amber-200",
+    submitted: "text-blue-700 bg-blue-50 border-blue-200",
+    approved: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    rejected: "text-red-700 bg-red-50 border-red-200",
+    cancelled: "text-slate-500 bg-slate-50 border-slate-200",
+  };
+  return (
+    <span className={`inline-flex items-center text-[11px] font-semibold border rounded px-1.5 py-0.5 ${styles[status] ?? styles.draft}`}>
+      {status.charAt(0).toUpperCase() + status.slice(1)}
+    </span>
+  );
+}
+
+// ─── Arrangement summary card (read-only) ─────────────────────────────────────
+
+function ArrangementSummaryCard({
+  arr,
+  boqQty,
+  onEdit,
+  onCancel,
+}: {
+  arr: EarthworkArrangementSummary;
+  boqQty?: number;
+  onEdit: () => void;
+  onCancel: () => void;
+}) {
+  const estimatedValue = arr.agreedRate != null ? arr.allocatedQty * arr.agreedRate : null;
+  const expectedDays = arr.plannedDailyOutput != null && arr.plannedDailyOutput > 0
+    ? Math.ceil(arr.allocatedQty / arr.plannedDailyOutput)
+    : null;
+
+  return (
+    <div className="rounded border border-slate-200 bg-white p-3 space-y-1.5 text-[12px]">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-slate-800 truncate">
+          {ARRANGEMENT_TYPE_LABELS[arr.arrangementType as ArrangementType] ?? arr.arrangementType}
+        </span>
+        <ArrangementStatusBadge status={arr.status} />
+      </div>
+      {arr.agencyName && (
+        <p className="text-slate-600">Agency: <span className="font-medium">{arr.agencyName}</span></p>
+      )}
+      {arr.reachLabel && (
+        <p className="text-slate-500">Reach: <span className="font-medium">{arr.reachLabel}</span></p>
+      )}
+      <p className="text-slate-600">
+        Allocated: <span className="font-mono font-semibold">{arr.allocatedQty.toLocaleString()} {arr.uom}</span>
+        {boqQty != null && (
+          <span className="text-slate-400 ml-1">/ {boqQty.toLocaleString()} {arr.uom} total</span>
+        )}
+      </p>
+      {arr.agreedRate != null && (
+        <p className="text-slate-600">
+          Rate: <span className="font-mono font-semibold">₹{arr.agreedRate.toLocaleString()}/{arr.uom}</span>
+          {estimatedValue != null && (
+            <span className="text-slate-500 ml-1">(Est. ₹{(estimatedValue / 100000).toFixed(2)} L)</span>
+          )}
+        </p>
+      )}
+      <div className="flex gap-3 flex-wrap text-slate-600">
+        {arr.plannedStartDate && (
+          <span>Start: <span className="font-medium">{arr.plannedStartDate}</span></span>
+        )}
+        {arr.targetCompletionDate && (
+          <span>Target: <span className="font-medium">{arr.targetCompletionDate}</span></span>
+        )}
+        {expectedDays != null && (
+          <span>~{expectedDays} days at {arr.plannedDailyOutput} {arr.uom}/day</span>
+        )}
+      </div>
+      {arr.status !== "cancelled" && arr.status !== "approved" && (
+        <div className="flex gap-1.5 pt-1">
+          <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={onEdit}>
+            Edit
+          </Button>
+          <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={onCancel}>
+            <Trash2 className="w-3 h-3 mr-1" /> Cancel
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main dialog ──────────────────────────────────────────────────────────────
+
+interface EarthworkArrangementDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+  projectId: number;
+  boqItemId: number | null;
+  materialLabel: string;
+  boqQty?: number;
+  /** Pre-fill for editing an existing arrangement */
+  editArrangement?: EarthworkArrangementSummary & { inclusions?: string; exclusions?: string; notes?: string; borrowSource?: string; avgLeadKm?: number };
+}
+
+export function EarthworkArrangementDialog({
+  open, onClose, onSaved, projectId, boqItemId, materialLabel, boqQty, editArrangement,
+}: EarthworkArrangementDialogProps) {
+  const { toast } = useToast();
+  const isEdit = !!editArrangement;
+
+  // Form state
+  const [arrangementType, setArrangementType] = useState<ArrangementType>(
+    (editArrangement?.arrangementType as ArrangementType) ?? "not_decided"
+  );
+  const [agencyName, setAgencyName] = useState(editArrangement?.agencyName ?? "");
+  const [reachLabel, setReachLabel] = useState(editArrangement?.reachLabel ?? "");
+  const [allocatedQty, setAllocatedQty] = useState(
+    editArrangement?.allocatedQty != null ? String(editArrangement.allocatedQty) : ""
+  );
+  const [agreedRate, setAgreedRate] = useState(
+    editArrangement?.agreedRate != null ? String(editArrangement.agreedRate) : ""
+  );
+  const [borrowSource, setBorrowSource] = useState((editArrangement as any)?.borrowSource ?? "");
+  const [avgLeadKm, setAvgLeadKm] = useState(
+    (editArrangement as any)?.avgLeadKm != null ? String((editArrangement as any).avgLeadKm) : ""
+  );
+  const [plannedStartDate, setPlannedStartDate] = useState(editArrangement?.plannedStartDate ?? "");
+  const [targetCompletionDate, setTargetCompletionDate] = useState(editArrangement?.targetCompletionDate ?? "");
+  const [plannedDailyOutput, setPlannedDailyOutput] = useState(
+    editArrangement?.plannedDailyOutput != null ? String(editArrangement.plannedDailyOutput) : ""
+  );
+  const [notes, setNotes] = useState((editArrangement as any)?.notes ?? "");
+  const [components, setComponents] = useState<Record<ComponentKey, ComponentResponsibility>>(
+    editArrangement?.components != null
+      ? { ...defaultComponents("not_decided"), ...editArrangement.components as Record<ComponentKey, ComponentResponsibility> }
+      : defaultComponents("not_decided")
+  );
+
+  // Apply template when arrangement type changes
+  function handleTypeChange(t: ArrangementType) {
+    setArrangementType(t);
+    setComponents(defaultComponents(t));
+  }
+
+  // Derived
+  const allocQtyNum = parseFloat(allocatedQty) || 0;
+  const rateNum = parseFloat(agreedRate) || 0;
+  const dailyOutputNum = parseFloat(plannedDailyOutput) || 0;
+  const estimatedValue = allocQtyNum > 0 && rateNum > 0 ? allocQtyNum * rateNum : null;
+  const expectedDays = allocQtyNum > 0 && dailyOutputNum > 0 ? Math.ceil(allocQtyNum / dailyOutputNum) : null;
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const body = {
+        boqItemId, materialLabel, arrangementType,
+        allocatedQty: allocQtyNum, uom: "CUM",
+        agencyName: agencyName.trim() || null,
+        reachLabel: reachLabel.trim() || null,
+        agreedRate: rateNum > 0 ? rateNum : null,
+        borrowSource: borrowSource.trim() || null,
+        avgLeadKm: avgLeadKm ? parseFloat(avgLeadKm) : null,
+        plannedStartDate: plannedStartDate || null,
+        targetCompletionDate: targetCompletionDate || null,
+        plannedDailyOutput: dailyOutputNum > 0 ? dailyOutputNum : null,
+        notes: notes.trim() || null,
+        components,
+      };
+      const url = isEdit
+        ? `/api/earthwork-arrangements/${editArrangement!.id}`
+        : `/api/boq/projects/${projectId}/earthwork-arrangements`;
+      const method = isEdit ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method, credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
+      return data;
+    },
+    onSuccess: () => {
+      toast({ title: isEdit ? "Arrangement updated" : "Arrangement saved", description: `Execution arrangement recorded for ${materialLabel}` });
+      onSaved();
+      onClose();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Save failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const canSave = allocQtyNum > 0 && arrangementType !== "not_decided" || arrangementType === "not_decided";
+
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Edit" : "New"} Execution Arrangement</DialogTitle>
+          <p className="text-[12px] text-slate-500">{materialLabel}</p>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2 text-sm">
+          {/* Arrangement type */}
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Arrangement Type *</Label>
+            <Select value={arrangementType} onValueChange={v => handleTypeChange(v as ArrangementType)}>
+              <SelectTrigger className="h-8 text-[12px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.entries(ARRANGEMENT_TYPE_LABELS) as [ArrangementType, string][]).map(([k, v]) => (
+                  <SelectItem key={k} value={k} className="text-[12px]">{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Agency / Vendor (shown unless not_decided / client_supplied / hlc_in_house / reused_excavated) */}
+          {!["hlc_in_house", "reused_excavated", "not_decided"].includes(arrangementType) && (
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Agency / Vendor Name</Label>
+              <Input
+                className="h-8 text-[12px]"
+                placeholder="e.g. M/s Earthcon Contractors"
+                value={agencyName}
+                onChange={e => setAgencyName(e.target.value)}
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Allocated Quantity ({boqQty != null ? `BOQ: ${boqQty} CUM` : "CUM"})</Label>
+              <Input
+                className="h-8 text-[12px] font-mono"
+                type="number" min={0}
+                placeholder="0"
+                value={allocatedQty}
+                onChange={e => setAllocatedQty(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Agreed Rate (₹/CUM)</Label>
+              <Input
+                className="h-8 text-[12px] font-mono"
+                type="number" min={0}
+                placeholder="0.00"
+                value={agreedRate}
+                onChange={e => setAgreedRate(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {estimatedValue != null && (
+            <p className="text-[12px] text-emerald-700 bg-emerald-50 rounded px-2 py-1">
+              Estimated value: <span className="font-mono font-semibold">₹{estimatedValue.toLocaleString()}</span>
+              {" "}(₹{(estimatedValue / 100000).toFixed(2)} L)
+            </p>
+          )}
+
+          {/* Reach / scope */}
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Reach / Scope Label (optional)</Label>
+            <Input
+              className="h-8 text-[12px]"
+              placeholder="e.g. 0+000 to 2+500 (LHS), or Leave blank for full item"
+              value={reachLabel}
+              onChange={e => setReachLabel(e.target.value)}
+            />
+          </div>
+
+          {/* Source details (shown for earth-supply arrangements) */}
+          {["fully_outsourced_composite", "hlc_source_outsourced_execution", "vendor_material_delivered"].includes(arrangementType) && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Borrow Source / Quarry Location</Label>
+                <Input className="h-8 text-[12px]" placeholder="e.g. Km 15+300 LHS borrow pit" value={borrowSource} onChange={e => setBorrowSource(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Average Lead (km)</Label>
+                <Input className="h-8 text-[12px] font-mono" type="number" min={0} placeholder="0.0" value={avgLeadKm} onChange={e => setAvgLeadKm(e.target.value)} />
+              </div>
+            </div>
+          )}
+
+          {/* Schedule */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Planned Start Date</Label>
+              <Input className="h-8 text-[12px]" type="date" value={plannedStartDate} onChange={e => setPlannedStartDate(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Target Completion</Label>
+              <Input className="h-8 text-[12px]" type="date" value={targetCompletionDate} onChange={e => setTargetCompletionDate(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Daily Output (CUM/day)</Label>
+              <Input
+                className="h-8 text-[12px] font-mono"
+                type="number" min={0}
+                placeholder="0"
+                value={plannedDailyOutput}
+                onChange={e => setPlannedDailyOutput(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {expectedDays != null && (
+            <p className="text-[12px] text-blue-700 bg-blue-50 rounded px-2 py-1">
+              Expected duration: <span className="font-semibold">{expectedDays} working days</span> at {dailyOutputNum} CUM/day
+            </p>
+          )}
+
+          {/* Component responsibility table */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Component Responsibility</Label>
+            <div className="rounded border border-slate-200 overflow-hidden">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="text-left px-2 py-1.5 font-semibold text-slate-600 w-1/3">Component</th>
+                    <th className="text-left px-2 py-1.5 font-semibold text-slate-600">Responsibility</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {COMPONENT_KEYS.map((key, i) => (
+                    <tr key={key} className={i % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
+                      <td className="px-2 py-1 text-slate-600 font-medium">{COMPONENT_LABELS[key]}</td>
+                      <td className="px-2 py-1">
+                        <Select
+                          value={components[key]}
+                          onValueChange={v => setComponents(prev => ({ ...prev, [key]: v as ComponentResponsibility }))}
+                        >
+                          <SelectTrigger className={`h-6 text-[11px] border rounded px-1.5 w-44 ${RESPONSIBILITY_COLORS[components[key]]}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(Object.entries(RESPONSIBILITY_LABELS) as [ComponentResponsibility, string][]).map(([v, label]) => (
+                              <SelectItem key={v} value={v} className={`text-[11px] ${RESPONSIBILITY_COLORS[v]}`}>{label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Notes / Special Conditions</Label>
+            <Textarea className="text-[12px] min-h-[60px]" placeholder="Any additional conditions, inclusions, exclusions..." value={notes} onChange={e => setNotes(e.target.value)} />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={saveMutation.isPending}>Cancel</Button>
+          <Button
+            disabled={saveMutation.isPending || !canSave}
+            onClick={() => saveMutation.mutate()}
+          >
+            {saveMutation.isPending && <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />}
+            {isEdit ? "Update Arrangement" : "Save Arrangement"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── EarthworkArrangementCell ─────────────────────────────────────────────────
+// Rendered inside Work Demand for rows with procurementStatus = "earthwork_arrangement_required"
+
+interface EarthworkArrangementCellProps {
+  row: {
+    materialName: string;
+    totalDemand: number;
+    demandUpToSelectedDate: number;
+    uom: string;
+    earthworkBoqItemId?: number | null;
+    earthworkArrangements?: EarthworkArrangementSummary[];
+  };
+  projectId: number;
+  onSaved: () => void;
+}
+
+export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkArrangementCellProps) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [editTarget, setEditTarget] = useState<EarthworkArrangementSummary | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<number | null>(null);
+  const { toast } = useToast();
+
+  const arrangements = row.earthworkArrangements ?? [];
+  const activeArrs = arrangements.filter(a => a.status !== "cancelled");
+  const allocatedTotal = activeArrs.reduce((s, a) => s + a.allocatedQty, 0);
+  const unallocatedQty = Math.max(0, row.totalDemand - allocatedTotal);
+
+  const cancelMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/earthwork-arrangements/${id}`, {
+        method: "DELETE", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Cancelled from Work Demand" }),
+      });
+      if (!res.ok) throw new Error("Cancel failed");
+    },
+    onSuccess: () => {
+      toast({ title: "Arrangement cancelled" });
+      setCancelTarget(null);
+      onSaved();
+    },
+    onError: () => toast({ title: "Cancel failed", variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-2">
+      {/* Header badge */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5">
+          <AlertCircle className="w-3 h-3" />
+          Execution Arrangement Required
+        </span>
+        {allocatedTotal > 0 && (
+          <span className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">
+            {allocatedTotal.toLocaleString()} CUM allocated · {unallocatedQty.toLocaleString()} CUM open
+          </span>
+        )}
+      </div>
+
+      {/* Existing arrangements */}
+      {activeArrs.length > 0 && (
+        <div className="space-y-1.5">
+          {activeArrs.map(arr => (
+            <ArrangementSummaryCard
+              key={arr.id}
+              arr={arr}
+              boqQty={row.totalDemand}
+              onEdit={() => setEditTarget(arr)}
+              onCancel={() => setCancelTarget(arr.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Fully allocated */}
+      {allocatedTotal >= row.totalDemand - 0.001 && activeArrs.length > 0 && (
+        <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+          <CheckCircle2 className="w-3 h-3" /> Fully Arranged
+        </span>
+      )}
+
+      {/* Add arrangement button */}
+      {unallocatedQty > 0.001 && (
+        <button
+          onClick={() => setShowCreate(true)}
+          className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5 hover:bg-teal-100 transition-colors"
+        >
+          <Plus className="w-3 h-3" />
+          {activeArrs.length === 0 ? "Set Up Execution Arrangement" : "Add Partial Arrangement"}
+        </button>
+      )}
+
+      {/* Cancelled arrangements (collapsed) */}
+      {arrangements.some(a => a.status === "cancelled") && (
+        <p className="text-[10px] text-slate-400">
+          {arrangements.filter(a => a.status === "cancelled").length} cancelled arrangement(s) hidden
+        </p>
+      )}
+
+      {/* Cancel confirmation */}
+      {cancelTarget != null && (
+        <div className="flex items-center gap-2 p-2 rounded border border-red-200 bg-red-50 text-[11px]">
+          <AlertCircle className="w-3 h-3 text-red-600 shrink-0" />
+          <span className="text-red-700 flex-1">Cancel this arrangement? This cannot be undone.</span>
+          <button
+            onClick={() => cancelMutation.mutate(cancelTarget)}
+            disabled={cancelMutation.isPending}
+            className="font-semibold text-red-700 hover:underline"
+          >
+            {cancelMutation.isPending ? "Cancelling..." : "Confirm"}
+          </button>
+          <button onClick={() => setCancelTarget(null)} className="text-slate-500 hover:underline">Dismiss</button>
+        </div>
+      )}
+
+      {/* Create dialog */}
+      {showCreate && (
+        <EarthworkArrangementDialog
+          open={showCreate}
+          onClose={() => setShowCreate(false)}
+          onSaved={onSaved}
+          projectId={projectId}
+          boqItemId={row.earthworkBoqItemId ?? null}
+          materialLabel={row.materialName}
+          boqQty={row.totalDemand}
+        />
+      )}
+
+      {/* Edit dialog */}
+      {editTarget != null && (
+        <EarthworkArrangementDialog
+          open={editTarget != null}
+          onClose={() => setEditTarget(null)}
+          onSaved={onSaved}
+          projectId={projectId}
+          boqItemId={row.earthworkBoqItemId ?? null}
+          materialLabel={row.materialName}
+          boqQty={row.totalDemand}
+          editArrangement={editTarget}
+        />
+      )}
+    </div>
+  );
+}

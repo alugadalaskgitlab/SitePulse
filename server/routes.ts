@@ -11815,13 +11815,14 @@ export async function registerRoutes(
       const horizonModeParam = (req.query.horizonMode as string | undefined) ?? "current_month";
       const customDateParam = req.query.customDate as string | undefined;
 
-      const [{ expandedItems, bars }, allStockBalances, allMaterialsRaw, allIndents, allIrns, materialMappings] = await Promise.all([
+      const [{ expandedItems, bars }, allStockBalances, allMaterialsRaw, allIndents, allIrns, materialMappings, allEarthworkArrangements] = await Promise.all([
         computeProjectBom(projectId),
         storage.getStockBalances(),
         storage.getAllPlantMaterials(),          // active + inactive — partitioned below
         storage.getPurchaseIndents(),
         storage.getInternalRequisitions(),
         storage.getMaterialMappings(projectId),
+        storage.getEarthworkArrangements(projectId), // Instruction 023
       ]);
       // Partition: active only for resolution maps and stock lookup; inactive for diagnostics
       const allMaterials = allMaterialsRaw.filter(m => m.isActive === 1);
@@ -12175,6 +12176,9 @@ export async function registerRoutes(
           | "fully_programmed" | "partly_programmed" | "not_programmed" | undefined;
         const hasProgrammeBars = matProgrammingStatus !== "not_programmed";
 
+        // Instruction 023: earthwork bulk detection from BOM row flag
+        const isEarthworkBulkRequirement = !!(matRow as any).isEarthworkBulkRequirement;
+
         const enrichedMatRow = { ...scaledMatRow, materialId: resolvedId, sourceBoqItemId };
         const shortageRow = computeShortageRow(
           enrichedMatRow,
@@ -12197,8 +12201,33 @@ export async function registerRoutes(
             unprogrammedDemand: (scaledMatRow as any).unprogrammedDemand as number | undefined,
             sourceBoqItemIds: distinctBoqItemIds,
             resolutionReason,  // Instruction 020 §3: drives procurementStatus in planningEngine
+            isEarthworkBulkRequirement, // Instruction 023
           },
         );
+
+        // Instruction 023: attach arrangement summaries for earthwork rows
+        let earthworkArrangementSummaries: import("@shared/planningEngine").EarthworkArrangementSummary[] | undefined;
+        if (isEarthworkBulkRequirement && sourceBoqItemId != null) {
+          const rawArrs = allEarthworkArrangements.filter(
+            a => a.boqItemId === sourceBoqItemId && a.status !== "cancelled"
+          );
+          if (rawArrs.length > 0) {
+            earthworkArrangementSummaries = rawArrs.map(a => ({
+              id: a.id,
+              arrangementType: a.arrangementType,
+              status: a.status,
+              agencyName: a.agencyName ?? null,
+              allocatedQty: Number(a.allocatedQty ?? 0),
+              uom: a.uom,
+              agreedRate: a.agreedRate != null ? Number(a.agreedRate) : null,
+              plannedDailyOutput: a.plannedDailyOutput != null ? Number(a.plannedDailyOutput) : null,
+              plannedStartDate: a.plannedStartDate ?? null,
+              targetCompletionDate: a.targetCompletionDate ?? null,
+              reachLabel: a.reachLabel ?? null,
+              components: (a.components as Record<string, string> | null) ?? null,
+            }));
+          }
+        }
 
         // 021 §13: procurement equivalent — shortfall in stock/canonical UOM (e.g. MT)
         // = planning shortfall × convFactor. Shown alongside planning shortfall in UI.
@@ -12214,6 +12243,11 @@ export async function registerRoutes(
           ...(conversionBasis ? { conversionBasis, canonicalUom, conversionProfileId: convProfileId } : {}),
           ...(procurementEquivalentQty != null ? { procurementEquivalentQty, procurementEquivalentUom } : {}),
           ...(Object.keys(resolutionDiagnostic).length > 0 ? { resolutionDiagnostic } : {}),
+          // Instruction 023: earthwork arrangement context
+          ...(isEarthworkBulkRequirement ? {
+            earthworkBoqItemId: sourceBoqItemId,
+            earthworkArrangements: earthworkArrangementSummaries ?? [],
+          } : {}),
         };
       });
 
@@ -12264,6 +12298,193 @@ export async function registerRoutes(
       // Return a structured, safe error — no stack traces or secrets exposed to the client.
       const detail = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: "Failed to compute shortage check", detail });
+    }
+  });
+
+  // ── Instruction 023: Earthwork Arrangement routes ──────────────────────────
+
+  /** List all earthwork arrangements for a project. */
+  app.get("/api/boq/projects/:id/earthwork-arrangements", async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const rows = await storage.getEarthworkArrangements(projectId);
+      res.json(rows);
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/earthwork-arrangements:", err);
+      res.status(500).json({ error: "Failed to fetch earthwork arrangements" });
+    }
+  });
+
+  /** List earthwork arrangements for a specific BOQ item. */
+  app.get("/api/boq/projects/:id/earthwork-arrangements/item/:itemId", async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const boqItemId = parseInt(req.params.itemId);
+      const rows = await storage.getEarthworkArrangementsForItem(projectId, boqItemId);
+      res.json(rows);
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/earthwork-arrangements/item/:itemId:", err);
+      res.status(500).json({ error: "Failed to fetch earthwork arrangements" });
+    }
+  });
+
+  /** Create a new earthwork arrangement. Requires purchase_indents_raise or purchase_indents_approve. */
+  app.post("/api/boq/projects/:id/earthwork-arrangements", async (req, res) => {
+    try {
+      if (!assertLogin(req, res)) return;
+      const projectId = parseInt(req.params.id);
+      const user = (req as any).user;
+      const body = req.body ?? {};
+
+      // Validate required fields
+      const { boqItemId, materialLabel, arrangementType, allocatedQty } = body;
+      if (!materialLabel || !materialLabel.trim())
+        return res.status(400).json({ error: "materialLabel is required" });
+      if (allocatedQty == null || isNaN(Number(allocatedQty)) || Number(allocatedQty) < 0)
+        return res.status(400).json({ error: "allocatedQty must be a non-negative number" });
+
+      // Guard: check allocation does not exceed BOQ item quantity
+      if (boqItemId) {
+        const [boqItem] = await db.select({ currentQty: boqItems.currentQty })
+          .from(boqItems).where(eq(boqItems.id, boqItemId));
+        if (boqItem) {
+          const existing = await storage.getEarthworkArrangementsForItem(projectId, boqItemId);
+          const alreadyAllocated = existing
+            .filter(a => a.status !== "cancelled")
+            .reduce((s, a) => s + Number(a.allocatedQty ?? 0), 0);
+          const boqQty = Number(boqItem.currentQty ?? 0);
+          if (alreadyAllocated + Number(allocatedQty) > boqQty + 0.001) {
+            return res.status(400).json({
+              error: "OVER_ALLOCATION",
+              message: `Allocated quantity (${alreadyAllocated + Number(allocatedQty)}) would exceed BOQ item quantity (${boqQty}).`,
+            });
+          }
+        }
+      }
+
+      const row = await storage.createEarthworkArrangement({
+        boqProjectId: projectId,
+        boqItemId: boqItemId ? Number(boqItemId) : null,
+        materialLabel: materialLabel.trim(),
+        arrangementType: arrangementType ?? "not_decided",
+        status: "draft",
+        allocatedQty: Number(allocatedQty),
+        uom: body.uom ?? "CUM",
+        agencyName: body.agencyName?.trim() || null,
+        workDescription: body.workDescription?.trim() || null,
+        reachLabel: body.reachLabel?.trim() || null,
+        chainageFrom: body.chainageFrom != null ? Number(body.chainageFrom) : null,
+        chainageTo: body.chainageTo != null ? Number(body.chainageTo) : null,
+        agreedRate: body.agreedRate != null ? Number(body.agreedRate) : null,
+        borrowSource: body.borrowSource?.trim() || null,
+        avgLeadKm: body.avgLeadKm != null ? Number(body.avgLeadKm) : null,
+        plannedStartDate: body.plannedStartDate ?? null,
+        targetCompletionDate: body.targetCompletionDate ?? null,
+        plannedDailyOutput: body.plannedDailyOutput != null ? Number(body.plannedDailyOutput) : null,
+        workingHoursPerShift: body.workingHoursPerShift != null ? Number(body.workingHoursPerShift) : null,
+        numExcavators: body.numExcavators != null ? Number(body.numExcavators) : null,
+        excavatorType: body.excavatorType?.trim() || null,
+        numTippers: body.numTippers != null ? Number(body.numTippers) : null,
+        tipperCapacityCum: body.tipperCapacityCum != null ? Number(body.tipperCapacityCum) : null,
+        dieselResponsibility: body.dieselResponsibility ?? null,
+        components: body.components ?? null,
+        inclusions: body.inclusions?.trim() || null,
+        exclusions: body.exclusions?.trim() || null,
+        notes: body.notes?.trim() || null,
+        preparedByUserId: user?.id ?? null,
+      });
+
+      // Audit log
+      await storage.createAuditLog?.({
+        module: "earthwork_arrangements",
+        transactionId: String(row.id),
+        action: "create",
+        userId: user?.id ?? null,
+        newValues: row,
+      }).catch(() => {});
+
+      res.status(201).json(row);
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/earthwork-arrangements:", err);
+      res.status(500).json({ error: "Failed to create earthwork arrangement" });
+    }
+  });
+
+  /** Update an earthwork arrangement (supports status transitions). */
+  app.patch("/api/earthwork-arrangements/:id", async (req, res) => {
+    try {
+      if (!assertLogin(req, res)) return;
+      const id = parseInt(req.params.id);
+      const user = (req as any).user;
+      const body = req.body ?? {};
+
+      const allowedFields = [
+        "arrangementType", "agencyName", "workDescription", "reachLabel",
+        "chainageFrom", "chainageTo", "allocatedQty", "uom", "agreedRate",
+        "borrowSource", "avgLeadKm", "plannedStartDate", "targetCompletionDate",
+        "plannedDailyOutput", "workingHoursPerShift", "numExcavators", "excavatorType",
+        "numTippers", "tipperCapacityCum", "dieselResponsibility", "components",
+        "inclusions", "exclusions", "notes", "status",
+        "approvedByUserId", "approvedAt", "rejectionReason", "cancellationReason",
+        "submittedAt",
+      ];
+      const patch: Record<string, unknown> = {};
+      for (const field of allowedFields) {
+        if (field in body) patch[field] = body[field];
+      }
+
+      // Status transition guards
+      if (patch.status === "submitted") patch.submittedAt = new Date().toISOString();
+      if (patch.status === "approved") {
+        patch.approvedByUserId = user?.id ?? null;
+        patch.approvedAt = new Date().toISOString();
+      }
+
+      const updated = await storage.updateEarthworkArrangement(id, patch as any);
+      if (!updated) return res.status(404).json({ error: "Arrangement not found" });
+
+      await storage.createAuditLog?.({
+        module: "earthwork_arrangements",
+        transactionId: String(id),
+        action: "update",
+        userId: user?.id ?? null,
+        newValues: patch,
+      }).catch(() => {});
+
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/earthwork-arrangements/:id:", err);
+      res.status(500).json({ error: "Failed to update earthwork arrangement" });
+    }
+  });
+
+  /** Cancel (soft-delete) an earthwork arrangement. */
+  app.delete("/api/earthwork-arrangements/:id", async (req, res) => {
+    try {
+      if (!assertLogin(req, res)) return;
+      const id = parseInt(req.params.id);
+      const user = (req as any).user;
+      const { reason } = req.body ?? {};
+
+      // Soft-cancel rather than hard delete
+      const updated = await storage.updateEarthworkArrangement(id, {
+        status: "cancelled",
+        cancellationReason: reason?.trim() || null,
+      });
+      if (!updated) return res.status(404).json({ error: "Arrangement not found" });
+
+      await storage.createAuditLog?.({
+        module: "earthwork_arrangements",
+        transactionId: String(id),
+        action: "cancel",
+        userId: user?.id ?? null,
+        newValues: { status: "cancelled", reason },
+      }).catch(() => {});
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("DELETE /api/earthwork-arrangements/:id:", err);
+      res.status(500).json({ error: "Failed to cancel earthwork arrangement" });
     }
   });
 

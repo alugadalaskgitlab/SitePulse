@@ -3469,3 +3469,87 @@ export const materialUomConversions = pgTable("material_uom_conversions", {
 export const insertMaterialUomConversionSchema = createInsertSchema(materialUomConversions).omit({ id: true, createdAt: true, updatedAt: true });
 export type MaterialUomConversion = typeof materialUomConversions.$inferSelect;
 export type InsertMaterialUomConversion = z.infer<typeof insertMaterialUomConversionSchema>;
+
+// ── Instruction 023: Earthwork Execution Arrangements ───────────────────────
+// Records the agency/execution arrangement for recognised earthwork/bulk-fill
+// BOQ items (Earth, Borrow Soil, Subgrade, Shoulder, Gravel, Moorum, etc.).
+// A single BOQ item may be split across multiple arrangements (partial allocation).
+//
+// arrangementType values:
+//   fully_outsourced_composite       — agency provides source, equipment, transport, diesel
+//   vendor_material_delivered        — vendor supplies & delivers; HLC handles rest
+//   hlc_source_outsourced_execution  — HLC owns source/rights; agency excavates/hauls
+//   hlc_in_house                     — HLC arranges everything
+//   client_supplied                  — client provides material/source
+//   reused_excavated                 — reuse of cut material within project
+//   not_decided                      — no commitment yet
+//
+// status values: draft | submitted | approved | rejected | cancelled
+//
+// components (jsonb): { material_source, source_identification, excavation, loading,
+//   transport, dumping, spreading, watering, compaction, royalty_seigniorage,
+//   permits_approvals, equipment, tippers, operators_drivers, diesel_fuel,
+//   survey_setting_out, quality_testing }
+//   Each value: 'hlc' | 'agency' | 'client' | 'not_applicable' | 'not_decided'
+export const earthworkArrangements = pgTable("earthwork_arrangements", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull(),
+  boqItemId: integer("boq_item_id"),            // null → label-bucket level (rare)
+  materialLabel: text("material_label").notNull(), // BOM materialName e.g. "Earth / Borrow Soil"
+
+  // Arrangement type
+  arrangementType: text("arrangement_type").notNull().default("not_decided"),
+
+  // Agency / vendor
+  agencyName: text("agency_name"),
+  workDescription: text("work_description"),
+
+  // Location / scope
+  reachLabel: text("reach_label"),              // null = whole BOQ item
+  chainageFrom: real("chainage_from"),
+  chainageTo: real("chainage_to"),
+
+  // Quantities
+  allocatedQty: real("allocated_qty").notNull().default(0),
+  uom: text("uom").notNull().default("CUM"),
+
+  // Commercial
+  agreedRate: real("agreed_rate"),              // per UOM (e.g. per CUM)
+  borrowSource: text("borrow_source"),
+  avgLeadKm: real("avg_lead_km"),
+
+  // Schedule
+  plannedStartDate: text("planned_start_date"),     // ISO date YYYY-MM-DD
+  targetCompletionDate: text("target_completion_date"),
+  plannedDailyOutput: real("planned_daily_output"), // CUM/day
+
+  // Equipment
+  workingHoursPerShift: integer("working_hours_per_shift"),
+  numExcavators: integer("num_excavators"),
+  excavatorType: text("excavator_type"),
+  numTippers: integer("num_tippers"),
+  tipperCapacityCum: real("tipper_capacity_cum"),
+
+  // Responsibility
+  dieselResponsibility: text("diesel_responsibility"), // agency | hlc | mixed
+  components: jsonb("components"),              // per-component responsibility map (see above)
+  inclusions: text("inclusions"),
+  exclusions: text("exclusions"),
+  notes: text("notes"),
+
+  // Status / approval flow
+  status: text("status").notNull().default("draft"),
+  preparedByUserId: integer("prepared_by_user_id"),
+  submittedAt: timestamp("submitted_at"),
+  approvedByUserId: integer("approved_by_user_id"),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  cancellationReason: text("cancellation_reason"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEarthworkArrangementSchema = createInsertSchema(earthworkArrangements).omit({ id: true, createdAt: true, updatedAt: true });
+export type EarthworkArrangement = typeof earthworkArrangements.$inferSelect;
+export type InsertEarthworkArrangement = z.infer<typeof insertEarthworkArrangementSchema>;

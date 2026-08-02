@@ -81,6 +81,9 @@ import {
   type InsertBoqMaterialMapping,
   materialUomConversions,
   type MaterialUomConversion,
+  earthworkArrangements,
+  type EarthworkArrangement,
+  type InsertEarthworkArrangement,
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
@@ -1439,6 +1442,13 @@ export interface IStorage {
     conversionFactor: number; conversionBasis: string | null; conversionType: string;
     isActive: number; notes: string | null;
   }>): Promise<MaterialUomConversion>;
+
+  // Instruction 023: earthwork execution arrangements
+  getEarthworkArrangements(boqProjectId: number): Promise<EarthworkArrangement[]>;
+  getEarthworkArrangementsForItem(boqProjectId: number, boqItemId: number): Promise<EarthworkArrangement[]>;
+  createEarthworkArrangement(data: InsertEarthworkArrangement): Promise<EarthworkArrangement>;
+  updateEarthworkArrangement(id: number, data: Partial<InsertEarthworkArrangement>): Promise<EarthworkArrangement | undefined>;
+  deleteEarthworkArrangement(id: number): Promise<boolean>;
   searchPlantMaterials(query: string, limit?: number): Promise<Array<{
     id: number; name: string; defaultUom: string | null; category: string | null;
     allowedUoms: string | null; bulkDensity: number | null;
@@ -24117,6 +24127,44 @@ export class DatabaseStorage implements IStorage {
       .where(eq(materialUomConversions.id, id))
       .returning();
     return updated;
+  }
+
+  // ── Instruction 023: Earthwork Arrangements ──────────────────────────────────
+
+  async getEarthworkArrangements(boqProjectId: number): Promise<EarthworkArrangement[]> {
+    return db.select().from(earthworkArrangements)
+      .where(eq(earthworkArrangements.boqProjectId, boqProjectId))
+      .orderBy(earthworkArrangements.createdAt);
+  }
+
+  async getEarthworkArrangementsForItem(boqProjectId: number, boqItemId: number): Promise<EarthworkArrangement[]> {
+    return db.select().from(earthworkArrangements)
+      .where(
+        and(
+          eq(earthworkArrangements.boqProjectId, boqProjectId),
+          eq(earthworkArrangements.boqItemId, boqItemId),
+        )
+      )
+      .orderBy(earthworkArrangements.createdAt);
+  }
+
+  async createEarthworkArrangement(data: InsertEarthworkArrangement): Promise<EarthworkArrangement> {
+    const [row] = await db.insert(earthworkArrangements).values(data).returning();
+    return row;
+  }
+
+  async updateEarthworkArrangement(id: number, data: Partial<InsertEarthworkArrangement>): Promise<EarthworkArrangement | undefined> {
+    const [updated] = await db.update(earthworkArrangements)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(earthworkArrangements.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteEarthworkArrangement(id: number): Promise<boolean> {
+    const result = await db.delete(earthworkArrangements)
+      .where(eq(earthworkArrangements.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 }
 

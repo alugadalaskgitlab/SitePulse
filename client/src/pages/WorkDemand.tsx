@@ -26,10 +26,12 @@ import {
   type BomInputItem,
   type BomInputBar,
   type EffectivePlanningMode,
+  type EarthworkArrangementSummary,
 } from "@shared/planningEngine";
 import { shortItemName } from "@/lib/itemName";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
+import { EarthworkArrangementCell } from "@/components/EarthworkArrangementDialog";
 import type { BoqProject } from "@shared/schema";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -1194,11 +1196,15 @@ interface ShortageRow {
   procurementEquivalentUom?: string | null;
   // ── Instruction 020 additions ─────────────────────────────────────────────
   /** Instruction 020 §3: authoritative server-side procurement status. */
-  procurementStatus?: "mapping_required" | "uom_resolution_required" | "multiple_matches" | "future_not_due" | "covered_by_stock" | "covered_by_incoming" | "partially_covered" | "action_required";
+  procurementStatus?: "mapping_required" | "uom_resolution_required" | "multiple_matches" | "earthwork_arrangement_required" | "future_not_due" | "covered_by_stock" | "covered_by_incoming" | "partially_covered" | "action_required";
   /** Instruction 020 §1: precise resolution diagnostic reason. */
   resolutionReason?: "saved_mapping" | "alias_resolved" | "inactive_material" | "uom_incompatible" | "ambiguous" | "no_match" | null;
   /** Instruction 020 §1: structured diagnostics for UI display. */
   resolutionDiagnostic?: { inactiveMaterialName?: string; bomUom?: string; masterUom?: string | null; materialName?: string; message?: string; action?: string };
+  // Instruction 023: earthwork bulk requirement fields
+  isEarthworkBulkRequirement?: boolean;
+  earthworkBoqItemId?: number | null;
+  earthworkArrangements?: EarthworkArrangementSummary[];
 }
 
 interface ShortageData {
@@ -1762,10 +1768,21 @@ function SuggestionBadge({
   const splitBalance = Math.max(0, splitCeiling - splitTotal);
   const splitValid = (internalQty >= 0 && procQty >= 0) && (internalQty > 0 || procQty > 0) && splitTotal <= splitCeiling + 0.001;
 
-  // ── Instruction 020 §4-7: procurementStatus-driven rendering ───────────────
+  // ── Instruction 020 §4-7 / 023: procurementStatus-driven rendering ──────────
   const ps = row.procurementStatus;
   const rd = row.resolutionDiagnostic;
   const rr = row.resolutionReason;
+
+  // ── Instruction 023 §A: earthwork bulk requirement — execution arrangement flow ──
+  if (ps === "earthwork_arrangement_required") {
+    return (
+      <EarthworkArrangementCell
+        row={row}
+        projectId={projectId}
+        onSaved={() => onMappingResolved?.()}
+      />
+    );
+  }
 
   // §4A-C: resolution issues — must fix mapping before any stock/procurement check
   if (ps === "mapping_required" || ps === "uom_resolution_required" || ps === "multiple_matches") {

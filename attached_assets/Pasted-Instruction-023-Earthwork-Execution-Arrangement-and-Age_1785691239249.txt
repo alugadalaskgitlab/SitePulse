@@ -1,0 +1,607 @@
+Instruction 023 — Earthwork Execution Arrangement and Agency Planning
+
+Purpose
+
+Create the first operational phase of the Execution & Supply Responsibility feature for earthwork so Takkadpally–Sirur and other projects can restart outsourced earthwork without forcing Earth, Soil, Selected Soil, Subgrade Soil, Shoulder Earth, Gravel or Moorum through normal Plant Material mapping and procurement.
+
+This is an immediately usable field-planning and agency-arrangement feature.
+
+It is not the full subcontract billing, baseline/reforecasting or profitability module.
+
+Business context
+
+Earthwork is commonly awarded to an agency at an all-inclusive rate per CUM.
+
+The agency may:
+
+- identify or use an approved borrow area/pit;
+- excavate the material;
+- load it into its own tippers;
+- transport it to site;
+- dump it at the required chainage/location;
+- sometimes spread, water and compact it;
+- provide its own excavator/JCB, tippers, operators, drivers and diesel.
+
+In some arrangements, the contractor may provide:
+
+- the borrow source;
+- royalty/seigniorage;
+- diesel;
+- spreading/compaction equipment;
+- water;
+- survey/setting-out;
+- quality control.
+
+SitePulse must record the real arrangement and calculate only HLC’s responsibilities.
+
+Primary objectives
+
+1. Stop treating generic earthwork inputs as ordinary Plant Materials.
+2. Preserve their physical quantity for programme and measurement.
+3. Allow the PM/Admin to select the execution arrangement.
+4. Record the agency, rate and inclusions.
+5. Exclude agency-owned resources and diesel from HLC demand.
+6. Show the realistic agency requirement and planned output.
+7. Keep GSB/WMM and genuinely purchased bulk materials unaffected.
+8. Avoid implementing full subcontract billing in this phase.
+
+Scope of earthwork-type requirements
+
+Apply the new treatment to recognised earthwork and natural bulk-fill descriptions such as:
+
+- Earth
+- Borrow Earth
+- Selected Earth
+- Selected Soil
+- Embankment Soil/Material
+- Subgrade Soil/Material
+- Shoulder Earth/Soil
+- Gravel
+- Moorum/Murrum
+- Ordinary Soil
+- Suitable Soil
+- Approved Soil
+- Excavated Earth reused in embankment
+- other approved aliases classified as earthwork/natural bulk fill
+
+Do not apply merely because a description contains the word “material.”
+
+Do not automatically classify:
+
+- GSB
+- WMM
+- aggregates
+- stone dust
+- bitumen
+- emulsion
+- cement
+- steel
+- diesel
+
+Those remain canonical materials unless a separate execution arrangement is deliberately selected later.
+
+1. Add an Earthwork/Direct Bulk Requirement classification
+
+Earthwork-type BOM outputs should be classified as:
+
+- earthwork_bulk_requirement
+
+They must retain:
+
+- BOQ item
+- project/site
+- reach/chainage
+- programmed quantity
+- BOQ/planning UOM
+- selected-horizon quantity
+- total remaining quantity
+
+They must not require a Plant Material mapping merely to remain visible.
+
+Replace the present default state:
+
+“Material Mapping Required”
+
+with:
+
+“Execution Arrangement Required”
+
+for positively recognised earthwork bulk requirements.
+
+Do not delete any existing mapping. If a row has already been deliberately mapped, preserve it and allow Admin to review the classification.
+
+2. Execution Arrangement options
+
+For each earthwork BOQ item, programme reach or allocated quantity, allow the PM/Admin to choose:
+
+A. Fully Outsourced — Composite Rate
+
+Agency is responsible for the agreed included components.
+
+B. Vendor Material Delivered to Site
+
+Vendor supplies the material and delivers it; HLC handles any remaining work.
+
+C. HLC Source — Execution Outsourced
+
+HLC identifies/provides the borrow source or material rights; agency handles excavation/loading/transport or other selected components.
+
+D. HLC In-House Execution
+
+HLC arranges the source, machinery, transport, labour and diesel.
+
+E. Client-Supplied / Client-Designated Source
+
+Client supplies the material or directs the source; remaining responsibilities are assigned separately.
+
+F. Reused Excavated Material / Internal Source
+
+Material arises from excavation within the project and is reused in embankment/subgrade/shoulders.
+
+G. Not Decided
+
+No procurement or diesel commitment should be generated until responsibility is confirmed.
+
+3. Responsibility components
+
+Capture responsibility for:
+
+- material/borrow source
+- source identification
+- excavation
+- loading
+- transport
+- dumping
+- spreading
+- watering
+- compaction
+- royalty/seigniorage
+- permits/approvals
+- equipment
+- tippers
+- operators/drivers
+- diesel/fuel
+- survey/setting-out
+- quality testing
+
+Each component may be assigned to:
+
+- HLC
+- Agency/Vendor
+- Client
+- Not Applicable
+- Not Decided
+
+Use arrangement templates to prefill common responsibility patterns, but allow PM/Admin adjustment.
+
+Example template:
+
+Fully Outsourced — Composite Rate
+
+Default agency responsibility:
+
+- material/source
+- excavation
+- loading
+- transport
+- dumping
+- equipment
+- tippers
+- operators/drivers
+- diesel
+
+Ask separately whether agency scope also includes:
+
+- spreading
+- watering
+- compaction
+- royalty/seigniorage
+
+4. Agency arrangement details
+
+For outsourced arrangements capture:
+
+- agency/vendor
+- work description
+- project/site
+- BOQ item
+- reach/chainage
+- quantity assigned
+- UOM
+- agreed or proposed rate per CUM
+- estimated arrangement value
+- source/borrow area
+- average lead/distance, where known
+- start date
+- target completion date
+- planned daily output
+- working hours/shifts
+- number/type of excavators/JCBs
+- number/capacity of tippers
+- whether diesel is agency-supplied or HLC-supplied
+- inclusions
+- exclusions
+- notes
+- prepared by
+- approval status
+- approved by/date
+
+The estimated value is:
+
+assigned quantity × unit rate
+
+This is planning/commitment value only in this phase.
+
+Do not create accounting liability or vendor bill automatically.
+
+5. Quantity allocation
+
+Allow the BOQ/programmed quantity to be split across arrangements.
+
+Example:
+
+Total embankment quantity: 20,000 CUM
+
+- Agency A composite outsourced: 12,000 CUM
+- Agency B vendor-delivered material: 5,000 CUM
+- HLC in-house: 3,000 CUM
+
+Prevent total active allocation from exceeding the remaining BOQ quantity.
+
+Show:
+
+- total quantity
+- allocated quantity
+- unallocated quantity
+- completed quantity, where available
+- remaining arrangement quantity
+
+Do not require the whole BOQ item to use one execution arrangement.
+
+6. Procurement behaviour
+
+For Fully Outsourced — Composite Rate:
+
+- do not show Raise Plant Material PI for Earth/Soil;
+- show:
+  “Arrange/Approve Earthwork Agency”
+- show assigned quantity and estimated subcontract value;
+- exclude agency-provided material/resources from HLC material procurement.
+
+For Vendor Material Delivered to Site:
+
+- show:
+  “Arrange Direct Site Supply”
+- do not route it through Plant stock by default;
+- prepare for later Site Material Received linkage;
+- do not build the receipt workflow in this phase.
+
+For HLC In-House:
+
+- allow the relevant HLC material/source, equipment and diesel requirements to remain.
+
+For Not Decided:
+
+- show:
+  “Select Execution Arrangement”
+- do not raise an ordinary Plant Material PI automatically.
+
+7. Diesel and equipment behaviour
+
+Only HLC-responsibility components should generate HLC demand.
+
+If the agency provides:
+
+- excavator/JCB
+- tippers
+- operators/drivers
+- diesel
+
+then exclude those resources from:
+
+- HLC equipment demand
+- HLC tipper demand
+- HLC daily diesel demand
+- HLC internal operating cost forecast
+
+If HLC supplies diesel to an agency:
+
+- retain HLC diesel responsibility;
+- identify the agency and arrangement against which diesel will be supplied;
+- do not assume agency fuel is included.
+
+If HLC performs spreading/compaction:
+
+- retain HLC grader/roller/water-tanker and diesel requirement for those components only.
+
+Do not yet create the full Daily Diesel Requirement feature, but structure the output so it can feed that feature later.
+
+8. Work Demand presentation
+
+For each recognised earthwork row show:
+
+- physical requirement
+- selected-horizon quantity
+- execution-arrangement status
+- quantity allocated
+- quantity not allocated
+- agency/vendor, when selected
+- planned daily output
+- expected duration
+- estimated arrangement value
+- HLC responsibilities
+- Agency responsibilities
+
+Suggested statuses:
+
+- Execution Arrangement Required
+- Draft Agency Arrangement
+- Awaiting Approval
+- Approved — Agency to Mobilise
+- In Progress
+- Partially Allocated
+- Fully Allocated
+- Completed
+- On Hold
+
+Suggested actions:
+
+- Select Execution Arrangement
+- Create Agency Arrangement
+- Allocate Quantity
+- Review/Approve
+- View Arrangement
+
+Do not display “Material Mapping Required” for correctly recognised earthwork bulk requirements.
+
+9. Programme and immediate restart planning
+
+For the Takkadpally–Sirur project, the PM must be able to record:
+
+- earthwork item/reach
+- quantity ready to start
+- source/borrow area
+- agency
+- agreed/proposed rate
+- planned mobilisation date
+- daily output
+- equipment/tippers proposed
+- HLC responsibilities
+- expected completion
+
+Calculate a simple expected duration:
+
+assigned quantity ÷ planned daily output
+
+Round and display working days clearly.
+
+Do not automatically rewrite the Work Programme in this phase.
+
+Display a warning when the agency plan does not fit the existing programmed dates:
+
+“Agency execution plan exceeds the current programme duration. Programme reforecast may be required.”
+
+10. Approval flow
+
+Minimum flow:
+
+- Draft
+- Submitted for Approval
+- Approved
+- Rejected/Returned
+- Cancelled
+
+Suggested rights:
+
+- Site Engineer: prepare draft and site details
+- Project Manager: create/submit and revise
+- Admin/Owner: approve
+- Purchaser: view approved commercial arrangement where required
+- Equipment/Stores: view HLC responsibilities
+
+Do not implement Designation Templates in this batch.
+
+Use current permissions conservatively and preserve Admin/Owner control for approval.
+
+11. DPR readiness
+
+Do not redesign DPR now.
+
+Prepare the arrangement for later linkage so submitted DPR work can record:
+
+- agency arrangement
+- BOQ item
+- reach/chainage
+- quantity executed that day
+- agency equipment/tippers
+- HLC-supplied diesel, if applicable
+
+In this phase, only ensure stable IDs and references exist for future linkage.
+
+Do not automatically mark progress complete without DPR/measurement evidence.
+
+12. Existing master treatment
+
+Do not require generic earthwork labels to exist in Plant Material Master.
+
+Do not auto-create Plant Materials for:
+
+- Earth
+- Borrow Earth
+- Selected Soil
+- Subgrade Soil
+- Shoulder Earth
+
+If such records already exist:
+
+- do not delete them;
+- flag them for Admin review;
+- do not force their use for new earthwork arrangements.
+
+GSB/WMM remain canonical materials and are not changed by this instruction.
+
+Gravel/Moorum may be either:
+
+- earthwork/direct bulk requirement; or
+- purchased canonical material
+
+based on the BOQ context and selected arrangement.
+
+Do not decide solely by name when the context is ambiguous; ask for classification.
+
+13. No full subcontract billing yet
+
+Do not implement:
+
+- subcontract work orders
+- running bills
+- retention
+- advances
+- deductions
+- TDS/GST
+- measurement-book certification
+- vendor bill posting
+- payment tracking
+
+Store the arrangement so these can be added later.
+
+14. Audit trail
+
+Record:
+
+- classification
+- arrangement type
+- responsibility assignments
+- quantities
+- rate/value
+- agency
+- status changes
+- changes by/date
+- approval by/date
+- reason for revision/cancellation
+
+Do not overwrite approved arrangement history silently.
+
+15. Acceptance tests
+
+A. Borrow Earth fully outsourced
+
+Quantity: 10,000 CUM
+
+Agency includes:
+
+- source/material
+- excavation
+- loading
+- tippers
+- transport
+- dumping
+- operators
+- diesel
+
+Expected:
+
+- no Plant Material mapping required;
+- no Earth PI;
+- no HLC excavator/tipper/diesel demand for that allocated quantity;
+- agency arrangement value is quantity × rate.
+
+B. HLC source, agency transport
+
+HLC responsibility:
+
+- borrow source
+- royalty
+
+Agency responsibility:
+
+- excavation
+- loading
+- transport
+- diesel
+
+Expected:
+
+- HLC source/royalty responsibilities remain visible;
+- agency equipment and fuel are excluded from HLC demand.
+
+C. Agency excavation, HLC spreading/compaction
+
+Expected:
+
+- agency excavator/tipper/diesel excluded;
+- HLC grader/roller/water tanker and related diesel remain.
+
+D. Partial allocation
+
+Total: 20,000 CUM
+Allocated: 12,000 CUM outsourced
+Unallocated: 8,000 CUM
+
+Expected:
+
+- status Partially Allocated;
+- outsourced exclusions apply only to 12,000 CUM;
+- remaining 8,000 CUM shows arrangement required.
+
+E. Vendor-delivered gravel
+
+Expected:
+
+- Direct Site Supply;
+- no Plant-stock requirement by default;
+- future Site Material Received route is identified but not built.
+
+F. GSB/WMM regression
+
+Expected:
+
+- they remain canonical materials;
+- existing mapping/UOM conversion remains unchanged.
+
+G. Programme warning
+
+Assigned quantity and daily output exceed current programme duration.
+
+Expected:
+
+- warning shown;
+- Work Programme is not overwritten.
+
+H. Permission
+
+- Site Engineer can prepare draft where permitted;
+- PM can submit;
+- Admin/Owner can approve;
+- unauthorised users cannot approve.
+
+I. No double counting
+
+Fully outsourced quantity must not simultaneously appear as:
+
+- Plant Material procurement;
+- HLC equipment demand;
+- HLC diesel demand;
+- and agency subcontract quantity.
+
+J. Regression
+
+Confirm unchanged:
+
+- Work Demand UOM conversion
+- GSB/WMM mapping
+- horizon calculations
+- procurement-status labels
+- PI/IRN/GRN workflows
+- Work Programme/Gantt
+- Stores stock
+- Plant Material Master
+
+After this passes
+
+1. Configure the live Takkadpally–Sirur earthwork agency arrangement.
+2. Use it to plan the restart quantity, agency rate, mobilisation and daily output.
+3. Then complete Cancel GRN.
+4. Fix Store Items back-navigation.
+5. Complete User/Designation Templates.
+6. Later add DPR measurement, subcontract billing, programme reforecasting and Daily Diesel Requirement.

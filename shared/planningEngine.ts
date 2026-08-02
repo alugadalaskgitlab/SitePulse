@@ -444,6 +444,8 @@ export interface BomMaterialRow {
   hasAutoSource: boolean;
   /** "direct" = quarry/site supply; "plant" = processed at HMP or RMC; undefined = manual/unknown */
   supplyType?: "direct" | "plant";
+  /** Instruction 023: true for recognised earthwork/bulk-fill BOQ items. Bypasses Plant Material mapping. */
+  isEarthworkBulkRequirement?: boolean;
   originalNormMaterialName?: string;
   displayMaterialName?: string;
   suggestedMaterialMasterName?: string;
@@ -631,6 +633,8 @@ type KeyBomMaterialInputRow = {
   isClientSupplied: boolean;
   isAuto?: boolean | null;
   supplyType?: "direct" | "plant";
+  /** Instruction 023: true for earthwork/bulk-fill BOQ items (Earth, Subgrade, Shoulder, etc.) */
+  isEarthworkBulkRequirement?: boolean;
 };
 
 function textOf(value: unknown): string {
@@ -856,6 +860,7 @@ function buildKeyMaterialRows(item: BomInputItem): KeyBomMaterialInputRow[] {
       wastagePct: 0,
       isClientSupplied: false,
       isAuto: true,
+      isEarthworkBulkRequirement: true, // Instruction 023: signals execution-arrangement flow
     });
     return rows;
   }
@@ -989,6 +994,7 @@ export function calculateBomDemand(
           reviewNeeded: false,
           normalisationReason: "Material BOM V1 key-material allowlist",
           supplyType: m.supplyType,
+          isEarthworkBulkRequirement: m.isEarthworkBulkRequirement ?? false, // Instruction 023
         });
       }
 
@@ -2004,11 +2010,28 @@ export type ShortageSuggestion =
   | "review_internal_issue"
   | "resolve_mapping";
 
-/** Instruction 020 §3: authoritative server-side procurement status. */
+/** Instruction 023: lightweight summary of an earthwork arrangement, attached to ShortageRowResult. */
+export interface EarthworkArrangementSummary {
+  id: number;
+  arrangementType: string;
+  status: string;
+  agencyName: string | null;
+  allocatedQty: number;
+  uom: string;
+  agreedRate: number | null;
+  plannedDailyOutput: number | null;
+  plannedStartDate: string | null;
+  targetCompletionDate: string | null;
+  reachLabel: string | null;
+  components: Record<string, string> | null;
+}
+
+/** Instruction 020 §3 / 023: authoritative server-side procurement status. */
 export type ProcurementStatus =
   | "mapping_required"
   | "uom_resolution_required"
   | "multiple_matches"
+  | "earthwork_arrangement_required"   // 023: recognised earthwork with no Plant Material mapping
   | "future_not_due"
   | "covered_by_stock"
   | "covered_by_incoming"
@@ -2081,6 +2104,12 @@ export interface ShortageRowResult {
   procurementStatus: ProcurementStatus;
   /** Instruction 020 §1: precise resolution diagnostic reason. */
   resolutionReason: ResolutionReason | null;
+  /** Instruction 023: true for earthwork/bulk-fill rows that bypass Plant Material mapping. */
+  isEarthworkBulkRequirement: boolean;
+  /** Instruction 023: arrangements saved for this earthwork row (injected by route). */
+  earthworkArrangements?: EarthworkArrangementSummary[];
+  /** Instruction 023: source BOQ item ID for single-source earthwork rows. */
+  earthworkBoqItemId?: number | null;
 }
 
 /**
@@ -2114,6 +2143,12 @@ export interface ShortageRowOpts {
   sourceBoqItemIds?: number[];
   /** Instruction 020 §1: precise material resolution reason for procurement status derivation. */
   resolutionReason?: ResolutionReason | null;
+  /** Instruction 023: true for earthwork/bulk-fill rows — fires earthwork_arrangement_required status instead of mapping_required. */
+  isEarthworkBulkRequirement?: boolean;
+  /** Instruction 023: boqItemId of the earthwork BOQ item, for arrangement lookup. */
+  earthworkBoqItemId?: number | null;
+  /** Instruction 023: summary of active arrangements already saved for this item (injected by route). */
+  earthworkArrangements?: EarthworkArrangementSummary[];
 }
 
 /**
@@ -2222,14 +2257,19 @@ export function computeShortageRow(
     }
   }
 
-  // ── Instruction 020 §3-4: authoritative procurement status ─────────────────
+  // ── Instruction 020 §3-4 / 023: authoritative procurement status ─────────────
   // Strict precedence: resolution issues → future timing → coverage level → action needed.
   // UI uses this field for rendering; suggestion is kept only for backward compatibility.
   const resolutionReason: ResolutionReason | null = opts?.resolutionReason ?? null;
+  const isEarthworkBulkRequirement = opts?.isEarthworkBulkRequirement ?? false;
   const PROC_TOL = 0.001;
   let procurementStatus: ProcurementStatus;
   if (opts) {
-    if (resolutionReason === "inactive_material" || resolutionReason === "no_match") {
+    if (isEarthworkBulkRequirement && materialMappingUnresolved) {
+      // 023: earthwork bulk rows never go through Plant Material mapping.
+      // Show execution-arrangement flow regardless of resolution reason.
+      procurementStatus = "earthwork_arrangement_required";
+    } else if (resolutionReason === "inactive_material" || resolutionReason === "no_match") {
       procurementStatus = "mapping_required";
     } else if (resolutionReason === "uom_incompatible") {
       procurementStatus = "uom_resolution_required";
@@ -2294,6 +2334,9 @@ export function computeShortageRow(
     sourceBoqItemIds,
     procurementStatus,
     resolutionReason,
+    isEarthworkBulkRequirement,
+    // 023: earthworkArrangements and earthworkBoqItemId are injected by the route
+    // after calling this function — not populated here.
   };
 }
 
