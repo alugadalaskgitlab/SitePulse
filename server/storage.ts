@@ -1425,6 +1425,7 @@ export interface IStorage {
     id: number; name: string; defaultUom: string | null; category: string | null;
     allowedUoms: string | null; bulkDensity: number | null;
     conversionFactor: number | null; conversionFromUom: string | null; conversionToUom: string | null;
+    aliases: string | null;
   }>>;
 }
 
@@ -23872,28 +23873,70 @@ export class DatabaseStorage implements IStorage {
     ]) {
       await db.execute(sql.raw(stmt));
     }
-    // ── Seed standard road material aliases (idempotent) ────────────────────
-    // Only updates rows where aliases IS NULL or '[]' — never overwrites user edits.
-    type AliasSeed = { name: string; aliases: string[] };
-    const ALIAS_SEEDS: AliasSeed[] = [
-      { name: "10/12MM",  aliases: ["10mm Aggregate", "10 mm Aggregate", "12mm Aggregate", "12 mm Aggregate", "10MM"] },
-      { name: "20MM",     aliases: ["20mm Aggregate", "20 mm Aggregate"] },
-      { name: "6MM DOWN", aliases: ["6mm Aggregate", "6 mm Aggregate", "6mm Stone"] },
-      { name: "DUST",     aliases: ["Stone Dust", "Crusher Dust", "Dust Aggregate"] },
-      { name: "GSB",      aliases: ["Granular Sub-Base", "GSB Material"] },
-      { name: "Filler",   aliases: ["Mineral Filler", "Hydrated Lime Filler"] },
-      { name: "BITUMEN",  aliases: ["Bitumen VG-30", "Bitumen VG-40", "Bitumen VG-10", "VG-30 Bitumen"] },
-      { name: "EMULSION", aliases: ["Bitumen Emulsion SS-1", "Bitumen Emulsion RS-1", "Emulsion SS-1", "Emulsion RS-1", "Bitumen Emulsion"] },
-      { name: "DIESEL",   aliases: ["Diesel / HSD", "Diesel/HSD", "HSD", "High Speed Diesel"] },
-      { name: "LDO",      aliases: ["LDO / Process Fuel", "LDO/Process Fuel", "Process Fuel", "Light Diesel Oil"] },
+    // ── Instruction 019B §2: idempotent alias backfill — merge, never overwrite ──
+    // Rules: merge new aliases into existing ones; only attach when one clear master exists;
+    // log unresolvable or ambiguous cases; soil/earth intentionally skipped.
+    const CORE_ALIAS_SEEDS: Array<{ name: string; newAliases: string[] }> = [
+      { name: "10/12MM",  newAliases: ["10mm Aggregate", "10 mm Aggregate", "12mm Aggregate", "12 mm Aggregate", "10MM"] },
+      { name: "20MM",     newAliases: ["20mm Aggregate", "20 mm Aggregate"] },
+      { name: "6MM DOWN", newAliases: ["6mm Aggregate", "6 mm Aggregate", "6mm Stone", "6 mm Stone"] },
+      { name: "DUST",     newAliases: ["Stone Dust", "Crusher Dust", "Dust Aggregate"] },
+      { name: "GSB",      newAliases: ["Granular Sub-Base", "GSB Material", "GSB Aggregate"] },
+      { name: "Filler",   newAliases: ["Mineral Filler", "Hydrated Lime Filler", "Filler Aggregate"] },
+      { name: "BITUMEN",  newAliases: ["Bitumen VG-30", "Bitumen VG-40", "Bitumen VG-10", "VG-30 Bitumen", "VG30 Bitumen"] },
+      { name: "EMULSION", newAliases: ["Bitumen Emulsion SS-1", "Bitumen Emulsion RS-1", "Emulsion SS-1", "Emulsion RS-1", "Bitumen Emulsion"] },
+      { name: "DIESEL",   newAliases: ["Diesel / HSD", "Diesel/HSD", "HSD", "High Speed Diesel", "Diesel"] },
+      { name: "LDO",      newAliases: ["LDO / Process Fuel", "LDO/Process Fuel", "Process Fuel", "Light Diesel Oil"] },
     ];
-    for (const seed of ALIAS_SEEDS) {
-      await db.execute(sql.raw(
-        `UPDATE plant_materials SET aliases = '${JSON.stringify(seed.aliases).replace(/'/g, "''")}'
-         WHERE name = '${seed.name.replace(/'/g, "''")}' AND (aliases IS NULL OR aliases = '' OR aliases = '[]')`
-      ));
+
+    // Fetch all current materials once (name + aliases only — lightweight)
+    const allMatsForSeed = await db.select({
+      id: plantMaterials.id,
+      name: plantMaterials.name,
+      aliases: plantMaterials.aliases,
+    }).from(plantMaterials);
+    const matByExactName = new Map(allMatsForSeed.map(m => [m.name, m]));
+
+    // Idempotent merge helper — adds only aliases not already present (case-insensitive compare)
+    const mergeAliases = async (matId: number, currentJson: string | null, toAdd: string[]): Promise<number> => {
+      let existing: string[] = [];
+      try { existing = JSON.parse(currentJson ?? "[]"); } catch { /* empty array */ }
+      const existingNorm = new Set(existing.map(a => a.toLowerCase().trim()));
+      const genuinelyNew = toAdd.filter(a => !existingNorm.has(a.toLowerCase().trim()));
+      if (genuinelyNew.length === 0) return 0;
+      await db.update(plantMaterials)
+        .set({ aliases: JSON.stringify([...existing, ...genuinelyNew]) })
+        .where(eq(plantMaterials.id, matId));
+      return genuinelyNew.length;
+    };
+
+    // Step 1: Core known-name seeds (safe — name is a stable, exact match)
+    for (const seed of CORE_ALIAS_SEEDS) {
+      const mat = matByExactName.get(seed.name);
+      if (!mat) continue;
+      const added = await mergeAliases(mat.id, mat.aliases, seed.newAliases);
+      if (added > 0) console.log(`Startup: alias merge — "${seed.name}" +${added} alias(es)`);
     }
-    console.log("Startup: ensureBoqMaterialMappings — table + 019 columns + alias seeds verified");
+
+    // Step 2: WMM — dynamic lookup (attach only when exactly ONE WMM master exists)
+    const WMM_CANDIDATE_ALIASES = ["WMM", "WMM Processed", "Wet Mix Macadam", "WMM Gravel"];
+    const wmmMats = allMatsForSeed.filter(m => m.name.toUpperCase().includes("WMM"));
+    if (wmmMats.length === 1) {
+      const added = await mergeAliases(wmmMats[0].id, wmmMats[0].aliases, WMM_CANDIDATE_ALIASES);
+      if (added > 0) console.log(`Startup: alias merge — WMM aliases attached to "${wmmMats[0].name}" (id=${wmmMats[0].id})`);
+    } else if (wmmMats.length === 0) {
+      console.log("Startup: alias backfill — no WMM master in plant_materials; WMM left unresolved (add via Material Master)");
+    } else {
+      console.log(`Startup: alias backfill — ${wmmMats.length} WMM candidates [${wmmMats.map(m => m.name).join(", ")}]; ambiguous, skipping`);
+    }
+
+    // Step 3: Soil/Earth — intentionally NOT auto-resolved (Instruction 019B §2)
+    // "Selected Soil / Subgrade Material", "Borrow Earth / Earth", "Shoulder Earth / Soil"
+    // represent DISTINCT earthwork categories that must not be collapsed without explicit user confirmation.
+    const UNSAFE_SOIL_LABELS = ["Selected Soil", "Subgrade Material", "Borrow Earth", "Earth", "Shoulder Earth", "Shoulder Soil"];
+    console.log(`Startup: alias backfill — soil/earth labels [${UNSAFE_SOIL_LABELS.join(", ")}] require distinct confirmed masters; left unresolved (link via Material Master)`);
+
+    console.log("Startup: ensureBoqMaterialMappings — table + 019/019B columns + alias seeds verified");
   }
 
   /** Returns all mappings for a project (project-specific first, then globals). */
@@ -23954,6 +23997,7 @@ export class DatabaseStorage implements IStorage {
     id: number; name: string; defaultUom: string | null; category: string | null;
     allowedUoms: string | null; bulkDensity: number | null;
     conversionFactor: number | null; conversionFromUom: string | null; conversionToUom: string | null;
+    aliases: string | null;
   }>> {
     return db.select({
       id: plantMaterials.id,
@@ -23965,6 +24009,7 @@ export class DatabaseStorage implements IStorage {
       conversionFactor: plantMaterials.conversionFactor,
       conversionFromUom: plantMaterials.conversionFromUom,
       conversionToUom: plantMaterials.conversionToUom,
+      aliases: plantMaterials.aliases,
     }).from(plantMaterials)
       .where(
         and(

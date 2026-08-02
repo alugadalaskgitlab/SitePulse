@@ -11799,19 +11799,34 @@ export async function registerRoutes(
         materialIdByName.set(mat.name.trim().toLowerCase(), mat.id);
       }
 
-      // ── Alias map: normalized BOM label → materialId (Instruction 019) ───────
-      // Aliases are stored as a JSON array in plant_materials.aliases (seeded on startup).
-      // Exact normalized match only — no substring fallback.
-      const aliasToMaterialId = new Map<string, number>();
+      // ── Instruction 019B §3: collision-aware alias/name resolution maps ─────────
+      // Map.set() silently overwrites — we detect collisions instead.
+      // resolvedAliasToId: normalized key → materialId  (exactly 1 candidate)
+      // ambiguousByKey:    normalized key → candidates  (2+ candidates, cannot auto-resolve)
+      type MatCandidate = { id: number; name: string; category: string | null; defaultUom: string | null };
+      const keyToCandidates = new Map<string, MatCandidate[]>();
       for (const mat of allMaterials) {
-        let aliases: string[] = [];
-        try { aliases = JSON.parse((mat as any).aliases ?? "[]"); } catch { /* skip */ }
-        for (const alias of aliases) {
-          const normAlias = normalizeMaterialLabel(alias);
-          if (normAlias) aliasToMaterialId.set(normAlias, mat.id);
+        const aliasesRaw: string[] = (() => {
+          try { return JSON.parse(mat.aliases ?? "[]"); } catch { return []; }
+        })();
+        const keys = new Set<string>([
+          normalizeMaterialLabel(mat.name),
+          ...aliasesRaw.map(a => normalizeMaterialLabel(a)).filter(Boolean),
+        ]);
+        for (const key of keys) {
+          if (!key) continue;
+          if (!keyToCandidates.has(key)) keyToCandidates.set(key, []);
+          const cands = keyToCandidates.get(key)!;
+          if (!cands.some(c => c.id === mat.id)) {
+            cands.push({ id: mat.id, name: mat.name, category: mat.category ?? null, defaultUom: mat.defaultUom ?? null });
+          }
         }
-        // Also register the normalized material name itself (handles spacing variants)
-        aliasToMaterialId.set(normalizeMaterialLabel(mat.name), mat.id);
+      }
+      const resolvedAliasToId = new Map<string, number>();
+      const ambiguousByKey = new Map<string, MatCandidate[]>();
+      for (const [key, candidates] of keyToCandidates) {
+        if (candidates.length === 1) resolvedAliasToId.set(key, candidates[0].id);
+        else                          ambiguousByKey.set(key, candidates);
       }
 
       // ── Confirmed internal incoming — stores_verified IRN items with balance ─
@@ -11838,16 +11853,23 @@ export async function registerRoutes(
         }
       }
 
-      // ── Mapping table: BOM label → materialId ────────────────────────────────
+      // ── Mapping table: BOM label → materialId + full mapping for conversion lookup ─
       // Project-specific mapping wins over global (null boqProjectId) mapping.
       const labelToMaterialId = new Map<string, number>();
+      const labelToMapping = new Map<string, typeof materialMappings[0]>();
       // Load globals first (lower priority)
       for (const m of materialMappings) {
-        if (m.boqProjectId == null) labelToMaterialId.set(m.materialLabel, m.materialId);
+        if (m.boqProjectId == null) {
+          labelToMaterialId.set(m.materialLabel, m.materialId);
+          labelToMapping.set(m.materialLabel, m);
+        }
       }
-      // Project-specific overrides
+      // Project-specific overrides (higher priority — overwrite globals)
       for (const m of materialMappings) {
-        if (m.boqProjectId != null) labelToMaterialId.set(m.materialLabel, m.materialId);
+        if (m.boqProjectId != null) {
+          labelToMaterialId.set(m.materialLabel, m.materialId);
+          labelToMapping.set(m.materialLabel, m);
+        }
       }
 
       // ── (a) Demand calculation ────────────────────────────────────────────────
@@ -11924,21 +11946,64 @@ export async function registerRoutes(
 
       const { horizonMonthIndex, resolvedHorizonDate } = resolveHorizon();
 
-      // ── Build shortage rows ────────────────────────────────────────────────────
+      // ── Build shortage rows (019B §4 + §7) ───────────────────────────────────
       const shortageRows = demand.materials.map(matRow => {
-        // Resolve canonical materialId (Instruction 019 priority order):
-        // 1. Saved mapping (project-specific > global)
-        // 2. Exact normalised name match
-        // 3. Alias match (seeded standard aliases + normalized name variants)
+        // Resolve canonical materialId — strict precedence (019B §4):
+        // 1. Saved BOQ-material mapping (project-specific > global)
+        // 2. Exact approved alias or exact normalized canonical name (collision-aware)
+        // No substring / loose auto-resolution.
         const labelKey = matRow.materialName.trim().toLowerCase();
         const normLabel = normalizeMaterialLabel(matRow.materialName);
-        const mappedId = labelToMaterialId.get(matRow.materialName) ?? labelToMaterialId.get(labelKey);
-        const masterMatchId = materialIdByName.get(labelKey) ?? materialIdByName.get(normLabel);
-        const aliasMatchId = aliasToMaterialId.get(normLabel);
-        const resolvedId = mappedId ?? masterMatchId ?? aliasMatchId ?? null;
+
+        const savedMapping = labelToMapping.get(matRow.materialName) ?? labelToMapping.get(labelKey);
+        const mappedId: number | null = savedMapping?.materialId ?? null;
+
+        // Exact alias/name — only when no saved mapping
+        const aliasOrNameMatchId: number | null = mappedId == null
+          ? (resolvedAliasToId.get(normLabel) ?? materialIdByName.get(labelKey) ?? null)
+          : null;
+
+        // Ambiguity — only when no saved mapping and alias/name also unresolved
+        const ambiguousCandidates: MatCandidate[] | null =
+          (mappedId == null && aliasOrNameMatchId == null)
+            ? (ambiguousByKey.get(normLabel) ?? null)
+            : null;
+        const materialMappingAmbiguous = ambiguousCandidates != null && ambiguousCandidates.length > 0;
+
+        const resolvedId: number | null = mappedId ?? aliasOrNameMatchId ?? null;
+        // Unresolved includes ambiguous — neither can auto-assign a materialId
         const materialMappingUnresolved = resolvedId == null;
 
-        // Stock figures — all by materialId
+        // ── 019B §7: apply conversion when saved mapping has a factor ──────────
+        // Demand is in BOM sourceUom; stock is already in material's canonical UOM.
+        const convFactor: number = savedMapping?.conversionFactorUsed ?? 1;
+        const convMode: string | null = savedMapping?.conversionMode ?? null;
+        const convSourceUom: string | null = savedMapping?.sourceUom ?? null;
+        const resolvedMat = resolvedId != null ? allMaterials.find(m => m.id === resolvedId) : null;
+        const canonicalUom: string | null = resolvedMat?.defaultUom ?? null;
+        let conversionBasis: string | null = null;
+        if (convFactor !== 1 && convSourceUom && canonicalUom) {
+          conversionBasis = convMode === "bulk_density"
+            ? `Using configured bulk density: 1 ${convSourceUom} = ${convFactor} ${canonicalUom}`
+            : `Configured conversion: 1 ${convSourceUom} = ${convFactor} ${canonicalUom}`;
+        }
+        // Scale all demand quantities to canonical UOM
+        const scaledMatRow = convFactor !== 1
+          ? {
+            ...matRow,
+            uom: canonicalUom ?? matRow.uom,
+            totalDemand: matRow.totalDemand * convFactor,
+            monthlyQty: Object.fromEntries(
+              Object.entries(matRow.monthlyQty as Record<string, number>).map(([k, v]) => [k, v * convFactor])
+            ),
+            ...(typeof (matRow as any).programmedTotalDemand === "number"
+              ? { programmedTotalDemand: (matRow as any).programmedTotalDemand * convFactor } : {}),
+            ...(typeof (matRow as any).unprogrammedDemand === "number"
+              ? { unprogrammedDemand: (matRow as any).unprogrammedDemand * convFactor } : {}),
+          }
+          : matRow;
+
+        // Stock figures — all by materialId (already in canonical UOM)
         const hlcRecordedStock = resolvedId != null ? (hlcStockById.get(resolvedId) ?? 0) : 0;
         const stockWithOtherParties = resolvedId != null ? (elsewhereStockById.get(resolvedId) ?? 0) : 0;
         const confirmedIncomingPurchase = resolvedId != null ? (confirmedPiById.get(resolvedId) ?? 0) : 0;
@@ -11952,19 +12017,18 @@ export async function registerRoutes(
             .filter((id): id is number => id != null)
         )];
         const sourceBoqItemId = distinctBoqItemIds.length === 1 ? distinctBoqItemIds[0] : null;
-        // programmingStatus from calculateBomDemand; fall back to simple bar-presence check
         const matProgrammingStatus = (matRow as any).programmingStatus as
           | "fully_programmed" | "partly_programmed" | "not_programmed" | undefined;
         const hasProgrammeBars = matProgrammingStatus !== "not_programmed";
 
-        const enrichedMatRow = { ...matRow, materialId: resolvedId, sourceBoqItemId };
-        return computeShortageRow(
+        const enrichedMatRow = { ...scaledMatRow, materialId: resolvedId, sourceBoqItemId };
+        const shortageRow = computeShortageRow(
           enrichedMatRow,
-          hlcRecordedStock,     // positional currentStock (legacy compat)
+          hlcRecordedStock,
           stockMatched,
-          confirmedIncomingPurchase, // positional pendingProcurement (legacy compat)
+          confirmedIncomingPurchase,
           currentMonth,
-          stockWithOtherParties,    // positional stockElsewhere (legacy compat)
+          stockWithOtherParties,
           {
             horizonMonthIndex,
             projectStartDate: project.startDate ?? null,
@@ -11975,18 +12039,33 @@ export async function registerRoutes(
             isProgrammed: hasProgrammeBars,
             materialMappingUnresolved,
             programmingStatus: matProgrammingStatus,
-            programmedTotalDemand: (matRow as any).programmedTotalDemand as number | undefined,
-            unprogrammedDemand: (matRow as any).unprogrammedDemand as number | undefined,
+            programmedTotalDemand: (scaledMatRow as any).programmedTotalDemand as number | undefined,
+            unprogrammedDemand: (scaledMatRow as any).unprogrammedDemand as number | undefined,
             sourceBoqItemIds: distinctBoqItemIds,
           },
         );
+
+        return {
+          ...shortageRow,
+          ...(materialMappingAmbiguous ? { materialMappingAmbiguous: true, ambiguousCandidates } : {}),
+          resolvedVia: mappedId ? "mapping" as const : (aliasOrNameMatchId ? "alias" as const : null),
+          ...(conversionBasis ? { conversionBasis, canonicalUom } : {}),
+        };
       });
 
-      // Sort: unresolved first, then by actionableShortfall desc, then totalDemand desc
+      // Sort: unresolved/ambiguous first, then by actionableShortfall desc, then totalDemand desc
       shortageRows.sort((a, b) => {
-        if (a.materialMappingUnresolved !== b.materialMappingUnresolved) return a.materialMappingUnresolved ? -1 : 1;
+        const aTop = (a as any).materialMappingUnresolved || (a as any).materialMappingAmbiguous;
+        const bTop = (b as any).materialMappingUnresolved || (b as any).materialMappingAmbiguous;
+        if (aTop !== bTop) return aTop ? -1 : 1;
         return (b.actionableShortfall - a.actionableShortfall) || (b.totalDemand - a.totalDemand);
       });
+
+      // Instruction 019B §11: programme relation (purely additive, no math touched)
+      const programmeRelation: "before_start" | "within_programme" | "after_end" =
+        currentMonth === 0 ? "before_start"
+        : currentMonth >= maxProgrammeMonth ? "after_end"
+        : "within_programme";
 
       res.json({
         projectId,
@@ -12001,6 +12080,7 @@ export async function registerRoutes(
         selectedHorizonMode: horizonModeParam,
         resolvedHorizonDate,
         resolvedProgrammeMonthIndex: horizonMonthIndex,
+        programmeRelation,
       });
     } catch (err) {
       console.error("GET /api/boq/projects/:id/shortage-check:", err);
@@ -12033,11 +12113,18 @@ export async function registerRoutes(
       const { materialLabel, materialId, global: isGlobal, sourceUom } = req.body;
       if (!materialLabel) return res.status(400).json({ message: "materialLabel required" });
       if (!materialId || Number(materialId) <= 0) return res.status(400).json({ message: "materialId required" });
+      // Instruction 019B §5: sourceUom is mandatory — prevents silent UOM bypass
+      if (!sourceUom || !String(sourceUom).trim()) {
+        return res.status(400).json({
+          error: "SOURCE_UOM_REQUIRED",
+          message: "sourceUom is required for UOM compatibility enforcement. Ensure the mapping caller sends the BOM source UOM.",
+        });
+      }
 
-      // ── UOM compatibility validation (server-authoritative) ────────────────
+      // ── UOM compatibility validation (server-authoritative; always executed) ──
       let conversionMode: string | null = null;
       let conversionFactorUsed: number | null = null;
-      if (sourceUom) {
+      {
         const [targetMat] = await db.select({
           defaultUom: plantMaterials.defaultUom,
           allowedUoms: plantMaterials.allowedUoms,
@@ -12080,13 +12167,28 @@ export async function registerRoutes(
     }
   });
 
-  /** Search plant_materials by name — used by the ResolveMappingDialog autocomplete. */
+  /** Search plant_materials by name — used by the ResolveMappingDialog autocomplete.
+   *  Instruction 019B §8: results are ranked exact_name > exact_alias > substring.
+   *  The server never auto-selects a substring result — ranking is for UI guidance only. */
   app.get("/api/plant-materials/search", async (req, res) => {
     try {
       const q = String(req.query.q ?? "").trim();
       if (!q || q.length < 2) return res.json([]);
-      const results = await storage.searchPlantMaterials(q, 20);
-      res.json(results);
+      const results = await storage.searchPlantMaterials(q, 25);
+      const normQ = normalizeMaterialLabel(q);
+      const matchOrder = { exact_name: 0, exact_alias: 1, substring: 2 } as const;
+      type MatchType = keyof typeof matchOrder;
+      const ranked = results.map(r => {
+        let matchType: MatchType = "substring";
+        if (normalizeMaterialLabel(r.name) === normQ) {
+          matchType = "exact_name";
+        } else {
+          const rAliases: string[] = (() => { try { return JSON.parse(r.aliases ?? "[]"); } catch { return []; } })();
+          if (rAliases.some(a => normalizeMaterialLabel(a) === normQ)) matchType = "exact_alias";
+        }
+        return { ...r, matchType };
+      }).sort((a, b) => (matchOrder[a.matchType] ?? 2) - (matchOrder[b.matchType] ?? 2));
+      res.json(ranked);
     } catch (err) {
       console.error("GET /api/plant-materials/search:", err);
       res.status(500).json({ error: "Search failed" });

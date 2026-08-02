@@ -317,6 +317,8 @@ export const plantMaterials = pgTable("plant_materials", {
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
   procurementRoute: text("procurement_route").default("stores"), // 'stores' | 'bulk_plant'
+  // Instruction 019B §1 — typed alias column (physical column already exists via ALTER TABLE migration)
+  aliases: text("aliases"),                                       // JSON array of approved alias strings
 });
 
 // Material Opening Stocks (per material, per party/stock owner)

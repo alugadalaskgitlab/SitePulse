@@ -1177,6 +1177,15 @@ interface ShortageRow {
   programmedTotalDemand: number;
   unprogrammedDemand: number;
   futureProgrammedRequirement: number;
+  // ── Instruction 019B additions ────────────────────────────────────────────
+  /** True when 2+ candidate materials share the same normalized alias — user must choose */
+  materialMappingAmbiguous?: boolean;
+  ambiguousCandidates?: Array<{ id: number; name: string; category: string | null; defaultUom: string | null }>;
+  /** How the canonical material was resolved */
+  resolvedVia?: "mapping" | "alias" | null;
+  /** Human-readable conversion basis (e.g. "Using bulk density: 1 CFT = 0.05 MT") */
+  conversionBasis?: string;
+  canonicalUom?: string;
 }
 
 interface ShortageData {
@@ -1190,6 +1199,8 @@ interface ShortageData {
   selectedHorizonMode?: string;
   resolvedHorizonDate?: string | null;
   resolvedProgrammeMonthIndex?: number;
+  /** Instruction 019B §11 */
+  programmeRelation?: "before_start" | "within_programme" | "after_end";
 }
 
 // ── Fresh client-request-ID ─────────────────────────────────────────────────
@@ -1232,6 +1243,8 @@ interface PlantMaterialResult {
   conversionFactor: number | null;
   conversionFromUom: string | null;
   conversionToUom: string | null;
+  aliases: string | null;             // JSON array; null = not yet seeded (019B §1)
+  matchType?: "exact_name" | "exact_alias" | "substring"; // 019B §8 — server-ranked
 }
 
 /** Check BOM source UOM against a plant material's allowed units.
@@ -1347,7 +1360,16 @@ function ResolveMappingDialog({
           <div className="bg-amber-50 border border-amber-200 rounded p-3">
             <p className="font-semibold text-amber-900">BOM Label</p>
             <p className="text-amber-800 font-mono text-[13px]">{row.materialName} · {row.uom}</p>
-            <p className="text-amber-700 text-[12px] mt-1">This BOM material has no canonical match in the Plant Material Master. Search below to link it.</p>
+            <p className="text-amber-700 text-[12px] mt-1">
+              {row.materialMappingAmbiguous
+                ? `Multiple possible matches were found for this label. Search and select the correct canonical material below.`
+                : `This BOM material has no canonical match in the Plant Material Master. Search below to link it.`}
+            </p>
+            {row.materialMappingAmbiguous && (row.ambiguousCandidates ?? []).length > 0 && (
+              <p className="text-orange-700 text-[11px] mt-1">
+                Candidates: {(row.ambiguousCandidates ?? []).map(c => `${c.name}${c.defaultUom ? ` (${c.defaultUom})` : ""}`).join(" · ")}
+              </p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="mat-search">Search Plant Materials</Label>
@@ -1378,12 +1400,21 @@ function ResolveMappingDialog({
                         {m.category && <span className="ml-1.5 text-[11px] text-slate-500">{m.category}</span>}
                         {m.defaultUom && <span className="ml-1.5 text-[11px] text-muted-foreground">({m.defaultUom})</span>}
                       </span>
-                      {check.mode === "bulk_density" && (
-                        <span className="text-[10px] text-blue-600 shrink-0">density conv.</span>
-                      )}
-                      {!check.compatible && (
-                        <span className="text-[10px] text-red-500 shrink-0">UOM mismatch</span>
-                      )}
+                      <span className="flex items-center gap-1 shrink-0">
+                        {/* 019B §8: match-quality badge (server-ranked) */}
+                        {m.matchType === "exact_name" && (
+                          <span className="text-[9px] font-semibold text-teal-700 bg-teal-100 border border-teal-300 rounded px-1">exact</span>
+                        )}
+                        {m.matchType === "exact_alias" && (
+                          <span className="text-[9px] font-semibold text-blue-700 bg-blue-100 border border-blue-300 rounded px-1">alias</span>
+                        )}
+                        {check.mode === "bulk_density" && (
+                          <span className="text-[10px] text-blue-600">density conv.</span>
+                        )}
+                        {!check.compatible && (
+                          <span className="text-[10px] text-red-500">UOM mismatch</span>
+                        )}
+                      </span>
                     </div>
                   </button>
                 );
@@ -2060,8 +2091,14 @@ function ProcurementTable({
                   <td className={`px-3 py-2 font-medium sticky left-0 z-10 ${hasShortfall ? "bg-red-50/50" : isUnresolved ? "bg-amber-50/50" : "bg-white"}`}>
                     <div className="flex items-center gap-1 flex-wrap">
                       <span className="text-slate-700">{row.materialName}</span>
-                      {isUnresolved && (
+                      {isUnresolved && !row.materialMappingAmbiguous && (
                         <span className="text-[10px] font-semibold text-amber-600 bg-amber-100 border border-amber-300 rounded px-1 py-0.5">Mapping Required</span>
+                      )}
+                      {row.materialMappingAmbiguous && (
+                        <span className="text-[10px] font-semibold text-orange-700 bg-orange-100 border border-orange-300 rounded px-1 py-0.5" title={`Ambiguous: ${(row.ambiguousCandidates ?? []).map(c => c.name).join(", ")}`}>Multiple Matches</span>
+                      )}
+                      {row.conversionBasis && (
+                        <span className="text-[9px] text-blue-600 italic" title={row.conversionBasis}>⇄ converted</span>
                       )}
                       {row.programmingStatus === "not_programmed" && (
                         <span className="text-[10px] text-slate-400 italic">(not programmed)</span>

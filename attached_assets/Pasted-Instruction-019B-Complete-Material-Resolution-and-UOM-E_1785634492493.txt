@@ -1,0 +1,478 @@
+Instruction 019B — Complete Material Resolution and UOM Enforcement
+
+Purpose
+
+Close the remaining material-resolution and UOM-enforcement gaps from Instruction 019.
+
+This batch is independent of the Procurement-page crash fix already applied. Do not modify the corrected horizon bucket/date mathematics.
+
+Expected files
+
+- server/routes.ts
+- server/storage.ts
+- shared/schema.ts
+- client/src/pages/WorkDemand.tsx only if required to display ambiguity, compatibility, or conversion details correctly
+
+DO NOT TOUCH OR REDESIGN
+
+- horizon bucket/date mathematics
+- shortage phasing
+- Work Programme/Gantt
+- material_requirements
+- material_requirement_allocations
+- requirementId/allocationId linkage
+- PI/IRN lifecycle
+- purchaser actions
+- receipt and GRN flows
+- cancelStoreGrn
+- Stores navigation
+- five-way material classification
+- execution/supply responsibility
+- earth-balance or cut-to-fill
+- borrow-source, royalty, haul or subcontract workflows
+- bituminous outsourcing logic
+- RMC/concrete outsourcing logic
+- physical stock-location ledger
+
+This batch must cover only:
+
+- typed material aliases
+- safe live alias backfill
+- ambiguity detection
+- safe material resolution
+- mandatory UOM validation
+- actual conversion use
+- mapping audit
+- mapping refresh
+
+1. Formalise the aliases field
+
+The plant_materials aliases column is currently added through raw SQL and read through `(mat as any).aliases`.
+
+Add the existing physical aliases column to the typed Drizzle `plantMaterials` schema.
+
+Requirements:
+
+- preserve the current physical column and existing data;
+- do not create a second aliases column;
+- use the correct existing database type/default;
+- replace avoidable `(mat as any).aliases` access with the typed field;
+- run TypeScript/build validation.
+
+2. Backfill approved aliases into the existing live database
+
+Do not change only demo or fresh-database seed data.
+
+Add an idempotent startup backfill/upsert that attempts to attach approved aliases to clearly identified existing canonical materials in the current live database.
+
+Candidate aliases include:
+
+- GSB
+- WMM
+- WMM Processed
+- Stone Dust
+- Crusher Dust
+- 6 mm Aggregate
+- 10 mm Aggregate
+- 20 mm Aggregate
+- Bitumen VG-30
+- Bitumen Emulsion SS-1
+- Bitumen Emulsion RS-1
+- Filler
+- Diesel
+- HSD
+- LDO
+- Process Fuel
+- Selected Soil
+- Subgrade Material
+- Borrow Earth
+- Earth
+- Shoulder Earth
+- Shoulder Soil
+
+Safety rules:
+
+- attach an alias only where one clear, compatible canonical master already exists;
+- validate UOM and category compatibility before attaching;
+- do not create a new material merely to satisfy alias backfill;
+- do not overwrite existing aliases;
+- merge aliases idempotently;
+- do not attach the same normalized alias to multiple materials automatically;
+- log every alias that could not be safely attached.
+
+Do not blindly collapse these into one generic material:
+
+- Selected Soil/Subgrade Material
+- Borrow Earth/Earth
+- Shoulder Earth/Soil
+
+If distinct compatible masters do not exist, or several plausible candidates exist, leave them unresolved.
+
+For WMM:
+
+- add WMM/WMM Processed aliases only when a compatible existing WMM master is found;
+- if no compatible WMM master exists, keep WMM unresolved and direct the user to Material Master;
+- do not auto-create WMM or a placeholder duplicate.
+
+3. Detect normalized-name and alias collisions
+
+The current resolution maps use `Map.set()` and silently overwrite when two materials normalize to the same name or alias.
+
+Replace this with collision-aware resolution.
+
+For every normalized name/alias:
+
+- one unique compatible material → resolvable;
+- more than one candidate → ambiguous;
+- no candidate → unresolved.
+
+Never silently choose the first or last record.
+
+For ambiguous matches, return:
+
+- normalized key;
+- candidate material IDs;
+- names;
+- UOMs;
+- categories where available;
+- compatibility result.
+
+An ambiguous BOM material must:
+
+- remain unresolved;
+- show Resolve Material Mapping;
+- not auto-map;
+- not show Raise PI/IRN/Split.
+
+4. Use strict material-resolution precedence
+
+Use this order:
+
+1. saved BOQ-material mapping;
+2. exact canonical material code, only if a stable code field already exists;
+3. exact approved alias;
+4. exact normalized canonical name;
+5. unique category-compatible and UOM-compatible candidate;
+6. manual Resolve Material Mapping.
+
+Do not invent a new material-code system in this batch.
+
+Do not auto-resolve through loose substring matching.
+
+Substring search may remain only as a low-confidence manual-search aid.
+
+Examples:
+
+- `DUS` must not auto-select `DUST Aggregate`;
+- `SOIL` must not auto-select the first soil material;
+- `EMULSION` must not auto-select SS-1 or RS-1;
+- `WMM` may auto-resolve only through one unique compatible master or alias.
+
+5. Make sourceUom mandatory on mapping save
+
+For:
+
+POST /api/boq/projects/:id/material-mappings
+
+make `sourceUom` mandatory.
+
+If missing or blank:
+
+- return HTTP 400;
+- return code `SOURCE_UOM_REQUIRED`;
+- do not save the mapping.
+
+Before making it mandatory, confirm every existing mapping-save caller sends `sourceUom`.
+
+Do not allow UOM enforcement to be bypassed by omitting the field.
+
+6. Enforce UOM compatibility server-side
+
+Allow a mapping only when one of these is true:
+
+A. Direct compatibility
+
+- source and target UOM are canonically equivalent after normalization.
+
+B. Approved configured conversion
+
+- `allowedUoms` or the material’s approved conversion configuration explicitly supports the source UOM.
+
+C. Material-specific density conversion
+
+- the selected material has a valid configured `bulkDensity` or equivalent;
+- the exact source/target pair is supported.
+
+Block mappings such as:
+
+- MT ↔ CFT
+- MT ↔ CUM
+- Litre ↔ MT
+- Bag ↔ MT
+- loose volume ↔ compacted volume
+
+unless an approved material-specific conversion exists.
+
+Return clear errors:
+
+- `SOURCE_UOM_REQUIRED`
+- `MATERIAL_UOM_MISMATCH`
+- `MATERIAL_CONVERSION_REQUIRED`
+- `MATERIAL_MAPPING_AMBIGUOUS`
+- `MATERIAL_MAPPING_CONFLICT`
+
+Client-side filtering is only convenience; server validation is authoritative.
+
+7. Apply conversions in Work Demand calculations
+
+Do not merely save `conversionFactorUsed`.
+
+Where a valid conversion is used, ensure demand, HLC stock, other-party stock, confirmed incoming, and actionable shortfall are compared in one common canonical UOM.
+
+Persist and use:
+
+- sourceUom
+- target/canonical UOM
+- conversionMode:
+  - direct
+  - configured_factor
+  - bulk_density
+- conversionFactorUsed
+- bulkDensity where applicable
+- mappedBy
+- mappedAt
+
+Requirements:
+
+- convert all compared quantities consistently;
+- do not compare raw MT directly against raw CFT/CUM;
+- do not display mixed units as though they are equal;
+- show the conversion basis in the UI.
+
+Example:
+
+“Using configured bulk density:
+1 MT = X CFT for Stone Dust.”
+
+If the shortage calculation cannot safely apply the conversion, block the mapping rather than showing misleading stock or shortfall figures.
+
+8. Improve manual mapping search
+
+The manual search endpoint may return substring candidates, but it must rank results safely:
+
+1. exact normalized name;
+2. exact alias;
+3. exact material code, if present;
+4. unique category/UOM-compatible candidate;
+5. low-confidence substring suggestions.
+
+Each result should include:
+
+- material ID;
+- name;
+- category;
+- canonical UOM;
+- allowed UOMs;
+- compatibility status;
+- conversion availability;
+- confidence/match type where practical.
+
+The UI must:
+
+- never auto-select a substring result;
+- show ambiguity clearly;
+- require explicit selection where multiple candidates exist;
+- show why a candidate is compatible or blocked.
+
+Include `client/src/pages/WorkDemand.tsx` only for this focused presentation work.
+
+9. Store enough mapping audit context
+
+If `boq_material_mappings` currently lacks these fields, add only the minimal additive columns genuinely needed:
+
+- sourceUom
+- normalizedSourceLabel
+- conversionMode
+- conversionFactorUsed
+- mappedByUserId
+- mappedAt
+
+Reuse equivalent existing fields if already present.
+
+The saved mapping must answer:
+
+- what BOM label/UOM was mapped;
+- which canonical material was selected;
+- under what conversion rule;
+- who mapped it;
+- when it was mapped.
+
+Do not duplicate existing data unnecessarily.
+
+10. Refresh the Procurement row after mapping
+
+After a successful mapping:
+
+- refresh the affected row;
+- recalculate:
+  - HLC stock;
+  - other-party stock;
+  - confirmed incoming;
+  - actionable shortfall;
+  - recommended action;
+- do not require a full browser reload.
+
+Where conversion applies:
+
+- show the normalized quantity/unit;
+- show the conversion basis;
+- do not leave stale raw quantities in the table.
+
+11. Optional programme-relation response
+
+Only if this can be added without touching the corrected horizon mathematics, return:
+
+- `before_start`
+- `within_programme`
+- `after_end`
+
+derived from the already resolved horizon date/index.
+
+Do not alter:
+
+- date-to-bucket logic;
+- current month;
+- next programme month;
+- next 30 days;
+- custom date;
+- entire programme.
+
+If this is not purely additive, defer it.
+
+12. Error handling
+
+Use the shared API error parser where available.
+
+Do not silently:
+
+- auto-map from substring coincidence;
+- choose one of multiple candidates;
+- save without sourceUom;
+- save an incompatible mapping;
+- treat MT and CFT/CUM as equal;
+- apply density conversion without configured density;
+- create duplicate material masters;
+- overwrite aliases;
+- compare quantities in mixed UOMs;
+- hide mapping ambiguity.
+
+13. Explicit scope exclusion: execution responsibility
+
+Do not add execution-mode or supply-responsibility logic in this batch.
+
+Do not change calculations for:
+
+- outsourced earthwork;
+- borrow-earth agency work;
+- composite ₹/Cum subcontract rates;
+- outsourced prime/tack;
+- outsourced DBM/BC production or laying;
+- vendor-supplied mix;
+- outsourced RMC supply/pouring;
+- client-supplied materials;
+- HLC versus vendor diesel responsibility.
+
+Those will be designed separately as a generic Execution & Supply Responsibility model, preferably alongside Plant workflows.
+
+Acceptance tests
+
+A. Typed aliases
+
+- `plantMaterials.aliases` is available through Drizzle typing.
+- Existing aliases remain intact.
+- Build passes without avoidable `any` access.
+
+B. Live alias backfill
+
+- Existing compatible WMM master receives WMM/WMM Processed aliases.
+- No WMM master means none is created.
+- Existing aliases are preserved.
+- Re-running startup creates no duplicates.
+- Unsafe soil/earth aliases are logged and remain unresolved.
+
+C. Collision handling
+
+- Two materials sharing one normalized alias do not overwrite each other.
+- The BOM material remains unresolved.
+- All candidates are returned for manual selection.
+
+D. Search ranking
+
+- Exact normalized match ranks first.
+- Exact alias ranks before substring.
+- `DUS` may appear as a low-confidence Dust search result but is never auto-selected.
+- Exact `WMM` alias resolves only when unique and compatible.
+
+E. Mandatory UOM
+
+- Mapping request without `sourceUom` returns 400.
+- No mapping is saved.
+
+F. Direct compatible UOM
+
+- MT → MT succeeds.
+- CUM → CUM succeeds.
+- equivalent normalized UOM labels succeed.
+
+G. Unsafe mismatch
+
+- Stone Dust MT → Dust CFT without approved density fails.
+- WMM CUM → WMM MT without approved conversion fails.
+- clear error is shown.
+
+H. Approved conversion
+
+- material has configured density/factor;
+- mapping succeeds;
+- conversion basis is displayed;
+- stock, demand, incoming and shortfall are all converted into one canonical UOM.
+
+I. Ambiguous material
+
+- two soil candidates exist;
+- neither is auto-selected;
+- user must explicitly choose a compatible material.
+
+J. Refresh
+
+- saving mapping refreshes the row;
+- stock and action recalculate;
+- no browser reload is required.
+
+K. Regression
+
+Confirm unchanged:
+
+- Procurement page loads;
+- current-month horizon does not crash;
+- custom date before programme start returns zero;
+- horizon switching does not blank the page;
+- Work Programme/Gantt;
+- canonical mapping;
+- Material Requirement creation;
+- awaiting_review status;
+- destination confirmation;
+- allocation approval;
+- Raise Both;
+- PI/IRN linkage;
+- purchaser action;
+- GRN flows.
+
+After this passes:
+
+1. Freeze Work Demand mapping/horizon work.
+2. Fix Cancel GRN.
+3. Fix Store Items back-navigation.
+4. Move to User/Designation Templates.
+5. Move to HMP/RMC Plant workflows.
+6. Design the generic Execution & Supply Responsibility model alongside Plants.
