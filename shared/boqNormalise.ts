@@ -51,6 +51,11 @@ const CANONICAL_UNIT_MAP: Record<string, string> = {
 
   // ── Kilogram ─────────────────────────────────────────────────────────────
   KG:           "Kg",    KGS:          "Kg",    KGM:          "Kg",
+  KILOGRAM:     "Kg",    KILOGRAMS:    "Kg",
+
+  // ── Cubic feet ───────────────────────────────────────────────────────────
+  CFT:          "CFT",   CUFT:         "CFT",
+  CUBICFOOT:    "CFT",   CUBICFEET:    "CFT",
 
   // ── Litre ────────────────────────────────────────────────────────────────
   LTR:          "Ltr",   LIT:          "Ltr",

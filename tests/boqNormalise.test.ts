@@ -349,3 +349,121 @@ describe("checkMappingUomCompatibility — 021A: Test F arithmetic (UOM conversi
     expect(result.conversionFactor).toBeNull();
   });
 });
+
+// ─── Instruction 021B: Kilogram spelling equivalents ─────────────────────────
+describe("canonicalizeUnit — 021B: kilogram spelling equivalents", () => {
+  it.each([
+    ["Kg",        "Kg"],
+    ["KG",        "Kg"],
+    ["KGS",       "Kg"],
+    ["KGM",       "Kg"],
+    ["kilogram",  "Kg"],
+    ["kilogram",  "Kg"],
+    ["kilograms", "Kg"],
+    ["KILOGRAM",  "Kg"],
+    ["KILOGRAMS", "Kg"],
+  ])("canonicalizeUnit(%s) === %s", (raw, expected) => {
+    expect(canonicalizeUnit(raw)).toBe(expected);
+  });
+
+  it("kilogram direct factor-1 when target defaultUom=Kg", () => {
+    const result = checkMappingUomCompatibility("kilogram", { defaultUom: "Kg" });
+    expect(result.compatible).toBe(true);
+    expect(result.conversionFactor).toBe(1);
+  });
+
+  it("kilograms direct factor-1 when target defaultUom=KGS", () => {
+    const result = checkMappingUomCompatibility("kilograms", { defaultUom: "KGS" });
+    expect(result.compatible).toBe(true);
+    expect(result.conversionFactor).toBe(1);
+  });
+});
+
+// ─── Instruction 021B: Cubic feet spelling equivalents ───────────────────────
+describe("canonicalizeUnit — 021B: cubic-feet spelling equivalents", () => {
+  it.each([
+    ["CFT",         "CFT"],
+    ["cft",         "CFT"],
+    ["CUFT",        "CFT"],
+    ["cu.ft",       "CFT"],
+    ["cubic foot",  "CFT"],
+    ["cubic feet",  "CFT"],
+    ["CUBICFOOT",   "CFT"],
+    ["CUBICFEET",   "CFT"],
+  ])("canonicalizeUnit(%s) === %s", (raw, expected) => {
+    expect(canonicalizeUnit(raw)).toBe(expected);
+  });
+
+  it("cubic feet direct factor-1 when target defaultUom=CFT", () => {
+    const result = checkMappingUomCompatibility("cubic feet", { defaultUom: "CFT" });
+    expect(result.compatible).toBe(true);
+    expect(result.conversionFactor).toBe(1);
+  });
+
+  it("cu.ft direct factor-1 when target defaultUom=CUFT", () => {
+    const result = checkMappingUomCompatibility("cu.ft", { defaultUom: "CUFT" });
+    expect(result.compatible).toBe(true);
+    expect(result.conversionFactor).toBe(1);
+  });
+});
+
+// ─── Instruction 021B: No unsafe dimensional equivalence ─────────────────────
+describe("checkMappingUomCompatibility — 021B: unsafe cross-dimension pairs remain blocked", () => {
+  it("C: CFT and CUM are not factor-1 (volume-to-volume but different magnitude)", () => {
+    const result = checkMappingUomCompatibility("CFT", { defaultUom: "CUM" });
+    expect(result.compatible).toBe(false);
+  });
+
+  it("C: CUM and CFT are not factor-1", () => {
+    const result = checkMappingUomCompatibility("CUM", { defaultUom: "CFT" });
+    expect(result.compatible).toBe(false);
+  });
+
+  it("C: Kg and MT are not factor-1", () => {
+    const result = checkMappingUomCompatibility("Kg", { defaultUom: "MT" });
+    expect(result.compatible).toBe(false);
+  });
+
+  it("C: kilogram and MT are not factor-1", () => {
+    const result = checkMappingUomCompatibility("kilogram", { defaultUom: "MT" });
+    expect(result.compatible).toBe(false);
+  });
+
+  it("C: MT and CUM remain blocked without an approved conversion", () => {
+    const result = checkMappingUomCompatibility("MT", { defaultUom: "CUM" });
+    expect(result.compatible).toBe(false);
+  });
+});
+
+// ─── Instruction 021B: Profile ambiguity detection via server checkMappingUomCompatibility ─
+describe("checkMappingUomCompatibility — 021B: profile ambiguity", () => {
+  it("D: exactly one CUM→MT profile — compatible, factor returned", () => {
+    const p: UomConversionProfile[] = [
+      { id: 1, fromUom: "CUM", toUom: "MT", conversionFactor: 2.0, conversionType: "fixed_factor", isActive: 1 },
+    ];
+    const result = checkMappingUomCompatibility("CUM", { defaultUom: "MT" }, p);
+    expect(result.compatible).toBe(true);
+    expect(result.conversionFactor).toBe(2.0);
+  });
+
+  it("E: CUM→MT and CUM→CFT profiles — only CUM→MT applies for defaultUom=MT, no ambiguity", () => {
+    const p: UomConversionProfile[] = [
+      { id: 1, fromUom: "CUM", toUom: "MT",  conversionFactor: 2.0,    conversionType: "fixed_factor", isActive: 1 },
+      { id: 2, fromUom: "CUM", toUom: "CFT", conversionFactor: 35.3147, conversionType: "fixed_factor", isActive: 1 },
+    ];
+    const result = checkMappingUomCompatibility("CUM", { defaultUom: "MT" }, p);
+    expect(result.compatible).toBe(true);
+    expect(result.mode).toBe("conversion_profile");
+    expect(result.conversionFactor).toBe(2.0);
+  });
+
+  it("F: two active CUM→MT profiles — server returns MATERIAL_CONVERSION_AMBIGUOUS", () => {
+    const p: UomConversionProfile[] = [
+      { id: 1, fromUom: "CUM", toUom: "MT", conversionFactor: 2.0, conversionType: "fixed_factor", isActive: 1 },
+      { id: 2, fromUom: "CUM", toUom: "MT", conversionFactor: 1.8, conversionType: "fixed_factor", isActive: 1 },
+    ];
+    const result = checkMappingUomCompatibility("CUM", { defaultUom: "MT" }, p);
+    expect(result.compatible).toBe(false);
+    expect(result.errorCode).toBe("MATERIAL_CONVERSION_AMBIGUOUS");
+  });
+});

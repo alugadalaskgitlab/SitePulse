@@ -28,6 +28,7 @@ import {
   type EffectivePlanningMode,
 } from "@shared/planningEngine";
 import { shortItemName } from "@/lib/itemName";
+import { canonicalizeUnit } from "@shared/boqNormalise";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import type { BoqProject } from "@shared/schema";
 
@@ -1358,20 +1359,24 @@ function ResolveMappingDialog({
     staleTime: 30_000,
   });
 
-  // 021A: match by BOTH fromUom (source/BOQ) AND toUom (selected material defaultUom).
-  // A profile CUM→CFT must NOT be used when the material's stock UOM is MT.
-  const normU = (u: string) => u.trim().toUpperCase().replace(/\s+/g, "");
+  // 021A+B: match by BOTH fromUom (source/BOQ) AND toUom (selected material defaultUom).
+  // Use canonicalizeUnit (shared) so spelling variants are unified before comparison.
+  // Use .filter() (not .find()) to detect multiple applicable profiles before Save.
   const activeProfiles = selectedProfiles.filter(p => p.isActive === 1);
-  const profileForBomUom = selected ? activeProfiles.find(p =>
-    normU(p.fromUom) === normU(row.uom) &&
-    normU(p.toUom) === normU(selected.defaultUom ?? "")
-  ) : undefined;
+  const applicableProfiles = selected ? activeProfiles.filter(p =>
+    canonicalizeUnit(p.fromUom) === canonicalizeUnit(row.uom) &&
+    canonicalizeUnit(p.toUom) === canonicalizeUnit(selected.defaultUom ?? "")
+  ) : [];
+  // Exactly one → use it; more than one → ambiguous; zero → show mismatch
+  const profileForBomUom = applicableProfiles.length === 1 ? applicableProfiles[0] : undefined;
+  const profileAmbiguous = applicableProfiles.length > 1;
 
   // Real-time UOM compatibility check (mirrors server logic; server revalidates on save)
-  // 021: if a profile exists for this BOM UOM, override client-side incompatibility
+  // 021: if exactly one profile exists for this BOM UOM, override client-side incompatibility
   const uomCheck = selected ? clientCheckUomCompat(row.uom, selected) : null;
-  const hasProfileCompat = !!profileForBomUom;
-  const canSave = !!selected && (hasProfileCompat || !uomCheck || uomCheck.compatible);
+  const hasProfileCompat = applicableProfiles.length === 1;
+  // 021B: disable Save when multiple profiles match — user must resolve in Material Master
+  const canSave = !!selected && !profileAmbiguous && (hasProfileCompat || !uomCheck || uomCheck.compatible);
 
   const handleSave = async () => {
     if (!selected || !canSave) return;
@@ -1490,8 +1495,29 @@ function ResolveMappingDialog({
                   <p className="mt-1 text-blue-600">{uomCheck.basis}</p>
                 )}
               </div>
+            ) : profileAmbiguous ? (
+              // 021B: multiple active profiles for same (from, to) pair — user must resolve
+              <div className="rounded p-2 text-[12px] border bg-orange-50 border-orange-300">
+                <p className="font-semibold text-orange-800">Multiple conversion profiles — cannot save</p>
+                <p className="text-orange-700 mt-0.5">
+                  Multiple active conversion profiles exist for{" "}
+                  <strong>{canonicalizeUnit(row.uom)}</strong> → <strong>{canonicalizeUnit(selected?.defaultUom ?? "")}</strong>.
+                  Review the material's UOM conversion profiles.
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {applicableProfiles.map((p, i) => (
+                    <li key={i} className="text-orange-600 font-mono text-[11px]">
+                      Profile {i + 1}: 1 {p.fromUom} = {p.conversionFactor} {p.toUom}
+                      {p.conversionBasis ? ` (${p.conversionBasis})` : ""}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-orange-600 mt-1 text-[11px]">
+                  Deactivate all but one in <a href="/plant?tab=home" className="underline font-medium" target="_blank">Plant Material Master</a>.
+                </p>
+              </div>
             ) : hasProfileCompat && profileForBomUom ? (
-              // 021: explicit conversion profile covers the UOM gap
+              // 021: exactly one conversion profile covers the UOM gap
               <div className="rounded p-2 text-[12px] border bg-violet-50 border-violet-200">
                 <p className="font-semibold text-violet-800">Will map via UOM conversion profile</p>
                 <p className="text-violet-700 mt-0.5">

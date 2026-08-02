@@ -1,0 +1,183 @@
+Instruction 021B — Complete UOM Equivalence and Client Ambiguity Handling
+
+Purpose
+
+Close the final two narrow gaps remaining after Instruction 021A:
+
+1. two standard-equivalent unit spellings are not canonicalised;
+2. the Resolve Material Mapping dialog does not detect multiple applicable conversion profiles before Save.
+
+This is a final UOM closeout correction only.
+
+Expected files
+
+- shared/boqNormalise.ts
+- client/src/pages/WorkDemand.tsx
+- related UOM tests
+
+DO NOT TOUCH
+
+- conversion-profile schema
+- conversion formulas or factors
+- bulk-density calculation
+- material identity or aliases
+- Work Programme/Gantt
+- horizon calculations
+- procurement-status logic
+- demand quantities
+- stock calculations
+- material requirements or allocations
+- PI/IRN/GRN flows
+- Plant Material Master layout
+- execution/supply responsibility
+
+1. Complete standard UOM canonicalisation
+
+Add these standard equivalents to the existing canonical unit map:
+
+Kilogram:
+- KILOGRAM
+- KILOGRAMS
+
+Canonical result:
+- Kg
+
+Cubic feet:
+- CFT
+- CUFT
+- CUBICFOOT
+- CUBICFEET
+
+Canonical result:
+- CFT
+
+Preserve all existing unit mappings.
+
+Do not add unsafe dimensional conversions.
+
+These are spelling equivalences only and must use factor 1.
+
+Required examples:
+
+- kilogram → Kg
+- kilograms → Kg
+- Kg → Kg
+- cubic feet → CFT
+- cubic foot → CFT
+- cu.ft → CFT
+- CFT → CFT
+
+2. Detect applicable-profile ambiguity in WorkDemand.tsx
+
+The Resolve Material Mapping dialog currently uses `.find()` to select the first active profile matching:
+
+- BOQ/source UOM; and
+- selected material default/target UOM.
+
+Replace this with a filtered list of applicable profiles.
+
+Required behaviour:
+
+A. Exactly one applicable profile
+
+- use it;
+- show the existing conversion preview;
+- allow Save.
+
+B. More than one applicable profile
+
+- do not select the first;
+- disable Save;
+- show:
+  “Multiple active conversion profiles exist for {source UOM} → {target UOM}. Review the material’s UOM conversion profiles.”
+
+- optionally list each profile’s factor and basis;
+- do not require the user to discover the issue only after the server rejects Save.
+
+C. No applicable profile
+
+- retain the existing UOM conversion required/mismatch display.
+
+The server remains authoritative and must continue returning MATERIAL_CONVERSION_AMBIGUOUS.
+
+3. Keep frontend and server canonicalisation consistent
+
+Use the shared canonical unit logic where practical.
+
+Do not maintain a conflicting client-only synonym list.
+
+If importing the shared helper into WorkDemand.tsx is safe, use it. Otherwise mirror only the exact newly added spelling equivalences and add tests proving parity.
+
+4. Acceptance tests
+
+A. Kilogram equivalents
+
+- `Kg`, `KGS`, `kilogram`, and `kilograms` all canonicalise to `Kg`.
+- `kilogram` → `Kg` maps directly at factor 1 where the target default UOM is Kg.
+
+B. Cubic-feet equivalents
+
+- `CFT`, `cu.ft`, `cubic foot`, and `cubic feet` all canonicalise to `CFT`.
+- `cubic feet` → `CFT` maps directly at factor 1.
+
+C. No unsafe equivalence
+
+- CFT and CUM are not treated as factor 1.
+- Kg and MT are not treated as factor 1.
+- MT and CUM remain blocked without an approved conversion.
+
+D. One applicable profile
+
+Profiles:
+- CUM → MT
+
+Expected:
+- preview shown;
+- Save enabled.
+
+E. Different-target profiles
+
+Profiles:
+- CUM → MT
+- CUM → CFT
+
+Material default UOM:
+- MT
+
+Expected:
+- only CUM → MT applies;
+- no ambiguity.
+
+F. True ambiguity
+
+Two active profiles:
+- CUM → MT
+- CUM → MT
+
+Expected:
+- frontend shows multiple-profile warning;
+- Save disabled;
+- no first-profile preview is treated as authoritative;
+- server still rejects with MATERIAL_CONVERSION_AMBIGUOUS.
+
+G. Regression
+
+Confirm unchanged:
+
+- WMM/GSB aliases;
+- allowedUoms safety;
+- fromUom + toUom server matching;
+- Work Demand conversion values;
+- stock normalization;
+- procurement status labels;
+- horizon switching;
+- Raise PI/IRN/Split;
+- GRN flows.
+
+After this passes
+
+1. Test WMM and GSB live with actual conversion profiles.
+2. Freeze Work Demand material identity, status and UOM conversion.
+3. Move to Cancel GRN.
+4. Fix Store Items back-navigation.
+5. Continue User/Designation Templates.
