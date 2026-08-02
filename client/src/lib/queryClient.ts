@@ -89,10 +89,10 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
-      refetchOnWindowFocus: false,  // disabled: on mobile, tab-switching fires this constantly; staleTime + refetchOnMount is sufficient
-      refetchOnMount: true,         // refresh on every page open / navigation
+      refetchOnWindowFocus: false,  // disabled: on mobile, tab-switching fires this constantly
+      refetchOnMount: true,         // refresh on mount only when data is stale
       refetchOnReconnect: true,
-      staleTime: 2 * 60_000,        // treat data as fresh for 2 min — was 15s (too aggressive on mobile)
+      staleTime: 5 * 60_000,        // treat data as fresh for 5 min — reduces re-fetch chatter on navigation
       retry: false,
     },
     mutations: {
