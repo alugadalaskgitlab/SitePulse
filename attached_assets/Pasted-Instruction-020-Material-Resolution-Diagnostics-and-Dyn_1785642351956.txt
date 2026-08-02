@@ -1,0 +1,561 @@
+Instruction 020 — Material Resolution Diagnostics and Dynamic Procurement Status
+
+Purpose
+
+Fix the issues presently confusing the Procurement screen:
+
+1. existing GSB/WMM or other master materials are sometimes reported only as “no canonical match,” without explaining the actual reason;
+2. “Adequate for Horizon” is being shown even when there is no demand in the selected horizon and the full quantity is only a future requirement;
+3. some Other Parties quantities are displayed in malformed or misleading numeric formats.
+
+Use only the material, stock, incoming and demand data already available.
+
+Do not introduce the future Execution & Supply Responsibility model in this batch. Supply routes for direct-to-site materials, outsourced earthwork, subcontracted bituminous work and outsourced RMC/concrete will be designed separately.
+
+Expected files
+
+- server/routes.ts
+- server/storage.ts
+- client/src/pages/WorkDemand.tsx
+- shared/planningEngine.ts only if a reusable procurement-status helper is placed there
+
+DO NOT TOUCH OR REDESIGN
+
+- horizon bucket/date calculations
+- demand phasing or demand quantities
+- BOM quantity formulas
+- UOM conversion formulas completed under Instruction 019B
+- canonical mapping precedence completed under 019B/019C
+- Work Programme/Gantt
+- material_requirements
+- material_requirement_allocations
+- requirementId/allocationId linkage
+- allocation permissions
+- PI/IRN/GRN lifecycle
+- purchaser actions
+- receipt logic
+- Store stock transaction logic
+- Site Material Received routing
+- subcontract workflows
+- execution/supply responsibility fields
+- HMP/RMC production routing
+
+This batch is limited to:
+
+- precise mapping diagnostics;
+- dynamic procurement status wording;
+- corresponding action presentation;
+- numeric normalization/display correction.
+
+1. Return precise material-resolution diagnostics
+
+When a BOM material does not auto-resolve, do not return only a generic “no canonical match” result.
+
+Inspect exact normalized canonical names and approved aliases across both active and inactive Plant Material Master records and return one of these reasons:
+
+A. Active exact compatible material found
+
+If one active exact-name or exact-alias material exists and its UOM is compatible:
+
+- it should resolve automatically;
+- it must not remain “Mapping Required.”
+
+This must work for exact master names such as:
+
+- GSB
+- WMM
+
+If an active, compatible exact GSB or WMM record exists, resolve it even when the BOM label is:
+
+- GSB Material
+- Granular Sub-Base
+- WMM Material
+- Wet Mix Macadam
+
+provided the alias/name resolution is unique.
+
+B. Exact material exists but is inactive
+
+Return:
+
+- resolutionReason: inactive_material
+- message:
+  “Exact material found, but it is inactive: {material name}.”
+
+Do not offer an inactive material as a selectable mapping target.
+
+C. Exact material exists but UOM is incompatible
+
+Return:
+
+- resolutionReason: uom_incompatible
+- BOM UOM
+- master UOM
+- material name
+- whether an approved conversion exists
+
+Message:
+
+“Exact material found, but UOM is incompatible: BOM {source UOM}, Master {target UOM}.”
+
+If a valid approved conversion exists, allow the existing UOM-safe mapping process.
+
+If no approved conversion exists, show:
+
+- status: UOM Resolution Required
+- action: Review UOM / Conversion
+
+D. Multiple candidates
+
+Keep the existing ambiguous state:
+
+- resolutionReason: ambiguous
+- status: Multiple Matches
+- return all compatible candidate records for explicit selection
+
+Never auto-select one.
+
+E. Genuinely no candidate
+
+Only when no exact normalized name or approved alias exists at all, return:
+
+- resolutionReason: no_match
+- message:
+  “No canonical material match was found.”
+
+Do not always tell the user to “Add the material in the Plant module.”
+
+Use a neutral action:
+
+- Review Material Master
+
+This is necessary because earth, GSB, WMM and similar materials may later follow different supply routes and should not automatically be treated as Plant-stock materials.
+
+2. Apply the same diagnostics to manual mapping search
+
+When the user searches in Resolve Material Mapping:
+
+- search active materials for selectable results;
+- separately check inactive materials for informational diagnostics;
+- never offer an inactive material for selection.
+
+Required behaviour:
+
+- active exact compatible match → selectable;
+- active exact but incompatible UOM → show with UOM warning and block Save unless an approved conversion exists;
+- inactive exact match → display informational note only;
+- ambiguous exact/alias matches → show all candidates and require explicit selection;
+- no match → show neutral “No matching active material found.”
+
+Do not use the generic message:
+
+“Add the material in the Plant module first.”
+
+unless the system has positively established that no existing material or alias exists and the user has permission to maintain the master.
+
+3. Add one authoritative procurement-status calculation
+
+Calculate the row status on the server from normalized numeric values and return a status code to the client.
+
+Do not independently recreate different status rules in several UI branches.
+
+Suggested status codes:
+
+- mapping_required
+- uom_resolution_required
+- multiple_matches
+- future_not_due
+- covered_by_stock
+- covered_by_incoming
+- partially_covered
+- action_required
+
+Use the following strict precedence:
+
+1. unresolved/diagnostic status;
+2. future-only status;
+3. covered status;
+4. partial coverage;
+5. action required.
+
+An unresolved material must never show “Covered,” “Adequate” or “Action Required” based on incomplete stock matching.
+
+4. Define the status formulas precisely
+
+Use normalized values in one canonical UOM:
+
+- horizonDemand = demandUpToSelectedDate
+- hlcStock = normalized HLC stock
+- confirmedIncoming =
+  confirmedIncomingPurchase + confirmedInternalIncoming
+- totalCoverage = hlcStock + confirmedIncoming
+- actionableShortfall = max(horizonDemand - totalCoverage, 0)
+- futureRequirement = requirement after the selected horizon
+
+Apply a small existing quantity tolerance where needed for decimal rounding.
+
+A. Material Mapping Required
+
+When resolutionReason is:
+
+- no_match
+- inactive_material
+
+Status:
+
+- Material Mapping Required
+
+For inactive material, retain the more precise explanation in the row/dialog.
+
+B. UOM Resolution Required
+
+When an exact material exists but its UOM is incompatible and no approved conversion exists:
+
+- UOM Resolution Required
+
+C. Multiple Matches
+
+When resolution is ambiguous:
+
+- Multiple Matches — Select Material
+
+D. Future Requirement — Not Due Yet
+
+When:
+
+- horizonDemand = 0; and
+- futureRequirement > 0
+
+Status:
+
+- Future Requirement — Not Due Yet
+
+Do not show:
+
+- Adequate for Horizon
+- Covered for Selected Horizon
+
+The material has not been proven adequate; it is simply not required by the selected date.
+
+E. Covered for Selected Horizon
+
+When:
+
+- horizonDemand > 0;
+- hlcStock >= horizonDemand within tolerance
+
+Status:
+
+- Covered for Selected Horizon
+
+This means HLC/company stock alone covers the selected-horizon demand.
+
+F. Covered by Incoming Supply
+
+When:
+
+- horizonDemand > 0;
+- hlcStock < horizonDemand; and
+- totalCoverage >= horizonDemand within tolerance
+
+Status:
+
+- Covered by Incoming Supply
+
+This means confirmed incoming is required to cover the horizon demand.
+
+Do not use vague logic such as “mainly covered by incoming.”
+
+G. Partially Covered — Balance Required
+
+When:
+
+- horizonDemand > 0;
+- totalCoverage > 0; and
+- totalCoverage < horizonDemand
+
+Status:
+
+- Partially Covered — Balance Required
+
+Display the actionable balance.
+
+H. Action Required
+
+When:
+
+- horizonDemand > 0;
+- totalCoverage = 0 or effectively zero;
+- material is resolved and UOM-safe
+
+Status:
+
+- Action Required
+
+5. Replace “Adequate for Horizon”
+
+Remove the generic “Adequate for Horizon” label.
+
+Replace it with the precise statuses above.
+
+Examples:
+
+Horizon demand 0; future requirement 1,200 MT:
+
+- Future Requirement — Not Due Yet
+
+Horizon demand 100 MT; HLC stock 120 MT:
+
+- Covered for Selected Horizon
+
+Horizon demand 100 MT; HLC stock 20 MT; confirmed incoming 80 MT:
+
+- Covered by Incoming Supply
+
+Horizon demand 100 MT; HLC stock 20 MT; confirmed incoming 30 MT:
+
+- Partially Covered — Balance Required
+
+Horizon demand 100 MT; no stock or incoming:
+
+- Action Required
+
+6. Keep legitimate early-procurement actions available
+
+For Future Requirement — Not Due Yet:
+
+- keep Raise PI / Raise IRN / Split available where the existing permissions and flow allow them;
+- visually de-emphasize them as secondary actions;
+- add wording such as:
+  “Not due within the selected horizon. Early arrangement is optional.”
+
+Do not remove the capability to procure early for:
+
+- long-lead materials;
+- bulk-rate planning;
+- anticipated shortages;
+- advance production requirements.
+
+For Covered for Selected Horizon:
+
+- no primary procurement action is needed;
+- existing View Stock / View Details may remain.
+
+For Covered by Incoming Supply:
+
+- show View Order / Incoming Details where such navigation already exists;
+- do not raise a second requirement by default.
+
+For Partially Covered:
+
+- retain existing action for the remaining actionable shortfall only.
+
+For Action Required:
+
+- retain the existing Raise PI / IRN / Split action.
+
+For unresolved rows:
+
+- show only the appropriate Resolve/Review action;
+- do not show Raise PI/IRN until canonical resolution is complete.
+
+Do not change any underlying PI/IRN functionality.
+
+7. Correct malformed Other Parties quantities
+
+The current table shows values resembling:
+
+- 06845.612776
+- 01530.000000
+- 02.000000
+
+Inspect whether these originate from:
+
+- string concatenation;
+- unparsed database numeric strings;
+- incorrect summation;
+- formatting without separators;
+- mixed-unit values;
+- an incorrect array/object conversion.
+
+Requirements:
+
+- parse all stock/incoming quantities as numbers before arithmetic;
+- sum numerically, never by string concatenation;
+- apply the approved UOM conversion before combining quantities;
+- return normalized numeric values from the server;
+- display quantities with sensible decimal precision and Indian-number formatting where the rest of the screen uses it;
+- do not suppress meaningful decimals;
+- do not display arbitrary six-decimal database strings.
+
+Example display:
+
+- 6,845.61
+- 1,530
+- 2
+
+not:
+
+- 06845.612776
+- 01530.000000
+- 02.000000
+
+Do not alter the physical stock ledger or transaction records in this batch. Correct only retrieval, normalization, arithmetic and display if the underlying records are valid.
+
+If the values themselves are found to come from incorrect historical stock data, report that separately instead of silently changing stock.
+
+8. Improve row-level explanatory text
+
+Each row should make these three concepts distinct:
+
+- Material resolution
+- Demand timing
+- Coverage/status
+
+Examples:
+
+WMM exact active compatible master:
+
+- Material: WMM
+- Status: Future Requirement — Not Due Yet
+- Action: optional early PI/IRN
+
+WMM exact master but UOM mismatch:
+
+- Material: WMM
+- Status: UOM Resolution Required
+- Explanation: BOM CUM, Master MT; no approved conversion
+
+Earth/Borrow Soil with no canonical master:
+
+- Status: Material Mapping Required
+- Explanation:
+  “No canonical material is presently linked. Supply/execution routing will be configured separately.”
+
+Do not tell the user automatically to create every earth/soil item in the Plant Material Master.
+
+9. UI presentation
+
+The existing Action column may show:
+
+- a status badge/text;
+- a primary action where action is required;
+- a secondary action where early action is optional.
+
+Do not overload one badge to mean both status and action.
+
+Where practical, rename the column from only “Action” to:
+
+- Status / Action
+
+or present the status prominently within the existing column without redesigning the whole table.
+
+Keep the screen compact.
+
+10. Acceptance tests
+
+A. Exact GSB resolution
+
+- Active exact-name GSB master exists.
+- BOM label is GSB Material or Granular Sub-Base.
+- Compatible UOM exists.
+- It resolves automatically.
+- It does not show “No canonical match.”
+
+B. Exact WMM resolution
+
+- Active exact-name WMM master exists.
+- BOM label is WMM Material or Wet Mix Macadam.
+- Compatible UOM exists.
+- It resolves automatically.
+
+C. Inactive master
+
+- Exact WMM record exists but is inactive.
+- It is not selectable.
+- The UI says:
+  “Exact material found, but it is inactive: WMM.”
+
+D. UOM mismatch
+
+- BOM is CUM and exact master is MT.
+- No approved conversion exists.
+- Status is UOM Resolution Required.
+- Both UOMs are displayed.
+- Mapping save remains blocked.
+
+E. Ambiguity
+
+- Two exact/alias-compatible candidates exist.
+- Status is Multiple Matches.
+- Neither is auto-selected.
+
+F. Future-only demand
+
+- horizonDemand = 0;
+- futureRequirement > 0.
+- Status is Future Requirement — Not Due Yet.
+- “Adequate” is not displayed.
+- Early PI/IRN actions remain available as secondary actions.
+
+G. Covered by stock
+
+- horizonDemand > 0;
+- HLC stock covers demand.
+- Status is Covered for Selected Horizon.
+
+H. Covered by incoming
+
+- HLC stock alone is insufficient;
+- HLC stock plus confirmed incoming covers demand.
+- Status is Covered by Incoming Supply.
+
+I. Partial coverage
+
+- HLC stock plus incoming covers only part of demand.
+- Status is Partially Covered — Balance Required.
+- Action quantity equals the remaining shortfall.
+
+J. No coverage
+
+- positive horizon demand;
+- no stock or incoming.
+- Status is Action Required.
+
+K. Other Parties numeric formatting
+
+- numeric strings are parsed before summing;
+- values are not concatenated;
+- displayed values use sensible formatting;
+- no incorrect leading zero or arbitrary six-decimal output remains.
+
+L. Regression
+
+Confirm unchanged:
+
+- Procurement page loads;
+- current-month horizon does not crash;
+- custom date before programme start returns zero;
+- horizon switching does not blank the page;
+- 019B UOM enforcement and conversions;
+- 019C alias-aware search;
+- Work Programme/Gantt;
+- Material Requirement creation;
+- allocation approval;
+- Raise PI/IRN/Split;
+- purchaser actions;
+- GRN flows.
+
+After this passes
+
+1. Freeze Work Demand material-resolution and status corrections.
+2. Fix Cancel GRN.
+3. Fix Store Items back-navigation.
+4. Continue User/Designation Templates.
+5. Discuss and design the generic Execution & Supply Responsibility model covering:
+   - earthwork and borrow materials;
+   - GSB/WMM direct supply;
+   - HMP/bituminous production and laying;
+   - RMC/concrete supply and pouring;
+   - client-supplied materials;
+   - HLC versus vendor equipment, labour and diesel responsibility.

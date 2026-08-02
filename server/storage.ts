@@ -516,6 +516,8 @@ export interface IStorage {
   deleteParty(id: number): Promise<boolean>;
   
   getPlantMaterials(): Promise<PlantMaterial[]>;
+  /** Returns ALL plant materials including inactive — for resolution diagnostics only. */
+  getAllPlantMaterials(): Promise<PlantMaterial[]>;
   createPlantMaterial(material: InsertPlantMaterial): Promise<PlantMaterial>;
   updatePlantMaterial(id: number, material: Partial<InsertPlantMaterial>): Promise<PlantMaterial | undefined>;
   deletePlantMaterial(id: number): Promise<boolean>;
@@ -2847,6 +2849,11 @@ export class DatabaseStorage implements IStorage {
   // Plant Materials Master
   async getPlantMaterials(): Promise<PlantMaterial[]> {
     return db.select().from(plantMaterials).where(eq(plantMaterials.isActive, 1)).orderBy(asc(plantMaterials.name));
+  }
+
+  /** Returns ALL plant materials including inactive — for resolution diagnostics only. */
+  async getAllPlantMaterials(): Promise<PlantMaterial[]> {
+    return db.select().from(plantMaterials).orderBy(asc(plantMaterials.name));
   }
 
   async ensureBulkDensityColumn(): Promise<void> {

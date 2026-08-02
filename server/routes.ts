@@ -20,7 +20,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, type LayerConfig } from "@shared/planningEngine";
+import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { normalizeMaterialLabel, checkMappingUomCompatibility } from "@shared/boqNormalise";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
@@ -11749,14 +11749,17 @@ export async function registerRoutes(
       const horizonModeParam = (req.query.horizonMode as string | undefined) ?? "current_month";
       const customDateParam = req.query.customDate as string | undefined;
 
-      const [{ expandedItems, bars }, allStockBalances, allMaterials, allIndents, allIrns, materialMappings] = await Promise.all([
+      const [{ expandedItems, bars }, allStockBalances, allMaterialsRaw, allIndents, allIrns, materialMappings] = await Promise.all([
         computeProjectBom(projectId),
         storage.getStockBalances(),
-        storage.getPlantMaterials(),
+        storage.getAllPlantMaterials(),          // active + inactive — partitioned below
         storage.getPurchaseIndents(),
         storage.getInternalRequisitions(),
         storage.getMaterialMappings(projectId),
       ]);
+      // Partition: active only for resolution maps and stock lookup; inactive for diagnostics
+      const allMaterials = allMaterialsRaw.filter(m => m.isActive === 1);
+      const inactiveMaterials = allMaterialsRaw.filter(m => m.isActive !== 1);
 
       // ── materialId → HLC stock (partyId IS NULL) and elsewhere stock ────────
       // v2: keyed by materialId, NOT by name string.
@@ -11764,7 +11767,8 @@ export async function registerRoutes(
       const elsewhereStockById = new Map<number, number>(); // partyId IS NOT NULL
       for (const sb of allStockBalances) {
         if (!sb.materialId) continue;
-        const bal = sb.balance ?? 0;
+        // Instruction 020 §7: parse as Number — numeric columns may arrive as strings via pg driver
+        const bal = Number(sb.balance ?? 0);
         if (sb.partyId == null) {
           hlcStockById.set(sb.materialId, (hlcStockById.get(sb.materialId) ?? 0) + bal);
         } else {
@@ -11783,11 +11787,12 @@ export async function registerRoutes(
           const mid = (item as any).materialId as number | undefined | null;
           if (!mid) continue;
           const statusLc = (item.purchaseStatus ?? "").toLowerCase();
-          const ordQty = (item as any).orderedQty as number | undefined | null;
+          // Instruction 020 §7: parse all quantities as Number — DB numeric columns may arrive as strings
+          const ordQty = (item as any).orderedQty != null ? Number((item as any).orderedQty) : null;
           const isCommitted = COMMITTED_PI_STATUSES.has(statusLc) || (ordQty != null && ordQty > 0);
           if (!isCommitted) continue;
-          const purchased = (item as any).totalPurchasedQty as number ?? 0;
-          const committed = (ordQty ?? item.approvedQty ?? item.qty) - purchased;
+          const purchased = Number((item as any).totalPurchasedQty ?? 0);
+          const committed = (ordQty ?? Number(item.approvedQty ?? item.qty ?? 0)) - purchased;
           if (committed <= 0) continue;
           confirmedPiById.set(mid, (confirmedPiById.get(mid) ?? 0) + committed);
         }
@@ -11827,6 +11832,19 @@ export async function registerRoutes(
       for (const [key, candidates] of keyToCandidates) {
         if (candidates.length === 1) resolvedAliasToId.set(key, candidates[0].id);
         else                          ambiguousByKey.set(key, candidates);
+      }
+
+      // ── Inactive material diagnostic map (Instruction 020 §1) ────────────────
+      // Distinguishes "inactive_material" from "no_match" when auto-resolution fails.
+      const inactiveKeyToName = new Map<string, string>();
+      for (const mat of inactiveMaterials) {
+        const normKey = normalizeMaterialLabel(mat.name);
+        if (normKey) inactiveKeyToName.set(normKey, mat.name);
+        const aliasesRaw: string[] = (() => { try { return JSON.parse(mat.aliases ?? "[]"); } catch { return []; } })();
+        for (const alias of aliasesRaw) {
+          const aKey = normalizeMaterialLabel(alias);
+          if (aKey && !inactiveKeyToName.has(aKey)) inactiveKeyToName.set(aKey, mat.name);
+        }
       }
 
       // ── Confirmed internal incoming — stores_verified IRN items with balance ─
@@ -11958,21 +11976,65 @@ export async function registerRoutes(
         const savedMapping = labelToMapping.get(matRow.materialName) ?? labelToMapping.get(labelKey);
         const mappedId: number | null = savedMapping?.materialId ?? null;
 
-        // Exact alias/name — only when no saved mapping
-        const aliasOrNameMatchId: number | null = mappedId == null
+        // Auto-resolve by exact alias or normalized name (only when no saved mapping)
+        const rawAliasOrNameMatchId: number | null = mappedId == null
           ? (resolvedAliasToId.get(normLabel) ?? materialIdByName.get(labelKey) ?? null)
           : null;
 
-        // Ambiguity — only when no saved mapping and alias/name also unresolved
+        // ── Instruction 020 §1: UOM compatibility check for auto-resolved material ─
+        // If the resolved material's UOM is incompatible (no conversion path exists),
+        // suppress auto-resolution for stock purposes and flag as uom_incompatible.
+        let aliasOrNameMatchId: number | null = rawAliasOrNameMatchId;
+        let uomIncompatible = false;
+        let resolutionDiagnostic: { inactiveMaterialName?: string; bomUom?: string; masterUom?: string | null; materialName?: string } = {};
+
+        if (rawAliasOrNameMatchId != null && matRow.uom) {
+          const candidateMat = allMaterials.find(m => m.id === rawAliasOrNameMatchId);
+          if (candidateMat) {
+            const uomCheck = checkMappingUomCompatibility(matRow.uom, candidateMat);
+            if (!uomCheck.compatible) {
+              uomIncompatible = true;
+              aliasOrNameMatchId = null; // suppress auto-resolution — stock would be in wrong unit
+              resolutionDiagnostic = {
+                bomUom: matRow.uom,
+                masterUom: candidateMat.defaultUom ?? null,
+                materialName: candidateMat.name,
+              };
+            }
+          }
+        }
+
+        // Ambiguity — only when no saved mapping, no alias/name match, and not UOM-blocked
         const ambiguousCandidates: MatCandidate[] | null =
-          (mappedId == null && aliasOrNameMatchId == null)
+          (mappedId == null && aliasOrNameMatchId == null && !uomIncompatible)
             ? (ambiguousByKey.get(normLabel) ?? null)
             : null;
         const materialMappingAmbiguous = ambiguousCandidates != null && ambiguousCandidates.length > 0;
 
         const resolvedId: number | null = mappedId ?? aliasOrNameMatchId ?? null;
-        // Unresolved includes ambiguous — neither can auto-assign a materialId
+        // Unresolved: no saved mapping, alias/name blocked (UOM or not found), or ambiguous
         const materialMappingUnresolved = resolvedId == null;
+
+        // ── Resolution reason (Instruction 020 §1) ──────────────────────────────
+        let resolutionReason: ResolutionReason;
+        if (mappedId != null) {
+          resolutionReason = "saved_mapping";
+        } else if (uomIncompatible) {
+          resolutionReason = "uom_incompatible";
+        } else if (aliasOrNameMatchId != null) {
+          resolutionReason = "alias_resolved";
+        } else if (materialMappingAmbiguous) {
+          resolutionReason = "ambiguous";
+        } else {
+          // Distinguish inactive_material from no_match for targeted UI guidance
+          const inactiveName = inactiveKeyToName.get(normLabel) ?? inactiveKeyToName.get(labelKey) ?? null;
+          if (inactiveName) {
+            resolutionReason = "inactive_material";
+            resolutionDiagnostic = { inactiveMaterialName: inactiveName };
+          } else {
+            resolutionReason = "no_match";
+          }
+        }
 
         // ── 019B §7: apply conversion when saved mapping has a factor ──────────
         // Demand is in BOM sourceUom; stock is already in material's canonical UOM.
@@ -12042,6 +12104,7 @@ export async function registerRoutes(
             programmedTotalDemand: (scaledMatRow as any).programmedTotalDemand as number | undefined,
             unprogrammedDemand: (scaledMatRow as any).unprogrammedDemand as number | undefined,
             sourceBoqItemIds: distinctBoqItemIds,
+            resolutionReason,  // Instruction 020 §3: drives procurementStatus in planningEngine
           },
         );
 
@@ -12050,6 +12113,7 @@ export async function registerRoutes(
           ...(materialMappingAmbiguous ? { materialMappingAmbiguous: true, ambiguousCandidates } : {}),
           resolvedVia: mappedId ? "mapping" as const : (aliasOrNameMatchId ? "alias" as const : null),
           ...(conversionBasis ? { conversionBasis, canonicalUom } : {}),
+          ...(Object.keys(resolutionDiagnostic).length > 0 ? { resolutionDiagnostic } : {}),
         };
       });
 

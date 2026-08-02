@@ -2004,6 +2004,26 @@ export type ShortageSuggestion =
   | "review_internal_issue"
   | "resolve_mapping";
 
+/** Instruction 020 §3: authoritative server-side procurement status. */
+export type ProcurementStatus =
+  | "mapping_required"
+  | "uom_resolution_required"
+  | "multiple_matches"
+  | "future_not_due"
+  | "covered_by_stock"
+  | "covered_by_incoming"
+  | "partially_covered"
+  | "action_required";
+
+/** Instruction 020 §1: precise material resolution diagnostic reason. */
+export type ResolutionReason =
+  | "saved_mapping"
+  | "alias_resolved"
+  | "inactive_material"
+  | "uom_incompatible"
+  | "ambiguous"
+  | "no_match";
+
 export interface ShortageRowResult {
   materialName: string;
   uom: string;
@@ -2057,6 +2077,10 @@ export interface ShortageRowResult {
   futureProgrammedRequirement: number;
   /** Distinct source BOQ item IDs across all contributions (multi-source awareness). */
   sourceBoqItemIds: number[];
+  /** Instruction 020 §3: authoritative procurement status derived server-side. */
+  procurementStatus: ProcurementStatus;
+  /** Instruction 020 §1: precise resolution diagnostic reason. */
+  resolutionReason: ResolutionReason | null;
 }
 
 /**
@@ -2088,6 +2112,8 @@ export interface ShortageRowOpts {
   unprogrammedDemand?: number;
   /** Distinct source BOQ item IDs for multi-source traceability. */
   sourceBoqItemIds?: number[];
+  /** Instruction 020 §1: precise material resolution reason for procurement status derivation. */
+  resolutionReason?: ResolutionReason | null;
 }
 
 /**
@@ -2163,7 +2189,7 @@ export function computeShortageRow(
     }
   }
 
-  // ── Suggestion logic ─────────────────────────────────────────────────────
+  // ── Suggestion logic (v1/v2 — kept for backward compat) ──────────────────
   let suggestion: ShortageSuggestion;
   if (opts) {
     // v2 logic — Instruction 017 §11
@@ -2194,6 +2220,45 @@ export function computeShortageRow(
     } else {
       suggestion = "raise_pi";
     }
+  }
+
+  // ── Instruction 020 §3-4: authoritative procurement status ─────────────────
+  // Strict precedence: resolution issues → future timing → coverage level → action needed.
+  // UI uses this field for rendering; suggestion is kept only for backward compatibility.
+  const resolutionReason: ResolutionReason | null = opts?.resolutionReason ?? null;
+  const PROC_TOL = 0.001;
+  let procurementStatus: ProcurementStatus;
+  if (opts) {
+    if (resolutionReason === "inactive_material" || resolutionReason === "no_match") {
+      procurementStatus = "mapping_required";
+    } else if (resolutionReason === "uom_incompatible") {
+      procurementStatus = "uom_resolution_required";
+    } else if (resolutionReason === "ambiguous") {
+      procurementStatus = "multiple_matches";
+    } else if (materialMappingUnresolved) {
+      procurementStatus = "mapping_required";
+    } else if (demandUpToSelectedDate <= PROC_TOL && futureRequirement > PROC_TOL) {
+      // §4D: no horizon demand but future demand exists — not yet due
+      procurementStatus = "future_not_due";
+    } else if (demandUpToSelectedDate <= PROC_TOL) {
+      // No demand in horizon or future
+      procurementStatus = "covered_by_stock";
+    } else if (hlcRecordedStock >= demandUpToSelectedDate - PROC_TOL) {
+      // §4E: HLC stock alone covers horizon demand
+      procurementStatus = "covered_by_stock";
+    } else if (usableCommittedCoverage >= demandUpToSelectedDate - PROC_TOL) {
+      // §4F: HLC stock is insufficient alone but stock + incoming covers
+      procurementStatus = "covered_by_incoming";
+    } else if (usableCommittedCoverage > PROC_TOL) {
+      // §4G: partial coverage — actionable balance still needed
+      procurementStatus = "partially_covered";
+    } else {
+      // §4H: resolved material, positive demand, zero coverage
+      procurementStatus = "action_required";
+    }
+  } else {
+    // v1 backward-compat: derive from shortfall only
+    procurementStatus = shortfall <= 0 ? "covered_by_stock" : "action_required";
   }
 
   return {
@@ -2227,6 +2292,8 @@ export function computeShortageRow(
     unprogrammedDemand,
     futureProgrammedRequirement,
     sourceBoqItemIds,
+    procurementStatus,
+    resolutionReason,
   };
 }
 
