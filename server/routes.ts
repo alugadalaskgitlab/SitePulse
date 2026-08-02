@@ -11986,7 +11986,7 @@ export async function registerRoutes(
         // suppress auto-resolution for stock purposes and flag as uom_incompatible.
         let aliasOrNameMatchId: number | null = rawAliasOrNameMatchId;
         let uomIncompatible = false;
-        let resolutionDiagnostic: { inactiveMaterialName?: string; bomUom?: string; masterUom?: string | null; materialName?: string } = {};
+        let resolutionDiagnostic: { inactiveMaterialName?: string; bomUom?: string; masterUom?: string | null; materialName?: string; message?: string; action?: string } = {};
 
         if (rawAliasOrNameMatchId != null && matRow.uom) {
           const candidateMat = allMaterials.find(m => m.id === rawAliasOrNameMatchId);
@@ -12033,6 +12033,7 @@ export async function registerRoutes(
             resolutionDiagnostic = { inactiveMaterialName: inactiveName };
           } else {
             resolutionReason = "no_match";
+            resolutionDiagnostic = { message: "No canonical material match was found.", action: "Review Material Master" };
           }
         }
 
@@ -12253,6 +12254,26 @@ export async function registerRoutes(
     try {
       const q = String(req.query.q ?? "").trim();
       if (!q || q.length < 2) return res.json([]);
+
+      // Instruction 020A §4: inactive=true — search inactive materials only for the
+      // manual mapping dialog informational note (these results are never selectable).
+      if (req.query.inactive === "true") {
+        const allMats = await storage.getAllPlantMaterials();
+        const inactiveMats = allMats.filter(m => !m.isActive);
+        const normQi = normalizeMaterialLabel(q);
+        const lowerQi = q.toLowerCase();
+        const matched = inactiveMats.filter(m => {
+          const rAliases: string[] = (() => { try { return JSON.parse(m.aliases ?? "[]"); } catch { return []; } })();
+          return normalizeMaterialLabel(m.name) === normQi
+            || rAliases.some(a => normalizeMaterialLabel(a) === normQi)
+            || m.name.toLowerCase().includes(lowerQi)
+            || rAliases.some(a => a.toLowerCase().includes(lowerQi));
+        });
+        return res.json(matched.slice(0, 10).map(m => ({
+          id: m.id, name: m.name, defaultUom: m.defaultUom, category: m.category,
+        })));
+      }
+
       const allActive = await storage.searchPlantMaterials(q);
       const normQ = normalizeMaterialLabel(q);
       const lowerQ = q.toLowerCase();

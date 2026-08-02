@@ -5,7 +5,7 @@ import {
   ChevronRight, FileSpreadsheet, BookOpen, Loader2,
   Package, Wrench, Users, CalendarDays, ChevronDown, ChevronUp, Zap, PencilLine,
   LayoutList, ShoppingCart, AlertTriangle, CheckCircle2, Info, Settings2, GitCompareArrows,
-  MapPin, SplitSquareHorizontal,
+  MapPin, SplitSquareHorizontal, AlertCircle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1192,7 +1192,7 @@ interface ShortageRow {
   /** Instruction 020 §1: precise resolution diagnostic reason. */
   resolutionReason?: "saved_mapping" | "alias_resolved" | "inactive_material" | "uom_incompatible" | "ambiguous" | "no_match" | null;
   /** Instruction 020 §1: structured diagnostics for UI display. */
-  resolutionDiagnostic?: { inactiveMaterialName?: string; bomUom?: string; masterUom?: string | null; materialName?: string };
+  resolutionDiagnostic?: { inactiveMaterialName?: string; bomUom?: string; masterUom?: string | null; materialName?: string; message?: string; action?: string };
 }
 
 interface ShortageData {
@@ -1323,6 +1323,18 @@ function ResolveMappingDialog({
     staleTime: 30_000,
   });
 
+  // Instruction 020A §4: also search inactive materials for the informational note
+  const { data: inactiveResults = [] } = useQuery<Array<{ id: number; name: string; defaultUom: string | null; category: string | null }>>({
+    queryKey: ["/api/plant-materials/search/inactive", searchQ],
+    queryFn: async () => {
+      if (searchQ.trim().length < 2) return [];
+      const r = await fetch(`/api/plant-materials/search?q=${encodeURIComponent(searchQ)}&inactive=true`, { credentials: "include" });
+      return r.ok ? r.json() : [];
+    },
+    enabled: searchQ.trim().length >= 2,
+    staleTime: 30_000,
+  });
+
   // Real-time UOM compatibility check (mirrors server logic; server revalidates on save)
   const uomCheck = selected ? clientCheckUomCompat(row.uom, selected) : null;
   const canSave = !!selected && (!uomCheck || uomCheck.compatible);
@@ -1388,8 +1400,14 @@ function ResolveMappingDialog({
             />
           </div>
           {isFetching && <p className="text-[12px] text-muted-foreground">Searching…</p>}
-          {!isFetching && searchQ.length >= 2 && results.length === 0 && (
-            <p className="text-[12px] text-amber-700">No plant materials found matching "{searchQ}". Add the material in the Plant module first.</p>
+          {!isFetching && searchQ.length >= 2 && results.length === 0 && inactiveResults.length === 0 && (
+            <p className="text-[12px] text-amber-700">No matching active material found.</p>
+          )}
+          {!isFetching && searchQ.length >= 2 && inactiveResults.length > 0 && (
+            <p className="text-[12px] text-slate-500 bg-slate-50 border border-slate-200 rounded px-2 py-1">
+              <span className="font-medium">Inactive match{inactiveResults.length > 1 ? "es" : ""}:</span>{" "}
+              {inactiveResults.map(m => m.name).join(", ")} — not selectable (inactive). Activate in Material Master to use.
+            </p>
           )}
           {results.length > 0 && (
             <div className="max-h-48 overflow-auto rounded border divide-y">
@@ -1664,6 +1682,8 @@ function SuggestionBadge({
         ? `"${rd.materialName}" (${rd.masterUom ?? "?"}) ↔ BOM ${rd.bomUom ?? "?"} — unit mismatch`
         : rr === "ambiguous"
         ? "Multiple master matches — save an explicit mapping"
+        : rr === "no_match" && rd?.message
+        ? `${rd.message}${rd.action ? ` ${rd.action}.` : ""}`
         : null;
     return (
       <div className="flex flex-col gap-1">
@@ -1692,7 +1712,7 @@ function SuggestionBadge({
   if (ps === "future_not_due") return (
     <div className="flex flex-col gap-1">
       <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">
-        <Info className="w-3 h-3" /> Not due in horizon
+        <Info className="w-3 h-3" /> Future Requirement — Not Due Yet
       </span>
       <div className="flex flex-wrap gap-1">
         <button onClick={() => openFor("pi")} disabled={isPending}
@@ -1710,20 +1730,25 @@ function SuggestionBadge({
   // §4E: covered by HLC stock alone
   if (ps === "covered_by_stock") return (
     <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
-      <CheckCircle2 className="w-3 h-3" /> Covered by Stock
+      <CheckCircle2 className="w-3 h-3" /> Covered for Selected Horizon
     </span>
   );
 
   // §4F: covered_by_incoming — stock + committed PIs/IRNs cover horizon demand
   if (ps === "covered_by_incoming") return (
     <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
-      <CheckCircle2 className="w-3 h-3" /> Covered by Incoming
+      <CheckCircle2 className="w-3 h-3" /> Covered by Incoming Supply
     </span>
   );
 
   return (
     <>
       {/* ── Action buttons: partially_covered (§4G) and action_required (§4H) ── */}
+      {(ps === "action_required" || !ps) && (
+        <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 mb-1">
+          <AlertCircle className="w-3 h-3" /> Action Required
+        </span>
+      )}
       <div className="flex flex-wrap gap-1">
         {ps === "partially_covered" && (
           <>
@@ -1736,7 +1761,7 @@ function SuggestionBadge({
               <ShoppingCart className="w-3 h-3" /> Raise IRN (Balance)
             </button>
             <span className="inline-flex items-center text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 gap-1">
-              <Info className="w-3 h-3" /> Partial coverage — arrange remaining balance
+              <Info className="w-3 h-3" /> Partially Covered — Balance Required
             </span>
           </>
         )}

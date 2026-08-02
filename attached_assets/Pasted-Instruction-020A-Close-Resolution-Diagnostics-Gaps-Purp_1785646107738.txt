@@ -1,0 +1,52 @@
+Instruction 020A — Close Resolution-Diagnostics Gaps
+
+Purpose
+Instruction 020 was implemented and independently verified against the codebase. The procurement-status engine (items 3–5 core logic), precedence rule, and Other Parties numeric formatting (item 7) are confirmed correct and complete — no changes needed there. Five specific gaps remain open from the same instruction and must be closed:
+
+Alias data completeness for GSB/WMM auto-resolution (acceptance tests A & B)
+The no_match diagnostic case returns no message/action at all
+The banned phrase "Add the material in the Plant module first" is still present verbatim in the manual mapping search dialog
+Item 2 (manual search dialog diagnostics) was not implemented — inactive-material informational check is missing from the search box entirely
+Status label wording in the client does not match the exact strings specified in item 5, and "Action Required" has no visible label at all
+
+Expected files
+
+server/storage.ts (alias seed data only)
+server/routes.ts (manual search endpoint diagnostics, no_match message)
+client/src/pages/WorkDemand.tsx (label wording, no_match handling, remove banned phrase)
+No schema changes required
+
+DO NOT TOUCH OR REDESIGN
+Everything already listed as protected in Instruction 020, plus:
+
+the procurement-status calculation function and its precedence chain (confirmed correct — do not modify the logic, only the rendered wording)
+the Other Parties numeric formatting fix (confirmed correct — do not touch)
+UOM compatibility validation and the auto-resolution/ambiguity-detection mechanism itself (confirmed correct — this batch only adds missing alias data and missing messages, it does not change how resolution works)
+Complete GSB/WMM alias data
+Confirm what alias strings are currently seeded for GSB and WMM. If the seed list does not already include the literal BOM label variants "GSB Material", "Granular Sub-Base", "WMM Material", "Wet Mix Macadam" (normalized), add them. Resolution is exact-normalized-string matching against name/alias — it will not match "GSB Material" against an alias of just "GSB". This is a data completeness fix, not a logic change.
+Fix the no_match case to return an actual message
+Server: when resolutionReason is no_match, include a resolutionDiagnostic with a neutral message ("No canonical material match was found.") and action ("Review Material Master"), consistent with how inactive_material and uom_incompatible already carry diagnostic detail.
+Client: render this message the same way inactive_material/uom_incompatible/ambiguous notes are already rendered — currently no_match rows show nothing.
+Remove the banned phrase
+client/src/pages/WorkDemand.tsx currently shows "No plant materials found matching '{searchQ}'. Add the material in the Plant module first." unconditionally when manual search returns zero results. Replace with the neutral message specified in item 2 of Instruction 020: "No matching active material found." Do not reintroduce a directive to add the material to the Plant module.
+Implement manual search dialog diagnostics (item 2, not previously done)
+When the user searches in Resolve Material Mapping:
+continue searching active materials for selectable results (unchanged, already correct)
+separately check inactive materials matching the same query; if found, show an informational note only (never selectable), consistent with the wording already used for the automatic shortage-check inactive-material case
+this must live in the search dialog's own code path, not only in the one-time automatic resolution attempt during shortage-check
+Align status wording to the exact strings in Instruction 020 item 5
+Update client labels to match:
+"Not due in horizon" → "Future Requirement — Not Due Yet"
+"Covered by Stock" → "Covered for Selected Horizon"
+"Covered by Incoming" → "Covered by Incoming Supply"
+"Partial coverage — arrange remaining balance" → "Partially Covered — Balance Required" (keep the existing balance-quantity detail alongside it)
+action_required currently renders no status label at all — add a visible "Action Required" badge/text before the action buttons, matching how the other four statuses each show a label
+
+Acceptance tests
+A. Active exact-name GSB master, BOM label "GSB Material" or "Granular Sub-Base", compatible UOM → resolves automatically, no "Mapping Required."
+B. Same for WMM with "WMM Material" / "Wet Mix Macadam."
+C. A material with no exact name/alias match at all shows "No canonical material match was found." with a "Review Material Master" action — both in the automatic Procurement table and reachable via a diagnostic row, not blank.
+D. Manual search for a query matching only an inactive material shows an informational note, is not selectable, and does not fall through to "no results."
+E. Manual search with zero active or inactive matches shows "No matching active material found." — the string "Add the material in the Plant module first" does not appear anywhere in the file.
+F. Each of the 5 non-diagnostic status rows shows the exact label text specified in item 5, including a visible "Action Required" label.
+G. Regression: re-confirm Procurement page load, horizon switching, 019B UOM enforcement, 019C alias-aware search, Raise PI/IRN/Split, and Other Parties formatting are all unaffected by these changes.

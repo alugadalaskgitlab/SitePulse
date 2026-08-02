@@ -23926,7 +23926,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Step 2: WMM — dynamic lookup (attach only when exactly ONE WMM master exists)
-    const WMM_CANDIDATE_ALIASES = ["WMM", "WMM Processed", "Wet Mix Macadam", "WMM Gravel"];
+    const WMM_CANDIDATE_ALIASES = ["WMM", "WMM Processed", "Wet Mix Macadam", "WMM Material", "WMM Gravel"];
     const wmmMats = allMatsForSeed.filter(m => m.name.toUpperCase().includes("WMM"));
     if (wmmMats.length === 1) {
       const added = await mergeAliases(wmmMats[0].id, wmmMats[0].aliases, WMM_CANDIDATE_ALIASES);
