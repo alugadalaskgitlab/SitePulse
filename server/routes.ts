@@ -11136,6 +11136,42 @@ export async function registerRoutes(
     }
   });
 
+  // --- BOQ Items by IDs (bulk fetch for multi-source earthwork dialog) ---
+
+  /** Fetch multiple BOQ items by ID for the earthwork multi-source allocation dialog.
+   *  Requires projectId query param — scopes results to that project so users cannot
+   *  enumerate BOQ metadata from other projects by guessing IDs.
+   */
+  app.get("/api/boq/items/by-ids", async (req, res) => {
+    try {
+      if (!assertLogin(req, res)) return;
+      const projectId = req.query["projectId"] ? parseInt(String(req.query["projectId"])) : null;
+      if (!projectId || isNaN(projectId)) {
+        return res.status(400).json({ error: "projectId query param is required" });
+      }
+      const idsParam = req.query["ids[]"] ?? req.query["ids"];
+      const rawIds = Array.isArray(idsParam) ? idsParam : (idsParam ? [idsParam] : []);
+      const ids = rawIds.map(Number).filter(n => !isNaN(n) && n > 0);
+      if (ids.length === 0) return res.json([]);
+      const rows = await db.select({
+        id: boqItems.id,
+        description: boqItems.description,
+        currentQty: boqItems.currentQty,
+        unit: boqItems.unit,
+        boqProjectId: boqItems.boqProjectId,
+      }).from(boqItems).where(
+        and(
+          drizzleInArray(boqItems.id, ids),
+          eq(boqItems.boqProjectId, projectId),  // scope to requesting project
+        )
+      );
+      res.json(rows);
+    } catch (err) {
+      console.error("GET /api/boq/items/by-ids:", err);
+      res.status(500).json({ error: "Failed to fetch BOQ items" });
+    }
+  });
+
   // --- BOQ Item Recipes (Equipment / Labour / Materials per work item) ---
 
   app.get("/api/boq/items/:itemId/recipes", async (req, res) => {
@@ -12202,31 +12238,51 @@ export async function registerRoutes(
             sourceBoqItemIds: distinctBoqItemIds,
             resolutionReason,  // Instruction 020 §3: drives procurementStatus in planningEngine
             isEarthworkBulkRequirement, // Instruction 023
+            requiresClassification: !!(matRow as any).requiresClassification, // Instruction 024
           },
         );
 
-        // Instruction 023: attach arrangement summaries for earthwork rows
+        // Instruction 023/024: attach arrangement summaries for earthwork rows.
+        // Use ALL distinctBoqItemIds (not just sourceBoqItemId) so multi-source rows
+        // (e.g. Embankment Reach 1 + Reach 2 + Shoulder → "Earth / Borrow Soil") also
+        // show their arrangements.
         let earthworkArrangementSummaries: import("@shared/planningEngine").EarthworkArrangementSummary[] | undefined;
-        if (isEarthworkBulkRequirement && sourceBoqItemId != null) {
-          const rawArrs = allEarthworkArrangements.filter(
-            a => a.boqItemId === sourceBoqItemId && a.status !== "cancelled"
-          );
-          if (rawArrs.length > 0) {
-            earthworkArrangementSummaries = rawArrs.map(a => ({
+        if (isEarthworkBulkRequirement && distinctBoqItemIds.length > 0) {
+          const rawArrs = allEarthworkArrangements.filter(a => {
+            if (a.status === "cancelled") return false;
+            // Single-BOQ arrangement
+            if (a.boqItemId != null && distinctBoqItemIds.includes(a.boqItemId)) return true;
+            // Multi-BOQ arrangement (boqItemAllocations JSONB)
+            const allocs = a.boqItemAllocations as Array<{ boqItemId: number; qty: number }> | null;
+            if (Array.isArray(allocs) && allocs.some(al => distinctBoqItemIds.includes(al.boqItemId))) return true;
+            return false;
+          });
+          earthworkArrangementSummaries = rawArrs.map(a => {
+            const allocQty = Number(a.allocatedQty ?? 0);
+            const rate = a.agreedRate != null ? Number(a.agreedRate) : null;
+            return {
               id: a.id,
               arrangementType: a.arrangementType,
               status: a.status,
               agencyName: a.agencyName ?? null,
-              allocatedQty: Number(a.allocatedQty ?? 0),
+              allocatedQty: allocQty,
               uom: a.uom,
-              agreedRate: a.agreedRate != null ? Number(a.agreedRate) : null,
+              agreedRate: rate,
+              estimatedValue: rate != null ? Math.round(allocQty * rate) : null,
               plannedDailyOutput: a.plannedDailyOutput != null ? Number(a.plannedDailyOutput) : null,
+              mobilisationDate: (a as any).mobilisationDate ?? null,
               plannedStartDate: a.plannedStartDate ?? null,
+              actualStartDate: (a as any).actualStartDate ?? null,
               targetCompletionDate: a.targetCompletionDate ?? null,
               reachLabel: a.reachLabel ?? null,
               components: (a.components as Record<string, string> | null) ?? null,
-            }));
-          }
+              completedQty: 0,      // progress loaded lazily by detail route
+              recentDailyOutput: 0,
+              lastEntryDate: null,
+              daysSinceLastEntry: null,
+              boqItemAllocations: (a.boqItemAllocations as Array<{ boqItemId: number; qty: number }> | null) ?? null,
+            };
+          });
         }
 
         // 021 §13: procurement equivalent — shortfall in stock/canonical UOM (e.g. MT)
@@ -12243,10 +12299,22 @@ export async function registerRoutes(
           ...(conversionBasis ? { conversionBasis, canonicalUom, conversionProfileId: convProfileId } : {}),
           ...(procurementEquivalentQty != null ? { procurementEquivalentQty, procurementEquivalentUom } : {}),
           ...(Object.keys(resolutionDiagnostic).length > 0 ? { resolutionDiagnostic } : {}),
-          // Instruction 023: earthwork arrangement context
+          // Instruction 023/024: earthwork arrangement context
+          // isEarthworkBulkRequirement = arrangement flow (already classified as earthwork).
+          // requiresClassification    = classification flow (gravel/moorum not yet routed).
+          // Both need earthworkBoqItemId/earthworkSourceBoqItemIds so EarthworkControl can
+          // find the BOQ item to classify or manage arrangements.
           ...(isEarthworkBulkRequirement ? {
-            earthworkBoqItemId: sourceBoqItemId,
+            earthworkBoqItemId: sourceBoqItemId,  // null for multi-source rows (use sourceBoqItemIds)
+            earthworkSourceBoqItemIds: distinctBoqItemIds,  // always present for earthwork rows
             earthworkArrangements: earthworkArrangementSummaries ?? [],
+          } : {}),
+          ...(shortageRow.requiresClassification && !isEarthworkBulkRequirement && distinctBoqItemIds.length > 0 ? {
+            // Classification-required rows are gravel/moorum (isEarthworkBulkRequirement = false),
+            // so the earthwork block above did not fire. Attach BOQ item identity here so
+            // EarthworkControl can invoke the bulk-classification endpoint.
+            earthworkBoqItemId: distinctBoqItemIds.length === 1 ? distinctBoqItemIds[0] : null,
+            earthworkSourceBoqItemIds: distinctBoqItemIds,
           } : {}),
         };
       });
@@ -12328,47 +12396,122 @@ export async function registerRoutes(
     }
   });
 
-  /** Create a new earthwork arrangement. Requires purchase_indents_raise or purchase_indents_approve. */
+  /** Create a new earthwork arrangement. */
   app.post("/api/boq/projects/:id/earthwork-arrangements", async (req, res) => {
     try {
       if (!assertLogin(req, res)) return;
+      if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
       const user = (req as any).user;
       const body = req.body ?? {};
 
-      // Validate required fields
-      const { boqItemId, materialLabel, arrangementType, allocatedQty } = body;
-      if (!materialLabel || !materialLabel.trim())
-        return res.status(400).json({ error: "materialLabel is required" });
-      if (allocatedQty == null || isNaN(Number(allocatedQty)) || Number(allocatedQty) < 0)
-        return res.status(400).json({ error: "allocatedQty must be a non-negative number" });
+      const { materialLabel, arrangementType } = body;
+      // boqItemAllocations supersedes boqItemId for multi-source arrangements
+      const boqItemAllocationsRaw = body.boqItemAllocations as Array<{ boqItemId: number; qty: number }> | undefined;
+      const singleBoqItemId: number | null = body.boqItemId ? Number(body.boqItemId) : null;
 
-      // Guard: check allocation does not exceed BOQ item quantity
-      if (boqItemId) {
-        const [boqItem] = await db.select({ currentQty: boqItems.currentQty })
-          .from(boqItems).where(eq(boqItems.id, boqItemId));
-        if (boqItem) {
-          const existing = await storage.getEarthworkArrangementsForItem(projectId, boqItemId);
-          const alreadyAllocated = existing
-            .filter(a => a.status !== "cancelled")
-            .reduce((s, a) => s + Number(a.allocatedQty ?? 0), 0);
+      // ── Typed validation ──────────────────────────────────────────────────
+      if (!materialLabel || !String(materialLabel).trim()) {
+        return res.status(400).json({ error: "materialLabel is required", code: "INVALID_ALLOCATED_QUANTITY" });
+      }
+
+      const allocatedQtyNum = Number(body.allocatedQty);
+      if (body.allocatedQty == null || isNaN(allocatedQtyNum) || allocatedQtyNum <= 0) {
+        return res.status(400).json({
+          error: "INVALID_ALLOCATED_QUANTITY",
+          message: "Allocated quantity must be a positive number.",
+        });
+      }
+
+      // Date format guard (YYYY-MM-DD or null)
+      const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+      const plannedStart = body.plannedStartDate ?? null;
+      const targetEnd = body.targetCompletionDate ?? null;
+      if (plannedStart && !dateRe.test(plannedStart))
+        return res.status(400).json({ error: "INVALID_DATE_RANGE", message: "plannedStartDate must be YYYY-MM-DD" });
+      if (targetEnd && !dateRe.test(targetEnd))
+        return res.status(400).json({ error: "INVALID_DATE_RANGE", message: "targetCompletionDate must be YYYY-MM-DD" });
+      if (plannedStart && targetEnd && targetEnd < plannedStart)
+        return res.status(400).json({ error: "INVALID_DATE_RANGE", message: "targetCompletionDate cannot precede plannedStartDate" });
+
+      // Agency required for outsourced types
+      const needsAgency = ["fully_outsourced_composite","vendor_material_delivered","hlc_source_outsourced_execution","partly_outsourced"].includes(arrangementType);
+      if (needsAgency && !body.agencyName?.trim()) {
+        return res.status(400).json({ error: "AGENCY_REQUIRED", message: "Agency / Vendor name is required for outsourced arrangements." });
+      }
+
+      // ── Linkage guard: every arrangement must be tied to a BOQ source ─────
+      // An arrangement with no boqItemId and no boqItemAllocations is an orphan —
+      // it bypasses the per-item over-allocation guard and becomes unattributable.
+      const hasMultiSource = boqItemAllocationsRaw && Array.isArray(boqItemAllocationsRaw)
+        && boqItemAllocationsRaw.some(a => a.boqItemId && Number(a.qty) > 0);
+      const hasSingleSource = !!singleBoqItemId;
+      if (!hasSingleSource && !hasMultiSource) {
+        return res.status(400).json({
+          error: "BOQ_SOURCE_REQUIRED",
+          message: "An earthwork arrangement must be linked to at least one BOQ item. Provide boqItemId or a non-empty boqItemAllocations array.",
+        });
+      }
+      if (hasSingleSource && hasMultiSource) {
+        return res.status(400).json({
+          error: "AMBIGUOUS_BOQ_SOURCE",
+          message: "Provide either boqItemId (single-source) or boqItemAllocations (multi-source), not both.",
+        });
+      }
+
+      // ── Multi-BOQ over-allocation guard ───────────────────────────────────
+      const effectiveAllocations: Array<{ boqItemId: number; qty: number }> = [];
+
+      if (boqItemAllocationsRaw && Array.isArray(boqItemAllocationsRaw) && boqItemAllocationsRaw.length > 0) {
+        // Multi-source: validate each source individually
+        // Uses getAllocatedQtyForBoqItem which checks BOTH direct (boq_item_id) and
+        // JSONB split (boq_item_allocations) allocations — prevents double-counting.
+        for (const alloc of boqItemAllocationsRaw) {
+          if (!alloc.boqItemId || Number(alloc.qty) <= 0) continue;
+          const [boqItem] = await db.select({ currentQty: boqItems.currentQty, description: boqItems.description })
+            .from(boqItems).where(eq(boqItems.id, Number(alloc.boqItemId)));
+          if (!boqItem) {
+            return res.status(400).json({ error: "BOQ_ITEM_NOT_FOUND", message: `BOQ item ${alloc.boqItemId} not found.` });
+          }
+          const alreadyAllocated = await storage.getAllocatedQtyForBoqItem(projectId, Number(alloc.boqItemId));
           const boqQty = Number(boqItem.currentQty ?? 0);
-          if (alreadyAllocated + Number(allocatedQty) > boqQty + 0.001) {
+          if (alreadyAllocated + Number(alloc.qty) > boqQty + 0.001) {
             return res.status(400).json({
-              error: "OVER_ALLOCATION",
-              message: `Allocated quantity (${alreadyAllocated + Number(allocatedQty)}) would exceed BOQ item quantity (${boqQty}).`,
+              error: "ALLOCATION_EXCEEDS_REMAINING_QUANTITY",
+              message: `Allocation for "${boqItem.description}" (${(alreadyAllocated + Number(alloc.qty)).toFixed(2)} CUM) would exceed BOQ quantity (${boqQty} CUM). Already allocated: ${alreadyAllocated.toFixed(2)} CUM across all arrangements.`,
+            });
+          }
+          effectiveAllocations.push({ boqItemId: Number(alloc.boqItemId), qty: Number(alloc.qty) });
+        }
+      } else if (singleBoqItemId) {
+        // Single-source: also use getAllocatedQtyForBoqItem to catch cross-allocation leakage
+        const [boqItem] = await db.select({ currentQty: boqItems.currentQty, description: boqItems.description })
+          .from(boqItems).where(eq(boqItems.id, singleBoqItemId));
+        if (boqItem) {
+          const alreadyAllocated = await storage.getAllocatedQtyForBoqItem(projectId, singleBoqItemId);
+          const boqQty = Number(boqItem.currentQty ?? 0);
+          if (alreadyAllocated + allocatedQtyNum > boqQty + 0.001) {
+            return res.status(400).json({
+              error: "ALLOCATION_EXCEEDS_REMAINING_QUANTITY",
+              message: `Allocated quantity (${(alreadyAllocated + allocatedQtyNum).toFixed(2)} CUM) would exceed BOQ quantity (${boqQty} CUM). Already allocated: ${alreadyAllocated.toFixed(2)} CUM.`,
             });
           }
         }
+        effectiveAllocations.push({ boqItemId: singleBoqItemId, qty: allocatedQtyNum });
       }
+
+      const primaryBoqItemId = effectiveAllocations.length === 1
+        ? effectiveAllocations[0].boqItemId
+        : (effectiveAllocations.length > 1 ? null : singleBoqItemId);
 
       const row = await storage.createEarthworkArrangement({
         boqProjectId: projectId,
-        boqItemId: boqItemId ? Number(boqItemId) : null,
-        materialLabel: materialLabel.trim(),
+        boqItemId: primaryBoqItemId,
+        boqItemAllocations: effectiveAllocations.length > 1 ? effectiveAllocations : null,
+        materialLabel: String(materialLabel).trim(),
         arrangementType: arrangementType ?? "not_decided",
         status: "draft",
-        allocatedQty: Number(allocatedQty),
+        allocatedQty: allocatedQtyNum,
         uom: body.uom ?? "CUM",
         agencyName: body.agencyName?.trim() || null,
         workDescription: body.workDescription?.trim() || null,
@@ -12378,8 +12521,9 @@ export async function registerRoutes(
         agreedRate: body.agreedRate != null ? Number(body.agreedRate) : null,
         borrowSource: body.borrowSource?.trim() || null,
         avgLeadKm: body.avgLeadKm != null ? Number(body.avgLeadKm) : null,
-        plannedStartDate: body.plannedStartDate ?? null,
-        targetCompletionDate: body.targetCompletionDate ?? null,
+        mobilisationDate: body.mobilisationDate ?? null,
+        plannedStartDate: plannedStart,
+        targetCompletionDate: targetEnd,
         plannedDailyOutput: body.plannedDailyOutput != null ? Number(body.plannedDailyOutput) : null,
         workingHoursPerShift: body.workingHoursPerShift != null ? Number(body.workingHoursPerShift) : null,
         numExcavators: body.numExcavators != null ? Number(body.numExcavators) : null,
@@ -12394,7 +12538,6 @@ export async function registerRoutes(
         preparedByUserId: user?.id ?? null,
       });
 
-      // Audit log
       await storage.createAuditLog?.({
         module: "earthwork_arrangements",
         transactionId: String(row.id),
@@ -12404,41 +12547,141 @@ export async function registerRoutes(
       }).catch(() => {});
 
       res.status(201).json(row);
-    } catch (err) {
+    } catch (err: any) {
       console.error("POST /api/boq/projects/:id/earthwork-arrangements:", err);
-      res.status(500).json({ error: "Failed to create earthwork arrangement" });
+      const message = err?.message?.includes("relation") || err?.message?.includes("does not exist")
+        ? "Earthwork tables are still being created. Please retry in a moment."
+        : "Failed to save arrangement. Check all required fields and try again.";
+      res.status(500).json({ error: "ARRANGEMENT_SAVE_FAILED", message });
     }
   });
 
-  /** Update an earthwork arrangement (supports status transitions). */
-  app.patch("/api/earthwork-arrangements/:id", async (req, res) => {
+  /** Get a single earthwork arrangement with progress data. */
+  app.get("/api/earthwork-arrangements/:id", async (req, res) => {
     try {
       if (!assertLogin(req, res)) return;
       const id = parseInt(req.params.id);
+      const arr = await storage.getEarthworkArrangementById(id);
+      if (!arr) return res.status(404).json({ error: "Arrangement not found" });
+      const progress = await (storage as any).getArrangementProgress(id);
+      res.json({ ...arr, progress });
+    } catch (err) {
+      console.error("GET /api/earthwork-arrangements/:id:", err);
+      res.status(500).json({ error: "Failed to fetch arrangement" });
+    }
+  });
+
+  /** Update an earthwork arrangement — full status lifecycle. */
+  app.patch("/api/earthwork-arrangements/:id", async (req, res) => {
+    try {
+      if (!assertLogin(req, res)) return;
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const id = parseInt(req.params.id);
       const user = (req as any).user;
       const body = req.body ?? {};
+      const now = new Date().toISOString();
 
       const allowedFields = [
         "arrangementType", "agencyName", "workDescription", "reachLabel",
         "chainageFrom", "chainageTo", "allocatedQty", "uom", "agreedRate",
-        "borrowSource", "avgLeadKm", "plannedStartDate", "targetCompletionDate",
+        "borrowSource", "avgLeadKm",
+        "mobilisationDate", "plannedStartDate", "actualStartDate", "targetCompletionDate",
         "plannedDailyOutput", "workingHoursPerShift", "numExcavators", "excavatorType",
         "numTippers", "tipperCapacityCum", "dieselResponsibility", "components",
         "inclusions", "exclusions", "notes", "status",
-        "approvedByUserId", "approvedAt", "rejectionReason", "cancellationReason",
-        "submittedAt",
+        "rejectionReason", "cancellationReason", "onHoldReason",
+        "boqItemAllocations",
       ];
       const patch: Record<string, unknown> = {};
       for (const field of allowedFields) {
         if (field in body) patch[field] = body[field];
       }
 
-      // Status transition guards
-      if (patch.status === "submitted") patch.submittedAt = new Date().toISOString();
-      if (patch.status === "approved") {
-        patch.approvedByUserId = user?.id ?? null;
-        patch.approvedAt = new Date().toISOString();
+      // Numeric coercion
+      for (const f of ["allocatedQty","agreedRate","avgLeadKm","plannedDailyOutput","chainageFrom","chainageTo","numExcavators","numTippers","tipperCapacityCum","workingHoursPerShift"]) {
+        if (f in patch && patch[f] != null) patch[f] = Number(patch[f]);
       }
+
+      // ── Linkage/over-allocation guard on PATCH (mirrors POST guard) ────────
+      // Only apply when the patch mutates BOQ linkage or quantity fields.
+      const patchChangesLinkage = "boqItemId" in body || "boqItemAllocations" in body || "allocatedQty" in body;
+      if (patchChangesLinkage) {
+        // Fetch the current arrangement to know existing linkage
+        const current = await storage.getEarthworkArrangementById(id);
+        if (!current) return res.status(404).json({ error: "Arrangement not found" });
+
+        const newAllocsRaw = patch.boqItemAllocations as Array<{ boqItemId: number; qty: number }> | undefined;
+        const newSingleId = "boqItemId" in body ? (body.boqItemId ? Number(body.boqItemId) : null) : Number(current.boqItemId ?? 0) || null;
+        const newAllocQty = "allocatedQty" in patch ? Number(patch.allocatedQty) : Number(current.allocatedQty ?? 0);
+
+        const hasMultiSource = newAllocsRaw != null && Array.isArray(newAllocsRaw)
+          && newAllocsRaw.some(a => a.boqItemId && Number(a.qty) > 0);
+        const hasSingleSource = !!newSingleId;
+
+        // No-source rejection: mirrors POST guard — PATCH cannot leave an arrangement orphaned.
+        // This fires when boqItemAllocations is patched to [] (or all qty=0) while boqItemId is null.
+        if (!hasSingleSource && !hasMultiSource) {
+          return res.status(400).json({
+            error: "BOQ_SOURCE_REQUIRED",
+            message: "An earthwork arrangement must retain a BOQ linkage. Provide boqItemId or a non-empty boqItemAllocations array.",
+          });
+        }
+
+        // Exclusivity check (only when both explicitly provided in this PATCH)
+        if ("boqItemId" in body && "boqItemAllocations" in body && hasSingleSource && hasMultiSource) {
+          return res.status(400).json({
+            error: "AMBIGUOUS_BOQ_SOURCE",
+            message: "Provide either boqItemId (single-source) or boqItemAllocations (multi-source), not both.",
+          });
+        }
+
+        // Over-allocation check per source when quantity or allocations change
+        const projectIdForArrangement = current.boqProjectId;
+        if (hasMultiSource && newAllocsRaw) {
+          for (const alloc of newAllocsRaw) {
+            if (!alloc.boqItemId || Number(alloc.qty) <= 0) continue;
+            const [boqItem] = await db.select({ currentQty: boqItems.currentQty, description: boqItems.description })
+              .from(boqItems).where(eq(boqItems.id, Number(alloc.boqItemId)));
+            if (!boqItem) return res.status(400).json({ error: "BOQ_ITEM_NOT_FOUND", message: `BOQ item ${alloc.boqItemId} not found.` });
+            // Subtract this arrangement's own existing contribution before checking
+            const totalAllocated = await storage.getAllocatedQtyForBoqItem(projectIdForArrangement, Number(alloc.boqItemId));
+            const ownExisting = (Array.isArray(current.boqItemAllocations)
+              ? (current.boqItemAllocations as Array<{ boqItemId: number; qty: number }>)
+                  .find(a => Number(a.boqItemId) === Number(alloc.boqItemId))?.qty ?? 0
+              : 0);
+            const netAllocated = totalAllocated - Number(ownExisting);
+            if (netAllocated + Number(alloc.qty) > Number(boqItem.currentQty ?? 0) + 0.001) {
+              return res.status(400).json({
+                error: "ALLOCATION_EXCEEDS_REMAINING_QUANTITY",
+                message: `Edit would over-allocate "${boqItem.description}": ${(netAllocated + Number(alloc.qty)).toFixed(2)} CUM > ${boqItem.currentQty} CUM BOQ.`,
+              });
+            }
+          }
+        } else if (hasSingleSource && newSingleId && "allocatedQty" in patch) {
+          const [boqItem] = await db.select({ currentQty: boqItems.currentQty, description: boqItems.description })
+            .from(boqItems).where(eq(boqItems.id, newSingleId));
+          if (boqItem) {
+            const totalAllocated = await storage.getAllocatedQtyForBoqItem(projectIdForArrangement, newSingleId);
+            const ownExisting = Number(current.boqItemId) === newSingleId ? Number(current.allocatedQty ?? 0) : 0;
+            const netAllocated = totalAllocated - ownExisting;
+            if (netAllocated + newAllocQty > Number(boqItem.currentQty ?? 0) + 0.001) {
+              return res.status(400).json({
+                error: "ALLOCATION_EXCEEDS_REMAINING_QUANTITY",
+                message: `Edit would over-allocate "${boqItem.description}": ${(netAllocated + newAllocQty).toFixed(2)} CUM > ${boqItem.currentQty} CUM BOQ.`,
+              });
+            }
+          }
+        }
+      }
+      // ── End of linkage/over-allocation guard ──────────────────────────────
+
+      // Status transition — set timestamps
+      const newStatus = patch.status as string | undefined;
+      if (newStatus === "submitted") patch.submittedAt = now;
+      if (newStatus === "approved") { patch.approvedByUserId = user?.id ?? null; patch.approvedAt = now; }
+      if (newStatus === "returned") patch.returnedAt = now;
+      if (newStatus === "completed") patch.completedAt = now;
+      if (newStatus === "in_progress" && !body.actualStartDate) patch.actualStartDate = now.split("T")[0];
 
       const updated = await storage.updateEarthworkArrangement(id, patch as any);
       if (!updated) return res.status(404).json({ error: "Arrangement not found" });
@@ -12446,7 +12689,7 @@ export async function registerRoutes(
       await storage.createAuditLog?.({
         module: "earthwork_arrangements",
         transactionId: String(id),
-        action: "update",
+        action: newStatus ? `status_${newStatus}` : "update",
         userId: user?.id ?? null,
         newValues: patch,
       }).catch(() => {});
@@ -12462,11 +12705,11 @@ export async function registerRoutes(
   app.delete("/api/earthwork-arrangements/:id", async (req, res) => {
     try {
       if (!assertLogin(req, res)) return;
+      if (!assertEdit(req, res, "qto_boq")) return;
       const id = parseInt(req.params.id);
       const user = (req as any).user;
       const { reason } = req.body ?? {};
 
-      // Soft-cancel rather than hard delete
       const updated = await storage.updateEarthworkArrangement(id, {
         status: "cancelled",
         cancellationReason: reason?.trim() || null,
@@ -12485,6 +12728,158 @@ export async function registerRoutes(
     } catch (err) {
       console.error("DELETE /api/earthwork-arrangements/:id:", err);
       res.status(500).json({ error: "Failed to cancel earthwork arrangement" });
+    }
+  });
+
+  /** Get DPR progress for an earthwork arrangement. */
+  app.get("/api/earthwork-arrangements/:id/progress", async (req, res) => {
+    try {
+      if (!assertLogin(req, res)) return;
+      const id = parseInt(req.params.id);
+      const progress = await (storage as any).getArrangementProgress(id);
+      res.json(progress);
+    } catch (err) {
+      console.error("GET /api/earthwork-arrangements/:id/progress:", err);
+      res.status(500).json({ error: "Failed to fetch arrangement progress" });
+    }
+  });
+
+  // ── Instruction 024: Earthwork Baselines ──────────────────────────────────────
+
+  /** Get baseline for a BOQ item. */
+  app.get("/api/boq/projects/:id/earthwork-baselines/item/:itemId", async (req, res) => {
+    try {
+      if (!assertLogin(req, res)) return;
+      const projectId = parseInt(req.params.id);
+      const boqItemId = parseInt(req.params.itemId);
+      const baseline = await (storage as any).getEarthworkBaseline(projectId, boqItemId);
+      res.json(baseline ?? null);
+    } catch (err) {
+      console.error("GET earthwork-baselines:", err);
+      res.status(500).json({ error: "Failed to fetch baseline" });
+    }
+  });
+
+  /** Capture an earthwork baseline (immutable — fails if one already exists). */
+  app.post("/api/boq/projects/:id/earthwork-baselines", async (req, res) => {
+    try {
+      if (!assertLogin(req, res)) return;
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const user = (req as any).user;
+      const { boqItemId, originalStart, originalFinish, originalDurationDays, originalQty, notes } = req.body ?? {};
+      if (!boqItemId) return res.status(400).json({ error: "boqItemId required" });
+      const existing = await (storage as any).getEarthworkBaseline(projectId, Number(boqItemId));
+      if (existing) return res.status(409).json({ error: "BASELINE_ALREADY_EXISTS", message: "A baseline has already been captured for this item. Baselines are immutable." });
+      const row = await (storage as any).createEarthworkBaseline({
+        boqProjectId: projectId, boqItemId: Number(boqItemId),
+        originalStart: originalStart ?? null, originalFinish: originalFinish ?? null,
+        originalDurationDays: originalDurationDays != null ? Number(originalDurationDays) : null,
+        originalQty: originalQty != null ? Number(originalQty) : null,
+        capturedByUserId: user?.id ?? null, notes: notes?.trim() || null,
+      });
+      res.status(201).json(row);
+    } catch (err) {
+      console.error("POST earthwork-baselines:", err);
+      res.status(500).json({ error: "Failed to capture baseline" });
+    }
+  });
+
+  // ── Instruction 024: Earthwork Forecasts ──────────────────────────────────────
+
+  /** List all forecast versions for a BOQ item. */
+  app.get("/api/boq/projects/:id/earthwork-forecasts/item/:itemId", async (req, res) => {
+    try {
+      if (!assertLogin(req, res)) return;
+      const projectId = parseInt(req.params.id);
+      const boqItemId = parseInt(req.params.itemId);
+      const forecasts = await (storage as any).getEarthworkForecasts(projectId, boqItemId);
+      res.json(forecasts);
+    } catch (err) {
+      console.error("GET earthwork-forecasts:", err);
+      res.status(500).json({ error: "Failed to fetch forecasts" });
+    }
+  });
+
+  /** Create a new forecast version. */
+  app.post("/api/boq/projects/:id/earthwork-forecasts", async (req, res) => {
+    try {
+      if (!assertLogin(req, res)) return;
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const user = (req as any).user;
+      const body = req.body ?? {};
+      if (!body.boqItemId) return res.status(400).json({ error: "boqItemId required" });
+      if (!body.forecastFinishDate) return res.status(400).json({ error: "forecastFinishDate required" });
+
+      // Auto-increment version number
+      const existing = await (storage as any).getEarthworkForecasts(projectId, Number(body.boqItemId));
+      const maxVer = existing.reduce((m: number, f: any) => Math.max(m, f.versionNumber ?? 0), 0);
+
+      const row = await (storage as any).createEarthworkForecast({
+        boqProjectId: projectId,
+        boqItemId: Number(body.boqItemId),
+        versionNumber: maxVer + 1,
+        effectiveDate: body.effectiveDate ?? null,
+        balanceQty: body.balanceQty != null ? Number(body.balanceQty) : null,
+        forecastStartDate: body.forecastStartDate ?? null,
+        plannedDailyOutput: body.plannedDailyOutput != null ? Number(body.plannedDailyOutput) : null,
+        expectedWorkingDays: body.expectedWorkingDays != null ? Number(body.expectedWorkingDays) : null,
+        forecastFinishDate: body.forecastFinishDate,
+        delayReasonCode: body.delayReasonCode ?? null,
+        delayReasonOther: body.delayReasonOther ?? null,
+        notes: body.notes?.trim() || null,
+        status: "draft",
+        preparedByUserId: user?.id ?? null,
+      });
+      res.status(201).json(row);
+    } catch (err) {
+      console.error("POST earthwork-forecasts:", err);
+      res.status(500).json({ error: "Failed to create forecast" });
+    }
+  });
+
+  /** Approve or update a forecast. */
+  app.patch("/api/earthwork-forecasts/:id", async (req, res) => {
+    try {
+      if (!assertLogin(req, res)) return;
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const id = parseInt(req.params.id);
+      const user = (req as any).user;
+      const patch: Record<string, unknown> = {};
+      const body = req.body ?? {};
+      for (const f of ["status","forecastFinishDate","balanceQty","plannedDailyOutput","expectedWorkingDays","forecastStartDate","effectiveDate","delayReasonCode","delayReasonOther","notes"]) {
+        if (f in body) patch[f] = body[f];
+      }
+      if (patch.status === "approved") {
+        patch.approvedByUserId = user?.id ?? null;
+        patch.approvedAt = new Date().toISOString();
+      }
+      const updated = await (storage as any).updateEarthworkForecast(id, patch);
+      if (!updated) return res.status(404).json({ error: "Forecast not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/earthwork-forecasts/:id:", err);
+      res.status(500).json({ error: "Failed to update forecast" });
+    }
+  });
+
+  /** Set bulk material classification on a BOQ item (earthwork vs vendor_supplied). */
+  app.patch("/api/boq/items/:itemId/bulk-classification", async (req, res) => {
+    try {
+      if (!assertLogin(req, res)) return;
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const boqItemId = parseInt(req.params.itemId);
+      if (isNaN(boqItemId)) return res.status(400).json({ error: "Invalid boqItemId" });
+      const { classification } = req.body ?? {};
+      if (!["earthwork", "vendor_supplied"].includes(classification))
+        return res.status(400).json({ error: "classification must be 'earthwork' or 'vendor_supplied'" });
+      // Parameterized — no SQL injection risk (Drizzle query builder)
+      await db.update(boqItems).set({ bulkMaterialClassification: classification }).where(eq(boqItems.id, boqItemId));
+      res.json({ ok: true, boqItemId, classification });
+    } catch (err) {
+      console.error("PATCH /api/boq/items/:itemId/bulk-classification:", err);
+      res.status(500).json({ error: "Failed to set classification" });
     }
   });
 

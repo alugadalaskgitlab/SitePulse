@@ -446,6 +446,8 @@ export interface BomMaterialRow {
   supplyType?: "direct" | "plant";
   /** Instruction 023: true for recognised earthwork/bulk-fill BOQ items. Bypasses Plant Material mapping. */
   isEarthworkBulkRequirement?: boolean;
+  /** Instruction 024: true for gravel/moorum items that need user classification before routing. */
+  requiresClassification?: boolean;
   originalNormMaterialName?: string;
   displayMaterialName?: string;
   suggestedMaterialMasterName?: string;
@@ -563,6 +565,13 @@ export interface BomInputItem {
     isAuto?: boolean | null;
     supplyType?: "direct" | "plant";
   }>;
+  /**
+   * Instruction 024: DB column bulk_material_classification.
+   * null/undefined = not yet classified.
+   * "earthwork"      = route into arrangement flow (same as isEarthworkBoqItem = true).
+   * "vendor_supplied"= route into normal Plant Material mapping.
+   */
+  bulkMaterialClassification?: string | null;
 }
 
 export interface BomInputBar {
@@ -635,6 +644,8 @@ type KeyBomMaterialInputRow = {
   supplyType?: "direct" | "plant";
   /** Instruction 023: true for earthwork/bulk-fill BOQ items (Earth, Subgrade, Shoulder, etc.) */
   isEarthworkBulkRequirement?: boolean;
+  /** Instruction 024: true for gravel/moorum items with no saved bulkMaterialClassification. */
+  requiresClassification?: boolean;
 };
 
 function textOf(value: unknown): string {
@@ -694,15 +705,40 @@ function isEarthworkBoqItem(item: BomInputItem): boolean {
 
   if (unit !== "CUM") return false;
 
+  // Explicit exclusions: structural, drainage, roads base/mix, concrete items
   if (
     /foundation|footing|abutment|pier|wing\s*wall|return\s*wall|drain|culvert|pipe|trench|structure|back\s*filling|backfilling|behind\s*abutment|behind\s*wall|filter\s*media|stone\s*pitching|pcc|rcc|concrete|gsb|wmm|granular\s*sub[-\s]*base|wet\s*mix/i.test(desc)
   ) {
     return false;
   }
 
+  // Instruction 024: gravel / moorum must NOT be auto-classified as earthwork.
+  // Those items are ambiguous (may be earthwork-inclusive OR vendor-supplied) and
+  // require explicit user classification before routing. Matching them here would
+  // bypass the classification gate and send them straight into the arrangement flow.
+  if (isGravelOrMoorumItem(item)) {
+    return false;
+  }
+
+  // Instruction 024: expanded positive match — bulk earthwork / natural fill
   return (
-    /embankment|subgrade|earthen\s*shoulder|shoulder|median\s*filling|borrow\s*soil|selected\s*soil/i.test(desc)
+    /embankment|subgrade|earthen\s*shoulder|shoulder|median\s*filling|borrow\s*soil|borrow\s*earth|selected\s*soil|selected\s*earth|suitable\s*soil|suitable\s*earth|embankment\s*material|subgrade\s*material|subgrade\s*soil|reused\s*excavat/i.test(desc)
   );
+}
+
+/**
+ * Instruction 024 §6 — Gravel and moorum are ambiguous:
+ * they may be earthwork (included in agency rate) or vendor-supplied material.
+ * When this returns true AND the item is not already classified in boq_items,
+ * the UI shows a "Classify" action instead of silently routing to material mapping.
+ */
+export function isGravelOrMoorumItem(item: BomInputItem): boolean {
+  const desc = item.description.toLowerCase();
+  const unit = normaliseUnit(item.unit);
+  if (unit !== "CUM") return false;
+  // Already excluded by the structural veto above
+  if (/gsb|wmm|granular\s*sub[-\s]*base|wet\s*mix/i.test(desc)) return false;
+  return /\bgravel\b|moorum|murrum|mooram/i.test(desc);
 }
 
 function isFlyAshBoqItem(item: BomInputItem): boolean {
@@ -865,6 +901,41 @@ function buildKeyMaterialRows(item: BomInputItem): KeyBomMaterialInputRow[] {
     return rows;
   }
 
+  // Instruction 024: Gravel/Moorum items are ambiguous — may be earthwork-inclusive or vendor-supplied.
+  // Route based on the saved bulk_material_classification column.
+  if (isGravelOrMoorumItem(item)) {
+    const classification = item.bulkMaterialClassification;
+    if (classification === "earthwork") {
+      // Explicitly classified as earthwork: route into arrangement flow
+      rows.push({
+        materialName: "Gravel / Moorum",
+        uom: normaliseUnit(item.unit),
+        qtyPerBoqUnit: 1,
+        wastagePct: 0,
+        isClientSupplied: false,
+        isAuto: true,
+        isEarthworkBulkRequirement: true,
+      });
+      return rows;
+    }
+    if (classification !== "vendor_supplied") {
+      // Unclassified (null/undefined): requires user decision before routing.
+      // Emits a demand row with requiresClassification = true so shortage-check
+      // returns "earthwork_classification_required" instead of "mapping_required".
+      rows.push({
+        materialName: "Gravel / Moorum (Unclassified)",
+        uom: normaliseUnit(item.unit),
+        qtyPerBoqUnit: 1,
+        wastagePct: 0,
+        isClientSupplied: false,
+        isAuto: true,
+        requiresClassification: true,
+      });
+      return rows;
+    }
+    // vendor_supplied: fall through to normal material-row handling below
+  }
+
   // 2c. Template-derived materials (RMC design / mix-template JMF / granular / spray)
   // take precedence — links the BOM to the actual templates instead of legacy SDB rows.
   if (item.derivedKeyMaterials && item.derivedKeyMaterials.length > 0) {
@@ -995,6 +1066,7 @@ export function calculateBomDemand(
           normalisationReason: "Material BOM V1 key-material allowlist",
           supplyType: m.supplyType,
           isEarthworkBulkRequirement: m.isEarthworkBulkRequirement ?? false, // Instruction 023
+          requiresClassification: m.requiresClassification ?? false,       // Instruction 024
         });
       }
 
@@ -2010,28 +2082,68 @@ export type ShortageSuggestion =
   | "review_internal_issue"
   | "resolve_mapping";
 
-/** Instruction 023: lightweight summary of an earthwork arrangement, attached to ShortageRowResult. */
+/** Instruction 023/024: summary of an earthwork arrangement, attached to ShortageRowResult. */
 export interface EarthworkArrangementSummary {
   id: number;
   arrangementType: string;
+  /** Full status set: draft|submitted|approved|mobilisation_pending|in_progress|on_hold|completed|returned|rejected|cancelled */
   status: string;
   agencyName: string | null;
   allocatedQty: number;
   uom: string;
   agreedRate: number | null;
+  /** Computed: allocatedQty × agreedRate — planning value only, not an accounting liability. */
+  estimatedValue: number | null;
   plannedDailyOutput: number | null;
+  mobilisationDate: string | null;
   plannedStartDate: string | null;
+  actualStartDate: string | null;
   targetCompletionDate: string | null;
   reachLabel: string | null;
   components: Record<string, string> | null;
+  /** Progress from linked DPR entries (submitted/approved DPRs only). */
+  completedQty: number;
+  recentDailyOutput: number;
+  lastEntryDate: string | null;
+  daysSinceLastEntry: number | null;
+  /** boqItemAllocations: [{boqItemId, qty}] for multi-BOQ arrangements */
+  boqItemAllocations: Array<{ boqItemId: number; qty: number }> | null;
 }
 
-/** Instruction 020 §3 / 023: authoritative server-side procurement status. */
+/** Instruction 024: baseline for an earthwork BOQ item. */
+export interface EarthworkBaselineSummary {
+  boqItemId: number;
+  originalStart: string | null;
+  originalFinish: string | null;
+  originalQty: number | null;
+  capturedAt: string;
+}
+
+/** Instruction 024: current working forecast for an earthwork BOQ item. */
+export interface EarthworkForecastSummary {
+  id: number;
+  versionNumber: number;
+  forecastFinishDate: string | null;
+  balanceQty: number | null;
+  plannedDailyOutput: number | null;
+  expectedWorkingDays: number | null;
+  delayReasonCode: string | null;
+  status: string;
+  /** Three-quantity split (§25). */
+  overdueBacklog: number;
+  executableHorizon: number;
+  futureBalance: number;
+  reforecastRequired: boolean;
+  reforecastReasons: string[];
+}
+
+/** Instruction 020 §3 / 023/024: authoritative server-side procurement status. */
 export type ProcurementStatus =
   | "mapping_required"
   | "uom_resolution_required"
   | "multiple_matches"
   | "earthwork_arrangement_required"   // 023: recognised earthwork with no Plant Material mapping
+  | "earthwork_classification_required" // 024: ambiguous bulk material (gravel/moorum) needing user classification
   | "future_not_due"
   | "covered_by_stock"
   | "covered_by_incoming"
@@ -2106,6 +2218,8 @@ export interface ShortageRowResult {
   resolutionReason: ResolutionReason | null;
   /** Instruction 023: true for earthwork/bulk-fill rows that bypass Plant Material mapping. */
   isEarthworkBulkRequirement: boolean;
+  /** Instruction 024: true for gravel/moorum rows awaiting user classification. */
+  requiresClassification: boolean;
   /** Instruction 023: arrangements saved for this earthwork row (injected by route). */
   earthworkArrangements?: EarthworkArrangementSummary[];
   /** Instruction 023: source BOQ item ID for single-source earthwork rows. */
@@ -2145,6 +2259,8 @@ export interface ShortageRowOpts {
   resolutionReason?: ResolutionReason | null;
   /** Instruction 023: true for earthwork/bulk-fill rows — fires earthwork_arrangement_required status instead of mapping_required. */
   isEarthworkBulkRequirement?: boolean;
+  /** Instruction 024: true for gravel/moorum rows pending user classification. */
+  requiresClassification?: boolean;
   /** Instruction 023: boqItemId of the earthwork BOQ item, for arrangement lookup. */
   earthworkBoqItemId?: number | null;
   /** Instruction 023: summary of active arrangements already saved for this item (injected by route). */
@@ -2257,15 +2373,19 @@ export function computeShortageRow(
     }
   }
 
-  // ── Instruction 020 §3-4 / 023: authoritative procurement status ─────────────
+  // ── Instruction 020 §3-4 / 023/024: authoritative procurement status ────────
   // Strict precedence: resolution issues → future timing → coverage level → action needed.
   // UI uses this field for rendering; suggestion is kept only for backward compatibility.
   const resolutionReason: ResolutionReason | null = opts?.resolutionReason ?? null;
   const isEarthworkBulkRequirement = opts?.isEarthworkBulkRequirement ?? false;
+  const requiresClassification = opts?.requiresClassification ?? false;
   const PROC_TOL = 0.001;
   let procurementStatus: ProcurementStatus;
   if (opts) {
-    if (isEarthworkBulkRequirement && materialMappingUnresolved) {
+    if (requiresClassification) {
+      // 024: gravel/moorum items with no saved classification — user must classify before routing.
+      procurementStatus = "earthwork_classification_required";
+    } else if (isEarthworkBulkRequirement && materialMappingUnresolved) {
       // 023: earthwork bulk rows never go through Plant Material mapping.
       // Show execution-arrangement flow regardless of resolution reason.
       procurementStatus = "earthwork_arrangement_required";
@@ -2335,6 +2455,7 @@ export function computeShortageRow(
     procurementStatus,
     resolutionReason,
     isEarthworkBulkRequirement,
+    requiresClassification,
     // 023: earthworkArrangements and earthworkBoqItemId are injected by the route
     // after calling this function — not populated here.
   };

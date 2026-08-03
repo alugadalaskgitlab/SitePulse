@@ -106,6 +106,8 @@ export const progressEntries = pgTable("progress_entries", {
   noSiteWorkDescription: text("no_site_work_description"),
   // Optional link to a BOQ item for Plan vs Actual tracking
   boqItemId: integer("boq_item_id"),
+  // Optional link to an earthwork arrangement for progress tracking (Instruction 024)
+  earthworkArrangementId: integer("earthwork_arrangement_id"),
 });
 
 // Structure DPR Items (for workType = "structure")
@@ -2566,6 +2568,9 @@ export const boqItems = pgTable("boq_items", {
   // Flagged for admin review — shown in "Needs Mapping" group in DPR picker,
   // skipped from auto-sequence until reviewed.
   needsReview: boolean("needs_review").notNull().default(false),
+  // Instruction 024: classification for ambiguous bulk materials (gravel/moorum).
+  // Values: "earthwork" | "vendor_supplied" | null (= unclassified, shows Classify prompt)
+  bulkMaterialClassification: text("bulk_material_classification"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("boq_items_project_idx").on(t.boqProjectId),
@@ -3494,7 +3499,9 @@ export type InsertMaterialUomConversion = z.infer<typeof insertMaterialUomConver
 export const earthworkArrangements = pgTable("earthwork_arrangements", {
   id: serial("id").primaryKey(),
   boqProjectId: integer("boq_project_id").notNull(),
-  boqItemId: integer("boq_item_id"),            // null → label-bucket level (rare)
+  boqItemId: integer("boq_item_id"),            // null when arrangement spans multiple BOQ items
+  // JSONB array of { boqItemId, qty } — used when one arrangement spans multiple BOQ items/reaches
+  boqItemAllocations: jsonb("boq_item_allocations"),
   materialLabel: text("material_label").notNull(), // BOM materialName e.g. "Earth / Borrow Soil"
 
   // Arrangement type
@@ -3519,9 +3526,11 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
   avgLeadKm: real("avg_lead_km"),
 
   // Schedule
-  plannedStartDate: text("planned_start_date"),     // ISO date YYYY-MM-DD
+  mobilisationDate: text("mobilisation_date"),       // ISO date YYYY-MM-DD
+  plannedStartDate: text("planned_start_date"),       // ISO date YYYY-MM-DD
+  actualStartDate: text("actual_start_date"),
   targetCompletionDate: text("target_completion_date"),
-  plannedDailyOutput: real("planned_daily_output"), // CUM/day
+  plannedDailyOutput: real("planned_daily_output"),   // CUM/day
 
   // Equipment
   workingHoursPerShift: integer("working_hours_per_shift"),
@@ -3532,17 +3541,22 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
 
   // Responsibility
   dieselResponsibility: text("diesel_responsibility"), // agency | hlc | mixed
-  components: jsonb("components"),              // per-component responsibility map (see above)
+  components: jsonb("components"),              // per-component responsibility map
   inclusions: text("inclusions"),
   exclusions: text("exclusions"),
   notes: text("notes"),
 
   // Status / approval flow
+  // Valid statuses: draft | submitted | approved | mobilisation_pending | in_progress |
+  //                 on_hold | completed | returned | rejected | cancelled
   status: text("status").notNull().default("draft"),
   preparedByUserId: integer("prepared_by_user_id"),
   submittedAt: timestamp("submitted_at"),
   approvedByUserId: integer("approved_by_user_id"),
   approvedAt: timestamp("approved_at"),
+  returnedAt: timestamp("returned_at"),
+  onHoldReason: text("on_hold_reason"),
+  completedAt: timestamp("completed_at"),
   rejectionReason: text("rejection_reason"),
   cancellationReason: text("cancellation_reason"),
 
@@ -3553,3 +3567,52 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
 export const insertEarthworkArrangementSchema = createInsertSchema(earthworkArrangements).omit({ id: true, createdAt: true, updatedAt: true });
 export type EarthworkArrangement = typeof earthworkArrangements.$inferSelect;
 export type InsertEarthworkArrangement = z.infer<typeof insertEarthworkArrangementSchema>;
+
+// ─── Earthwork Baselines ──────────────────────────────────────────────────────
+// Captures the original approved programme for an earthwork BOQ item.
+// Once captured, this record is immutable.
+export const earthworkBaselines = pgTable("earthwork_baselines", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull(),
+  boqItemId: integer("boq_item_id").notNull(),
+  originalStart: text("original_start"),        // ISO date YYYY-MM-DD
+  originalFinish: text("original_finish"),
+  originalDurationDays: integer("original_duration_days"),
+  originalQty: real("original_qty"),
+  capturedAt: timestamp("captured_at").defaultNow(),
+  capturedByUserId: integer("captured_by_user_id"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEarthworkBaselineSchema = createInsertSchema(earthworkBaselines).omit({ id: true, createdAt: true, capturedAt: true });
+export type EarthworkBaseline = typeof earthworkBaselines.$inferSelect;
+export type InsertEarthworkBaseline = z.infer<typeof insertEarthworkBaselineSchema>;
+
+// ─── Earthwork Forecasts ──────────────────────────────────────────────────────
+// Working forecast versions for delayed earthwork. Previous versions are kept.
+export const earthworkForecasts = pgTable("earthwork_forecasts", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull(),
+  boqItemId: integer("boq_item_id").notNull(),
+  versionNumber: integer("version_number").notNull().default(1),
+  effectiveDate: text("effective_date"),         // ISO date YYYY-MM-DD
+  balanceQty: real("balance_qty"),
+  forecastStartDate: text("forecast_start_date"),
+  plannedDailyOutput: real("planned_daily_output"),
+  expectedWorkingDays: integer("expected_working_days"),
+  forecastFinishDate: text("forecast_finish_date"),
+  delayReasonCode: text("delay_reason_code"),    // rain_weather | site_suspension | client_instruction | ...
+  delayReasonOther: text("delay_reason_other"),  // free text when code = "other"
+  notes: text("notes"),
+  // Status: draft | approved
+  status: text("status").notNull().default("draft"),
+  preparedByUserId: integer("prepared_by_user_id"),
+  approvedByUserId: integer("approved_by_user_id"),
+  approvedAt: timestamp("approved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEarthworkForecastSchema = createInsertSchema(earthworkForecasts).omit({ id: true, createdAt: true });
+export type EarthworkForecast = typeof earthworkForecasts.$inferSelect;
+export type InsertEarthworkForecast = z.infer<typeof insertEarthworkForecastSchema>;

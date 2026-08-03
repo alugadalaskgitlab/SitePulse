@@ -1,5 +1,5 @@
 /**
- * Instruction 023 — Earthwork Execution Arrangement Dialog
+ * Instruction 023/024 — Earthwork Execution Arrangement Dialog
  *
  * Allows PM / Admin to record how earthwork / bulk-fill BOQ items will be
  * executed (agency, in-house, client-supplied, etc.).  The dialog is opened
@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -29,6 +29,7 @@ export type ArrangementType =
   | "vendor_material_delivered"
   | "hlc_source_outsourced_execution"
   | "hlc_in_house"
+  | "partly_outsourced"
   | "client_supplied"
   | "reused_excavated"
   | "not_decided";
@@ -63,7 +64,7 @@ const COMPONENT_LABELS: Record<ComponentKey, string> = {
   excavation: "Excavation",
   loading: "Loading",
   transport: "Transport",
-  dumping: "Dumping & Spreading",
+  dumping: "Dumping",
   spreading: "Spreading",
   watering: "Watering / Compaction Fluid",
   compaction: "Compaction",
@@ -82,6 +83,7 @@ const ARRANGEMENT_TYPE_LABELS: Record<ArrangementType, string> = {
   vendor_material_delivered: "Vendor Material — Delivered to Site",
   hlc_source_outsourced_execution: "HLC Source + Outsourced Execution",
   hlc_in_house: "HLC In-House",
+  partly_outsourced: "Partly Outsourced",
   client_supplied: "Client Supplied",
   reused_excavated: "Reuse of Excavated Material",
   not_decided: "Not Decided",
@@ -122,6 +124,8 @@ function defaultComponents(type: ArrangementType): Record<ComponentKey, Componen
       };
     case "hlc_in_house":
       return Object.fromEntries(COMPONENT_KEYS.map(k => [k, "hlc"])) as Record<ComponentKey, ComponentResponsibility>;
+    case "partly_outsourced":
+      return notDecided();
     case "client_supplied":
       return {
         material_source: "client", source_identification: "client",
@@ -170,10 +174,16 @@ export function ArrangementStatusBadge({ status }: { status: string }) {
     approved: "text-emerald-700 bg-emerald-50 border-emerald-200",
     rejected: "text-red-700 bg-red-50 border-red-200",
     cancelled: "text-slate-500 bg-slate-50 border-slate-200",
+    mobilisation_pending: "text-yellow-700 bg-yellow-50 border-yellow-200",
+    in_progress: "text-blue-700 bg-blue-100 border-blue-300",
+    on_hold: "text-orange-700 bg-orange-50 border-orange-200",
+    completed: "text-emerald-700 bg-emerald-100 border-emerald-300",
+    returned: "text-purple-700 bg-purple-50 border-purple-200",
   };
+  const label = status.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
   return (
     <span className={`inline-flex items-center text-[11px] font-semibold border rounded px-1.5 py-0.5 ${styles[status] ?? styles.draft}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {label}
     </span>
   );
 }
@@ -185,16 +195,45 @@ function ArrangementSummaryCard({
   boqQty,
   onEdit,
   onCancel,
+  onSaved,
 }: {
   arr: EarthworkArrangementSummary;
   boqQty?: number;
   onEdit: () => void;
   onCancel: () => void;
+  onSaved: () => void;
 }) {
-  const estimatedValue = arr.agreedRate != null ? arr.allocatedQty * arr.agreedRate : null;
+  const { toast } = useToast();
+
+  const estimatedValue = arr.estimatedValue ?? (arr.agreedRate != null ? arr.allocatedQty * arr.agreedRate : null);
   const expectedDays = arr.plannedDailyOutput != null && arr.plannedDailyOutput > 0
     ? Math.ceil(arr.allocatedQty / arr.plannedDailyOutput)
     : null;
+
+  const completedQty = arr.completedQty ?? 0;
+  const balanceQty = Math.max(0, arr.allocatedQty - completedQty);
+  const completedPct = arr.allocatedQty > 0 ? Math.round((completedQty / arr.allocatedQty) * 100) : 0;
+
+  const statusMutation = useMutation({
+    mutationFn: async (newStatus: string) => {
+      const res = await fetch(`/api/earthwork-arrangements/${arr.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
+      return data;
+    },
+    onSuccess: (_, newStatus) => {
+      toast({ title: `Status updated to ${newStatus.replace(/_/g, " ")}` });
+      onSaved();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Status update failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   return (
     <div className="rounded border border-slate-200 bg-white p-3 space-y-1.5 text-[12px]">
@@ -216,6 +255,13 @@ function ArrangementSummaryCard({
           <span className="text-slate-400 ml-1">/ {boqQty.toLocaleString()} {arr.uom} total</span>
         )}
       </p>
+      {completedQty > 0 && (
+        <p className="text-slate-600">
+          Completed: <span className="font-mono font-semibold">{completedQty.toLocaleString()} CUM</span>
+          {" "}&middot; Balance: <span className="font-mono font-semibold">{balanceQty.toLocaleString()} CUM</span>
+          {" "}&middot; <span className="font-semibold">{completedPct}%</span>
+        </p>
+      )}
       {arr.agreedRate != null && (
         <p className="text-slate-600">
           Rate: <span className="font-mono font-semibold">₹{arr.agreedRate.toLocaleString()}/{arr.uom}</span>
@@ -235,16 +281,109 @@ function ArrangementSummaryCard({
           <span>~{expectedDays} days at {arr.plannedDailyOutput} {arr.uom}/day</span>
         )}
       </div>
-      {arr.status !== "cancelled" && arr.status !== "approved" && (
-        <div className="flex gap-1.5 pt-1">
-          <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={onEdit}>
-            Edit
-          </Button>
-          <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={onCancel}>
-            <Trash2 className="w-3 h-3 mr-1" /> Cancel
-          </Button>
-        </div>
+      {arr.daysSinceLastEntry != null && arr.daysSinceLastEntry > 7 && (
+        <p className="text-orange-600 bg-orange-50 border border-orange-200 rounded px-2 py-1">
+          ⚠ No progress in {arr.daysSinceLastEntry} days
+        </p>
       )}
+
+      {/* Status action buttons */}
+      <div className="flex gap-1.5 pt-1 flex-wrap">
+        {arr.status === "draft" && (
+          <>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={onEdit}>Edit</Button>
+            <Button
+              variant="outline" size="sm" className="h-6 text-[11px] px-2 text-blue-600 hover:bg-blue-50"
+              disabled={statusMutation.isPending}
+              onClick={() => statusMutation.mutate("submitted")}
+            >
+              {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+              Submit for Approval
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={onCancel}>
+              <Trash2 className="w-3 h-3 mr-1" /> Cancel
+            </Button>
+          </>
+        )}
+        {arr.status === "submitted" && (
+          <>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={onEdit}>Edit</Button>
+            <Button
+              variant="outline" size="sm" className="h-6 text-[11px] px-2 text-emerald-600 hover:bg-emerald-50"
+              disabled={statusMutation.isPending}
+              onClick={() => statusMutation.mutate("approved")}
+            >
+              {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+              Approve
+            </Button>
+          </>
+        )}
+        {arr.status === "approved" && (
+          <>
+            <Button
+              variant="outline" size="sm" className="h-6 text-[11px] px-2 text-amber-600 hover:bg-amber-50"
+              disabled={statusMutation.isPending}
+              onClick={() => statusMutation.mutate("mobilisation_pending")}
+            >
+              Record Mobilisation
+            </Button>
+            <Button
+              variant="outline" size="sm" className="h-6 text-[11px] px-2 text-orange-600 hover:bg-orange-50"
+              disabled={statusMutation.isPending}
+              onClick={() => statusMutation.mutate("on_hold")}
+            >
+              Put On Hold
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={onCancel}>
+              <Trash2 className="w-3 h-3 mr-1" /> Cancel
+            </Button>
+          </>
+        )}
+        {arr.status === "mobilisation_pending" && (
+          <>
+            <Button
+              variant="outline" size="sm" className="h-6 text-[11px] px-2 text-blue-600 hover:bg-blue-50"
+              disabled={statusMutation.isPending}
+              onClick={() => statusMutation.mutate("in_progress")}
+            >
+              {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+              Mark In Progress
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={onCancel}>
+              <Trash2 className="w-3 h-3 mr-1" /> Cancel
+            </Button>
+          </>
+        )}
+        {arr.status === "in_progress" && (
+          <>
+            <Button
+              variant="outline" size="sm" className="h-6 text-[11px] px-2 text-orange-600 hover:bg-orange-50"
+              disabled={statusMutation.isPending}
+              onClick={() => statusMutation.mutate("on_hold")}
+            >
+              Put On Hold
+            </Button>
+            <Button
+              variant="outline" size="sm" className="h-6 text-[11px] px-2 text-emerald-600 hover:bg-emerald-50"
+              disabled={statusMutation.isPending}
+              onClick={() => statusMutation.mutate("completed")}
+            >
+              {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+              Mark Completed
+            </Button>
+          </>
+        )}
+        {arr.status === "on_hold" && (
+          <Button
+            variant="outline" size="sm" className="h-6 text-[11px] px-2 text-blue-600 hover:bg-blue-50"
+            disabled={statusMutation.isPending}
+            onClick={() => statusMutation.mutate("in_progress")}
+          >
+            {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+            Resume
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -259,12 +398,25 @@ interface EarthworkArrangementDialogProps {
   boqItemId: number | null;
   materialLabel: string;
   boqQty?: number;
+  /**
+   * Instruction 024: When the Work Demand row has multiple contributing BOQ items
+   * (multi-source), pass their IDs here so the dialog can record a split allocation
+   * via boqItemAllocations. Each entry also carries the BOQ description for display.
+   */
+  sourceBoqItems?: Array<{ id: number; description: string; currentQty: number }>;
+  /**
+   * Instruction 024: The count of source BOQ items expected for this row (from
+   * `earthworkSourceBoqItemIds.length`). Used to determine multi-source mode BEFORE
+   * `sourceBoqItems` has finished loading — prevents the fallback to single-source
+   * mode that would send `boqItemId=null` with no allocations (an orphan arrangement).
+   */
+  sourceItemCount?: number;
   /** Pre-fill for editing an existing arrangement */
   editArrangement?: EarthworkArrangementSummary & { inclusions?: string; exclusions?: string; notes?: string; borrowSource?: string; avgLeadKm?: number };
 }
 
 export function EarthworkArrangementDialog({
-  open, onClose, onSaved, projectId, boqItemId, materialLabel, boqQty, editArrangement,
+  open, onClose, onSaved, projectId, boqItemId, materialLabel, boqQty, sourceBoqItems, sourceItemCount, editArrangement,
 }: EarthworkArrangementDialogProps) {
   const { toast } = useToast();
   const isEdit = !!editArrangement;
@@ -297,6 +449,23 @@ export function EarthworkArrangementDialog({
       : defaultComponents("not_decided")
   );
 
+  // ── Instruction 024: per-source allocation state (multi-BOQ rows) ──────────
+  // isMultiSource is derived from BOTH the loaded items AND the expected count from
+  // the parent row's earthworkSourceBoqItemIds.length (sourceItemCount).
+  // Using only loaded items would miss the case where details are still loading
+  // (sourceBoqItems = undefined → length = 0 → isMultiSource = false → save allowed
+  //  with boqItemId=null, creating an orphan arrangement the server now rejects).
+  const isMultiSource = (sourceBoqItems?.length ?? sourceItemCount ?? 0) > 1;
+  const initSourceAllocations = (): Record<number, string> => {
+    if (!isMultiSource || !sourceBoqItems) return {};
+    const existing = editArrangement?.boqItemAllocations;
+    if (Array.isArray(existing) && existing.length > 0) {
+      return Object.fromEntries(existing.map(a => [a.boqItemId, String(a.qty)]));
+    }
+    return Object.fromEntries(sourceBoqItems.map(s => [s.id, ""]));
+  };
+  const [sourceAllocations, setSourceAllocations] = useState<Record<number, string>>(initSourceAllocations);
+
   // Apply template when arrangement type changes
   function handleTypeChange(t: ArrangementType) {
     setArrangementType(t);
@@ -304,28 +473,56 @@ export function EarthworkArrangementDialog({
   }
 
   // Derived
-  const allocQtyNum = parseFloat(allocatedQty) || 0;
+  const multiSourceTotal = isMultiSource
+    ? Object.values(sourceAllocations).reduce((s, v) => s + (parseFloat(v) || 0), 0)
+    : 0;
+  const allocQtyNum = isMultiSource ? multiSourceTotal : (parseFloat(allocatedQty) || 0);
   const rateNum = parseFloat(agreedRate) || 0;
   const dailyOutputNum = parseFloat(plannedDailyOutput) || 0;
   const estimatedValue = allocQtyNum > 0 && rateNum > 0 ? allocQtyNum * rateNum : null;
   const expectedDays = allocQtyNum > 0 && dailyOutputNum > 0 ? Math.ceil(allocQtyNum / dailyOutputNum) : null;
 
-  const saveMutation = useMutation({
+  // Validation
+  const outsourcedTypes: ArrangementType[] = [
+    "fully_outsourced_composite",
+    "vendor_material_delivered",
+    "hlc_source_outsourced_execution",
+    "partly_outsourced",
+  ];
+  const needsAgencyName = outsourcedTypes.includes(arrangementType);
+  const canDraft = allocQtyNum > 0 && arrangementType !== "not_decided";
+  const canSubmit = canDraft && (!needsAgencyName || agencyName.trim().length > 0);
+
+  const buildBody = () => {
+    const base = {
+      materialLabel, arrangementType,
+      allocatedQty: allocQtyNum, uom: "CUM",
+      agencyName: agencyName.trim() || null,
+      reachLabel: reachLabel.trim() || null,
+      agreedRate: rateNum > 0 ? rateNum : null,
+      borrowSource: borrowSource.trim() || null,
+      avgLeadKm: avgLeadKm ? parseFloat(avgLeadKm) : null,
+      plannedStartDate: plannedStartDate || null,
+      targetCompletionDate: targetCompletionDate || null,
+      plannedDailyOutput: dailyOutputNum > 0 ? dailyOutputNum : null,
+      notes: notes.trim() || null,
+      components,
+    };
+
+    if (isMultiSource && sourceBoqItems && sourceBoqItems.length > 1) {
+      // Multi-source: send boqItemAllocations array; no single boqItemId
+      const allocs = sourceBoqItems
+        .map(s => ({ boqItemId: s.id, qty: parseFloat(sourceAllocations[s.id] || "0") || 0 }))
+        .filter(a => a.qty > 0);
+      return { ...base, boqItemId: null, boqItemAllocations: allocs };
+    }
+    // Single-source: send boqItemId as before
+    return { ...base, boqItemId };
+  };
+
+  const saveDraftMutation = useMutation({
     mutationFn: async () => {
-      const body = {
-        boqItemId, materialLabel, arrangementType,
-        allocatedQty: allocQtyNum, uom: "CUM",
-        agencyName: agencyName.trim() || null,
-        reachLabel: reachLabel.trim() || null,
-        agreedRate: rateNum > 0 ? rateNum : null,
-        borrowSource: borrowSource.trim() || null,
-        avgLeadKm: avgLeadKm ? parseFloat(avgLeadKm) : null,
-        plannedStartDate: plannedStartDate || null,
-        targetCompletionDate: targetCompletionDate || null,
-        plannedDailyOutput: dailyOutputNum > 0 ? dailyOutputNum : null,
-        notes: notes.trim() || null,
-        components,
-      };
+      const body = { ...buildBody(), status: "draft" };
       const url = isEdit
         ? `/api/earthwork-arrangements/${editArrangement!.id}`
         : `/api/boq/projects/${projectId}/earthwork-arrangements`;
@@ -340,7 +537,7 @@ export function EarthworkArrangementDialog({
       return data;
     },
     onSuccess: () => {
-      toast({ title: isEdit ? "Arrangement updated" : "Arrangement saved", description: `Execution arrangement recorded for ${materialLabel}` });
+      toast({ title: "Draft saved", description: `Draft arrangement saved for ${materialLabel}` });
       onSaved();
       onClose();
     },
@@ -349,7 +546,48 @@ export function EarthworkArrangementDialog({
     },
   });
 
-  const canSave = allocQtyNum > 0 && arrangementType !== "not_decided" || arrangementType === "not_decided";
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const body = { ...buildBody(), status: "draft" };
+      const url = isEdit
+        ? `/api/earthwork-arrangements/${editArrangement!.id}`
+        : `/api/boq/projects/${projectId}/earthwork-arrangements`;
+      const method = isEdit ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method, credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const saveData = await res.json();
+      if (!res.ok) throw new Error(saveData.message ?? saveData.error ?? `Error ${res.status}`);
+
+      // Now submit for approval
+      const arrId = isEdit ? editArrangement!.id : saveData.id;
+      const patchRes = await fetch(`/api/earthwork-arrangements/${arrId}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "submitted" }),
+      });
+      const patchData = await patchRes.json();
+      if (!patchRes.ok) throw new Error(patchData.message ?? patchData.error ?? `Error ${patchRes.status}`);
+      return patchData;
+    },
+    onSuccess: () => {
+      toast({ title: "Submitted for approval", description: `Arrangement submitted for ${materialLabel}` });
+      onSaved();
+      onClose();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Submit failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Instruction 024: For multi-source rows, block save/submit until source BOQ details
+  // have been fetched. This prevents the client from sending boqItemId=null + no allocations
+  // (the orphan-arrangement case the server now rejects with BOQ_SOURCE_REQUIRED).
+  const sourceDetailsLoading = isMultiSource && !sourceBoqItems;
+
+  const isPending = saveDraftMutation.isPending || submitMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
@@ -378,17 +616,53 @@ export function EarthworkArrangementDialog({
           {/* Agency / Vendor (shown unless not_decided / client_supplied / hlc_in_house / reused_excavated) */}
           {!["hlc_in_house", "reused_excavated", "not_decided"].includes(arrangementType) && (
             <div className="space-y-1">
-              <Label className="text-xs font-semibold">Agency / Vendor Name</Label>
+              <Label className="text-xs font-semibold">
+                Agency / Vendor Name
+                {needsAgencyName && <span className="text-red-500 ml-1">*</span>}
+              </Label>
               <Input
                 className="h-8 text-[12px]"
                 placeholder="e.g. M/s Earthcon Contractors"
                 value={agencyName}
                 onChange={e => setAgencyName(e.target.value)}
               />
+              {needsAgencyName && !agencyName.trim() && (
+                <p className="text-[11px] text-red-500">Agency name required for outsourced arrangements</p>
+              )}
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Allocation section: single-source OR multi-source split */}
+          {isMultiSource && sourceBoqItems ? (
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold">
+                Allocation by BOQ Source <span className="text-slate-500 font-normal">(enter qty from each contributing item)</span>
+              </Label>
+              <div className="border border-slate-200 rounded divide-y">
+                {sourceBoqItems.map(src => (
+                  <div key={src.id} className="flex items-center gap-2 px-2 py-1.5">
+                    <span className="text-[11px] text-slate-600 flex-1 truncate" title={src.description}>
+                      {src.description.length > 55 ? src.description.slice(0, 55) + "…" : src.description}
+                      <span className="text-slate-400 ml-1">({src.currentQty.toLocaleString()} CUM)</span>
+                    </span>
+                    <Input
+                      className="h-7 text-[12px] font-mono w-28 shrink-0"
+                      type="number" min={0}
+                      placeholder="0.00"
+                      value={sourceAllocations[src.id] ?? ""}
+                      onChange={e => setSourceAllocations(prev => ({ ...prev, [src.id]: e.target.value }))}
+                    />
+                    <span className="text-[11px] text-slate-400 shrink-0">CUM</span>
+                  </div>
+                ))}
+              </div>
+              {allocQtyNum > 0 && (
+                <p className="text-[11px] text-slate-500">
+                  Total: <span className="font-semibold font-mono">{allocQtyNum.toLocaleString()} CUM</span>
+                </p>
+              )}
+            </div>
+          ) : (
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Allocated Quantity ({boqQty != null ? `BOQ: ${boqQty} CUM` : "CUM"})</Label>
               <Input
@@ -399,6 +673,9 @@ export function EarthworkArrangementDialog({
                 onChange={e => setAllocatedQty(e.target.value)}
               />
             </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Agreed Rate (₹/CUM)</Label>
               <Input
@@ -515,14 +792,32 @@ export function EarthworkArrangementDialog({
           </div>
         </div>
 
+        {/* Instruction 024: multi-source loading guard */}
+        {sourceDetailsLoading && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded border border-amber-200 bg-amber-50 text-[12px] text-amber-800">
+            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+            Loading BOQ source details — save is disabled until all sources are resolved.
+          </div>
+        )}
+
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={saveMutation.isPending}>Cancel</Button>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
           <Button
-            disabled={saveMutation.isPending || !canSave}
-            onClick={() => saveMutation.mutate()}
+            variant="outline"
+            disabled={isPending || !canDraft || sourceDetailsLoading}
+            onClick={() => saveDraftMutation.mutate()}
+            title={sourceDetailsLoading ? "Waiting for BOQ source data to load" : undefined}
           >
-            {saveMutation.isPending && <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />}
-            {isEdit ? "Update Arrangement" : "Save Arrangement"}
+            {saveDraftMutation.isPending && <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />}
+            Save Draft
+          </Button>
+          <Button
+            disabled={isPending || !canSubmit || sourceDetailsLoading}
+            onClick={() => submitMutation.mutate()}
+            title={sourceDetailsLoading ? "Waiting for BOQ source data to load" : undefined}
+          >
+            {submitMutation.isPending && <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />}
+            Submit for Approval
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -541,6 +836,7 @@ interface EarthworkArrangementCellProps {
     uom: string;
     earthworkBoqItemId?: number | null;
     earthworkArrangements?: EarthworkArrangementSummary[];
+    earthworkSourceBoqItemIds?: number[];
   };
   projectId: number;
   onSaved: () => void;
@@ -556,6 +852,24 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
   const activeArrs = arrangements.filter(a => a.status !== "cancelled");
   const allocatedTotal = activeArrs.reduce((s, a) => s + a.allocatedQty, 0);
   const unallocatedQty = Math.max(0, row.totalDemand - allocatedTotal);
+
+  const hasMultipleSources = (row.earthworkSourceBoqItemIds?.length ?? 0) > 1;
+
+  // Instruction 024: Fetch BOQ item details for multi-source rows so the dialog
+  // can show per-source allocation inputs and send boqItemAllocations to the API.
+  const { data: sourceBoqItemDetails } = useQuery<Array<{ id: number; description: string; currentQty: number }>>({
+    queryKey: ["boq-items-multi", row.earthworkSourceBoqItemIds ?? []],
+    queryFn: async () => {
+      const ids = row.earthworkSourceBoqItemIds;
+      if (!ids || ids.length <= 1) return [];
+      const params = ids.map(id => `ids[]=${id}`).join("&");
+      const res = await fetch(`/api/boq/items/by-ids?projectId=${projectId}&${params}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: hasMultipleSources,
+    staleTime: 60_000,
+  });
 
   const cancelMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -589,6 +903,21 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
         )}
       </div>
 
+      {/* Multiple BOQ sources note */}
+      {hasMultipleSources && (
+        <p className="text-[11px] text-slate-500 italic">
+          Multiple BOQ sources — use Earthwork Control for split allocation
+        </p>
+      )}
+
+      {/* Earthwork Control link */}
+      <a
+        href={`/work-program/${projectId}/earthwork`}
+        className="text-[11px] text-teal-600 hover:underline"
+      >
+        View Earthwork Control
+      </a>
+
       {/* Existing arrangements */}
       {activeArrs.length > 0 && (
         <div className="space-y-1.5">
@@ -599,6 +928,7 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
               boqQty={row.totalDemand}
               onEdit={() => setEditTarget(arr)}
               onCancel={() => setCancelTarget(arr.id)}
+              onSaved={onSaved}
             />
           ))}
         </div>
@@ -652,9 +982,11 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
           onClose={() => setShowCreate(false)}
           onSaved={onSaved}
           projectId={projectId}
-          boqItemId={row.earthworkBoqItemId ?? null}
+          boqItemId={hasMultipleSources ? null : (row.earthworkBoqItemId ?? null)}
           materialLabel={row.materialName}
           boqQty={row.totalDemand}
+          sourceBoqItems={hasMultipleSources ? sourceBoqItemDetails : undefined}
+          sourceItemCount={row.earthworkSourceBoqItemIds?.length}
         />
       )}
 
@@ -665,9 +997,11 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
           onClose={() => setEditTarget(null)}
           onSaved={onSaved}
           projectId={projectId}
-          boqItemId={row.earthworkBoqItemId ?? null}
+          boqItemId={hasMultipleSources ? null : (row.earthworkBoqItemId ?? null)}
           materialLabel={row.materialName}
           boqQty={row.totalDemand}
+          sourceBoqItems={hasMultipleSources ? sourceBoqItemDetails : undefined}
+          sourceItemCount={row.earthworkSourceBoqItemIds?.length}
           editArrangement={editTarget}
         />
       )}

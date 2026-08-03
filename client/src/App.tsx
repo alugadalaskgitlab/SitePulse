@@ -130,6 +130,7 @@ const ResourceReview     = lazy(() => import("@/pages/ResourceReview"));
 const PlanningMasters    = lazy(() => import("@/pages/PlanningMasters"));
 const BoqItemReview      = lazy(() => import("@/pages/BoqItemReview"));
 const NormsLibrary       = lazy(() => import("@/pages/NormsLibrary"));
+const EarthworkControl   = lazy(() => import("@/pages/EarthworkControl"));
 
 // Estimator / calculator pages
 const EstimatorLogin         = lazy(() => import("@/pages/EstimatorLogin"));
@@ -335,6 +336,7 @@ function AuthedShell() {
           {WP_ENABLED && <Route path="/work-program/:id/settings" component={gated(BoqProgramSettings, "qto_boq")} />}
           {WP_ENABLED && <Route path="/work-program/:id/programme" component={gated(WorkProgramme, "qto_boq")} />}
           {WP_ENABLED && <Route path="/work-program/:id/demand" component={gated(WorkDemand, "qto_boq")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/earthwork" component={gated(EarthworkControl, "qto_boq")} />}
           {WP_ENABLED && <Route path="/work-program/:id/resource-review" component={gated(ResourceReview, "qto_boq")} />}
           {WP_ENABLED && <Route path="/work-program/:id/item-review" component={gated(BoqItemReview, "qto_boq")} />}
           {WP_ENABLED && <Route path="/norms" component={gated(NormsLibrary, "qto_boq")} />}

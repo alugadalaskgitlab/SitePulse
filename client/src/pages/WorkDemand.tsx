@@ -1196,7 +1196,7 @@ interface ShortageRow {
   procurementEquivalentUom?: string | null;
   // ── Instruction 020 additions ─────────────────────────────────────────────
   /** Instruction 020 §3: authoritative server-side procurement status. */
-  procurementStatus?: "mapping_required" | "uom_resolution_required" | "multiple_matches" | "earthwork_arrangement_required" | "future_not_due" | "covered_by_stock" | "covered_by_incoming" | "partially_covered" | "action_required";
+  procurementStatus?: "mapping_required" | "uom_resolution_required" | "multiple_matches" | "earthwork_arrangement_required" | "earthwork_classification_required" | "future_not_due" | "covered_by_stock" | "covered_by_incoming" | "partially_covered" | "action_required";
   /** Instruction 020 §1: precise resolution diagnostic reason. */
   resolutionReason?: "saved_mapping" | "alias_resolved" | "inactive_material" | "uom_incompatible" | "ambiguous" | "no_match" | null;
   /** Instruction 020 §1: structured diagnostics for UI display. */
@@ -1205,6 +1205,8 @@ interface ShortageRow {
   isEarthworkBulkRequirement?: boolean;
   earthworkBoqItemId?: number | null;
   earthworkArrangements?: EarthworkArrangementSummary[];
+  // Instruction 024: multiple source BOQ item IDs for split allocation
+  earthworkSourceBoqItemIds?: number[];
 }
 
 interface ShortageData {
@@ -1777,10 +1779,32 @@ function SuggestionBadge({
   if (ps === "earthwork_arrangement_required") {
     return (
       <EarthworkArrangementCell
-        row={row}
+        row={{ ...row, earthworkSourceBoqItemIds: row.earthworkSourceBoqItemIds }}
         projectId={projectId}
         onSaved={() => onMappingResolved?.()}
       />
+    );
+  }
+
+  // Instruction 024: Gravel/Moorum items pending user classification.
+  // Procurement actions are BLOCKED until the item is classified in Earthwork Control.
+  // This must appear before the generic mapping_required branch so it is never shadowed.
+  if (ps === "earthwork_classification_required") {
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5">
+          <AlertTriangle className="w-3 h-3" /> Bulk Material Classification Required
+        </span>
+        <a
+          href={`/work-program/${projectId}/earthwork`}
+          className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5 hover:bg-teal-100 transition-colors"
+        >
+          <Settings2 className="w-3 h-3" /> Classify in Earthwork Control
+        </a>
+        <span className="text-[11px] text-orange-600">
+          Specify whether this item is earthwork-inclusive or vendor-supplied before raising any procurement.
+        </span>
+      </div>
     );
   }
 

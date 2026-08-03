@@ -84,6 +84,12 @@ import {
   earthworkArrangements,
   type EarthworkArrangement,
   type InsertEarthworkArrangement,
+  earthworkBaselines,
+  type EarthworkBaseline,
+  type InsertEarthworkBaseline,
+  earthworkForecasts,
+  type EarthworkForecast,
+  type InsertEarthworkForecast,
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
@@ -1443,12 +1449,31 @@ export interface IStorage {
     isActive: number; notes: string | null;
   }>): Promise<MaterialUomConversion>;
 
-  // Instruction 023: earthwork execution arrangements
+  // Instruction 023/024: earthwork execution arrangements
+  ensureEarthworkTables(): Promise<void>;
   getEarthworkArrangements(boqProjectId: number): Promise<EarthworkArrangement[]>;
   getEarthworkArrangementsForItem(boqProjectId: number, boqItemId: number): Promise<EarthworkArrangement[]>;
+  /** Instruction 024: total allocated qty for a BOQ item, counting both direct and JSONB-split allocations. */
+  getAllocatedQtyForBoqItem(boqProjectId: number, boqItemId: number): Promise<number>;
+  getEarthworkArrangementById(id: number): Promise<EarthworkArrangement | undefined>;
   createEarthworkArrangement(data: InsertEarthworkArrangement): Promise<EarthworkArrangement>;
   updateEarthworkArrangement(id: number, data: Partial<InsertEarthworkArrangement>): Promise<EarthworkArrangement | undefined>;
   deleteEarthworkArrangement(id: number): Promise<boolean>;
+  getArrangementProgress(arrangementId: number): Promise<{
+    completedQty: number;
+    recentDailyOutput: number;
+    lastEntryDate: string | null;
+    entryCount: number;
+    daysSinceLastEntry: number | null;
+  }>;
+  // Instruction 024: baselines
+  getEarthworkBaseline(boqProjectId: number, boqItemId: number): Promise<EarthworkBaseline | undefined>;
+  createEarthworkBaseline(data: InsertEarthworkBaseline): Promise<EarthworkBaseline>;
+  // Instruction 024: forecasts
+  getEarthworkForecasts(boqProjectId: number, boqItemId: number): Promise<EarthworkForecast[]>;
+  getApprovedEarthworkForecast(boqProjectId: number, boqItemId: number): Promise<EarthworkForecast | undefined>;
+  createEarthworkForecast(data: InsertEarthworkForecast): Promise<EarthworkForecast>;
+  updateEarthworkForecast(id: number, data: Partial<InsertEarthworkForecast>): Promise<EarthworkForecast | undefined>;
   searchPlantMaterials(query: string, limit?: number): Promise<Array<{
     id: number; name: string; defaultUom: string | null; category: string | null;
     allowedUoms: string | null; bulkDensity: number | null;
@@ -21982,6 +22007,9 @@ export class DatabaseStorage implements IStorage {
         dprConversionFactor: boqItems.dprConversionFactor,
         includedInPlanning: boqItems.includedInPlanning,
         planningWorkType: boqItems.planningWorkType,
+        snlCode: boqItems.snlCode,
+        excelRow: boqItems.excelRow,
+        bulkMaterialClassification: boqItems.bulkMaterialClassification,
         createdAt: boqItems.createdAt,
         categoryName: boqCategories.name,
         snlItemId: snlBoqMappings.snlItemId,
@@ -24129,7 +24157,113 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  // ── Instruction 023: Earthwork Arrangements ──────────────────────────────────
+  // ── Instruction 023/024: Earthwork Arrangements ──────────────────────────────
+
+  /** Idempotent: create tables and add columns that may be missing in live databases. */
+  async ensureEarthworkTables(): Promise<void> {
+    // 1. earthwork_arrangements base table
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS earthwork_arrangements (
+        id SERIAL PRIMARY KEY,
+        boq_project_id INTEGER NOT NULL,
+        boq_item_id INTEGER,
+        material_label TEXT NOT NULL,
+        arrangement_type TEXT NOT NULL DEFAULT 'not_decided',
+        agency_name TEXT,
+        work_description TEXT,
+        reach_label TEXT,
+        chainage_from REAL,
+        chainage_to REAL,
+        allocated_qty REAL NOT NULL DEFAULT 0,
+        uom TEXT NOT NULL DEFAULT 'CUM',
+        agreed_rate REAL,
+        borrow_source TEXT,
+        avg_lead_km REAL,
+        planned_start_date TEXT,
+        target_completion_date TEXT,
+        planned_daily_output REAL,
+        working_hours_per_shift INTEGER,
+        num_excavators INTEGER,
+        excavator_type TEXT,
+        num_tippers INTEGER,
+        tipper_capacity_cum REAL,
+        diesel_responsibility TEXT,
+        components JSONB,
+        inclusions TEXT,
+        exclusions TEXT,
+        notes TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        prepared_by_user_id INTEGER,
+        submitted_at TIMESTAMP,
+        approved_by_user_id INTEGER,
+        approved_at TIMESTAMP,
+        rejection_reason TEXT,
+        cancellation_reason TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // 2. Instruction 024 — add new columns that may be missing in existing tables
+    const newCols024: Array<[string, string]> = [
+      ["boq_item_allocations", "JSONB"],
+      ["mobilisation_date", "TEXT"],
+      ["actual_start_date", "TEXT"],
+      ["returned_at", "TIMESTAMP"],
+      ["on_hold_reason", "TEXT"],
+      ["completed_at", "TIMESTAMP"],
+    ];
+    for (const [col, type] of newCols024) {
+      await db.execute(sql.raw(`ALTER TABLE earthwork_arrangements ADD COLUMN IF NOT EXISTS ${col} ${type}`));
+    }
+
+    // 3. progress_entries — link to arrangement
+    await db.execute(sql`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS earthwork_arrangement_id INTEGER`);
+
+    // 4. boq_items — bulk material classification for gravel/moorum
+    await db.execute(sql`ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS bulk_material_classification TEXT`);
+
+    // 5. earthwork_baselines
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS earthwork_baselines (
+        id SERIAL PRIMARY KEY,
+        boq_project_id INTEGER NOT NULL,
+        boq_item_id INTEGER NOT NULL,
+        original_start TEXT,
+        original_finish TEXT,
+        original_duration_days INTEGER,
+        original_qty REAL,
+        captured_at TIMESTAMP DEFAULT NOW(),
+        captured_by_user_id INTEGER,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // 6. earthwork_forecasts
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS earthwork_forecasts (
+        id SERIAL PRIMARY KEY,
+        boq_project_id INTEGER NOT NULL,
+        boq_item_id INTEGER NOT NULL,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        effective_date TEXT,
+        balance_qty REAL,
+        forecast_start_date TEXT,
+        planned_daily_output REAL,
+        expected_working_days INTEGER,
+        forecast_finish_date TEXT,
+        delay_reason_code TEXT,
+        delay_reason_other TEXT,
+        notes TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        prepared_by_user_id INTEGER,
+        approved_by_user_id INTEGER,
+        approved_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+  }
 
   async getEarthworkArrangements(boqProjectId: number): Promise<EarthworkArrangement[]> {
     return db.select().from(earthworkArrangements)
@@ -24146,6 +24280,51 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .orderBy(earthworkArrangements.createdAt);
+  }
+
+  /**
+   * Instruction 024: Returns total allocated quantity for a BOQ item across ALL
+   * non-cancelled arrangements, counting both:
+   *   1. Single-BOQ arrangements where boq_item_id = boqItemId
+   *   2. Multi-BOQ arrangements where the item appears in boq_item_allocations JSONB
+   * This ensures over-allocation guards work correctly for split-allocation scenarios.
+   */
+  async getAllocatedQtyForBoqItem(boqProjectId: number, boqItemId: number): Promise<number> {
+    const rows = execSelectRows<{ total_qty: string | null }>(
+      await db.execute(sql`
+        SELECT COALESCE(SUM(
+          CASE
+            -- Single-source arrangement: boq_item_id matches directly
+            WHEN boq_item_id = ${boqItemId} AND boq_item_allocations IS NULL THEN allocated_qty
+            -- Multi-source arrangement: find the matching allocation entry in JSONB
+            WHEN boq_item_allocations IS NOT NULL THEN (
+              SELECT COALESCE(SUM((alloc->>'qty')::numeric), 0)
+              FROM jsonb_array_elements(boq_item_allocations) AS alloc
+              WHERE (alloc->>'boqItemId')::int = ${boqItemId}
+            )
+            ELSE 0
+          END
+        ), 0) AS total_qty
+        FROM earthwork_arrangements
+        WHERE boq_project_id = ${boqProjectId}
+          AND status != 'cancelled'
+          AND (
+            boq_item_id = ${boqItemId}
+            OR (
+              boq_item_allocations IS NOT NULL
+              AND boq_item_allocations @> jsonb_build_array(jsonb_build_object('boqItemId', ${boqItemId}))
+            )
+          )
+      `),
+      "getAllocatedQtyForBoqItem"
+    );
+    return Number(rows[0]?.total_qty ?? 0);
+  }
+
+  async getEarthworkArrangementById(id: number): Promise<EarthworkArrangement | undefined> {
+    const [row] = await db.select().from(earthworkArrangements)
+      .where(eq(earthworkArrangements.id, id));
+    return row;
   }
 
   async createEarthworkArrangement(data: InsertEarthworkArrangement): Promise<EarthworkArrangement> {
@@ -24165,6 +24344,105 @@ export class DatabaseStorage implements IStorage {
     const result = await db.delete(earthworkArrangements)
       .where(eq(earthworkArrangements.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  /** Aggregate DPR progress for an earthwork arrangement (submitted + approved DPRs only). */
+  async getArrangementProgress(arrangementId: number): Promise<{
+    completedQty: number;
+    recentDailyOutput: number;
+    lastEntryDate: string | null;
+    entryCount: number;
+    daysSinceLastEntry: number | null;
+  }> {
+    const rows = execSelectRows<{ qty: string | null; dpr_date: string }>(
+      await db.execute(sql`
+        SELECT pe.quantity AS qty, d.date AS dpr_date
+        FROM progress_entries pe
+        JOIN dprs d ON d.id = pe.dpr_id
+        WHERE pe.earthwork_arrangement_id = ${arrangementId}
+          AND d.status IN ('submitted', 'approved')
+          AND pe.quantity IS NOT NULL
+          AND pe.quantity > 0
+        ORDER BY d.date DESC
+      `),
+      "getArrangementProgress"
+    );
+
+    if (rows.length === 0) {
+      return { completedQty: 0, recentDailyOutput: 0, lastEntryDate: null, entryCount: 0, daysSinceLastEntry: null };
+    }
+
+    const completedQty = rows.reduce((s, r) => s + Number(r.qty ?? 0), 0);
+    const lastEntryDate = rows[0]?.dpr_date ?? null;
+    const entryCount = rows.length;
+
+    // Recent daily output = average of last 7 calendar days with entries
+    const recent = rows.slice(0, 7);
+    const recentDailyOutput = recent.length > 0
+      ? recent.reduce((s, r) => s + Number(r.qty ?? 0), 0) / recent.length
+      : 0;
+
+    let daysSinceLastEntry: number | null = null;
+    if (lastEntryDate) {
+      const msPerDay = 86400000;
+      daysSinceLastEntry = Math.floor((Date.now() - new Date(lastEntryDate).getTime()) / msPerDay);
+    }
+
+    return { completedQty: Math.round(completedQty * 1000) / 1000, recentDailyOutput: Math.round(recentDailyOutput * 10) / 10, lastEntryDate, entryCount, daysSinceLastEntry };
+  }
+
+  // ── Instruction 024: Earthwork Baselines ──────────────────────────────────────
+
+  async getEarthworkBaseline(boqProjectId: number, boqItemId: number): Promise<EarthworkBaseline | undefined> {
+    const [row] = await db.select().from(earthworkBaselines)
+      .where(and(
+        eq(earthworkBaselines.boqProjectId, boqProjectId),
+        eq(earthworkBaselines.boqItemId, boqItemId),
+      ))
+      .orderBy(earthworkBaselines.capturedAt)
+      .limit(1);
+    return row;
+  }
+
+  async createEarthworkBaseline(data: InsertEarthworkBaseline): Promise<EarthworkBaseline> {
+    const [row] = await db.insert(earthworkBaselines).values(data).returning();
+    return row;
+  }
+
+  // ── Instruction 024: Earthwork Forecasts ──────────────────────────────────────
+
+  async getEarthworkForecasts(boqProjectId: number, boqItemId: number): Promise<EarthworkForecast[]> {
+    return db.select().from(earthworkForecasts)
+      .where(and(
+        eq(earthworkForecasts.boqProjectId, boqProjectId),
+        eq(earthworkForecasts.boqItemId, boqItemId),
+      ))
+      .orderBy(desc(earthworkForecasts.versionNumber));
+  }
+
+  async getApprovedEarthworkForecast(boqProjectId: number, boqItemId: number): Promise<EarthworkForecast | undefined> {
+    const [row] = await db.select().from(earthworkForecasts)
+      .where(and(
+        eq(earthworkForecasts.boqProjectId, boqProjectId),
+        eq(earthworkForecasts.boqItemId, boqItemId),
+        eq(earthworkForecasts.status, "approved"),
+      ))
+      .orderBy(desc(earthworkForecasts.versionNumber))
+      .limit(1);
+    return row;
+  }
+
+  async createEarthworkForecast(data: InsertEarthworkForecast): Promise<EarthworkForecast> {
+    const [row] = await db.insert(earthworkForecasts).values(data).returning();
+    return row;
+  }
+
+  async updateEarthworkForecast(id: number, data: Partial<InsertEarthworkForecast>): Promise<EarthworkForecast | undefined> {
+    const [updated] = await db.update(earthworkForecasts)
+      .set(data)
+      .where(eq(earthworkForecasts.id, id))
+      .returning();
+    return updated;
   }
 }
 
