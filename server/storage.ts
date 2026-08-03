@@ -24312,7 +24312,7 @@ export class DatabaseStorage implements IStorage {
             boq_item_id = ${boqItemId}
             OR (
               boq_item_allocations IS NOT NULL
-              AND boq_item_allocations @> jsonb_build_array(jsonb_build_object('boqItemId', ${boqItemId}))
+              AND boq_item_allocations @> jsonb_build_array(jsonb_build_object('boqItemId', ${boqItemId}::int))
             )
           )
       `),

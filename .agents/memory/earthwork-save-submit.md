@@ -9,6 +9,10 @@ The auth helpers exported from `server/auth-routes.ts` are `assertAuthed`, `asse
 
 **How to apply:** Use `if (!assertAuthed(req, res)) return;` — it sends the 401 itself and returns `null` on failure. After adding any new route, exercise it live (or grep for undefined helpers), since tests that don't hit the Express layer won't catch this.
 
+## pg parameter typing in jsonb builders
+
+`jsonb_build_object('key', ${param})` in a drizzle `sql` template fails at runtime with Postgres error 42P18 "could not determine data type of parameter" — jsonb_build_object accepts "any" so pg cannot infer the placeholder's type. **How to apply:** always add an explicit cast (`${param}::int`) when a query parameter feeds jsonb_build_object/jsonb_build_array or similar variadic-"any" functions. Unit tests that mock the DB won't catch this; only a real query against Postgres does.
+
 ## The earthworkSchemaReady flag
 
 `ensureEarthworkTables()` must run in the **blocking pre-routes** section of `server/index.ts` (inside the `await Promise.all([...])` before `registerRoutes`), not in the background migrations phase.
