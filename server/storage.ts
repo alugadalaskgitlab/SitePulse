@@ -24212,6 +24212,8 @@ export class DatabaseStorage implements IStorage {
       ["returned_at", "TIMESTAMP"],
       ["on_hold_reason", "TEXT"],
       ["completed_at", "TIMESTAMP"],
+      // Cut-to-fill: link to the roadway-excavation BOQ item supplying this fill
+      ["source_excavation_boq_item_id", "INTEGER"],
     ];
     for (const [col, type] of newCols024) {
       await db.execute(sql.raw(`ALTER TABLE earthwork_arrangements ADD COLUMN IF NOT EXISTS ${col} ${type}`));
@@ -24307,7 +24309,7 @@ export class DatabaseStorage implements IStorage {
         ), 0) AS total_qty
         FROM earthwork_arrangements
         WHERE boq_project_id = ${boqProjectId}
-          AND status != 'cancelled'
+          AND status NOT IN ('cancelled', 'rejected')
           AND (
             boq_item_id = ${boqItemId}
             OR (

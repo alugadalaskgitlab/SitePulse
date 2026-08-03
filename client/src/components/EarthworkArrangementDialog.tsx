@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import type { EarthworkArrangementSummary } from "@shared/planningEngine";
+import { deriveEarthworkSourcingBadge, checkCutFillBalance } from "@shared/planningEngine";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -249,6 +250,18 @@ function ArrangementSummaryCard({
       {arr.reachLabel && (
         <p className="text-slate-500">Reach: <span className="font-medium">{arr.reachLabel}</span></p>
       )}
+      {arr.arrangementType === "reused_excavated" && arr.cutAvailableQty != null && (() => {
+        const bal = checkCutFillBalance(arr.cutAvailableQty, arr.allocatedQty);
+        return (
+          <p className={bal && !bal.sufficient ? "text-amber-700" : "text-slate-600"}>
+            Cut available: <span className="font-mono font-semibold">{Number(arr.cutAvailableQty).toLocaleString()} {arr.uom}</span>
+            {" "}vs fill: <span className="font-mono font-semibold">{arr.allocatedQty.toLocaleString()} {arr.uom}</span>
+            {bal && !bal.sufficient && (
+              <span className="ml-1 font-semibold">— short by {bal.shortfall.toLocaleString()} {arr.uom}</span>
+            )}
+          </p>
+        );
+      })()}
       <p className="text-slate-600">
         Allocated: <span className="font-mono font-semibold">{arr.allocatedQty.toLocaleString()} {arr.uom}</span>
         {boqQty != null && (
@@ -861,12 +874,17 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
   const [showCreate, setShowCreate] = useState(false);
   const [editTarget, setEditTarget] = useState<EarthworkArrangementSummary | null>(null);
   const [cancelTarget, setCancelTarget] = useState<number | null>(null);
+  const [showCutToFill, setShowCutToFill] = useState(false);
+  const [cutSourceItemId, setCutSourceItemId] = useState<number | null>(null);
   const { toast } = useToast();
 
   const arrangements = row.earthworkArrangements ?? [];
-  const activeArrs = arrangements.filter(a => a.status !== "cancelled");
+  // Rejected arrangements no longer hold quantity — align with badge derivation
+  // and the server-side over-allocation guard (both exclude cancelled + rejected).
+  const activeArrs = arrangements.filter(a => a.status !== "cancelled" && a.status !== "rejected");
   const allocatedTotal = activeArrs.reduce((s, a) => s + a.allocatedQty, 0);
   const unallocatedQty = Math.max(0, row.totalDemand - allocatedTotal);
+  const sourcingBadge = deriveEarthworkSourcingBadge(activeArrs, row.totalDemand);
 
   const hasMultipleSources = (row.earthworkSourceBoqItemIds?.length ?? 0) > 1;
 
@@ -884,6 +902,92 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
     },
     enabled: hasMultipleSources,
     staleTime: 60_000,
+  });
+
+  // Cut-to-fill: candidate roadway-excavation BOQ items for optional source linkage.
+  // Fetched lazily — only when the quick-action panel is open.
+  const { data: excavationCandidates } = useQuery<Array<{ id: number; description: string; currentQty: number; unit: string }>>({
+    queryKey: ["boq-excavation-items", projectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${projectId}/items`, { credentials: "include" });
+      if (!res.ok) return [];
+      const items = await res.json();
+      return (items as Array<{ id: number; description: string; currentQty: number; unit: string }>)
+        .filter(it => /excavat|cutting/i.test(it.description ?? ""));
+    },
+    enabled: showCutToFill,
+    staleTime: 60_000,
+  });
+
+  // Cut-to-fill quick action: one click creates a minimal reused_excavated
+  // arrangement covering the remaining unallocated demand — no agency, rate,
+  // or component matrix needed. Submitted immediately (no draft step).
+  const cutToFillMutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = {
+        materialLabel: row.materialName,
+        arrangementType: "reused_excavated",
+        saveIntent: "submit",
+        uom: row.uom || "CUM",
+        components: defaultComponents("reused_excavated"),
+        notes: "Cut-to-fill: embankment built from roadway cutting (quick action)",
+        ...(cutSourceItemId != null ? { sourceExcavationBoqItemId: cutSourceItemId } : {}),
+      };
+      if (hasMultipleSources && sourceBoqItemDetails?.length) {
+        // Per-source remaining = BOQ qty − qty already allocated to that item
+        // (counting both split allocations AND direct single-source arrangements).
+        const allocatedPerItem = new Map<number, number>();
+        for (const a of activeArrs) {
+          if (a.boqItemAllocations?.length) {
+            for (const al of a.boqItemAllocations) {
+              allocatedPerItem.set(al.boqItemId, (allocatedPerItem.get(al.boqItemId) ?? 0) + al.qty);
+            }
+          } else {
+            // Single-source arrangement: attribute its full allocatedQty to its boqItemId
+            const directId = (a as { boqItemId?: number | null }).boqItemId;
+            if (directId != null) {
+              allocatedPerItem.set(directId, (allocatedPerItem.get(directId) ?? 0) + a.allocatedQty);
+            }
+          }
+        }
+        // Greedily fill each source up to its remaining BOQ capacity, but never
+        // allocate more than this row's remaining demand in total.
+        let stillNeeded = unallocatedQty;
+        const allocations: Array<{ boqItemId: number; qty: number }> = [];
+        for (const it of sourceBoqItemDetails) {
+          if (stillNeeded <= 0.001) break;
+          const remaining = Math.max(0, Number(it.currentQty ?? 0) - (allocatedPerItem.get(it.id) ?? 0));
+          const take = Math.min(remaining, stillNeeded);
+          if (take > 0.001) {
+            const qty = Math.round(take * 1000) / 1000;
+            allocations.push({ boqItemId: it.id, qty });
+            stillNeeded -= qty;
+          }
+        }
+        if (!allocations.length) throw new Error("Nothing left to allocate across source BOQ items.");
+        body.boqItemAllocations = allocations;
+        body.allocatedQty = allocations.reduce((s, al) => s + al.qty, 0);
+      } else {
+        if (!row.earthworkBoqItemId) throw new Error("No BOQ item linked to this row.");
+        body.boqItemId = row.earthworkBoqItemId;
+        body.allocatedQty = unallocatedQty;
+      }
+      const res = await fetch(`/api/boq/projects/${projectId}/earthwork-arrangements`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
+      return data;
+    },
+    onSuccess: () => {
+      toast({ title: "Marked as cut-to-fill", description: "Internally sourced from roadway excavation — no procurement needed." });
+      setShowCutToFill(false);
+      setCutSourceItemId(null);
+      onSaved();
+    },
+    onError: (err: Error) => toast({ title: "Cut-to-fill failed", description: err.message, variant: "destructive" }),
   });
 
   const cancelMutation = useMutation({
@@ -907,10 +1011,17 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
     <div className="space-y-2">
       {/* Header badge */}
       <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5">
-          <AlertCircle className="w-3 h-3" />
-          Execution Arrangement Required
-        </span>
+        {sourcingBadge === "internally_sourced" ? (
+          <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+            <CheckCircle2 className="w-3 h-3" />
+            Internally Sourced — Cut-to-Fill
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5">
+            <AlertCircle className="w-3 h-3" />
+            Execution Arrangement Required
+          </span>
+        )}
         {allocatedTotal > 0 && (
           <span className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">
             {allocatedTotal.toLocaleString()} CUM allocated · {unallocatedQty.toLocaleString()} CUM open
@@ -949,22 +1060,77 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
         </div>
       )}
 
-      {/* Fully allocated */}
-      {allocatedTotal >= row.totalDemand - 0.001 && activeArrs.length > 0 && (
+      {/* Fully allocated (non-cut-to-fill; internally sourced shows its own header badge) */}
+      {sourcingBadge !== "internally_sourced" && allocatedTotal >= row.totalDemand - 0.001 && activeArrs.length > 0 && (
         <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
           <CheckCircle2 className="w-3 h-3" /> Fully Arranged
         </span>
       )}
 
-      {/* Add arrangement button */}
+      {/* Add arrangement button + cut-to-fill quick action */}
       {unallocatedQty > 0.001 && (
-        <button
-          onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5 hover:bg-teal-100 transition-colors"
-        >
-          <Plus className="w-3 h-3" />
-          {activeArrs.length === 0 ? "Set Up Execution Arrangement" : "Add Partial Arrangement"}
-        </button>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setShowCreate(true)}
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5 hover:bg-teal-100 transition-colors"
+          >
+            <Plus className="w-3 h-3" />
+            {activeArrs.length === 0 ? "Set Up Execution Arrangement" : "Add Partial Arrangement"}
+          </button>
+          <button
+            onClick={() => setShowCutToFill(v => !v)}
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 hover:bg-emerald-100 transition-colors"
+            title="Mark as internally sourced from roadway cutting (no procurement needed)"
+          >
+            <CheckCircle2 className="w-3 h-3" />
+            Cut-to-Fill
+          </button>
+        </div>
+      )}
+
+      {/* Cut-to-fill quick action panel */}
+      {showCutToFill && unallocatedQty > 0.001 && (
+        <div className="p-2 rounded border border-emerald-200 bg-emerald-50/50 space-y-1.5 text-[11px]">
+          <p className="text-slate-700">
+            Mark <span className="font-mono font-semibold">{unallocatedQty.toLocaleString()} {row.uom || "CUM"}</span> as
+            internally sourced from roadway excavation (cut-to-fill). No agency or rate needed.
+          </p>
+          <div className="flex items-center gap-1.5">
+            <label className="text-slate-600 shrink-0">Source cut item (optional):</label>
+            <select
+              value={cutSourceItemId ?? ""}
+              onChange={e => setCutSourceItemId(e.target.value ? Number(e.target.value) : null)}
+              className="border border-slate-300 rounded px-1 py-0.5 bg-white text-[11px] max-w-[260px]"
+            >
+              <option value="">— none / decide later —</option>
+              {(excavationCandidates ?? []).map(it => (
+                <option key={it.id} value={it.id}>
+                  {it.description?.slice(0, 60)} ({Number(it.currentQty ?? 0).toLocaleString()} {it.unit})
+                </option>
+              ))}
+            </select>
+          </div>
+          {cutSourceItemId != null && (() => {
+            const cand = (excavationCandidates ?? []).find(it => it.id === cutSourceItemId);
+            const bal = cand ? checkCutFillBalance(Number(cand.currentQty ?? 0), unallocatedQty) : null;
+            return bal && !bal.sufficient ? (
+              <p className="text-amber-700 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                Cut available is short by {bal.shortfall.toLocaleString()} CUM — balance may need borrow earth.
+              </p>
+            ) : null;
+          })()}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => cutToFillMutation.mutate()}
+              disabled={cutToFillMutation.isPending}
+              className="font-semibold text-emerald-700 hover:underline disabled:opacity-50"
+            >
+              {cutToFillMutation.isPending ? "Saving..." : "Confirm Cut-to-Fill"}
+            </button>
+            <button onClick={() => setShowCutToFill(false)} className="text-slate-500 hover:underline">Cancel</button>
+          </div>
+        </div>
       )}
 
       {/* Cancelled arrangements (collapsed) */}

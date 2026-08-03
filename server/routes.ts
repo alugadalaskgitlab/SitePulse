@@ -11872,6 +11872,20 @@ export async function registerRoutes(
         storage.getMaterialMappings(projectId),
         storage.getEarthworkArrangements(projectId), // Instruction 023
       ]);
+      // Cut-to-fill: batch-load current qty of any linked excavation BOQ items so
+      // arrangement summaries can report cut-available vs fill-required.
+      const excavationSourceIds = [...new Set(
+        allEarthworkArrangements
+          .map(a => (a as any).sourceExcavationBoqItemId as number | null)
+          .filter((id): id is number => id != null)
+      )];
+      const cutQtyByBoqItemId = new Map<number, number>();
+      if (excavationSourceIds.length > 0) {
+        const cutRows = await db.select({ id: boqItems.id, currentQty: boqItems.currentQty })
+          .from(boqItems).where(drizzleInArray(boqItems.id, excavationSourceIds));
+        for (const r of cutRows) cutQtyByBoqItemId.set(r.id, Number(r.currentQty ?? 0));
+      }
+
       // Partition: active only for resolution maps and stock lookup; inactive for diagnostics
       const allMaterials = allMaterialsRaw.filter(m => m.isActive === 1);
       const inactiveMaterials = allMaterialsRaw.filter(m => m.isActive !== 1);
@@ -12293,6 +12307,11 @@ export async function registerRoutes(
               lastEntryDate: null,
               daysSinceLastEntry: null,
               boqItemAllocations: (a.boqItemAllocations as Array<{ boqItemId: number; qty: number }> | null) ?? null,
+              boqItemId: a.boqItemId ?? null,
+              sourceExcavationBoqItemId: (a as any).sourceExcavationBoqItemId ?? null,
+              cutAvailableQty: (a as any).sourceExcavationBoqItemId != null
+                ? (cutQtyByBoqItemId.get((a as any).sourceExcavationBoqItemId) ?? null)
+                : null,
             };
           });
         }
@@ -12580,6 +12599,7 @@ export async function registerRoutes(
         inclusions: body.inclusions?.trim() || null,
         exclusions: body.exclusions?.trim() || null,
         notes: body.notes?.trim() || null,
+        sourceExcavationBoqItemId: body.sourceExcavationBoqItemId != null ? Number(body.sourceExcavationBoqItemId) : null,
         preparedByUserId: user?.id ?? null,
       });
 
@@ -12661,7 +12681,7 @@ export async function registerRoutes(
         "numTippers", "tipperCapacityCum", "dieselResponsibility", "components",
         "inclusions", "exclusions", "notes", "status",
         "rejectionReason", "cancellationReason", "onHoldReason",
-        "boqItemAllocations",
+        "boqItemAllocations", "sourceExcavationBoqItemId",
       ];
       const patch: Record<string, unknown> = {};
       for (const field of allowedFields) {

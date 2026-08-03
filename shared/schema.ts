@@ -3525,6 +3525,9 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
   borrowSource: text("borrow_source"),
   avgLeadKm: real("avg_lead_km"),
 
+  // Cut-to-fill: optional link to the roadway-excavation BOQ item supplying this fill
+  sourceExcavationBoqItemId: integer("source_excavation_boq_item_id"),
+
   // Schedule
   mobilisationDate: text("mobilisation_date"),       // ISO date YYYY-MM-DD
   plannedStartDate: text("planned_start_date"),       // ISO date YYYY-MM-DD

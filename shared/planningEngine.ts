@@ -2108,6 +2108,54 @@ export interface EarthworkArrangementSummary {
   daysSinceLastEntry: number | null;
   /** boqItemAllocations: [{boqItemId, qty}] for multi-BOQ arrangements */
   boqItemAllocations: Array<{ boqItemId: number; qty: number }> | null;
+  /** Single-source arrangement's BOQ item (null for multi-source). */
+  boqItemId?: number | null;
+  /** Cut-to-fill: linked roadway-excavation BOQ item supplying this fill (optional). */
+  sourceExcavationBoqItemId?: number | null;
+  /** Cut-to-fill: current BOQ quantity of the linked excavation item (injected by route). */
+  cutAvailableQty?: number | null;
+}
+
+// ─── Cut-to-fill sourcing badge (Task: internally sourced earthwork) ──────────
+
+export type EarthworkSourcingBadge =
+  | "internally_sourced"   // fully covered, all coverage from reused_excavated arrangements
+  | "fully_arranged"       // fully covered, at least one non-reused arrangement
+  | "partially_arranged"   // some coverage but not full
+  | "none";                // no active coverage
+
+const SOURCING_TOL = 0.001;
+
+/**
+ * Derive the sourcing badge for an earthwork Work Demand row from its
+ * arrangements. Cancelled and rejected arrangements never count as coverage.
+ * "internally_sourced" means the entire demand is satisfied by reuse of the
+ * project's own cut material (cut-to-fill) — nothing to procure or outsource.
+ */
+export function deriveEarthworkSourcingBadge(
+  arrangements: Pick<EarthworkArrangementSummary, "arrangementType" | "status" | "allocatedQty">[] | undefined,
+  totalDemand: number,
+): EarthworkSourcingBadge {
+  const active = (arrangements ?? []).filter(a => a.status !== "cancelled" && a.status !== "rejected");
+  const allocatedTotal = active.reduce((s, a) => s + (Number(a.allocatedQty) || 0), 0);
+  if (active.length === 0 || allocatedTotal <= SOURCING_TOL) return "none";
+  if (allocatedTotal < totalDemand - SOURCING_TOL) return "partially_arranged";
+  return active.every(a => a.arrangementType === "reused_excavated")
+    ? "internally_sourced"
+    : "fully_arranged";
+}
+
+/**
+ * Cut-to-fill balance check: compare available cut quantity from the linked
+ * excavation BOQ item against the fill quantity allocated from it.
+ */
+export function checkCutFillBalance(
+  cutAvailableQty: number | null | undefined,
+  fillRequiredQty: number,
+): { sufficient: boolean; shortfall: number } | null {
+  if (cutAvailableQty == null || !isFinite(cutAvailableQty)) return null;
+  const shortfall = Math.max(0, fillRequiredQty - cutAvailableQty);
+  return { sufficient: shortfall <= SOURCING_TOL, shortfall: Math.round(shortfall * 1000) / 1000 };
 }
 
 /** Instruction 024: baseline for an earthwork BOQ item. */

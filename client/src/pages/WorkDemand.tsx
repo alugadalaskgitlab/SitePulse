@@ -27,6 +27,7 @@ import {
   type BomInputBar,
   type EffectivePlanningMode,
   type EarthworkArrangementSummary,
+  deriveEarthworkSourcingBadge,
 } from "@shared/planningEngine";
 import { shortItemName } from "@/lib/itemName";
 import { canonicalizeUnit } from "@shared/boqNormalise";
@@ -2244,7 +2245,13 @@ function ProcurementTable({
     !r.materialMappingUnresolved &&
     r.programmingStatus !== "not_programmed"
   ).length;
-  const unresolvedCount = data.rows.filter(r => r.materialMappingUnresolved).length;
+  // Cut-to-fill: earthwork rows fully covered by reused-excavated arrangements are
+  // internally sourced — nothing to resolve or procure, so keep them out of the alert count.
+  const unresolvedCount = data.rows.filter(r =>
+    r.materialMappingUnresolved &&
+    !(r.procurementStatus === "earthwork_arrangement_required" &&
+      deriveEarthworkSourcingBadge(r.earthworkArrangements, r.totalDemand) === "internally_sourced")
+  ).length;
   const notProgrammedCount = data.rows.filter(r =>
     !r.materialMappingUnresolved && r.programmingStatus === "not_programmed"
   ).length;

@@ -110,12 +110,13 @@ app.use((req, res, next) => {
           "exclusions","notes","status","prepared_by_user_id","submitted_at",
           "approved_by_user_id","approved_at","returned_at","on_hold_reason",
           "completed_at","rejection_reason","cancellation_reason","created_at","updated_at",
+          "source_excavation_boq_item_id",
         ];
         const missing = required.filter(c => !existing.has(c));
         if (missing.length > 0) {
           console.error(`Startup: earthwork_arrangements missing columns: ${missing.join(", ")} — Earthwork APIs will be unavailable`);
         } else {
-          console.log("Startup: ensureEarthworkTables — all 40 required columns verified; Earthwork APIs ready");
+          console.log(`Startup: ensureEarthworkTables — all ${required.length} required columns verified; Earthwork APIs ready`);
           setEarthworkSchemaReady(true);
         }
       } catch (e) {
