@@ -3,6 +3,12 @@ name: Earthwork Save/Submit Pattern
 description: How the earthwork arrangement save/submit flow works after Instruction 024A; critical for any future changes to the dialog or routes.
 ---
 
+## Auth helper trap: assertLogin does not exist
+
+The auth helpers exported from `server/auth-routes.ts` are `assertAuthed`, `assertAdmin`, `assertEdit`, etc. There is NO `assertLogin`. Using it compiles fine at the tsx layer but throws `ReferenceError: assertLogin is not defined` at request time — surfacing as a generic 500 on the route.
+
+**How to apply:** Use `if (!assertAuthed(req, res)) return;` — it sends the 401 itself and returns `null` on failure. After adding any new route, exercise it live (or grep for undefined helpers), since tests that don't hit the Express layer won't catch this.
+
 ## The earthworkSchemaReady flag
 
 `ensureEarthworkTables()` must run in the **blocking pre-routes** section of `server/index.ts` (inside the `await Promise.all([...])` before `registerRoutes`), not in the background migrations phase.

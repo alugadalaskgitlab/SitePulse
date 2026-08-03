@@ -11156,7 +11156,7 @@ export async function registerRoutes(
    */
   app.get("/api/boq/items/by-ids", async (req, res) => {
     try {
-      if (!assertLogin(req, res)) return;
+      if (!assertAuthed(req, res)) return;
       const projectId = req.query["projectId"] ? parseInt(String(req.query["projectId"])) : null;
       if (!projectId || isNaN(projectId)) {
         return res.status(400).json({ error: "projectId query param is required" });
@@ -12411,7 +12411,7 @@ export async function registerRoutes(
   /** Create a new earthwork arrangement. */
   app.post("/api/boq/projects/:id/earthwork-arrangements", async (req, res) => {
     try {
-      if (!assertLogin(req, res)) return;
+      if (!assertAuthed(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
 
       // ── Schema readiness guard ────────────────────────────────────────────
@@ -12621,7 +12621,7 @@ export async function registerRoutes(
   /** Get a single earthwork arrangement with progress data. */
   app.get("/api/earthwork-arrangements/:id", async (req, res) => {
     try {
-      if (!assertLogin(req, res)) return;
+      if (!assertAuthed(req, res)) return;
       const id = parseInt(req.params.id);
       const arr = await storage.getEarthworkArrangementById(id);
       if (!arr) return res.status(404).json({ error: "Arrangement not found" });
@@ -12636,7 +12636,7 @@ export async function registerRoutes(
   /** Update an earthwork arrangement — full status lifecycle. */
   app.patch("/api/earthwork-arrangements/:id", async (req, res) => {
     try {
-      if (!assertLogin(req, res)) return;
+      if (!assertAuthed(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
 
       // ── Schema readiness guard ────────────────────────────────────────────
@@ -12704,6 +12704,19 @@ export async function registerRoutes(
             error: "AMBIGUOUS_BOQ_SOURCE",
             message: "Provide either boqItemId (single-source) or boqItemAllocations (multi-source), not both.",
           });
+        }
+
+        // ── Allocation total must match allocatedQty for multi-source (mirrors POST) ──
+        if (hasMultiSource && newAllocsRaw) {
+          const allocSum = newAllocsRaw
+            .filter(a => a.boqItemId && Number(a.qty) > 0)
+            .reduce((s, a) => s + Number(a.qty), 0);
+          if (Math.abs(allocSum - newAllocQty) > 0.01) {
+            return res.status(400).json({
+              error: "ALLOCATION_TOTAL_MISMATCH",
+              message: `allocatedQty (${newAllocQty}) must equal the sum of boqItemAllocations (${allocSum.toFixed(2)} CUM). Please correct the per-source split.`,
+            });
+          }
         }
 
         // Over-allocation check per source when quantity or allocations change
@@ -12789,7 +12802,7 @@ export async function registerRoutes(
   /** Cancel (soft-delete) an earthwork arrangement. */
   app.delete("/api/earthwork-arrangements/:id", async (req, res) => {
     try {
-      if (!assertLogin(req, res)) return;
+      if (!assertAuthed(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
       const id = parseInt(req.params.id);
       const user = (req as any).user;
@@ -12819,7 +12832,7 @@ export async function registerRoutes(
   /** Get DPR progress for an earthwork arrangement. */
   app.get("/api/earthwork-arrangements/:id/progress", async (req, res) => {
     try {
-      if (!assertLogin(req, res)) return;
+      if (!assertAuthed(req, res)) return;
       const id = parseInt(req.params.id);
       const progress = await (storage as any).getArrangementProgress(id);
       res.json(progress);
@@ -12834,7 +12847,7 @@ export async function registerRoutes(
   /** Get baseline for a BOQ item. */
   app.get("/api/boq/projects/:id/earthwork-baselines/item/:itemId", async (req, res) => {
     try {
-      if (!assertLogin(req, res)) return;
+      if (!assertAuthed(req, res)) return;
       const projectId = parseInt(req.params.id);
       const boqItemId = parseInt(req.params.itemId);
       const baseline = await (storage as any).getEarthworkBaseline(projectId, boqItemId);
@@ -12848,7 +12861,7 @@ export async function registerRoutes(
   /** Capture an earthwork baseline (immutable — fails if one already exists). */
   app.post("/api/boq/projects/:id/earthwork-baselines", async (req, res) => {
     try {
-      if (!assertLogin(req, res)) return;
+      if (!assertAuthed(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
       const user = (req as any).user;
@@ -12875,7 +12888,7 @@ export async function registerRoutes(
   /** List all forecast versions for a BOQ item. */
   app.get("/api/boq/projects/:id/earthwork-forecasts/item/:itemId", async (req, res) => {
     try {
-      if (!assertLogin(req, res)) return;
+      if (!assertAuthed(req, res)) return;
       const projectId = parseInt(req.params.id);
       const boqItemId = parseInt(req.params.itemId);
       const forecasts = await (storage as any).getEarthworkForecasts(projectId, boqItemId);
@@ -12889,7 +12902,7 @@ export async function registerRoutes(
   /** Create a new forecast version. */
   app.post("/api/boq/projects/:id/earthwork-forecasts", async (req, res) => {
     try {
-      if (!assertLogin(req, res)) return;
+      if (!assertAuthed(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
       const user = (req as any).user;
@@ -12927,7 +12940,7 @@ export async function registerRoutes(
   /** Approve or update a forecast. */
   app.patch("/api/earthwork-forecasts/:id", async (req, res) => {
     try {
-      if (!assertLogin(req, res)) return;
+      if (!assertAuthed(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
       const id = parseInt(req.params.id);
       const user = (req as any).user;
@@ -12952,7 +12965,7 @@ export async function registerRoutes(
   /** Set bulk material classification on a BOQ item (earthwork vs vendor_supplied). */
   app.patch("/api/boq/items/:itemId/bulk-classification", async (req, res) => {
     try {
-      if (!assertLogin(req, res)) return;
+      if (!assertAuthed(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
       const boqItemId = parseInt(req.params.itemId);
       if (isNaN(boqItemId)) return res.status(400).json({ error: "Invalid boqItemId" });
