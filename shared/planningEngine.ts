@@ -547,6 +547,13 @@ export interface ArrangementDemandInput {
   dieselResponsibility?: string | null;       // agency | hlc | mixed
   agencyName?: string | null;
   arrangementType?: string | null;
+  /**
+   * Instruction 026 §9: links to specific Work Programme bars. When present,
+   * the linked quantity is excluded ONLY on that bar (its quantity and dates);
+   * any unlinked remainder keeps the legacy BOQ-item-level effect (§5 —
+   * never both for the same quantity).
+   */
+  programmeAllocations?: Array<{ programmeBarId: number; boqItemId: number; qty: number }> | null;
 }
 
 export interface DemandAdjustment {
@@ -572,6 +579,8 @@ interface ArrangementSlice {
   components: Record<string, string>;
   dieselResponsibility?: string | null;
   agencyName?: string | null;
+  /** Instruction 026: when set, this slice is phased to the linked programme bar's months. */
+  barId?: number | null;
 }
 
 export interface ItemArrangementEffect {
@@ -609,19 +618,41 @@ export function buildArrangementEffects(
 
   for (const arr of arrangements) {
     if (!DEMAND_AFFECTING_ARRANGEMENT_STATUSES.has(String(arr.status))) continue;
-    const allocs: Array<{ boqItemId: number; qty: number }> =
-      (Array.isArray(arr.boqItemAllocations) && arr.boqItemAllocations.length > 0)
-        ? arr.boqItemAllocations.map(a => ({ boqItemId: Number(a.boqItemId), qty: Number(a.qty) || 0 }))
-        : (arr.boqItemId != null ? [{ boqItemId: arr.boqItemId, qty: Number(arr.allocatedQty) || 0 }] : []);
-    for (const a of allocs) {
-      if (!(a.qty > 0) || !qtyById.has(a.boqItemId)) continue;
-      if (!out.has(a.boqItemId)) out.set(a.boqItemId, { slices: [] });
-      out.get(a.boqItemId)!.slices.push({
-        qty: a.qty,
-        components: (arr.components && typeof arr.components === "object") ? arr.components as Record<string, string> : {},
+    const components = (arr.components && typeof arr.components === "object") ? arr.components as Record<string, string> : {};
+    const pushSlice = (boqItemId: number, qty: number, barId?: number | null) => {
+      if (!(qty > 0) || !qtyById.has(boqItemId)) return;
+      if (!out.has(boqItemId)) out.set(boqItemId, { slices: [] });
+      out.get(boqItemId)!.slices.push({
+        qty, components,
         dieselResponsibility: arr.dieselResponsibility,
         agencyName: arr.agencyName,
+        barId: barId ?? null,
       });
+    };
+
+    // Instruction 026 §9: bar-linked quantity is phased per bar; only the
+    // UNLINKED remainder falls back to the legacy BOQ-item-level effect (§5).
+    const barAllocs = (Array.isArray(arr.programmeAllocations) ? arr.programmeAllocations : [])
+      .map(a => ({ programmeBarId: Number(a.programmeBarId), boqItemId: Number(a.boqItemId), qty: Number(a.qty) || 0 }))
+      .filter(a => a.qty > 0);
+    let linkedTotal = 0;
+    for (const a of barAllocs) {
+      pushSlice(a.boqItemId, a.qty, a.programmeBarId);
+      linkedTotal += a.qty;
+    }
+
+    const remainder = Math.max(0, (Number(arr.allocatedQty) || 0) - linkedTotal);
+    if (remainder > 0.001) {
+      const legacyAllocs: Array<{ boqItemId: number; qty: number }> =
+        (Array.isArray(arr.boqItemAllocations) && arr.boqItemAllocations.length > 0)
+          ? arr.boqItemAllocations.map(a => ({ boqItemId: Number(a.boqItemId), qty: Number(a.qty) || 0 }))
+          : (arr.boqItemId != null ? [{ boqItemId: arr.boqItemId, qty: Number(arr.allocatedQty) || 0 }] : []);
+      const legacyTotal = legacyAllocs.reduce((s, a) => s + a.qty, 0);
+      if (legacyTotal > 0) {
+        // Scale legacy targets down so linked + legacy never exceeds the arrangement total.
+        const scale = remainder / legacyTotal;
+        for (const a of legacyAllocs) pushSlice(a.boqItemId, a.qty * scale, null);
+      }
     }
   }
 
@@ -686,6 +717,123 @@ export function hlcRetainedFraction(
   }
   excluded = Math.min(excluded, itemQty);
   return { fraction: Math.max(0, 1 - excluded / itemQty), excludedQty: excluded, agencies };
+}
+
+/**
+ * Instruction 026 §9-10: month-phased exclusion effect. Bar-linked slices exclude
+ * demand only in the linked bar's programmed months; legacy (unlinked) slices
+ * spread proportionally across the item's own monthly distribution (the previous
+ * Instruction 025 behaviour). Totals equal the sum of monthly retained demand.
+ */
+export interface ExclusionEffect {
+  fraction: number;      // overall HLC-retained fraction of the item quantity
+  excludedQty: number;   // BOQ-unit quantity excluded (capped at item qty)
+  agencies: string[];
+  /** HLC-retained fraction for a specific programme month. */
+  monthFraction: (month: number) => number;
+}
+
+export function arrangementExclusionEffect(
+  eff: ItemArrangementEffect | undefined,
+  itemQty: number,
+  monthlyWork: Map<number, number>,
+  barMonthShares: Map<number, Map<number, number>>, // barId → month → share of bar qty (sums to 1)
+  isSliceExcluded: (sl: ArrangementSlice) => boolean,
+): ExclusionEffect {
+  const base = hlcRetainedFraction(eff, itemQty, isSliceExcluded);
+  const flat: ExclusionEffect = { ...base, monthFraction: () => base.fraction };
+  if (!eff || !(itemQty > 0) || base.excludedQty <= 0) return flat;
+
+  const excludedSlices = eff.slices.filter(isSliceExcluded);
+  const hasBarPhasing = excludedSlices.some(sl => sl.barId != null && barMonthShares.has(sl.barId));
+  if (!hasBarPhasing || monthlyWork.size === 0) return flat;
+
+  // Cap scale: if raw excluded exceeded item qty, hlcRetainedFraction capped it —
+  // scale each slice down by the same factor so monthly sums match the capped total.
+  const rawExcluded = excludedSlices.reduce((s, sl) => s + sl.qty, 0);
+  const capScale = rawExcluded > 0 ? base.excludedQty / rawExcluded : 0;
+  let monthlyTotal = 0;
+  monthlyWork.forEach(q => { monthlyTotal += q; });
+
+  const excludedMonthly = new Map<number, number>();
+  for (const sl of excludedSlices) {
+    const q = sl.qty * capScale;
+    const shares = sl.barId != null ? barMonthShares.get(sl.barId) : undefined;
+    if (shares) {
+      shares.forEach((share, m) => excludedMonthly.set(m, (excludedMonthly.get(m) ?? 0) + q * share));
+    } else if (monthlyTotal > 0) {
+      monthlyWork.forEach((mw, m) => excludedMonthly.set(m, (excludedMonthly.get(m) ?? 0) + q * (mw / monthlyTotal)));
+    }
+  }
+  return {
+    ...base,
+    monthFraction: (m: number) => {
+      const mw = monthlyWork.get(m) ?? 0;
+      if (!(mw > 0)) return base.fraction;
+      const ex = excludedMonthly.get(m) ?? 0;
+      // Never below zero (Instruction 026 §13) — cap exclusion at the month's work.
+      return Math.max(0, 1 - Math.min(ex, mw) / mw);
+    },
+  };
+}
+
+// ─── Instruction 026 §4/§19: bar-allocation validation (pure, server + tests) ──
+
+export type BarAllocationErrorCode =
+  | "PROGRAMME_BAR_NOT_FOUND"
+  | "ARRANGEMENT_PROJECT_MISMATCH"
+  | "ARRANGEMENT_BOQ_ITEM_MISMATCH"
+  | "BAR_ALLOCATION_EXCEEDS_PLANNED_QTY"
+  | "ARRANGEMENT_ALLOCATION_TOTAL_MISMATCH"
+  | "INVALID_ALLOCATION_QTY";
+
+export interface BarAllocationValidationInput {
+  allocatedQty: number;
+  bar: { id: number; boqProjectId: number; boqItemId: number; plannedQty: number } | null | undefined;
+  arrangement: {
+    boqProjectId: number;
+    allocatedQty: number;
+    boqItemId?: number | null;
+    boqItemAllocations?: Array<{ boqItemId: number; qty: number }> | null;
+  };
+  /** Existing ACTIVE allocations against the same bar (excluding the one being edited). */
+  existingActiveOnBar: number;
+  /** Existing ACTIVE bar allocations for this arrangement (excluding the one being edited). */
+  existingActiveForArrangement: number;
+}
+
+export function validateBarAllocation(input: BarAllocationValidationInput):
+  | { ok: true }
+  | { ok: false; code: BarAllocationErrorCode; message: string; remainingQty?: number } {
+  const { allocatedQty, bar, arrangement, existingActiveOnBar, existingActiveForArrangement } = input;
+  if (!bar) return { ok: false, code: "PROGRAMME_BAR_NOT_FOUND", message: "Programme bar not found." };
+  if (!(allocatedQty > 0)) return { ok: false, code: "INVALID_ALLOCATION_QTY", message: "Allocated quantity must be positive." };
+  if (bar.boqProjectId !== arrangement.boqProjectId) {
+    return { ok: false, code: "ARRANGEMENT_PROJECT_MISMATCH", message: "Arrangement and programme bar belong to different projects." };
+  }
+  const arrItemIds = new Set<number>(
+    (Array.isArray(arrangement.boqItemAllocations) && arrangement.boqItemAllocations.length > 0)
+      ? arrangement.boqItemAllocations.map(a => Number(a.boqItemId))
+      : (arrangement.boqItemId != null ? [Number(arrangement.boqItemId)] : []),
+  );
+  if (arrItemIds.size > 0 && !arrItemIds.has(bar.boqItemId)) {
+    return { ok: false, code: "ARRANGEMENT_BOQ_ITEM_MISMATCH", message: "The programme bar's BOQ item does not match the arrangement's BOQ item(s)." };
+  }
+  const barRemaining = Math.max(0, (Number(bar.plannedQty) || 0) - existingActiveOnBar);
+  if (allocatedQty > barRemaining + 0.001) {
+    return {
+      ok: false, code: "BAR_ALLOCATION_EXCEEDS_PLANNED_QTY", remainingQty: Math.round(barRemaining * 1000) / 1000,
+      message: `Allocation exceeds the bar's remaining plannable quantity. Remaining allocatable: ${Math.round(barRemaining * 1000) / 1000}.`,
+    };
+  }
+  const arrRemaining = Math.max(0, (Number(arrangement.allocatedQty) || 0) - existingActiveForArrangement);
+  if (allocatedQty > arrRemaining + 0.001) {
+    return {
+      ok: false, code: "ARRANGEMENT_ALLOCATION_TOTAL_MISMATCH", remainingQty: Math.round(arrRemaining * 1000) / 1000,
+      message: `Bar allocations cannot exceed the arrangement total. Remaining unassigned arrangement quantity: ${Math.round(arrRemaining * 1000) / 1000}.`,
+    };
+  }
+  return { ok: true };
 }
 
 /** Equipment slice exclusion: the owning component is positively non-HLC. */
@@ -775,6 +923,8 @@ export interface BomInputItem {
 }
 
 export interface BomInputBar {
+  /** DB id of the work_program_bars row — required for arrangement bar-level phasing (Instruction 026). */
+  id?: number;
   boqItemId: number;
   chainageFrom: number | null;
   chainageTo: number | null;
@@ -899,7 +1049,7 @@ function isReinforcementBoqItem(item: BomInputItem): boolean {
   );
 }
 
-function isEarthworkBoqItem(item: BomInputItem): boolean {
+export function isEarthworkBoqItem(item: BomInputItem): boolean {
   const desc = item.description.toLowerCase();
   const unit = normaliseUnit(item.unit);
 
@@ -1213,6 +1363,18 @@ export function calculateBomDemand(
     barsByItem.get(bar.boqItemId)!.push(bar);
   }
 
+  // Instruction 026 §9-10: per-bar monthly share profiles (barId → month → share of
+  // the bar's quantity). Used to phase bar-linked arrangement exclusions so demand
+  // is excluded only in the linked bar's programmed months.
+  const barMonthShares = new Map<number, Map<number, number>>();
+  for (const bar of bars) {
+    if (bar.id == null || bar.startMonth == null || bar.endMonth == null || !(bar.plannedQty > 0)) continue;
+    const slices = calculateMonthlyDistribution(bar.plannedQty, bar.startMonth, bar.endMonth, totalMonths);
+    const shares = new Map<number, number>();
+    for (const s of slices) shares.set(s.month, (shares.get(s.month) ?? 0) + s.qty / bar.plannedQty);
+    barMonthShares.set(bar.id, shares);
+  }
+
   for (const item of items) {
     const itemBars = barsByItem.get(item.id) ?? [];
 
@@ -1345,7 +1507,7 @@ export function calculateBomDemand(
       const display = equipmentBaseName(e.equipmentName);
 
       // Instruction 025 §7: retain only the HLC-responsible fraction, component by component.
-      const eqEff = hlcRetainedFraction(itemEff, itemQtyForEff, sl => equipmentSliceExcluded(sl, e.equipmentName));
+      const eqEff = arrangementExclusionEffect(itemEff, itemQtyForEff, monthlyWork, barMonthShares, sl => equipmentSliceExcluded(sl, e.equipmentName));
       const fullLineHours = e.qtyPerBoqUnit * workQty * cnt;
       const lineHours = fullLineHours * eqEff.fraction;
       if (eqEff.fraction < 1 && fullLineHours > 0) {
@@ -1383,7 +1545,7 @@ export function calculateBomDemand(
         else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, unit: item.canonicalUnit ?? item.unit, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
       }
       for (const [month, mwq] of monthlyWork) {
-        row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt * eqEff.fraction;
+        row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt * eqEff.monthFraction(month);
       }
 
       // FROZEN RULE 7 — Diesel / HSD fuel: the ONLY fuel source for the BOM is
@@ -1397,7 +1559,7 @@ export function calculateBomDemand(
       if (norm > 0 && isDiesel && !isCraneEquip && !isNonHsdItem) {
         // Instruction 025 §8: diesel follows the responsibility for the consuming
         // equipment/activity — but stays with HLC when HLC supplies fuel to the agency.
-        const fuelEff = hlcRetainedFraction(itemEff, itemQtyForEff, sl => dieselSliceExcluded(sl, e.equipmentName));
+        const fuelEff = arrangementExclusionEffect(itemEff, itemQtyForEff, monthlyWork, barMonthShares, sl => dieselSliceExcluded(sl, e.equipmentName));
         const fuelPerBoqUnit = e.qtyPerBoqUnit * cnt * norm * fuelEff.fraction; // liters per BOQ unit (HLC share)
         if (fuelEff.fraction < 1) {
           const fullFuel = e.qtyPerBoqUnit * cnt * norm * workQty;
@@ -1446,7 +1608,8 @@ export function calculateBomDemand(
           isAuto: true,
         });
         for (const [month, mwq] of monthlyWork) {
-          fuelRow.monthlyQty[month] = (fuelRow.monthlyQty[month] ?? 0) + fuelPerBoqUnit * mwq;
+          // Bar-level phasing: apply the month-specific retained fraction, not the flat one.
+          fuelRow.monthlyQty[month] = (fuelRow.monthlyQty[month] ?? 0) + e.qtyPerBoqUnit * cnt * norm * mwq * fuelEff.monthFraction(month);
         }
         }
       }
@@ -1458,7 +1621,7 @@ export function calculateBomDemand(
       const designation = normaliseDesignation(l.designation);
       // Instruction 025 §9: exclude labour only where explicitly agency-owned;
       // general crews drop only for fully-outsourced execution chains.
-      const labEff = hlcRetainedFraction(itemEff, itemQtyForEff, sl => labourSliceExcluded(sl, designation));
+      const labEff = arrangementExclusionEffect(itemEff, itemQtyForEff, monthlyWork, barMonthShares, sl => labourSliceExcluded(sl, designation));
       const lineDays = l.qtyPerBoqUnit * workQty * labEff.fraction;
       if (labEff.fraction < 1) {
         demandAdjustments.push({
@@ -1491,7 +1654,7 @@ export function calculateBomDemand(
         else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, unit: item.canonicalUnit ?? item.unit, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
       }
       for (const [month, mwq] of monthlyWork) {
-        row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq * labEff.fraction;
+        row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq * labEff.monthFraction(month);
       }
     }
   }

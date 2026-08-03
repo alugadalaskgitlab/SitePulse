@@ -84,6 +84,9 @@ import {
   earthworkArrangements,
   type EarthworkArrangement,
   type InsertEarthworkArrangement,
+  earthworkArrangementProgrammeAllocations,
+  type EarthworkArrangementProgrammeAllocation,
+  type InsertEarthworkArrangementProgrammeAllocation,
   earthworkBaselines,
   type EarthworkBaseline,
   type InsertEarthworkBaseline,
@@ -1458,6 +1461,14 @@ export interface IStorage {
   getEarthworkArrangementById(id: number): Promise<EarthworkArrangement | undefined>;
   createEarthworkArrangement(data: InsertEarthworkArrangement): Promise<EarthworkArrangement>;
   updateEarthworkArrangement(id: number, data: Partial<InsertEarthworkArrangement>): Promise<EarthworkArrangement | undefined>;
+  // Instruction 026 §4: arrangement ↔ programme-bar allocations
+  getArrangementProgrammeAllocationsForProject(projectId: number): Promise<Array<EarthworkArrangementProgrammeAllocation & { arrangementStatus: string }>>;
+  getArrangementProgrammeAllocations(arrangementId: number): Promise<EarthworkArrangementProgrammeAllocation[]>;
+  getActiveAllocationsForBar(programmeBarId: number, excludeAllocationId?: number): Promise<EarthworkArrangementProgrammeAllocation[]>;
+  createArrangementProgrammeAllocation(data: InsertEarthworkArrangementProgrammeAllocation): Promise<EarthworkArrangementProgrammeAllocation>;
+  updateArrangementProgrammeAllocation(id: number, data: Partial<InsertEarthworkArrangementProgrammeAllocation>): Promise<EarthworkArrangementProgrammeAllocation | undefined>;
+  getArrangementProgrammeAllocationById(id: number): Promise<EarthworkArrangementProgrammeAllocation | undefined>;
+  deleteArrangementProgrammeAllocation(id: number): Promise<boolean>;
   deleteEarthworkArrangement(id: number): Promise<boolean>;
   getArrangementProgress(arrangementId: number): Promise<{
     completedQty: number;
@@ -24345,6 +24356,62 @@ export class DatabaseStorage implements IStorage {
   async deleteEarthworkArrangement(id: number): Promise<boolean> {
     const result = await db.delete(earthworkArrangements)
       .where(eq(earthworkArrangements.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // ── Instruction 026 §4: arrangement ↔ programme-bar allocations ────────────
+
+  /** All bar allocations for a project (joined through the arrangement). */
+  async getArrangementProgrammeAllocationsForProject(projectId: number): Promise<Array<EarthworkArrangementProgrammeAllocation & { arrangementStatus: string }>> {
+    const rows = await db.select({
+      alloc: earthworkArrangementProgrammeAllocations,
+      arrangementStatus: earthworkArrangements.status,
+    })
+      .from(earthworkArrangementProgrammeAllocations)
+      .innerJoin(earthworkArrangements, eq(earthworkArrangementProgrammeAllocations.arrangementId, earthworkArrangements.id))
+      .where(eq(earthworkArrangements.boqProjectId, projectId));
+    return rows.map(r => ({ ...r.alloc, arrangementStatus: r.arrangementStatus }));
+  }
+
+  async getArrangementProgrammeAllocations(arrangementId: number): Promise<EarthworkArrangementProgrammeAllocation[]> {
+    return db.select().from(earthworkArrangementProgrammeAllocations)
+      .where(eq(earthworkArrangementProgrammeAllocations.arrangementId, arrangementId));
+  }
+
+  /** Active allocations against a bar — excludes cancelled/rejected arrangements. */
+  async getActiveAllocationsForBar(programmeBarId: number, excludeAllocationId?: number): Promise<EarthworkArrangementProgrammeAllocation[]> {
+    const rows = await db.select({ alloc: earthworkArrangementProgrammeAllocations, status: earthworkArrangements.status })
+      .from(earthworkArrangementProgrammeAllocations)
+      .innerJoin(earthworkArrangements, eq(earthworkArrangementProgrammeAllocations.arrangementId, earthworkArrangements.id))
+      .where(eq(earthworkArrangementProgrammeAllocations.programmeBarId, programmeBarId));
+    return rows
+      .filter(r => r.status !== "cancelled" && r.status !== "rejected")
+      .filter(r => excludeAllocationId == null || r.alloc.id !== excludeAllocationId)
+      .map(r => r.alloc);
+  }
+
+  async createArrangementProgrammeAllocation(data: InsertEarthworkArrangementProgrammeAllocation): Promise<EarthworkArrangementProgrammeAllocation> {
+    const [row] = await db.insert(earthworkArrangementProgrammeAllocations).values(data).returning();
+    return row;
+  }
+
+  async updateArrangementProgrammeAllocation(id: number, data: Partial<InsertEarthworkArrangementProgrammeAllocation>): Promise<EarthworkArrangementProgrammeAllocation | undefined> {
+    const [row] = await db.update(earthworkArrangementProgrammeAllocations)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(earthworkArrangementProgrammeAllocations.id, id))
+      .returning();
+    return row;
+  }
+
+  async getArrangementProgrammeAllocationById(id: number): Promise<EarthworkArrangementProgrammeAllocation | undefined> {
+    const [row] = await db.select().from(earthworkArrangementProgrammeAllocations)
+      .where(eq(earthworkArrangementProgrammeAllocations.id, id));
+    return row;
+  }
+
+  async deleteArrangementProgrammeAllocation(id: number): Promise<boolean> {
+    const result = await db.delete(earthworkArrangementProgrammeAllocations)
+      .where(eq(earthworkArrangementProgrammeAllocations.id, id));
     return (result.rowCount ?? 0) > 0;
   }
 

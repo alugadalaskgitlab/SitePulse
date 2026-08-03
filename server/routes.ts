@@ -16,11 +16,11 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations } from "@shared/schema";
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
+import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { normalizeMaterialLabel, checkMappingUomCompatibility } from "@shared/boqNormalise";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
@@ -11831,10 +11831,18 @@ export async function registerRoutes(
   app.get("/api/boq/projects/:id/bom", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id);
-      const [{ items, bars, project, expandedItems, excludedCount }, projectArrangements] = await Promise.all([
+      const [{ items, bars, project, expandedItems, excludedCount }, projectArrangementsRaw, projectBarAllocations] = await Promise.all([
         computeProjectBom(projectId),
         storage.getEarthworkArrangements(projectId), // Instruction 025: client demand calc needs these
+        storage.getArrangementProgrammeAllocationsForProject(projectId), // Instruction 026: bar-level phasing
       ]);
+      // Instruction 026 §9: attach bar allocations so client + engine can phase per bar.
+      const allocsByArrangement = new Map<number, Array<{ programmeBarId: number; boqItemId: number; qty: number }>>();
+      for (const al of projectBarAllocations) {
+        if (!allocsByArrangement.has(al.arrangementId)) allocsByArrangement.set(al.arrangementId, []);
+        allocsByArrangement.get(al.arrangementId)!.push({ programmeBarId: al.programmeBarId, boqItemId: al.boqItemId, qty: Number(al.allocatedQty) || 0 });
+      }
+      const projectArrangements = projectArrangementsRaw.map(a => ({ ...a, programmeAllocations: allocsByArrangement.get(a.id) ?? [] }));
       const barItemIds = new Set(bars.map(b => b.boqItemId));
       const hasRecipes = expandedItems.some(it => it.materials.length > 0 || it.equipment.length > 0 || it.labour.length > 0);
       console.log(`[BOM] project=${projectId} items=${items.length} bars=${bars.length} hasRecipes=${hasRecipes} excluded=${excludedCount}`);
@@ -11869,7 +11877,7 @@ export async function registerRoutes(
       const horizonModeParam = (req.query.horizonMode as string | undefined) ?? "current_month";
       const customDateParam = req.query.customDate as string | undefined;
 
-      const [{ expandedItems, bars }, allStockBalances, allMaterialsRaw, allIndents, allIrns, materialMappings, allEarthworkArrangements] = await Promise.all([
+      const [{ expandedItems, bars }, allStockBalances, allMaterialsRaw, allIndents, allIrns, materialMappings, allEarthworkArrangementsRaw, allBarAllocations] = await Promise.all([
         computeProjectBom(projectId),
         storage.getStockBalances(),
         storage.getAllPlantMaterials(),          // active + inactive — partitioned below
@@ -11877,7 +11885,15 @@ export async function registerRoutes(
         storage.getInternalRequisitions(),
         storage.getMaterialMappings(projectId),
         storage.getEarthworkArrangements(projectId), // Instruction 023
+        storage.getArrangementProgrammeAllocationsForProject(projectId), // Instruction 026
       ]);
+      // Instruction 026 §9: attach programme-bar allocations for bar-level phasing.
+      const allocsByArrId = new Map<number, Array<{ programmeBarId: number; boqItemId: number; qty: number }>>();
+      for (const al of allBarAllocations) {
+        if (!allocsByArrId.has(al.arrangementId)) allocsByArrId.set(al.arrangementId, []);
+        allocsByArrId.get(al.arrangementId)!.push({ programmeBarId: al.programmeBarId, boqItemId: al.boqItemId, qty: Number(al.allocatedQty) || 0 });
+      }
+      const allEarthworkArrangements = allEarthworkArrangementsRaw.map(a => ({ ...a, programmeAllocations: allocsByArrId.get(a.id) ?? [] }));
       // Cut-to-fill by contract: BOQ item id → description lookup for detecting
       // rows whose earthwork is contractually sourced from roadway excavation.
       const boqItemDescById = new Map<number, string>();
@@ -12331,8 +12347,26 @@ export async function registerRoutes(
               cutAvailableQty: (a as any).sourceExcavationBoqItemId != null
                 ? (cutQtyByBoqItemId.get((a as any).sourceExcavationBoqItemId) ?? null)
                 : null,
+              // Instruction 026: bar linkage state for Work Programme / Procurement display
+              programmeAllocations: (a as any).programmeAllocations ?? [],
+              barLinkedQty: ((a as any).programmeAllocations ?? []).reduce((s: number, al: any) => s + (Number(al.qty) || 0), 0),
+              pendingRevision: (a as any).pendingRevision ?? null,
             };
           });
+        }
+
+        // Instruction 026 §15: timing source — bar-level programme vs legacy BOQ-level.
+        let arrangementTimingSource: "bar_level" | "boq_level_legacy" | undefined;
+        if (isEarthworkBulkRequirement && earthworkArrangementSummaries?.length) {
+          const activeArrs = earthworkArrangementSummaries.filter(a =>
+            ["approved", "mobilisation_pending", "in_progress", "on_hold"].includes(String(a.status)));
+          if (activeArrs.length > 0) {
+            const anyLegacy = activeArrs.some(a => {
+              const linked = (a as any).barLinkedQty ?? 0;
+              return Number(a.allocatedQty) - linked > 0.001;
+            });
+            arrangementTimingSource = anyLegacy ? "boq_level_legacy" : "bar_level";
+          }
         }
 
         // 021 §13: procurement equivalent — shortfall in stock/canonical UOM (e.g. MT)
@@ -12364,6 +12398,8 @@ export async function registerRoutes(
               arrangementOutsourcedQty: (matRow as any).arrangementOutsourcedQty,
               arrangementHlcQty: (matRow as any).arrangementHlcQty,
             } : {}),
+            // Instruction 026 §15: whether exclusion timing follows the programme bars
+            ...(arrangementTimingSource ? { arrangementTimingSource } : {}),
           } : {}),
           ...(shortageRow.requiresClassification && !isEarthworkBulkRequirement && distinctBoqItemIds.length > 0 ? {
             // Classification-required rows are gravel/moorum (isEarthworkBulkRequirement = false),
@@ -12721,13 +12757,57 @@ export async function registerRoutes(
         if (f in patch && patch[f] != null) patch[f] = Number(patch[f]);
       }
 
+      const current = await storage.getEarthworkArrangementById(id);
+      if (!current) return res.status(404).json({ error: "Arrangement not found" });
+
+      // ── Instruction 026 §17: controlled revision of operational arrangements ──
+      // Approved/operational arrangements must not be silently edited in place.
+      const OPERATIONAL = new Set(["approved", "mobilisation_pending", "in_progress", "on_hold"]);
+      const REVISION_FIELDS = ["agencyName", "allocatedQty", "agreedRate", "components", "dieselResponsibility", "boqItemAllocations", "boqItemId", "arrangementType"] as const;
+
+      // Revision decision actions (approve/discard a pending revision)
+      if (body.revisionAction === "approve" || body.revisionAction === "discard") {
+        const pending = (current as any).pendingRevision as Record<string, unknown> | null;
+        if (!pending) return res.status(400).json({ error: "NO_PENDING_REVISION", message: "This arrangement has no pending revision." });
+        if (body.revisionAction === "discard") {
+          const updated0 = await storage.updateEarthworkArrangement(id, { pendingRevision: null } as any);
+          return res.json(updated0);
+        }
+        // Approve: apply the revision, keep history auditable
+        const previous: Record<string, unknown> = {};
+        for (const k of Object.keys(pending)) previous[k] = (current as any)[k] ?? null;
+        const history = Array.isArray((current as any).revisionHistory) ? [...(current as any).revisionHistory] : [];
+        history.push({ appliedAt: now, appliedByUserId: user?.id ?? null, previous, changes: pending });
+        const updated1 = await storage.updateEarthworkArrangement(id, { ...(pending as any), pendingRevision: null, revisionHistory: history } as any);
+        await (storage as any).createAuditLog?.({ module: "earthwork_arrangements", transactionId: String(id), action: "revision_approved", userId: user?.id ?? null, newValues: pending }).catch(() => {});
+        return res.json(updated1);
+      }
+
+      if (OPERATIONAL.has(current.status)) {
+        const changedRevisionFields = REVISION_FIELDS.filter(f =>
+          f in body && JSON.stringify(body[f] ?? null) !== JSON.stringify((current as any)[f] ?? null));
+        if (changedRevisionFields.length > 0) {
+          if (body.saveIntent !== "revise") {
+            return res.status(409).json({
+              error: "ARRANGEMENT_REVISION_REQUIRES_APPROVAL",
+              message: "This arrangement is operational. Changes to agency, quantity, rate, responsibility or linkage require a controlled revision (submit as a revision for approval).",
+              fields: changedRevisionFields,
+            });
+          }
+          // Store the proposed changes WITHOUT applying them — the old approved
+          // values keep driving demand until the revision is approved (§17).
+          const pendingRevision: Record<string, unknown> = {};
+          for (const f of changedRevisionFields) pendingRevision[f] = body[f];
+          const updated2 = await storage.updateEarthworkArrangement(id, { pendingRevision } as any);
+          await (storage as any).createAuditLog?.({ module: "earthwork_arrangements", transactionId: String(id), action: "revision_proposed", userId: user?.id ?? null, newValues: pendingRevision }).catch(() => {});
+          return res.json({ ...updated2, revisionPending: true });
+        }
+      }
+
       // ── Linkage/over-allocation guard on PATCH (mirrors POST guard) ────────
       // Only apply when the patch mutates BOQ linkage or quantity fields.
       const patchChangesLinkage = "boqItemId" in body || "boqItemAllocations" in body || "allocatedQty" in body;
       if (patchChangesLinkage) {
-        // Fetch the current arrangement to know existing linkage
-        const current = await storage.getEarthworkArrangementById(id);
-        if (!current) return res.status(404).json({ error: "Arrangement not found" });
 
         const newAllocsRaw = patch.boqItemAllocations as Array<{ boqItemId: number; qty: number }> | undefined;
         const newSingleId = "boqItemId" in body ? (body.boqItemId ? Number(body.boqItemId) : null) : Number(current.boqItemId ?? 0) || null;
@@ -12875,6 +12955,179 @@ export async function registerRoutes(
     } catch (err) {
       console.error("DELETE /api/earthwork-arrangements/:id:", err);
       res.status(500).json({ error: "Failed to cancel earthwork arrangement" });
+    }
+  });
+
+  // ── Instruction 026 §4/§19: arrangement ↔ programme-bar allocation routes ────
+
+  /** All bar allocations for a project (Work Programme + Procurement display). */
+  app.get("/api/boq/projects/:id/arrangement-programme-allocations", async (req, res) => {
+    try {
+      if (!assertAuthed(req, res)) return;
+      const projectId = parseInt(req.params.id);
+      const rows = await storage.getArrangementProgrammeAllocationsForProject(projectId);
+      res.json(rows);
+    } catch (err) {
+      console.error("GET arrangement-programme-allocations:", err);
+      res.status(500).json({ error: "Failed to fetch programme allocations" });
+    }
+  });
+
+  /**
+   * Shared transactional core for allocation create/update.
+   * Locks the arrangement row (FOR UPDATE) so concurrent requests serialize and the
+   * check-then-write validation cannot over-allocate a bar or arrangement (review fix).
+   *
+   * NOTE (§17 scope): bar linking is deliberately allowed on operational (approved/
+   * in-progress) arrangements — Instruction 026 §7/§22 requires assigning existing
+   * approved legacy arrangements to stretches. Linking changes only exclusion TIMING
+   * (totals are unchanged; see test K "no duplicate exclusion"), not commercial terms,
+   * so it is outside the controlled-revision guard. All changes are audit-logged.
+   */
+  async function applyBarAllocationTx(opts: {
+    arrangementId: number;
+    allocatedQty: number;
+    userId: number | null;
+    /** create mode: bar to link. update mode: existing allocation id. */
+    programmeBarId?: number;
+    allocId?: number;
+  }): Promise<{ status: number; body: unknown }> {
+    return db.transaction(async (tx) => {
+      // Serialize all allocation writes for this arrangement.
+      const [arrangement] = await tx.select().from(earthworkArrangementsTable)
+        .where(eq(earthworkArrangementsTable.id, opts.arrangementId)).for("update");
+      if (!arrangement) return { status: 404, body: { error: "ARRANGEMENT_NOT_FOUND", message: "Arrangement not found." } };
+
+      let existing: typeof earthworkArrangementProgrammeAllocations.$inferSelect | undefined;
+      if (opts.allocId != null) {
+        [existing] = await tx.select().from(earthworkArrangementProgrammeAllocations)
+          .where(eq(earthworkArrangementProgrammeAllocations.id, opts.allocId));
+        if (!existing || existing.arrangementId !== opts.arrangementId) {
+          return { status: 404, body: { error: "ALLOCATION_NOT_FOUND", message: "Programme allocation not found." } };
+        }
+      }
+      const barId = opts.programmeBarId ?? existing!.programmeBarId;
+      const [bar] = await tx.select().from(workProgramBars).where(eq(workProgramBars.id, barId));
+
+      // Active allocations (exclude cancelled/rejected arrangements + the row being edited)
+      const allocRows = await tx.select({
+        alloc: earthworkArrangementProgrammeAllocations,
+        status: earthworkArrangementsTable.status,
+      })
+        .from(earthworkArrangementProgrammeAllocations)
+        .innerJoin(earthworkArrangementsTable, eq(earthworkArrangementProgrammeAllocations.arrangementId, earthworkArrangementsTable.id))
+        .where(eq(earthworkArrangementProgrammeAllocations.programmeBarId, barId));
+      const activeOnBar = allocRows
+        .filter(r => r.status !== "cancelled" && r.status !== "rejected")
+        .filter(r => opts.allocId == null || r.alloc.id !== opts.allocId)
+        .reduce((s, r) => s + Number(r.alloc.allocatedQty), 0);
+      const forArr = (await tx.select().from(earthworkArrangementProgrammeAllocations)
+        .where(eq(earthworkArrangementProgrammeAllocations.arrangementId, opts.arrangementId)))
+        .filter(a => opts.allocId == null || a.id !== opts.allocId)
+        .reduce((s, a) => s + Number(a.allocatedQty), 0);
+
+      const verdict = validateBarAllocation({
+        allocatedQty: opts.allocatedQty,
+        bar: bar ? { id: bar.id, boqProjectId: bar.boqProjectId, boqItemId: bar.boqItemId, plannedQty: Number(bar.plannedQty ?? 0) } : null,
+        arrangement: {
+          boqProjectId: arrangement.boqProjectId,
+          allocatedQty: Number(arrangement.allocatedQty ?? 0),
+          boqItemId: arrangement.boqItemId,
+          boqItemAllocations: arrangement.boqItemAllocations as any,
+        },
+        existingActiveOnBar: activeOnBar,
+        existingActiveForArrangement: forArr,
+      });
+      if (!verdict.ok) {
+        return { status: 400, body: { error: verdict.code, message: verdict.message, ...(verdict.remainingQty != null ? { remainingQty: verdict.remainingQty } : {}) } };
+      }
+
+      if (opts.allocId != null) {
+        const [updated] = await tx.update(earthworkArrangementProgrammeAllocations)
+          .set({ allocatedQty: opts.allocatedQty, updatedAt: new Date() })
+          .where(eq(earthworkArrangementProgrammeAllocations.id, opts.allocId))
+          .returning();
+        return { status: 200, body: updated };
+      }
+      const [created] = await tx.insert(earthworkArrangementProgrammeAllocations).values({
+        arrangementId: opts.arrangementId, programmeBarId: barId, boqItemId: bar!.boqItemId,
+        allocatedQty: opts.allocatedQty, createdBy: opts.userId,
+      }).returning();
+      return { status: 201, body: created };
+    });
+  }
+
+  /** Link an arrangement to a Work Programme bar with an allocated quantity. */
+  app.post("/api/earthwork-arrangements/:id/programme-allocations", async (req, res) => {
+    try {
+      if (!assertAuthed(req, res)) return;
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const arrangementId = parseInt(req.params.id);
+      const user = (req as any).user;
+      const programmeBarId = Number(req.body?.programmeBarId);
+      const allocatedQty = Number(req.body?.allocatedQty);
+
+      const result = await applyBarAllocationTx({ arrangementId, allocatedQty, programmeBarId, userId: user?.id ?? null });
+      if (result.status === 201) {
+        await (storage as any).createAuditLog?.({
+          module: "earthwork_arrangements", transactionId: String(arrangementId),
+          action: "programme_allocation_created", userId: user?.id ?? null,
+          newValues: { programmeBarId, allocatedQty },
+        }).catch(() => {});
+      }
+      res.status(result.status).json(result.body);
+    } catch (err) {
+      console.error("POST programme-allocations:", err);
+      res.status(500).json({ error: "Failed to create programme allocation" });
+    }
+  });
+
+  /** Change an allocation's quantity (same validation as create). */
+  app.patch("/api/earthwork-arrangements/:id/programme-allocations/:allocId", async (req, res) => {
+    try {
+      if (!assertAuthed(req, res)) return;
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const arrangementId = parseInt(req.params.id);
+      const allocId = parseInt(req.params.allocId);
+      const allocatedQty = Number(req.body?.allocatedQty);
+      const user = (req as any).user;
+
+      const result = await applyBarAllocationTx({ arrangementId, allocatedQty, allocId, userId: user?.id ?? null });
+      if (result.status === 200) {
+        await (storage as any).createAuditLog?.({
+          module: "earthwork_arrangements", transactionId: String(arrangementId),
+          action: "programme_allocation_updated", userId: user?.id ?? null,
+          newValues: { allocId, allocatedQty },
+        }).catch(() => {});
+      }
+      res.status(result.status).json(result.body);
+    } catch (err) {
+      console.error("PATCH programme-allocations:", err);
+      res.status(500).json({ error: "Failed to update programme allocation" });
+    }
+  });
+
+  /** Remove a bar allocation (the quantity falls back to legacy BOQ-level effect). */
+  app.delete("/api/earthwork-arrangements/:id/programme-allocations/:allocId", async (req, res) => {
+    try {
+      if (!assertAuthed(req, res)) return;
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const arrangementId = parseInt(req.params.id);
+      const allocId = parseInt(req.params.allocId);
+      const existing = await storage.getArrangementProgrammeAllocationById(allocId);
+      if (!existing || existing.arrangementId !== arrangementId) {
+        return res.status(404).json({ error: "ALLOCATION_NOT_FOUND", message: "Programme allocation not found." });
+      }
+      await storage.deleteArrangementProgrammeAllocation(allocId);
+      await (storage as any).createAuditLog?.({
+        module: "earthwork_arrangements", transactionId: String(arrangementId),
+        action: "programme_allocation_deleted", userId: (req as any).user?.id ?? null,
+        oldValues: { allocId, programmeBarId: existing.programmeBarId, allocatedQty: existing.allocatedQty },
+      }).catch(() => {});
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("DELETE programme-allocations:", err);
+      res.status(500).json({ error: "Failed to delete programme allocation" });
     }
   });
 

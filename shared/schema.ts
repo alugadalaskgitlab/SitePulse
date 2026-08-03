@@ -3563,6 +3563,11 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
   rejectionReason: text("rejection_reason"),
   cancellationReason: text("cancellation_reason"),
 
+  // ── Instruction 026 §17: controlled revision of operational arrangements ──
+  // While a revision awaits approval, the OLD approved values keep driving demand.
+  pendingRevision: jsonb("pending_revision"),        // proposed field changes (JSONB) or null
+  revisionHistory: jsonb("revision_history"),        // append-only audit array of applied revisions
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -3570,6 +3575,24 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
 export const insertEarthworkArrangementSchema = createInsertSchema(earthworkArrangements).omit({ id: true, createdAt: true, updatedAt: true });
 export type EarthworkArrangement = typeof earthworkArrangements.$inferSelect;
 export type InsertEarthworkArrangement = z.infer<typeof insertEarthworkArrangementSchema>;
+
+// ─── Earthwork Arrangement ↔ Programme Bar Allocations (Instruction 026 §4) ───
+// Links an execution arrangement to specific Work Programme bars so demand
+// exclusion can be phased by the bar's exact quantity and dates. Stable IDs only.
+export const earthworkArrangementProgrammeAllocations = pgTable("earthwork_arrangement_programme_allocations", {
+  id: serial("id").primaryKey(),
+  arrangementId: integer("arrangement_id").notNull().references(() => earthworkArrangements.id, { onDelete: "cascade" }),
+  programmeBarId: integer("programme_bar_id").notNull().references(() => workProgramBars.id, { onDelete: "cascade" }),
+  boqItemId: integer("boq_item_id").notNull(),
+  allocatedQty: real("allocated_qty").notNull(),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEarthworkArrangementProgrammeAllocationSchema = createInsertSchema(earthworkArrangementProgrammeAllocations).omit({ id: true, createdAt: true, updatedAt: true });
+export type EarthworkArrangementProgrammeAllocation = typeof earthworkArrangementProgrammeAllocations.$inferSelect;
+export type InsertEarthworkArrangementProgrammeAllocation = z.infer<typeof insertEarthworkArrangementProgrammeAllocationSchema>;
 
 // ─── Earthwork Baselines ──────────────────────────────────────────────────────
 // Captures the original approved programme for an earthwork BOQ item.

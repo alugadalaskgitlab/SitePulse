@@ -387,56 +387,9 @@ describe("Test L.J — date range validation", () => {
   });
 });
 
-// ─── Test L.K: Only active statuses suppress HLC demand ──────────────────────
-
-describe("Test L.K — status-based demand suppression rules", () => {
-  const DEMAND_SUPPRESSING_STATUSES = ["approved", "mobilisation_pending", "in_progress"];
-  const NON_SUPPRESSING_STATUSES = ["draft", "submitted", "on_hold", "returned", "rejected", "cancelled", "completed"];
-
-  for (const status of DEMAND_SUPPRESSING_STATUSES) {
-    it(`status "${status}" should suppress HLC demand`, () => {
-      expect(DEMAND_SUPPRESSING_STATUSES).toContain(status);
-    });
-  }
-
-  for (const status of NON_SUPPRESSING_STATUSES) {
-    it(`status "${status}" should NOT suppress HLC demand`, () => {
-      expect(NON_SUPPRESSING_STATUSES).toContain(status);
-    });
-  }
-});
-
-// ─── Test L.L: Full status lifecycle is valid ─────────────────────────────────
-
-describe("Test L.L — full earthwork arrangement status lifecycle", () => {
-  const ALL_VALID_STATUSES = [
-    "draft",
-    "submitted",
-    "approved",
-    "mobilisation_pending",
-    "in_progress",
-    "on_hold",
-    "completed",
-    "returned",
-    "rejected",
-    "cancelled",
-  ];
-
-  it("all expected arrangement statuses are defined", () => {
-    expect(ALL_VALID_STATUSES).toHaveLength(10);
-  });
-
-  it("status lifecycle: draft → submitted → approved → mobilisation_pending → in_progress → completed", () => {
-    const lifecycle = ["draft", "submitted", "approved", "mobilisation_pending", "in_progress", "completed"];
-    for (const s of lifecycle) {
-      expect(ALL_VALID_STATUSES).toContain(s);
-    }
-  });
-
-  it("on_hold is reachable from in_progress", () => {
-    expect(ALL_VALID_STATUSES).toContain("on_hold");
-  });
-});
+// Tests L.K and L.L removed (Instruction 026 §A1): they were tautological — asserting
+// hand-written status lists against themselves without invoking the real demand engine.
+// Real status-gating coverage lives in tests/arrangementDemandExclusion.test.ts (B/C, G).
 
 // ─── Test L.M: Regression — existing 023 tests still pass ────────────────────
 

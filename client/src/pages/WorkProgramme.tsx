@@ -6,7 +6,7 @@ import {
   AlertTriangle, CheckCircle2, Loader2, CalendarDays,
   Scissors, BookOpen, ChevronDown, ChevronUp, Info,
   GanttChartSquare, TableProperties, ArrowLeftRight, Settings2, Sparkles,
-  Undo2, Redo2, Upload, MapPin, Building2,
+  Undo2, Redo2, Upload, MapPin, Building2, Handshake,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,9 @@ import {
   type EquipmentProductivity,
   type LayerConfig,
   type ProductivitySettings,
+  isEarthworkBoqItem,
 } from "@shared/planningEngine";
+import { BarArrangementPanel } from "@/components/BarArrangementPanel";
 import { SEQUENCE_RULES } from "@shared/programmeSequencer";
 import { isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
 import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
@@ -145,6 +147,15 @@ function StretchRow({
     if (roadLen > 0 && boqQty > 0) return String(+(boqQty / roadLen).toFixed(4));
     return "1";
   }
+
+  // Instruction 026 §7: per-bar execution-arrangement panel (earthwork bars only)
+  const [showArrangements, setShowArrangements] = useState(false);
+  const isEarthworkBar = useMemo(() => {
+    try {
+      return (item as any).bulkMaterialClassification === "earthwork"
+        || isEarthworkBoqItem({ description: item.description ?? "", unit: item.unit ?? "" } as any);
+    } catch { return false; }
+  }, [item]);
 
   const [cf, setCf] = useState(bar.chainageFrom != null ? String(bar.chainageFrom) : "");
   const [ct, setCt] = useState(bar.chainageTo != null ? String(bar.chainageTo) : "");
@@ -629,6 +640,16 @@ function StretchRow({
         {patch.isPending && <Loader2 className="w-3 h-3 animate-spin text-teal-500 flex-shrink-0 mr-0.5" />}
 
         {/* Buttons */}
+        {isEarthworkBar && (
+          <button
+            onClick={() => setShowArrangements(true)}
+            className="p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex-shrink-0"
+            title="Execution arrangements for this stretch"
+            data-testid={`button-arrangements-${bar.id}`}
+          >
+            <Handshake className="w-3 h-3" />
+          </button>
+        )}
         <button
           onClick={() => onSplit(bar)}
           className="p-1 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20 flex-shrink-0"
@@ -701,6 +722,20 @@ function StretchRow({
           )}
         </div>
       </div>
+
+      {/* Instruction 026 §7: per-stretch execution-arrangement panel */}
+      {isEarthworkBar && showArrangements && (
+        <BarArrangementPanel
+          open={showArrangements}
+          onClose={() => setShowArrangements(false)}
+          projectId={projectId}
+          barId={bar.id}
+          boqItemId={bar.boqItemId}
+          barLabel={`${shortItemName(item.description)} — ${bar.reachLabel ?? `Ch ${bar.chainageFrom ?? "?"}–${bar.chainageTo ?? "?"}`}`}
+          barPlannedQty={Number(bar.plannedQty ?? 0)}
+          unit={(bar as any).canonicalUnit ?? bar.unit ?? ""}
+        />
+      )}
     </div>
   );
 }

@@ -2283,10 +2283,12 @@ function ProcurementTable({
   ).length;
   // Cut-to-fill: earthwork rows fully covered by reused-excavated arrangements are
   // internally sourced — nothing to resolve or procure, so keep them out of the alert count.
+  // Instruction 026 §16: earthwork rows never go through Plant Material mapping —
+  // they must not count as mapping warnings (they have their own arrangement flow).
   const unresolvedCount = data.rows.filter(r =>
     r.materialMappingUnresolved &&
-    !(r.procurementStatus === "earthwork_arrangement_required" &&
-      deriveEarthworkSourcingBadge(r.earthworkArrangements, r.totalDemand) === "internally_sourced")
+    r.procurementStatus !== "earthwork_arrangement_required" &&
+    r.procurementStatus !== "earthwork_classification_required"
   ).length;
   const notProgrammedCount = data.rows.filter(r =>
     !r.materialMappingUnresolved && r.programmingStatus === "not_programmed"
@@ -2374,7 +2376,9 @@ function ProcurementTable({
                   <td className={`px-3 py-2 font-medium sticky left-0 z-10 ${hasShortfall ? "bg-red-50/50" : isUnresolved ? "bg-amber-50/50" : "bg-white"}`}>
                     <div className="flex items-center gap-1 flex-wrap">
                       <span className="text-slate-700">{row.materialName}</span>
-                      {isUnresolved && !row.materialMappingAmbiguous && (
+                      {isUnresolved && !row.materialMappingAmbiguous
+                        && row.procurementStatus !== "earthwork_arrangement_required"
+                        && row.procurementStatus !== "earthwork_classification_required" && (
                         <span className="text-[10px] font-semibold text-amber-600 bg-amber-100 border border-amber-300 rounded px-1 py-0.5">Mapping Required</span>
                       )}
                       {row.materialMappingAmbiguous && (
@@ -2603,7 +2607,13 @@ export default function WorkDemand() {
     };
   }, [bomData]);
 
-  const shortageAlertCount = shortageData?.rows.filter(r => r.actionableShortfall > 0 || r.materialMappingUnresolved).length ?? 0;
+  // Instruction 026 §16: earthwork rows have their own arrangement flow — never mapping warnings.
+  const shortageAlertCount = shortageData?.rows.filter(r =>
+    r.actionableShortfall > 0 ||
+    (r.materialMappingUnresolved &&
+      r.procurementStatus !== "earthwork_arrangement_required" &&
+      r.procurementStatus !== "earthwork_classification_required")
+  ).length ?? 0;
 
   return (
     <div className="space-y-4">

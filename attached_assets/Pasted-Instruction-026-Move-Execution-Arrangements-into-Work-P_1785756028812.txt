@@ -1,0 +1,662 @@
+Instruction 026 — Move Execution Arrangements into Work Programme
+
+Purpose
+
+Make Work Programme the primary place where execution responsibility is decided and managed.
+
+Instruction 025 now correctly reduces HLC material, equipment, labour and diesel demand based on approved execution arrangements.
+
+This batch must:
+
+1. close the two small remaining Instruction 025 gaps:
+   - obsolete fake test;
+   - stale demand cache after arrangement changes;
+
+2. link execution arrangements to actual Work Programme bars/stretches;
+
+3. allow the PM/Admin to create, view and manage arrangements from Work Programme;
+
+4. phase arrangement effects according to the exact linked bar quantity and dates;
+
+5. make BOM/Procurement a downstream read-only result of the Work Programme decision;
+
+6. preserve all existing arrangements, status rules, overlap protection and component-level demand logic.
+
+Do not add Auto Sequence stretch-table improvements yet.
+Do not add LHS/RHS or width-aware planning yet.
+Do not add baseline/reforecasting yet.
+
+DO NOT TOUCH OR REGRESS
+
+Do not alter or simplify the Instruction 025 demand-exclusion engine that is already working.
+
+Specifically, do not regress:
+
+- calculateBomDemand or the current authoritative equivalent;
+- component-level responsibility logic;
+- operational-status gating;
+- approved-allocation quantity caps;
+- overlap detection and safety cap;
+- partial-responsibility handling;
+- HLC-supplied diesel treatment;
+- multiple-arrangement handling;
+- non-earthwork regression protections;
+- GSB/WMM exclusion from earthwork logic.
+
+Also do not touch:
+
+- UOM conversion;
+- canonical material aliases/mapping;
+- GSB/WMM mapping and demand;
+- ordinary procurement-status logic;
+- PI/IRN/GRN workflows;
+- Stores stock;
+- Cancel GRN;
+- DPR entry;
+- Auto Sequence;
+- chainage-table generation;
+- LHS/RHS;
+- planned width logic;
+- baseline/forecast/recovery;
+- subcontract billing;
+- vendor accounting;
+- bituminous/concrete execution arrangements;
+- User/Designation Templates.
+
+PART A — CLOSE THE TWO REMAINING INSTRUCTION 025 ITEMS
+
+1. Remove the obsolete fake test
+
+Locate the old tautological test that checks a manually written list against itself without invoking the real production demand function.
+
+Remove it.
+
+Do not leave it alongside the genuine tests.
+
+Retain and extend only tests that invoke the actual production calculation used by the app.
+
+2. Immediate cache invalidation
+
+When an execution arrangement is:
+
+- approved;
+- returned;
+- rejected;
+- cancelled;
+- put on hold;
+- resumed;
+- revised;
+- quantity changed;
+- responsibility changed;
+- programme allocation changed;
+
+immediately invalidate and refetch all affected project queries:
+
+- BOM/material demand;
+- equipment demand;
+- labour demand;
+- Procurement shortage rows;
+- diesel/HSD demand;
+- Earthwork Control summaries;
+- Work Programme arrangement status.
+
+Do not rely on stale-time expiry.
+
+Acceptance:
+
+Approve a fully outsourced arrangement and immediately open Equipment and Diesel.
+
+Expected:
+- corrected demand is visible immediately;
+- no five-minute delay;
+- no browser reload required.
+
+Cancel the same arrangement.
+
+Expected:
+- HLC demand returns immediately;
+- no stale exclusion remains.
+
+PART B — ESTABLISH WORK PROGRAMME AS THE EXECUTION-DECISION SOURCE
+
+3. Primary location
+
+For recognised earthwork programme bars, Work Programme must become the primary place to:
+
+- set execution arrangement;
+- link an existing arrangement;
+- allocate quantity;
+- view agency and responsibility;
+- edit Draft;
+- submit;
+- approve;
+- return;
+- reject;
+- cancel;
+- revise through controlled approval;
+- open full Earthwork Control details.
+
+Suggested programme-bar actions:
+
+- Set Execution Arrangement
+- View Arrangement
+- Complete Allocation
+- Submit for Approval
+- Approve
+- Return for Correction
+- Revise Arrangement
+- Open Earthwork Control
+
+Do not require the PM to go to BOM/Procurement to make the execution decision.
+
+4. Link arrangements to real programme bars
+
+Add or reuse the smallest safe allocation structure linking an arrangement to one or more Work Programme bars.
+
+Preferred structure:
+
+earthwork_arrangement_programme_allocations
+
+Minimum fields:
+
+- id
+- arrangementId
+- programmeBarId
+- boqItemId
+- allocatedQty
+- createdBy
+- createdAt
+- updatedAt
+
+Use stable IDs.
+
+Do not identify a programme bar only through text descriptions.
+
+Validation:
+
+- arrangement and bar must belong to the same project;
+- BOQ item must match;
+- allocated quantity must be positive;
+- active allocations against a bar must not exceed bar planned quantity;
+- cancelled/rejected arrangement allocations must not count as active;
+- arrangement total must equal the sum of active bar allocations.
+
+If an equivalent allocation model already exists, reuse it.
+
+Do not create a duplicate structure.
+
+5. Preserve existing arrangements
+
+Existing arrangements linked only by:
+
+- boqItemId; or
+- boqItemAllocations
+
+must remain intact.
+
+Do not silently distribute them across all programme bars.
+
+Show them in Work Programme as:
+
+“Approved arrangement exists — stretch assignment required.”
+
+Allow PM/Admin to assign the remaining quantity to relevant bars.
+
+Until assigned:
+
+- preserve Instruction 025’s existing BOQ-item-level demand effect;
+- display that timing is approximate;
+- do not lose demand exclusion;
+- do not apply both legacy and bar-level exclusion simultaneously.
+
+Once all active arrangement quantity is linked to bars:
+
+- use bar-level phasing;
+- disable legacy fallback for that same linked quantity;
+- prevent double exclusion.
+
+6. Programme-bar status
+
+For earthwork bars display:
+
+- Arrangement Required
+- Draft
+- Submitted
+- Approved
+- Partially Allocated
+- Fully Allocated
+- Mobilisation Pending
+- In Progress
+- On Hold
+- Completed
+- Legacy Arrangement — Stretch Assignment Required
+
+Show compact details:
+
+- agency/vendor;
+- arrangement type;
+- allocated quantity on this bar;
+- bar planned quantity;
+- HLC-responsibility summary;
+- agency-responsibility summary.
+
+Use a tooltip, drawer or side panel.
+
+Do not overload the visible Gantt bar.
+
+7. Create arrangement from a programme bar
+
+When opened from a bar, prefill:
+
+- project;
+- BOQ item;
+- programmeBarId;
+- reach/structure label;
+- existing chainage if available;
+- planned quantity;
+- remaining unallocated quantity;
+- bar start and finish dates;
+- work/material description.
+
+Allow:
+
+- full remaining quantity;
+- partial quantity.
+
+Do not use the entire combined BOM-row quantity.
+
+8. One arrangement across multiple bars
+
+Allow one commercial arrangement to cover multiple relevant bars.
+
+Example:
+
+Agency Narsimulu:
+- Bar 1: 3,000 CUM
+- Bar 2: 4,000 CUM
+
+Total arrangement:
+- 7,000 CUM
+
+Show allocations separately.
+
+The arrangement total must equal the sum of active bar allocations.
+
+PART C — BAR-LEVEL DEMAND PHASING
+
+9. Change matching carefully
+
+Instruction 025 currently matches arrangements at BOQ-item/allocation level.
+
+Extend the real demand engine so that where bar allocations exist:
+
+- matching occurs by programmeBarId and BOQ item;
+- only the bar’s allocated quantity is affected;
+- exclusion occurs only in that bar’s programmed date/horizon;
+- no flat outsourced percentage is spread across unrelated bars.
+
+Do not replace the working component engine with a separate calculation.
+
+Extend the existing authoritative function.
+
+10. Example
+
+BOQ total:
+- 10,000 CUM
+
+Bar 1:
+- August
+- 4,000 CUM
+- fully outsourced
+
+Bar 2:
+- September
+- 6,000 CUM
+- HLC in-house
+
+Expected:
+
+August:
+- HLC excavation/tipper/diesel demand excluded for 4,000 CUM.
+
+September:
+- full HLC demand remains for 6,000 CUM.
+
+Do not apply a flat 40% exclusion to both months.
+
+11. Preserve component-level logic
+
+Continue to apply Instruction 025 rules exactly.
+
+Example:
+
+Agency:
+- excavation;
+- loading;
+- transport;
+- tippers;
+- diesel.
+
+HLC:
+- spreading;
+- watering;
+- compaction.
+
+Expected at bar level:
+
+- excavator and tipper demand excluded;
+- grader, roller, water tanker and their diesel retained;
+- only for the linked bar quantity and dates.
+
+HLC-supplied diesel remains included where responsibility says HLC.
+
+12. Operational statuses
+
+Only operational statuses affect demand:
+
+- approved;
+- mobilisation_pending;
+- in_progress;
+- on_hold, while allocation remains operational.
+
+Do not allow these to affect demand:
+
+- draft;
+- submitted;
+- returned;
+- rejected;
+- cancelled.
+
+Use the existing status names and rules.
+
+13. Overlap protection must remain
+
+When bar-level allocations overlap:
+
+- never reduce demand below zero;
+- cap exclusion at valid bar remaining quantity;
+- flag the overlap;
+- do not silently apply two active arrangements to the same quantity.
+
+The existing Instruction 025 overlap-safety behaviour must continue working.
+
+PART D — PROCUREMENT BECOMES DOWNSTREAM
+
+14. Procurement role
+
+For recognised earthwork rows, BOM/Procurement should show the result of the approved Work Programme execution plan.
+
+It should not remain the primary place to create execution arrangements.
+
+Replace primary action with:
+
+- View in Work Programme
+- Manage Execution Plan
+
+A shortcut may remain only if it opens the same Work Programme-linked arrangement flow.
+
+Do not allow creation of another unlinked arrangement from Procurement.
+
+15. Procurement display
+
+Show:
+
+- total physical quantity;
+- approved agency allocation;
+- HLC-responsibility quantity;
+- unallocated quantity;
+- near-term HLC actionable demand;
+- arrangement status;
+- timing source:
+  - Bar-level programme
+  - Legacy BOQ-level approximation
+
+16. Remove contradictory mapping labels
+
+Recognised earthwork rows must not show:
+
+“Mapping Required”
+
+Use:
+
+- Earthwork Requirement
+- Execution Plan Required
+- Partially Allocated
+- Arrangement Approved
+- HLC Responsibility Remaining
+
+Do not count classified earthwork rows in the normal canonical-material mapping-warning total.
+
+Do not alter mapping warnings for normal materials.
+
+PART E — REVISION, AUDIT AND REFRESH
+
+17. Approved arrangement changes
+
+Do not silently edit an approved arrangement in place when these change:
+
+- agency;
+- quantity;
+- rate;
+- responsibility;
+- linked programme bars.
+
+Use a controlled revision requiring approval.
+
+Historical values must remain auditable.
+
+Draft revisions must not alter operational demand until approved.
+
+18. Refresh behaviour
+
+After any arrangement or programme allocation change, immediately refresh:
+
+- Work Programme;
+- Earthwork Control;
+- Materials;
+- Equipment;
+- Labour;
+- Procurement;
+- diesel/HSD totals.
+
+No full browser reload should be necessary.
+
+19. Errors
+
+Return clear errors:
+
+- PROGRAMME_BAR_NOT_FOUND
+- ARRANGEMENT_PROJECT_MISMATCH
+- ARRANGEMENT_BOQ_ITEM_MISMATCH
+- BAR_ALLOCATION_EXCEEDS_PLANNED_QTY
+- ARRANGEMENT_ALLOCATION_TOTAL_MISMATCH
+- LEGACY_ARRANGEMENT_ASSIGNMENT_REQUIRED
+- ARRANGEMENT_REVISION_REQUIRES_APPROVAL
+- OVERLAPPING_ACTIVE_BAR_ALLOCATION
+
+Show the server message in the UI.
+
+PART F — MANDATORY REAL REGRESSION TESTING
+
+20. All Instruction 025 genuine tests must still pass
+
+After adding bar-level linkage, rerun real tests that invoke the actual production demand engine for:
+
+A. Fully outsourced earthwork
+
+- 10,000 CUM total;
+- 7,000 CUM fully outsourced.
+
+Expected:
+- HLC excavator/tipper/diesel demand applies only to remaining 3,000 CUM.
+
+B. Partial responsibility
+
+Agency:
+- excavation/transport/tippers/diesel.
+
+HLC:
+- spreading/watering/compaction.
+
+Expected:
+- excavator and tipper removed;
+- grader, roller and water tanker retained.
+
+C. Status gating
+
+Draft/submitted:
+- no exclusion.
+
+Approved:
+- exclusion applies.
+
+Cancelled:
+- exclusion removed.
+
+D. Overlap cap
+
+Overlapping arrangements:
+- exclusion capped;
+- warning raised;
+- demand never negative.
+
+E. HLC-supplied diesel
+
+Agency equipment with HLC diesel:
+- equipment ownership/availability treatment remains correct;
+- HLC diesel remains included.
+
+F. Multiple BOQ sources
+
+Arrangement linked to one source:
+- other sources remain unchanged.
+
+G. Non-earthwork regression
+
+Confirm unchanged:
+
+- GSB;
+- WMM;
+- aggregates;
+- bitumen;
+- emulsion;
+- cement;
+- standard equipment;
+- ordinary labour;
+- ordinary diesel demand.
+
+These tests must invoke the production calculation.
+
+Do not replace them with mocked expected arrays.
+
+21. New bar-level tests
+
+H. One linked bar
+
+Bar:
+- 4,000 CUM Earthwork
+- August
+
+Approved outsourced allocation:
+- 3,000 CUM
+
+Expected:
+- only 3,000 CUM on that bar is excluded;
+- 1,000 CUM remains;
+- no other bar changes.
+
+I. Month-specific phasing
+
+August bar outsourced.
+September bar HLC.
+
+Expected:
+- August reduced;
+- September unchanged.
+
+J. One arrangement across two bars
+
+Arrangement:
+- Bar 1: 3,000
+- Bar 2: 4,000
+
+Expected:
+- total 7,000;
+- each bar phased independently.
+
+K. Legacy arrangement
+
+Existing approved BOQ-level arrangement has no bar links.
+
+Expected:
+- current demand effect remains;
+- Work Programme shows assignment required;
+- after linking, no duplicate exclusion occurs.
+
+L. Draft bar allocation
+
+Draft arrangement linked to a bar.
+
+Expected:
+- visible;
+- no demand effect.
+
+M. Cancelled bar allocation
+
+Approved allocation cancelled.
+
+Expected:
+- demand returns immediately;
+- history remains.
+
+N. Over-allocation
+
+Bar quantity:
+- 4,000
+
+Existing active allocation:
+- 3,500
+
+New attempt:
+- 1,000
+
+Expected:
+- blocked;
+- remaining allocatable quantity shown as 500.
+
+PART G — LIVE TAKKADPALLY–SIRUR PROOF
+
+22. Demonstrate with a real approved arrangement
+
+Use one existing approved earthwork arrangement.
+
+Show:
+
+- it is assigned to the correct Work Programme bar/reach;
+- allocated quantity appears on that bar;
+- exclusion occurs only in the bar’s actual programme period;
+- unrelated bars remain unchanged;
+- Procurement links back to Work Programme;
+- Materials/Equipment/Labour/Diesel update immediately after approval or cancellation;
+- no duplicate legacy and bar-level exclusion occurs.
+
+Final requirement
+
+This task is complete only when:
+
+1. the fake test is removed;
+2. demand refreshes immediately after status changes;
+3. execution arrangements are controlled from Work Programme;
+4. arrangements link to real programme bars;
+5. demand exclusion follows the exact bar quantity and dates;
+6. all genuine Instruction 025 tests still pass;
+7. legacy arrangements remain correct without double exclusion;
+8. GSB/WMM and all non-earthwork demand remain unchanged.
+
+After this passes
+
+1. Freeze arrangement relocation and bar-level phasing.
+2. Fix Cancel GRN.
+3. Improve Auto Sequence with actual stretch/chainage input.
+4. Add LHS/RHS and width-aware programme bars and DPR matching.
+5. Add immutable baseline, actual progress, current forecast and backlog separation.

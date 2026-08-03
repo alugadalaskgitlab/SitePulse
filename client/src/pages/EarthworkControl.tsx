@@ -22,6 +22,7 @@ import {
   ArrangementStatusBadge,
 } from "@/components/EarthworkArrangementDialog";
 import type { EarthworkArrangementSummary } from "@shared/planningEngine";
+import { invalidateArrangementQueries } from "@/lib/arrangementCache";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -131,7 +132,8 @@ export default function EarthworkControl() {
   const totalUnallocated = Math.max(0, totalQty - totalAllocated);
 
   const handleSaved = () => {
-    queryClient.invalidateQueries({ queryKey: ["shortage-check", projectId] });
+    // Instruction 026 A2: refresh all demand-affected queries, not just shortage rows
+    invalidateArrangementQueries(queryClient, projectId);
   };
 
   return (

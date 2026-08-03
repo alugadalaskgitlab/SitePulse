@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import type { EarthworkArrangementSummary } from "@shared/planningEngine";
 import { deriveEarthworkSourcingBadge, checkCutFillBalance, suggestCutToFillSourceItem } from "@shared/planningEngine";
+import { invalidateArrangementQueries } from "@/lib/arrangementCache";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -194,17 +195,20 @@ export function ArrangementStatusBadge({ status }: { status: string }) {
 function ArrangementSummaryCard({
   arr,
   boqQty,
+  projectId,
   onEdit,
   onCancel,
   onSaved,
 }: {
   arr: EarthworkArrangementSummary;
   boqQty?: number;
+  projectId?: number;
   onEdit: () => void;
   onCancel: () => void;
   onSaved: () => void;
 }) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const estimatedValue = arr.estimatedValue ?? (arr.agreedRate != null ? arr.allocatedQty * arr.agreedRate : null);
   const expectedDays = arr.plannedDailyOutput != null && arr.plannedDailyOutput > 0
@@ -229,6 +233,8 @@ function ArrangementSummaryCard({
     },
     onSuccess: (_, newStatus) => {
       toast({ title: `Status updated to ${newStatus.replace(/_/g, " ")}` });
+      // Instruction 026 A2: demand must refresh immediately on status change
+      if (projectId != null) invalidateArrangementQueries(queryClient, projectId);
       onSaved();
     },
     onError: (err: Error) => {
@@ -432,6 +438,7 @@ export function EarthworkArrangementDialog({
   open, onClose, onSaved, projectId, boqItemId, materialLabel, boqQty, sourceBoqItems, sourceItemCount, editArrangement,
 }: EarthworkArrangementDialogProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const isEdit = !!editArrangement;
 
   // Form state
@@ -573,6 +580,7 @@ export function EarthworkArrangementDialog({
     },
     onSuccess: () => {
       toast({ title: "Draft saved", description: `Draft arrangement saved for ${materialLabel}` });
+      invalidateArrangementQueries(queryClient, projectId);
       onSaved();
       onClose();
     },
@@ -602,6 +610,7 @@ export function EarthworkArrangementDialog({
     },
     onSuccess: () => {
       toast({ title: "Submitted for approval", description: `Arrangement submitted for ${materialLabel}` });
+      invalidateArrangementQueries(queryClient, projectId);
       onSaved();
       onClose();
     },
@@ -877,6 +886,7 @@ interface EarthworkArrangementCellProps {
 }
 
 export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkArrangementCellProps) {
+  const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [editTarget, setEditTarget] = useState<EarthworkArrangementSummary | null>(null);
   const [cancelTarget, setCancelTarget] = useState<number | null>(null);
@@ -1006,6 +1016,7 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
       toast({ title: "Marked as cut-to-fill", description: "Internally sourced from roadway excavation — no procurement needed." });
       setShowCutToFill(false);
       setCutSourceItemId(null);
+      invalidateArrangementQueries(queryClient, projectId);
       onSaved();
     },
     onError: (err: Error) => toast({ title: "Cut-to-fill failed", description: err.message, variant: "destructive" }),
@@ -1023,6 +1034,7 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
     onSuccess: () => {
       toast({ title: "Arrangement cancelled" });
       setCancelTarget(null);
+      invalidateArrangementQueries(queryClient, projectId);
       onSaved();
     },
     onError: () => toast({ title: "Cancel failed", variant: "destructive" }),
@@ -1082,6 +1094,7 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
               key={arr.id}
               arr={arr}
               boqQty={row.totalDemand}
+              projectId={projectId}
               onEdit={() => setEditTarget(arr)}
               onCancel={() => setCancelTarget(arr.id)}
               onSaved={onSaved}
@@ -1097,15 +1110,41 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
         </span>
       )}
 
-      {/* Add arrangement button + cut-to-fill quick action */}
+      {/* Instruction 026 §15: exclusion timing source (bar-level vs whole-item legacy) */}
+      {(row as any).arrangementTimingSource === "bar_level" && (
+        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5" data-testid="badge-timing-bar-level">
+          Timed by programme stretches
+        </span>
+      )}
+      {(row as any).arrangementTimingSource === "boq_level_legacy" && (
+        <span
+          className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5"
+          title="Some arranged quantity is not assigned to a programme stretch — exclusion is spread across the whole item's timeline. Assign stretches in the Work Programme."
+          data-testid="badge-timing-legacy"
+        >
+          Stretch assignment required
+        </span>
+      )}
+
+      {/* Instruction 026 §14: Work Programme is the primary place to decide execution.
+          Procurement keeps view/edit of existing arrangements + secondary create. */}
       {unallocatedQty > 0.001 && (
         <div className="flex items-center gap-1.5 flex-wrap">
+          <a
+            href={`/work-program/${projectId}`}
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5 hover:bg-teal-100 transition-colors"
+            title="Decide execution arrangements on the Work Programme (per stretch)"
+            data-testid="link-manage-execution-plan"
+          >
+            Manage Execution Plan →
+          </a>
           <button
             onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5 hover:bg-teal-100 transition-colors"
+            className="inline-flex items-center gap-1 text-[11px] text-slate-600 border border-slate-200 rounded px-1.5 py-0.5 hover:bg-slate-50 transition-colors"
+            title="Create an arrangement without a stretch link (legacy whole-item timing)"
           >
             <Plus className="w-3 h-3" />
-            {activeArrs.length === 0 ? "Set Up Execution Arrangement" : "Add Partial Arrangement"}
+            {activeArrs.length === 0 ? "Set Up Arrangement" : "Add Partial Arrangement"}
           </button>
           <button
             onClick={() => setShowCutToFill(v => !v)}

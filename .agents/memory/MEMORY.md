@@ -21,3 +21,4 @@
 - [Earthwork Arrangements](earthwork-arrangement.md) — Instruction 023: earthwork_arrangement_required status; EarthworkArrangementDialog; 38 tests; GSB/WMM/fly ash/foundation/trench remain unaffected.
 - [Earthwork Save/Submit Pattern](earthwork-save-submit.md) — 024A: schema guard flag (earthworkSchemaReady), saveIntent field, single-request submit, structured error codes.
 - [Arrangement Demand Exclusion](arrangement-demand-exclusion.md) — 025: active arrangements reduce HLC demand via calculateBomDemand options; not_decided retains; consumers choose HLC vs physical demand explicitly.
+- [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.
