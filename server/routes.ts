@@ -20,7 +20,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
+import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { normalizeMaterialLabel, checkMappingUomCompatibility } from "@shared/boqNormalise";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
@@ -11721,6 +11721,8 @@ export async function registerRoutes(
               isClientSupplied: false,
               isAuto: true as const,
               supplyType: derivedSupplyType,
+              // Cut-to-fill: earthwork layer-config rows route to the arrangement flow
+              isEarthworkBulkRequirement: dm.isEarthworkBulkRequirement ?? false,
             }));
 
             // HMP hours correction for CUM/SQM bituminous items.
@@ -11872,6 +11874,12 @@ export async function registerRoutes(
         storage.getMaterialMappings(projectId),
         storage.getEarthworkArrangements(projectId), // Instruction 023
       ]);
+      // Cut-to-fill by contract: BOQ item id → description lookup for detecting
+      // rows whose earthwork is contractually sourced from roadway excavation.
+      const boqItemDescById = new Map<number, string>();
+      for (const it of expandedItems as Array<{ id: number; description?: string | null }>) {
+        boqItemDescById.set(it.id, String(it.description ?? ""));
+      }
       // Cut-to-fill: batch-load current qty of any linked excavation BOQ items so
       // arrangement summaries can report cut-available vs fill-required.
       const excavationSourceIds = [...new Set(
@@ -12241,6 +12249,12 @@ export async function registerRoutes(
         // Instruction 023: earthwork bulk detection from BOM row flag
         const isEarthworkBulkRequirement = !!(matRow as any).isEarthworkBulkRequirement;
 
+        // Cut-to-fill by contract: any source BOQ item whose description ties the
+        // earthwork to roadway excavation (never borrow) → UI pre-selects the cut source.
+        const contractCutToFill = isEarthworkBulkRequirement && distinctBoqItemIds.some(id =>
+          isContractCutToFillDescription(boqItemDescById.get(id)),
+        );
+
         const enrichedMatRow = { ...scaledMatRow, materialId: resolvedId, sourceBoqItemId };
         const shortageRow = computeShortageRow(
           enrichedMatRow,
@@ -12339,6 +12353,7 @@ export async function registerRoutes(
             earthworkBoqItemId: sourceBoqItemId,  // null for multi-source rows (use sourceBoqItemIds)
             earthworkSourceBoqItemIds: distinctBoqItemIds,  // always present for earthwork rows
             earthworkArrangements: earthworkArrangementSummaries ?? [],
+            ...(contractCutToFill ? { contractCutToFill: true } : {}),
           } : {}),
           ...(shortageRow.requiresClassification && !isEarthworkBulkRequirement && distinctBoqItemIds.length > 0 ? {
             // Classification-required rows are gravel/moorum (isEarthworkBulkRequirement = false),

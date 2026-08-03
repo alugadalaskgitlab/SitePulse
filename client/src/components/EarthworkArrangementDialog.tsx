@@ -6,7 +6,7 @@
  * from the Work Demand page's "Execution Arrangement Required" cell.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -21,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import type { EarthworkArrangementSummary } from "@shared/planningEngine";
-import { deriveEarthworkSourcingBadge, checkCutFillBalance } from "@shared/planningEngine";
+import { deriveEarthworkSourcingBadge, checkCutFillBalance, suggestCutToFillSourceItem } from "@shared/planningEngine";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -865,6 +865,8 @@ interface EarthworkArrangementCellProps {
     earthworkBoqItemId?: number | null;
     earthworkArrangements?: EarthworkArrangementSummary[];
     earthworkSourceBoqItemIds?: number[];
+    /** Contract mandates fill from roadway excavation — pre-select the cut source. */
+    contractCutToFill?: boolean;
   };
   projectId: number;
   onSaved: () => void;
@@ -876,6 +878,9 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
   const [cancelTarget, setCancelTarget] = useState<number | null>(null);
   const [showCutToFill, setShowCutToFill] = useState(false);
   const [cutSourceItemId, setCutSourceItemId] = useState<number | null>(null);
+  // Contract cut-to-fill: pre-select the cut source at most once, so the user's
+  // explicit "none / decide later" choice is never overwritten.
+  const didPrefillCutSource = useRef(false);
   const { toast } = useToast();
 
   const arrangements = row.earthworkArrangements ?? [];
@@ -918,6 +923,18 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
     enabled: showCutToFill,
     staleTime: 60_000,
   });
+
+  // Contract cut-to-fill: once candidates load, default the source selector to the
+  // matching roadway-excavation item (largest available cut). One-time only.
+  useEffect(() => {
+    if (!showCutToFill || !row.contractCutToFill || didPrefillCutSource.current) return;
+    if (!excavationCandidates?.length || cutSourceItemId != null) return;
+    const suggested = suggestCutToFillSourceItem(excavationCandidates);
+    if (suggested) {
+      didPrefillCutSource.current = true;
+      setCutSourceItemId(suggested.id);
+    }
+  }, [showCutToFill, row.contractCutToFill, excavationCandidates, cutSourceItemId]);
 
   // Cut-to-fill quick action: one click creates a minimal reused_excavated
   // arrangement covering the remaining unallocated demand — no agency, rate,
@@ -1095,6 +1112,12 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
             Mark <span className="font-mono font-semibold">{unallocatedQty.toLocaleString()} {row.uom || "CUM"}</span> as
             internally sourced from roadway excavation (cut-to-fill). No agency or rate needed.
           </p>
+          {row.contractCutToFill && (
+            <p className="text-emerald-700 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3 shrink-0" />
+              BOQ specifies this earth comes from roadway excavation — cut source pre-selected below.
+            </p>
+          )}
           <div className="flex items-center gap-1.5">
             <label className="text-slate-600 shrink-0">Source cut item (optional):</label>
             <select

@@ -564,6 +564,8 @@ export interface BomInputItem {
     isClientSupplied?: boolean;
     isAuto?: boolean | null;
     supplyType?: "direct" | "plant";
+    /** Cut-to-fill routing: earthwork layer-config rows carry this into the arrangement flow. */
+    isEarthworkBulkRequirement?: boolean;
   }>;
   /**
    * Instruction 024: DB column bulk_material_classification.
@@ -947,6 +949,10 @@ function buildKeyMaterialRows(item: BomInputItem): KeyBomMaterialInputRow[] {
       isClientSupplied: m.isClientSupplied ?? false,
       isAuto: m.isAuto ?? true,
       supplyType: m.supplyType,
+      // Cut-to-fill routing: derived earthwork soil rows keep their arrangement flag
+      // even when the BOQ item itself failed isEarthworkBoqItem (e.g. "trench cutting"
+      // phrasing in MoRT&H 301 roadway-excavation descriptions trips the exclusion).
+      isEarthworkBulkRequirement: m.isEarthworkBulkRequirement ?? false,
     }));
   }
 
@@ -1075,6 +1081,10 @@ export function calculateBomDemand(
       row.totalQty += lineQty;
       row.uom = m.uom;
       if (m.isAuto) row.hasAutoSource = true;
+      // OR-merge earthwork/classification flags: if ANY contributing item marks the
+      // row as an earthwork bulk requirement, the merged row routes to the arrangement flow.
+      if (m.isEarthworkBulkRequirement) row.isEarthworkBulkRequirement = true;
+      if (m.requiresClassification) row.requiresClassification = true;
       if (m.supplyType) {
         if (!row.supplyType || m.supplyType === "plant") row.supplyType = m.supplyType;
       }
@@ -1461,6 +1471,11 @@ export interface DerivedMaterialRow {
   qtyPerBoqUnit: number;
   isAuto: true;
   applicationNote?: string;
+  /**
+   * Cut-to-fill routing: layer-config-derived soil/earth rows (layerType "earthwork")
+   * must route into the execution-arrangement flow, not Plant Material mapping.
+   */
+  isEarthworkBulkRequirement?: boolean;
 }
 
 /** Standard bulk densities for converting mix-design kg/m³ → procurement CUM. */
@@ -1745,7 +1760,9 @@ export function deriveMaterialsFromLayerConfig(
   opts?: { descBinderGrade?: string | null },
 ): DerivedMaterialRow[] {
   if (layerConfig.layerType === "earthwork") {
-    return [{ materialName: "Soil / Earth", uom: "CUM", qtyPerBoqUnit: 1.0, isAuto: true }];
+    // Earthwork soil demand is never a procurement/mapping problem — it is resolved
+    // through execution arrangements (borrow, outsourced, or cut-to-fill reuse).
+    return [{ materialName: "Soil / Earth", uom: "CUM", qtyPerBoqUnit: 1.0, isAuto: true, isEarthworkBulkRequirement: true }];
   }
 
   if (layerConfig.layerType === "spray_coat") {
@@ -2156,6 +2173,44 @@ export function checkCutFillBalance(
   if (cutAvailableQty == null || !isFinite(cutAvailableQty)) return null;
   const shortfall = Math.max(0, fillRequiredQty - cutAvailableQty);
   return { sufficient: shortfall <= SOURCING_TOL, shortfall: Math.round(shortfall * 1000) / 1000 };
+}
+
+/**
+ * Contract-mandated cut-to-fill detection: descriptions that tie earthwork to
+ * roadway excavation (e.g. "Forming embankment with excavated earth obtained
+ * from roadway excavation" or "Earthwork excavation in road way soils") mean
+ * the soil is internally sourced by contract — never borrowed or procured.
+ * Borrow-based items ("borrowed useful earth", "borrow pits") are excluded.
+ */
+export function isContractCutToFillDescription(description: string | null | undefined): boolean {
+  const d = String(description ?? "").toLowerCase().replace(/\s+/g, " ");
+  if (!d) return false;
+  if (/borrow/.test(d)) return false;
+  // "roadway/road way" within short range of "excavat" (either order)
+  return (
+    /(road\s*way|roadway)[^.]{0,40}excavat/.test(d) ||
+    /excavat[^.]{0,40}(road\s*way|roadway)/.test(d) ||
+    /reused\s+excavat/.test(d)
+  );
+}
+
+/**
+ * Suggest the source cut (excavation) BOQ item for a contract cut-to-fill row.
+ * Picks roadway-excavation candidates, excluding fill/embankment items that merely
+ * mention roadway excavation as their material source. Returns the candidate with
+ * the largest available quantity, or null when none qualifies.
+ */
+export function suggestCutToFillSourceItem<T extends { id: number; description?: string | null; currentQty?: number | null }>(
+  candidates: T[] | null | undefined,
+): T | null {
+  const cuts = (candidates ?? []).filter(c => {
+    const d = String(c.description ?? "").toLowerCase();
+    if (!/excavat/.test(d)) return false;
+    if (/embankment|forming|back\s*filling|backfilling|foundation|trench(?!\s*cutting)|structure/.test(d)) return false;
+    return /(road\s*way|roadway)/.test(d);
+  });
+  if (cuts.length === 0) return null;
+  return cuts.reduce((best, c) => (Number(c.currentQty ?? 0) > Number(best.currentQty ?? 0) ? c : best), cuts[0]);
 }
 
 /** Instruction 024: baseline for an earthwork BOQ item. */

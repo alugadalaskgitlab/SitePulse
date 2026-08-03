@@ -1208,6 +1208,8 @@ interface ShortageRow {
   earthworkArrangements?: EarthworkArrangementSummary[];
   // Instruction 024: multiple source BOQ item IDs for split allocation
   earthworkSourceBoqItemIds?: number[];
+  /** Contract mandates fill from roadway excavation — cut-to-fill by BOQ wording. */
+  contractCutToFill?: boolean;
 }
 
 interface ShortageData {
