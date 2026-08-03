@@ -1,0 +1,963 @@
+Instruction 024 — Complete Earthwork Execution, Progress and Reforecasting
+
+Purpose
+
+Complete the Earthwork Execution Arrangement feature so it is operationally usable for the restart of Takkadpally–Sirur earthwork.
+
+The current Earthwork Arrangement form is visible but fails to save. The feature also stops at arrangement planning and does not yet handle actual progress, delay, balance work, revised forecast or executable near-term demand.
+
+This instruction must complete the operational earthwork cycle:
+
+1. identify earthwork requirements without forcing Plant Material mapping;
+2. create and save execution arrangements reliably;
+3. allocate quantities correctly by BOQ item/reach;
+4. assign responsibility between HLC, agency and client;
+5. prevent duplicate HLC material/equipment/diesel demand;
+6. record daily progress through DPR linkage;
+7. preserve the original programme;
+8. create a current working forecast for delayed work;
+9. separate overdue backlog from executable demand and future balance;
+10. provide a practical PM/Admin view for restarting and controlling earthwork.
+
+This is not a full subcontract billing module.
+
+DO NOT REDESIGN OR TOUCH
+
+- GSB/WMM canonical material mapping
+- UOM conversion framework
+- general Plant Material Master
+- existing PI/IRN/GRN lifecycle
+- Stores stock
+- bituminous or concrete outsourcing in this batch
+- full subcontract work orders and billing
+- GST/TDS/retention/payment accounting
+- general Work Programme calculation for non-earthwork items
+- User/Designation Templates
+- unrelated Work Demand logic
+
+PART A — FIX THE CURRENT SAVE FAILURE
+
+1. Diagnose the actual error first
+
+Trace the current Earthwork Arrangement save request from:
+
+- form payload;
+- API route;
+- validation;
+- database insert;
+- table/column existence;
+- foreign keys;
+- quantity validation;
+- user/project/BOQ references.
+
+Do not leave the route returning only:
+
+“Failed to create earthwork arrangement.”
+
+Log the full error server-side and return a safe, useful message to the UI.
+
+Likely conditions to verify:
+
+- earthwork_arrangements table exists in the live database;
+- every newly added column exists;
+- schema and live database are aligned;
+- required IDs refer to valid records;
+- date fields are stored in the expected format;
+- numeric strings are converted to numbers;
+- responsibility JSON/object is accepted correctly;
+- nullable fields are not treated as mandatory accidentally.
+
+2. Ensure live-database compatibility
+
+Add an idempotent migration/startup-safe creation process for the required Earthwork tables and columns.
+
+It must:
+
+- create missing structures safely;
+- preserve existing data;
+- not create duplicate columns;
+- work in the current live database;
+- fail loudly and clearly if migration cannot complete.
+
+Do not rely only on fresh-database schema creation.
+
+3. Correct quantity validation
+
+The visible Work Demand row may combine the same physical material coming from several BOQ items.
+
+Do not validate an arrangement entered against a combined row using one arbitrary BOQ item’s quantity.
+
+The arrangement must be linked to one or more explicit contributing BOQ items/reaches.
+
+Before saving, show the user the contributing sources, for example:
+
+Earth / Borrow Soil total shown: 13,588.8 CUM
+
+Contributing BOQ items:
+- Embankment Reach 1: 7,000 CUM
+- Embankment Reach 2: 4,500 CUM
+- Shoulder filling: 2,088.8 CUM
+
+The user must allocate the arrangement against the actual BOQ item/reach quantities.
+
+Do not allow combined allocation to exceed the unallocated balance of the selected sources.
+
+4. Return useful validation errors
+
+Examples:
+
+- EARTHWORK_TABLE_NOT_READY
+- BOQ_ITEM_NOT_FOUND
+- INVALID_ALLOCATED_QUANTITY
+- ALLOCATION_EXCEEDS_REMAINING_QUANTITY
+- INVALID_DATE_RANGE
+- DAILY_OUTPUT_REQUIRED
+- AGENCY_REQUIRED
+- RESPONSIBILITY_INCOMPLETE
+- ARRANGEMENT_SAVE_FAILED
+
+Show the actual safe message in the toast.
+
+PART B — EARTHWORK CLASSIFICATION
+
+5. Recognise earthwork requirements separately
+
+Recognised earthwork/natural bulk-fill requirements include:
+
+- Earth
+- Borrow Earth
+- Selected Earth
+- Selected Soil
+- Embankment Material
+- Subgrade Soil/Material
+- Shoulder Earth/Soil
+- Suitable Soil
+- Gravel
+- Moorum/Murrum
+- reused excavated material
+- similar approved earthwork descriptions
+
+These rows must not require Plant Material mapping merely to remain usable.
+
+For positively classified earthwork rows replace:
+
+“Material Mapping Required”
+
+with:
+
+“Execution Arrangement Required”
+
+Do not auto-create Plant Materials for generic earthwork labels.
+
+6. Keep ambiguous bulk materials reviewable
+
+Gravel/Moorum may sometimes be:
+
+- vendor-supplied direct material; or
+- part of an all-inclusive earthwork agency rate.
+
+Ask for execution/supply classification when the context is unclear.
+
+Do not decide only by keyword.
+
+GSB and WMM remain canonical materials and are unchanged.
+
+PART C — CREATE AND MANAGE EXECUTION ARRANGEMENTS
+
+7. Arrangement types
+
+Support:
+
+- Fully Outsourced — Composite Rate
+- Vendor Material Delivered to Site
+- HLC Source — Execution Outsourced
+- HLC In-House Execution
+- Client-Supplied / Client-Designated Source
+- Reused Excavated Material / Internal Source
+- Partly Outsourced
+- Not Decided
+
+8. Arrangement details
+
+Capture:
+
+- project/site;
+- BOQ item;
+- reach/chainage/scope;
+- arrangement type;
+- agency/vendor;
+- source or borrow-pit location;
+- assigned quantity;
+- UOM;
+- proposed/agreed rate;
+- estimated value;
+- average lead;
+- mobilisation date;
+- planned start;
+- target completion;
+- planned daily output;
+- working days/shifts;
+- equipment proposed;
+- tipper count/capacity;
+- inclusions;
+- exclusions;
+- notes;
+- status;
+- prepared by;
+- approved by/date.
+
+Estimated value:
+
+assigned quantity × agreed rate
+
+This remains planning/commitment value only.
+
+Do not create an accounting liability or vendor bill.
+
+9. Responsibility components
+
+Capture responsibility for:
+
+- material/borrow source;
+- source identification;
+- royalty/seigniorage;
+- permits/approvals;
+- excavation;
+- loading;
+- transport;
+- dumping;
+- spreading;
+- watering;
+- compaction;
+- equipment;
+- tippers;
+- operators/drivers;
+- diesel/fuel;
+- survey/setting out;
+- quality testing.
+
+Responsibility values:
+
+- HLC / Company
+- Agency / Contractor
+- Client
+- Not Applicable
+- Not Decided
+
+Avoid overlapping component labels.
+
+For example, do not keep both:
+
+- Dumping & Spreading
+- Spreading
+
+as separate responsibilities unless they intentionally represent different activities.
+
+Prefer clear separate components:
+
+- Dumping
+- Spreading
+
+10. Arrangement templates
+
+Prefill common arrangements.
+
+Fully Outsourced — Composite Rate defaults Agency responsibility for:
+
+- source/material where included;
+- excavation;
+- loading;
+- transport;
+- dumping;
+- excavator/equipment;
+- tippers;
+- operators/drivers;
+- diesel.
+
+Ask separately about:
+
+- royalty;
+- spreading;
+- watering;
+- compaction;
+- survey;
+- testing.
+
+HLC Source — Execution Outsourced defaults:
+
+HLC:
+- source/right to material;
+- royalty/permissions where applicable;
+- survey/testing.
+
+Agency:
+- excavation;
+- loading;
+- transport;
+- dumping;
+- equipment;
+- tippers;
+- operators;
+- diesel.
+
+Allow PM/Admin to modify the template before submission.
+
+11. Quantity splitting
+
+Allow one BOQ item/reach to be divided among multiple arrangements.
+
+Example:
+
+Total: 20,000 CUM
+
+- Agency A: 12,000 CUM
+- Agency B: 5,000 CUM
+- HLC in-house: 3,000 CUM
+
+Show:
+
+- total BOQ quantity;
+- completed actual quantity;
+- active allocated quantity;
+- cancelled allocation;
+- unallocated remaining quantity.
+
+Do not allow active arrangements to exceed the remaining executable quantity.
+
+12. Arrangement lifecycle
+
+Use:
+
+- Draft
+- Submitted for Approval
+- Approved
+- Mobilisation Pending
+- In Progress
+- On Hold
+- Completed
+- Returned
+- Rejected
+- Cancelled
+
+Only an approved arrangement should affect operational resource exclusion and current forecast.
+
+A draft must not silently change procurement or diesel calculations.
+
+13. Permissions
+
+Minimum:
+
+- Site Engineer: prepare draft/site information;
+- Project Manager: create, revise and submit;
+- Admin/Owner: approve, return, cancel;
+- Equipment/Stores/Purchaser: view approved HLC responsibilities relevant to them.
+
+Use existing permission architecture.
+
+Do not add designation templates in this instruction.
+
+PART D — CORRECT HLC DEMAND AND DOUBLE COUNTING
+
+14. Calculate only HLC responsibilities
+
+For an approved arrangement, only components assigned to HLC may generate HLC:
+
+- material demand;
+- equipment demand;
+- labour demand;
+- diesel demand;
+- internal production/operating requirement.
+
+Agency-assigned components must not generate HLC demand for the allocated quantity.
+
+Example:
+
+10,000 CUM fully outsourced including agency material, excavation, tippers and fuel:
+
+Expected:
+
+- physical work quantity remains 10,000 CUM;
+- HLC Earth PI: none;
+- HLC excavator demand: none;
+- HLC tipper demand: none;
+- HLC diesel demand: none;
+- subcontract planning value remains visible.
+
+15. Partial responsibility
+
+Example:
+
+Agency:
+- excavation;
+- loading;
+- transport;
+- diesel.
+
+HLC:
+- spreading;
+- watering;
+- compaction.
+
+Expected:
+
+- agency excavator/tipper/fuel excluded;
+- HLC grader, water tanker, roller and related diesel remain;
+- HLC demand is calculated only for HLC’s component quantity.
+
+16. Not Decided
+
+When arrangement is Not Decided:
+
+- retain physical quantity;
+- show Execution Arrangement Required;
+- do not automatically raise an ordinary Plant Material PI;
+- do not treat the entire quantity as committed HLC diesel/equipment demand;
+- clearly warn that resource demand is provisional.
+
+PART E — DPR AND ACTUAL PROGRESS
+
+17. Link earthwork execution to DPR
+
+Extend the existing DPR workflow only as needed so daily work can select:
+
+- earthwork arrangement;
+- BOQ item;
+- reach/chainage;
+- quantity executed today;
+- agency/vendor;
+- agency equipment/tippers, informational;
+- HLC equipment used;
+- HLC diesel supplied, if any;
+- remarks.
+
+Reuse the existing DPR work quantity and BOQ linkage where possible.
+
+Do not create a second independent progress-entry system.
+
+18. Actual quantity rules
+
+Count only submitted/approved DPR quantities according to the existing DPR approval policy.
+
+Draft DPR quantities must not become confirmed progress.
+
+Prevent cumulative actual quantity from silently exceeding the assigned arrangement quantity.
+
+Allow controlled correction through the existing DPR edit/reopen process or an auditable adjustment.
+
+19. Arrangement progress
+
+Show:
+
+- assigned quantity;
+- quantity completed;
+- balance quantity;
+- percentage complete;
+- recent daily output;
+- average achieved output;
+- last working date;
+- days with no recorded progress;
+- expected completion at current achieved rate.
+
+Do not mark an arrangement completed merely because its target date passed.
+
+Completion requires quantity evidence or authorised closure.
+
+PART F — BASELINE, DELAY AND CURRENT FORECAST
+
+20. Preserve the original programme
+
+For earthwork BOQ items/reaches, capture the current approved programme as the baseline before operational forecast changes begin.
+
+Baseline must contain:
+
+- original start;
+- original finish;
+- original duration;
+- original programmed quantity/phasing;
+- baseline captured date;
+- captured by.
+
+Once captured/approved, do not overwrite it when PM changes the working forecast.
+
+Existing Work Programme edits must not silently destroy the baseline reference.
+
+21. Current Working Forecast
+
+Allow PM/Admin to create a current forecast for the remaining earthwork.
+
+Capture:
+
+- forecast version;
+- effective date;
+- balance quantity;
+- forecast start/restart date;
+- planned daily output;
+- expected working days;
+- forecast finish;
+- delay reason;
+- notes;
+- prepared by;
+- approval status;
+- approved by/date.
+
+Forecast working days:
+
+balance quantity ÷ planned daily output
+
+Use sensible rounding and show the calculation.
+
+Do not rewrite the original baseline.
+
+22. Actual-based forecast suggestion
+
+Where sufficient DPR progress exists, calculate:
+
+- recent achieved output;
+- overall achieved output;
+- balance quantity;
+- forecast finish at current rate.
+
+Show this as a suggestion, not an automatic approval.
+
+Example:
+
+Assigned quantity: 7,000 CUM
+Completed: 1,500 CUM
+Balance: 5,500 CUM
+Recent output: 350 CUM/day
+Suggested remaining duration: 16 working days
+
+The PM may accept or enter a different realistic target.
+
+23. Delay reasons
+
+Support:
+
+- rain/weather;
+- site suspension;
+- client instruction;
+- land/ROW obstruction;
+- borrow-source approval;
+- environmental/permit issue;
+- utility shifting;
+- drawing/approval delay;
+- equipment breakdown;
+- material/source shortage;
+- payment/fund constraint;
+- agency mobilisation delay;
+- labour shortage;
+- traffic restriction;
+- other.
+
+Require remarks for Other.
+
+24. Programme comparison
+
+Show:
+
+- baseline start/finish;
+- actual start;
+- completed quantity;
+- current forecast finish;
+- delay days against baseline;
+- target daily output;
+- achieved daily output;
+- required rate to meet baseline, where still possible.
+
+Do not claim a recovery rate is achievable automatically.
+
+PART G — BACKLOG VERSUS EXECUTABLE DEMAND
+
+25. Separate three quantities
+
+For earthwork and its HLC responsibilities, show:
+
+A. Baseline Overdue Backlog
+
+The quantity that should have been completed by the baseline date but remains incomplete.
+
+B. Executable Demand in Selected Horizon
+
+The quantity realistically planned under the current approved forecast or approved short-term programme.
+
+C. Future Balance
+
+The remaining quantity planned after the selected horizon.
+
+Do not move the entire overdue backlog into today or the selected horizon.
+
+Example:
+
+Baseline overdue: 3,000 CUM
+Executable in next 7 days: 700 CUM
+Future balance: 2,300 CUM
+
+Procurement/equipment/diesel action must be based primarily on the 700 CUM executable quantity, not the full 3,000 CUM backlog.
+
+26. No approved forecast
+
+If the activity is delayed and no approved current forecast exists:
+
+- keep the overdue backlog separate;
+- use the latest approved Tomorrow’s Programme/short-term plan for immediate requirements where available;
+- otherwise show no artificial one-day backlog demand;
+- display:
+
+“Reforecast required — near-term demand cannot be reliably calculated from the expired baseline.”
+
+27. Reforecast warning
+
+Trigger Reforecast Required when, for example:
+
+- current date is beyond planned finish and work remains;
+- actual output materially trails planned output;
+- no progress has been recorded for a defined period;
+- arrangement target completion will be missed at achieved output.
+
+Do not automatically modify dates.
+
+Offer PM:
+
+- Create Forecast
+- Record Delay / Put On Hold
+- Revise Daily Output
+- Resume Work
+
+PART H — EARTHWORK MANAGEMENT VIEW
+
+28. Add an Earthwork Control view
+
+Provide a practical project-level page or section showing:
+
+- BOQ item/reach;
+- physical quantity;
+- arrangement type;
+- agency;
+- rate/value;
+- responsibility summary;
+- arrangement status;
+- mobilisation;
+- actual completed;
+- balance;
+- planned output;
+- achieved output;
+- baseline finish;
+- forecast finish;
+- delay days;
+- overdue backlog;
+- next 7/30-day executable quantity;
+- warnings/actions.
+
+Entry points should include:
+
+- Work Demand earthwork row;
+- Work Programme earthwork item;
+- project/site operations where practical.
+
+Do not hide the feature only inside a modal.
+
+29. Work Demand presentation
+
+For earthwork rows, display:
+
+- Execution Arrangement status;
+- physical remaining quantity;
+- allocated/unallocated quantity;
+- overdue backlog;
+- executable horizon quantity;
+- future balance;
+- HLC responsibility summary;
+- agency summary;
+- action.
+
+Possible actions:
+
+- Set Up Arrangement
+- Complete Allocation
+- Submit for Approval
+- Approve
+- Record Mobilisation
+- View Progress
+- Create/Revise Forecast
+- Resume / Put On Hold
+
+Do not show Plant Material Mapping Required for correctly classified earthwork.
+
+PART I — USER EXPERIENCE AND SAVE RELIABILITY
+
+30. Form layout
+
+The Earthwork Arrangement dialog must:
+
+- fit the viewport;
+- have a scrollable body;
+- keep header and footer/buttons reachable;
+- preserve entered values while scrolling;
+- show field-level validation;
+- not require browser zoom-out.
+
+31. Agency selection
+
+Use the existing Vendor/Party master where possible.
+
+Allow temporary text entry only if current business practice permits it, but avoid creating duplicate vendor names.
+
+If a typed agency is not in the master, clearly state whether it is:
+
+- arrangement-only text; or
+- being added to the vendor master.
+
+Do not silently create duplicate vendors.
+
+32. Date validation
+
+- target completion cannot precede planned start;
+- planned daily output must be positive;
+- expected duration recalculates when quantity/output changes;
+- mobilisation may precede planned start;
+- date format must be clear and locale-safe.
+
+33. Draft preservation
+
+Allow Save Draft even when approval fields are incomplete.
+
+Required fields for Draft should be minimal.
+
+Required fields for Submit/Approve should include:
+
+- arrangement type;
+- valid quantity;
+- BOQ/reach allocation;
+- agency for outsourced arrangements;
+- responsibility assignments;
+- rate where commercial arrangement requires it;
+- planned dates/output.
+
+PART J — AUDIT AND HISTORY
+
+34. Preserve arrangement history
+
+Record:
+
+- creation;
+- revisions;
+- quantity changes;
+- rate changes;
+- responsibility changes;
+- status changes;
+- forecast versions;
+- delay reasons;
+- approval/rejection/cancellation;
+- who changed;
+- when;
+- reason.
+
+Do not silently overwrite an approved arrangement.
+
+Material commercial changes after approval should create a revision or require reapproval.
+
+35. Baseline and forecast history
+
+Baseline remains immutable.
+
+Past forecast versions remain viewable.
+
+Current approved forecast is clearly identified.
+
+Do not delete historical versions when a new forecast is approved.
+
+PART K — EXCLUSIONS
+
+Do not implement in this batch:
+
+- full subcontract work order;
+- subcontract running-account bills;
+- measurement-book certification;
+- GST/TDS;
+- retention/security deposit;
+- advances/recovery;
+- vendor invoice posting;
+- payment;
+- profitability forecast for all work types;
+- bituminous/concrete outsourcing;
+- full Daily Diesel Requirement;
+- broad project-wide programme versioning beyond what is needed for earthwork.
+
+Prepare stable references so these can be added later.
+
+PART L — ACCEPTANCE TESTS
+
+A. Current save failure
+
+Create an earthwork arrangement with:
+
+- valid BOQ/reach;
+- agency;
+- quantity;
+- rate;
+- dates;
+- daily output;
+- responsibilities.
+
+Expected:
+
+- saves successfully;
+- no generic 500;
+- arrangement appears against the row;
+- reload preserves it.
+
+B. Live database migration
+
+Existing live database starts without the Earthwork table/one new column.
+
+Expected:
+
+- safe migration completes;
+- app starts;
+- arrangement save works;
+- no existing data is lost.
+
+C. Combined-row allocation
+
+One Work Demand Earth row contains three BOQ sources.
+
+Expected:
+
+- sources are shown separately;
+- user allocates against actual items;
+- no arbitrary single BOQ ID is used;
+- total cannot exceed combined unallocated balance.
+
+D. Fully outsourced
+
+10,000 CUM, agency owns source/excavation/loading/transport/tippers/fuel.
+
+Expected:
+
+- no Plant Material mapping;
+- no Earth PI;
+- no HLC excavator/tipper/diesel demand for 10,000 CUM;
+- subcontract planning value shown.
+
+E. Partial HLC responsibility
+
+Agency excavates/transports; HLC spreads/compacts.
+
+Expected:
+
+- HLC grader/roller/water tanker and corresponding fuel remain;
+- agency resources excluded.
+
+F. DPR progress
+
+- approved arrangement: 7,000 CUM;
+- submitted DPR progress: 425 CUM.
+
+Expected:
+
+- completed = 425;
+- balance = 6,575;
+- progress percentage and output update.
+
+G. Baseline preservation
+
+- baseline finish: 31 August;
+- new forecast finish: 30 September.
+
+Expected:
+
+- baseline remains 31 August;
+- current forecast shows 30 September;
+- delay shown;
+- original date is not overwritten.
+
+H. Backlog separation
+
+- baseline overdue: 3,000 CUM;
+- current forecast schedules 700 CUM in next seven days.
+
+Expected:
+
+- overdue backlog = 3,000;
+- executable next seven days = 700;
+- procurement/diesel does not treat all 3,000 as immediately due.
+
+I. No forecast
+
+Expired baseline with unfinished quantity and no approved forecast.
+
+Expected:
+
+- Reforecast Required;
+- no full backlog dumped into today;
+- PM can create forecast.
+
+J. Multiple arrangements
+
+- Agency A 7,000 CUM;
+- Agency B 4,000 CUM;
+- HLC 2,000 CUM.
+
+Expected:
+
+- totals correct;
+- responsibility exclusions apply proportionately;
+- unallocated balance correct.
+
+K. Draft/approval
+
+- draft does not affect HLC demand;
+- approved arrangement does;
+- rejected/cancelled arrangement does not remain operationally active.
+
+L. UI
+
+At 100% zoom:
+
+- form scrolls;
+- Save Draft and Submit buttons remain reachable;
+- errors are specific;
+- saved arrangement is visible outside the modal.
+
+M. Regression
+
+Confirm unchanged:
+
+- GSB/WMM mapping;
+- UOM conversion;
+- Work Demand status labels;
+- standard non-earthwork demand;
+- horizon switching;
+- PI/IRN/GRN flows;
+- Store stock;
+- Work Programme display for non-earthwork items.
+
+IMPLEMENTATION ORDER
+
+Complete in this order:
+
+1. fix save/database/payload errors;
+2. correct BOQ/reach quantity allocation;
+3. complete arrangement lifecycle and responsibility effects;
+4. add DPR progress linkage;
+5. preserve earthwork baseline;
+6. add current forecast and delay reasons;
+7. separate backlog/executable/future quantities;
+8. add Earthwork Control view;
+9. run full acceptance tests;
+10. configure and test the live Takkadpally–Sirur arrangement.
+
+FINAL REQUIREMENT
+
+Do not mark this task complete merely because the form saves.
+
+It is complete only when the Takkadpally–Sirur team can:
+
+- create and approve an outsourced earthwork arrangement;
+- see correct HLC versus agency responsibilities;
+- record daily actual progress;
+- see balance and achieved output;
+- preserve the original programme;
+- create a revised working forecast;
+- see overdue backlog separately from near-term executable quantity;
+- avoid false HLC material, equipment and diesel demand.
