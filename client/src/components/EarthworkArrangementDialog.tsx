@@ -493,36 +493,58 @@ export function EarthworkArrangementDialog({
   const canDraft = allocQtyNum > 0 && arrangementType !== "not_decided";
   const canSubmit = canDraft && (!needsAgencyName || agencyName.trim().length > 0);
 
-  const buildBody = () => {
+  /**
+   * Build the request body for both Save Draft and Submit for Approval.
+   *
+   * saveIntent is sent explicitly so the server can create the record with the
+   * correct final status in a single round-trip — eliminating the previous
+   * two-request draft→submit race.
+   *
+   * Numeric coercion rules:
+   *   - empty / unparseable number fields → null (never NaN)
+   *   - dates → YYYY-MM-DD string or null
+   */
+  const buildBody = (saveIntent: "draft" | "submit") => {
+    const safeNum = (v: string | undefined) => {
+      const n = parseFloat(v ?? "");
+      return isFinite(n) ? n : null;
+    };
+
     const base = {
-      materialLabel, arrangementType,
-      allocatedQty: allocQtyNum, uom: "CUM",
+      materialLabel,
+      arrangementType,
+      saveIntent,
+      allocatedQty: allocQtyNum,
+      uom: "CUM",
       agencyName: agencyName.trim() || null,
       reachLabel: reachLabel.trim() || null,
       agreedRate: rateNum > 0 ? rateNum : null,
       borrowSource: borrowSource.trim() || null,
-      avgLeadKm: avgLeadKm ? parseFloat(avgLeadKm) : null,
+      avgLeadKm: safeNum(avgLeadKm),
       plannedStartDate: plannedStartDate || null,
       targetCompletionDate: targetCompletionDate || null,
       plannedDailyOutput: dailyOutputNum > 0 ? dailyOutputNum : null,
       notes: notes.trim() || null,
       components,
+      // PATCH (edit) uses `status` directly; POST uses `saveIntent`
+      ...(saveIntent === "submit" ? { status: "submitted" } : { status: "draft" }),
     };
 
     if (isMultiSource && sourceBoqItems && sourceBoqItems.length > 1) {
-      // Multi-source: send boqItemAllocations array; no single boqItemId
+      // Multi-source: send boqItemAllocations; never send a single boqItemId
       const allocs = sourceBoqItems
         .map(s => ({ boqItemId: s.id, qty: parseFloat(sourceAllocations[s.id] || "0") || 0 }))
         .filter(a => a.qty > 0);
       return { ...base, boqItemId: null, boqItemAllocations: allocs };
     }
-    // Single-source: send boqItemId as before
+    // Single-source
     return { ...base, boqItemId };
   };
 
+  // Save Draft — single request, status = "draft"
   const saveDraftMutation = useMutation({
     mutationFn: async () => {
-      const body = { ...buildBody(), status: "draft" };
+      const body = buildBody("draft");
       const url = isEdit
         ? `/api/earthwork-arrangements/${editArrangement!.id}`
         : `/api/boq/projects/${projectId}/earthwork-arrangements`;
@@ -546,9 +568,12 @@ export function EarthworkArrangementDialog({
     },
   });
 
+  // Submit for Approval — single request with saveIntent:"submit"
+  // POST: server creates directly as status=submitted (no second PATCH needed)
+  // PATCH: body includes status:"submitted" → server sets submittedAt in one round-trip
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const body = { ...buildBody(), status: "draft" };
+      const body = buildBody("submit");
       const url = isEdit
         ? `/api/earthwork-arrangements/${editArrangement!.id}`
         : `/api/boq/projects/${projectId}/earthwork-arrangements`;
@@ -558,19 +583,9 @@ export function EarthworkArrangementDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const saveData = await res.json();
-      if (!res.ok) throw new Error(saveData.message ?? saveData.error ?? `Error ${res.status}`);
-
-      // Now submit for approval
-      const arrId = isEdit ? editArrangement!.id : saveData.id;
-      const patchRes = await fetch(`/api/earthwork-arrangements/${arrId}`, {
-        method: "PATCH", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "submitted" }),
-      });
-      const patchData = await patchRes.json();
-      if (!patchRes.ok) throw new Error(patchData.message ?? patchData.error ?? `Error ${patchRes.status}`);
-      return patchData;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
+      return data;
     },
     onSuccess: () => {
       toast({ title: "Submitted for approval", description: `Arrangement submitted for ${materialLabel}` });

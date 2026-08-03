@@ -19,3 +19,4 @@
 - [Work Demand Procurement Status](work-demand-procurement-status.md) — Instruction 020: ProcurementStatus 8-value type + ResolutionReason 6-value type; getAllPlantMaterials() fetches all (active+inactive); pg numeric columns arrive as strings — always Number() wrap; procurementStatus is additive (suggestion kept for test compat).
 - [UOM Conversion Profiles](uom-conversion-profiles.md) — Instruction 021: explicit profiles highest-precedence tier; stock ÷ factor (not demand × factor); material identity never suppressed for UOM mismatch.
 - [Earthwork Arrangements](earthwork-arrangement.md) — Instruction 023: earthwork_arrangement_required status; EarthworkArrangementDialog; 38 tests; GSB/WMM/fly ash/foundation/trench remain unaffected.
+- [Earthwork Save/Submit Pattern](earthwork-save-submit.md) — 024A: schema guard flag (earthworkSchemaReady), saveIntent field, single-request submit, structured error codes.

@@ -1,0 +1,261 @@
+Instruction 024A — Make Earthwork Arrangement Save and Submit Work
+
+This is an urgent repair to the already-built Earthwork feature.
+
+Do not add further earthwork features until Save Draft and Submit for Approval work reliably in the live app.
+
+DO NOT TOUCH
+
+- Work Demand calculations
+- UOM conversion
+- GSB/WMM mapping
+- Work Programme/Gantt
+- earthwork responsibility design
+- DPR progress logic
+- baseline or forecast calculations
+- PI/IRN/GRN workflows
+- Stores
+- unrelated pages
+
+1. Run the Earthwork database preparation at startup
+
+An ensureEarthworkTables() method already exists, but it is not being called from application startup or route registration.
+
+Call it once during server startup, before Earthwork APIs are used.
+
+It must complete before the app accepts Earthwork create/update requests.
+
+The startup process must safely ensure:
+
+- earthwork_arrangements
+- earthwork_baselines
+- earthwork_forecasts
+- all Instruction 024 columns
+- progress_entries.earthwork_arrangement_id
+- boq_items.bulk_material_classification
+
+Use the existing idempotent method. Do not create a second migration implementation.
+
+If preparation fails:
+
+- log the complete server error;
+- mark Earthwork APIs unavailable;
+- return a clear EARTHWORK_SCHEMA_NOT_READY response;
+- do not continue silently.
+
+2. Verify live schema against the typed schema
+
+After ensureEarthworkTables() runs, verify that earthwork_arrangements contains every column used by the insert, including:
+
+- boq_project_id
+- boq_item_id
+- boq_item_allocations
+- material_label
+- arrangement_type
+- agency_name
+- work_description
+- reach_label
+- chainage_from
+- chainage_to
+- allocated_qty
+- uom
+- agreed_rate
+- borrow_source
+- avg_lead_km
+- mobilisation_date
+- planned_start_date
+- actual_start_date
+- target_completion_date
+- planned_daily_output
+- working_hours_per_shift
+- num_excavators
+- excavator_type
+- num_tippers
+- tipper_capacity_cum
+- diesel_responsibility
+- components
+- inclusions
+- exclusions
+- notes
+- status
+- prepared_by_user_id
+- submitted_at
+- approved_by_user_id
+- approved_at
+- returned_at
+- on_hold_reason
+- completed_at
+- rejection_reason
+- cancellation_reason
+- created_at
+- updated_at
+
+Do not mark the task complete until the live database is confirmed to contain them.
+
+3. Return the actual safe save error
+
+The create route currently converts almost every exception into:
+
+“Failed to save arrangement. Check all required fields and try again.”
+
+Replace this with structured error handling.
+
+For known database/schema errors return:
+
+- EARTHWORK_SCHEMA_NOT_READY
+- missing table/column name where safe
+- a useful message such as:
+  “Earthwork database setup is incomplete. Missing column: mobilisation_date.”
+
+For validation errors, preserve the existing specific 400 response.
+
+For an unknown error:
+
+- log the full error server-side;
+- return a safe correlation/reference ID;
+- do not blame required fields unless validation actually failed.
+
+The frontend toast must show the server-provided message.
+
+4. Make Save Draft and Submit for Approval distinct
+
+The create route currently always inserts:
+
+status = draft
+
+even when the user clicks Submit for Approval.
+
+Required behaviour:
+
+Save Draft:
+- create with status draft;
+- only minimum draft requirements apply.
+
+Submit for Approval:
+- create directly with status submitted, or create and immediately transition transactionally to submitted;
+- set submittedAt;
+- enforce all submit-required fields;
+- do not leave the record as draft if Submit succeeded.
+
+Do not create two duplicate arrangements when submitting.
+
+5. Validate the actual button payloads
+
+Inspect both frontend actions and log/test their outgoing payload.
+
+Save Draft must send an explicit intent such as:
+
+saveIntent: "draft"
+
+Submit for Approval must send:
+
+saveIntent: "submit"
+
+or the equivalent agreed field.
+
+Confirm both carry:
+
+- materialLabel
+- arrangementType
+- allocatedQty
+- uom
+- boqItemId or boqItemAllocations
+- agencyName where required
+- components
+- dates/output where required
+
+The server must not infer Submit merely from the button label.
+
+6. Fix multi-source BOQ allocation payload
+
+The Work Demand row shown in the app says:
+
+“Multiple BOQ sources — use Earthwork Control for split allocation.”
+
+For a combined Earth/Borrow Soil row:
+
+- the modal opened from Work Demand must not submit an arbitrary single boqItemId;
+- either require the user to allocate against the listed contributing BOQ items;
+- or redirect to Earthwork Control before Save.
+
+Never send both boqItemId and boqItemAllocations.
+
+Never send neither.
+
+If the current form is a combined-row form and does not expose source allocation, disable Save and clearly direct the user to Earthwork Control rather than allowing a generic failure.
+
+7. Confirm numeric and date payloads
+
+Before sending:
+
+- empty optional numbers must become null, not NaN;
+- numeric text must become numbers;
+- dates must be YYYY-MM-DD or null;
+- components must be a valid object;
+- allocatedQty must equal the sum of boqItemAllocations for multi-source arrangements.
+
+If:
+
+allocatedQty != sum of allocation quantities
+
+return:
+
+ALLOCATION_TOTAL_MISMATCH
+
+with a clear message.
+
+8. Live acceptance test
+
+Use the actual Takkadpally–Sirur Earth/Borrow Soil arrangement.
+
+Test Save Draft:
+
+- arrangement type: HLC Source — Outsourced Execution
+- valid agency
+- valid BOQ source allocation
+- quantity
+- rate
+- start date
+- daily output
+- responsibilities
+
+Expected:
+
+- saves successfully;
+- appears in Earthwork Control;
+- remains after refresh;
+- status is Draft.
+
+Then test Submit for Approval:
+
+Expected:
+
+- one arrangement is created;
+- status is Submitted;
+- submitted date/time is stored;
+- it appears as Awaiting Approval;
+- no duplicate draft exists.
+
+9. Regression
+
+Confirm unchanged:
+
+- Earthwork Control page loads;
+- responsibility selections remain saved;
+- allocation limits remain enforced;
+- GSB/WMM and ordinary material rows remain unchanged;
+- Work Demand loads;
+- baseline and forecast routes still respond;
+- no change to PI/IRN/GRN or Stores.
+
+Final requirement
+
+Do not report completion based only on automated tests.
+
+Demonstrate in the live app that:
+
+1. Save Draft succeeds.
+2. Submit for Approval succeeds.
+3. Refresh preserves the arrangement.
+4. The correct status is shown.
+5. The server log has no schema or insert error.

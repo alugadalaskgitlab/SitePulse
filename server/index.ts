@@ -1,5 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
+import { registerRoutes, setEarthworkSchemaReady } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { initPush, sendPushToAudience } from "./push";
@@ -87,6 +87,42 @@ app.use((req, res, next) => {
     storage.ensureBoqMaterialMappings()
       .then(() => console.log("Startup: ensureBoqMaterialMappings — boq_material_mappings table verified/created"))
       .catch(e => console.error("Pre-routes: Failed to ensure boq_material_mappings table:", e)),
+    // ── Earthwork tables — MUST complete before routes register ───────────────
+    // Earthwork POST/PATCH routes check the earthworkSchemaReady flag (set below).
+    // Runs here (blocking) so the flag is true before any request arrives.
+    (async () => {
+      try {
+        await (storage as any).ensureEarthworkTables();
+        // Verify every column the INSERT uses actually exists
+        const colResult = await db.execute(sql`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'earthwork_arrangements'
+        `);
+        const existing = new Set((colResult.rows as any[]).map((r: any) => r.column_name));
+        const required = [
+          "boq_project_id","boq_item_id","boq_item_allocations","material_label",
+          "arrangement_type","agency_name","work_description","reach_label",
+          "chainage_from","chainage_to","allocated_qty","uom","agreed_rate",
+          "borrow_source","avg_lead_km","mobilisation_date","planned_start_date",
+          "actual_start_date","target_completion_date","planned_daily_output",
+          "working_hours_per_shift","num_excavators","excavator_type","num_tippers",
+          "tipper_capacity_cum","diesel_responsibility","components","inclusions",
+          "exclusions","notes","status","prepared_by_user_id","submitted_at",
+          "approved_by_user_id","approved_at","returned_at","on_hold_reason",
+          "completed_at","rejection_reason","cancellation_reason","created_at","updated_at",
+        ];
+        const missing = required.filter(c => !existing.has(c));
+        if (missing.length > 0) {
+          console.error(`Startup: earthwork_arrangements missing columns: ${missing.join(", ")} — Earthwork APIs will be unavailable`);
+        } else {
+          console.log("Startup: ensureEarthworkTables — all 40 required columns verified; Earthwork APIs ready");
+          setEarthworkSchemaReady(true);
+        }
+      } catch (e) {
+        console.error("Startup: CRITICAL — Failed to ensure earthwork tables:", e);
+        // earthworkSchemaReady stays false; mutation routes return EARTHWORK_SCHEMA_NOT_READY
+      }
+    })(),
   ]);
 
   await registerRoutes(httpServer, app);
@@ -141,7 +177,8 @@ async function runBackgroundMigrations() {
     (async () => { try { await (storage as any).ensureEquipmentUsageAuditColumns(); console.log("Startup: ensureEquipmentUsageAuditColumns — audit columns verified"); } catch (e) { console.error("Startup: Failed to ensure equipment usage audit columns:", e); } })(),
     (async () => { try { await (storage as any).ensureSiteEnabledModulesColumn(); } catch (e) { console.error("Startup: Failed to ensure enabled_modules column on sites:", e); } })(),
     (async () => { try { await storage.ensureMaterialUomConversionsTable(); console.log("Startup: ensureMaterialUomConversionsTable — material_uom_conversions table + BOQ mapping columns verified/added"); } catch (e) { console.error("Startup: Failed to ensure material_uom_conversions table:", e); } })(),
-    (async () => { try { await (storage as any).ensureEarthworkTables(); console.log("Startup: ensureEarthworkTables — earthwork_arrangements, earthwork_baselines, earthwork_forecasts tables + columns ensured"); } catch (e) { console.error("Startup: CRITICAL — Failed to ensure earthwork tables:", e); } })(),
+    // ensureEarthworkTables intentionally removed from background phase —
+    // it now runs in the blocking pre-routes section above.
   ]);
 
   // ── Phase 2: Seeding that depends on Phase 1 tables (parallel) ─────────────

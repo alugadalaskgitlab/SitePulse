@@ -113,6 +113,18 @@ function verifyRoleCookie(val: string | undefined): 'admin' | 'manager' | null {
 // In production, leave this unset (or set to 'false') to hide the RMC module entirely.
 const RMC_ENABLED = process.env.ENABLE_RMC === "true";
 
+// ── Earthwork schema readiness flag ───────────────────────────────────────────
+// Set to true by server/index.ts after ensureEarthworkTables() and column
+// verification complete in the blocking pre-routes startup phase.
+// Earthwork mutation routes (POST / PATCH / DELETE) check this flag and return
+// EARTHWORK_SCHEMA_NOT_READY (503) when it is still false, so the user gets a
+// clear actionable error rather than a cryptic "relation does not exist".
+let earthworkSchemaReady = false;
+export function setEarthworkSchemaReady(ready: boolean): void {
+  earthworkSchemaReady = ready;
+  if (ready) console.log("Routes: earthwork schema marked ready — POST/PATCH routes now active");
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -12401,18 +12413,29 @@ export async function registerRoutes(
     try {
       if (!assertLogin(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
+
+      // ── Schema readiness guard ────────────────────────────────────────────
+      if (!earthworkSchemaReady) {
+        return res.status(503).json({
+          error: "EARTHWORK_SCHEMA_NOT_READY",
+          message: "Earthwork database setup has not completed yet. Please wait a moment and retry.",
+        });
+      }
+
       const projectId = parseInt(req.params.id);
       const user = (req as any).user;
       const body = req.body ?? {};
 
       const { materialLabel, arrangementType } = body;
+      // saveIntent: "draft" = Save Draft; "submit" = Submit for Approval (single request, no second PATCH)
+      const saveIntent: "draft" | "submit" = body.saveIntent === "submit" ? "submit" : "draft";
       // boqItemAllocations supersedes boqItemId for multi-source arrangements
       const boqItemAllocationsRaw = body.boqItemAllocations as Array<{ boqItemId: number; qty: number }> | undefined;
       const singleBoqItemId: number | null = body.boqItemId ? Number(body.boqItemId) : null;
 
       // ── Typed validation ──────────────────────────────────────────────────
       if (!materialLabel || !String(materialLabel).trim()) {
-        return res.status(400).json({ error: "materialLabel is required", code: "INVALID_ALLOCATED_QUANTITY" });
+        return res.status(400).json({ error: "VALIDATION_FAILED", message: "materialLabel is required." });
       }
 
       const allocatedQtyNum = Number(body.allocatedQty);
@@ -12433,6 +12456,14 @@ export async function registerRoutes(
         return res.status(400).json({ error: "INVALID_DATE_RANGE", message: "targetCompletionDate must be YYYY-MM-DD" });
       if (plannedStart && targetEnd && targetEnd < plannedStart)
         return res.status(400).json({ error: "INVALID_DATE_RANGE", message: "targetCompletionDate cannot precede plannedStartDate" });
+
+      // Submit-specific validation — arrangement type must be confirmed before submitting
+      if (saveIntent === "submit" && (!arrangementType || arrangementType === "not_decided")) {
+        return res.status(400).json({
+          error: "SUBMIT_VALIDATION_FAILED",
+          message: "Arrangement type must be selected before submitting for approval. 'Not Decided' is only valid for drafts.",
+        });
+      }
 
       // Agency required for outsourced types
       const needsAgency = ["fully_outsourced_composite","vendor_material_delivered","hlc_source_outsourced_execution","partly_outsourced"].includes(arrangementType);
@@ -12483,6 +12514,15 @@ export async function registerRoutes(
           }
           effectiveAllocations.push({ boqItemId: Number(alloc.boqItemId), qty: Number(alloc.qty) });
         }
+
+        // ── Allocation total must match allocatedQty for multi-source ──────
+        const allocSum = effectiveAllocations.reduce((s, a) => s + a.qty, 0);
+        if (Math.abs(allocSum - allocatedQtyNum) > 0.01) {
+          return res.status(400).json({
+            error: "ALLOCATION_TOTAL_MISMATCH",
+            message: `allocatedQty (${allocatedQtyNum}) must equal the sum of boqItemAllocations (${allocSum.toFixed(2)} CUM). Please correct the per-source split.`,
+          });
+        }
       } else if (singleBoqItemId) {
         // Single-source: also use getAllocatedQtyForBoqItem to catch cross-allocation leakage
         const [boqItem] = await db.select({ currentQty: boqItems.currentQty, description: boqItems.description })
@@ -12504,13 +12544,18 @@ export async function registerRoutes(
         ? effectiveAllocations[0].boqItemId
         : (effectiveAllocations.length > 1 ? null : singleBoqItemId);
 
+      // Determine final status from saveIntent
+      const finalStatus = saveIntent === "submit" ? "submitted" : "draft";
+      const submittedAtValue = saveIntent === "submit" ? new Date() : null;
+
       const row = await storage.createEarthworkArrangement({
         boqProjectId: projectId,
         boqItemId: primaryBoqItemId,
         boqItemAllocations: effectiveAllocations.length > 1 ? effectiveAllocations : null,
         materialLabel: String(materialLabel).trim(),
         arrangementType: arrangementType ?? "not_decided",
-        status: "draft",
+        status: finalStatus,
+        submittedAt: submittedAtValue,
         allocatedQty: allocatedQtyNum,
         uom: body.uom ?? "CUM",
         agencyName: body.agencyName?.trim() || null,
@@ -12549,10 +12594,27 @@ export async function registerRoutes(
       res.status(201).json(row);
     } catch (err: any) {
       console.error("POST /api/boq/projects/:id/earthwork-arrangements:", err);
-      const message = err?.message?.includes("relation") || err?.message?.includes("does not exist")
-        ? "Earthwork tables are still being created. Please retry in a moment."
-        : "Failed to save arrangement. Check all required fields and try again.";
-      res.status(500).json({ error: "ARRANGEMENT_SAVE_FAILED", message });
+      const errMsg = String(err?.message ?? "");
+      // Schema errors — return actionable column/table name
+      if (errMsg.includes("relation") || errMsg.includes("does not exist") || errMsg.includes("column")) {
+        const colMatch = errMsg.match(/column "([^"]+)"/);
+        const tableMatch = errMsg.match(/relation "([^"]+)"/);
+        const detail = colMatch
+          ? `Missing column: ${colMatch[1]}.`
+          : tableMatch ? `Missing table: ${tableMatch[1]}.`
+          : "Schema check needed.";
+        return res.status(503).json({
+          error: "EARTHWORK_SCHEMA_NOT_READY",
+          message: `Earthwork database setup is incomplete. ${detail} The server will retry setup on next restart.`,
+        });
+      }
+      // Unknown error — log with correlation ID; do not blame required fields
+      const correlationId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      console.error(`[earthwork-save-error:${correlationId}]`, err);
+      res.status(500).json({
+        error: "ARRANGEMENT_SAVE_FAILED",
+        message: `An unexpected error occurred while saving the arrangement. (ref: ${correlationId})`,
+      });
     }
   });
 
@@ -12576,6 +12638,15 @@ export async function registerRoutes(
     try {
       if (!assertLogin(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
+
+      // ── Schema readiness guard ────────────────────────────────────────────
+      if (!earthworkSchemaReady) {
+        return res.status(503).json({
+          error: "EARTHWORK_SCHEMA_NOT_READY",
+          message: "Earthwork database setup has not completed yet. Please wait a moment and retry.",
+        });
+      }
+
       const id = parseInt(req.params.id);
       const user = (req as any).user;
       const body = req.body ?? {};
@@ -12695,9 +12766,23 @@ export async function registerRoutes(
       }).catch(() => {});
 
       res.json(updated);
-    } catch (err) {
+    } catch (err: any) {
       console.error("PATCH /api/earthwork-arrangements/:id:", err);
-      res.status(500).json({ error: "Failed to update earthwork arrangement" });
+      const errMsg = String(err?.message ?? "");
+      if (errMsg.includes("relation") || errMsg.includes("does not exist") || errMsg.includes("column")) {
+        const colMatch = errMsg.match(/column "([^"]+)"/);
+        const detail = colMatch ? `Missing column: ${colMatch[1]}.` : "Schema check needed.";
+        return res.status(503).json({
+          error: "EARTHWORK_SCHEMA_NOT_READY",
+          message: `Earthwork database setup is incomplete. ${detail}`,
+        });
+      }
+      const correlationId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      console.error(`[earthwork-update-error:${correlationId}]`, err);
+      res.status(500).json({
+        error: "ARRANGEMENT_UPDATE_FAILED",
+        message: `An unexpected error occurred while updating the arrangement. (ref: ${correlationId})`,
+      });
     }
   });
 
