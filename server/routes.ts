@@ -12761,10 +12761,11 @@ export async function registerRoutes(
 
       // Status transition — set timestamps
       const newStatus = patch.status as string | undefined;
-      if (newStatus === "submitted") patch.submittedAt = now;
-      if (newStatus === "approved") { patch.approvedByUserId = user?.id ?? null; patch.approvedAt = now; }
-      if (newStatus === "returned") patch.returnedAt = now;
-      if (newStatus === "completed") patch.completedAt = now;
+      // Timestamp columns require Date objects (drizzle PgTimestamp), not ISO strings.
+      if (newStatus === "submitted") patch.submittedAt = new Date();
+      if (newStatus === "approved") { patch.approvedByUserId = user?.id ?? null; patch.approvedAt = new Date(); }
+      if (newStatus === "returned") patch.returnedAt = new Date();
+      if (newStatus === "completed") patch.completedAt = new Date();
       if (newStatus === "in_progress" && !body.actualStartDate) patch.actualStartDate = now.split("T")[0];
 
       const updated = await storage.updateEarthworkArrangement(id, patch as any);
@@ -12951,7 +12952,7 @@ export async function registerRoutes(
       }
       if (patch.status === "approved") {
         patch.approvedByUserId = user?.id ?? null;
-        patch.approvedAt = new Date().toISOString();
+        patch.approvedAt = new Date();
       }
       const updated = await (storage as any).updateEarthworkForecast(id, patch);
       if (!updated) return res.status(404).json({ error: "Forecast not found" });
