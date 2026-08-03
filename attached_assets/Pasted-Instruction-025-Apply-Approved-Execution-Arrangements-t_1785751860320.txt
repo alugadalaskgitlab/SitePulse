@@ -1,0 +1,558 @@
+Instruction 025 — Apply Approved Execution Arrangements to HLC Demand Calculations
+
+Purpose
+
+Fix the present commercially incorrect behaviour where approved outsourced earthwork arrangements are visible in the UI, but the demand engine still calculates full HLC:
+
+- material demand;
+- equipment demand;
+- tipper demand;
+- labour demand;
+- diesel/fuel demand.
+
+This is the first focused phase of the Work Programme improvement.
+
+Do not move the arrangement UI into Work Programme yet.
+Do not add stretch/side planning yet.
+Do not add baseline/reforecasting yet.
+
+This batch must only make the existing approved execution arrangements affect the actual demand calculations correctly.
+
+Business rule
+
+The physical BOQ quantity must always remain visible.
+
+However, only the portion and components assigned to HLC should generate HLC resource demand.
+
+Example:
+
+Earthwork quantity: 10,000 CUM
+
+Approved arrangement:
+- 7,000 CUM fully outsourced;
+- agency provides earth/source, excavation, loading, tippers, transport, operators and diesel;
+- 3,000 CUM remains HLC in-house.
+
+Expected:
+
+- physical work quantity remains 10,000 CUM;
+- HLC demand is calculated only for 3,000 CUM;
+- agency quantity of 7,000 CUM remains visible as outsourced execution;
+- HLC excavator/tipper/diesel demand must not include the outsourced 7,000 CUM.
+
+Scope
+
+Apply this correction initially to recognised earthwork arrangements, including:
+
+- Earth / Borrow Soil
+- Selected Soil / Subgrade Material
+- Shoulder Earth / Soil
+- Soil / Earth
+- Embankment material
+- Borrow earth
+- Selected earth
+- Gravel / Moorum where classified as earthwork execution
+- other rows already handled by the Earthwork Arrangement feature
+
+Do not alter GSB, WMM or other ordinary material demand unless an approved execution arrangement is explicitly linked to that programmed quantity in a future phase.
+
+DO NOT TOUCH
+
+- UOM conversion
+- material aliases and mapping
+- procurement-status wording
+- Work Programme dates or bars
+- Auto Sequence
+- chainage/stretch generation
+- LHS/RHS planning
+- baseline/forecast tables
+- DPR progress comparison
+- PI/IRN/GRN workflows
+- Stores stock
+- subcontract billing
+- vendor bills
+- User/Designation Templates
+- existing arrangement form layout except where a small display correction is required
+- Cancel GRN work
+
+1. Trace the actual demand calculation
+
+Identify the authoritative function or functions that convert programmed BOQ quantity into:
+
+- material demand;
+- equipment hours;
+- labour demand;
+- diesel/fuel demand.
+
+Do not add a second parallel calculation.
+
+Modify the real demand calculation used by:
+
+- BOM & Demand;
+- Equipment tab;
+- Labour tab;
+- Procurement tab;
+- diesel/HSD requirement;
+- any related shortage totals.
+
+Remove or replace any existing fake/unit test that only checks a hand-written expected list without invoking the real calculation.
+
+Tests must call the actual demand engine.
+
+2. Read only operationally active arrangements
+
+Only these arrangement statuses may affect HLC demand:
+
+- approved;
+- mobilisation_pending, if treated as approved under the existing lifecycle;
+- in_progress;
+- on_hold, only if the approved responsibility remains valid and the quantity remains allocated.
+
+These must not affect HLC demand:
+
+- draft;
+- submitted;
+- returned;
+- rejected;
+- cancelled;
+- completed quantity already fully accounted for, subject to balance logic.
+
+Use the existing status names exactly.
+
+Do not invent a second approval flag.
+
+3. Match arrangements to the correct demand source
+
+An arrangement must reduce demand only for the BOQ item, programmed source, reach or allocated quantity to which it is actually linked.
+
+Do not reduce demand merely because the material label contains “Earth” or “Soil.”
+
+Use stable references such as:
+
+- project;
+- BOQ item;
+- programme bar/reach where available;
+- explicit BOQ allocation records;
+- allocated quantity.
+
+For combined Work Demand rows containing several BOQ sources:
+
+- calculate arrangement effects source by source;
+- then aggregate the corrected quantities;
+- do not apply one arrangement to the entire combined row unless its allocations cover the entire row.
+
+4. Calculate the operational balance
+
+For each arrangement, determine:
+
+- allocated quantity;
+- valid completed quantity, where reliable actual progress exists;
+- remaining active arrangement quantity.
+
+Use:
+
+remaining arrangement quantity =
+allocated quantity − valid completed quantity
+
+Do not exclude more quantity than remains.
+
+If actual progress linkage is not yet reliable, use the approved allocated quantity for forward demand but clearly keep the limitation in code comments/tests.
+
+Do not silently subtract draft DPR quantities.
+
+5. Apply responsibility by component
+
+Use the arrangement’s component-responsibility data.
+
+Only components assigned to:
+
+- HLC / Company
+
+should generate HLC demand.
+
+Components assigned to:
+
+- Agency / Contractor;
+- Client;
+- Not Applicable
+
+must not generate HLC demand.
+
+Components marked:
+
+- Not Decided
+
+must remain visible as provisional/uncertain and must not silently be treated as fully HLC-owned.
+
+Suggested treatment for Not Decided:
+
+- physical quantity remains;
+- resource demand is marked provisional;
+- do not produce a confident procurement/diesel action from that component.
+
+6. Material-demand treatment
+
+For a fully outsourced composite earthwork arrangement where Agency is responsible for material/source:
+
+- exclude that allocated quantity from HLC earth/soil material procurement demand;
+- do not raise Plant Material mapping or PI for that allocated portion;
+- retain the physical outsourced quantity and arrangement value.
+
+If HLC is responsible for material/source but execution is outsourced:
+
+- retain HLC material/source responsibility where it is represented in the system;
+- exclude only agency-owned equipment, transport, operators and fuel.
+
+If material is Client responsibility:
+
+- retain physical requirement for planning;
+- exclude it from HLC procurement demand;
+- identify it as client-supplied responsibility.
+
+Do not delete the BOQ quantity.
+
+7. Equipment-demand treatment
+
+For each resource recipe generated by the BOQ item, classify it against the arrangement components.
+
+Examples:
+
+Excavator/JCB:
+- include only if excavation/equipment responsibility is HLC.
+
+Tippers:
+- include only if transport/tippers responsibility is HLC.
+
+Grader:
+- include only if spreading responsibility is HLC.
+
+Roller:
+- include only if compaction responsibility is HLC.
+
+Water tanker:
+- include only if watering responsibility is HLC.
+
+Do not remove all earthwork equipment merely because any arrangement exists.
+
+Apply exclusions component by component and quantity proportionately.
+
+8. Diesel-demand treatment
+
+Diesel must follow the responsibility for the equipment/activity consuming it.
+
+Examples:
+
+Agency provides excavator, tippers and diesel:
+- exclude excavator/tipper fuel for the agency quantity.
+
+HLC performs spreading and compaction:
+- retain grader, roller and water-tanker diesel for the HLC-responsibility quantity.
+
+HLC supplies diesel to agency:
+- retain HLC diesel demand for the relevant agency equipment/activity;
+- identify that the diesel is tied to the approved arrangement.
+
+Fully outsourced composite including fuel:
+- HLC diesel demand for that allocated quantity must be zero.
+
+Do not apply one blanket diesel percentage.
+
+Use the existing equipment consumption norms and only alter the eligible quantity/resources.
+
+9. Labour-demand treatment
+
+Where labour is explicitly assigned to Agency:
+
+- exclude that labour from HLC labour demand.
+
+Where HLC remains responsible for:
+
+- survey;
+- quality testing;
+- spreading crew;
+- compaction crew;
+- traffic control;
+- other retained activities;
+
+retain those HLC labour requirements.
+
+Do not remove all labour automatically for an outsourced arrangement.
+
+10. Partial allocation
+
+Support quantity proportioning.
+
+Example:
+
+BOQ quantity: 20,000 CUM
+
+Approved arrangements:
+- 12,000 CUM fully outsourced;
+- 5,000 CUM agency excavation/transport, HLC compaction;
+- 3,000 CUM unallocated.
+
+Expected:
+
+For 12,000 CUM:
+- agency-owned material/equipment/labour/diesel excluded.
+
+For 5,000 CUM:
+- agency excavation/tippers/fuel excluded;
+- HLC compaction equipment/labour/diesel retained.
+
+For 3,000 CUM:
+- show Execution Arrangement Required;
+- do not silently treat it as fully outsourced;
+- preserve existing provisional behaviour.
+
+Total exclusions must never exceed the BOQ/programmed quantity.
+
+11. Multiple arrangements
+
+Where several active arrangements cover the same BOQ source:
+
+- sum only their valid remaining allocations;
+- prevent double exclusion;
+- reject or flag overlapping active allocations;
+- cancelled/rejected arrangements must not count.
+
+If overlapping allocations already exist in historical data:
+
+- do not silently apply both;
+- return/log an arrangement-overlap warning;
+- cap operational exclusion at the valid remaining BOQ quantity.
+
+12. Procurement-page presentation
+
+For earthwork rows, Work Demand should show:
+
+- total physical requirement;
+- approved outsourced quantity;
+- HLC-responsibility quantity;
+- unallocated quantity;
+- arrangement status;
+- HLC actionable demand.
+
+Example:
+
+Total earthwork: 13,588.8 CUM
+Approved outsourced: 7,000 CUM
+HLC responsibility: 0 CUM for excavation/transport
+Unallocated: 6,588.8 CUM
+
+Do not continue showing the yellow Material Mapping Required badge for quantities positively classified as earthwork execution.
+
+Use statuses such as:
+
+- Execution Arrangement Required
+- Partially Allocated
+- Approved Outsourced
+- HLC Responsibility Remaining
+- Fully Allocated
+
+Do not redesign the entire page.
+
+13. Equipment and diesel explanation
+
+Where demand has been reduced by an approved arrangement, provide a concise explanation or drill-down:
+
+Example:
+
+“7,000 CUM excluded from HLC excavator, tipper and diesel demand under approved arrangement with Narsimulu.”
+
+For partial responsibility:
+
+“Agency handles excavation and transport; HLC spreading and compaction demand retained.”
+
+This is important so users understand why the number changed.
+
+14. No effect before approval
+
+Acceptance principle:
+
+Draft arrangement:
+- visible in arrangement list;
+- does not change HLC demand.
+
+Submitted arrangement:
+- does not change HLC demand.
+
+Approved arrangement:
+- immediately changes HLC demand after refresh.
+
+Cancelled/rejected arrangement:
+- no longer affects HLC demand.
+
+Do not suppress resources merely because a draft form exists.
+
+15. Cache and refresh behaviour
+
+After an arrangement is:
+
+- approved;
+- returned;
+- cancelled;
+- quantity revised;
+- responsibility revised;
+
+refresh/invalidate:
+
+- BOM demand;
+- equipment demand;
+- labour demand;
+- Procurement rows;
+- diesel requirement totals;
+- Earthwork Control summaries.
+
+Do not require a full browser reload.
+
+16. Real tests against the demand engine
+
+Add tests that invoke the real programmed-demand calculation.
+
+A. Fully outsourced earthwork
+
+BOQ/programmed quantity:
+- 10,000 CUM
+
+Approved arrangement:
+- 7,000 CUM
+- material/source, excavation, loading, transport, equipment, tippers, operators and diesel = Agency
+
+Expected:
+
+- physical quantity remains 10,000 CUM;
+- HLC earth material demand only applies to the non-outsourced portion according to classification;
+- HLC excavator/tipper/diesel demand excludes 7,000 CUM;
+- agency quantity/value remains visible.
+
+B. Draft arrangement
+
+Same arrangement status = draft.
+
+Expected:
+
+- no demand exclusion occurs.
+
+C. Submitted arrangement
+
+Expected:
+
+- no demand exclusion occurs.
+
+D. Approved partial responsibility
+
+Agency:
+- excavation;
+- loading;
+- transport;
+- equipment;
+- tippers;
+- diesel.
+
+HLC:
+- spreading;
+- watering;
+- compaction.
+
+Expected:
+
+- excavator/tipper/related diesel excluded for approved quantity;
+- grader/roller/water-tanker and related HLC diesel retained.
+
+E. Partial quantity
+
+BOQ:
+- 20,000 CUM
+
+Approved fully outsourced:
+- 12,000 CUM
+
+Expected:
+
+- exclusions apply only to 12,000 CUM;
+- remaining 8,000 CUM is not excluded.
+
+F. Multiple BOQ sources
+
+Combined Earth row has three BOQ items.
+
+Arrangement covers only one BOQ item.
+
+Expected:
+
+- only that source is adjusted;
+- other two remain unchanged.
+
+G. Cancelled arrangement
+
+Previously approved arrangement becomes cancelled.
+
+Expected:
+
+- HLC demand returns to the correct unexcluded balance;
+- no stale cached exclusion remains.
+
+H. Diesel supplied by HLC
+
+Agency owns equipment but diesel responsibility = HLC.
+
+Expected:
+
+- equipment is excluded from HLC equipment ownership/availability demand where appropriate;
+- HLC diesel demand for the arrangement remains.
+
+I. No double exclusion
+
+Two overlapping approved allocations exist accidentally.
+
+Expected:
+
+- demand is never reduced below zero;
+- overlap is flagged;
+- exclusion is capped safely.
+
+J. Non-earthwork regression
+
+Confirm no change to:
+
+- GSB;
+- WMM;
+- aggregates;
+- bitumen;
+- emulsion;
+- cement;
+- standard non-earthwork equipment/diesel demand.
+
+17. Live Takkadpally–Sirur proof
+
+Use the existing approved arrangement visible in the app.
+
+Before correction, record:
+
+- earthwork equipment demand;
+- tipper demand;
+- diesel/HSD demand.
+
+After correction, demonstrate:
+
+- the approved allocated quantity is excluded according to its responsibility selections;
+- HLC spreading/compaction resources remain where assigned to HLC;
+- draft or unallocated quantities remain clearly separate;
+- Procurement no longer suggests ordinary Earth/Soil PI for the approved outsourced portion.
+
+Do not mark the task complete based only on unit tests.
+
+Final requirement
+
+This batch is complete only when an approved outsourced arrangement changes the real HLC material, equipment, labour and diesel demand calculations.
+
+A display badge or summary alone is not sufficient.
+
+After this passes
+
+1. Freeze the demand-exclusion correction.
+2. Move execution-arrangement creation and management into Work Programme.
+3. Improve Auto Sequence with real stretch/chainage input.
+4. Add side/width-aware LHS/RHS programme bars and DPR matching.
+5. Add immutable baseline, actual progress, current forecast and backlog separation.

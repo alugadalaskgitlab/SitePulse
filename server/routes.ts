@@ -11831,13 +11831,17 @@ export async function registerRoutes(
   app.get("/api/boq/projects/:id/bom", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id);
-      const { items, bars, project, expandedItems, excludedCount } = await computeProjectBom(projectId);
+      const [{ items, bars, project, expandedItems, excludedCount }, projectArrangements] = await Promise.all([
+        computeProjectBom(projectId),
+        storage.getEarthworkArrangements(projectId), // Instruction 025: client demand calc needs these
+      ]);
       const barItemIds = new Set(bars.map(b => b.boqItemId));
       const hasRecipes = expandedItems.some(it => it.materials.length > 0 || it.equipment.length > 0 || it.labour.length > 0);
       console.log(`[BOM] project=${projectId} items=${items.length} bars=${bars.length} hasRecipes=${hasRecipes} excluded=${excludedCount}`);
       res.json({
         items: expandedItems,
         bars,
+        earthworkArrangements: projectArrangements,
         roadLengthKm: project?.roadLengthKm ?? 0,
         unprogrammedItemIds: items.filter(it => !barItemIds.has(it.id)).map(it => it.id),
         hasBars: bars.length > 0,
@@ -12038,7 +12042,8 @@ export async function registerRoutes(
 
       // ── (a) Demand calculation ────────────────────────────────────────────────
       const demand = expandedItems.length && bars.length
-        ? calculateBomDemand(expandedItems as any, bars, project.totalMonths ?? 12)
+        // Instruction 025: active execution arrangements reduce HLC demand
+        ? calculateBomDemand(expandedItems as any, bars, project.totalMonths ?? 12, { arrangements: allEarthworkArrangements as any })
         : { materials: [], equipment: [], labour: [] };
 
       // ── (b) Collect all programme-month indexes ───────────────────────────────
@@ -12354,6 +12359,11 @@ export async function registerRoutes(
             earthworkSourceBoqItemIds: distinctBoqItemIds,  // always present for earthwork rows
             earthworkArrangements: earthworkArrangementSummaries ?? [],
             ...(contractCutToFill ? { contractCutToFill: true } : {}),
+            // Instruction 025 §12: physical vs outsourced vs HLC split for the row
+            ...((matRow as any).arrangementOutsourcedQty != null ? {
+              arrangementOutsourcedQty: (matRow as any).arrangementOutsourcedQty,
+              arrangementHlcQty: (matRow as any).arrangementHlcQty,
+            } : {}),
           } : {}),
           ...(shortageRow.requiresClassification && !isEarthworkBulkRequirement && distinctBoqItemIds.length > 0 ? {
             // Classification-required rows are gravel/moorum (isEarthworkBulkRequirement = false),
@@ -12406,6 +12416,9 @@ export async function registerRoutes(
         resolvedHorizonDate,
         resolvedProgrammeMonthIndex: horizonMonthIndex,
         programmeRelation,
+        // Instruction 025 §13: why demand numbers changed (arrangement exclusions)
+        demandAdjustments: (demand as any).demandAdjustments ?? [],
+        arrangementOverlaps: (demand as any).arrangementOverlaps ?? [],
       });
     } catch (err) {
       console.error("GET /api/boq/projects/:id/shortage-check:", err);

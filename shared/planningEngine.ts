@@ -520,6 +520,204 @@ export interface BomDemand {
   materials: BomMaterialRow[];
   equipment: BomEquipmentRow[];
   labour: BomLabourRow[];
+  /** Instruction 025: explanations for every arrangement-driven demand reduction. */
+  demandAdjustments?: DemandAdjustment[];
+  /** Instruction 025 §11: overlapping active allocations detected (exclusion capped). */
+  arrangementOverlaps?: ArrangementOverlapWarning[];
+}
+
+// ─── Instruction 025: Approved execution arrangements reduce HLC demand ──────
+
+export type ComponentResponsibility = "hlc" | "agency" | "client" | "not_applicable" | "not_decided";
+
+/** Statuses whose arrangements affect HLC demand. Draft/submitted/returned/rejected/
+ *  cancelled never do; on_hold counts while the approved responsibility remains valid. */
+export const DEMAND_AFFECTING_ARRANGEMENT_STATUSES: ReadonlySet<string> = new Set([
+  "approved", "mobilisation_pending", "in_progress", "on_hold",
+]);
+
+/** Minimal arrangement shape the demand engine needs (mirrors earthwork_arrangements). */
+export interface ArrangementDemandInput {
+  id: number;
+  status: string;
+  allocatedQty: number;
+  boqItemId?: number | null;
+  boqItemAllocations?: Array<{ boqItemId: number; qty: number }> | null;
+  components?: Record<string, string> | null; // component key → ComponentResponsibility
+  dieselResponsibility?: string | null;       // agency | hlc | mixed
+  agencyName?: string | null;
+  arrangementType?: string | null;
+}
+
+export interface DemandAdjustment {
+  boqItemId: number;
+  itemCode?: string | null;
+  kind: "equipment" | "diesel" | "labour" | "material";
+  resourceName: string;
+  excludedQty: number;   // hours / liters / days / CUM excluded from HLC demand
+  unit: string;
+  agencyName?: string | null;
+  note: string;
+}
+
+export interface ArrangementOverlapWarning {
+  boqItemId: number;
+  allocatedTotal: number; // raw sum of active allocations against the item
+  itemQty: number;        // BOQ/programmed quantity the exclusion was capped at
+}
+
+/** Per-item slice of an active arrangement after per-source splitting + overlap capping. */
+interface ArrangementSlice {
+  qty: number;
+  components: Record<string, string>;
+  dieselResponsibility?: string | null;
+  agencyName?: string | null;
+}
+
+export interface ItemArrangementEffect {
+  slices: ArrangementSlice[];
+  overlap?: ArrangementOverlapWarning;
+}
+
+const NON_HLC = (r: string | undefined | null): boolean =>
+  r === "agency" || r === "client" || r === "not_applicable";
+
+/** Resolve a component responsibility; missing keys are "not_decided" (never silently HLC-excluded, never confidently HLC either — Instruction 025 §5 treats not_decided as retained/provisional demand). */
+function respOf(components: Record<string, string> | null | undefined, ...keys: string[]): string {
+  for (const k of keys) {
+    const v = components?.[k];
+    if (v) return v;
+  }
+  return "not_decided";
+}
+
+/**
+ * Split active arrangements into per-BOQ-item quantity slices and cap total
+ * exclusion at each item's quantity (Instruction 025 §10-11: exclusions must
+ * never exceed the BOQ/programmed quantity; overlaps are flagged, not doubled).
+ *
+ * LIMITATION (Instruction 025 §4): actual-progress linkage is not yet reliable,
+ * so forward demand uses the approved ALLOCATED quantity, not allocated − completed.
+ */
+export function buildArrangementEffects(
+  items: Array<{ id: number; currentQty: number }>,
+  arrangements: ArrangementDemandInput[] | null | undefined,
+): Map<number, ItemArrangementEffect> {
+  const out = new Map<number, ItemArrangementEffect>();
+  if (!arrangements?.length) return out;
+  const qtyById = new Map(items.map(i => [i.id, Number(i.currentQty) || 0]));
+
+  for (const arr of arrangements) {
+    if (!DEMAND_AFFECTING_ARRANGEMENT_STATUSES.has(String(arr.status))) continue;
+    const allocs: Array<{ boqItemId: number; qty: number }> =
+      (Array.isArray(arr.boqItemAllocations) && arr.boqItemAllocations.length > 0)
+        ? arr.boqItemAllocations.map(a => ({ boqItemId: Number(a.boqItemId), qty: Number(a.qty) || 0 }))
+        : (arr.boqItemId != null ? [{ boqItemId: arr.boqItemId, qty: Number(arr.allocatedQty) || 0 }] : []);
+    for (const a of allocs) {
+      if (!(a.qty > 0) || !qtyById.has(a.boqItemId)) continue;
+      if (!out.has(a.boqItemId)) out.set(a.boqItemId, { slices: [] });
+      out.get(a.boqItemId)!.slices.push({
+        qty: a.qty,
+        components: (arr.components && typeof arr.components === "object") ? arr.components as Record<string, string> : {},
+        dieselResponsibility: arr.dieselResponsibility,
+        agencyName: arr.agencyName,
+      });
+    }
+  }
+
+  // Cap: total active allocation per item must not exceed the item quantity.
+  for (const [itemId, eff] of out) {
+    const itemQty = qtyById.get(itemId) ?? 0;
+    const total = eff.slices.reduce((s: number, sl: ArrangementSlice) => s + sl.qty, 0);
+    if (itemQty > 0 && total > itemQty + 0.001) {
+      const scale = itemQty / total;
+      for (const sl of eff.slices) sl.qty *= scale;
+      eff.overlap = { boqItemId: itemId, allocatedTotal: Math.round(total * 1000) / 1000, itemQty };
+    }
+  }
+  return out;
+}
+
+/** Map an equipment name to the arrangement component key(s) that own it (Instruction 025 §7). */
+export function equipmentComponentKeys(equipmentName: string): string[] {
+  const n = equipmentName.toLowerCase();
+  if (/tipper|dumper|hyva|\btruck\b|trailer/.test(n)) return ["tippers", "transport"];
+  // Purpose wins over machine type: "Dozer for spreading" is spreading plant, not excavation.
+  if (/spread|grading/.test(n)) return ["spreading", "equipment"];
+  if (/excavat|\bjcb\b|backhoe|poclain|dozer|shovel|ripper/.test(n)) return ["excavation", "equipment"];
+  if (/loader/.test(n)) return ["loading", "equipment"];
+  if (/grader/.test(n)) return ["spreading", "equipment"];
+  if (/roller|compactor|rammer/.test(n)) return ["compaction", "equipment"];
+  if (/water\s*(tanker|browser|bowser)|sprinkler/.test(n)) return ["watering", "equipment"];
+  if (/tractor/.test(n)) return ["transport", "equipment"];
+  return ["equipment"];
+}
+
+/** Map a labour designation to its owning component; null = general execution crew. */
+export function labourComponentKey(designation: string): string | null {
+  const n = designation.toLowerCase();
+  if (/survey/.test(n)) return "survey_setting_out";
+  if (/quality|\blab\b|technician/.test(n)) return "quality_testing";
+  if (/operator|driver/.test(n)) return "operators_drivers";
+  return null;
+}
+
+const EXECUTION_COMPONENT_KEYS = ["excavation", "loading", "transport", "spreading", "watering", "compaction"] as const;
+
+/**
+ * HLC-retained fraction of an item's quantity for a demand kind.
+ * A slice excludes demand only when the relevant responsibility is positively
+ * non-HLC (agency/client/not_applicable). "not_decided" retains demand
+ * (provisional — never silently treated as outsourced).
+ */
+export function hlcRetainedFraction(
+  eff: ItemArrangementEffect | undefined,
+  itemQty: number,
+  isSliceExcluded: (sl: ArrangementSlice) => boolean,
+): { fraction: number; excludedQty: number; agencies: string[] } {
+  if (!eff || !(itemQty > 0)) return { fraction: 1, excludedQty: 0, agencies: [] };
+  let excluded = 0;
+  const agencies: string[] = [];
+  for (const sl of eff.slices) {
+    if (isSliceExcluded(sl)) {
+      excluded += sl.qty;
+      if (sl.agencyName && !agencies.includes(sl.agencyName)) agencies.push(sl.agencyName);
+    }
+  }
+  excluded = Math.min(excluded, itemQty);
+  return { fraction: Math.max(0, 1 - excluded / itemQty), excludedQty: excluded, agencies };
+}
+
+/** Equipment slice exclusion: the owning component is positively non-HLC. */
+export function equipmentSliceExcluded(sl: ArrangementSlice, equipmentName: string): boolean {
+  const keys = equipmentComponentKeys(equipmentName);
+  return NON_HLC(respOf(sl.components, ...keys));
+}
+
+/**
+ * Diesel slice exclusion (Instruction 025 §8): fuel follows the equipment/activity
+ * consuming it, but when HLC supplies diesel to the agency (diesel_fuel = hlc or
+ * dieselResponsibility = hlc), HLC diesel demand is retained even for excluded equipment.
+ */
+export function dieselSliceExcluded(sl: ArrangementSlice, equipmentName: string): boolean {
+  if (!equipmentSliceExcluded(sl, equipmentName)) return false;
+  const dieselComp = respOf(sl.components, "diesel_fuel");
+  const dieselResp = sl.dieselResponsibility ?? null;
+  if (dieselComp === "hlc" || dieselResp === "hlc") return false; // HLC supplies diesel to agency
+  return NON_HLC(dieselComp) || dieselResp === "agency";
+}
+
+/** Labour slice exclusion: mapped component non-HLC, or (general crew) the whole
+ *  execution chain is non-HLC — never drop all labour just because an arrangement exists. */
+export function labourSliceExcluded(sl: ArrangementSlice, designation: string): boolean {
+  const key = labourComponentKey(designation);
+  if (key) return NON_HLC(respOf(sl.components, key));
+  return EXECUTION_COMPONENT_KEYS.every(k => NON_HLC(respOf(sl.components, k)));
+}
+
+/** Material/source slice exclusion (Instruction 025 §6): agency or client owns the material. */
+export function materialSliceExcluded(sl: ArrangementSlice): boolean {
+  return NON_HLC(respOf(sl.components, "material_source", "source_identification"));
 }
 
 export interface BomInputItem {
@@ -991,10 +1189,22 @@ export function calculateBomDemand(
   items: BomInputItem[],
   bars: BomInputBar[],
   totalMonths: number = 12,
+  options?: {
+    /** Instruction 025: active execution arrangements — reduce HLC demand per component responsibility. */
+    arrangements?: ArrangementDemandInput[];
+  },
 ): BomDemand {
   const matMap = new Map<string, BomMaterialRow>();
   const eqMap = new Map<string, BomEquipmentRow>();
   const labMap = new Map<string, BomLabourRow>();
+
+  // ── Instruction 025: per-item arrangement effects (active statuses only) ──
+  const arrangementEffects = buildArrangementEffects(items, options?.arrangements);
+  const demandAdjustments: DemandAdjustment[] = [];
+  const arrangementOverlaps: ArrangementOverlapWarning[] = [];
+  for (const eff of arrangementEffects.values()) {
+    if (eff.overlap) arrangementOverlaps.push(eff.overlap);
+  }
 
   // Group bars by boqItemId
   const barsByItem = new Map<number, BomInputBar[]>();
@@ -1121,15 +1331,40 @@ export function calculateBomDemand(
       }
     }
 
+    // Instruction 025: arrangement effects for this item (exclusion fractions are
+    // computed against the full BOQ item quantity, then applied to programmed demand).
+    const itemEff = arrangementEffects.get(item.id);
+    const itemQtyForEff = Number(item.currentQty) > 0 ? Number(item.currentQty) : workQty;
+
     // Equipment
     for (const e of item.equipment) {
       if (e.isClientSupplied) continue;
       // Manual / labour-based "crew" is labour, not plant — keep it out of the equipment BOM.
       if (/manual|labour[\s-]?based|labor[\s-]?based|by\s*hand|hand[\s-]?(packing|breaking|mixing)|coolie|mazdoor/i.test(e.equipmentName)) continue;
       const cnt = e.count ?? 1;
-      const lineHours = e.qtyPerBoqUnit * workQty * cnt;
-      const key = canonEquipmentKey(e.equipmentName);
       const display = equipmentBaseName(e.equipmentName);
+
+      // Instruction 025 §7: retain only the HLC-responsible fraction, component by component.
+      const eqEff = hlcRetainedFraction(itemEff, itemQtyForEff, sl => equipmentSliceExcluded(sl, e.equipmentName));
+      const fullLineHours = e.qtyPerBoqUnit * workQty * cnt;
+      const lineHours = fullLineHours * eqEff.fraction;
+      if (eqEff.fraction < 1 && fullLineHours > 0) {
+        demandAdjustments.push({
+          boqItemId: item.id,
+          itemCode: item.itemCode,
+          kind: "equipment",
+          resourceName: display,
+          excludedQty: Math.round((fullLineHours - lineHours) * 100) / 100,
+          unit: "hrs",
+          agencyName: eqEff.agencies.join(", ") || null,
+          note: `${Math.round(eqEff.excludedQty).toLocaleString()} ${item.canonicalUnit ?? item.unit ?? ""} excluded from HLC ${display} demand under approved arrangement${eqEff.agencies.length ? ` with ${eqEff.agencies.join(", ")}` : ""}.`,
+        });
+      }
+      if (lineHours <= 0) {
+        // Fully agency-owned equipment for the whole allocated quantity — still fall
+        // through to diesel below in case HLC supplies fuel to the agency equipment.
+      }
+      const key = canonEquipmentKey(e.equipmentName);
       if (!eqMap.has(key)) {
         eqMap.set(key, { equipmentName: display, count: cnt, totalHours: 0, monthlyHours: {}, breakdown: [] });
       }
@@ -1148,7 +1383,7 @@ export function calculateBomDemand(
         else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, unit: item.canonicalUnit ?? item.unit, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
       }
       for (const [month, mwq] of monthlyWork) {
-        row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt;
+        row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt * eqEff.fraction;
       }
 
       // FROZEN RULE 7 — Diesel / HSD fuel: the ONLY fuel source for the BOM is
@@ -1160,7 +1395,26 @@ export function calculateBomDemand(
       const isCraneEquip = /\bcrane\b|lifting|girder|launch/i.test(e.equipmentName);
       const isNonHsdItem = /toll\s*booth|toll\s*plaza|crash\s*barrier|\bsignage\b|sign\s*board|road\s*furniture|delineator|road\s*marking|thermoplastic|painting|railing|parapet|building|\bbooth\b|guard\s*rail|metal\s*beam|gantry|\bkm\s*stone|boundary\s*(stone|pillar)|reflector/i.test(item.description || "");
       if (norm > 0 && isDiesel && !isCraneEquip && !isNonHsdItem) {
-        const fuelPerBoqUnit = e.qtyPerBoqUnit * cnt * norm; // liters per BOQ unit
+        // Instruction 025 §8: diesel follows the responsibility for the consuming
+        // equipment/activity — but stays with HLC when HLC supplies fuel to the agency.
+        const fuelEff = hlcRetainedFraction(itemEff, itemQtyForEff, sl => dieselSliceExcluded(sl, e.equipmentName));
+        const fuelPerBoqUnit = e.qtyPerBoqUnit * cnt * norm * fuelEff.fraction; // liters per BOQ unit (HLC share)
+        if (fuelEff.fraction < 1) {
+          const fullFuel = e.qtyPerBoqUnit * cnt * norm * workQty;
+          demandAdjustments.push({
+            boqItemId: item.id,
+            itemCode: item.itemCode,
+            kind: "diesel",
+            resourceName: `Diesel / HSD (${display})`,
+            excludedQty: Math.round((fullFuel - fuelPerBoqUnit * workQty) * 100) / 100,
+            unit: "L",
+            agencyName: fuelEff.agencies.join(", ") || null,
+            note: `${Math.round(fuelEff.excludedQty).toLocaleString()} ${item.canonicalUnit ?? item.unit ?? ""} excluded from HLC ${display} diesel demand under approved arrangement${fuelEff.agencies.length ? ` with ${fuelEff.agencies.join(", ")}` : ""}.`,
+          });
+        }
+        if (fuelPerBoqUnit <= 0) {
+          // Entire fuel demand for this equipment is agency-owned — nothing to add.
+        } else {
         const fuelKey = canonResourceKey("Diesel / HSD");
         if (!matMap.has(fuelKey)) {
           matMap.set(fuelKey, {
@@ -1194,14 +1448,31 @@ export function calculateBomDemand(
         for (const [month, mwq] of monthlyWork) {
           fuelRow.monthlyQty[month] = (fuelRow.monthlyQty[month] ?? 0) + fuelPerBoqUnit * mwq;
         }
+        }
       }
     }
 
     // Labour
     for (const l of item.labour) {
       if (l.isClientSupplied) continue;
-      const lineDays = l.qtyPerBoqUnit * workQty;
       const designation = normaliseDesignation(l.designation);
+      // Instruction 025 §9: exclude labour only where explicitly agency-owned;
+      // general crews drop only for fully-outsourced execution chains.
+      const labEff = hlcRetainedFraction(itemEff, itemQtyForEff, sl => labourSliceExcluded(sl, designation));
+      const lineDays = l.qtyPerBoqUnit * workQty * labEff.fraction;
+      if (labEff.fraction < 1) {
+        demandAdjustments.push({
+          boqItemId: item.id,
+          itemCode: item.itemCode,
+          kind: "labour",
+          resourceName: designation,
+          excludedQty: Math.round(l.qtyPerBoqUnit * workQty * (1 - labEff.fraction) * 100) / 100,
+          unit: "days",
+          agencyName: labEff.agencies.join(", ") || null,
+          note: `${Math.round(labEff.excludedQty).toLocaleString()} ${item.canonicalUnit ?? item.unit ?? ""} excluded from HLC ${designation} demand under approved arrangement${labEff.agencies.length ? ` with ${labEff.agencies.join(", ")}` : ""}.`,
+        });
+      }
+      if (lineDays <= 0) continue;
       const key = canonResourceKey(designation);
       if (!labMap.has(key)) {
         labMap.set(key, { designation, totalDays: 0, monthlyDays: {}, breakdown: [] });
@@ -1220,7 +1491,7 @@ export function calculateBomDemand(
         else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, unit: item.canonicalUnit ?? item.unit, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
       }
       for (const [month, mwq] of monthlyWork) {
-        row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq;
+        row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq * labEff.fraction;
       }
     }
   }
@@ -1256,7 +1527,40 @@ export function calculateBomDemand(
     }
   }
 
-  return { materials, equipment, labour };
+  // ── Instruction 025 §6/§12: earthwork material rows — physical quantity stays
+  // visible; expose the outsourced vs HLC split instead of shrinking totalQty.
+  if (arrangementEffects.size > 0) {
+    const itemQtyById = new Map(items.map(i => [i.id, Number(i.currentQty) || 0]));
+    for (const row of materials) {
+      if (!(row as any).isEarthworkBulkRequirement) continue;
+      let outsourced = 0;
+      const agencies: string[] = [];
+      for (const bd of row.breakdown) {
+        const bid = (bd as any).boqItemId;
+        const eff = bid != null ? arrangementEffects.get(bid) : undefined;
+        if (!eff) continue;
+        const m = hlcRetainedFraction(eff, itemQtyById.get(bid) ?? 0, materialSliceExcluded);
+        outsourced += (bd.lineQty ?? 0) * (1 - m.fraction);
+        for (const a of m.agencies) if (!agencies.includes(a)) agencies.push(a);
+      }
+      if (outsourced > 0.001) {
+        (row as any).arrangementOutsourcedQty = Math.round(Math.min(outsourced, row.totalQty) * 1000) / 1000;
+        (row as any).arrangementHlcQty = Math.round(Math.max(0, row.totalQty - outsourced) * 1000) / 1000;
+        demandAdjustments.push({
+          boqItemId: row.breakdown[0]?.boqItemId ?? 0,
+          itemCode: null,
+          kind: "material",
+          resourceName: row.materialName,
+          excludedQty: Math.round(outsourced * 1000) / 1000,
+          unit: row.uom,
+          agencyName: agencies.join(", ") || null,
+          note: `${Math.round(outsourced).toLocaleString()} ${row.uom} of ${row.materialName} sourced by agency/client under approved arrangement${agencies.length ? ` with ${agencies.join(", ")}` : ""} — excluded from HLC procurement demand.`,
+        });
+      }
+    }
+  }
+
+  return { materials, equipment, labour, demandAdjustments, arrangementOverlaps };
 }
 
 // ─── Layer Config & Material Derivation ──────────────────────────────────────

@@ -867,6 +867,10 @@ interface EarthworkArrangementCellProps {
     earthworkSourceBoqItemIds?: number[];
     /** Contract mandates fill from roadway excavation — pre-select the cut source. */
     contractCutToFill?: boolean;
+    /** Instruction 025 §12: agency/client-sourced portion excluded from HLC procurement. */
+    arrangementOutsourcedQty?: number;
+    /** Instruction 025 §12: HLC-responsibility portion of the physical demand. */
+    arrangementHlcQty?: number;
   };
   projectId: number;
   onSaved: () => void;
@@ -1045,6 +1049,15 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
           </span>
         )}
       </div>
+
+      {/* Instruction 025 §12: physical vs outsourced vs HLC responsibility split */}
+      {row.arrangementOutsourcedQty != null && row.arrangementOutsourcedQty > 0 && (
+        <div className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-1 space-y-0.5">
+          <div>Total physical: <span className="font-mono font-semibold">{row.totalDemand.toLocaleString()} {row.uom || "CUM"}</span></div>
+          <div className="text-teal-700">Approved outsourced: <span className="font-mono font-semibold">{row.arrangementOutsourcedQty.toLocaleString()} {row.uom || "CUM"}</span> — excluded from HLC procurement</div>
+          <div>HLC responsibility: <span className="font-mono font-semibold">{(row.arrangementHlcQty ?? Math.max(0, row.totalDemand - row.arrangementOutsourcedQty)).toLocaleString()} {row.uom || "CUM"}</span></div>
+        </div>
+      )}
 
       {/* Multiple BOQ sources note */}
       {hasMultipleSources && (

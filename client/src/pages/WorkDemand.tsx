@@ -1,5 +1,5 @@
 import { useMemo, useState, Fragment, useCallback } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import {
   ChevronRight, FileSpreadsheet, BookOpen, Loader2,
@@ -221,7 +221,21 @@ function EquipmentTable({
   const equip = demand.equipment;
   const [expandedEq, setExpandedEq] = useState<Set<string>>(() => new Set());
 
-  if (!equip.length) return <EmptyState label="No equipment demand. Configure equipment recipes on BOQ items first." />;
+  // Instruction 025 §13: explain arrangement-driven reductions in equipment/diesel demand
+  const eqAdjustments = (demand.demandAdjustments ?? []).filter(a => a.kind === "equipment" || a.kind === "diesel");
+  const adjustmentsBanner = eqAdjustments.length > 0 && (
+    <div className="mb-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-[12px] text-teal-800 space-y-0.5">
+      <div className="font-semibold">Demand reduced by approved execution arrangements</div>
+      {[...new Set(eqAdjustments.map(a => a.note))].map((note, i) => <div key={i}>{note}</div>)}
+    </div>
+  );
+
+  if (!equip.length) return (
+    <div>
+      {adjustmentsBanner}
+      <EmptyState label="No equipment demand. Configure equipment recipes on BOQ items first." />
+    </div>
+  );
 
   const allMonths = useMemo(() => {
     const ms = new Set<number>();
@@ -232,6 +246,8 @@ function EquipmentTable({
   const colSpan = 2 + allMonths.length + 1;
 
   return (
+    <div>
+    {adjustmentsBanner}
     <div className="overflow-auto rounded-xl border max-h-[70vh] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_thead_th]:bg-[#0F5F64]">
       <table className="text-sm border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
         <thead>
@@ -324,6 +340,7 @@ function EquipmentTable({
         </tbody>
       </table>
     </div>
+    </div>
   );
 }
 
@@ -339,7 +356,21 @@ function LabourTable({
   const lab = demand.labour;
   const [expandedLab, setExpandedLab] = useState<Set<string>>(() => new Set());
 
-  if (!lab.length) return <EmptyState label="No labour demand. Configure labour recipes on BOQ items first." />;
+  // Instruction 025 §13: explain arrangement-driven reductions in labour demand
+  const labAdjustments = (demand.demandAdjustments ?? []).filter(a => a.kind === "labour");
+  const labBanner = labAdjustments.length > 0 && (
+    <div className="mb-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-[12px] text-teal-800 space-y-0.5">
+      <div className="font-semibold">Demand reduced by approved execution arrangements</div>
+      {[...new Set(labAdjustments.map(a => a.note))].map((note, i) => <div key={i}>{note}</div>)}
+    </div>
+  );
+
+  if (!lab.length) return (
+    <div>
+      {labBanner}
+      <EmptyState label="No labour demand. Configure labour recipes on BOQ items first." />
+    </div>
+  );
 
   const allMonths = useMemo(() => {
     const ms = new Set<number>();
@@ -350,6 +381,8 @@ function LabourTable({
   const colSpan = 2 + allMonths.length + 1;
 
   return (
+    <div>
+    {labBanner}
     <div className="overflow-auto rounded-xl border max-h-[70vh] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_thead_th]:bg-[#0F5F64]">
       <table className="text-sm border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
         <thead>
@@ -434,6 +467,7 @@ function LabourTable({
           })}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }
@@ -2405,6 +2439,7 @@ function ProcurementTable({
 export default function WorkDemand() {
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
+  const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   // Task #1240: honour ?tab= so the proactive shortage badge on the Work
   // Programme page can deep-link straight into the procurement sub-tab.
@@ -2522,7 +2557,10 @@ export default function WorkDemand() {
     const { items, bars } = bomData;
     if (!items.length) return null;
     // Allow demand even with no bars — items without bars use their currentQty
-    return calculateBomDemand(items, bars ?? [], project.totalMonths ?? 12);
+    // Instruction 025: active execution arrangements reduce HLC equipment/labour/diesel demand
+    return calculateBomDemand(items, bars ?? [], project.totalMonths ?? 12, {
+      arrangements: (bomData as any).earthworkArrangements ?? [],
+    });
   }, [bomData, project]);
 
   // Build set of short descriptions for structure-type BOQ items (point-location, non-linear)
@@ -2872,7 +2910,12 @@ export default function WorkDemand() {
                   horizonMode={horizonMode}
                   horizonCustomDate={horizonCustomDate}
                   onHorizonChange={(mode, custom) => { setHorizonMode(mode); setHorizonCustomDate(custom); }}
-                  onMappingResolved={() => refetchShortage()}
+                  onMappingResolved={() => {
+                    // Instruction 025 §15: arrangement changes must refresh BOM demand
+                    // (equipment/labour/diesel derive from it) as well as Procurement rows.
+                    queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "bom"] });
+                    refetchShortage();
+                  }}
                 />
               )}
             </TabsContent>

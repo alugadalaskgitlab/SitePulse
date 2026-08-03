@@ -20,3 +20,4 @@
 - [UOM Conversion Profiles](uom-conversion-profiles.md) — Instruction 021: explicit profiles highest-precedence tier; stock ÷ factor (not demand × factor); material identity never suppressed for UOM mismatch.
 - [Earthwork Arrangements](earthwork-arrangement.md) — Instruction 023: earthwork_arrangement_required status; EarthworkArrangementDialog; 38 tests; GSB/WMM/fly ash/foundation/trench remain unaffected.
 - [Earthwork Save/Submit Pattern](earthwork-save-submit.md) — 024A: schema guard flag (earthworkSchemaReady), saveIntent field, single-request submit, structured error codes.
+- [Arrangement Demand Exclusion](arrangement-demand-exclusion.md) — 025: active arrangements reduce HLC demand via calculateBomDemand options; not_decided retains; consumers choose HLC vs physical demand explicitly.
