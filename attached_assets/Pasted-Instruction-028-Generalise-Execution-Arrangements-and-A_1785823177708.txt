@@ -1,0 +1,1015 @@
+Instruction 028 — Generalise Execution Arrangements and Add Bituminous Works
+
+Purpose
+
+Extend the existing Execution Arrangement framework from earthwork to bituminous road works, while first correcting the earthwork-specific assumptions that currently exist inside the shared UI, execution-state derivation and demand-component mapping.
+
+The existing arrangement system must be reused.
+
+Do not create:
+
+- a separate Bituminous Outsourcing module;
+- a separate bituminous arrangement table;
+- a parallel approval workflow;
+- a second demand engine;
+- a separate Bituminous Arrangements register.
+
+Supported bituminous work in this batch:
+
+- Prime Coat;
+- Tack Coat;
+- DBM;
+- BC;
+- SDBC;
+- Bituminous Macadam;
+- Seal Coat;
+- Premix Carpet;
+- recognised asphalt/bituminous mix supply and laying items.
+
+Supported arrangements:
+
+- Company In-house;
+- Complete Supply and Lay;
+- Finished Mix Supply Only;
+- Mix Production Only;
+- Production and Transport;
+- Spraying Only;
+- Laying and Compaction Only;
+- Supply, Transport and Lay;
+- Main Contractor Supplies Binder;
+- Main Contractor Supplies Aggregates;
+- Client Supplied;
+- Partly Outsourced / Shared Responsibility;
+- Not Decided.
+
+PRELIMINARY — IMPORTANT CURRENT-CODE FACTS
+
+The implementation must recognise these actual current conditions:
+
+1. Work Programme arrangement controls are currently gated by isEarthworkBar.
+2. earthwork_arrangements has no workCategory field.
+3. components JSONB is structurally flexible, but the dialog and component arrays are hard-coded for earthwork.
+4. executionState.ts uses earthwork-specific arrangement types and significant-component keys.
+5. existing demand filtering partly relies on regex matching of equipment and labour names.
+6. ExecutionArrangements.tsx is visually generic but still connected to earthwork-named types, endpoints and dialogs.
+7. Bituminous materials, mix-template/JMF derivation and prime/tack emulsion demand already exist in the BOM engine.
+
+Do not implement Bituminous support by only adding more keywords to isEarthworkBoqItem or by inserting bituminous keys into the current earthwork-only arrays.
+
+DO NOT TOUCH OR REGRESS
+
+Do not alter:
+
+- the proven earthwork quantity exclusion behaviour;
+- operational arrangement-status gating;
+- overlap quantity caps;
+- bar-level phasing;
+- legacy arrangement fallback;
+- pending revisions not affecting demand;
+- immediate query invalidation;
+- current Earthwork arrangement records or history;
+- GSB/WMM classification and demand;
+- UOM conversion;
+- current JMF/mix-template calculations;
+- bitumen and emulsion normalisation;
+- PI/IRN/GRN;
+- Stores stock;
+- Plant production records;
+- DPR;
+- Work Programme calendar axis;
+- Auto Sequence;
+- LHS/RHS;
+- baseline/reforecasting;
+- Concrete/RMC arrangements;
+- culvert/structure arrangements;
+- subcontract billing;
+- Cancel GRN.
+
+PART A — CREATE A SHARED CATEGORY TEMPLATE REGISTRY
+
+1. Create a shared Execution Arrangement category registry
+
+Create one shared module, for example:
+
+shared/executionArrangementCategories.ts
+
+It must be the authoritative source for category-specific:
+
+- category key;
+- label;
+- eligible BOQ classification;
+- arrangement types;
+- component keys;
+- component labels;
+- default responsibility templates;
+- significant execution components used for state derivation;
+- material responsibility components;
+- equipment/resource mappings;
+- labour mappings;
+- diesel/fuel mappings;
+- fields relevant to the category.
+
+Minimum categories:
+
+- earthwork
+- bituminous
+
+Do not duplicate the same arrays separately in client, server and planning engine.
+
+2. Move earthwork vocabulary into the registry without changing behaviour
+
+Move or reference the existing earthwork component list:
+
+- material_source
+- source_identification
+- excavation
+- loading
+- transport
+- dumping
+- spreading
+- watering
+- compaction
+- royalty_seigniorage
+- permits_approvals
+- equipment
+- tippers
+- operators_drivers
+- diesel_fuel
+- survey_setting_out
+- quality_testing
+
+Preserve the current earthwork labels, templates and demand behaviour.
+
+Do not rename stored keys during this batch.
+
+3. Make the components model generic
+
+Use:
+
+Record<string, ComponentResponsibility>
+
+with permitted responsibility values based on the current model:
+
+- company / hlc compatibility value
+- agency
+- main_contractor, if required
+- client
+- shared
+- not_applicable
+- not_decided
+
+Existing stored `hlc` values must remain valid.
+
+Do not migrate existing component JSON unnecessarily.
+
+PART B — SAFE DATABASE GENERALISATION
+
+4. Add workCategory
+
+Add a stable text column to the existing arrangement table:
+
+work_category
+
+Supported values in this batch:
+
+- earthwork
+- bituminous
+
+Migration requirements:
+
+- additive and idempotent;
+- existing rows backfilled/defaulted to earthwork;
+- no existing row lost;
+- no existing API broken;
+- old rows without a value treated as earthwork during transition.
+
+After backfill, enforce server validation for supported values.
+
+Do not immediately rename the physical table in this batch.
+
+5. Add bituminous item type
+
+Add a nullable category-specific field or safe JSON metadata for:
+
+- prime_coat
+- tack_coat
+- dbm
+- bc
+- sdbc
+- bituminous_macadam
+- seal_coat
+- premix_carpet
+- other_bituminous
+
+Do not force earthwork rows to populate it.
+
+6. Generalise only fields that must be common
+
+Continue reusing common fields:
+
+- project;
+- BOQ item;
+- programme-bar allocations;
+- agency;
+- quantity;
+- UOM;
+- rate;
+- dates;
+- daily output;
+- components;
+- inclusions;
+- exclusions;
+- notes;
+- status;
+- revision history.
+
+Earthwork-only fields such as:
+
+- borrowSource;
+- sourceExcavationBoqItemId;
+- excavator count;
+- tipper capacity;
+
+may remain nullable legacy/category fields.
+
+Do not display them for bituminous arrangements.
+
+Add category metadata for bituminous-specific fields only where they cannot be represented through components or existing common fields.
+
+PART C — SEPARATE BITUMINOUS CLASSIFICATION
+
+7. Do not loosen the earthwork classifier
+
+Keep isEarthworkBoqItem and bulkMaterialClassification behaviour unchanged.
+
+Do not allow:
+
+- Prime Coat;
+- Tack Coat;
+- DBM;
+- BC;
+- SDBC;
+- BM;
+- PCC;
+- RCC;
+
+to enter the earthwork category.
+
+8. Add isBituminousBoqItem
+
+Create a separate shared classifier using:
+
+- explicit BOQ work category/layer metadata first;
+- accepted complete descriptions and abbreviations second;
+- manual classification override last.
+
+Recognise:
+
+- Prime Coat;
+- Tack Coat;
+- Dense Bituminous Macadam / DBM;
+- Bituminous Concrete / BC;
+- Semi-Dense Bituminous Concrete / SDBC;
+- Bituminous Macadam / BM;
+- Seal Coat;
+- Premix Carpet;
+- Open-Graded Premix Surfacing;
+- Asphalt Concrete;
+- Bituminous Mix Supply;
+- Bituminous Supply and Lay;
+- Emulsion Spraying.
+
+Do not classify using loose words alone such as:
+
+- coat;
+- mix;
+- concrete;
+- plant.
+
+9. Protect BC versus cement concrete
+
+Examples:
+
+- “Providing and laying Bituminous Concrete” → bituminous
+- “BC 40 mm” under pavement/bituminous category → bituminous
+- “PCC M15” → not bituminous
+- “RCC M30” → not bituminous
+- “Cement Concrete” → not bituminous
+
+Add real tests for these ambiguous abbreviations.
+
+10. Manual override
+
+Allow PM/Admin to set:
+
+- Bituminous Arrangement Eligible
+- Not Bituminous
+- Review Required
+
+Store:
+
+- override value;
+- reason;
+- user;
+- timestamp.
+
+Manual classification must take precedence over later keyword detection.
+
+PART D — GENERALISE EXECUTION-STATE DERIVATION
+
+11. Remove hard-coded earthwork execution components from state derivation
+
+executionState.ts currently determines substantial agency responsibility using earthwork keys such as excavation, loading, transport, spreading, watering, compaction, equipment and tippers.
+
+Change it to obtain significant execution components from the selected category registry.
+
+Examples:
+
+Earthwork significant components:
+
+- excavation;
+- loading;
+- transport;
+- spreading;
+- watering;
+- compaction;
+- equipment;
+- tippers.
+
+Bituminous mix-work significant components:
+
+- mix_production;
+- transport;
+- paving;
+- compaction;
+- plant;
+- paver;
+- rollers.
+
+Prime/Tack significant components:
+
+- surface_cleaning;
+- spraying;
+- sprayer;
+- spraying_crew.
+
+Do not let bituminous state derivation inspect earthwork-only keys.
+
+12. Generalise outsourced arrangement types
+
+The state engine currently recognises only earthwork arrangement type values.
+
+Make outsourced/in-house/client-supplied semantics category-driven.
+
+Preserve all current earthwork type values.
+
+Add bituminous arrangement types through the shared category registry.
+
+13. Keep the same seven visible states
+
+Use:
+
+- Execution Arrangement Required
+- Company In-house
+- Outsourcing Proposed
+- Outsourcing Approved
+- Partly Outsourced
+- Client Supplied
+- On Hold
+
+The configured company name may be shown instead of hard-coded HLC in new generic UI.
+
+Do not change historical earthwork state results.
+
+PART E — GENERALISE THE DIALOG AND PANEL
+
+14. Do not append bituminous fields to the earthwork-only form blindly
+
+Refactor EarthworkArrangementDialog into either:
+
+- a generic ExecutionArrangementDialog with category templates; or
+- a thin shared shell plus category-specific form sections.
+
+The same panel and API lifecycle must be used.
+
+Do not create an unrelated second form.
+
+15. Category-based component table
+
+When category = earthwork:
+
+- show the current earthwork fields and components unchanged.
+
+When category = bituminous:
+
+- show only the relevant bituminous item fields and components.
+
+Prime/Tack must not show:
+
+- borrow source;
+- royalty;
+- excavation;
+- tippers;
+- paver;
+- HMP,
+
+unless manually added under an advanced/special scope.
+
+DBM/BC must not show:
+
+- borrow source;
+- excavation;
+- watering;
+- royalty,
+
+by default.
+
+16. Work Programme eligibility
+
+Replace the single `isEarthworkBar` gate with a category result such as:
+
+executionArrangementCategory =
+  earthwork | bituminous | null
+
+Enable the same:
+
+- execution-state badge;
+- handshake icon;
+- BarArrangementPanel;
+
+when the category is supported.
+
+Pass the category into:
+
+- state hook;
+- panel;
+- dialog;
+- APIs;
+- demand input.
+
+Do not enable arrangements merely because an old arrangement happens to exist unless the BOQ/category is resolved safely.
+
+PART F — BITUMINOUS COMPONENT VOCABULARY
+
+17. Define explicit bituminous component keys
+
+Minimum materials:
+
+- coarse_aggregates
+- fine_aggregates
+- manufactured_sand
+- mineral_filler
+- binder_bitumen
+- emulsion
+- additives
+- anti_stripping_agent
+
+Production:
+
+- job_mix_formula
+- mix_production
+- hot_mix_plant
+- plant_operators
+- plant_fuel
+- plant_electricity
+- loading_at_plant
+- production_qc
+
+Transport:
+
+- mix_transport
+- transport_tippers
+- transport_drivers
+- transport_diesel
+- temperature_protection
+
+Spraying:
+
+- surface_cleaning
+- prime_tack_material
+- mechanical_sprayer
+- spraying_crew
+- sprayer_fuel
+- application_control
+
+Laying/compaction:
+
+- paver
+- paving_crew
+- tandem_roller
+- pneumatic_tyre_roller
+- finish_roller
+- roller_operators
+- paving_diesel
+- joint_preparation
+- edge_treatment
+- compaction_control
+
+Site support:
+
+- survey_levels
+- traffic_control
+- field_qc
+- core_testing
+- laboratory_testing
+- safety
+- wastage
+
+Only expose components applicable to the selected bituminous item type.
+
+18. Default templates
+
+Implement category-registry templates for:
+
+- Complete Supply and Lay
+- Main Contractor Supplies Binder
+- Finished Mix Supply Only
+- Mix Production Only
+- Production and Transport
+- Laying and Compaction Only
+- Prime/Tack Spraying Only
+- Material Plus Spraying
+- Shared Responsibility
+- Company In-house
+- Client Supplied
+- Not Decided
+
+Defaults must remain editable before submission.
+
+PART G — EXPLICIT COMPONENT-TO-DEMAND MAPPING
+
+19. Do not rely only on regex equipment-name matching
+
+The current earthwork engine partly maps equipment and labour using regular expressions.
+
+For bituminous support, create an explicit maintained mapping registry.
+
+Preferred sources in order:
+
+A. explicit resource component metadata on the BOQ rate-analysis/resource row;
+B. category registry mapping by canonical equipment/material/resource key;
+C. narrow backward-compatible regex fallback only for historic unmapped records.
+
+Do not use the regex fallback as the primary design.
+
+20. Stable bituminous resource mappings
+
+At minimum map:
+
+Materials:
+
+- aggregate material rows → appropriate aggregate components;
+- binder/VG bitumen → binder_bitumen;
+- emulsion for spray coats → emulsion or prime_tack_material;
+- filler → mineral_filler;
+- additives → additives/anti_stripping_agent.
+
+Equipment:
+
+- HMP/hot-mix plant → hot_mix_plant / mix_production;
+- loader at plant → loading_at_plant;
+- transport tipper/truck → mix_transport / transport_tippers;
+- mechanical sprayer → mechanical_sprayer;
+- paver → paver;
+- tandem roller → tandem_roller;
+- PTR/pneumatic roller → pneumatic_tyre_roller;
+- finish roller → finish_roller.
+
+Labour:
+
+- plant operator → plant_operators;
+- driver → transport_drivers;
+- spraying crew → spraying_crew;
+- paving crew → paving_crew;
+- roller operator → roller_operators;
+- QC/lab staff → production_qc / field_qc / laboratory_testing.
+
+Fuel:
+
+- plant fuel → plant_fuel;
+- tipper diesel → transport_diesel;
+- sprayer fuel → sprayer_fuel;
+- paving/rolling fuel → paving_diesel.
+
+21. Earthwork compatibility
+
+Do not rewrite the verified earthwork exclusion engine unnecessarily.
+
+Earthwork may continue using its current mappings initially, but migrate reusable mapping infrastructure into the shared registry where safe.
+
+All existing earthwork tests must still pass.
+
+PART H — REUSE EXISTING BITUMINOUS BOM AND RATE ANALYSIS
+
+22. Verify the existing recipe before filtering
+
+The BOM engine already derives recognised bituminous:
+
+- aggregates;
+- binder;
+- filler;
+- mix-template/JMF materials;
+- prime/tack emulsion.
+
+Before applying an arrangement, verify that the BOQ item’s loaded recipe contains all expected resources.
+
+Show an explicit warning when a responsibility component has no corresponding demand resource:
+
+DEMAND_COMPONENT_MAPPING_MISSING
+
+Example:
+
+Arrangement assigns paver to Agency, but the BOQ rate analysis contains no paver resource.
+
+Do not pretend paver demand was excluded when no paver demand existed in the first place.
+
+23. Do not generate fictional resources
+
+The arrangement system filters calculated demand.
+
+It must not invent:
+
+- plant hours;
+- paver hours;
+- roller hours;
+- diesel;
+- labour;
+
+when those resources are absent from the rate analysis, productivity configuration or existing recipe.
+
+Instead show:
+
+“Execution responsibility recorded, but the BOQ demand recipe has no mapped Paver resource.”
+
+24. Preserve JMF and mix-template calculation
+
+Rate analysis/JMF remains the source of:
+
+- aggregate proportions;
+- binder percentage;
+- filler/additives;
+- MT/CUM/SQM conversion where already approved;
+- plant/resource coefficients;
+- equipment hours;
+- labour;
+- fuel norms.
+
+Do not modify the JMF because one programme bar is outsourced.
+
+PART I — DEMAND FILTERING RULES
+
+25. Current company only
+
+Only components assigned to the company using this SitePulse deployment generate:
+
+- materials;
+- HMP production;
+- plant resources;
+- equipment;
+- labour;
+- diesel;
+- procurement action.
+
+External-party components remain visible as physical/commercial responsibility but are excluded from Company demand.
+
+26. Finished Mix Supply Only
+
+When Agency supplies finished DBM/BC mix:
+
+Exclude for that allocated bar quantity:
+
+- aggregates;
+- binder;
+- filler;
+- additives;
+- HMP production;
+- plant fuel;
+- plant labour.
+
+Retain only Company responsibilities such as:
+
+- transport;
+- paver;
+- rollers;
+- paving labour;
+- site diesel;
+- field QC.
+
+Prevent simultaneous raw-material demand and finished-mix supply demand for the same quantity.
+
+27. Main Contractor Supplies Binder
+
+Retain Company/Main Contractor binder demand.
+
+Exclude Agency-owned:
+
+- aggregates;
+- filler;
+- production;
+- plant fuel;
+- transport;
+- paving;
+- compaction;
+- related labour and fuel.
+
+28. Laying Only
+
+Retain Company:
+
+- raw materials;
+- JMF;
+- HMP production;
+- plant fuel;
+- loading;
+- transport.
+
+Exclude Agency-owned:
+
+- paver;
+- rollers;
+- site labour;
+- paving/rolling diesel.
+
+29. Prime/Tack spraying
+
+Keep execution quantity in SQM.
+
+Separate:
+
+- emulsion/material responsibility;
+- sprayer responsibility;
+- spraying labour;
+- sprayer fuel;
+- surface cleaning.
+
+Do not use emulsion MT/litres as the arrangement allocation quantity when the programme bar is in SQM.
+
+30. Partial and shared responsibility
+
+Shared components require an explicit:
+
+- percentage;
+- quantity;
+- programme-bar allocation; or
+- named component split.
+
+Never assume 50:50.
+
+Validate component percentages total 100%.
+
+PART J — GENERIC REGISTER AND PROCUREMENT
+
+31. Generalise the register
+
+ExecutionArrangements.tsx must support category filters:
+
+- Earthwork
+- Bituminous
+
+Remove hard dependencies on earthwork-only dialog/type naming where practical.
+
+The same register must show:
+
+- work category;
+- BOQ item;
+- programme bar;
+- item/package type;
+- agency;
+- allocated quantity;
+- UOM;
+- rate/value;
+- Company responsibility summary;
+- external-party responsibility summary;
+- current state;
+- pending revision;
+- open-panel action.
+
+Do not create a separate bituminous page.
+
+32. Procurement remains downstream
+
+For bituminous items show only:
+
+- execution state;
+- package type;
+- Agency quantity;
+- Company actionable materials/resources;
+- timing source;
+- View in Work Programme.
+
+Do not show the full responsibility matrix or duplicate editor.
+
+33. No false certainty
+
+When the rate-analysis recipe lacks a mapped resource, Procurement must not state:
+
+“Paver excluded”
+
+unless paver demand actually existed and was filtered.
+
+Show missing-mapping warnings separately.
+
+PART K — SCHEMA/API COMPATIBILITY
+
+34. Preserve existing endpoint compatibility
+
+Existing earthwork URLs and query keys may continue temporarily for backward compatibility.
+
+However, add generic API aliases or category parameters so bituminous arrangements are not semantically dependent on earthwork route names forever.
+
+Do not break current clients.
+
+35. Server-side category validation
+
+The server must validate:
+
+- work category;
+- item eligibility;
+- component keys allowed for that category;
+- arrangement type allowed for that category;
+- bar/BOQ/project match;
+- allocation quantity;
+- shared-responsibility totals;
+- revision rules.
+
+Do not rely only on UI validation.
+
+PART L — TESTS
+
+36. Current-code regression tests
+
+All existing real tests must remain passing for:
+
+- earthwork full outsourcing;
+- earthwork partial responsibility;
+- status gating;
+- overlap caps;
+- HLC/company-supplied diesel;
+- bar-period phasing;
+- legacy fallback;
+- GSB/WMM;
+- pending revision;
+- Procurement simplification.
+
+37. Category-state tests
+
+Earthwork complete outsourcing:
+
+- state unchanged.
+
+DBM complete supply and lay:
+
+- Outsourcing Approved.
+
+DBM split material/execution responsibility:
+
+- Partly Outsourced.
+
+Bituminous proposal not approved:
+
+- Outsourcing Proposed.
+
+Cancelled bituminous arrangement:
+
+- Execution Arrangement Required.
+
+38. Classifier tests
+
+Confirm:
+
+- Prime Coat → bituminous
+- Tack Coat → bituminous
+- DBM → bituminous
+- Bituminous Concrete → bituminous
+- BC under pavement context → bituminous
+- SDBC → bituminous
+- BM → bituminous
+- Seal Coat → bituminous
+
+Confirm:
+
+- GSB → not bituminous
+- WMM → not bituminous
+- PCC → not bituminous
+- RCC → not bituminous
+- Cement Concrete → not bituminous
+- Borrow Earth → earthwork
+
+39. Demand tests using the real production engine
+
+A. Complete DBM supply and lay
+
+Agency responsible for all materials, production, transport, paving, compaction, labour and fuel.
+
+Expected:
+
+- physical quantity retained;
+- Company materials zero for allocated quantity;
+- HMP requirement zero;
+- relevant equipment/labour/diesel zero;
+- no negative demand.
+
+B. Main Contractor supplies binder
+
+Expected:
+
+- binder retained;
+- Agency-owned aggregates, production and execution excluded.
+
+C. Finished mix supply only
+
+Expected:
+
+- raw materials and production excluded;
+- Company transport, paver, rollers and site diesel retained.
+
+D. Laying only
+
+Expected:
+
+- materials/production/transport retained;
+- paver/rollers/laying labour/site diesel excluded.
+
+E. Prime Coat
+
+Company supplies emulsion; Agency supplies sprayer, crew and fuel.
+
+Expected:
+
+- emulsion retained;
+- sprayer, spraying labour and sprayer fuel excluded;
+- SQM quantity unchanged.
+
+F. Recipe missing resource
+
+Arrangement assigns paver to Agency, but the item recipe has no paver resource.
+
+Expected:
+
+- arrangement saves;
+- no invented paver demand;
+- DEMAND_COMPONENT_MAPPING_MISSING warning shown;
+- no false “paver demand excluded” message.
+
+G. Period phasing
+
+August DBM bar outsourced.
+September DBM bar Company in-house.
+
+Expected:
+
+- August reduced;
+- September unchanged.
+
+H. Finished-mix double counting
+
+Agency supplies finished mix.
+
+Expected:
+
+- no duplicate raw aggregate/binder/filler requirement for that quantity.
+
+40. Live proof
+
+Using a realistic project demonstrate:
+
+Prime Coat:
+- Main Contractor supplies emulsion;
+- HLC/Agency sprays.
+
+DBM:
+- Main Contractor supplies bitumen;
+- HLC/Agency supplies aggregates, produces, transports and lays.
+
+BC:
+- HLC/Agency complete supply and lay.
+
+Show:
+
+- programme-bar category recognition;
+- badge and shared panel;
+- category-correct component vocabulary;
+- separate quantities/UOMs/rates;
+- correct material demand;
+- correct HMP production;
+- correct transport/sprayer/paver/roller/labour/diesel filtering;
+- missing-resource warnings where applicable;
+- compact Procurement result;
+- generic register entry;
+- controlled revisions;
+- no Earthwork or GSB/WMM regression.
+
+Final requirement
+
+This batch is complete only when:
+
+1. the arrangement framework is genuinely category-aware rather than merely renamed;
+2. earthwork behaviour remains unchanged;
+3. bituminous bars use the same panel, workflow, allocation and register;
+4. execution-state derivation uses category-specific significant components;
+5. demand filtering uses explicit maintained mappings before regex fallback;
+6. existing JMF/rate-analysis demand is filtered rather than rewritten;
+7. missing recipe resources are disclosed rather than invented;
+8. complete, partial and component-based bituminous outsourcing works;
+9. Procurement reflects only the Company’s actionable demand;
+10. real production-engine tests prove all outcomes.

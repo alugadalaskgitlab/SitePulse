@@ -3542,6 +3542,10 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
   numTippers: integer("num_tippers"),
   tipperCapacityCum: real("tipper_capacity_cum"),
 
+  // Instruction 028 — category generalisation
+  workCategory: text("work_category").notNull().default("earthwork"), // earthwork | bituminous
+  bituminousItemType: text("bituminous_item_type"), // prime_coat | tack_coat | dbm | bc | sdbc | bituminous_macadam | seal_coat | premix_carpet | other_bituminous (null for earthwork)
+
   // Responsibility
   dieselResponsibility: text("diesel_responsibility"), // agency | hlc | mixed
   components: jsonb("components"),              // per-component responsibility map

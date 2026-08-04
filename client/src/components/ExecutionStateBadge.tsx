@@ -74,6 +74,9 @@ export function useBarExecutionState(opts: {
   barPlannedQty: number;
   unit?: string;
   enabled?: boolean;
+  /** Instruction 028: work category of the bar's BOQ item (earthwork default). */
+  category?: "earthwork" | "bituminous" | null;
+  itemType?: string | null;
 }): ExecutionStateResult | null {
   const { arrangements, allocations } = useProjectArrangements(opts.projectId, opts.enabled !== false);
 
@@ -105,8 +108,12 @@ export function useBarExecutionState(opts: {
         pendingRevision: arr.pendingRevision ?? null,
       });
     }
-    return deriveExecutionState(opts.barPlannedQty, relevant, { uom: opts.unit ?? "CUM" });
-  }, [arrangements, allocations, opts.barId, opts.boqItemId, opts.barPlannedQty, opts.unit, opts.enabled]);
+    return deriveExecutionState(opts.barPlannedQty, relevant, {
+      uom: opts.unit ?? "CUM",
+      category: opts.category ?? "earthwork",
+      itemType: opts.itemType ?? null,
+    });
+  }, [arrangements, allocations, opts.barId, opts.boqItemId, opts.barPlannedQty, opts.unit, opts.enabled, opts.category, opts.itemType]);
 }
 
 export function ExecutionStateBadge({

@@ -49,6 +49,7 @@ interface BarAllocation {
 
 export function BarArrangementPanel({
   open, onClose, projectId, barId, boqItemId, barLabel, barPlannedQty, unit,
+  workCategory = "earthwork", bituminousItemType = null,
 }: {
   open: boolean;
   onClose: () => void;
@@ -58,6 +59,9 @@ export function BarArrangementPanel({
   barLabel: string;
   barPlannedQty: number;
   unit: string;
+  /** Instruction 028: category of the bar's BOQ item (drives dialog vocabulary). */
+  workCategory?: "earthwork" | "bituminous";
+  bituminousItemType?: string | null;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -130,6 +134,29 @@ export function BarArrangementPanel({
       refresh();
     },
     onError: (err: Error) => toast({ title: "Link failed", description: err.message, variant: "destructive" }),
+  });
+
+  // Instruction 028 §10: PM/Admin manual classification override (server enforces qto_boq edit)
+  const [overrideValue, setOverrideValue] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+  const overrideMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/boq/items/${boqItemId}/bulk-classification`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ classification: overrideValue, reason: overrideReason || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
+      return data;
+    },
+    onSuccess: () => {
+      toast({ title: "Classification updated", description: "Manual override recorded; it takes precedence over auto-detection." });
+      setOverrideValue(""); setOverrideReason("");
+      refresh();
+      queryClient.invalidateQueries({ queryKey: ["boq-items"] });
+    },
+    onError: (err: Error) => toast({ title: "Override failed", description: err.message, variant: "destructive" }),
   });
 
   const unlinkMutation = useMutation({
@@ -295,6 +322,41 @@ export function BarArrangementPanel({
               </div>
             )}
 
+            {/* Instruction 028 §10: PM/Admin manual classification override */}
+            <div className="rounded border border-slate-200 p-2 space-y-1.5">
+              <div className="font-semibold text-slate-600">Arrangement classification (manual override)</div>
+              <div className="flex items-center gap-2">
+                <select
+                  className="flex-1 h-7 rounded border border-slate-300 bg-white px-1.5 text-[12px]"
+                  value={overrideValue}
+                  onChange={(e) => setOverrideValue(e.target.value)}
+                  data-testid="select-classification-override"
+                >
+                  <option value="">Keep auto-detected ({workCategory === "bituminous" ? "Bituminous" : "Earthwork"})…</option>
+                  <option value="bituminous">Bituminous Arrangement Eligible</option>
+                  <option value="not_bituminous">Not Bituminous</option>
+                  <option value="review_required">Review Required</option>
+                </select>
+                <Button
+                  size="sm" variant="outline" className="h-7 text-[11px] px-2"
+                  disabled={!overrideValue || overrideMutation.isPending}
+                  onClick={() => overrideMutation.mutate()}
+                  data-testid="button-apply-classification-override"
+                >
+                  {overrideMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Apply"}
+                </Button>
+              </div>
+              {overrideValue && (
+                <Input
+                  className="h-7 text-[12px]"
+                  placeholder="Reason (recorded in audit log)"
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  data-testid="input-classification-reason"
+                />
+              )}
+            </div>
+
             <div className="flex items-center justify-between pt-1">
               <Button
                 variant="outline" size="sm" className="h-7 text-[11px] px-2"
@@ -320,6 +382,9 @@ export function BarArrangementPanel({
           boqItemId={boqItemId}
           materialLabel={barLabel}
           boqQty={barRemaining > 0 ? barRemaining : barPlannedQty}
+          workCategory={workCategory}
+          bituminousItemType={bituminousItemType}
+          uom={unit || undefined}
         />
       )}
 
@@ -333,6 +398,9 @@ export function BarArrangementPanel({
           boqItemId={editTarget.boqItemId ?? boqItemId}
           materialLabel={barLabel}
           editArrangement={editTarget as any}
+          workCategory={workCategory}
+          bituminousItemType={bituminousItemType}
+          uom={unit || undefined}
         />
       )}
     </>

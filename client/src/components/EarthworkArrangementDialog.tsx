@@ -24,6 +24,14 @@ import type { EarthworkArrangementSummary } from "@shared/planningEngine";
 import { deriveEarthworkSourcingBadge, checkCutFillBalance, suggestCutToFillSourceItem } from "@shared/planningEngine";
 import { invalidateArrangementQueries } from "@/lib/arrangementCache";
 import { deriveExecutionState, EXECUTION_STATE_COLORS } from "@shared/executionState";
+import {
+  type WorkCategoryKey,
+  BITUMINOUS_ARRANGEMENT_TYPE_LABELS,
+  BITUMINOUS_COMPONENT_LABELS,
+  bituminousComponentsForItemType,
+  bituminousDefaultComponents,
+  getCategoryDescriptor,
+} from "@shared/executionArrangementCategories";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -285,7 +293,7 @@ export function ArrangementSummaryCard({
     <div className="rounded border border-slate-200 bg-white p-3 space-y-1.5 text-[12px]">
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold text-slate-800 truncate">
-          {ARRANGEMENT_TYPE_LABELS[arr.arrangementType as ArrangementType] ?? arr.arrangementType}
+          {ARRANGEMENT_TYPE_LABELS[arr.arrangementType as ArrangementType] ?? BITUMINOUS_ARRANGEMENT_TYPE_LABELS[arr.arrangementType] ?? arr.arrangementType}
         </span>
         <ArrangementStatusBadge status={arr.status} />
       </div>
@@ -565,12 +573,32 @@ interface EarthworkArrangementDialogProps {
    */
   sourceItemCount?: number;
   /** Pre-fill for editing an existing arrangement */
-  editArrangement?: EarthworkArrangementSummary & { inclusions?: string; exclusions?: string; notes?: string; borrowSource?: string; avgLeadKm?: number };
+  editArrangement?: EarthworkArrangementSummary & { inclusions?: string; exclusions?: string; notes?: string; borrowSource?: string; avgLeadKm?: number; workCategory?: string; bituminousItemType?: string | null };
+  /** Instruction 028: category of the work — drives arrangement types, component
+   *  vocabulary and templates. Defaults to earthwork (fully backward-compatible). */
+  workCategory?: WorkCategoryKey;
+  /** Instruction 028: bituminous sub-type (dbm, prime_coat …) — scopes components. */
+  bituminousItemType?: string | null;
+  /** Unit of measure for quantities (CUM for earthwork; SQM/MT for bituminous). */
+  uom?: string;
 }
 
 export function EarthworkArrangementDialog({
   open, onClose, onSaved, projectId, boqItemId, materialLabel, boqQty, sourceBoqItems, sourceItemCount, editArrangement,
+  workCategory: workCategoryProp, bituminousItemType: bituminousItemTypeProp, uom: uomProp,
 }: EarthworkArrangementDialogProps) {
+  // ── Instruction 028: category resolution (edit rows win over props) ────────
+  const category: WorkCategoryKey = (editArrangement?.workCategory as WorkCategoryKey) ?? workCategoryProp ?? "earthwork";
+  const isBituminous = category === "bituminous";
+  const bitItemType = editArrangement?.bituminousItemType ?? bituminousItemTypeProp ?? null;
+  const displayUom = uomProp || (editArrangement as any)?.uom || (isBituminous ? "SQM" : "CUM");
+  const typeLabels: Record<string, string> = isBituminous ? BITUMINOUS_ARRANGEMENT_TYPE_LABELS : ARRANGEMENT_TYPE_LABELS;
+  const componentKeysForCategory: readonly string[] = isBituminous ? bituminousComponentsForItemType(bitItemType as any) : COMPONENT_KEYS;
+  const componentLabels: Record<string, string> = isBituminous ? BITUMINOUS_COMPONENT_LABELS : COMPONENT_LABELS;
+  const defaultComponentsFor = (t: string): Record<string, ComponentResponsibility> =>
+    isBituminous
+      ? bituminousDefaultComponents(t, bitItemType as any) as Record<string, ComponentResponsibility>
+      : defaultComponents(t as ArrangementType);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isEdit = !!editArrangement;
@@ -604,10 +632,10 @@ export function EarthworkArrangementDialog({
     editArrangement?.plannedDailyOutput != null ? String(editArrangement.plannedDailyOutput) : ""
   );
   const [notes, setNotes] = useState((editArrangement as any)?.notes ?? "");
-  const [components, setComponents] = useState<Record<ComponentKey, ComponentResponsibility>>(
+  const [components, setComponents] = useState<Record<string, ComponentResponsibility>>(
     editArrangement?.components != null
-      ? { ...defaultComponents("not_decided"), ...editArrangement.components as Record<ComponentKey, ComponentResponsibility> }
-      : defaultComponents("not_decided")
+      ? { ...defaultComponentsFor("not_decided"), ...editArrangement.components as Record<string, ComponentResponsibility> }
+      : defaultComponentsFor("not_decided")
   );
 
   // ── Instruction 024: per-source allocation state (multi-BOQ rows) ──────────
@@ -630,7 +658,7 @@ export function EarthworkArrangementDialog({
   // Apply template when arrangement type changes
   function handleTypeChange(t: ArrangementType) {
     setArrangementType(t);
-    setComponents(defaultComponents(t));
+    setComponents(defaultComponentsFor(t));
   }
 
   // Derived
@@ -643,14 +671,9 @@ export function EarthworkArrangementDialog({
   const estimatedValue = allocQtyNum > 0 && rateNum > 0 ? allocQtyNum * rateNum : null;
   const expectedDays = allocQtyNum > 0 && dailyOutputNum > 0 ? Math.ceil(allocQtyNum / dailyOutputNum) : null;
 
-  // Validation
-  const outsourcedTypes: ArrangementType[] = [
-    "fully_outsourced_composite",
-    "vendor_material_delivered",
-    "hlc_source_outsourced_execution",
-    "partly_outsourced",
-  ];
-  const needsAgencyName = outsourcedTypes.includes(arrangementType);
+  // Validation — outsourced types come from the category descriptor (028)
+  const categoryDescriptor = getCategoryDescriptor(category);
+  const needsAgencyName = categoryDescriptor.outsourcedTypes.has(arrangementType as string);
   const canDraft = allocQtyNum > 0 && arrangementType !== "not_decided";
   const canSubmit = canDraft && (!needsAgencyName || agencyName.trim().length > 0);
 
@@ -675,13 +698,16 @@ export function EarthworkArrangementDialog({
       materialLabel,
       arrangementType,
       saveIntent,
+      // Instruction 028: category + sub-type (immutable after create; server validates)
+      ...(isEdit ? {} : { workCategory: category, bituminousItemType: isBituminous ? bitItemType : null }),
       allocatedQty: allocQtyNum,
-      uom: "CUM",
+      uom: displayUom,
       agencyName: agencyName.trim() || null,
       reachLabel: reachLabel.trim() || null,
       agreedRate: rateNum > 0 ? rateNum : null,
-      borrowSource: borrowSource.trim() || null,
-      avgLeadKm: safeNum(avgLeadKm),
+      // Earthwork-only source fields — never sent for bituminous (028 §17)
+      borrowSource: isBituminous ? null : (borrowSource.trim() || null),
+      avgLeadKm: isBituminous ? null : safeNum(avgLeadKm),
       plannedStartDate: plannedStartDate || null,
       targetCompletionDate: targetCompletionDate || null,
       plannedDailyOutput: dailyOutputNum > 0 ? dailyOutputNum : null,
@@ -816,7 +842,7 @@ export function EarthworkArrangementDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(Object.entries(ARRANGEMENT_TYPE_LABELS) as [ArrangementType, string][]).map(([k, v]) => (
+                {(Object.entries(typeLabels) as [ArrangementType, string][]).map(([k, v]) => (
                   <SelectItem key={k} value={k} className="text-[12px]">{v}</SelectItem>
                 ))}
               </SelectContent>
@@ -868,13 +894,13 @@ export function EarthworkArrangementDialog({
               </div>
               {allocQtyNum > 0 && (
                 <p className="text-[11px] text-slate-500">
-                  Total: <span className="font-semibold font-mono">{allocQtyNum.toLocaleString()} CUM</span>
+                  Total: <span className="font-semibold font-mono">{allocQtyNum.toLocaleString()} {displayUom}</span>
                 </p>
               )}
             </div>
           ) : (
             <div className="space-y-1">
-              <Label className="text-xs font-semibold">Allocated Quantity ({boqQty != null ? `BOQ: ${boqQty} CUM` : "CUM"})</Label>
+              <Label className="text-xs font-semibold">Allocated Quantity ({boqQty != null ? `BOQ: ${boqQty} ${displayUom}` : displayUom})</Label>
               <Input
                 className="h-8 text-[12px] font-mono"
                 type="number" min={0}
@@ -887,7 +913,7 @@ export function EarthworkArrangementDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs font-semibold">Agreed Rate (₹/CUM)</Label>
+              <Label className="text-xs font-semibold">Agreed Rate (₹/{displayUom})</Label>
               <Input
                 className="h-8 text-[12px] font-mono"
                 type="number" min={0}
@@ -916,8 +942,8 @@ export function EarthworkArrangementDialog({
             />
           </div>
 
-          {/* Source details (shown for earth-supply arrangements) */}
-          {["fully_outsourced_composite", "hlc_source_outsourced_execution", "vendor_material_delivered"].includes(arrangementType) && (
+          {/* Source details (earthwork-only: borrow pits / leads — hidden for bituminous, 028 §17) */}
+          {!isBituminous && ["fully_outsourced_composite", "hlc_source_outsourced_execution", "vendor_material_delivered"].includes(arrangementType) && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs font-semibold">Borrow Source / Quarry Location</Label>
@@ -941,7 +967,7 @@ export function EarthworkArrangementDialog({
               <Input className="h-8 text-[12px]" type="date" value={targetCompletionDate} onChange={e => setTargetCompletionDate(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs font-semibold">Daily Output (CUM/day)</Label>
+              <Label className="text-xs font-semibold">Daily Output ({displayUom}/day)</Label>
               <Input
                 className="h-8 text-[12px] font-mono"
                 type="number" min={0}
@@ -970,9 +996,9 @@ export function EarthworkArrangementDialog({
                   </tr>
                 </thead>
                 <tbody>
-                  {COMPONENT_KEYS.map((key, i) => (
+                  {componentKeysForCategory.map((key, i) => (
                     <tr key={key} className={i % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
-                      <td className="px-2 py-1 text-slate-600 font-medium">{COMPONENT_LABELS[key]}</td>
+                      <td className="px-2 py-1 text-slate-600 font-medium">{componentLabels[key] ?? key}</td>
                       <td className="px-2 py-1">
                         <Select
                           value={components[key]}

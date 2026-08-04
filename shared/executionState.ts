@@ -48,14 +48,17 @@ const PROPOSED_STATUSES = new Set(["draft", "submitted", "returned"]);
 /** Statuses that no longer count at all. */
 const INACTIVE_STATUSES = new Set(["cancelled", "rejected"]);
 
-const OUTSOURCED_TYPES = new Set([
-  "fully_outsourced_composite",
-  "vendor_material_delivered",
-  "hlc_source_outsourced_execution",
-]);
+import {
+  getCategoryDescriptor,
+  significantComponentsFor,
+  type WorkCategoryKey,
+} from "./executionArrangementCategories";
 
-/** Execution components that decide whether responsibility is "substantially agency". */
-const EXECUTION_COMPONENTS = ["excavation", "loading", "transport", "spreading", "watering", "compaction", "equipment", "tippers"];
+/** Legacy earthwork sets kept as defaults (028 §12 — preserve all current earthwork type values). */
+const OUTSOURCED_TYPES = getCategoryDescriptor("earthwork").outsourcedTypes;
+
+/** Execution components that decide whether responsibility is "substantially agency" (earthwork default). */
+const EXECUTION_COMPONENTS = getCategoryDescriptor("earthwork").significantComponents;
 
 export interface ExecutionStateArrangement {
   id: number;
@@ -87,10 +90,19 @@ function fmt(n: number): string {
   return n.toLocaleString("en-IN", { maximumFractionDigits: 1 });
 }
 
-/** True when the arrangement's responsibility is substantially assigned to the Agency (§2). */
-export function isSubstantiallyAgency(components: Record<string, string> | null | undefined): boolean {
+/**
+ * True when the arrangement's responsibility is substantially assigned to the
+ * Agency (§2). 028 §11: significant components come from the category registry
+ * (earthwork defaults preserved; bituminous uses mix/spray-specific sets).
+ */
+export function isSubstantiallyAgency(
+  components: Record<string, string> | null | undefined,
+  category?: WorkCategoryKey | null,
+  itemType?: string | null,
+): boolean {
   if (!components) return true; // no matrix saved — trust the outsourced type
-  const relevant = EXECUTION_COMPONENTS.filter(c => components[c] && components[c] !== "not_applicable" && components[c] !== "not_decided");
+  const significant = category ? significantComponentsFor(category, itemType) : EXECUTION_COMPONENTS;
+  const relevant = significant.filter(c => components[c] && components[c] !== "not_applicable" && components[c] !== "not_decided");
   if (relevant.length === 0) return true;
   return relevant.every(c => components[c] === "agency" || components[c] === "client");
 }
@@ -105,9 +117,14 @@ export function isSubstantiallyAgency(components: Record<string, string> | null 
 export function deriveExecutionState(
   scopeQty: number,
   arrangements: ExecutionStateArrangement[],
-  opts?: { uom?: string; barOnHold?: boolean },
+  opts?: { uom?: string; barOnHold?: boolean; category?: WorkCategoryKey | null; itemType?: string | null },
 ): ExecutionStateResult {
   const uom = opts?.uom ?? "CUM";
+  // 028 §12 — outsourced/in-house/client semantics are category-driven.
+  const cat = getCategoryDescriptor(opts?.category ?? "earthwork");
+  const OUTSOURCED = cat.outsourcedTypes;
+  const INHOUSE = cat.inhouseTypes;
+  const CLIENT = cat.clientTypes;
   const active = arrangements.filter(a => !INACTIVE_STATUSES.has(a.status));
   const effective = active.filter(a => EFFECTIVE_STATUSES.has(a.status));
   const onHold = active.filter(a => a.status === "on_hold");
@@ -121,8 +138,8 @@ export function deriveExecutionState(
   const effQty = effectiveAll.reduce((s, a) => s + Math.max(0, a.qtyForScope), 0);
   const propQty = proposed.reduce((s, a) => s + Math.max(0, a.qtyForScope), 0);
   const agencyName =
-    effectiveAll.find(a => OUTSOURCED_TYPES.has(a.arrangementType) && a.agencyName)?.agencyName
-    ?? proposed.find(a => OUTSOURCED_TYPES.has(a.arrangementType) && a.agencyName)?.agencyName
+    effectiveAll.find(a => OUTSOURCED.has(a.arrangementType) && a.agencyName)?.agencyName
+    ?? proposed.find(a => OUTSOURCED.has(a.arrangementType) && a.agencyName)?.agencyName
     ?? null;
 
   const TOL = 0.001;
@@ -133,7 +150,7 @@ export function deriveExecutionState(
     label: EXECUTION_STATE_LABELS[state],
     badge: badge ?? EXECUTION_STATE_LABELS[state],
     agencyName,
-    effectiveOutsourcedQty: effectiveAll.filter(a => OUTSOURCED_TYPES.has(a.arrangementType)).reduce((s, a) => s + Math.max(0, a.qtyForScope), 0),
+    effectiveOutsourcedQty: effectiveAll.filter(a => OUTSOURCED.has(a.arrangementType)).reduce((s, a) => s + Math.max(0, a.qtyForScope), 0),
     proposedQty: propQty,
     pendingRevision,
     internalStatuses,
@@ -153,16 +170,16 @@ export function deriveExecutionState(
   // 3. Effective (approved) decisions drive the state.
   if (effQty > TOL) {
     const types = new Set(effectiveAll.filter(a => a.qtyForScope > TOL).map(a => a.arrangementType));
-    const allClient = Array.from(types).every(t => t === "client_supplied");
-    const allInhouse = Array.from(types).every(t => t === "hlc_in_house" || t === "reused_excavated");
-    const anyOutsourced = Array.from(types).some(t => OUTSOURCED_TYPES.has(t));
+    const allClient = Array.from(types).every(t => CLIENT.has(t));
+    const allInhouse = Array.from(types).every(t => INHOUSE.has(t));
+    const anyOutsourced = Array.from(types).some(t => OUTSOURCED.has(t));
 
     if (fullCoverage && allClient) return build("client_supplied");
     if (fullCoverage && allInhouse) return build("hlc_inhouse");
 
     if (anyOutsourced) {
-      const outsourcedEff = effectiveAll.filter(a => OUTSOURCED_TYPES.has(a.arrangementType));
-      const substantiallyAgency = outsourcedEff.every(a => isSubstantiallyAgency(a.components as Record<string, string> | null));
+      const outsourcedEff = effectiveAll.filter(a => OUTSOURCED.has(a.arrangementType));
+      const substantiallyAgency = outsourcedEff.every(a => isSubstantiallyAgency(a.components as Record<string, string> | null, opts?.category ?? null, opts?.itemType ?? null));
       if (fullCoverage && substantiallyAgency && outsourcedEff.reduce((s, a) => s + a.qtyForScope, 0) >= effQty - TOL) {
         return build("outsourcing_approved", agencyName ? `Outsourcing Approved · ${agencyName}` : undefined);
       }
@@ -177,14 +194,14 @@ export function deriveExecutionState(
   }
 
   // 4. Only proposals exist.
-  const proposedOutsourced = proposed.some(a => OUTSOURCED_TYPES.has(a.arrangementType));
+  const proposedOutsourced = proposed.some(a => OUTSOURCED.has(a.arrangementType));
   if (proposedOutsourced) return build("outsourcing_proposed");
   const proposedTypes = new Set(proposed.map(a => a.arrangementType));
-  if (Array.from(proposedTypes).every(t => t === "hlc_in_house" || t === "reused_excavated") && proposedTypes.size > 0) {
-    // An explicitly saved (but not approved) in-house decision still reads as HLC In-house per §2
+  if (Array.from(proposedTypes).every(t => INHOUSE.has(t)) && proposedTypes.size > 0) {
+    // An explicitly saved (but not approved) in-house decision still reads as In-house per §2
     return build("hlc_inhouse");
   }
-  if (Array.from(proposedTypes).every(t => t === "client_supplied") && proposedTypes.size > 0) return build("outsourcing_proposed");
+  if (Array.from(proposedTypes).every(t => CLIENT.has(t)) && proposedTypes.size > 0) return build("outsourcing_proposed");
   return build("arrangement_required");
 }
 

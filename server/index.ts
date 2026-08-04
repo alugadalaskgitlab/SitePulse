@@ -111,6 +111,7 @@ app.use((req, res, next) => {
           "approved_by_user_id","approved_at","returned_at","on_hold_reason",
           "completed_at","rejection_reason","cancellation_reason","created_at","updated_at",
           "source_excavation_boq_item_id",
+          "work_category","bituminous_item_type",
         ];
         const missing = required.filter(c => !existing.has(c));
         if (missing.length > 0) {

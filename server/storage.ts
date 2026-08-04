@@ -24225,10 +24225,16 @@ export class DatabaseStorage implements IStorage {
       ["completed_at", "TIMESTAMP"],
       // Cut-to-fill: link to the roadway-excavation BOQ item supplying this fill
       ["source_excavation_boq_item_id", "INTEGER"],
+      // Instruction 028 — category generalisation (additive + idempotent)
+      ["work_category", "TEXT"],
+      ["bituminous_item_type", "TEXT"],
     ];
     for (const [col, type] of newCols024) {
       await db.execute(sql.raw(`ALTER TABLE earthwork_arrangements ADD COLUMN IF NOT EXISTS ${col} ${type}`));
     }
+    // Instruction 028 §4 — backfill existing rows to earthwork; default for future rows
+    await db.execute(sql`UPDATE earthwork_arrangements SET work_category = 'earthwork' WHERE work_category IS NULL`);
+    await db.execute(sql`ALTER TABLE earthwork_arrangements ALTER COLUMN work_category SET DEFAULT 'earthwork'`);
 
     // 3. progress_entries — link to arrangement
     await db.execute(sql`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS earthwork_arrangement_id INTEGER`);
@@ -24429,7 +24435,9 @@ export class DatabaseStorage implements IStorage {
         FROM progress_entries pe
         JOIN dprs d ON d.id = pe.dpr_id
         WHERE pe.earthwork_arrangement_id = ${arrangementId}
-          AND d.status IN ('submitted', 'approved')
+          AND d.is_superseded = false
+          AND d.is_deleted = false
+          AND d.is_cancelled = false
           AND pe.quantity IS NOT NULL
           AND pe.quantity > 0
         ORDER BY d.date DESC

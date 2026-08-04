@@ -48,7 +48,11 @@ type RegisterArrangement = ProjectArrangement & {
   plannedDailyOutput?: number | null;
   components?: Record<string, string> | null;
   uom?: string | null;
+  workCategory?: string | null;
+  bituminousItemType?: string | null;
 };
+
+const CATEGORY_LABELS: Record<string, string> = { earthwork: "Earthwork", bituminous: "Bituminous" };
 
 const STATE_FILTERS: Array<{ value: ExecutionState | "all" | "pending_revision"; label: string }> = [
   { value: "all", label: "All states" },
@@ -62,6 +66,7 @@ export default function ExecutionArrangements() {
   const queryClient = useQueryClient();
 
   const [stateFilter, setStateFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [agencyFilter, setAgencyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [openPanel, setOpenPanel] = useState<{ barId: number; boqItemId: number; label: string; qty: number; unit: string } | null>(null);
@@ -90,7 +95,11 @@ export default function ExecutionArrangements() {
           id: a.id, status: a.status, arrangementType: a.arrangementType,
           qtyForScope: Number(a.allocatedQty), agencyName: a.agencyName,
           components: a.components ?? null, pendingRevision: a.pendingRevision ?? null,
-        }], { uom: a.uom ?? "CUM" });
+        }], {
+          uom: a.uom ?? "CUM",
+          category: (a.workCategory as "earthwork" | "bituminous") ?? "earthwork",
+          itemType: a.bituminousItemType ?? null,
+        });
         const qty = Number(a.allocatedQty) || 0;
         const rate = a.agreedRate != null ? Number(a.agreedRate) : null;
         const value = rate != null ? qty * rate : null;
@@ -102,13 +111,14 @@ export default function ExecutionArrangements() {
         };
       })
       .filter(r => {
+        if (categoryFilter !== "all" && (r.arr.workCategory ?? "earthwork") !== categoryFilter) return false;
         if (stateFilter === "pending_revision") return r.arr.pendingRevision != null;
         if (stateFilter !== "all" && r.state.state !== stateFilter) return false;
         if (agencyFilter && !(r.arr.agencyName ?? "").toLowerCase().includes(agencyFilter.toLowerCase())) return false;
         if (itemFilter && !(`${r.arr.materialLabel ?? ""} ${r.arr.boqItemId ?? ""}`).toLowerCase().includes(itemFilter.toLowerCase())) return false;
         return true;
       });
-  }, [arrangements, allocations, barById, stateFilter, agencyFilter, itemFilter]);
+  }, [arrangements, allocations, barById, stateFilter, categoryFilter, agencyFilter, itemFilter]);
 
   return (
     <div className="p-4 md:p-6 max-w-[1400px] mx-auto space-y-4">
@@ -134,6 +144,17 @@ export default function ExecutionArrangements() {
         >
           {STATE_FILTERS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
         </select>
+        {/* Instruction 028 §31: work-category filter */}
+        <select
+          className="h-8 rounded border border-slate-300 bg-white px-2 text-[12px]"
+          value={categoryFilter}
+          onChange={e => setCategoryFilter(e.target.value)}
+          data-testid="filter-work-category"
+        >
+          <option value="all">All categories</option>
+          <option value="earthwork">Earthwork</option>
+          <option value="bituminous">Bituminous</option>
+        </select>
         <Input className="h-8 w-44 text-[12px]" placeholder="Filter by agency…" value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} data-testid="filter-agency" />
         <Input className="h-8 w-44 text-[12px]" placeholder="Filter by BOQ item…" value={itemFilter} onChange={e => setItemFilter(e.target.value)} data-testid="filter-boq-item" />
       </div>
@@ -145,6 +166,7 @@ export default function ExecutionArrangements() {
           <TableHeader>
             <TableRow className="text-[11px]">
               <TableHead>BOQ Item</TableHead>
+              <TableHead>Category</TableHead>
               <TableHead>Stretch / Reach</TableHead>
               <TableHead>Agency</TableHead>
               <TableHead>Execution State</TableHead>
@@ -161,7 +183,7 @@ export default function ExecutionArrangements() {
           </TableHeader>
           <TableBody>
             {rows.length === 0 && (
-              <TableRow><TableCell colSpan={13} className="text-center text-slate-400 text-sm py-8">No execution arrangements match the current filters.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={14} className="text-center text-slate-400 text-sm py-8">No execution arrangements match the current filters.</TableCell></TableRow>
             )}
             {rows.map(r => {
               const c = EXECUTION_STATE_COLORS[r.state.state];
@@ -170,6 +192,11 @@ export default function ExecutionArrangements() {
                 <TableRow key={r.arr.id} className="text-[12px]" data-testid={`register-row-${r.arr.id}`}>
                   <TableCell className="max-w-[200px] truncate" title={r.arr.materialLabel ?? undefined}>
                     {r.arr.materialLabel ?? (r.arr.boqItemId != null ? `BOQ item #${r.arr.boqItemId}` : "—")}
+                  </TableCell>
+                  <TableCell>
+                    <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${(r.arr.workCategory ?? "earthwork") === "bituminous" ? "bg-stone-100 border-stone-300 text-stone-700" : "bg-amber-50 border-amber-200 text-amber-800"}`} data-testid={`register-category-${r.arr.id}`}>
+                      {CATEGORY_LABELS[r.arr.workCategory ?? "earthwork"] ?? r.arr.workCategory}
+                    </span>
                   </TableCell>
                   <TableCell className="max-w-[160px] truncate" title={r.stretchLabels.join(", ")}>
                     {r.stretchLabels.length > 0 ? r.stretchLabels.join(", ") : (r.arr.reachLabel || <span className="text-amber-600" title="Not assigned to a programme stretch">Whole item (legacy)</span>)}
@@ -240,6 +267,8 @@ export default function ExecutionArrangements() {
           boqItemId={editTarget.boqItemId}
           materialLabel={editTarget.materialLabel ?? `Arrangement #${editTarget.id}`}
           editArrangement={editTarget as any}
+          workCategory={(editTarget.workCategory as "earthwork" | "bituminous") ?? "earthwork"}
+          bituminousItemType={editTarget.bituminousItemType ?? null}
         />
       )}
     </div>

@@ -3,6 +3,16 @@
 // Pure TypeScript, no DB imports. Runs identically on server and client.
 // ────────────────────────────────────────────────────────────────────────────
 
+import {
+  mapEquipmentToComponents,
+  mapLabourToComponents,
+  mapMaterialToComponents,
+  bituminousFuelComponent,
+  significantComponentsFor,
+  findMissingDemandMappings,
+  type DemandComponentMappingWarning,
+} from "./executionArrangementCategories";
+
 export const WORKING_DAYS_DEFAULT = 26;
 export const WORKING_HRS_DEFAULT = 8;
 
@@ -524,6 +534,8 @@ export interface BomDemand {
   demandAdjustments?: DemandAdjustment[];
   /** Instruction 025 §11: overlapping active allocations detected (exclusion capped). */
   arrangementOverlaps?: ArrangementOverlapWarning[];
+  /** Instruction 028 §22/§33: responsibility components with no matching recipe resource. */
+  mappingWarnings?: DemandComponentMappingWarning[];
 }
 
 // ─── Instruction 025: Approved execution arrangements reduce HLC demand ──────
@@ -547,6 +559,10 @@ export interface ArrangementDemandInput {
   dieselResponsibility?: string | null;       // agency | hlc | mixed
   agencyName?: string | null;
   arrangementType?: string | null;
+  /** Instruction 028: arrangement work category (earthwork default for old rows). */
+  workCategory?: string | null;
+  /** Instruction 028: bituminous item sub-type (prime_coat, dbm, …). */
+  bituminousItemType?: string | null;
   /**
    * Instruction 026 §9: links to specific Work Programme bars. When present,
    * the linked quantity is excluded ONLY on that bar (its quantity and dates);
@@ -581,6 +597,9 @@ interface ArrangementSlice {
   agencyName?: string | null;
   /** Instruction 026: when set, this slice is phased to the linked programme bar's months. */
   barId?: number | null;
+  /** Instruction 028: category of the owning arrangement ("earthwork" when absent). */
+  workCategory?: string | null;
+  bituminousItemType?: string | null;
 }
 
 export interface ItemArrangementEffect {
@@ -627,6 +646,8 @@ export function buildArrangementEffects(
         dieselResponsibility: arr.dieselResponsibility,
         agencyName: arr.agencyName,
         barId: barId ?? null,
+        workCategory: arr.workCategory ?? "earthwork",
+        bituminousItemType: arr.bituminousItemType ?? null,
       });
     };
 
@@ -836,8 +857,15 @@ export function validateBarAllocation(input: BarAllocationValidationInput):
   return { ok: true };
 }
 
-/** Equipment slice exclusion: the owning component is positively non-HLC. */
+/** Equipment slice exclusion: the owning component is positively non-HLC.
+ *  028 §19: bituminous slices use the explicit registry mapping first; an
+ *  unmapped resource is NEVER excluded (no false certainty — §23/§33). */
 export function equipmentSliceExcluded(sl: ArrangementSlice, equipmentName: string): boolean {
+  if (sl.workCategory === "bituminous") {
+    const m = mapEquipmentToComponents("bituminous", equipmentName);
+    if (m.componentKeys.length === 0) return false; // unmapped → retain demand
+    return NON_HLC(respOf(sl.components, ...m.componentKeys));
+  }
   const keys = equipmentComponentKeys(equipmentName);
   return NON_HLC(respOf(sl.components, ...keys));
 }
@@ -849,6 +877,16 @@ export function equipmentSliceExcluded(sl: ArrangementSlice, equipmentName: stri
  */
 export function dieselSliceExcluded(sl: ArrangementSlice, equipmentName: string): boolean {
   if (!equipmentSliceExcluded(sl, equipmentName)) return false;
+  if (sl.workCategory === "bituminous") {
+    // 028 §20 Fuel: fuel follows its category-specific component (plant_fuel /
+    // transport_diesel / sprayer_fuel / paving_diesel); company-retained fuel
+    // stays even when the machine itself is agency-owned.
+    const fuelKey = bituminousFuelComponent(equipmentName);
+    const fuelComp = respOf(sl.components, fuelKey);
+    const dieselResp = sl.dieselResponsibility ?? null;
+    if (fuelComp === "hlc" || fuelComp === "main_contractor" || dieselResp === "hlc") return false;
+    return NON_HLC(fuelComp) || dieselResp === "agency";
+  }
   const dieselComp = respOf(sl.components, "diesel_fuel");
   const dieselResp = sl.dieselResponsibility ?? null;
   if (dieselComp === "hlc" || dieselResp === "hlc") return false; // HLC supplies diesel to agency
@@ -858,13 +896,28 @@ export function dieselSliceExcluded(sl: ArrangementSlice, equipmentName: string)
 /** Labour slice exclusion: mapped component non-HLC, or (general crew) the whole
  *  execution chain is non-HLC — never drop all labour just because an arrangement exists. */
 export function labourSliceExcluded(sl: ArrangementSlice, designation: string): boolean {
+  if (sl.workCategory === "bituminous") {
+    const m = mapLabourToComponents("bituminous", designation);
+    if (m.componentKeys.length > 0) return NON_HLC(respOf(sl.components, ...m.componentKeys));
+    // general crew: drops only when the whole bituminous execution chain is non-company
+    const sig = significantComponentsFor("bituminous", sl.bituminousItemType);
+    return sig.every(k => NON_HLC(respOf(sl.components, k)));
+  }
   const key = labourComponentKey(designation);
   if (key) return NON_HLC(respOf(sl.components, key));
   return EXECUTION_COMPONENT_KEYS.every(k => NON_HLC(respOf(sl.components, k)));
 }
 
-/** Material/source slice exclusion (Instruction 025 §6): agency or client owns the material. */
-export function materialSliceExcluded(sl: ArrangementSlice): boolean {
+/** Material/source slice exclusion (Instruction 025 §6): agency or client owns the material.
+ *  028: bituminous slices resolve the material's own component (binder vs aggregates vs
+ *  emulsion …) through the explicit registry; unmapped materials are never excluded. */
+export function materialSliceExcluded(sl: ArrangementSlice, materialName?: string): boolean {
+  if (sl.workCategory === "bituminous") {
+    if (!materialName) return false;
+    const m = mapMaterialToComponents("bituminous", materialName);
+    if (m.componentKeys.length === 0) return false;
+    return NON_HLC(respOf(sl.components, ...m.componentKeys));
+  }
   return NON_HLC(respOf(sl.components, "material_source", "source_identification"));
 }
 
@@ -1074,6 +1127,84 @@ export function isEarthworkBoqItem(item: BomInputItem): boolean {
   return (
     /embankment|subgrade|earthen\s*shoulder|shoulder|median\s*filling|borrow\s*soil|borrow\s*earth|selected\s*soil|selected\s*earth|suitable\s*soil|suitable\s*earth|embankment\s*material|subgrade\s*material|subgrade\s*soil|reused\s*excavat/i.test(desc)
   );
+}
+
+/**
+ * Instruction 028 §8 — Separate shared bituminous classifier.
+ * Order: explicit BOQ work-category/layer metadata → accepted complete
+ * descriptions/abbreviations → (manual override handled by the caller via
+ * executionArrangementCategoryForItem). Never classifies on loose words like
+ * "coat" / "mix" / "concrete" / "plant" alone.
+ */
+export function isBituminousBoqItem(item: BomInputItem): boolean {
+  const desc = item.description.toLowerCase();
+
+  // Prime/tack coats are sprayed OVER granular layers — their descriptions often
+  // mention WMM/GSB as the receiving surface, so check them before the veto.
+  const isSprayCoat = /\bprime[\s-]*coat\b|\btack[\s-]*coat\b/i.test(desc);
+
+  // Hard vetoes — cement concrete family and non-bituminous granular layers (028 §7/§9)
+  if (/\bpcc\b|\brcc\b|cement\s*concrete|plain\s*concrete|reinforced\s*concrete/i.test(desc)) return false;
+  if (!isSprayCoat && /gsb|granular\s*sub[-\s]*base|wmm|wet\s*mix\s*macadam/i.test(desc)) return false;
+  if (/dismantl|removal|removing|breaking|milling/i.test(desc)) return false;
+
+  // 1. Explicit metadata first
+  const wc = textOf(item.workCategory);
+  const layerType = getLayerType(item);
+  if (wc === "bituminous" || layerType === "bituminous" || layerType === "spray_coat") return true;
+
+  // 2. Accepted complete descriptions and abbreviations
+  if (/\bprime[\s-]*coat\b|\btack[\s-]*coat\b/i.test(desc)) return true;
+  if (/dense\s*bituminous\s*macadam|\bdbm\b/i.test(desc)) return true;
+  if (/semi[-\s]*dense\s*bituminous\s*concrete|\bsdbc\b/i.test(desc)) return true;
+  if (/bituminous\s*concrete|asphalt(ic)?\s*concrete/i.test(desc)) return true;
+  if (/bituminous\s*macadam/i.test(desc)) return true;
+  if (/\bseal\s*coat\b|premix\s*carpet|open[-\s]*graded\s*premix/i.test(desc)) return true;
+  if (/bituminous\s*(mix\s*)?(supply|supply\s*and\s*lay)|emulsion\s*spray/i.test(desc)) return true;
+  // Bare "BC" / "BM" only in a pavement/bituminous context (028 §9)
+  const pavementContext = wc === "bituminous" || layerType === "bituminous"
+    || /pavement|wearing\s*(coat|course)|binder\s*course|bitumin|asphalt|overlay/i.test(desc);
+  if (/\bbc\b/i.test(desc) && pavementContext) return true;
+  if (/\bbm\b/i.test(desc) && pavementContext) return true;
+
+  return false;
+}
+
+/** Instruction 028 §5 — sub-type of a recognised bituminous item. */
+export function bituminousItemTypeOf(item: BomInputItem):
+  | "prime_coat" | "tack_coat" | "dbm" | "bc" | "sdbc" | "bituminous_macadam"
+  | "seal_coat" | "premix_carpet" | "other_bituminous" | null {
+  if (!isBituminousBoqItem(item)) return null;
+  const desc = item.description.toLowerCase();
+  if (/\bprime[\s-]*coat\b/i.test(desc)) return "prime_coat";
+  if (/\btack[\s-]*coat\b/i.test(desc)) return "tack_coat";
+  if (/dense\s*bituminous\s*macadam|\bdbm\b/i.test(desc)) return "dbm";
+  if (/semi[-\s]*dense|\bsdbc\b/i.test(desc)) return "sdbc";
+  if (/\bseal\s*coat\b/i.test(desc)) return "seal_coat";
+  if (/premix\s*carpet|open[-\s]*graded\s*premix/i.test(desc)) return "premix_carpet";
+  if (/bituminous\s*concrete|asphalt(ic)?\s*concrete|\bbc\b/i.test(desc)) return "bc";
+  if (/bituminous\s*macadam|\bbm\b/i.test(desc)) return "bituminous_macadam";
+  return "other_bituminous";
+}
+
+/**
+ * Instruction 028 §10/§16 — resolve the Execution Arrangement category for a
+ * BOQ item. Manual classification (bulkMaterialClassification) takes
+ * precedence over keyword detection.
+ * Returns "earthwork" | "bituminous" | null (not eligible).
+ */
+export function executionArrangementCategoryForItem(item: BomInputItem): "earthwork" | "bituminous" | null {
+  const manual = textOf(item.bulkMaterialClassification);
+  if (manual === "earthwork") return "earthwork";
+  if (manual === "bituminous" || manual === "bituminous_arrangement_eligible") return "bituminous";
+  if (manual === "not_bituminous" || manual === "vendor_supplied" || manual === "review_required") {
+    // explicitly not bituminous — earthwork auto-detect may still apply for vendor_supplied? No:
+    // vendor_supplied routes to material mapping; review_required is undecided. Neither enables arrangements.
+    return manual === "not_bituminous" && isEarthworkBoqItem(item) ? "earthwork" : null;
+  }
+  if (isEarthworkBoqItem(item)) return "earthwork";
+  if (isBituminousBoqItem(item)) return "bituminous";
+  return null;
 }
 
 /**
@@ -1690,19 +1821,29 @@ export function calculateBomDemand(
     }
   }
 
-  // ── Instruction 025 §6/§12: earthwork material rows — physical quantity stays
-  // visible; expose the outsourced vs HLC split instead of shrinking totalQty.
+  // ── Instruction 025 §6/§12 + 028 §25–29: material rows — physical quantity
+  // stays visible; expose the outsourced vs HLC split instead of shrinking
+  // totalQty. Earthwork rows use the source components; bituminous rows resolve
+  // each material's own component (binder / aggregates / emulsion / filler).
   if (arrangementEffects.size > 0) {
     const itemQtyById = new Map(items.map(i => [i.id, Number(i.currentQty) || 0]));
+    // Items that have at least one bituminous arrangement slice
+    const bituminousEffItems = new Set<number>();
+    arrangementEffects.forEach((eff, iid) => {
+      if (eff.slices.some(sl => sl.workCategory === "bituminous")) bituminousEffItems.add(iid);
+    });
     for (const row of materials) {
-      if (!(row as any).isEarthworkBulkRequirement) continue;
+      const isEarthworkRow = !!(row as any).isEarthworkBulkRequirement;
+      const isBituminousRow = !isEarthworkRow
+        && row.breakdown.some(bd => (bd as any).boqItemId != null && bituminousEffItems.has((bd as any).boqItemId));
+      if (!isEarthworkRow && !isBituminousRow) continue;
       let outsourced = 0;
       const agencies: string[] = [];
       for (const bd of row.breakdown) {
         const bid = (bd as any).boqItemId;
         const eff = bid != null ? arrangementEffects.get(bid) : undefined;
         if (!eff) continue;
-        const m = hlcRetainedFraction(eff, itemQtyById.get(bid) ?? 0, materialSliceExcluded);
+        const m = hlcRetainedFraction(eff, itemQtyById.get(bid) ?? 0, sl => materialSliceExcluded(sl, row.materialName));
         outsourced += (bd.lineQty ?? 0) * (1 - m.fraction);
         for (const a of m.agencies) if (!agencies.includes(a)) agencies.push(a);
       }
@@ -1723,7 +1864,39 @@ export function calculateBomDemand(
     }
   }
 
-  return { materials, equipment, labour, demandAdjustments, arrangementOverlaps };
+  // ── Instruction 028 §22–23: disclose responsibility components that have NO
+  // matching resource in the item's actual recipe (never invent demand, never
+  // claim "excluded" when nothing existed).
+  const mappingWarnings: DemandComponentMappingWarning[] = [];
+  if (arrangementEffects.size > 0) {
+    for (const item of items) {
+      const eff = arrangementEffects.get(item.id);
+      if (!eff) continue;
+      const bituminousSlices = eff.slices.filter(sl => sl.workCategory === "bituminous");
+      if (bituminousSlices.length === 0) continue;
+      const recipe = {
+        materials: [
+          ...item.materials.map(m => m.materialName),
+          ...(item.derivedKeyMaterials ?? []).map(m => m.materialName),
+        ],
+        equipment: item.equipment.map(e => e.equipmentName),
+        labour: item.labour.map(l => l.designation),
+      };
+      const mergedComponents: Record<string, string> = {};
+      for (const sl of bituminousSlices) {
+        for (const [k, v] of Object.entries(sl.components ?? {})) {
+          if (v === "agency" || v === "client" || v === "not_applicable") mergedComponents[k] = v;
+        }
+      }
+      for (const w of findMissingDemandMappings(item.id, mergedComponents, recipe)) {
+        if (!mappingWarnings.some(x => x.boqItemId === w.boqItemId && x.componentKey === w.componentKey)) {
+          mappingWarnings.push(w);
+        }
+      }
+    }
+  }
+
+  return { materials, equipment, labour, demandAdjustments, arrangementOverlaps, mappingWarnings };
 }
 
 // ─── Layer Config & Material Derivation ──────────────────────────────────────

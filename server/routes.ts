@@ -20,8 +20,12 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
+import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
+import {
+  isValidWorkCategory, isArrangementTypeAllowed, invalidComponentKeys,
+  isValidBituminousItemType, getCategoryDescriptor,
+} from "@shared/executionArrangementCategories";
 import { normalizeMaterialLabel, checkMappingUomCompatibility } from "@shared/boqNormalise";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
@@ -12459,6 +12463,8 @@ export async function registerRoutes(
         // Instruction 025 §13: why demand numbers changed (arrangement exclusions)
         demandAdjustments: (demand as any).demandAdjustments ?? [],
         arrangementOverlaps: (demand as any).arrangementOverlaps ?? [],
+        // Instruction 028 §22: non-company components with no recipe resource to exclude
+        mappingWarnings: (demand as any).mappingWarnings ?? [],
       });
     } catch (err) {
       console.error("GET /api/boq/projects/:id/shortage-check:", err);
@@ -12552,10 +12558,78 @@ export async function registerRoutes(
         });
       }
 
-      // Agency required for outsourced types
-      const needsAgency = ["fully_outsourced_composite","vendor_material_delivered","hlc_source_outsourced_execution","partly_outsourced"].includes(arrangementType);
+      // ── Instruction 028 §35 — category validation ─────────────────────────
+      const workCategory: string = body.workCategory ?? "earthwork";
+      if (!isValidWorkCategory(workCategory)) {
+        return res.status(400).json({ error: "INVALID_WORK_CATEGORY", message: `Unsupported work category '${workCategory}'. Supported: earthwork, bituminous.` });
+      }
+      if (arrangementType && arrangementType !== "not_decided" && !isArrangementTypeAllowed(workCategory, arrangementType)) {
+        return res.status(400).json({ error: "INVALID_ARRANGEMENT_TYPE", message: `Arrangement type '${arrangementType}' is not valid for ${workCategory} works.` });
+      }
+      const badKeys = invalidComponentKeys(workCategory, body.components ?? null);
+      if (badKeys.length > 0) {
+        return res.status(400).json({ error: "INVALID_COMPONENT_KEYS", message: `Component keys not allowed for ${workCategory}: ${badKeys.join(", ")}` });
+      }
+      const bituminousItemType = body.bituminousItemType ?? null;
+      if (bituminousItemType != null && !isValidBituminousItemType(bituminousItemType)) {
+        return res.status(400).json({ error: "INVALID_BITUMINOUS_ITEM_TYPE", message: `Unknown bituminous item type '${bituminousItemType}'.` });
+      }
+      if (workCategory !== "bituminous" && bituminousItemType != null) {
+        return res.status(400).json({ error: "INVALID_BITUMINOUS_ITEM_TYPE", message: "bituminousItemType applies only to bituminous arrangements." });
+      }
+      // Shared-responsibility split totals must reach 100% (028 §30)
+      const sharedSplits = body.sharedComponentSplits as Record<string, number> | undefined;
+      if (body.components && typeof body.components === "object") {
+        const sharedKeys = Object.entries(body.components as Record<string, string>).filter(([, v]) => v === "shared").map(([k]) => k);
+        for (const k of sharedKeys) {
+          const pct = sharedSplits?.[k];
+          if (!(typeof pct === "number" && pct > 0 && pct <= 100)) {
+            return res.status(400).json({ error: "SHARED_SPLIT_REQUIRED", message: `Component '${k}' is marked Shared — an explicit company percentage (1–100) is required. Never assumed 50:50.` });
+          }
+        }
+      }
+
+      // Agency required for outsourced types (category-driven)
+      const needsAgency = workCategory === "bituminous"
+        ? (getCategoryDescriptor("bituminous").outsourcedTypes.has(arrangementType) || arrangementType === "partly_outsourced")
+        : ["fully_outsourced_composite","vendor_material_delivered","hlc_source_outsourced_execution","partly_outsourced"].includes(arrangementType);
       if (needsAgency && !body.agencyName?.trim()) {
         return res.status(400).json({ error: "AGENCY_REQUIRED", message: "Agency / Vendor name is required for outsourced arrangements." });
+      }
+
+      // ── Instruction 028 §35 — category eligibility vs linked BOQ item(s) ──
+      // A bituminous arrangement may only be raised against items that resolve
+      // to the bituminous category (auto-detected or manual override); and an
+      // earthwork arrangement must never target a bituminous-classified item.
+      {
+        const sourceItemIds: number[] = boqItemAllocationsRaw && Array.isArray(boqItemAllocationsRaw)
+          ? boqItemAllocationsRaw.filter(a => a.boqItemId && Number(a.qty) > 0).map(a => Number(a.boqItemId))
+          : (singleBoqItemId ? [singleBoqItemId] : []);
+        for (const itemId of sourceItemIds) {
+          const [srcItem] = await db.select({
+            description: boqItems.description, unit: boqItems.unit,
+            itemWorkCategory: boqItems.workCategory,
+            bulkMaterialClassification: boqItems.bulkMaterialClassification,
+          }).from(boqItems).where(eq(boqItems.id, itemId));
+          if (!srcItem) continue; // existence is validated by the allocation guard below
+          const resolved = executionArrangementCategoryForItem({
+            description: srcItem.description ?? "", unit: srcItem.unit ?? "",
+            workCategory: srcItem.itemWorkCategory,
+            bulkMaterialClassification: srcItem.bulkMaterialClassification,
+          } as any);
+          if (workCategory === "bituminous" && resolved !== "bituminous") {
+            return res.status(400).json({
+              error: "CATEGORY_ITEM_MISMATCH",
+              message: `BOQ item ${itemId} is not classified as bituminous — a bituminous arrangement cannot be raised against it. Use the manual classification override if the auto-detection is wrong.`,
+            });
+          }
+          if (workCategory === "earthwork" && resolved === "bituminous") {
+            return res.status(400).json({
+              error: "CATEGORY_ITEM_MISMATCH",
+              message: `BOQ item ${itemId} is classified as bituminous — raise a bituminous arrangement instead of an earthwork one.`,
+            });
+          }
+        }
       }
 
       // ── Linkage guard: every arrangement must be tied to a BOQ source ─────
@@ -12640,6 +12714,8 @@ export async function registerRoutes(
         boqItemId: primaryBoqItemId,
         boqItemAllocations: effectiveAllocations.length > 1 ? effectiveAllocations : null,
         materialLabel: String(materialLabel).trim(),
+        workCategory,
+        bituminousItemType: workCategory === "bituminous" ? bituminousItemType : null,
         arrangementType: arrangementType ?? "not_decided",
         status: finalStatus,
         submittedAt: submittedAtValue,
@@ -12750,6 +12826,7 @@ export async function registerRoutes(
         "inclusions", "exclusions", "notes", "status",
         "rejectionReason", "cancellationReason", "onHoldReason",
         "boqItemAllocations", "sourceExcavationBoqItemId",
+        "bituminousItemType",
       ];
       const patch: Record<string, unknown> = {};
       for (const field of allowedFields) {
@@ -12763,6 +12840,38 @@ export async function registerRoutes(
 
       const current = await storage.getEarthworkArrangementById(id);
       if (!current) return res.status(404).json({ error: "Arrangement not found" });
+
+      // ── Instruction 028 §35 — category validation on PATCH ────────────────
+      const rowCategory: string = (current as any).workCategory ?? "earthwork"; // old rows = earthwork during transition
+      if ("workCategory" in body && body.workCategory !== rowCategory) {
+        return res.status(400).json({ error: "INVALID_WORK_CATEGORY", message: "workCategory cannot be changed on an existing arrangement." });
+      }
+      if (typeof patch.arrangementType === "string" && patch.arrangementType !== "not_decided"
+          && !isArrangementTypeAllowed(rowCategory, patch.arrangementType)) {
+        return res.status(400).json({ error: "INVALID_ARRANGEMENT_TYPE", message: `Arrangement type '${patch.arrangementType}' is not valid for ${rowCategory} works.` });
+      }
+      if (patch.components) {
+        const badKeysPatch = invalidComponentKeys(rowCategory, patch.components as Record<string, unknown>);
+        if (badKeysPatch.length > 0) {
+          return res.status(400).json({ error: "INVALID_COMPONENT_KEYS", message: `Component keys not allowed for ${rowCategory}: ${badKeysPatch.join(", ")}` });
+        }
+      }
+      if ("bituminousItemType" in patch && patch.bituminousItemType != null) {
+        if (rowCategory !== "bituminous" || !isValidBituminousItemType(patch.bituminousItemType)) {
+          return res.status(400).json({ error: "INVALID_BITUMINOUS_ITEM_TYPE", message: "Invalid bituminous item type for this arrangement." });
+        }
+      }
+      // Shared-responsibility split totals (028 §30) — same rule as POST
+      if (patch.components && typeof patch.components === "object") {
+        const sharedSplitsPatch = (body.sharedComponentSplits ?? (current as any).sharedComponentSplits) as Record<string, number> | undefined;
+        const sharedKeysPatch = Object.entries(patch.components as Record<string, string>).filter(([, v]) => v === "shared").map(([k]) => k);
+        for (const k of sharedKeysPatch) {
+          const pct = sharedSplitsPatch?.[k];
+          if (!(typeof pct === "number" && pct > 0 && pct <= 100)) {
+            return res.status(400).json({ error: "SHARED_SPLIT_REQUIRED", message: `Component '${k}' is marked Shared — an explicit company percentage (1–100) is required. Never assumed 50:50.` });
+          }
+        }
+      }
 
       // ── Instruction 026 §17 + 027 Parts E/F/H: controlled editing of operational arrangements ──
       const OPERATIONAL = new Set(["approved", "mobilisation_pending", "in_progress", "on_hold"]);
@@ -13467,11 +13576,26 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "qto_boq")) return;
       const boqItemId = parseInt(req.params.itemId);
       if (isNaN(boqItemId)) return res.status(400).json({ error: "Invalid boqItemId" });
-      const { classification } = req.body ?? {};
-      if (!["earthwork", "vendor_supplied"].includes(classification))
-        return res.status(400).json({ error: "classification must be 'earthwork' or 'vendor_supplied'" });
+      const { classification, reason } = req.body ?? {};
+      // Instruction 028 §10: manual bituminous eligibility override joins the
+      // earthwork values. `bituminous` = arrangement-eligible; `not_bituminous`
+      // = never offer bituminous arrangements; `review_required` = flag for PM.
+      const ALLOWED = ["earthwork", "vendor_supplied", "bituminous", "not_bituminous", "review_required"];
+      if (!ALLOWED.includes(classification))
+        return res.status(400).json({ error: `classification must be one of: ${ALLOWED.join(", ")}` });
       // Parameterized — no SQL injection risk (Drizzle query builder)
       await db.update(boqItems).set({ bulkMaterialClassification: classification }).where(eq(boqItems.id, boqItemId));
+      const user = (req as any).authUser;
+      await storage.logAudit({
+        module: "boq_items",
+        transactionId: boqItemId,
+        action: "update",
+        userId: user?.id ?? 0,
+        userName: user?.name ?? user?.username ?? "unknown",
+        userRole: user?.isOwner ? "owner" : user?.isAdmin ? "admin" : "manager",
+        newValues: { field: "bulkMaterialClassification", classification },
+        reason: reason ?? null,
+      } as any);
       res.json({ ok: true, boqItemId, classification });
     } catch (err) {
       console.error("PATCH /api/boq/items/:itemId/bulk-classification:", err);

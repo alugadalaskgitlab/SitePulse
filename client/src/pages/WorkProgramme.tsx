@@ -30,6 +30,8 @@ import {
   type LayerConfig,
   type ProductivitySettings,
   isEarthworkBoqItem,
+  executionArrangementCategoryForItem,
+  bituminousItemTypeOf,
 } from "@shared/planningEngine";
 // 027A: true calendar axis — single source of truth for date↔index↔pixel on the Gantt.
 // Aliased to the legacy names so every existing call site uses calendar-true conversion.
@@ -160,14 +162,20 @@ function StretchRow({
 
   // Instruction 026 §7: per-bar execution-arrangement panel (earthwork bars only)
   const [showArrangements, setShowArrangements] = useState(false);
-  const isEarthworkBar = useMemo(() => {
+  // Instruction 028: category resolution — earthwork OR bituminous bars get the
+  // arrangement affordances; everything else stays untouched.
+  const arrangementCategory = useMemo<"earthwork" | "bituminous" | null>(() => {
     try {
-      return (item as any).bulkMaterialClassification === "earthwork"
-        || isEarthworkBoqItem({ description: item.description ?? "", unit: item.unit ?? "" } as any);
-    } catch { return false; }
+      return executionArrangementCategoryForItem(item as any);
+    } catch { return null; }
   }, [item]);
+  const arrangementItemType = useMemo<string | null>(() => {
+    if (arrangementCategory !== "bituminous") return null;
+    try { return bituminousItemTypeOf(item as any); } catch { return null; }
+  }, [item, arrangementCategory]);
+  const isEarthworkBar = arrangementCategory != null;
 
-  // Instruction 027 §1-2: compact execution-state badge per earthwork bar
+  // Instruction 027 §1-2: compact execution-state badge per arrangement-eligible bar
   const executionState = useBarExecutionState({
     projectId,
     barId: bar.id,
@@ -175,6 +183,8 @@ function StretchRow({
     barPlannedQty: Number(bar.plannedQty ?? 0),
     unit: (bar as any).canonicalUnit ?? bar.unit ?? "CUM",
     enabled: isEarthworkBar,
+    category: arrangementCategory,
+    itemType: arrangementItemType,
   });
 
   const [cf, setCf] = useState(bar.chainageFrom != null ? String(bar.chainageFrom) : "");
@@ -821,6 +831,8 @@ function StretchRow({
           barLabel={`${shortItemName(item.description)} — ${bar.reachLabel ?? `Ch ${bar.chainageFrom ?? "?"}–${bar.chainageTo ?? "?"}`}`}
           barPlannedQty={Number(bar.plannedQty ?? 0)}
           unit={(bar as any).canonicalUnit ?? bar.unit ?? ""}
+          workCategory={arrangementCategory ?? "earthwork"}
+          bituminousItemType={arrangementItemType}
         />
       )}
     </div>
