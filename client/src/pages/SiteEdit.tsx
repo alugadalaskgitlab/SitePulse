@@ -280,6 +280,8 @@ export default function SiteEdit() {
     if (authUser?.isAdmin) return true;
     return false;
   });
+  const { data: dpr, isLoading } = useDpr(id);
+
   // Auto-grant for draft DPRs and admins when DPR data arrives.
   useEffect(() => {
     if (editGranted || !dpr) return;
@@ -307,8 +309,6 @@ export default function SiteEdit() {
   const formInitializedRef = useRef(false);
   // JSON snapshot of the server-provided form state; used to detect real user edits before saving a draft
   const serverSnapshotRef = useRef<string | null>(null);
-
-  const { data: dpr, isLoading } = useDpr(id);
 
   const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment", "all"],
