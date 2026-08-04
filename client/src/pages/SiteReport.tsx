@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import type { Personnel } from "@shared/schema";
+import { shortItemName } from "@/lib/itemName";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -345,8 +346,8 @@ export default function SiteReport() {
                   if (item.noSiteWork) {
                     return (
                       <TableRow key={i} data-testid={`row-progress-${i}`}>
-                        <TableCell className="font-medium">
-                          <div>{item.activity}</div>
+                        <TableCell className="font-medium max-w-[320px]">
+                          <div title={item.activity}>{shortItemName(item.activity) || item.activity}</div>
                           {item.noSiteWorkDescription && (
                             <div className="text-sm text-muted-foreground mt-1">{item.noSiteWorkDescription}</div>
                           )}
@@ -366,8 +367,8 @@ export default function SiteReport() {
                   
                   return (
                     <TableRow key={i} data-testid={`row-progress-${i}`}>
-                      <TableCell className="font-medium">
-                        <div>{item.activity}</div>
+                      <TableCell className="font-medium max-w-[320px]">
+                        <div title={item.activity}>{shortItemName(item.activity) || item.activity}</div>
                         {personnelNames && (
                           <div className="text-sm text-muted-foreground mt-1">Personnel: {personnelNames}</div>
                         )}

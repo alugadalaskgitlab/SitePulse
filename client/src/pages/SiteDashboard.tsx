@@ -50,6 +50,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { format } from "date-fns";
+import { shortItemName } from "@/lib/itemName";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -1048,7 +1049,9 @@ export default function SiteDashboard() {
                     <SelectContent>
                       <SelectItem value="all">All Activities</SelectItem>
                       {uniqueActivities.map((activity) => (
-                        <SelectItem key={activity} value={activity}>{activity}</SelectItem>
+                        <SelectItem key={activity} value={activity} className="max-w-[420px]" title={activity}>
+                          <span className="block truncate">{shortItemName(activity) || activity}</span>
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1288,7 +1291,9 @@ export default function SiteDashboard() {
                                     <tbody>
                                       {dpr.progress.map((p: any, i: number) => (
                                         <tr key={i} className="border-b">
-                                          <td className="p-2 border">{p.activity || "-"}</td>
+                                          <td className="p-2 border max-w-[320px]" title={p.activity || undefined}>
+                                            {shortItemName(p.activity) || p.activity || "-"}
+                                          </td>
                                           <td className="p-2 border">{p.side || "-"}</td>
                                           <td className="p-2 border">{p.chainageFrom} - {p.chainageTo}</td>
                                           <td className="p-2 border text-right">{p.length || 0}×{p.width || 0}×{p.thickness || 0}</td>
