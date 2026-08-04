@@ -21,6 +21,7 @@ import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
+import { classifyArrangementEdit } from "@shared/executionState";
 import { normalizeMaterialLabel, checkMappingUomCompatibility } from "@shared/boqNormalise";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
@@ -12506,7 +12507,7 @@ export async function registerRoutes(
       }
 
       const projectId = parseInt(req.params.id);
-      const user = (req as any).user;
+      const user = (req as any).authUser ?? (req as any).user;
       const body = req.body ?? {};
 
       const { materialLabel, arrangementType } = body;
@@ -12667,9 +12668,9 @@ export async function registerRoutes(
         preparedByUserId: user?.id ?? null,
       });
 
-      await storage.createAuditLog?.({
+      await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null,
         module: "earthwork_arrangements",
-        transactionId: String(row.id),
+        transactionId: Number(row.id),
         action: "create",
         userId: user?.id ?? null,
         newValues: row,
@@ -12732,7 +12733,7 @@ export async function registerRoutes(
       }
 
       const id = parseInt(req.params.id);
-      const user = (req as any).user;
+      const user = (req as any).authUser ?? (req as any).user;
       const body = req.body ?? {};
       const now = new Date().toISOString();
 
@@ -12760,47 +12761,238 @@ export async function registerRoutes(
       const current = await storage.getEarthworkArrangementById(id);
       if (!current) return res.status(404).json({ error: "Arrangement not found" });
 
-      // ── Instruction 026 §17: controlled revision of operational arrangements ──
-      // Approved/operational arrangements must not be silently edited in place.
+      // ── Instruction 026 §17 + 027 Parts E/F/H: controlled editing of operational arrangements ──
       const OPERATIONAL = new Set(["approved", "mobilisation_pending", "in_progress", "on_hold"]);
-      const REVISION_FIELDS = ["agencyName", "allocatedQty", "agreedRate", "components", "dieselResponsibility", "boqItemAllocations", "boqItemId", "arrangementType"] as const;
+      /** pendingRevision shape (027): { fields, reason, proposedByUserId, proposedAt }. Legacy (026): flat field map. */
+      const readPending = (p: any): { fields: Record<string, unknown>; reason?: string; proposedByUserId?: number | null; proposedAt?: string } | null =>
+        p == null ? null : (p.fields && typeof p.fields === "object" ? p : { fields: p });
 
-      // Revision decision actions (approve/discard a pending revision)
-      if (body.revisionAction === "approve" || body.revisionAction === "discard") {
-        const pending = (current as any).pendingRevision as Record<string, unknown> | null;
-        if (!pending) return res.status(400).json({ error: "NO_PENDING_REVISION", message: "This arrangement has no pending revision." });
-        if (body.revisionAction === "discard") {
-          const updated0 = await storage.updateEarthworkArrangement(id, { pendingRevision: null } as any);
-          return res.json(updated0);
+      // Fully terminal arrangements are not editable at all (§28 ARRANGEMENT_NOT_EDITABLE)
+      if ((current.status === "cancelled" || current.status === "rejected") && !body.revisionAction) {
+        const changesAnything = Object.keys(patch).some(f =>
+          JSON.stringify((patch as any)[f] ?? null) !== JSON.stringify((current as any)[f] ?? null));
+        if (changesAnything) {
+          return res.status(409).json({ error: "ARRANGEMENT_NOT_EDITABLE", message: `A ${current.status} arrangement cannot be edited. Create a new arrangement instead.` });
         }
-        // Approve: apply the revision, keep history auditable
-        const previous: Record<string, unknown> = {};
-        for (const k of Object.keys(pending)) previous[k] = (current as any)[k] ?? null;
-        const history = Array.isArray((current as any).revisionHistory) ? [...(current as any).revisionHistory] : [];
-        history.push({ appliedAt: now, appliedByUserId: user?.id ?? null, previous, changes: pending });
-        const updated1 = await storage.updateEarthworkArrangement(id, { ...(pending as any), pendingRevision: null, revisionHistory: history } as any);
-        await (storage as any).createAuditLog?.({ module: "earthwork_arrangements", transactionId: String(id), action: "revision_approved", userId: user?.id ?? null, newValues: pending }).catch(() => {});
-        return res.json(updated1);
+      }
+
+      // ── Status-transition hardening (027 review): no demotion bypass ────────
+      // An operational arrangement's status may only move along the operational
+      // workflow — never back to draft/submitted/returned, which would strip the
+      // controlled-edit guard and allow silent material overwrites.
+      if (OPERATIONAL.has(current.status) && "status" in patch && patch.status !== current.status) {
+        const ALLOWED_TRANSITIONS: Record<string, Set<string>> = {
+          approved: new Set(["mobilisation_pending", "in_progress", "on_hold", "cancelled"]),
+          mobilisation_pending: new Set(["in_progress", "on_hold", "cancelled"]),
+          in_progress: new Set(["on_hold", "completed", "cancelled"]),
+          on_hold: new Set(["in_progress", "cancelled"]),
+        };
+        if (!ALLOWED_TRANSITIONS[current.status]?.has(String(patch.status))) {
+          return res.status(409).json({
+            error: "INVALID_STATUS_TRANSITION",
+            message: `An arrangement in status "${current.status}" cannot move to "${patch.status}". Operational arrangements cannot be demoted — use a controlled revision for material changes.`,
+          });
+        }
+      }
+
+      /**
+       * Validate material/commercial fields as they WOULD become effective
+       * (merged over current). Mirrors the POST/PATCH linkage guards so that
+       * revision approval / apply-now cannot make invalid scope effective.
+       */
+      const checkMaterialGuards = async (fields: Record<string, unknown>): Promise<{ status: number; body: unknown } | null> => {
+        const merged: any = { ...current, ...fields };
+        const qty = Number(merged.allocatedQty ?? 0);
+        if (!(qty > 0)) return { status: 400, body: { error: "INVALID_QUANTITY", message: "allocatedQty must be greater than zero." } };
+        const allocs = merged.boqItemAllocations as Array<{ boqItemId: number; qty: number }> | null;
+        const hasMulti = Array.isArray(allocs) && allocs.some(a => a.boqItemId && Number(a.qty) > 0);
+        const singleId = merged.boqItemId ? Number(merged.boqItemId) : null;
+        if (!hasMulti && !singleId) {
+          return { status: 400, body: { error: "BOQ_SOURCE_REQUIRED", message: "An earthwork arrangement must retain a BOQ linkage." } };
+        }
+        if (hasMulti) {
+          const sum = allocs!.filter(a => a.boqItemId && Number(a.qty) > 0).reduce((s, a) => s + Number(a.qty), 0);
+          if (Math.abs(sum - qty) > 0.01) {
+            return { status: 400, body: { error: "ALLOCATION_TOTAL_MISMATCH", message: `allocatedQty (${qty}) must equal the sum of boqItemAllocations (${sum.toFixed(2)} CUM).` } };
+          }
+          for (const alloc of allocs!) {
+            if (!alloc.boqItemId || Number(alloc.qty) <= 0) continue;
+            const [boqItem] = await db.select({ currentQty: boqItems.currentQty, description: boqItems.description })
+              .from(boqItems).where(eq(boqItems.id, Number(alloc.boqItemId)));
+            if (!boqItem) return { status: 400, body: { error: "BOQ_ITEM_NOT_FOUND", message: `BOQ item ${alloc.boqItemId} not found.` } };
+            const totalAllocated = await storage.getAllocatedQtyForBoqItem(current.boqProjectId, Number(alloc.boqItemId));
+            const ownExisting = (Array.isArray(current.boqItemAllocations)
+              ? (current.boqItemAllocations as Array<{ boqItemId: number; qty: number }>).find(a => Number(a.boqItemId) === Number(alloc.boqItemId))?.qty ?? 0
+              : (Number(current.boqItemId) === Number(alloc.boqItemId) ? Number(current.allocatedQty ?? 0) : 0));
+            if (totalAllocated - Number(ownExisting) + Number(alloc.qty) > Number(boqItem.currentQty ?? 0) + 0.001) {
+              return { status: 400, body: { error: "ALLOCATION_EXCEEDS_REMAINING_QUANTITY", message: `Change would over-allocate "${boqItem.description}".` } };
+            }
+          }
+        } else if (singleId && ("allocatedQty" in fields || "boqItemId" in fields)) {
+          const [boqItem] = await db.select({ currentQty: boqItems.currentQty, description: boqItems.description })
+            .from(boqItems).where(eq(boqItems.id, singleId));
+          if (!boqItem) return { status: 400, body: { error: "BOQ_ITEM_NOT_FOUND", message: `BOQ item ${singleId} not found.` } };
+          const totalAllocated = await storage.getAllocatedQtyForBoqItem(current.boqProjectId, singleId);
+          const ownExisting = Number(current.boqItemId) === singleId ? Number(current.allocatedQty ?? 0) : 0;
+          if (totalAllocated - ownExisting + qty > Number(boqItem.currentQty ?? 0) + 0.001) {
+            return { status: 400, body: { error: "ALLOCATION_EXCEEDS_REMAINING_QUANTITY", message: `Change would over-allocate "${boqItem.description}".` } };
+          }
+        }
+        // 026 bar links: effective quantity cannot drop below what is already linked to programme bars.
+        if ("allocatedQty" in fields) {
+          const linked = (await db.select().from(earthworkArrangementProgrammeAllocations)
+            .where(eq(earthworkArrangementProgrammeAllocations.arrangementId, id)))
+            .reduce((s, a) => s + Number(a.allocatedQty), 0);
+          if (qty + 0.001 < linked) {
+            return { status: 409, body: { error: "ALLOCATION_BELOW_BAR_LINKED", message: `allocatedQty (${qty}) cannot be below the ${linked.toFixed(2)} CUM already linked to programme stretches. Unlink stretches first.` } };
+          }
+        }
+        return null;
+      };
+
+      // ── Revision decision actions: approve / reject / discard (§20) ─────────
+      if (body.revisionAction === "approve" || body.revisionAction === "discard" || body.revisionAction === "reject") {
+        // approve/reject are approver-only decisions (§22). discard is allowed
+        // for the proposer (withdrawing their own proposal) or an approver.
+        const pendingPeek = readPending((current as any).pendingRevision);
+        if (!pendingPeek) return res.status(404).json({ error: "REVISION_NOT_FOUND", message: "This arrangement has no pending revision." });
+        const isProposerDiscard = body.revisionAction === "discard" && pendingPeek.proposedByUserId != null && pendingPeek.proposedByUserId === user?.id;
+        if (!isProposerDiscard && !assertApprove(req, res, "qto_boq")) return;
+
+        // Row-locked transaction: serialize against concurrent proposals/decisions.
+        const result: any = await db.transaction(async (tx) => {
+          const [row] = await tx.select().from(earthworkArrangementsTable)
+            .where(eq(earthworkArrangementsTable.id, id)).for("update");
+          if (!row) return { status: 404, body: { error: "ARRANGEMENT_NOT_FOUND", message: "Arrangement not found." } };
+          const pendingWrap = readPending((row as any).pendingRevision);
+          if (!pendingWrap) return { status: 404, body: { error: "REVISION_NOT_FOUND", message: "This arrangement has no pending revision." } };
+          if (!OPERATIONAL.has(row.status) && row.status !== "completed") {
+            return { status: 409, body: { error: "REVISION_NOT_APPROVABLE", message: `Revisions can only be decided on operational arrangements (current status: ${row.status}).` } };
+          }
+          const history = Array.isArray((row as any).revisionHistory) ? [...(row as any).revisionHistory] : [];
+          if (body.revisionAction === "discard" || body.revisionAction === "reject") {
+            // §20: rejected/discarded proposals stay auditable; effective values unchanged.
+            history.push({
+              type: "material", outcome: body.revisionAction === "reject" ? "rejected" : "discarded",
+              changes: pendingWrap.fields, reason: pendingWrap.reason ?? null,
+              proposedByUserId: pendingWrap.proposedByUserId ?? null, proposedAt: pendingWrap.proposedAt ?? null,
+              decidedByUserId: user?.id ?? null, decidedAt: now,
+            });
+            const [updated0] = await tx.update(earthworkArrangementsTable)
+              .set({ pendingRevision: null, revisionHistory: history } as any)
+              .where(eq(earthworkArrangementsTable.id, id)).returning();
+            return { status: 200, body: updated0, audit: { action: `revision_${body.revisionAction === "reject" ? "rejected" : "discarded"}`, oldValues: pendingWrap.fields } };
+          }
+          // Approve: re-validate the fields as they would become effective before applying.
+          const guardErr = await checkMaterialGuards(pendingWrap.fields);
+          if (guardErr) return guardErr;
+          const previous: Record<string, unknown> = {};
+          for (const k of Object.keys(pendingWrap.fields)) previous[k] = (row as any)[k] ?? null;
+          history.push({
+            type: "material", outcome: "approved", version: history.filter((h: any) => h.outcome === "approved").length + 1,
+            previous, changes: pendingWrap.fields, reason: pendingWrap.reason ?? null,
+            proposedByUserId: pendingWrap.proposedByUserId ?? null, proposedAt: pendingWrap.proposedAt ?? null,
+            approvedByUserId: user?.id ?? null, approvedAt: now, effectiveFrom: now,
+          });
+          const [updated1] = await tx.update(earthworkArrangementsTable)
+            .set({ ...(pendingWrap.fields as any), pendingRevision: null, revisionHistory: history } as any)
+            .where(eq(earthworkArrangementsTable.id, id)).returning();
+          return { status: 200, body: updated1, audit: { action: "revision_approved", oldValues: previous, newValues: pendingWrap.fields } };
+        });
+        if (result.audit) {
+          await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null, module: "earthwork_arrangements", transactionId: Number(id), userId: user?.id ?? null, ...result.audit }).catch(() => {});
+        }
+        return res.status(result.status).json(result.body);
       }
 
       if (OPERATIONAL.has(current.status)) {
-        const changedRevisionFields = REVISION_FIELDS.filter(f =>
-          f in body && JSON.stringify(body[f] ?? null) !== JSON.stringify((current as any)[f] ?? null));
-        if (changedRevisionFields.length > 0) {
+        const cls = classifyArrangementEdit(current as any, body);
+
+        // ── Material/commercial changes (§18–19, §21, §25) ───────────────────
+        if (cls.material.length > 0) {
+          const materialChanges: Record<string, unknown> = {};
+          for (const f of cls.material) materialChanges[f] = body[f];
+
+          if (body.saveIntent === "apply_now") {
+            // §21 Admin Edit and Apply Now — approver-only, reason mandatory, versioned.
+            if (!assertApprove(req, res, "qto_boq")) return;
+            if (!body.editReason || !String(body.editReason).trim()) {
+              return res.status(400).json({ error: "ADMIN_APPLY_REASON_REQUIRED", message: "A reason is mandatory for Edit and Apply Now." });
+            }
+            const guardErr = await checkMaterialGuards(materialChanges);
+            if (guardErr) return res.status(guardErr.status).json(guardErr.body);
+            const result: any = await db.transaction(async (tx) => {
+              const [row] = await tx.select().from(earthworkArrangementsTable)
+                .where(eq(earthworkArrangementsTable.id, id)).for("update");
+              if (!row) return { status: 404, body: { error: "ARRANGEMENT_NOT_FOUND", message: "Arrangement not found." } };
+              const previous: Record<string, unknown> = {};
+              for (const k of Object.keys(materialChanges)) previous[k] = (row as any)[k] ?? null;
+              const history = Array.isArray((row as any).revisionHistory) ? [...(row as any).revisionHistory] : [];
+              history.push({
+                type: "material", outcome: "approved", appliedNow: true,
+                version: history.filter((h: any) => h.outcome === "approved").length + 1,
+                previous, changes: materialChanges, reason: String(body.editReason),
+                proposedByUserId: user?.id ?? null, proposedAt: now,
+                approvedByUserId: user?.id ?? null, approvedAt: now, effectiveFrom: now,
+              });
+              const [applied] = await tx.update(earthworkArrangementsTable)
+                .set({ ...(materialChanges as any), revisionHistory: history } as any)
+                .where(eq(earthworkArrangementsTable.id, id)).returning();
+              return { status: 200, body: { ...applied, appliedNow: true }, previous };
+            });
+            if (result.status === 200) {
+              await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null, module: "earthwork_arrangements", transactionId: Number(id), action: "revision_applied_now", userId: user?.id ?? null, oldValues: result.previous, newValues: materialChanges }).catch(() => {});
+            }
+            return res.status(result.status).json(result.body);
+          }
+
           if (body.saveIntent !== "revise") {
             return res.status(409).json({
-              error: "ARRANGEMENT_REVISION_REQUIRES_APPROVAL",
-              message: "This arrangement is operational. Changes to agency, quantity, rate, responsibility or linkage require a controlled revision (submit as a revision for approval).",
-              fields: changedRevisionFields,
+              error: "MATERIAL_CHANGE_REQUIRES_REVISION",
+              message: "This arrangement is operational. Changes to agency, quantity, rate, scope or responsibility require a controlled revision (submit as a revision for approval).",
+              fields: cls.material,
             });
           }
-          // Store the proposed changes WITHOUT applying them — the old approved
-          // values keep driving demand until the revision is approved (§17).
-          const pendingRevision: Record<string, unknown> = {};
-          for (const f of changedRevisionFields) pendingRevision[f] = body[f];
-          const updated2 = await storage.updateEarthworkArrangement(id, { pendingRevision } as any);
-          await (storage as any).createAuditLog?.({ module: "earthwork_arrangements", transactionId: String(id), action: "revision_proposed", userId: user?.id ?? null, newValues: pendingRevision }).catch(() => {});
-          return res.json({ ...updated2, revisionPending: true });
+          if (!body.revisionReason || !String(body.revisionReason).trim()) {
+            return res.status(400).json({ error: "REVISION_REASON_REQUIRED", message: "Please give a short reason for this revision." });
+          }
+          // Validate at proposal time too — reject obviously invalid proposals early.
+          const guardErrP = await checkMaterialGuards(materialChanges);
+          if (guardErrP) return res.status(guardErrP.status).json(guardErrP.body);
+          // Store the proposal WITHOUT applying it — old approved values keep driving
+          // demand (§19, §27). Row-locked so concurrent proposals cannot overwrite.
+          const result: any = await db.transaction(async (tx) => {
+            const [row] = await tx.select().from(earthworkArrangementsTable)
+              .where(eq(earthworkArrangementsTable.id, id)).for("update");
+            if (!row) return { status: 404, body: { error: "ARRANGEMENT_NOT_FOUND", message: "Arrangement not found." } };
+            if (readPending((row as any).pendingRevision)) {
+              return { status: 409, body: { error: "REVISION_ALREADY_PENDING", message: "A revision is already pending on this arrangement. Approve, reject or discard it first." } };
+            }
+            const pendingRevision = { fields: materialChanges, reason: String(body.revisionReason), proposedByUserId: user?.id ?? null, proposedAt: now };
+            const [updated2] = await tx.update(earthworkArrangementsTable)
+              .set({ pendingRevision } as any)
+              .where(eq(earthworkArrangementsTable.id, id)).returning();
+            return { status: 200, body: { ...updated2, revisionPending: true } };
+          });
+          if (result.status === 200) {
+            await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null, module: "earthwork_arrangements", transactionId: Number(id), action: "revision_proposed", userId: user?.id ?? null, newValues: materialChanges }).catch(() => {});
+          }
+          return res.status(result.status).json(result.body);
+        }
+
+        // ── Operational edits (§17): immediate, audited, reason for dates/output ──
+        if (cls.operational.length > 0) {
+          if (cls.reasonRequired && (!body.editReason || !String(body.editReason).trim())) {
+            return res.status(400).json({ error: "REVISION_REASON_REQUIRED", message: "Please give a short reason for changing planned dates or output.", fields: cls.operational.filter(f => ["mobilisationDate","plannedStartDate","targetCompletionDate","plannedDailyOutput"].includes(f)) });
+          }
+          const oldValues: Record<string, unknown> = {};
+          const newValues: Record<string, unknown> = {};
+          for (const f of cls.operational) { oldValues[f] = (current as any)[f] ?? null; newValues[f] = body[f] ?? null; }
+          const history = Array.isArray((current as any).revisionHistory) ? [...(current as any).revisionHistory] : [];
+          history.push({ type: "operational", outcome: "applied", previous: oldValues, changes: newValues, reason: body.editReason ? String(body.editReason) : null, changedByUserId: user?.id ?? null, changedAt: now });
+          patch.revisionHistory = history;
+          await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null, module: "earthwork_arrangements", transactionId: Number(id), action: "operational_edit", userId: user?.id ?? null, oldValues, newValues }).catch(() => {});
+          // fall through: patch is applied below like any normal update
         }
       }
 
@@ -12899,9 +13091,9 @@ export async function registerRoutes(
       const updated = await storage.updateEarthworkArrangement(id, patch as any);
       if (!updated) return res.status(404).json({ error: "Arrangement not found" });
 
-      await storage.createAuditLog?.({
+      await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null,
         module: "earthwork_arrangements",
-        transactionId: String(id),
+        transactionId: Number(id),
         action: newStatus ? `status_${newStatus}` : "update",
         userId: user?.id ?? null,
         newValues: patch,
@@ -12934,7 +13126,7 @@ export async function registerRoutes(
       if (!assertAuthed(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
       const id = parseInt(req.params.id);
-      const user = (req as any).user;
+      const user = (req as any).authUser ?? (req as any).user;
       const { reason } = req.body ?? {};
 
       const updated = await storage.updateEarthworkArrangement(id, {
@@ -12943,9 +13135,9 @@ export async function registerRoutes(
       });
       if (!updated) return res.status(404).json({ error: "Arrangement not found" });
 
-      await storage.createAuditLog?.({
+      await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null,
         module: "earthwork_arrangements",
-        transactionId: String(id),
+        transactionId: Number(id),
         action: "cancel",
         userId: user?.id ?? null,
         newValues: { status: "cancelled", reason },
@@ -13063,14 +13255,14 @@ export async function registerRoutes(
       if (!assertAuthed(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
       const arrangementId = parseInt(req.params.id);
-      const user = (req as any).user;
+      const user = (req as any).authUser ?? (req as any).user;
       const programmeBarId = Number(req.body?.programmeBarId);
       const allocatedQty = Number(req.body?.allocatedQty);
 
       const result = await applyBarAllocationTx({ arrangementId, allocatedQty, programmeBarId, userId: user?.id ?? null });
       if (result.status === 201) {
-        await (storage as any).createAuditLog?.({
-          module: "earthwork_arrangements", transactionId: String(arrangementId),
+        await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null,
+          module: "earthwork_arrangements", transactionId: Number(arrangementId),
           action: "programme_allocation_created", userId: user?.id ?? null,
           newValues: { programmeBarId, allocatedQty },
         }).catch(() => {});
@@ -13090,12 +13282,12 @@ export async function registerRoutes(
       const arrangementId = parseInt(req.params.id);
       const allocId = parseInt(req.params.allocId);
       const allocatedQty = Number(req.body?.allocatedQty);
-      const user = (req as any).user;
+      const user = (req as any).authUser ?? (req as any).user;
 
       const result = await applyBarAllocationTx({ arrangementId, allocatedQty, allocId, userId: user?.id ?? null });
       if (result.status === 200) {
-        await (storage as any).createAuditLog?.({
-          module: "earthwork_arrangements", transactionId: String(arrangementId),
+        await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null,
+          module: "earthwork_arrangements", transactionId: Number(arrangementId),
           action: "programme_allocation_updated", userId: user?.id ?? null,
           newValues: { allocId, allocatedQty },
         }).catch(() => {});
@@ -13119,9 +13311,10 @@ export async function registerRoutes(
         return res.status(404).json({ error: "ALLOCATION_NOT_FOUND", message: "Programme allocation not found." });
       }
       await storage.deleteArrangementProgrammeAllocation(allocId);
-      await (storage as any).createAuditLog?.({
-        module: "earthwork_arrangements", transactionId: String(arrangementId),
-        action: "programme_allocation_deleted", userId: (req as any).user?.id ?? null,
+      const actor = (req as any).authUser ?? (req as any).user;
+      await (storage as any).logAudit({ userName: actor?.fullName ?? "Unknown", userRole: actor?.role ?? null,
+        module: "earthwork_arrangements", transactionId: Number(arrangementId),
+        action: "programme_allocation_deleted", userId: actor?.id ?? null,
         oldValues: { allocId, programmeBarId: existing.programmeBarId, allocatedQty: existing.allocatedQty },
       }).catch(() => {});
       res.json({ ok: true });
@@ -13166,7 +13359,7 @@ export async function registerRoutes(
       if (!assertAuthed(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
-      const user = (req as any).user;
+      const user = (req as any).authUser ?? (req as any).user;
       const { boqItemId, originalStart, originalFinish, originalDurationDays, originalQty, notes } = req.body ?? {};
       if (!boqItemId) return res.status(400).json({ error: "boqItemId required" });
       const existing = await (storage as any).getEarthworkBaseline(projectId, Number(boqItemId));
@@ -13207,7 +13400,7 @@ export async function registerRoutes(
       if (!assertAuthed(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
-      const user = (req as any).user;
+      const user = (req as any).authUser ?? (req as any).user;
       const body = req.body ?? {};
       if (!body.boqItemId) return res.status(400).json({ error: "boqItemId required" });
       if (!body.forecastFinishDate) return res.status(400).json({ error: "forecastFinishDate required" });
@@ -13245,7 +13438,7 @@ export async function registerRoutes(
       if (!assertAuthed(req, res)) return;
       if (!assertEdit(req, res, "qto_boq")) return;
       const id = parseInt(req.params.id);
-      const user = (req as any).user;
+      const user = (req as any).authUser ?? (req as any).user;
       const patch: Record<string, unknown> = {};
       const body = req.body ?? {};
       for (const f of ["status","forecastFinishDate","balanceQty","plannedDailyOutput","expectedWorkingDays","forecastStartDate","effectiveDate","delayReasonCode","delayReasonOther","notes"]) {

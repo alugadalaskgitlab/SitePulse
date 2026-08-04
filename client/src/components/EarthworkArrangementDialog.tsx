@@ -23,6 +23,7 @@ import { AlertCircle, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import type { EarthworkArrangementSummary } from "@shared/planningEngine";
 import { deriveEarthworkSourcingBadge, checkCutFillBalance, suggestCutToFillSourceItem } from "@shared/planningEngine";
 import { invalidateArrangementQueries } from "@/lib/arrangementCache";
+import { deriveExecutionState, EXECUTION_STATE_COLORS } from "@shared/executionState";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,7 +193,15 @@ export function ArrangementStatusBadge({ status }: { status: string }) {
 
 // ─── Arrangement summary card (read-only) ─────────────────────────────────────
 
-function ArrangementSummaryCard({
+/** Compact display for a revision field value (null → "—", objects → JSON). */
+function fmtRevisionValue(v: unknown): string {
+  if (v == null || v === "") return "—";
+  if (typeof v === "number") return v.toLocaleString();
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+export function ArrangementSummaryCard({
   arr,
   boqQty,
   projectId,
@@ -209,6 +218,36 @@ function ArrangementSummaryCard({
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Instruction 027 §19-20: pending revision (027 shape {fields,...} or legacy flat map)
+  const rawPending = (arr as any).pendingRevision;
+  const pending = rawPending == null ? null
+    : (rawPending.fields && typeof rawPending.fields === "object"
+      ? rawPending as { fields: Record<string, unknown>; reason?: string; proposedAt?: string }
+      : { fields: rawPending as Record<string, unknown> });
+  const history: any[] = Array.isArray((arr as any).revisionHistory) ? (arr as any).revisionHistory : [];
+
+  const revisionMutation = useMutation({
+    mutationFn: async (action: "approve" | "reject") => {
+      const res = await fetch(`/api/earthwork-arrangements/${arr.id}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ revisionAction: action }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
+      return data;
+    },
+    onSuccess: (_, action) => {
+      toast(action === "approve"
+        ? { title: "Revision approved", description: "New terms are now in effect; demand and value figures refresh immediately." }
+        : { title: "Revision rejected", description: "Proposal kept in history; current terms unchanged." });
+      if (projectId != null) invalidateArrangementQueries(queryClient, projectId);
+      onSaved();
+    },
+    onError: (err: Error) => toast({ title: "Revision action failed", description: err.message, variant: "destructive" }),
+  });
 
   const estimatedValue = arr.estimatedValue ?? (arr.agreedRate != null ? arr.allocatedQty * arr.agreedRate : null);
   const expectedDays = arr.plannedDailyOutput != null && arr.plannedDailyOutput > 0
@@ -306,6 +345,98 @@ function ArrangementSummaryCard({
         </p>
       )}
 
+      {/* Instruction 027 §19-20: Pending Revision — current effective vs proposed */}
+      {pending && (
+        <div className="rounded border border-purple-300 bg-purple-50 p-2 space-y-1.5" data-testid={`pending-revision-${arr.id}`}>
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-purple-800">Revision Pending Approval</span>
+            {pending.proposedAt && <span className="text-[10px] text-purple-600">{String(pending.proposedAt).slice(0, 10)}</span>}
+          </div>
+          {pending.reason && <p className="text-purple-700 italic">"{pending.reason}"</p>}
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="text-purple-600">
+                <th className="text-left font-semibold py-0.5">Field</th>
+                <th className="text-left font-semibold py-0.5">Current (in effect)</th>
+                <th className="text-left font-semibold py-0.5">Proposed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(pending.fields).map(([k, v]) => (
+                <tr key={k} className="border-t border-purple-200/60">
+                  <td className="py-0.5 pr-2 font-medium text-slate-700">{k.replace(/([A-Z])/g, " $1").toLowerCase()}</td>
+                  <td className="py-0.5 pr-2 font-mono text-slate-600">{fmtRevisionValue((arr as any)[k])}</td>
+                  <td className="py-0.5 font-mono font-semibold text-purple-800">{fmtRevisionValue(v)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-[10px] text-purple-600">Current approved values keep driving demand and value until this is approved.</p>
+          <div className="flex gap-1.5">
+            <Button
+              variant="outline" size="sm" className="h-6 text-[11px] px-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+              disabled={revisionMutation.isPending}
+              onClick={() => revisionMutation.mutate("approve")}
+              data-testid={`button-approve-revision-${arr.id}`}
+            >
+              {revisionMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+              Approve Revision
+            </Button>
+            <Button
+              variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-700 border-red-300 hover:bg-red-50"
+              disabled={revisionMutation.isPending}
+              onClick={() => revisionMutation.mutate("reject")}
+              data-testid={`button-reject-revision-${arr.id}`}
+            >
+              Reject
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Instruction 027 §20/§24: revision & operational-edit history */}
+      {history.length > 0 && (
+        <div>
+          <button
+            type="button"
+            className="text-[11px] text-slate-500 hover:text-slate-700 underline"
+            onClick={() => setShowHistory(v => !v)}
+            data-testid={`button-history-${arr.id}`}
+          >
+            {showHistory ? "Hide" : "Show"} change history ({history.length})
+          </button>
+          {showHistory && (
+            <div className="mt-1 space-y-1 max-h-48 overflow-y-auto">
+              {[...history].reverse().map((h, i) => (
+                <div key={i} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-slate-700">
+                      {h.type === "operational" ? "Operational edit" : `Revision${h.version ? ` v${h.version}` : ""}`}
+                      {" · "}
+                      <span className={
+                        h.outcome === "approved" || h.outcome === "applied" ? "text-emerald-700"
+                        : h.outcome === "rejected" ? "text-red-700" : "text-slate-500"
+                      }>{h.outcome}{h.appliedNow ? " (applied now)" : ""}</span>
+                    </span>
+                    <span className="text-slate-400">{String(h.approvedAt ?? h.decidedAt ?? h.changedAt ?? h.appliedAt ?? "").slice(0, 10)}</span>
+                  </div>
+                  {h.reason && <div className="text-slate-500 italic">"{h.reason}"</div>}
+                  {h.changes && (
+                    <div className="text-slate-600">
+                      {Object.entries(h.changes as Record<string, unknown>).map(([k, v]) => (
+                        <div key={k}>
+                          {k}: <span className="font-mono">{fmtRevisionValue((h.previous as any)?.[k])}</span> → <span className="font-mono font-semibold">{fmtRevisionValue(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Status action buttons */}
       <div className="flex gap-1.5 pt-1 flex-wrap">
         {arr.status === "draft" && (
@@ -339,6 +470,7 @@ function ArrangementSummaryCard({
         )}
         {arr.status === "approved" && (
           <>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={onEdit} title="Operational edits apply immediately; commercial changes go through a revision">Edit</Button>
             <Button
               variant="outline" size="sm" className="h-6 text-[11px] px-2 text-amber-600 hover:bg-amber-50"
               disabled={statusMutation.isPending}
@@ -360,6 +492,7 @@ function ArrangementSummaryCard({
         )}
         {arr.status === "mobilisation_pending" && (
           <>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={onEdit} title="Operational edits apply immediately; commercial changes go through a revision">Edit</Button>
             <Button
               variant="outline" size="sm" className="h-6 text-[11px] px-2 text-blue-600 hover:bg-blue-50"
               disabled={statusMutation.isPending}
@@ -375,6 +508,7 @@ function ArrangementSummaryCard({
         )}
         {arr.status === "in_progress" && (
           <>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={onEdit} title="Operational edits apply immediately; commercial changes go through a revision">Edit</Button>
             <Button
               variant="outline" size="sm" className="h-6 text-[11px] px-2 text-orange-600 hover:bg-orange-50"
               disabled={statusMutation.isPending}
@@ -440,6 +574,13 @@ export function EarthworkArrangementDialog({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isEdit = !!editArrangement;
+  // Instruction 027 §17-21: editing an operational arrangement follows the
+  // controlled-edit rules (operational edits immediate, material via revision).
+  const OPERATIONAL_STATUSES = ["approved", "mobilisation_pending", "in_progress", "on_hold"];
+  const isOperationalEdit = isEdit && OPERATIONAL_STATUSES.includes(editArrangement!.status);
+  // Pending server challenge: material change needs revision, or a reason is required.
+  const [editChallenge, setEditChallenge] = useState<{ code: string; fields?: string[]; body: Record<string, unknown> } | null>(null);
+  const [editReason, setEditReason] = useState("");
 
   // Form state
   const [arrangementType, setArrangementType] = useState<ArrangementType>(
@@ -546,8 +687,10 @@ export function EarthworkArrangementDialog({
       plannedDailyOutput: dailyOutputNum > 0 ? dailyOutputNum : null,
       notes: notes.trim() || null,
       components,
-      // PATCH (edit) uses `status` directly; POST uses `saveIntent`
-      ...(saveIntent === "submit" ? { status: "submitted" } : { status: "draft" }),
+      // PATCH (edit) uses `status` directly; POST uses `saveIntent`.
+      // Instruction 027 §17: never send status when editing an operational
+      // arrangement — that would silently demote approved/in-progress records.
+      ...(isOperationalEdit ? {} : (saveIntent === "submit" ? { status: "submitted" } : { status: "draft" })),
     };
 
     if (isMultiSource && sourceBoqItems && sourceBoqItems.length > 1) {
@@ -561,62 +704,92 @@ export function EarthworkArrangementDialog({
     return { ...base, boqItemId };
   };
 
+  /**
+   * Instruction 027 §17-21: shared PATCH/POST sender. On a controlled-edit
+   * challenge from the server (material change needs a revision, or a reason is
+   * required for date/output changes), surface the inline reason form instead
+   * of a hard failure.
+   */
+  const CHALLENGE_CODES = new Set(["MATERIAL_CHANGE_REQUIRES_REVISION", "REVISION_REASON_REQUIRED", "ADMIN_APPLY_REASON_REQUIRED"]);
+  const sendArrangement = async (body: Record<string, unknown>) => {
+    const url = isEdit
+      ? `/api/earthwork-arrangements/${editArrangement!.id}`
+      : `/api/boq/projects/${projectId}/earthwork-arrangements`;
+    const method = isEdit ? "PATCH" : "POST";
+    const res = await fetch(url, {
+      method, credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (isEdit && CHALLENGE_CODES.has(String(data.error))) {
+        setEditChallenge({ code: String(data.error), fields: data.fields, body });
+        throw new Error("__CHALLENGE__");
+      }
+      throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
+    }
+    return data;
+  };
+  const onSaveError = (title: string) => (err: Error) => {
+    if (err.message === "__CHALLENGE__") return; // handled by inline reason form
+    toast({ title, description: err.message, variant: "destructive" });
+  };
+
   // Save Draft — single request, status = "draft"
   const saveDraftMutation = useMutation({
-    mutationFn: async () => {
-      const body = buildBody("draft");
-      const url = isEdit
-        ? `/api/earthwork-arrangements/${editArrangement!.id}`
-        : `/api/boq/projects/${projectId}/earthwork-arrangements`;
-      const method = isEdit ? "PATCH" : "POST";
-      const res = await fetch(url, {
-        method, credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
-      return data;
-    },
-    onSuccess: () => {
-      toast({ title: "Draft saved", description: `Draft arrangement saved for ${materialLabel}` });
+    mutationFn: async () => sendArrangement(buildBody("draft")),
+    onSuccess: (data: any) => {
+      if (data?.revisionPending) {
+        toast({ title: "Revision submitted for approval", description: "Current approved values stay in effect until the revision is approved." });
+      } else if (data?.appliedNow) {
+        toast({ title: "Changes applied immediately", description: "Recorded as an approved revision (Edit and Apply Now)." });
+      } else {
+        toast({ title: isOperationalEdit ? "Changes saved" : "Draft saved", description: `Arrangement saved for ${materialLabel}` });
+      }
       invalidateArrangementQueries(queryClient, projectId);
       onSaved();
       onClose();
     },
-    onError: (err: Error) => {
-      toast({ title: "Save failed", description: err.message, variant: "destructive" });
+    onError: onSaveError("Save failed"),
+  });
+
+  // Resend after the user filled in the reason form (revision / operational reason / apply now)
+  const challengeMutation = useMutation({
+    mutationFn: async (mode: "revise" | "reason" | "apply_now") => {
+      const base = editChallenge!.body;
+      const body =
+        mode === "revise" ? { ...base, saveIntent: "revise", revisionReason: editReason }
+        : mode === "apply_now" ? { ...base, saveIntent: "apply_now", editReason }
+        : { ...base, editReason };
+      return sendArrangement(body);
     },
+    onSuccess: (data: any, mode) => {
+      setEditChallenge(null); setEditReason("");
+      toast(mode === "revise"
+        ? { title: "Revision submitted for approval", description: "Current approved values stay in effect until the revision is approved." }
+        : mode === "apply_now"
+          ? { title: "Changes applied immediately", description: "Recorded as an approved revision (Edit and Apply Now)." }
+          : { title: "Changes saved", description: "Operational change applied and audited." });
+      invalidateArrangementQueries(queryClient, projectId);
+      onSaved();
+      onClose();
+    },
+    onError: onSaveError("Save failed"),
   });
 
   // Submit for Approval — single request with saveIntent:"submit"
   // POST: server creates directly as status=submitted (no second PATCH needed)
   // PATCH: body includes status:"submitted" → server sets submittedAt in one round-trip
   const submitMutation = useMutation({
-    mutationFn: async () => {
-      const body = buildBody("submit");
-      const url = isEdit
-        ? `/api/earthwork-arrangements/${editArrangement!.id}`
-        : `/api/boq/projects/${projectId}/earthwork-arrangements`;
-      const method = isEdit ? "PATCH" : "POST";
-      const res = await fetch(url, {
-        method, credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
-      return data;
-    },
+    mutationFn: async () => sendArrangement(buildBody("submit")),
     onSuccess: () => {
       toast({ title: "Submitted for approval", description: `Arrangement submitted for ${materialLabel}` });
       invalidateArrangementQueries(queryClient, projectId);
       onSaved();
       onClose();
     },
-    onError: (err: Error) => {
-      toast({ title: "Submit failed", description: err.message, variant: "destructive" });
-    },
+    onError: onSaveError("Submit failed"),
   });
 
   // Instruction 024: For multi-source rows, block save/submit until source BOQ details
@@ -624,7 +797,7 @@ export function EarthworkArrangementDialog({
   // (the orphan-arrangement case the server now rejects with BOQ_SOURCE_REQUIRED).
   const sourceDetailsLoading = isMultiSource && !sourceBoqItems;
 
-  const isPending = saveDraftMutation.isPending || submitMutation.isPending;
+  const isPending = saveDraftMutation.isPending || submitMutation.isPending || challengeMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
@@ -837,25 +1010,99 @@ export function EarthworkArrangementDialog({
           </div>
         )}
 
+        {/* Instruction 027 §18-21: controlled-edit reason form */}
+        {editChallenge && (
+          <div className="rounded border border-purple-300 bg-purple-50 p-3 space-y-2 text-[12px]">
+            {editChallenge.code === "MATERIAL_CHANGE_REQUIRES_REVISION" ? (
+              <p className="text-purple-800">
+                <b>This changes commercial/material terms of an operational arrangement</b>
+                {editChallenge.fields?.length ? <> ({editChallenge.fields.join(", ")})</> : null}.
+                It must go through a controlled revision — current approved values stay in effect (and keep driving demand) until the revision is approved.
+              </p>
+            ) : (
+              <p className="text-purple-800">
+                <b>A short reason is required</b> for changing planned dates or daily output on an operational arrangement.
+              </p>
+            )}
+            <Input
+              className="h-8 text-[12px] bg-white"
+              placeholder="Reason for this change…"
+              value={editReason}
+              onChange={e => setEditReason(e.target.value)}
+              data-testid="input-edit-reason"
+            />
+            <div className="flex gap-2 flex-wrap">
+              {editChallenge.code === "MATERIAL_CHANGE_REQUIRES_REVISION" ? (
+                <>
+                  <Button
+                    size="sm" className="h-7 text-[11px]"
+                    disabled={!editReason.trim() || challengeMutation.isPending}
+                    onClick={() => challengeMutation.mutate("revise")}
+                    data-testid="button-submit-revision"
+                  >
+                    {challengeMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                    Submit Revision for Approval
+                  </Button>
+                  <Button
+                    size="sm" variant="outline" className="h-7 text-[11px] text-red-700 border-red-300 hover:bg-red-50"
+                    disabled={!editReason.trim() || challengeMutation.isPending}
+                    onClick={() => challengeMutation.mutate("apply_now")}
+                    title="Admin only — applies immediately and records an approved revision"
+                    data-testid="button-apply-now"
+                  >
+                    Edit and Apply Now (Admin)
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="sm" className="h-7 text-[11px]"
+                  disabled={!editReason.trim() || challengeMutation.isPending}
+                  onClick={() => challengeMutation.mutate("reason")}
+                  data-testid="button-save-with-reason"
+                >
+                  {challengeMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                  Save with Reason
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" className="h-7 text-[11px]" onClick={() => { setEditChallenge(null); setEditReason(""); }}>
+                Back
+              </Button>
+            </div>
+          </div>
+        )}
+
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
-          <Button
-            variant="outline"
-            disabled={isPending || !canDraft || sourceDetailsLoading}
-            onClick={() => saveDraftMutation.mutate()}
-            title={sourceDetailsLoading ? "Waiting for BOQ source data to load" : undefined}
-          >
-            {saveDraftMutation.isPending && <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />}
-            Save Draft
-          </Button>
-          <Button
-            disabled={isPending || !canSubmit || sourceDetailsLoading}
-            onClick={() => submitMutation.mutate()}
-            title={sourceDetailsLoading ? "Waiting for BOQ source data to load" : undefined}
-          >
-            {submitMutation.isPending && <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />}
-            Submit for Approval
-          </Button>
+          {isOperationalEdit ? (
+            <Button
+              disabled={isPending || !canDraft || sourceDetailsLoading || !!editChallenge}
+              onClick={() => saveDraftMutation.mutate()}
+              data-testid="button-save-changes"
+            >
+              {saveDraftMutation.isPending && <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />}
+              Save Changes
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                disabled={isPending || !canDraft || sourceDetailsLoading}
+                onClick={() => saveDraftMutation.mutate()}
+                title={sourceDetailsLoading ? "Waiting for BOQ source data to load" : undefined}
+              >
+                {saveDraftMutation.isPending && <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />}
+                Save Draft
+              </Button>
+              <Button
+                disabled={isPending || !canSubmit || sourceDetailsLoading}
+                onClick={() => submitMutation.mutate()}
+                title={sourceDetailsLoading ? "Waiting for BOQ source data to load" : undefined}
+              >
+                {submitMutation.isPending && <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />}
+                Submit for Approval
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1078,30 +1325,49 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
         </p>
       )}
 
-      {/* Earthwork Control link */}
-      <a
-        href={`/work-program/${projectId}/earthwork`}
-        className="text-[11px] text-teal-600 hover:underline"
-      >
-        View Earthwork Control
-      </a>
+      {/* Instruction 027 §8-9: Procurement shows a concise downstream summary only —
+          execution state, agency allocation, HLC actionable qty. Details live in
+          the Work Programme stretch panel. */}
+      {(() => {
+        const allArrs = (row.earthworkArrangements ?? []).filter(a => !["cancelled", "rejected"].includes(a.status));
+        if (allArrs.length === 0) return null;
+        const state = deriveExecutionState(row.totalDemand, allArrs.map(a => ({
+          id: a.id, status: a.status, arrangementType: a.arrangementType,
+          qtyForScope: Number(a.allocatedQty), agencyName: a.agencyName,
+          components: (a as any).components ?? null, pendingRevision: (a as any).pendingRevision ?? null,
+        })), { uom: row.uom || "CUM" });
+        const c = EXECUTION_STATE_COLORS[state.state];
+        return (
+          <div className="rounded border border-slate-200 bg-white p-2 space-y-1 text-[11px]" data-testid="procurement-arrangement-summary">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`inline-flex items-center gap-1 font-semibold rounded border px-1.5 py-0.5 ${c.bg} ${c.border} ${c.text}`}>
+                {state.badge}
+              </span>
+              {state.pendingRevision && (
+                <span className="rounded bg-purple-100 border border-purple-300 text-purple-700 px-1 py-0.5 text-[10px] font-semibold">Revision Pending</span>
+              )}
+            </div>
+            {state.effectiveOutsourcedQty > 0 && (
+              <div className="text-slate-600">
+                Agency allocation: <span className="font-mono font-semibold">{state.effectiveOutsourcedQty.toLocaleString()} {row.uom || "CUM"}</span>
+                {state.agencyName && <> · {state.agencyName}</>}
+              </div>
+            )}
+            <div className="text-slate-600">
+              HLC actionable: <span className="font-mono font-semibold">{(row.arrangementHlcQty ?? Math.max(0, row.totalDemand - state.effectiveOutsourcedQty)).toLocaleString()} {row.uom || "CUM"}</span>
+            </div>
+          </div>
+        );
+      })()}
 
-      {/* Existing arrangements */}
-      {activeArrs.length > 0 && (
-        <div className="space-y-1.5">
-          {activeArrs.map(arr => (
-            <ArrangementSummaryCard
-              key={arr.id}
-              arr={arr}
-              boqQty={row.totalDemand}
-              projectId={projectId}
-              onEdit={() => setEditTarget(arr)}
-              onCancel={() => setCancelTarget(arr.id)}
-              onSaved={onSaved}
-            />
-          ))}
-        </div>
-      )}
+      {/* §9: details and editing live in the Work Programme */}
+      <a
+        href={`/work-program/${projectId}`}
+        className="text-[11px] text-teal-600 hover:underline font-semibold"
+        data-testid="link-view-in-work-programme"
+      >
+        View in Work Programme →
+      </a>
 
       {/* Fully allocated (non-cut-to-fill; internally sourced shows its own header badge) */}
       {sourcingBadge !== "internally_sourced" && allocatedTotal >= row.totalDemand - 0.001 && activeArrs.length > 0 && (
@@ -1126,8 +1392,8 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
         </span>
       )}
 
-      {/* Instruction 026 §14: Work Programme is the primary place to decide execution.
-          Procurement keeps view/edit of existing arrangements + secondary create. */}
+      {/* Instruction 027 §10: no independent arrangement management in Procurement —
+          the only actions are the Work Programme link + the cut-to-fill quick action. */}
       {unallocatedQty > 0.001 && (
         <div className="flex items-center gap-1.5 flex-wrap">
           <a
@@ -1138,14 +1404,6 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
           >
             Manage Execution Plan →
           </a>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-1 text-[11px] text-slate-600 border border-slate-200 rounded px-1.5 py-0.5 hover:bg-slate-50 transition-colors"
-            title="Create an arrangement without a stretch link (legacy whole-item timing)"
-          >
-            <Plus className="w-3 h-3" />
-            {activeArrs.length === 0 ? "Set Up Arrangement" : "Add Partial Arrangement"}
-          </button>
           <button
             onClick={() => setShowCutToFill(v => !v)}
             className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 hover:bg-emerald-100 transition-colors"

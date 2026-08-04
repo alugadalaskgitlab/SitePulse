@@ -34,6 +34,7 @@ import {
   isEarthworkBoqItem,
 } from "@shared/planningEngine";
 import { BarArrangementPanel } from "@/components/BarArrangementPanel";
+import { ExecutionStateBadge, useBarExecutionState } from "@/components/ExecutionStateBadge";
 import { SEQUENCE_RULES } from "@shared/programmeSequencer";
 import { isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
 import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
@@ -156,6 +157,16 @@ function StretchRow({
         || isEarthworkBoqItem({ description: item.description ?? "", unit: item.unit ?? "" } as any);
     } catch { return false; }
   }, [item]);
+
+  // Instruction 027 §1-2: compact execution-state badge per earthwork bar
+  const executionState = useBarExecutionState({
+    projectId,
+    barId: bar.id,
+    boqItemId: bar.boqItemId,
+    barPlannedQty: Number(bar.plannedQty ?? 0),
+    unit: (bar as any).canonicalUnit ?? bar.unit ?? "CUM",
+    enabled: isEarthworkBar,
+  });
 
   const [cf, setCf] = useState(bar.chainageFrom != null ? String(bar.chainageFrom) : "");
   const [ct, setCt] = useState(bar.chainageTo != null ? String(bar.chainageTo) : "");
@@ -641,14 +652,27 @@ function StretchRow({
 
         {/* Buttons */}
         {isEarthworkBar && (
-          <button
-            onClick={() => setShowArrangements(true)}
-            className="p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex-shrink-0"
-            title="Execution arrangements for this stretch"
-            data-testid={`button-arrangements-${bar.id}`}
-          >
-            <Handshake className="w-3 h-3" />
-          </button>
+          <>
+            {/* Instruction 027 §1-4: compact operational execution-state badge */}
+            {executionState && (
+              <span className="flex-shrink-0 mr-0.5">
+                <ExecutionStateBadge
+                  result={executionState}
+                  compact
+                  onClick={() => setShowArrangements(true)}
+                  testId={`badge-execution-state-${bar.id}`}
+                />
+              </span>
+            )}
+            <button
+              onClick={() => setShowArrangements(true)}
+              className="p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex-shrink-0"
+              title="Execution arrangements for this stretch"
+              data-testid={`button-arrangements-${bar.id}`}
+            >
+              <Handshake className="w-3 h-3" />
+            </button>
+          </>
         )}
         <button
           onClick={() => onSplit(bar)}

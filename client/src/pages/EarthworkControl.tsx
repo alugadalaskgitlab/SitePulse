@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { useParams } from "wouter";
+import { Link, useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import {
@@ -148,7 +148,10 @@ export default function EarthworkControl() {
         </a>
       </div>
       <div>
-        <h1 className="text-xl font-bold text-slate-800">Earthwork Control</h1>
+        <h1 className="text-xl font-bold text-slate-800">Execution Arrangements — Classification & Demand</h1>
+        <Link href={`/work-program/${projectId}/execution-arrangements`} className="text-[12px] text-teal-600 hover:underline ml-2">
+          Open register →
+        </Link>
         <p className="text-[13px] text-slate-500">
           Manage earthwork execution arrangements and material classifications
         </p>

@@ -18,8 +18,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { AlertTriangle, Link2, Loader2, Plus, Trash2 } from "lucide-react";
-import { ArrangementStatusBadge, EarthworkArrangementDialog } from "@/components/EarthworkArrangementDialog";
+import { AlertTriangle, ChevronDown, ChevronRight, Link2, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrangementStatusBadge, ArrangementSummaryCard, EarthworkArrangementDialog } from "@/components/EarthworkArrangementDialog";
 import { invalidateArrangementQueries } from "@/lib/arrangementCache";
 
 const ACTIVE_STATUSES = new Set(["approved", "mobilisation_pending", "in_progress", "on_hold"]);
@@ -64,6 +64,10 @@ export function BarArrangementPanel({
   const [linkArrId, setLinkArrId] = useState<number | null>(null);
   const [linkQty, setLinkQty] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  // Instruction 027 §5-7: this panel is the single detail source — expandable
+  // full-detail cards (incl. pending revision + history) and controlled editing.
+  const [expandedArrId, setExpandedArrId] = useState<number | null>(null);
+  const [editTarget, setEditTarget] = useState<Arrangement | null>(null);
 
   const { data: arrangements = [], isLoading: arrsLoading } = useQuery<Arrangement[]>({
     queryKey: ["earthwork-arrangements-item", projectId, boqItemId],
@@ -249,6 +253,48 @@ export function BarArrangementPanel({
               <div className="text-slate-500">No execution arrangements exist for this BOQ item yet.</div>
             )}
 
+            {/* Instruction 027 §5-7: full arrangement details — single source of truth */}
+            {visibleArrs.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="font-semibold text-slate-600">Arrangement details</div>
+                {visibleArrs.map(a => {
+                  const expanded = expandedArrId === a.id;
+                  const hasPending = a.pendingRevision != null;
+                  return (
+                    <div key={a.id} className="rounded border border-slate-200" data-testid={`arr-detail-${a.id}`}>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-slate-50"
+                        onClick={() => setExpandedArrId(expanded ? null : a.id)}
+                        data-testid={`button-expand-arr-${a.id}`}
+                      >
+                        {expanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                        <span className="flex-1 truncate">
+                          {a.agencyName || a.arrangementType?.replace(/_/g, " ") || `Arrangement #${a.id}`}
+                          {" — "}{Number(a.allocatedQty).toLocaleString()} {unit}
+                        </span>
+                        {hasPending && (
+                          <span className="shrink-0 rounded bg-purple-100 border border-purple-300 text-purple-700 px-1 text-[10px] font-semibold">Revision Pending</span>
+                        )}
+                        <ArrangementStatusBadge status={a.status} />
+                      </button>
+                      {expanded && (
+                        <div className="border-t border-slate-100 p-1.5">
+                          <ArrangementSummaryCard
+                            arr={a as any}
+                            projectId={projectId}
+                            onEdit={() => setEditTarget(a)}
+                            onCancel={() => { /* cancel flow lives in Procurement summary; keep panel simple */ }}
+                            onSaved={refresh}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="flex items-center justify-between pt-1">
               <Button
                 variant="outline" size="sm" className="h-7 text-[11px] px-2"
@@ -274,6 +320,19 @@ export function BarArrangementPanel({
           boqItemId={boqItemId}
           materialLabel={barLabel}
           boqQty={barRemaining > 0 ? barRemaining : barPlannedQty}
+        />
+      )}
+
+      {/* Instruction 027 §17: controlled editing opens the same dialog */}
+      {editTarget && (
+        <EarthworkArrangementDialog
+          open={!!editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => { refresh(); }}
+          projectId={projectId}
+          boqItemId={editTarget.boqItemId ?? boqItemId}
+          materialLabel={barLabel}
+          editArrangement={editTarget as any}
         />
       )}
     </>

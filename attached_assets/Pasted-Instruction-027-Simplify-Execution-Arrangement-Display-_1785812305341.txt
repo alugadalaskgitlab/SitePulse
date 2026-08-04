@@ -1,0 +1,827 @@
+Instruction 027 — Simplify Execution Arrangement Display and Allow Controlled Editing After Approval
+
+Purpose
+
+Refine the execution-arrangement feature after Batch 026.
+
+The execution arrangement now belongs to the Work Programme stretch/bar and the full details are already available through the stretch arrangement panel.
+
+This batch must:
+
+1. simplify the Gantt display into clear operational execution states;
+2. keep full arrangement details in one place — the stretch Execution Plan panel;
+3. remove duplicated detailed arrangement cards from BOM–Procurement;
+4. retain only the downstream HLC demand effect in Procurement;
+5. convert Earthwork Control into a project-level Execution Arrangements register;
+6. allow PM/Admin to edit approved arrangements through a controlled and auditable process;
+7. distinguish operational edits from material/commercial revisions;
+8. preserve approved history and keep demand calculations tied to the currently effective approved version.
+
+This is a focused UI, workflow and audit batch.
+
+DO NOT TOUCH OR REGRESS
+
+Do not change or simplify:
+
+- calculateBomDemand or the authoritative demand engine;
+- component-level HLC/Agency/Client responsibility logic;
+- bar-level arrangement matching;
+- programme-bar allocations;
+- programme-period phasing;
+- active-status gating;
+- overlap detection and quantity caps;
+- legacy arrangement fallback;
+- Instruction 025 and 026 demand tests;
+- GSB/WMM behaviour;
+- UOM conversion;
+- canonical material mapping;
+- PI/IRN/GRN workflows;
+- Stores stock;
+- Cancel GRN;
+- DPR entry;
+- Auto Sequence;
+- stretch/chainage generation;
+- LHS/RHS;
+- width-aware planning;
+- baseline/reforecasting;
+- subcontract billing;
+- vendor accounting;
+- bituminous/concrete arrangement support.
+
+PART A — GANTT EXECUTION-STATE DISPLAY
+
+1. Replace raw workflow statuses on the Gantt
+
+Do not display all internal statuses such as:
+
+- draft;
+- submitted;
+- returned;
+- approved;
+- rejected;
+- cancelled;
+- mobilisation pending;
+- in progress;
+- completed.
+
+The Gantt is a glance tool.
+
+Show one compact operational execution-state badge per programme bar.
+
+Supported visible states:
+
+- Execution Arrangement Required
+- HLC In-house
+- Outsourcing Proposed
+- Outsourcing Approved
+- Partly Outsourced
+- Client Supplied
+- On Hold
+
+2. State-mapping rules
+
+Use the following logic.
+
+Execution Arrangement Required
+
+Show when:
+
+- no active execution decision exists;
+- an arrangement was rejected or cancelled and no other active arrangement covers the bar;
+- the bar is only partly allocated and the remaining quantity has no execution decision;
+- arrangement data is incomplete or requires user action.
+
+HLC In-house
+
+Show only when HLC in-house execution is an explicit, saved execution decision.
+
+Do not use HLC In-house as the default for an undecided bar.
+
+Outsourcing Proposed
+
+Show when an outsourced or partly outsourced arrangement exists but is not yet operationally approved.
+
+This may include internal statuses such as:
+
+- draft;
+- submitted;
+- returned for correction, where a proposal still exists.
+
+The detail panel must show the exact internal status.
+
+Outsourcing Approved
+
+Show when:
+
+- the approved active arrangement covers the full relevant bar quantity; and
+- execution/material/resource responsibility is substantially assigned to the Agency.
+
+Partly Outsourced
+
+Show when:
+
+- only part of the bar quantity is outsourced; or
+- responsibility is split between HLC and Agency.
+
+Examples:
+
+- Agency excavation and transport; HLC spreading and compaction.
+- 3,000 CUM outsourced out of a 5,000 CUM bar.
+
+Client Supplied
+
+Show when the approved arrangement indicates that the client supplies the principal material or performs the relevant execution component.
+
+On Hold
+
+Show when the currently effective arrangement or programme bar is temporarily on hold.
+
+Rejected or cancelled arrangements must not continue displaying Outsourcing Proposed or Outsourcing Approved.
+
+3. Gantt badge content
+
+Keep the bar compact.
+
+Examples:
+
+Outsourcing Approved · Narsimulu
+
+Partly Outsourced · 3,000 / 5,092.6 CUM
+
+HLC In-house
+
+Client Supplied
+
+Execution Arrangement Required
+
+On Hold
+
+Do not print on the Gantt bar:
+
+- full rate;
+- total value;
+- responsibility matrix;
+- inclusions/exclusions;
+- all lifecycle statuses;
+- full dates;
+- approval history.
+
+4. Interaction
+
+Clicking any of the following should open the same stretch Execution Plan panel:
+
+- execution-state badge;
+- handshake/arrangement icon;
+- relevant action in the programme-bar menu.
+
+Do not create separate detail screens for the same arrangement.
+
+PART B — STRETCH EXECUTION PLAN PANEL
+
+5. Make the panel the single detailed source
+
+The existing programme-bar arrangement panel must remain the primary place to view and manage full stretch-level execution details.
+
+Show:
+
+- BOQ item/work description;
+- stretch/reach;
+- chainage where available;
+- programme-bar quantity;
+- allocated quantity;
+- unallocated quantity;
+- arrangement type;
+- agency/vendor;
+- agreed rate;
+- estimated value;
+- HLC/Agency/Client responsibility breakdown;
+- source/borrow area;
+- average lead;
+- planned dates;
+- daily output;
+- equipment/tippers;
+- inclusions;
+- exclusions;
+- notes;
+- current internal workflow status;
+- approval details;
+- pending revision warning;
+- history.
+
+6. Internal workflow remains available in the panel
+
+The backend/internal workflow may continue to use:
+
+- Draft
+- Submitted
+- Approved
+- Returned
+- Rejected
+- Cancelled
+- Mobilisation Pending
+- In Progress
+- On Hold
+- Completed
+
+These internal statuses must remain available for control and audit.
+
+Do not expose all of them as separate Gantt badges.
+
+7. Clear current-effective status
+
+The panel must clearly distinguish:
+
+- Current Effective Arrangement
+- Proposed / Pending Arrangement
+- Pending Revision
+- Historical Version
+
+Never make a pending revision look operationally active.
+
+PART C — SIMPLIFY BOM–PROCUREMENT
+
+8. Remove full arrangement duplication
+
+BOM–Procurement must no longer display full arrangement cards containing:
+
+- rate and full commercial value;
+- complete responsibility matrix;
+- mobilisation controls;
+- hold/cancel controls;
+- full dates;
+- notes;
+- approval history;
+- edit controls.
+
+These belong in Work Programme / Execution Plan.
+
+9. Show only downstream effect
+
+For recognised earthwork rows, Procurement should show a concise summary.
+
+Example — fully outsourced:
+
+Execution: Outsourcing Approved
+Agency allocation: 5,092.6 CUM
+HLC actionable material quantity: Nil
+HLC excavation/transport/diesel: Excluded
+View in Work Programme
+
+Example — partly outsourced:
+
+Execution: Partly Outsourced
+Agency: excavation and transport
+HLC: spreading and compaction
+HLC actionable demand retained for HLC components
+View in Work Programme
+
+Example — undecided:
+
+Execution Arrangement Required
+HLC actionable demand is provisional
+Set execution plan in Work Programme
+
+10. Procurement actions
+
+Primary action:
+
+- View in Work Programme
+- Manage Execution Plan
+
+Do not provide a second independent arrangement-management workflow inside Procurement.
+
+Any remaining shortcut must open the same Work Programme-linked panel and must not create an unlinked arrangement.
+
+11. Mapping status
+
+Recognised earthwork rows must not show:
+
+Mapping Required
+
+Use execution-specific labels such as:
+
+- Execution Arrangement Required
+- Outsourcing Proposed
+- Outsourcing Approved
+- Partly Outsourced
+- HLC In-house
+- Client Supplied
+
+Do not alter material-mapping warnings for normal canonical materials.
+
+PART D — PROJECT-LEVEL EXECUTION ARRANGEMENTS REGISTER
+
+12. Evolve Earthwork Control
+
+Rename or evolve the current Earthwork Control page into:
+
+Execution Arrangements
+
+Initially, it may continue to contain only earthwork arrangements, but the route, page title and internal design should be reusable later for:
+
+- bituminous works;
+- concrete/RMC;
+- structures;
+- other subcontracted execution.
+
+Do not implement those additional work types in this batch.
+
+13. Register contents
+
+Show a practical table/register with:
+
+- BOQ item;
+- programme stretch/bar;
+- chainage/reach;
+- agency/vendor;
+- execution state;
+- arrangement type;
+- allocated quantity;
+- rate;
+- estimated value;
+- current effective status;
+- pending revision indicator;
+- mobilisation;
+- progress where available;
+- balance;
+- HLC responsibility summary;
+- agency responsibility summary;
+- action to open the stretch panel.
+
+14. Filters
+
+Provide filters for:
+
+- Execution Arrangement Required
+- HLC In-house
+- Outsourcing Proposed
+- Outsourcing Approved
+- Partly Outsourced
+- Client Supplied
+- On Hold
+- Pending Revision
+- Agency/vendor
+- BOQ item/work type
+
+15. Do not create a duplicate editor
+
+The register may open the same stretch Execution Plan panel.
+
+Do not create another independent arrangement form with different behaviour.
+
+PART E — EDITING APPROVED ARRANGEMENTS
+
+16. Approved arrangements remain editable
+
+PM/Admin must be able to edit an approved arrangement.
+
+Do not permanently lock approved arrangements.
+
+However, approved data must never be silently overwritten.
+
+Every edit must be classified as either:
+
+- Operational Edit
+- Material / Commercial Revision
+
+17. Operational edits
+
+The following may be updated directly by authorised PM/Admin without full reapproval:
+
+- notes;
+- operational remarks;
+- mobilisation date;
+- target date;
+- planned start/restart date;
+- planned daily output;
+- working hours/shifts;
+- equipment count;
+- tipper count;
+- operational contact/reference;
+- non-commercial planning details.
+
+Operational edits:
+
+- take effect immediately;
+- do not change the approved commercial scope;
+- do not replace the approved arrangement version;
+- create an audit record;
+- must record old value and new value;
+- must record changed by and changed at;
+- should require a short reason when dates/output materially change.
+
+18. Material / commercial revisions
+
+The following must create a controlled revision:
+
+- agency/vendor;
+- allocated quantity;
+- agreed rate;
+- arrangement type;
+- HLC/Agency/Client responsibility;
+- material/source responsibility;
+- excavation/loading/transport responsibility;
+- equipment/tipper responsibility;
+- diesel responsibility;
+- linked programme bars;
+- inclusions/exclusions affecting scope or money;
+- quantity allocation between bars;
+- any field that changes HLC material, equipment, labour or diesel demand.
+
+Do not overwrite the active approved values directly.
+
+19. Revision behaviour
+
+When a material/commercial revision is created:
+
+- preserve the currently effective approved arrangement;
+- store the proposed new values separately;
+- mark the arrangement as Revision Pending;
+- show old and proposed values side by side;
+- record revision reason;
+- record proposed by and proposed at;
+- do not change demand calculations yet.
+
+Until approval:
+
+- Work Programme and Procurement continue using the current approved version;
+- Gantt continues showing the current approved execution state;
+- the Gantt/panel may show a small Revision Pending indicator;
+- demand remains based on the current approved version.
+
+20. Revision approval
+
+On approval:
+
+- proposed values become the new current effective version;
+- previous approved version remains in history;
+- effective date/time is stored;
+- approved by is stored;
+- reason is retained;
+- demand recalculates immediately;
+- all affected queries are invalidated and refetched;
+- Gantt and Procurement update immediately.
+
+On return/rejection:
+
+- current approved version remains effective;
+- proposed revision remains historical/auditable;
+- no demand change occurs.
+
+21. Admin Edit and Apply Now
+
+Provide an Admin/Owner-only action:
+
+Edit and Apply Now
+
+Use only for urgent operational cases such as:
+
+- agency withdrawal;
+- immediate takeover by HLC;
+- emergency responsibility change;
+- urgent quantity reassignment.
+
+Requirements:
+
+- reason is mandatory;
+- show a warning that demand will change immediately;
+- create a new approved revision/version;
+- do not overwrite history;
+- record who applied it and when;
+- immediately refresh Materials, Equipment, Labour, Procurement and Diesel.
+
+PM should not receive this bypass unless existing permission settings explicitly permit it.
+
+22. Permissions
+
+Suggested minimum:
+
+Project Manager:
+- operational edits;
+- create material/commercial revision;
+- submit revision;
+- view history.
+
+Admin/Owner:
+- all PM actions;
+- approve/return/reject revisions;
+- Edit and Apply Now;
+- cancel an arrangement.
+
+Use the existing permission architecture.
+
+Do not create new designation templates in this batch.
+
+PART F — AUDIT HISTORY
+
+23. Full audit trail
+
+For every approved-arrangement edit, record:
+
+- arrangement ID;
+- programme bar/stretch;
+- version/revision number;
+- field changed;
+- old value;
+- new value;
+- type of change:
+  - operational;
+  - material/commercial;
+- reason;
+- changed by;
+- changed at;
+- approved by where applicable;
+- approved at where applicable;
+- effective from.
+
+24. History display
+
+Inside the stretch Execution Plan panel, provide:
+
+- Current Effective Version
+- Pending Revision
+- Previous Versions
+- Change History
+
+Allow the user to open a historical version and see:
+
+- agency;
+- quantity;
+- rate;
+- responsibilities;
+- programme-bar allocations;
+- approval details;
+- validity period.
+
+Do not allow historical versions to be edited.
+
+25. No silent overwrite
+
+Any direct update API against an approved arrangement must enforce the classification rules.
+
+The server must not rely only on the UI.
+
+If a material field is changed through the normal update endpoint, return a clear response such as:
+
+MATERIAL_CHANGE_REQUIRES_REVISION
+
+PART G — IMMEDIATE DEMAND REFRESH
+
+26. Refresh after effective changes
+
+Immediately invalidate and refetch affected project data when:
+
+- an operational edit affects dates/output shown in programme;
+- a revision is approved;
+- Edit and Apply Now is used;
+- an arrangement is cancelled;
+- an arrangement is put on hold/resumed;
+- a bar allocation becomes effective.
+
+Refresh:
+
+- Work Programme;
+- Execution Arrangements register;
+- Earthwork/Execution arrangement queries;
+- Materials;
+- Equipment;
+- Labour;
+- Procurement;
+- diesel/HSD totals.
+
+Do not rely on stale-time expiry.
+
+27. Pending revisions do not affect demand
+
+Creating, editing, submitting, returning or rejecting a pending revision must not change the active demand calculation.
+
+Only approval or Admin Apply Now changes the effective values used by the demand engine.
+
+PART H — ERROR HANDLING
+
+28. Structured errors
+
+Return and display clear errors such as:
+
+- ARRANGEMENT_NOT_FOUND
+- ARRANGEMENT_NOT_EDITABLE
+- MATERIAL_CHANGE_REQUIRES_REVISION
+- REVISION_REASON_REQUIRED
+- REVISION_ALREADY_PENDING
+- REVISION_NOT_FOUND
+- REVISION_NOT_APPROVABLE
+- ADMIN_APPLY_REASON_REQUIRED
+- PROGRAMME_BAR_ALLOCATION_CONFLICT
+- ARRANGEMENT_VERSION_CONFLICT
+- EXECUTION_STATE_NOT_RESOLVED
+
+Use server-side validation.
+
+Show the server-provided message in the UI.
+
+PART I — ACCEPTANCE TESTS
+
+29. Gantt state tests
+
+A. No execution decision
+
+Expected:
+- Execution Arrangement Required.
+
+B. Explicit HLC execution
+
+Expected:
+- HLC In-house.
+
+C. Draft/submitted outsourced proposal
+
+Expected:
+- Outsourcing Proposed.
+- detail panel shows exact internal status.
+
+D. Approved full outsourcing
+
+Expected:
+- Outsourcing Approved.
+- agency name shown compactly.
+
+E. Partial quantity or responsibility
+
+Expected:
+- Partly Outsourced.
+- allocated/total quantity shown where useful.
+
+F. Client supply
+
+Expected:
+- Client Supplied.
+
+G. On hold
+
+Expected:
+- On Hold.
+
+H. Rejected/cancelled with no replacement
+
+Expected:
+- Execution Arrangement Required.
+
+30. Procurement simplification
+
+For a fully outsourced earthwork row:
+
+Expected:
+- no detailed arrangement card;
+- concise execution summary;
+- HLC actionable demand shown;
+- View in Work Programme link;
+- no duplicate edit workflow.
+
+31. Panel detail
+
+Clicking the Gantt badge opens the panel showing:
+
+- full agency;
+- rate;
+- responsibilities;
+- allocations;
+- dates;
+- notes;
+- internal status;
+- history.
+
+32. Operational edit
+
+Approved arrangement:
+
+Change:
+- planned daily output;
+- notes;
+- target date.
+
+Expected:
+- saves immediately;
+- approved commercial version remains;
+- audit trail records old/new values;
+- no unnecessary reapproval.
+
+33. Material revision
+
+Approved arrangement:
+
+Change:
+- agency;
+- rate;
+- allocated quantity;
+- diesel responsibility.
+
+Expected:
+- proposed revision created;
+- current approved version remains effective;
+- Revision Pending shown;
+- demand does not change before approval.
+
+34. Revision approval
+
+Approve the pending revision.
+
+Expected:
+- new version becomes effective;
+- old version remains in history;
+- demand changes immediately;
+- Gantt and Procurement update;
+- no duplicate exclusion.
+
+35. Revision rejection
+
+Reject a proposed revision.
+
+Expected:
+- current approved version remains effective;
+- demand remains unchanged;
+- rejected proposal remains auditable.
+
+36. Admin Edit and Apply Now
+
+Admin changes an approved arrangement urgently.
+
+Expected:
+- mandatory reason;
+- new effective approved version created;
+- prior version retained;
+- demand updates immediately;
+- audit trail complete.
+
+37. Permission test
+
+PM:
+- may operationally edit;
+- may create/submit revision;
+- may not use Admin Apply Now unless permission explicitly allows.
+
+Admin/Owner:
+- may approve/reject;
+- may Apply Now.
+
+38. Demand regression
+
+Confirm no change to the working Batch 025/026 engine behaviour:
+
+- fully outsourced quantity excluded correctly;
+- partial responsibilities retained correctly;
+- status gating unchanged;
+- overlap cap unchanged;
+- bar-level phasing unchanged;
+- legacy fallback unchanged;
+- GSB/WMM unchanged;
+- non-earthwork demand unchanged.
+
+39. UI regression
+
+Confirm:
+
+- Gantt bars remain readable;
+- programme dates and quantities unchanged;
+- allocation linking still works;
+- arrangement panel still opens;
+- Procurement loads;
+- Earthwork/Execution register loads;
+- no full browser reload required.
+
+PART J — LIVE TAKKADPALLY–SIRUR PROOF
+
+40. Demonstrate one real arrangement
+
+Using an existing approved earthwork arrangement:
+
+- Gantt shows one compact operational state;
+- clicking it opens all details;
+- Procurement shows only the downstream HLC effect;
+- an operational date/output edit saves immediately with history;
+- a rate or quantity change creates a pending revision;
+- demand does not change until revision approval;
+- approval changes demand immediately;
+- previous approved version remains visible.
+
+Final requirement
+
+This task is complete only when:
+
+1. the Gantt shows clear operational execution states rather than raw workflow noise;
+2. full details exist in one stretch-level panel;
+3. BOM–Procurement no longer duplicates the complete arrangement;
+4. the project-level Execution Arrangements register provides consolidated visibility;
+5. approved arrangements remain editable;
+6. material/commercial changes use controlled revisions;
+7. operational edits remain practical;
+8. every change is auditable;
+9. demand always uses the current effective approved version;
+10. all Batch 025 and 026 demand protections remain unchanged.
+
+After this passes
+
+1. Freeze the execution-arrangement display and revision workflow.
+2. Fix Cancel GRN.
+3. Improve Auto Sequence with actual stretch/chainage input.
+4. Add LHS/RHS and width-aware programme bars and DPR matching.
+5. Add immutable baseline, actual progress, current forecast and backlog separation.
