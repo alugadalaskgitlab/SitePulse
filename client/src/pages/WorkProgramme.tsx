@@ -2262,16 +2262,16 @@ export default function WorkProgramme() {
     stretchGaps: Array<{ from: number; to: number }>;
   } | null>(null);
   const [seqDryRunPending, setSeqDryRunPending] = useState(false);
+  // When true (default), structure-type BOQ items are excluded from auto-sequence
+  // so imported per-location bars are not overlaid with auto-generated linear bars.
+  // Uncheck only for legacy projects that have no imported structure bars.
+  const [seqSkipStructureItems, setSeqSkipStructureItems] = useState(true);
   // Any change to the sequencing inputs invalidates a previously fetched
   // pre-regeneration summary — the user must re-run the dry-run check so the
   // confirmation always reflects the inputs that will actually be submitted.
   useEffect(() => {
     setSeqRegenSummary(null);
   }, [seqStretches, seqFronts, seqStagger, seqLag, seqStrGroups, seqBrgGroups, seqSkipStructureItems]);
-  // When true (default), structure-type BOQ items are excluded from auto-sequence
-  // so imported per-location bars are not overlaid with auto-generated linear bars.
-  // Uncheck only for legacy projects that have no imported structure bars.
-  const [seqSkipStructureItems, setSeqSkipStructureItems] = useState(true);
 
   // ── Undo / Redo ────────────────────────────────────────────────────────────
   const undoStack = useRef<WorkProgramBarWithItem[][]>([]);
