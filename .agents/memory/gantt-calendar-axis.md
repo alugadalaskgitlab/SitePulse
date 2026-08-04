@@ -11,4 +11,6 @@ description: Date/index/pixel conventions for the Work Programme Gantt — bound
 
 **Why:** bars used to be placed with avg-month (365.25/12) math under real calendar-month headers, drifting days off; and a boundary endDate persisted while showing an inclusive finish makes consumers like SiteEntry (`date <= endDate`) treat bars as active one extra day (architect-review catch).
 
+- Invalid-date protection: validate RAW start/finish values before the `|| 1` / `|| smNum+1` fallbacks apply; invalid bars (stretch AND structure/location rows) render a distinct warning chip ("Programme dates incomplete" / "Invalid start date" / "Invalid finish date" / "Finish date precedes start date") instead of a bar, and save()/mode-toggle refuse to persist while invalid. No drag/resize exists on the Gantt — only date inputs move bars.
+
 **How to apply:** any new code that reads/writes bar `startDate`/`endDate` or positions anything on the Gantt must go through calendarAxis helpers and honor the inclusive-endDate contract. Tests: `tests/ganttCalendarAxis027A.test.ts`.

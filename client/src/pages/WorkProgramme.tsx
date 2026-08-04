@@ -217,7 +217,11 @@ function StretchRow({
   const cfNum = parseFloat(cf);
   const ctNum = parseFloat(ct);
   const multNum = parseFloat(mult);
-  const smNum = parseFloat(startM) || 1;
+  // 027A Part 0.2: validate RAW values before any fallback is applied, so a
+  // missing/unparseable date can never be silently rendered at a default position.
+  const smRawNum = parseFloat(startM);
+  const startDateInvalid = !Number.isFinite(smRawNum);
+  const smNum = Number.isFinite(smRawNum) ? smRawNum : 1; // fallback only for downstream math; rendering/saving is gated on validity
   const validCh = !isNaN(cfNum) && !isNaN(ctNum) && ctNum > cfNum;
 
   // Auto qty from chainage × editable multiplier (disabled for structure items)
@@ -281,7 +285,10 @@ function StretchRow({
   // ── Duration preservation (Rule 4) ────────────────────────────────────────
   const autoDurationMonths = (autoDuration?.months ?? 0) > 0 ? autoDuration!.months : null;
   const savedDurationMonths = bar.endMonth - bar.startMonth;
-  const endMNum = parseFloat(endM) || (smNum + 1);
+  const endMRawNum = parseFloat(endM);
+  // Finish is user-controlled only in fixed mode; in auto mode it is derived.
+  const endDateInvalid = durationModeState === "fixed" && !Number.isFinite(endMRawNum);
+  const endMNum = Number.isFinite(endMRawNum) ? endMRawNum : (smNum + 1); // fallback only for downstream math
 
   // Fixed-duration mode: user controls the end month/date directly
   // Auto-duration mode: system calculates from qty ÷ equipment output
@@ -357,6 +364,9 @@ function StretchRow({
   });
 
   function save() {
+    // Part 0.2: never persist invented fallback dates — block save while the
+    // raw start/finish values are missing, unparseable, or reversed.
+    if (startDateInvalid || endDateInvalid || (durationModeState === "fixed" && endMRawNum < smRawNum)) return;
     onBeforeMutate?.();
     dirty.current = false;
     const qty = effectiveQty;
@@ -394,7 +404,15 @@ function StretchRow({
   const liveStart = smNum;
   const liveEnd = +(smNum + effectiveDurationMonths).toFixed(2);
   const liveQty = effectiveQty;
-  const datesInvalid = isNaN(liveStart) || isNaN(liveEnd) || liveEnd < liveStart;
+  // Part 0.2: distinct, raw-value-based validation (checked BEFORE fallbacks apply)
+  const dateIssue: string | null =
+    startDateInvalid && endDateInvalid ? "Programme dates incomplete"
+    : startDateInvalid ? "Invalid start date"
+    : endDateInvalid ? "Invalid finish date"
+    : durationModeState === "fixed" && endMRawNum < smRawNum ? "Finish date precedes start date"
+    : isNaN(liveEnd) || liveEnd < liveStart ? "Invalid finish date"
+    : null;
+  const datesInvalid = dateIssue !== null;
   const barLeft = !datesInvalid && project.startDate
     ? Math.max(0, monthIndexToAxisX(liveStart, project.startDate, colW))
     : Math.max(0, (liveStart - 1) * colW);
@@ -556,6 +574,8 @@ function StretchRow({
         {project.startDate && (
           <button
             onClick={() => {
+              // Part 0.2: don't persist while dates are invalid (would store fallbacks)
+              if (startDateInvalid) return;
               const next = durationModeState === "auto" ? "fixed" : "auto";
               setDurationModeState(next);
               // When switching to fixed, seed endM from current auto end and lock the duration
@@ -744,7 +764,7 @@ function StretchRow({
             className="absolute top-2 left-2 text-[11px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded px-1.5 py-0.5"
             data-testid={`bar-invalid-${bar.id}`}
           >
-            {isNaN(liveStart) || isNaN(liveEnd) ? "Programme dates incomplete" : "Invalid finish date (before start)"}
+            {dateIssue}
           </div>
         ) : (
         <div
@@ -833,6 +853,13 @@ function StructureLocationRow({
 
   const liveStart = bar.startMonth;
   const liveEnd   = bar.endMonth;
+  // Part 0.2: validate stored values before rendering — never invent a position
+  const slocDateIssue: string | null =
+    !Number.isFinite(liveStart) && !Number.isFinite(liveEnd) ? "Programme dates incomplete"
+    : !Number.isFinite(liveStart) ? "Invalid start date"
+    : !Number.isFinite(liveEnd) ? "Invalid finish date"
+    : liveEnd < liveStart ? "Finish date precedes start date"
+    : null;
   // 027A: calendar-true positioning when the project has a start date
   const barLeft   = project.startDate
     ? Math.max(0, monthIndexToAxisX(liveStart, project.startDate, colW))
@@ -923,6 +950,14 @@ function StructureLocationRow({
             style={{ left: i * colW, width: colW }}
           />
         ))}
+        {slocDateIssue ? (
+          <div
+            className="absolute top-2 left-2 text-[11px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded px-1.5 py-0.5"
+            data-testid={`sloc-invalid-${bar.id}`}
+          >
+            {slocDateIssue}
+          </div>
+        ) : (
         <div
           className="absolute rounded overflow-hidden select-none"
           style={{ top: 7, left: barLeft, width: barWidth, height: 24, backgroundColor: "#7c3aed", opacity: 0.80 }}
@@ -936,6 +971,7 @@ function StructureLocationRow({
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );

@@ -1,0 +1,74 @@
+PART 0 — CLOSE TWO SMALL 027A SAFETY ITEMS
+
+These are minor follow-ups to the completed Gantt calendar-axis correction.
+
+Do not alter the working true-calendar positioning, month headers, duration calculation or date-input flow.
+
+0.1 Remove unsupported drag/resize assumptions
+
+The Work Programme currently changes dates through row date-input fields and does not provide click-and-drag movement or resize of bars.
+
+Do not add drag/resize in this batch.
+
+Remove any misleading automated or manual acceptance test that assumes the feature already exists.
+
+Retain tests proving that changing the start or finish date through the existing date inputs:
+
+- stores the exact selected date;
+- updates the bar position/width correctly;
+- survives refresh without shifting.
+
+0.2 Complete invalid/missing-date protection
+
+The current invalid-date warning is partly bypassed because fallback values are applied before validation, and structure/location bars do not have the same safeguard.
+
+Correct this for all Work Programme bar types.
+
+Before applying any visual fallback:
+
+- validate the actual stored/generated start and finish dates;
+- detect missing start;
+- detect missing finish;
+- detect unparseable dates;
+- detect finish before start.
+
+For an invalid bar:
+
+- do not render it at an invented default position;
+- show a clear row warning:
+  - Programme dates incomplete
+  - Invalid start date
+  - Invalid finish date
+  - Finish date precedes start date
+- keep the row available for correction;
+- do not affect valid bars.
+
+Apply this consistently to:
+
+- normal BOQ programme bars;
+- manually added stretches;
+- imported structure/location bars;
+- any other bar type using the calendar axis.
+
+Do not change valid stored dates.
+Do not introduce default dates silently.
+Do not change scheduling or demand logic.
+
+Acceptance:
+
+A. Valid date-input change
+- change start or finish by one day;
+- exact date is saved;
+- bar updates by one day;
+- refresh preserves it.
+
+B. Missing finish date test
+- row shows Programme dates incomplete;
+- no fake bar appears at timeline origin.
+
+C. Finish before start test
+- row shows the correct warning;
+- no misleading bar is rendered.
+
+D. Structure/location invalid date
+- same safeguards apply.
