@@ -139,13 +139,26 @@ export default function EarthworkControl() {
   return (
     <div className="p-4 max-w-6xl mx-auto space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <a
+      {/* 029A Part E: SPA navigation (no full page reload) + breadcrumb context */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <Link
+          href={`/work-program/${projectId}`}
+          className="inline-flex items-center gap-1 text-[12px] text-slate-500 hover:text-slate-700"
+          data-testid="link-back-work-programme"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Back to Work Programme
+        </Link>
+        <span className="text-slate-300 text-[12px]">|</span>
+        <Link
           href={`/work-program/${projectId}/demand`}
           className="inline-flex items-center gap-1 text-[12px] text-slate-500 hover:text-slate-700"
+          data-testid="link-work-demand"
         >
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to Work Demand
-        </a>
+          Work Demand
+        </Link>
+      </div>
+      <div className="text-[11px] text-slate-400" data-testid="text-breadcrumb">
+        Work Programme › Earthwork Control
       </div>
       <div>
         <h1 className="text-xl font-bold text-slate-800">Execution Arrangements — Classification & Demand</h1>

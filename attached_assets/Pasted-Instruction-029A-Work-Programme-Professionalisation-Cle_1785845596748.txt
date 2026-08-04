@@ -1,0 +1,485 @@
+Instruction 029A — Work Programme Professionalisation:
+Clean Read Mode, Consolidated Actions and Consistent Navigation
+
+Purpose
+
+Move Work Programme from permanent edit mode to a professional two-layer model:
+
+1. a calm, readable programme-control view by default;
+2. deliberate editing only when requested.
+
+Consolidate toolbar actions, remove unnecessary permanent pills/icons, and fix inconsistent navigation between Work Programme and its related pages.
+
+This is a presentation and navigation batch only.
+
+Do not change scheduling, sequence generation, demand calculations, arrangement decisions or saved business values.
+
+PRELIMINARY — CURRENT CODE FACTS
+
+1. StretchRow currently renders chainage, quantity, dates and AUTO/FIX controls as permanent live inputs.
+2. Several values save on blur.
+3. Batch 029 is already present and uses:
+   - editable real stretches;
+   - sequenceOrder for execution priority;
+   - server/client gap and overlap validation;
+   - dry-run regeneration summary;
+   - arrangement-safe regeneration controls.
+4. The toolbar separately renders several frequent and conditional actions.
+5. Structure actions currently appear and disappear individually.
+6. EarthworkControl uses a plain anchor and returns to Work Demand rather than Work Programme.
+7. BarArrangementPanel uses a plain anchor for Earthwork Control.
+8. ExecutionArrangements already uses the correct client-side Link pattern.
+
+DO NOT TOUCH OR REGRESS
+
+Do not modify:
+
+- shared/programmeSequencer.ts scheduling behaviour;
+- Batch 029 stretch definitions or sequenceOrder logic;
+- Batch 029 overlap/gap validation;
+- Batch 029 regeneration dry run or protection summary;
+- calculateStretchQty();
+- calculateBomDemand();
+- arrangement demand exclusion;
+- execution-arrangement approval/revision workflow;
+- calendarAxis.ts;
+- Work Programme date/duration calculations;
+- earthwork or bituminous classification;
+- structure-bar sequencing logic;
+- DPR;
+- PI/IRN/GRN;
+- Stores;
+- Cancel GRN;
+- LHS/RHS;
+- programme baseline/reforecast logic.
+
+PART A — CLEAN READ MODE
+
+1. Default row presentation
+
+Every road/stretch row must open in read mode.
+
+Read mode should show, compactly:
+
+- reach/stretch label;
+- execution priority where applicable;
+- chainage from–to;
+- BOQ item identity;
+- planned quantity and UOM;
+- planned start–finish dates;
+- duration;
+- one meaningful execution/arrangement state where applicable;
+- Gantt bar.
+
+Do not permanently render:
+
+- chainage input boxes;
+- quantity input boxes;
+- date controls;
+- AUTO/FIX toggle;
+- output/day controls;
+- calculated finish editor;
+- execution-priority editor;
+- Split icon;
+- Delete icon;
+- Arrangement icon.
+
+2. Arrangement/execution state visibility
+
+Show a state badge when it conveys a real operational decision or required action, including:
+
+- Execution Arrangement Required;
+- Outsourcing Proposed;
+- Outsourcing Approved;
+- Partly Outsourced;
+- Client Supplied;
+- On Hold;
+- explicitly recorded Company In-house.
+
+Do not show a repetitive default in-house badge merely because no arrangement exists.
+
+3. Exception visibility
+
+Only show warnings when actually triggered.
+
+Possible warnings include:
+
+- overlap;
+- gap;
+- capacity exceeded;
+- invalid date;
+- finish before start;
+- on hold;
+- arrangement required;
+- delayed/overdue where already supported.
+
+When several non-critical warnings apply, show one compact warning indicator with a count.
+
+Its popover/tooltip must list the actual warnings.
+
+Critical warnings such as Invalid Date or On Hold may remain individually visible.
+
+Do not reserve blank badge space on unaffected rows.
+
+PART B — DELIBERATE EDIT MODE
+
+4. Entering edit mode
+
+Provide an explicit Edit action.
+
+Optional:
+- double-clicking the left information area may open edit mode.
+
+Do not make the complete row or Gantt timeline single-click editable.
+
+5. One active editor
+
+Normally allow only one stretch row to be in edit mode at a time.
+
+When another row is opened:
+
+- close the current editor if unchanged;
+- warn if it contains unsaved changes;
+- offer Save, Discard or Stay.
+
+6. Fields available in edit mode
+
+Edit mode must expose every field presently editable, including:
+
+- chainage from;
+- chainage to;
+- planned quantity or quantity multiplier/manual override;
+- start date;
+- finish date where FIX;
+- AUTO/FIX;
+- execution priority from Batch 029;
+- output/day;
+- calculated finish;
+- any existing duration/resource controls;
+- Save;
+- Cancel.
+
+Do not remove any Batch 029 field or validation.
+
+7. Save and Cancel behaviour
+
+In edit mode:
+
+- values remain local until Save;
+- Save performs the existing validated PATCH;
+- Cancel restores all persisted values;
+- clicking outside does not silently save;
+- blur must not partially commit individual fields;
+- leaving with unsaved changes gives a warning.
+
+Preserve existing server-side validation and errors.
+
+8. Successful save
+
+After Save:
+
+- invalidate the existing programme query;
+- return the row to read mode;
+- show the persisted values;
+- preserve the current viewport and scroll location.
+
+PART C — ROW ACTIONS
+
+9. Desktop actions
+
+On desktop hover/focus, show:
+
+- Edit;
+- Arrangement, for eligible items;
+- Split, where permitted;
+- More.
+
+10. More menu
+
+Move destructive and infrequent actions into More:
+
+- Delete;
+- other rare row operations already present.
+
+Delete must retain its current confirmation and protection rules.
+
+11. Touch/tablet access
+
+Do not make actions dependent only on hover.
+
+Keep a compact persistent `⋯` action on touch/tablet widths.
+
+The menu must expose the same actions.
+
+12. Accessibility
+
+Actions must be reachable by:
+
+- keyboard;
+- focus;
+- touch.
+
+Tooltips and accessible labels must identify icon-only actions.
+
+PART D — TOOLBAR CONSOLIDATION
+
+13. Inventory before changing
+
+First identify every current Work Programme toolbar action and preserve its capability.
+
+Do not remove an action merely because it is being moved.
+
+Do not invent a new Add Item action unless a genuine existing action supports it.
+
+14. Primary toolbar
+
+Keep the frequent core actions visible:
+
+- Auto Sequence;
+- Auto Generate/Add Programme action, according to the real current functionality;
+- BOM & Demand;
+- Settings.
+
+Use consistent ordering across projects.
+
+15. Structures menu
+
+Place these inside one Structures menu:
+
+- Import Structures;
+- Auto-sequence Imported Structure Bars;
+- Clean Structure Bars.
+
+Keep the Structures menu position stable across projects.
+
+Where an action is unavailable:
+
+- disable it;
+- explain why in concise text/tooltip.
+
+Where structures require attention, show a count or small attention indicator on the menu.
+
+Do not alter the underlying structure functions or endpoints.
+
+16. More menu
+
+Place less-frequent non-structure actions inside one More menu.
+
+Do not hide a frequent daily action merely to reduce button count.
+
+17. Stable toolbar
+
+The primary toolbar must not rearrange itself when project conditions change.
+
+Conditional state should affect:
+
+- menu-item enabled state;
+- count;
+- attention indicator;
+
+not the overall toolbar layout.
+
+PART E — CONSISTENT NAVIGATION
+
+18. Related-page header
+
+Pages reached from Work Programme should show a consistent breadcrumb such as:
+
+Project Name / Work Programme / Current Page
+
+with:
+
+← Back to Work Programme
+
+Apply to:
+
+- Execution Arrangements;
+- Earthwork Control;
+- BOM & Demand;
+- Programme Settings;
+- other directly linked programme-control pages where practical.
+
+19. Client-side routing
+
+Replace plain internal `<a href>` navigation with the app’s existing client-side Link pattern.
+
+Specifically fix:
+
+- EarthworkControl back navigation;
+- BarArrangementPanel → Earthwork Control.
+
+Do not use a full-page reload for these app-internal routes.
+
+20. Correct Earthwork Control destination
+
+EarthworkControl must provide:
+
+← Back to Work Programme
+
+It may additionally provide a secondary link to Work Demand where useful.
+
+Do not make Work Demand the only way back.
+
+21. Preserve return context
+
+Before navigating from Work Programme, preserve:
+
+Mandatory:
+- project ID;
+- active tab/view;
+- open filters;
+- selected/expanded row where applicable.
+
+Also preserve where practical:
+- vertical scroll;
+- horizontal Gantt scroll;
+- selected date window.
+
+On returning:
+
+- restore the context after data loads;
+- do not restore to a missing row;
+- fall back safely to the related BOQ item or previous scroll position.
+
+Use route state, query parameters or session storage consistently.
+
+Do not place large transient UI state in the database.
+
+22. Browser back behaviour
+
+Browser Back and the visible Back to Work Programme action should both return sensibly without resetting to a blank/default project.
+
+PART F — LAYOUT SAFETY
+
+23. Desktop and tablet
+
+Verify:
+
+- no overlapping text;
+- no cut-off badges;
+- no clipped action menu;
+- readable chainage and dates;
+- Gantt bar remains aligned;
+- edit controls wrap or expand safely.
+
+Do not alter the calendar-axis calculations.
+
+24. Narrow field-device widths
+
+At narrower widths:
+
+- prioritise item, reach, date and status;
+- allow secondary details to wrap;
+- keep the `⋯` action reachable;
+- avoid horizontal overlap inside the left information panel.
+
+Do not make the full Gantt pretend to be a small mobile card if horizontal scrolling is still required.
+
+PART G — ACCEPTANCE TESTS
+
+A. Clean project row
+
+A row without warnings shows only:
+
+- reach/chainage;
+- item/quantity;
+- dates/duration;
+- meaningful state where applicable;
+- Gantt bar.
+
+No live input boxes, permanent action icons or empty badge placeholders.
+
+B. Conditional warnings
+
+An overlapping stretch shows an overlap warning only on affected rows.
+
+A normal row has no overlap warning.
+
+Multiple warnings collapse into a compact discoverable indicator where appropriate.
+
+C. Desktop actions
+
+Hover/focus reveals Edit, Arrangement, Split and More.
+
+Delete exists only inside More.
+
+D. Touch actions
+
+The persistent `⋯` opens the same row actions without requiring hover.
+
+E. Edit integrity
+
+Edit mode exposes all current fields including:
+
+- execution priority;
+- gap/overlap-aware chainages;
+- quantity;
+- dates;
+- AUTO/FIX;
+- output/day.
+
+Save persists.
+
+Cancel restores all values.
+
+Blur does not partially save.
+
+F. Unsaved changes
+
+Opening another row or navigating away with unsaved changes shows Save/Discard/Stay choices.
+
+G. Batch 029 preservation
+
+Auto Sequence still supports:
+
+- real entered stretches;
+- independent execution priority;
+- overlap blocking;
+- gap warnings;
+- dry-run regeneration summary;
+- arrangement-safe bar handling.
+
+H. Navigation
+
+Execution Arrangements and Earthwork Control return to the same project and active Work Programme view.
+
+EarthworkControl no longer performs a full-page reload.
+
+BarArrangementPanel uses client-side navigation.
+
+I. Toolbar
+
+A plain road project and a structure project show the same primary toolbar layout.
+
+Structure functions appear within one stable Structures menu.
+
+J. Regression
+
+Confirm unchanged:
+
+- calculateBomDemand;
+- arrangement exclusion;
+- calendar positioning;
+- duration;
+- sequenceOrder scheduling;
+- structure sequencing;
+- regeneration protection;
+- earthwork/bituminous arrangements;
+- BOM/Procurement;
+- DPR and Stores flows.
+
+Final requirement
+
+Do not mark this complete merely because input boxes were hidden.
+
+It is complete only when:
+
+1. default rows are genuinely readable;
+2. editing is deliberate and complete;
+3. Cancel does not leave partial saves;
+4. actions remain accessible on desktop and touch;
+5. warnings appear only when meaningful;
+6. the toolbar remains stable across projects;
+7. internal navigation no longer reloads the application;
+8. Work Programme context is restored on return;
+9. all Batch 029 behaviour remains intact.

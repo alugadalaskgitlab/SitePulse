@@ -7,7 +7,12 @@ import {
   Scissors, BookOpen, ChevronDown, ChevronUp, Info,
   GanttChartSquare, TableProperties, ArrowLeftRight, Settings2, Sparkles,
   Undo2, Redo2, Upload, MapPin, Building2, Handshake,
+  Pencil, MoreHorizontal, X,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -137,12 +142,27 @@ interface StretchRowProps {
   onSplit: (bar: WorkProgramBarWithItem) => void;
   onBeforeMutate?: () => void;
   productivitySettings?: ProductivitySettings | null;
+  /** 029A: deliberate edit mode — parent allows one active editor at a time. */
+  isEditing: boolean;
+  onRequestEdit: (barId: number) => void;
+  onCloseEdit: (barId: number) => void;
+  registerEditorApi: (api: StretchEditorApi | null) => void;
+}
+
+/** 029A: imperative handle the active editor row exposes to the parent so the
+ *  one-editor-at-a-time guard can Save / Discard on the user's behalf. */
+export interface StretchEditorApi {
+  /** Returns true if the save was actually dispatched (false = blocked by validation). */
+  save: () => boolean;
+  cancel: () => void;
+  isDirty: () => boolean;
 }
 
 function StretchRow({
   bar, itemBars, item, project, recipesMap, projectId, color, isFirst, totalMonths, colW, onDelete, onSplit,
   onBeforeMutate,
   productivitySettings,
+  isEditing, onRequestEdit, onCloseEdit, registerEditorApi,
 }: StretchRowProps) {
   const { toast } = useToast();
   const dirty = useRef(false);
@@ -197,6 +217,9 @@ function StretchRow({
   );
   // Locked duration (months) for fixed mode: set when entering FIX, preserved when start shifts.
   const lockedDurationRef = useRef<number>(bar.endMonth - bar.startMonth);
+  // 029A: execution priority (Batch 029 sequenceOrder) editable in edit mode.
+  const [prio, setPrio] = useState(() =>
+    (bar as any).sequenceOrder != null ? String((bar as any).sequenceOrder) : "");
 
   // Structure-aware mode: for bridge/CD/culvert items, qty is entered directly per location.
   const isStructure = isStructureOrLocationScheduledItem(item as any, {
@@ -222,7 +245,8 @@ function StretchRow({
       setMult(String(+(boqQty / roadLen).toFixed(4)));
     }
     if (isStructure) setStructQtyStr(bar.plannedQty > 0 ? String(bar.plannedQty) : "");
-  }, [bar.chainageFrom, bar.chainageTo, bar.startMonth, bar.endMonth, bar.durationMode, bar.plannedQty]);
+    setPrio((bar as any).sequenceOrder != null ? String((bar as any).sequenceOrder) : "");
+  }, [bar.chainageFrom, bar.chainageTo, bar.startMonth, bar.endMonth, bar.durationMode, bar.plannedQty, (bar as any).sequenceOrder]);
 
   const cfNum = parseFloat(cf);
   const ctNum = parseFloat(ct);
@@ -376,9 +400,8 @@ function StretchRow({
   function save() {
     // Part 0.2: never persist invented fallback dates — block save while the
     // raw start/finish values are missing, unparseable, or reversed.
-    if (startDateInvalid || endDateInvalid || (durationModeState === "fixed" && endMRawNum < smRawNum)) return;
+    if (startDateInvalid || endDateInvalid || (durationModeState === "fixed" && endMRawNum < smRawNum)) return false;
     onBeforeMutate?.();
-    dirty.current = false;
     const qty = effectiveQty;
     const em = +(smNum + effectiveDurationMonths).toFixed(2);
     const isQtyOverride = isStructure
@@ -394,6 +417,9 @@ function StretchRow({
     const endDateVal = project.startDate
       ? formatDateForInput(displayFinishDateCal(em, project.startDate, smNum))
       : null;
+    // 029A: execution priority (Batch 029 sequenceOrder) persists with the row save.
+    const prioTrim = prio.trim();
+    const prioNum = prioTrim === "" ? null : parseInt(prioTrim, 10);
     patch.mutate({
       chainageFrom: validCh ? cfNum : bar.chainageFrom,
       chainageTo: validCh ? ctNum : bar.chainageTo,
@@ -403,9 +429,55 @@ function StretchRow({
       isQtyOverride,
       isDurationOverride,
       durationMode: durationModeState,
+      sequenceOrder: prioNum != null && Number.isFinite(prioNum) && prioNum > 0 ? prioNum : null,
       ...(startDateVal != null ? { startDate: startDateVal, endDate: endDateVal } : {}),
+    }, {
+      // 029A §8: successful save returns the row to read mode.
+      onSuccess: () => onCloseEdit(bar.id),
     });
+    return true;
   }
+
+  // 029A §7: Cancel restores every persisted value and exits edit mode.
+  function cancelEdit() {
+    dirty.current = false;
+    setCf(bar.chainageFrom != null ? String(bar.chainageFrom) : "");
+    setCt(bar.chainageTo != null ? String(bar.chainageTo) : "");
+    setStartM(String(+(bar.startMonth).toFixed(1)));
+    setEndM(String(+(bar.endMonth).toFixed(1)));
+    setDurationModeState((bar.durationMode as "auto" | "fixed") ?? "auto");
+    lockedDurationRef.current = bar.endMonth - bar.startMonth;
+    const len0 = (bar.chainageTo ?? 0) - (bar.chainageFrom ?? 0);
+    if (len0 > 0 && bar.plannedQty > 0) setMult(String(+(bar.plannedQty / len0).toFixed(4)));
+    else if (roadLen > 0 && boqQty > 0) setMult(String(+(boqQty / roadLen).toFixed(4)));
+    if (isStructure) setStructQtyStr(bar.plannedQty > 0 ? String(bar.plannedQty) : "");
+    setPrio((bar as any).sequenceOrder != null ? String((bar as any).sequenceOrder) : "");
+    onCloseEdit(bar.id);
+  }
+
+  // 029A §5: while editing, expose Save/Cancel/isDirty to the parent's
+  // one-active-editor guard (refs keep the latest closures without re-registering).
+  const saveRef = useRef(save); saveRef.current = save;
+  const cancelRef = useRef(cancelEdit); cancelRef.current = cancelEdit;
+  useEffect(() => {
+    if (!isEditing) return;
+    registerEditorApi({
+      save: () => saveRef.current() === true,
+      cancel: () => cancelRef.current(),
+      isDirty: () => dirty.current,
+    });
+    return () => registerEditorApi(null);
+  }, [isEditing, registerEditorApi]);
+
+  // 029A review fix: warn on full page unload while an edit has unsaved changes.
+  useEffect(() => {
+    if (!isEditing) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      if (dirty.current) { e.preventDefault(); e.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isEditing]);
 
   // ── Bar positioning: uses live draft start + effective duration ─────────────
   // 027A: with a project start date, position by TRUE calendar dates on the
@@ -435,6 +507,23 @@ function StretchRow({
     ? calendarDaysFromIdx(liveStart, liveEnd, project.startDate)
     : null;
 
+  // 029A §3: read-mode exception list — only warnings that actually triggered.
+  // Critical issues (invalid dates, on hold) stay individually visible; the
+  // non-critical ones collapse into one compact indicator when several apply.
+  const readWarnings = useMemo(() => {
+    const w: Array<{ short: string; full: string }> = [];
+    if (hasChainageOverlap) w.push({
+      short: "overlap",
+      full: "Chainage overlaps another stretch of this BOQ item — adjust from/to values",
+    });
+    if (requiredOutput?.exceedsCapacity) w.push({
+      short: "capacity",
+      full: `Required output exceeds normal equipment capacity (${requiredOutput.capacityPct ?? "?"}%)${
+        requiredOutput.additionalEquipmentNeeded ? ` — need +${requiredOutput.additionalEquipmentNeeded} more ${requiredOutput.bottleneckEquipmentName}` : ""}`,
+    });
+    return w;
+  }, [hasChainageOverlap, requiredOutput]);
+
   return (
     <div
       style={{ display: "flex", alignItems: "stretch", minHeight: ROW_H }}
@@ -446,9 +535,10 @@ function StretchRow({
           overlapping at narrow widths. ── */}
       <div
         style={{ width: LEFT_W, minWidth: LEFT_W, maxWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10 }}
-        className={`flex items-center gap-1 flex-wrap px-1.5 py-1 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-950 ${
+        className={`group flex items-center gap-1 flex-wrap px-1.5 py-1 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-950 ${
           patch.isPending ? "opacity-70" : ""
-        }`}
+        } ${isEditing ? "ring-1 ring-inset ring-teal-300 dark:ring-teal-700 bg-teal-50/30 dark:bg-teal-950/20" : ""}`}
+        onDoubleClick={() => { if (!isEditing) onRequestEdit(bar.id); }}
       >
         {/* Split indicator */}
         <div
@@ -463,13 +553,14 @@ function StretchRow({
           <span className="text-[12px] text-orange-500 font-medium flex-shrink-0 w-8">(split)</span>
         ) : null}
 
+        {isEditing ? (<>
+        {/* ── 029A Part B: deliberate edit mode — all fields local until Save ── */}
         {/* Chainage inputs */}
         <span className="text-xs text-slate-400 flex-shrink-0">Ch</span>
         <input
           type="number" step="0.001"
           value={cf}
           onChange={e => { dirty.current = true; setCf(e.target.value); }}
-          onBlur={save}
           className="w-[52px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
           placeholder="0.000"
           data-testid={`input-cf-${bar.id}`}
@@ -479,7 +570,6 @@ function StretchRow({
           type="number" step="0.001"
           value={ct}
           onChange={e => { dirty.current = true; setCt(e.target.value); }}
-          onBlur={save}
           className="w-[52px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
           placeholder="0.000"
           data-testid={`input-ct-${bar.id}`}
@@ -503,8 +593,7 @@ function StretchRow({
               type="number" step="any" min="0"
               value={structQtyStr}
               onChange={e => { dirty.current = true; setStructQtyStr(e.target.value); }}
-              onBlur={save}
-              className="w-[54px] text-xs font-mono border-b bg-transparent text-center focus:outline-none focus:border-violet-500 dark:text-slate-200 border-violet-300 dark:border-violet-600"
+                  className="w-[54px] text-xs font-mono border-b bg-transparent text-center focus:outline-none focus:border-violet-500 dark:text-slate-200 border-violet-300 dark:border-violet-600"
               title="Quantity at this location (structure/bridge — not chainage-derived)"
               data-testid={`input-struct-qty-${bar.id}`}
             />
@@ -516,8 +605,7 @@ function StretchRow({
               type="number" step="0.0001" min="0.0001"
               value={mult}
               onChange={e => { dirty.current = true; setMult(e.target.value); }}
-              onBlur={save}
-              className={`w-[42px] text-xs font-mono border-b bg-transparent text-center focus:outline-none focus:border-teal-500 dark:text-slate-200 ${
+                  className={`w-[42px] text-xs font-mono border-b bg-transparent text-center focus:outline-none focus:border-teal-500 dark:text-slate-200 ${
                 defaultRate != null && !isNaN(multNum) && Math.abs(multNum - defaultRate) > 0.0001
                   ? "border-orange-400 text-orange-600 dark:text-orange-400"
                   : "border-slate-300 dark:border-slate-600"
@@ -560,8 +648,7 @@ function StretchRow({
                 }
               }
             }}
-            onBlur={save}
-            className="w-[108px] text-xs border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200 ml-1"
+              className="w-[108px] text-xs border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200 ml-1"
             title="Stretch start date"
             data-testid={`input-date-${bar.id}`}
           />
@@ -572,8 +659,7 @@ function StretchRow({
               type="number" min="0.1" max="120" step="0.1"
               value={startM}
               onChange={e => { dirty.current = true; setStartM(e.target.value); }}
-              onBlur={save}
-              className="w-[36px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
+                  className="w-[36px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
               title="Start month (decimal OK, e.g. 1.5)"
               data-testid={`input-sm-${bar.id}`}
             />
@@ -584,38 +670,17 @@ function StretchRow({
         {project.startDate && (
           <button
             onClick={() => {
-              // Part 0.2: don't persist while dates are invalid (would store fallbacks)
+              // Part 0.2: don't act while dates are invalid (would seed fallbacks)
               if (startDateInvalid) return;
+              // 029A §7: mode change stays LOCAL until Save — no partial commits.
+              dirty.current = true;
               const next = durationModeState === "auto" ? "fixed" : "auto";
-              setDurationModeState(next);
-              // When switching to fixed, seed endM from current auto end and lock the duration
               if (next === "fixed") {
-                const seedEnd = +(smNum + effectiveDurationMonths).toFixed(1);
+                // Seed endM from current auto end and lock the duration
                 lockedDurationRef.current = effectiveDurationMonths;
-                setEndM(String(seedEnd));
-                // Persist mode immediately so the toggle is never silently lost
-                const qty = effectiveQty;
-                const em = +seedEnd;
-                const isQtyOverride = !!(autoQty != null && defaultRate != null && Math.abs(multNum - defaultRate) > 0.0001);
-                const startDateVal = project.startDate ? formatDateForInput(monthIndexToDate(smNum, project.startDate)) : null;
-                const endDateVal = project.startDate ? formatDateForInput(displayFinishDateCal(em, project.startDate, smNum)) : null;
-                patch.mutate({
-                  plannedQty: qty, startMonth: smNum, endMonth: em,
-                  isQtyOverride, isDurationOverride: true, durationMode: "fixed",
-                  ...(startDateVal != null ? { startDate: startDateVal, endDate: endDateVal } : {}),
-                });
-              } else {
-                // Switching back to auto: persist immediately
-                const qty = effectiveQty;
-                const em = +(smNum + (autoDurationMonths ?? effectiveDurationMonths)).toFixed(2);
-                const startDateVal = project.startDate ? formatDateForInput(monthIndexToDate(smNum, project.startDate)) : null;
-                const endDateVal = project.startDate ? formatDateForInput(displayFinishDateCal(em, project.startDate, smNum)) : null;
-                patch.mutate({
-                  plannedQty: qty, startMonth: smNum, endMonth: em,
-                  isQtyOverride: false, isDurationOverride: false, durationMode: "auto",
-                  ...(startDateVal != null ? { startDate: startDateVal, endDate: endDateVal } : {}),
-                });
+                setEndM(String(+(smNum + effectiveDurationMonths).toFixed(1)));
               }
+              setDurationModeState(next);
             }}
             className={`ml-1 px-1 rounded text-xs font-semibold flex-shrink-0 border ${
               durationModeState === "fixed"
@@ -663,8 +728,7 @@ function StretchRow({
                   lockedDurationRef.current = Math.max(0.1, idx - smNum);
                 }
               }}
-              onBlur={save}
-              className="w-[108px] text-xs border-b border-violet-400 bg-transparent text-center focus:outline-none focus:border-violet-600 dark:text-slate-200 ml-0.5"
+                  className="w-[108px] text-xs border-b border-violet-400 bg-transparent text-center focus:outline-none focus:border-violet-600 dark:text-slate-200 ml-0.5"
               title="Stretch end date (fixed duration)"
               data-testid={`input-end-date-${bar.id}`}
             />
@@ -706,52 +770,185 @@ function StretchRow({
           </span>
         )}
 
+        {/* 029A §6: execution priority (Batch 029 sequenceOrder) */}
+        <span className="text-xs text-slate-400 flex-shrink-0 ml-0.5" title="Execution priority — 1 mobilises first (independent of chainage order)">P</span>
+        <input
+          type="number" min="1" step="1"
+          value={prio}
+          onChange={e => { dirty.current = true; setPrio(e.target.value); }}
+          className="w-[30px] text-xs font-mono border-b border-purple-300 bg-transparent text-center focus:outline-none focus:border-purple-500 dark:border-purple-700 dark:text-slate-200"
+          placeholder="—"
+          title="Execution priority (blank = chainage order)"
+          data-testid={`input-priority-${bar.id}`}
+        />
+
         {/* Spacer */}
         <div className="flex-1" />
 
         {/* Saving indicator */}
         {patch.isPending && <Loader2 className="w-3 h-3 animate-spin text-teal-500 flex-shrink-0 mr-0.5" />}
 
-        {/* Buttons */}
-        {isEarthworkBar && (
-          <>
-            {/* Instruction 027 §1-4: compact operational execution-state badge */}
-            {executionState && (
-              <span className="flex-shrink-0 mr-0.5">
-                <ExecutionStateBadge
-                  result={executionState}
-                  compact
-                  onClick={() => setShowArrangements(true)}
-                  testId={`badge-execution-state-${bar.id}`}
-                />
-              </span>
-            )}
-            <button
-              onClick={() => setShowArrangements(true)}
-              className="p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex-shrink-0"
-              title="Execution arrangements for this stretch"
-              data-testid={`button-arrangements-${bar.id}`}
-            >
-              <Handshake className="w-3 h-3" />
-            </button>
-          </>
+        {/* 029A §7: explicit Save / Cancel — nothing commits until Save */}
+        <button
+          onClick={save}
+          disabled={patch.isPending || datesInvalid}
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-semibold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 flex-shrink-0"
+          title={datesInvalid ? dateIssue ?? "Fix dates before saving" : "Save changes"}
+          data-testid={`button-save-${bar.id}`}
+        >
+          <CheckCircle2 className="w-3 h-3" /> Save
+        </button>
+        <button
+          onClick={cancelEdit}
+          disabled={patch.isPending}
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-600 flex-shrink-0"
+          title="Discard changes and restore saved values"
+          data-testid={`button-cancel-${bar.id}`}
+        >
+          <X className="w-3 h-3" /> Cancel
+        </button>
+        </>) : (<>
+        {/* ── 029A Part A: clean read mode — no live inputs, no permanent icons ── */}
+        {(bar as any).sequenceOrder != null && (
+          <span
+            className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 rounded px-1 flex-shrink-0 dark:bg-purple-900/30 dark:text-purple-300"
+            title={`Execution priority ${(bar as any).sequenceOrder} — lower mobilises first`}
+            data-testid={`text-priority-${bar.id}`}
+          >
+            P{(bar as any).sequenceOrder}
+          </span>
         )}
+        {!isStructure && (bar.chainageFrom != null || bar.chainageTo != null) && (
+          <span className="text-xs font-mono text-slate-600 dark:text-slate-300 flex-shrink-0" data-testid={`text-chainage-${bar.id}`}>
+            Ch {bar.chainageFrom ?? "?"}–{bar.chainageTo ?? "?"}
+          </span>
+        )}
+        <span className="text-xs font-bold font-mono text-slate-700 dark:text-slate-200 flex-shrink-0" data-testid={`text-qty-${bar.id}`}>
+          {fmtQty(bar.plannedQty, 1)} {(bar as any).canonicalUnit ?? bar.unit}
+        </span>
+        <span className="text-xs text-slate-500 dark:text-slate-400 font-mono flex-shrink-0 whitespace-nowrap" data-testid={`text-dates-${bar.id}`}>
+          {project.startDate && !datesInvalid
+            ? `${formatDateForInput(monthIndexToDate(bar.startMonth, project.startDate))} → ${formatDateForInput(displayFinishDateCal(bar.endMonth, project.startDate, bar.startMonth))}`
+            : `M${fmtQty(bar.startMonth, 1)} → M${fmtQty(bar.endMonth, 1)}`}
+        </span>
+        <span className="text-[11px] text-slate-400 flex-shrink-0" title="Duration">
+          {calDays != null ? `${calDays}d` : `${fmtQty(bar.endMonth - bar.startMonth, 1)} mo`}
+        </span>
+        {durationModeState === "fixed" && (
+          <span className="text-[9px] font-semibold text-violet-600 bg-violet-50 border border-violet-200 rounded px-1 flex-shrink-0 dark:bg-violet-900/30 dark:text-violet-300" title="Fixed window — finish date locked">
+            FIX
+          </span>
+        )}
+
+        {/* Critical warning — individually visible (029A §3) */}
+        {datesInvalid && (
+          <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded px-1 py-0.5 flex-shrink-0" data-testid={`warning-date-${bar.id}`}>
+            <AlertTriangle className="w-2.5 h-2.5" /> {dateIssue}
+          </span>
+        )}
+        {/* Non-critical warnings — single shows inline, several collapse to a count */}
+        {readWarnings.length === 1 && (
+          <span
+            className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded px-1 py-0.5 flex-shrink-0"
+            title={readWarnings[0].full}
+            data-testid={`warning-row-${bar.id}`}
+          >
+            <AlertTriangle className="w-2.5 h-2.5" /> {readWarnings[0].short}
+          </span>
+        )}
+        {readWarnings.length > 1 && (
+          <span
+            className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded px-1 py-0.5 flex-shrink-0"
+            title={readWarnings.map(w => `• ${w.full}`).join("\n")}
+            data-testid={`warning-row-${bar.id}`}
+          >
+            <AlertTriangle className="w-2.5 h-2.5" /> {readWarnings.length} warnings
+          </span>
+        )}
+
+        <div className="flex-1" />
+
+        {/* Meaningful execution/arrangement state (029A §2) */}
+        {isEarthworkBar && executionState && (
+          <span className="flex-shrink-0 mr-0.5">
+            <ExecutionStateBadge
+              result={executionState}
+              compact
+              onClick={() => setShowArrangements(true)}
+              testId={`badge-execution-state-${bar.id}`}
+            />
+          </span>
+        )}
+
+        {/* 029A Part C: hover/focus actions (desktop) — hidden on touch widths */}
         <button
-          onClick={() => onSplit(bar)}
-          className="p-1 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20 flex-shrink-0"
-          title="Split stretch at midpoint"
-          data-testid={`button-split-${bar.id}`}
+          onClick={() => onRequestEdit(bar.id)}
+          className="hidden md:inline-flex p-1 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+          title="Edit this stretch"
+          aria-label="Edit stretch"
+          data-testid={`button-edit-${bar.id}`}
         >
-          <Scissors className="w-3 h-3" />
+          <Pencil className="w-3 h-3" />
         </button>
-        <button
-          onClick={() => onDelete(bar.id)}
-          className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0"
-          title="Delete stretch"
-          data-testid={`button-delete-${bar.id}`}
-        >
-          <Trash2 className="w-3 h-3" />
-        </button>
+        {isEarthworkBar && (
+          <button
+            onClick={() => setShowArrangements(true)}
+            className="hidden md:inline-flex p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+            title="Execution arrangements for this stretch"
+            aria-label="Execution arrangements"
+            data-testid={`button-arrangements-${bar.id}`}
+          >
+            <Handshake className="w-3 h-3" />
+          </button>
+        )}
+        {!isStructure && (
+          <button
+            onClick={() => onSplit(bar)}
+            className="hidden md:inline-flex p-1 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+            title="Split stretch at midpoint"
+            aria-label="Split stretch"
+            data-testid={`button-split-${bar.id}`}
+          >
+            <Scissors className="w-3 h-3" />
+          </button>
+        )}
+        {/* Persistent ⋯ menu — same actions, reachable by touch/keyboard (029A §10-12) */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 flex-shrink-0"
+              title="More actions"
+              aria-label="Stretch actions"
+              data-testid={`button-more-${bar.id}`}
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onClick={() => onRequestEdit(bar.id)} data-testid={`menu-edit-${bar.id}`}>
+              <Pencil className="w-3.5 h-3.5 mr-2" /> Edit
+            </DropdownMenuItem>
+            {isEarthworkBar && (
+              <DropdownMenuItem onClick={() => setShowArrangements(true)} data-testid={`menu-arrangements-${bar.id}`}>
+                <Handshake className="w-3.5 h-3.5 mr-2" /> Arrangements
+              </DropdownMenuItem>
+            )}
+            {!isStructure && (
+              <DropdownMenuItem onClick={() => onSplit(bar)} data-testid={`menu-split-${bar.id}`}>
+                <Scissors className="w-3.5 h-3.5 mr-2" /> Split at midpoint
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => onDelete(bar.id)}
+              className="text-red-600 focus:text-red-700"
+              data-testid={`menu-delete-${bar.id}`}
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        </>)}
       </div>
 
       {/* ── Right: Gantt cells ── */}
@@ -1421,6 +1618,7 @@ function InlineGanttTable({
   projectId,
   productivitySettings,
   onBeforeMutate,
+  editorGuardRef,
 }: {
   project: BoqProject;
   items: BoqItemWithCategory[];
@@ -1429,6 +1627,8 @@ function InlineGanttTable({
   projectId: number;
   productivitySettings?: ProductivitySettings | null;
   onBeforeMutate?: () => void;
+  /** 029A review fix: lets the page ask "is a stretch editor dirty?" before leaving. */
+  editorGuardRef?: React.MutableRefObject<(() => boolean) | null>;
 }) {
   const { toast } = useToast();
   const totalMonths = project.totalMonths ?? 12;
@@ -1463,6 +1663,40 @@ function InlineGanttTable({
   }, [colW]);
 
   const [deleteBarId, setDeleteBarId] = useState<number | null>(null);
+
+  // ── 029A §4-5: one active editor at a time, with an unsaved-changes guard ──
+  const [editingBarId, setEditingBarId] = useState<number | null>(null);
+  const [pendingEditBarId, setPendingEditBarId] = useState<number | null>(null);
+  const editorApiRef = useRef<StretchEditorApi | null>(null);
+  const registerEditorApi = useCallback((api: StretchEditorApi | null) => {
+    editorApiRef.current = api;
+  }, []);
+  // Expose a dirty-check to the page so tab switches / toolbar navigation can warn.
+  useEffect(() => {
+    if (!editorGuardRef) return;
+    editorGuardRef.current = () => !!editorApiRef.current?.isDirty();
+    return () => { editorGuardRef.current = null; };
+  }, [editorGuardRef]);
+  const requestEdit = useCallback((barId: number) => {
+    setEditingBarId(current => {
+      if (current === null || current === barId) return barId;
+      // Another row is being edited: close silently if unchanged, else ask.
+      if (!editorApiRef.current?.isDirty()) return barId;
+      setPendingEditBarId(barId);
+      return current; // stay until the user chooses Save / Discard / Stay
+    });
+  }, []);
+  // Review fix: switching rows after Save/Discard happens only when the editor
+  // actually closes (save success or cancel) — never on a failed/blocked save.
+  const pendingSwitchRef = useRef<number | null>(null);
+  const closeEdit = useCallback((barId: number) => {
+    setEditingBarId(current => {
+      if (current !== barId) return current;
+      const next = pendingSwitchRef.current;
+      pendingSwitchRef.current = null;
+      return next;
+    });
+  }, []);
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
 
   const barsByItemId = useMemo(() => {
@@ -1658,9 +1892,36 @@ function InlineGanttTable({
 
   const totalRightW = axisMonths * colW;
 
+  // 029A Part E: preserve gantt scroll position per project across navigation.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollRestoredRef = useRef(false);
+  // Review fix: re-run restoration when the project changes in-place.
+  useEffect(() => { scrollRestoredRef.current = false; }, [projectId]);
+  useEffect(() => {
+    if (scrollRestoredRef.current || !scrollRef.current || bars.length === 0) return;
+    try {
+      const saved = sessionStorage.getItem(`wp-scroll-${projectId}`);
+      if (saved) {
+        const { top, left } = JSON.parse(saved);
+        scrollRef.current.scrollTop = top ?? 0;
+        scrollRef.current.scrollLeft = left ?? 0;
+      }
+    } catch { /* ignore */ }
+    scrollRestoredRef.current = true;
+  }, [bars.length, projectId]);
+  const handleGanttScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (!scrollRestoredRef.current) return;
+    try {
+      sessionStorage.setItem(
+        `wp-scroll-${projectId}`,
+        JSON.stringify({ top: e.currentTarget.scrollTop, left: e.currentTarget.scrollLeft }),
+      );
+    } catch { /* ignore */ }
+  }, [projectId]);
+
   return (
     <div className="rounded-xl border bg-white dark:bg-gray-950" style={{ overflow: "clip" }}>
-      <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 240px)" }}>
+      <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 240px)" }} ref={scrollRef} onScroll={handleGanttScroll}>
         {/* ── Header row ── */}
         <div
           style={{ display: "flex", minWidth: LEFT_W + totalRightW, height: 44, position: "sticky", top: 0, zIndex: 30 }}
@@ -1852,6 +2113,10 @@ function InlineGanttTable({
                           onSplit={bar => splitMutation.mutate(bar)}
                           onBeforeMutate={onBeforeMutate}
                           productivitySettings={productivitySettings}
+                          isEditing={editingBarId === bar.id}
+                          onRequestEdit={requestEdit}
+                          onCloseEdit={closeEdit}
+                          registerEditorApi={registerEditorApi}
                         />
                       )
                     )}
@@ -1899,6 +2164,57 @@ function InlineGanttTable({
             >
               {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 029A §5: unsaved-changes guard when switching to another row's editor */}
+      <Dialog open={pendingEditBarId !== null} onOpenChange={o => { if (!o) setPendingEditBarId(null); }}>
+        <DialogContent className="max-w-sm" data-testid="dialog-unsaved-changes">
+          <DialogHeader>
+            <DialogTitle className="text-base">Unsaved changes</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600">
+            The stretch you are editing has unsaved changes. Save them before switching, or discard them?
+          </p>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { pendingSwitchRef.current = null; setPendingEditBarId(null); }}
+              data-testid="button-unsaved-stay"
+            >
+              Stay
+            </Button>
+            <Button
+              variant="outline"
+              className="text-red-600 border-red-200 hover:bg-red-50"
+              onClick={() => {
+                // cancel() closes the editor; closeEdit picks up the pending switch.
+                pendingSwitchRef.current = pendingEditBarId;
+                editorApiRef.current?.cancel();
+                setPendingEditBarId(null);
+              }}
+              data-testid="button-unsaved-discard"
+            >
+              Discard
+            </Button>
+            <Button
+              className="bg-teal-600 hover:bg-teal-700 text-white"
+              onClick={() => {
+                // Only switch if the save actually dispatched AND then succeeds
+                // (closeEdit fires from the mutation's onSuccess).
+                pendingSwitchRef.current = pendingEditBarId;
+                const dispatched = editorApiRef.current?.save();
+                if (!dispatched) {
+                  pendingSwitchRef.current = null; // blocked by validation — stay
+                  return;
+                }
+                setPendingEditBarId(null);
+              }}
+              data-testid="button-unsaved-save"
+            >
+              Save &amp; switch
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2243,7 +2559,26 @@ export default function WorkProgramme() {
   const { toast } = useToast();
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
-  const [activeTab, setActiveTab] = useState("gantt");
+  // 029A Part E: remember the active tab per project so returning from
+  // Earthwork Control / Settings lands the user where they left off.
+  const [activeTab, setActiveTab] = useState(() => {
+    try { return sessionStorage.getItem(`wp-tab-${params.id}`) || "gantt"; }
+    catch { return "gantt"; }
+  });
+  const ganttEditorGuardRef = useRef<(() => boolean) | null>(null);
+  const confirmLeaveEditor = useCallback(() => {
+    if (!ganttEditorGuardRef.current?.()) return true;
+    return window.confirm("You have unsaved stretch edits. Leave anyway and discard them?");
+  }, []);
+  const handleTabChange = useCallback((tab: string) => {
+    if (!confirmLeaveEditor()) return;
+    setActiveTab(tab);
+    try { sessionStorage.setItem(`wp-tab-${params.id}`, tab); } catch { /* ignore */ }
+  }, [params.id, confirmLeaveEditor]);
+  // Rehydrate the remembered tab when navigating between projects in-place.
+  useEffect(() => {
+    try { setActiveTab(sessionStorage.getItem(`wp-tab-${params.id}`) || "gantt"); } catch { /* ignore */ }
+  }, [params.id]);
   const [strImportOpen, setStrImportOpen] = useState(false);
   const [seqDialogOpen, setSeqDialogOpen] = useState(false);
   const [seqFronts, setSeqFronts] = useState("");         // "" = auto
@@ -2816,6 +3151,12 @@ export default function WorkProgramme() {
     [bars],
   );
 
+  // 029A §15: Structures menu items are always present — enable state only.
+  const hasStructureItems = useMemo(
+    () => items.some(it => isStructureOrLocationScheduledItem(it as any, { hasStructureImportBar: structureImportItemIds.has(it.id) })),
+    [items, structureImportItemIds],
+  );
+
   const rescheduleStructuresMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence-structures`, { scope: "unscheduled" });
@@ -2883,130 +3224,64 @@ export default function WorkProgramme() {
             {effectiveProject?.startDate ? " · Date pickers active — AUTO stretches the bar to fit output; FIX locks the window" : " · M# = start month (set a start date in Settings for date pickers)"}
           </p>
         </div>
-        <div className="flex gap-2">
-          {items.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
-              onClick={() => autoBuildRecipesMutation.mutate()}
-              disabled={autoBuildRecipesMutation.isPending}
-              data-testid="button-auto-build-recipes"
-              title="Classify every BOQ item by work-type and attach equipment + labour from the planning master. Durations and the Gantt come from these."
-            >
-              {autoBuildRecipesMutation.isPending
-                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                : <Sparkles className="w-4 h-4 mr-1" />}
-              Auto-build recipes
-            </Button>
-          )}
-          {activeTab === "gantt" && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!canUndo || restoreMutation.isPending}
-                onClick={handleUndo}
-                data-testid="button-undo"
-                title="Undo last change"
-                className="border-slate-300 text-slate-600 hover:bg-slate-50"
-              >
-                {restoreMutation.isPending
-                  ? <Loader2 className="w-4 h-4 animate-spin" />
-                  : <Undo2 className="w-4 h-4" />}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!canRedo || restoreMutation.isPending}
-                onClick={handleRedo}
-                data-testid="button-redo"
-                title="Redo"
-                className="border-slate-300 text-slate-600 hover:bg-slate-50"
-              >
-                <Redo2 className="w-4 h-4" />
-              </Button>
-            </>
-          )}
-          {items.some(it => isStructureOrLocationScheduledItem(it as any, { hasStructureImportBar: structureImportItemIds.has(it.id) })) && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-violet-300 text-violet-700 hover:bg-violet-50"
-              onClick={() => setStrImportOpen(true)}
-              data-testid="button-import-structure-schedule"
-              title="Import a per-location structure schedule from Excel. Creates Gantt bars for each structure (bridge, culvert, etc.) at the correct chainage."
-            >
-              <Building2 className="w-4 h-4 mr-1" />
-              Import Structures
-            </Button>
-          )}
-          {unscheduledStructureBars.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-amber-400 text-amber-800 hover:bg-amber-50"
-              onClick={() => rescheduleStructuresMutation.mutate()}
-              disabled={rescheduleStructuresMutation.isPending}
-              data-testid="button-auto-sequence-structures"
-              title="Places imported structure bars (culverts, bridges) that have no usable date onto the programme — grouped by structure, ordered by construction stage, using SDB/SNL productivity or stage defaults for duration."
-            >
-              {rescheduleStructuresMutation.isPending
-                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                : <Building2 className="w-4 h-4 mr-1" />}
-              Auto-sequence imported structure bars ({unscheduledStructureBars.length})
-            </Button>
-          )}
-          {hasStrayStructureBars && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-red-300 text-red-700 hover:bg-red-50"
-              onClick={() => cleanStructureBarsMutation.mutate()}
-              disabled={cleanStructureBarsMutation.isPending}
-              data-testid="button-clean-structure-bars"
-              title="Remove auto-generated road-style bars from structure items (culverts, bridges, etc.). Imported structure-location bars and manually placed bars are preserved."
-            >
-              {cleanStructureBarsMutation.isPending
-                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                : <Scissors className="w-4 h-4 mr-1" />}
-              Clean Structure Bars
-            </Button>
-          )}
-          {items.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-purple-300 text-purple-700 hover:bg-purple-50"
-              onClick={openSeqDialog}
-              disabled={autoSequenceMutation.isPending}
-              data-testid="button-auto-sequence"
-              title="Open the auto-sequence settings dialog to configure fronts, stagger, and lag, then run the sequencer."
-            >
-              {autoSequenceMutation.isPending
-                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                : <ArrowLeftRight className="w-4 h-4 mr-1" />}
-              Auto-sequence
-            </Button>
-          )}
-          {items.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-teal-300 text-teal-700 hover:bg-teal-50"
-              onClick={handleAutoGenerate}
-              disabled={autoGenMutation.isPending}
-              data-testid="button-auto-generate-programme"
-              title="Create a bar for every unprogrammed item. Duration is auto-computed from SNL equipment norms; all start at Month 1 — then drag or set each item's start month."
-            >
-              {autoGenMutation.isPending
-                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                : <Sparkles className="w-4 h-4 mr-1" />}
-              Auto-generate
-            </Button>
-          )}
+        {/* ── 029A Part D: stable primary toolbar — layout never rearranges with
+            project conditions; conditional state only affects enabled/disabled,
+            counts and attention indicators inside the menus. ── */}
+        <div className="flex gap-2 flex-wrap items-center">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!canUndo || restoreMutation.isPending || activeTab !== "gantt"}
+            onClick={handleUndo}
+            data-testid="button-undo"
+            title="Undo last change"
+            className="border-slate-300 text-slate-600 hover:bg-slate-50"
+          >
+            {restoreMutation.isPending
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Undo2 className="w-4 h-4" />}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!canRedo || restoreMutation.isPending || activeTab !== "gantt"}
+            onClick={handleRedo}
+            data-testid="button-redo"
+            title="Redo"
+            className="border-slate-300 text-slate-600 hover:bg-slate-50"
+          >
+            <Redo2 className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-purple-300 text-purple-700 hover:bg-purple-50"
+            onClick={openSeqDialog}
+            disabled={autoSequenceMutation.isPending || items.length === 0}
+            data-testid="button-auto-sequence"
+            title={items.length === 0 ? "Import BOQ items first" : "Open the auto-sequence settings dialog to configure fronts, stretches, stagger, and lag, then run the sequencer."}
+          >
+            {autoSequenceMutation.isPending
+              ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              : <ArrowLeftRight className="w-4 h-4 mr-1" />}
+            Auto-sequence
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-teal-300 text-teal-700 hover:bg-teal-50"
+            onClick={handleAutoGenerate}
+            disabled={autoGenMutation.isPending || items.length === 0}
+            data-testid="button-auto-generate-programme"
+            title={items.length === 0 ? "Import BOQ items first" : "Create a bar for every unprogrammed item. Duration is auto-computed from SNL equipment norms; all start at Month 1 — then drag or set each item's start month."}
+          >
+            {autoGenMutation.isPending
+              ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              : <Sparkles className="w-4 h-4 mr-1" />}
+            Auto-generate
+          </Button>
           <Link href={`/work-program/${projectId}/demand`}>
-            <a>
+            <a onClick={e => { if (!confirmLeaveEditor()) e.preventDefault(); }}>
               <Button variant="outline" size="sm" data-testid="button-bom-demand">
                 <BookOpen className="w-4 h-4 mr-1" />
                 BOM &amp; Demand
@@ -3014,7 +3289,7 @@ export default function WorkProgramme() {
             </a>
           </Link>
           <Link href={`/work-program/${projectId}/settings`}>
-            <a>
+            <a onClick={e => { if (!confirmLeaveEditor()) e.preventDefault(); }}>
               <Button variant="outline" size="sm" data-testid="button-programme-settings"
                 className="border-teal-200 text-teal-700 hover:bg-teal-50">
                 <Settings2 className="w-4 h-4 mr-1" />
@@ -3022,6 +3297,90 @@ export default function WorkProgramme() {
               </Button>
             </a>
           </Link>
+
+          {/* Structures menu — one stable home for all structure actions (029A §15) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-violet-300 text-violet-700 hover:bg-violet-50 relative"
+                data-testid="button-structures-menu"
+              >
+                <Building2 className="w-4 h-4 mr-1" />
+                Structures
+                {(unscheduledStructureBars.length > 0 || hasStrayStructureBars) && (
+                  <span
+                    className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold"
+                    title={`${unscheduledStructureBars.length > 0 ? `${unscheduledStructureBars.length} imported bar(s) need scheduling. ` : ""}${hasStrayStructureBars ? "Stray road-style bars on structure items." : ""}`}
+                    data-testid="badge-structures-attention"
+                  >
+                    {unscheduledStructureBars.length > 0 ? unscheduledStructureBars.length : "!"}
+                  </span>
+                )}
+                <ChevronDown className="w-3 h-3 ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              <DropdownMenuLabel className="text-xs">Structure schedule</DropdownMenuLabel>
+              <DropdownMenuItem
+                disabled={!hasStructureItems}
+                onClick={() => setStrImportOpen(true)}
+                title={!hasStructureItems ? "No structure/point-location BOQ items in this project" : undefined}
+                data-testid="button-import-structure-schedule"
+              >
+                <Upload className="w-3.5 h-3.5 mr-2" />
+                <div className="flex flex-col">
+                  <span>Import Structures</span>
+                  {!hasStructureItems && <span className="text-[10px] text-slate-400">No structure items in this project</span>}
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={unscheduledStructureBars.length === 0 || rescheduleStructuresMutation.isPending}
+                onClick={() => rescheduleStructuresMutation.mutate()}
+                data-testid="button-auto-sequence-structures"
+              >
+                <Building2 className="w-3.5 h-3.5 mr-2" />
+                <div className="flex flex-col">
+                  <span>Auto-sequence imported bars{unscheduledStructureBars.length > 0 ? ` (${unscheduledStructureBars.length})` : ""}</span>
+                  {unscheduledStructureBars.length === 0 && <span className="text-[10px] text-slate-400">All imported structure bars are scheduled</span>}
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!hasStrayStructureBars || cleanStructureBarsMutation.isPending}
+                onClick={() => cleanStructureBarsMutation.mutate()}
+                data-testid="button-clean-structure-bars"
+              >
+                <Scissors className="w-3.5 h-3.5 mr-2" />
+                <div className="flex flex-col">
+                  <span>Clean Structure Bars</span>
+                  {!hasStrayStructureBars && <span className="text-[10px] text-slate-400">No stray road-style bars on structure items</span>}
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* More menu — less-frequent non-structure actions (029A §16) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="border-slate-300 text-slate-600" data-testid="button-toolbar-more">
+                <MoreHorizontal className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem
+                disabled={items.length === 0 || autoBuildRecipesMutation.isPending}
+                onClick={() => autoBuildRecipesMutation.mutate()}
+                title="Classify every BOQ item by work-type and attach equipment + labour from the planning master. Durations and the Gantt come from these."
+                data-testid="button-auto-build-recipes"
+              >
+                {autoBuildRecipesMutation.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                  : <Sparkles className="w-3.5 h-3.5 mr-2" />}
+                Auto-build recipes
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -3371,7 +3730,7 @@ export default function WorkProgramme() {
       )}
 
       {!isLoading && items.length > 0 && effectiveProject && (
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="mb-3">
             <TabsTrigger value="gantt" className="flex items-center gap-1.5" data-testid="tab-gantt">
               <GanttChartSquare className="w-3.5 h-3.5" /> Gantt
@@ -3393,6 +3752,7 @@ export default function WorkProgramme() {
                 recipesMap={recipesMap}
                 projectId={projectId}
                 onBeforeMutate={pushSnapshot}
+                editorGuardRef={ganttEditorGuardRef}
                 productivitySettings={progSettings ? {
                   mode: (progSettings.productivityMode ?? "snl") as "snl" | "company" | "project",
                   overrides: progSettings.productivityOverrides as Record<string, { outputPerHr?: number; unit?: string }> | null,

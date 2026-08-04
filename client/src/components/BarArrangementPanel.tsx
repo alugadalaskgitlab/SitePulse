@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, ChevronDown, ChevronRight, Link2, Loader2, Plus, Trash2 } from "lucide-react";
+import { Link } from "wouter";
 import { ArrangementStatusBadge, ArrangementSummaryCard, EarthworkArrangementDialog } from "@/components/EarthworkArrangementDialog";
 import { invalidateArrangementQueries } from "@/lib/arrangementCache";
 
@@ -365,9 +366,9 @@ export function BarArrangementPanel({
               >
                 <Plus className="w-3 h-3 mr-1" /> New arrangement for this stretch
               </Button>
-              <a href={`/work-program/${projectId}/earthwork`} className="text-[11px] text-teal-600 hover:underline">
+              <Link href={`/work-program/${projectId}/earthwork`} className="text-[11px] text-teal-600 hover:underline">
                 Earthwork Control →
-              </a>
+              </Link>
             </div>
           </div>
         </DialogContent>
