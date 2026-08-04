@@ -1,0 +1,60 @@
+Instruction 029 — Real Stretch/Chainage Input, Independent Execution Priority, and Arrangement-Safe Re-Sequencing
+
+Purpose
+
+Replace Auto Sequence's current equal-division-of-total-length math with real, user-entered chainage boundaries per stretch, and add a genuine execution-priority field independent of physical chainage order — so a contractor who executes Km 1.9–3.8 before Km 0–1.9 can represent that correctly. Add real gap/overlap validation. Critically: re-running Auto Sequence must never silently destroy programme bars or execution arrangements that are already linked to real work.
+
+Preliminary — current-code facts to respect
+
+There are two separate "auto-sequence" features: the road/BOQ-item stretch splitter (button-auto-sequence, shared/programmeSequencer.ts) — this instruction's target — and a distinct structure-bar rescheduler (button-auto-sequence-structures, shared/structureSequencing.ts) for imported culvert/bridge bars. Do not touch, rename, or conflate the second one.
+work_program_bars.sequenceOrder already exists but today is populated only for structure/imported bars, never for road-reach bars. Reuse this column for road-reach execution priority — do not add a duplicate field.
+calculateStretchQty() in shared/planningEngine.ts (proportionate quantity = boqQty × stretchLength/roadLength) is used by Auto Sequence AND by manual "split stretch at midpoint" AND by the live quantity display on every stretch row. Keep it working for all three; do not fork a second calculation.
+Re-running Auto Sequence today matches bars by source === "auto-sequence" or a label-pattern regex, hard-deletes all matches, then re-inserts fresh rows with new IDs. earthwork_arrangement_programme_allocations.programmeBarId has onDelete: cascade — so this delete silently destroys any linked arrangement record, not just the bar.
+Overlap checking today is client-side only, cosmetic (an orange badge), non-blocking, and not mirrored on the server. Gap checking does not exist at all.
+
+DO NOT TOUCH OR REGRESS
+
+the structure-bar auto-sequencer (button-auto-sequence-structures, shared/structureSequencing.ts);
+calculateStretchQty()'s formula and its other call sites;
+Execution Arrangement schema, approval workflow, demand exclusion (Batches 023-028);
+Work Programme calendar axis (Batch 027A);
+earthwork/bituminous classifiers;
+DPR;
+LHS/RHS (reserved for Batch 030);
+GSB/WMM, UOM conversion, PI/IRN/GRN, Stores, Cancel GRN.
+
+PART A — Real stretch/chainage input
+
+Extend the existing "Auto-Sequence Settings" dialog (do not create a new page) with an editable stretch table: columns for reach name/label, chainage from, chainage to, and execution priority (see Part B).
+Keep an "equal-split" mode: entering a stretch count auto-fills the table with N equal-length rows as today, but the resulting rows must be editable afterward — the count is a starting point, not a lock.
+Per stretch, support both proportionate quantity (existing calculateStretchQty formula, default) and a manual quantity override, consistent with the existing per-bar isQtyOverride flag.
+Preserve the existing structure-groups and bridge-groups inputs as-is; this instruction only changes the road/pavement front table.
+
+PART B — Execution priority independent of chainage
+
+Add a numeric execution-priority value per stretch, stored in the existing work_program_bars.sequenceOrder column, populated for road-reach bars (not just structure bars as today).
+Default priority to chainage order (ascending) when the table is first generated, but let the user reorder independently — e.g. row-level up/down controls or direct priority number entry. Reordering priority must never change a stretch's chainage values, and editing chainage must never silently change its priority.
+reachLabel display text may still read "Reach 1", "Reach 2" etc., but the number in the label should reflect execution priority, not chainage position, once the user has reordered.
+Everywhere reach order currently matters for display or scheduling defaults (Gantt row order, stagger/lag sequencing math in programmeSequencer.ts), use sequenceOrder where it's set, falling back to chainage order only when priority hasn't been assigned.
+
+PART C — Gap and overlap validation
+
+Make overlap checking real: validate server-side as well as client-side, and block save (not just a cosmetic badge) when two stretches for the same BOQ item genuinely overlap in chainage.
+Add gap detection: when stretches for a BOQ item don't fully cover its chainage range, show a clear, non-blocking warning (gaps can be legitimate — a skipped section, phased land availability) listing the uncovered range(s).
+Both checks must run on the real entered/edited values, including manual post-generation edits — not just at the moment Auto Sequence first runs.
+
+PART D — Protect existing bars and arrangements on re-run
+
+Before deleting any bar currently matched for regeneration, check whether it has: (a) a linked earthwork_arrangement_programme_allocations row, or (b) any DPR/progress entries referencing it.
+If either exists, do not silently delete. Either reconcile intelligently (match the new stretch table to the existing bar by closest chainage overlap and update in place, preserving its id and arrangement links) or block regeneration for that specific bar with a clear message naming the arrangement/DPR data blocking it, letting the user resolve manually first.
+Bars with no arrangement or DPR linkage may continue to be regenerated as today (delete-and-recreate is acceptable there).
+Show a pre-regeneration summary before committing: how many bars will be preserved/updated, how many recreated, and any blocked due to linked data — require explicit confirmation.
+
+Acceptance tests
+
+A. Enter three real stretches for a 3.8 km item (0–1.9, 1.9–3.8 split arbitrarily) with execution priority 1 = the 1.9–3.8 stretch, priority 2 = the 0–1.9 stretch. Confirm Gantt/scheduling order follows priority, not chainage.
+B. Enter overlapping chainage for two stretches of the same item — save is blocked with a clear message.
+C. Enter stretches covering only part of an item's total chainage — a gap warning appears, save is not blocked.
+D. Link an earthwork arrangement to an auto-generated bar, then re-run Auto Sequence with a modified stretch count. Confirm the arrangement's linkage survives (either the bar is preserved/updated, or regeneration is blocked with a clear message) — it must never silently disappear.
+E. Confirm calculateStretchQty-based proportionate quantity still matches manual split-at-midpoint results for an untouched stretch.
+F. Confirm the structure-bar auto-sequencer button/flow is completely unaffected.

@@ -46,7 +46,7 @@ import {
 } from "@shared/calendarAxis";
 import { BarArrangementPanel } from "@/components/BarArrangementPanel";
 import { ExecutionStateBadge, useBarExecutionState } from "@/components/ExecutionStateBadge";
-import { SEQUENCE_RULES } from "@shared/programmeSequencer";
+import { SEQUENCE_RULES, validateStretches, type RoadStretchInput } from "@shared/programmeSequencer";
 import { isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
 import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { shortItemName } from "@/lib/itemName";
@@ -1471,6 +1471,18 @@ function InlineGanttTable({
       if (!m[b.boqItemId]) m[b.boqItemId] = [];
       m[b.boqItemId].push(b);
     }
+    // Instruction 029 Part B: within an item, order stretch rows by execution
+    // priority (sequenceOrder) when set; bars without one fall back to chainage
+    // order so structure-import and legacy bars keep their positions.
+    for (const id of Object.keys(m)) {
+      m[Number(id)].sort((a, b) => {
+        const sa = (a as any).sequenceOrder, sb = (b as any).sequenceOrder;
+        if (sa != null && sb != null && sa !== sb) return sa - sb;
+        if (sa != null && sb == null) return -1;
+        if (sa == null && sb != null) return 1;
+        return (a.chainageFrom ?? 0) - (b.chainageFrom ?? 0);
+      });
+    }
     return m;
   }, [bars]);
 
@@ -2240,6 +2252,22 @@ export default function WorkProgramme() {
   const [seqStrGroups, setSeqStrGroups] = useState("");   // "" = same as road fronts
   const [seqBrgGroups, setSeqBrgGroups] = useState("");   // "" = same as road fronts
   const [seqRulesOpen, setSeqRulesOpen] = useState(false);
+  // ── Instruction 029: editable stretch table + pre-regeneration confirmation ──
+  // Each row is kept as strings for smooth editing; converted on submit.
+  type SeqStretchRow = { label: string; from: string; to: string; priority: string; qtyPct: string };
+  const [seqStretches, setSeqStretches] = useState<SeqStretchRow[]>([]);
+  const [seqRegenSummary, setSeqRegenSummary] = useState<{
+    toRecreate: number; preservedUpdated: number; newBars: number;
+    blocked: Array<{ barId: number; boqItemId: number; reachLabel: string | null; arrangementIds: number[] }>;
+    stretchGaps: Array<{ from: number; to: number }>;
+  } | null>(null);
+  const [seqDryRunPending, setSeqDryRunPending] = useState(false);
+  // Any change to the sequencing inputs invalidates a previously fetched
+  // pre-regeneration summary — the user must re-run the dry-run check so the
+  // confirmation always reflects the inputs that will actually be submitted.
+  useEffect(() => {
+    setSeqRegenSummary(null);
+  }, [seqStretches, seqFronts, seqStagger, seqLag, seqStrGroups, seqBrgGroups, seqSkipStructureItems]);
   // When true (default), structure-type BOQ items are excluded from auto-sequence
   // so imported per-location bars are not overlaid with auto-generated linear bars.
   // Uncheck only for legacy projects that have no imported structure bars.
@@ -2470,13 +2498,14 @@ export default function WorkProgramme() {
   });
 
   const autoSequenceMutation = useMutation({
-    mutationFn: async (opts: { fronts?: number; staggerMonths: number; lagMonths: number; structureGroups?: number; bridgeGroups?: number; disableStructureFronts?: boolean }) => {
+    mutationFn: async (opts: { fronts?: number; staggerMonths: number; lagMonths: number; structureGroups?: number; bridgeGroups?: number; disableStructureFronts?: boolean; stretches?: RoadStretchInput[] }) => {
       const body: Record<string, unknown> = { staggerMonths: opts.staggerMonths, lagMonths: opts.lagMonths };
       if (opts.fronts && opts.fronts > 0) body.fronts = opts.fronts;
       if (opts.structureGroups && opts.structureGroups > 0) body.structureGroups = opts.structureGroups;
       if (opts.bridgeGroups && opts.bridgeGroups > 0) body.bridgeGroups = opts.bridgeGroups;
       // Always send disableStructureFronts as an explicit boolean so the server can rely on it
       body.disableStructureFronts = opts.disableStructureFronts !== false;
+      if (opts.stretches && opts.stretches.length > 0) body.stretches = opts.stretches; // Instruction 029
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, body);
       return res.json();
     },
@@ -2484,6 +2513,7 @@ export default function WorkProgramme() {
     onSuccess: async (data: {
       bars?: number;
       fronts?: number;
+      regenSummary?: { blocked?: Array<{ reachLabel: string | null; arrangementIds: number[] }>; preservedUpdated?: number; stretchGaps?: Array<{ from: number; to: number }> };
       unclassifiedCount?: number;
       unclassifiedItems?: {
         id: number;
@@ -2495,8 +2525,18 @@ export default function WorkProgramme() {
       }[];
     }) => {
       setSeqDialogOpen(false);
+      setSeqRegenSummary(null);
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "program-settings"] });
+      // Instruction 029 Part D — surface blocked (arrangement-linked) bars loudly
+      if (data?.regenSummary?.blocked?.length) {
+        const labels = data.regenSummary.blocked.map(b => b.reachLabel ?? `bar ${ (b as any).barId }`).join(", ");
+        toast({
+          title: `${data.regenSummary.blocked.length} bar(s) kept unchanged`,
+          description: `Linked to earthwork arrangements and no new stretch overlaps them: ${labels}. Adjust stretch chainages or unlink the arrangement first.`,
+          variant: "destructive",
+        });
+      }
       let skipNote = "";
       if (data?.unclassifiedCount) {
         const count = data.unclassifiedCount;
@@ -2534,11 +2574,74 @@ export default function WorkProgramme() {
         // skip = true means DO NOT enable structure fronts (inverted from stored field)
         setSeqSkipStructureItems(!Boolean((stored as any).enableStructureFronts));
       }
+      // Instruction 029 — always hydrate the stretch table from persisted
+      // settings (empty when none saved) so stale in-memory rows never leak
+      // into a later run and silently override the legacy equal-split path.
+      const savedStretches = (stored as any).stretches;
+      setSeqStretches(Array.isArray(savedStretches) && savedStretches.length > 0
+        ? savedStretches.map((s: any) => ({
+            label: s.label ?? "",
+            from: s.chainageFrom != null ? String(s.chainageFrom) : "",
+            to: s.chainageTo != null ? String(s.chainageTo) : "",
+            priority: s.priority != null ? String(s.priority) : "",
+            qtyPct: s.manualQtyFraction != null ? String(+(s.manualQtyFraction * 100).toFixed(2)) : "",
+          }))
+        : []);
+    } else {
+      setSeqStretches([]);
     }
+    setSeqRegenSummary(null);
     setSeqDialogOpen(true);
   }
 
-  function runAutoSequence() {
+  // ── Instruction 029: stretch-table helpers ────────────────────────────────
+  const projChFromKm = (effectiveProject as any)?.chainageFrom ?? 0;
+  const projChToKm = (effectiveProject as any)?.chainageTo
+    ?? (projChFromKm + (effectiveProject?.roadLengthKm ?? 0));
+
+  /** Equal-split starting point: N rows over the real project chainage range. */
+  function fillEqualStretches(countRaw?: number) {
+    const count = Math.max(1, Math.min(10, countRaw ?? (parseInt(seqFronts) || 2)));
+    const from = projChFromKm, to = projChToKm;
+    const len = Math.max(0, to - from) / count;
+    setSeqStretches(Array.from({ length: count }, (_, i) => ({
+      label: "",
+      from: (from + i * len).toFixed(3),
+      to: (from + (i + 1) * len).toFixed(3),
+      priority: String(i + 1),
+      qtyPct: "",
+    })));
+  }
+
+  /** Convert editable rows → payload; null when the table is empty (legacy mode). */
+  function stretchesPayload(): RoadStretchInput[] | null {
+    if (seqStretches.length === 0) return null;
+    return seqStretches.map((r, i) => ({
+      label: r.label.trim() || null,
+      chainageFrom: parseFloat(r.from),
+      chainageTo: parseFloat(r.to),
+      priority: parseInt(r.priority) || i + 1,
+      manualQtyFraction: r.qtyPct.trim() !== "" && parseFloat(r.qtyPct) > 0
+        ? Math.min(100, parseFloat(r.qtyPct)) / 100
+        : null,
+    }));
+  }
+
+  /** Live validation for the dialog — overlaps/errors block, gaps warn. */
+  const seqStretchValidation = useMemo(() => {
+    const payload = seqStretches.length > 0
+      ? seqStretches.map((r, i) => ({
+          label: r.label.trim() || null,
+          chainageFrom: parseFloat(r.from),
+          chainageTo: parseFloat(r.to),
+          priority: parseInt(r.priority) || i + 1,
+        }))
+      : [];
+    if (payload.length === 0) return { errors: [], overlaps: [], gaps: [] };
+    return validateStretches(payload, projChFromKm, projChToKm);
+  }, [seqStretches, projChFromKm, projChToKm]);
+
+  function seqBodyOpts() {
     const fronts = parseInt(seqFronts) || 0;
     // Allow stagger = 0 (concurrent fronts)
     const staggerRaw = parseFloat(seqStagger);
@@ -2547,14 +2650,44 @@ export default function WorkProgramme() {
     const lag = !isNaN(lagRaw) ? lagRaw : 0.25;
     const strGroups = parseInt(seqStrGroups) || 0;
     const brgGroups = parseInt(seqBrgGroups) || 0;
-    autoSequenceMutation.mutate({
+    return {
       fronts: fronts > 0 ? fronts : undefined,
       staggerMonths: stagger,
       lagMonths: lag,
       structureGroups: strGroups > 0 ? strGroups : undefined,
       bridgeGroups: brgGroups > 0 ? brgGroups : undefined,
       disableStructureFronts: seqSkipStructureItems,
-    });
+      stretches: stretchesPayload() ?? undefined,
+    };
+  }
+
+  // Instruction 029 Part D — two-phase flow: dry-run first for the
+  // pre-regeneration summary, then explicit confirmation applies it.
+  async function runAutoSequence() {
+    if (seqStretchValidation.errors.length > 0 || seqStretchValidation.overlaps.length > 0) return; // blocked in UI
+    const opts = seqBodyOpts();
+    setSeqDryRunPending(true);
+    try {
+      const body: Record<string, unknown> = {
+        staggerMonths: opts.staggerMonths, lagMonths: opts.lagMonths,
+        disableStructureFronts: opts.disableStructureFronts !== false, dryRun: true,
+      };
+      if (opts.fronts) body.fronts = opts.fronts;
+      if (opts.structureGroups) body.structureGroups = opts.structureGroups;
+      if (opts.bridgeGroups) body.bridgeGroups = opts.bridgeGroups;
+      if (opts.stretches) body.stretches = opts.stretches;
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, body);
+      const data = await res.json();
+      setSeqRegenSummary(data?.regenSummary ?? { toRecreate: 0, preservedUpdated: 0, newBars: data?.wouldCreateBars ?? 0, blocked: [], stretchGaps: [] });
+    } catch (err: any) {
+      toast({ title: "Auto-sequence check failed", description: String(err?.message ?? err), variant: "destructive" });
+    } finally {
+      setSeqDryRunPending(false);
+    }
+  }
+
+  function confirmAutoSequence() {
+    autoSequenceMutation.mutate(seqBodyOpts());
   }
 
   function handleAutoGenerate() {
@@ -2987,6 +3120,98 @@ export default function WorkProgramme() {
                 <p className="text-[10px] text-muted-foreground">Handover gap between stages</p>
               </div>
             </div>
+
+            {/* ── Instruction 029: real stretch table ─────────────────────── */}
+            <div className="space-y-2 rounded-md border border-slate-200 dark:border-slate-700 p-2.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">Road stretches (chainage + execution priority)</Label>
+                <div className="flex gap-1.5">
+                  <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[11px]"
+                    onClick={() => fillEqualStretches()} data-testid="button-seq-equal-split">
+                    Equal split
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[11px]"
+                    onClick={() => setSeqStretches(s => [...s, { label: "", from: "", to: "", priority: String(s.length + 1), qtyPct: "" }])}
+                    data-testid="button-seq-add-stretch">
+                    + Row
+                  </Button>
+                  {seqStretches.length > 0 && (
+                    <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-[11px] text-muted-foreground"
+                      onClick={() => setSeqStretches([])} data-testid="button-seq-clear-stretches">
+                      Clear
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {seqStretches.length === 0 ? (
+                <p className="text-[10px] text-muted-foreground">
+                  No stretch rows — the road will be divided equally by front count. Click “Equal split” to
+                  edit real chainages and set execution priority per stretch.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  <div className="grid grid-cols-[1fr_70px_70px_52px_58px_24px] gap-1 text-[10px] font-medium text-muted-foreground px-0.5">
+                    <span>Label (optional)</span><span>Km from</span><span>Km to</span><span>Priority</span><span>Qty %</span><span />
+                  </div>
+                  {seqStretches.map((r, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_70px_70px_52px_58px_24px] gap-1 items-center">
+                      <Input value={r.label} placeholder={`Reach ${r.priority || i + 1}`} className="h-7 text-xs"
+                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                        data-testid={`input-stretch-label-${i}`} />
+                      <Input value={r.from} type="number" step={0.001} className="h-7 text-xs"
+                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, from: e.target.value } : x))}
+                        data-testid={`input-stretch-from-${i}`} />
+                      <Input value={r.to} type="number" step={0.001} className="h-7 text-xs"
+                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, to: e.target.value } : x))}
+                        data-testid={`input-stretch-to-${i}`} />
+                      <Input value={r.priority} type="number" min={1} step={1} className="h-7 text-xs"
+                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, priority: e.target.value } : x))}
+                        data-testid={`input-stretch-priority-${i}`} />
+                      <Input value={r.qtyPct} type="number" min={0} max={100} placeholder="auto" className="h-7 text-xs"
+                        title="Manual quantity share (% of each item's total). Blank = proportionate to stretch length."
+                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, qtyPct: e.target.value } : x))}
+                        data-testid={`input-stretch-qty-${i}`} />
+                      <button type="button" className="text-slate-400 hover:text-red-500 text-xs"
+                        onClick={() => setSeqStretches(s => s.filter((_, j) => j !== i))}
+                        data-testid={`button-stretch-remove-${i}`}>✕</button>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-muted-foreground">
+                    Priority 1 mobilises first — independent of chainage position. Reordering priority never changes chainages.
+                  </p>
+                  {(seqStretchValidation.errors.length > 0 || seqStretchValidation.overlaps.length > 0) && (
+                    <div className="text-[11px] text-red-600 dark:text-red-400 space-y-0.5" data-testid="text-stretch-errors">
+                      {seqStretchValidation.errors.map((e, i) => <p key={`e${i}`}>• {e}</p>)}
+                      {seqStretchValidation.overlaps.map((o, i) => (
+                        <p key={`o${i}`}>• {o.aLabel} and {o.bLabel} overlap between Km {o.overlapFrom} and Km {o.overlapTo}</p>
+                      ))}
+                    </div>
+                  )}
+                  {seqStretchValidation.gaps.length > 0 && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400" data-testid="text-stretch-gaps">
+                      ⚠ Uncovered chainage: {seqStretchValidation.gaps.map(g => `Km ${g.from}–${g.to}`).join(", ")} (allowed — gap will simply not be programmed)
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Instruction 029 Part D: pre-regeneration summary ─────────── */}
+            {seqRegenSummary && (
+              <div className="rounded-md border border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/10 p-2.5 space-y-1" data-testid="panel-regen-summary">
+                <p className="text-xs font-semibold text-purple-700 dark:text-purple-300">Review before regenerating</p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  {seqRegenSummary.newBars} new bars will be created · {seqRegenSummary.toRecreate} existing auto bars replaced
+                  {seqRegenSummary.preservedUpdated > 0 && <> · <b>{seqRegenSummary.preservedUpdated} arrangement-linked bar(s) preserved</b> (updated in place, links kept)</>}
+                </p>
+                {seqRegenSummary.blocked.length > 0 && (
+                  <p className="text-[11px] text-red-600 dark:text-red-400">
+                    {seqRegenSummary.blocked.length} bar(s) linked to earthwork arrangements have no overlapping new stretch and will be KEPT UNCHANGED: {seqRegenSummary.blocked.map(b => b.reachLabel ?? `#${b.barId}`).join(", ")}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="seq-str-groups" className="text-xs font-medium">Structure groups</Label>
@@ -3099,17 +3324,31 @@ export default function WorkProgramme() {
             <Button variant="outline" size="sm" onClick={() => setSeqDialogOpen(false)}>
               Cancel
             </Button>
-            <Button
-              size="sm"
-              className="bg-purple-600 hover:bg-purple-700 text-white"
-              onClick={runAutoSequence}
-              disabled={autoSequenceMutation.isPending}
-              data-testid="button-run-auto-sequence"
-            >
-              {autoSequenceMutation.isPending
-                ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Sequencing…</>
-                : <><ArrowLeftRight className="w-3.5 h-3.5 mr-1" />Run Sequence</>}
-            </Button>
+            {seqRegenSummary ? (
+              <Button
+                size="sm"
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+                onClick={confirmAutoSequence}
+                disabled={autoSequenceMutation.isPending}
+                data-testid="button-confirm-auto-sequence"
+              >
+                {autoSequenceMutation.isPending
+                  ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Sequencing…</>
+                  : <><ArrowLeftRight className="w-3.5 h-3.5 mr-1" />Confirm & Generate</>}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+                onClick={runAutoSequence}
+                disabled={seqDryRunPending || seqStretchValidation.errors.length > 0 || seqStretchValidation.overlaps.length > 0}
+                data-testid="button-run-auto-sequence"
+              >
+                {seqDryRunPending
+                  ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Checking…</>
+                  : <><ArrowLeftRight className="w-3.5 h-3.5 mr-1" />Run Sequence</>}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

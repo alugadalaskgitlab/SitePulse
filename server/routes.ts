@@ -10972,6 +10972,31 @@ export async function registerRoutes(
     }
   });
 
+  // ── Instruction 029 Part C: server-side chainage-overlap guard ─────────────
+  // Two stretches of the SAME BOQ item may not genuinely overlap in chainage.
+  // Touching boundaries (split-at-midpoint) are fine; strict interior overlap
+  // blocks the save. Runs on create AND on chainage edits — not just Auto Sequence.
+  const CH_OVERLAP_EPS = 0.0005; // 0.5 m — matches shared validateStretches
+  async function findChainageOverlapConflict(
+    boqProjectId: number,
+    boqItemId: number,
+    chainageFrom: unknown,
+    chainageTo: unknown,
+    excludeBarId?: number,
+  ): Promise<{ conflictBar: any } | null> {
+    const cf = Number(chainageFrom), ct = Number(chainageTo);
+    if (!Number.isFinite(cf) || !Number.isFinite(ct)) return null; // no chainage → nothing to check
+    const siblings = (await storage.getWorkProgramBars(boqProjectId)) as any[];
+    for (const b of siblings) {
+      if (b.boqItemId !== boqItemId) continue;
+      if (excludeBarId != null && b.id === excludeBarId) continue;
+      const bf = Number(b.chainageFrom), bt = Number(b.chainageTo);
+      if (!Number.isFinite(bf) || !Number.isFinite(bt)) continue;
+      if (Math.min(ct, bt) - Math.max(cf, bf) > CH_OVERLAP_EPS) return { conflictBar: b };
+    }
+    return null;
+  }
+
   app.post("/api/boq/projects/:id/programme", async (req, res) => {
     try {
       const boqProjectId = parseInt(req.params.id);
@@ -10981,6 +11006,14 @@ export async function registerRoutes(
       }
       if (data.endMonth < data.startMonth) {
         return res.status(400).json({ error: "endMonth must be >= startMonth" });
+      }
+      const conflict = await findChainageOverlapConflict(
+        boqProjectId, Number(data.boqItemId), data.chainageFrom, data.chainageTo);
+      if (conflict) {
+        return res.status(400).json({
+          error: "CHAINAGE_OVERLAP",
+          message: `Chainage Km ${data.chainageFrom}–${data.chainageTo} overlaps existing stretch "${conflict.conflictBar.reachLabel ?? "unnamed"}" (Km ${conflict.conflictBar.chainageFrom}–${conflict.conflictBar.chainageTo}) of the same BOQ item`,
+        });
       }
       const bar = await storage.upsertWorkProgramBar(data);
       res.status(201).json(bar);
@@ -11013,7 +11046,25 @@ export async function registerRoutes(
 
   app.patch("/api/boq/programme/bars/:id", async (req, res) => {
     try {
-      const updated = await storage.updateWorkProgramBar(parseInt(req.params.id), req.body);
+      const barId = parseInt(req.params.id);
+      // Instruction 029 Part C: chainage edits are validated against sibling
+      // stretches of the same BOQ item — genuine overlap blocks the save.
+      if (req.body?.chainageFrom !== undefined || req.body?.chainageTo !== undefined) {
+        const existing = (await storage.getWorkProgramBar?.(barId)) ?? null;
+        if (existing) {
+          const cf = req.body.chainageFrom !== undefined ? req.body.chainageFrom : (existing as any).chainageFrom;
+          const ct = req.body.chainageTo !== undefined ? req.body.chainageTo : (existing as any).chainageTo;
+          const conflict = await findChainageOverlapConflict(
+            (existing as any).boqProjectId, (existing as any).boqItemId, cf, ct, barId);
+          if (conflict) {
+            return res.status(400).json({
+              error: "CHAINAGE_OVERLAP",
+              message: `Chainage Km ${cf}–${ct} overlaps stretch "${conflict.conflictBar.reachLabel ?? "unnamed"}" (Km ${conflict.conflictBar.chainageFrom}–${conflict.conflictBar.chainageTo}) of the same BOQ item`,
+            });
+          }
+        }
+      }
+      const updated = await storage.updateWorkProgramBar(barId, req.body);
       if (!updated) return res.status(404).json({ error: "Bar not found" });
       res.json(updated);
     } catch (err) {
@@ -14011,6 +14062,40 @@ export async function registerRoutes(
       // dryRun=true: classify items and return diagnostics WITHOUT touching bars or DB.
       const dryRun = req.body?.dryRun === true;
 
+      // ── Instruction 029 Part A/C: real user-entered stretch rows ─────────────
+      // stretches: [{ label?, chainageFrom, chainageTo, priority, manualQtyFraction? }]
+      // Overlaps and malformed rows BLOCK (400); gaps are returned as warnings.
+      const { validateStretches } = await import("@shared/programmeSequencer");
+      const rawStretches = Array.isArray(req.body?.stretches) ? req.body.stretches : null;
+      const stretches = rawStretches && rawStretches.length > 0
+        ? rawStretches.map((s: any, i: number) => ({
+            label: typeof s?.label === "string" && s.label.trim() ? s.label.trim().slice(0, 60) : null,
+            chainageFrom: Number(s?.chainageFrom),
+            chainageTo: Number(s?.chainageTo),
+            priority: Number(s?.priority ?? i + 1),
+            manualQtyFraction: s?.manualQtyFraction != null && Number(s.manualQtyFraction) > 0
+              ? Math.min(1, Number(s.manualQtyFraction))
+              : null,
+          }))
+        : null;
+      let stretchGaps: Array<{ from: number; to: number }> = [];
+      if (stretches) {
+        const v = validateStretches(stretches, projChFrom, projChTo);
+        if (v.errors.length > 0 || v.overlaps.length > 0) {
+          return res.status(400).json({
+            error: "STRETCH_VALIDATION_FAILED",
+            message: [
+              ...v.errors,
+              ...v.overlaps.map(o =>
+                `${o.aLabel} and ${o.bLabel} overlap between Km ${o.overlapFrom} and Km ${o.overlapTo}`),
+            ].join("; "),
+            validationErrors: v.errors,
+            overlaps: v.overlaps,
+          });
+        }
+        stretchGaps = v.gaps;
+      }
+
       // Persist sequence options so the UI can pre-populate the dialog next time.
       // Skipped in dry-run mode so the diagnostic call doesn't mutate saved settings.
       if (!dryRun) {
@@ -14022,6 +14107,7 @@ export async function registerRoutes(
             structureGroups: _strGroups >= 1 ? structureGroups : null,
             bridgeGroups: _brgGroups >= 1 ? bridgeGroups : null,
             enableStructureFronts: !disableStructureFronts,
+            stretches: stretches ?? null, // Instruction 029 — restore the stretch table next open
           },
         } as any);
       }
@@ -14146,7 +14232,65 @@ export async function registerRoutes(
         structureGroups,
         bridgeGroups,
         disableStructureFronts,
+        ...(stretches ? { stretches } : {}), // Instruction 029 — real stretch table
       });
+
+      // ── Instruction 029 Part D: regeneration PLAN (computed for dry-run AND real run) ──
+      // Never silently destroy bars linked to real work: allocation rows cascade-delete
+      // with their bar, so linked bars are reconciled in place (id preserved) or blocked.
+      // (DPR/progress entries reference boqItemId/earthworkArrangementId, never a bar id,
+      // so arrangement allocations are the only bar-level linkage to protect.)
+      const AUTO_MATCH = (b: any) =>
+        b.source === "auto-sequence"
+        || !b.source                                            // null = column not yet populated
+        || (b.source === "manual" && AUTO_LABEL_RE.test(b.reachLabel ?? ""));
+      const regenAutoBars = (existingBars as any[]).filter(AUTO_MATCH);
+      const regenAllocRows = await storage.getArrangementProgrammeAllocationsForProject(projectId);
+      const allocsByBarId = new Map<number, any[]>();
+      for (const al of (regenAllocRows as any[])) {
+        if (!allocsByBarId.has(al.programmeBarId)) allocsByBarId.set(al.programmeBarId, []);
+        allocsByBarId.get(al.programmeBarId)!.push(al);
+      }
+      const chOverlap = (a: any, b: any) => {
+        const af = Number(a.chainageFrom), at = Number(a.chainageTo);
+        const bf = Number(b.chainageFrom), bt = Number(b.chainageTo);
+        if (![af, at, bf, bt].every(Number.isFinite)) return 0;
+        return Math.max(0, Math.min(at, bt) - Math.max(af, bf));
+      };
+      const reconcilePlan: Array<{ barId: number; newBarIdx: number; reachLabel: string | null }> = [];
+      const blockedBars: Array<{ barId: number; boqItemId: number; reachLabel: string | null; arrangementIds: number[] }> = [];
+      {
+        const consumed = new Set<number>();
+        for (const b of regenAutoBars) {
+          const linkedAllocs = allocsByBarId.get(b.id);
+          if (!linkedAllocs || linkedAllocs.length === 0) continue; // unprotected — normal delete path
+          let bestIdx = -1, bestOv = 0;
+          bars.forEach((nb, idx) => {
+            if (consumed.has(idx) || nb.boqItemId !== b.boqItemId) return;
+            const ov = chOverlap(nb, b);
+            if (ov > bestOv) { bestOv = ov; bestIdx = idx; }
+          });
+          if (bestIdx >= 0 && bestOv > 0.0005) {
+            consumed.add(bestIdx);
+            reconcilePlan.push({ barId: b.id, newBarIdx: bestIdx, reachLabel: bars[bestIdx].reachLabel });
+          } else {
+            blockedBars.push({
+              barId: b.id,
+              boqItemId: b.boqItemId,
+              reachLabel: b.reachLabel ?? null,
+              arrangementIds: Array.from(new Set(linkedAllocs.map((al: any) => al.arrangementId))),
+            });
+          }
+        }
+      }
+      const consumedNewBars = new Set(reconcilePlan.map(p => p.newBarIdx));
+      const regenSummary = {
+        toRecreate: regenAutoBars.length - reconcilePlan.length - blockedBars.length,
+        preservedUpdated: reconcilePlan.length,
+        blocked: blockedBars,
+        newBars: bars.length,
+        stretchGaps, // Instruction 029 Part C — non-blocking gap warnings
+      };
 
       // ── Dry-run: return per-item classification trace without touching bars or DB ──
       if (dryRun) {
@@ -14184,6 +14328,8 @@ export async function registerRoutes(
           sequencerItems: diagItems,
           wouldCreateBars: bars.length,
           unclassifiedCount: unclassifiedItemIds.length,
+          // Instruction 029 Part D — pre-regeneration summary for explicit confirmation
+          regenSummary,
         });
       }
 
@@ -14208,13 +14354,39 @@ export async function registerRoutes(
       // Build the full new set first; only then replace the old bars.
       let created = 0;
       const insertErrors: string[] = [];
-      const autoBars = (existingBars as any[]).filter(
-        (b) => b.source === "auto-sequence"
-            || !b.source                                            // null = column not yet populated
-            || (b.source === "manual" && AUTO_LABEL_RE.test(b.reachLabel ?? "")),
-      );
-      for (const b of autoBars) await storage.deleteWorkProgramBar(b.id);
-      for (const b of bars) {
+      // ── Instruction 029 Part D: APPLY the regeneration plan computed above ──
+      // 1. Reconcile protected bars in place (id + arrangement links preserved).
+      for (const p of reconcilePlan) {
+        const nb = bars[p.newBarIdx];
+        await storage.updateWorkProgramBar(p.barId, {
+          reachLabel: nb.reachLabel,
+          chainageFrom: nb.chainageFrom,
+          chainageTo: nb.chainageTo,
+          startMonth: nb.startMonth,
+          endMonth: nb.endMonth,
+          plannedQty: nb.plannedQty,
+          isQtyOverride: nb.isQtyOverride,
+          isDurationOverride: nb.isDurationOverride,
+          source: "auto-sequence",
+          ...(nb.sequenceOrder != null ? { sequenceOrder: nb.sequenceOrder } : {}),
+        } as any);
+      }
+      // 2. Delete only unprotected matched bars (blocked bars stay untouched).
+      const protectedIds = new Set([
+        ...reconcilePlan.map(p => p.barId),
+        ...blockedBars.map(p => p.barId),
+      ]);
+      for (const b of regenAutoBars) {
+        if (protectedIds.has(b.id)) continue; // preserved in place or blocked — never delete
+        await storage.deleteWorkProgramBar(b.id);
+      }
+      // 3. Insert the remaining new bars. (`created` counts INSERTS only —
+      // reconciled bars are reported separately as regenSummary.preservedUpdated.)
+      let deletedCount = 0;
+      for (const b of regenAutoBars) if (!protectedIds.has(b.id)) deletedCount++;
+      for (let i = 0; i < bars.length; i++) {
+        if (consumedNewBars.has(i)) continue; // applied as in-place update, not an insert
+        const b = bars[i];
         try {
           await storage.upsertWorkProgramBar({ ...b, boqProjectId: projectId } as any);
           created++;
@@ -14245,7 +14417,8 @@ export async function registerRoutes(
         success: true,
         fronts,
         totalMonths,
-        bars: created,
+        // Total bars now representing the programme = fresh inserts + in-place reconciles.
+        bars: created + reconcilePlan.length,
         itemsConsidered: seqItems.length,
         unclassifiedCount: unclassifiedItemIds.length,
         unclassifiedItemIds,
@@ -14259,6 +14432,9 @@ export async function registerRoutes(
         skippedCount: skippedItems.length,
         errorCount: insertErrors.length,
         sampleError: insertErrors[0] ?? null,
+        // Instruction 029: what actually happened to protected bars + gap warnings.
+        // inserted/deleted are the real DB operations; preservedUpdated bars kept their ids.
+        regenSummary: { ...regenSummary, inserted: created, deleted: deletedCount },
       });
     } catch (err: any) {
       console.error("auto-sequence:", err);

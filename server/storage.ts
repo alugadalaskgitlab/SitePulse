@@ -22517,6 +22517,12 @@ export class DatabaseStorage implements IStorage {
 
   // --- Work Programme Bars ---
 
+  /** Instruction 029: single-bar fetch for server-side chainage-overlap validation on PATCH. */
+  async getWorkProgramBar(id: number): Promise<WorkProgramBar | null> {
+    const [row] = await db.select().from(workProgramBars).where(eq(workProgramBars.id, id));
+    return row ?? null;
+  }
+
   async getWorkProgramBars(boqProjectId: number): Promise<WorkProgramBarWithItem[]> {
     const rows = await db
       .select({

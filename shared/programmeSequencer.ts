@@ -167,6 +167,124 @@ export interface SeqOptions {
    * structure bars via the Structure Schedule Import wizard instead.
    */
   disableStructureFronts?: boolean;
+  /**
+   * Instruction 029 — real user-entered stretch boundaries for the ROAD/pavement
+   * front table. When provided (non-empty), these replace the equal division of
+   * roadLengthKm by `fronts` for pavement bars. Structure/bridge groups are
+   * unaffected. Each stretch carries an execution priority independent of its
+   * chainage position: priority 1 mobilises first (stagger offset 0), priority 2
+   * next, etc. Quantities default to the proportionate calculateStretchQty
+   * formula; manualQtyFraction (share of the item's total qty, 0..1) overrides it.
+   */
+  stretches?: RoadStretchInput[];
+}
+
+/** Instruction 029 — one user-entered road stretch row. */
+export interface RoadStretchInput {
+  /** Optional custom label. When omitted, "Reach {priority}" is used so the
+   *  visible number reflects EXECUTION priority, not chainage position. */
+  label?: string | null;
+  chainageFrom: number;
+  chainageTo: number;
+  /** Execution priority (1 = first to mobilise). Independent of chainage order. */
+  priority: number;
+  /** Optional manual quantity share (fraction of each item's total qty, 0..1).
+   *  null/undefined → proportionate calculateStretchQty default. */
+  manualQtyFraction?: number | null;
+}
+
+/** One genuine chainage overlap between two stretches (blocking). */
+export interface StretchOverlap {
+  aIndex: number;
+  bIndex: number;
+  aLabel: string;
+  bLabel: string;
+  overlapFrom: number;
+  overlapTo: number;
+}
+
+/** One uncovered chainage range (non-blocking warning — gaps can be legitimate). */
+export interface StretchGap {
+  from: number;
+  to: number;
+}
+
+export interface StretchValidation {
+  /** Blocking errors: malformed rows (to ≤ from, negative, duplicate priority). */
+  errors: string[];
+  /** Blocking: genuine chainage overlaps between stretches. */
+  overlaps: StretchOverlap[];
+  /** Non-blocking: uncovered ranges within [rangeFrom, rangeTo]. */
+  gaps: StretchGap[];
+}
+
+const CH_EPS = 0.0005; // 0.5 m tolerance — touching boundaries are NOT overlaps
+
+/**
+ * Instruction 029 Part C — single source of truth for stretch gap/overlap
+ * validation, shared by the Auto-Sequence dialog (client) and the
+ * /auto-sequence + bar-save routes (server). Overlaps and malformed rows are
+ * blocking; gaps are warnings only.
+ */
+export function validateStretches(
+  stretches: Array<Pick<RoadStretchInput, "label" | "chainageFrom" | "chainageTo" | "priority">>,
+  rangeFrom?: number | null,
+  rangeTo?: number | null,
+): StretchValidation {
+  const errors: string[] = [];
+  const overlaps: StretchOverlap[] = [];
+  const gaps: StretchGap[] = [];
+  const labelOf = (s: { label?: string | null; priority: number }, i: number) =>
+    (s.label && s.label.trim()) || `Reach ${s.priority || i + 1}`;
+
+  stretches.forEach((s, i) => {
+    if (!Number.isFinite(s.chainageFrom) || !Number.isFinite(s.chainageTo)) {
+      errors.push(`${labelOf(s, i)}: chainage must be numeric`);
+    } else if (s.chainageTo - s.chainageFrom <= CH_EPS) {
+      errors.push(`${labelOf(s, i)}: chainage-to must be greater than chainage-from`);
+    } else if (s.chainageFrom < -CH_EPS) {
+      errors.push(`${labelOf(s, i)}: chainage cannot be negative`);
+    }
+    if (!Number.isFinite(s.priority) || s.priority < 1 || Math.floor(s.priority) !== s.priority) {
+      errors.push(`${labelOf(s, i)}: execution priority must be a whole number ≥ 1`);
+    }
+  });
+  const prios = stretches.map((s) => s.priority).filter((p) => Number.isFinite(p));
+  const dupPrio = prios.find((p, i) => prios.indexOf(p) !== i);
+  if (dupPrio !== undefined) errors.push(`Execution priority ${dupPrio} is used more than once`);
+
+  // Overlaps — strict interior intersection (touching boundaries allowed).
+  for (let i = 0; i < stretches.length; i++) {
+    for (let j = i + 1; j < stretches.length; j++) {
+      const a = stretches[i], b = stretches[j];
+      const from = Math.max(a.chainageFrom, b.chainageFrom);
+      const to = Math.min(a.chainageTo, b.chainageTo);
+      if (to - from > CH_EPS) {
+        overlaps.push({
+          aIndex: i, bIndex: j,
+          aLabel: labelOf(a, i), bLabel: labelOf(b, j),
+          overlapFrom: +from.toFixed(3), overlapTo: +to.toFixed(3),
+        });
+      }
+    }
+  }
+
+  // Gaps — only when a real range is known.
+  if (rangeFrom != null && rangeTo != null && rangeTo - rangeFrom > CH_EPS && stretches.length > 0) {
+    const sorted = [...stretches]
+      .filter((s) => Number.isFinite(s.chainageFrom) && Number.isFinite(s.chainageTo) && s.chainageTo > s.chainageFrom)
+      .sort((a, b) => a.chainageFrom - b.chainageFrom);
+    let cursor = rangeFrom;
+    for (const s of sorted) {
+      if (s.chainageFrom - cursor > CH_EPS) {
+        gaps.push({ from: +cursor.toFixed(3), to: +Math.min(s.chainageFrom, rangeTo).toFixed(3) });
+      }
+      cursor = Math.max(cursor, s.chainageTo);
+    }
+    if (rangeTo - cursor > CH_EPS) gaps.push({ from: +cursor.toFixed(3), to: +rangeTo.toFixed(3) });
+  }
+
+  return { errors, overlaps, gaps };
 }
 
 export interface SeqBar {
@@ -181,6 +299,10 @@ export interface SeqBar {
   isDurationOverride: boolean;
   /** Always "auto-sequence" so the route can safely replace only auto-generated bars */
   source: "auto-sequence";
+  /** Instruction 029 — execution priority for road-reach bars (1 = first).
+   *  Stored in work_program_bars.sequenceOrder. Undefined for structure/bridge
+   *  group bars (their sequencing is unchanged). */
+  sequenceOrder?: number;
 }
 
 // ─── Internal classify result ─────────────────────────────────────────────────
@@ -394,22 +516,59 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     source: "auto-sequence",
   });
 
-  for (let r = 0; r < fronts; r++) {
-    const chFrom = startCh + r * reachLen;
-    const chTo   = startCh + (r + 1) * reachLen;
-    const offset = r * stagger; // each reach/group starts `stagger` months later
+  // ── Road (pavement) fronts ────────────────────────────────────────────────
+  // Instruction 029: when real stretch rows are supplied, they drive chainage,
+  // quantity, and execution-priority order. Otherwise the legacy equal split of
+  // roadLengthKm by `fronts` applies (with default priority = chainage order).
+  const roadStretches: Array<{
+    label: string;
+    chainageFrom: number;
+    chainageTo: number;
+    priority: number;
+    manualQtyFraction: number | null;
+  }> =
+    opts.stretches && opts.stretches.length > 0
+      ? opts.stretches.map((s, i) => ({
+          label: (s.label && s.label.trim()) || (opts.stretches!.length > 1 ? `Reach ${s.priority}` : "Full Length"),
+          chainageFrom: s.chainageFrom,
+          chainageTo: s.chainageTo,
+          priority: Number.isFinite(s.priority) && s.priority >= 1 ? Math.floor(s.priority) : i + 1,
+          manualQtyFraction:
+            s.manualQtyFraction != null && s.manualQtyFraction > 0 ? Math.min(1, s.manualQtyFraction) : null,
+        }))
+      : Array.from({ length: fronts }, (_, r) => ({
+          label: fronts > 1 ? `Reach ${r + 1}` : "Full Length",
+          chainageFrom: startCh + r * reachLen,
+          chainageTo: startCh + (r + 1) * reachLen,
+          priority: r + 1, // default execution priority = chainage order
+          manualQtyFraction: null,
+        }));
 
-    // ── Road (pavement) front ──────────────────────────────────────────────────
-    // Items at the same stage start concurrently (same stageStart); the cursor
-    // only advances after each stage group using the MAX duration in that group.
-    const reachLabel = fronts > 1 ? `Reach ${r + 1}` : "Full Length";
+  // Mobilisation order follows EXECUTION PRIORITY, not chainage position:
+  // the priority-1 stretch gets stagger offset 0, priority-2 gets 1×stagger, …
+  const byPriority = [...roadStretches].sort((a, b) => a.priority - b.priority);
+  const totalRoadLen = opts.roadLengthKm > 0 ? opts.roadLengthKm : 0;
+
+  for (let rank = 0; rank < byPriority.length; rank++) {
+    const st = byPriority[rank];
+    const offset = rank * stagger; // priority rank drives the stagger, not chainage order
+    const stretchLen = Math.max(0, st.chainageTo - st.chainageFrom);
+    // Quantity share: manual fraction wins; else proportionate by length
+    // (identical to calculateStretchQty: boqQty × stretchLen / roadLen).
+    const share =
+      st.manualQtyFraction != null
+        ? st.manualQtyFraction
+        : totalRoadLen > 0
+          ? stretchLen / totalRoadLen
+          : 1 / byPriority.length;
+
     let pavCursor = offset;
     let prevPavStage = -1;
     let pavStageStart = offset;
     let pavStageDur = 0;
     for (const c of pav) {
-      const qty = c.it.totalQty / fronts;
-      const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
+      const qty = c.it.totalQty * share;
+      const dur = Math.max(0.1, c.it.fullDurationMonths * (totalRoadLen > 0 ? stretchLen / totalRoadLen : 1 / byPriority.length));
       if (c.stage !== prevPavStage) {
         // Close the previous stage group and advance cursor
         if (prevPavStage !== -1) pavCursor = pavStageStart + pavStageDur + lag;
@@ -417,11 +576,12 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
         pavStageDur = 0;
         prevPavStage = c.stage;
       }
-      bars.push(mkBar(c.it, reachLabel, chFrom, chTo, pavStageStart, pavStageStart + dur, qty));
+      const bar = mkBar(c.it, st.label, st.chainageFrom, st.chainageTo, pavStageStart, pavStageStart + dur, qty);
+      bar.sequenceOrder = st.priority; // Instruction 029 Part B — road-reach priority
+      bars.push(bar);
       pavStageDur = Math.max(pavStageDur, dur);
     }
     // "other" items are NOT scheduled here — they are returned in unclassifiedItemIds.
-
   }
 
   // ── Structure (culvert / drain) fronts ─────────────────────────────────────
