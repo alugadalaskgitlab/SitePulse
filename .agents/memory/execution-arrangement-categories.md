@@ -30,6 +30,12 @@ description: How the category registry, bituminous classifier, demand exclusion,
 - Proposed (draft/submitted/returned) bituminous arrangements have no demand effect but MUST still surface row context — route ORs the engine marker with a direct non-cancelled-arrangement check, because arrangementEffects only exist for effective statuses.
 - Component key for binder is `binder_bitumen` (not `binder`); 10/13.2mm aggregates map to `fine_aggregates` in the registry, so a `coarse_aggregates` responsibility can legitimately warn "no matching resource".
 
+## Route-level testing pattern (shortage-check via supertest)
+- `tests/bituminousShortageRoute028B.test.ts`: vi.mock storage with a Proxy defaulting every method to `[]` plus scenario-mutable fixtures; vi.mock server/auth keeping actual exports but stubbing requireAuth/optionalAuth to inject a fake admin; then `registerRoutes(createServer(app), app)` and hit the real handler. No DB needed if fixtures avoid `sourceExcavationBoqItemId` (cut-rows db.select is the only direct-db branch).
+- Simplest bituminous fixture: BOQ item with `layerConfig: { layerType: "bituminous", mixType: "DBM" }` and no templates — falls back to built-in IRC defaults; binder grade comes from the description (e.g. "VG-40").
+- **Earthwork legacy truth:** the route NEVER scales earthwork actionable — split fields (`arrangementOutsourcedQty/HlcQty`) are exposed for the UI, `actionableShortfall` stays physical, `procurementStatus` is `earthwork_arrangement_required` when mapping unresolved. Only bituminous rows get `arrangementCompanyFraction` scaling. Don't "fix" a test by expecting earthwork actionable = 0.
+- Valid earthwork arrangement types are `fully_outsourced_composite`, `vendor_material_delivered`, etc. (EARTHWORK_ARRANGEMENT_TYPES) with earthwork component keys (`material_source`, `excavation`, …) — not invented names.
+
 ## Pre-existing bug fixed en route
 `getArrangementProgress` filtered `dprs.status`, a column that never existed — dprs uses `is_superseded`/`is_deleted`/`is_cancelled`. Any future DPR aggregate SQL must use those flags.
 

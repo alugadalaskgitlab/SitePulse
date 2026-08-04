@@ -1,0 +1,263 @@
+Instruction 028B — Add Real Route-Level Regression Tests for Bituminous Procurement
+
+Purpose
+
+Add a small, real route-level regression test for the Batch 028A engine-to-API boundary.
+
+The functional fix is already present and verified:
+
+- calculateBomDemand correctly applies bituminous arrangement exclusions;
+- the shortage-check route reads arrangementWorkCategory;
+- company-retained fractions reach computeShortageRow;
+- mappingWarnings reach the API and Work Demand UI.
+
+The remaining gap is test coverage.
+
+Current bituminous tests exercise the demand engine and helper calculations, but they do not call the actual:
+
+GET /api/boq/projects/:id/shortage-check
+
+route.
+
+This correction must protect the real route serialization and scaling logic so the previous earthwork-only regression cannot return unnoticed.
+
+This is a tests-only or nearly tests-only task.
+
+DO NOT TOUCH OR REGRESS
+
+Do not modify unless absolutely required for testability:
+
+- calculateBomDemand logic;
+- computeShortageRow;
+- shortage quantities;
+- arrangementWorkCategory behaviour;
+- bituminous classifier;
+- earthwork classifier;
+- arrangement schema;
+- Procurement UI;
+- mapping-warning wording;
+- cache invalidation;
+- Shared Responsibility rejection;
+- Work Programme;
+- Auto Sequence;
+- DPR;
+- PI/IRN/GRN;
+- Stores;
+- Plant;
+- any Batch 029 work.
+
+PART A — TEST THE ACTUAL EXPRESS ROUTE
+
+1. Add a dedicated test file
+
+Create a focused test such as:
+
+tests/bituminousShortageRoute028B.test.ts
+
+Use the existing repo pattern from:
+
+tests/write-endpoints-auth.test.ts
+
+Specifically use:
+
+- Express;
+- createServer;
+- supertest;
+- registerRoutes;
+- controlled storage mocks;
+- actual registered GET route.
+
+Do not copy the route logic into the test.
+
+Do not reproduce the arrangement-category or company-fraction calculation manually inside the test.
+
+The request must pass through the real registered handler:
+
+GET /api/boq/projects/:id/shortage-check
+
+2. Mock only external dependencies and storage data
+
+Mock storage methods needed by the route, including realistic responses for:
+
+- BOQ project;
+- BOQ items with recipes;
+- Work Programme bars;
+- plant materials;
+- mix templates;
+- stock balances;
+- purchase indents;
+- internal requisitions;
+- material mappings;
+- execution arrangements;
+- programme-bar allocations;
+- any other required route dependency.
+
+Use the real:
+
+- calculateBomDemand;
+- shortage-check route code;
+- arrangementWorkCategory serialization;
+- computeShortageRow;
+- response construction.
+
+Do not mock calculateBomDemand or computeShortageRow.
+
+PART B — FULLY OUTSOURCED DBM ROUTE TEST
+
+3. Create a realistic DBM case
+
+Set up:
+
+- a bituminous DBM BOQ item;
+- a valid material recipe containing aggregates and binder;
+- a Work Programme bar;
+- an approved bituminous arrangement;
+- complete supply-and-lay or equivalent Agency responsibility;
+- full bar quantity allocated to the arrangement;
+- no company material responsibility.
+
+Call:
+
+GET /api/boq/projects/:projectId/shortage-check
+
+Expected response:
+
+- HTTP 200;
+- the row is recognised as bituminous arrangement context;
+- workCategory or equivalent generic category = bituminous;
+- physical/programmed demand remains represented;
+- arrangement agency/outsourced quantity is present;
+- arrangement company quantity is zero or correctly reduced;
+- companyActionableQty/actionableShortfall is zero for fully outsourced materials;
+- Procurement status/state indicates approved arrangement context;
+- the route does not return the original full actionable bitumen/aggregate shortfall.
+
+This test must fail if the route is changed back to:
+
+isEarthworkBulkRequirement-only gating.
+
+4. Assert the actual serialized response
+
+Assert fields coming from the live route response rather than helper outputs.
+
+At minimum inspect:
+
+- rows;
+- material name/type;
+- workCategory;
+- arrangementOutsourcedQty or generic agency quantity;
+- arrangementHlcQty or generic company quantity;
+- arrangementCompanyFraction, where exposed;
+- companyActionableQty;
+- actionableShortfall;
+- procurement status/state.
+
+Do not simply assert that calculateBomDemand returned the expected split.
+
+PART C — MAPPING-WARNING ROUTE TEST
+
+5. Create a missing-resource case
+
+Set up a bituminous arrangement where:
+
+- Paver or another execution component is assigned to Agency;
+- the loaded BOQ recipe contains no matching paver resource;
+- the arrangement is otherwise valid and approved.
+
+Call the real shortage-check route.
+
+Expected response:
+
+- HTTP 200;
+- top-level mappingWarnings contains the missing-resource warning;
+- the warning identifies the relevant BOQ item/component;
+- the affected row contains rowMappingWarnings where the route supports it;
+- no fictional paver demand is created;
+- the route does not claim a paver resource was excluded.
+
+6. Assert the safety wording/data meaning
+
+The exact UI text does not need to be snapshot-tested unless practical.
+
+But the response must prove:
+
+- responsibility is recorded;
+- no matching recipe resource was found;
+- nothing was excluded for that missing resource.
+
+PART D — EARTHWORK REGRESSION
+
+7. Add one compact earthwork route check
+
+Using the same real route test harness, confirm that an existing approved earthwork arrangement still returns:
+
+- earthwork arrangement context;
+- the existing company/agency split;
+- unchanged actionable shortage behaviour.
+
+This protects backward compatibility when the bituminous route marker is used.
+
+PART E — DRAFT STATUS SAFETY
+
+8. Optional but recommended compact case
+
+Add a submitted/draft bituminous arrangement.
+
+Expected:
+
+- arrangement context may appear;
+- demand is not excluded;
+- actionable shortage remains based on the current effective plan;
+- no approved company fraction is incorrectly applied.
+
+Keep this test small.
+
+PART F — TEST QUALITY
+
+9. No hand-copied route mirror
+
+The test must not contain a helper that reproduces logic such as:
+
+- isBituminousArrangedRow;
+- hasArrangementContext;
+- arrangementCompanyFraction;
+- route response mapping.
+
+Those must come from the actual route implementation.
+
+10. Real failure proof
+
+Temporarily demonstrate during development that the fully-outsourced DBM test fails when the route condition is reverted to earthwork-only.
+
+Do not commit the deliberate regression.
+
+Record in the completion note that this mutation was checked.
+
+11. Full suite
+
+Run:
+
+- the new route-level test;
+- Batch 028 tests;
+- existing shortage-check tests;
+- earthwork arrangement tests;
+- full Vitest suite.
+
+All must pass.
+
+Final requirement
+
+Do not mark 028B complete merely because another helper-level test was added.
+
+It is complete only when:
+
+1. Supertest calls the real registered shortage-check endpoint;
+2. the fully outsourced DBM response has zero company actionable shortfall;
+3. the test would fail under the former earthwork-only route gate;
+4. mappingWarnings are verified through the real route response;
+5. earthwork route behaviour remains unchanged;
+6. no production calculation was rewritten.
+
+After 028B passes
+
+Freeze Batch 028/028A/028B and proceed immediately to Instruction 029.
