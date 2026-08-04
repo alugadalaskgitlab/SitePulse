@@ -1470,6 +1470,11 @@ export interface IStorage {
   getArrangementProgrammeAllocationById(id: number): Promise<EarthworkArrangementProgrammeAllocation | undefined>;
   deleteArrangementProgrammeAllocation(id: number): Promise<boolean>;
   deleteEarthworkArrangement(id: number): Promise<boolean>;
+  // Instruction 030A: DPR progress ↔ programme-bar linkage
+  getSubmittedProgressLinkCounts(barIds: number[]): Promise<Map<number, number>>;
+  getProgressLinksForProject(boqProjectId: number): Promise<Array<{ programmeBarId: number; submittedCount: number; draftCount: number }>>;
+  markProgressLinksReviewRequired(programmeBarId: number): Promise<number[]>;
+  getReportedQtyByBar(barIds: number[]): Promise<Map<number, number>>;
   getArrangementProgress(arrangementId: number): Promise<{
     completedQty: number;
     recentDailyOutput: number;
@@ -2239,6 +2244,16 @@ export class DatabaseStorage implements IStorage {
             uom: p.uom,
             noSiteWork: (p as any).noSiteWork || false,
             noSiteWorkDescription: (p as any).noSiteWorkDescription,
+            boqItemId: (p as any).boqItemId ?? null,
+            earthworkArrangementId: (p as any).earthworkArrangementId ?? null,
+            // 030A: preserve programme linkage + geometry context on clone
+            programmeBarId: (p as any).programmeBarId ?? null,
+            linkReviewRequired: (p as any).linkReviewRequired ?? false,
+            chainageFromKm: (p as any).chainageFromKm ?? null,
+            chainageToKm: (p as any).chainageToKm ?? null,
+            quantitySource: (p as any).quantitySource ?? null,
+            chainageOverrideReason: (p as any).chainageOverrideReason ?? null,
+            lengthOverrideReason: (p as any).lengthOverrideReason ?? null,
           }))
         ).returning();
         for (let i = 0; i < insertedProgress.length; i++) {
@@ -22591,6 +22606,77 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWorkProgramBar(id: number): Promise<void> {
     await db.delete(workProgramBars).where(eq(workProgramBars.id, id));
+  }
+
+  // ── Instruction 030A: DPR progress ↔ programme-bar linkage ────────────────
+  // Count SUBMITTED (non-superseded, non-cancelled) DPR progress entries per
+  // bar — the deletion-protection check. Draft links don't block deletion but
+  // are reported separately by getProgressLinksForProject.
+  async getSubmittedProgressLinkCounts(barIds: number[]): Promise<Map<number, number>> {
+    if (barIds.length === 0) return new Map();
+    const rows = await db
+      .select({ barId: progressEntries.programmeBarId, cnt: sql<number>`count(*)::int` })
+      .from(progressEntries)
+      .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+      .where(and(
+        inArray(progressEntries.programmeBarId, barIds),
+        eq(dprs.dprStatus, "submitted"),
+        eq(dprs.isSuperseded, false),
+        eq(dprs.isCancelled, false),
+      ))
+      .groupBy(progressEntries.programmeBarId);
+    const map = new Map<number, number>();
+    for (const r of rows) if (r.barId != null) map.set(r.barId, Number(r.cnt));
+    return map;
+  }
+
+  async getProgressLinksForProject(boqProjectId: number): Promise<Array<{ programmeBarId: number; submittedCount: number; draftCount: number }>> {
+    const rows = await db
+      .select({
+        barId: progressEntries.programmeBarId,
+        submitted: sql<number>`count(*) filter (where ${dprs.dprStatus} = 'submitted' and ${dprs.isSuperseded} = false and ${dprs.isCancelled} = false)::int`,
+        draft: sql<number>`count(*) filter (where ${dprs.dprStatus} = 'draft')::int`,
+      })
+      .from(progressEntries)
+      .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+      .innerJoin(workProgramBars, eq(progressEntries.programmeBarId, workProgramBars.id))
+      .where(eq(workProgramBars.boqProjectId, boqProjectId))
+      .groupBy(progressEntries.programmeBarId);
+    return rows
+      .filter(r => r.barId != null)
+      .map(r => ({ programmeBarId: r.barId as number, submittedCount: Number(r.submitted), draftCount: Number(r.draft) }));
+  }
+
+  // Before an authorised exceptional bar deletion: mark linked entries
+  // "Programme Link Missing / Review Required". The FK's SET NULL then clears
+  // programmeBarId on delete — the progress rows themselves are never touched.
+  async markProgressLinksReviewRequired(programmeBarId: number): Promise<number[]> {
+    const rows = await db
+      .update(progressEntries)
+      .set({ linkReviewRequired: true })
+      .where(eq(progressEntries.programmeBarId, programmeBarId))
+      .returning({ id: progressEntries.id });
+    return rows.map(r => r.id);
+  }
+
+  // Sum of reported quantity per bar from submitted, current DPRs — used by
+  // the DPR bar selector to show "remaining reported quantity".
+  async getReportedQtyByBar(barIds: number[]): Promise<Map<number, number>> {
+    if (barIds.length === 0) return new Map();
+    const rows = await db
+      .select({ barId: progressEntries.programmeBarId, total: sql<number>`coalesce(sum(${progressEntries.quantity}), 0)` })
+      .from(progressEntries)
+      .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+      .where(and(
+        inArray(progressEntries.programmeBarId, barIds),
+        eq(dprs.dprStatus, "submitted"),
+        eq(dprs.isSuperseded, false),
+        eq(dprs.isCancelled, false),
+      ))
+      .groupBy(progressEntries.programmeBarId);
+    const map = new Map<number, number>();
+    for (const r of rows) if (r.barId != null) map.set(r.barId, Number(r.total));
+    return map;
   }
 
   async deleteStructureLocationBars(boqProjectId: number): Promise<number> {

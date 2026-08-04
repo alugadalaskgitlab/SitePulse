@@ -26,4 +26,5 @@
 - [Execution Arrangement Categories](execution-arrangement-categories.md) — registry-driven earthwork+bituminous arrangements; unmapped resources never excluded; dprs has no status column.
 - [Auto-Sequence Real Stretches](auto-sequence-stretches.md) — 029: shared validateStretches, sequenceOrder = execution priority, arrangement-linked bars reconciled in place (never cascade-deleted), two-phase dry-run confirm.
 - [Work Programme Read/Edit Mode](work-programme-read-edit-mode.md) — 029A: StretchRow read vs deliberate edit (no onBlur autosaves), one-editor guard, stable toolbar, per-project tab/scroll restore.
+- [Programme Bar↔DPR Linkage](programme-bar-dpr-linkage.md) — 030A: barSide.ts matrix, FK SET NULL + app-level 409 deletion guard, split keeps original bar's links, cloneDpr must copy linkage fields.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

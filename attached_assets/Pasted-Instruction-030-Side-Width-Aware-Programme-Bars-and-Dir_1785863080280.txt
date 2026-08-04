@@ -1,0 +1,165 @@
+Instruction 030 — Side/Width-Aware Programme Bars and Direct DPR Linkage (Revised, Staged as 030A + 030B)
+
+Purpose
+
+Connect Work Programme stretches and DPR progress at the same physical level: BOQ item, programme bar/reach, chainage from–to, side, planned width, executed width, thickness where relevant — so later reports can reliably answer where a BOQ item was executed, what's been completed in a stretch, planned/executed/remaining by side and chainage, and which DPR entries overlap or duplicate earlier work.
+
+This work is split into two controlled stages so each can be verified independently before the next begins:
+
+030A — programme geometry and live DPR linkage (the data model and entry flow).
+030B — validation engine and operational visibility (duplicate/overlap detection, legacy review, Work Programme display).
+
+Do not build the full Progress & Measurements/RA Bill reporting module in either stage — that remains Batch 031.
+
+PRELIMINARY — CURRENT CODE FACTS (verified against the live repo)
+
+work_program_bars already stores BOQ item, chainage from/to, reach label, sequenceOrder, planned quantity, planned dates. It has no side field and no width/thickness field today.
+progress_entries already captures BOQ item, chainage from/to, side, length, width, thickness, quantity. None of these are currently linked to a specific programme bar.
+The live DPR entry/edit form is client/src/pages/SiteEntry.tsx and client/src/pages/SiteEdit.tsx. client/src/components/DprForm.tsx and client/src/pages/NewDpr.tsx are dead code — not referenced by any route. Do not touch either file in this instruction.
+SiteEntry.tsx/SiteEdit.tsx already has a working BOQ-item picker per progress row. This instruction adds the next steps after it — reach/programme-bar selection and side — not a BOQ picker from scratch.
+A programmeBarId → work_program_bars.id foreign key pattern already exists on earthwork_arrangement_programme_allocations (Instruction 026). Follow only its naming convention. Do not copy its cascade behaviour — that table's ON DELETE CASCADE is appropriate for a planning-only link; it is not appropriate for DPR data, which is historical site record and must never be destroyed as a side effect of programme changes.
+boqItems.layerConfig.layerType already classifies items (bituminous | granular | spray_coat | earthwork | concrete | none) and is reachable from any bar via boqItemId — use it for geometry applicability rather than building a new classification.
+boqItems.layerConfig.thicknessMm is the BOQ/design reference thickness. It is a separate concept from the new bar-level planned thickness this instruction adds, and separate again from progress_entries.thickness (actual/reported). All three must remain independently readable and must never be silently synchronised or overwritten from one another.
+calculateBomDemand never reads progress_entries.side/width/thickness — those fields are display-only today. Adding programmeBarId and side-awareness to DPR is safe with respect to the demand engine; no demand-engine changes are needed or permitted.
+A chainage-overlap validator, validateStretches() in shared/programmeSequencer.ts, already exists for programme-stretch validation (built for Batch 029). A second, separate, simpler, non-side-aware check, hasChainageOverlap, still lives privately in client/src/pages/WorkProgramme.tsx. Both currently do their own chainage-interval math independently.
+Batch 029 introduced real stretches and independent execution priority. Batch 029A introduced clean read/edit mode, consolidated toolbar, and fixed navigation. Both must remain fully intact throughout 030A and 030B.
+
+CENTRAL RULE
+
+A DPR progress line must identify: WHAT was done, WHERE it was done, ON WHICH SIDE, AGAINST WHICH PLANNED PROGRAMME BAR. Free-text chainage alone is not sufficient.
+
+DO NOT TOUCH OR REGRESS (applies to both 030A and 030B)
+
+Do not modify: Batch 029 real-stretch Auto Sequence, sequenceOrder scheduling, gap/overlap regeneration validation, arrangement-safe resequencing; Batch 029A read/edit row model, toolbar consolidation, navigation/context restoration; Work Programme calendar axis; calculateStretchQty(); calculateBomDemand(); execution-arrangement demand exclusion; earthwork/bituminous classifiers; arrangement approval/revision workflow; structure-bar sequencing; PI/IRN/GRN; Stores; Plant production; Cancel GRN; baseline/reforecasting; RA certification/billing; existing submitted DPR history; DprForm.tsx/NewDpr.tsx (dead code — leave untouched). 030B must additionally not weaken or bypass anything 030A establishes (the FK's SET NULL behaviour, the deletion-protection check, the derived-length rule, the null-default side migration, the three-way thickness separation).
+
+STAGE 030A — Programme Geometry and Live DPR Linkage
+
+PART A — Programme bar side and geometry
+
+Add a stable side field to road/pavement programme bars: full_width, lhs, rhs, both_sides, median, shoulder_lhs, shoulder_rhs, service_road_lhs, service_road_rhs, other (UI labels: Full Width, LHS, RHS, Both Sides, Median, LHS Shoulder, RHS Shoulder, LHS Service Road, RHS Service Road, Other). Do not force structure/location bars to use road-side values. Migration must not assume. Existing bars are set to side = null (Unspecified) unless an existing record unambiguously proves the side — do not silently default them to Full Width. Null-side bars remain fully operational and simply show a "Side Review Required" indicator where side would otherwise be shown. Provide a PM/Admin bulk-confirmation tool to set existing bars to Full Width, LHS, RHS, or Both Sides in a reviewed batch action, not an automatic migration. New road bars created going forward should require an explicit side where side is applicable to the item's layer type.
+Add nullable planned geometry fields: plannedWidthM, plannedThicknessMm. Do not add plannedLengthM as an independently stored/editable value. Chainage length is derived (chainageTo − chainageFrom) at read time in the API/UI as calculatedLengthM, not persisted as its own editable column. Only add a separate, optional lengthOverrideM (with a mandatory reason) for the genuine case where physically measured length differs from straight chainage difference (e.g. a curve) — this is an explicit, reasoned exception, not the default path. Store thickness in one canonical unit internally (mm), display in familiar engineering units.
+Use boqItems.layerConfig.layerType to decide which geometry fields are relevant per item (bituminous/granular/spray_coat typically need width and thickness; earthwork may only need side; structures use location identity, not road-width geometry). Do not create unofficial dimensions when the BOQ/rate analysis doesn't contain them. Keep the three thickness concepts (BOQ design, bar planned, DPR actual) visibly and structurally separate per Preliminary #7 — never auto-sync one from another.
+
+PART B — Programme bar creation and editing
+
+Batch 029A edit mode must expose side, planned width, planned thickness where relevant. Read mode shows a compact summary, e.g. "Reach 1 · Ch. 1+900–3+800 · LHS · 5.50 m". Do not permanently show empty width/thickness labels.
+Batch 029 Auto Sequence should carry selected side and geometry into generated bars. Support one full-width bar, separate LHS/RHS bars, or combined both-sides planning. Do not automatically divide quantities by two merely because LHS/RHS is selected — the split must be explicit or derived from valid geometry/BOQ allocation.
+Allow authorised PM/Admin to split an existing road bar by side. Before applying, show original quantity, proposed LHS/RHS quantities, unallocated/overallocated difference, linked arrangements, linked DPR progress (once 030A's FK exists), and whether IDs can be preserved. Do not silently split a bar already linked to approved arrangements or submitted DPR progress — this must go through the same deletion-protection logic as Part C point 9.
+Where geometry is sufficient, offer a calculated quantity (SQM: length × width; CUM: length × width × thickness; MT: only via an already-configured density/conversion; spray coats: length × spray width) as a suggestion, never overwriting a valid manual planned quantity without confirmation. This suggested-quantity feature applies only to items whose layerType represents a genuinely constant cross-section (granular/bituminous/spray_coat layers) — do not offer it for earthwork/embankment/excavation items, where a flat length×width×height figure has no real geometric basis and would present false precision.
+Support both combined (both_sides/full_width, one bar) and separate (one LHS bar + one RHS bar) planning styles; the UI and DPR linkage must preserve the distinction.
+
+PART C — Direct DPR-to-programme link
+
+Add a nullable programmeBarId foreign key on progress_entries, following the naming convention of earthwork_arrangement_programme_allocations.programmeBarId but not its cascade behaviour. Use ON DELETE SET NULL. In addition to the DB-level constraint, the application must:
+block ordinary/destructive bar deletion (manual delete, and Auto-Sequence regeneration's delete path) when the bar has linked submitted DPR progress — extend the same protection pattern Batch 029 already built for arrangement-linked bars to also check progress_entries.programmeBarId linkage, with the same reconcile-in-place-or-block behaviour, not silent deletion;
+if an exceptional, explicitly authorised deletion happens anyway, allow the FK's SET NULL to clear programmeBarId, then mark the affected progress entry "Programme Link Missing / Review Required";
+write an audit record preserving the previous bar ID, the user, the time, and the reason for the exceptional deletion.
+Also expose the linked bar's reach label, execution priority, planned side, and planned chainage via the join — do not duplicate these into disconnected copy fields unless needed for a historical snapshot.
+Existing DPR progress entries must remain valid. Do not force historical entries to acquire a programmeBarId automatically unless the match is unambiguous (the full suggested-matching tool for legacy entries is built in 030B; 030A only needs to ensure the column is nullable and legacy rows are unaffected).
+In SiteEntry.tsx/SiteEdit.tsx, extend the existing per-row flow: after the existing BOQ-item picker, add planned reach/programme bar, side, actual chainage from/to, actual width, actual thickness where applicable, quantity, and quantity source (Calculated from geometry / Direct measured / Weighment-MT / Survey / Other). The programme-bar selector shows reach label, chainage, side, planned dates, planned quantity, remaining reported quantity where available, and execution status — not an unstructured list of IDs.
+For a selected BOQ item, filter available bars by same project/site, same BOQ item, active/not superseded, current or nearby programme period, compatible side, and chainage proximity where entered. Allow searching other bars for out-of-programme-sequence work — do not prohibit it.
+After selecting a programme bar, prefill reach, planned chainage range, planned side, planned width, planned thickness, UOM, and relevant arrangement reference (Part H). The user then enters the actual executed sub-range and actual dimensions. Do not automatically claim the entire programme bar was completed. Show the calculated-vs-entered quantity comparison (per Part B point 7's applicability rule) as an informational display in 030A — the threshold-based "reason required" enforcement itself is built in 030B.
+Store normalised numeric chainage on DPR progress in the same canonical unit already used by Work Programme. Support entry formats like 1.900, 1+900, Km 1+900; retain formatted display text, but sorting/filtering/range calculations use numeric values only. As in Part A point 2, do not persist an independent DPR "length" field — derive it from actual chainage from/to, with the same reasoned-override exception where genuinely needed.
+Do not remove legacy chainage text fields abruptly — preserve original values, parse/backfill only valid entries, flag unparseable legacy entries, use numeric fields for all new entries.
+Basic per-entry chainage validation (against the single selected bar, not cross-record): From/To required for linear work, To greater than From, actual range should normally lie within the selected programme bar's range, with an authorised override and mandatory reason for legitimate extensions. Structure/location work may use point chainage or location identity. (Cross-entry duplicate/overlap validation is 030B.)
+Planned LHS accepts DPR LHS; RHS blocked unless authorised reassignment. Planned RHS accepts DPR RHS. Planned Full Width may allow Full Width, LHS or RHS. Planned Both Sides requires DPR to identify LHS/RHS/full-width execution clearly. Do not treat LHS and RHS as the same physical work. DPR must never default silently to Both/Full Width where the selected bar is side-specific — show the programme side clearly near the input.
+For DBM/BC in MT: allow actual weighment quantity, retain chainage/side/width as physical-location data, do not derive MT from geometry unless an approved density/conversion exists.
+
+PART D — Arrangement context
+
+Where a programme bar has an approved execution arrangement, show it in the DPR, link the progress entry to it where current schema/workflow supports it, and identify executing agency/company responsibility. Do not alter arrangement approval or demand exclusion. Capture or derive work executed by Company/Agency/Client-supplied where relevant — do not infer the executing party solely from the user who entered the DPR.
+
+PART E — Draft/reopen persistence
+
+Preserve existing draft behaviour — a partially completed DPR may save as Draft even where closing chainage/final quantity/final readings aren't yet known. On reopening: preserve selected programme bar, reach, and side; allow actual chainage/quantity completion. (Submit-time overlap re-validation and cross-DPR checks are wired in 030B once the validation engine exists; 030A's Submit gate uses only the basic per-entry checks in Part C point 16.)
+
+PART F — API validation (030A scope)
+
+Server must validate, for 030A's scope: programme bar belongs to the same project, BOQ item matches, side compatibility, basic chainage validity against the selected bar, and programme bar active/not superseded. Do not rely on UI-only validation. (Duplicate/overlap status and override-permission validation for cross-record conflicts are 030B.)
+Site Engineer: select programme bar, enter actual chainage/side/dimensions, save draft, submit complete DPR. Project Manager: approve overrides, correct programme-bar linkage per existing DPR edit rules. Admin/Owner: controlled corrections with audit, including the exceptional-deletion path in Part C point 9. Do not create designation templates. (Legacy-linking and ambiguous-match permissions are 030B.)
+
+030A — Acceptance tests
+
+A. LHS bar (GSB, Ch. 0.000–1.000, LHS, width 5.5m) receives a DPR entry (Ch. 0.000–0.500, LHS, width 5.5m) — links to the correct bar, quantity calculated/saved correctly, RHS unaffected.
+
+B. Two bars share chainage but different sides — the DPR selector shows both distinctly with side labelled; selecting one links only to that bar.
+
+D. Submit a DPR progress entry — programmeBarId saved, survives refresh/reopen, and the linked bar's reach/side/priority are correctly shown alongside it.
+
+E. DPR chainage (0.900–1.500) outside a selected bar's range (1.000–2.000) — warning/block with clear reason; authorised override possible with audit.
+
+J. DBM programme bar in MT — actual MT enterable from weighment, chainage/side/width retained, no unofficial MT conversion.
+
+L. Approved outsourced bar — DPR shows executing agency, progress links correctly, arrangement demand logic unchanged.
+
+N. Deletion protection: submit a DPR entry linked to a bar, then attempt ordinary deletion/regeneration of that bar — deletion is blocked or the bar is reconciled in place, exactly as for arrangement-linked bars; the DPR entry's programmeBarId is untouched. Then perform an authorised exceptional deletion — confirm programmeBarId is set to null (not the row deleted), the entry is marked "Programme Link Missing / Review Required," and an audit record captures the previous bar ID, user, time, and reason.
+
+O. Legacy-side migration: confirm existing bars show side = null/"Side Review Required" rather than being silently stamped Full Width; confirm the bulk-confirmation tool lets PM/Admin set them explicitly; confirm bars remain fully operational (schedulable, editable) while unspecified.
+
+P. Length derivation: confirm no independently stored plannedLengthM exists — changing chainage from/to changes the displayed calculated length automatically; confirm a lengthOverrideM can only be set with a reason and is clearly distinguished from the calculated value in the UI.
+
+Q. Regression: calculateBomDemand, calculateStretchQty, Batch 029 sequencing/regeneration protection, and Batch 029A's read/edit mode and navigation all unchanged.
+
+STAGE 030B — Validation Engine and Operational Visibility
+
+Preliminary for 030B: 030A has landed; programmeBarId exists on progress_entries with SET NULL behaviour and deletion protection; side/geometry exist on bars; the DPR entry flow captures side/width/thickness/quantity source.
+
+PART G — Shared chainage/interval primitives
+
+Create one shared module (e.g. shared/chainageInterval.ts) containing the primitive, reusable functions: chainage parsing and normalisation, interval overlap calculation, overlap range, containment, equality, gap detection, and side-compatibility checks. These are pure functions with no domain-specific business rules.
+Refactor validateStretches() in shared/programmeSequencer.ts to use these shared primitives internally, preserving its existing behaviour and all Batch 029 tests.
+Remove the private hasChainageOverlap logic from client/src/pages/WorkProgramme.tsx entirely and replace it with a call into the shared primitives (via validateStretches or the primitives directly) — there must be exactly one chainage-interval implementation in the codebase, not two.
+Create a separate, dedicated validateDprProgressOverlap() (or equivalent) for DPR-specific duplicate/overlap rules — BOQ item, programme bar, side, lift/layer, width/lane, DPR status, rework/correction flags, and prior-DPR references — built on the same shared primitives from point 23, but kept as its own domain validator, distinct from validateStretches(). Programme-stretch validation and DPR duplicate validation are different domains sharing one interval engine, not one merged validator.
+
+PART H — DPR duplicate and overlap warnings
+
+When saving a DPR progress line, compare against existing non-cancelled/non-superseded entries using validateDprProgressOverlap(): project, BOQ item, programme bar where available, chainage overlap, side, layer/work type, width/lane where applicable. Example: "Possible duplicate progress: GSB, LHS, Ch. 2+300–2+400 was already reported in DPR-104 dated 05 Aug."
+Block exact/near-exact duplicates unless an authorised override is used. Warn-but-allow-with-reason where chainage overlaps but width/lane differs, rework/rectification occurred, work was performed in another layer/lift, the earlier entry was provisional, or quantity was corrected. Do not add quantities blindly.
+Where the same BOQ item may be executed in multiple lifts/layers, capture lift/layer number or label, thickness, and remarks. Do not mark legitimate separate lifts as duplicates.
+Warn when cumulative DPR-reported quantity exceeds programme-bar planned quantity, side-specific planned quantity, or BOQ balance. Do not auto-block valid over-execution, but require reason/approval per existing permissions.
+Enforce the calculated-vs-entered quantity threshold rule deferred from 030A Part C point 13: require remarks only when the difference exceeds a configurable/material threshold.
+Re-run validateDprProgressOverlap() on Submit (not just on save), and allow multiple DPRs for the same site/day by different engineers/sections — overlap detection must compare across those DPRs, not just within one.
+
+PART I — Legacy linking tool
+
+Provide a PM/Admin review list for legacy/unlinked DPR progress entries: DPR number/date, BOQ item, entered chainage, side, quantity, suggested programme bar, match confidence, Link/Review/Leave Unlinked.
+Suggested-match rules (using the shared primitives): same project, same BOQ item, numeric chainage containment/overlap, side compatibility, date within or near planned period. Never auto-link where multiple bars are equally plausible.
+Audit: previous programmeBarId, new programmeBarId, linked by, linked at, reason/confirmation, automatic-suggestion basis. This also covers entries marked "Programme Link Missing / Review Required" by 030A's exceptional-deletion path — they should appear in this same review list.
+
+PART J — Work Programme display
+
+Show a compact actual-progress summary on the Work Programme row (Reported X / Planned Y, percentage, latest DPR date, side-aware quantity where relevant), consistent with 029A's clean read mode — no multiple permanent pills.
+Clicking the progress summary may open a lightweight detail panel of contributing DPR entries. Do not build the full Batch 031 report here.
+A programme bar is not automatically Complete merely because reported quantity reaches planned quantity. Keep DPR Reported, Verified, and Certified separate. Completion logic may use existing workflow rules only.
+
+PART K — API validation completion
+
+Extend server validation to also cover: duplicate/overlap status, override permission/reason, and legacy-link confirmation — using the same validateDprProgressOverlap() used client-side. Do not rely on UI-only validation. Project Manager permissions extend to: link legacy progress, resolve ambiguous matches. Admin/Owner: controlled corrections with audit.
+
+030B — Acceptance tests
+
+C. A full-width bar receives separate LHS and RHS DPR entries — both contribute, each retains side, cumulative total correct, no false duplicate across sides.
+
+F. Two identical DPR entries (same item/bar/side/chainage/layer) — second blocked or requires controlled duplicate override.
+
+G. Same item/chainage, one LHS one RHS — not treated as duplicate.
+
+H. Same earthwork chainage/side, different lift — allowed, lift identity retained.
+
+I. Calculated quantity differs materially from entered — difference shown, manual value preserved, reason required above the configured threshold.
+
+K. Legacy DPR entry with no programmeBarId — remains visible, gets a suggested match only where unambiguous, no silent wrong link; an entry marked "Programme Link Missing / Review Required" by 030A's exceptional-deletion path also appears here correctly.
+
+M. Regression: confirm unchanged — Batch 029 sequenceOrder, gap/overlap regeneration checks, arrangement-safe resequencing; 029A read/edit mode, toolbar, navigation; Gantt calendar; execution arrangements; Procurement; BOM demand; DPR Draft/Submit; PI/IRN/GRN; Stores; structure sequencing; all of 030A's acceptance tests still pass. Tests must exercise real production routes and storage functions — not isolated helper arrays.
+
+R. Consolidation check: confirm shared/chainageInterval.ts (or equivalent) exists and is the sole interval-math implementation; confirm validateStretches() and WorkProgramme.tsx both consume it; confirm WorkProgramme.tsx no longer contains a private overlap implementation; confirm validateDprProgressOverlap() is a separate function from validateStretches(), not a merged one.
+
+PART L — Live proof (030B, covers both stages)
+
+Using one real road project: create one GSB LHS bar, one GSB RHS bar, one Prime Coat full-width/both-sides bar, one DBM MT bar. Enter DPR progress for each via SiteEntry.tsx/SiteEdit.tsx. Demonstrate programme-bar selection, chainage/side prefill, actual geometry, calculated/manual quantity with threshold-based reason, duplicate warning, layer/lift handling, legacy-entry review, programme-row reported progress, refresh persistence, arrangement context, the deletion-protection/exceptional-deletion path, and no impact on Procurement or scheduling.
+
+Final requirement
+
+030A is complete only when: (1) programme bars store side (null-default for legacy, explicit for new) and planned geometry with no independently-stored length field; (2) DPR progress stores programmeBarId with ON DELETE SET NULL and real deletion protection, not cascade; (3) numeric chainage is used for new progress; (4) basic side compatibility and per-entry chainage containment are enforced; (5) actual width/thickness and quantity source are captured, with the three thickness concepts kept distinct; (6) arrangement context is shown; (7) all changes are in SiteEntry.tsx/SiteEdit.tsx, not the dead DPR files.
+
+030B is complete only when: (8) one shared chainage/interval primitives module exists and is the sole implementation, consumed by both validateStretches() and WorkProgramme.tsx; (9) validateDprProgressOverlap() exists as a separate DPR-domain validator; (10) duplicate/overlap/lift/quantity-threshold warnings work across DPRs; (11) legacy entries (including those affected by exceptional bar deletion) are safe and reviewable; (12) Work Programme shows compact linked DPR progress; (13) all of 030A remains intact; (14) real production-route/storage tests prove all of the above.

@@ -108,6 +108,27 @@ export const progressEntries = pgTable("progress_entries", {
   boqItemId: integer("boq_item_id"),
   // Optional link to an earthwork arrangement for progress tracking (Instruction 024)
   earthworkArrangementId: integer("earthwork_arrangement_id"),
+  // ── Instruction 030A: direct DPR → programme-bar linkage ─────────────────
+  // Naming follows earthwork_arrangement_programme_allocations.programmeBarId,
+  // but deliberately NOT its cascade: DPR progress is historical site record —
+  // ON DELETE SET NULL, never destroyed as a side effect of programme changes.
+  // App-level deletion protection blocks ordinary bar deletion when submitted
+  // DPR progress is linked; an authorised exceptional deletion clears this to
+  // null and sets linkReviewRequired below.
+  programmeBarId: integer("programme_bar_id").references(() => workProgramBars.id, { onDelete: "set null" }),
+  // "Programme Link Missing / Review Required" — set when an exceptional
+  // authorised bar deletion severed the link (030A Part C point 9).
+  linkReviewRequired: boolean("link_review_required").default(false),
+  // Normalised numeric chainage (km) — canonical for sorting/filter/range math.
+  // Legacy text chainageFrom/chainageTo above are preserved for display.
+  chainageFromKm: real("chainage_from_km"),
+  chainageToKm: real("chainage_to_km"),
+  // How the reported quantity was determined.
+  quantitySource: text("quantity_source"), // calculated | measured | weighment_mt | survey | other
+  // Reasoned exceptions (030A): actual range outside the bar's planned range,
+  // or physically measured length differing from chainage difference.
+  chainageOverrideReason: text("chainage_override_reason"),
+  lengthOverrideReason: text("length_override_reason"),
 });
 
 // Structure DPR Items (for workType = "structure")
@@ -2642,6 +2663,21 @@ export const workProgramBars = pgTable("work_program_bars", {
   durationSource: text("duration_source"),           // 'imported' | 'productivity' | 'default' — how duration was derived
   needsReview: boolean("needs_review").default(false), // true when a default (non-productivity) duration was used
   scheduled: boolean("scheduled").default(true),     // false = imported without a valid date, not yet placed on the programme
+  // ── Instruction 030A: side + planned geometry ────────────────────────────
+  // side: null = Unspecified (legacy bars — "Side Review Required"; never
+  // silently defaulted). New road bars should set an explicit BAR_SIDES value.
+  // Structure/location bars are not forced to use road-side values.
+  side: text("side"),                                // null | BarSide (see BAR_SIDES below)
+  plannedWidthM: real("planned_width_m"),            // planned executed width (m), nullable
+  // Bar-level PLANNED thickness — a separate concept from boqItems.layerConfig
+  // .thicknessMm (BOQ design reference) and progress_entries.thickness (actual
+  // reported). The three are never auto-synchronised (030A Preliminary #7).
+  plannedThicknessMm: real("planned_thickness_mm"),
+  // Length is DERIVED (chainageTo − chainageFrom) at read time — never stored.
+  // lengthOverrideM is the explicit, reasoned exception (e.g. measured curve
+  // length differs from straight chainage difference). Reason is mandatory.
+  lengthOverrideM: real("length_override_m"),
+  lengthOverrideReason: text("length_override_reason"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("work_program_bars_project_idx").on(t.boqProjectId),

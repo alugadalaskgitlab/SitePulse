@@ -191,6 +191,10 @@ export interface RoadStretchInput {
   /** Optional manual quantity share (fraction of each item's total qty, 0..1).
    *  null/undefined → proportionate calculateStretchQty default. */
   manualQtyFraction?: number | null;
+  /** Instruction 030A — optional side for the stretch (full_width | lhs | rhs |
+   *  both_sides | …). Carried onto every road bar generated for this stretch.
+   *  null/undefined = unspecified ("Side Review Required"). */
+  side?: string | null;
 }
 
 /** One genuine chainage overlap between two stretches (blocking). */
@@ -526,6 +530,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     chainageTo: number;
     priority: number;
     manualQtyFraction: number | null;
+    side: string | null;
   }> =
     opts.stretches && opts.stretches.length > 0
       ? opts.stretches.map((s, i) => ({
@@ -535,6 +540,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
           priority: Number.isFinite(s.priority) && s.priority >= 1 ? Math.floor(s.priority) : i + 1,
           manualQtyFraction:
             s.manualQtyFraction != null && s.manualQtyFraction > 0 ? Math.min(1, s.manualQtyFraction) : null,
+          side: s.side ?? null, // 030A — never default to Full Width silently
         }))
       : Array.from({ length: fronts }, (_, r) => ({
           label: fronts > 1 ? `Reach ${r + 1}` : "Full Length",
@@ -542,6 +548,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
           chainageTo: startCh + (r + 1) * reachLen,
           priority: r + 1, // default execution priority = chainage order
           manualQtyFraction: null,
+          side: null,
         }));
 
   // Mobilisation order follows EXECUTION PRIORITY, not chainage position:
@@ -578,6 +585,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
       }
       const bar = mkBar(c.it, st.label, st.chainageFrom, st.chainageTo, pavStageStart, pavStageStart + dur, qty);
       bar.sequenceOrder = st.priority; // Instruction 029 Part B — road-reach priority
+      (bar as any).side = st.side;     // Instruction 030A — stretch side carried onto every road bar
       bars.push(bar);
       pavStageDur = Math.max(pavStageDur, dur);
     }

@@ -38,6 +38,7 @@ import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } fro
 import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupSessionFromCookie, loadUserPermissionsMatrix } from "./auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
 import { insertAttachmentSchema, attachmentModuleTypes } from "@shared/schema";
+import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm } from "@shared/barSide";
 import {
   registerAuthRoutes,
   assertAdmin,
@@ -1290,11 +1291,80 @@ export async function registerRoutes(
     res.json({ ...dpr, progress: enrichedProgress });
   });
 
+  // ── Instruction 030A Part F: server-side validation of DPR → programme-bar
+  // links. Never rely on UI-only validation. Checks, per progress entry with a
+  // programmeBarId: bar exists + belongs to the DPR's BOQ project, BOQ item
+  // matches, side compatibility (planned LHS ⇒ DPR LHS, etc.), basic chainage
+  // validity against the selected bar (containment unless a reasoned override),
+  // and bar active/not superseded. Returns an error string or null.
+  async function validateProgressProgrammeLinks(input: any): Promise<string | null> {
+    const progress: any[] = Array.isArray(input?.progress) ? input.progress : [];
+    const linked = progress.filter(p => p?.programmeBarId != null && !p?.noSiteWork);
+    if (linked.length === 0) return null;
+    const dprProjectId = input?.boqProjectId != null ? Number(input.boqProjectId) : null;
+    for (const p of linked) {
+      const bar = await storage.getWorkProgramBar?.(Number(p.programmeBarId));
+      if (!bar) return `Progress entry "${p.activity ?? ""}": selected programme bar no longer exists`;
+      if (dprProjectId != null && (bar as any).boqProjectId !== dprProjectId) {
+        return `Progress entry "${p.activity ?? ""}": programme bar belongs to a different BOQ project`;
+      }
+      if ((bar as any).scheduled === false) {
+        return `Progress entry "${p.activity ?? ""}": programme bar is not an active scheduled bar`;
+      }
+      if (p.boqItemId != null && (bar as any).boqItemId !== Number(p.boqItemId)) {
+        return `Progress entry "${p.activity ?? ""}": BOQ item does not match the selected programme bar`;
+      }
+      // Side compatibility (030A Part C point 17). DPR side values arrive as
+      // display labels ("LHS") or keys ("lhs") — normalise before checking.
+      const dprSideRaw = (p.side ?? "").toString().trim();
+      const dprSideKey = dprSideRaw
+        ? (isBarSide(dprSideRaw) ? dprSideRaw
+          : dprSideRaw.toLowerCase() === "lhs" ? "lhs"
+          : dprSideRaw.toLowerCase() === "rhs" ? "rhs"
+          : /full/i.test(dprSideRaw) ? "full_width"
+          : /both/i.test(dprSideRaw) ? "both_sides"
+          : dprSideRaw.toLowerCase().replace(/\s+/g, "_"))
+        : null;
+      const plannedSide = (bar as any).side ?? null;
+      if (plannedSide) {
+        if (!dprSideKey) {
+          return `Progress entry "${p.activity ?? ""}": the selected bar is planned ${barSideLabel(plannedSide)} — the DPR entry must state the executed side explicitly`;
+        }
+        if (!isDprSideCompatible(plannedSide, dprSideKey)) {
+          return `Progress entry "${p.activity ?? ""}": executed side ${barSideLabel(dprSideKey)} is not compatible with the bar's planned side ${barSideLabel(plannedSide)}`;
+        }
+      }
+      // Basic chainage validity for linear work against the selected bar.
+      const isPointWork = (bar as any).planningMode === "structure_location";
+      const fromKm = p.chainageFromKm != null ? Number(p.chainageFromKm) : parseChainageKm(p.chainageFrom);
+      const toKm = p.chainageToKm != null ? Number(p.chainageToKm) : parseChainageKm(p.chainageTo);
+      if (!isPointWork) {
+        if (fromKm == null || toKm == null) {
+          return `Progress entry "${p.activity ?? ""}": chainage From and To are required for linear work against a programme bar`;
+        }
+        if (!(toKm > fromKm)) {
+          return `Progress entry "${p.activity ?? ""}": chainage To must be greater than From`;
+        }
+        const barFrom = (bar as any).chainageFrom, barTo = (bar as any).chainageTo;
+        if (barFrom != null && barTo != null) {
+          const outside = fromKm < barFrom - 1e-6 || toKm > barTo + 1e-6;
+          if (outside && !(p.chainageOverrideReason ?? "").toString().trim()) {
+            return `Progress entry "${p.activity ?? ""}": actual range Km ${fromKm}–${toKm} lies outside the bar's planned range Km ${barFrom}–${barTo}. Enter an override reason to record a legitimate extension.`;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   // Create new DPR (draft or submitted)
   app.post(api.dprs.create.path, async (req, res) => {
     try {
       if (!assertCreate(req, res, "site_dprs")) return;
       const input = api.dprs.create.input.parse(req.body);
+      // 030A Part F: validate programme-bar links server-side
+      const linkError = await validateProgressProgrammeLinks(input);
+      if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const dpr = await storage.createDpr(input, input.clientTimestamp);
       const isDraft = (input as any).dprStatus === "draft";
       if (!isDraft) {
@@ -1328,6 +1398,8 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied for this site" });
       }
       const input = createDprRequestSchema.parse(req.body);
+      const linkError = await validateProgressProgrammeLinks(input);
+      if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const updated = await storage.updateDraftDpr(id, input);
       if (!updated) return res.status(404).json({ message: "DPR not found or not a draft" });
       res.json(updated);
@@ -1351,6 +1423,8 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied for this site" });
       }
       const input = createDprRequestSchema.parse(req.body);
+      const linkError = await validateProgressProgrammeLinks(input);
+      if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const clientTimestamp = (req.body as any).clientTimestamp;
       const submitted = await storage.submitDraftDpr(id, input, clientTimestamp);
       if (!submitted) return res.status(404).json({ message: "DPR not found or not a draft" });
@@ -1529,6 +1603,9 @@ export async function registerRoutes(
       }
 
       const input = versionSchema.parse(req.body);
+      // 030A Part F: programme-bar link validation applies to edits too.
+      const linkError = await validateProgressProgrammeLinks(input.data);
+      if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const editedBy = input.editedBy || "engineer";
 
       if (editedBy === "engineer") {
@@ -11046,7 +11123,18 @@ export async function registerRoutes(
 
   app.patch("/api/boq/programme/bars/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "boq_projects")) return;
       const barId = parseInt(req.params.id);
+      // 030A invariant: a manual length override always carries a reason.
+      if (req.body?.lengthOverrideM != null && !(req.body?.lengthOverrideReason ?? "").toString().trim()) {
+        const existing = (await storage.getWorkProgramBar?.(barId)) ?? null;
+        if (!(existing as any)?.lengthOverrideReason) {
+          return res.status(400).json({
+            error: "LENGTH_OVERRIDE_REASON_REQUIRED",
+            message: "Overriding the chainage-derived length requires a reason (e.g. curved alignment, service road).",
+          });
+        }
+      }
       // Instruction 029 Part C: chainage edits are validated against sibling
       // stretches of the same BOQ item — genuine overlap blocks the save.
       if (req.body?.chainageFrom !== undefined || req.body?.chainageTo !== undefined) {
@@ -11073,13 +11161,240 @@ export async function registerRoutes(
     }
   });
 
+  // ── Instruction 030A Part C point 8-10: deletion protection ────────────────
+  // Ordinary deletion is BLOCKED when the bar has linked submitted DPR progress
+  // (same reconcile-or-block philosophy Batch 029 built for arrangement-linked
+  // bars). An authorised exceptional deletion (?force=true + reason, PM/Admin)
+  // marks the affected entries "Programme Link Missing / Review Required",
+  // lets the FK's SET NULL clear programmeBarId, and writes an audit record.
   app.delete("/api/boq/programme/bars/:id", async (req, res) => {
     try {
-      await storage.deleteWorkProgramBar(parseInt(req.params.id));
+      // Ordinary bar deletion is part of programme editing; the exceptional
+      // DPR-linked path below additionally demands delete/cancel authority.
+      if (!assertEdit(req, res, "boq_projects")) return;
+      const barId = parseInt(req.params.id);
+      const linkCounts = await storage.getSubmittedProgressLinkCounts([barId]);
+      const linkedCount = linkCounts.get(barId) ?? 0;
+      if (linkedCount > 0) {
+        const force = req.query.force === "true" || req.body?.force === true;
+        const reason = (req.body?.reason ?? req.query.reason ?? "").toString().trim();
+        if (!force) {
+          return res.status(409).json({
+            error: "DPR_PROGRESS_LINKED",
+            linkedProgressCount: linkedCount,
+            message: `This bar has ${linkedCount} submitted DPR progress entr${linkedCount === 1 ? "y" : "ies"} linked to it. Ordinary deletion is blocked — reconcile the programme instead, or use an authorised exceptional deletion with a reason.`,
+          });
+        }
+        // Exceptional path requires delete permission on the BOQ section + reason.
+        if (!assertDeleteOrCancel(req, res, "boq_projects")) return;
+        if (!reason) {
+          return res.status(400).json({ error: "REASON_REQUIRED", message: "An exceptional deletion of a DPR-linked bar requires a reason." });
+        }
+        const bar = await storage.getWorkProgramBar?.(barId);
+        const affectedIds = await storage.markProgressLinksReviewRequired(barId);
+        await storage.deleteWorkProgramBar(barId); // FK ON DELETE SET NULL clears programmeBarId
+        await storage.logAudit({
+          module: "work_programme",
+          transactionId: barId,
+          action: "delete",
+          userId: (req as any).authUser?.id ?? null,
+          userName: currentUserName(req) ?? "unknown",
+          userRole: (req as any).authUser?.isAdmin ? "admin" : ((req as any).authUser?.role ?? null),
+          oldValues: bar ? { previousBarId: barId, reachLabel: (bar as any).reachLabel, chainageFrom: (bar as any).chainageFrom, chainageTo: (bar as any).chainageTo, side: (bar as any).side, boqItemId: (bar as any).boqItemId } : { previousBarId: barId },
+          newValues: { affectedProgressEntryIds: affectedIds, markedReviewRequired: affectedIds.length },
+          reason,
+        });
+        return res.json({ ok: true, exceptional: true, affectedProgressEntryIds: affectedIds });
+      }
+      await storage.deleteWorkProgramBar(barId);
       res.json({ ok: true });
     } catch (err) {
       console.error("DELETE /api/boq/programme/bars/:id:", err);
       res.status(500).json({ error: "Failed to delete bar" });
+    }
+  });
+
+  // ── Instruction 030A Part A point 1: PM/Admin bulk side confirmation ──────
+  // Reviewed batch action to set existing null-side bars to an explicit side.
+  // Never an automatic migration — the user picks the bars and the side.
+  app.post("/api/boq/projects/:id/programme/bulk-side", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "boq_projects")) return;
+      const boqProjectId = parseInt(req.params.id);
+      const side = req.body?.side;
+      const barIds: number[] = Array.isArray(req.body?.barIds)
+        ? (req.body.barIds as any[]).map(Number).filter(Number.isFinite)
+        : [];
+      if (!isBarSide(side) || !["full_width", "lhs", "rhs", "both_sides"].includes(side)) {
+        return res.status(400).json({ error: "INVALID_SIDE", message: "Bulk confirmation supports Full Width, LHS, RHS or Both Sides." });
+      }
+      if (barIds.length === 0) return res.status(400).json({ error: "NO_BARS", message: "Select at least one bar." });
+      const bars = await storage.getWorkProgramBars(boqProjectId);
+      const eligible = new Set(bars.filter(b => barIds.includes(b.id)).map(b => b.id));
+      let updated = 0;
+      for (const id of barIds) {
+        if (!eligible.has(id)) continue; // never touch bars of another project
+        await storage.updateWorkProgramBar(id, { side } as any);
+        updated++;
+      }
+      await storage.logAudit({
+        module: "work_programme",
+        transactionId: boqProjectId,
+        action: "edit",
+        userId: (req as any).authUser?.id ?? null,
+        userName: currentUserName(req) ?? "unknown",
+        userRole: (req as any).authUser?.isAdmin ? "admin" : ((req as any).authUser?.role ?? null),
+        newValues: { bulkSide: side, barIds: barIds.filter(id => eligible.has(id)) },
+        reason: "030A bulk side confirmation",
+      });
+      res.json({ updated });
+    } catch (err) {
+      console.error("POST bulk-side:", err);
+      res.status(500).json({ error: "Failed to set bar sides" });
+    }
+  });
+
+  // ── Instruction 030A Part B point 7: split a bar by side (PM/Admin) ────────
+  // preview=true returns the proposed quantity allocation plus linked
+  // arrangements / DPR progress so the user confirms with full context.
+  // Commit TRANSFORMS the original bar in place into the first side (its id —
+  // and therefore every arrangement allocation and DPR progress link — is
+  // preserved; nothing is deleted) and inserts the remaining sides as new bars.
+  app.post("/api/boq/programme/bars/:id/split-by-side", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "boq_projects")) return;
+      const barId = parseInt(req.params.id);
+      const bar = await storage.getWorkProgramBar?.(barId);
+      if (!bar) return res.status(404).json({ error: "Bar not found" });
+      const parts: Array<{ side: string; qtyShare?: number }> = Array.isArray(req.body?.parts) ? req.body.parts : [];
+      if (parts.length < 2) return res.status(400).json({ error: "At least two side parts are required to split" });
+      for (const p of parts) {
+        if (!isBarSide(p.side)) return res.status(400).json({ error: `Invalid side "${p.side}"` });
+      }
+      // Quantity allocation: explicit shares must sum to 1; default = equal split.
+      const explicit = parts.every(p => p.qtyShare != null && Number(p.qtyShare) > 0);
+      const shares = explicit ? parts.map(p => Number(p.qtyShare)) : parts.map(() => 1 / parts.length);
+      const shareSum = shares.reduce((a, b) => a + b, 0);
+      if (explicit && Math.abs(shareSum - 1) > 0.001) {
+        return res.status(400).json({ error: "QTY_SHARES_INVALID", message: `Quantity shares must sum to 100% (got ${(shareSum * 100).toFixed(1)}%)` });
+      }
+      const totalQty = Number((bar as any).plannedQty ?? 0);
+      const allocation = parts.map((p, i) => ({ side: p.side, qty: +(totalQty * shares[i] / shareSum * (explicit ? 1 : 1)).toFixed(3) }));
+
+      const [linkCounts, allocRows] = await Promise.all([
+        storage.getSubmittedProgressLinkCounts([barId]),
+        storage.getActiveAllocationsForBar(barId),
+      ]);
+      const context = {
+        linkedDprProgressCount: linkCounts.get(barId) ?? 0,
+        linkedArrangementIds: Array.from(new Set((allocRows as any[]).map(a => a.arrangementId))),
+      };
+      if (req.body?.preview === true) {
+        return res.json({ preview: true, allocation, ...context, note: "The original bar becomes the first side (all arrangement and DPR links stay on it); the remaining sides are created as new bars." });
+      }
+      // Commit: in-place transform + inserts.
+      const first = allocation[0];
+      await storage.updateWorkProgramBar(barId, { side: first.side, plannedQty: first.qty } as any);
+      const createdBars: any[] = [];
+      for (const part of allocation.slice(1)) {
+        const nb = await storage.upsertWorkProgramBar({
+          boqProjectId: (bar as any).boqProjectId,
+          boqItemId: (bar as any).boqItemId,
+          reachLabel: (bar as any).reachLabel,
+          chainageFrom: (bar as any).chainageFrom,
+          chainageTo: (bar as any).chainageTo,
+          startMonth: (bar as any).startMonth,
+          endMonth: (bar as any).endMonth,
+          plannedQty: part.qty,
+          source: "manual",
+          side: part.side,
+          plannedWidthM: (bar as any).plannedWidthM ?? null,
+          plannedThicknessMm: (bar as any).plannedThicknessMm ?? null,
+          ...(((bar as any).sequenceOrder != null) ? { sequenceOrder: (bar as any).sequenceOrder } : {}),
+        } as any);
+        createdBars.push(nb);
+      }
+      await storage.logAudit({
+        module: "work_programme",
+        transactionId: barId,
+        action: "edit",
+        userId: (req as any).authUser?.id ?? null,
+        userName: currentUserName(req) ?? "unknown",
+        userRole: (req as any).authUser?.isAdmin ? "admin" : ((req as any).authUser?.role ?? null),
+        oldValues: { side: (bar as any).side ?? null, plannedQty: totalQty },
+        newValues: { splitInto: allocation, newBarIds: createdBars.map(b => b.id) },
+        reason: "030A split bar by side",
+      });
+      res.json({ ok: true, allocation, updatedBarId: barId, newBarIds: createdBars.map(b => b.id), ...context });
+    } catch (err) {
+      console.error("POST split-by-side:", err);
+      res.status(500).json({ error: "Failed to split bar" });
+    }
+  });
+
+  // ── Instruction 030A Part C point 12-13: programme bars for the DPR picker ──
+  // Returns bars for a BOQ item with reach/side/dates/planned qty, reported
+  // quantity so far, remaining, arrangement context (Part D), and execution
+  // status inputs — a structured selector, not a list of IDs.
+  app.get("/api/dpr/programme-bars", async (req, res) => {
+    try {
+      if (!assertView(req, res, "site_dprs")) return;
+      const boqProjectId = parseInt(String(req.query.projectId));
+      const boqItemId = parseInt(String(req.query.boqItemId));
+      if (!Number.isFinite(boqProjectId) || !Number.isFinite(boqItemId)) {
+        return res.status(400).json({ error: "projectId and boqItemId are required" });
+      }
+      const allBars = await storage.getWorkProgramBars(boqProjectId);
+      const itemBars = allBars.filter(b => b.boqItemId === boqItemId && (b as any).scheduled !== false);
+      const barIds = itemBars.map(b => b.id);
+      const [reported, allocRows] = await Promise.all([
+        storage.getReportedQtyByBar(barIds),
+        storage.getArrangementProgrammeAllocationsForProject(boqProjectId),
+      ]);
+      // Approved arrangement context per bar (Part D) — executing agency shown,
+      // never inferred from the DPR author.
+      const arrangementByBar = new Map<number, any>();
+      for (const al of allocRows as any[]) {
+        if (al.arrangementStatus === "approved" && barIds.includes(al.programmeBarId)) {
+          arrangementByBar.set(al.programmeBarId, al);
+        }
+      }
+      const arrIds = Array.from(new Set(Array.from(arrangementByBar.values()).map((a: any) => a.arrangementId)));
+      const arrangements = await Promise.all(arrIds.map(id => storage.getEarthworkArrangementById(id)));
+      const arrById = new Map(arrangements.filter(Boolean).map(a => [a!.id, a!]));
+      res.json(itemBars.map(b => {
+        const alloc = arrangementByBar.get(b.id);
+        const arr = alloc ? arrById.get(alloc.arrangementId) : null;
+        const reportedQty = reported.get(b.id) ?? 0;
+        return {
+          id: b.id,
+          reachLabel: (b as any).reachLabel,
+          chainageFrom: (b as any).chainageFrom,
+          chainageTo: (b as any).chainageTo,
+          side: (b as any).side ?? null,
+          plannedWidthM: (b as any).plannedWidthM ?? null,
+          plannedThicknessMm: (b as any).plannedThicknessMm ?? null,
+          lengthOverrideM: (b as any).lengthOverrideM ?? null,
+          calculatedLengthM: ((b as any).chainageFrom != null && (b as any).chainageTo != null)
+            ? Math.max(0, ((b as any).chainageTo - (b as any).chainageFrom)) * 1000
+            : null,
+          startDate: (b as any).startDate,
+          endDate: (b as any).endDate,
+          sequenceOrder: (b as any).sequenceOrder ?? null,
+          plannedQty: b.plannedQty,
+          reportedQty,
+          remainingQty: Math.max(0, b.plannedQty - reportedQty),
+          unit: (b as any).canonicalUnit ?? (b as any).unit ?? null,
+          arrangement: arr ? {
+            id: arr.id,
+            mode: (arr as any).arrangementType ?? (arr as any).mode ?? null,
+            agency: (arr as any).agencyName ?? (arr as any).partyName ?? null,
+          } : null,
+        };
+      }));
+    } catch (err) {
+      console.error("GET /api/dpr/programme-bars:", err);
+      res.status(500).json({ error: "Failed to load programme bars" });
     }
   });
 
@@ -11156,8 +11471,14 @@ export async function registerRoutes(
         }
       }
 
+      // 030A: never delete a bar with linked submitted DPR progress — even in a
+      // bulk cleanup. Report them instead of silently destroying the linkage.
+      const cleanLinkCounts = await storage.getSubmittedProgressLinkCounts(toDelete.map(b => b.id));
+      const blockedByDpr = toDelete.filter(b => (cleanLinkCounts.get(b.id) ?? 0) > 0);
+      const deletable = toDelete.filter(b => (cleanLinkCounts.get(b.id) ?? 0) === 0);
+
       let deleted = 0;
-      for (const b of toDelete) {
+      for (const b of deletable) {
         await storage.deleteWorkProgramBar(b.id);
         deleted++;
       }
@@ -11167,10 +11488,14 @@ export async function registerRoutes(
       if (needsConfirmation.length) {
         messageParts.push(`${needsConfirmation.length} manually-created bar(s) on structure items need confirmation before deletion`);
       }
+      if (blockedByDpr.length) {
+        messageParts.push(`${blockedByDpr.length} bar(s) kept — linked submitted DPR progress`);
+      }
 
       res.json({
         deleted,
         needsConfirmation,
+        blockedByDpr: blockedByDpr.map(b => ({ id: b.id, reachLabel: b.reachLabel, linkedProgress: cleanLinkCounts.get(b.id) ?? 0 })),
         message: messageParts.join("; "),
       });
     } catch (err) {
@@ -14076,6 +14401,8 @@ export async function registerRoutes(
             manualQtyFraction: s?.manualQtyFraction != null && Number(s.manualQtyFraction) > 0
               ? Math.min(1, Number(s.manualQtyFraction))
               : null,
+            // 030A — optional per-stretch side, validated; invalid values → null
+            side: isBarSide(s?.side) ? s.side : null,
           }))
         : null;
       let stretchGaps: Array<{ from: number; to: number }> = [];
@@ -14238,8 +14565,9 @@ export async function registerRoutes(
       // ── Instruction 029 Part D: regeneration PLAN (computed for dry-run AND real run) ──
       // Never silently destroy bars linked to real work: allocation rows cascade-delete
       // with their bar, so linked bars are reconciled in place (id preserved) or blocked.
-      // (DPR/progress entries reference boqItemId/earthworkArrangementId, never a bar id,
-      // so arrangement allocations are the only bar-level linkage to protect.)
+      // Instruction 030A extends the same protection to DPR progress entries that
+      // reference a bar via progress_entries.programmeBarId — those bars are also
+      // reconciled in place or blocked, never silently deleted.
       const AUTO_MATCH = (b: any) =>
         b.source === "auto-sequence"
         || !b.source                                            // null = column not yet populated
@@ -14251,6 +14579,14 @@ export async function registerRoutes(
         if (!allocsByBarId.has(al.programmeBarId)) allocsByBarId.set(al.programmeBarId, []);
         allocsByBarId.get(al.programmeBarId)!.push(al);
       }
+      // 030A: DPR-linked bars (any submitted or draft progress link) are protected too.
+      const regenProgressLinks = await storage.getProgressLinksForProject(projectId);
+      const dprLinksByBarId = new Map<number, { submittedCount: number; draftCount: number }>();
+      for (const pl of regenProgressLinks) {
+        if (pl.submittedCount > 0 || pl.draftCount > 0) {
+          dprLinksByBarId.set(pl.programmeBarId, { submittedCount: pl.submittedCount, draftCount: pl.draftCount });
+        }
+      }
       const chOverlap = (a: any, b: any) => {
         const af = Number(a.chainageFrom), at = Number(a.chainageTo);
         const bf = Number(b.chainageFrom), bt = Number(b.chainageTo);
@@ -14258,12 +14594,14 @@ export async function registerRoutes(
         return Math.max(0, Math.min(at, bt) - Math.max(af, bf));
       };
       const reconcilePlan: Array<{ barId: number; newBarIdx: number; reachLabel: string | null }> = [];
-      const blockedBars: Array<{ barId: number; boqItemId: number; reachLabel: string | null; arrangementIds: number[] }> = [];
+      const blockedBars: Array<{ barId: number; boqItemId: number; reachLabel: string | null; arrangementIds: number[]; dprProgressCount?: number }> = [];
       {
         const consumed = new Set<number>();
         for (const b of regenAutoBars) {
           const linkedAllocs = allocsByBarId.get(b.id);
-          if (!linkedAllocs || linkedAllocs.length === 0) continue; // unprotected — normal delete path
+          const dprLink = dprLinksByBarId.get(b.id);
+          const isProtected = (linkedAllocs && linkedAllocs.length > 0) || !!dprLink;
+          if (!isProtected) continue; // unprotected — normal delete path
           let bestIdx = -1, bestOv = 0;
           bars.forEach((nb, idx) => {
             if (consumed.has(idx) || nb.boqItemId !== b.boqItemId) return;
@@ -14278,7 +14616,8 @@ export async function registerRoutes(
               barId: b.id,
               boqItemId: b.boqItemId,
               reachLabel: b.reachLabel ?? null,
-              arrangementIds: Array.from(new Set(linkedAllocs.map((al: any) => al.arrangementId))),
+              arrangementIds: Array.from(new Set((linkedAllocs ?? []).map((al: any) => al.arrangementId))),
+              ...(dprLink ? { dprProgressCount: dprLink.submittedCount + dprLink.draftCount } : {}),
             });
           }
         }
@@ -14369,6 +14708,9 @@ export async function registerRoutes(
           isDurationOverride: nb.isDurationOverride,
           source: "auto-sequence",
           ...(nb.sequenceOrder != null ? { sequenceOrder: nb.sequenceOrder } : {}),
+          // 030A: carry the stretch side onto reconciled bars — but never wipe an
+          // explicitly-set side back to null just because the stretch omitted it.
+          ...((nb as any).side != null ? { side: (nb as any).side } : {}),
         } as any);
       }
       // 2. Delete only unprotected matched bars (blocked bars stay untouched).

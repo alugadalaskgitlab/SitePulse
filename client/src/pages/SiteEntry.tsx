@@ -37,6 +37,8 @@ import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
+import { barSideLabel, isDprSideCompatible, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
+import { ProgrammeBarPicker } from "@/components/ProgrammeBarPicker";
 import { calculateBomDemand, fmtQty, type BomInputItem, type BomInputBar, type BomDemand } from "@shared/planningEngine";
 
 interface ProgressEntry {
@@ -53,6 +55,10 @@ interface ProgressEntry {
   noSiteWorkDescription: string;
   personnelIds: number[];
   boqItemId: number | null;
+  // 030A: direct programme-bar linkage
+  programmeBarId: number | null;
+  quantitySource: string;
+  chainageOverrideReason: string;
 }
 
 interface EquipmentEntry {
@@ -152,6 +158,10 @@ type ProgrammeBar = {
   structureId: string | null;
   structureLocType: string | null;
   boqSubItem: string | null;
+  // 030A geometry
+  side: string | null;
+  plannedWidthM: number | null;
+  plannedThicknessMm: number | null;
 };
 
 type PlanVsActualRow = {
@@ -761,7 +771,7 @@ export default function SiteEntry() {
   }, [attachPersonnelToTarget, toast]);
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }
+    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "" }
   ]);
 
   const [openPlantMap, setOpenPlantMap] = useState<Record<number, any>>({});
@@ -928,7 +938,7 @@ export default function SiteEntry() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour' | 'materials') => {
     if (section === 'progress') {
-      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }]);
+      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "" }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }]);
     } else if (section === 'labour') {
@@ -977,7 +987,12 @@ export default function SiteEntry() {
         return {
           ...p,
           length: effectiveLength,
-          quantity: p.quantity || calculateQuantity(p)
+          quantity: p.quantity || calculateQuantity(p),
+          // 030A: numeric chainage (Km) alongside the display text
+          chainageFromKm: parseChainageKm(p.chainageFrom),
+          chainageToKm: parseChainageKm(p.chainageTo),
+          quantitySource: p.quantitySource || null,
+          chainageOverrideReason: p.chainageOverrideReason || null,
         };
       });
 
@@ -1104,7 +1119,15 @@ export default function SiteEntry() {
     mutationFn: async () => {
       const progressWithCalc = progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
-        return { ...p, length: effectiveLength, quantity: p.quantity || calculateQuantity(p) };
+        return {
+          ...p,
+          length: effectiveLength,
+          quantity: p.quantity || calculateQuantity(p),
+          chainageFromKm: parseChainageKm(p.chainageFrom),
+          chainageToKm: parseChainageKm(p.chainageTo),
+          quantitySource: p.quantitySource || null,
+          chainageOverrideReason: p.chainageOverrideReason || null,
+        };
       });
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       const normalizedEquipment = equipment.map(eq => ({
@@ -1751,31 +1774,75 @@ export default function SiteEntry() {
                         }}
                       />
                     ) : null}
-                    {siteBoqItems.length > 0 && entry.boqItemId != null && (activeRoadBarsByItem.get(entry.boqItemId)?.length ?? 0) > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {activeRoadBarsByItem.get(entry.boqItemId)!.map((bar) => (
-                          <Button
-                            key={bar.id}
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-6 text-xs px-2"
-                            onClick={() => {
-                              const updated = [...progress];
-                              if (bar.chainageFrom != null) updated[idx].chainageFrom = String(bar.chainageFrom);
-                              if (bar.chainageTo != null) updated[idx].chainageTo = String(bar.chainageTo);
-                              const calc = calculateLengthFromChainage(updated[idx].chainageFrom, updated[idx].chainageTo);
-                              if (calc !== null) updated[idx].length = calc;
-                              updated[idx].quantity = calculateQuantity(updated[idx]);
-                              setProgress(updated);
-                            }}
-                            data-testid={`button-prefill-bar-${bar.id}`}
-                          >
-                            Use {bar.reachLabel || `Ch ${bar.chainageFrom ?? "?"}–${bar.chainageTo ?? "?"}`}
-                          </Button>
-                        ))}
-                      </div>
+                    {siteBoqItems.length > 0 && entry.boqItemId != null && siteBoqProjectId != null && (
+                      <ProgrammeBarPicker
+                        projectId={siteBoqProjectId}
+                        boqItemId={entry.boqItemId}
+                        dprDate={header.date}
+                        value={entry.programmeBarId}
+                        testidPrefix={`progress-${idx}`}
+                        onSelect={(bar) => {
+                          const updated = [...progress];
+                          if (!bar) {
+                            updated[idx].programmeBarId = null;
+                            setProgress(updated);
+                            return;
+                          }
+                          updated[idx].programmeBarId = bar.id;
+                          if (bar.chainageFrom != null && !updated[idx].chainageFrom) updated[idx].chainageFrom = String(bar.chainageFrom);
+                          if (bar.chainageTo != null && !updated[idx].chainageTo) updated[idx].chainageTo = String(bar.chainageTo);
+                          // Prefill side from the bar's planned side when the row has none yet
+                          if (!updated[idx].side && bar.side) {
+                            if (bar.side === "lhs") updated[idx].side = "LHS";
+                            else if (bar.side === "rhs") updated[idx].side = "RHS";
+                            else if (bar.side === "full_width") updated[idx].side = "Full Width";
+                          }
+                          if (updated[idx].width == null && bar.plannedWidthM != null) updated[idx].width = Number(bar.plannedWidthM);
+                          const calc = calculateLengthFromChainage(updated[idx].chainageFrom, updated[idx].chainageTo);
+                          if (calc !== null) updated[idx].length = calc;
+                          updated[idx].quantity = calculateQuantity(updated[idx]);
+                          setProgress(updated);
+                        }}
+                      />
                     )}
+                    {/* 030A: live link feedback — side compatibility + chainage containment */}
+                    {entry.programmeBarId != null && (() => {
+                      const bar = programmeBars.find(b => b.id === entry.programmeBarId);
+                      if (!bar) return null;
+                      const sideKey = entry.side === "LHS" ? "lhs" : entry.side === "RHS" ? "rhs" : entry.side === "Full Width" ? "full_width" : null;
+                      const sideOk = isDprSideCompatible(bar.side as any, sideKey as any);
+                      const fromKm = parseChainageKm(entry.chainageFrom);
+                      const toKm = parseChainageKm(entry.chainageTo);
+                      const outOfRange = fromKm != null && toKm != null && bar.chainageFrom != null && bar.chainageTo != null
+                        && (fromKm < Number(bar.chainageFrom) - 1e-9 || toKm > Number(bar.chainageTo) + 1e-9);
+                      return (
+                        <div className="mt-1 space-y-1">
+                          {!sideOk && (
+                            <p className="text-[11px] text-red-600 font-medium" data-testid={`warn-side-incompatible-${idx}`}>
+                              Side "{entry.side || "—"}" doesn't match the bar's planned side ({barSideLabel(bar.side as any)}). Fix the side or link a different bar — submit will be blocked.
+                            </p>
+                          )}
+                          {outOfRange && (
+                            <div className="space-y-0.5">
+                              <p className="text-[11px] text-amber-700 font-medium" data-testid={`warn-chainage-range-${idx}`}>
+                                Chainage {fromKm}–{toKm} is outside the bar's range ({bar.chainageFrom}–{bar.chainageTo}). Give a reason to proceed:
+                              </p>
+                              <Input
+                                placeholder="Reason for working outside the planned stretch"
+                                value={entry.chainageOverrideReason}
+                                onChange={(e) => {
+                                  const updated = [...progress];
+                                  updated[idx].chainageOverrideReason = e.target.value;
+                                  setProgress(updated);
+                                }}
+                                className="h-7 text-xs"
+                                data-testid={`input-chainage-override-${idx}`}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {siteBoqItems.length > 0 && entry.boqItemId != null && hasRoadProgramme && (activeRoadBarsByItem.get(entry.boqItemId)?.length ?? 0) === 0 && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 mt-1" data-testid={`badge-unplanned-progress-${idx}`}>
                         <AlertTriangle className="w-3 h-3" /> Unplanned DPR entry — no active programme for {header.date}
@@ -1967,6 +2034,37 @@ export default function SiteEntry() {
                       }}
                       data-testid={`input-progress-qty-${idx}`}
                     />
+                    {/* 030A: quantity source + calculated-vs-entered info (no enforcement) */}
+                    {entry.programmeBarId != null && (
+                      <>
+                        <Select
+                          value={entry.quantitySource || undefined}
+                          onValueChange={(val) => {
+                            const updated = [...progress];
+                            updated[idx].quantitySource = val;
+                            setProgress(updated);
+                          }}
+                        >
+                          <SelectTrigger className="h-7 mt-1 text-xs" data-testid={`select-qty-source-${idx}`}>
+                            <SelectValue placeholder="Qty source" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {QUANTITY_SOURCES.map(qs => (
+                              <SelectItem key={qs} value={qs}>{QUANTITY_SOURCE_LABELS[qs]}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {(() => {
+                          const calc = calculateQuantity(entry);
+                          if (calc == null || entry.quantity == null || Math.abs(calc - entry.quantity) < Math.max(0.005, calc * 0.001)) return null;
+                          return (
+                            <p className="text-[10px] text-muted-foreground mt-0.5" data-testid={`text-calc-vs-entered-${idx}`}>
+                              Calculated {calc.toFixed(3)} vs entered {entry.quantity} (info only)
+                            </p>
+                          );
+                        })()}
+                      </>
+                    )}
                   </div>
                 </div>
               )}

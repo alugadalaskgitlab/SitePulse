@@ -22,6 +22,8 @@ import { useDpr } from "@/hooks/use-dprs";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
+import { parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
+import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
 
 interface ProgressEntry {
   activity: string;
@@ -37,6 +39,10 @@ interface ProgressEntry {
   noSiteWorkDescription: string;
   personnelIds: number[];
   boqItemId: number | null;
+  // 030A: direct programme-bar linkage
+  programmeBarId: number | null;
+  quantitySource: string;
+  chainageOverrideReason: string;
 }
 
 interface EquipmentEntry {
@@ -176,8 +182,11 @@ function mapDprToFormState(dpr: any) {
         noSiteWorkDescription: p.noSiteWorkDescription || "",
         personnelIds: p.personnelIds || [],
         boqItemId: p.boqItemId ?? null,
+        programmeBarId: p.programmeBarId ?? null,
+        quantitySource: p.quantitySource || "",
+        chainageOverrideReason: p.chainageOverrideReason || "",
       }))
-    : [{ activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }];
+    : [{ activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "" }];
 
   const equipment: EquipmentEntry[] = dpr.equipment?.length
     ? dpr.equipment.map((e: any) => ({
@@ -377,7 +386,7 @@ export default function SiteEdit() {
   });
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }
+    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "" }
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
@@ -545,7 +554,7 @@ export default function SiteEdit() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour') => {
     if (section === 'progress') {
-      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }]);
+      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "" }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }]);
     } else if (section === 'labour') {
@@ -607,7 +616,16 @@ export default function SiteEdit() {
     structureItems: workType === "structure" ? structureItems.filter(s => s.itemOfWork) : [],
     progress: workType === "road" ? progress.filter(p => p.activity).map(p => {
       const effectiveLength = getEffectiveLength(p);
-      return { ...p, length: effectiveLength, quantity: calculateQuantity(p) || p.quantity };
+      return {
+        ...p,
+        length: effectiveLength,
+        quantity: calculateQuantity(p) || p.quantity,
+        // 030A: numeric chainage (Km) alongside the display text
+        chainageFromKm: parseChainageKm(p.chainageFrom),
+        chainageToKm: parseChainageKm(p.chainageTo),
+        quantitySource: p.quantitySource || null,
+        chainageOverrideReason: p.chainageOverrideReason || null,
+      };
     }) : [],
     equipment: equipment.filter(e => e.machine).map(eq => ({
       ...eq,
@@ -1190,6 +1208,60 @@ export default function SiteEdit() {
                         )}
                       </div>
                     )}
+                    {/* 030A: programme-bar linkage (parity with SiteEntry) */}
+                    {siteBoqItems.length > 0 && entry.boqItemId != null && siteBoqProjectId != null && (
+                      <ProgrammeBarPicker
+                        projectId={siteBoqProjectId}
+                        boqItemId={entry.boqItemId}
+                        dprDate={header.date}
+                        value={entry.programmeBarId}
+                        testidPrefix={`progress-${idx}`}
+                        onSelect={(bar) => {
+                          const updated = [...progress];
+                          if (!bar) {
+                            updated[idx].programmeBarId = null;
+                            setProgress(updated);
+                            return;
+                          }
+                          updated[idx].programmeBarId = bar.id;
+                          if (bar.chainageFrom != null && !updated[idx].chainageFrom) updated[idx].chainageFrom = String(bar.chainageFrom);
+                          if (bar.chainageTo != null && !updated[idx].chainageTo) updated[idx].chainageTo = String(bar.chainageTo);
+                          if (!updated[idx].side && bar.side) {
+                            if (bar.side === "lhs") updated[idx].side = "LHS";
+                            else if (bar.side === "rhs") updated[idx].side = "RHS";
+                            else if (bar.side === "full_width") updated[idx].side = "Full Width";
+                          }
+                          if (updated[idx].width == null && bar.plannedWidthM != null) updated[idx].width = Number(bar.plannedWidthM);
+                          const calc = calculateLengthFromChainage(updated[idx].chainageFrom, updated[idx].chainageTo);
+                          if (calc !== null) updated[idx].length = calc;
+                          updated[idx].quantity = calculateQuantity(updated[idx]);
+                          setProgress(updated);
+                        }}
+                      />
+                    )}
+                    {entry.programmeBarId != null && (() => {
+                      const sideKey = entry.side === "LHS" ? "lhs" : entry.side === "RHS" ? "rhs" : entry.side === "Full Width" ? "full_width" : null;
+                      const fromKm = parseChainageKm(entry.chainageFrom);
+                      const toKm = parseChainageKm(entry.chainageTo);
+                      return (
+                        <BarLinkFeedback
+                          projectId={siteBoqProjectId}
+                          boqItemId={entry.boqItemId}
+                          programmeBarId={entry.programmeBarId}
+                          sideKey={sideKey}
+                          sideLabel={entry.side}
+                          fromKm={fromKm}
+                          toKm={toKm}
+                          overrideReason={entry.chainageOverrideReason}
+                          onOverrideReason={(v) => {
+                            const updated = [...progress];
+                            updated[idx].chainageOverrideReason = v;
+                            setProgress(updated);
+                          }}
+                          testidPrefix={`progress-${idx}`}
+                        />
+                      );
+                    })()}
                   </div>
                   <div>
                     <Label className="text-sm">Side</Label>
@@ -1330,6 +1402,26 @@ export default function SiteEdit() {
                       }}
                       data-testid={`input-qty-${idx}`}
                     />
+                    {/* 030A: quantity source when linked to a programme bar */}
+                    {entry.programmeBarId != null && (
+                      <Select
+                        value={entry.quantitySource || undefined}
+                        onValueChange={(val) => {
+                          const updated = [...progress];
+                          updated[idx].quantitySource = val;
+                          setProgress(updated);
+                        }}
+                      >
+                        <SelectTrigger className="h-7 mt-1 text-xs" data-testid={`select-qty-source-${idx}`}>
+                          <SelectValue placeholder="Qty source" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {QUANTITY_SOURCES.map(qs => (
+                            <SelectItem key={qs} value={qs}>{QUANTITY_SOURCE_LABELS[qs]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 </div>
               )}

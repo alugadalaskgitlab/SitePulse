@@ -52,6 +52,7 @@ import {
 import { BarArrangementPanel } from "@/components/BarArrangementPanel";
 import { ExecutionStateBadge, useBarExecutionState } from "@/components/ExecutionStateBadge";
 import { SEQUENCE_RULES, validateStretches, type RoadStretchInput } from "@shared/programmeSequencer";
+import { BAR_SIDES, BAR_SIDE_LABELS, barSideLabel, geometryApplicability } from "@shared/barSide";
 import { isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
 import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { shortItemName } from "@/lib/itemName";
@@ -220,6 +221,12 @@ function StretchRow({
   // 029A: execution priority (Batch 029 sequenceOrder) editable in edit mode.
   const [prio, setPrio] = useState(() =>
     (bar as any).sequenceOrder != null ? String((bar as any).sequenceOrder) : "");
+  // 030A: side + planned geometry (edit-mode local state). "" = Unspecified.
+  const [sideVal, setSideVal] = useState<string>(() => (bar as any).side ?? "");
+  const [widthStr, setWidthStr] = useState<string>(() =>
+    (bar as any).plannedWidthM != null ? String((bar as any).plannedWidthM) : "");
+  const [thickStr, setThickStr] = useState<string>(() =>
+    (bar as any).plannedThicknessMm != null ? String((bar as any).plannedThicknessMm) : "");
 
   // Structure-aware mode: for bridge/CD/culvert items, qty is entered directly per location.
   const isStructure = isStructureOrLocationScheduledItem(item as any, {
@@ -246,7 +253,17 @@ function StretchRow({
     }
     if (isStructure) setStructQtyStr(bar.plannedQty > 0 ? String(bar.plannedQty) : "");
     setPrio((bar as any).sequenceOrder != null ? String((bar as any).sequenceOrder) : "");
-  }, [bar.chainageFrom, bar.chainageTo, bar.startMonth, bar.endMonth, bar.durationMode, bar.plannedQty, (bar as any).sequenceOrder]);
+    setSideVal((bar as any).side ?? "");
+    setWidthStr((bar as any).plannedWidthM != null ? String((bar as any).plannedWidthM) : "");
+    setThickStr((bar as any).plannedThicknessMm != null ? String((bar as any).plannedThicknessMm) : "");
+  }, [bar.chainageFrom, bar.chainageTo, bar.startMonth, bar.endMonth, bar.durationMode, bar.plannedQty, (bar as any).sequenceOrder, (bar as any).side, (bar as any).plannedWidthM, (bar as any).plannedThicknessMm]);
+
+  // 030A: which geometry fields are relevant to this bar's layer type.
+  // Structure/location bars use location identity — no road-side geometry.
+  const geomApp = useMemo(() => {
+    if (isStructure) return { side: false, width: false, thickness: false, suggestQty: false };
+    return geometryApplicability((item.layerConfig as LayerConfig | null)?.layerType ?? null);
+  }, [isStructure, item.layerConfig]);
 
   const cfNum = parseFloat(cf);
   const ctNum = parseFloat(ct);
@@ -270,6 +287,25 @@ function StretchRow({
 
   // Default multiplier (boqQty/roadLen) for display hint
   const defaultRate = roadLen > 0 ? boqQty / roadLen : null;
+
+  // ── 030A: suggested calculated quantity (constant cross-section only) ──────
+  // length(m) × width(m) [× thickness(m) for CUM]. Only offered when the unit is
+  // a plain area/volume unit — MT would need a configured density (never guessed).
+  // Never overwrites the manual quantity: the user must click to apply.
+  const suggestedQty = useMemo(() => {
+    if (!geomApp.suggestQty || isStructure || !validCh) return null;
+    const wNum = parseFloat(widthStr);
+    if (!Number.isFinite(wNum) || wNum <= 0) return null;
+    const lenM = (ctNum - cfNum) * 1000;
+    const unit = ((item as any).canonicalUnit ?? item.unit ?? "").toUpperCase();
+    if (unit === "SQM") return +(lenM * wNum).toFixed(2);
+    if (unit === "CUM") {
+      const tNum = parseFloat(thickStr);
+      if (!Number.isFinite(tNum) || tNum <= 0) return null;
+      return +(lenM * wNum * (tNum / 1000)).toFixed(2);
+    }
+    return null; // MT etc. — needs a configured density (030B territory)
+  }, [geomApp.suggestQty, isStructure, validCh, cfNum, ctNum, widthStr, thickStr, item]);
 
   // Equipment recipes for auto-duration
   const workingDays = project.workingDaysPerMonth ?? WORKING_DAYS_DEFAULT;
@@ -430,6 +466,10 @@ function StretchRow({
       isDurationOverride,
       durationMode: durationModeState,
       sequenceOrder: prioNum != null && Number.isFinite(prioNum) && prioNum > 0 ? prioNum : null,
+      // 030A: side + planned geometry. "" = Unspecified → null (never silently Full Width).
+      ...(geomApp.side ? { side: sideVal || null } : {}),
+      ...(geomApp.width ? { plannedWidthM: widthStr.trim() !== "" && Number.isFinite(parseFloat(widthStr)) && parseFloat(widthStr) > 0 ? parseFloat(widthStr) : null } : {}),
+      ...(geomApp.thickness ? { plannedThicknessMm: thickStr.trim() !== "" && Number.isFinite(parseFloat(thickStr)) && parseFloat(thickStr) > 0 ? parseFloat(thickStr) : null } : {}),
       ...(startDateVal != null ? { startDate: startDateVal, endDate: endDateVal } : {}),
     }, {
       // 029A §8: successful save returns the row to read mode.
@@ -452,6 +492,9 @@ function StretchRow({
     else if (roadLen > 0 && boqQty > 0) setMult(String(+(boqQty / roadLen).toFixed(4)));
     if (isStructure) setStructQtyStr(bar.plannedQty > 0 ? String(bar.plannedQty) : "");
     setPrio((bar as any).sequenceOrder != null ? String((bar as any).sequenceOrder) : "");
+    setSideVal((bar as any).side ?? "");
+    setWidthStr((bar as any).plannedWidthM != null ? String((bar as any).plannedWidthM) : "");
+    setThickStr((bar as any).plannedThicknessMm != null ? String((bar as any).plannedThicknessMm) : "");
     onCloseEdit(bar.id);
   }
 
@@ -627,6 +670,24 @@ function StretchRow({
           {fmtQty(liveQty, 1)}
         </span>
 
+        {/* 030A: geometry-based suggestion — applied only on explicit click */}
+        {suggestedQty != null && Math.abs(suggestedQty - liveQty) > Math.max(0.01, liveQty * 0.001) && (
+          <button
+            onClick={() => {
+              const len = ctNum - cfNum;
+              if (len <= 0) return;
+              if (!window.confirm(`Replace quantity ${fmtQty(liveQty, 1)} with the geometry-based ${fmtQty(suggestedQty, 1)} ${(item as any).canonicalUnit ?? item.unit} (length × width${thickStr ? " × thickness" : ""})?`)) return;
+              dirty.current = true;
+              setMult(String(+(suggestedQty / len).toFixed(4)));
+            }}
+            className="text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded px-1 flex-shrink-0 hover:bg-sky-100 dark:bg-sky-900/30 dark:text-sky-300"
+            title={`Geometry suggests ${fmtQty(suggestedQty, 1)} ${(item as any).canonicalUnit ?? item.unit} (Ch length × width${thickStr ? " × thickness" : ""}). Click to apply — never applied automatically.`}
+            data-testid={`button-suggest-qty-${bar.id}`}
+          >
+            ≈ {fmtQty(suggestedQty, 1)}?
+          </button>
+        )}
+
         {/* Start: date picker when project has a start date, otherwise numeric month input */}
         {project.startDate ? (
           <input
@@ -782,6 +843,52 @@ function StretchRow({
           data-testid={`input-priority-${bar.id}`}
         />
 
+        {/* 030A: side + planned geometry (relevance depends on layer type) */}
+        {geomApp.side && (
+          <select
+            value={sideVal}
+            onChange={e => { dirty.current = true; setSideVal(e.target.value); }}
+            className={`text-[11px] border-b bg-transparent focus:outline-none focus:border-teal-500 dark:text-slate-200 ml-0.5 flex-shrink-0 ${
+              sideVal === "" ? "border-amber-400 text-amber-700 dark:text-amber-400" : "border-slate-300 dark:border-slate-600"
+            }`}
+            title={sideVal === "" ? "Side unspecified — Side Review Required" : "Executed side for this stretch"}
+            data-testid={`select-side-${bar.id}`}
+          >
+            <option value="">Side: —</option>
+            {BAR_SIDES.map(s => (
+              <option key={s} value={s}>{BAR_SIDE_LABELS[s]}</option>
+            ))}
+          </select>
+        )}
+        {geomApp.width && (
+          <>
+            <span className="text-xs text-slate-400 flex-shrink-0 ml-0.5" title="Planned executed width (m)">W</span>
+            <input
+              type="number" step="0.01" min="0"
+              value={widthStr}
+              onChange={e => { dirty.current = true; setWidthStr(e.target.value); }}
+              className="w-[44px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
+              placeholder="m"
+              title="Planned executed width in metres (optional)"
+              data-testid={`input-width-${bar.id}`}
+            />
+          </>
+        )}
+        {geomApp.thickness && (
+          <>
+            <span className="text-xs text-slate-400 flex-shrink-0" title="Planned executed thickness (mm) — planning value, independent of the BOQ design thickness">T</span>
+            <input
+              type="number" step="1" min="0"
+              value={thickStr}
+              onChange={e => { dirty.current = true; setThickStr(e.target.value); }}
+              className="w-[44px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
+              placeholder="mm"
+              title="Planned executed thickness in mm (optional — never auto-synced with BOQ design thickness)"
+              data-testid={`input-thickness-${bar.id}`}
+            />
+          </>
+        )}
+
         {/* Spacer */}
         <div className="flex-1" />
 
@@ -821,6 +928,26 @@ function StretchRow({
         {!isStructure && (bar.chainageFrom != null || bar.chainageTo != null) && (
           <span className="text-xs font-mono text-slate-600 dark:text-slate-300 flex-shrink-0" data-testid={`text-chainage-${bar.id}`}>
             Ch {bar.chainageFrom ?? "?"}–{bar.chainageTo ?? "?"}
+          </span>
+        )}
+        {/* 030A: side + geometry in the read summary */}
+        {geomApp.side && (bar as any).side != null && (
+          <span
+            className="text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded px-1 flex-shrink-0 dark:bg-sky-900/30 dark:text-sky-300"
+            title={`Planned side: ${barSideLabel((bar as any).side)}${(bar as any).plannedWidthM != null ? ` · width ${(bar as any).plannedWidthM} m` : ""}${(bar as any).plannedThicknessMm != null ? ` · thickness ${(bar as any).plannedThicknessMm} mm` : ""}`}
+            data-testid={`text-side-${bar.id}`}
+          >
+            {barSideLabel((bar as any).side)}
+            {(bar as any).plannedWidthM != null ? ` · ${Number((bar as any).plannedWidthM).toFixed(2)} m` : ""}
+          </span>
+        )}
+        {geomApp.side && (bar as any).side == null && (
+          <span
+            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded px-1 flex-shrink-0 dark:bg-amber-900/30 dark:text-amber-300"
+            title="No side recorded for this road bar (legacy or unspecified). The bar stays fully usable — confirm the side when convenient."
+            data-testid={`badge-side-review-${bar.id}`}
+          >
+            Side Review Required
           </span>
         )}
         <span className="text-xs font-bold font-mono text-slate-700 dark:text-slate-200 flex-shrink-0" data-testid={`text-qty-${bar.id}`}>
@@ -936,6 +1063,33 @@ function StretchRow({
             {!isStructure && (
               <DropdownMenuItem onClick={() => onSplit(bar)} data-testid={`menu-split-${bar.id}`}>
                 <Scissors className="w-3.5 h-3.5 mr-2" /> Split at midpoint
+              </DropdownMenuItem>
+            )}
+            {!isStructure && geomApp.side && (
+              <DropdownMenuItem
+                onClick={async () => {
+                  // 030A: preview → confirm → commit. The original bar becomes
+                  // the LHS half (all DPR/arrangement links stay on it); RHS is
+                  // inserted as a new manual bar over the same chainage.
+                  try {
+                    const parts = [{ side: "lhs" }, { side: "rhs" }];
+                    const prevRes = await apiRequest("POST", `/api/boq/programme/bars/${bar.id}/split-by-side`, { preview: true, parts });
+                    const prev = await prevRes.json();
+                    const allocTxt = (prev.allocation ?? []).map((a: any) => `${barSideLabel(a.side)}: ${fmtQty(a.qty, 1)}`).join(" · ");
+                    const linkTxt = [
+                      prev.linkedDprProgressCount > 0 ? `${prev.linkedDprProgressCount} DPR progress link(s) stay on the LHS bar` : null,
+                      (prev.linkedArrangementIds ?? []).length > 0 ? `${prev.linkedArrangementIds.length} arrangement(s) stay on the LHS bar` : null,
+                    ].filter(Boolean).join("; ");
+                    if (!window.confirm(`Split this bar into LHS + RHS over the same chainage?\n\nQuantity split (equal — adjust after if the sides differ): ${allocTxt}${linkTxt ? `\n${linkTxt}` : ""}`)) return;
+                    await apiRequest("POST", `/api/boq/programme/bars/${bar.id}/split-by-side`, { parts });
+                    await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+                  } catch (e: any) {
+                    window.alert(`Split by side failed: ${e?.message ?? e}`);
+                  }
+                }}
+                data-testid={`menu-split-side-${bar.id}`}
+              >
+                <Scissors className="w-3.5 h-3.5 mr-2" /> Split into LHS / RHS
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
@@ -2580,6 +2734,10 @@ export default function WorkProgramme() {
     try { setActiveTab(sessionStorage.getItem(`wp-tab-${params.id}`) || "gantt"); } catch { /* ignore */ }
   }, [params.id]);
   const [strImportOpen, setStrImportOpen] = useState(false);
+  // ── 030A: PM/Admin bulk side confirmation for null-side road bars ─────────
+  const [bulkSideOpen, setBulkSideOpen] = useState(false);
+  const [bulkSideChoice, setBulkSideChoice] = useState("full_width");
+  const [bulkSideSelected, setBulkSideSelected] = useState<Set<number>>(new Set());
   const [seqDialogOpen, setSeqDialogOpen] = useState(false);
   const [seqFronts, setSeqFronts] = useState("");         // "" = auto
   const [seqStagger, setSeqStagger] = useState("1");      // months (0 = concurrent)
@@ -2589,7 +2747,7 @@ export default function WorkProgramme() {
   const [seqRulesOpen, setSeqRulesOpen] = useState(false);
   // ── Instruction 029: editable stretch table + pre-regeneration confirmation ──
   // Each row is kept as strings for smooth editing; converted on submit.
-  type SeqStretchRow = { label: string; from: string; to: string; priority: string; qtyPct: string };
+  type SeqStretchRow = { label: string; from: string; to: string; priority: string; qtyPct: string; side: string };
   const [seqStretches, setSeqStretches] = useState<SeqStretchRow[]>([]);
   const [seqRegenSummary, setSeqRegenSummary] = useState<{
     toRecreate: number; preservedUpdated: number; newBars: number;
@@ -2896,6 +3054,33 @@ export default function WorkProgramme() {
       }),
   });
 
+  // ── 030A: null-side road bars eligible for bulk side confirmation ─────────
+  const nullSideRoadBars = useMemo(() => {
+    const itemById = new Map(items.map(it => [it.id, it]));
+    return bars.filter(b => {
+      if ((b as any).side != null) return false;
+      if ((b as any).planningMode === "structure_location") return false;
+      const it = itemById.get(b.boqItemId);
+      if (!it) return false;
+      if (isStructureOrLocationScheduledItem(it as any, { hasStructureImportBar: false })) return false;
+      return geometryApplicability((it.layerConfig as LayerConfig | null)?.layerType ?? null).side;
+    });
+  }, [bars, items]);
+
+  const bulkSideMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/boq/projects/${projectId}/programme/bulk-side`, {
+      barIds: Array.from(bulkSideSelected),
+      side: bulkSideChoice,
+    }),
+    onSuccess: async (res: any) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      setBulkSideOpen(false);
+      setBulkSideSelected(new Set());
+      toast({ title: "Sides confirmed", description: `${res?.updated ?? "Selected"} bar(s) updated.` });
+    },
+    onError: (err: any) => toast({ title: "Bulk side confirmation failed", description: String(err?.message ?? err), variant: "destructive" }),
+  });
+
   // Pre-populate dialog with last-used sequence options when it opens
   function openSeqDialog() {
     const stored = progSettings?.sequenceOptions;
@@ -2920,6 +3105,7 @@ export default function WorkProgramme() {
             to: s.chainageTo != null ? String(s.chainageTo) : "",
             priority: s.priority != null ? String(s.priority) : "",
             qtyPct: s.manualQtyFraction != null ? String(+(s.manualQtyFraction * 100).toFixed(2)) : "",
+            side: s.side ?? "", // 030A
           }))
         : []);
     } else {
@@ -2945,6 +3131,7 @@ export default function WorkProgramme() {
       to: (from + (i + 1) * len).toFixed(3),
       priority: String(i + 1),
       qtyPct: "",
+      side: "",
     })));
   }
 
@@ -2959,6 +3146,7 @@ export default function WorkProgramme() {
       manualQtyFraction: r.qtyPct.trim() !== "" && parseFloat(r.qtyPct) > 0
         ? Math.min(100, parseFloat(r.qtyPct)) / 100
         : null,
+      side: r.side || null, // 030A — optional per-stretch side, carried onto road bars
     }));
   }
 
@@ -3379,10 +3567,79 @@ export default function WorkProgramme() {
                   : <Sparkles className="w-3.5 h-3.5 mr-2" />}
                 Auto-build recipes
               </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={nullSideRoadBars.length === 0}
+                onClick={() => {
+                  setBulkSideSelected(new Set(nullSideRoadBars.map(b => b.id)));
+                  setBulkSideOpen(true);
+                }}
+                title="Set the side (Full Width / LHS / RHS / Both Sides) on legacy road bars that have no side recorded. Reviewed batch action — nothing is set automatically."
+                data-testid="button-bulk-side"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 mr-2" />
+                Confirm bar sides{nullSideRoadBars.length > 0 ? ` (${nullSideRoadBars.length})` : ""}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
+
+      {/* ── 030A: bulk side confirmation dialog ── */}
+      <Dialog open={bulkSideOpen} onOpenChange={setBulkSideOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Confirm bar sides</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            These road bars have no side recorded (shown as “Side Review Required”). Pick the bars and the side to apply.
+            Bars stay fully usable either way — this is a reviewed correction, never automatic.
+          </p>
+          <div className="max-h-64 overflow-y-auto space-y-1 border rounded-md p-2">
+            {nullSideRoadBars.map(b => (
+              <label key={b.id} className="flex items-center gap-2 text-xs cursor-pointer" data-testid={`bulk-side-row-${b.id}`}>
+                <input
+                  type="checkbox"
+                  checked={bulkSideSelected.has(b.id)}
+                  onChange={e => setBulkSideSelected(prev => {
+                    const next = new Set(prev);
+                    if (e.target.checked) next.add(b.id); else next.delete(b.id);
+                    return next;
+                  })}
+                />
+                <span className="font-mono">{(b as any).reachLabel ?? `#${b.id}`}</span>
+                <span className="text-muted-foreground">Ch {b.chainageFrom ?? "?"}–{b.chainageTo ?? "?"}</span>
+                <span className="text-muted-foreground truncate">{shortItemName(items.find(it => it.id === b.boqItemId) as any)}</span>
+              </label>
+            ))}
+            {nullSideRoadBars.length === 0 && <p className="text-xs text-muted-foreground">No bars need side confirmation.</p>}
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs">Side to apply</Label>
+            <select
+              value={bulkSideChoice}
+              onChange={e => setBulkSideChoice(e.target.value)}
+              className="h-8 text-xs rounded border border-input bg-transparent px-2"
+              data-testid="select-bulk-side"
+            >
+              {(["full_width", "lhs", "rhs", "both_sides"] as const).map(sd => (
+                <option key={sd} value={sd}>{BAR_SIDE_LABELS[sd]}</option>
+              ))}
+            </select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setBulkSideOpen(false)}>Cancel</Button>
+            <Button
+              size="sm"
+              disabled={bulkSideSelected.size === 0 || bulkSideMutation.isPending}
+              onClick={() => bulkSideMutation.mutate()}
+              data-testid="button-bulk-side-apply"
+            >
+              {bulkSideMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
+              Apply to {bulkSideSelected.size} bar(s)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Project start date prompt — inline date input to set directly from this page */}
       {project && !effectiveProject?.startDate && (
@@ -3490,7 +3747,7 @@ export default function WorkProgramme() {
                     Equal split
                   </Button>
                   <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[11px]"
-                    onClick={() => setSeqStretches(s => [...s, { label: "", from: "", to: "", priority: String(s.length + 1), qtyPct: "" }])}
+                    onClick={() => setSeqStretches(s => [...s, { label: "", from: "", to: "", priority: String(s.length + 1), qtyPct: "", side: "" }])}
                     data-testid="button-seq-add-stretch">
                     + Row
                   </Button>
@@ -3509,11 +3766,11 @@ export default function WorkProgramme() {
                 </p>
               ) : (
                 <div className="space-y-1">
-                  <div className="grid grid-cols-[1fr_70px_70px_52px_58px_24px] gap-1 text-[10px] font-medium text-muted-foreground px-0.5">
-                    <span>Label (optional)</span><span>Km from</span><span>Km to</span><span>Priority</span><span>Qty %</span><span />
+                  <div className="grid grid-cols-[1fr_70px_70px_52px_58px_86px_24px] gap-1 text-[10px] font-medium text-muted-foreground px-0.5">
+                    <span>Label (optional)</span><span>Km from</span><span>Km to</span><span>Priority</span><span>Qty %</span><span>Side</span><span />
                   </div>
                   {seqStretches.map((r, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_70px_70px_52px_58px_24px] gap-1 items-center">
+                    <div key={i} className="grid grid-cols-[1fr_70px_70px_52px_58px_86px_24px] gap-1 items-center">
                       <Input value={r.label} placeholder={`Reach ${r.priority || i + 1}`} className="h-7 text-xs"
                         onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
                         data-testid={`input-stretch-label-${i}`} />
@@ -3530,6 +3787,13 @@ export default function WorkProgramme() {
                         title="Manual quantity share (% of each item's total). Blank = proportionate to stretch length."
                         onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, qtyPct: e.target.value } : x))}
                         data-testid={`input-stretch-qty-${i}`} />
+                      <select value={r.side} className="h-7 text-[11px] rounded border border-input bg-transparent px-1"
+                        title="Optional side for this stretch — carried onto every road bar it generates. Blank = unspecified."
+                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, side: e.target.value } : x))}
+                        data-testid={`select-stretch-side-${i}`}>
+                        <option value="">—</option>
+                        {BAR_SIDES.map(sd => <option key={sd} value={sd}>{BAR_SIDE_LABELS[sd]}</option>)}
+                      </select>
                       <button type="button" className="text-slate-400 hover:text-red-500 text-xs"
                         onClick={() => setSeqStretches(s => s.filter((_, j) => j !== i))}
                         data-testid={`button-stretch-remove-${i}`}>✕</button>
