@@ -22,8 +22,6 @@ import {
   calculateAutoDurationFull,
   calculateRequiredOutput,
   monthLabel,
-  dateToMonthIndex,
-  monthIndexToDate,
   formatDateForInput,
   fmtQty,
   WORKING_DAYS_DEFAULT,
@@ -33,6 +31,17 @@ import {
   type ProductivitySettings,
   isEarthworkBoqItem,
 } from "@shared/planningEngine";
+// 027A: true calendar axis — single source of truth for date↔index↔pixel on the Gantt.
+// Aliased to the legacy names so every existing call site uses calendar-true conversion.
+import {
+  monthIndexToDateCal as monthIndexToDate,
+  dateToMonthIndexCal as dateToMonthIndex,
+  monthIndexToAxisX,
+  axisMonthCount,
+  calendarDaysFromIdx,
+  displayFinishDateCal,
+  finishDateInputToIdx,
+} from "@shared/calendarAxis";
 import { BarArrangementPanel } from "@/components/BarArrangementPanel";
 import { ExecutionStateBadge, useBarExecutionState } from "@/components/ExecutionStateBadge";
 import { SEQUENCE_RULES } from "@shared/programmeSequencer";
@@ -360,8 +369,10 @@ function StretchRow({
     const startDateVal = project.startDate
       ? formatDateForInput(monthIndexToDate(smNum, project.startDate))
       : null;
+    // Persisted endDate = INCLUSIVE displayed finish (boundary − 1 day, clamped
+    // to >= start) so consumers like SiteEntry (date <= endDate) match the UI.
     const endDateVal = project.startDate
-      ? formatDateForInput(monthIndexToDate(em, project.startDate))
+      ? formatDateForInput(displayFinishDateCal(em, project.startDate, smNum))
       : null;
     patch.mutate({
       chainageFrom: validCh ? cfNum : bar.chainageFrom,
@@ -377,12 +388,24 @@ function StretchRow({
   }
 
   // ── Bar positioning: uses live draft start + effective duration ─────────────
+  // 027A: with a project start date, position by TRUE calendar dates on the
+  // calendar-month axis (same colW columns as the header). Without a start
+  // date, fall back to the legacy equal-month formula.
   const liveStart = smNum;
   const liveEnd = +(smNum + effectiveDurationMonths).toFixed(2);
   const liveQty = effectiveQty;
-  const barLeft = Math.max(0, (liveStart - 1) * colW);
-  const barWidth = Math.max(4, (liveEnd - liveStart) * colW);
+  const datesInvalid = isNaN(liveStart) || isNaN(liveEnd) || liveEnd < liveStart;
+  const barLeft = !datesInvalid && project.startDate
+    ? Math.max(0, monthIndexToAxisX(liveStart, project.startDate, colW))
+    : Math.max(0, (liveStart - 1) * colW);
+  const barWidth = !datesInvalid && project.startDate
+    ? Math.max(4, monthIndexToAxisX(liveEnd, project.startDate, colW) - barLeft)
+    : Math.max(4, (liveEnd - liveStart) * colW);
   const durationMonths = liveEnd - liveStart;
+  // Calendar duration (inclusive; stored end index = exclusive boundary — see calendarAxis.ts)
+  const calDays = !datesInvalid && project.startDate
+    ? calendarDaysFromIdx(liveStart, liveEnd, project.startDate)
+    : null;
 
   return (
     <div
@@ -545,7 +568,7 @@ function StretchRow({
                 const em = +seedEnd;
                 const isQtyOverride = !!(autoQty != null && defaultRate != null && Math.abs(multNum - defaultRate) > 0.0001);
                 const startDateVal = project.startDate ? formatDateForInput(monthIndexToDate(smNum, project.startDate)) : null;
-                const endDateVal = project.startDate ? formatDateForInput(monthIndexToDate(em, project.startDate)) : null;
+                const endDateVal = project.startDate ? formatDateForInput(displayFinishDateCal(em, project.startDate, smNum)) : null;
                 patch.mutate({
                   plannedQty: qty, startMonth: smNum, endMonth: em,
                   isQtyOverride, isDurationOverride: true, durationMode: "fixed",
@@ -556,7 +579,7 @@ function StretchRow({
                 const qty = effectiveQty;
                 const em = +(smNum + (autoDurationMonths ?? effectiveDurationMonths)).toFixed(2);
                 const startDateVal = project.startDate ? formatDateForInput(monthIndexToDate(smNum, project.startDate)) : null;
-                const endDateVal = project.startDate ? formatDateForInput(monthIndexToDate(em, project.startDate)) : null;
+                const endDateVal = project.startDate ? formatDateForInput(displayFinishDateCal(em, project.startDate, smNum)) : null;
                 patch.mutate({
                   plannedQty: qty, startMonth: smNum, endMonth: em,
                   isQtyOverride: false, isDurationOverride: false, durationMode: "auto",
@@ -582,7 +605,10 @@ function StretchRow({
             className="text-xs text-slate-400 ml-0.5 font-mono truncate min-w-0"
             title="Computed end date (auto-duration from equipment output)"
           >
-            → {formatDateForInput(monthIndexToDate(liveEnd, project.startDate))}
+            → {datesInvalid
+              ? "Invalid finish date"
+              : formatDateForInput(displayFinishDateCal(liveEnd, project.startDate, liveStart))}
+            {calDays != null && <span className="text-slate-500"> · {calDays}d</span>}
           </span>
         )}
 
@@ -594,13 +620,14 @@ function StretchRow({
               type="date"
               value={
                 !isNaN(endMNum) && project.startDate
-                  ? formatDateForInput(monthIndexToDate(endMNum, project.startDate))
+                  ? formatDateForInput(displayFinishDateCal(endMNum, project.startDate, smNum))
                   : ""
               }
               onChange={e => {
                 dirty.current = true;
                 if (e.target.value && project.startDate) {
-                  const idx = dateToMonthIndex(e.target.value, project.startDate);
+                  // Typed finish date is INCLUSIVE → store the exclusive boundary index
+                  const idx = finishDateInputToIdx(e.target.value, project.startDate);
                   setEndM(String(+idx.toFixed(2)));
                   // Update locked duration so subsequent start shifts use new window length
                   lockedDurationRef.current = Math.max(0.1, idx - smNum);
@@ -611,6 +638,11 @@ function StretchRow({
               title="Stretch end date (fixed duration)"
               data-testid={`input-end-date-${bar.id}`}
             />
+            {calDays != null && (
+              <span className="text-xs text-slate-400 flex-shrink-0" title="Calendar duration (inclusive)">
+                · {calDays}d
+              </span>
+            )}
           </>
         )}
 
@@ -706,7 +738,15 @@ function StretchRow({
           />
         ))}
 
-        {/* Gantt bar — label rendered inside the bar to avoid vertical overflow into rows below */}
+        {/* 027A §19: invalid dates → clear warning instead of a misleading bar */}
+        {datesInvalid ? (
+          <div
+            className="absolute top-2 left-2 text-[11px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded px-1.5 py-0.5"
+            data-testid={`bar-invalid-${bar.id}`}
+          >
+            {isNaN(liveStart) || isNaN(liveEnd) ? "Programme dates incomplete" : "Invalid finish date (before start)"}
+          </div>
+        ) : (
         <div
           className="absolute rounded overflow-hidden group select-none"
           style={{
@@ -720,10 +760,12 @@ function StretchRow({
           title={(() => {
             const ch = `Ch ${validCh ? cfNum : (bar.chainageFrom ?? "?")} – ${validCh ? ctNum : (bar.chainageTo ?? "?")} km`;
             const qty = `${fmtQty(liveQty, 1)} ${(bar as any).canonicalUnit ?? bar.unit}`;
-            const span = project.startDate
-              ? `${formatDateForInput(monthIndexToDate(liveStart, project.startDate))} → ${formatDateForInput(monthIndexToDate(liveEnd, project.startDate))} (${fmtQty(durationMonths, 2)} mo)`
+            const span = project.startDate && !datesInvalid
+              ? `${formatDateForInput(monthIndexToDate(liveStart, project.startDate))} → ${formatDateForInput(displayFinishDateCal(liveEnd, project.startDate, liveStart))} · ${calDays} cal days · ${(durationMonths * workingDays).toFixed(1)} work days`
               : `M${fmtQty(liveStart, 1)} → M${fmtQty(liveEnd, 1)} (${fmtQty(durationMonths, 2)} mo)`;
             const extras = [
+              `Mode: ${durationModeState === "fixed" ? "FIX" : "AUTO"}`,
+              requiredOutput ? `Daily output: ${fmtQty(requiredOutput.dailyOutput, 1)}/day` : null,
               autoDuration?.bottleneckEquipment ? `Bottleneck: ${autoDuration.bottleneckEquipment}` : null,
               haulDistanceKm != null ? `Haul: ${fmtQty(haulDistanceKm, 1)} km` : null,
             ].filter(Boolean).join(" | ");
@@ -737,7 +779,7 @@ function StretchRow({
               className="absolute inset-0 flex items-center px-1.5 pointer-events-none select-none overflow-hidden"
             >
               <span className="text-white text-[11px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis opacity-90 drop-shadow-sm">
-                {fmtQty(liveQty, 1)} {(bar as any).canonicalUnit ?? bar.unit} | {(durationMonths * workingDays).toFixed(1)}d
+                {fmtQty(liveQty, 1)} {(bar as any).canonicalUnit ?? bar.unit} · {calDays != null ? `${calDays}d` : `${(durationMonths * workingDays).toFixed(1)}wd`}
                 {autoDuration?.bottleneckEquipment && (
                   <span className="opacity-70 font-normal"> · {autoDuration.bottleneckEquipment}</span>
                 )}
@@ -745,6 +787,7 @@ function StretchRow({
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Instruction 026 §7: per-stretch execution-arrangement panel */}
@@ -790,8 +833,13 @@ function StructureLocationRow({
 
   const liveStart = bar.startMonth;
   const liveEnd   = bar.endMonth;
-  const barLeft   = Math.max(0, (liveStart - 1) * colW);
-  const barWidth  = Math.max(4, (liveEnd - liveStart) * colW);
+  // 027A: calendar-true positioning when the project has a start date
+  const barLeft   = project.startDate
+    ? Math.max(0, monthIndexToAxisX(liveStart, project.startDate, colW))
+    : Math.max(0, (liveStart - 1) * colW);
+  const barWidth  = project.startDate
+    ? Math.max(4, monthIndexToAxisX(liveEnd, project.startDate, colW) - barLeft)
+    : Math.max(4, (liveEnd - liveStart) * colW);
 
   return (
     <div
@@ -1336,6 +1384,9 @@ function InlineGanttTable({
 }) {
   const { toast } = useToast();
   const totalMonths = project.totalMonths ?? 12;
+  // 027A: full calendar-month columns — a mid-month project start needs one
+  // extra column so the programme window fits on the calendar axis.
+  const axisMonths = axisMonthCount(project.startDate, totalMonths);
   const roadLen = project.roadLengthKm ?? 0;
   const workingDays = project.workingDaysPerMonth ?? WORKING_DAYS_DEFAULT;
   const workingHrs = project.workingHoursPerDay ?? WORKING_HRS_DEFAULT;
@@ -1418,8 +1469,8 @@ function InlineGanttTable({
   }, [grouped]);
 
   const monthHeaders = useMemo(
-    () => Array.from({ length: totalMonths }, (_, i) => ({ num: i + 1, label: monthLabel(i + 1, project.startDate) })),
-    [totalMonths, project.startDate],
+    () => Array.from({ length: axisMonths }, (_, i) => ({ num: i + 1, label: monthLabel(i + 1, project.startDate) })),
+    [axisMonths, project.startDate],
   );
 
   const createMutation = useMutation({
@@ -1545,7 +1596,7 @@ function InlineGanttTable({
     });
   }
 
-  const totalRightW = totalMonths * colW;
+  const totalRightW = axisMonths * colW;
 
   return (
     <div className="rounded-xl border bg-white dark:bg-gray-950" style={{ overflow: "clip" }}>
@@ -1720,7 +1771,7 @@ function InlineGanttTable({
                           project={project}
                           projectId={projectId}
                           color={color}
-                          totalMonths={totalMonths}
+                          totalMonths={axisMonths}
                           colW={colW}
                           onDelete={setDeleteBarId}
                         />
@@ -1735,7 +1786,7 @@ function InlineGanttTable({
                           projectId={projectId}
                           color={color}
                           isFirst={i === 0}
-                          totalMonths={totalMonths}
+                          totalMonths={axisMonths}
                           colW={colW}
                           onDelete={setDeleteBarId}
                           onSplit={bar => splitMutation.mutate(bar)}

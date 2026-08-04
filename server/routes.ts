@@ -10573,11 +10573,14 @@ export async function registerRoutes(
       // derive and persist real calendar dates for all existing bars from their startMonth/endMonth.
       if (newStartDate && (startDateFirstSet || (previousStartDate && previousStartDate !== newStartDate))) {
         const bars = await storage.getWorkProgramBars(projectId);
-        const { dateToMonthIndex: _dmi, monthIndexToDate, formatDateForInput } = await import("../shared/planningEngine.js");
+        // 027A: derive with the true calendar axis; persisted endDate is the
+        // INCLUSIVE displayed finish (boundary − 1 day, clamped to >= start).
+        const { formatDateForInput } = await import("../shared/planningEngine.js");
+        const { monthIndexToDateCal, displayFinishDateCal } = await import("../shared/calendarAxis.js");
         let backfilled = 0;
         for (const bar of bars) {
-          const startDate = formatDateForInput(monthIndexToDate(bar.startMonth, newStartDate));
-          const endDate = formatDateForInput(monthIndexToDate(bar.endMonth, newStartDate));
+          const startDate = formatDateForInput(monthIndexToDateCal(bar.startMonth, newStartDate));
+          const endDate = formatDateForInput(displayFinishDateCal(bar.endMonth, newStartDate, bar.startMonth));
           await storage.updateWorkProgramBar(bar.id, { startDate, endDate, durationMode: bar.durationMode ?? "auto" });
           backfilled++;
         }

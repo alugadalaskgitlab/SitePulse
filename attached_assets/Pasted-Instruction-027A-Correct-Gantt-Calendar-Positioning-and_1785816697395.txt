@@ -1,0 +1,524 @@
+Instruction 027A — Correct Gantt Calendar Positioning and Duration Display
+
+Purpose
+
+Fix the Work Programme Gantt so every activity bar is positioned exactly according to its actual start and finish dates.
+
+The row dates may currently be correct while the visible bar is shifted because the bar geometry uses approximate month fractions rather than the same real calendar boundaries shown in the header.
+
+This batch must:
+
+1. align every Gantt bar precisely with its actual start date;
+2. size every bar according to its actual finish date and duration;
+3. use one consistent real-calendar scale for both headers and bars;
+4. show duration in days adjacent to the finish date;
+5. preserve all existing programme, sequencing and demand calculations.
+
+This is a small, focused Gantt correction.
+
+DO NOT TOUCH OR REGRESS
+
+Do not change:
+
+- programme start or finish dates;
+- Auto Sequence logic;
+- road-front calculation;
+- stage lag or front stagger;
+- programme quantities;
+- AUTO/FIX scheduling behaviour;
+- Work Programme bar IDs;
+- execution arrangements;
+- bar-level arrangement allocations;
+- demand exclusion;
+- BOM/Materials;
+- Equipment;
+- Labour;
+- Diesel;
+- Procurement;
+- baseline or forecast logic;
+- DPR;
+- LHS/RHS;
+- stretch/chainage generation;
+- UOM conversion;
+- GSB/WMM;
+- PI/IRN/GRN;
+- Stores stock;
+- Batch 027 execution-state display or revision workflow.
+
+PART A — USE A TRUE CALENDAR AXIS
+
+1. Identify the current positioning defect
+
+Trace the authoritative Gantt positioning calculation.
+
+Confirm whether bar position and width are currently derived from:
+
+- average month length;
+- month index plus decimal fraction;
+- project-start-relative month values;
+- fixed equal-width month columns without actual day boundaries;
+- any other approximation.
+
+Remove the approximation from visual positioning.
+
+Do not change the stored programme dates.
+
+2. Build one calendar-axis model
+
+The month headers and all bars must use the same calendar-axis definition.
+
+The axis must know the exact start and end date of every visible month.
+
+Example:
+
+June 2026:
+- 01/06/2026 to 30/06/2026
+
+July 2026:
+- 01/07/2026 to 31/07/2026
+
+August 2026:
+- 01/08/2026 to 31/08/2026
+
+Do not treat every month as 30 days or 30.4375 days for bar placement.
+
+3. Support partial first and last months
+
+If the visible programme range begins or ends in the middle of a month, define the timeline consistently.
+
+Preferred behaviour:
+
+- keep full calendar-month columns;
+- position bars within the correct fraction of that actual month;
+- clip bars only at the visible range boundary.
+
+Example:
+
+Visible range begins 15 June.
+
+An activity starting 20 June must still appear at the correct place inside the June column.
+
+4. Date-to-position helper
+
+Create or reuse one authoritative helper that converts an actual date to a horizontal pixel or percentage position on the Gantt.
+
+The helper must:
+
+- use actual calendar days;
+- use actual month lengths;
+- use the same month widths used by the header;
+- handle leap years;
+- handle timezone safely;
+- avoid off-by-one-day shifts;
+- avoid using local-time midnight conversions that move a date backward or forward.
+
+Prefer date-only calculations using a stable date library or UTC-safe date arithmetic.
+
+Do not duplicate date-position formulas in multiple components.
+
+PART B — BAR START AND WIDTH
+
+5. Start position
+
+A bar must begin exactly where its stored start date falls on the calendar axis.
+
+Example:
+
+Activity start:
+02/07/2026
+
+Expected:
+- bar begins on the second day of the July column;
+- it must not appear in June;
+- it must not begin at the centre or end of July.
+
+6. Finish position
+
+A bar must end exactly according to its stored finish date.
+
+Define and use one inclusive/exclusive convention consistently.
+
+Recommended visual convention:
+
+- start date is inclusive;
+- finish date is inclusive;
+- visual end boundary is the start of the day after finish date.
+
+Example:
+
+Start:
+02/07/2026
+
+Finish:
+02/07/2026
+
+Expected:
+- visible one-day bar, not zero width.
+
+Start:
+02/07/2026
+
+Finish:
+08/07/2026
+
+Expected:
+- visible seven-calendar-day span if using inclusive dates.
+
+Document the chosen convention in code and tests.
+
+7. Minimum visible width
+
+Very short activities must remain visible.
+
+For one-day or sub-pixel activities:
+
+- use the true calculated position;
+- apply only a small minimum visual width where necessary;
+- do not shift the start date to create visibility.
+
+The tooltip and row dates remain authoritative.
+
+8. Multi-month activities
+
+A bar spanning several months must cross month boundaries continuously and accurately.
+
+Example:
+
+Start:
+25/07/2026
+
+Finish:
+10/08/2026
+
+Expected:
+- correct fraction of July;
+- full continuous transition into August;
+- correct fraction of August.
+
+Do not render it as separate unrelated monthly blocks unless that is already an intentional programme feature.
+
+PART C — DURATION CALCULATION AND DISPLAY
+
+9. Show duration beside the finish date
+
+In each programme stretch row, display duration adjacent to the finish date.
+
+Suggested format:
+
+02/07/2026 → 08/07/2026 · 7 days
+
+or, within the existing compact layout:
+
+Finish: 08/07/2026 · 7d
+
+Use the format that best fits the current row without overcrowding it.
+
+10. Duration basis
+
+Clearly distinguish between:
+
+- Calendar Duration
+- Working Duration
+
+The Work Programme currently has working days per month and working hours per day.
+
+Do not label a calendar-day difference as working days.
+
+Recommended display:
+
+- `7 cal days`
+- `6 work days`
+
+If only one duration is shown in the compact row, show the duration actually used by the scheduling engine and label it correctly.
+
+The tooltip/details may show both.
+
+11. Calculation rules
+
+Calendar duration:
+
+- inclusive start and finish dates;
+- one-day activity = 1 calendar day.
+
+Working duration:
+
+- calculate using the project’s existing working-calendar rules;
+- reuse existing working-day logic;
+- do not introduce a separate contradictory workday calendar.
+
+If no reliable working-calendar calculation exists for this row, show calendar duration rather than guessing.
+
+12. AUTO and FIX behaviour
+
+For AUTO bars:
+
+- continue deriving finish date from quantity/output using existing logic;
+- display the resulting duration;
+- position the bar from the resulting dates.
+
+For FIX bars:
+
+- preserve the fixed start/finish window;
+- display the true fixed duration;
+- do not stretch or recalculate the dates merely to fit the visual bar.
+
+Do not change the meaning of AUTO or FIX.
+
+PART D — TOOLTIP AND DETAILS
+
+13. Bar tooltip
+
+On hover or click, show:
+
+- BOQ item;
+- reach/stretch;
+- start date;
+- finish date;
+- calendar duration;
+- working duration, where available;
+- planned quantity;
+- planned daily output;
+- AUTO/FIX status;
+- execution arrangement state where already supported.
+
+Do not overcrowd the bar label itself.
+
+14. Compact bar label
+
+Retain the current useful bar label where space permits, for example:
+
+4,940 SQM · 7d
+
+If the bar is too narrow:
+
+- truncate gracefully;
+- keep the full details in the tooltip;
+- do not enlarge the bar beyond its true date width merely to fit text.
+
+PART E — MONTH HEADER AND GRID CONSISTENCY
+
+15. Header alignment
+
+The visible month header, vertical month-grid lines and bar-position calculations must all use the same column dimensions.
+
+Do not have:
+
+- one width used by CSS headers;
+- another width used by bar calculations;
+- another width used by drag/resize.
+
+Use one shared month-axis definition.
+
+16. Scrolling
+
+Horizontal scrolling must preserve alignment between:
+
+- fixed left BOQ/stretch column;
+- month headers;
+- month grid;
+- bars.
+
+Test at different browser widths and zoom levels.
+
+17. Drag and resize
+
+If users can drag or resize bars:
+
+- pointer position must convert back to the correct actual calendar date using the same axis;
+- dragging within July must not produce a June date;
+- resizing must preserve exact dates;
+- snapping, if used, should snap to whole calendar days.
+
+Do not use average-month conversion for reverse mapping.
+
+PART F — TIMEZONE AND DATE SAFETY
+
+18. Date-only handling
+
+Programme dates are date-only business values.
+
+Avoid patterns that parse `YYYY-MM-DD` as local or UTC timestamps inconsistently.
+
+Use a date-only utility or explicitly normalise calculations.
+
+Test in the app’s normal India timezone and ensure:
+
+- no one-day backward shift;
+- no one-day forward shift;
+- no DST-related assumption;
+- no browser-locale dependency.
+
+19. Invalid dates
+
+If a row has:
+
+- missing start;
+- missing finish;
+- finish before start;
+- unparseable date;
+
+do not render a misleading bar.
+
+Show a clear row warning such as:
+
+- Programme dates incomplete
+- Invalid finish date
+
+Do not silently position the bar at zero.
+
+PART G — ACCEPTANCE TESTS
+
+20. Exact start-date alignment
+
+A. Start 02/07/2026
+
+Expected:
+- bar begins at day 2 inside July;
+- not in June;
+- not at July month start unless day 1.
+
+B. Start 31/07/2026
+
+Expected:
+- bar begins near the end of July;
+- not at the start of August.
+
+C. Start 01/08/2026
+
+Expected:
+- bar begins exactly at the August boundary.
+
+21. Duration tests
+
+A. Start 02/07/2026, finish 02/07/2026
+
+Expected:
+- duration = 1 calendar day;
+- visible one-day bar.
+
+B. Start 02/07/2026, finish 08/07/2026
+
+Expected:
+- duration = 7 calendar days;
+- bar width matches seven days.
+
+C. Start 25/07/2026, finish 10/08/2026
+
+Expected:
+- correct continuous span across July and August;
+- duration correct under the chosen inclusive convention.
+
+22. Month-length tests
+
+Test:
+
+- February in a normal year;
+- February in a leap year;
+- April with 30 days;
+- July with 31 days.
+
+Expected:
+- dates align correctly in every month;
+- no average-month drift.
+
+23. Project-range test
+
+Project starts mid-month.
+
+Expected:
+- header and bars remain aligned;
+- no first-month offset error.
+
+24. AUTO bar test
+
+AUTO bar dates are generated by existing scheduling logic.
+
+Expected:
+- stored/generated dates unchanged;
+- visual bar aligns exactly;
+- duration displayed correctly.
+
+25. FIX bar test
+
+FIX bar has manually fixed dates.
+
+Expected:
+- dates unchanged;
+- width matches fixed window;
+- duration correct.
+
+26. Drag/resize test
+
+Drag a bar by one day.
+
+Expected:
+- stored start/finish dates move by exactly one day;
+- visual bar remains aligned after save and refresh.
+
+Resize finish by one day.
+
+Expected:
+- finish date and duration update by one day;
+- no month-fraction drift.
+
+27. India timezone test
+
+Open and save the programme in the normal deployment timezone.
+
+Expected:
+- no date shifts;
+- refresh shows the same dates and bar positions.
+
+28. Regression tests
+
+Confirm unchanged:
+
+- Auto Sequence outputs;
+- front stagger;
+- stage lag;
+- work quantities;
+- programme bar IDs;
+- AUTO/FIX logic;
+- execution-arrangement links;
+- arrangement badges;
+- demand phasing;
+- Materials/Equipment/Labour/Diesel;
+- Procurement;
+- GSB/WMM;
+- DPR;
+- PI/IRN/GRN;
+- Stores.
+
+PART H — LIVE TAKKADPALLY–SIRUR PROOF
+
+29. Verify the rows shown in the live Work Programme
+
+Use actual rows such as:
+
+- Reach 2, Ch. 1.9–3.8, start 02/07/2026;
+- Reach 1, Ch. 0–1.9, start 14/09/2026;
+- other visible earthwork and clearance activities.
+
+Demonstrate:
+
+- each bar begins under the correct actual date;
+- July activities do not appear in June;
+- September activities begin at the correct point in September;
+- bar width matches the displayed finish date;
+- duration is visible adjacent to the finish date;
+- tooltip shows exact start, finish and duration;
+- refresh preserves alignment.
+
+Final requirement
+
+Do not mark this task complete merely because duration text is visible.
+
+It is complete only when:
+
+1. month headers, grid and bars use one true calendar scale;
+2. every bar starts at its exact stored start date;
+3. every bar ends at its exact stored finish date;
+4. one-day activities remain visible;
+5. duration is correctly labelled and displayed;
+6. drag/resize uses the same calendar conversion;
+7. no existing programme, arrangement or demand calculation changes.
