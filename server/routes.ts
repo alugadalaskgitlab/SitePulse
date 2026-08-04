@@ -12277,6 +12277,25 @@ export async function registerRoutes(
 
         // Instruction 023: earthwork bulk detection from BOM row flag
         const isEarthworkBulkRequirement = !!(matRow as any).isEarthworkBulkRequirement;
+        // Instruction 028A: category-generic arrangement marker stamped by the engine
+        // (bituminous rows whose source items carry EFFECTIVE bituminous arrangements),
+        // OR any non-cancelled bituminous arrangement on a source item — proposed
+        // (draft/submitted/returned) arrangements must surface context in Procurement
+        // even though they have no demand effect yet.
+        const isBituminousArrangedRow = (matRow as any).arrangementWorkCategory === "bituminous"
+          || (!(matRow as any).isEarthworkBulkRequirement && allEarthworkArrangements.some(a => {
+            if (a.status === "cancelled" || a.status === "rejected") return false;
+            if ((a as any).workCategory !== "bituminous") return false;
+            if (a.boqItemId != null && distinctBoqItemIds.includes(a.boqItemId)) return true;
+            const allocs = a.boqItemAllocations as Array<{ boqItemId: number }> | null;
+            return Array.isArray(allocs) && allocs.some(al => distinctBoqItemIds.includes(al.boqItemId));
+          }));
+        const hasArrangementContext = isEarthworkBulkRequirement || isBituminousArrangedRow;
+        // 028A §3/§7: company-retained fraction from engine's split — forwarded, never recalculated.
+        const rowArrHlcQty = (matRow as any).arrangementHlcQty as number | undefined;
+        const arrangementCompanyFraction = isBituminousArrangedRow && rowArrHlcQty != null && matRow.totalQty > 0
+          ? Math.max(0, Math.min(1, rowArrHlcQty / matRow.totalQty))
+          : undefined;
 
         // Cut-to-fill by contract: any source BOQ item whose description ties the
         // earthwork to roadway excavation (never borrow) → UI pre-selects the cut source.
@@ -12308,6 +12327,7 @@ export async function registerRoutes(
             resolutionReason,  // Instruction 020 §3: drives procurementStatus in planningEngine
             isEarthworkBulkRequirement, // Instruction 023
             requiresClassification: !!(matRow as any).requiresClassification, // Instruction 024
+            ...(arrangementCompanyFraction != null ? { arrangementCompanyFraction } : {}), // 028A §3
           },
         );
 
@@ -12316,7 +12336,7 @@ export async function registerRoutes(
         // (e.g. Embankment Reach 1 + Reach 2 + Shoulder → "Earth / Borrow Soil") also
         // show their arrangements.
         let earthworkArrangementSummaries: import("@shared/planningEngine").EarthworkArrangementSummary[] | undefined;
-        if (isEarthworkBulkRequirement && distinctBoqItemIds.length > 0) {
+        if (hasArrangementContext && distinctBoqItemIds.length > 0) {
           const rawArrs = allEarthworkArrangements.filter(a => {
             if (a.status === "cancelled") return false;
             // Single-BOQ arrangement
@@ -12365,7 +12385,7 @@ export async function registerRoutes(
 
         // Instruction 026 §15: timing source — bar-level programme vs legacy BOQ-level.
         let arrangementTimingSource: "bar_level" | "boq_level_legacy" | undefined;
-        if (isEarthworkBulkRequirement && earthworkArrangementSummaries?.length) {
+        if (hasArrangementContext && earthworkArrangementSummaries?.length) {
           const activeArrs = earthworkArrangementSummaries.filter(a =>
             ["approved", "mobilisation_pending", "in_progress", "on_hold"].includes(String(a.status)));
           if (activeArrs.length > 0) {
@@ -12408,6 +12428,26 @@ export async function registerRoutes(
             } : {}),
             // Instruction 026 §15: whether exclusion timing follows the programme bars
             ...(arrangementTimingSource ? { arrangementTimingSource } : {}),
+          } : {}),
+          // Instruction 028A §14: category-generic arrangement fields. Earthwork rows keep
+          // every legacy field above untouched; bituminous rows get the same context under
+          // generic names so Procurement can present execution effects without guessing.
+          ...(hasArrangementContext ? {
+            workCategory: isBituminousArrangedRow ? "bituminous" as const : "earthwork" as const,
+            executionArrangements: earthworkArrangementSummaries ?? [],
+            arrangementSourceBoqItemIds: distinctBoqItemIds,
+            ...(arrangementTimingSource ? { arrangementTimingSource } : {}),
+            ...((matRow as any).arrangementOutsourcedQty != null ? {
+              arrangementAgencyQty: (matRow as any).arrangementOutsourcedQty,
+              arrangementCompanyQty: (matRow as any).arrangementHlcQty,
+              // legacy aliases retained for existing consumers
+              arrangementOutsourcedQty: (matRow as any).arrangementOutsourcedQty,
+              arrangementHlcQty: (matRow as any).arrangementHlcQty,
+            } : {}),
+            // Row-scoped mapping warnings (project-level list stays on the response root)
+            rowMappingWarnings: ((demand as any).mappingWarnings ?? []).filter(
+              (w: any) => distinctBoqItemIds.includes(w.boqItemId),
+            ),
           } : {}),
           ...(shortageRow.requiresClassification && !isEarthworkBulkRequirement && distinctBoqItemIds.length > 0 ? {
             // Classification-required rows are gravel/moorum (isEarthworkBulkRequirement = false),
@@ -12577,15 +12617,13 @@ export async function registerRoutes(
       if (workCategory !== "bituminous" && bituminousItemType != null) {
         return res.status(400).json({ error: "INVALID_BITUMINOUS_ITEM_TYPE", message: "bituminousItemType applies only to bituminous arrangements." });
       }
-      // Shared-responsibility split totals must reach 100% (028 §30)
-      const sharedSplits = body.sharedComponentSplits as Record<string, number> | undefined;
+      // 028A §13 (Part D safe fallback): Shared responsibility is not yet carried through
+      // demand proration, so NEW Shared components are blocked outright — a stored split
+      // would silently behave as 100% company-retained. Existing stored records are preserved.
       if (body.components && typeof body.components === "object") {
         const sharedKeys = Object.entries(body.components as Record<string, string>).filter(([, v]) => v === "shared").map(([k]) => k);
-        for (const k of sharedKeys) {
-          const pct = sharedSplits?.[k];
-          if (!(typeof pct === "number" && pct > 0 && pct <= 100)) {
-            return res.status(400).json({ error: "SHARED_SPLIT_REQUIRED", message: `Component '${k}' is marked Shared — an explicit company percentage (1–100) is required. Never assumed 50:50.` });
-          }
+        if (sharedKeys.length > 0) {
+          return res.status(400).json({ error: "SHARED_NOT_AVAILABLE", message: `Shared responsibility percentage entry is not yet available (component${sharedKeys.length > 1 ? "s" : ""} '${sharedKeys.join("', '")}'). Choose Company, Agency or Client for now.` });
         }
       }
 
@@ -12861,15 +12899,15 @@ export async function registerRoutes(
           return res.status(400).json({ error: "INVALID_BITUMINOUS_ITEM_TYPE", message: "Invalid bituminous item type for this arrangement." });
         }
       }
-      // Shared-responsibility split totals (028 §30) — same rule as POST
+      // 028A §13 (Part D safe fallback) — same rule as POST, but NEVER blocks a record
+      // that already stored a Shared component (preserved as-is; engine retains company-side).
       if (patch.components && typeof patch.components === "object") {
-        const sharedSplitsPatch = (body.sharedComponentSplits ?? (current as any).sharedComponentSplits) as Record<string, number> | undefined;
-        const sharedKeysPatch = Object.entries(patch.components as Record<string, string>).filter(([, v]) => v === "shared").map(([k]) => k);
-        for (const k of sharedKeysPatch) {
-          const pct = sharedSplitsPatch?.[k];
-          if (!(typeof pct === "number" && pct > 0 && pct <= 100)) {
-            return res.status(400).json({ error: "SHARED_SPLIT_REQUIRED", message: `Component '${k}' is marked Shared — an explicit company percentage (1–100) is required. Never assumed 50:50.` });
-          }
+        const currentComponents = ((current as any).components ?? {}) as Record<string, string>;
+        const newSharedKeys = Object.entries(patch.components as Record<string, string>)
+          .filter(([k, v]) => v === "shared" && currentComponents[k] !== "shared")
+          .map(([k]) => k);
+        if (newSharedKeys.length > 0) {
+          return res.status(400).json({ error: "SHARED_NOT_AVAILABLE", message: `Shared responsibility percentage entry is not yet available (component${newSharedKeys.length > 1 ? "s" : ""} '${newSharedKeys.join("', '")}'). Choose Company, Agency or Client for now.` });
         }
       }
 

@@ -19,8 +19,16 @@ description: How the category registry, bituminous classifier, demand exclusion,
 - Manual override `bulkMaterialClassification` (bituminous / not_bituminous / review_required, PATCH bulk-classification endpoint + UI in BarArrangementPanel) always beats keyword detection.
 
 ## API guards that must stay symmetric
-- POST and PATCH on arrangements both enforce: type-valid-for-category, component-key vocabulary, shared-split percentage (SHARED_SPLIT_REQUIRED — never assume 50:50), and workCategory immutability on PATCH.
+- POST and PATCH on arrangements both enforce: type-valid-for-category, component-key vocabulary, and workCategory immutability on PATCH.
+- 028A: NEW `shared` components are rejected outright (`SHARED_NOT_AVAILABLE`) because the engine retains shared as 100% company — a stored split would lie. PATCH only blocks newly-introduced shared keys; records that already stored shared are preserved. Re-enable only alongside real demand proration.
 - POST enforces CATEGORY_ITEM_MISMATCH: bituminous arrangements only on items resolving to bituminous; earthwork arrangements rejected on bituminous items.
+
+## 028A — procurement carry-through (shortage-check)
+- Engine stamps `arrangementWorkCategory` on arranged material rows; route forwards the split as generic fields (`workCategory`, `executionArrangements`, `arrangementAgencyQty/CompanyQty`, `rowMappingWarnings`) — earthwork legacy field names kept for back-compat.
+- `computeShortageRow` accepts `arrangementCompanyFraction` (= arrangementHlcQty/totalQty, bituminous rows only): scales horizon demand/actionable to the company share; `totalDemand` stays physical. So PI/IRN dialog quantities are correct without UI math changes.
+- **Known limitation:** the fraction is row-uniform — mixed-source rows with different per-item arrangements/bar timing get correct totals but approximate month phasing. True fix needs per-month company demand from the engine.
+- Proposed (draft/submitted/returned) bituminous arrangements have no demand effect but MUST still surface row context — route ORs the engine marker with a direct non-cancelled-arrangement check, because arrangementEffects only exist for effective statuses.
+- Component key for binder is `binder_bitumen` (not `binder`); 10/13.2mm aggregates map to `fine_aggregates` in the registry, so a `coarse_aggregates` responsibility can legitimately warn "no matching resource".
 
 ## Pre-existing bug fixed en route
 `getArrangementProgress` filtered `dprs.status`, a column that never existed — dprs uses `is_superseded`/`is_deleted`/`is_cancelled`. Any future DPR aggregate SQL must use those flags.

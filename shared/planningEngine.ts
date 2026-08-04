@@ -1837,6 +1837,8 @@ export function calculateBomDemand(
       const isBituminousRow = !isEarthworkRow
         && row.breakdown.some(bd => (bd as any).boqItemId != null && bituminousEffItems.has((bd as any).boqItemId));
       if (!isEarthworkRow && !isBituminousRow) continue;
+      // 028A §14: category-generic marker so serialisers never infer from material names
+      (row as any).arrangementWorkCategory = isBituminousRow ? "bituminous" : "earthwork";
       let outsourced = 0;
       const agencies: string[] = [];
       for (const bd of row.breakdown) {
@@ -2967,6 +2969,10 @@ export interface ShortageRowResult {
   earthworkArrangements?: EarthworkArrangementSummary[];
   /** Instruction 023: source BOQ item ID for single-source earthwork rows. */
   earthworkBoqItemId?: number | null;
+  /** 028A §14: quantity the COMPANY must actually action after arrangement effects (equals actionableShortfall when scaling applied). */
+  companyActionableQty?: number;
+  /** 028A §14: company-retained fraction that was applied to horizon demand (absent = 1 / no scaling). */
+  arrangementCompanyFraction?: number;
 }
 
 /**
@@ -3008,6 +3014,15 @@ export interface ShortageRowOpts {
   earthworkBoqItemId?: number | null;
   /** Instruction 023: summary of active arrangements already saved for this item (injected by route). */
   earthworkArrangements?: EarthworkArrangementSummary[];
+  /**
+   * Instruction 028A §3/§7: company-retained fraction of this row's demand under
+   * approved execution arrangements (arrangementHlcQty / totalQty). When provided
+   * (< 1), horizon demand and actionable shortfall are scaled to the COMPANY share
+   * so Procurement actions never over-order agency-supplied quantities. Physical
+   * totalDemand stays unscaled. Only passed for bituminous rows — earthwork rows
+   * keep their existing behaviour byte-identical.
+   */
+  arrangementCompanyFraction?: number;
 }
 
 /**
@@ -3034,6 +3049,22 @@ export function computeShortageRow(
   stockElsewhere: number = 0,
   opts?: ShortageRowOpts,
 ): ShortageRowResult {
+  // ── Instruction 028A §3/§7: company-share scaling for arrangement-covered rows ──
+  // The engine already computed the outsourced/company split; here we apply the
+  // company fraction to the TIME-PHASED demand so coverage, shortfall and PI
+  // quantities reflect only what the company must actually procure. Physical
+  // programme quantity (totalDemand) stays unscaled for display.
+  const companyFraction = opts?.arrangementCompanyFraction;
+  const physicalTotalQty = matRow.totalQty;
+  if (companyFraction != null && companyFraction >= 0 && companyFraction < 0.9999) {
+    const scaledMonthly: Record<number, number> = {};
+    for (const [m, q] of Object.entries(matRow.monthlyQty)) scaledMonthly[Number(m)] = (q ?? 0) * companyFraction;
+    matRow = {
+      ...matRow,
+      totalQty: matRow.totalQty * companyFraction,
+      monthlyQty: scaledMonthly,
+    };
+  }
   const months = Object.keys(matRow.monthlyQty).map(Number).sort((a, b) => a - b);
   let runningAvailable = currentStock + pendingProcurement;
   const monthlyBreakdown: ShortageMonthlyBreakdown[] = [];
@@ -3167,8 +3198,12 @@ export function computeShortageRow(
   return {
     materialName: matRow.materialName,
     uom: matRow.uom,
-    totalDemand: matRow.totalQty,
+    totalDemand: physicalTotalQty,
     demandUpToSelectedDate,
+    ...(companyFraction != null && companyFraction < 0.9999 ? {
+      companyActionableQty: actionableShortfall,
+      arrangementCompanyFraction: Math.round(companyFraction * 10000) / 10000,
+    } : {}),
     futureRequirement,
     monthlyDemand: matRow.monthlyQty,
     currentStock,

@@ -1,0 +1,515 @@
+Instruction 028A — Carry Bituminous Arrangement Effects Through to Procurement
+
+Purpose
+
+Close the remaining end-to-end gaps in Batch 028.
+
+The production demand engine correctly applies bituminous execution-arrangement responsibility. However, the `/shortage-check` API and Procurement UI must also receive and display those corrected results.
+
+This batch must:
+
+1. generalise the shortage-check arrangement summary beyond earthwork;
+2. ensure Procurement uses the already-correct arrangement-aware demand;
+3. add the missing bituminous execution-arrangement status/presentation;
+4. display demand-mapping warnings visibly;
+5. either complete Shared Responsibility percentage support end-to-end or temporarily remove/disable the unsupported UI option;
+6. preserve all working earthwork and bituminous demand calculations.
+
+This is a focused correction.
+
+DO NOT TOUCH OR REGRESS
+
+Do not modify:
+
+- calculateBomDemand’s verified component-exclusion logic;
+- the Batch 028 category registry;
+- bituminous classifier;
+- earthwork classifier;
+- BC/PCC/RCC disambiguation;
+- arrangement schema migration;
+- arrangement approval/revision workflow;
+- bar-level phasing;
+- overlap caps;
+- earthwork demand behaviour;
+- GSB/WMM;
+- rate analysis/JMF/mix-design calculations;
+- UOM conversion;
+- PI/IRN/GRN;
+- Stores stock;
+- Work Programme calendar axis;
+- Auto Sequence;
+- LHS/RHS;
+- baseline/reforecasting;
+- DPR;
+- Cancel GRN.
+
+PART A — GENERALISE SHORTAGE-CHECK SERIALISATION
+
+1. Find the authoritative `/shortage-check` response builder
+
+Trace the complete path from:
+
+- calculateBomDemand result;
+- arrangement effects;
+- shortage-check route;
+- response DTO;
+- Work Demand/Procurement query;
+- Procurement row rendering.
+
+Do not create another calculation.
+
+The route must forward the values already produced by the real arrangement-aware demand engine.
+
+2. Remove earthwork-only response gating
+
+The shortage-check route currently forwards fields such as:
+
+- arrangementOutsourcedQty;
+- arrangementHlcQty;
+- arrangement status/summary;
+
+only inside an earthwork-specific condition such as:
+
+- isEarthworkBulkRequirement; or
+- equivalent earthwork-only flag.
+
+Generalise this condition to all supported Execution Arrangement categories:
+
+- earthwork;
+- bituminous.
+
+Use the resolved arrangement category from the shared category framework.
+
+Do not classify DBM/BC/Prime/Tack as earthwork merely to pass this gate.
+
+3. Preserve corrected demand quantities
+
+For an approved bituminous arrangement, the API response must expose the already-filtered Company demand.
+
+Example:
+
+DBM:
+- total programmed: 2,000 MT;
+- Agency complete supply and lay: 2,000 MT.
+
+Expected response:
+
+- physical/programmed quantity remains 2,000 MT;
+- Company aggregate demand for that allocation = 0;
+- Company binder demand = 0, unless Company responsibility;
+- Company HMP production = 0;
+- Company relevant equipment/labour/diesel = 0;
+- arrangement agency quantity = 2,000 MT;
+- Company actionable quantity reflects the effective responsibility.
+
+Do not recalculate these values separately in the route.
+
+4. Combined material rows
+
+Where a Procurement row combines several contributing BOQ/programme sources:
+
+- apply arrangement effects source by source;
+- aggregate the corrected results;
+- do not apply one arrangement across unrelated sources;
+- preserve timing/bar allocation.
+
+PART B — PROCUREMENT STATUS AND PRESENTATION
+
+5. Add bituminous arrangement-aware status
+
+Add or reuse a generic execution-arrangement status for bituminous rows.
+
+Do not create earthwork terminology for bituminous work.
+
+Supported presentation should include:
+
+- Execution Arrangement Required
+- Outsourcing Proposed
+- Outsourcing Approved
+- Partly Outsourced
+- Company In-house
+- Client Supplied
+- On Hold
+
+Where an internal procurement-status enum requires a specific value, add an appropriate generic value such as:
+
+- execution_arrangement_required
+
+or, if the current architecture requires category-specific values:
+
+- bituminous_arrangement_required
+
+Prefer a generic execution-arrangement status if it will not break existing consumers.
+
+Do not change ordinary material procurement statuses.
+
+6. Render concise bituminous arrangement summary
+
+For a fully outsourced DBM/BC row, show:
+
+Execution: Outsourcing Approved
+Agency quantity: 2,000 MT
+Company actionable materials/resources: Nil
+View in Work Programme
+
+For Company-supplied binder:
+
+Execution: Partly Outsourced
+Company responsibility: Binder
+Agency responsibility: Aggregates, production, transport and laying
+Company actionable demand: Binder only
+View in Work Programme
+
+For Prime/Tack:
+
+Execution: Outsourcing Approved or Partly Outsourced
+Execution quantity: SQM
+Company emulsion responsibility shown separately
+View in Work Programme
+
+Do not restore the full arrangement card in Procurement.
+
+7. Use corrected demand for Procurement actions
+
+PI and shortage actions must use the corrected Company responsibility.
+
+Examples:
+
+Agency complete supply and lay:
+- no Company aggregate/binder PI for the allocated quantity.
+
+Company supplies binder:
+- binder PI remains;
+- Agency-owned materials/resources do not create Company PI.
+
+Agency supplies finished mix:
+- no duplicate raw-material procurement for that quantity.
+
+Do not merely change the displayed label while leaving the action quantity unchanged.
+
+PART C — VISIBLE MAPPING WARNINGS
+
+8. Display mappingWarnings
+
+The shortage-check API already exposes mapping warnings.
+
+Show them visibly in Work Demand/Procurement.
+
+Recommended presentation:
+
+- warning icon on the affected row;
+- expandable warning text;
+- optional project-level warning summary.
+
+Examples:
+
+“Execution arrangement assigns Paver to Agency, but the BOQ demand recipe contains no mapped Paver resource.”
+
+“Roller responsibility is recorded, but no roller resource exists in the loaded rate analysis.”
+
+9. Do not claim exclusions that did not occur
+
+If a mapped resource does not exist in the BOQ/rate-analysis recipe:
+
+- retain the arrangement responsibility;
+- show the warning;
+- do not invent resource demand;
+- do not say “Paver excluded” if there was no paver demand to exclude.
+
+The Procurement summary must distinguish:
+
+- resource actually excluded;
+- responsibility recorded but recipe resource missing.
+
+10. Warning behaviour
+
+Warnings must not:
+
+- block saving the arrangement;
+- alter physical work quantity;
+- silently add resources.
+
+They should prompt review of:
+
+- rate analysis;
+- resource mapping;
+- productivity configuration.
+
+PART D — SHARED RESPONSIBILITY
+
+11. Confirm the current end-to-end state
+
+Shared Responsibility is currently validated server-side, but the UI may not provide:
+
+- responsibility percentage entry;
+- storage of the split;
+- editing of the split;
+- demand application of that percentage.
+
+Do not leave Shared as a selectable dead-end option.
+
+12. Preferred completion
+
+Complete Shared Responsibility end-to-end using the existing component model.
+
+For each Shared component, capture:
+
+- Company percentage;
+- Agency/Main Contractor/Client percentage;
+- total = 100%.
+
+Store the split in a stable field/JSON structure.
+
+Examples:
+
+Transport:
+- Company 60%;
+- Agency 40%.
+
+Binder:
+- Main Contractor 100%.
+
+Validate on both POST and PATCH.
+
+Demand filtering must apply the percentage proportionately to:
+
+- material;
+- equipment;
+- labour;
+- diesel;
+- production resources.
+
+Do not default to 50:50.
+
+13. Safe fallback if full shared support is too large
+
+If Shared percentage calculation cannot be completed safely in this correction:
+
+- remove or disable Shared from the UI;
+- preserve any existing stored Shared records;
+- show:
+  “Shared responsibility percentage entry is not yet available.”
+- do not allow new incomplete Shared arrangements.
+
+Do not claim Batch 028 complete with a selectable but unusable Shared option.
+
+PART E — API AND UI CONSISTENCY
+
+14. Response schema
+
+Ensure the shortage-check response type includes category-generic fields such as:
+
+- workCategory;
+- executionState;
+- arrangementTotalQty;
+- arrangementAgencyQty;
+- arrangementCompanyQty;
+- arrangementUnallocatedQty;
+- companyActionableQty;
+- timingSource;
+- responsibilitySummary;
+- mappingWarnings.
+
+Do not require the client to infer the category from material names.
+
+15. Backward compatibility
+
+Existing earthwork Procurement rows must continue to display and calculate exactly as before.
+
+Existing API consumers expecting earthwork fields must not break.
+
+Where practical:
+
+- retain old field aliases temporarily;
+- add generic fields alongside them;
+- migrate the client to generic fields.
+
+Do not maintain two independent calculations.
+
+16. Cache invalidation
+
+After approving, cancelling or revising a bituminous arrangement, immediately refresh:
+
+- shortage-check;
+- Procurement;
+- Materials;
+- Equipment;
+- Labour;
+- Diesel;
+- Work Programme;
+- Execution Arrangements register.
+
+No five-minute stale result and no manual browser refresh.
+
+PART F — REAL END-TO-END TESTS
+
+17. Test through the actual shortage-check route
+
+Do not test only calculateBomDemand.
+
+Add tests that call the real API/service path used by Work Demand/Procurement.
+
+A. Complete DBM outsourcing
+
+DBM:
+- 2,000 MT;
+- approved complete supply and lay.
+
+Expected shortage-check response:
+
+- physical DBM = 2,000 MT;
+- Agency quantity = 2,000 MT;
+- Company aggregate/binder demand = 0;
+- Company HMP/equipment/labour/diesel = 0 where resources exist;
+- execution state = Outsourcing Approved;
+- Procurement actionable quantity = Nil/0.
+
+B. Company supplies binder
+
+Expected:
+
+- binder demand retained;
+- aggregate/production/transport/paving demand excluded;
+- Procurement action offers binder only.
+
+C. Finished Mix Supply Only
+
+Expected:
+
+- raw ingredients and HMP production excluded;
+- Company downstream resources retained;
+- no raw-material and finished-mix duplication.
+
+D. Prime Coat
+
+Company supplies emulsion.
+Agency supplies sprayer, crew and fuel.
+
+Expected:
+
+- SQM execution quantity remains;
+- emulsion procurement remains;
+- sprayer/labour/fuel excluded;
+- Procurement summary is arrangement-aware.
+
+E. Draft arrangement
+
+Expected:
+
+- no demand effect;
+- Outsourcing Proposed may be visible;
+- Procurement quantities remain based on current effective plan.
+
+F. Cancelled arrangement
+
+Expected:
+
+- Company demand returns immediately;
+- status becomes Execution Arrangement Required where no replacement exists.
+
+18. Mapping-warning test through UI response
+
+Create an arrangement assigning Paver to Agency where the recipe has no paver resource.
+
+Expected:
+
+- shortage-check returns mapping warning;
+- UI renders warning;
+- no invented paver demand;
+- no false excluded-paver statement.
+
+19. Shared-responsibility test
+
+If Shared is completed:
+
+Transport:
+- Company 60%;
+- Agency 40%.
+
+Expected:
+
+- Company transport equipment/labour/diesel demand = 60%;
+- Agency portion excluded;
+- percentages preserved after save/refresh/revision.
+
+If Shared is disabled:
+
+Expected:
+
+- user cannot submit a new Shared arrangement without percentages;
+- clear message shown.
+
+20. Earthwork regression
+
+Call shortage-check for an approved earthwork arrangement.
+
+Expected:
+
+- current earthwork summary unchanged;
+- current exclusions unchanged;
+- no new bituminous status affects earthwork.
+
+21. Non-arrangement regression
+
+Confirm ordinary rows remain unchanged:
+
+- GSB;
+- WMM;
+- aggregates without execution arrangement;
+- cement;
+- steel;
+- ordinary consumables.
+
+PART G — LIVE PROOF
+
+22. Demonstrate in the live/dev project
+
+Use actual bituminous programme bars.
+
+Test:
+
+Prime Coat:
+- Company supplies emulsion;
+- Agency sprays.
+
+DBM:
+- Company supplies binder;
+- Agency supplies aggregates, produces, transports and lays.
+
+BC:
+- Agency complete supply and lay.
+
+For each, demonstrate:
+
+- arrangement approved;
+- Work Programme badge correct;
+- Procurement row changes immediately;
+- corrected Company material quantity shown;
+- correct PI action;
+- mapping warning shown where recipe resource is absent;
+- no full arrangement card duplicated;
+- View in Work Programme link works;
+- refresh preserves the result.
+
+Final requirement
+
+Do not mark this correction complete merely because:
+
+- calculateBomDemand tests pass;
+- the arrangement form saves;
+- the Gantt badge appears.
+
+It is complete only when:
+
+1. the corrected bituminous arrangement demand reaches `/shortage-check`;
+2. Work Demand/Procurement displays the corrected Company quantity;
+3. Procurement actions use the corrected quantity;
+4. bituminous execution state/status renders;
+5. mappingWarnings are visible;
+6. Shared responsibility is either fully functional or safely disabled;
+7. real route-level tests prove the complete engine-to-API-to-UI path;
+8. earthwork and ordinary procurement remain unchanged.
+
+After this passes
+
+Freeze Batch 028 and only then proceed to Instruction 029.

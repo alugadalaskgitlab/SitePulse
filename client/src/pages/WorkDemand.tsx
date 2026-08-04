@@ -1244,6 +1244,20 @@ interface ShortageRow {
   earthworkSourceBoqItemIds?: number[];
   /** Contract mandates fill from roadway excavation — cut-to-fill by BOQ wording. */
   contractCutToFill?: boolean;
+  // ── Instruction 028A: category-generic execution-arrangement fields ───────
+  workCategory?: "earthwork" | "bituminous";
+  executionArrangements?: EarthworkArrangementSummary[];
+  arrangementSourceBoqItemIds?: number[];
+  arrangementTimingSource?: "bar_level" | "boq_level_legacy";
+  arrangementAgencyQty?: number;
+  arrangementCompanyQty?: number;
+  arrangementOutsourcedQty?: number;
+  arrangementHlcQty?: number;
+  /** Company-side actionable quantity after arrangement scaling (equals actionableShortfall when present). */
+  companyActionableQty?: number;
+  arrangementCompanyFraction?: number;
+  /** Responsibility components with no matching recipe resource (nothing was excluded for them). */
+  rowMappingWarnings?: { boqItemId: number; componentKey: string; componentLabel: string; responsibility: string; message: string }[];
 }
 
 interface ShortageData {
@@ -1259,6 +1273,8 @@ interface ShortageData {
   resolvedProgrammeMonthIndex?: number;
   /** Instruction 019B §11 */
   programmeRelation?: "before_start" | "within_programme" | "after_end";
+  /** 028A Part C: project-level component mapping warnings (never blocking). */
+  mappingWarnings?: { boqItemId: number; itemCode?: string | null; componentKey: string; componentLabel: string; responsibility: string; message: string }[];
 }
 
 // ── Fresh client-request-ID ─────────────────────────────────────────────────
@@ -1620,6 +1636,37 @@ function ResolveMappingDialog({
 }
 
 type DialogStep = "closed" | "confirm_dest" | "awaiting_review" | "authorize_alloc";
+
+/** 028A Part B: concise execution summary line for bituminous procurement rows.
+ * No full arrangement card — state, agency qty, company actionable, WP link. */
+function BituminousArrangementSummaryLine({ row, projectId }: { row: ShortageRow; projectId: number }) {
+  const arrs = row.executionArrangements ?? [];
+  const EFFECTIVE = ["approved", "mobilisation_pending", "in_progress", "on_hold"];
+  const effective = arrs.filter(a => EFFECTIVE.includes(String(a.status)));
+  const proposed = arrs.filter(a => ["draft", "submitted", "returned", "pending_approval"].includes(String(a.status)));
+  if (effective.length === 0 && proposed.length === 0) return null;
+  const agencies = Array.from(new Set(effective.map(a => a.agencyName).filter(Boolean))) as string[];
+  const stateLabel = effective.length > 0
+    ? (row.arrangementAgencyQty != null && row.arrangementCompanyQty != null && row.arrangementCompanyQty > 0.001
+        ? "Partly Outsourced" : row.arrangementAgencyQty != null ? "Outsourcing Approved" : "Arrangement Active")
+    : "Outsourcing Proposed";
+  return (
+    <div className="mt-0.5 flex items-center gap-1.5 flex-wrap text-[10px]" data-testid={`bituminous-summary-${row.materialName}`}>
+      <span className={`font-semibold rounded px-1 py-0.5 border ${effective.length > 0 ? "text-violet-700 bg-violet-50 border-violet-300" : "text-slate-500 bg-slate-50 border-slate-300"}`}>
+        Execution: {stateLabel}{agencies.length ? ` · ${agencies.join(", ")}` : ""}
+      </span>
+      {row.arrangementAgencyQty != null && row.arrangementAgencyQty > 0 && (
+        <span className="text-slate-500">Agency-covered: <b className="font-mono">{fmtQty(row.arrangementAgencyQty, 1)}</b> {row.uom}</span>
+      )}
+      <span className="text-slate-500">Company actionable: <b className="font-mono">{fmtQty(row.companyActionableQty ?? row.actionableShortfall, 1)}</b> {row.uom}</span>
+      <a
+        href={`/work-program/${projectId}/programme`}
+        className="text-teal-700 underline decoration-dotted hover:text-teal-900"
+        data-testid={`wp-link-${row.materialName}`}
+      >View in Work Programme</a>
+    </div>
+  );
+}
 
 function SuggestionBadge({
   row,
@@ -2305,6 +2352,23 @@ function ProcurementTable({
         onChange={onHorizonChange}
       />
 
+      {/* 028A Part C: project-level component mapping warnings (informational, never blocking) */}
+      {(data.mappingWarnings?.length ?? 0) > 0 && (
+        <details className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800" data-testid="mapping-warnings-banner">
+          <summary className="cursor-pointer font-semibold">
+            ⚠ {data.mappingWarnings!.length} arrangement responsibility {data.mappingWarnings!.length === 1 ? "component has" : "components have"} no matching recipe resource
+          </summary>
+          <ul className="mt-2 space-y-1 text-[13px]">
+            {data.mappingWarnings!.map((w, i) => (
+              <li key={i}>
+                <b>{w.componentLabel}</b> ({w.responsibility}) — {w.message}
+                <span className="text-amber-600"> Responsibility is recorded, but nothing was excluded because the item's recipe has no matching resource. Physical quantities are unchanged.</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       {/* Info note */}
       <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
         <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
@@ -2396,7 +2460,18 @@ function ProcurementTable({
                           title={`Programmed: ${fmtQty(row.programmedTotalDemand, 1)} · Unprogrammed: ${fmtQty(row.unprogrammedDemand, 1)} ${row.uom}`}
                         >(partly programmed)</span>
                       )}
+                      {(row.rowMappingWarnings?.length ?? 0) > 0 && (
+                        <span
+                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded px-1 py-0.5 cursor-help"
+                          title={row.rowMappingWarnings!.map(w => w.message).join("\n")}
+                          data-testid={`mapping-warning-${row.materialName}`}
+                        >⚠ Responsibility recorded — no matching recipe resource</span>
+                      )}
                     </div>
+                    {/* 028A Part B: concise execution-arrangement summary for bituminous rows */}
+                    {row.workCategory === "bituminous" && (row.executionArrangements?.length ?? 0) > 0 && (
+                      <BituminousArrangementSummaryLine row={row} projectId={projectId} />
+                    )}
                   </td>
                   <td className="px-2 py-2 text-right text-muted-foreground">{row.uom}</td>
                   <td className="px-2 py-2 text-right font-mono font-semibold text-teal-700">
