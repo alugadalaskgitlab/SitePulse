@@ -52,7 +52,7 @@ import {
 import { BarArrangementPanel } from "@/components/BarArrangementPanel";
 import { ExecutionStateBadge, useBarExecutionState } from "@/components/ExecutionStateBadge";
 import { SEQUENCE_RULES, validateStretches, type RoadStretchInput } from "@shared/programmeSequencer";
-import { BAR_SIDES, BAR_SIDE_LABELS, barSideLabel, geometryApplicability } from "@shared/barSide";
+import { BAR_SIDES, BAR_SIDE_LABELS, barSideLabel, geometryApplicability, areSidesDistinctCorridors } from "@shared/barSide";
 import { isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
 import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { shortItemName } from "@/lib/itemName";
@@ -339,18 +339,30 @@ function StretchRow({
     );
   }, [effectiveQty, (item as any).canonicalUnit ?? item.unit, equipment, workingHrs, workingDays, productivitySettings, itemType]);
 
-  // ── Chainage overlap detection ────────────────────────────────────────────
-  const hasChainageOverlap = useMemo(() => {
-    if (!validCh) return false;
-    return itemBars.some(b => {
-      if (b.id === bar.id) return false;
+  // ── Chainage overlap detection (side-aware — mirrors validateStretches) ────
+  // "overlap": genuine conflict (same side / full_width / both_sides sharing chainage)
+  // "confirm_side": chainage shared but at least one side is unspecified — the
+  //   check can't decide; ask the user to confirm side instead of crying overlap.
+  // null: no conflict (incl. distinct corridors like LHS vs RHS — normal planning).
+  const chainageOverlapKind = useMemo((): "overlap" | "confirm_side" | null => {
+    if (!validCh) return null;
+    // Live edited side while in edit mode (empty = unspecified); persisted side otherwise.
+    const mySide = isEditing ? (sideVal || null) : ((bar as any).side ?? null);
+    let needsSideConfirm = false;
+    for (const b of itemBars) {
+      if (b.id === bar.id) continue;
       const bcf = b.chainageFrom ?? 0;
       const bct = b.chainageTo ?? 0;
-      if (bct <= bcf) return false;
+      if (bct <= bcf) continue;
       // Two intervals [cfNum, ctNum) and [bcf, bct) overlap if bcf < ctNum && bct > cfNum
-      return bcf < ctNum && bct > cfNum;
-    });
-  }, [itemBars, bar.id, validCh, cfNum, ctNum]);
+      if (!(bcf < ctNum && bct > cfNum)) continue;
+      const otherSide = (b as any).side ?? null;
+      if (areSidesDistinctCorridors(mySide, otherSide)) continue; // e.g. LHS vs RHS — not an overlap
+      if (mySide == null || otherSide == null) { needsSideConfirm = true; continue; }
+      return "overlap";
+    }
+    return needsSideConfirm ? "confirm_side" : null;
+  }, [itemBars, bar.id, bar, validCh, cfNum, ctNum, isEditing, sideVal]);
 
   // ── Duration preservation (Rule 4) ────────────────────────────────────────
   const autoDurationMonths = (autoDuration?.months ?? 0) > 0 ? autoDuration!.months : null;
@@ -555,9 +567,13 @@ function StretchRow({
   // non-critical ones collapse into one compact indicator when several apply.
   const readWarnings = useMemo(() => {
     const w: Array<{ short: string; full: string }> = [];
-    if (hasChainageOverlap) w.push({
+    if (chainageOverlapKind === "overlap") w.push({
       short: "overlap",
-      full: "Chainage overlaps another stretch of this BOQ item — adjust from/to values",
+      full: "Chainage overlaps another stretch of this BOQ item on the same corridor — adjust from/to values or set distinct sides",
+    });
+    if (chainageOverlapKind === "confirm_side") w.push({
+      short: "confirm side",
+      full: "Shares chainage with another stretch but a side is unspecified — set the side on both stretches so overlap can be checked",
     });
     if (requiredOutput?.exceedsCapacity) w.push({
       short: "capacity",
@@ -565,7 +581,7 @@ function StretchRow({
         requiredOutput.additionalEquipmentNeeded ? ` — need +${requiredOutput.additionalEquipmentNeeded} more ${requiredOutput.bottleneckEquipmentName}` : ""}`,
     });
     return w;
-  }, [hasChainageOverlap, requiredOutput]);
+  }, [chainageOverlapKind, requiredOutput]);
 
   return (
     <div
@@ -618,13 +634,21 @@ function StretchRow({
           data-testid={`input-ct-${bar.id}`}
         />
 
-        {/* Chainage overlap warning */}
-        {hasChainageOverlap && (
+        {/* Chainage overlap warning (side-aware) */}
+        {chainageOverlapKind === "overlap" && (
           <span
             className="inline-flex items-center gap-0.5 text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded px-1 py-0.5 flex-shrink-0"
-            title="Chainage overlaps with another stretch on this item. Adjust from/to values."
+            title="Chainage overlaps another stretch of this item on the same corridor. Adjust from/to values or set distinct sides (e.g. LHS / RHS)."
           >
             <AlertTriangle className="w-2.5 h-2.5" />overlap
+          </span>
+        )}
+        {chainageOverlapKind === "confirm_side" && (
+          <span
+            className="inline-flex items-center gap-0.5 text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 flex-shrink-0"
+            title="Shares chainage with another stretch, but a side is unspecified. Set the side on both stretches so the overlap check can decide."
+          >
+            <AlertTriangle className="w-2.5 h-2.5" />confirm side
           </span>
         )}
 
@@ -3226,6 +3250,32 @@ export default function WorkProgramme() {
     return validateStretches(payload, projChFromKm, projChToKm);
   }, [seqStretches, projChFromKm, projChToKm]);
 
+  // One-sided stretch (LHS/RHS) with no opposite-side row overlapping its
+  // chainage → non-blocking hint: half the quantity will stay unallocated.
+  const seqMissingOppositeSide = useMemo(() => {
+    const rows = seqStretches.map((r, i) => ({
+      label: r.label.trim() || `Reach ${parseInt(r.priority) || i + 1}`,
+      from: parseFloat(r.from),
+      to: parseFloat(r.to),
+      side: r.side || null,
+    })).filter(r => Number.isFinite(r.from) && Number.isFinite(r.to) && r.to > r.from);
+    const opp: Record<string, string> = { lhs: "rhs", rhs: "lhs" };
+    const hints: string[] = [];
+    for (const r of rows) {
+      if (!r.side || !(r.side in opp)) continue;
+      const hasOpposite = rows.some(o =>
+        o !== r && o.side === opp[r.side!] &&
+        Math.min(o.to, r.to) - Math.max(o.from, r.from) > 0,
+      );
+      if (!hasOpposite) {
+        hints.push(
+          `${r.label} is ${r.side.toUpperCase()} only — the other half of the quantity over Km ${r.from}–${r.to} will stay unallocated (shown in the preview). Add a matching ${opp[r.side]!.toUpperCase()} stretch now or later, or choose Full Width.`,
+        );
+      }
+    }
+    return hints;
+  }, [seqStretches]);
+
   function seqBodyOpts() {
     const fronts = parseInt(seqFronts) || 0;
     // Allow stagger = 0 (concurrent fronts)
@@ -3905,6 +3955,11 @@ export default function WorkProgramme() {
                   {(seqStretchValidation as any).warnings?.length > 0 && (
                     <div className="text-[11px] text-amber-600 dark:text-amber-400 space-y-0.5" data-testid="text-stretch-warnings">
                       {(seqStretchValidation as any).warnings.map((w: string, i: number) => <p key={`w${i}`}>⚠ {w}</p>)}
+                    </div>
+                  )}
+                  {seqMissingOppositeSide.length > 0 && (
+                    <div className="text-[11px] text-sky-700 dark:text-sky-400 space-y-0.5" data-testid="text-missing-opposite-side">
+                      {seqMissingOppositeSide.map((h, i) => <p key={`ms${i}`}>ℹ {h}</p>)}
                     </div>
                   )}
                 </div>
