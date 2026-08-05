@@ -1,0 +1,19 @@
+Read through Replit's whole exchange with you. My honest take: they've landed on the same diagnosis I gave you independently — the intelligence underneath is fine, the screens are asking you to do work the app should be doing for you. That two separate assessments converged on the same read is a good sign it's actually true, not just one AI's opinion.
+
+Most of their nine points I'd endorse outright — the checklist-style DPR, "same as yesterday," core-vs-extras, the plain-language preview sentences, merging the two-button run/confirm flow, and measuring everything by tap count. All low-risk, all pure interface work, none of it threatens the validation and protection logic we spent the last several batches getting right.
+
+Two places I'd push back or sharpen before anyone builds anything.
+
+First, "side defaults to full width when hidden" needs care. For most contractors that's a safe default. For you, it isn't — you told me directly that LHS/RHS split execution is your normal way of working, not the exception. If the simplified form quietly defaults to full width and tucks side away behind an "advanced" toggle, it'll be wrong for most of your actual projects. Their own preset-button idea ("LHS first, then RHS") actually fixes this on its own — if side is chosen up front via a preset rather than typed into a row, it stops being an "advanced" field and becomes the main decision. I'd just make sure that's explicit before it's built, so nobody quietly implements "hide side, default to full width" as a separate, contradicting shortcut.
+
+Second, the "confidence rule" — let the app act automatically when it's sure, tag it "auto," let you correct it — is the right pattern for suggestions: which item, which side, which stage. It is the wrong pattern for anything we deliberately made hard to undo: deleting a bar that has DPR records against it, overriding a quantity that exceeds the BOQ, reassigning a side that conflicts with existing site records. Those guardrails exist on purpose because a wrong auto-guess there causes real damage — lost records, wrong material orders. So "auto-act with a correction tag" should apply to guesses, never to anything currently protected by an explicit confirmation. Worth stating that boundary out loud before it gets built, so it doesn't get generalized further than it should.
+
+On what to actually do, in order — I wouldn't take this as one project. I'd sequence it in three pieces, smallest and safest first:
+
+The small cleanup we already found while looking at your screenshot — the Gantt showing false "overlap" warnings on correct LHS/RHS pairs, and the risk of a stretch silently getting only half its quantity counted if someone forgets to enter the matching opposite side. That's a bounded bug fix, not a redesign, and it's actively annoying you today. I'd do that first regardless of what else happens.
+
+Then DPR/Site Entry. It's the highest-value simplification for daily use — your engineers touch it every day, most of the pieces (linking a report to a planned bar, pulling today's expected activities) already exist in the app, this is mostly about making that the default screen instead of an optional path. Lower risk than touching Work Programme's generation engine again.
+
+Work Programme's redesign — the preset buttons, the collapsed fields, the three-shape starting points — comes last. It's the right idea, but it's a genuine UX rethink sitting on top of an engine we've patched five times in two weeks. I'd want to see it sketched out — even just on paper or as a mockup — before it goes anywhere near Replit, so you can react to the shape of it once, rather than through three rounds of code.
+
+That's my honest read. Whenever you're ready, tell me which of the three you want to start with and I'll take it from there.
