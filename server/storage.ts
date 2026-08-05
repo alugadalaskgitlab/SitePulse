@@ -2252,6 +2252,7 @@ export class DatabaseStorage implements IStorage {
             chainageFromKm: (p as any).chainageFromKm ?? null,
             chainageToKm: (p as any).chainageToKm ?? null,
             quantitySource: (p as any).quantitySource ?? null,
+            quantitySourceNote: (p as any).quantitySourceNote ?? null,
             chainageOverrideReason: (p as any).chainageOverrideReason ?? null,
             lengthOverrideReason: (p as any).lengthOverrideReason ?? null,
             // 031 Parts G/H: preserve review flag + executor attribution on clone,

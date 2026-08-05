@@ -125,6 +125,7 @@ export const progressEntries = pgTable("progress_entries", {
   chainageToKm: real("chainage_to_km"),
   // How the reported quantity was determined.
   quantitySource: text("quantity_source"), // calculated | measured | weighment_mt | survey | other
+  quantitySourceNote: text("quantity_source_note"), // required when quantitySource = "other"
   // Reasoned exceptions (030A): actual range outside the bar's planned range,
   // or physically measured length differing from chainage difference.
   chainageOverrideReason: text("chainage_override_reason"),

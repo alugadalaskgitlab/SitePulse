@@ -9,8 +9,7 @@
  *  - Parts B/F: per-row validation — strict on submit, draft-lenient so drafts
  *    keep their programmeBarId with incomplete chainage / missing reason.
  *  - Part G: "Outside planned reach — review required" derivation.
- *  - Part E: quantity-source suggestion for direct-entry quantities.
- */
+ * */
 import { describe, it, expect } from "vitest";
 import {
   autoMatchBar,
@@ -18,7 +17,6 @@ import {
   chainageOutsideBar,
   checkProgrammeLinkRow,
   deriveChainageReviewStatus,
-  suggestQuantitySource,
   normalizeDprSideKey,
   barBalanceFigures,
   CHAINAGE_REVIEW_REQUIRED,
@@ -165,11 +163,3 @@ describe("Part D — barBalanceFigures", () => {
   });
 });
 
-describe("Part E — suggestQuantitySource", () => {
-  it("MT-like units suggest weighment, everything else measured", () => {
-    expect(suggestQuantitySource("MT")).toBe("weighment_mt");
-    expect(suggestQuantitySource("Tonne")).toBe("weighment_mt");
-    expect(suggestQuantitySource("CUM")).toBe("measured");
-    expect(suggestQuantitySource(null)).toBe("measured");
-  });
-});

@@ -1,0 +1,31 @@
+Instruction — Quantity Source: Stop Treating Calculated Quantities as Manual Entries
+
+PURPOSE
+
+Two related but distinct bugs, in two different files, both stemming from the same root cause — the app can't currently tell a system-calculated quantity apart from a manually typed one:
+
+Detailed DPR (SiteEntry.tsx): blocks save outright. The geometry calculation fills in quantity before the "mark this as calculated" logic ever runs, so every geometry-derived entry looks manually entered and trips a check requiring a source that was never given the chance to auto-fill.
+Guided DPR (GuidedDpr.tsx): doesn't block, but silently mislabels the source (e.g. "measured" or "weighment") for quantities that were actually calculated, via a guessing fallback — wrong data recorded, no error shown.
+
+Fix both, in both files, as one distinction applied consistently everywhere quantity is entered.
+
+DO NOT TOUCH: everything unrelated to quantity/source handling — chainage validation, side compatibility, programme-bar linking, draft persistence, arrangement display, and everything else already fixed in prior batches stays exactly as is.
+
+THE FIX
+
+Distinguish system-calculated quantity from manually entered/overridden quantity as a real, tracked state — not inferred after the fact from whether quantity happens to be non-null.
+When quantity comes from chainage/length × width × thickness and the user hasn't touched it: automatically set quantitySource = "calculated" at the exact moment the calculation runs (not in a separate check that only fires when quantity is still empty — that's the actual bug in SiteEntry.tsx today). Display "Quantity source: Calculated from geometry" as read-only. No empty dropdown. Never blocks Save Draft, Preview, or Submit.
+Show and require the Qty Source selector only when the user manually enters or changes a calculated quantity, or when no automatic calculation applies and quantity is entered directly.
+If the user edits a calculated quantity, mark it manually overridden and require a real source: Direct measured / Survey / Weighment / Other, with a note required for Other.
+If the user restores the quantity back to the system-calculated value, clear the override state and return the source to "Calculated from geometry" automatically.
+Persist the actual source through autosave, draft reopen, preview, submit, edit, and reports/measurement review.
+Apply this identically in Guided DPR and Detailed DPR/Edit, in both client and server validation. Server-side, do not trust a client-supplied "calculated" flag as-is — independently recompute the geometry-based quantity from the submitted length/width/thickness and compare it to the submitted quantity within a small tolerance to determine whether it was genuinely calculated or overridden, the same way side compatibility and chainage containment are already verified server-side by recomputation rather than by trusting client state. Only require a source when the server's own check finds a genuine mismatch.
+Do not make Qty Source a mandatory user action when the system already knows the source.
+
+TESTS
+
+An untouched geometry-calculated quantity submits with no source prompt, in both Detailed DPR and Guided DPR.
+A manually changed quantity is blocked until a real source is selected, in both screens.
+The selected source persists through draft reopen and submission.
+Restoring the calculated value restores the automatic source and clears the override flag.
+Server-side: a request claiming quantitySource: "calculated" whose submitted quantity doesn't match the recomputed geometry value is rejected with a clear message, not silently accepted.

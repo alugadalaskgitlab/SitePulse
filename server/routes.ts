@@ -40,6 +40,7 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import { insertAttachmentSchema, attachmentModuleTypes } from "@shared/schema";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
 import { checkProgrammeLinkRow, deriveChainageReviewStatus } from "@shared/dprProgrammeLink";
+import { checkQuantitySourceRow, resolveQuantitySource } from "@shared/dprGeometry";
 import {
   registerAuthRoutes,
   assertAdmin,
@@ -1333,6 +1334,30 @@ export async function registerRoutes(
     return null;
   }
 
+  /**
+   * Quantity-source verification (all progress rows, linked or not).
+   * Never trusts a client-supplied "calculated" flag: recomputes the geometry
+   * quantity from the submitted dimensions/chainage + the BOQ item's
+   * measurement profile and compares within tolerance — the same
+   * recompute-not-trust pattern as chainage containment and side checks.
+   * Also stamps quantitySource="calculated" server-side when the row's
+   * quantity genuinely matches the recomputed geometry value.
+   */
+  async function validateProgressQuantitySources(input: any, opts: { draft?: boolean } = {}): Promise<string | null> {
+    const progress: any[] = Array.isArray(input?.progress) ? input.progress : [];
+    for (const p of progress) {
+      if (p?.noSiteWork || p?.quantity == null) continue;
+      const boqItem = p.boqItemId != null ? await storage.getBoqItem(Number(p.boqItemId)) : null;
+      const err = checkQuantitySourceRow(p, boqItem as any, { draft: opts.draft });
+      if (err) return `Progress entry "${p.activity ?? ""}": ${err}`;
+      // The server decides "calculated", not the client.
+      const resolved = resolveQuantitySource(p, boqItem as any);
+      if (resolved === "calculated") p.quantitySource = "calculated";
+      else if (p.quantitySource === "calculated") p.quantitySource = null; // stale claim on draft — clear it
+    }
+    return null;
+  }
+
   // Create new DPR (draft or submitted)
   app.post(api.dprs.create.path, async (req, res) => {
     try {
@@ -1342,6 +1367,8 @@ export async function registerRoutes(
       // when saving a draft — Instruction 031 Part B).
       const linkError = await validateProgressProgrammeLinks(input, { draft: (input as any).dprStatus === "draft" });
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
+      const qtySourceError = await validateProgressQuantitySources(input, { draft: (input as any).dprStatus === "draft" });
+      if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
       const dpr = await storage.createDpr(input, input.clientTimestamp);
       const isDraft = (input as any).dprStatus === "draft";
       if (!isDraft) {
@@ -1377,6 +1404,8 @@ export async function registerRoutes(
       const input = createDprRequestSchema.parse(req.body);
       const linkError = await validateProgressProgrammeLinks(input, { draft: true });
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
+      const qtySourceError = await validateProgressQuantitySources(input, { draft: true });
+      if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
       const updated = await storage.updateDraftDpr(id, input);
       if (!updated) return res.status(404).json({ message: "DPR not found or not a draft" });
       res.json(updated);
@@ -1402,6 +1431,8 @@ export async function registerRoutes(
       const input = createDprRequestSchema.parse(req.body);
       const linkError = await validateProgressProgrammeLinks(input);
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
+      const qtySourceError = await validateProgressQuantitySources(input);
+      if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
       const clientTimestamp = (req.body as any).clientTimestamp;
       const submitted = await storage.submitDraftDpr(id, input, clientTimestamp);
       if (!submitted) return res.status(404).json({ message: "DPR not found or not a draft" });
@@ -1583,6 +1614,8 @@ export async function registerRoutes(
       // 030A Part F: programme-bar link validation applies to edits too.
       const linkError = await validateProgressProgrammeLinks(input.data);
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
+      const qtySourceError = await validateProgressQuantitySources(input.data);
+      if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
       const editedBy = input.editedBy || "engineer";
 
       if (editedBy === "engineer") {

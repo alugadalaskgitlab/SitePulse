@@ -227,8 +227,5 @@ export function deriveChainageReviewStatus(
   return chainageOutsideBar(fromKm, toKm, bar) ? CHAINAGE_REVIEW_REQUIRED : null;
 }
 
-// ─── Part E: quantity-source suggestion for direct-entry quantities ──────────
-
-export function suggestQuantitySource(uom: string | null | undefined): "weighment_mt" | "measured" {
-  return /mt|tonne|ton/i.test(uom ?? "") ? "weighment_mt" : "measured";
-}
+// (The old suggestQuantitySource UOM-guessing helper was removed: quantity
+// source is now real, verified state — see shared/dprGeometry.ts.)

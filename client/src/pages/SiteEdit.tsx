@@ -22,6 +22,7 @@ import { useDpr } from "@/hooks/use-dprs";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
+import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
 import { parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
 
@@ -42,6 +43,7 @@ interface ProgressEntry {
   // 030A: direct programme-bar linkage
   programmeBarId: number | null;
   quantitySource: string;
+  quantitySourceNote: string;
   chainageOverrideReason: string;
   executedBy: string;
 }
@@ -185,10 +187,11 @@ function mapDprToFormState(dpr: any) {
         boqItemId: p.boqItemId ?? null,
         programmeBarId: p.programmeBarId ?? null,
         quantitySource: p.quantitySource || "",
+        quantitySourceNote: p.quantitySourceNote || "",
         chainageOverrideReason: p.chainageOverrideReason || "",
         executedBy: p.executedBy || "",
       }))
-    : [{ activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "", executedBy: "" }];
+    : [{ activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }];
 
   const equipment: EquipmentEntry[] = dpr.equipment?.length
     ? dpr.equipment.map((e: any) => ({
@@ -388,7 +391,7 @@ export default function SiteEdit() {
   });
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "", executedBy: "" }
+    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
@@ -518,16 +521,37 @@ export default function SiteEdit() {
     return calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
   };
 
-  // Derive UoM + qty from the dimensions; mutates entry.uom so the saved row matches.
-  // Falls back to the existing manual uom/qty for non-geometric items (MT / NOS).
+  // Geometry quantity via the SAME shared BOQ-profile-aware formula used by
+  // SiteEntry, Guided and the server (calculateDprQuantity) — a manual-
+  // measurement BOQ item (MT/NOS/LS) never produces a "calculated" quantity.
+  const entryBoqItem = (entry: ProgressEntry) =>
+    entry.boqItemId != null ? (siteBoqItems.find(i => i.id === entry.boqItemId) as any) ?? null : null;
+
   const calculateQuantity = (entry: ProgressEntry): number | null => {
     const length = getEffectiveLength(entry);
-    const derivedUom = deriveDprUom(length, entry.width, entry.thickness);
-    if (derivedUom) {
-      entry.uom = derivedUom;
-      return computeDprQty(length, entry.width, entry.thickness);
+    const boqItem = entryBoqItem(entry);
+    const geo = calculateDprQuantity(length, entry.width, entry.thickness, boqItem);
+    if (geo != null) {
+      entry.uom = boqItem ? entry.uom : (deriveDprUom(length, entry.width, entry.thickness) ?? entry.uom);
+      return geo;
     }
     return entry.quantity ?? null;
+  };
+
+  // Set source = "calculated" at the moment the geometry calc runs (same
+  // mechanism as SiteEntry — a geometry-derived qty must never look manual).
+  const applyCalc = (entry: ProgressEntry) => {
+    const length = getEffectiveLength(entry);
+    const boqItem = entryBoqItem(entry);
+    const geo = calculateDprQuantity(length, entry.width, entry.thickness, boqItem);
+    if (geo != null) {
+      if (!boqItem) entry.uom = deriveDprUom(length, entry.width, entry.thickness) ?? entry.uom;
+      entry.quantity = geo;
+      entry.quantitySource = "calculated";
+      entry.quantitySourceNote = "";
+    } else if (entry.quantitySource === "calculated") {
+      entry.quantitySource = "";
+    }
   };
 
   const calculateHours = (start: string, end: string): number => {
@@ -556,7 +580,7 @@ export default function SiteEdit() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour') => {
     if (section === 'progress') {
-      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "", executedBy: "" }]);
+      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }]);
     } else if (section === 'labour') {
@@ -621,11 +645,12 @@ export default function SiteEdit() {
       return {
         ...p,
         length: effectiveLength,
-        quantity: calculateQuantity(p) || p.quantity,
+        quantity: p.quantity ?? calculateQuantity(p),
         // 030A: numeric chainage (Km) alongside the display text
         chainageFromKm: parseChainageKm(p.chainageFrom),
         chainageToKm: parseChainageKm(p.chainageTo),
         quantitySource: p.quantitySource || null,
+        quantitySourceNote: p.quantitySourceNote?.trim() || null,
         chainageOverrideReason: p.chainageOverrideReason || null,
         executedBy: p.executedBy || null,
       };
@@ -1237,7 +1262,7 @@ export default function SiteEdit() {
                           if (updated[idx].width == null && bar.plannedWidthM != null) updated[idx].width = Number(bar.plannedWidthM);
                           const calc = calculateLengthFromChainage(updated[idx].chainageFrom, updated[idx].chainageTo);
                           if (calc !== null) updated[idx].length = calc;
-                          updated[idx].quantity = calculateQuantity(updated[idx]);
+                          applyCalc(updated[idx]);
                           setProgress(updated);
                         }}
                       />
@@ -1301,7 +1326,7 @@ export default function SiteEdit() {
                         updated[idx].chainageFrom = e.target.value.toUpperCase();
                         const calc = calculateLengthFromChainage(e.target.value.toUpperCase(), updated[idx].chainageTo);
                         if (calc !== null) updated[idx].length = calc;
-                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        applyCalc(updated[idx]);
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -1318,7 +1343,7 @@ export default function SiteEdit() {
                         updated[idx].chainageTo = e.target.value.toUpperCase();
                         const calc = calculateLengthFromChainage(updated[idx].chainageFrom, e.target.value.toUpperCase());
                         if (calc !== null) updated[idx].length = calc;
-                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        applyCalc(updated[idx]);
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -1335,7 +1360,7 @@ export default function SiteEdit() {
                       onChange={(e) => {
                         const updated = [...progress];
                         updated[idx].length = e.target.value ? parseFloat(e.target.value) : null;
-                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        applyCalc(updated[idx]);
                         setProgress(updated);
                       }}
                       data-testid={`input-length-${idx}`}
@@ -1351,7 +1376,7 @@ export default function SiteEdit() {
                       onChange={(e) => {
                         const updated = [...progress];
                         updated[idx].width = e.target.value ? parseFloat(e.target.value) : null;
-                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        applyCalc(updated[idx]);
                         setProgress(updated);
                       }}
                       data-testid={`input-width-${idx}`}
@@ -1367,7 +1392,7 @@ export default function SiteEdit() {
                       onChange={(e) => {
                         const updated = [...progress];
                         updated[idx].thickness = e.target.value ? parseFloat(e.target.value) : null;
-                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        applyCalc(updated[idx]);
                         setProgress(updated);
                       }}
                       data-testid={`input-thickness-${idx}`}
@@ -1386,7 +1411,7 @@ export default function SiteEdit() {
                       onValueChange={(val) => {
                         const updated = [...progress];
                         updated[idx].uom = val;
-                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        applyCalc(updated[idx]);
                         setProgress(updated);
                       }}
                     >
@@ -1407,31 +1432,59 @@ export default function SiteEdit() {
                       value={entry.quantity ?? ""}
                       onChange={(e) => {
                         const updated = [...progress];
-                        updated[idx].quantity = e.target.value ? parseFloat(e.target.value) : null;
+                        const v = e.target.value ? parseFloat(e.target.value) : null;
+                        updated[idx].quantity = v;
+                        const calc = calculateQuantity(updated[idx]);
+                        if (v == null) {
+                          if (updated[idx].quantitySource === "calculated") updated[idx].quantitySource = "";
+                        } else if (calc != null && calc !== v && !quantitiesMatch(v, calc)) {
+                          if (updated[idx].quantitySource === "calculated") updated[idx].quantitySource = "";
+                        } else if (calc != null && quantitiesMatch(v, calc)) {
+                          updated[idx].quantitySource = "calculated";
+                          updated[idx].quantitySourceNote = "";
+                        }
                         setProgress(updated);
                       }}
                       data-testid={`input-qty-${idx}`}
                     />
-                    {/* 030A: quantity source when linked to a programme bar */}
-                    {entry.programmeBarId != null && (
-                      <Select
-                        value={entry.quantitySource || undefined}
-                        onValueChange={(val) => {
-                          const updated = [...progress];
-                          updated[idx].quantitySource = val;
-                          setProgress(updated);
-                        }}
-                      >
-                        <SelectTrigger className="h-7 mt-1 text-xs" data-testid={`select-qty-source-${idx}`}>
-                          <SelectValue placeholder="Qty source" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {QUANTITY_SOURCES.map(qs => (
-                            <SelectItem key={qs} value={qs}>{QUANTITY_SOURCE_LABELS[qs]}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
+                    {/* Calculated quantities are labelled read-only; only a manual
+                        or overridden quantity asks for a real source. */}
+                    {entry.quantitySource === "calculated" ? (
+                      <p className="text-[10px] text-muted-foreground mt-1" data-testid={`text-qty-source-auto-${idx}`}>
+                        Quantity source: Calculated from geometry (automatic)
+                      </p>
+                    ) : entry.quantity != null ? (
+                      <>
+                        <Select
+                          value={entry.quantitySource || undefined}
+                          onValueChange={(val) => {
+                            const updated = [...progress];
+                            updated[idx].quantitySource = val;
+                            if (val !== "other") updated[idx].quantitySourceNote = "";
+                            setProgress(updated);
+                          }}
+                        >
+                          <SelectTrigger className="h-7 mt-1 text-xs" data-testid={`select-qty-source-${idx}`}>
+                            <SelectValue placeholder="Qty source (required)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {MANUAL_QUANTITY_SOURCES.map(qs => (
+                              <SelectItem key={qs} value={qs}>{QUANTITY_SOURCE_LABELS[qs]}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {entry.quantitySource === "other" && (
+                          <Input className="h-7 mt-1 text-xs" placeholder="How was this quantity determined? (required)"
+                            value={entry.quantitySourceNote}
+                            onChange={(e) => {
+                              const updated = [...progress];
+                              updated[idx].quantitySourceNote = e.target.value;
+                              setProgress(updated);
+                            }}
+                            data-testid={`input-qty-source-note-${idx}`} />
+                        )}
+                      </>
+                    ) : null}
                   </div>
                 </div>
               )}

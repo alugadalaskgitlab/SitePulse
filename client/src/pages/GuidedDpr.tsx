@@ -36,8 +36,9 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useUpload } from "@/hooks/use-upload";
 import { format, subDays } from "date-fns";
 import type { Site, Personnel, DprWithDetails } from "@shared/schema";
-import { barSideLabel, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
-import { chainageOutsideBar, suggestQuantitySource } from "@shared/dprProgrammeLink";
+import { barSideLabel, parseChainageKm, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
+import { chainageOutsideBar } from "@shared/dprProgrammeLink";
+import { geometryQtyForRow, resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
 import { ProgrammeBarPicker, BarLinkFeedback, type PickerBar } from "@/components/ProgrammeBarPicker";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
@@ -73,6 +74,7 @@ interface GuidedEntry {
   remark: string;           // per-entry note, folded into DPR remarks
   // Instruction 031
   quantitySource: string;          // Part E — how the quantity was determined
+  quantitySourceNote: string;      // required when source = "other"
   chainageOverrideReason: string;  // Part F — out-of-range reason
   executedBy: string;              // Part H — "hlc" | "agency" when arrangement applies
 }
@@ -256,6 +258,7 @@ export default function GuidedDpr() {
       thickness: null,
       remark: "",
       quantitySource: "",
+      quantitySourceNote: "",
       chainageOverrideReason: "",
       executedBy: "",
     }]);
@@ -276,6 +279,7 @@ export default function GuidedDpr() {
       thickness: null,
       remark: "",
       quantitySource: "",
+      quantitySourceNote: "",
       chainageOverrideReason: "",
       executedBy: "",
     }]);
@@ -305,6 +309,7 @@ export default function GuidedDpr() {
       thickness: null,
       remark: "",
       quantitySource: "",
+      quantitySourceNote: "",
       chainageOverrideReason: "",
       executedBy: "",
     })));
@@ -349,6 +354,21 @@ export default function GuidedDpr() {
     (e) => e.chainageFrom && e.chainageTo && e.quantity != null && e.quantity > 0,
   );
 
+  /**
+   * Quantity-source state for a guided entry, recomputed from geometry —
+   * NEVER guessed from the UOM (the old fallback silently recorded "measured"/
+   * "weighment" for quantities that were actually calculated).
+   * Returns "calculated" when the entered quantity matches chainage-span ×
+   * width × thickness under the BOQ item's measurement profile.
+   */
+  const entrySourceState = (e: GuidedEntry): "calculated" | null => {
+    const boqItem = e.boqItemId != null ? itemById.get(e.boqItemId) : null;
+    return resolveQuantitySource(
+      { length: null, chainageFrom: e.chainageFrom, chainageTo: e.chainageTo, width: e.width, thickness: e.thickness, quantity: e.quantity },
+      boqItem as any,
+    );
+  };
+
   const buildPayload = (asDraft: boolean) => {
     const progress = entries.map((e) => {
       const fromKm = parseChainageKm(e.chainageFrom);
@@ -373,8 +393,10 @@ export default function GuidedDpr() {
         programmeBarId: e.programmeBarId,
         chainageFromKm: fromKm,
         chainageToKm: toKm,
-        // Part E: default the source from the UOM when the engineer didn't pick.
-        quantitySource: e.quantitySource || (e.quantity != null ? suggestQuantitySource(e.uom) : null),
+        // Source is real state: "calculated" only when geometry recomputation
+        // matches; otherwise the engineer's explicit pick (or null on drafts).
+        quantitySource: entrySourceState(e) ?? (e.quantitySource || null),
+        quantitySourceNote: e.quantitySourceNote.trim() || null,
         chainageOverrideReason: e.chainageOverrideReason.trim() || null,
         executedBy: e.executedBy || null,
       };
@@ -466,6 +488,18 @@ export default function GuidedDpr() {
       if (e.programmeBarId != null && !e.side) {
         toast({ title: "Side needed", description: `"${e.activity}": select the executed side.`, variant: "destructive" });
         return false;
+      }
+      {
+        const boqItem = e.boqItemId != null ? itemById.get(e.boqItemId) : null;
+        const qtyErr = checkQuantitySourceRow(
+          { length: null, chainageFrom: e.chainageFrom, chainageTo: e.chainageTo, width: e.width, thickness: e.thickness,
+            quantity: e.quantity, quantitySource: entrySourceState(e) ?? (e.quantitySource || null), quantitySourceNote: e.quantitySourceNote },
+          boqItem as any,
+        );
+        if (qtyErr) {
+          toast({ title: `"${e.activity}": quantity source`, description: qtyErr, variant: "destructive" });
+          return false;
+        }
       }
       // Instruction 031 Parts F/H — same rules as the Detailed DPR.
       if (e.programmeBarId != null && e.boqItemId != null) {
@@ -699,15 +733,29 @@ export default function GuidedDpr() {
                 </div>
                 <div className="col-span-2">
                   <Label>Quantity source</Label>
-                  <Select
-                    value={e.quantitySource || (e.quantity != null ? suggestQuantitySource(e.uom) : undefined)}
-                    onValueChange={(v) => updateEntry(idx, { quantitySource: v })}
-                  >
-                    <SelectTrigger data-testid={`select-qty-source-${idx}`}><SelectValue placeholder="How was the quantity determined?" /></SelectTrigger>
-                    <SelectContent>
-                      {QUANTITY_SOURCES.map((qs) => <SelectItem key={qs} value={qs}>{QUANTITY_SOURCE_LABELS[qs]}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  {entrySourceState(e) === "calculated" ? (
+                    <p className="text-xs text-muted-foreground mt-1" data-testid={`text-qty-source-auto-${idx}`}>
+                      Calculated from geometry (automatic)
+                    </p>
+                  ) : (
+                    <>
+                      <Select
+                        value={e.quantitySource || undefined}
+                        onValueChange={(v) => updateEntry(idx, { quantitySource: v, ...(v !== "other" ? { quantitySourceNote: "" } : {}) })}
+                      >
+                        <SelectTrigger data-testid={`select-qty-source-${idx}`}><SelectValue placeholder="How was the quantity determined?" /></SelectTrigger>
+                        <SelectContent>
+                          {MANUAL_QUANTITY_SOURCES.map((qs) => <SelectItem key={qs} value={qs}>{QUANTITY_SOURCE_LABELS[qs]}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      {e.quantitySource === "other" && (
+                        <Input className="mt-1" placeholder="How was this quantity determined? (required)"
+                          value={e.quantitySourceNote}
+                          onChange={(ev) => updateEntry(idx, { quantitySourceNote: ev.target.value })}
+                          data-testid={`input-qty-source-note-${idx}`} />
+                      )}
+                    </>
+                  )}
                 </div>
                 <div className="col-span-2">
                   <Label>Note</Label>

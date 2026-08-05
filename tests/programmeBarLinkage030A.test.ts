@@ -134,6 +134,9 @@ vi.mock("../server/storage", () => {
     },
   });
 
+  // Quantity-source validation recomputes geometry per row; no BOQ item in
+  // these fixtures → geometry derives from raw dimensions (null item).
+  methods.getBoqItem = vi.fn(async () => null);
   methods.getWorkProgramBar = vi.fn(async (id: number) => fx.bars.find(b => b.id === id) ?? undefined);
   methods.getWorkProgramBars = vi.fn(async (projectId: number) => fx.bars.filter(b => b.boqProjectId === projectId));
   methods.getSubmittedProgressLinkCounts = vi.fn(async () => fx.submittedLinkCounts);

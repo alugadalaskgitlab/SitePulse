@@ -39,6 +39,7 @@ import { BillItemPicker } from "@/components/BillItemPicker";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { chainageOutsideBar } from "@shared/dprProgrammeLink";
+import { checkQuantitySourceRow, quantitiesMatch, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { History } from "lucide-react";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
@@ -62,6 +63,7 @@ interface ProgressEntry {
   // 030A: direct programme-bar linkage
   programmeBarId: number | null;
   quantitySource: string;
+  quantitySourceNote: string;
   chainageOverrideReason: string;
   // 031 Part H: executor when the linked bar has an arrangement
   executedBy: string;
@@ -777,7 +779,7 @@ export default function SiteEntry() {
   }, [attachPersonnelToTarget, toast]);
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "", executedBy: "" }
+    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }
   ]);
 
   const [openPlantMap, setOpenPlantMap] = useState<Record<number, any>>({});
@@ -890,6 +892,25 @@ export default function SiteEntry() {
     return entry.quantity ?? null; // fall back to existing quantity when dims are incomplete
   };
 
+  /**
+   * Geometry recalculation entry point (dimension/chainage change handlers).
+   * Sets quantitySource = "calculated" AT THE MOMENT the calculation runs —
+   * not in a later inference — so a geometry-derived quantity is never
+   * mistaken for a manual entry (which used to block save with a source
+   * prompt the user was never shown).
+   */
+  const applyCalc = (entry: ProgressEntry) => {
+    const boqItem = entry.boqItemId != null ? siteBoqItems.find(i => i.id === entry.boqItemId) : null;
+    const geo = calculateDprQuantity(getEffectiveLength(entry), entry.width, entry.thickness, boqItem);
+    entry.quantity = geo ?? entry.quantity ?? null;
+    if (geo != null) {
+      entry.quantitySource = "calculated";
+      entry.quantitySourceNote = "";
+    } else if (entry.quantitySource === "calculated") {
+      entry.quantitySource = ""; // geometry no longer applies — source unknown
+    }
+  };
+
   // Thin wrapper — delegates to shared entryBoqProfile in @/lib/dprCalculations.
   const entryBoqProfile = (entry: ProgressEntry) => {
     const boqItem = entry.boqItemId != null ? siteBoqItems.find(i => i.id === entry.boqItemId) : null;
@@ -944,7 +965,7 @@ export default function SiteEntry() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour' | 'materials') => {
     if (section === 'progress') {
-      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "", executedBy: "" }]);
+      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }]);
     } else if (section === 'labour') {
@@ -1014,7 +1035,7 @@ export default function SiteEntry() {
       length: null, width: null, thickness: null, quantity: null,
       uom: p.uom || "SQM", noSiteWork: false, noSiteWorkDescription: "",
       personnelIds: [], boqItemId: p.boqItemId, programmeBarId: p.programmeBarId,
-      quantitySource: "", chainageOverrideReason: "", executedBy: "",
+      quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "",
     })));
     const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null };
     if (st.equipment.length > 0) setEquipment(st.equipment.map(e => ({ ...blankEq, ...e })) as any);
@@ -1038,6 +1059,7 @@ export default function SiteEntry() {
           // 031 Part E: an untouched quantity that came from geometry is
           // recorded as "Calculated from geometry" automatically.
           quantitySource: p.quantitySource || (p.quantity == null && calculateQuantity(p) != null ? "calculated" : null),
+          quantitySourceNote: p.quantitySourceNote?.trim() || null,
           chainageOverrideReason: p.chainageOverrideReason || null,
           executedBy: p.executedBy || null,
           // 031 Part G handled server-side via chainageReviewStatus stamping.
@@ -1176,6 +1198,7 @@ export default function SiteEntry() {
           // 031 Part E: an untouched quantity that came from geometry is
           // recorded as "Calculated from geometry" automatically.
           quantitySource: p.quantitySource || (p.quantity == null && calculateQuantity(p) != null ? "calculated" : null),
+          quantitySourceNote: p.quantitySourceNote?.trim() || null,
           chainageOverrideReason: p.chainageOverrideReason || null,
           executedBy: p.executedBy || null,
           // 031 Part G handled server-side via chainageReviewStatus stamping.
@@ -1301,8 +1324,8 @@ export default function SiteEntry() {
     // 031 Parts F/H/E: submit-blocking checks for programme-linked rows.
     for (let i = 0; i < progress.length; i++) {
       const p = progress[i];
-      if (p.noSiteWork || p.programmeBarId == null) continue;
-      const bar = programmeBars.find(b => b.id === p.programmeBarId);
+      if (p.noSiteWork) continue;
+      const bar = p.programmeBarId != null ? programmeBars.find(b => b.id === p.programmeBarId) : null;
       if (bar) {
         const fromKm = parseChainageKm(p.chainageFrom);
         const toKm = parseChainageKm(p.chainageTo);
@@ -1316,10 +1339,18 @@ export default function SiteEntry() {
           return;
         }
       }
-      // Part E: a manually entered quantity needs an explicit source.
-      if (p.quantity != null && !p.quantitySource) {
-        toast({ title: `Row ${i + 1}: quantity source required`, description: "You entered the quantity directly — pick how it was determined (measured, weighment, survey…).", variant: "destructive" });
-        return;
+      // Quantity source: calculated (verified by recomputation) never blocks;
+      // manual/overridden requires a real source; "other" needs a note.
+      {
+        const boqItem = p.boqItemId != null ? siteBoqItems.find(b => b.id === p.boqItemId) : null;
+        const qtyErr = checkQuantitySourceRow(
+          { ...p, length: getEffectiveLength(p) },
+          boqItem,
+        );
+        if (qtyErr) {
+          toast({ title: `Row ${i + 1}: quantity source`, description: qtyErr, variant: "destructive" });
+          return;
+        }
       }
     }
     const warnings = getOverBalanceWarnings();
@@ -1919,7 +1950,7 @@ export default function SiteEntry() {
                           if (updated[idx].width == null && bar.plannedWidthM != null) updated[idx].width = Number(bar.plannedWidthM);
                           const calc = calculateLengthFromChainage(updated[idx].chainageFrom, updated[idx].chainageTo);
                           if (calc !== null) updated[idx].length = calc;
-                          updated[idx].quantity = calculateQuantity(updated[idx]);
+                          applyCalc(updated[idx]);
                           setProgress(updated);
                         }}
                       />
@@ -2001,7 +2032,7 @@ export default function SiteEntry() {
                         updated[idx].chainageFrom = e.target.value.toUpperCase();
                         const calc = calculateLengthFromChainage(e.target.value.toUpperCase(), updated[idx].chainageTo);
                         if (calc !== null) updated[idx].length = calc;
-                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        applyCalc(updated[idx]);
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -2018,7 +2049,7 @@ export default function SiteEntry() {
                         updated[idx].chainageTo = e.target.value.toUpperCase();
                         const calc = calculateLengthFromChainage(updated[idx].chainageFrom, e.target.value.toUpperCase());
                         if (calc !== null) updated[idx].length = calc;
-                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        applyCalc(updated[idx]);
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -2035,7 +2066,7 @@ export default function SiteEntry() {
                       onChange={(e) => {
                         const updated = [...progress];
                         updated[idx].length = e.target.value ? parseFloat(e.target.value) : null;
-                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        applyCalc(updated[idx]);
                         setProgress(updated);
                       }}
                       data-testid={`input-progress-length-${idx}`}
@@ -2057,7 +2088,7 @@ export default function SiteEntry() {
                             onChange={(e) => {
                               const updated = [...progress];
                               updated[idx].width = e.target.value ? parseFloat(e.target.value) : null;
-                              updated[idx].quantity = calculateQuantity(updated[idx]);
+                              applyCalc(updated[idx]);
                               setProgress(updated);
                             }}
                             data-testid={`input-progress-width-${idx}`}
@@ -2075,7 +2106,7 @@ export default function SiteEntry() {
                             onChange={(e) => {
                               const updated = [...progress];
                               updated[idx].thickness = e.target.value ? parseFloat(e.target.value) : null;
-                              updated[idx].quantity = calculateQuantity(updated[idx]);
+                              applyCalc(updated[idx]);
                               setProgress(updated);
                             }}
                             data-testid={`input-progress-thickness-${idx}`}
@@ -2139,49 +2170,84 @@ export default function SiteEntry() {
                       value={entry.quantity ?? ""}
                       onChange={(e) => {
                         const updated = [...progress];
-                        updated[idx].quantity = e.target.value ? parseFloat(e.target.value) : null;
+                        const v = e.target.value ? parseFloat(e.target.value) : null;
+                        updated[idx].quantity = v;
+                        const calc = calculateQuantity(updated[idx]);
+                        const geoApplies = calc != null && (getEffectiveLength(updated[idx]) != null || updated[idx].width != null);
+                        if (v == null) {
+                          // cleared → back to automatic (placeholder shows the calc)
+                          if (updated[idx].quantitySource === "calculated") updated[idx].quantitySource = "";
+                        } else if (geoApplies && quantitiesMatch(v, calc!)) {
+                          // restored the system-calculated value → automatic again
+                          updated[idx].quantitySource = "calculated";
+                          updated[idx].quantitySourceNote = "";
+                        } else if (updated[idx].quantitySource === "calculated") {
+                          // manually overridden → a real source must be picked
+                          updated[idx].quantitySource = "";
+                        }
                         setProgress(updated);
                       }}
                       data-testid={`input-progress-qty-${idx}`}
                     />
-                    {/* 031 Part E: geometry-derived qty is auto-labelled "Calculated
-                        from geometry" (read-only); a manually entered qty requires an
-                        explicit source pick (enforced at submit). */}
-                    {entry.programmeBarId != null && entry.quantity == null && calculateQuantity(entry) != null && (
-                      <p className="text-[10px] text-muted-foreground mt-1" data-testid={`text-qty-source-auto-${idx}`}>
-                        Quantity source: Calculated from geometry (automatic)
-                      </p>
-                    )}
-                    {entry.programmeBarId != null && entry.quantity != null && (
-                      <>
-                        <Select
-                          value={entry.quantitySource || undefined}
-                          onValueChange={(val) => {
-                            const updated = [...progress];
-                            updated[idx].quantitySource = val;
-                            setProgress(updated);
-                          }}
-                        >
-                          <SelectTrigger className="h-7 mt-1 text-xs" data-testid={`select-qty-source-${idx}`}>
-                            <SelectValue placeholder="Qty source" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {QUANTITY_SOURCES.map(qs => (
-                              <SelectItem key={qs} value={qs}>{QUANTITY_SOURCE_LABELS[qs]}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {(() => {
-                          const calc = calculateQuantity(entry);
-                          if (calc == null || entry.quantity == null || Math.abs(calc - entry.quantity) < Math.max(0.005, calc * 0.001)) return null;
-                          return (
-                            <p className="text-[10px] text-muted-foreground mt-0.5" data-testid={`text-calc-vs-entered-${idx}`}>
-                              Calculated {calc.toFixed(3)} vs entered {entry.quantity} (info only)
-                            </p>
-                          );
-                        })()}
-                      </>
-                    )}
+                    {/* Quantity source: a system-calculated quantity is labelled
+                        read-only and never prompts; only a manually entered or
+                        overridden quantity requires picking a real source. */}
+                    {(() => {
+                      const isCalcState = entry.quantitySource === "calculated" ||
+                        (entry.quantity == null && calculateQuantity(entry) != null);
+                      if (isCalcState) {
+                        return (
+                          <p className="text-[10px] text-muted-foreground mt-1" data-testid={`text-qty-source-auto-${idx}`}>
+                            Quantity source: Calculated from geometry (automatic)
+                          </p>
+                        );
+                      }
+                      if (entry.quantity == null) return null;
+                      return (
+                        <>
+                          <Select
+                            value={entry.quantitySource || undefined}
+                            onValueChange={(val) => {
+                              const updated = [...progress];
+                              updated[idx].quantitySource = val;
+                              if (val !== "other") updated[idx].quantitySourceNote = "";
+                              setProgress(updated);
+                            }}
+                          >
+                            <SelectTrigger className="h-7 mt-1 text-xs" data-testid={`select-qty-source-${idx}`}>
+                              <SelectValue placeholder="Qty source (required)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {MANUAL_QUANTITY_SOURCES.map(qs => (
+                                <SelectItem key={qs} value={qs}>{QUANTITY_SOURCE_LABELS[qs]}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {entry.quantitySource === "other" && (
+                            <Input
+                              className="h-7 mt-1 text-xs"
+                              placeholder="How was this quantity determined? (required)"
+                              value={entry.quantitySourceNote}
+                              onChange={(e) => {
+                                const updated = [...progress];
+                                updated[idx].quantitySourceNote = e.target.value;
+                                setProgress(updated);
+                              }}
+                              data-testid={`input-qty-source-note-${idx}`}
+                            />
+                          )}
+                          {(() => {
+                            const calc = calculateQuantity(entry);
+                            if (calc == null || entry.quantity == null || quantitiesMatch(entry.quantity, calc)) return null;
+                            return (
+                              <p className="text-[10px] text-muted-foreground mt-0.5" data-testid={`text-calc-vs-entered-${idx}`}>
+                                Calculated {calc.toFixed(3)} vs entered {entry.quantity} (info only)
+                              </p>
+                            );
+                          })()}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
