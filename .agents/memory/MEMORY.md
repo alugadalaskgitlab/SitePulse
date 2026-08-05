@@ -27,4 +27,5 @@
 - [Auto-Sequence Real Stretches](auto-sequence-stretches.md) — 029→029C: side-aware validateStretches, Stage/Front model, arrangement-safe regen, category-aware side qty allocation + overallocation guard (all mutations deferred past guard).
 - [Work Programme Read/Edit Mode](work-programme-read-edit-mode.md) — 029A: StretchRow read vs deliberate edit (no onBlur autosaves), one-editor guard, stable toolbar, per-project tab/scroll restore.
 - [Programme Bar↔DPR Linkage](programme-bar-dpr-linkage.md) — 030A: barSide.ts matrix, FK SET NULL + app-level 409 deletion guard, split keeps original bar's links, cloneDpr must copy linkage fields.
+- [Guided DPR pilot](guided-dpr-pilot.md) — /site/guided + dprEntryMode preference; server validates programme-linked rows strictly even for drafts (drop bar link on incomplete draft rows).
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

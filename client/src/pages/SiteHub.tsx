@@ -5,6 +5,7 @@ import {
   Route, Building2, CalendarCheck,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
+import { roadDprHref } from "@/lib/dprEntryMode";
 import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
 
@@ -92,10 +93,10 @@ export default function SiteHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
-              href={`/site/new?type=road&returnTo=${HUB}`}
+              href={roadDprHref(HUB)}
               icon={Route}
               title="Road Works DPR"
-              description="Daily progress for road activities (BOQ-linked)"
+              description="Guided or detailed daily progress (BOQ-linked)"
               accent="amber"
               iconBg="bg-amber-100"
               badge={dprs.length === 0 && sectionVisible("site_dprs") ? "Today" : undefined}

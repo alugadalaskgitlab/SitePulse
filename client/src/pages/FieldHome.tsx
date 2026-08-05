@@ -18,6 +18,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { format, addDays } from "date-fns";
+import { roadDprHref } from "@/lib/dprEntryMode";
 import type { PlanVsActualRow, BoqProjectWithCounts } from "@shared/schema";
 
 // ─── Short name extraction ────────────────────────────────────────────────────
@@ -934,7 +935,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
     ? (dprPhase === "submitted-own" ? `/site/report/${myDpr.id}` : `/site/edit/${myDpr.id}`)
     : otherDpr
     ? `/site/report/${otherDpr.id}`
-    : "/site/new?returnTo=/";
+    : roadDprHref("/");
 
   interface CtaConfig {
     label: string;
@@ -951,7 +952,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
       case "not-started":
         return {
           label: "Start Today's Site Work",
-          href: "/site/new?returnTo=/",
+          href: roadDprHref("/"),
           status: "DPR not started yet",
           color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200",
           dotColor: "bg-orange-300",
@@ -1042,7 +1043,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   });
 
   // ── Quick actions ──────────────────────────────────────────────────────────
-  const editHref = myDpr ? `/site/edit/${myDpr.id}` : "/site/new?returnTo=/";
+  const editHref = myDpr ? `/site/edit/${myDpr.id}` : roadDprHref("/");
   const firstEditablePlan = tomorrowPlans.find(p => !isPlanLocked(p));
   const tomorrowPlanHref = firstEditablePlan
     ? `/site/requirements/new?editId=${firstEditablePlan.id}&returnTo=/`
@@ -1379,7 +1380,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
                 {/* Equipment row */}
                 {sectionVisible("site_dprs") && (
-                  <Link href={myDpr ? `/site/edit/${myDpr.id}` : "/site/new?returnTo=/"}>
+                  <Link href={myDpr ? `/site/edit/${myDpr.id}` : roadDprHref("/")}>
                     <a className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors" data-testid="activity-row-equipment">
                       <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
                         <Wrench className="w-4 h-4 text-amber-500" />
@@ -1744,7 +1745,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
               <div className="px-4 pb-3 pt-2">
                 {dprPhase !== "submitted-own" ? (
-                  <Link href={myDpr ? `/site/edit/${myDpr.id}` : "/site/new"}>
+                  <Link href={myDpr ? `/site/edit/${myDpr.id}` : roadDprHref("/")}>
                     <a
                       className={`block w-full py-3 rounded-xl font-bold text-sm text-center transition-all ${
                         pendingCount === 0

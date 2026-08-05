@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format, subDays } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { roadDprHref } from "@/lib/dprEntryMode";
 import {
   FileText, Package, ShoppingCart, Fuel,
   Plus, ChevronRight, Clock, CheckCircle,
@@ -185,14 +186,14 @@ export default function SiteHome() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
 
             {canDprs && (
-              <Link href="/site/new?type=road&returnTo=/site" data-testid="link-new-dpr-road">
+              <Link href={roadDprHref("/site")} data-testid="link-new-dpr-road">
                 <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-amber-400 hover:shadow-md transition-all cursor-pointer">
                   <div className="w-9 h-9 bg-amber-100 dark:bg-amber-900/40 rounded-lg flex items-center justify-center group-hover:bg-amber-200 dark:group-hover:bg-amber-900/70 transition-colors">
                     <Route className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Road DPR</p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Road works progress</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Guided or detailed entry</p>
                   </div>
                   <div className="w-full flex items-center justify-between mt-auto">
                     <span className="text-[12px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">

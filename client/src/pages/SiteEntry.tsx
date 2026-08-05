@@ -39,6 +39,7 @@ import { BillItemPicker } from "@/components/BillItemPicker";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { ProgrammeBarPicker } from "@/components/ProgrammeBarPicker";
+import { setDprEntryMode } from "@/lib/dprEntryMode";
 import { calculateBomDemand, fmtQty, type BomInputItem, type BomInputBar, type BomDemand } from "@shared/planningEngine";
 
 interface ProgressEntry {
@@ -1334,10 +1335,23 @@ export default function SiteEntry() {
         <Button variant="ghost" size="icon" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-back">
           <ChevronLeft className="w-5 h-5" />
         </Button>
-        <div>
-          <h1 className="text-2xl font-bold font-display">New Site Report</h1>
-          <p className="text-muted-foreground text-sm">Fill in the daily progress details</p>
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold font-display">Detailed DPR</h1>
+          <p className="text-muted-foreground text-sm">Full daily progress report — every section, complete control</p>
         </div>
+        {workType !== "structure" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => confirmLeave(() => {
+              setDprEntryMode("guided");
+              setLocation(returnTo ? `/site/guided?returnTo=${encodeURIComponent(returnTo)}` : "/site/guided");
+            })}
+            data-testid="button-switch-guided"
+          >
+            Guided DPR
+          </Button>
+        )}
       </div>
 
       {hasDraft && (

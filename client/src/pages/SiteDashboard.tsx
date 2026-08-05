@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/select";
 import { format } from "date-fns";
 import { shortItemName } from "@/lib/itemName";
+import { roadDprHref } from "@/lib/dprEntryMode";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -962,7 +963,7 @@ export default function SiteDashboard() {
             </>
           )}
           {canCreate && (
-            <Link href={appendOrigin("/site/new")}>
+            <Link href={appendOrigin(roadDprHref())}>
               <Button className="gap-2" data-testid="button-new-report">
                 <Plus className="w-4 h-4" />
                 New Report
@@ -1145,7 +1146,7 @@ export default function SiteDashboard() {
                       : "Get started by creating your first site report."}
                   </p>
                   {!hasActiveFilters && (
-                    <Link href={appendOrigin("/site/new")}>
+                    <Link href={appendOrigin(roadDprHref())}>
                       <Button className="gap-2">
                         <Plus className="w-4 h-4" />
                         Create Report
