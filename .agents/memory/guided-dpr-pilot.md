@@ -6,7 +6,7 @@ description: Programme-driven Guided DPR screen — routing, entry-mode preferen
 # Guided DPR pilot (built Aug 2026; reliability batch completed Aug 2026)
 
 - `client/src/pages/GuidedDpr.tsx` at `/site/guided` (gated `site_dprs`) is the guided road-DPR screen; SiteEntry (`/site/new`) is "Detailed DPR" and untouched behaviourally.
-- `client/src/lib/dprEntryMode.ts` holds the localStorage guided/detailed preference; all four road-DPR entry points route through `roadDprHref()`.
+- `client/src/lib/dprEntryMode.ts`: Guided is the default for devices with no stored preference (flipped Aug 2026); only an explicit stored "detailed" routes to Classic. All four road-DPR entry points route through `roadDprHref()`; switching is two-way and persisted per device.
 
 **Rule (superseded → now draft-lenient):** `validateProgressProgrammeLinks` accepts `{ draft: true }` — draft saves keep `programmeBarId` on rows with incomplete chainage or missing out-of-range reason; structural errors (wrong project/item, incompatible side) still fail even for drafts. Final submit is strict (400 `PROGRAMME_LINK_INVALID`). Server never silently drops a link — it rejects instead.
 **Why:** the old strict-always rule forced clients to drop the bar link on incomplete draft rows, which is exactly the "link lost through submit" bug the reliability batch closed.
@@ -19,4 +19,7 @@ description: Programme-driven Guided DPR screen — routing, entry-mode preferen
 - Local autosave (`use-autosave`, key `guided-dpr-new`) restores the whole form incl. draftId via a banner; server draft lifecycle is POST → PATCH `/api/dprs/:id/draft` → POST `/api/dprs/:id/submit` (one record, never duplicates).
 - Tests: `tests/guidedDprReliability.test.ts` (route-level lifecycle, real handlers + mocked storage, 030A scaffolding pattern).
 - Filter DPR lists with `!isSuperseded` when computing "already reported".
+**Rule:** route-level tests that mock `server/storage` must stub `getDprs()` non-empty and use incrementing ids in `createDpr` mocks.
+**Why:** `registerRoutes` fires a background `seedDatabase()` when `getDprs()` is empty — its `createDpr` call races the tests and a fixed mock id lets it clobber the test's draft (intermittent "Only draft DPRs can be submitted").
+
 - Live-proof tip: API login needs an approved device row (`user_devices`); a fresh curl login is `device_pending` until approved (dev DB update works).

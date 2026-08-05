@@ -1,0 +1,28 @@
+Instruction — Make Guided DPR the Default Entry Screen
+
+PURPOSE
+
+Now that the Guided DPR reliability batch is verified (draft resume, programme-link survival, scoped balance display, out-of-range modal, outsourcing attribution, auto-matching), make it the default "New DPR" experience on every device, with Classic/Detailed DPR remaining one tap away as a genuine, permanent option — not removed, not demoted.
+
+DO NOT TOUCH: Detailed DPR's own behavior, the Guided DPR reliability logic just built, Work Programme, everything else.
+
+THE CHANGE
+
+In client/src/lib/dprEntryMode.ts, getDprEntryMode() currently falls back to "detailed" when no preference has ever been stored for that device. Change that fallback to "guided".
+Do not touch the logic for a device that already has an explicit stored preference, either "guided" or "detailed" — a user who has deliberately chosen Classic on a given device keeps getting Classic on that device. This change only affects devices that have never expressed a preference.
+Confirm the "Switch to Classic view" control remains clearly visible and reachable in one tap from Guided DPR, and the reverse switch back to Guided from Classic remains available too — this is a permanent choice for the user, not a one-way migration.
+No change to routing logic, draft data, or anything else — this is a one-line default flip plus verification, not a redesign.
+
+TESTS
+
+A device with no stored sitelog.dprEntryMode value routes "New DPR" to Guided DPR.
+A device with an existing stored value of "detailed" still routes to Classic — the new default does not override an explicit prior choice.
+A device with an existing stored value of "guided" is unaffected.
+Switching between the two views from either screen still works and still persists per-device as before.
+Detailed DPR's own save/submit behavior is unaffected by this change.
+
+LIVE PROOF
+
+On a browser/device profile with no prior DPR entry-mode preference, tap "New DPR" from each of the main entry points (site home, site hub, dashboard, field home) and confirm all of them land on Guided DPR. Confirm "Switch to Classic view" still works. Confirm a device that was previously switched to Classic during earlier testing still opens Classic by default, not silently reset to Guided.
+
+FINAL REQUIREMENT: Not complete until confirmed on an actual never-used device profile, not assumed from the code change alone — and confirmed that no existing device's deliberate choice gets silently overridden.

@@ -31,7 +31,7 @@ const BAR_ID = 8101;
 const OTHER_BAR_ID = 8102;
 const DRAFT_ID = 6001;
 
-const fx = { bars: [] as any[], drafts: new Map<number, any>() };
+const fx = { bars: [] as any[], drafts: new Map<number, any>(), nextId: DRAFT_ID };
 const calls = {
   createdDprs: [] as any[],
   draftUpdates: [] as Array<{ id: number; input: any }>,
@@ -65,13 +65,18 @@ vi.mock("../server/storage", () => {
     },
   });
 
+  // registerRoutes fires a background seedDatabase() that seeds an example
+  // DPR when getDprs() is empty — return a non-empty list so it never runs
+  // (its createDpr call would race with the tests' drafts).
+  methods.getDprs = vi.fn(async () => [{ id: 1 }]);
   methods.getBoqItem = vi.fn(async () => null);
   methods.getWorkProgramBar = vi.fn(async (id: number) => fx.bars.find(b => b.id === id) ?? undefined);
   methods.getWorkProgramBars = vi.fn(async (projectId: number) => fx.bars.filter(b => b.boqProjectId === projectId));
   methods.createDpr = vi.fn(async (input: any) => {
     calls.createdDprs.push(input);
-    const dpr = { id: DRAFT_ID, ...input };
-    fx.drafts.set(DRAFT_ID, dpr);
+    const id = fx.nextId++; // unique per created DPR — no cross-test collisions
+    const dpr = { id, ...input };
+    fx.drafts.set(id, dpr);
     return dpr;
   });
   methods.getDpr = vi.fn(async (id: number) => fx.drafts.get(id));
@@ -236,7 +241,7 @@ describe("Part B — programmeBarId survives draft → update → submit (real r
     const create = await request(app).post("/api/dprs").send(guidedPayload({ asDraft: true }));
     expect(create.status).toBe(201);
     const id = create.body.id;
-    expect(id).toBe(DRAFT_ID);
+    expect(id).toBeGreaterThanOrEqual(DRAFT_ID);
 
     // 2. two more autosaves — PATCH the SAME record, never a new POST
     for (const qty of [1200, 1250]) {

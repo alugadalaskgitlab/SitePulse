@@ -13,11 +13,14 @@ const STORAGE_KEY = "sitelog.dprEntryMode";
 export type DprEntryMode = "guided" | "detailed";
 
 export function getDprEntryMode(): DprEntryMode {
+  // Guided is the default for devices that never expressed a preference.
+  // An explicit stored "detailed" (deliberate switch to Classic) is honoured
+  // per device and is never overridden by this default.
   try {
     const v = localStorage.getItem(STORAGE_KEY);
-    return v === "guided" ? "guided" : "detailed";
+    return v === "detailed" ? "detailed" : "guided";
   } catch {
-    return "detailed";
+    return "guided";
   }
 }
 
