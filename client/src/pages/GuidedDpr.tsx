@@ -36,8 +36,13 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useUpload } from "@/hooks/use-upload";
 import { format, subDays } from "date-fns";
 import type { Site, Personnel, DprWithDetails } from "@shared/schema";
-import { barSideLabel, parseChainageKm } from "@shared/barSide";
+import { barSideLabel, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
+import { chainageOutsideBar, suggestQuantitySource } from "@shared/dprProgrammeLink";
+import { ProgrammeBarPicker, BarLinkFeedback, type PickerBar } from "@/components/ProgrammeBarPicker";
+import { useAutosave } from "@/hooks/use-autosave";
+import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { setDprEntryMode } from "@/lib/dprEntryMode";
+import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
@@ -66,6 +71,10 @@ interface GuidedEntry {
   width: number | null;
   thickness: number | null;
   remark: string;           // per-entry note, folded into DPR remarks
+  // Instruction 031
+  quantitySource: string;          // Part E — how the quantity was determined
+  chainageOverrideReason: string;  // Part F — out-of-range reason
+  executedBy: string;              // Part H — "hlc" | "agency" when arrangement applies
 }
 
 interface SimpleEquipmentRow { machine: string; vehicleNo: string; operator: string; task: string; }
@@ -117,6 +126,27 @@ export default function GuidedDpr() {
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  // Instruction 031 Part A: once a draft is saved, later saves UPDATE the same
+  // record (PATCH) and submit promotes it — never a duplicate row.
+  const [draftId, setDraftId] = useState<number | null>(null);
+
+  // Part A: local autosave so accidental navigation/refresh loses nothing
+  // (same mechanism as the Detailed DPR, guided-specific key).
+  type GuidedFormState = {
+    date: string; siteName: string; engineer: string;
+    entries: GuidedEntry[]; equipment: SimpleEquipmentRow[]; labour: SimpleLabourRow[];
+    remarks: string; draftId: number | null;
+  };
+  const autosaveData: GuidedFormState = { date, siteName, engineer, entries, equipment, labour, remarks, draftId };
+  const autosave = useAutosave<GuidedFormState>({
+    formKey: "guided-dpr-new",
+    data: autosaveData,
+    onRestore: (d) => {
+      setDate(d.date); setSiteName(d.siteName); setEngineer(d.engineer);
+      setEntries(d.entries ?? []); setEquipment(d.equipment ?? []); setLabour(d.labour ?? []);
+      setRemarks(d.remarks ?? ""); setDraftId(d.draftId ?? null);
+    },
+  });
 
   // ── Master data ────────────────────────────────────────────────────────────
   const { data: sitesList = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
@@ -225,6 +255,9 @@ export default function GuidedDpr() {
       width: null,
       thickness: null,
       remark: "",
+      quantitySource: "",
+      chainageOverrideReason: "",
+      executedBy: "",
     }]);
   };
 
@@ -242,6 +275,9 @@ export default function GuidedDpr() {
       width: null,
       thickness: null,
       remark: "",
+      quantitySource: "",
+      chainageOverrideReason: "",
+      executedBy: "",
     }]);
     setAddItemOpen(false);
   };
@@ -253,29 +289,27 @@ export default function GuidedDpr() {
   // ── Same as yesterday (structure-only copy, always previewed) ─────────────
   const applyYesterdayStructure = () => {
     if (!yesterdayDpr) return;
-    const copied: GuidedEntry[] = (yesterdayDpr.progress ?? [])
-      .filter((p: any) => !p.noSiteWork && p.activity)
-      .map((p: any) => ({
-        activity: p.activity,
-        boqItemId: p.boqItemId ?? null,
-        programmeBarId: p.programmeBarId ?? null,
-        side: p.side ?? "",
-        chainageFrom: "",           // measurements deliberately cleared
-        chainageTo: "",
-        quantity: null,
-        uom: p.uom ?? "",
-        expanded: false,
-        width: null,
-        thickness: null,
-        remark: "",
-      }));
-    setEntries(copied);
-    setEquipment((yesterdayDpr.equipment ?? []).filter((e: any) => e.machine).map((e: any) => ({
-      machine: e.machine, vehicleNo: e.vehicleNo ?? "", operator: e.operator ?? "", task: e.task ?? "",
+    // 031 Part I: shared structure-only extraction (same module as SiteEntry).
+    const st = extractYesterdayStructure(yesterdayDpr as any);
+    setEntries(st.progress.map((p) => ({
+      activity: p.activity,
+      boqItemId: p.boqItemId,
+      programmeBarId: p.programmeBarId,
+      side: p.side,
+      chainageFrom: "",           // measurements deliberately cleared
+      chainageTo: "",
+      quantity: null,
+      uom: p.uom,
+      expanded: false,
+      width: null,
+      thickness: null,
+      remark: "",
+      quantitySource: "",
+      chainageOverrideReason: "",
+      executedBy: "",
     })));
-    setLabour((yesterdayDpr.labour ?? []).filter((l: any) => l.category).map((l: any) => ({
-      category: l.category, count: l.count ?? null, contractor: l.contractor ?? "", task: l.task ?? "",
-    })));
+    setEquipment(st.equipment);
+    setLabour(st.labour);
     // photos / readings / remarks / submit status intentionally NOT copied
     setRemarks("");
     setStagedPhotos([]);
@@ -319,12 +353,9 @@ export default function GuidedDpr() {
     const progress = entries.map((e) => {
       const fromKm = parseChainageKm(e.chainageFrom);
       const toKm = parseChainageKm(e.chainageTo);
-      // The server validates programme-linked rows strictly (chainage From/To
-      // required, To > From) even for drafts. A draft row that isn't complete
-      // yet is saved WITHOUT the bar link; the link is restored naturally when
-      // the engineer completes and resubmits (or picks the bar again on edit).
-      const chainageValid = fromKm != null && toKm != null && toKm > fromKm;
-      const keepBarLink = e.programmeBarId != null && (!asDraft || chainageValid);
+      // Instruction 031 Part B: the server is now draft-lenient — a draft row
+      // with incomplete chainage KEEPS its programmeBarId (no more dropping
+      // the link to survive validation).
       return {
         activity: e.activity,
         side: e.side,
@@ -339,11 +370,13 @@ export default function GuidedDpr() {
         noSiteWorkDescription: "",
         personnelIds: [] as number[],
         boqItemId: e.boqItemId,
-        programmeBarId: keepBarLink ? e.programmeBarId : null,
+        programmeBarId: e.programmeBarId,
         chainageFromKm: fromKm,
         chainageToKm: toKm,
-        quantitySource: null,
-        chainageOverrideReason: null,
+        // Part E: default the source from the UOM when the engineer didn't pick.
+        quantitySource: e.quantitySource || (e.quantity != null ? suggestQuantitySource(e.uom) : null),
+        chainageOverrideReason: e.chainageOverrideReason.trim() || null,
+        executedBy: e.executedBy || null,
       };
     });
     const entryRemarks = entries.filter((e) => e.remark.trim()).map((e) => `${e.activity}: ${e.remark.trim()}`);
@@ -375,7 +408,15 @@ export default function GuidedDpr() {
 
   const saveMutation = useMutation({
     mutationFn: async (asDraft: boolean) => {
-      const res = await apiRequest("POST", "/api/dprs", buildPayload(asDraft));
+      // Part A: reuse the saved draft record instead of creating duplicates.
+      let res;
+      if (draftId != null && asDraft) {
+        res = await apiRequest("PATCH", `/api/dprs/${draftId}/draft`, buildPayload(true));
+      } else if (draftId != null && !asDraft) {
+        res = await apiRequest("POST", `/api/dprs/${draftId}/submit`, buildPayload(false));
+      } else {
+        res = await apiRequest("POST", "/api/dprs", buildPayload(asDraft));
+      }
       return { data: await res.json(), asDraft };
     },
     onSuccess: async ({ data, asDraft }) => {
@@ -385,11 +426,12 @@ export default function GuidedDpr() {
       }
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
       if (asDraft) {
-        toast({ title: "Draft Saved", description: "Open it from Field Home to complete and submit." });
-        setLocation(`/site/edit/${data.id}?draft&returnTo=${encodeURIComponent(returnTo)}`);
+        setDraftId(data.id ?? draftId);
+        toast({ title: "Draft Saved", description: "Keep working here — saving again updates this same draft. Submit promotes it." });
       } else {
+        await autosave.clearDraft();
         toast({ title: "Report Saved Successfully", description: "Your site report has been submitted." });
-        setLocation(`/site/success/${data.id}?type=road&returnTo=${encodeURIComponent(returnTo)}`);
+        setLocation(`/site/success/${data.id ?? draftId}?type=road&returnTo=${encodeURIComponent(returnTo)}`);
       }
     },
     onError: () => toast({ title: "Error", description: "Failed to save report. Please try again.", variant: "destructive" }),
@@ -425,12 +467,38 @@ export default function GuidedDpr() {
         toast({ title: "Side needed", description: `"${e.activity}": select the executed side.`, variant: "destructive" });
         return false;
       }
+      // Instruction 031 Parts F/H — same rules as the Detailed DPR.
+      if (e.programmeBarId != null && e.boqItemId != null) {
+        const bars = queryClient.getQueryData<PickerBar[]>(["/api/dpr/programme-bars", boqProjectId, e.boqItemId]) ?? [];
+        const bar = bars.find((b) => b.id === e.programmeBarId);
+        if (bar) {
+          if (chainageOutsideBar(fromKm, toKm, bar) && !e.chainageOverrideReason.trim()) {
+            toast({ title: "Reason required", description: `"${e.activity}": the chainage is outside the planned reach — tap “Give reason” or correct the chainage.`, variant: "destructive" });
+            return false;
+          }
+          if (bar.arrangement && /part/i.test(bar.arrangement.mode ?? "") && !e.executedBy) {
+            toast({ title: "Executed by required", description: `"${e.activity}": this reach is partly outsourced — select HLC or agency (separate rows per executor).`, variant: "destructive" });
+            return false;
+          }
+        }
+      }
     }
     return true;
   };
 
+  // Part J: switching views mid-entry never loses data. If a server draft
+  // exists, continue it in the Detailed editor; otherwise the local autosave
+  // (plus a confirm) protects unsaved entries.
   const switchToDetailed = () => {
     setDprEntryMode("detailed");
+    if (draftId != null) {
+      setLocation(`/site/edit/${draftId}?draft&returnTo=${encodeURIComponent(returnTo)}`);
+      return;
+    }
+    if (entries.length > 0 && !window.confirm("You have unsaved activities. They stay locally autosaved on this screen, but the Detailed DPR starts fresh — save a draft first to continue it there. Switch anyway?")) {
+      setDprEntryMode("guided");
+      return;
+    }
     setLocation(`/site/new?type=road&returnTo=${encodeURIComponent(returnTo)}`);
   };
 
@@ -446,7 +514,14 @@ export default function GuidedDpr() {
           <LayoutList className="w-4 h-4 mr-1" />Detailed DPR
         </Button>
       </div>
-      <h1 className="text-xl font-bold" data-testid="text-guided-title">Guided DPR</h1>
+      <h1 className="text-xl font-bold" data-testid="text-guided-title">Guided DPR{draftId != null ? <Badge variant="outline" className="ml-2 align-middle" data-testid="badge-editing-draft">Draft #{draftId}</Badge> : null}</h1>
+      {autosave.hasDraft && (
+        <DraftRestoreBanner
+          draftAge={autosave.draftAge}
+          onRestore={autosave.restoreDraft}
+          onDiscard={autosave.discardDraft}
+        />
+      )}
       <p className="text-sm text-muted-foreground mb-4 flex items-start gap-1.5" data-testid="text-responsibility">
         <Info className="w-4 h-4 mt-0.5 shrink-0" />
         Records today's road progress against the work programme — same official record as the Detailed DPR, faster entry.
@@ -546,6 +621,45 @@ export default function GuidedDpr() {
                 <Trash2 className="w-4 h-4 text-muted-foreground" />
               </Button>
             </div>
+            {/* 031 Part C: manually-added items get the shared bar picker with
+                auto-matching (1 candidate → auto-link, several → pick,
+                incompatible bars stay behind "Other bars"). */}
+            {e.boqItemId != null && boqProjectId != null && (
+              <ProgrammeBarPicker
+                projectId={boqProjectId}
+                boqItemId={e.boqItemId}
+                dprDate={date}
+                value={e.programmeBarId}
+                autoSelect={e.programmeBarId == null}
+                testidPrefix={`guided-${idx}`}
+                onSelect={(bar) => {
+                  if (!bar) { updateEntry(idx, { programmeBarId: null }); return; }
+                  updateEntry(idx, {
+                    programmeBarId: bar.id,
+                    ...(bar.chainageFrom != null && !e.chainageFrom ? { chainageFrom: fmtCh(bar.chainageFrom) } : {}),
+                    ...(bar.side && !e.side ? { side: barSideLabel(bar.side as any) } : {}),
+                  });
+                }}
+              />
+            )}
+            {/* 031 Parts D/F/G/H: same shared feedback component as the Detailed DPR */}
+            {e.programmeBarId != null && (
+              <BarLinkFeedback
+                projectId={boqProjectId}
+                boqItemId={e.boqItemId}
+                programmeBarId={e.programmeBarId}
+                sideKey={e.side === "LHS" ? "lhs" : e.side === "RHS" ? "rhs" : e.side === "Full Width" ? "full_width" : null}
+                sideLabel={e.side}
+                fromKm={parseChainageKm(e.chainageFrom)}
+                toKm={parseChainageKm(e.chainageTo)}
+                overrideReason={e.chainageOverrideReason}
+                onOverrideReason={(v) => updateEntry(idx, { chainageOverrideReason: v })}
+                qty={e.quantity}
+                executedBy={e.executedBy || null}
+                onExecutedBy={(v) => updateEntry(idx, { executedBy: v })}
+                testidPrefix={`guided-${idx}`}
+              />
+            )}
             {!e.side && (
               <div>
                 <Label>Side</Label>
@@ -582,6 +696,18 @@ export default function GuidedDpr() {
                 <div>
                   <Label>Thickness (m)</Label>
                   <Input type="number" inputMode="decimal" value={e.thickness ?? ""} onChange={(ev) => updateEntry(idx, { thickness: ev.target.value === "" ? null : Number(ev.target.value) })} data-testid={`input-thickness-${idx}`} />
+                </div>
+                <div className="col-span-2">
+                  <Label>Quantity source</Label>
+                  <Select
+                    value={e.quantitySource || (e.quantity != null ? suggestQuantitySource(e.uom) : undefined)}
+                    onValueChange={(v) => updateEntry(idx, { quantitySource: v })}
+                  >
+                    <SelectTrigger data-testid={`select-qty-source-${idx}`}><SelectValue placeholder="How was the quantity determined?" /></SelectTrigger>
+                    <SelectContent>
+                      {QUANTITY_SOURCES.map((qs) => <SelectItem key={qs} value={qs}>{QUANTITY_SOURCE_LABELS[qs]}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="col-span-2">
                   <Label>Note</Label>

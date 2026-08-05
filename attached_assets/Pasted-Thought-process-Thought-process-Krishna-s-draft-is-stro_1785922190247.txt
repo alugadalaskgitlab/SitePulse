@@ -1,0 +1,96 @@
+Thought process
+Thought process
+Krishna's draft is strong and covers real ground — Parts A, B, C, E, G, I, J, and the test list are all well-specified and I'd send them mostly as-is. But it repeats the same ambiguity I flagged before: it talks about "Guided DPR" throughout as if it's one screen with one existing implementation, when I've now confirmed in the code that the screenshots and bugs discussed so far are entirely in the classic form's built-in wizard mode (SiteEntry.tsx), while the actual new /site/guided screen (GuidedDpr.tsx) has none of this machinery at all — no bar-balance display, no side check, no out-of-range reason field, no arrangement data even being fetched. If Krishna's version goes to Replit unchanged, "replace the small inline field with a modal" will likely only get applied to whichever file someone assumes is "Guided DPR," and the other one stays silently broken or entirely missing this capability.
+
+Here's the corrected version, with that split made explicit everywhere it matters, plus the two fixes I already confirmed in code (the balance-figure bug, and that there's already a correct pattern in the same file to copy from).
+
+Instruction — Guided DPR and Detailed DPR Reliability, Programme Linking and Exception Clarity
+
+PURPOSE
+
+Stabilise programme-bar linking, exception handling, and quantity clarity across both DPR entry screens before further redesign work.
+
+Read this before starting — the two screens are in genuinely different states today, confirmed in the actual code, not assumed:
+
+Detailed DPR / Classic View (SiteEntry.tsx, including its built-in step-wizard display mode — this is what every screenshot discussed so far actually shows) already has: the programme-bar chip picker, side-mismatch detection, an out-of-range chainage reason field, and arrangement data fetched from the server. Its problems are: the reason field is a small, easy-to-miss inline box with no enforcement; the Planned/Done/Balance text shows whole-BOQ-item totals instead of the selected bar's own figures; and arrangement/outsourcing context, while fetched, isn't shown prominently or required.
+
+Guided DPR (GuidedDpr.tsx, route /site/guided — the actual new simplified screen) has none of the above. It doesn't fetch bar balances, doesn't check side compatibility, doesn't fetch arrangement data, and its save payload hardcodes the out-of-range reason as always empty. It saves through the exact same server rule that requires a reason for out-of-range chainage, so a Guided DPR user who links a bar and enters out-of-range chainage today gets a flat save failure with no field anywhere on screen to fix it.
+
+Every part below that touches this shared territory must be built or fixed in both files, explicitly, not assumed to exist in one because it exists in the other. Where a mechanism already exists in SiteEntry.tsx, extract it into a shared component or hook that GuidedDpr.tsx also uses, rather than writing two separately-maintained copies — this codebase has already accumulated one case (the Work Programme overlap check) where two near-identical validators drifted apart from being maintained separately; don't create a second one here.
+
+DO NOT TOUCH
+Existing Detailed DPR layout/behaviour beyond what's specified here · existing DPR database tables unless a genuinely missing persistence field is required · BOQ UOM logic · Work Programme quantity allocation · SDB/SNL and mix-template calculations · Procurement and Stores UOM conversion · Gantt sequencing · programme-bar deletion protection · existing submitted DPR records · existing approval workflow · HMP, RMC, Stores, Procurement, PI, GRN, Equipment modules.
+
+PART A — DRAFT PERSISTENCE (both screens)
+
+An in-progress entry must reopen as the same draft without losing typed or selected data — date, site, BOQ item/activity, programmeBarId, reach, side, chainage from/to, calculated length/width/thickness, quantity, quantity source, personnel, equipment, labour, agency/executor, photos, remarks, out-of-programme reason, exception/review status, and current step. Autosave updates the existing draft, never creates a second one. Leaving, refreshing, switching view, and reopening restores the same draft. Final submission submits that same draft record, never a duplicate.
+
+PART B — PROGRAMME LINK PRESERVATION (both screens)
+
+programmeBarId must survive entry → autosave → save draft → leave → reopen → preview → submit, in both SiteEntry.tsx and GuidedDpr.tsx independently verified. After submission: stays linked to the same bar, correct reach/side, Plan vs Actual updates only that bar, the opposite side is untouched, submission never silently drops the link.
+
+PART C — AUTOMATIC PROGRAMME-BAR MATCHING (build once, use in both)
+
+Currently neither screen auto-selects a bar even when only one candidate matches — confirmed, this needs to be built new. Using BOQ item, side, chainage, and project/site:
+
+Exactly one compatible bar → auto-link it, show "Linked automatically: Reach 1 · Ch. 2.4–3.25 · RHS," allow "Change planned reach."
+Multiple compatible bars → show only the compatible ones, ask the user to pick.
+None compatible → show "No matching planned reach found," allow recording as unplanned/out-of-programme with a reason.
+Incompatible LHS/RHS bars stay out of the primary list, available only under "Show other programme reaches."
+Side-compatibility and chainage-containment rules stay exactly as already implemented elsewhere in the codebase — reuse, don't reimplement.
+PART D — PLANNED/DONE/BALANCE DISPLAY
+
+In SiteEntry.tsx: this is a confirmed, precisely-located bug, not a design gap. The balance text is rendered by a shared function that already accepts an optional bar-specific override — the structure-item entry path in the same file already passes that override correctly and shows accurate scoped numbers; the road-bar chip path simply never passes it, so it silently falls back to whole-BOQ-item totals. Fix: pass the same override at the road-bar call site that the structure-item path already uses. This should be a small, low-risk change since the correct pattern already exists in the file.
+
+In GuidedDpr.tsx: this display doesn't exist at all yet and needs to be built, using the same bar-specific figures.
+
+Both screens, once linked, must show:
+
+Selected reach planned: 1,139.1 CUM
+Selected reach done: 478.8 CUM
+Selected reach balance: 660.3 CUM
+with total BOQ-item figures shown separately and smaller, never labeled plainly as "Planned" beside a selected bar.
+
+PART E — QUANTITY SOURCE BEHAVIOUR (both screens)
+
+Geometry-calculated quantity auto-sets and displays "Calculated from geometry" as a read-only status, not a blank dropdown. Manual edits to an auto-calculated quantity require the user to pick the real source (Direct measured / Survey / Weighment / Other, with a short explanation for Other). Direct-entry items suggest a likely source by BOQ UOM/item type but allow correction. Source persists through autosave, reopen, preview, submission, and shows in the preview alongside the quantity.
+
+PART F — OUT-OF-PROGRAMME CHAINAGE MODAL
+
+In SiteEntry.tsx: replace the existing small inline reason field with the modal below — this is an upgrade of something that already partially works.
+
+In GuidedDpr.tsx: build this modal fresh — there is currently no reason-collection mechanism of any kind, so today an out-of-range entry there fails at save with no way to resolve it. This is the more urgent of the two.
+
+Modal behaviour, both screens: opens when the complete chainage range is entered or the user leaves the To-Chainage field and the range falls outside the linked bar. Shows planned range vs entered range plainly. Requires a reason. Two actions: "Correct chainage" / "Continue with reason." Without a reason: Next stays blocked, Save Draft may proceed but the draft shows "Reason required," final Submit stays blocked. Once entered: persists through autosave/reopen, shows a visible "Outside planned reach — review required" badge, carries into preview and submission, and — critically — the backend must actually accept a valid saved reason; final submission failing after the UI already accepted the reason, which is what happened in testing, must not recur. Valid sub-ranges fully inside the bar are unaffected by any of this.
+
+PART G — OUT-OF-PROGRAMME PROGRESS HANDLING (both screens)
+
+Fully inside the linked bar: counts normally. Partly or fully outside: saved as "Outside planned reach — review required," does not increase the selected bar's completed quantity until reviewed, reason and actual chainage preserved, entry never discarded. No split-chainage accounting in this batch.
+
+PART H — PARTLY OUTSOURCED EXECUTION CONTEXT
+
+In SiteEntry.tsx: arrangement data is already fetched from the server but not shown prominently or required — surface it clearly and add the executor requirement below.
+
+In GuidedDpr.tsx: this data isn't fetched at all currently — add the fetch (same endpoint/data SiteEntry.tsx already uses) before the display can work.
+
+Both screens, once a bar with an execution arrangement is linked: show "Execution arrangement: Partly Outsourced" (or Fully Outsourced / HLC execution / Agency execution as applicable), and for partly outsourced work require "Executed by: HLC / Approved agency" (agency name shown if selected). Where both HLC and an agency worked the same item/day, require separate rows so quantities stay attributable. Persists through draft, reopen, preview, submission, review. Never silently assumed.
+
+PART I — SAME AS YESTERDAY
+
+GuidedDpr.tsx already has this built, with a preview dialog and correct field clearing (chainage/quantity/photos/readings/remarks/submit-status cleared; work items/reach/side/equipment/labour/agency copied) — verify it matches this spec exactly rather than rebuilding it. SiteEntry.tsx should get the same behaviour if it doesn't already have it, reusing the same logic rather than a second implementation.
+
+PART J — BOTH SCREENS STAY AVAILABLE
+
+Guided DPR and Detailed DPR/Classic View both remain, save to the same records via the same backend. Switching views mid-draft never loses data, never creates a second draft, never drops programmeBarId, never alters already-entered rows. Detailed DPR's existing behaviour is otherwise unchanged.
+
+PART K — TESTS
+
+Cover, and explicitly run against both SiteEntry.tsx and GuidedDpr.tsx, not just one: draft resume without data loss; programme link survives the full lifecycle; no duplicate DPR from repeated autosave; correct-side-only progress update; bar-level vs BOQ-level totals shown separately and correctly; quantity-source auto-set and persistence; out-of-range modal blocking/non-blocking behaviour and reason persistence through to a successful submit; out-of-range quantity not counted until reviewed; outsourcing arrangement shown and executor required; Detailed DPR regression; view-switch retains the same draft and link.
+
+LIVE PROOF
+
+Run the full sequence — RHS Ch.2.4–2.75 auto-linking, scoped balance display, quantity-source auto-set, draft reopen, submit-without-duplication, correct-side-only update, then Ch.2.2–2.55 triggering the modal, reason entry, successful submit with review flag, then a partly-outsourced bar requiring executor selection — once on Detailed DPR/Classic View, and once again on the actual /site/guided screen, since that screen has not yet been exercised by any of this testing. Confirm Detailed DPR's existing behaviour is unchanged throughout.
+
+FINAL REQUIREMENT
+
+Not complete until every item above is demonstrated working on both screens independently, not inferred from one screen's success — given how much of this conversation has already turned on mixing the two up, that verification step matters as much as the fixes themselves.

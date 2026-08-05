@@ -9,11 +9,16 @@
  * Selecting a bar never claims its full quantity — the caller only prefills
  * chainage/side/width and the engineer reports today's actual work.
  */
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertTriangle } from "lucide-react";
 import { barSideLabel, isDprSideCompatible } from "@shared/barSide";
+import { chainageOutsideBar, barBalanceFigures, autoMatchBar } from "@shared/dprProgrammeLink";
+import { OutOfRangeChainageModal } from "@/components/OutOfRangeChainageModal";
 
 export type PickerBar = {
   id: number;
@@ -51,6 +56,7 @@ export function ProgrammeBarPicker({
   value,
   onSelect,
   testidPrefix,
+  autoSelect = false,
 }: {
   projectId: number;
   boqItemId: number;
@@ -58,6 +64,12 @@ export function ProgrammeBarPicker({
   value: number | null;
   onSelect: (bar: PickerBar | null) => void;
   testidPrefix: string;
+  /**
+   * Instruction 031 Part C: when exactly one compatible bar exists for the
+   * item (preferring bars active on the DPR date), link it automatically.
+   * The chips stay visible so the user can still "change planned reach".
+   */
+  autoSelect?: boolean;
 }) {
   const { data: bars = [] } = useQuery<PickerBar[]>({
     queryKey: ["/api/dpr/programme-bars", projectId, boqItemId],
@@ -67,6 +79,22 @@ export function ProgrammeBarPicker({
     },
     enabled: !!projectId && !!boqItemId,
   });
+
+  // Part C auto-match: fires once per (item, bar-list) while nothing is linked.
+  // A deliberate unlink (user clicks the linked chip off) suppresses re-linking.
+  const autoLinkedRef = useRef<string | null>(null);
+  const [autoLinkedBarId, setAutoLinkedBarId] = useState<number | null>(null);
+  useEffect(() => {
+    if (!autoSelect || bars.length === 0 || value != null) return;
+    const key = `${boqItemId}:${dprDate}:${bars.map(b => b.id).join(",")}`;
+    if (autoLinkedRef.current === key) return;
+    autoLinkedRef.current = key;
+    const match = autoMatchBar(bars as any, { dprDate });
+    if (match.kind === "auto") {
+      setAutoLinkedBarId(match.bar.id);
+      onSelect(match.bar as any as PickerBar);
+    }
+  }, [autoSelect, bars, value, boqItemId, dprDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (bars.length === 0) return null;
 
@@ -119,6 +147,11 @@ export function ProgrammeBarPicker({
           </Select>
         )}
       </div>
+      {autoLinkedBarId != null && value === autoLinkedBarId && (
+        <p className="text-[10px] text-muted-foreground" data-testid={`${testidPrefix}-auto-linked-note`}>
+          Linked automatically to the only matching planned reach — tap another chip to change planned reach.
+        </p>
+      )}
       {selected?.arrangement && (
         <p className="text-[10px] text-purple-700 dark:text-purple-300" data-testid={`${testidPrefix}-arrangement-context`}>
           Executed under arrangement #{selected.arrangement.id}
@@ -131,9 +164,16 @@ export function ProgrammeBarPicker({
 }
 
 /**
- * Live feedback for a progress row linked to a programme bar: side
- * compatibility (hard-blocks on submit) and chainage containment with an
- * override-reason input for legitimate out-of-range work.
+ * Instruction 031 — live feedback for a progress row linked to a programme
+ * bar, shared by BOTH DPR screens (Detailed + Guided) and SiteEdit:
+ *  - Part D: bar-scoped Planned / Done / Balance ("Selected reach"), with the
+ *    whole-BOQ-item totals shown smaller and clearly separate when provided.
+ *  - side compatibility (hard-blocks on submit),
+ *  - Part F: out-of-range chainage handled through the shared modal (reason
+ *    required to continue; drafts saveable with a visible "Reason required"
+ *    flag; submit blocked without a reason by the caller + server).
+ *  - Part G: out-of-range rows show "Outside planned reach — review required".
+ *  - Part H: arrangement context; partly-outsourced bars require "Executed by".
  */
 export function BarLinkFeedback({
   projectId,
@@ -146,6 +186,10 @@ export function BarLinkFeedback({
   overrideReason,
   onOverrideReason,
   testidPrefix,
+  qty,
+  itemTotals,
+  executedBy,
+  onExecutedBy,
 }: {
   projectId: number | null;
   boqItemId: number | null;
@@ -157,7 +201,15 @@ export function BarLinkFeedback({
   overrideReason: string;
   onOverrideReason: (v: string) => void;
   testidPrefix: string;
+  /** Today's reported quantity for this row (for over-balance hinting). */
+  qty?: number | null;
+  /** Whole-BOQ-item totals, shown smaller/separate from the reach figures. */
+  itemTotals?: { currentQty: number; totalActual: number; balance: number; unit: string } | null;
+  /** Part H: who executed this row (required when arrangement is partly outsourced). */
+  executedBy?: string | null;
+  onExecutedBy?: (v: "hlc" | "agency") => void;
 }) {
+  const [reasonModalOpen, setReasonModalOpen] = useState(false);
   const { data: bars = [] } = useQuery<PickerBar[]>({
     queryKey: ["/api/dpr/programme-bars", projectId, boqItemId],
     queryFn: async () => {
@@ -169,28 +221,87 @@ export function BarLinkFeedback({
   const bar = bars.find(b => b.id === programmeBarId);
   if (!bar) return null;
   const sideOk = isDprSideCompatible(bar.side as any, sideKey as any);
-  const outOfRange = fromKm != null && toKm != null && bar.chainageFrom != null && bar.chainageTo != null
-    && (fromKm < Number(bar.chainageFrom) - 1e-9 || toKm > Number(bar.chainageTo) + 1e-9);
-  if (sideOk && !outOfRange) return null;
+  const outOfRange = chainageOutsideBar(fromKm, toKm, bar);
+  const scoped = barBalanceFigures(bar);
+  const partlyOutsourced = !!bar.arrangement && /part/i.test(bar.arrangement.mode ?? "");
   return (
     <div className="mt-1 space-y-1">
+      {scoped && (
+        <div className="flex flex-wrap items-center gap-1" data-testid={`${testidPrefix}-reach-balance`}>
+          <span className="text-[10px] font-semibold text-muted-foreground">Selected reach:</span>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Planned {scoped.currentQty}{scoped.unit ? ` ${scoped.unit}` : ""}</Badge>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Done {scoped.totalActual}</Badge>
+          <Badge variant={scoped.balance <= 0 ? "destructive" : "outline"} className="text-[10px] px-1.5 py-0">Balance {scoped.balance}</Badge>
+          {itemTotals && (
+            <span className="text-[9px] text-muted-foreground ml-1" data-testid={`${testidPrefix}-item-totals`}>
+              (BOQ item total: {itemTotals.currentQty} · done {itemTotals.totalActual} · bal {itemTotals.balance}{itemTotals.unit ? ` ${itemTotals.unit}` : ""})
+            </span>
+          )}
+        </div>
+      )}
       {!sideOk && (
         <p className="text-[11px] text-red-600 font-medium" data-testid={`${testidPrefix}-warn-side-incompatible`}>
           Side "{sideDisplay || "—"}" doesn't match the bar's planned side ({barSideLabel(bar.side as any)}). Fix the side or link a different bar — submit will be blocked.
         </p>
       )}
       {outOfRange && (
-        <div className="space-y-0.5">
-          <p className="text-[11px] text-amber-700 font-medium" data-testid={`${testidPrefix}-warn-chainage-range`}>
-            Chainage {fromKm}–{toKm} is outside the bar's range ({bar.chainageFrom}–{bar.chainageTo}). Give a reason to proceed:
-          </p>
-          <Input
-            placeholder="Reason for working outside the planned stretch"
-            value={overrideReason}
-            onChange={(e) => onOverrideReason(e.target.value)}
-            className="h-7 text-xs"
-            data-testid={`${testidPrefix}-input-chainage-override`}
+        <div className="flex flex-wrap items-center gap-1.5" data-testid={`${testidPrefix}-warn-chainage-range`}>
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-700">
+            <AlertTriangle className="w-3 h-3" /> Outside planned reach — review required
+          </span>
+          {overrideReason.trim() ? (
+            <span className="text-[10px] text-muted-foreground" data-testid={`${testidPrefix}-override-reason-display`}>
+              Reason: {overrideReason}
+            </span>
+          ) : (
+            <span className="text-[10px] font-semibold text-red-600" data-testid={`${testidPrefix}-flag-reason-required`}>
+              Reason required
+            </span>
+          )}
+          <Button type="button" size="sm" variant="outline" className="h-5 text-[10px] px-1.5" onClick={() => setReasonModalOpen(true)} data-testid={`${testidPrefix}-button-give-reason`}>
+            {overrideReason.trim() ? "Edit reason" : "Give reason"}
+          </Button>
+          <OutOfRangeChainageModal
+            open={reasonModalOpen}
+            onOpenChange={setReasonModalOpen}
+            plannedFromKm={bar.chainageFrom}
+            plannedToKm={bar.chainageTo}
+            enteredFromKm={fromKm}
+            enteredToKm={toKm}
+            initialReason={overrideReason}
+            onContinue={(r) => onOverrideReason(r)}
+            onCorrect={() => {}}
+            testidPrefix={testidPrefix}
           />
+        </div>
+      )}
+      {!outOfRange && overrideReason.trim() !== "" && (
+        // Range corrected back inside the bar — stale reason cleared by caller
+        // on save; show nothing here.
+        null
+      )}
+      {bar.arrangement && (
+        <div className="space-y-0.5">
+          <p className="text-[10px] text-purple-700 dark:text-purple-300" data-testid={`${testidPrefix}-arrangement-mode`}>
+            Arrangement: {bar.arrangement.mode ?? "—"}{bar.arrangement.agency ? ` — agency: ${bar.arrangement.agency}` : ""}. Executing agency comes from the arrangement, never from who files this DPR.
+          </p>
+          {onExecutedBy && (partlyOutsourced || executedBy) && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-semibold">Executed by{partlyOutsourced ? " *" : ""}:</span>
+              <Select value={executedBy ?? undefined} onValueChange={(v) => onExecutedBy(v as "hlc" | "agency")}>
+                <SelectTrigger className="h-6 w-auto text-[11px] px-2" data-testid={`${testidPrefix}-select-executed-by`}>
+                  <SelectValue placeholder="Select…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hlc">HLC (own execution)</SelectItem>
+                  <SelectItem value="agency">{bar.arrangement.agency ? `Agency — ${bar.arrangement.agency}` : "Agency"}</SelectItem>
+                </SelectContent>
+              </Select>
+              {partlyOutsourced && !executedBy && (
+                <span className="text-[10px] font-semibold text-red-600" data-testid={`${testidPrefix}-flag-executed-by-required`}>Required — record HLC and agency work as separate rows</span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

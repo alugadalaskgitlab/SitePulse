@@ -28,4 +28,5 @@
 - [Work Programme Read/Edit Mode](work-programme-read-edit-mode.md) — 029A: StretchRow read vs deliberate edit (no onBlur autosaves), one-editor guard, stable toolbar, per-project tab/scroll restore.
 - [Programme Bar↔DPR Linkage](programme-bar-dpr-linkage.md) — 030A: barSide.ts matrix, FK SET NULL + app-level 409 deletion guard, split keeps original bar's links, cloneDpr must copy linkage fields.
 - [Guided DPR pilot](guided-dpr-pilot.md) — /site/guided + dprEntryMode preference; server validates programme-linked rows strictly even for drafts (drop bar link on incomplete draft rows).
+- [DPR Programme-Link 031](dpr-programme-link-031.md) — shared/dprProgrammeLink.ts + BarLinkFeedback are the single source for DPR↔bar rules; cloneDpr must copy every new progress column.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

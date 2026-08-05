@@ -43,6 +43,7 @@ interface ProgressEntry {
   programmeBarId: number | null;
   quantitySource: string;
   chainageOverrideReason: string;
+  executedBy: string;
 }
 
 interface EquipmentEntry {
@@ -185,8 +186,9 @@ function mapDprToFormState(dpr: any) {
         programmeBarId: p.programmeBarId ?? null,
         quantitySource: p.quantitySource || "",
         chainageOverrideReason: p.chainageOverrideReason || "",
+        executedBy: p.executedBy || "",
       }))
-    : [{ activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "" }];
+    : [{ activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "", executedBy: "" }];
 
   const equipment: EquipmentEntry[] = dpr.equipment?.length
     ? dpr.equipment.map((e: any) => ({
@@ -386,7 +388,7 @@ export default function SiteEdit() {
   });
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "" }
+    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "", executedBy: "" }
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
@@ -554,7 +556,7 @@ export default function SiteEdit() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour') => {
     if (section === 'progress') {
-      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "" }]);
+      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "", executedBy: "" }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }]);
     } else if (section === 'labour') {
@@ -625,6 +627,7 @@ export default function SiteEdit() {
         chainageToKm: parseChainageKm(p.chainageTo),
         quantitySource: p.quantitySource || null,
         chainageOverrideReason: p.chainageOverrideReason || null,
+        executedBy: p.executedBy || null,
       };
     }) : [],
     equipment: equipment.filter(e => e.machine).map(eq => ({
@@ -1256,6 +1259,13 @@ export default function SiteEdit() {
                           onOverrideReason={(v) => {
                             const updated = [...progress];
                             updated[idx].chainageOverrideReason = v;
+                            setProgress(updated);
+                          }}
+                          qty={entry.quantity}
+                          executedBy={entry.executedBy || null}
+                          onExecutedBy={(v) => {
+                            const updated = [...progress];
+                            updated[idx].executedBy = v;
                             setProgress(updated);
                           }}
                           testidPrefix={`progress-${idx}`}

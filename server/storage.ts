@@ -2254,6 +2254,11 @@ export class DatabaseStorage implements IStorage {
             quantitySource: (p as any).quantitySource ?? null,
             chainageOverrideReason: (p as any).chainageOverrideReason ?? null,
             lengthOverrideReason: (p as any).lengthOverrideReason ?? null,
+            // 031 Parts G/H: preserve review flag + executor attribution on clone,
+            // otherwise superseding a DPR would let review_required rows count
+            // toward bar done-qty and drop the executed-by record.
+            chainageReviewStatus: (p as any).chainageReviewStatus ?? null,
+            executedBy: (p as any).executedBy ?? null,
           }))
         ).returning();
         for (let i = 0; i < insertedProgress.length; i++) {
@@ -22691,6 +22696,10 @@ export class DatabaseStorage implements IStorage {
         eq(dprs.dprStatus, "submitted"),
         eq(dprs.isSuperseded, false),
         eq(dprs.isCancelled, false),
+        // Instruction 031 Part G: "Outside planned reach — review required"
+        // rows are preserved but excluded from the bar's completed quantity
+        // until reviewed/approved.
+        sql`(${progressEntries.chainageReviewStatus} IS NULL OR ${progressEntries.chainageReviewStatus} <> 'review_required')`,
       ))
       .groupBy(progressEntries.programmeBarId);
     const map = new Map<number, number>();

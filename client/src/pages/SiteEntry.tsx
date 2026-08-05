@@ -25,12 +25,12 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useUpload } from "@/hooks/use-upload";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import SitePreview from "@/pages/SitePreview";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
@@ -38,7 +38,10 @@ import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@share
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
-import { ProgrammeBarPicker } from "@/components/ProgrammeBarPicker";
+import { chainageOutsideBar } from "@shared/dprProgrammeLink";
+import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
+import { History } from "lucide-react";
+import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
 import { setDprEntryMode } from "@/lib/dprEntryMode";
 import { calculateBomDemand, fmtQty, type BomInputItem, type BomInputBar, type BomDemand } from "@shared/planningEngine";
 
@@ -60,6 +63,8 @@ interface ProgressEntry {
   programmeBarId: number | null;
   quantitySource: string;
   chainageOverrideReason: string;
+  // 031 Part H: executor when the linked bar has an arrangement
+  executedBy: string;
 }
 
 interface EquipmentEntry {
@@ -772,7 +777,7 @@ export default function SiteEntry() {
   }, [attachPersonnelToTarget, toast]);
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "" }
+    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "", executedBy: "" }
   ]);
 
   const [openPlantMap, setOpenPlantMap] = useState<Record<number, any>>({});
@@ -939,7 +944,7 @@ export default function SiteEntry() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour' | 'materials') => {
     if (section === 'progress') {
-      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "" }]);
+      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", chainageOverrideReason: "", executedBy: "" }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }]);
     } else if (section === 'labour') {
@@ -981,6 +986,44 @@ export default function SiteEntry() {
     setSitePurchases(updated);
   };
 
+  // ── Instruction 031 Part I: "Same as yesterday" (structure-only copy) ──────
+  const [showYesterdayPreview, setShowYesterdayPreview] = useState(false);
+  const siteEntryYesterday = useMemo(
+    () => header.date ? format(subDays(new Date(header.date + "T00:00:00"), 1), "yyyy-MM-dd") : "",
+    [header.date],
+  );
+  const { data: yesterdayDprs = [] } = useQuery<any[]>({
+    queryKey: ["/api/dprs/with-details", siteEntryYesterday, "same-as-yesterday"],
+    queryFn: async () => {
+      const res = await fetch(`/api/dprs/with-details?dateFrom=${siteEntryYesterday}&dateTo=${siteEntryYesterday}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!siteEntryYesterday && !!header.site && workType === "road",
+  });
+  const yesterdayDpr = useMemo(
+    () => yesterdayDprs.find((d: any) => d.site === header.site && d.workType !== "structure" && !d.isSuperseded) ?? null,
+    [yesterdayDprs, header.site],
+  );
+  const progressIsEmpty = progress.every(p => !p.activity && p.boqItemId == null && p.quantity == null);
+  const applyYesterdayStructure = () => {
+    if (!yesterdayDpr) return;
+    // Shared structure-only extraction — same module as the Guided DPR.
+    const st = extractYesterdayStructure(yesterdayDpr);
+    setProgress(st.progress.map(p => ({
+      activity: p.activity, side: p.side, chainageFrom: "", chainageTo: "",
+      length: null, width: null, thickness: null, quantity: null,
+      uom: p.uom || "SQM", noSiteWork: false, noSiteWorkDescription: "",
+      personnelIds: [], boqItemId: p.boqItemId, programmeBarId: p.programmeBarId,
+      quantitySource: "", chainageOverrideReason: "", executedBy: "",
+    })));
+    const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null };
+    if (st.equipment.length > 0) setEquipment(st.equipment.map(e => ({ ...blankEq, ...e })) as any);
+    if (st.labour.length > 0) setLabour(st.labour.map(l => ({ category: l.category, gender: "", count: l.count, task: l.task, contractor: l.contractor, boqItemId: null, structureId: null })) as any);
+    setShowYesterdayPreview(false);
+    toast({ title: "Structure copied", description: "Yesterday's work items and crew copied. Enter today's chainage and quantities." });
+  };
+
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const progressWithCalc = progress.map(p => {
@@ -992,8 +1035,12 @@ export default function SiteEntry() {
           // 030A: numeric chainage (Km) alongside the display text
           chainageFromKm: parseChainageKm(p.chainageFrom),
           chainageToKm: parseChainageKm(p.chainageTo),
-          quantitySource: p.quantitySource || null,
+          // 031 Part E: an untouched quantity that came from geometry is
+          // recorded as "Calculated from geometry" automatically.
+          quantitySource: p.quantitySource || (p.quantity == null && calculateQuantity(p) != null ? "calculated" : null),
           chainageOverrideReason: p.chainageOverrideReason || null,
+          executedBy: p.executedBy || null,
+          // 031 Part G handled server-side via chainageReviewStatus stamping.
         };
       });
 
@@ -1126,8 +1173,12 @@ export default function SiteEntry() {
           quantity: p.quantity || calculateQuantity(p),
           chainageFromKm: parseChainageKm(p.chainageFrom),
           chainageToKm: parseChainageKm(p.chainageTo),
-          quantitySource: p.quantitySource || null,
+          // 031 Part E: an untouched quantity that came from geometry is
+          // recorded as "Calculated from geometry" automatically.
+          quantitySource: p.quantitySource || (p.quantity == null && calculateQuantity(p) != null ? "calculated" : null),
           chainageOverrideReason: p.chainageOverrideReason || null,
+          executedBy: p.executedBy || null,
+          // 031 Part G handled server-side via chainageReviewStatus stamping.
         };
       });
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
@@ -1245,6 +1296,30 @@ export default function SiteEntry() {
           });
           return;
         }
+      }
+    }
+    // 031 Parts F/H/E: submit-blocking checks for programme-linked rows.
+    for (let i = 0; i < progress.length; i++) {
+      const p = progress[i];
+      if (p.noSiteWork || p.programmeBarId == null) continue;
+      const bar = programmeBars.find(b => b.id === p.programmeBarId);
+      if (bar) {
+        const fromKm = parseChainageKm(p.chainageFrom);
+        const toKm = parseChainageKm(p.chainageTo);
+        if (chainageOutsideBar(fromKm, toKm, bar as any) && !p.chainageOverrideReason.trim()) {
+          toast({ title: `Row ${i + 1}: reason required`, description: "The chainage is outside the planned reach. Give a reason (tap \u201cGive reason\u201d) or correct the chainage before submitting.", variant: "destructive" });
+          return;
+        }
+        const arr = (bar as any).arrangement;
+        if (arr && /part/i.test(arr.mode ?? "") && !p.executedBy) {
+          toast({ title: `Row ${i + 1}: executed by required`, description: "This reach is partly outsourced — select whether HLC or the agency executed this work. Record HLC and agency work as separate rows.", variant: "destructive" });
+          return;
+        }
+      }
+      // Part E: a manually entered quantity needs an explicit source.
+      if (p.quantity != null && !p.quantitySource) {
+        toast({ title: `Row ${i + 1}: quantity source required`, description: "You entered the quantity directly — pick how it was determined (measured, weighment, survey…).", variant: "destructive" });
+        return;
       }
     }
     const warnings = getOverBalanceWarnings();
@@ -1527,6 +1602,35 @@ export default function SiteEntry() {
           )}
         </CardHeader>
         <CardContent className="space-y-4">
+          {workType === "road" && yesterdayDpr && progressIsEmpty && (
+            <Button variant="outline" className="w-full" onClick={() => setShowYesterdayPreview(true)} data-testid="button-same-as-yesterday">
+              <History className="w-4 h-4 mr-2" />Same as yesterday — copy work items &amp; crew
+            </Button>
+          )}
+          <Dialog open={showYesterdayPreview} onOpenChange={setShowYesterdayPreview}>
+            <DialogContent data-testid="dialog-yesterday-preview">
+              <DialogHeader>
+                <DialogTitle>Copy yesterday's structure?</DialogTitle>
+                <DialogDescription>
+                  Copies work items, reach, side, equipment, labour and agency from {siteEntryYesterday}. Chainage, quantities, photos, readings, remarks and submit status are NOT copied — you enter today's actuals fresh.
+                </DialogDescription>
+              </DialogHeader>
+              {yesterdayDpr && (
+                <div className="text-sm space-y-2 max-h-64 overflow-y-auto">
+                  <p className="font-medium mb-1">Work items</p>
+                  <ul className="list-disc list-inside text-muted-foreground">
+                    {extractYesterdayStructure(yesterdayDpr).progress.map((p, i) => (
+                      <li key={i}>{p.activity}{p.side ? ` · ${p.side}` : ""}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowYesterdayPreview(false)} data-testid="button-cancel-yesterday">Cancel</Button>
+                <Button onClick={applyYesterdayStructure} data-testid="button-confirm-yesterday">Copy structure</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           {workType === "structure" ? (
             structureItems.map((item, idx) => {
               const subTypes = getSubTypes(item.structureType);
@@ -1794,6 +1898,7 @@ export default function SiteEntry() {
                         boqItemId={entry.boqItemId}
                         dprDate={header.date}
                         value={entry.programmeBarId}
+                        autoSelect
                         testidPrefix={`progress-${idx}`}
                         onSelect={(bar) => {
                           const updated = [...progress];
@@ -1819,50 +1924,41 @@ export default function SiteEntry() {
                         }}
                       />
                     )}
-                    {/* 030A: live link feedback — side compatibility + chainage containment */}
-                    {entry.programmeBarId != null && (() => {
-                      const bar = programmeBars.find(b => b.id === entry.programmeBarId);
-                      if (!bar) return null;
-                      const sideKey = entry.side === "LHS" ? "lhs" : entry.side === "RHS" ? "rhs" : entry.side === "Full Width" ? "full_width" : null;
-                      const sideOk = isDprSideCompatible(bar.side as any, sideKey as any);
-                      const fromKm = parseChainageKm(entry.chainageFrom);
-                      const toKm = parseChainageKm(entry.chainageTo);
-                      const outOfRange = fromKm != null && toKm != null && bar.chainageFrom != null && bar.chainageTo != null
-                        && (fromKm < Number(bar.chainageFrom) - 1e-9 || toKm > Number(bar.chainageTo) + 1e-9);
-                      return (
-                        <div className="mt-1 space-y-1">
-                          {!sideOk && (
-                            <p className="text-[11px] text-red-600 font-medium" data-testid={`warn-side-incompatible-${idx}`}>
-                              Side "{entry.side || "—"}" doesn't match the bar's planned side ({barSideLabel(bar.side as any)}). Fix the side or link a different bar — submit will be blocked.
-                            </p>
-                          )}
-                          {outOfRange && (
-                            <div className="space-y-0.5">
-                              <p className="text-[11px] text-amber-700 font-medium" data-testid={`warn-chainage-range-${idx}`}>
-                                Chainage {fromKm}–{toKm} is outside the bar's range ({bar.chainageFrom}–{bar.chainageTo}). Give a reason to proceed:
-                              </p>
-                              <Input
-                                placeholder="Reason for working outside the planned stretch"
-                                value={entry.chainageOverrideReason}
-                                onChange={(e) => {
-                                  const updated = [...progress];
-                                  updated[idx].chainageOverrideReason = e.target.value;
-                                  setProgress(updated);
-                                }}
-                                className="h-7 text-xs"
-                                data-testid={`input-chainage-override-${idx}`}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    {/* 031: shared link feedback — bar-scoped balance (Part D), side
+                        compatibility, out-of-range modal + review flag (Parts F/G),
+                        arrangement + executed-by (Part H). Same component as Guided. */}
+                    {entry.programmeBarId != null && (
+                      <BarLinkFeedback
+                        projectId={siteBoqProjectId}
+                        boqItemId={entry.boqItemId}
+                        programmeBarId={entry.programmeBarId}
+                        sideKey={entry.side === "LHS" ? "lhs" : entry.side === "RHS" ? "rhs" : entry.side === "Full Width" ? "full_width" : null}
+                        sideLabel={entry.side}
+                        fromKm={parseChainageKm(entry.chainageFrom)}
+                        toKm={parseChainageKm(entry.chainageTo)}
+                        overrideReason={entry.chainageOverrideReason}
+                        onOverrideReason={(v) => {
+                          const updated = [...progress];
+                          updated[idx].chainageOverrideReason = v;
+                          setProgress(updated);
+                        }}
+                        qty={entry.quantity ?? calculateQuantity(entry)}
+                        itemTotals={balanceInfo(entry.boqItemId)}
+                        executedBy={entry.executedBy || null}
+                        onExecutedBy={(v) => {
+                          const updated = [...progress];
+                          updated[idx].executedBy = v;
+                          setProgress(updated);
+                        }}
+                        testidPrefix={`progress-${idx}`}
+                      />
+                    )}
                     {siteBoqItems.length > 0 && entry.boqItemId != null && hasRoadProgramme && (activeRoadBarsByItem.get(entry.boqItemId)?.length ?? 0) === 0 && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 mt-1" data-testid={`badge-unplanned-progress-${idx}`}>
                         <AlertTriangle className="w-3 h-3" /> Unplanned DPR entry — no active programme for {header.date}
                       </span>
                     )}
-                    {siteBoqItems.length > 0 && renderBalanceChips(entry.boqItemId, entry.quantity ?? calculateQuantity(entry))}
+                    {siteBoqItems.length > 0 && entry.programmeBarId == null && renderBalanceChips(entry.boqItemId, entry.quantity ?? calculateQuantity(entry))}
                     {siteBoqItems.length === 0 && (
                       <Input
                         placeholder="Activity name"
@@ -2048,8 +2144,15 @@ export default function SiteEntry() {
                       }}
                       data-testid={`input-progress-qty-${idx}`}
                     />
-                    {/* 030A: quantity source + calculated-vs-entered info (no enforcement) */}
-                    {entry.programmeBarId != null && (
+                    {/* 031 Part E: geometry-derived qty is auto-labelled "Calculated
+                        from geometry" (read-only); a manually entered qty requires an
+                        explicit source pick (enforced at submit). */}
+                    {entry.programmeBarId != null && entry.quantity == null && calculateQuantity(entry) != null && (
+                      <p className="text-[10px] text-muted-foreground mt-1" data-testid={`text-qty-source-auto-${idx}`}>
+                        Quantity source: Calculated from geometry (automatic)
+                      </p>
+                    )}
+                    {entry.programmeBarId != null && entry.quantity != null && (
                       <>
                         <Select
                           value={entry.quantitySource || undefined}

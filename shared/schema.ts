@@ -129,6 +129,14 @@ export const progressEntries = pgTable("progress_entries", {
   // or physically measured length differing from chainage difference.
   chainageOverrideReason: text("chainage_override_reason"),
   lengthOverrideReason: text("length_override_reason"),
+  // ── Instruction 031 ──
+  // Part G: rows whose chainage falls outside the linked bar are preserved but
+  // flagged for review and excluded from the bar's completed quantity until
+  // approved. null = normal in-range row.
+  chainageReviewStatus: text("chainage_review_status"), // null | "review_required" | "approved"
+  // Part H: who physically executed this row when the linked bar has an
+  // execution arrangement — never silently assumed from the DPR author.
+  executedBy: text("executed_by"), // null | "hlc" | "agency"
 });
 
 // Structure DPR Items (for workType = "structure")

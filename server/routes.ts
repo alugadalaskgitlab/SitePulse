@@ -39,6 +39,7 @@ import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupS
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
 import { insertAttachmentSchema, attachmentModuleTypes } from "@shared/schema";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
+import { checkProgrammeLinkRow, deriveChainageReviewStatus } from "@shared/dprProgrammeLink";
 import {
   registerAuthRoutes,
   assertAdmin,
@@ -1297,7 +1298,15 @@ export async function registerRoutes(
   // matches, side compatibility (planned LHS ⇒ DPR LHS, etc.), basic chainage
   // validity against the selected bar (containment unless a reasoned override),
   // and bar active/not superseded. Returns an error string or null.
-  async function validateProgressProgrammeLinks(input: any): Promise<string | null> {
+  // Instruction 031: side/chainage rules now live in the shared module
+  // (shared/dprProgrammeLink.ts) so both DPR screens and the server enforce the
+  // exact same logic. `opts.draft` enables draft-lenient mode (Part B/F):
+  // incomplete chainage or a missing out-of-range reason never strips a draft's
+  // programmeBarId; structural errors (wrong project/item/side) still fail.
+  // Side effect (Part G): rows whose chainage falls outside their linked bar
+  // get chainageReviewStatus="review_required" stamped onto the input so they
+  // are preserved but excluded from the bar's completed quantity until review.
+  async function validateProgressProgrammeLinks(input: any, opts: { draft?: boolean } = {}): Promise<string | null> {
     const progress: any[] = Array.isArray(input?.progress) ? input.progress : [];
     const linked = progress.filter(p => p?.programmeBarId != null && !p?.noSiteWork);
     if (linked.length === 0) return null;
@@ -1314,44 +1323,11 @@ export async function registerRoutes(
       if (p.boqItemId != null && (bar as any).boqItemId !== Number(p.boqItemId)) {
         return `Progress entry "${p.activity ?? ""}": BOQ item does not match the selected programme bar`;
       }
-      // Side compatibility (030A Part C point 17). DPR side values arrive as
-      // display labels ("LHS") or keys ("lhs") — normalise before checking.
-      const dprSideRaw = (p.side ?? "").toString().trim();
-      const dprSideKey = dprSideRaw
-        ? (isBarSide(dprSideRaw) ? dprSideRaw
-          : dprSideRaw.toLowerCase() === "lhs" ? "lhs"
-          : dprSideRaw.toLowerCase() === "rhs" ? "rhs"
-          : /full/i.test(dprSideRaw) ? "full_width"
-          : /both/i.test(dprSideRaw) ? "both_sides"
-          : dprSideRaw.toLowerCase().replace(/\s+/g, "_"))
-        : null;
-      const plannedSide = (bar as any).side ?? null;
-      if (plannedSide) {
-        if (!dprSideKey) {
-          return `Progress entry "${p.activity ?? ""}": the selected bar is planned ${barSideLabel(plannedSide)} — the DPR entry must state the executed side explicitly`;
-        }
-        if (!isDprSideCompatible(plannedSide, dprSideKey)) {
-          return `Progress entry "${p.activity ?? ""}": executed side ${barSideLabel(dprSideKey)} is not compatible with the bar's planned side ${barSideLabel(plannedSide)}`;
-        }
-      }
-      // Basic chainage validity for linear work against the selected bar.
-      const isPointWork = (bar as any).planningMode === "structure_location";
-      const fromKm = p.chainageFromKm != null ? Number(p.chainageFromKm) : parseChainageKm(p.chainageFrom);
-      const toKm = p.chainageToKm != null ? Number(p.chainageToKm) : parseChainageKm(p.chainageTo);
-      if (!isPointWork) {
-        if (fromKm == null || toKm == null) {
-          return `Progress entry "${p.activity ?? ""}": chainage From and To are required for linear work against a programme bar`;
-        }
-        if (!(toKm > fromKm)) {
-          return `Progress entry "${p.activity ?? ""}": chainage To must be greater than From`;
-        }
-        const barFrom = (bar as any).chainageFrom, barTo = (bar as any).chainageTo;
-        if (barFrom != null && barTo != null) {
-          const outside = fromKm < barFrom - 1e-6 || toKm > barTo + 1e-6;
-          if (outside && !(p.chainageOverrideReason ?? "").toString().trim()) {
-            return `Progress entry "${p.activity ?? ""}": actual range Km ${fromKm}–${toKm} lies outside the bar's planned range Km ${barFrom}–${barTo}. Enter an override reason to record a legitimate extension.`;
-          }
-        }
+      const rowError = checkProgrammeLinkRow(p, bar as any, { draft: opts.draft });
+      if (rowError) return rowError;
+      // Part G: stamp review status (preserve an existing "approved").
+      if (p.chainageReviewStatus !== "approved") {
+        p.chainageReviewStatus = deriveChainageReviewStatus(p, bar as any);
       }
     }
     return null;
@@ -1362,8 +1338,9 @@ export async function registerRoutes(
     try {
       if (!assertCreate(req, res, "site_dprs")) return;
       const input = api.dprs.create.input.parse(req.body);
-      // 030A Part F: validate programme-bar links server-side
-      const linkError = await validateProgressProgrammeLinks(input);
+      // 030A Part F: validate programme-bar links server-side (draft-lenient
+      // when saving a draft — Instruction 031 Part B).
+      const linkError = await validateProgressProgrammeLinks(input, { draft: (input as any).dprStatus === "draft" });
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const dpr = await storage.createDpr(input, input.clientTimestamp);
       const isDraft = (input as any).dprStatus === "draft";
@@ -1398,7 +1375,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied for this site" });
       }
       const input = createDprRequestSchema.parse(req.body);
-      const linkError = await validateProgressProgrammeLinks(input);
+      const linkError = await validateProgressProgrammeLinks(input, { draft: true });
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const updated = await storage.updateDraftDpr(id, input);
       if (!updated) return res.status(404).json({ message: "DPR not found or not a draft" });
