@@ -1,6 +1,6 @@
 ---
-name: Auto-Sequence Real Stretches (029/029B)
-description: Stretch table, execution Stage/Front model via sequenceOrder+executionFront, side-aware overlap validation, arrangement-safe regeneration in the auto-sequence flow.
+name: Auto-Sequence Real Stretches (029/029B/029C)
+description: Stretch table, execution Stage/Front model via sequenceOrder+executionFront, side-aware overlap validation, arrangement-safe regeneration, category-aware side quantity allocation and overallocation guard in the auto-sequence flow.
 ---
 
 # Auto-Sequence Real Stretches — Instruction 029
@@ -14,6 +14,9 @@ description: Stretch table, execution Stage/Front model via sequenceOrder+execut
 - Regeneration NEVER deletes a bar with `earthwork_arrangement_programme_allocations` rows (cascade would destroy them): it reconciles in place by max chainage overlap (id preserved) or blocks the bar and reports it in `regenSummary.blocked`. DPR/progress entries link via boqItemId/arrangementId, never bar id — allocations are the only bar-level linkage to protect.
 - Client flow is two-phase: dry-run returns `regenSummary` → user confirms → real run. Any input change clears the cached summary (useEffect) so confirm always matches submitted inputs. `openSeqDialog` always re-hydrates the stretch table from saved `sequenceOptions.stretches` (empty when none) — stale in-memory rows must not leak.
 - `created`/`bars` accounting: inserts only in `regenSummary.inserted`; response `bars` = inserts + in-place reconciles.
+- 029C side quantity allocation: `sideShareForStretch()` + `allocationRuleForItem()` in programmeSequencer.ts. One-sided corridors (lhs/rhs/shoulder_*/service_road_*) get share = lengthShare × 0.5; width-matched lhs/rhs pairs with IDENTICAL boundaries and both `plannedWidthM` set split w/(wL+wR); widths + mismatched-but-overlapping boundaries → flat 0.5 + `WIDTH_SPLIT_FALLBACK_NOTE`. Manual Qty% (`manualQtyFraction`) bypasses ALL automatic side math. Rules are automatic from `layerConfig.layerType` (earthwork → "Planning Estimate" bar note; bituminous + MT unit → proportional only, never density/geometry) — there is NO user-facing basis selector (029D territory).
+- 029C overallocation guard: real runs 400 `OVERALLOCATION_BLOCKED` when any item's effective planned total (new/reconciled bars + blocked kept bars + untouched manual bars) exceeds BOQ qty beyond max(0.5, 0.1%) unless `overallocationOverrideReason` given (audited via logAudit module "work_programme"). CRITICAL: ALL route mutations — including sequenceOptions settings upsert and structure-bar pre-delete — are DEFERRED past this guard so a blocked run changes nothing (architect caught pre-guard mutations on first pass).
+- 029C reconcile #16c: reconciled bars with `isQtyOverride` keep their plannedQty (surfaced in `regenSummary.qtyConflicts`, never overwritten). `allocationRule`/`allocationNote` are preview-only SeqBar fields — stripped before upsert. `regenSummary.allocationPreview` powers the confirm-step quantity table ("X% programmed · Y% not yet allocated" / "over by N").
 
 **Why:** an architect review failed the first pass on exactly these: stale dry-run summary, in-memory stretch leakage into legacy mode, and counting in-place updates as inserts.
 

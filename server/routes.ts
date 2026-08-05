@@ -14436,6 +14436,10 @@ export async function registerRoutes(
             executionOrder: Number.isFinite(Number(s?.executionOrder)) && Number(s.executionOrder) >= 1
               ? Math.floor(Number(s.executionOrder))
               : null,
+            // 029C — optional planned width (m) for the width-matched LHS/RHS split
+            plannedWidthM: Number.isFinite(Number(s?.plannedWidthM)) && Number(s.plannedWidthM) > 0
+              ? Number(s.plannedWidthM)
+              : null,
           }))
         : null;
       let stretchGaps: Array<{ from: number; to: number }> = [];
@@ -14458,7 +14462,9 @@ export async function registerRoutes(
 
       // Persist sequence options so the UI can pre-populate the dialog next time.
       // Skipped in dry-run mode so the diagnostic call doesn't mutate saved settings.
-      if (!dryRun) {
+      // 029C: DEFERRED until after the overallocation guard — a blocked run must
+      // leave project state completely untouched.
+      const persistSequenceOptions = async () => {
         await storage.upsertBoqProgramSettings(projectId, {
           sequenceOptions: {
             fronts: requestedFronts >= 1 ? fronts : null,
@@ -14470,7 +14476,7 @@ export async function registerRoutes(
             stretches: stretches ?? null, // Instruction 029 — restore the stretch table next open
           },
         } as any);
-      }
+      };
 
       // Non-destructive rerun: only remove previously auto-generated bars so that
       // any bars the planner manually placed (source = "manual") are preserved.
@@ -14481,7 +14487,10 @@ export async function registerRoutes(
       // structure-type BOQ items NOW — outside the "no bars" safety guard — so that old
       // linear bars don't persist for items that already have imported structure_location bars.
       // Dry-run skips all deletions so the DB remains untouched.
-      if (!dryRun && disableStructureFronts) {
+      // 029C: deletion itself is DEFERRED until after the overallocation guard —
+      // only the candidate list is computed here.
+      const structurePreDeleteIds: number[] = [];
+      if (disableStructureFronts) {
         // Items with at least one structure_import bar are implicitly structure-planned
         // even if planningWorkType was never set manually.
         const structureImportIds = new Set(
@@ -14501,7 +14510,7 @@ export async function registerRoutes(
                    (b.source === "auto-sequence" || b.source === "auto_generate" || !b.source ||
                     (b.source === "manual" && AUTO_LABEL_RE.test(b.reachLabel ?? ""))),
           );
-          for (const b of structureAutoBars) await storage.deleteWorkProgramBar(b.id);
+          structurePreDeleteIds.push(...structureAutoBars.map((b: any) => b.id));
         }
       }
 
@@ -14574,6 +14583,9 @@ export async function registerRoutes(
             // Pass workCategory so the sequencer can use it as a fallback classifier
             // when classifyWorkType cannot match description+unit (e.g. "1 Cum" units).
             workCategory: it.workCategory ?? null,
+            // 029C — layerConfig classification drives the automatic category
+            // allocation rule (earthwork estimate / MT proportional / pavement).
+            layerType: (it.layerConfig as any)?.layerType ?? null,
           };
         });
 
@@ -14656,12 +14668,133 @@ export async function registerRoutes(
         }
       }
       const consumedNewBars = new Set(reconcilePlan.map(p => p.newBarIdx));
+
+      // ── 029C Part C #16c: a manually overridden quantity on a reconciled bar
+      // is never silently overwritten by the automatic calculation — the bar
+      // keeps its quantity and the conflict is surfaced.
+      const regenBarById = new Map((regenAutoBars as any[]).map((b: any) => [b.id, b]));
+      const qtyConflicts: Array<{ barId: number; boqItemId: number; reachLabel: string | null; keptQty: number; autoQty: number }> = [];
+      for (const p of reconcilePlan) {
+        const ex = regenBarById.get(p.barId);
+        if (ex?.isQtyOverride) {
+          qtyConflicts.push({
+            barId: p.barId, boqItemId: ex.boqItemId, reachLabel: ex.reachLabel ?? null,
+            keptQty: Number(ex.plannedQty ?? 0), autoQty: Number(bars[p.newBarIdx].plannedQty ?? 0),
+          });
+        }
+      }
+      const qtyConflictBarIds = new Set(qtyConflicts.map(c => c.barId));
+
+      // ── 029C Part D/F: allocation preview + overallocation guard ────────────
+      // Effective planned qty per item after this run = new/reconciled bars
+      // (manual-override reconciles keep their existing qty) + blocked bars
+      // kept unchanged + untouched manual bars.
+      const itemByIdAlloc = new Map((items as any[]).map((it: any) => [it.id, it]));
+      const blockedIdSet = new Set(blockedBars.map(b => b.barId));
+      const reconcileByNewIdx = new Map(reconcilePlan.map(p => [p.newBarIdx, p.barId]));
+      const allocTotals = new Map<number, number>();
+      const allocRows = new Map<number, Array<Record<string, unknown>>>();
+      const addAlloc = (itemId: number, qty: number, row?: Record<string, unknown>) => {
+        allocTotals.set(itemId, (allocTotals.get(itemId) ?? 0) + qty);
+        if (row) {
+          if (!allocRows.has(itemId)) allocRows.set(itemId, []);
+          allocRows.get(itemId)!.push(row);
+        }
+      };
+      bars.forEach((b: any, idx: number) => {
+        const reconciledBarId = reconcileByNewIdx.get(idx);
+        const keepsOverride = reconciledBarId != null && qtyConflictBarIds.has(reconciledBarId);
+        const qty = keepsOverride ? Number(regenBarById.get(reconciledBarId)?.plannedQty ?? 0) : Number(b.plannedQty ?? 0);
+        addAlloc(b.boqItemId, qty, {
+          reachLabel: b.reachLabel, side: b.side ?? null, qty: +qty.toFixed(3),
+          rule: keepsOverride ? "manual-override-kept" : (b.allocationRule ?? "pavement"),
+          note: b.allocationNote ?? null,
+        });
+      });
+      for (const b of regenAutoBars as any[]) {
+        if (blockedIdSet.has(b.id)) {
+          addAlloc(b.boqItemId, Number(b.plannedQty ?? 0), {
+            reachLabel: b.reachLabel ?? null, side: b.side ?? null,
+            qty: +Number(b.plannedQty ?? 0).toFixed(3), rule: "kept-blocked", note: null,
+          });
+        }
+      }
+      for (const b of existingBars as any[]) {
+        if (!AUTO_MATCH(b)) addAlloc(b.boqItemId, Number(b.plannedQty ?? 0)); // untouched manual bars count toward totals
+      }
+      const allocationPreview: Array<Record<string, unknown>> = [];
+      const overallocatedItems: Array<{ boqItemId: number; description: string; boqQty: number; planned: number; excess: number }> = [];
+      const uniqueItemIds = Array.from(allocTotals.keys());
+      for (const itemId of uniqueItemIds) {
+        const it = itemByIdAlloc.get(itemId);
+        if (!it) continue;
+        const boqQty = Number(it.currentQty ?? 0);
+        const total = allocTotals.get(itemId) ?? 0;
+        const tolerance = Math.max(0.5, boqQty * 0.001);
+        const over = total - boqQty;
+        if (over > tolerance) {
+          overallocatedItems.push({
+            boqItemId: itemId, description: ((it.description ?? "") as string).slice(0, 100),
+            boqQty, planned: +total.toFixed(3), excess: +over.toFixed(3),
+          });
+        }
+        allocationPreview.push({
+          boqItemId: itemId,
+          description: ((it.displayName ?? it.description ?? "") as string).slice(0, 100),
+          unit: it.canonicalUnit ?? it.unit ?? "",
+          boqQty,
+          totalAllocated: +total.toFixed(3),
+          unallocated: +Math.max(0, boqQty - total).toFixed(3),
+          overallocated: +Math.max(0, over).toFixed(3),
+          programmedPct: boqQty > 0 ? +Math.min(100, (total / boqQty) * 100).toFixed(1) : null,
+          rows: allocRows.get(itemId) ?? [],
+        });
+      }
+
+      // 029C Part D: block persistence when any item overshoots its BOQ quantity
+      // beyond tolerance — unless an explicit override with reason is supplied.
+      const overrideReason = typeof req.body?.overallocationOverrideReason === "string"
+        ? req.body.overallocationOverrideReason.trim()
+        : "";
+      if (!dryRun && overallocatedItems.length > 0 && !overrideReason) {
+        return res.status(400).json({
+          error: "OVERALLOCATION_BLOCKED",
+          message: `Planned quantity exceeds the BOQ quantity for ${overallocatedItems.length} item(s). Reduce the allocation or provide an explicit override reason.`,
+          overallocatedItems,
+          allocationPreview,
+        });
+      }
+      if (!dryRun && overallocatedItems.length > 0 && overrideReason) {
+        const authUser = (req as any).authUser;
+        await storage.logAudit({
+          module: "work_programme",
+          transactionId: projectId,
+          action: "overallocation_override",
+          userId: authUser?.id ?? null,
+          userName: authUser?.name ?? authUser?.username ?? "unknown",
+          userRole: authUser?.role ?? null,
+          reason: overrideReason,
+          newValues: { overallocatedItems },
+        } as any).catch((e: any) => console.error("auto-sequence overallocation audit:", e?.message ?? e));
+      }
+
+      // 029C: deferred mutations — only run once the overallocation guard has
+      // passed (or been explicitly overridden), so a blocked run changes nothing.
+      if (!dryRun) {
+        await persistSequenceOptions();
+        for (const id of structurePreDeleteIds) await storage.deleteWorkProgramBar(id);
+      }
+
       const regenSummary = {
         toRecreate: regenAutoBars.length - reconcilePlan.length - blockedBars.length,
         preservedUpdated: reconcilePlan.length,
         blocked: blockedBars,
         newBars: bars.length,
         stretchGaps, // Instruction 029 Part C — non-blocking gap warnings
+        // 029C — compact quantity preview + conflicts, shown before confirm
+        allocationPreview,
+        overallocatedItems,
+        qtyConflicts,
       };
 
       // ── Dry-run: return per-item classification trace without touching bars or DB ──
@@ -14730,14 +14863,17 @@ export async function registerRoutes(
       // 1. Reconcile protected bars in place (id + arrangement links preserved).
       for (const p of reconcilePlan) {
         const nb = bars[p.newBarIdx];
+        // 029C #16c: bars with a manual quantity override keep their quantity —
+        // the automatic calculation never silently overwrites it (surfaced in
+        // regenSummary.qtyConflicts instead).
+        const keepQty = qtyConflictBarIds.has(p.barId);
         await storage.updateWorkProgramBar(p.barId, {
           reachLabel: nb.reachLabel,
           chainageFrom: nb.chainageFrom,
           chainageTo: nb.chainageTo,
           startMonth: nb.startMonth,
           endMonth: nb.endMonth,
-          plannedQty: nb.plannedQty,
-          isQtyOverride: nb.isQtyOverride,
+          ...(keepQty ? {} : { plannedQty: nb.plannedQty, isQtyOverride: nb.isQtyOverride }),
           isDurationOverride: nb.isDurationOverride,
           source: "auto-sequence",
           ...(nb.sequenceOrder != null ? { sequenceOrder: nb.sequenceOrder } : {}),
@@ -14764,7 +14900,8 @@ export async function registerRoutes(
       for (const b of regenAutoBars) if (!protectedIds.has(b.id)) deletedCount++;
       for (let i = 0; i < bars.length; i++) {
         if (consumedNewBars.has(i)) continue; // applied as in-place update, not an insert
-        const b = bars[i];
+        // 029C: allocationRule/allocationNote are preview-only fields, not DB columns.
+        const { allocationRule: _ar, allocationNote: _an, ...b } = bars[i] as any;
         try {
           await storage.upsertWorkProgramBar({ ...b, boqProjectId: projectId } as any);
           created++;

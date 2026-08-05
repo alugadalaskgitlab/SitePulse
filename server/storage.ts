@@ -22581,6 +22581,16 @@ export class DatabaseStorage implements IStorage {
         durationSource: workProgramBars.durationSource,
         needsReview: workProgramBars.needsReview,
         scheduled: workProgramBars.scheduled,
+        // 029C Part A: side/geometry + stage-front columns were written on
+        // generation but dropped by this read projection — the single choke
+        // point every programme-bar consumer reads through.
+        side: workProgramBars.side,
+        plannedWidthM: workProgramBars.plannedWidthM,
+        plannedThicknessMm: workProgramBars.plannedThicknessMm,
+        lengthOverrideM: workProgramBars.lengthOverrideM,
+        lengthOverrideReason: workProgramBars.lengthOverrideReason,
+        executionFront: workProgramBars.executionFront,
+        executionOrder: workProgramBars.executionOrder,
         itemCode: boqItems.itemCode,
         description: boqItems.description,
         unit: boqItems.unit,

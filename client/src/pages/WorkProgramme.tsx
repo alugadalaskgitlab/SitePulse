@@ -1056,7 +1056,9 @@ function StretchRow({
               <MoreHorizontal className="w-3.5 h-3.5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
+          {/* 029C Part G: keep the row menu fully on-screen — collisionPadding
+              stops it hiding under the sticky Gantt header / viewport edges. */}
+          <DropdownMenuContent align="end" className="w-44 z-[60]" collisionPadding={12}>
             <DropdownMenuItem onClick={() => onRequestEdit(bar.id)} data-testid={`menu-edit-${bar.id}`}>
               <Pencil className="w-3.5 h-3.5 mr-2" /> Edit
             </DropdownMenuItem>
@@ -2752,12 +2754,23 @@ export default function WorkProgramme() {
   const [seqRulesOpen, setSeqRulesOpen] = useState(false);
   // ── Instruction 029: editable stretch table + pre-regeneration confirmation ──
   // Each row is kept as strings for smooth editing; converted on submit.
-  type SeqStretchRow = { label: string; from: string; to: string; priority: string; qtyPct: string; side: string; front: string };
+  type SeqStretchRow = { label: string; from: string; to: string; priority: string; qtyPct: string; side: string; front: string; widthM: string };
+  // 029C Part D — explicit override reason when the preview shows overallocation
+  const [seqOverallocReason, setSeqOverallocReason] = useState("");
   const [seqStretches, setSeqStretches] = useState<SeqStretchRow[]>([]);
   const [seqRegenSummary, setSeqRegenSummary] = useState<{
     toRecreate: number; preservedUpdated: number; newBars: number;
     blocked: Array<{ barId: number; boqItemId: number; reachLabel: string | null; arrangementIds: number[] }>;
     stretchGaps: Array<{ from: number; to: number }>;
+    // 029C Part F — compact quantity preview + conflicts
+    allocationPreview?: Array<{
+      boqItemId: number; description: string; unit: string; boqQty: number;
+      totalAllocated: number; unallocated: number; overallocated: number;
+      programmedPct: number | null;
+      rows: Array<{ reachLabel: string | null; side: string | null; qty: number; rule: string; note: string | null }>;
+    }>;
+    overallocatedItems?: Array<{ boqItemId: number; description: string; boqQty: number; planned: number; excess: number }>;
+    qtyConflicts?: Array<{ barId: number; reachLabel: string | null; keptQty: number; autoQty: number }>;
   } | null>(null);
   const [seqDryRunPending, setSeqDryRunPending] = useState(false);
   // When true (default), structure-type BOQ items are excluded from auto-sequence
@@ -2769,6 +2782,7 @@ export default function WorkProgramme() {
   // confirmation always reflects the inputs that will actually be submitted.
   useEffect(() => {
     setSeqRegenSummary(null);
+    setSeqOverallocReason("");
   }, [seqStretches, seqFronts, seqStagger, seqLag, seqStrGroups, seqBrgGroups, seqSkipStructureItems]);
 
   // ── Undo / Redo ────────────────────────────────────────────────────────────
@@ -3004,6 +3018,8 @@ export default function WorkProgramme() {
       // Always send disableStructureFronts as an explicit boolean so the server can rely on it
       body.disableStructureFronts = opts.disableStructureFronts !== false;
       if (opts.stretches && opts.stretches.length > 0) body.stretches = opts.stretches; // Instruction 029
+      // 029C Part D — explicit overallocation override reason (audited server-side)
+      if ((opts as any).overallocationOverrideReason) body.overallocationOverrideReason = (opts as any).overallocationOverrideReason;
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, body);
       return res.json();
     },
@@ -3112,6 +3128,7 @@ export default function WorkProgramme() {
             qtyPct: s.manualQtyFraction != null ? String(+(s.manualQtyFraction * 100).toFixed(2)) : "",
             side: s.side ?? "", // 030A
             front: s.front ?? "", // 029B
+            widthM: s.plannedWidthM != null ? String(s.plannedWidthM) : "", // 029C
           }))
         : []);
     } else {
@@ -3139,6 +3156,7 @@ export default function WorkProgramme() {
       qtyPct: "",
       side: "",
       front: "",
+      widthM: "",
     })));
   }
 
@@ -3162,9 +3180,35 @@ export default function WorkProgramme() {
         side: r.side || null, // 030A — optional per-stretch side, carried onto road bars
         front: r.front.trim() || null, // 029B — execution front label
         executionOrder: orderInStage,  // 029B — derived from row position within stage
+        plannedWidthM: r.widthM.trim() !== "" && parseFloat(r.widthM) > 0 ? parseFloat(r.widthM) : null, // 029C
       };
     });
   }
+
+  // 029C Part B: reject non-integer Stage values with a message instead of
+  // silently truncating via parseInt.
+  const seqStageErrors = useMemo(() => {
+    const errs: string[] = [];
+    seqStretches.forEach((r, i) => {
+      const raw = r.priority.trim();
+      if (raw === "") return; // blank = default (row order)
+      if (!/^\d+$/.test(raw) || parseInt(raw, 10) < 1) {
+        errs.push(`Row ${i + 1}: Stage "${raw}" is invalid — must be a whole number ≥ 1 (e.g. 1, 2, 3).`);
+      }
+    });
+    return errs;
+  }, [seqStretches]);
+
+  // 029C Part B: front suggestions — defaults + labels already used in this project.
+  const frontSuggestions = useMemo(() => {
+    const set = new Set<string>(["Front A", "Front B", "Front C"]);
+    for (const b of bars) {
+      const f = (b as any).executionFront;
+      if (typeof f === "string" && f.trim()) set.add(f.trim());
+    }
+    for (const r of seqStretches) if (r.front.trim()) set.add(r.front.trim());
+    return Array.from(set);
+  }, [bars, seqStretches]);
 
   /** Live validation for the dialog — overlaps/errors block, gaps + warnings inform. */
   const seqStretchValidation = useMemo(() => {
@@ -3205,7 +3249,7 @@ export default function WorkProgramme() {
   // Instruction 029 Part D — two-phase flow: dry-run first for the
   // pre-regeneration summary, then explicit confirmation applies it.
   async function runAutoSequence() {
-    if (seqStretchValidation.errors.length > 0 || seqStretchValidation.overlaps.length > 0) return; // blocked in UI
+    if (seqStretchValidation.errors.length > 0 || seqStretchValidation.overlaps.length > 0 || seqStageErrors.length > 0) return; // blocked in UI
     const opts = seqBodyOpts();
     setSeqDryRunPending(true);
     try {
@@ -3228,7 +3272,10 @@ export default function WorkProgramme() {
   }
 
   function confirmAutoSequence() {
-    autoSequenceMutation.mutate(seqBodyOpts());
+    // 029C Part D — pass the explicit override reason when the preview showed overallocation
+    const opts: Record<string, unknown> = { ...seqBodyOpts() };
+    if (seqOverallocReason.trim()) opts.overallocationOverrideReason = seqOverallocReason.trim();
+    autoSequenceMutation.mutate(opts as any);
   }
 
   function handleAutoGenerate() {
@@ -3766,7 +3813,7 @@ export default function WorkProgramme() {
                     Equal split
                   </Button>
                   <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[11px]"
-                    onClick={() => setSeqStretches(s => [...s, { label: "", from: "", to: "", priority: String(s.length + 1), qtyPct: "", side: "", front: "" }])}
+                    onClick={() => setSeqStretches(s => [...s, { label: "", from: "", to: "", priority: String(s.length + 1), qtyPct: "", side: "", front: "", widthM: "" }])}
                     data-testid="button-seq-add-stretch">
                     + Row
                   </Button>
@@ -3785,11 +3832,18 @@ export default function WorkProgramme() {
                 </p>
               ) : (
                 <div className="space-y-1">
-                  <div className="grid grid-cols-[1fr_66px_66px_46px_70px_54px_82px_24px] gap-1 text-[10px] font-medium text-muted-foreground px-0.5">
-                    <span>Label (optional)</span><span>Km from</span><span>Km to</span><span title="Execution stage — stretches sharing a stage start together (parallel work)">Stage</span><span title="Execution front / crew label (optional). Same stage + same front = double-booking warning.">Front</span><span>Qty %</span><span>Side</span><span />
+                  {/* 029C Part B: persistently visible helper text (tooltips stay as supplementary) */}
+                  <p className="text-[10px] text-muted-foreground bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1" data-testid="text-stage-front-help">
+                    <b>Stage</b> controls when a reach starts — reaches sharing a stage start together. <b>Front</b> identifies the crew or resource group executing it, e.g. Front A, Front B. <b>Width</b> (optional, m): when LHS and RHS reaches have identical boundaries and both widths set, quantity splits by width instead of 50:50.
+                  </p>
+                  <datalist id="front-suggestions">
+                    {frontSuggestions.map(f => <option key={f} value={f} />)}
+                  </datalist>
+                  <div className="grid grid-cols-[1fr_62px_62px_44px_66px_50px_50px_78px_24px] gap-1 text-[10px] font-medium text-muted-foreground px-0.5">
+                    <span>Label (optional)</span><span>Km from</span><span>Km to</span><span title="Execution stage — stretches sharing a stage start together (parallel work)">Stage</span><span title="Execution front / crew label (optional). Same stage + same front = double-booking warning.">Front</span><span title="Manual allocation — fraction of BOQ item quantity (%). Overrides all automatic side allocation.">Qty %</span><span title="Planned width (m) — used only for the automatic width-matched LHS/RHS split">Width</span><span>Side</span><span />
                   </div>
                   {seqStretches.map((r, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_66px_66px_46px_70px_54px_82px_24px] gap-1 items-center">
+                    <div key={i} className="grid grid-cols-[1fr_62px_62px_44px_66px_50px_50px_78px_24px] gap-1 items-center">
                       <Input value={r.label} placeholder={`Reach ${r.priority || i + 1}`} className="h-7 text-xs"
                         onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
                         data-testid={`input-stretch-label-${i}`} />
@@ -3803,14 +3857,18 @@ export default function WorkProgramme() {
                         title="Execution stage — the same stage on two rows is normal (they mobilise together)"
                         onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, priority: e.target.value } : x))}
                         data-testid={`input-stretch-priority-${i}`} />
-                      <Input value={r.front} placeholder="—" className="h-7 text-xs"
-                        title="Execution front / crew label (optional), e.g. A, B, Crew 2"
+                      <Input value={r.front} placeholder="—" className="h-7 text-xs" list="front-suggestions"
+                        title="Execution front / crew label (optional), e.g. Front A, Front B"
                         onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, front: e.target.value } : x))}
                         data-testid={`input-stretch-front-${i}`} />
                       <Input value={r.qtyPct} type="number" min={0} max={100} placeholder="auto" className="h-7 text-xs"
-                        title="Manual quantity share (% of each item's total). Blank = proportionate to stretch length."
+                        title="Manual allocation — fraction of BOQ item quantity (%). Blank = automatic. Overrides all automatic side allocation."
                         onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, qtyPct: e.target.value } : x))}
                         data-testid={`input-stretch-qty-${i}`} />
+                      <Input value={r.widthM} type="number" min={0} step={0.1} placeholder="—" className="h-7 text-xs"
+                        title="Planned width (m) — used only for the automatic width-matched LHS/RHS split"
+                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, widthM: e.target.value } : x))}
+                        data-testid={`input-stretch-width-${i}`} />
                       <select value={r.side} className="h-7 text-[11px] rounded border border-input bg-transparent px-1"
                         title="Optional side for this stretch — carried onto every road bar it generates. Blank = unspecified."
                         onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, side: e.target.value } : x))}
@@ -3826,6 +3884,11 @@ export default function WorkProgramme() {
                   <p className="text-[10px] text-muted-foreground">
                     Stage 1 mobilises first — independent of chainage position. Stretches sharing a stage start together (e.g. LHS + RHS in parallel). Reordering stages never changes chainages.
                   </p>
+                  {seqStageErrors.length > 0 && (
+                    <div className="text-[11px] text-red-600 dark:text-red-400 space-y-0.5" data-testid="text-stage-errors">
+                      {seqStageErrors.map((e, i) => <p key={`se${i}`}>• {e}</p>)}
+                    </div>
+                  )}
                   {(seqStretchValidation.errors.length > 0 || seqStretchValidation.overlaps.length > 0) && (
                     <div className="text-[11px] text-red-600 dark:text-red-400 space-y-0.5" data-testid="text-stretch-errors">
                       {seqStretchValidation.errors.map((e, i) => <p key={`e${i}`}>• {e}</p>)}
@@ -3860,6 +3923,63 @@ export default function WorkProgramme() {
                   <p className="text-[11px] text-red-600 dark:text-red-400">
                     {seqRegenSummary.blocked.length} bar(s) linked to earthwork arrangements have no overlapping new stretch and will be KEPT UNCHANGED: {seqRegenSummary.blocked.map(b => b.reachLabel ?? `#${b.barId}`).join(", ")}
                   </p>
+                )}
+                {/* ── 029C Part F: quantity allocation preview ─────────────── */}
+                {(seqRegenSummary.allocationPreview?.length ?? 0) > 0 && (
+                  <div className="max-h-48 overflow-y-auto border border-purple-100 dark:border-purple-900 rounded bg-white/60 dark:bg-slate-950/40" data-testid="panel-allocation-preview">
+                    <table className="w-full text-[10px]">
+                      <thead className="sticky top-0 bg-purple-50 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
+                        <tr>
+                          <th className="text-left px-1.5 py-1 font-medium">Item</th>
+                          <th className="text-right px-1.5 py-1 font-medium">BOQ qty</th>
+                          <th className="text-right px-1.5 py-1 font-medium">Programmed</th>
+                          <th className="text-right px-1.5 py-1 font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {seqRegenSummary.allocationPreview!.map(ap => (
+                          <tr key={ap.boqItemId} className="border-t border-slate-100 dark:border-slate-800 align-top">
+                            <td className="px-1.5 py-0.5">
+                              <span className="line-clamp-1">{ap.description}</span>
+                              {ap.rows.some(rw => rw.note) && (
+                                <span className="text-amber-600 dark:text-amber-400 block">{ap.rows.find(rw => rw.note)?.note}</span>
+                              )}
+                            </td>
+                            <td className="px-1.5 py-0.5 text-right whitespace-nowrap">{ap.boqQty.toLocaleString()} {ap.unit}</td>
+                            <td className="px-1.5 py-0.5 text-right whitespace-nowrap">{ap.totalAllocated.toLocaleString()}</td>
+                            <td className="px-1.5 py-0.5 text-right whitespace-nowrap">
+                              {ap.overallocated > 0
+                                ? <span className="text-red-600 dark:text-red-400 font-medium">over by {ap.overallocated.toLocaleString()}</span>
+                                : ap.programmedPct != null
+                                  ? <span className={ap.unallocated > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}>
+                                      {ap.programmedPct}% programmed{ap.unallocated > 0 ? ` · ${(100 - ap.programmedPct).toFixed(1)}% not yet allocated` : ""}
+                                    </span>
+                                  : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {(seqRegenSummary.qtyConflicts?.length ?? 0) > 0 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400" data-testid="text-qty-conflicts">
+                    ⚠ {seqRegenSummary.qtyConflicts!.length} preserved bar(s) have a manually set quantity that will be KEPT (not overwritten by the automatic calculation): {seqRegenSummary.qtyConflicts!.map(c => `${c.reachLabel ?? `#${c.barId}`} (kept ${c.keptQty.toLocaleString()}, auto ${c.autoQty.toLocaleString()})`).join("; ")}
+                  </p>
+                )}
+                {(seqRegenSummary.overallocatedItems?.length ?? 0) > 0 && (
+                  <div className="space-y-1" data-testid="panel-overallocation">
+                    <p className="text-[11px] text-red-600 dark:text-red-400 font-medium">
+                      Planned quantity exceeds the BOQ quantity for {seqRegenSummary.overallocatedItems!.length} item(s). Generation is blocked unless you provide an explicit override reason.
+                    </p>
+                    <Input
+                      value={seqOverallocReason}
+                      placeholder="Override reason (required to proceed despite overallocation)"
+                      className="h-7 text-xs"
+                      onChange={e => setSeqOverallocReason(e.target.value)}
+                      data-testid="input-overalloc-reason"
+                    />
+                  </div>
                 )}
               </div>
             )}
@@ -3981,7 +4101,8 @@ export default function WorkProgramme() {
                 size="sm"
                 className="bg-purple-600 hover:bg-purple-700 text-white"
                 onClick={confirmAutoSequence}
-                disabled={autoSequenceMutation.isPending}
+                disabled={autoSequenceMutation.isPending
+                  || ((seqRegenSummary.overallocatedItems?.length ?? 0) > 0 && !seqOverallocReason.trim())}
                 data-testid="button-confirm-auto-sequence"
               >
                 {autoSequenceMutation.isPending
@@ -3993,7 +4114,7 @@ export default function WorkProgramme() {
                 size="sm"
                 className="bg-purple-600 hover:bg-purple-700 text-white"
                 onClick={runAutoSequence}
-                disabled={seqDryRunPending || seqStretchValidation.errors.length > 0 || seqStretchValidation.overlaps.length > 0}
+                disabled={seqDryRunPending || seqStretchValidation.errors.length > 0 || seqStretchValidation.overlaps.length > 0 || seqStageErrors.length > 0}
                 data-testid="button-run-auto-sequence"
               >
                 {seqDryRunPending

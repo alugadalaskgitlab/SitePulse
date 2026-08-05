@@ -1,0 +1,93 @@
+Krishna's three corrections are all correct — the earthwork rule as I wrote it genuinely contradicted itself, one blanket basis-per-stretch was the wrong shape for a reach with five different item categories in it, and the width-fraction math breaks the moment LHS/RHS boundaries don't line up exactly. I've rebuilt Part C around category-aware automatic rules instead of a user-facing basis selector, restricted width-splitting to matching boundaries only, and removed the earthwork confirmation gate — replacing it with three narrow trigger conditions instead of a blanket prompt. Everything else from the grounded version (Part A's single-choke-point fix, Stage/Front, the menu defect, the preview, the tests) is unchanged. Here's the complete, final, copy-ready instruction.
+
+---
+
+**Instruction 029C — Work Programme Data Round-Trip, Stage/Front Usability and Category-Aware Side Quantity Allocation**
+
+**BUSINESS PURPOSE**
+
+SitePulse is not road-design or quantity-surveying software. It connects BOQ/SDB/SNL → Work Programme → planned material/equipment/labour/fuel demand → Procurement/Stores → DPR actuals → balance/gaps → draft RA support. All programme quantities, DPR progress and balance remain in the BOQ item's own UOM. SDB/SNL and mix templates — untouched by this batch — convert that BOQ-UOM quantity into materials, plant, labour and fuel. This batch corrects how the BOQ-UOM planned quantity is computed and displayed; it does not add procurement-UOM or stock-UOM logic to Auto Sequence.
+
+**DO NOT TOUCH**
+- `shared/planningEngine.ts` (`calculateBomDemand`, `calculateStretchQty`)
+- SDB/SNL/mix-template demand calculation
+- Procurement and Stores UOM conversion/canonical stock UOM
+- Batch 029 arrangement-safe regeneration
+- Batch 029A read/edit row model, toolbar, navigation
+- Batch 029B `areSidesDistinctCorridors`/`validateStretches` (extend only where Part E says)
+- Batch 030A `programmeBarId` ON DELETE SET NULL and deletion protection
+- SiteEntry/SiteEdit/ProgrammeBarPicker
+- PI/IRN/GRN, Stores, Plant production, DPR submission
+- calendarAxis, structure-bar sequencing
+
+**PART A — COMPLETE BAR DATA ROUND-TRIP**
+
+1. In `server/storage.ts`, `getWorkProgramBars` (lines 22550-22604): add `side`, `plannedWidthM`, `plannedThicknessMm`, `lengthOverrideM`, `lengthOverrideReason`, `executionFront`, `executionOrder` to the existing `.select({...})` column list. These columns already exist in `shared/schema.ts` (lines 2621-2692) and are already written correctly on generation — only this read projection drops them. This is the single choke point every consumer of programme bars reads through (routes.ts lines 10656, 11044, 11074, 11260, 11375, 11454, 11853, 14381, 15232, plus `getMonthlyTargets`/`getPlanVsActual`), so one fix repairs all of them.
+2. Grep for any other explicit `.select({...})` against `workProgramBars` added since this instruction was written and apply the same fix if found. Leave the full-row (`select()`) call sites at lines 21968, 22546, 22651 untouched.
+3. Verify end-to-end: generate an LHS bar → DB row has `side='lhs'` → `GET /api/dpr/programme-bars` and the main programme-fetch route both return `side` → Gantt shows LHS after reload, not "Side Review Required."
+4. Legacy bars with genuinely `side IS NULL` in the database must still show "Side Review Required" — this fix changes what's read back, not what's stored.
+
+**PART B — STAGE AND FRONT USABILITY**
+
+5. Stage input (`WorkProgramme.tsx:3802-3805`) already has `step={1}`; additionally reject non-integer values where Stage is parsed into the payload (currently `parseInt(r.priority) || i+1`) with a validation message rather than silent truncation.
+6. Replace the hover-only tooltips at `WorkProgramme.tsx:3788-3789` with persistently visible helper text under the stretch table header: "Stage controls when a reach starts — reaches sharing a stage start together. Front identifies the crew or resource group executing it, e.g. Front A, Front B." Keep field-level tooltips as supplementary.
+7. Give the Front input (`WorkProgramme.tsx:3806-3809`) a suggestion affordance (datalist or chip row) offering "Front A"/"Front B"/"Front C" plus any front labels already used elsewhere in the project, while still accepting free text.
+8. No resource-capacity modelling. The existing same-stage/same-front non-blocking warning is unchanged.
+
+**PART C — CATEGORY-AWARE SIDE QUANTITY ALLOCATION (the core fix)**
+
+Do not introduce a single user-selected allocation basis on a stretch that governs every BOQ item generated from it. A reach commonly mixes earthwork (CUM), GSB/WMM (CUM), Prime/Tack (SQM), DBM/BC (MT), and possibly pipe/structure items — one basis is wrong for all of them. Instead, apply automatic category rules based on the item's existing `layerConfig.layerType` classification (and existing structure/location linkage), with no new per-item selector UI in this batch:
+
+9. **Linear pavement/granular/spray items** (`layerType` = bituminous, granular, spray_coat): side-aware reach-length allocation. `full_width`/`both_sides`/`median` stretches get the full length-proportional share (`stretchLen / totalRoadLen`, or `manualQtyFraction` when the stretch has one). `lhs`/`rhs`/shoulder/service-road stretches get half that share by default (see #11 for the width-matched exception).
+10. **Earthwork/embankment/subgrade** (`layerType` = earthwork): use the *same* side-aware reach-length math as #9 — do not treat earthwork specially in the formula. Every bar and preview row generated for an earthwork item must carry a visible label: "Planning Estimate — based on BOQ quantity and reach length." No blocking confirmation is required merely to generate this estimate. Do not add cross-section, cut/fill, or survey-grade calculation.
+11. **Width-matched split** (applies within #9/#10, automatic, no UI selector): when an LHS stretch and an RHS stretch for the same item have *identical* `chainageFrom`/`chainageTo` and both have `plannedWidthM` set, split that chainage's full share as `widthLHS / (widthLHS + widthRHS)` and the complement, instead of the flat 0.5/0.5. If the boundaries differ at all — even partial overlap — do not attempt a width fraction; use the flat 0.5 side-share and show a non-blocking note: "Width-based split needs matching LHS/RHS reach boundaries; using standard side allocation." Segmented/partial-overlap width calculation is explicitly out of scope, deferred to 029D.
+12. **MT-UOM bituminous items** (DBM/BC/SDBC/BM in MT): apportion the BOQ-UOM MT total using the same side-aware reach-length math as #9. Do not derive or adjust quantity from area × thickness × density — no density or geometry conversion is invented at this stage.
+13. **Discrete/location items** (pipes, structures, or any item already tied to a `structureId`/location-based planning path): exclude entirely from this automatic road-stretch side-length distribution. They keep using their existing structure/location generation logic, untouched.
+14. **`manualQtyFraction`** on a stretch: remains an explicit override — when set, it is used directly as the full share for that stretch's items, bypassing all automatic side-fraction math above. Label it in the UI as "Manual allocation — fraction of BOQ item quantity" for clarity.
+15. Add `plannedWidthM?: number | null` to `RoadStretchInput` in `shared/programmeSequencer.ts` if not already present, needed for #11. Do not add an `allocationBasis` field or any per-stretch/per-item basis selector — that belongs to 029D's full matrix.
+16. Confirmation/blocking is required only in three cases, none of which apply merely because an item is earthwork or because a stretch has a side: (a) total planned quantity for an item exceeds its BOQ quantity beyond tolerance (Part D); (b) a `both_sides`/`full_width` stretch conflicts in chainage with an `lhs`/`rhs` stretch for the same item — already blocked by the existing 029B validator, enforce via test, not new prompts; (c) a manual or location-based quantity already recorded for that item/stretch would be silently overwritten by the automatic calculation — surface this instead of overwriting it.
+
+**PART D — OVERALLOCATION PREVENTION**
+
+17. Before persisting newly generated/regenerated bars, sum effective planned quantity per BOQ item across all stretches and compare to that item's BOQ quantity (reuse the comparison already in the `warnings` memo at `WorkProgramme.tsx:2940-2951`, moved to run before generation rather than as a post-hoc badge only).
+18. If total exceeds BOQ quantity beyond a small tolerance, block generation, show which item(s) and by how much, and require an explicit override with reason + user + timestamp, consistent with existing override patterns in this codebase.
+19. Where allocation is under the BOQ quantity, show "X% programmed · Y% not yet allocated" — do not force the remainder into the last stretch.
+20. Existing already-persisted bars are never recalculated by this fix — not on page load, deploy, or migration. The corrected math applies only to newly generated bars or a stretch set the user explicitly re-runs through Auto-Sequence, going through the existing 029/030A reconcile-in-place-or-block protection for arrangement- and DPR-linked bars.
+
+**PART E — VERIFY EXISTING SIDE-OVERLAP PROTECTION**
+
+21. Confirm via test (not new code) that a `both_sides`/`full_width` stretch and an `lhs`/`rhs` stretch at overlapping chainage for the same item are still blocked by the existing `areSidesDistinctCorridors`/`validateStretches` path after this batch's changes to the generation loop. The validator itself must remain untouched and must still run before generation.
+
+**PART F — QUANTITY PREVIEW**
+
+22. Before bars are created/replaced, show a compact preview: BOQ quantity, quantity allocated by stretch (grouped by side), total allocated, unallocated balance, overallocated amount, and which category rule (pavement/earthwork-estimate/MT-proportional/excluded-discrete/manual) applied per stretch. The full Item × Reach-Side matrix remains out of scope for this batch.
+
+**PART G — MORE-MENU DEFECT**
+
+23. Reproduce live: a row near the bottom of the Gantt's scroll container (`WorkProgramme.tsx:2083`), both vertically and horizontally scrolled. `DropdownMenuContent` at `WorkProgramme.tsx:1059` currently sets only `align="end"` — no `side`, `sideOffset`, `avoidCollisions`, or `collisionPadding`. Check whether `ui/dropdown-menu.tsx` hardcodes `avoidCollisions={false}` anywhere (it already uses a Radix Portal, so plain ancestor overflow shouldn't be the cause). Add explicit `collisionPadding`, confirm `avoidCollisions` is genuinely active, and check for a z-index/stacking conflict with any sticky/frozen-column header. Fix the actual observed cause.
+
+**PART H — TESTS**
+
+New file `tests/sideAwareQtyAllocation029C.test.ts`:
+- Round-trip: bar with `side='lhs'`, `executionFront='Front A'`, `executionOrder=2`, `plannedWidthM=5.5` → fetched via the real route → all fields present.
+- Stage: 1 and duplicate-1 accepted; 1.5 and 0 rejected.
+- Pavement item, LHS+RHS at the same chainage: sum equals the length-proportional share for that chainage, not double it.
+- Earthwork item, LHS+RHS at the same chainage: same math as pavement, generates without a blocking prompt, and every resulting bar/preview row carries the "Planning Estimate" label.
+- Width-matched split: identical LHS/RHS boundaries with widths 5.5m/7.0m split proportionally, not 50:50.
+- Width-mismatched split: LHS Ch.0-2.0 vs RHS Ch.1.0-3.0 falls back to flat 0.5 share with the "needs matching boundaries" note, not a computed width fraction.
+- MT item: apportioned by side-aware length share only; no density/geometry conversion invoked.
+- Discrete/structure-linked item: not distributed across ordinary road stretches by this logic.
+- Manual override: `manualQtyFraction` bypasses all side-fraction math.
+- Manual/location quantity already present: automatic calculation does not silently overwrite it; conflict is surfaced.
+- Both Sides + LHS same chainage: still blocked by the existing 029B validator (regression).
+- Overallocation: exceeding BOQ blocks generation without an override reason, succeeds with one.
+- Existing bars unchanged after reload/redeploy; only explicit regeneration recalculates, only for resubmitted stretches.
+- Regression: `calculateBomDemand`, `calculateStretchQty` call sites, SDB/SNL demand output, Procurement/Stores UOM conversion, 029 stage/front scheduling, 029A edit model, 030A deletion protection all unchanged.
+
+**LIVE PROOF**
+
+Using the screenshot project: regenerate the earthwork stretches (Ch 0-2.4 Both Sides, Ch 2.4-3.25 LHS, Ch 2.4-3.25 RHS, Ch 3.25-3.7 Both Sides) and confirm total planned quantity no longer exceeds the ~3,403.7 Cum BOQ figure, generating without any blocking prompt, each row labeled "Planning Estimate." Confirm newly generated LHS/RHS/Both-Sides bars show their side after a full page reload. Confirm Stage rejects "1.5". Confirm the "..." menu opens fully on a bottom-row, scrolled Gantt. Confirm BOM/Procurement totals are unaffected except for receiving corrected planned quantities.
+
+**FINAL REQUIREMENT**
+
+Not complete until: side/front/width/thickness round-trip through the real read path; Stage/Front are validated and visibly explained; category-aware allocation demonstrably prevents the LHS+RHS double count on the actual screenshot data without a blanket per-stretch basis selector; earthwork generates freely as a labeled planning estimate rather than being blocked; width-based splitting only triggers on matching boundaries; existing bars are provably unchanged until explicit regeneration; the menu defect is fixed at its real, reproduced cause; and all of it is proven by tests exercising the real storage/sequencer/route path.

@@ -110,6 +110,10 @@ export interface SeqInputItem {
    *  Used as a fallback when classifyWorkType cannot match the description+unit. */
   workCategory?: string | null;
   needsReview?: boolean; // if already flagged, still try to classify
+  /** 029C — the item's layerConfig.layerType classification (earthwork |
+   *  granular | bituminous | spray_coat | concrete | none | null). Drives the
+   *  automatic category allocation rule; NOT a user-facing basis selector. */
+  layerType?: string | null;
 }
 
 /** Rich diagnostic record for a BOQ item that could not be placed in any stage. */
@@ -203,6 +207,10 @@ export interface RoadStretchInput {
    *  both_sides | …). Carried onto every road bar generated for this stretch.
    *  null/undefined = unspecified ("Side Review Required"). */
   side?: string | null;
+  /** 029C #11/#15 — optional planned carriageway width for this stretch (m).
+   *  Only used for the automatic width-matched LHS/RHS split; never a basis
+   *  selector. */
+  plannedWidthM?: number | null;
 }
 
 /** One genuine chainage overlap between two stretches (blocking). */
@@ -359,6 +367,80 @@ export interface SeqBar {
   executionFront?: string | null;
   /** 029B — display-only tiebreaker within a stage. */
   executionOrder?: number | null;
+  /** 030A/029C — stretch side carried onto the bar. */
+  side?: string | null;
+  /** 029C — planned width from the stretch (m), when supplied. */
+  plannedWidthM?: number | null;
+  /** 029C — which automatic category rule computed plannedQty. */
+  allocationRule?: "pavement" | "earthwork-estimate" | "mt-proportional" | "manual";
+  /** 029C — non-blocking allocation note (e.g. width-split fallback). */
+  allocationNote?: string | null;
+  /** 029C — persisted bar note (earthwork "Planning Estimate" label). */
+  notes?: string | null;
+}
+
+// ─── 029C: automatic category-aware side allocation helpers ──────────────────
+// One-sided corridors get half the length-proportional share by default;
+// full-width/both-sides/median (and unspecified) stretches get the full share.
+const ONE_SIDED_CORRIDORS = new Set([
+  "lhs", "rhs", "shoulder_lhs", "shoulder_rhs", "service_road_lhs", "service_road_rhs",
+]);
+
+export const WIDTH_SPLIT_FALLBACK_NOTE =
+  "Width-based split needs matching LHS/RHS reach boundaries; using standard side allocation.";
+
+export const EARTHWORK_ESTIMATE_LABEL =
+  "Planning Estimate — based on BOQ quantity and reach length.";
+
+/** 029C #12: MT-UOM detection for bituminous items — proportional only, never density/geometry. */
+function isMtUnit(unit: string): boolean {
+  return /^\s*(mt|ton(ne)?s?)\b/i.test(unit ?? "");
+}
+
+/** 029C: automatic allocation rule for an item (no user selector). */
+export function allocationRuleForItem(it: Pick<SeqInputItem, "layerType" | "unit">): "pavement" | "earthwork-estimate" | "mt-proportional" {
+  if (it.layerType === "earthwork") return "earthwork-estimate";
+  if (it.layerType === "bituminous" && isMtUnit(it.unit)) return "mt-proportional";
+  return "pavement";
+}
+
+/**
+ * 029C #9-#11: side fraction for a stretch, given all stretches for the run.
+ * - full_width/both_sides/median/null → 1
+ * - one-sided → 0.5, EXCEPT the width-matched case: an lhs/rhs pair with
+ *   IDENTICAL boundaries and both plannedWidthM set splits w/(wL+wR).
+ * - one-sided with widths but mismatched boundaries → 0.5 + fallback note.
+ */
+export function sideShareForStretch(
+  st: { chainageFrom: number; chainageTo: number; side?: string | null; plannedWidthM?: number | null },
+  all: Array<{ chainageFrom: number; chainageTo: number; side?: string | null; plannedWidthM?: number | null }>,
+): { fraction: number; note: string | null } {
+  const side = st.side ?? null;
+  if (side == null || !ONE_SIDED_CORRIDORS.has(side)) return { fraction: 1, note: null };
+  // Width-matched split only for the plain lhs/rhs carriageway pair.
+  const opposite = side === "lhs" ? "rhs" : side === "rhs" ? "lhs" : null;
+  if (opposite && st.plannedWidthM != null && st.plannedWidthM > 0) {
+    const EPS = 0.0005;
+    const exact = all.find(o =>
+      o !== st && (o.side ?? null) === opposite &&
+      Math.abs(o.chainageFrom - st.chainageFrom) <= EPS &&
+      Math.abs(o.chainageTo - st.chainageTo) <= EPS &&
+      o.plannedWidthM != null && o.plannedWidthM > 0,
+    );
+    if (exact) {
+      return { fraction: st.plannedWidthM / (st.plannedWidthM + exact.plannedWidthM!), note: null };
+    }
+    // A width was supplied but no exactly-matching counterpart: if an
+    // opposite-side stretch overlaps this chainage at all, surface the
+    // explicit fallback note (segmented width math is 029D's scope).
+    const partial = all.some(o =>
+      o !== st && (o.side ?? null) === opposite &&
+      Math.min(o.chainageTo, st.chainageTo) - Math.max(o.chainageFrom, st.chainageFrom) > EPS &&
+      o.plannedWidthM != null && o.plannedWidthM > 0,
+    );
+    if (partial) return { fraction: 0.5, note: WIDTH_SPLIT_FALLBACK_NOTE };
+  }
+  return { fraction: 0.5, note: null };
 }
 
 // ─── Internal classify result ─────────────────────────────────────────────────
@@ -585,6 +667,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     side: string | null;
     front: string | null;          // 029B
     executionOrder: number | null; // 029B
+    plannedWidthM: number | null;  // 029C
   }> =
     opts.stretches && opts.stretches.length > 0
       ? opts.stretches.map((s, i) => ({
@@ -597,6 +680,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
           side: s.side ?? null, // 030A — never default to Full Width silently
           front: typeof s.front === "string" && s.front.trim() ? s.front.trim() : null, // 029B
           executionOrder: s.executionOrder != null && Number.isFinite(s.executionOrder) ? Math.floor(s.executionOrder) : null, // 029B
+          plannedWidthM: s.plannedWidthM != null && Number.isFinite(s.plannedWidthM) && s.plannedWidthM > 0 ? s.plannedWidthM : null, // 029C
         }))
       : Array.from({ length: fronts }, (_, r) => ({
           label: fronts > 1 ? `Reach ${r + 1}` : "Full Length",
@@ -607,6 +691,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
           side: null,
           front: null,
           executionOrder: null,
+          plannedWidthM: null,
         }));
 
   // Mobilisation order follows EXECUTION STAGE, not chainage position.
@@ -623,14 +708,16 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     const st = byPriority[rank];
     const offset = (stageRank.get(st.priority) ?? 0) * stagger; // distinct-stage rank drives the stagger
     const stretchLen = Math.max(0, st.chainageTo - st.chainageFrom);
-    // Quantity share: manual fraction wins; else proportionate by length
-    // (identical to calculateStretchQty: boqQty × stretchLen / roadLen).
+    // 029C: base length-proportional share (identical to calculateStretchQty:
+    // boqQty × stretchLen / roadLen), then a side fraction on top for one-sided
+    // corridors. manualQtyFraction remains an explicit override that BYPASSES
+    // all automatic side-fraction math.
+    const lengthShare = totalRoadLen > 0 ? stretchLen / totalRoadLen : 1 / byPriority.length;
+    const sideShare = sideShareForStretch(st, byPriority);
     const share =
       st.manualQtyFraction != null
         ? st.manualQtyFraction
-        : totalRoadLen > 0
-          ? stretchLen / totalRoadLen
-          : 1 / byPriority.length;
+        : lengthShare * sideShare.fraction;
 
     let pavCursor = offset;
     let prevPavStage = -1;
@@ -648,9 +735,17 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
       }
       const bar = mkBar(c.it, st.label, st.chainageFrom, st.chainageTo, pavStageStart, pavStageStart + dur, qty);
       bar.sequenceOrder = st.priority; // Instruction 029/029B — execution stage (shared = parallel)
-      (bar as any).side = st.side;     // Instruction 030A — stretch side carried onto every road bar
+      bar.side = st.side;              // Instruction 030A — stretch side carried onto every road bar
       bar.executionFront = st.front ?? null;           // 029B — front label
       bar.executionOrder = st.executionOrder ?? null;  // 029B — display-only tiebreaker
+      bar.plannedWidthM = st.plannedWidthM;            // 029C — width carried for round-trip + width split
+      // 029C: category rule + labels — no user-facing basis selector.
+      const rule = st.manualQtyFraction != null ? "manual" : allocationRuleForItem(c.it);
+      bar.allocationRule = rule;
+      bar.allocationNote = st.manualQtyFraction != null ? null : sideShare.note;
+      if (rule === "earthwork-estimate") {
+        bar.notes = EARTHWORK_ESTIMATE_LABEL; // visible on the bar after persist
+      }
       bars.push(bar);
       pavStageDur = Math.max(pavStageDur, dur);
     }
