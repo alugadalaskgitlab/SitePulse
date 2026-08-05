@@ -1,0 +1,118 @@
+Sunil, I like this direction. The mockup finally reflects your original idea: minimal entry for the field user, intelligence underneath, and clear separation between planning and actual work.
+
+DPR mockup
+
+This is the stronger of the two and is ready to turn into a controlled pilot.
+
+The good parts are:
+
+“Today’s likely activities” instead of a blank BOQ list.
+Item, reach and side already prefilled.
+Only chainage and quantity remain as essential typed fields.
+Photo is visible and easy.
+Equipment, labour and weather are hidden under Add details.
+“Same as yesterday” is prominent.
+
+I would make only a few adjustments before Claude drafts the instruction:
+
+Keep the present DPR as fallback
+
+Build the new screen as:
+
+Guided DPR
+
+and retain:
+
+Detailed DPR
+
+for the pilot period.
+
+This should be a view choice, not two separate DPR databases or workflows. Both must save into the same DPR and progress-entry records.
+
+“Same as yesterday” needs safe behaviour
+
+It should copy:
+
+work items;
+programme reach;
+side;
+equipment;
+labour categories;
+agency;
+recurring details.
+
+It must clear:
+
+actual chainage;
+quantity;
+photos;
+readings;
+progress remarks;
+submit status.
+
+The user should preview what is copied before saving.
+
+Add “Other work done”
+
+The predicted list will not always contain the actual activity. Add a clear option:
+
++ Record another activity
+
+This opens the existing BOQ/programme-bar selector.
+
+Show the BOQ UOM clearly
+
+The mockup already shows Quantity (CUM), which is correct. Quantity must always remain in the BOQ UOM.
+
+Draft versus Submit
+
+The main button should probably be:
+
+Save Draft
+
+until all required values are present.
+
+Once complete, show:
+
+Submit DPR
+
+This preserves the draft/reopen behaviour already established.
+
+Work Programme mockup
+
+The broad direction is right, especially:
+
+Side is visible in the simple flow.
+Stage and Front are hidden.
+Plain words replace sequencing jargon.
+Allocation review is understandable.
+There is one primary Generate button.
+
+But Work Programme should stay in mockup/discussion until the DPR pilot is built and tested. We have changed its sequencing logic several times; another immediate rebuild risks mixing UX redesign with calculation changes.
+
+One refinement for later: First / Next / Later may be too vague when there are four or five reaches. A simple display could be:
+
+First
+Second
+Third
+Run together
+
+Internally these can map to Stage 1/2/3. Parallel-front details can remain under Adjust details.
+
+Recommended rollout
+Finish Task #1373.
+Build Guided DPR alongside the existing Detailed DPR.
+Pilot it on one or two projects.
+Measure:
+time to create one DPR;
+number of taps;
+draft completion rate;
+missing chainage/quantity;
+how often users open Add details;
+how often users switch back to Detailed DPR.
+Improve the guided flow from actual use.
+Then finalise the Work Programme mockup and draft its instruction.
+
+The new DPR should not replace the current one until the field team proves it is faster and complete.
+
+You can share the standalone mockup file with Claude, Replit or others:
