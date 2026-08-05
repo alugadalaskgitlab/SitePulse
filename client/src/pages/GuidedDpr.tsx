@@ -195,6 +195,25 @@ export default function GuidedDpr() {
     return m;
   }, [boqItems]);
 
+  // Part C (scoped balance): whole-BOQ-item totals — same endpoint the
+  // Detailed DPR uses — shown smaller/separate from the bar's own figures.
+  type PlanVsActualRow = { boqItemId: number; currentQty: number; totalActual: number; unit: string };
+  const { data: planVsActualRows = [] } = useQuery<PlanVsActualRow[]>({
+    queryKey: ["/api/boq/projects", boqProjectId, "plan-vs-actual", date],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${boqProjectId}/plan-vs-actual?asOf=${date}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!boqProjectId,
+  });
+  const itemTotals = (boqItemId: number | null): { currentQty: number; totalActual: number; balance: number; unit: string } | null => {
+    if (boqItemId == null) return null;
+    const row = planVsActualRows.find((r) => r.boqItemId === boqItemId);
+    if (!row) return null;
+    const balance = Math.round((row.currentQty - row.totalActual) * 1000) / 1000;
+    return { currentQty: row.currentQty, totalActual: row.totalActual, balance, unit: row.unit };
+  };
+
   const { data: programmeBars = [] } = useQuery<ProgrammeBar[]>({
     queryKey: ["/api/boq/projects", boqProjectId, "programme"],
     queryFn: async () => {
@@ -332,10 +351,16 @@ export default function GuidedDpr() {
     });
     setStagedPhotos((prev) => [...prev, ...valid]);
   };
-  const uploadStagedPhotos = async (dprId: number) => {
+  /**
+   * Uploads staged photos and returns the files that FAILED, so the caller can
+   * keep only those staged for retry — successfully attached photos leave the
+   * staged list (otherwise the next draft save re-uploads them as duplicates).
+   */
+  const uploadStagedPhotos = async (dprId: number): Promise<File[]> => {
+    const failed: File[] = [];
     for (const file of stagedPhotos) {
       const up = await uploadFile(file);
-      if (!up) continue;
+      if (!up) { failed.push(file); continue; }
       try {
         await apiRequest("POST", "/api/attachments", {
           moduleType: "dpr_progress", linkedRecordId: dprId,
@@ -344,9 +369,11 @@ export default function GuidedDpr() {
           mimeType: file.type || "application/octet-stream", fileSize: file.size,
         });
       } catch {
-        toast({ title: "Some photos failed to attach", description: file.name, variant: "destructive" });
+        failed.push(file);
+        toast({ title: "Photo failed to attach — kept for retry", description: file.name, variant: "destructive" });
       }
     }
+    return failed;
   };
 
   // ── Save / submit ─────────────────────────────────────────────────────────
@@ -443,7 +470,10 @@ export default function GuidedDpr() {
     },
     onSuccess: async ({ data, asDraft }) => {
       if (stagedPhotos.length > 0) {
-        await uploadStagedPhotos(data.id);
+        // Attached photos leave the staged list (no duplicate re-upload on the
+        // next save); failed ones stay staged so the user can retry.
+        const failed = await uploadStagedPhotos(data.id);
+        setStagedPhotos(failed);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", data.id] });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
@@ -689,6 +719,7 @@ export default function GuidedDpr() {
                 overrideReason={e.chainageOverrideReason}
                 onOverrideReason={(v) => updateEntry(idx, { chainageOverrideReason: v })}
                 qty={e.quantity}
+                itemTotals={itemTotals(e.boqItemId)}
                 executedBy={e.executedBy || null}
                 onExecutedBy={(v) => updateEntry(idx, { executedBy: v })}
                 testidPrefix={`guided-${idx}`}

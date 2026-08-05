@@ -1,0 +1,49 @@
+Instruction — Guided DPR Reliability: Draft Resume, Programme Link, Balance Display, Outsourcing Attribution
+
+PURPOSE
+
+Close the remaining gap before Guided DPR can safely become the default entry screen for all users on all devices, with Classic/Detailed DPR as the fallback. This batch is what stands between here and that.
+
+DO NOT TOUCH
+
+Quantity Source logic (shared/dprGeometry.ts and its consumers) — already fixed and tested, do not modify.
+"Same as yesterday" in GuidedDpr.tsx — already correctly copies structure and clears actual values with a preview; do not rebuild.
+Detailed DPR / SiteEntry.tsx behavior beyond what's explicitly listed below.
+Work Programme, Auto-Sequence, shoulder sequencing, Gantt — untouched by this batch.
+Everything else already protected in prior DO NOT TOUCH lists (arrangement protection, deletion protection, side/chainage validators, BOM/Procurement).
+
+PART A — DRAFT RESUME (GuidedDpr.tsx)
+
+An in-progress Guided DPR must reopen as the same draft with nothing lost — date, site, every entry's item/reach/side/chainage/width/thickness/quantity/quantity source, personnel, equipment, labour, agency, photos, remarks, out-of-programme reason, and the current wizard step. Autosave updates the existing draft, never creates a second one. Leaving, refreshing, or reopening restores exactly where the user left off.
+
+PART B — PROGRAMME LINK THROUGH SUBMIT (GuidedDpr.tsx)
+
+programmeBarId must survive entry → autosave → draft reopen → preview → final submit. After submission: correct bar stays linked, correct side, Plan vs Actual updates only that bar, the opposite side is untouched, submission never silently drops the link. Add a real end-to-end test proving this specific path, since it's the one that was previously found broken.
+
+PART C — SCOPED BALANCE DISPLAY (GuidedDpr.tsx)
+
+Once a bar is linked, show that bar's own planned/done/balance — not the whole BOQ item's totals. This display doesn't exist yet in Guided DPR at all; build it using the same bar-specific figures already correctly wired in SiteEntry.tsx's structure-item path, rather than a second implementation.
+
+PART D — OUT-OF-RANGE CHAINAGE MODAL (both screens, confirm consistency)
+
+Confirm the existing out-of-range chainage handling in GuidedDpr.tsx matches the agreed modal design, not a small inline field: opens when the entered range falls outside the linked bar, shows planned vs. entered range, requires a reason, offers "Correct chainage" or "Continue with reason," blocks Next/Submit without one, and — critically — the reason must actually persist through to a successful submit, matching what was already fixed for SiteEntry.tsx. If what currently exists in GuidedDpr.tsx is an older/simpler version, upgrade it to match exactly.
+
+PART E — OUTSOURCING / EXECUTOR ATTRIBUTION (GuidedDpr.tsx)
+
+This screen doesn't fetch arrangement data at all today. Add the fetch (same data SiteEntry.tsx already uses), and when a linked bar has an execution arrangement, show it plainly and require "Executed by: HLC / Approved agency" for partly outsourced work, with the agency name shown when selected. Persist through draft, reopen, preview, submission.
+
+PART F — AUTOMATIC PROGRAMME-BAR MATCHING (both screens)
+
+Neither screen currently auto-selects a bar even when exactly one candidate matches on item, side, and chainage. Add it: one match auto-links with a visible "Linked automatically" note and a way to change it; multiple matches show only the compatible ones; no match offers unplanned/out-of-programme recording with a reason.
+
+PART G — TESTS
+
+Draft resume with zero data loss. Programme link surviving the full lifecycle. No duplicate DPR from repeated autosave. Balance figures scoped to the selected bar, BOQ totals shown separately. Out-of-range modal blocking correctly and its reason surviving to a successful submit. Outsourcing arrangement shown and executor required when applicable. Auto-matching for the single-candidate case. Full regression on Detailed DPR and on Quantity Source behavior, confirming neither was disturbed.
+
+LIVE PROOF
+
+On the real /site/guided screen — not Classic view — run the complete sequence: link a bar, enter valid chainage, confirm scoped balance display, save draft, exit, reopen, confirm everything restored, submit, confirm no duplicate and correct bar updated. Then repeat with an out-of-range chainage, confirm the modal, enter a reason, confirm it survives to a successful submit. Then link a partly-outsourced bar and confirm executor selection is required. Confirm Detailed DPR is unaffected throughout.
+
+FINAL REQUIREMENT
+
+Not complete until every item above is proven on the actual Guided DPR screen, by test and by live proof — not inferred from Detailed DPR already working, since that's precisely the mix-up that caused this gap to go unnoticed as long as it did.
