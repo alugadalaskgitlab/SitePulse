@@ -120,6 +120,53 @@ export const WORK_CAT_FALLBACK_WORK_TYPE: Partial<Record<string, WorkType>> = {
   SHOULDERS_MEDIANS: "earthwork",
 };
 
+// ──────────────────────────────────────────────────────────────────────────────
+// SHOULDER SUB-CLASSIFICATION (Gantt month-boundary & shoulder-sequencing instruction)
+// Shoulders are built ON a construction layer — they must follow that layer's
+// stage, not be lumped into earthwork. Same description-based sub-classification
+// pattern as the EARTHWORK / SUBBASE_BASE / BITUMINOUS blocks in resolveWorkType.
+// "unclassified" = the layer genuinely cannot be determined from the description;
+// the planner must confirm (never silently defaulted to earthwork).
+// ──────────────────────────────────────────────────────────────────────────────
+
+export const SHOULDER_CLASSES = ["earth", "gsb", "wmm", "dbm", "bc", "paved"] as const;
+export type ShoulderClass = (typeof SHOULDER_CLASSES)[number] | "unclassified";
+
+/** True when a BOQ description is a shoulder work item (not merely mentioning
+ *  the word in another context, e.g. "watering shoulders" maintenance). */
+export function isShoulderDesc(desc: string): boolean {
+  return /\bshoulders?\b/i.test(desc ?? "");
+}
+
+/** Description-based shoulder layer sub-classifier. */
+export function classifyShoulderLayer(desc: string): ShoulderClass {
+  const d = (desc ?? "").toLowerCase();
+  // Named layers take precedence — "DBM in paved shoulder" is a DBM shoulder,
+  // not a generic paved shoulder.
+  if (/\bbc\b|bituminous\s*concrete|\bsdbc\b|wearing\s*(course|coat)/i.test(d)) return "bc";
+  if (/\bdbm\b|dense\s*(graded\s*)?bituminous|\bbm\b|binder\s*course/i.test(d)) return "dbm";
+  if (/\bwmm\b|wet[\s-]*mix\s*macadam|wet[\s-]*mix/i.test(d)) return "wmm";
+  if (/\bgsb\b|granular\s*sub[\s-]*base/i.test(d)) return "gsb";
+  // Earth / soil / gravel / moorum shoulder — the classic embankment-stage
+  // shoulder. Checked BEFORE the generic paved catch: "earthen shoulders ...
+  // complete as per drawings" must stay earth, not fall into "shoulder...complete".
+  if (/earth(en)?\s*shoulder|soil|gravel|moorum|murrum|granular\s*shoulder|earth|selected\s*material|filling/i.test(d)) return "earth";
+  // Complete / paved / hard shoulder built as a finished unit (no single layer named)
+  if (/paved\s*shoulder|hard\s*shoulder|shoulder\s*paving|complete\s*shoulder|shoulder.*(complete|in\s*all\s*layers)/i.test(d)) return "paved";
+  return "unclassified";
+}
+
+/** Plain-language dependency note per shoulder class (bar detail/edit view). */
+export const SHOULDER_DEPENDENCY_NOTES: Record<ShoulderClass, string> = {
+  earth:        "Starts after Subgrade",
+  gsb:          "Starts with/after GSB",
+  wmm:          "Starts with/after WMM",
+  dbm:          "Starts after carriageway DBM",
+  bc:           "Starts after carriageway BC",
+  paved:        "Final paved shoulder starts after BC",
+  unclassified: "Shoulder sequence review required",
+};
+
 export interface WorkTypeResolution {
   workType: WorkType | null;
   /** How the work type was resolved. */

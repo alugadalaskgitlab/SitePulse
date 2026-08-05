@@ -3,7 +3,7 @@
 // where each reach (front) runs the crust sequence in dependency order, reaches run
 // in parallel (staggered), and the critical chain is scaled to fit the project duration.
 
-import { resolveWorkType, WORK_TYPE_PLAN_CATEGORY, WORK_CAT_PLAN_CATEGORY, type WorkType } from "./workTypeRecipes";
+import { resolveWorkType, WORK_TYPE_PLAN_CATEGORY, WORK_CAT_PLAN_CATEGORY, isShoulderDesc, classifyShoulderLayer, SHOULDER_CLASSES, type ShoulderClass, type WorkType } from "./workTypeRecipes";
 import { areSidesDistinctCorridors } from "./barSide";
 
 export type Track = "pavement" | "structure" | "bridge" | "other";
@@ -31,6 +31,29 @@ const PAVEMENT_STAGE: Partial<Record<WorkType, number>> = {
   pqc:                7,   // pavement quality concrete (rigid pavement)
   bituminous_wearing: 8,   // BC / SDBC wearing course — always last
 };
+
+// ─── Shoulder sub-type stages ────────────────────────────────────────────────
+// Shoulders follow their actual construction layer, per-stretch (Reach+Side):
+//   earth  → with earthwork/subgrade (stage 3, unchanged from before)
+//   gsb    → with/after the GSB stage (4)
+//   wmm    → with/after the WMM stage (5)
+//   dbm    → strictly AFTER carriageway DBM (7) → 7.5 (before BC at 8)
+//   bc     → strictly AFTER carriageway BC (8) → 8.5
+//   paved  → complete/hard shoulder not split into layers → after BC (8.5)
+// Fractional stages slot between the integer crust stages: the scheduler groups
+// by distinct stage value, so 7.5 starts after stage-7 finishes (+lag).
+export const SHOULDER_STAGE: Record<Exclude<ShoulderClass, "unclassified">, number> = {
+  earth: 3,
+  gsb:   4,
+  wmm:   5,
+  dbm:   7.5,
+  bc:    8.5,
+  paved: 8.5,
+};
+
+export const SHOULDER_REVIEW_REASON =
+  "Shoulder sequence review required — the construction layer (earth/GSB/WMM/DBM/BC/paved) " +
+  "could not be determined from the description. Confirm the shoulder layer so it can be staged correctly.";
 
 // ─── Culvert / cross-drainage / drain sequence ───────────────────────────────
 // Excavation → PCC bed → Pipe / RCC walls → Filter → Backfill → Headwall/Apron
@@ -110,6 +133,9 @@ export interface SeqInputItem {
    *  Used as a fallback when classifyWorkType cannot match the description+unit. */
   workCategory?: string | null;
   needsReview?: boolean; // if already flagged, still try to classify
+  /** Planner-confirmed shoulder layer class (persisted on the BOQ item).
+   *  Highest precedence for shoulder items — remembered across regenerations. */
+  shoulderLayerClass?: string | null;
   /** 029C — the item's layerConfig.layerType classification (earthwork |
    *  granular | bituminous | spray_coat | concrete | none | null). Drives the
    *  automatic category allocation rule; NOT a user-facing basis selector. */
@@ -510,6 +536,21 @@ function classifyItem(it: SeqInputItem): ClassifyResult {
       // else: workCategory is a road category (EARTHWORK, SUBBASE_BASE, BITUMINOUS…)
       //       Keep effectivePWT=road — saved categories take precedence over regex.
     }
+  }
+
+  // 0. Shoulder items (road track only) — stage by ACTUAL construction layer.
+  // Precedence: planner-confirmed shoulderLayerClass (persisted, survives
+  // regeneration) → description sub-classifier → review-required (never a
+  // silent earthwork default).
+  if (effectivePWT !== "structure" && isShoulderDesc(it.description)) {
+    const persisted = (it.shoulderLayerClass ?? "").trim().toLowerCase();
+    const cls: ShoulderClass = (SHOULDER_CLASSES as readonly string[]).includes(persisted)
+      ? (persisted as ShoulderClass)
+      : classifyShoulderLayer(it.description);
+    if (cls !== "unclassified") {
+      return { track: "pavement", stage: SHOULDER_STAGE[cls], resolvedWorkType: wt, skipReason: null };
+    }
+    return { track: "other", stage: 99, resolvedWorkType: wt, skipReason: SHOULDER_REVIEW_REASON };
   }
 
   // 1. planningWorkType = "road" ─────────────────────────────────────────────

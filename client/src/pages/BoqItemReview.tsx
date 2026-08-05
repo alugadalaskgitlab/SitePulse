@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { shortItemName } from "@/lib/itemName";
 import { BOQ_WORK_CATEGORIES } from "@shared/boqWorkCategories";
+import { isShoulderDesc, classifyShoulderLayer } from "@shared/workTypeRecipes";
 import type { BoqItemWithCategory } from "@shared/schema";
 
 const DPR_METHOD_OPTIONS = [
@@ -63,6 +64,15 @@ function ItemEditRow({
   const [includeInPlanning, setIncludeInPlanning] = useState(item.includedInPlanning ?? true);
   const [includeInProcurement, setIncludeInProcurement] = useState(item.includeInProcurement ?? true);
   const [needsReview, setNeedsReview] = useState(item.needsReview ?? false);
+  // Shoulder sequencing — planner-confirmed layer class (remembered on regeneration)
+  const isShoulderItem = isShoulderDesc(item.description ?? "");
+  const autoShoulderClass = isShoulderItem ? classifyShoulderLayer(item.description ?? "") : null;
+  const [shoulderClass, setShoulderClass] = useState((item as any).shoulderLayerClass ?? "__auto__");
+  const shoulderMutation = useMutation({
+    mutationFn: (cls: string) =>
+      apiRequest("PATCH", `/api/boq/items/${item.id}/shoulder-class`, { shoulderClass: cls }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/boq/projects"] }),
+  });
 
   const patch = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -151,6 +161,40 @@ function ItemEditRow({
             ))}
           </SelectContent>
         </Select>
+      </td>
+      <td className="py-2 px-3 min-w-[130px]">
+        {isShoulderItem ? (
+          <Select
+            value={shoulderClass}
+            onValueChange={v => {
+              setShoulderClass(v);
+              if (v !== "__auto__") shoulderMutation.mutate(v);
+            }}
+          >
+            <SelectTrigger
+              className={`h-7 text-xs ${shoulderClass === "__auto__" && autoShoulderClass === "unclassified" ? "border-amber-400 text-amber-600" : ""}`}
+              data-testid={`select-shoulder-class-${item.id}`}
+              title={autoShoulderClass === "unclassified" && shoulderClass === "__auto__"
+                ? "Shoulder sequence review required — pick the construction layer so auto-sequence can stage it"
+                : "Shoulder construction layer (drives sequencing stage)"}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__auto__" className="text-xs">
+                {autoShoulderClass === "unclassified" ? "— Review required —" : `Auto (${autoShoulderClass?.toUpperCase()})`}
+              </SelectItem>
+              <SelectItem value="earth" className="text-xs">Earth / soil / gravel</SelectItem>
+              <SelectItem value="gsb" className="text-xs">GSB shoulder</SelectItem>
+              <SelectItem value="wmm" className="text-xs">WMM shoulder</SelectItem>
+              <SelectItem value="dbm" className="text-xs">DBM shoulder</SelectItem>
+              <SelectItem value="bc" className="text-xs">BC shoulder</SelectItem>
+              <SelectItem value="paved" className="text-xs">Paved / complete</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <span className="text-xs text-slate-300">—</span>
+        )}
       </td>
       <td className="py-2 px-3 min-w-[170px]">
         <Select
@@ -358,6 +402,7 @@ export default function BoqItemReview() {
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap hidden xl:table-cell">Bill Section</th>
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Unit</th>
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Work Type</th>
+                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Shoulder Layer</th>
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">DPR Method</th>
                     <th className="py-2 px-3 text-center text-xs font-semibold text-slate-500 whitespace-nowrap">DPR</th>
                     <th className="py-2 px-3 text-center text-xs font-semibold text-slate-500 whitespace-nowrap">Programme</th>

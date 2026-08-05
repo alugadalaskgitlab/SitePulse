@@ -1,0 +1,42 @@
+Instruction — Gantt Month Boundaries and Shoulder Dependency Sequencing
+
+PURPOSE: Make the Gantt's month boundaries visibly clear, and correct shoulder-item sequencing so shoulders follow their actual construction layer instead of being lumped into the earthwork stage. Focused Work Programme correction only — no redesign of Auto Sequence, Stage/Front, DPR, quantities, or general Gantt layout.
+
+PART A — DARKEN THE EXISTING MONTH BOUNDARY LINE
+
+There is currently one vertical line per month in the Gantt (both header and body), rendered too lightly to read at a glance. Darken and slightly thicken that existing line — do not introduce any new day/week grid, and do not change dates, bar positions, widths, scrolling, zoom, or frozen columns. Verify the header line and body line stay pixel-aligned at every zoom level.
+
+PART B — SHOULDER CLASSIFICATION
+
+Stop routing every shoulder-description BOQ item into one undifferentiated category. Sub-classify by actual layer — earth/soil/gravel shoulder, GSB shoulder, WMM shoulder, DBM shoulder, BC shoulder, complete/paved shoulder, and unclassifiable — following the same description-based sub-classification pattern already used for earthwork, sub-base/base, and bituminous items elsewhere in the same classifier. Where the layer genuinely can't be determined from the description, don't silently default to earthwork — flag it for the planner to confirm, and remember that choice on regeneration.
+
+PART C — SHOULDER STAGE ASSIGNMENT
+
+Give each shoulder sub-type its own stage, using the existing stage-ranking mechanism (the same one that already orders clearing → earthwork/subgrade → GSB → WMM → prime → DBM/tack → BC):
+
+Earth/soil/gravel shoulder: with or after subgrade, same as today — not pushed to a bituminous stage.
+GSB shoulder: after subgrade, with/after the corresponding GSB stage.
+WMM shoulder: after subgrade/GSB, with/after the WMM stage.
+DBM shoulder: after the carriageway DBM stage, never before it.
+BC shoulder: after the carriageway BC stage, never before it.
+Complete/paved shoulder (not split into DBM/BC layers): after the carriageway BC stage, unless its BOQ/SDB mapping identifies separate constituent layers, in which case follow the DBM/BC rules above instead.
+
+PART D — REACH + SIDE ISOLATION (verify, don't rebuild)
+
+Each stretch already computes its own independent stage-ordered timeline, so a shoulder correctly staged within its own Reach+Side stretch will naturally follow that stretch's own preceding layers without depending on the opposite side. No new dependency-tracking mechanism is needed here — add a test confirming this isolation still holds after shoulder items are reclassified, and confirm nothing in the reclassification accidentally causes cross-stretch coupling.
+
+PART E — EXISTING PROGRAMME PROTECTION
+
+No silent recalculation of existing saved bars on deploy, migration, page load, or refresh — corrected sequencing applies only to newly generated programmes or explicit regeneration, going through the existing DPR/arrangement-linked reconcile-or-block protection, with proposed date changes shown before applying.
+
+PART F — DISPLAY
+
+On a shoulder bar's detail/edit view only (not as a new badge on every ordinary row), show a plain-language dependency note: "Starts after Subgrade," "Starts with/after GSB," "Starts with/after WMM," "Starts after carriageway DBM," "Starts after carriageway BC," "Final paved shoulder starts after BC," or "Shoulder sequence review required."
+
+PART G — TESTS
+
+Month-line visibility and header/body alignment, with dates/positions unchanged. Earth shoulder stays with subgrade. GSB shoulder never starts before subgrade. WMM shoulder never starts before its GSB/subgrade prerequisite. DBM shoulder never starts before carriageway DBM. BC shoulder never starts before carriageway BC. Complete paved shoulder follows BC unless its mapping splits it. An LHS shoulder's schedule is unaffected by an unrelated RHS bar (Part D's isolation property). An unclassifiable shoulder is flagged for review, not silently defaulted. Existing saved bars are unchanged by deploy/refresh; explicit regeneration shows old vs. new dates. Full regression: ordinary crust sequence, side-aware quantity allocation, Stage/Front scheduling, execution arrangements, programme-bar/DPR linkage, BOM/Procurement all unchanged.
+
+LIVE PROOF (Takkadpally): Show the Gantt with the darkened month lines. Identify real shoulder items across as many of the sub-types as exist in the BOQ. Generate or dry-run and confirm each follows its correct stage relative to its own Reach+Side, with no unrelated existing bars moved.
+
+FINAL REQUIREMENT: Not done merely because shoulder dates moved later — done when month boundaries are clearly readable, shoulders are classified by real layer, each sub-type follows its correct predecessor, ambiguous items require review instead of silent earthwork defaulting, Reach+Side isolation is proven by test rather than assumed, existing programmes are untouched until explicit regeneration, and Takkadpally live proof plus automated tests back all of it.

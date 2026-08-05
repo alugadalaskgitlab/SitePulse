@@ -53,7 +53,7 @@ import { BarArrangementPanel } from "@/components/BarArrangementPanel";
 import { ExecutionStateBadge, useBarExecutionState } from "@/components/ExecutionStateBadge";
 import { SEQUENCE_RULES, validateStretches, type RoadStretchInput } from "@shared/programmeSequencer";
 import { BAR_SIDES, BAR_SIDE_LABELS, barSideLabel, geometryApplicability, areSidesDistinctCorridors } from "@shared/barSide";
-import { isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
+import { isStructureOrLocationScheduledItem, isShoulderDesc, classifyShoulderLayer, SHOULDER_DEPENDENCY_NOTES, SHOULDER_CLASSES, type ShoulderClass } from "@shared/workTypeRecipes";
 import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { shortItemName } from "@/lib/itemName";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
@@ -867,6 +867,30 @@ function StretchRow({
           data-testid={`input-priority-${bar.id}`}
         />
 
+        {/* Shoulder sequencing: plain-language dependency note (detail/edit view only) */}
+        {isShoulderDesc(item.description ?? "") && (() => {
+          const persisted = ((item as any).shoulderLayerClass ?? "").trim().toLowerCase();
+          const cls: ShoulderClass = (SHOULDER_CLASSES as readonly string[]).includes(persisted)
+            ? (persisted as ShoulderClass)
+            : classifyShoulderLayer(item.description ?? "");
+          const isReview = cls === "unclassified";
+          return (
+            <span
+              className={`inline-flex items-center gap-0.5 text-[10px] font-semibold rounded px-1 py-0.5 flex-shrink-0 border ${
+                isReview
+                  ? "text-amber-700 bg-amber-50 border-amber-300 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-700"
+                  : "text-teal-700 bg-teal-50 border-teal-200 dark:text-teal-300 dark:bg-teal-900/20 dark:border-teal-800"
+              }`}
+              title={isReview
+                ? "The shoulder's construction layer could not be determined from the description — confirm it so sequencing can stage it correctly."
+                : "Shoulder sequencing dependency (follows this stretch's own preceding layer)"}
+              data-testid={`shoulder-note-${bar.id}`}
+            >
+              {SHOULDER_DEPENDENCY_NOTES[cls]}
+            </span>
+          );
+        })()}
+
         {/* 030A: side + planned geometry (relevance depends on layer type) */}
         {geomApp.side && (
           <select
@@ -1145,7 +1169,7 @@ function StretchRow({
         {Array.from({ length: totalMonths }, (_, i) => (
           <div
             key={i}
-            className="absolute top-0 bottom-0 border-r border-slate-100 dark:border-slate-800"
+            className="absolute top-0 bottom-0 border-r-2 border-slate-300 dark:border-slate-600"
             style={{ left: i * colW, width: colW }}
           />
         ))}
@@ -1340,7 +1364,7 @@ function StructureLocationRow({
         {Array.from({ length: totalMonths }, (_, i) => (
           <div
             key={i}
-            className="absolute top-0 bottom-0 border-r border-violet-100 dark:border-violet-900/20"
+            className="absolute top-0 bottom-0 border-r-2 border-violet-300 dark:border-violet-700/60"
             style={{ left: i * colW, width: colW }}
           />
         ))}
@@ -2132,7 +2156,7 @@ function InlineGanttTable({
               <div
                 key={m.num}
                 style={{ width: colW, minWidth: colW }}
-                className="relative flex items-center justify-center text-[12px] font-semibold text-white/90 border-r border-teal-600/50 flex-shrink-0 select-none overflow-hidden"
+                className="relative flex items-center justify-center text-[12px] font-semibold text-white/90 border-r-2 border-teal-300/80 flex-shrink-0 select-none overflow-hidden"
               >
                 <span className="truncate px-1">{m.label}</span>
                 {/* Drag-to-resize handle — right edge of every month header */}
@@ -2260,7 +2284,7 @@ function InlineGanttTable({
                             key={m.num}
                             style={{ width: colW, minWidth: colW }}
                             onClick={() => addStretch(item.id, m.num)}
-                            className="flex-shrink-0 border-r border-slate-100 dark:border-slate-800 hover:bg-teal-50/50 dark:hover:bg-teal-900/10 cursor-pointer transition-colors"
+                            className="flex-shrink-0 border-r-2 border-slate-300 dark:border-slate-600 hover:bg-teal-50/50 dark:hover:bg-teal-900/10 cursor-pointer transition-colors"
                             title={`Add stretch starting at ${m.label}`}
                             data-testid={`cell-month-${item.id}-${m.num}`}
                           />

@@ -29,7 +29,7 @@ import {
 import { normalizeMaterialLabel, checkMappingUomCompatibility } from "@shared/boqNormalise";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
-import { classifyWorkType, STANDARD_CONCRETE_DESIGNS, isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
+import { classifyWorkType, STANDARD_CONCRETE_DESIGNS, isStructureOrLocationScheduledItem, isShoulderDesc } from "@shared/workTypeRecipes";
 import { suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
@@ -14022,6 +14022,46 @@ export async function registerRoutes(
   });
 
   /** Set bulk material classification on a BOQ item (earthwork vs vendor_supplied). */
+  // Shoulder sequencing — planner confirms an unclassifiable shoulder item's
+  // construction layer. Persisted so regeneration remembers the choice.
+  app.patch("/api/boq/items/:itemId/shoulder-class", async (req, res) => {
+    try {
+      if (!assertAuthed(req, res)) return;
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const boqItemId = parseInt(req.params.itemId);
+      if (isNaN(boqItemId)) return res.status(400).json({ error: "Invalid boqItemId" });
+      const { shoulderClass, reason } = req.body ?? {};
+      const ALLOWED = ["earth", "gsb", "wmm", "dbm", "bc", "paved"];
+      if (!ALLOWED.includes(shoulderClass))
+        return res.status(400).json({ error: `shoulderClass must be one of: ${ALLOWED.join(", ")}` });
+      const existing = await storage.getBoqItem(boqItemId);
+      if (!existing) return res.status(404).json({ error: "BOQ item not found" });
+      // Clear the review flag only when this really is a shoulder item — the
+      // flag may be set for unrelated reasons (unmapped category, etc.).
+      const clearReview = isShoulderDesc((existing as any).description ?? "");
+      const updated = await db.update(boqItems)
+        .set(clearReview ? { shoulderLayerClass: shoulderClass, needsReview: false } : { shoulderLayerClass: shoulderClass })
+        .where(eq(boqItems.id, boqItemId))
+        .returning({ id: boqItems.id });
+      if (!updated.length) return res.status(404).json({ error: "BOQ item not found" });
+      const user = (req as any).authUser;
+      await storage.logAudit({
+        module: "boq_items",
+        transactionId: boqItemId,
+        action: "update",
+        userId: user?.id ?? 0,
+        userName: user?.name ?? user?.username ?? "unknown",
+        userRole: user?.isOwner ? "owner" : user?.isAdmin ? "admin" : "manager",
+        newValues: { field: "shoulderLayerClass", shoulderClass },
+        reason: reason ?? null,
+      } as any);
+      res.json({ ok: true, boqItemId, shoulderClass });
+    } catch (err) {
+      console.error("PATCH /api/boq/items/:itemId/shoulder-class:", err);
+      res.status(500).json({ error: "Failed to set shoulder class" });
+    }
+  });
+
   app.patch("/api/boq/items/:itemId/bulk-classification", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
@@ -14596,6 +14636,8 @@ export async function registerRoutes(
             // 029C — layerConfig classification drives the automatic category
             // allocation rule (earthwork estimate / MT proportional / pavement).
             layerType: (it.layerConfig as any)?.layerType ?? null,
+            // Shoulder sequencing — planner-confirmed layer class (remembered on regen).
+            shoulderLayerClass: (it as any).shoulderLayerClass ?? null,
           };
         });
 
@@ -16778,6 +16820,8 @@ async function ensureDprBoqProjectColumn() {
 async function ensureBoqDprConversionFactor() {
   try {
     await db.execute(sql.raw(`ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS dpr_conversion_factor real`));
+    // Shoulder sequencing — planner-confirmed shoulder layer class (idempotent DDL)
+    await db.execute(sql.raw(`ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS shoulder_layer_class text`));
     // Backfill known Takkadpally items: item 13 = Clearing & Grubbing (SQM → Ha = 0.0001)
     await db.execute(sql.raw(`
       UPDATE boq_items

@@ -2601,6 +2601,10 @@ export const boqItems = pgTable("boq_items", {
   // Instruction 024: classification for ambiguous bulk materials (gravel/moorum).
   // Values: "earthwork" | "vendor_supplied" | null (= unclassified, shows Classify prompt)
   bulkMaterialClassification: text("bulk_material_classification"),
+  // Shoulder sequencing: planner-confirmed shoulder layer class.
+  // Values: "earth" | "gsb" | "wmm" | "dbm" | "bc" | "paved" | null (= auto from description).
+  // Remembered across programme regenerations.
+  shoulderLayerClass: text("shoulder_layer_class"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("boq_items_project_idx").on(t.boqProjectId),

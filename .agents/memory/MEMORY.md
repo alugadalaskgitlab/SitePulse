@@ -30,4 +30,5 @@
 - [Guided DPR pilot](guided-dpr-pilot.md) — /site/guided + dprEntryMode preference; server validates programme-linked rows strictly even for drafts (drop bar link on incomplete draft rows).
 - [DPR Programme-Link 031](dpr-programme-link-031.md) — shared/dprProgrammeLink.ts + BarLinkFeedback are the single source for DPR↔bar rules; cloneDpr must copy every new progress column.
 - [DPR Quantity Source](dpr-quantity-source.md) — shared/dprGeometry.ts is the one geometry/qty-source contract; server recomputes, never trusts client "calculated"; set source at calc moment, not by later inference.
+- [Shoulder Sequencing](shoulder-sequencing.md) — shoulders staged by real layer (dbm 7.5/bc 8.5 fractional stages); regex order traps; python heredoc \b mangling; 030A test is date-flaky.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

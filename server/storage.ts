@@ -22051,6 +22051,7 @@ export class DatabaseStorage implements IStorage {
         snlCode: boqItems.snlCode,
         excelRow: boqItems.excelRow,
         bulkMaterialClassification: boqItems.bulkMaterialClassification,
+        shoulderLayerClass: boqItems.shoulderLayerClass,
         createdAt: boqItems.createdAt,
         categoryName: boqCategories.name,
         snlItemId: snlBoqMappings.snlItemId,
