@@ -68,6 +68,27 @@ export function allowedDprSides(plannedSide: string | null | undefined): BarSide
   }
 }
 
+/**
+ * Instruction 029B Part D — do two bar/stretch side values represent
+ * physically distinct, non-overlapping corridors? When true, matching
+ * chainage between the two is NOT an overlap (LHS vs RHS is the normal
+ * road-planning case). Rules:
+ *  - full_width or both_sides against anything → NOT distinct (chainage check applies)
+ *  - the same side value against itself → NOT distinct
+ *  - any two DIFFERENT non-full_width/non-both_sides values → distinct corridors
+ *  - null/unspecified on either → NOT distinct here; callers must surface a
+ *    "Side must be confirmed" validation instead of silently deciding.
+ */
+export function areSidesDistinctCorridors(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  if (!isBarSide(a as any) || !isBarSide(b as any)) return false;
+  if (a === b) return false;
+  if (a === "full_width" || a === "both_sides" || b === "full_width" || b === "both_sides") return false;
+  return true;
+}
+
 export function isDprSideCompatible(
   plannedSide: string | null | undefined,
   dprSide: string | null | undefined,

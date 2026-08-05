@@ -24,7 +24,7 @@
 - [Execution State 027](execution-state-027.md) — 7-state derivation, pendingRevision {fields,...} shape, edit classification, locked revision flow; req.user is never set (use authUser); storage.createAuditLog doesn't exist (use logAudit).
 - [Gantt Calendar Axis](gantt-calendar-axis.md) — 027A: calendarAxis.ts is sole UI date↔index↔pixel converter; endMonth boundary-exclusive, displayed+persisted endDate inclusive (boundary−1, clamped).
 - [Execution Arrangement Categories](execution-arrangement-categories.md) — registry-driven earthwork+bituminous arrangements; unmapped resources never excluded; dprs has no status column.
-- [Auto-Sequence Real Stretches](auto-sequence-stretches.md) — 029: shared validateStretches, sequenceOrder = execution priority, arrangement-linked bars reconciled in place (never cascade-deleted), two-phase dry-run confirm.
+- [Auto-Sequence Real Stretches](auto-sequence-stretches.md) — 029/029B: shared side-aware validateStretches, sequenceOrder = shared execution Stage + Front, arrangement-linked bars reconciled in place, two-phase dry-run confirm.
 - [Work Programme Read/Edit Mode](work-programme-read-edit-mode.md) — 029A: StretchRow read vs deliberate edit (no onBlur autosaves), one-editor guard, stable toolbar, per-project tab/scroll restore.
 - [Programme Bar↔DPR Linkage](programme-bar-dpr-linkage.md) — 030A: barSide.ts matrix, FK SET NULL + app-level 409 deletion guard, split keeps original bar's links, cloneDpr must copy linkage fields.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

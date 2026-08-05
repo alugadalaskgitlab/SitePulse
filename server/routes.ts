@@ -38,7 +38,7 @@ import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } fro
 import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupSessionFromCookie, loadUserPermissionsMatrix } from "./auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
 import { insertAttachmentSchema, attachmentModuleTypes } from "@shared/schema";
-import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm } from "@shared/barSide";
+import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
 import {
   registerAuthRoutes,
   assertAdmin,
@@ -11054,22 +11054,34 @@ export async function registerRoutes(
   // Touching boundaries (split-at-midpoint) are fine; strict interior overlap
   // blocks the save. Runs on create AND on chainage edits — not just Auto Sequence.
   const CH_OVERLAP_EPS = 0.0005; // 0.5 m — matches shared validateStretches
+  // 029B Part D: the single-bar create/PATCH guard shares the same side-aware
+  // corridor policy as validateStretches(). Distinct corridors (LHS vs RHS,
+  // shoulder L/R, …) may share chainage; full_width/both_sides/same-side still
+  // conflict; a null side on either bar with overlapping chainage surfaces a
+  // "side must be confirmed" result rather than a silent accept or a false
+  // duplicate.
   async function findChainageOverlapConflict(
     boqProjectId: number,
     boqItemId: number,
     chainageFrom: unknown,
     chainageTo: unknown,
     excludeBarId?: number,
-  ): Promise<{ conflictBar: any } | null> {
+    candidateSide?: string | null,
+  ): Promise<{ conflictBar: any; kind: "overlap" | "side_confirm" } | null> {
     const cf = Number(chainageFrom), ct = Number(chainageTo);
     if (!Number.isFinite(cf) || !Number.isFinite(ct)) return null; // no chainage → nothing to check
+    const candSide = isBarSide(candidateSide) ? candidateSide : null;
     const siblings = (await storage.getWorkProgramBars(boqProjectId)) as any[];
     for (const b of siblings) {
       if (b.boqItemId !== boqItemId) continue;
       if (excludeBarId != null && b.id === excludeBarId) continue;
       const bf = Number(b.chainageFrom), bt = Number(b.chainageTo);
       if (!Number.isFinite(bf) || !Number.isFinite(bt)) continue;
-      if (Math.min(ct, bt) - Math.max(cf, bf) > CH_OVERLAP_EPS) return { conflictBar: b };
+      if (Math.min(ct, bt) - Math.max(cf, bf) <= CH_OVERLAP_EPS) continue; // interval math unchanged
+      const sibSide = isBarSide(b.side) ? b.side : null;
+      if (areSidesDistinctCorridors(candSide, sibSide)) continue; // e.g. LHS vs RHS — not an overlap
+      if (candSide == null || sibSide == null) return { conflictBar: b, kind: "side_confirm" };
+      return { conflictBar: b, kind: "overlap" };
     }
     return null;
   }
@@ -11085,11 +11097,18 @@ export async function registerRoutes(
         return res.status(400).json({ error: "endMonth must be >= startMonth" });
       }
       const conflict = await findChainageOverlapConflict(
-        boqProjectId, Number(data.boqItemId), data.chainageFrom, data.chainageTo);
+        boqProjectId, Number(data.boqItemId), data.chainageFrom, data.chainageTo,
+        undefined, data.side ?? null);
       if (conflict) {
+        if (conflict.kind === "side_confirm") {
+          return res.status(400).json({
+            error: "SIDE_CONFIRM_REQUIRED",
+            message: `Chainage Km ${data.chainageFrom}–${data.chainageTo} overlaps stretch "${conflict.conflictBar.reachLabel ?? "unnamed"}" (Km ${conflict.conflictBar.chainageFrom}–${conflict.conflictBar.chainageTo}) of the same BOQ item — side must be confirmed on both bars before overlapping chainage stretches can be saved`,
+          });
+        }
         return res.status(400).json({
           error: "CHAINAGE_OVERLAP",
-          message: `Chainage Km ${data.chainageFrom}–${data.chainageTo} overlaps existing stretch "${conflict.conflictBar.reachLabel ?? "unnamed"}" (Km ${conflict.conflictBar.chainageFrom}–${conflict.conflictBar.chainageTo}) of the same BOQ item`,
+          message: `Chainage Km ${data.chainageFrom}–${data.chainageTo} overlaps existing stretch "${conflict.conflictBar.reachLabel ?? "unnamed"}" (Km ${conflict.conflictBar.chainageFrom}–${conflict.conflictBar.chainageTo}) of the same BOQ item on the same side`,
         });
       }
       const bar = await storage.upsertWorkProgramBar(data);
@@ -11135,19 +11154,28 @@ export async function registerRoutes(
           });
         }
       }
-      // Instruction 029 Part C: chainage edits are validated against sibling
-      // stretches of the same BOQ item — genuine overlap blocks the save.
-      if (req.body?.chainageFrom !== undefined || req.body?.chainageTo !== undefined) {
+      // Instruction 029 Part C / 029B Part D: chainage OR side edits are
+      // validated against sibling stretches of the same BOQ item — same-side
+      // (or side-unconfirmed) overlap blocks the save; distinct corridors
+      // (LHS vs RHS etc.) are allowed to share chainage.
+      if (req.body?.chainageFrom !== undefined || req.body?.chainageTo !== undefined || req.body?.side !== undefined) {
         const existing = (await storage.getWorkProgramBar?.(barId)) ?? null;
         if (existing) {
           const cf = req.body.chainageFrom !== undefined ? req.body.chainageFrom : (existing as any).chainageFrom;
           const ct = req.body.chainageTo !== undefined ? req.body.chainageTo : (existing as any).chainageTo;
+          const side = req.body.side !== undefined ? req.body.side : (existing as any).side;
           const conflict = await findChainageOverlapConflict(
-            (existing as any).boqProjectId, (existing as any).boqItemId, cf, ct, barId);
+            (existing as any).boqProjectId, (existing as any).boqItemId, cf, ct, barId, side ?? null);
           if (conflict) {
+            if (conflict.kind === "side_confirm") {
+              return res.status(400).json({
+                error: "SIDE_CONFIRM_REQUIRED",
+                message: `Chainage Km ${cf}–${ct} overlaps stretch "${conflict.conflictBar.reachLabel ?? "unnamed"}" (Km ${conflict.conflictBar.chainageFrom}–${conflict.conflictBar.chainageTo}) of the same BOQ item — side must be confirmed on both bars before overlapping chainage stretches can be saved`,
+              });
+            }
             return res.status(400).json({
               error: "CHAINAGE_OVERLAP",
-              message: `Chainage Km ${cf}–${ct} overlaps stretch "${conflict.conflictBar.reachLabel ?? "unnamed"}" (Km ${conflict.conflictBar.chainageFrom}–${conflict.conflictBar.chainageTo}) of the same BOQ item`,
+              message: `Chainage Km ${cf}–${ct} overlaps stretch "${conflict.conflictBar.reachLabel ?? "unnamed"}" (Km ${conflict.conflictBar.chainageFrom}–${conflict.conflictBar.chainageTo}) of the same BOQ item on the same side`,
             });
           }
         }
@@ -14403,6 +14431,11 @@ export async function registerRoutes(
               : null,
             // 030A — optional per-stretch side, validated; invalid values → null
             side: isBarSide(s?.side) ? s.side : null,
+            // 029B — front label + display-only order tiebreaker
+            front: typeof s?.front === "string" && s.front.trim() ? s.front.trim().slice(0, 60) : null,
+            executionOrder: Number.isFinite(Number(s?.executionOrder)) && Number(s.executionOrder) >= 1
+              ? Math.floor(Number(s.executionOrder))
+              : null,
           }))
         : null;
       let stretchGaps: Array<{ from: number; to: number }> = [];
@@ -14711,6 +14744,9 @@ export async function registerRoutes(
           // 030A: carry the stretch side onto reconciled bars — but never wipe an
           // explicitly-set side back to null just because the stretch omitted it.
           ...((nb as any).side != null ? { side: (nb as any).side } : {}),
+          // 029B: front + display order carry the same never-wipe rule.
+          ...((nb as any).executionFront != null ? { executionFront: (nb as any).executionFront } : {}),
+          ...((nb as any).executionOrder != null ? { executionOrder: (nb as any).executionOrder } : {}),
         } as any);
       }
       // 2. Delete only unprotected matched bars (blocked bars stay untouched).

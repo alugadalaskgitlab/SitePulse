@@ -831,15 +831,15 @@ function StretchRow({
           </span>
         )}
 
-        {/* 029A §6: execution priority (Batch 029 sequenceOrder) */}
-        <span className="text-xs text-slate-400 flex-shrink-0 ml-0.5" title="Execution priority — 1 mobilises first (independent of chainage order)">P</span>
+        {/* 029A §6 / 029B: execution STAGE (sequenceOrder — may be shared by parallel stretches) */}
+        <span className="text-xs text-slate-400 flex-shrink-0 ml-0.5" title="Execution stage — 1 mobilises first; stretches sharing a stage start together">S</span>
         <input
           type="number" min="1" step="1"
           value={prio}
           onChange={e => { dirty.current = true; setPrio(e.target.value); }}
           className="w-[30px] text-xs font-mono border-b border-purple-300 bg-transparent text-center focus:outline-none focus:border-purple-500 dark:border-purple-700 dark:text-slate-200"
           placeholder="—"
-          title="Execution priority (blank = chainage order)"
+          title="Execution stage (blank = chainage order). The same stage on two stretches is normal — they run in parallel."
           data-testid={`input-priority-${bar.id}`}
         />
 
@@ -916,13 +916,14 @@ function StretchRow({
         </button>
         </>) : (<>
         {/* ── 029A Part A: clean read mode — no live inputs, no permanent icons ── */}
-        {(bar as any).sequenceOrder != null && (
+        {((bar as any).sequenceOrder != null || (bar as any).executionFront) && (
           <span
             className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 rounded px-1 flex-shrink-0 dark:bg-purple-900/30 dark:text-purple-300"
-            title={`Execution priority ${(bar as any).sequenceOrder} — lower mobilises first`}
+            title={`${(bar as any).sequenceOrder != null ? `Execution stage ${(bar as any).sequenceOrder} — lower mobilises first; stretches sharing a stage start together.` : ""}${(bar as any).executionFront ? ` Front: ${(bar as any).executionFront}` : ""}`.trim()}
             data-testid={`text-priority-${bar.id}`}
           >
-            P{(bar as any).sequenceOrder}
+            {(bar as any).sequenceOrder != null ? `S${(bar as any).sequenceOrder}` : ""}
+            {(bar as any).executionFront ? `${(bar as any).sequenceOrder != null ? " · " : ""}${(bar as any).executionFront}` : ""}
           </span>
         )}
         {!isStructure && (bar.chainageFrom != null || bar.chainageTo != null) && (
@@ -930,8 +931,12 @@ function StretchRow({
             Ch {bar.chainageFrom ?? "?"}–{bar.chainageTo ?? "?"}
           </span>
         )}
-        {/* 030A: side + geometry in the read summary */}
-        {geomApp.side && (bar as any).side != null && (
+        {/* 030A: side + geometry in the read summary.
+            029B Part B: the side indicator renders on EVERY non-structure bar,
+            even when the BOQ item's layerType is unclassified — only structure/
+            location-scheduled bars suppress it. geometryApplicability() still
+            governs width/thickness elsewhere, just not this indicator. */}
+        {!isStructure && (bar as any).side != null && (
           <span
             className="text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded px-1 flex-shrink-0 dark:bg-sky-900/30 dark:text-sky-300"
             title={`Planned side: ${barSideLabel((bar as any).side)}${(bar as any).plannedWidthM != null ? ` · width ${(bar as any).plannedWidthM} m` : ""}${(bar as any).plannedThicknessMm != null ? ` · thickness ${(bar as any).plannedThicknessMm} mm` : ""}`}
@@ -941,7 +946,7 @@ function StretchRow({
             {(bar as any).plannedWidthM != null ? ` · ${Number((bar as any).plannedWidthM).toFixed(2)} m` : ""}
           </span>
         )}
-        {geomApp.side && (bar as any).side == null && (
+        {!isStructure && (bar as any).side == null && (
           <span
             className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded px-1 flex-shrink-0 dark:bg-amber-900/30 dark:text-amber-300"
             title="No side recorded for this road bar (legacy or unspecified). The bar stays fully usable — confirm the side when convenient."
@@ -2747,7 +2752,7 @@ export default function WorkProgramme() {
   const [seqRulesOpen, setSeqRulesOpen] = useState(false);
   // ── Instruction 029: editable stretch table + pre-regeneration confirmation ──
   // Each row is kept as strings for smooth editing; converted on submit.
-  type SeqStretchRow = { label: string; from: string; to: string; priority: string; qtyPct: string; side: string };
+  type SeqStretchRow = { label: string; from: string; to: string; priority: string; qtyPct: string; side: string; front: string };
   const [seqStretches, setSeqStretches] = useState<SeqStretchRow[]>([]);
   const [seqRegenSummary, setSeqRegenSummary] = useState<{
     toRecreate: number; preservedUpdated: number; newBars: number;
@@ -3106,6 +3111,7 @@ export default function WorkProgramme() {
             priority: s.priority != null ? String(s.priority) : "",
             qtyPct: s.manualQtyFraction != null ? String(+(s.manualQtyFraction * 100).toFixed(2)) : "",
             side: s.side ?? "", // 030A
+            front: s.front ?? "", // 029B
           }))
         : []);
     } else {
@@ -3132,25 +3138,35 @@ export default function WorkProgramme() {
       priority: String(i + 1),
       qtyPct: "",
       side: "",
+      front: "",
     })));
   }
 
   /** Convert editable rows → payload; null when the table is empty (legacy mode). */
   function stretchesPayload(): RoadStretchInput[] | null {
     if (seqStretches.length === 0) return null;
-    return seqStretches.map((r, i) => ({
-      label: r.label.trim() || null,
-      chainageFrom: parseFloat(r.from),
-      chainageTo: parseFloat(r.to),
-      priority: parseInt(r.priority) || i + 1,
-      manualQtyFraction: r.qtyPct.trim() !== "" && parseFloat(r.qtyPct) > 0
-        ? Math.min(100, parseFloat(r.qtyPct)) / 100
-        : null,
-      side: r.side || null, // 030A — optional per-stretch side, carried onto road bars
-    }));
+    // 029B: executionOrder = row position within its stage (display-only tiebreaker).
+    const stageCounters = new Map<number, number>();
+    return seqStretches.map((r, i) => {
+      const stage = parseInt(r.priority) || i + 1;
+      const orderInStage = (stageCounters.get(stage) ?? 0) + 1;
+      stageCounters.set(stage, orderInStage);
+      return {
+        label: r.label.trim() || null,
+        chainageFrom: parseFloat(r.from),
+        chainageTo: parseFloat(r.to),
+        priority: stage,
+        manualQtyFraction: r.qtyPct.trim() !== "" && parseFloat(r.qtyPct) > 0
+          ? Math.min(100, parseFloat(r.qtyPct)) / 100
+          : null,
+        side: r.side || null, // 030A — optional per-stretch side, carried onto road bars
+        front: r.front.trim() || null, // 029B — execution front label
+        executionOrder: orderInStage,  // 029B — derived from row position within stage
+      };
+    });
   }
 
-  /** Live validation for the dialog — overlaps/errors block, gaps warn. */
+  /** Live validation for the dialog — overlaps/errors block, gaps + warnings inform. */
   const seqStretchValidation = useMemo(() => {
     const payload = seqStretches.length > 0
       ? seqStretches.map((r, i) => ({
@@ -3158,9 +3174,11 @@ export default function WorkProgramme() {
           chainageFrom: parseFloat(r.from),
           chainageTo: parseFloat(r.to),
           priority: parseInt(r.priority) || i + 1,
+          side: r.side || null,       // 029B Part D — side-aware overlap validation
+          front: r.front.trim() || null, // 029B Part C — same-stage/front warning
         }))
       : [];
-    if (payload.length === 0) return { errors: [], overlaps: [], gaps: [] };
+    if (payload.length === 0) return { errors: [], overlaps: [], gaps: [], warnings: [] };
     return validateStretches(payload, projChFromKm, projChToKm);
   }, [seqStretches, projChFromKm, projChToKm]);
 
@@ -3677,14 +3695,15 @@ export default function WorkProgramme() {
 
       {/* Auto-sequence settings dialog */}
       <Dialog open={seqDialogOpen} onOpenChange={setSeqDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        {/* 029B Part A: viewport-safe height — the body scrolls, the footer stays visible */}
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <ArrowLeftRight className="w-4 h-4 text-purple-600" />
               Auto-Sequence Settings
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 overflow-y-auto overflow-x-auto flex-1 min-h-0 pr-1">
             <p className="text-sm text-muted-foreground">
               The sequencer splits the project into road fronts, assigns structure and bridge items to their
               matching front, and orders all items by MoRTH construction stage within each front.
@@ -3740,14 +3759,14 @@ export default function WorkProgramme() {
             {/* ── Instruction 029: real stretch table ─────────────────────── */}
             <div className="space-y-2 rounded-md border border-slate-200 dark:border-slate-700 p-2.5">
               <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium">Road stretches (chainage + execution priority)</Label>
+                <Label className="text-xs font-medium">Road stretches (chainage + execution stage/front)</Label>
                 <div className="flex gap-1.5">
                   <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[11px]"
                     onClick={() => fillEqualStretches()} data-testid="button-seq-equal-split">
                     Equal split
                   </Button>
                   <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[11px]"
-                    onClick={() => setSeqStretches(s => [...s, { label: "", from: "", to: "", priority: String(s.length + 1), qtyPct: "", side: "" }])}
+                    onClick={() => setSeqStretches(s => [...s, { label: "", from: "", to: "", priority: String(s.length + 1), qtyPct: "", side: "", front: "" }])}
                     data-testid="button-seq-add-stretch">
                     + Row
                   </Button>
@@ -3766,11 +3785,11 @@ export default function WorkProgramme() {
                 </p>
               ) : (
                 <div className="space-y-1">
-                  <div className="grid grid-cols-[1fr_70px_70px_52px_58px_86px_24px] gap-1 text-[10px] font-medium text-muted-foreground px-0.5">
-                    <span>Label (optional)</span><span>Km from</span><span>Km to</span><span>Priority</span><span>Qty %</span><span>Side</span><span />
+                  <div className="grid grid-cols-[1fr_66px_66px_46px_70px_54px_82px_24px] gap-1 text-[10px] font-medium text-muted-foreground px-0.5">
+                    <span>Label (optional)</span><span>Km from</span><span>Km to</span><span title="Execution stage — stretches sharing a stage start together (parallel work)">Stage</span><span title="Execution front / crew label (optional). Same stage + same front = double-booking warning.">Front</span><span>Qty %</span><span>Side</span><span />
                   </div>
                   {seqStretches.map((r, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_70px_70px_52px_58px_86px_24px] gap-1 items-center">
+                    <div key={i} className="grid grid-cols-[1fr_66px_66px_46px_70px_54px_82px_24px] gap-1 items-center">
                       <Input value={r.label} placeholder={`Reach ${r.priority || i + 1}`} className="h-7 text-xs"
                         onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
                         data-testid={`input-stretch-label-${i}`} />
@@ -3781,8 +3800,13 @@ export default function WorkProgramme() {
                         onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, to: e.target.value } : x))}
                         data-testid={`input-stretch-to-${i}`} />
                       <Input value={r.priority} type="number" min={1} step={1} className="h-7 text-xs"
+                        title="Execution stage — the same stage on two rows is normal (they mobilise together)"
                         onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, priority: e.target.value } : x))}
                         data-testid={`input-stretch-priority-${i}`} />
+                      <Input value={r.front} placeholder="—" className="h-7 text-xs"
+                        title="Execution front / crew label (optional), e.g. A, B, Crew 2"
+                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, front: e.target.value } : x))}
+                        data-testid={`input-stretch-front-${i}`} />
                       <Input value={r.qtyPct} type="number" min={0} max={100} placeholder="auto" className="h-7 text-xs"
                         title="Manual quantity share (% of each item's total). Blank = proportionate to stretch length."
                         onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, qtyPct: e.target.value } : x))}
@@ -3800,7 +3824,7 @@ export default function WorkProgramme() {
                     </div>
                   ))}
                   <p className="text-[10px] text-muted-foreground">
-                    Priority 1 mobilises first — independent of chainage position. Reordering priority never changes chainages.
+                    Stage 1 mobilises first — independent of chainage position. Stretches sharing a stage start together (e.g. LHS + RHS in parallel). Reordering stages never changes chainages.
                   </p>
                   {(seqStretchValidation.errors.length > 0 || seqStretchValidation.overlaps.length > 0) && (
                     <div className="text-[11px] text-red-600 dark:text-red-400 space-y-0.5" data-testid="text-stretch-errors">
@@ -3814,6 +3838,11 @@ export default function WorkProgramme() {
                     <p className="text-[11px] text-amber-600 dark:text-amber-400" data-testid="text-stretch-gaps">
                       ⚠ Uncovered chainage: {seqStretchValidation.gaps.map(g => `Km ${g.from}–${g.to}`).join(", ")} (allowed — gap will simply not be programmed)
                     </p>
+                  )}
+                  {(seqStretchValidation as any).warnings?.length > 0 && (
+                    <div className="text-[11px] text-amber-600 dark:text-amber-400 space-y-0.5" data-testid="text-stretch-warnings">
+                      {(seqStretchValidation as any).warnings.map((w: string, i: number) => <p key={`w${i}`}>⚠ {w}</p>)}
+                    </div>
                   )}
                 </div>
               )}
@@ -3943,7 +3972,7 @@ export default function WorkProgramme() {
               )}
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button variant="outline" size="sm" onClick={() => setSeqDialogOpen(false)}>
               Cancel
             </Button>

@@ -4,6 +4,7 @@
 // in parallel (staggered), and the critical chain is scaled to fit the project duration.
 
 import { resolveWorkType, WORK_TYPE_PLAN_CATEGORY, WORK_CAT_PLAN_CATEGORY, type WorkType } from "./workTypeRecipes";
+import { areSidesDistinctCorridors } from "./barSide";
 
 export type Track = "pavement" | "structure" | "bridge" | "other";
 
@@ -186,8 +187,15 @@ export interface RoadStretchInput {
   label?: string | null;
   chainageFrom: number;
   chainageTo: number;
-  /** Execution priority (1 = first to mobilise). Independent of chainage order. */
+  /** Execution STAGE (029B — formerly unique priority; 1 = first to mobilise).
+   *  Multiple stretches may share a stage: they start together (same offset).
+   *  Independent of chainage order. */
   priority: number;
+  /** 029B — optional free-text execution front label (e.g. "Front A").
+   *  Same stage + same front + overlapping dates → non-blocking warning. */
+  front?: string | null;
+  /** 029B — display-only tiebreaker within a stage. Never implies sequence. */
+  executionOrder?: number | null;
   /** Optional manual quantity share (fraction of each item's total qty, 0..1).
    *  null/undefined → proportionate calculateStretchQty default. */
   manualQtyFraction?: number | null;
@@ -214,12 +222,14 @@ export interface StretchGap {
 }
 
 export interface StretchValidation {
-  /** Blocking errors: malformed rows (to ≤ from, negative, duplicate priority). */
+  /** Blocking errors: malformed rows (to ≤ from, negative, unconfirmed side on overlapping chainage). */
   errors: string[];
-  /** Blocking: genuine chainage overlaps between stretches. */
+  /** Blocking: genuine chainage overlaps between stretches (side-aware since 029B). */
   overlaps: StretchOverlap[];
   /** Non-blocking: uncovered ranges within [rangeFrom, rangeTo]. */
   gaps: StretchGap[];
+  /** 029B — non-blocking warnings (e.g. same stage + same front double-booking). */
+  warnings: string[];
 }
 
 const CH_EPS = 0.0005; // 0.5 m tolerance — touching boundaries are NOT overlaps
@@ -231,13 +241,14 @@ const CH_EPS = 0.0005; // 0.5 m tolerance — touching boundaries are NOT overla
  * blocking; gaps are warnings only.
  */
 export function validateStretches(
-  stretches: Array<Pick<RoadStretchInput, "label" | "chainageFrom" | "chainageTo" | "priority">>,
+  stretches: Array<Pick<RoadStretchInput, "label" | "chainageFrom" | "chainageTo" | "priority" | "side" | "front">>,
   rangeFrom?: number | null,
   rangeTo?: number | null,
 ): StretchValidation {
   const errors: string[] = [];
   const overlaps: StretchOverlap[] = [];
   const gaps: StretchGap[] = [];
+  const warnings: string[] = [];
   const labelOf = (s: { label?: string | null; priority: number }, i: number) =>
     (s.label && s.label.trim()) || `Reach ${s.priority || i + 1}`;
 
@@ -250,20 +261,36 @@ export function validateStretches(
       errors.push(`${labelOf(s, i)}: chainage cannot be negative`);
     }
     if (!Number.isFinite(s.priority) || s.priority < 1 || Math.floor(s.priority) !== s.priority) {
-      errors.push(`${labelOf(s, i)}: execution priority must be a whole number ≥ 1`);
+      errors.push(`${labelOf(s, i)}: execution stage must be a whole number ≥ 1`);
     }
   });
-  const prios = stretches.map((s) => s.priority).filter((p) => Number.isFinite(p));
-  const dupPrio = prios.find((p, i) => prios.indexOf(p) !== i);
-  if (dupPrio !== undefined) errors.push(`Execution priority ${dupPrio} is used more than once`);
+  // 029B Part C: duplicate stages are NORMAL (parallel fronts) — the old
+  // "priority used more than once" blocking rule is intentionally gone.
 
   // Overlaps — strict interior intersection (touching boundaries allowed).
+  // 029B Part D: side-aware. Physically distinct corridors (LHS vs RHS, etc.)
+  // sharing chainage are NOT overlaps. The interval math itself is unchanged.
+  const sideConfirmFlagged = new Set<string>();
   for (let i = 0; i < stretches.length; i++) {
     for (let j = i + 1; j < stretches.length; j++) {
       const a = stretches[i], b = stretches[j];
       const from = Math.max(a.chainageFrom, b.chainageFrom);
       const to = Math.min(a.chainageTo, b.chainageTo);
       if (to - from > CH_EPS) {
+        const aSide = (a as any).side ?? null;
+        const bSide = (b as any).side ?? null;
+        if (areSidesDistinctCorridors(aSide, bSide)) continue; // e.g. LHS vs RHS — not an overlap
+        if (aSide == null || bSide == null) {
+          // Never silently separate or silently block on an unconfirmed side.
+          const key = `${i}-${j}`;
+          if (!sideConfirmFlagged.has(key)) {
+            sideConfirmFlagged.add(key);
+            errors.push(
+              `${labelOf(a, i)} and ${labelOf(b, j)} share chainage Km ${+from.toFixed(3)}–${+to.toFixed(3)}: side must be confirmed before overlapping chainage stretches can be validated`,
+            );
+          }
+          continue;
+        }
         overlaps.push({
           aIndex: i, bIndex: j,
           aLabel: labelOf(a, i), bLabel: labelOf(b, j),
@@ -272,6 +299,26 @@ export function validateStretches(
       }
     }
   }
+
+  // 029B Part C: non-blocking same-stage same-front double-booking warning.
+  // Stretches in the same stage start together, so a shared (non-empty) front
+  // label within one stage means the front is planned to work two stretches
+  // at once. Warn — do not block; no capacity modelling in this batch.
+  const frontKey = (s: { front?: string | null }) => (s.front ?? "").trim().toLowerCase();
+  const byStageFront = new Map<string, number[]>();
+  stretches.forEach((s, i) => {
+    const f = frontKey(s);
+    if (!f || !Number.isFinite(s.priority)) return;
+    const k = `${s.priority}::${f}`;
+    byStageFront.set(k, [...(byStageFront.get(k) ?? []), i]);
+  });
+  Array.from(byStageFront.entries()).forEach(([k, idxs]) => {
+    if (idxs.length < 2) return;
+    const stage = k.split("::")[0];
+    warnings.push(
+      `Front "${(stretches[idxs[0]] as any).front}" is double-booked in stage ${stage} (${idxs.map(i => labelOf(stretches[i] as any, i)).join(", ")} start together). Allowed — but the same front cannot physically work two stretches at once.`,
+    );
+  });
 
   // Gaps — only when a real range is known.
   if (rangeFrom != null && rangeTo != null && rangeTo - rangeFrom > CH_EPS && stretches.length > 0) {
@@ -288,7 +335,7 @@ export function validateStretches(
     if (rangeTo - cursor > CH_EPS) gaps.push({ from: +cursor.toFixed(3), to: +rangeTo.toFixed(3) });
   }
 
-  return { errors, overlaps, gaps };
+  return { errors, overlaps, gaps, warnings };
 }
 
 export interface SeqBar {
@@ -303,10 +350,15 @@ export interface SeqBar {
   isDurationOverride: boolean;
   /** Always "auto-sequence" so the route can safely replace only auto-generated bars */
   source: "auto-sequence";
-  /** Instruction 029 — execution priority for road-reach bars (1 = first).
-   *  Stored in work_program_bars.sequenceOrder. Undefined for structure/bridge
+  /** Instruction 029/029B — execution STAGE for road-reach bars (1 = first;
+   *  stages may be shared by parallel stretches). Stored in
+   *  work_program_bars.sequenceOrder. Undefined for structure/bridge
    *  group bars (their sequencing is unchanged). */
   sequenceOrder?: number;
+  /** 029B — free-text front label carried onto road bars. */
+  executionFront?: string | null;
+  /** 029B — display-only tiebreaker within a stage. */
+  executionOrder?: number | null;
 }
 
 // ─── Internal classify result ─────────────────────────────────────────────────
@@ -531,6 +583,8 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     priority: number;
     manualQtyFraction: number | null;
     side: string | null;
+    front: string | null;          // 029B
+    executionOrder: number | null; // 029B
   }> =
     opts.stretches && opts.stretches.length > 0
       ? opts.stretches.map((s, i) => ({
@@ -541,24 +595,33 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
           manualQtyFraction:
             s.manualQtyFraction != null && s.manualQtyFraction > 0 ? Math.min(1, s.manualQtyFraction) : null,
           side: s.side ?? null, // 030A — never default to Full Width silently
+          front: typeof s.front === "string" && s.front.trim() ? s.front.trim() : null, // 029B
+          executionOrder: s.executionOrder != null && Number.isFinite(s.executionOrder) ? Math.floor(s.executionOrder) : null, // 029B
         }))
       : Array.from({ length: fronts }, (_, r) => ({
           label: fronts > 1 ? `Reach ${r + 1}` : "Full Length",
           chainageFrom: startCh + r * reachLen,
           chainageTo: startCh + (r + 1) * reachLen,
-          priority: r + 1, // default execution priority = chainage order
+          priority: r + 1, // default execution stage = chainage order
           manualQtyFraction: null,
           side: null,
+          front: null,
+          executionOrder: null,
         }));
 
-  // Mobilisation order follows EXECUTION PRIORITY, not chainage position:
-  // the priority-1 stretch gets stagger offset 0, priority-2 gets 1×stagger, …
+  // Mobilisation order follows EXECUTION STAGE, not chainage position.
+  // 029B Part C: stretches SHARING a stage share the same stagger offset —
+  // they start together. Offsets advance by distinct-stage rank, so stage 1
+  // gets offset 0, stage 2 gets 1×stagger, … regardless of how many parallel
+  // stretches each stage contains.
   const byPriority = [...roadStretches].sort((a, b) => a.priority - b.priority);
   const totalRoadLen = opts.roadLengthKm > 0 ? opts.roadLengthKm : 0;
+  const distinctStages = Array.from(new Set(byPriority.map(s => s.priority))).sort((a, b) => a - b);
+  const stageRank = new Map(distinctStages.map((s, i) => [s, i]));
 
   for (let rank = 0; rank < byPriority.length; rank++) {
     const st = byPriority[rank];
-    const offset = rank * stagger; // priority rank drives the stagger, not chainage order
+    const offset = (stageRank.get(st.priority) ?? 0) * stagger; // distinct-stage rank drives the stagger
     const stretchLen = Math.max(0, st.chainageTo - st.chainageFrom);
     // Quantity share: manual fraction wins; else proportionate by length
     // (identical to calculateStretchQty: boqQty × stretchLen / roadLen).
@@ -584,8 +647,10 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
         prevPavStage = c.stage;
       }
       const bar = mkBar(c.it, st.label, st.chainageFrom, st.chainageTo, pavStageStart, pavStageStart + dur, qty);
-      bar.sequenceOrder = st.priority; // Instruction 029 Part B — road-reach priority
+      bar.sequenceOrder = st.priority; // Instruction 029/029B — execution stage (shared = parallel)
       (bar as any).side = st.side;     // Instruction 030A — stretch side carried onto every road bar
+      bar.executionFront = st.front ?? null;           // 029B — front label
+      bar.executionOrder = st.executionOrder ?? null;  // 029B — display-only tiebreaker
       bars.push(bar);
       pavStageDur = Math.max(pavStageDur, dur);
     }

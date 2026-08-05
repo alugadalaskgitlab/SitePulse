@@ -1,0 +1,71 @@
+Instruction 029B — Auto-Sequence Usability Fix, Execution Stage/Front Model, and Side-Aware Stretch Overlap
+
+Purpose
+
+Fix the two confirmed usability bugs in the Auto-Sequence dialog and Gantt row (dialog not scrollable, side badge silently missing for unclassified items), replace the current unique-priority model with Execution Stage + Front so genuinely parallel work can be planned without a false "priority used more than once" error, and make the existing programme-stretch overlap validator side-aware so that LHS/RHS stretches sharing the same chainage — the normal road-planning case — are not blocked as false duplicates.
+
+This batch deliberately does not include: DPR-to-DPR duplicate/overlap validation, lift/layer-aware or width-aware checks (all remain Batch 030B), gap/blocked-chainage support, the Item+Stretch+Side bar-generation engine, "apply standard item sequence," quantity-split-method selection, Gantt grouping/summary views, or resource-capacity modeling beyond a simple same-front double-booking warning.
+
+PRELIMINARY — CURRENT CODE FACTS
+
+work_program_bars.sequenceOrder is the current execution-priority field. validateStretches() in shared/programmeSequencer.ts treats duplicate values as a blocking error, disabling Run Sequence.
+The stagger/offset scheduling math sorts stretches by sequenceOrder and assigns each a sequential offset by rank — no current way for two stretches to share a start.
+The Auto-Sequence DialogContent in client/src/pages/WorkProgramme.tsx has no max-height/overflow-y-auto and no sticky footer.
+The read-mode side badge is gated on geometryApplicability(layerType).side, which is false for any BOQ item with an unset/unclassified layerConfig.layerType — not just genuine non-linear items like structures.
+validateStretches() is also chainage-only today — it has no side parameter in its signature and treats any two stretches with overlapping chainage as a blocking overlap, regardless of side. This function is shared by both the Auto-Sequence dialog and the single-bar PATCH save route, so this gap affects both entry points identically.
+A separate, simpler, cosmetic (non-blocking) overlap warning, hasChainageOverlap, also exists privately in WorkProgramme.tsx for the per-row read-mode badge. Consolidating that into the shared validator is explicitly Batch 030B's job (Part G of that instruction) — do not touch it in this batch; it may continue showing a non-blocking cosmetic hint independent of this fix.
+Batch 030A (already built and verified) added side, plannedWidthM, plannedThicknessMm to bars and programmeBarId to progress_entries. This batch must not touch any of that. shared/barSide.ts already defines the side enum and DPR-vs-bar compatibility helpers (isDprSideCompatible) — reuse its vocabulary and add any new bar-vs-bar side helper there rather than duplicating side logic elsewhere.
+Batch 030B (drafted, not yet sent) covers DPR-side duplicate/overlap validation and legacy linking — unaffected by this batch and does not need to wait for it.
+
+DO NOT TOUCH OR REGRESS
+
+Do not modify: calculateBomDemand(), calculateStretchQty(), calendarAxis.ts; Batch 030A's side/plannedWidthM/plannedThicknessMm fields, the programmeBarId FK and its SET NULL/deletion-protection behaviour, the null-default side migration, the three-way thickness separation; the underlying chainage-interval overlap math itself (only add a side-compatibility layer around it, do not rewrite it); the private cosmetic hasChainageOverlap check in WorkProgramme.tsx (leave for 030B's consolidation); Batch 029A's read/edit-mode model, toolbar, navigation; execution-arrangement approval/demand exclusion; earthwork/bituminous classifiers; DPR entry flow beyond the read-mode badge fix; PI/IRN/GRN, Stores, Cancel GRN.
+
+PART A — Dialog scrollability
+
+Give the Auto-Sequence DialogContent a viewport-safe height (e.g. max-h-[85vh]) with the body wrapped in its own overflow-y-auto region; keep the footer (Cancel/Run Sequence) outside that scrolling region so it's always visible. The stretch table may scroll horizontally within the body if needed.
+
+PART B — Side visibility fix
+
+Show a side indicator (actual side badge, or "Side Review Required") on every road/pavement bar that is not a structure/location-scheduled bar, regardless of whether its BOQ item's layerConfig.layerType happens to be classified yet. Only isStructure bars should suppress the side indicator entirely. Do not change geometryApplicability()'s width/thickness logic — only its effect on whether the side indicator renders.
+
+PART C — Execution Stage and Front, replacing unique priority
+
+Add two nullable fields to work_program_bars: executionFront (text) and executionOrder (integer — a stable, non-date-implying display tiebreaker). Reuse the existing sequenceOrder column as Stage rather than adding a separate stage column.
+In validateStretches(), remove the duplicate-stage-is-an-error rule entirely — multiple stretches sharing a stage is normal and expected.
+Add one new, non-blocking check: within the same stage, if two or more stretches share the same executionFront value and their planned date ranges would overlap, show a warning (not an error). Do not model actual equipment/plant capacity in this batch.
+Update the stagger/offset math so all stretches sharing the same stage get the same offset (they start together); executionOrder is a display-only secondary sort key, never implying sequence.
+In the Auto-Sequence dialog's stretch table, replace "Priority" with "Stage" and "Front" columns; derive executionOrder from row position within a stage by default.
+Update the Gantt row's compact badge (currently "P{n}") to show Stage and Front where set, following 029A's rule that a badge only renders when it conveys real information.
+
+PART D — Side-aware programme-stretch overlap validation
+
+Extend validateStretches() to compare chainage together with side, without changing the underlying interval-overlap math — add a side-compatibility layer around it. Add (in shared/barSide.ts, alongside the existing side helpers) a function determining whether two side values represent physically distinct, non-overlapping corridors: same-named distinct corridors (lhs vs rhs, shoulder_lhs vs shoulder_rhs, service_road_lhs vs service_road_rhs, median vs any of the above, and generally any two distinct non-full_width/non-both_sides values) are not overlapping merely because their chainage matches. full_width or both_sides against any other side value, or the same side value against itself, must still be checked for chainage overlap as today.
+If either stretch's side is null/unspecified, do not silently treat it as separate from another row — surface a clear validation message ("Side must be confirmed before overlapping chainage stretches can be validated") rather than either blocking incorrectly or silently accepting.
+This side-compatibility layer applies only to Auto-Sequence/programme-stretch validation (both the dialog and the single-bar PATCH save route that already shares validateStretches()). It does not implement DPR-to-DPR duplicate detection, lift/layer awareness, or width/lane awareness — all of that remains Batch 030B's scope.
+
+Acceptance tests
+
+A. Auto-Sequence dialog with a full stretch table, structure/bridge groups, and the expanded stage-order panel all visible — Save/Run buttons remain reachable via scroll at a constrained viewport height.
+
+B. A road item with no layerConfig.layerType set (not a structure) shows "Side Review Required" in read mode, not nothing.
+
+C. Two stretches set to the same stage (e.g. LHS/Front A, RHS/Front B) — no "priority used more than once" error, Run Sequence enabled.
+
+D. Both same-stage stretches from test C receive an identical stagger offset in the generated bars.
+
+E. Two stretches, same stage, same Front label, overlapping planned dates — a non-blocking warning appears; Run Sequence remains enabled.
+
+F. Two stretches, same stage, different Front labels — no warning.
+
+G. Same chainage, LHS and RHS — accepted, no overlap error.
+
+H. Same chainage, LHS and LHS — overlap error remains.
+
+I. Same chainage, Full Width and LHS — overlap warning/error remains.
+
+J. Same chainage, one stretch with side unspecified — clear "Side must be confirmed" validation shown; not silently accepted, not silently blocked as a false duplicate.
+
+K. Existing bars created before this batch continue to schedule and display correctly — no forced backfill, no broken sort.
+
+L. Regression: calculateBomDemand, calculateStretchQty, Batch 030A's FK/deletion-protection/geometry fields all confirmed unchanged; the private cosmetic hasChainageOverlap badge is untouched (still Batch 030B's job to consolidate).

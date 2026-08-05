@@ -13071,6 +13071,15 @@ export class DatabaseStorage implements IStorage {
       "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS duration_days integer",
       "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS boq_sub_item text",
       "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS boq_excel_row integer",
+      // 030A — side + planned geometry + length override
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS side text",
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS planned_width_m real",
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS planned_thickness_mm real",
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS length_override_m real",
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS length_override_reason text",
+      // 029B — Execution Stage/Front model
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS execution_front text",
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS execution_order integer",
       // BOQ items: excel_row used for P1 structure schedule matching
       "ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS excel_row integer",
       // BOQ items: mapping review fields (added for item review / DPR method / procurement flags)

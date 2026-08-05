@@ -2678,6 +2678,13 @@ export const workProgramBars = pgTable("work_program_bars", {
   // length differs from straight chainage difference). Reason is mandatory.
   lengthOverrideM: real("length_override_m"),
   lengthOverrideReason: text("length_override_reason"),
+  // ── Instruction 029B Part C: Execution Stage + Front ──────────────────────
+  // sequenceOrder (above) is reused as the execution STAGE — multiple bars may
+  // share a stage (parallel work). executionFront is a free-text front label
+  // (e.g. "Front A", "Crew 2"); executionOrder is a stable display-only
+  // tiebreaker within a stage — it never implies dates or sequence.
+  executionFront: text("execution_front"),
+  executionOrder: integer("execution_order"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("work_program_bars_project_idx").on(t.boqProjectId),

@@ -152,10 +152,12 @@ describe("029 sequencer — real stretches + execution priority", () => {
 
 describe("029 validateStretches — overlaps block, gaps warn", () => {
   it("B: detects genuine interior overlap (touching boundaries allowed)", () => {
+    // 029B: overlap validation is side-aware — same side (or full_width)
+    // keeps the classic blocking behaviour tested here.
     const v = validateStretches(
       [
-        { chainageFrom: 0, chainageTo: 10, priority: 1 },
-        { chainageFrom: 8, chainageTo: 20, priority: 2 },
+        { chainageFrom: 0, chainageTo: 10, priority: 1, side: "full_width" },
+        { chainageFrom: 8, chainageTo: 20, priority: 2, side: "full_width" },
       ],
       0, 20,
     );
@@ -192,16 +194,17 @@ describe("029 validateStretches — overlaps block, gaps warn", () => {
     ]);
   });
 
-  it("flags malformed rows and duplicate priorities as blocking errors", () => {
+  it("flags malformed rows as blocking errors; duplicate stages are ALLOWED (029B)", () => {
     const v = validateStretches(
       [
         { chainageFrom: 10, chainageTo: 10, priority: 1 }, // zero length
-        { chainageFrom: 0, chainageTo: 5, priority: 1 },   // duplicate priority
+        { chainageFrom: 0, chainageTo: 5, priority: 1 },   // shared stage — normal parallel work
       ],
       0, 20,
     );
     expect(v.errors.some(e => /greater than/.test(e))).toBe(true);
-    expect(v.errors.some(e => /priority 1 is used more than once/i).valueOf()).toBe(true);
+    // 029B Part C: the old "priority used more than once" rule is gone.
+    expect(v.errors.some(e => /used more than once/i.test(e))).toBe(false);
   });
 });
 
@@ -341,9 +344,10 @@ describe("029 route — stretch validation (Part B/C)", () => {
       .post(`/api/boq/projects/${PROJECT_ID}/auto-sequence`)
       .send({
         staggerMonths: 1, lagMonths: 0, disableStructureFronts: true,
+        // 029B: side-aware validation — same-side overlap keeps the classic block.
         stretches: [
-          { chainageFrom: 100, chainageTo: 112, priority: 1 },
-          { chainageFrom: 110, chainageTo: 120, priority: 2 },
+          { chainageFrom: 100, chainageTo: 112, priority: 1, side: "full_width" },
+          { chainageFrom: 110, chainageTo: 120, priority: 2, side: "full_width" },
         ],
       });
     expect(res.status).toBe(400);
@@ -432,12 +436,12 @@ describe("029 route — arrangement-safe regeneration (Part D)", () => {
   });
 });
 
-describe("029 route — PATCH chainage overlap guard (Part C)", () => {
-  it("blocks a chainage edit that overlaps a sibling stretch of the same item", async () => {
+describe("029 route — PATCH chainage overlap guard (Part C / 029B Part D)", () => {
+  it("blocks a same-side chainage edit that overlaps a sibling stretch of the same item", async () => {
     resetFx();
     fx.bars = [
-      autoBar(), // 100–110
-      autoBar({ id: 7002, reachLabel: "Reach 2", chainageFrom: 110, chainageTo: 120 }),
+      autoBar({ side: "full_width" }), // 100–110
+      autoBar({ id: 7002, reachLabel: "Reach 2", chainageFrom: 110, chainageTo: 120, side: "full_width" }),
     ];
     const res = await request(app)
       .patch(`/api/boq/programme/bars/7002`)
@@ -445,6 +449,53 @@ describe("029 route — PATCH chainage overlap guard (Part C)", () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("CHAINAGE_OVERLAP");
     expect(storageCalls.updated).toHaveLength(0);
+  });
+
+  it("029B J: null-side chainage overlap → SIDE_CONFIRM_REQUIRED, not a false duplicate", async () => {
+    resetFx();
+    fx.bars = [
+      autoBar(), // 100–110, side null
+      autoBar({ id: 7002, reachLabel: "Reach 2", chainageFrom: 110, chainageTo: 120 }),
+    ];
+    const res = await request(app)
+      .patch(`/api/boq/programme/bars/7002`)
+      .send({ chainageFrom: 105 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("SIDE_CONFIRM_REQUIRED");
+    expect(res.body.message).toMatch(/side must be confirmed/i);
+    expect(storageCalls.updated).toHaveLength(0);
+  });
+
+  it("029B G: LHS vs RHS may share chainage — distinct corridors pass", async () => {
+    resetFx();
+    fx.bars = [
+      autoBar({ side: "lhs" }), // 100–110 LHS
+      autoBar({ id: 7002, reachLabel: "Reach 2", chainageFrom: 110, chainageTo: 120, side: "rhs" }),
+    ];
+    const res = await request(app)
+      .patch(`/api/boq/programme/bars/7002`)
+      .send({ chainageFrom: 100, chainageTo: 110 }); // full overlap, opposite side
+    expect(res.status).toBe(200);
+  });
+
+  it("029B H/I: same-side and full_width-vs-LHS overlaps still block", async () => {
+    resetFx();
+    fx.bars = [
+      autoBar({ side: "lhs" }),
+      autoBar({ id: 7002, chainageFrom: 110, chainageTo: 120, side: "lhs" }),
+    ];
+    const sameSide = await request(app).patch(`/api/boq/programme/bars/7002`).send({ chainageFrom: 105 });
+    expect(sameSide.status).toBe(400);
+    expect(sameSide.body.error).toBe("CHAINAGE_OVERLAP");
+
+    // Changing side to full_width over an LHS sibling with overlapping chainage blocks too.
+    fx.bars = [
+      autoBar({ side: "lhs" }),
+      autoBar({ id: 7002, chainageFrom: 100, chainageTo: 110, side: "rhs" }),
+    ];
+    const fw = await request(app).patch(`/api/boq/programme/bars/7002`).send({ side: "full_width" });
+    expect(fw.status).toBe(400);
+    expect(fw.body.error).toBe("CHAINAGE_OVERLAP");
   });
 
   it("allows touching boundaries and non-chainage edits", async () => {
