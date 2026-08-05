@@ -1,0 +1,96 @@
+<div>
+<h2 class="sr-only">Mockup of a simplified daily DPR entry screen and a simplified Work Programme planning screen for SitePulse</h2>
+
+<p style="font-size:13px;color:var(--text-secondary);margin:0 0 10px;font-weight:500;">DPR — site entry, simplified</p>
+
+<div style="background:var(--surface-1);border-radius:12px;padding:14px;margin-bottom:20px;">
+  <p style="font-size:13px;color:var(--text-muted);margin:0 0 8px;">Today's likely activities</p>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface-2);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;">
+    <div>
+      <p style="font-size:14px;font-weight:500;margin:0;">GSB · Reach A · LHS</p>
+      <p style="font-size:12px;color:var(--text-secondary);margin:2px 0 0;">Planned this week</p>
+    </div>
+    <i class="ti ti-chevron-down" style="font-size:18px;color:var(--text-accent);" aria-hidden="true"></i>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface-2);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;">
+    <div>
+      <p style="font-size:14px;font-weight:500;margin:0;">Earthwork · Reach C · RHS</p>
+      <p style="font-size:12px;color:var(--text-secondary);margin:2px 0 0;">Active</p>
+    </div>
+    <i class="ti ti-chevron-right" style="font-size:18px;color:var(--text-muted);" aria-hidden="true"></i>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface-2);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:12px;">
+    <div>
+      <p style="font-size:14px;font-weight:500;margin:0;">WMM · Reach B · LHS</p>
+      <p style="font-size:12px;color:var(--text-secondary);margin:2px 0 0;">Planned this week</p>
+    </div>
+    <i class="ti ti-chevron-right" style="font-size:18px;color:var(--text-muted);" aria-hidden="true"></i>
+  </div>
+
+  <button style="width:100%;font-size:13px;"><i class="ti ti-refresh" style="font-size:15px;vertical-align:-2px;margin-right:6px;" aria-hidden="true"></i>Same as yesterday</button>
+</div>
+
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:24px;">
+  <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Selected: GSB · Reach A · LHS (prefilled)</p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+    <div>
+      <label style="font-size:12px;color:var(--text-secondary);">Chainage from</label>
+      <input type="text" value="0+450" />
+    </div>
+    <div>
+      <label style="font-size:12px;color:var(--text-secondary);">Chainage to</label>
+      <input type="text" value="0+680" />
+    </div>
+  </div>
+
+  <label style="font-size:12px;color:var(--text-secondary);">Quantity (CUM)</label>
+  <input type="text" value="145" style="margin-bottom:8px;" />
+
+  <button style="width:100%;margin-bottom:8px;"><i class="ti ti-upload" style="font-size:15px;vertical-align:-2px;margin-right:6px;" aria-hidden="true"></i>Add photo</button>
+
+  <p style="font-size:12px;color:var(--text-accent);margin:0 0 10px;">Add details (equipment, labour, weather) ▾</p>
+
+  <button style="width:100%;background:var(--fill-primary);color:var(--on-primary);border:none;">Save</button>
+</div>
+
+<p style="font-size:13px;color:var(--text-secondary);margin:0 0 10px;font-weight:500;">Work Programme — planning, simplified</p>
+
+<div style="background:var(--surface-1);border-radius:12px;padding:14px;margin-bottom:14px;">
+  <p style="font-size:13px;color:var(--text-muted);margin:0 0 8px;">Choose a planning pattern</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+    <button style="font-size:12px;padding:10px 8px;text-align:left;">One continuous front</button>
+    <button style="font-size:12px;padding:10px 8px;text-align:left;border:2px solid var(--border-accent);">LHS first, then RHS</button>
+    <button style="font-size:12px;padding:10px 8px;text-align:left;">LHS and RHS in parallel</button>
+    <button style="font-size:12px;padding:10px 8px;text-align:left;">Define my own reaches</button>
+  </div>
+</div>
+
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:12px;padding:0;margin-bottom:14px;overflow:hidden;">
+  <div style="display:grid;grid-template-columns:1.3fr 0.8fr 0.6fr 1fr;background:var(--surface-1);padding:8px 10px;font-size:11px;color:var(--text-muted);">
+    <span>Reach</span><span>Ch. from–to</span><span>Side</span><span>Execution</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1.3fr 0.8fr 0.6fr 1fr;padding:8px 10px;font-size:12px;border-top:0.5px solid var(--border);">
+    <span>Reach A</span><span>0.0–1.9</span><span>LHS</span><span>First</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1.3fr 0.8fr 0.6fr 1fr;padding:8px 10px;font-size:12px;border-top:0.5px solid var(--border);">
+    <span>Reach B</span><span>0.0–1.9</span><span>RHS</span><span>Next</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1.3fr 0.8fr 0.6fr 1fr;padding:8px 10px;font-size:12px;border-top:0.5px solid var(--border);">
+    <span>Reach C</span><span>1.9–3.8</span><span>LHS</span><span>Next</span>
+  </div>
+</div>
+
+<div style="background:var(--surface-1);border-radius:12px;padding:12px 14px;margin-bottom:14px;">
+  <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">Allocation review</p>
+  <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;"><span>GSB</span><span style="color:var(--text-success);">Fully programmed</span></div>
+  <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;"><span>WMM</span><span style="color:var(--text-success);">Fully programmed</span></div>
+  <div style="display:flex;justify-content:space-between;font-size:13px;"><span>Earthwork</span><span style="color:var(--text-warning);">92% · 8% not allocated</span></div>
+</div>
+
+<button style="width:100%;background:var(--fill-brand);color:var(--on-brand);border:none;padding:11px;font-size:14px;">Generate programme</button>
+
+</div>
