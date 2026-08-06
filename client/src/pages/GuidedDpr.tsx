@@ -36,8 +36,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useUpload } from "@/hooks/use-upload";
 import { format, subDays } from "date-fns";
 import type { Site, Personnel, DprWithDetails } from "@shared/schema";
-import { barSideLabel, parseChainageKm, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
-import { chainageOutsideBar, suggestGuidedBars, emptySuggestionsReason } from "@shared/dprProgrammeLink";
+import { barSideLabel, parseChainageKm, QUANTITY_SOURCE_LABELS, allowedDprSides, dprSideOptionsForBar, isDprSideCompatible, isBarSide } from "@shared/barSide";
+import { chainageOutsideBar, suggestGuidedBars, emptySuggestionsReason, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
 import { requiredDims, applyGeometryChange, applyQuantityEdit, overrideMismatch, deriveOverridden } from "@/lib/guidedEntryGeometry";
 import { ProgrammeBarPicker, BarLinkFeedback, type PickerBar } from "@/components/ProgrammeBarPicker";
@@ -86,7 +86,22 @@ interface GuidedEntry {
 interface SimpleEquipmentRow { machine: string; vehicleNo: string; operator: string; task: string; }
 interface SimpleLabourRow { category: string; count: number | null; contractor: string; task: string; }
 
-const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"];
+// Batch 1: actual-execution-side choices come from the shared matrix — the
+// four roadway values by default, narrowed to the matching corridor when the
+// linked bar is corridor-planned (median / shoulder / service road).
+const sideOptionsFor = (plannedSide: string | null | undefined): string[] =>
+  dprSideOptionsForBar(plannedSide).map((k) => barSideLabel(k));
+// Batch 1 Part H: prefill the actual side ONLY when the planned side allows
+// exactly one value (LHS / RHS / corridor bars). Both-Sides / Full-Width bars
+// must prompt the engineer to confirm — never preset.
+const prefillSideFor = (plannedSide: string | null | undefined): string => {
+  const allowed = allowedDprSides(plannedSide);
+  return allowed && allowed.length === 1 ? barSideLabel(allowed[0]) : "";
+};
+const sideKeyOf = (label: string | null | undefined): string | null => {
+  const k = normalizeDprSideKey(label);
+  return k && isBarSide(k) ? k : null;
+};
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 
 // Same label shortener behaviour as the Detailed DPR (kept local so we don't
@@ -339,7 +354,7 @@ export default function GuidedDpr() {
       activity: shortName(item?.itemName || item?.description) || `BOQ item ${bar.boqItemId}`,
       boqItemId: bar.boqItemId,
       programmeBarId: bar.id,
-      side: bar.side ? barSideLabel(bar.side as any) : "",
+      side: prefillSideFor(bar.side),
       chainageFrom: bar.chainageFrom != null ? fmtCh(bar.chainageFrom) : "",
       chainageTo: "",
       quantity: null,
@@ -627,8 +642,10 @@ export default function GuidedDpr() {
         toast({ title: "Check chainage", description: `"${e.activity}": chainage To must be greater than From.`, variant: "destructive" });
         return false;
       }
-      if (e.programmeBarId != null && !e.side) {
-        toast({ title: "Side needed", description: `"${e.activity}": select the executed side.`, variant: "destructive" });
+      // Batch 1 Part A: actual execution side is mandatory for every guided
+      // (road / chainage-based) activity, linked or not.
+      if (!e.side) {
+        toast({ title: "Side needed", description: `"${e.activity}": select the actual execution side (LHS / RHS / Both Sides / Full Width).`, variant: "destructive" });
         return false;
       }
       {
@@ -648,6 +665,12 @@ export default function GuidedDpr() {
         const bars = queryClient.getQueryData<PickerBar[]>(["/api/dpr/programme-bars", boqProjectId, e.boqItemId]) ?? [];
         const bar = bars.find((b) => b.id === e.programmeBarId);
         if (bar) {
+          // Batch 1 Part C: hard client-side block on incompatible planned ↔
+          // actual side (the server enforces the same shared matrix).
+          if (!isDprSideCompatible(bar.side, sideKeyOf(e.side))) {
+            toast({ title: "Side not allowed", description: `"${e.activity}": a bar planned ${barSideLabel(bar.side)} cannot record actual execution as ${e.side}.`, variant: "destructive" });
+            return false;
+          }
           if (chainageOutsideBar(fromKm, toKm, bar) && !e.chainageOverrideReason.trim()) {
             toast({ title: "Reason required", description: `"${e.activity}": the chainage is outside the planned reach — tap “Give reason” or correct the chainage.`, variant: "destructive" });
             return false;
@@ -787,14 +810,30 @@ export default function GuidedDpr() {
       )}
 
       {/* Entry cards */}
-      {entries.map((e, idx) => (
+      {entries.map((e, idx) => {
+        // Batch 1 Part B: planned side (from the linked bar) and actual
+        // execution side are separate concepts, displayed separately. The
+        // reactive programme query (not a cache peek) so restored drafts show
+        // the planned badge + matrix-narrowed options as soon as bars load.
+        const linkedBar = e.programmeBarId != null
+          ? programmeBars.find((b) => b.id === e.programmeBarId)
+            ?? (e.boqItemId != null
+              ? (queryClient.getQueryData<PickerBar[]>(["/api/dpr/programme-bars", boqProjectId, e.boqItemId]) ?? []).find((b) => b.id === e.programmeBarId)
+              : undefined)
+            ?? null
+          : null;
+        return (
         <Card key={idx} className="mb-3" data-testid={`card-entry-${idx}`}>
           <CardContent className="pt-4 space-y-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-medium text-sm">{e.activity}</p>
                 <div className="flex gap-1.5 mt-1 flex-wrap">
-                  {e.side && <Badge variant="secondary">{e.side}</Badge>}
+                  {linkedBar?.side && (
+                    <Badge variant="secondary" data-testid={`badge-planned-side-${idx}`}>
+                      Planned side: {barSideLabel(linkedBar.side)}
+                    </Badge>
+                  )}
                   {e.programmeBarId != null && <Badge variant="outline">Programme-linked</Badge>}
                 </div>
               </div>
@@ -821,7 +860,10 @@ export default function GuidedDpr() {
                   updateEntry(idx, {
                     programmeBarId: bar.id,
                     ...(bar.chainageFrom != null && !e.chainageFrom ? { chainageFrom: fmtCh(bar.chainageFrom) } : {}),
-                    ...(bar.side && !e.side ? { side: barSideLabel(bar.side as any) } : {}),
+                    // Batch 1: the bar's PLANNED side never overwrites a chosen
+                    // actual side; a blank side is prefilled only when the
+                    // matrix allows exactly one value (never for Both/Full bars).
+                    ...(!e.side ? { side: prefillSideFor(bar.side) } : {}),
                   });
                 }}
               />
@@ -832,7 +874,7 @@ export default function GuidedDpr() {
                 projectId={boqProjectId}
                 boqItemId={e.boqItemId}
                 programmeBarId={e.programmeBarId}
-                sideKey={e.side === "LHS" ? "lhs" : e.side === "RHS" ? "rhs" : e.side === "Full Width" ? "full_width" : null}
+                sideKey={sideKeyOf(e.side)}
                 sideLabel={e.side}
                 fromKm={parseChainageKm(e.chainageFrom)}
                 toKm={parseChainageKm(e.chainageTo)}
@@ -846,15 +888,27 @@ export default function GuidedDpr() {
                 testidPrefix={`guided-${idx}`}
               />
             )}
-            {!e.side && (
-              <div>
-                <Label>Side</Label>
-                <Select value={e.side} onValueChange={(v) => updateEntry(idx, { side: v })}>
-                  <SelectTrigger data-testid={`select-side-${idx}`}><SelectValue placeholder="Select side" /></SelectTrigger>
-                  <SelectContent>{SIDE_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-            )}
+            {/* Batch 1 Part A: actual execution side is a core, ALWAYS-visible,
+                editable field — never just a fixed badge. Options come from the
+                shared matrix, narrowed by the linked bar's planned side. */}
+            <div>
+              <Label>Actual execution side *</Label>
+              <Select value={e.side} onValueChange={(v) => updateEntry(idx, { side: v })}>
+                <SelectTrigger data-testid={`select-side-${idx}`}><SelectValue placeholder="Select actual side executed" /></SelectTrigger>
+                <SelectContent>
+                  {sideOptionsFor(linkedBar?.side).map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {/* keep an out-of-matrix saved value visible so it can be corrected */}
+                  {e.side && !sideOptionsFor(linkedBar?.side).includes(e.side) && (
+                    <SelectItem value={e.side}>{e.side}</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              {linkedBar?.side && e.side && !isDprSideCompatible(linkedBar.side, sideKeyOf(e.side)) && (
+                <p className="text-xs text-destructive mt-1" data-testid={`text-side-incompatible-${idx}`}>
+                  Blocked: a bar planned {barSideLabel(linkedBar.side)} cannot record actual execution as {e.side}. Change the side or the planned reach.
+                </p>
+              )}
+            </div>
             {(() => {
               // Item/UOM-aware geometry: show only the dimensions this BOQ
               // item's quantity actually needs (CUM: W+T, SQM: W, RMT/MT/Nos:
@@ -940,7 +994,8 @@ export default function GuidedDpr() {
             )}
           </CardContent>
         </Card>
-      ))}
+        );
+      })}
 
       {/* + Record another activity */}
       {siteName && (

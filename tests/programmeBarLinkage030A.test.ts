@@ -308,8 +308,18 @@ describe("030A route — DPR programme link validation (POST /api/dprs)", () => 
     expect(res.body.error).toBe("PROGRAMME_LINK_INVALID");
   });
 
-  it("unlinked progress entries are untouched by the validator", async () => {
-    const res = await request(app).post("/api/dprs").send(dprBody({ programmeBarId: null, side: "" }));
+  it("unlinked progress entries skip bar checks, but Batch 1 makes actual side mandatory for chainage-based work", async () => {
+    // Blank side + chainage → blocked on final submission even without a bar.
+    let res = await request(app).post("/api/dprs").send(dprBody({ programmeBarId: null, side: "" }));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("PROGRAMME_LINK_INVALID");
+    // With an explicit actual side, unlinked rows pass untouched.
+    res = await request(app).post("/api/dprs").send(dprBody({ programmeBarId: null, side: "Both Sides" }));
+    expect(res.status).toBeLessThan(300);
+    // Rows with no chainage at all (non-linear work) don't need a side.
+    res = await request(app).post("/api/dprs").send(dprBody({
+      programmeBarId: null, side: "", chainageFrom: "", chainageTo: "", chainageFromKm: null, chainageToKm: null,
+    }));
     expect(res.status).toBeLessThan(300);
   });
 });

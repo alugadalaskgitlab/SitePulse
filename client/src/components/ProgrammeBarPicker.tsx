@@ -35,8 +35,21 @@ export type PickerBar = {
   reportedQty: number;
   remainingQty: number;
   unit: string | null;
+  /** Batch 1 Part E: side-specific chainage coverage (quantity stays shared). */
+  sideCoverage?: {
+    lhs: Array<[number, number]>;
+    rhs: Array<[number, number]>;
+    lhsCoveredKm: number;
+    rhsCoveredKm: number;
+    lhsFraction: number;
+    rhsFraction: number;
+    fullyCovered: boolean;
+  } | null;
   arrangement: { id: number; mode: string | null; agency: string | null } | null;
 };
+
+const fmtKmRange = (list: Array<[number, number]>): string =>
+  list.map(([a, b]) => `${a.toFixed(3)}–${b.toFixed(3)}`).join(", ") || "none";
 
 function barLabel(b: PickerBar): string {
   const bits: string[] = [];
@@ -168,7 +181,10 @@ export function ProgrammeBarPicker({
       </div>
       {autoLinkedBarId != null && value === autoLinkedBarId && selected && (
         <p className="text-[10px] text-muted-foreground" data-testid={`${testidPrefix}-auto-linked-note`}>
-          Linked automatically: {barLabel(selected)} — use “Change planned reach” if this isn't right.
+          Linked automatically: {barLabel(selected)}
+          {selected.side ? ` · Planned ${barSideLabel(selected.side as any)}` : ""}
+          {sideLabel ? ` — Actual execution: ${sideLabel}` : ""}
+          {" "}— use “Change planned reach” if this isn't right.
         </p>
       )}
       {selected?.arrangement && (
@@ -260,6 +276,15 @@ export function BarLinkFeedback({
             </span>
           )}
         </div>
+      )}
+      {/* Batch 1 Part E: a Both-Sides/Full-Width bar shares ONE quantity
+          balance, but chainage coverage is per side — executing LHS never
+          marks RHS covered, and "fully covered" needs both sides accounted. */}
+      {bar.sideCoverage && (bar.side === "both_sides" || bar.side === "full_width") && (bar.sideCoverage.lhsCoveredKm > 0 || bar.sideCoverage.rhsCoveredKm > 0) && (
+        <p className="text-[10px] text-muted-foreground" data-testid={`${testidPrefix}-side-coverage`}>
+          Covered so far — LHS: {fmtKmRange(bar.sideCoverage.lhs)} · RHS: {fmtKmRange(bar.sideCoverage.rhs)}
+          {bar.sideCoverage.fullyCovered ? " · full range covered on both sides" : ""}
+        </p>
       )}
       {warnOverBalance && scoped && qty != null && qty > scoped.balance + 1e-9 && (
         <p className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-700" data-testid={`${testidPrefix}-warn-over-balance`}>

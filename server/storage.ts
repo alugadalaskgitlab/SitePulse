@@ -23305,6 +23305,41 @@ export class DatabaseStorage implements IStorage {
     return map;
   }
 
+  // Batch 1 Part E: side + chainage of every counted progress entry per bar —
+  // used to derive SIDE-SPECIFIC chainage coverage (quantity stays shared).
+  // Same inclusion rules as getReportedQtyByBar so coverage and quantity agree.
+  async getProgressSideEntriesByBar(barIds: number[]): Promise<Map<number, Array<{ side: string | null; fromKm: number | null; toKm: number | null }>>> {
+    const map = new Map<number, Array<{ side: string | null; fromKm: number | null; toKm: number | null }>>();
+    if (barIds.length === 0) return map;
+    const rows = await db
+      .select({
+        barId: progressEntries.programmeBarId,
+        side: progressEntries.side,
+        fromKm: progressEntries.chainageFromKm,
+        toKm: progressEntries.chainageToKm,
+      })
+      .from(progressEntries)
+      .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+      .where(and(
+        inArray(progressEntries.programmeBarId, barIds),
+        eq(dprs.dprStatus, "submitted"),
+        eq(dprs.isSuperseded, false),
+        eq(dprs.isCancelled, false),
+        sql`(${progressEntries.chainageReviewStatus} IS NULL OR ${progressEntries.chainageReviewStatus} <> 'review_required')`,
+      ));
+    for (const r of rows) {
+      if (r.barId == null) continue;
+      const list = map.get(r.barId) ?? [];
+      list.push({
+        side: r.side ?? null,
+        fromKm: r.fromKm != null ? Number(r.fromKm) : null,
+        toKm: r.toKm != null ? Number(r.toKm) : null,
+      });
+      map.set(r.barId, list);
+    }
+    return map;
+  }
+
   async deleteStructureLocationBars(boqProjectId: number): Promise<number> {
     const result = await db.delete(workProgramBars).where(
       and(eq(workProgramBars.boqProjectId, boqProjectId), eq(workProgramBars.planningMode as any, "structure_location"))

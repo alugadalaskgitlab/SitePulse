@@ -37,8 +37,8 @@ import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
-import { barSideLabel, isDprSideCompatible, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
-import { chainageOutsideBar } from "@shared/dprProgrammeLink";
+import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
+import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { checkQuantitySourceRow, quantitiesMatch, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { History } from "lucide-react";
@@ -183,7 +183,7 @@ type PlanVsActualRow = {
   percentComplete: number;
 };
 
-const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"];
+const SIDE_OPTIONS = ["LHS", "RHS", "Both Sides", "Full Width"];
 const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS", "LS"];
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
@@ -1938,11 +1938,12 @@ export default function SiteEntry() {
                           updated[idx].programmeBarId = bar.id;
                           if (bar.chainageFrom != null && !updated[idx].chainageFrom) updated[idx].chainageFrom = String(bar.chainageFrom);
                           if (bar.chainageTo != null && !updated[idx].chainageTo) updated[idx].chainageTo = String(bar.chainageTo);
-                          // Prefill side from the bar's planned side when the row has none yet
+                          // Batch 1: prefill only when the planned side allows exactly
+                          // one actual value — a Both-Sides/Full-Width bar must never
+                          // preset the actual execution side.
                           if (!updated[idx].side && bar.side) {
                             if (bar.side === "lhs") updated[idx].side = "LHS";
                             else if (bar.side === "rhs") updated[idx].side = "RHS";
-                            else if (bar.side === "full_width") updated[idx].side = "Full Width";
                           }
                           if (updated[idx].width == null && bar.plannedWidthM != null) updated[idx].width = Number(bar.plannedWidthM);
                           const calc = calculateLengthFromChainage(updated[idx].chainageFrom, updated[idx].chainageTo);
@@ -1960,7 +1961,7 @@ export default function SiteEntry() {
                         projectId={siteBoqProjectId}
                         boqItemId={entry.boqItemId}
                         programmeBarId={entry.programmeBarId}
-                        sideKey={entry.side === "LHS" ? "lhs" : entry.side === "RHS" ? "rhs" : entry.side === "Full Width" ? "full_width" : null}
+                        sideKey={(() => { const k = normalizeDprSideKey(entry.side); return k && isBarSide(k) ? k : null; })()}
                         sideLabel={entry.side}
                         fromKm={parseChainageKm(entry.chainageFrom)}
                         toKm={parseChainageKm(entry.chainageTo)}

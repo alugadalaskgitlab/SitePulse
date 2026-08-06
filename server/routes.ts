@@ -39,7 +39,7 @@ import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupS
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
 import { insertAttachmentSchema, attachmentModuleTypes } from "@shared/schema";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
-import { checkProgrammeLinkRow, deriveChainageReviewStatus } from "@shared/dprProgrammeLink";
+import { checkProgrammeLinkRow, deriveChainageReviewStatus, barSideCoverage, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { checkQuantitySourceRow, resolveQuantitySource } from "@shared/dprGeometry";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import {
@@ -1322,6 +1322,20 @@ export async function registerRoutes(
   // are preserved but excluded from the bar's completed quantity until review.
   async function validateProgressProgrammeLinks(input: any, opts: { draft?: boolean } = {}): Promise<string | null> {
     const progress: any[] = Array.isArray(input?.progress) ? input.progress : [];
+    // Batch 1: actual execution side is a mandatory core field for chainage-
+    // based road work on FINAL submission (linked or not) — the UI enforces
+    // this too, but the server must not be bypassable. Drafts stay lenient.
+    if (!opts.draft) {
+      for (const p of progress) {
+        if (p?.noSiteWork || p == null) continue;
+        const fromKm = p.chainageFromKm != null ? Number(p.chainageFromKm) : parseChainageKm(p.chainageFrom);
+        const toKm = p.chainageToKm != null ? Number(p.chainageToKm) : parseChainageKm(p.chainageTo);
+        const hasChainage = fromKm != null || toKm != null;
+        if (hasChainage && !normalizeDprSideKey(p.side)) {
+          return `Progress entry "${p.activity ?? ""}": the actual execution side (LHS / RHS / Both Sides / Full Width) is required for chainage-based work`;
+        }
+      }
+    }
     const linked = progress.filter(p => p?.programmeBarId != null && !p?.noSiteWork);
     if (linked.length === 0) return null;
     const dprProjectId = input?.boqProjectId != null ? Number(input.boqProjectId) : null;
@@ -11783,9 +11797,10 @@ export async function registerRoutes(
       const allBars = await storage.getWorkProgramBars(boqProjectId);
       const itemBars = allBars.filter(b => b.boqItemId === boqItemId && (b as any).scheduled !== false);
       const barIds = itemBars.map(b => b.id);
-      const [reported, allocRows] = await Promise.all([
+      const [reported, allocRows, sideEntries] = await Promise.all([
         storage.getReportedQtyByBar(barIds),
         storage.getArrangementProgrammeAllocationsForProject(boqProjectId),
+        storage.getProgressSideEntriesByBar(barIds),
       ]);
       // Approved arrangement context per bar (Part D) — executing agency shown,
       // never inferred from the DPR author.
@@ -11820,6 +11835,12 @@ export async function registerRoutes(
           plannedQty: b.plannedQty,
           reportedQty,
           remainingQty: Math.max(0, b.plannedQty - reportedQty),
+          // Batch 1 Part E: shared quantity, SEPARATE side coverage — which
+          // chainage each carriageway side has actually executed so far.
+          sideCoverage: barSideCoverage(
+            { side: (b as any).side ?? null, chainageFrom: (b as any).chainageFrom ?? null, chainageTo: (b as any).chainageTo ?? null },
+            sideEntries.get(b.id) ?? [],
+          ),
           unit: (b as any).canonicalUnit ?? (b as any).unit ?? null,
           arrangement: arr ? {
             id: arr.id,

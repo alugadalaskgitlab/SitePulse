@@ -223,6 +223,11 @@ export function checkProgrammeLinkRow(
     } else if (!isDprSideCompatible(plannedSide, dprSideKey)) {
       return `Progress entry "${name}": executed side ${barSideLabel(dprSideKey)} is not compatible with the bar's planned side ${barSideLabel(plannedSide)}`;
     }
+  } else if (!dprSideKey && !draft && bar.planningMode !== "structure_location") {
+    // Batch 1: actual execution side is mandatory for road/linear progress on
+    // final submission even when the bar's own planned side is unspecified
+    // (legacy "Side Review Required" bars) — never infer or default a side.
+    return `Progress entry "${name}": the actual execution side (LHS / RHS / Both Sides / Full Width) is required for programme-linked road work`;
   }
 
   // Chainage validity for linear work.
@@ -271,3 +276,98 @@ export function deriveChainageReviewStatus(
 
 // (The old suggestQuantitySource UOM-guessing helper was removed: quantity
 // source is now real, verified state — see shared/dprGeometry.ts.)
+
+// ─── Batch 1 Part E: per-side chainage coverage (shared qty, separate coverage) ──
+// Quantity draw-down against a bar is SHARED across sides (one remainingQty),
+// but chainage COVERAGE is side-specific: LHS progress must never mark RHS
+// chainage covered. Coverage is derived purely from each progress entry's own
+// side + chainage — no per-side planned-quantity schema exists or is wanted.
+
+export type CoverageEntry = {
+  side: string | null | undefined;       // label ("LHS") or key ("lhs")
+  fromKm: number | null | undefined;
+  toKm: number | null | undefined;
+};
+
+export type BarSideCoverage = {
+  /** Merged covered km intervals per carriageway side (clipped to the bar). */
+  lhs: Array<[number, number]>;
+  rhs: Array<[number, number]>;
+  lhsCoveredKm: number;
+  rhsCoveredKm: number;
+  /** Fraction (0..1) of the bar's own range covered, per side. */
+  lhsFraction: number;
+  rhsFraction: number;
+  /**
+   * True only when the bar's planned range is fully accounted for under its
+   * own side rule: LHS bar → LHS coverage; RHS bar → RHS; Both-Sides /
+   * Full-Width bar → BOTH sides jointly (either via one-sided entries on each
+   * side or explicit Both-Sides/Full-Width entries, which count on both).
+   */
+  fullyCovered: boolean;
+};
+
+const COVER_EPS = 1e-6;
+
+function mergeIntervals(list: Array<[number, number]>): Array<[number, number]> {
+  const sorted = [...list].sort((a, b) => a[0] - b[0]);
+  const out: Array<[number, number]> = [];
+  for (const [a, b] of sorted) {
+    const last = out[out.length - 1];
+    if (last && a <= last[1] + COVER_EPS) last[1] = Math.max(last[1], b);
+    else out.push([a, b]);
+  }
+  return out;
+}
+
+function intervalsLength(list: Array<[number, number]>): number {
+  return list.reduce((s, [a, b]) => s + (b - a), 0);
+}
+
+export function barSideCoverage(
+  bar: Pick<LinkableBar, "side" | "chainageFrom" | "chainageTo">,
+  entries: CoverageEntry[],
+): BarSideCoverage {
+  const barFrom = bar.chainageFrom;
+  const barTo = bar.chainageTo;
+  const lhsRaw: Array<[number, number]> = [];
+  const rhsRaw: Array<[number, number]> = [];
+  for (const e of entries) {
+    if (e.fromKm == null || e.toKm == null) continue; // no chainage → no coverage claim
+    let a = Math.min(Number(e.fromKm), Number(e.toKm));
+    let b = Math.max(Number(e.fromKm), Number(e.toKm));
+    if (!Number.isFinite(a) || !Number.isFinite(b) || b - a <= COVER_EPS) continue;
+    // Clip to the bar's own planned range when known.
+    if (barFrom != null && barTo != null) {
+      a = Math.max(a, Math.min(barFrom, barTo));
+      b = Math.min(b, Math.max(barFrom, barTo));
+      if (b - a <= COVER_EPS) continue;
+    }
+    const key = normalizeDprSideKey(e.side as string | null | undefined);
+    if (key === "lhs" || key === "shoulder_lhs" || key === "service_road_lhs") {
+      lhsRaw.push([a, b]);
+    } else if (key === "rhs" || key === "shoulder_rhs" || key === "service_road_rhs") {
+      rhsRaw.push([a, b]);
+    } else if (key === "both_sides" || key === "full_width" || key === "median") {
+      // Explicit both/full (or single-corridor median) covers both tracks at once.
+      lhsRaw.push([a, b]);
+      rhsRaw.push([a, b]);
+    }
+    // Unknown/blank side: contributes NO coverage — never guess a side.
+  }
+  const lhs = mergeIntervals(lhsRaw);
+  const rhs = mergeIntervals(rhsRaw);
+  const span = barFrom != null && barTo != null ? Math.abs(barTo - barFrom) : null;
+  const lhsCoveredKm = intervalsLength(lhs);
+  const rhsCoveredKm = intervalsLength(rhs);
+  const lhsFraction = span ? Math.min(1, lhsCoveredKm / span) : 0;
+  const rhsFraction = span ? Math.min(1, rhsCoveredKm / span) : 0;
+  const covers = (frac: number) => span != null && span > 0 && frac >= 1 - COVER_EPS;
+  const plannedKey = isBarSide(bar.side as string) ? (bar.side as BarSide) : null;
+  let fullyCovered: boolean;
+  if (span == null || span <= 0) fullyCovered = false;
+  else if (plannedKey === "lhs" || plannedKey === "shoulder_lhs" || plannedKey === "service_road_lhs") fullyCovered = covers(lhsFraction);
+  else if (plannedKey === "rhs" || plannedKey === "shoulder_rhs" || plannedKey === "service_road_rhs") fullyCovered = covers(rhsFraction);
+  else fullyCovered = covers(lhsFraction) && covers(rhsFraction); // both_sides / full_width / median / unknown
+  return { lhs, rhs, lhsCoveredKm, rhsCoveredKm, lhsFraction, rhsFraction, fullyCovered };
+}

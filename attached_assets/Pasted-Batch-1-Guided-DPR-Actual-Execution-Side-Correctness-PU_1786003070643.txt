@@ -1,0 +1,226 @@
+Batch 1 — Guided DPR Actual Execution Side Correctness
+
+PURPOSE
+Guided DPR currently loses the actual execution side the moment a
+programme bar prefills it, locking the entry to whatever the bar's
+planned side is. This is a correctness defect, not a UI preference — it
+affects chainage progress, gap/overlap detection, measurements and future
+execution reporting. Fix it as a focused, urgent correction.
+
+This batch does not include the reach-picker redesign or the Field
+Home/Guided DPR suggestion reconciliation — those are a separate,
+later batch. Do not expand scope into either.
+
+BUSINESS RULE
+
+The programme bar records planned physical coverage. The DPR records
+actual physical coverage executed on that date. These are separate
+concepts and must never be collapsed into one:
+
+- Planned side: comes from the linked programme bar, unchanged by DPR entry.
+- Actual execution side: selected/confirmed independently in the DPR
+  progress entry.
+
+A programme bar may be Both Sides or Full Width while actual daily
+execution is LHS today, RHS tomorrow, or Both Sides together. Do not
+infer that actual execution was Both Sides merely because the linked
+bar is Both Sides or Full Width.
+
+SETTLED DECISIONS FOR THIS BATCH
+
+1. A Both-Sides (or Full-Width) programme bar has ONE combined
+   plannedQty — not a separate planned quantity per side. LHS, RHS,
+   Both-Sides and Full-Width DPR entries all draw down the same shared
+   programme-bar balance (remainingQty). Do not add per-side
+   planned-quantity columns to the programme bar in this fix.
+
+2. Chainage COVERAGE remains side-specific even though quantity does
+   not:
+   - LHS progress must never mark RHS chainage as covered.
+   - RHS progress must never mark LHS chainage as covered.
+   - A Both-Sides bar's chainage is only considered fully covered when
+     LHS coverage and RHS coverage together (or an explicit Both-Sides /
+     Full-Width entry) account for the full planned range — not when
+     either side alone reaches full coverage.
+   - Side-specific coverage may be derived from existing DPR progress
+     records (each entry's side + chainage) — this does not require new
+     planned-quantity schema, only correct read-side logic.
+
+3. "Both Sides" is now a valid ACTUAL DPR-side value, not only a
+   planned-bar value. This is a deliberate new capability — today's
+   Side dropdown only offers LHS, RHS and Full Width. Update the
+   authoritative shared side-compatibility source (shared/barSide.ts or
+   the actual equivalent) to add "both_sides" as a selectable,
+   reportable actual-DPR value wherever the compatibility matrix below
+   allows it. This explicitly overrides any prior instruction telling
+   Replit not to touch that file — that restriction assumed the existing
+   three-option rule was already complete; it wasn't, and this change is
+   deliberate and required.
+
+4. Use this exact compatibility matrix. Do not use vaguer wording such
+   as "where physically meaningful" — every case must resolve to a hard
+   allow or a hard block:
+
+   - Planned LHS → actual LHS only. RHS, Both Sides, Full Width blocked.
+   - Planned RHS → actual RHS only. LHS, Both Sides, Full Width blocked.
+   - Planned Both Sides → actual LHS, RHS, Both Sides or Full Width, all allowed.
+   - Planned Full Width → actual LHS, RHS, Both Sides or Full Width, all allowed.
+   - Planned Median/Service Road → only the matching corridor allowed;
+     everything else blocked.
+
+PART A — RESTORE SIDE AS A CORE, EDITABLE DPR FIELD
+
+In every Guided DPR activity card, keep a clearly labelled, editable
+Actual Execution Side field visible in the main entry area at all
+times — never only as a fixed badge, and never hidden behind "Add
+details."
+
+Options:
+- LHS
+- RHS
+- Both Sides
+- Full Width
+- Median / Service Road, only where the linked bar's planned side is
+  that same corridor (per the matrix)
+
+Side is a mandatory core field for road and chainage-based activities.
+Core fields remain: BOQ item/activity, planned reach/programme link,
+actual execution side, Chainage From, Chainage To, Width where
+applicable, Thickness where applicable, Quantity, Quantity source.
+
+PART B — PLANNED SIDE VS ACTUAL SIDE, DISPLAYED SEPARATELY
+
+Example:
+
+Planned reach:
+Reach 2 · Ch. 3.25–3.70 · Both Sides
+
+Actual execution side:
+LHS
+
+Do not overwrite the actual side with the planned side. Do not change
+the programme bar's own side value merely because a DPR reports one
+side against it.
+
+PART C — COMPATIBILITY ENFORCEMENT
+
+Enforce the exact matrix from "Settled decisions," both client-side (so
+the engineer sees the block immediately) and server-side (so it cannot
+be bypassed). Blocked combinations must show a clear message and
+prevent submission, not just a soft warning.
+
+PART D — AUTOMATIC LINKING
+
+Automatic programme-bar matching must use: BOQ item, chainage, actual
+execution side, and the updated compatibility matrix.
+
+- A Both-Sides or Full-Width bar must be considered compatible with an
+  LHS-only or RHS-only DPR entry.
+- An opposite-side-only bar (planned LHS when actual is RHS, or vice
+  versa) must remain incompatible and never auto-link.
+- When exactly one compatible bar exists, auto-link it and show:
+
+  Linked automatically:
+  Reach 1 · Ch. 2.400–3.250 · Planned Both Sides
+  Actual execution: LHS
+
+PART E — PROGRESS ACCOUNTING (SHARED QUANTITY, SEPARATE COVERAGE)
+
+- Quantity: every DPR entry against a bar — regardless of its actual
+  side — draws down the same single shared remainingQty. Do not split
+  or duplicate the planned/remaining quantity per side.
+- Coverage: track and be able to display, per bar, which chainage has
+  been covered on LHS and which on RHS as separate records, derived
+  from each progress entry's own side + chainage fields.
+- Executing only LHS must never mark RHS as covered, and must never be
+  presented as having completed a Both-Sides bar's full chainage.
+- Reporting must be able to show, for one Both-Sides bar: quantity
+  consumed so far (one number), LHS chainage covered, RHS chainage
+  covered, and Both-Sides/Full-Width chainage covered, without double
+  counting the same physical chainage twice.
+
+PART F — QUANTITY AND GEOMETRY
+
+- LHS execution uses the entered LHS width; RHS execution uses the
+  entered RHS width.
+- A Both-Sides or Full-Width actual entry may use a combined width only
+  when it is explicitly entered/confirmed for that entry — never
+  inferred automatically from the side label.
+- Do not automatically double or halve quantity based on the side label
+  alone. Quantity always comes from the actual entered geometry or an
+  approved manual source, per the existing geometry rules already
+  delivered.
+
+PART G — DRAFT AND VIEW PERSISTENCE
+
+Actual execution side must survive: autosave, Save Draft, reopen,
+Guided ↔ Detailed switching, preview, Submit, edit/revision, and
+reporting. The linked programme bar's planned side must never replace
+the saved actual side during draft restore.
+
+PART H — SUGGESTED ACTIVITIES
+
+When an activity is suggested from a Both-Sides or Full-Width bar, do
+not hide or preset Side — prompt the engineer to confirm LHS, RHS, Both
+Sides, or Full Width. For a planned LHS or RHS bar, prefill the one
+matching side but keep it visible and editable.
+
+PART I — TESTS
+
+Prove:
+1. Planned Both Sides + actual LHS — accepted.
+2. Planned Both Sides + actual RHS — accepted.
+3. Planned Both Sides + actual Both Sides — accepted.
+4. Planned Both Sides + actual Full Width — accepted.
+5. Planned Full Width + actual LHS — accepted.
+6. Planned Full Width + actual RHS — accepted.
+7. Planned Full Width + actual Both Sides — accepted.
+8. Planned Full Width + actual Full Width — accepted.
+9. Planned LHS + actual RHS — blocked.
+10. Planned LHS + actual Both Sides — blocked.
+11. Planned LHS + actual Full Width — blocked.
+12. Planned RHS + actual LHS — blocked (and mirrored for Both Sides/Full Width).
+13. Planned Median/Service Road — only the matching corridor accepted, all else blocked.
+14. Actual side persists after draft save and reopen.
+15. Actual side persists after Guided ↔ Detailed switching.
+16. Actual side persists after Submit.
+17. LHS progress does not mark RHS chainage as covered.
+18. RHS progress does not mark LHS chainage as covered.
+19. A Both-Sides bar's chainage is only shown fully covered once LHS and RHS (or an explicit Both-Sides/Full-Width entry) jointly account for the full range.
+20. One LHS entry and one RHS entry against the same Both-Sides bar both decrement the same shared remainingQty — no per-side quantity split, no duplicate consumption.
+21. Automatic linking treats Both-Sides/Full-Width bars as compatible with one-sided actual execution, and never auto-links an opposite-side-only bar.
+22. Existing programme-bar side and quantity values are never mutated by DPR entry.
+23. The updated shared compatibility source correctly offers "Both Sides" as a selectable actual value exactly where the matrix allows it, and blocks it exactly where the matrix forbids it.
+
+LIVE PROOF (Takkadpally)
+
+1. Select a programme bar planned as Both Sides.
+2. Create DPR progress for LHS only.
+3. Confirm the card visibly shows Planned side: Both Sides and Actual execution side: LHS as separate, clearly labelled fields.
+4. Save Draft and reopen — confirm LHS remains selected.
+5. Submit — confirm LHS progress updates and the bar's shared balance decreases.
+6. Confirm RHS chainage remains unexecuted/uncovered.
+7. Create a separate RHS DPR entry against the same bar later.
+8. Confirm RHS coverage updates independently of LHS, while both entries correctly draw down the same shared bar balance without double counting.
+9. Confirm the programme bar's own planned side and quantity are unchanged throughout.
+
+DO NOT TOUCH
+- Work Programme quantity allocation
+- Programme-bar side values and planned quantities themselves
+- Gantt sequencing
+- BOQ quantities
+- Execution arrangements
+- Stores or Procurement
+- Submitted DPR history
+- Classic DPR behaviour, except sharing the same actual-side field, compatibility rules, and shared/barSide.ts update through the same shared records
+- Reach-picker layout/presentation — out of scope for this batch, covered in Batch 2
+- Field Home suggestion logic and messaging — out of scope for this batch, covered in Batch 2
+
+FINAL REQUIREMENT
+Do not mark complete until: actual execution Side is visible and
+mandatory in Guided DPR; it remains fully separate from planned
+programme side; "Both Sides" is a working actual-DPR option wherever
+the matrix allows it; one-sided daily execution works correctly against
+Both-Sides or Full-Width bars with shared quantity and side-specific
+coverage; the programme bar itself is never mutated by DPR entry; and
+all tests and the live proof pass.

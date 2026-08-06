@@ -42,12 +42,14 @@ export function barSideLabel(side: string | null | undefined): string {
 }
 
 /**
- * DPR sides a progress entry may report against a bar planned on `plannedSide`
- * (030A Part C point 17):
- *  - Planned LHS accepts only LHS (RHS needs authorised reassignment).
- *  - Planned RHS accepts only RHS.
- *  - Planned Full Width may be executed Full Width, LHS or RHS.
- *  - Planned Both Sides requires the DPR to identify LHS / RHS / full-width.
+ * DPR sides a progress entry may report against a bar planned on `plannedSide`.
+ * Batch 1 (Guided DPR actual-side correctness) settled matrix — every case is
+ * a hard allow or hard block, and "both_sides" is a valid ACTUAL DPR value:
+ *  - Planned LHS → actual LHS only. RHS / Both Sides / Full Width blocked.
+ *  - Planned RHS → actual RHS only.
+ *  - Planned Both Sides → actual LHS, RHS, Both Sides or Full Width, all allowed.
+ *  - Planned Full Width → actual LHS, RHS, Both Sides or Full Width, all allowed.
+ *  - Planned Median/Shoulder/Service Road → only the matching corridor.
  *  - null planned side (legacy, "Side Review Required"): any side allowed —
  *    the bar remains fully operational while unspecified.
  * DPR must never default silently to Both/Full Width on a side-specific bar.
@@ -57,8 +59,8 @@ export function allowedDprSides(plannedSide: string | null | undefined): BarSide
   switch (plannedSide) {
     case "lhs": return ["lhs"];
     case "rhs": return ["rhs"];
-    case "full_width": return ["full_width", "lhs", "rhs"];
-    case "both_sides": return ["lhs", "rhs", "full_width"];
+    case "full_width": return ["lhs", "rhs", "both_sides", "full_width"];
+    case "both_sides": return ["lhs", "rhs", "both_sides", "full_width"];
     case "median": return ["median"];
     case "shoulder_lhs": return ["shoulder_lhs"];
     case "shoulder_rhs": return ["shoulder_rhs"];
@@ -87,6 +89,19 @@ export function areSidesDistinctCorridors(
   if (a === b) return false;
   if (a === "full_width" || a === "both_sides" || b === "full_width" || b === "both_sides") return false;
   return true;
+}
+
+/**
+ * Batch 1 — the actual-execution-side choices to OFFER in a DPR side
+ * dropdown, given the linked bar's planned side. Single UI source so Guided
+ * and Detailed DPR stay consistent with the enforcement matrix:
+ *  - no linked bar / unrestricted planned side → the four roadway values;
+ *  - restricted planned side → exactly the allowed list from the matrix
+ *    (e.g. planned median offers only median).
+ */
+export function dprSideOptionsForBar(plannedSide: string | null | undefined): BarSide[] {
+  const allowed = allowedDprSides(plannedSide);
+  return allowed ?? ["lhs", "rhs", "both_sides", "full_width"];
 }
 
 export function isDprSideCompatible(

@@ -23,7 +23,8 @@ import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
-import { parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
+import { isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
+import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
 import { setDprEntryMode } from "@/lib/dprEntryMode";
 
@@ -99,7 +100,7 @@ interface SitePurchaseEntry {
   uom: string;
 }
 
-const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"];
+const SIDE_OPTIONS = ["LHS", "RHS", "Both Sides", "Full Width"];
 const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS"];
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
@@ -1292,9 +1293,9 @@ export default function SiteEdit() {
                           if (bar.chainageFrom != null && !updated[idx].chainageFrom) updated[idx].chainageFrom = String(bar.chainageFrom);
                           if (bar.chainageTo != null && !updated[idx].chainageTo) updated[idx].chainageTo = String(bar.chainageTo);
                           if (!updated[idx].side && bar.side) {
+                            // Batch 1: Both-Sides/Full-Width bars never preset the actual side.
                             if (bar.side === "lhs") updated[idx].side = "LHS";
                             else if (bar.side === "rhs") updated[idx].side = "RHS";
-                            else if (bar.side === "full_width") updated[idx].side = "Full Width";
                           }
                           if (updated[idx].width == null && bar.plannedWidthM != null) updated[idx].width = Number(bar.plannedWidthM);
                           const calc = calculateLengthFromChainage(updated[idx].chainageFrom, updated[idx].chainageTo);
@@ -1305,7 +1306,7 @@ export default function SiteEdit() {
                       />
                     )}
                     {entry.programmeBarId != null && (() => {
-                      const sideKey = entry.side === "LHS" ? "lhs" : entry.side === "RHS" ? "rhs" : entry.side === "Full Width" ? "full_width" : null;
+                      const sideKey = (() => { const k = normalizeDprSideKey(entry.side); return k && isBarSide(k) ? k : null; })();
                       const fromKm = parseChainageKm(entry.chainageFrom);
                       const toKm = parseChainageKm(entry.chainageTo);
                       return (
