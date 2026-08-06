@@ -643,6 +643,51 @@ export const stockLedger = pgTable("stock_ledger", {
   // Index name: stock_ledger_dispatch_dedup_idx
 }));
 
+// Physical Stock Reconciliation — session header (one per posting batch).
+// Posted sessions and their items are IMMUTABLE: no update/delete API exists;
+// a wrong reconciliation is corrected by posting a new session.
+export const stockReconciliationSessions = pgTable("stock_reconciliation_sessions", {
+  id: serial("id").primaryKey(),
+  refNo: text("ref_no").notNull().default(""),        // e.g. PSR-0001 (set right after insert)
+  countDate: date("count_date").notNull(),            // physical count date (user-entered)
+  postedBy: text("posted_by").notNull(),
+  postedAt: timestamp("posted_at").defaultNow(),
+  clientRequestId: text("client_request_id"),         // idempotency key — unique index below
+  notes: text("notes"),
+  // Draft/approval workflow: draft → submitted → posted | rejected.
+  // Posted and rejected sessions are read-only.
+  status: text("status").notNull().default("posted"),
+  draftRows: text("draft_rows"),                      // JSON array of prepared rows (qty/uom/reason/note/warnings)
+  preparedBy: text("prepared_by"),
+  preparedAt: timestamp("prepared_at"),
+  updatedAt: timestamp("updated_at"),
+  rejectionNote: text("rejection_note"),
+}, (table) => ({
+  clientRequestUq: uniqueIndex("stock_recon_sessions_client_request_uq").on(table.clientRequestId),
+}));
+
+// Physical Stock Reconciliation — per-material line (full audit trail).
+export const stockReconciliationItems = pgTable("stock_reconciliation_items", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull(),
+  materialId: integer("material_id").notNull(),
+  partyId: integer("party_id"),                       // NULL = plant-common stock
+  oldBalance: numeric("old_balance", { precision: 20, scale: 6, mode: 'number' }).notNull(),
+  physicalQty: numeric("physical_qty", { precision: 20, scale: 6, mode: 'number' }).notNull(), // in base (stock) UOM
+  adjustment: numeric("adjustment", { precision: 20, scale: 6, mode: 'number' }).notNull(),
+  sourceQty: numeric("source_qty", { precision: 20, scale: 6, mode: 'number' }).notNull(),     // as counted
+  sourceUom: text("source_uom").notNull(),            // UOM the count was taken in
+  conversionFactor: numeric("conversion_factor", { precision: 20, scale: 9, mode: 'number' }), // NULL when same UOM
+  baseUom: text("base_uom"),                          // stock ledger UOM
+  reason: text("reason").notNull(),
+  note: text("note"),
+  ledgerEntryId: integer("ledger_entry_id"),          // NULL when verified — no adjustment
+  verifiedNoChange: integer("verified_no_change").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  sessionIdx: index("stock_recon_items_session_idx").on(table.sessionId),
+}));
+
 // Material Issues (issues to sites/parties from central store)
 export const materialIssues = pgTable("material_issues", {
   id: serial("id").primaryKey(),
@@ -854,6 +899,8 @@ export const insertStockLedgerSchema = createInsertSchema(stockLedger).omit({ id
 export const insertMaterialIssueSchema = createInsertSchema(materialIssues).omit({ id: true, createdAt: true });
 export const insertMaterialReturnSchema = createInsertSchema(materialReturns).omit({ id: true, createdAt: true });
 export const insertSiteMaterialTripSchema = createInsertSchema(siteMaterialTrips).omit({ id: true, createdAt: true });
+export const insertStockReconciliationSessionSchema = createInsertSchema(stockReconciliationSessions).omit({ id: true, postedAt: true });
+export const insertStockReconciliationItemSchema = createInsertSchema(stockReconciliationItems).omit({ id: true, createdAt: true });
 
 // Types
 export type Party = typeof parties.$inferSelect;
@@ -891,6 +938,10 @@ export type InsertMaterialIssue = z.infer<typeof insertMaterialIssueSchema>;
 export type InsertMaterialReturn = z.infer<typeof insertMaterialReturnSchema>;
 export type SiteMaterialTrip = typeof siteMaterialTrips.$inferSelect;
 export type InsertSiteMaterialTrip = z.infer<typeof insertSiteMaterialTripSchema>;
+export type StockReconciliationSession = typeof stockReconciliationSessions.$inferSelect;
+export type StockReconciliationItem = typeof stockReconciliationItems.$inferSelect;
+export type InsertStockReconciliationSession = z.infer<typeof insertStockReconciliationSessionSchema>;
+export type InsertStockReconciliationItem = z.infer<typeof insertStockReconciliationItemSchema>;
 
 // Constants for UOM options
 export const UOM_OPTIONS = ["Ton", "MT", "Cum", "Liters", "Kgs", "CFT", "Barrels", "Nos"] as const;

@@ -93,7 +93,12 @@ import {
   earthworkForecasts,
   type EarthworkForecast,
   type InsertEarthworkForecast,
+  stockReconciliationSessions,
+  stockReconciliationItems,
+  type StockReconciliationSession,
+  type StockReconciliationItem,
 } from "@shared/schema";
+import { resolveConversion, convertToBase, computeAdjustment, isNoChange, computeVarianceWarnings, type VarianceWarning } from "@shared/stockReconciliation";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
@@ -628,7 +633,14 @@ export interface IStorage {
   ): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }>;
 
   // Physical stock correction (reconcile book stock to physical measurement)
-  postStockCorrection(data: { materialId: number; partyId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry }>;
+  postStockCorrection(data: { materialId: number; partyId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry | null }>;
+
+  // Physical Stock Reconciliation (Task #1385) — batch, ledger-backed, idempotent
+  ensureStockReconciliationTables(): Promise<void>;
+  postStockReconciliation(data: { countDate: string; postedBy: string; clientRequestId: string; notes?: string; draftId?: number; acknowledgeWarnings?: boolean; items: Array<{ materialId: number; partyId: number | null; sourceQty: number; sourceUom: string; reason: string; note?: string }> }): Promise<{ session: StockReconciliationSession; items: StockReconciliationItem[]; alreadyPosted: boolean; warnings?: import("@shared/stockReconciliation").VarianceWarning[] }>;
+  saveStockReconciliationDraft(data: { id?: number; countDate: string; preparedBy: string; isApprover?: boolean; status: "draft" | "submitted"; notes?: string; rows: unknown[] }): Promise<StockReconciliationSession>;
+  rejectStockReconciliationDraft(id: number, rejectedBy: string, note?: string): Promise<StockReconciliationSession>;
+  getStockReconciliations(): Promise<Array<StockReconciliationSession & { items: StockReconciliationItem[] }>>;
   
   // Recalculate all dispatch consumption from mix templates
   recalculateAllDispatchConsumption(): Promise<{ updated: number; errors: number; varianceFixed: number }>;
@@ -5003,13 +5015,18 @@ export class DatabaseStorage implements IStorage {
     date: string;
     notes: string;
     correctedBy: string;
-  }): Promise<{ adjustment: number; previousBalance: number; newBalance: number}> {
+  }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry | null }> {
     return db.transaction(async (tx) => {
-      // Get the selected party's current balance for this material
-      const condition = and(eq(stockBalances.partyId, data.partyId), eq(stockBalances.materialId, data.materialId));
-      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+      // Lock the selected party's balance row so concurrent stock mutations
+      // can't produce a lost update (same pattern as _adjustStockBalance).
+      const locked = await tx.execute(sql`
+        SELECT id, balance, uom FROM stock_balances
+        WHERE material_id = ${data.materialId} AND party_id = ${data.partyId}
+        ORDER BY id LIMIT 1 FOR UPDATE
+      `);
+      const existing = locked.rows?.[0] as { id: number; balance: string | number; uom: string | null } | undefined;
       const previousBalance = existing?.balance != null ? Number(existing.balance) : 0;
-      const adjustment = data.physicalQty - previousBalance;
+      const adjustment = Math.round((data.physicalQty - previousBalance) * 1e6) / 1e6;
       // Always use the existing balance's UOM so the ledger stays consistent.
       // The caller's uom is only a fallback when no balance row exists yet.
       const effectiveUom = existing?.uom ?? data.uom;
@@ -5018,15 +5035,438 @@ export class DatabaseStorage implements IStorage {
       if (existing) {
         await tx.update(stockBalances)
           .set({ balance: data.physicalQty, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, existing.id));
+          .where(eq(stockBalances.id, Number(existing.id)));
       } else {
         await tx.insert(stockBalances).values({
           partyId: data.partyId, materialId: data.materialId, balance: data.physicalQty, uom: effectiveUom,
         });
       }
 
-      return { adjustment, previousBalance, newBalance: data.physicalQty };
+      // Ledger-backed: write an immutable adjustment entry so the ledger and
+      // the balance agree, and a later rebuild-from-ledger keeps this figure.
+      let ledgerEntry: StockLedgerEntry | null = null;
+      if (Math.abs(adjustment) >= 1e-6) {
+        const [entry] = await tx.insert(stockLedger).values({
+          date: data.date,
+          partyId: data.partyId,
+          materialId: data.materialId,
+          transactionType: "adjustment",
+          quantityIn: adjustment > 0 ? adjustment : 0,
+          quantityOut: adjustment < 0 ? -adjustment : 0,
+          balanceAfter: data.physicalQty,
+          uom: effectiveUom,
+          notes: `Physical stock correction by ${data.correctedBy}${data.notes ? ` — ${data.notes}` : ""}`,
+        }).returning();
+        ledgerEntry = entry;
+      }
+
+      return { adjustment, previousBalance, newBalance: data.physicalQty, ledgerEntry };
     });
+  }
+
+  // ── Physical Stock Reconciliation (Task #1385) ────────────────────────────
+  // Idempotent DDL — runs at startup so dev AND production get the tables
+  // automatically (drizzle-kit push is interactive; see memory).
+  async ensureStockReconciliationTables(): Promise<void> {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS stock_reconciliation_sessions (
+        id serial PRIMARY KEY,
+        ref_no text NOT NULL DEFAULT '',
+        count_date date NOT NULL,
+        posted_by text NOT NULL,
+        posted_at timestamp DEFAULT now(),
+        client_request_id text,
+        notes text,
+        status text NOT NULL DEFAULT 'posted',
+        draft_rows text,
+        prepared_by text,
+        prepared_at timestamp,
+        updated_at timestamp,
+        rejection_note text
+      )
+    `);
+    // Draft/approval columns — added after initial table creation (idempotent).
+    await db.execute(sql`ALTER TABLE stock_reconciliation_sessions
+      ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'posted',
+      ADD COLUMN IF NOT EXISTS draft_rows text,
+      ADD COLUMN IF NOT EXISTS prepared_by text,
+      ADD COLUMN IF NOT EXISTS prepared_at timestamp,
+      ADD COLUMN IF NOT EXISTS updated_at timestamp,
+      ADD COLUMN IF NOT EXISTS rejection_note text
+    `);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS stock_recon_sessions_client_request_uq
+      ON stock_reconciliation_sessions (client_request_id)
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS stock_reconciliation_items (
+        id serial PRIMARY KEY,
+        session_id integer NOT NULL,
+        material_id integer NOT NULL,
+        party_id integer,
+        old_balance numeric(20,6) NOT NULL,
+        physical_qty numeric(20,6) NOT NULL,
+        adjustment numeric(20,6) NOT NULL,
+        source_qty numeric(20,6) NOT NULL,
+        source_uom text NOT NULL,
+        conversion_factor numeric(20,9),
+        base_uom text,
+        reason text NOT NULL,
+        note text,
+        ledger_entry_id integer,
+        verified_no_change integer DEFAULT 0,
+        created_at timestamp DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS stock_recon_items_session_idx
+      ON stock_reconciliation_items (session_id)
+    `);
+  }
+
+  /**
+   * Post a batch physical-stock reconciliation session.
+   *
+   * Rules (Task #1385):
+   *  • Server recomputes EVERYTHING: conversion (from the material's configured
+   *    factor only — missing conversion throws CONVERSION_NOT_CONFIGURED and
+   *    aborts the whole session), base quantity, and adjustment against the
+   *    row-locked current balance.
+   *  • adjustment = physical − current balance; one immutable 'adjustment'
+   *    ledger row per changed material; balance ends exactly at physical qty.
+   *  • |adjustment| < tolerance ⇒ "Verified — no adjustment" (no ledger row).
+   *  • Idempotent via clientRequestId — a repeated confirmation returns the
+   *    already-posted session instead of double-posting.
+   *  • Historical transactions are never modified or deleted.
+   */
+  async postStockReconciliation(data: {
+    countDate: string;
+    postedBy: string;
+    clientRequestId: string;
+    notes?: string;
+    draftId?: number;               // post an existing draft/submitted session
+    acknowledgeWarnings?: boolean;  // must be true when variance warnings exist
+    items: Array<{
+      materialId: number;
+      partyId: number | null;
+      sourceQty: number;
+      sourceUom: string;
+      reason: string;
+      note?: string;
+    }>;
+  }): Promise<{ session: StockReconciliationSession; items: StockReconciliationItem[]; alreadyPosted: boolean; warnings?: VarianceWarning[] }> {
+    // Idempotency pre-check (also enforced by the unique index inside the tx).
+    const [dup] = await db.select().from(stockReconciliationSessions)
+      .where(eq(stockReconciliationSessions.clientRequestId, data.clientRequestId)).limit(1);
+    if (dup && dup.status === "posted") {
+      const items = await db.select().from(stockReconciliationItems)
+        .where(eq(stockReconciliationItems.sessionId, dup.id));
+      return { session: dup, items, alreadyPosted: true };
+    }
+
+    // Direct posts validate caller items up front; draft posts derive their
+    // items from the locked draft inside the transaction (the saved draft is
+    // the authoritative payload — caller-supplied items are ignored).
+    const validateItems = (items: typeof data.items) => {
+      if (!items.length) throw new Error("NO_ITEMS: nothing to reconcile");
+      for (const it of items) {
+        if (!(it.sourceQty >= 0)) throw new Error(`NEGATIVE_QTY: physical quantity must be zero or positive (material ${it.materialId})`);
+        if (!it.reason?.trim()) throw new Error(`REASON_REQUIRED: reason missing (material ${it.materialId})`);
+      }
+    };
+    if (!data.draftId) validateItems(data.items);
+
+    try {
+      return await db.transaction(async (tx) => {
+        // ── Session header ────────────────────────────────────────────────
+        // Draft path: lock the draft row; its status under FOR UPDATE is the
+        // single-post guarantee (repeated clicks return alreadyPosted).
+        let session: StockReconciliationSession;
+        let postItems = data.items;
+        if (data.draftId) {
+          const lockedSession = await tx.execute(sql`
+            SELECT * FROM stock_reconciliation_sessions WHERE id = ${data.draftId} FOR UPDATE
+          `);
+          const s = lockedSession.rows?.[0] as any;
+          if (!s) throw new Error(`DRAFT_NOT_FOUND: reconciliation session ${data.draftId} does not exist`);
+          if (s.status === "posted") {
+            const items = await tx.select().from(stockReconciliationItems)
+              .where(eq(stockReconciliationItems.sessionId, data.draftId));
+            const [full] = await tx.select().from(stockReconciliationSessions)
+              .where(eq(stockReconciliationSessions.id, data.draftId));
+            return { session: full, items, alreadyPosted: true };
+          }
+          if (s.status === "rejected") throw new Error("DRAFT_REJECTED: this session was rejected/returned; prepare a new one");
+          // The SAVED draft is what gets posted — parse its rows into items so
+          // an approver cannot post a different batch under this draft's audit
+          // identity. (To post changed figures, save the draft first.)
+          let parsedRows: any[];
+          try { parsedRows = JSON.parse(s.draft_rows || "[]"); }
+          catch { throw new Error("DRAFT_CORRUPT: saved draft rows are unreadable"); }
+          postItems = parsedRows.map((r: any) => {
+            const [matPart, partyPart] = String(r.key || "").split(":");
+            return {
+              materialId: Number(matPart),
+              partyId: partyPart === "common" ? null : Number(partyPart),
+              sourceQty: Number(r.physicalQty),
+              sourceUom: String(r.physicalUom || ""),
+              reason: String(r.reason || ""),
+              note: r.note ? String(r.note) : undefined,
+            };
+          });
+          for (const it of postItems) {
+            if (!Number.isFinite(it.materialId) || !it.materialId || !Number.isFinite(it.sourceQty) || !it.sourceUom) {
+              throw new Error("DRAFT_CORRUPT: a saved draft row is missing its material, quantity or UOM");
+            }
+          }
+          validateItems(postItems);
+          const [updated] = await tx.update(stockReconciliationSessions).set({
+            countDate: s.count_date ?? data.countDate,
+            postedBy: data.postedBy,
+            clientRequestId: data.clientRequestId,
+            notes: data.notes ?? s.notes,
+            updatedAt: new Date(),
+          }).where(eq(stockReconciliationSessions.id, data.draftId)).returning();
+          session = updated;
+        } else {
+          const [inserted] = await tx.insert(stockReconciliationSessions).values({
+            refNo: "",
+            countDate: data.countDate,
+            postedBy: data.postedBy,
+            clientRequestId: data.clientRequestId,
+            notes: data.notes ?? null,
+            status: "draft", // flipped to 'posted' at the end of the tx
+          }).returning();
+          session = inserted;
+        }
+        const refNo = session.refNo || `PSR-${String(session.id).padStart(4, "0")}`;
+
+        // ── Phase 1: lock balances and compute everything (no writes yet) ──
+        // Deterministic lock order (material, then party) so two concurrent
+        // sessions touching overlapping materials can never deadlock.
+        const orderedItems = [...postItems].sort((a, b) =>
+          a.materialId - b.materialId || ((a.partyId ?? -1) - (b.partyId ?? -1)));
+        const computed: Array<{
+          it: typeof orderedItems[number];
+          balanceRowId: number;
+          oldBalance: number;
+          stockUom: string;
+          conv: Exclude<ReturnType<typeof resolveConversion>, null>;
+          physicalBase: number;
+          adjustment: number;
+          noChange: boolean;
+          materialName: string;
+          materialCategory: string | null;
+        }> = [];
+        for (const it of orderedItems) {
+          const [material] = await tx.select().from(plantMaterials)
+            .where(eq(plantMaterials.id, it.materialId)).limit(1);
+          if (!material) throw new Error(`MATERIAL_NOT_FOUND: material ${it.materialId}`);
+
+          // Lock the balance row (owner isolation: exact party match, NULL = plant-common).
+          const partyClause = it.partyId === null ? sql`party_id IS NULL` : sql`party_id = ${it.partyId}`;
+          // ORDER BY id — if duplicate balance rows ever exist for the same
+          // (material, party), we always lock/update the same (oldest) row.
+          const locked = await tx.execute(sql`
+            SELECT id, balance, uom FROM stock_balances
+            WHERE material_id = ${it.materialId} AND ${partyClause}
+            ORDER BY id LIMIT 1 FOR UPDATE
+          `);
+          const row = locked.rows?.[0] as { id: number; balance: string | number; uom: string | null } | undefined;
+          if (!row) throw new Error(`BALANCE_NOT_FOUND: no stock balance for material ${it.materialId} / party ${it.partyId ?? "plant-common"}`);
+          const oldBalance = Number(row.balance) || 0;
+          const stockUom = row.uom ?? material.defaultUom ?? "Units";
+
+          // Conversion: configured factor only — never invented.
+          const conv = resolveConversion(
+            { conversionFactor: material.conversionFactor, conversionFromUom: material.conversionFromUom, conversionToUom: material.conversionToUom },
+            it.sourceUom, stockUom,
+          );
+          if (!conv) {
+            throw new Error(`CONVERSION_NOT_CONFIGURED: no approved conversion from ${it.sourceUom} to ${stockUom} for ${material.name}. Configure it in Material Masters first.`);
+          }
+          const physicalBase = convertToBase(it.sourceQty, conv);
+          const adjustment = computeAdjustment(oldBalance, physicalBase);
+          // UOM-aware rounding tolerance: rounding dust ⇒ verified, no ledger row.
+          const noChange = isNoChange(adjustment, stockUom);
+          computed.push({
+            it, balanceRowId: Number(row.id), oldBalance, stockUom, conv,
+            physicalBase, adjustment, noChange,
+            materialName: material.name, materialCategory: material.category ?? null,
+          });
+        }
+
+        // ── Variance sanity check: warnings must be acknowledged ───────────
+        const warnings = computeVarianceWarnings(computed.map(c => ({
+          key: `${c.it.materialId}:${c.it.partyId ?? "common"}`,
+          label: c.materialName,
+          oldBalance: c.oldBalance,
+          physicalBase: c.physicalBase,
+          adjustment: c.adjustment,
+          uom: c.stockUom,
+          category: c.materialCategory,
+        })));
+        if (warnings.length > 0 && !data.acknowledgeWarnings) {
+          const err: any = new Error("WARNINGS_NOT_ACKNOWLEDGED: large variance detected — review and acknowledge the warnings before posting");
+          err.warnings = warnings;
+          throw err; // tx rolls back — nothing was written
+        }
+
+        // ── Phase 2: write ledger rows, balances, items ─────────────────────
+        const savedItems: StockReconciliationItem[] = [];
+        for (const c of computed) {
+          let ledgerEntryId: number | null = null;
+          if (!c.noChange) {
+            const [entry] = await tx.insert(stockLedger).values({
+              date: data.countDate,
+              partyId: c.it.partyId,
+              materialId: c.it.materialId,
+              transactionType: "adjustment",
+              referenceId: session.id,
+              quantityIn: c.adjustment > 0 ? c.adjustment : 0,
+              quantityOut: c.adjustment < 0 ? -c.adjustment : 0,
+              balanceAfter: c.physicalBase,
+              uom: c.stockUom,
+              notes: `${refNo} | ${c.it.reason}${c.it.note ? ` | ${c.it.note}` : ""} | posted by ${data.postedBy}`,
+            }).returning();
+            ledgerEntryId = entry.id;
+
+            await tx.update(stockBalances)
+              .set({ balance: c.physicalBase, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, c.balanceRowId));
+          }
+
+          const [saved] = await tx.insert(stockReconciliationItems).values({
+            sessionId: session.id,
+            materialId: c.it.materialId,
+            partyId: c.it.partyId,
+            oldBalance: c.oldBalance,
+            physicalQty: c.physicalBase,
+            adjustment: c.adjustment,
+            sourceQty: c.it.sourceQty,
+            sourceUom: c.it.sourceUom,
+            conversionFactor: c.conv.kind === "same" ? null : c.conv.factor,
+            baseUom: c.stockUom,
+            reason: c.it.reason,
+            note: c.it.note ?? null,
+            ledgerEntryId,
+            verifiedNoChange: c.noChange ? 1 : 0,
+          }).returning();
+          savedItems.push(saved);
+        }
+
+        const [finalSession] = await tx.update(stockReconciliationSessions).set({
+          refNo, status: "posted", postedAt: new Date(), updatedAt: new Date(),
+        }).where(eq(stockReconciliationSessions.id, session.id)).returning();
+
+        return { session: finalSession, items: savedItems, alreadyPosted: false, warnings };
+      });
+    } catch (err: any) {
+      // Unique-index race: another request with the same clientRequestId won.
+      if (err?.code === "23505" && String(err?.constraint || "").includes("client_request")) {
+        const [existing] = await db.select().from(stockReconciliationSessions)
+          .where(eq(stockReconciliationSessions.clientRequestId, data.clientRequestId)).limit(1);
+        if (existing) {
+          const items = await db.select().from(stockReconciliationItems)
+            .where(eq(stockReconciliationItems.sessionId, existing.id));
+          return { session: existing, items, alreadyPosted: true };
+        }
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Save (create or update) a draft reconciliation session server-side so it
+   * survives page close, logout, refresh and reopening on another day.
+   * Only 'draft' and 'submitted' sessions are writable; posted/rejected are
+   * read-only. Rows are stored verbatim (qty/uom/reason/note/warnings) —
+   * nothing touches the ledger until posting.
+   */
+  async saveStockReconciliationDraft(data: {
+    id?: number;
+    countDate: string;
+    preparedBy: string;
+    isApprover?: boolean;   // admin/owner or stock_reconciliation create — may edit others' drafts
+    status: "draft" | "submitted";
+    notes?: string;
+    rows: unknown[];   // client row payload incl. computed warnings for review
+  }): Promise<StockReconciliationSession> {
+    if (data.status !== "draft" && data.status !== "submitted") {
+      throw new Error("INVALID_STATUS: drafts can only be saved as draft or submitted");
+    }
+    const draftRows = JSON.stringify(data.rows ?? []);
+    if (data.id) {
+      const [existing] = await db.select().from(stockReconciliationSessions)
+        .where(eq(stockReconciliationSessions.id, data.id)).limit(1);
+      if (!existing) throw new Error(`DRAFT_NOT_FOUND: session ${data.id} does not exist`);
+      if (existing.status === "posted" || existing.status === "rejected") {
+        throw new Error(`SESSION_READ_ONLY: session ${existing.refNo || data.id} is ${existing.status} and cannot be edited`);
+      }
+      // Ownership: only the preparer may edit their own draft; anyone else
+      // needs approver rights (admin/owner or stock_reconciliation create).
+      if (existing.preparedBy && existing.preparedBy !== data.preparedBy && !data.isApprover) {
+        throw new Error(`NOT_DRAFT_OWNER: this draft was prepared by ${existing.preparedBy}; only they or an approver can change it`);
+      }
+      // Atomic transition: only fires while still draft/submitted — a
+      // concurrent post/reject wins and this update affects zero rows.
+      const [updated] = await db.update(stockReconciliationSessions).set({
+        countDate: data.countDate,
+        draftRows,
+        status: data.status,
+        notes: data.notes ?? existing.notes,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(stockReconciliationSessions.id, data.id),
+        inArray(stockReconciliationSessions.status, ["draft", "submitted"]),
+      )).returning();
+      if (!updated) throw new Error(`SESSION_READ_ONLY: session ${existing.refNo || data.id} was posted or rejected in the meantime and cannot be edited`);
+      return updated;
+    }
+    const [inserted] = await db.insert(stockReconciliationSessions).values({
+      refNo: "",
+      countDate: data.countDate,
+      postedBy: "",
+      status: data.status,
+      draftRows,
+      preparedBy: data.preparedBy,
+      preparedAt: new Date(),
+      updatedAt: new Date(),
+      notes: data.notes ?? null,
+    }).returning();
+    const refNo = `PSR-${String(inserted.id).padStart(4, "0")}`;
+    const [withRef] = await db.update(stockReconciliationSessions).set({ refNo })
+      .where(eq(stockReconciliationSessions.id, inserted.id)).returning();
+    return withRef;
+  }
+
+  /**
+   * Reject/return a draft or submitted session (never a posted one).
+   * Conditional UPDATE — if a concurrent post wins the race, zero rows are
+   * affected and a posted session is never overwritten with 'rejected'.
+   */
+  async rejectStockReconciliationDraft(id: number, rejectedBy: string, note?: string): Promise<StockReconciliationSession> {
+    const [updated] = await db.update(stockReconciliationSessions).set({
+      status: "rejected",
+      rejectionNote: `${note || "Rejected"} — by ${rejectedBy}`,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(stockReconciliationSessions.id, id),
+      inArray(stockReconciliationSessions.status, ["draft", "submitted"]),
+    )).returning();
+    if (updated) return updated;
+    const [existing] = await db.select().from(stockReconciliationSessions)
+      .where(eq(stockReconciliationSessions.id, id)).limit(1);
+    if (!existing) throw new Error(`DRAFT_NOT_FOUND: session ${id} does not exist`);
+    throw new Error(`SESSION_READ_ONLY: session ${existing.refNo || id} is ${existing.status} and cannot be rejected — correct a posted session with a new reconciliation`);
+  }
+
+  async getStockReconciliations(): Promise<Array<StockReconciliationSession & { items: StockReconciliationItem[] }>> {
+    const sessions = await db.select().from(stockReconciliationSessions)
+      .orderBy(desc(stockReconciliationSessions.id));
+    if (!sessions.length) return [];
+    const items = await db.select().from(stockReconciliationItems);
+    return sessions.map(s => ({ ...s, items: items.filter(i => i.sessionId === s.id) }));
   }
 
   // Auto-post a physical stock correction entry for LDO when the book balance

@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Link, useSearch, useLocation } from "wouter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw, ClipboardList, GitCompare, ExternalLink, AlertTriangle, ShieldAlert } from "lucide-react";
+import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw, ClipboardList, GitCompare, ExternalLink, AlertTriangle, ShieldAlert, Scale } from "lucide-react";
 import { format, subDays } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -1776,13 +1776,23 @@ export default function PlantStock() {
         <TabsContent value="balances" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="w-5 h-5" />
-                Current Stock Balances
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                All-time stock positions. Click on a card to view ledger details.
-              </p>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="w-5 h-5" />
+                    Current Stock Balances
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    All-time stock positions. Click on a card to view ledger details.
+                  </p>
+                </div>
+                {(isAdmin || sectionCan("stock_reconciliation", "view")) && (
+                  <Button variant="outline" size="sm" onClick={() => navigate("/plant/stock-reconciliation")} data-testid="button-stock-reconciliation">
+                    <Scale className="w-4 h-4 mr-2" />
+                    Physical Stock Reconciliation
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {allTimeLedgerLoading ? (

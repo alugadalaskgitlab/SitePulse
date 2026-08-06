@@ -58,6 +58,7 @@ export const SECTION_KEYS = [
   "plant_variance",
   "plant_audit",
   "plant_diesel_proc",
+  "stock_reconciliation",
 
   // ── RMC Module ────────────────────────────────────────────────────────────
   "rmc_operations",              // legacy broad key — kept for backward compat
@@ -178,6 +179,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   plant_variance: "Stock Variance Report",
   plant_audit: "Audit Report",
   plant_diesel_proc: "Diesel Procurement Report",
+  stock_reconciliation: "Physical Stock Reconciliation",
 
   // RMC
   rmc_operations: "RMC Operations (legacy)",
@@ -431,6 +433,7 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
     sections: [
       "plant_daily_reports", "plant_stock", "plant_ldo_reconciliation",
       "plant_variance", "plant_audit", "plant_diesel_proc",
+      "stock_reconciliation",
     ],
   },
   {

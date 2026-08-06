@@ -87,6 +87,9 @@ app.use((req, res, next) => {
     storage.ensureBoqMaterialMappings()
       .then(() => console.log("Startup: ensureBoqMaterialMappings — boq_material_mappings table verified/created"))
       .catch(e => console.error("Pre-routes: Failed to ensure boq_material_mappings table:", e)),
+    storage.ensureStockReconciliationTables()
+      .then(() => console.log("Startup: ensureStockReconciliationTables — stock_reconciliation_sessions/items tables verified/created"))
+      .catch(e => console.error("Pre-routes: Failed to ensure stock reconciliation tables:", e)),
     // ── Earthwork tables — MUST complete before routes register ───────────────
     // Earthwork POST/PATCH routes check the earthworkSchemaReady flag (set below).
     // Runs here (blocking) so the flag is true before any request arrives.

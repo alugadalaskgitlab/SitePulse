@@ -1,0 +1,199 @@
+Please build Task #1385 as a controlled Physical Stock Reconciliation feature.
+
+BUSINESS CONTEXT
+
+The original opening stock figures were provisional/test entries entered while testing SitePulse and were not reliable physical opening balances.
+
+Some Vatpally-owned materials were borrowed from HLC, fully consumed, and subsequently settled in cash. Those historical movements do not need to be reconstructed now.
+
+The purpose of this task is to establish a truthful physical-stock baseline as on 06-Aug-2026 so all future receipts, issues, production and consumption are accurate.
+
+Do not directly edit stored balance fields, delete earlier transactions or hardcode quantities.
+
+Create proper dated stock-adjustment ledger entries.
+
+REQUIRED FLOW
+
+Add:
+
+Stores & Inventory
+→ Current Balances
+→ Physical Stock Reconciliation
+
+Permit an authorised user to reconcile multiple materials in one session.
+
+For each row show:
+
+- Owner/company
+- Store/location
+- Material
+- Current system balance
+- Current stock UOM
+- Physical quantity
+- Physical-count UOM
+- Approved conversion factor, where required
+- Physical quantity converted to base UOM
+- Adjustment increase/decrease
+- Count date
+- Reason/note
+
+Provide a final preview before posting all adjustments.
+
+POSTING RULE
+
+For each material:
+
+Adjustment quantity = Physical balance − Current system balance
+
+Post one immutable stock-ledger adjustment entry.
+
+After posting:
+
+Current stock balance must equal the entered physical quantity.
+
+Do not modify or delete old GRNs, issues, returns, consumption or opening entries.
+
+RECONCILIATION REASONS
+
+Provide suggested reason templates:
+
+1. Physical verification
+2. Correction of provisional/test opening balance
+3. Material exhausted and financially settled
+4. Missed receipt/issue identified
+5. Measurement/UOM reconciliation
+6. Other
+
+Allow a detailed note.
+
+For HLC materials, the expected note may be:
+
+“Physical stock reconciliation as on 06-Aug-2026 — earlier opening balances were provisional/test entries.”
+
+For Vatpally exhausted materials, the expected note may be:
+
+“Physical stock reconciliation as on 06-Aug-2026 — earlier borrowed material exhausted and subsequently settled in cash.”
+
+VATPALLY HANDLING
+
+Where physical stock is zero:
+
+- allow the user to enter zero;
+- post the adjustment needed to bring the ledger to zero;
+- do not create a fictional cash receipt or material-return transaction;
+- do not attempt to reconstruct the historical borrowing in this task.
+
+This reconciliation establishes the physical balance only.
+
+UOM CONVERSION
+
+Where the physical count is in MT but stock is maintained in CFT:
+
+- use the existing approved material conversion;
+- show the exact conversion factor before posting;
+- do not invent or silently apply a factor;
+- block posting when no valid conversion is configured.
+
+Examples:
+
+- Aggregate MT ↔ CFT
+- Drum/barrel ↔ MT or litre
+- Bag ↔ MT
+- Litre ↔ MT only where valid density exists
+
+PERMISSIONS
+
+Allow posting only for:
+
+- Owner/Admin; or
+- users with an explicit Stock Reconciliation permission.
+
+Stores users may prepare a draft reconciliation, but final posting should require authorised confirmation.
+
+AUDIT TRAIL
+
+Every posted reconciliation must retain:
+
+- reconciliation reference number;
+- owner;
+- store/location;
+- material;
+- old balance;
+- physical balance;
+- adjustment;
+- source UOM;
+- conversion factor;
+- base UOM;
+- count date;
+- reason;
+- note;
+- posted by;
+- posted timestamp.
+
+Posted adjustments must not be editable or deletable.
+
+A wrong reconciliation must be corrected through a new reversing/reconciliation entry.
+
+BATCH SESSION
+
+Support one reconciliation session containing several materials.
+
+Show a session summary:
+
+- total materials reviewed;
+- unchanged materials;
+- increased materials;
+- decreased materials;
+- zeroed materials;
+- conversion warnings.
+
+Allow unchanged materials to be marked “Verified — no adjustment.”
+
+REPORT
+
+Add a Physical Stock Reconciliation report showing:
+
+- system balance before;
+- physical count;
+- variance;
+- adjusted balance;
+- reason;
+- user;
+- date.
+
+Make it exportable or printable later, but do not delay this task for advanced report design.
+
+TESTS
+
+Verify:
+
+1. Positive adjustment raises stock to physical quantity.
+2. Negative adjustment reduces stock correctly.
+3. Negative book balance can be reconciled to zero.
+4. Physical zero is accepted.
+5. No adjustment is posted where system and physical balances match.
+6. Owner/location isolation is maintained.
+7. HLC reconciliation does not affect Vatpally stock.
+8. Conversion uses the configured factor.
+9. Missing conversion blocks posting.
+10. Old transaction history remains unchanged.
+11. Posted adjustment appears in the stock ledger.
+12. Repeated confirmation cannot create duplicate adjustments.
+13. Production balances equal the confirmed physical quantities after posting.
+
+DO NOT TOUCH
+
+- Historical GRNs, issues, returns or production records
+- Existing procurement records
+- Plant consumption history
+- Work Programme
+- DPR
+- BOM calculations
+- Existing material conversion factors
+- Production data until the feature is published and the user confirms the live reconciliation
+
+LIVE USE
+
+After development testing and publishing, the user will perform the reconciliation directly in the live app dated 06-Aug-2026.
+
+Do not enter or change any live stock quantity automatically during development or deployment.

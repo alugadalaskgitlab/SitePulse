@@ -3235,6 +3235,118 @@ export async function registerRoutes(
     }
   });
 
+  // ── Physical Stock Reconciliation (Task #1385) ──────────────────────────
+  // Batch, ledger-backed, idempotent. Posting requires Owner/Admin or the
+  // explicit stock_reconciliation "create" permission (assertCreate bypasses
+  // for admin/owner automatically).
+  app.post("/api/plant-module/stock-reconciliation", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "stock_reconciliation")) return;
+      const { countDate, clientRequestId, notes, items, draftId } = req.body ?? {};
+      // Draft posts derive their items from the saved draft server-side;
+      // direct posts must carry the items themselves.
+      if (!countDate || !clientRequestId || (!draftId && (!Array.isArray(items) || items.length === 0))) {
+        return res.status(400).json({ message: "countDate, clientRequestId and a non-empty items array (or draftId) are required" });
+      }
+      const cleanItems = (Array.isArray(items) ? items : []).map((it: any) => ({
+        materialId: Number(it.materialId),
+        partyId: it.partyId === null || it.partyId === undefined ? null : Number(it.partyId),
+        sourceQty: Number(it.sourceQty),
+        sourceUom: String(it.sourceUom || ""),
+        reason: String(it.reason || ""),
+        note: it.note ? String(it.note) : undefined,
+      }));
+      for (const it of cleanItems) {
+        if (!it.materialId || !Number.isFinite(it.sourceQty) || it.sourceQty < 0 || !it.sourceUom || !it.reason) {
+          return res.status(400).json({ message: "Each item needs materialId, sourceQty (>= 0), sourceUom and reason" });
+        }
+      }
+      const result = await storage.postStockReconciliation({
+        countDate: String(countDate),
+        postedBy: currentUserName(req) || "admin",
+        clientRequestId: String(clientRequestId),
+        notes: notes ? String(notes) : undefined,
+        draftId: draftId ? Number(draftId) : undefined,
+        acknowledgeWarnings: req.body.acknowledgeWarnings === true,
+        items: cleanItems,
+      });
+      res.status(result.alreadyPosted ? 200 : 201).json(result);
+    } catch (err: any) {
+      const msg = err?.message || "Failed to post stock reconciliation";
+      const code = /^(CONVERSION_NOT_CONFIGURED|BALANCE_NOT_FOUND|MATERIAL_NOT_FOUND|NEGATIVE_QTY|REASON_REQUIRED|NO_ITEMS|WARNINGS_NOT_ACKNOWLEDGED|DRAFT_NOT_FOUND|DRAFT_REJECTED|DRAFT_CORRUPT)/.exec(msg)?.[1];
+      res.status(code ? 422 : 500).json({ message: msg, code: code || undefined, warnings: err?.warnings || undefined });
+    }
+  });
+
+  // Draft save / submit-for-approval. Stores users (plant_stock viewers) may
+  // prepare and submit drafts; nothing here touches the ledger or balances.
+  app.post("/api/plant-module/stock-reconciliation-drafts", async (req, res) => {
+    try {
+      const u = req.authUser;
+      if (!u) return res.status(401).json({ error: "not_authenticated" });
+      const m = req.authPermissions;
+      const canDraft = u.isAdmin || u.isOwner
+        || !!m?.stock_reconciliation?.view || !!m?.plant_stock?.view;
+      if (!canDraft) return res.status(403).json({ error: "forbidden", section: "stock_reconciliation", action: "view" });
+      const { id, countDate, status, notes, rows } = req.body ?? {};
+      if (!countDate || !Array.isArray(rows) || rows.length === 0) {
+        return res.status(400).json({ message: "countDate and a non-empty rows array are required" });
+      }
+      if (status !== "draft" && status !== "submitted") {
+        return res.status(400).json({ message: "status must be 'draft' or 'submitted'" });
+      }
+      const session = await storage.saveStockReconciliationDraft({
+        id: id ? Number(id) : undefined,
+        countDate: String(countDate),
+        preparedBy: currentUserName(req) || "unknown",
+        isApprover: u.isAdmin || u.isOwner || !!m?.stock_reconciliation?.create,
+        status,
+        notes: notes ? String(notes) : undefined,
+        rows,
+      });
+      res.status(id ? 200 : 201).json(session);
+    } catch (err: any) {
+      const msg = err?.message || "Failed to save draft";
+      const code = /^(DRAFT_NOT_FOUND|SESSION_READ_ONLY|INVALID_STATUS|NOT_DRAFT_OWNER)/.exec(msg)?.[1];
+      res.status(code ? 422 : 500).json({ message: msg, code: code || undefined });
+    }
+  });
+
+  // Reject/return a draft — approver action (same gate as posting).
+  app.post("/api/plant-module/stock-reconciliation-drafts/:id/reject", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "stock_reconciliation")) return;
+      const session = await storage.rejectStockReconciliationDraft(
+        Number(req.params.id), currentUserName(req) || "admin",
+        req.body?.note ? String(req.body.note) : undefined,
+      );
+      res.json(session);
+    } catch (err: any) {
+      const msg = err?.message || "Failed to reject draft";
+      const code = /^(DRAFT_NOT_FOUND|SESSION_READ_ONLY)/.exec(msg)?.[1];
+      res.status(code ? 422 : 500).json({ message: msg, code: code || undefined });
+    }
+  });
+
+  // Reconciliation report — sessions with items. Viewable by admins/owners,
+  // stock_reconciliation viewers, OR plant_stock viewers — intentionally
+  // matches the page's route gate (stock_reconciliation OR plant_stock) so
+  // stores users can open the page and prepare a draft; POSTING still
+  // requires stock_reconciliation create (or admin/owner).
+  app.get("/api/plant-module/stock-reconciliations", async (req, res) => {
+    try {
+      const u = req.authUser;
+      if (!u) return res.status(401).json({ error: "not_authenticated" });
+      const m = req.authPermissions;
+      const canView = u.isAdmin || u.isOwner
+        || !!m?.stock_reconciliation?.view || !!m?.plant_stock?.view;
+      if (!canView) return res.status(403).json({ error: "forbidden", section: "stock_reconciliation", action: "view" });
+      res.json(await storage.getStockReconciliations());
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch stock reconciliations" });
+    }
+  });
+
   // Reconcile stock balances from ledger (admin maintenance endpoint)
   app.post("/api/plant-module/reconcile-stock-balances", async (req, res) => {
     try {

@@ -1,0 +1,97 @@
+Please fold these three safeguards into the same Physical Stock Reconciliation task. Do not create a separate task.
+
+1. Variance sanity warning
+
+In the reconciliation preview, add a non-blocking warning for unusually large adjustments.
+
+Examples:
+
+- physical stock is more than 5 times the current positive book balance;
+- physical stock falls to less than one-fifth of the current positive balance;
+- the adjustment is extremely large compared with the existing balance;
+- two similar aggregate materials in the same reconciliation session move sharply in opposite directions, suggesting that the entered counts may have been interchanged.
+
+Example warning:
+
+“Large variance detected. Please recheck the physical count and material selection. The entered figures for 6MM Down and Dust may have been interchanged.”
+
+Requirements:
+
+- this is a warning, not an automatic rejection;
+- do not automatically swap values;
+- show the materials and figures that triggered the warning;
+- require the authorised poster to acknowledge the warning before posting;
+- do not use this rule where the current balance is zero or negative without suitable handling, because ratios are not meaningful there;
+- keep the threshold configurable in code/constants rather than hardcoding the warning to particular material names.
+
+2. Draft reconciliation persistence and approval handoff
+
+A reconciliation session prepared by Stores must be saved server-side as a draft.
+
+It must survive:
+
+- page close;
+- logout;
+- browser refresh;
+- reopening on another day.
+
+An authorised Owner/Admin must be able to open the same draft later, review every row, change or reject it, and post it.
+
+Persist:
+
+- draft reference;
+- owner;
+- store/location;
+- count date;
+- material rows;
+- entered physical quantities;
+- entered UOMs;
+- conversion factors used;
+- reasons and notes;
+- variance warnings;
+- prepared by;
+- prepared timestamp;
+- current status.
+
+Use clear statuses:
+
+- Draft
+- Submitted for Approval
+- Posted
+- Rejected/Returned
+
+Posting must create the immutable stock-ledger adjustment entries only once.
+
+Repeated clicks or retries must not duplicate the adjustment.
+
+A posted session must become read-only.
+
+3. Rounding tolerance
+
+Introduce a small configurable stock-adjustment tolerance.
+
+Where the absolute variance is within the approved tolerance:
+
+- treat the material as “Verified — no adjustment”;
+- do not create a stock adjustment entry merely for rounding dust such as −0.00;
+- show the before and physical figures for audit;
+- record that the material was verified in the reconciliation session.
+
+Use sensible UOM-aware tolerances, for example:
+
+- aggregates/tonnage: small decimal quantity;
+- litres: small fraction or minimal practical unit;
+- Nos./barrels/bags: zero tolerance unless fractional units are valid.
+
+Do not silently zero a meaningful negative balance.
+
+The tolerance must apply only to insignificant rounding differences, not to conceal genuine stock variance.
+
+Add tests for:
+
+- large opposite-direction variance warning;
+- acknowledgement required before posting;
+- draft prepared by Stores reopened by Admin;
+- posting the same draft only once;
+- tiny rounding difference producing no ledger adjustment;
+- meaningful variance still producing an adjustment.
