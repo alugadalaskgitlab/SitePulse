@@ -6,11 +6,12 @@ import {
   BookOpen, LayoutDashboard, MapPin,
   ArrowRight, AlertTriangle, CheckCircle2, Circle, AlertCircle,
   Target, Zap, ClipboardList, Home, FileText, User,
-  ChevronRight, Bell, ChevronDown, CalendarPlus,
+  ChevronRight, ChevronDown, CalendarPlus,
   Package, Wrench, Users, CheckCheck, XCircle, Clock, ChevronUp,
   Boxes, Info, Activity,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
+import { AdminNotifications } from "@/components/AdminNotifications";
 import { useAuth } from "@/lib/auth-context";
 import { useDeviceType } from "@/hooks/use-device-type";
 import { useToast } from "@/hooks/use-toast";
@@ -1128,9 +1129,9 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
                     <LayoutDashboard className="w-3.5 h-3.5 text-gray-500" />
                   </button>
                 )}
-                <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                  <Bell className="w-3.5 h-3.5 text-gray-500" />
-                </div>
+                {/* Real notification bell — the exact same component (and
+                    30s polling) used in HubShell's header, compact trigger. */}
+                <AdminNotifications compact />
               </div>
             </div>
           </div>

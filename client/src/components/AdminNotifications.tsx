@@ -46,7 +46,12 @@ const playNotificationSound = () => {
   }
 };
 
-export function AdminNotifications() {
+/**
+ * `compact` renders a smaller trigger button (Field Home's 8×8 circular
+ * header icon) — ONLY the trigger styling changes; polling, unread badge,
+ * dropdown and mark-read behaviour are identical everywhere.
+ */
+export function AdminNotifications({ compact = false }: { compact?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const prevUnreadCount = useRef<number>(0);
 
@@ -115,17 +120,36 @@ export function AdminNotifications() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" data-testid="button-notifications">
-          <Bell className="w-5 h-5" />
-          {unreadCount > 0 && (
-            <Badge 
-              variant="destructive" 
-              className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-sm"
-            >
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </Badge>
-          )}
-        </Button>
+        {compact ? (
+          <button
+            type="button"
+            className="relative w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+            title="Notifications"
+            data-testid="button-notifications-compact"
+          >
+            <Bell className="w-3.5 h-3.5 text-gray-500" />
+            {unreadCount > 0 && (
+              <Badge
+                variant="destructive"
+                className="absolute -top-1 -right-1 h-4 min-w-4 flex items-center justify-center p-0 px-0.5 text-[10px]"
+              >
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </Badge>
+            )}
+          </button>
+        ) : (
+          <Button variant="ghost" size="icon" className="relative" data-testid="button-notifications">
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+              <Badge
+                variant="destructive"
+                className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-sm"
+              >
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </Badge>
+            )}
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="end">
         <div className="flex items-center justify-between p-3 border-b">
