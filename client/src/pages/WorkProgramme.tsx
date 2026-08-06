@@ -53,6 +53,8 @@ import { BarArrangementPanel } from "@/components/BarArrangementPanel";
 import { ExecutionStateBadge, useBarExecutionState } from "@/components/ExecutionStateBadge";
 import { SEQUENCE_RULES, validateStretches, type RoadStretchInput } from "@shared/programmeSequencer";
 import { BAR_SIDES, BAR_SIDE_LABELS, barSideLabel, geometryApplicability, areSidesDistinctCorridors } from "@shared/barSide";
+import { scopeReachesToStretchRows, scopeConstraints, scopeFingerprint } from "@shared/autoSequenceScope";
+import { SCOPE_SEGMENT_TYPE_LABELS } from "@shared/projectScope";
 import { isStructureOrLocationScheduledItem, isShoulderDesc, classifyShoulderLayer, SHOULDER_DEPENDENCY_NOTES, SHOULDER_CLASSES, type ShoulderClass } from "@shared/workTypeRecipes";
 import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { shortItemName } from "@/lib/itemName";
@@ -2819,8 +2821,20 @@ export default function WorkProgramme() {
     }>;
     overallocatedItems?: Array<{ boqItemId: number; description: string; boqQty: number; planned: number; excess: number }>;
     qtyConflicts?: Array<{ barId: number; reachLabel: string | null; keptQty: number; autoQty: number }>;
+    // Part B — per-reach scope breakdown (dry-run only; null = scope not in use)
+    stretchScope?: Array<{
+      label: string; chainageFrom: number; chainageTo: number; side: string | null;
+      eligibleRanges: Array<{ from: number; to: number }>;
+      eligibleSideLenKm: number; blockedSideLenKm: number; excludedSideLenKm: number;
+      withdrawnSideLenKm: number; contractualSideLenKm: number;
+    }> | null;
   } | null>(null);
   const [seqDryRunPending, setSeqDryRunPending] = useState(false);
+  // ── Scope-load (Part B): fingerprint of the confirmed Project Scope at the
+  // moment the stretch rows were loaded from it. null = rows not scope-loaded.
+  const [seqScopeFingerprint, setSeqScopeFingerprint] = useState<string | null>(null);
+  // Confirm-before-overwrite prompt when loading scope over existing rows.
+  const [seqScopeReloadPrompt, setSeqScopeReloadPrompt] = useState(false);
   // When true (default), structure-type BOQ items are excluded from auto-sequence
   // so imported per-location bars are not overlaid with auto-generated linear bars.
   // Uncheck only for legacy projects that have no imported structure bars.
@@ -3182,8 +3196,57 @@ export default function WorkProgramme() {
     } else {
       setSeqStretches([]);
     }
+    // Scope-load provenance travels with the saved stretches.
+    setSeqScopeFingerprint((stored as any)?.scopeFingerprint ?? null);
+    setSeqScopeReloadPrompt(false);
     setSeqRegenSummary(null);
     setSeqDialogOpen(true);
+  }
+
+  // ── Part B: confirmed Project Scope → stretch rows ─────────────────────────
+  const { data: scopeSegments = [] } = useQuery<any[]>({
+    queryKey: [`/api/boq/projects/${projectId}/scope-segments`],
+    enabled: !isNaN(projectId) && seqDialogOpen,
+  });
+  const confirmedScopeRows = useMemo(() => scopeReachesToStretchRows(scopeSegments as any[]), [scopeSegments]);
+  const scopeConstraintList = useMemo(() => scopeConstraints(scopeSegments as any[]), [scopeSegments]);
+  const currentScopeFingerprint = useMemo(() => scopeFingerprint(scopeSegments as any[]), [scopeSegments]);
+  // Stale-scope warning: stretches were loaded from scope, and the confirmed
+  // scope has changed since. Never triggers silent regeneration — informational.
+  const seqScopeStale = seqScopeFingerprint != null && scopeSegments.length > 0
+    && currentScopeFingerprint !== seqScopeFingerprint;
+
+  /** Manual stretch mutation: any hand edit/add/remove/clear/equal-split means
+   *  the rows no longer represent the confirmed scope verbatim — drop the
+   *  scope-load provenance so the stale-scope warning can't mislead. */
+  const setSeqStretchesManual: typeof setSeqStretches = (v) => {
+    setSeqScopeFingerprint(null);
+    setSeqStretches(v as any);
+  };
+
+  /** Replace the stretch table with confirmed working reaches (one reach = one row). */
+  function loadScopeReaches() {
+    setSeqStretches(confirmedScopeRows.map(r => ({
+      label: r.label,
+      from: r.chainageFrom.toFixed(3),
+      to: r.chainageTo.toFixed(3),
+      priority: String(r.priority),
+      qtyPct: "",
+      // Scope sides beyond lhs/rhs (median, service roads) have no stretch-side
+      // equivalent — leave blank; the eligibility engine still applies them.
+      side: (BAR_SIDES as readonly string[]).includes(r.side ?? "") ? (r.side as string) : "",
+      front: "",
+      widthM: "",
+    })));
+    setSeqScopeFingerprint(currentScopeFingerprint);
+    setSeqScopeReloadPrompt(false);
+  }
+
+  /** Load button: never silently overwrite existing rows. */
+  function requestLoadScopeReaches() {
+    const hasRows = seqStretches.some(r => r.from.trim() !== "" || r.to.trim() !== "" || r.label.trim() !== "");
+    if (hasRows) setSeqScopeReloadPrompt(true);
+    else loadScopeReaches();
   }
 
   // ── Instruction 029: stretch-table helpers ────────────────────────────────
@@ -3196,7 +3259,7 @@ export default function WorkProgramme() {
     const count = Math.max(1, Math.min(10, countRaw ?? (parseInt(seqFronts) || 2)));
     const from = projChFromKm, to = projChToKm;
     const len = Math.max(0, to - from) / count;
-    setSeqStretches(Array.from({ length: count }, (_, i) => ({
+    setSeqStretchesManual(Array.from({ length: count }, (_, i) => ({
       label: "",
       from: (from + i * len).toFixed(3),
       to: (from + (i + 1) * len).toFixed(3),
@@ -3317,6 +3380,9 @@ export default function WorkProgramme() {
       bridgeGroups: brgGroups > 0 ? brgGroups : undefined,
       disableStructureFronts: seqSkipStructureItems,
       stretches: stretchesPayload() ?? undefined,
+      // Scope-load provenance — persisted with the stretches so the dialog can
+      // warn when the confirmed Project Scope changes later.
+      scopeFingerprint: seqScopeFingerprint ?? undefined,
     };
   }
 
@@ -3335,6 +3401,7 @@ export default function WorkProgramme() {
       if (opts.structureGroups) body.structureGroups = opts.structureGroups;
       if (opts.bridgeGroups) body.bridgeGroups = opts.bridgeGroups;
       if (opts.stretches) body.stretches = opts.stretches;
+      if (opts.scopeFingerprint) body.scopeFingerprint = opts.scopeFingerprint;
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, body);
       const data = await res.json();
       setSeqRegenSummary(data?.regenSummary ?? { toRecreate: 0, preservedUpdated: 0, newBars: data?.wouldCreateBars ?? 0, blocked: [], stretchGaps: [] });
@@ -3891,27 +3958,63 @@ export default function WorkProgramme() {
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-medium">Road stretches (chainage + execution stage/front)</Label>
                 <div className="flex gap-1.5">
+                  {confirmedScopeRows.length > 0 && (
+                    <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[11px]"
+                      onClick={requestLoadScopeReaches} data-testid="button-seq-load-scope">
+                      Load confirmed scope
+                    </Button>
+                  )}
                   <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[11px]"
                     onClick={() => fillEqualStretches()} data-testid="button-seq-equal-split">
                     Equal split
                   </Button>
                   <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[11px]"
-                    onClick={() => setSeqStretches(s => [...s, { label: "", from: "", to: "", priority: String(s.length + 1), qtyPct: "", side: "", front: "", widthM: "" }])}
+                    onClick={() => setSeqStretchesManual(s => [...s, { label: "", from: "", to: "", priority: String(s.length + 1), qtyPct: "", side: "", front: "", widthM: "" }])}
                     data-testid="button-seq-add-stretch">
                     + Row
                   </Button>
                   {seqStretches.length > 0 && (
                     <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-[11px] text-muted-foreground"
-                      onClick={() => setSeqStretches([])} data-testid="button-seq-clear-stretches">
+                      onClick={() => setSeqStretchesManual([])} data-testid="button-seq-clear-stretches">
                       Clear
                     </Button>
                   )}
                 </div>
               </div>
+              {seqScopeReloadPrompt && (
+                <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2 space-y-1.5" data-testid="panel-scope-reload-confirm">
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                    You already have stretch rows. Reloading replaces them with the confirmed working reaches from Project Scope ({confirmedScopeRows.length} reach{confirmedScopeRows.length === 1 ? "" : "es"}). Stage, front, Qty % and width entries on the current rows will be lost.
+                  </p>
+                  <div className="flex gap-1.5">
+                    <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[11px]"
+                      onClick={() => setSeqScopeReloadPrompt(false)} data-testid="button-scope-keep-stretches">
+                      Keep current stretches
+                    </Button>
+                    <Button type="button" size="sm" className="h-6 px-2 text-[11px]"
+                      onClick={loadScopeReaches} data-testid="button-scope-reload-stretches">
+                      Reload from confirmed Scope
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {seqScopeStale && !seqScopeReloadPrompt && (
+                <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2 space-y-1.5" data-testid="panel-scope-stale-warning">
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                    ⚠ Confirmed Project Scope has changed since these Auto Sequence stretches were loaded. Review the rows below, or reload them from the current confirmed scope. Nothing is regenerated automatically.
+                  </p>
+                  <div className="flex gap-1.5">
+                    <Button type="button" size="sm" className="h-6 px-2 text-[11px]"
+                      onClick={requestLoadScopeReaches} data-testid="button-scope-stale-reload">
+                      Reload from confirmed Scope
+                    </Button>
+                  </div>
+                </div>
+              )}
               {seqStretches.length === 0 ? (
                 <p className="text-[10px] text-muted-foreground">
                   No stretch rows — the road will be divided equally by front count. Click “Equal split” to
-                  edit real chainages and set execution priority per stretch.
+                  edit real chainages and set execution priority per stretch.{confirmedScopeRows.length > 0 && <> Or click “Load confirmed scope” to start from the confirmed working reaches.</>}
                 </p>
               ) : (
                 <div className="space-y-1">
@@ -3928,39 +4031,39 @@ export default function WorkProgramme() {
                   {seqStretches.map((r, i) => (
                     <div key={i} className="grid grid-cols-[1fr_62px_62px_44px_66px_50px_50px_78px_24px] gap-1 items-center">
                       <Input value={r.label} placeholder={`Reach ${r.priority || i + 1}`} className="h-7 text-xs"
-                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                        onChange={e => setSeqStretchesManual(s => s.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
                         data-testid={`input-stretch-label-${i}`} />
                       <Input value={r.from} type="number" step={0.001} className="h-7 text-xs"
-                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, from: e.target.value } : x))}
+                        onChange={e => setSeqStretchesManual(s => s.map((x, j) => j === i ? { ...x, from: e.target.value } : x))}
                         data-testid={`input-stretch-from-${i}`} />
                       <Input value={r.to} type="number" step={0.001} className="h-7 text-xs"
-                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, to: e.target.value } : x))}
+                        onChange={e => setSeqStretchesManual(s => s.map((x, j) => j === i ? { ...x, to: e.target.value } : x))}
                         data-testid={`input-stretch-to-${i}`} />
                       <Input value={r.priority} type="number" min={1} step={1} className="h-7 text-xs"
                         title="Execution stage — the same stage on two rows is normal (they mobilise together)"
-                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, priority: e.target.value } : x))}
+                        onChange={e => setSeqStretchesManual(s => s.map((x, j) => j === i ? { ...x, priority: e.target.value } : x))}
                         data-testid={`input-stretch-priority-${i}`} />
                       <Input value={r.front} placeholder="—" className="h-7 text-xs" list="front-suggestions"
                         title="Execution front / crew label (optional), e.g. Front A, Front B"
-                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, front: e.target.value } : x))}
+                        onChange={e => setSeqStretchesManual(s => s.map((x, j) => j === i ? { ...x, front: e.target.value } : x))}
                         data-testid={`input-stretch-front-${i}`} />
                       <Input value={r.qtyPct} type="number" min={0} max={100} placeholder="auto" className="h-7 text-xs"
                         title="Manual allocation — fraction of BOQ item quantity (%). Blank = automatic. Overrides all automatic side allocation."
-                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, qtyPct: e.target.value } : x))}
+                        onChange={e => setSeqStretchesManual(s => s.map((x, j) => j === i ? { ...x, qtyPct: e.target.value } : x))}
                         data-testid={`input-stretch-qty-${i}`} />
                       <Input value={r.widthM} type="number" min={0} step={0.1} placeholder="—" className="h-7 text-xs"
                         title="Planned width (m) — used only for the automatic width-matched LHS/RHS split"
-                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, widthM: e.target.value } : x))}
+                        onChange={e => setSeqStretchesManual(s => s.map((x, j) => j === i ? { ...x, widthM: e.target.value } : x))}
                         data-testid={`input-stretch-width-${i}`} />
                       <select value={r.side} className="h-7 text-[11px] rounded border border-input bg-transparent px-1"
                         title="Optional side for this stretch — carried onto every road bar it generates. Blank = unspecified."
-                        onChange={e => setSeqStretches(s => s.map((x, j) => j === i ? { ...x, side: e.target.value } : x))}
+                        onChange={e => setSeqStretchesManual(s => s.map((x, j) => j === i ? { ...x, side: e.target.value } : x))}
                         data-testid={`select-stretch-side-${i}`}>
                         <option value="">—</option>
                         {BAR_SIDES.map(sd => <option key={sd} value={sd}>{BAR_SIDE_LABELS[sd]}</option>)}
                       </select>
                       <button type="button" className="text-slate-400 hover:text-red-500 text-xs"
-                        onClick={() => setSeqStretches(s => s.filter((_, j) => j !== i))}
+                        onClick={() => setSeqStretchesManual(s => s.filter((_, j) => j !== i))}
                         data-testid={`button-stretch-remove-${i}`}>✕</button>
                     </div>
                   ))}
@@ -3997,12 +4100,52 @@ export default function WorkProgramme() {
                   )}
                 </div>
               )}
+              {/* ── Part B: confirmed scope constraints (read-only, applied automatically) ── */}
+              {scopeConstraintList.length > 0 && (
+                <div className="rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-1.5 space-y-0.5" data-testid="panel-scope-constraints">
+                  <p className="text-[10px] font-medium text-muted-foreground">
+                    Scope constraints (applied automatically during allocation — not editable here):
+                  </p>
+                  {scopeConstraintList.map(c => (
+                    <p key={c.id} className="text-[10px] text-muted-foreground">
+                      • {SCOPE_SEGMENT_TYPE_LABELS[c.segmentType as keyof typeof SCOPE_SEGMENT_TYPE_LABELS] ?? c.segmentType} Km {c.chainageFrom.toFixed(3)}–{c.chainageTo.toFixed(3)}
+                      {c.side ? ` (${c.side})` : ""}
+                      {c.temporary ? " — temporary, quantity withheld until released" : ""}
+                      {c.reason ? ` — ${c.reason}` : ""}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ── Instruction 029 Part D: pre-regeneration summary ─────────── */}
             {seqRegenSummary && (
               <div className="rounded-md border border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/10 p-2.5 space-y-1" data-testid="panel-regen-summary">
                 <p className="text-xs font-semibold text-purple-700 dark:text-purple-300">Review before regenerating</p>
+                {/* ── Part B: per-reach scope breakdown ────────────────────── */}
+                {(seqRegenSummary.stretchScope?.length ?? 0) > 0 && (
+                  <div className="space-y-0.5 border border-purple-100 dark:border-purple-900 rounded bg-white/60 dark:bg-slate-950/40 p-1.5" data-testid="panel-stretch-scope">
+                    <p className="text-[10px] font-medium text-purple-700 dark:text-purple-300">
+                      Scope basis per reach — corridor-level view; quantities allocate to eligible portions only. Items with category/item-specific scope restrictions may differ (applied per item during allocation).
+                    </p>
+                    {seqRegenSummary.stretchScope!.map((ss, i) => {
+                      const hasRestriction = ss.excludedSideLenKm > 0 || ss.blockedSideLenKm > 0 || ss.withdrawnSideLenKm > 0;
+                      return (
+                        <p key={`ss${i}`} className="text-[10px] text-slate-600 dark:text-slate-400">
+                          <b>{ss.label}</b> gross Km {ss.chainageFrom.toFixed(3)}–{ss.chainageTo.toFixed(3)}
+                          {" · eligible: "}
+                          {ss.eligibleRanges.length > 0
+                            ? ss.eligibleRanges.map(r => `${r.from.toFixed(3)}–${r.to.toFixed(3)}`).join(" + ")
+                            : "none"}
+                          {ss.excludedSideLenKm > 0 && <> · no-scope excluded {ss.excludedSideLenKm.toFixed(3)} km-side</>}
+                          {ss.blockedSideLenKm > 0 && <> · temporarily blocked {ss.blockedSideLenKm.toFixed(3)} km-side (withheld, not removed)</>}
+                          {ss.withdrawnSideLenKm > 0 && <> · withdrawn {ss.withdrawnSideLenKm.toFixed(3)} km-side</>}
+                          {!hasRestriction && <> · fully executable</>}
+                        </p>
+                      );
+                    })}
+                  </div>
+                )}
                 <p className="text-[11px] text-slate-600 dark:text-slate-400">
                   {seqRegenSummary.newBars} new bars will be created · {seqRegenSummary.toRecreate} existing auto bars replaced
                   {seqRegenSummary.preservedUpdated > 0 && <> · <b>{seqRegenSummary.preservedUpdated} arrangement-linked bar(s) preserved</b> (updated in place, links kept)</>}

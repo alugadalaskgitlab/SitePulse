@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { BoqProject, ProjectScopeSegment } from "@shared/schema";
 import { SCOPE_SEGMENT_TYPE_LABELS, type ScopeSegmentType } from "@shared/projectScope";
+import { emptyScopeForm, scopeFormFromSegment, type SegFormState } from "@/lib/scopeForm";
 
 const SIDE_OPTIONS = [
   { value: "", label: "Both / full width" },
@@ -45,27 +46,8 @@ const STATUS_BADGE: Record<string, string> = {
   superseded: "bg-gray-100 text-gray-500 line-through",
 };
 
-interface SegFormState {
-  segmentType: ScopeSegmentType;
-  label: string;
-  chainageFrom: string;
-  chainageTo: string;
-  side: string;
-  reason: string;
-  applicability: "all_linear" | "categories" | "items";
-  categoryIds: number[];
-  itemIds: number[];
-  effectiveFrom: string;
-  deptReference: string;
-  withdrawalOrderRef: string;
-  notes: string;
-}
-
-const emptyForm = (t: ScopeSegmentType): SegFormState => ({
-  segmentType: t, label: "", chainageFrom: "", chainageTo: "", side: "",
-  reason: "", applicability: "all_linear", categoryIds: [], itemIds: [],
-  effectiveFrom: "", deptReference: "", withdrawalOrderRef: "", notes: "",
-});
+// SegFormState / emptyScopeForm / scopeFormFromSegment live in
+// client/src/lib/scopeForm.ts so hydration behaviour is unit-testable.
 
 export default function ScopeSetup() {
   const { id } = useParams<{ id: string }>();
@@ -103,36 +85,26 @@ export default function ScopeSetup() {
   // ── segment form state ─────────────────────────────────────────────────────
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState<SegFormState>(emptyForm("working_reach"));
+  // Status of the record being edited — drives the heading ("Edit draft…" vs
+  // "Revise confirmed…") and the save button ("Save changes" vs "Create revision").
+  const [editingStatus, setEditingStatus] = useState<"draft" | "confirmed" | null>(null);
+  const [form, setForm] = useState<SegFormState>(emptyScopeForm("working_reach"));
   const set = (patch: Partial<SegFormState>) => setForm(f => ({ ...f, ...patch }));
 
-  const openQuickAdd = (t: ScopeSegmentType) => { setForm(emptyForm(t)); setEditingId(null); setShowForm(true); };
-  // Malformed JSON-text id lists degrade to [] rather than crashing the page.
-  const safeParseIds = (v: string | null | undefined): number[] => {
-    if (!v) return [];
-    try {
-      const arr = JSON.parse(v);
-      return Array.isArray(arr) ? arr.map(Number).filter(Number.isFinite) : [];
-    } catch { return []; }
+  const closeForm = () => { setShowForm(false); setEditingId(null); setEditingStatus(null); };
+
+  const openQuickAdd = (t: ScopeSegmentType) => {
+    // Truly blank form — never carries over state from a cancelled edit.
+    setForm(emptyScopeForm(t));
+    setEditingId(null);
+    setEditingStatus(null);
+    setShowForm(true);
   };
 
   const openEdit = (s: ProjectScopeSegment) => {
-    setForm({
-      segmentType: s.segmentType as ScopeSegmentType,
-      label: s.label ?? "",
-      chainageFrom: String(s.chainageFrom ?? ""),
-      chainageTo: String(s.chainageTo ?? ""),
-      side: s.side ?? "",
-      reason: s.reason ?? "",
-      applicability: (s.applicability as any) ?? "all_linear",
-      categoryIds: safeParseIds(s.categoryIds),
-      itemIds: safeParseIds(s.itemIds),
-      effectiveFrom: s.effectiveFrom ?? "",
-      deptReference: s.deptReference ?? "",
-      withdrawalOrderRef: s.withdrawalOrderRef ?? "",
-      notes: s.notes ?? "",
-    });
+    setForm(scopeFormFromSegment(s));
     setEditingId(s.id);
+    setEditingStatus((s as any).status === "confirmed" ? "confirmed" : "draft");
     setShowForm(true);
   };
 
@@ -167,8 +139,7 @@ export default function ScopeSetup() {
     },
     onSuccess: (row: any) => {
       invalidateAll();
-      setShowForm(false);
-      setEditingId(null);
+      closeForm();
       toast({ title: row?.revised ? "Revision created (previous record kept as superseded)" : "Scope record saved as draft" });
     },
     onError: (e: any) => toast({ title: "Could not save", description: String(e?.message ?? e), variant: "destructive" }),
@@ -355,14 +326,23 @@ export default function ScopeSetup() {
 
       {/* ── Segment form ── */}
       {showForm && (
-        <Card className="border-primary/40">
+        <Card key={editingId ?? "new"} className="border-primary/40">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center justify-between">
-              <span>{editingId ? "Edit scope record" : `Add: ${SCOPE_SEGMENT_TYPE_LABELS[form.segmentType]}`}</span>
-              <Button variant="ghost" size="icon" onClick={() => { setShowForm(false); setEditingId(null); }}><X className="h-4 w-4" /></Button>
+              <span data-testid="text-scope-form-heading">
+                {editingId
+                  ? (editingStatus === "confirmed" ? "Revise confirmed scope record" : "Edit draft scope record")
+                  : `Add: ${SCOPE_SEGMENT_TYPE_LABELS[form.segmentType]}`}
+              </span>
+              <Button variant="ghost" size="icon" onClick={closeForm}><X className="h-4 w-4" /></Button>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {editingStatus === "confirmed" && (
+              <p className="text-xs text-amber-700 dark:text-amber-400" data-testid="text-revision-note">
+                This record is confirmed. Saving creates a new draft revision — the confirmed record is kept as superseded history.
+              </p>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
                 <Label className="text-xs">Type</Label>
@@ -464,9 +444,9 @@ export default function ScopeSetup() {
               <Button size="sm" disabled={saveMutation.isPending || !form.chainageFrom || !form.chainageTo}
                 onClick={() => saveMutation.mutate()}>
                 {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                {editingId ? "Save changes" : "Save as draft"}
+                {editingId ? (editingStatus === "confirmed" ? "Create revision" : "Save changes") : "Save as draft"}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => { setShowForm(false); setEditingId(null); }}>Cancel</Button>
+              <Button size="sm" variant="ghost" onClick={closeForm}>Cancel</Button>
             </div>
           </CardContent>
         </Card>

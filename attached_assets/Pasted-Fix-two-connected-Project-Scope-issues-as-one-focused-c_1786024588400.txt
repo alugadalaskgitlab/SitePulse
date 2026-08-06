@@ -1,0 +1,232 @@
+Fix two connected Project Scope issues as one focused correctness/usability batch.
+
+PART A — FIX EDITING OF EXISTING SCOPE RECORDS
+
+Current problem:
+
+Clicking the pencil icon on an existing Working Reach / No-Scope / Temporary Block / Withdrawn record can open what behaves like a new blank reach form instead of editing the selected row.
+
+Required behaviour:
+
+1. Clicking the pencil icon must load the selected scope record into the form, including:
+   - segment type;
+   - label;
+   - chainage from;
+   - chainage to;
+   - side;
+   - reason;
+   - applicability;
+   - selected category IDs;
+   - selected BOQ item IDs;
+   - effective date;
+   - department reference;
+   - withdrawal reference;
+   - notes.
+
+2. The form heading must clearly show:
+   - “Edit draft scope record” for a draft;
+   - “Revise confirmed scope record” for a confirmed record.
+
+3. The primary button must show:
+   - “Save changes” for a draft;
+   - “Create revision” for a confirmed record.
+
+4. Editing a draft:
+   - PATCH the same draft record;
+   - do not create a duplicate;
+   - retain its existing ID and draft status.
+
+5. Editing a confirmed record:
+   - preserve the confirmed historical record;
+   - create the intended new draft revision;
+   - mark the previous record superseded only according to the existing revision/audit design;
+   - do not present this as adding an unrelated new reach.
+
+6. Cancel must close the form and clear editing state.
+
+7. Clicking a quick-add button after cancelling an edit must open a genuinely blank new-record form.
+
+8. After save, refresh Scope Records, reconciliation and chainage strip.
+
+Add tests proving draft edit, confirmed revision, cancel and quick-add do not leak state into one another.
+
+PART B — LOAD CONFIRMED PROJECT SCOPE INTO AUTO SEQUENCE
+
+Current problem:
+
+Project Scope stores contractor-defined working reaches, but Auto Sequence still asks the user to re-enter the same reach labels and chainages or creates equal corridor divisions.
+
+Required principle:
+
+Project Scope is the authoritative source of physical working reaches and exclusions.
+
+Auto Sequence consumes those confirmed reaches and asks only how they should be scheduled.
+
+1. Add an action in the Auto-Sequence Settings dialog:
+
+   “Load confirmed scope reaches”
+
+2. Fetch active confirmed Project Scope records for the selected project.
+
+3. Load only confirmed Working Reach records into the editable Road Stretches table.
+
+For the current Takkadpally data, load the rows exactly as entered:
+
+- Reach 1 · Ch. 0.000–1.250
+- Reach 2 · Ch. 1.250–2.500
+- Reach 3 · Ch. 2.500–3.800
+
+Do not automatically split the visible planning rows at a No-Scope boundary.
+
+The No-Scope record Ch. 2.100–2.400 remains a separate scope rule applied by the eligibility engine.
+
+4. Map the imported fields:
+
+- Scope label → Auto Sequence stretch label
+- chainageFrom → Km from
+- chainageTo → Km to
+- side → Side, where specified
+- initial Stage → row order unless the user changes it
+- Front → blank unless already deliberately configured elsewhere
+- quantity percentage → blank/automatic
+- width → blank unless a reliable scope width exists
+
+5. Imported rows remain editable in Auto Sequence for:
+
+- Stage;
+- Front;
+- Side;
+- execution order;
+- optional width;
+- deliberate split;
+- deliberate merge.
+
+Do not write Auto Sequence planning changes back into Project Scope.
+
+6. Existing saved Auto Sequence stretches
+
+If no saved Auto Sequence stretches exist:
+- suggest or automatically populate from confirmed Scope.
+
+If saved Auto Sequence stretches already exist:
+- do not silently overwrite them;
+- show:
+  - “Keep current stretches”
+  - “Reload from confirmed Scope”
+- require confirmation before replacing the current rows.
+
+7. Scope status handling
+
+- Draft Scope records must not become authoritative Auto Sequence rows.
+- Superseded records must not load.
+- Confirmed Working Reaches load.
+- Confirmed No-Scope, Temporary Block and Withdrawn records must be fetched as constraints, not as editable working-reach rows.
+
+8. Scope-aware validation and dry run
+
+The Auto Sequence dry run must evaluate each planning reach against the confirmed scope constraints.
+
+It must show, for each reach:
+
+- gross planning chainage;
+- eligible chainage/side-length;
+- excluded portions;
+- temporarily blocked portions;
+- withdrawn portions;
+- resulting planned quantity basis.
+
+Example:
+
+Reach 2:
+Gross: Ch. 1.250–2.500
+No-scope: Ch. 2.100–2.400
+Eligible portions:
+- Ch. 1.250–2.100
+- Ch. 2.400–2.500
+
+Keep Reach 2 as one contractor-defined planning reach. Do not force the user to create two visible reach rows.
+
+9. Generation behaviour
+
+Generated programme bars and planned quantities must use eligible scope only.
+
+No ordinary linear-road quantity may be allocated to an applicable confirmed No-Scope or Withdrawn interval.
+
+A Temporary Block:
+- remains part of total eligible contract scope;
+- must be visibly flagged or withheld from the current generated programme according to the existing temporary-block rule;
+- must not be silently treated as permanent no-scope.
+
+10. Planning reaches are not execution gates
+
+Do not change DPR execution rules in this batch.
+
+A later DPR may extend across a planning-reach or programme-bar boundary when the actual work genuinely continues.
+
+Scope controls whether the physical chainage/item/side is eligible.
+
+Programme reaches control tentative planning and planned-vs-actual analysis, not whether genuine eligible work can be recorded.
+
+11. Reconciliation after scope changes
+
+When confirmed Scope changes after Auto Sequence stretches were saved, show a clear warning:
+
+“Confirmed Project Scope has changed since these Auto Sequence stretches were loaded.”
+
+Provide:
+- Review current stretches
+- Reload from confirmed Scope
+
+Do not silently regenerate programme bars.
+
+12. Tests
+
+Add tests proving:
+
+- draft scope edit preloads the selected row and updates the same draft;
+- confirmed scope edit creates the intended revision with prefilled values;
+- pencil edit never opens a blank new-reach state;
+- confirmed working reaches load into Auto Sequence exactly once;
+- draft and superseded reaches do not load;
+- no-scope records are used as constraints, not editable reach rows;
+- Reach 1.250–2.500 remains one planning row while 2.100–2.400 is excluded from eligible quantity;
+- existing saved Auto Sequence stretches are not overwritten without confirmation;
+- Scope changes produce a stale-scope warning;
+- Auto Sequence generation does not allocate ordinary linear work inside confirmed no-scope/withdrawn portions;
+- current Stage, Front, stagger and road-item sequencing behaviour remains intact.
+
+LIVE PROOF — TAKKADPALLY
+
+1. Open Project Scope.
+2. Click the pencil on draft Reach 2.
+3. Confirm the form opens with:
+   - label Reach 2;
+   - From 1.250;
+   - To 2.500;
+   - all other saved values.
+4. Change only the label temporarily, save, reopen and confirm the same draft was updated rather than duplicated.
+5. Confirm the working reaches and no-scope record.
+6. Open Auto Sequence.
+7. Click Load confirmed scope reaches.
+8. Confirm the table shows:
+   - 0.000–1.250;
+   - 1.250–2.500;
+   - 2.500–3.800.
+9. Confirm Ch. 2.100–2.400 appears as a no-scope constraint, not as another editable road-stretch row.
+10. Run dry run.
+11. Confirm Reach 2 remains one planning reach but its eligible quantity excludes Ch. 2.100–2.400.
+12. Do not confirm programme regeneration during the proof unless the dry-run results have been reviewed.
+
+DO NOT TOUCH
+
+- BOQ quantities
+- existing DPR quantities or submitted DPR history
+- DPR-to-programme review-required logic
+- Stage and Front meaning
+- front stagger or stage lag calculations
+- execution arrangements
+- structure scheduling/import logic
+- Stores, Procurement or stock
+- production Scope or programme data automatically
+
+Do not mark complete until existing Scope records genuinely edit/revise correctly and Auto Sequence can load confirmed contractor-defined working reaches without duplicate chainage entry.

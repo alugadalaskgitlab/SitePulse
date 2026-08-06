@@ -15019,6 +15019,13 @@ export async function registerRoutes(
             bridgeGroups: _brgGroups >= 1 ? bridgeGroups : null,
             enableStructureFronts: !disableStructureFronts,
             stretches: stretches ?? null, // Instruction 029 — restore the stretch table next open
+            // Scope-load provenance: fingerprint of the confirmed Project Scope
+            // at the moment the stretches were loaded from it. Lets the dialog
+            // warn "scope has changed since these stretches were loaded" — no
+            // silent regeneration, ever. null = stretches not scope-loaded.
+            scopeFingerprint: typeof req.body?.scopeFingerprint === "string" && req.body.scopeFingerprint
+              ? String(req.body.scopeFingerprint).slice(0, 4000)
+              : null,
           },
         } as any);
       };
@@ -15374,6 +15381,33 @@ export async function registerRoutes(
 
       // ── Dry-run: return per-item classification trace without touching bars or DB ──
       if (dryRun) {
+        // Per-reach scope breakdown for the review panel: gross chainage vs
+        // eligible portions vs excluded/blocked/withdrawn side-lengths.
+        // Item-agnostic (all-linear applicability) — it shows what the corridor
+        // itself permits; item-specific exclusions still apply during allocation.
+        let stretchScope: any[] | null = null;
+        if (scopeActive && stretches) {
+          const generalScope = resolveEligibleScope(scopeSegs, {
+            boqItemId: null, categoryId: null, isLinear: true, onDate: null,
+          });
+          if (generalScope.hasWorkingReaches) {
+            stretchScope = stretches.map((st: any, i: number) => {
+              const cov = coverageForStretch(generalScope, st);
+              return {
+                label: st.label ?? `Stretch ${i + 1}`,
+                chainageFrom: st.chainageFrom,
+                chainageTo: st.chainageTo,
+                side: st.side ?? null,
+                eligibleRanges: cov.subRanges.map(r => ({ from: r.from, to: r.to })),
+                eligibleSideLenKm: cov.eligibleSideLenKm,
+                blockedSideLenKm: cov.blockedSideLenKm,     // temporary blocks — withheld, not removed
+                excludedSideLenKm: cov.excludedSideLenKm,   // no-scope
+                withdrawnSideLenKm: cov.withdrawnSideLenKm,
+                contractualSideLenKm: cov.contractualSideLenKm, // qty basis = eligible + blocked
+              };
+            });
+          }
+        }
         const itemById = new Map((items as any[]).map((it: any) => [it.id, it]));
         const diagItems = seqDiagnostics.map((d) => {
           const raw = itemById.get(d.boqItemId);
@@ -15409,7 +15443,7 @@ export async function registerRoutes(
           wouldCreateBars: bars.length,
           unclassifiedCount: unclassifiedItemIds.length,
           // Instruction 029 Part D — pre-regeneration summary for explicit confirmation
-          regenSummary,
+          regenSummary: { ...regenSummary, stretchScope },
         });
       }
 

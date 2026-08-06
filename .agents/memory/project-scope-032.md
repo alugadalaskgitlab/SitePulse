@@ -26,3 +26,9 @@ description: Corridor vs executable scope — shared eligible-scope service, seq
 - esbuild rejects `a ?? b || c` without parens — vitest transform fails for EVERY test file importing routes.ts, looking like 8 unrelated suite failures.
 - Reconciliation includeDraft:true by default in the API so planners see the picture before confirming.
 - UI: /work-program/:id/scope (ScopeSetup.tsx), gated gatedEither(project_scope, qto_boq).
+
+## Scope edit + Auto Sequence load (Aug 2026 batch)
+- Scope form hydration lives in `client/src/lib/scopeForm.ts` (unit-tested); ScopeSetup form Card is keyed by editingId to force remount; heading/button distinguish draft edit vs confirmed revision.
+- `shared/autoSequenceScope.ts` is the only bridge from confirmed scope records → Auto-Sequence stretch rows: one confirmed working reach = ONE row (never auto-split at no-scope boundaries — the eligibility engine clips during allocation); non-reach records are constraints, never rows.
+- Scope-load provenance = `scopeFingerprint` stored inside sequenceOptions (persisted only on real generation, dry run never persists). **Any manual stretch mutation must clear the fingerprint** (setSeqStretchesManual wrapper in WorkProgramme) or the stale-scope warning misleads.
+- Dry-run `regenSummary.stretchScope` is an item-agnostic corridor-level preview (resolveEligibleScope with null item); real allocation stays per-item. Label the UI accordingly.
