@@ -37,8 +37,9 @@ import { useUpload } from "@/hooks/use-upload";
 import { format, subDays } from "date-fns";
 import type { Site, Personnel, DprWithDetails } from "@shared/schema";
 import { barSideLabel, parseChainageKm, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
-import { chainageOutsideBar } from "@shared/dprProgrammeLink";
-import { geometryQtyForRow, resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
+import { chainageOutsideBar, suggestGuidedBars, emptySuggestionsReason } from "@shared/dprProgrammeLink";
+import { resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
+import { requiredDims, applyGeometryChange, applyQuantityEdit, overrideMismatch, deriveOverridden } from "@/lib/guidedEntryGeometry";
 import { ProgrammeBarPicker, BarLinkFeedback, type PickerBar } from "@/components/ProgrammeBarPicker";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
@@ -49,7 +50,7 @@ import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 
 type SiteBoqItem = {
   id: number; description: string; itemCode: string | null; itemName: string | null;
-  unit: string; dprConversionFactor: number | null;
+  unit: string; dprConversionFactor: number | null; dprMeasurementMethod?: string | null;
 };
 
 type ProgrammeBar = {
@@ -77,6 +78,9 @@ interface GuidedEntry {
   quantitySourceNote: string;      // required when source = "other"
   chainageOverrideReason: string;  // Part F — out-of-range reason
   executedBy: string;              // Part H — "hlc" | "agency" when arrangement applies
+  // Guided correction item 6: the engineer deliberately replaced the
+  // geometry-calculated quantity — geometry edits must not silently undo it.
+  qtyOverridden: boolean;
 }
 
 interface SimpleEquipmentRow { machine: string; vehicleNo: string; operator: string; task: string; }
@@ -146,6 +150,9 @@ export default function GuidedDpr() {
     entries: GuidedEntry[]; equipment: SimpleEquipmentRow[]; labour: SimpleLabourRow[];
     remarks: string; draftId: number | null;
   };
+  // Set true by every restore/hydration generation; consumed by the
+  // override-derivation effect once BOQ items are available.
+  const deriveNeededRef = useRef(false);
   const autosaveData: GuidedFormState = { date, siteName, engineer, entries, equipment, labour, remarks, draftId };
   const autosave = useAutosave<GuidedFormState>({
     // A URL-loaded draft autosaves under its own key so it never collides
@@ -154,8 +161,12 @@ export default function GuidedDpr() {
     data: autosaveData,
     onRestore: (d) => {
       setDate(d.date); setSiteName(d.siteName); setEngineer(d.engineer);
-      setEntries(d.entries ?? []); setEquipment(d.equipment ?? []); setLabour(d.labour ?? []);
+      setEntries((d.entries ?? []).map((e) => ({ ...e, qtyOverridden: e.qtyOverridden ?? false })));
+      setEquipment(d.equipment ?? []); setLabour(d.labour ?? []);
       setRemarks(d.remarks ?? ""); setDraftId(d.draftId ?? null);
+      // Restored rows (incl. legacy blobs without the flag) get their override
+      // state re-derived from geometry once BOQ items are available.
+      deriveNeededRef.current = true;
     },
   });
 
@@ -198,7 +209,11 @@ export default function GuidedDpr() {
         quantitySourceNote: p.quantitySourceNote || "",
         chainageOverrideReason: p.chainageOverrideReason || "",
         executedBy: p.executedBy || "",
+        // Derived properly once BOQ items load (see derivation effect); this
+        // is only the pre-derivation placeholder.
+        qtyOverridden: p.quantitySource != null && p.quantitySource !== "" && p.quantitySource !== "calculated",
       })));
+    deriveNeededRef.current = true;
     setEquipment((urlDraftDpr.equipment ?? []).map((e: any): SimpleEquipmentRow => ({
       machine: e.machine || "", vehicleNo: e.vehicleNo || "", operator: e.operator || "", task: e.task || "",
     })));
@@ -310,12 +325,12 @@ export default function GuidedDpr() {
     return ids;
   }, [todayDprs]);
 
+  // Role-independent by construction: shared helper takes only bars + date +
+  // reported/linked ids — no user, role or engineer input exists.
   const suggestedBars = useMemo(() => {
-    return programmeBars
-      .filter((b) => !b.structureId) // road bars only on this screen
-      .filter((b) => b.startDate && b.endDate && date >= b.startDate && date <= b.endDate)
-      .filter((b) => !reportedBarIds.has(b.id))
-      .filter((b) => !entries.some((e) => e.programmeBarId === b.id));
+    const linked = new Set<number>();
+    entries.forEach((e) => { if (e.programmeBarId != null) linked.add(e.programmeBarId); });
+    return suggestGuidedBars(programmeBars, date, reportedBarIds, linked);
   }, [programmeBars, date, reportedBarIds, entries]);
 
   const addEntryFromBar = (bar: ProgrammeBar) => {
@@ -337,6 +352,7 @@ export default function GuidedDpr() {
       quantitySourceNote: "",
       chainageOverrideReason: "",
       executedBy: "",
+      qtyOverridden: false,
     }]);
   };
 
@@ -358,12 +374,50 @@ export default function GuidedDpr() {
       quantitySourceNote: "",
       chainageOverrideReason: "",
       executedBy: "",
+      qtyOverridden: false,
     }]);
     setAddItemOpen(false);
   };
 
   const updateEntry = (idx: number, patch: Partial<GuidedEntry>) =>
     setEntries((prev) => prev.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
+
+  // Geometry-field change (chainage / width / thickness): auto-recalculate the
+  // quantity immediately — unless the engineer overrode it, in which case the
+  // entered value is preserved and a mismatch flag renders instead.
+  const updateGeometry = (idx: number, patch: Partial<GuidedEntry>) =>
+    setEntries((prev) => prev.map((e, i) => {
+      if (i !== idx) return e;
+      const after = { ...e, ...patch };
+      const item = after.boqItemId != null ? itemById.get(after.boqItemId) : null;
+      return { ...after, ...applyGeometryChange(after, item) };
+    }));
+
+  // Manual quantity edit: differs from geometry → overridden (real source
+  // required); restored to the calculated value → back to automatic.
+  const updateQuantity = (idx: number, quantity: number | null) =>
+    setEntries((prev) => prev.map((e, i) => {
+      if (i !== idx) return e;
+      const after = { ...e, quantity };
+      const item = after.boqItemId != null ? itemById.get(after.boqItemId) : null;
+      const res = applyQuantityEdit(after, item);
+      return { ...after, ...res, ...(res.qtyOverridden ? {} : { quantitySource: "", quantitySourceNote: "" }) };
+    }));
+
+  // Whenever a restore/hydration generation lands (autosave OR ?draftId — in
+  // any order relative to the BOQ-item load), settle each row's override flag
+  // from geometry. deriveOverridden is the single semantic: a quantity that
+  // doesn't match the (complete) geometry computation is overridden — so an
+  // incomplete-geometry manual quantity is PROTECTED from silent recalc, and a
+  // matching one returns to automatic. Runs once per generation, never loops.
+  useEffect(() => {
+    if (!deriveNeededRef.current || boqItems.length === 0 || entries.length === 0) return;
+    deriveNeededRef.current = false;
+    setEntries((prev) => prev.map((e) => ({
+      ...e,
+      qtyOverridden: deriveOverridden(e, e.boqItemId != null ? itemById.get(e.boqItemId) : null),
+    })));
+  }, [boqItems, entries, itemById]);
   const removeEntry = (idx: number) => setEntries((prev) => prev.filter((_, i) => i !== idx));
 
   // ── Same as yesterday (structure-only copy, always previewed) ─────────────
@@ -388,6 +442,7 @@ export default function GuidedDpr() {
       quantitySourceNote: "",
       chainageOverrideReason: "",
       executedBy: "",
+      qtyOverridden: false,
     })));
     setEquipment(st.equipment);
     setLabour(st.labour);
@@ -695,9 +750,14 @@ export default function GuidedDpr() {
           </h2>
           {suggestedBars.length === 0 ? (
             <p className="text-sm text-muted-foreground" data-testid="text-no-suggestions">
-              {programmeBars.length === 0
-                ? "No work programme found for this site — add activities manually below."
-                : "Nothing pending from the programme for this date — everything planned is already reported, or use “+ Record another activity”."}
+              {(() => {
+                // The "already reported" claim is only made when the data
+                // genuinely supports it (bars covering this date all reported).
+                const reason = emptySuggestionsReason(programmeBars, date);
+                if (reason === "no_programme") return "No work programme found for this site — add activities manually below.";
+                if (reason === "no_date_coverage") return "The work programme has no activities planned for this date — check the programme's bar dates, or add activities manually below.";
+                return "Nothing pending from the programme for this date — everything planned is already reported, or use “+ Record another activity”.";
+              })()}
             </p>
           ) : (
             <div className="space-y-2">
@@ -752,6 +812,9 @@ export default function GuidedDpr() {
                 dprDate={date}
                 value={e.programmeBarId}
                 autoSelect={e.programmeBarId == null}
+                sideLabel={e.side || null}
+                fromKm={parseChainageKm(e.chainageFrom)}
+                toKm={parseChainageKm(e.chainageTo)}
                 testidPrefix={`guided-${idx}`}
                 onSelect={(bar) => {
                   if (!bar) { updateEntry(idx, { programmeBarId: null }); return; }
@@ -776,6 +839,7 @@ export default function GuidedDpr() {
                 overrideReason={e.chainageOverrideReason}
                 onOverrideReason={(v) => updateEntry(idx, { chainageOverrideReason: v })}
                 qty={e.quantity}
+                warnOverBalance
                 itemTotals={itemTotals(e.boqItemId)}
                 executedBy={e.executedBy || null}
                 onExecutedBy={(v) => updateEntry(idx, { executedBy: v })}
@@ -791,64 +855,87 @@ export default function GuidedDpr() {
                 </Select>
               </div>
             )}
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <Label>Ch. From</Label>
-                <Input value={e.chainageFrom} placeholder="0+000" onChange={(ev) => updateEntry(idx, { chainageFrom: ev.target.value })} data-testid={`input-ch-from-${idx}`} />
-              </div>
-              <div>
-                <Label>Ch. To</Label>
-                <Input value={e.chainageTo} placeholder="0+000" onChange={(ev) => updateEntry(idx, { chainageTo: ev.target.value })} data-testid={`input-ch-to-${idx}`} />
-              </div>
-              <div>
-                <Label>Qty {e.uom ? `(${e.uom})` : ""}</Label>
-                <Input type="number" inputMode="decimal" value={e.quantity ?? ""} onChange={(ev) => updateEntry(idx, { quantity: ev.target.value === "" ? null : Number(ev.target.value) })} data-testid={`input-qty-${idx}`} />
-              </div>
-            </div>
+            {(() => {
+              // Item/UOM-aware geometry: show only the dimensions this BOQ
+              // item's quantity actually needs (CUM: W+T, SQM: W, RMT/MT/Nos:
+              // none) — required fields live in the MAIN card, never behind
+              // "Add details".
+              const item = e.boqItemId != null ? itemById.get(e.boqItemId) : null;
+              const dims = requiredDims(item);
+              const needW = dims.includes("W");
+              const needT = dims.includes("T");
+              const mismatchCalc = overrideMismatch(e, item);
+              const srcState = entrySourceState(e);
+              return (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label>Ch. From</Label>
+                      <Input value={e.chainageFrom} placeholder="0+000" onChange={(ev) => updateGeometry(idx, { chainageFrom: ev.target.value })} data-testid={`input-ch-from-${idx}`} />
+                    </div>
+                    <div>
+                      <Label>Ch. To</Label>
+                      <Input value={e.chainageTo} placeholder="0+000" onChange={(ev) => updateGeometry(idx, { chainageTo: ev.target.value })} data-testid={`input-ch-to-${idx}`} />
+                    </div>
+                    {needW && (
+                      <div>
+                        <Label>Width (m)</Label>
+                        <Input type="number" inputMode="decimal" value={e.width ?? ""} onChange={(ev) => updateGeometry(idx, { width: ev.target.value === "" ? null : Number(ev.target.value) })} data-testid={`input-width-${idx}`} />
+                      </div>
+                    )}
+                    {needT && (
+                      <div>
+                        <Label>Thickness (m)</Label>
+                        <Input type="number" inputMode="decimal" value={e.thickness ?? ""} onChange={(ev) => updateGeometry(idx, { thickness: ev.target.value === "" ? null : Number(ev.target.value) })} data-testid={`input-thickness-${idx}`} />
+                      </div>
+                    )}
+                    <div>
+                      <Label>Qty {e.uom ? `(${e.uom})` : ""}</Label>
+                      <Input type="number" inputMode="decimal" value={e.quantity ?? ""} onChange={(ev) => updateQuantity(idx, ev.target.value === "" ? null : Number(ev.target.value))} data-testid={`input-qty-${idx}`} />
+                    </div>
+                  </div>
+                  {mismatchCalc != null && (
+                    <p className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded px-2 py-1" data-testid={`text-override-mismatch-${idx}`}>
+                      Geometry now computes {mismatchCalc.toFixed(2)} {e.uom} but your entered quantity ({e.quantity}) is kept — it was manually overridden. Update it deliberately if the dimensions changed.
+                    </p>
+                  )}
+                  <div data-testid={`qty-source-block-${idx}`}>
+                    {srcState === "calculated" ? (
+                      <p className="text-xs text-muted-foreground" data-testid={`text-qty-source-auto-${idx}`}>
+                        Quantity source: Calculated from geometry
+                      </p>
+                    ) : e.quantity != null ? (
+                      <>
+                        <Label className="text-xs">Quantity source</Label>
+                        <Select
+                          value={e.quantitySource || undefined}
+                          onValueChange={(v) => updateEntry(idx, { quantitySource: v, ...(v !== "other" ? { quantitySourceNote: "" } : {}) })}
+                        >
+                          <SelectTrigger data-testid={`select-qty-source-${idx}`}><SelectValue placeholder="How was the quantity determined?" /></SelectTrigger>
+                          <SelectContent>
+                            {MANUAL_QUANTITY_SOURCES.map((qs) => <SelectItem key={qs} value={qs}>{QUANTITY_SOURCE_LABELS[qs]}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        {e.quantitySource === "other" && (
+                          <Input className="mt-1" placeholder="How was this quantity determined? (required)"
+                            value={e.quantitySourceNote}
+                            onChange={(ev) => updateEntry(idx, { quantitySourceNote: ev.target.value })}
+                            data-testid={`input-qty-source-note-${idx}`} />
+                        )}
+                      </>
+                    ) : null}
+                  </div>
+                </>
+              );
+            })()}
             <button className="text-xs text-primary flex items-center gap-1" onClick={() => updateEntry(idx, { expanded: !e.expanded })} data-testid={`button-details-${idx}`}>
               {e.expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               Add details
             </button>
             {e.expanded && (
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <div>
-                  <Label>Width (m)</Label>
-                  <Input type="number" inputMode="decimal" value={e.width ?? ""} onChange={(ev) => updateEntry(idx, { width: ev.target.value === "" ? null : Number(ev.target.value) })} data-testid={`input-width-${idx}`} />
-                </div>
-                <div>
-                  <Label>Thickness (m)</Label>
-                  <Input type="number" inputMode="decimal" value={e.thickness ?? ""} onChange={(ev) => updateEntry(idx, { thickness: ev.target.value === "" ? null : Number(ev.target.value) })} data-testid={`input-thickness-${idx}`} />
-                </div>
-                <div className="col-span-2">
-                  <Label>Quantity source</Label>
-                  {entrySourceState(e) === "calculated" ? (
-                    <p className="text-xs text-muted-foreground mt-1" data-testid={`text-qty-source-auto-${idx}`}>
-                      Calculated from geometry (automatic)
-                    </p>
-                  ) : (
-                    <>
-                      <Select
-                        value={e.quantitySource || undefined}
-                        onValueChange={(v) => updateEntry(idx, { quantitySource: v, ...(v !== "other" ? { quantitySourceNote: "" } : {}) })}
-                      >
-                        <SelectTrigger data-testid={`select-qty-source-${idx}`}><SelectValue placeholder="How was the quantity determined?" /></SelectTrigger>
-                        <SelectContent>
-                          {MANUAL_QUANTITY_SOURCES.map((qs) => <SelectItem key={qs} value={qs}>{QUANTITY_SOURCE_LABELS[qs]}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      {e.quantitySource === "other" && (
-                        <Input className="mt-1" placeholder="How was this quantity determined? (required)"
-                          value={e.quantitySourceNote}
-                          onChange={(ev) => updateEntry(idx, { quantitySourceNote: ev.target.value })}
-                          data-testid={`input-qty-source-note-${idx}`} />
-                      )}
-                    </>
-                  )}
-                </div>
-                <div className="col-span-2">
-                  <Label>Note</Label>
-                  <Input value={e.remark} onChange={(ev) => updateEntry(idx, { remark: ev.target.value })} data-testid={`input-note-${idx}`} />
-                </div>
+              <div className="pt-1">
+                <Label>Note</Label>
+                <Input value={e.remark} onChange={(ev) => updateEntry(idx, { remark: ev.target.value })} data-testid={`input-note-${idx}`} />
               </div>
             )}
           </CardContent>

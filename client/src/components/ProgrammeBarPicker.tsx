@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertTriangle } from "lucide-react";
 import { barSideLabel, isDprSideCompatible } from "@shared/barSide";
-import { chainageOutsideBar, barBalanceFigures, autoMatchBar } from "@shared/dprProgrammeLink";
+import { chainageOutsideBar, barBalanceFigures, autoMatchBar, isBarCompatible, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { OutOfRangeChainageModal } from "@/components/OutOfRangeChainageModal";
 
 export type PickerBar = {
@@ -57,6 +57,9 @@ export function ProgrammeBarPicker({
   onSelect,
   testidPrefix,
   autoSelect = false,
+  sideLabel = null,
+  fromKm = null,
+  toKm = null,
 }: {
   projectId: number;
   boqItemId: number;
@@ -70,6 +73,15 @@ export function ProgrammeBarPicker({
    * The chips stay visible so the user can still "change planned reach".
    */
   autoSelect?: boolean;
+  /**
+   * Guided correction: the entry's currently chosen side/chainage. When
+   * provided, side-incompatible bars are hidden from the primary chips
+   * (still reachable via "Change planned reach") and the auto-matcher
+   * re-attempts as side + chainage narrow the candidates to exactly one.
+   */
+  sideLabel?: string | null;
+  fromKm?: number | null;
+  toKm?: number | null;
 }) {
   const { data: bars = [] } = useQuery<PickerBar[]>({
     queryKey: ["/api/dpr/programme-bars", projectId, boqItemId],
@@ -84,24 +96,31 @@ export function ProgrammeBarPicker({
   // A deliberate unlink (user clicks the linked chip off) suppresses re-linking.
   const autoLinkedRef = useRef<string | null>(null);
   const [autoLinkedBarId, setAutoLinkedBarId] = useState<number | null>(null);
+  const sideKey = sideLabel ? normalizeDprSideKey(sideLabel) : null;
   useEffect(() => {
     if (!autoSelect || bars.length === 0 || value != null) return;
-    const key = `${boqItemId}:${dprDate}:${bars.map(b => b.id).join(",")}`;
+    // Re-attempts as side/chainage narrow the candidates — item + side +
+    // chainage identifying exactly one compatible bar links it automatically,
+    // for suggested AND manually-added entries alike.
+    const key = `${boqItemId}:${dprDate}:${sideKey ?? ""}:${fromKm ?? ""}:${toKm ?? ""}:${bars.map(b => b.id).join(",")}`;
     if (autoLinkedRef.current === key) return;
     autoLinkedRef.current = key;
-    const match = autoMatchBar(bars as any, { dprDate });
+    const match = autoMatchBar(bars as any, { dprDate, sideKey, fromKm, toKm });
     if (match.kind === "auto") {
       setAutoLinkedBarId(match.bar.id);
       onSelect(match.bar as any as PickerBar);
     }
-  }, [autoSelect, bars, value, boqItemId, dprDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoSelect, bars, value, boqItemId, dprDate, sideKey, fromKm, toKm]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (bars.length === 0) return null;
 
   const isActive = (b: PickerBar) =>
     !b.startDate || !b.endDate || (dprDate >= b.startDate && dprDate <= b.endDate);
-  const active = bars.filter(isActive);
-  const others = bars.filter(b => !isActive(b));
+  // Side-incompatible bars never show as primary chips when the entry's side
+  // is known — they stay reachable through "Change planned reach".
+  const sideOkChip = (b: PickerBar) => !sideKey || isBarCompatible(b as any, { sideKey });
+  const active = bars.filter(b => isActive(b) && sideOkChip(b));
+  const others = bars.filter(b => !isActive(b) || !sideOkChip(b));
   const selected = value != null ? bars.find(b => b.id === value) ?? null : null;
 
   return (
@@ -135,7 +154,7 @@ export function ProgrammeBarPicker({
             }}
           >
             <SelectTrigger className="h-6 w-auto text-[11px] px-2" data-testid={`${testidPrefix}-other-bars`}>
-              <SelectValue placeholder={`Other bars (${others.length})…`} />
+              <SelectValue placeholder={`Change planned reach (${others.length})…`} />
             </SelectTrigger>
             <SelectContent>
               {others.map(b => (
@@ -147,9 +166,9 @@ export function ProgrammeBarPicker({
           </Select>
         )}
       </div>
-      {autoLinkedBarId != null && value === autoLinkedBarId && (
+      {autoLinkedBarId != null && value === autoLinkedBarId && selected && (
         <p className="text-[10px] text-muted-foreground" data-testid={`${testidPrefix}-auto-linked-note`}>
-          Linked automatically to the only matching planned reach — tap another chip to change planned reach.
+          Linked automatically: {barLabel(selected)} — use “Change planned reach” if this isn't right.
         </p>
       )}
       {selected?.arrangement && (
@@ -190,6 +209,7 @@ export function BarLinkFeedback({
   itemTotals,
   executedBy,
   onExecutedBy,
+  warnOverBalance = false,
 }: {
   projectId: number | null;
   boqItemId: number | null;
@@ -203,6 +223,8 @@ export function BarLinkFeedback({
   testidPrefix: string;
   /** Today's reported quantity for this row (for over-balance hinting). */
   qty?: number | null;
+  /** Guided correction item 7: warn (review, non-blocking) when qty exceeds the selected reach balance. */
+  warnOverBalance?: boolean;
   /** Whole-BOQ-item totals, shown smaller/separate from the reach figures. */
   itemTotals?: { currentQty: number; totalActual: number; balance: number; unit: string } | null;
   /** Part H: who executed this row (required when arrangement is partly outsourced). */
@@ -238,6 +260,12 @@ export function BarLinkFeedback({
             </span>
           )}
         </div>
+      )}
+      {warnOverBalance && scoped && qty != null && qty > scoped.balance + 1e-9 && (
+        <p className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-700" data-testid={`${testidPrefix}-warn-over-balance`}>
+          <AlertTriangle className="w-3 h-3" />
+          Reported {qty}{scoped.unit ? ` ${scoped.unit}` : ""} exceeds this reach's balance ({scoped.balance}) — review before submitting. BOQ-item totals are shown separately.
+        </p>
       )}
       {!sideOk && (
         <p className="text-[11px] text-red-600 font-medium" data-testid={`${testidPrefix}-warn-side-incompatible`}>

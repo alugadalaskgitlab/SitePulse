@@ -22,4 +22,8 @@ description: Programme-driven Guided DPR screen — routing, entry-mode preferen
 **Rule:** route-level tests that mock `server/storage` must stub `getDprs()` non-empty and use incrementing ids in `createDpr` mocks.
 **Why:** `registerRoutes` fires a background `seedDatabase()` when `getDprs()` is empty — its `createDpr` call races the tests and a fixed mock id lets it clobber the test's draft (intermittent "Only draft DPRs can be submitted").
 
+**Guided calc correction (Aug 2026):** `client/src/lib/guidedEntryGeometry.ts` is the pure brain for Guided entry quantity: UOM-aware fields (`requiredDims`), auto-recalc on geometry edits unless `qtyOverridden`, override detection on manual qty edits, `overrideMismatch` flag (never silently recalc an overridden qty), `deriveOverridden` on draft hydration.
+**Why:** the pre-fix screen buried W/T behind "Add details" and let engineers type raw quantities with no geometry cross-check; silent recalc of a deliberate manual qty is a data-loss risk (architect flagged the one-shot-derivation version).
+**How to apply:** every restore/hydration generation must set `deriveNeededRef` so override flags are re-derived once BOQ items load — never a one-shot `entries.length` guard (restore can land after the first entries render). Suggestions come from `suggestGuidedBars`/`emptySuggestionsReason` in `shared/dprProgrammeLink.ts` — role-independent by construction; keep it that way. Picker side/chainage narrowing (`sideLabel`/`fromKm`/`toKm` props) and `warnOverBalance` are opt-in props so Detailed DPR stays untouched.
+
 - Live-proof tip: API login needs an approved device row (`user_devices`); a fresh curl login is `device_pending` until approved (dev DB update works).

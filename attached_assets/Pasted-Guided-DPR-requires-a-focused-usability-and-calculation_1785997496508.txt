@@ -1,0 +1,130 @@
+Guided DPR requires a focused usability and calculation correction.
+
+1. Today's likely activities — diagnose before fixing
+
+Before changing any suggestion logic, confirm whether the current filter actually contains a role dependency. It may not — if the suggestion query already depends only on Date + Site + active programme bar dates + reported progress, with no isAdmin/isFieldEngineer check anywhere in it, then there is no role-filter bug to remove, and no such code should be changed.
+
+In that case, treat "Nothing pending from the programme for this date" as a data question first:
+- Confirm whether the relevant site's programme bars have start/end dates that actually cover the report date.
+- If bars exist for that site/date range but are still not suggested, that is the real bug — fix the date/site matching, not any role check.
+- If bars genuinely have no valid date coverage for that date, this is a Work Programme data-completeness issue, not a Guided DPR defect, and should be reported back as such rather than patched around in this screen.
+
+Once the actual cause is confirmed:
+- Suggestions must depend on selected Date + Site + active programme bars + progress already recorded, not on the user's role.
+- Engineer selection may affect responsibility/attribution but must not suppress valid programme activities.
+- The message "everything planned is already reported" must be shown only when the selected date/site programme and progress data genuinely support that conclusion.
+- Add a test proving Admin, PM and Site Engineer see the same applicable programme suggestions for the same site/date, subject only to access permissions.
+- Add a test proving a programme bar with a valid date range for the site/date is suggested, and one without a covering date range is not — so date-window behaviour is verified independently of role.
+
+2. Automatic programme-bar linking
+
+When BOQ item, Side and actual chainage identify one compatible programme bar:
+
+- link it automatically;
+- show it as:
+  "Linked automatically: Reach 1 · Ch. 2.400–3.250 · LHS"
+- hide incompatible opposite-side bars from the normal view;
+- provide "Change planned reach" only as a secondary action.
+
+Do not require the user to manually select among all programme bars when one valid match exists.
+
+This applies both when an entry is created from a suggested "Today's likely activity" (already bar-linked) and when an entry is added manually via "Record another activity" and later identified by item + side + chainage as matching exactly one bar.
+
+3. Core geometry fields
+
+For items whose BOQ quantity can be calculated from geometry, keep these fields visible in the main activity card:
+
+- Chainage From
+- Chainage To
+- Width
+- Thickness, where applicable
+- Quantity
+- Quantity source
+
+Do not place Width or Thickness behind "Add details" when they are required for quantity calculation.
+
+"Add details" should contain optional information such as equipment, labour, personnel, tests, weather and remarks.
+
+4. Item/UOM-aware fields
+
+Use the BOQ UOM and item configuration:
+
+- CUM geometry item: length × width × thickness
+- SQM item: length × width
+- RM item: chainage length or direct measured length
+- MT item: direct/weighment quantity unless an approved calculation exists
+- Nos item: direct quantity
+- survey-based earthwork: permit Survey/manual quantity
+
+Hide irrelevant geometry fields rather than showing every field for every item.
+
+5. Automatic quantity calculation
+
+For geometry-calculated items:
+
+- recalculate immediately when From, To, Width or Thickness changes;
+- populate Qty automatically;
+- automatically set quantitySource = calculated;
+- display:
+  "Quantity source: Calculated from geometry"
+- do not show an empty source dropdown;
+- do not require user action for Qty Source.
+
+Guardrail — do not guess: only auto-populate Qty and set quantitySource = calculated when chainage From, chainage To, Width and Thickness (where applicable to the item's UOM) are all genuinely present and valid. This screen already had a prior fix ensuring quantitySource is never guessed from UOM alone — it must only ever be recorded as "calculated" when it is truly computed from complete geometry. If any required dimension is missing or invalid, behave exactly as today: leave Qty blank and require the user to select a source manually. Do not substitute an assumed or partial value to avoid showing a blank field.
+
+Example test:
+
+From 2+400
+To 2+600
+Width 4.2 m
+Thickness 0.30 m
+
+Expected:
+
+Length = 200 m
+Quantity = 252.00 CUM
+Source = Calculated from geometry
+
+6. Manual override
+
+Only when the user edits the calculated quantity:
+
+- mark it as overridden;
+- require Direct measured, Survey, Weighment or Other;
+- require a note for Other.
+
+If the value is restored to the calculated quantity, return to automatic source.
+
+Do not silently overwrite a manual override. Once a quantity has been manually overridden, further edits to Width, Thickness, or chainage must not silently recalculate and replace the entered quantity. Either prompt the user before recalculating, or clearly flag that the geometry inputs no longer match the entered quantity, so the engineer is aware and decides deliberately rather than losing a real measured correction without noticing.
+
+7. Balance warning
+
+Compare the calculated/reported quantity with the selected programme-bar balance.
+
+- Do not silently accept quantity greater than the selected reach balance.
+- Show a clear review warning.
+- Keep BOQ item totals separately labelled from selected-reach totals.
+
+8. Tests
+
+Prove:
+
+- programme suggestions appear identically for Admin/PM/Engineer for the same site/date;
+- a bar with a valid date range is suggested and one without is not, independent of role;
+- one compatible bar auto-links from item + side + chainage, for both suggested and manually-added entries;
+- geometry fields remain visible when required, not hidden behind "Add details";
+- 200 × 4.2 × 0.30 calculates 252 CUM automatically;
+- source is automatically Calculated from geometry when all dimensions are present;
+- Qty stays blank and source stays manual when any required dimension is missing — no guessed value;
+- manual edit requires source selection;
+- editing geometry after a manual override does not silently replace the overridden quantity;
+- selected-reach balance warning works;
+- Guided and Detailed DPR continue using the same draft and records.
+
+DO NOT TOUCH
+- SiteEntry.tsx (Detailed/Classic DPR) — this correction is scoped to the Guided DPR screen only.
+- Work Programme quantity allocation
+- BOQ values
+- Execution arrangements
+- Stores, Procurement
+- Submitted DPR history

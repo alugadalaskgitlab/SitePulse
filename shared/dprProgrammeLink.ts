@@ -64,6 +64,48 @@ export function chainageOutsideBar(
   return fromKm < bar.chainageFrom - epsilon || toKm > bar.chainageTo + epsilon;
 }
 
+// ─── Guided DPR "Today's likely activities" (role-independent by design) ─────
+
+/**
+ * Compute the suggested programme bars for a Guided DPR date/site.
+ *
+ * Deliberately depends ONLY on:
+ *  - the site's programme bars (road bars — no structureId),
+ *  - the report date vs each bar's start/end window (inclusive),
+ *  - bars already reported today (any DPR) or already added to the open form.
+ *
+ * There is intentionally NO role/user/engineer parameter: Admin, PM and Site
+ * Engineer viewing the same site/date always get identical suggestions
+ * (subject only to which sites they can access at all).
+ */
+export function suggestGuidedBars<T extends { id: number; structureId?: string | null; startDate?: string | null; endDate?: string | null }>(
+  bars: T[],
+  date: string,
+  reportedBarIds: ReadonlySet<number>,
+  formLinkedBarIds: ReadonlySet<number>,
+): T[] {
+  return bars
+    .filter((b) => !b.structureId) // road bars only on this screen
+    .filter((b) => !!b.startDate && !!b.endDate && date >= b.startDate! && date <= b.endDate!)
+    .filter((b) => !reportedBarIds.has(b.id))
+    .filter((b) => !formLinkedBarIds.has(b.id));
+}
+
+/**
+ * Classify why the suggestion list is empty, so the UI never claims
+ * "everything planned is already reported" unless the data supports it.
+ */
+export function emptySuggestionsReason(
+  bars: Array<{ id: number; structureId?: string | null; startDate?: string | null; endDate?: string | null }>,
+  date: string,
+): "no_programme" | "no_date_coverage" | "all_reported" {
+  const roadBars = bars.filter((b) => !b.structureId);
+  if (roadBars.length === 0) return "no_programme";
+  const covering = roadBars.filter((b) => !!b.startDate && !!b.endDate && date >= b.startDate! && date <= b.endDate!);
+  if (covering.length === 0) return "no_date_coverage";
+  return "all_reported";
+}
+
 // ─── Part C: automatic programme-bar matching (build once, use in both) ──────
 
 export type AutoMatchInput = {
