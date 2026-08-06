@@ -30,6 +30,8 @@ import {
   isNoChange,
   summarizeSession,
   computeVarianceWarnings,
+  toFiniteNumber,
+  formatQty,
   STATUS_LABELS,
   type ReconciliationStatus,
 } from "@shared/stockReconciliation";
@@ -50,7 +52,10 @@ interface RowDraft {
   include: boolean;
 }
 
-const fmt = (n: number) => Number(n.toFixed(3)).toLocaleString("en-IN");
+// Display-safe formatter (shared helper): handles pg numeric strings, null,
+// undefined, "", NaN — invalid/missing renders as "—", never crashes and
+// never silently shows 0 for missing data.
+const fmt = (n: unknown) => formatQty(n, 3);
 
 export default function PlantStockReconciliation() {
   const { toast } = useToast();
@@ -97,15 +102,19 @@ export default function PlantStockReconciliation() {
               { conversionFactor: material.conversionFactor ?? null, conversionFromUom: material.conversionFromUom ?? null, conversionToUom: material.conversionToUom ?? null },
               draft.physicalUom || stockUom, stockUom)
           : null;
+        // Calculation-safe book balance: pg numeric strings are normalised;
+        // a missing/invalid balance BLOCKS the row instead of acting as zero.
+        const bookBalance = toFiniteNumber(b.balance);
         const physicalBase = qtyValid && conv ? convertToBase(qty, conv) : null;
-        const adjustment = physicalBase !== null ? computeAdjustment(b.balance, physicalBase) : null;
+        const adjustment = physicalBase !== null && bookBalance !== null ? computeAdjustment(bookBalance, physicalBase) : null;
         return {
-          balanceRow: b, draft, material, stockUom, qty, qtyValid, conv,
+          balanceRow: b, draft, material, stockUom, qty, qtyValid, conv, bookBalance,
           physicalBase, adjustment,
           noChange: adjustment !== null && isNoChange(adjustment, stockUom),
           conversionMissing: qtyValid && !conv,
           reasonMissing: qtyValid && !draft.reason,
-          ready: qtyValid && !!conv && !!draft.reason,
+          balanceInvalid: bookBalance === null,
+          ready: qtyValid && !!conv && !!draft.reason && bookBalance !== null,
         };
       });
   }, [balances, drafts, materials]);
@@ -120,7 +129,7 @@ export default function PlantStockReconciliation() {
   const varianceWarnings = useMemo(() => computeVarianceWarnings(readyRows.map(r => ({
     key: rowKey(r.balanceRow),
     label: `${r.material?.name ?? r.balanceRow.materialId} (${partyName(r.balanceRow.partyId)})`,
-    oldBalance: r.balanceRow.balance,
+    oldBalance: r.bookBalance!,
     physicalBase: r.physicalBase!,
     adjustment: r.adjustment!,
     uom: r.stockUom,
@@ -188,9 +197,14 @@ export default function PlantStockReconciliation() {
     mutationFn: async () => {
       // Draft posts: the SAVED draft is what the server posts, so persist the
       // rows currently on screen first — any review edits become authoritative.
+      // Only READY rows are persisted for posting: the server reconstructs the
+      // whole saved draft, so a blocked row (invalid balance / missing
+      // conversion or reason) left in it would fail the ENTIRE batch — the
+      // preview's "Blocked (not posting)" promise must hold on this path too.
       if (draftId) {
+        const readyKeys = new Set(readyRows.map(r => rowKey(r.balanceRow)));
         await apiRequest("POST", "/api/plant-module/stock-reconciliation-drafts", {
-          id: draftId, countDate, status: "submitted", rows: draftRowsPayload(),
+          id: draftId, countDate, status: "submitted", rows: draftRowsPayload().filter(r => readyKeys.has(r.key)),
         });
       }
       const res = await apiRequest("POST", "/api/plant-module/stock-reconciliation", {
@@ -313,7 +327,7 @@ export default function PlantStockReconciliation() {
                           </label>
                           <div className="text-sm">
                             System balance:{" "}
-                            <span className={`font-semibold ${b.balance < 0 ? "text-red-600" : ""}`}>
+                            <span className={`font-semibold ${(toFiniteNumber(b.balance) ?? 0) < 0 ? "text-red-600" : ""}`}>
                               {fmt(b.balance)} {stockUom}
                             </span>
                           </div>
@@ -355,7 +369,12 @@ export default function PlantStockReconciliation() {
 
                         {draft.include && row && row.qtyValid && (
                           <div className="text-sm rounded-md bg-muted/50 p-2 flex flex-wrap gap-x-6 gap-y-1">
-                            {row.conversionMissing ? (
+                            {row.balanceInvalid ? (
+                              <span className="text-red-600 flex items-center gap-1">
+                                <AlertTriangle className="w-4 h-4" />
+                                System balance for this row is missing/invalid — it cannot be reconciled until the balance record is fixed. Posting blocked.
+                              </span>
+                            ) : row.conversionMissing ? (
                               <span className="text-red-600 flex items-center gap-1">
                                 <AlertTriangle className="w-4 h-4" />
                                 No approved conversion from {draft.physicalUom || stockUom} to {stockUom} — configure it in Material Masters. Posting blocked.

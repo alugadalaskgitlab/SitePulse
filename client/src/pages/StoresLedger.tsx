@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { formatQty, toFiniteNumber } from "@shared/stockReconciliation";
 
 type LedgerEntry = {
   date: string; docNumber: string; type: "GRN" | "ISSUE";
@@ -39,8 +40,17 @@ export default function StoresLedger() {
     enabled: !!itemId,
   });
 
-  const totalIn = ledger.filter(e => e.direction === "in").reduce((s, e) => s + e.qty, 0);
-  const totalOut = ledger.filter(e => e.direction === "out").reduce((s, e) => s + e.qty, 0);
+  // pg NUMERIC columns arrive as strings — normalise before summing. If any
+  // entry is malformed the total shows "—" rather than a silently-wrong sum.
+  const sumQty = (rows: typeof ledger): number | null =>
+    rows.reduce<number | null>((s, e) => {
+      if (s === null) return null;
+      const q = toFiniteNumber(e.qty);
+      return q === null ? null : s + q;
+    }, 0);
+  const totalIn = sumQty(ledger.filter(e => e.direction === "in"));
+  const totalOut = sumQty(ledger.filter(e => e.direction === "out"));
+  const netBalance = totalIn !== null && totalOut !== null ? totalIn - totalOut : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -58,7 +68,7 @@ export default function StoresLedger() {
           </div>
           {item && (
             <div className="text-right">
-              <div className="text-xl font-bold">{item.balance.toFixed(2)}</div>
+              <div className="text-xl font-bold">{formatQty(item.balance, 2)}</div>
               <div className="text-sm text-muted-foreground">{item.uom} in stock</div>
             </div>
           )}
@@ -68,15 +78,15 @@ export default function StoresLedger() {
         {ledger.length > 0 && (
           <div className="grid grid-cols-3 gap-3">
             <Card><CardContent className="p-3 text-center">
-              <div className="text-lg font-bold text-green-600 dark:text-green-400">{totalIn.toFixed(2)}</div>
+              <div className="text-lg font-bold text-green-600 dark:text-green-400">{formatQty(totalIn, 2)}</div>
               <div className="text-sm text-muted-foreground">{item?.uom} Received</div>
             </CardContent></Card>
             <Card><CardContent className="p-3 text-center">
-              <div className="text-lg font-bold text-orange-600 dark:text-orange-400">{totalOut.toFixed(2)}</div>
+              <div className="text-lg font-bold text-orange-600 dark:text-orange-400">{formatQty(totalOut, 2)}</div>
               <div className="text-sm text-muted-foreground">{item?.uom} Issued</div>
             </CardContent></Card>
             <Card><CardContent className="p-3 text-center">
-              <div className="text-lg font-bold">{(totalIn - totalOut).toFixed(2)}</div>
+              <div className="text-lg font-bold">{formatQty(netBalance, 2)}</div>
               <div className="text-sm text-muted-foreground">{item?.uom} Balance</div>
             </CardContent></Card>
           </div>
@@ -146,16 +156,16 @@ export default function StoresLedger() {
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono">
                         {entry.direction === "in"
-                          ? <span className="text-green-600 font-semibold">{entry.qty.toFixed(2)}</span>
+                          ? <span className="text-green-600 font-semibold">{formatQty(entry.qty, 2)}</span>
                           : <span className="text-muted-foreground/30">—</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono">
                         {entry.direction === "out"
-                          ? <span className="text-orange-600 font-semibold">{entry.qty.toFixed(2)}</span>
+                          ? <span className="text-orange-600 font-semibold">{formatQty(entry.qty, 2)}</span>
                           : <span className="text-muted-foreground/30">—</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono font-bold">
-                        {entry.runningBalance.toFixed(2)}
+                        {formatQty(entry.runningBalance, 2)}
                       </td>
                     </tr>
                   ))}
@@ -163,9 +173,9 @@ export default function StoresLedger() {
                 <tfoot>
                   <tr className="bg-muted/50 border-t font-semibold">
                     <td colSpan={3} className="px-4 py-2.5 text-sm text-right text-muted-foreground">Totals</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-green-600">{totalIn.toFixed(2)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-orange-600">{totalOut.toFixed(2)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono">{(totalIn - totalOut).toFixed(2)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-green-600">{formatQty(totalIn, 2)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-orange-600">{formatQty(totalOut, 2)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono">{formatQty(netBalance, 2)}</td>
                   </tr>
                 </tfoot>
               </table>

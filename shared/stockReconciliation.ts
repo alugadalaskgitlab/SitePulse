@@ -150,6 +150,39 @@ const UOM_ALIASES: Record<string, string> = {
   unit: "unit", units: "unit", nos: "unit", no: "unit",
 };
 
+// ── Numeric normalisation (single source for display AND arithmetic) ────────
+//
+// PostgreSQL returns NUMERIC/DECIMAL columns as strings (deliberately, to
+// avoid float precision loss), so any API-sourced stock value may be a string
+// like "12.500" — calling .toFixed() on it crashes. These two helpers are the
+// only sanctioned way to consume such values:
+//
+//  • toFiniteNumber — CALCULATION-safe: returns a finite number, or null for
+//    missing/invalid input. It never substitutes zero for bad data; callers
+//    must check for null and block the calculation. Valid zero ("0", "0.000",
+//    0) IS zero — the zero-vs-missing distinction is preserved.
+//  • formatQty — DISPLAY-safe: renders invalid/missing values as "—" and
+//    valid numbers via toFixed + en-IN locale. Never use it to feed arithmetic.
+
+/** Calculation-safe: number | numeric string → finite number; anything else → null. */
+export function toFiniteNumber(v: unknown): number | null {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string") {
+    const t = v.trim();
+    if (t === "") return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/** Display-safe: invalid/missing → "—"; valid → localized fixed-decimal string. */
+export function formatQty(v: unknown, decimals = 3): string {
+  const n = toFiniteNumber(v);
+  if (n === null) return "—";
+  return Number(n.toFixed(decimals)).toLocaleString("en-IN");
+}
+
 export function normalizeUom(uom: string | null | undefined): string {
   const key = (uom ?? "").trim().toLowerCase();
   return UOM_ALIASES[key] ?? key;
@@ -186,8 +219,11 @@ export function resolveConversion(
 ): ResolvedConversion {
   if (uomEquivalent(sourceUom, stockUom)) return { kind: "same", factor: 1 };
 
-  const factor = material.conversionFactor;
-  if (factor == null || !(factor > 0) || !material.conversionFromUom || !material.conversionToUom) {
+  // Calculation-safe normalisation: a numeric-string factor from the DB is
+  // accepted; missing/invalid factors resolve to null (blocks posting) —
+  // never silently to zero.
+  const factor = toFiniteNumber(material.conversionFactor as unknown);
+  if (factor === null || !(factor > 0) || !material.conversionFromUom || !material.conversionToUom) {
     return null;
   }
   // Configured as from → to (multiply by factor).

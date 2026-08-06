@@ -13,6 +13,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import type { Party, PlantMaterial as Material, StockLedgerEntry } from "@shared/schema";
+import { formatQty, toFiniteNumber } from "@shared/stockReconciliation";
 
 type StockBalance = {
   partyId: number | null;
@@ -89,7 +90,8 @@ export default function PlantStockTransfer() {
   );
 
   const qtyNum = parseFloat(quantity) || 0;
-  const fromBalance = fromPartyBalance?.balance ?? null;
+  // pg NUMERIC arrives as a string — normalise before comparing/formatting.
+  const fromBalance = toFiniteNumber(fromPartyBalance?.balance);
   const isOverBalance = fromBalance !== null && qtyNum > fromBalance && fromBalance >= 0;
   const canSave =
     canTransfer &&
@@ -219,8 +221,8 @@ export default function PlantStockTransfer() {
             </Select>
             {fromPartyBalance !== null && materialId && (
               <p className="text-sm text-muted-foreground">
-                Current balance: <span className={`font-semibold ${fromPartyBalance.balance < 0 ? "text-red-600" : "text-green-700 dark:text-green-400"}`}>
-                  {fromPartyBalance.balance.toFixed(3)} {fromPartyBalance.uom || materialUom}
+                Current balance: <span className={`font-semibold ${(toFiniteNumber(fromPartyBalance.balance) ?? 0) < 0 ? "text-red-600" : "text-green-700 dark:text-green-400"}`}>
+                  {formatQty(fromPartyBalance.balance, 3)} {fromPartyBalance.uom || materialUom}
                 </span>
               </p>
             )}
@@ -243,8 +245,8 @@ export default function PlantStockTransfer() {
             </Select>
             {toPartyBalance !== null && materialId && (
               <p className="text-sm text-muted-foreground">
-                Current balance: <span className={`font-semibold ${toPartyBalance.balance < 0 ? "text-red-600" : "text-green-700 dark:text-green-400"}`}>
-                  {toPartyBalance.balance.toFixed(3)} {toPartyBalance.uom || materialUom}
+                Current balance: <span className={`font-semibold ${(toFiniteNumber(toPartyBalance.balance) ?? 0) < 0 ? "text-red-600" : "text-green-700 dark:text-green-400"}`}>
+                  {formatQty(toPartyBalance.balance, 3)} {toPartyBalance.uom || materialUom}
                 </span>
               </p>
             )}
@@ -268,7 +270,7 @@ export default function PlantStockTransfer() {
               <div className="flex items-center gap-1 text-sm text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                 <span>
-                  Quantity ({qtyNum.toFixed(3)}) exceeds current balance ({fromBalance!.toFixed(3)} {materialUom}).
+                  Quantity ({qtyNum.toFixed(3)}) exceeds current balance ({formatQty(fromBalance, 3)} {materialUom}).
                   Transfer will proceed but source party will go into negative balance.
                 </span>
               </div>

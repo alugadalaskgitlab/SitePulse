@@ -98,7 +98,7 @@ import {
   type StockReconciliationSession,
   type StockReconciliationItem,
 } from "@shared/schema";
-import { resolveConversion, convertToBase, computeAdjustment, isNoChange, computeVarianceWarnings, type VarianceWarning } from "@shared/stockReconciliation";
+import { resolveConversion, convertToBase, computeAdjustment, isNoChange, computeVarianceWarnings, toFiniteNumber, type VarianceWarning } from "@shared/stockReconciliation";
 import { resolvePermittedSiteIds } from "@shared/siteAccess";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
@@ -5283,7 +5283,13 @@ export class DatabaseStorage implements IStorage {
           `);
           const row = locked.rows?.[0] as { id: number; balance: string | number; uom: string | null } | undefined;
           if (!row) throw new Error(`BALANCE_NOT_FOUND: no stock balance for material ${it.materialId} / party ${it.partyId ?? "plant-common"}`);
-          const oldBalance = Number(row.balance) || 0;
+          // Calculation-safe: a malformed stored balance must BLOCK the
+          // reconciliation, never be silently treated as zero (which would
+          // post an adjustment that looks valid but isn't).
+          const oldBalance = toFiniteNumber(row.balance);
+          if (oldBalance === null) {
+            throw new Error(`BALANCE_INVALID: stored balance for material ${material.name} / party ${it.partyId ?? "plant-common"} is not numeric — fix the balance row before reconciling`);
+          }
           const stockUom = row.uom ?? material.defaultUom ?? "Units";
 
           // Conversion: configured factor only — never invented.

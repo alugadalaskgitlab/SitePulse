@@ -20,6 +20,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
 import { format, parseISO } from "date-fns";
 import type { BitumenDipReading, Party, MixTemplate, TruckDispatch } from "@shared/schema";
+import { formatQty, toFiniteNumber } from "@shared/stockReconciliation";
 import {
   BITUMEN_DIP_CHART,
   BITUMEN_DENSITY_KG_PER_LITER,
@@ -161,14 +162,20 @@ export default function PlantBitumenStock() {
     return stockBalances.filter(b => b.materialId === bitumenMaterialId);
   }, [stockBalances, bitumenMaterialId]);
 
+  // pg NUMERIC arrives as strings — normalise before summing. Any malformed
+  // balance makes the book total null (rendered "—"), never a wrong sum.
   const bitumenBookStockMT = useMemo(() => {
-    return bitumenPartyBalances.reduce((s, b) => s + (b.balance || 0), 0);
+    return bitumenPartyBalances.reduce<number | null>((s, b) => {
+      if (s === null) return null;
+      const q = toFiniteNumber(b.balance);
+      return q === null ? null : s + q;
+    }, 0);
   }, [bitumenPartyBalances]);
 
   const selectedPartyBalance = useMemo(() => {
     if (!corrPartyId) return null;
     const b = bitumenPartyBalances.find(b => String(b.partyId) === corrPartyId);
-    return b?.balance ?? 0;
+    return b ? toFiniteNumber(b.balance) : null;
   }, [bitumenPartyBalances, corrPartyId]);
 
   const correctionMutation = useMutation({
@@ -179,9 +186,9 @@ export default function PlantBitumenStock() {
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
-      const adjMT = result.adjustment?.toFixed(3);
-      const sign = result.adjustment >= 0 ? "+" : "";
-      toast({ title: "Stock correction posted", description: `Adjustment: ${sign}${adjMT} MT. Book stock now ${result.newBalance?.toFixed(3)} MT.` });
+      const adjNum = toFiniteNumber(result.adjustment);
+      const sign = adjNum !== null && adjNum >= 0 ? "+" : "";
+      toast({ title: "Stock correction posted", description: `Adjustment: ${sign}${formatQty(result.adjustment, 3)} MT. Book stock now ${formatQty(result.newBalance, 3)} MT.` });
       setShowCorrForm(false);
       setCorrTank1MT("");
       setCorrTank2MT("");
@@ -950,14 +957,14 @@ export default function PlantBitumenStock() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div className="bg-muted/50 rounded-lg p-3">
                 <div className="text-muted-foreground text-sm mb-1">Total Book Stock (All Parties)</div>
-                <div className={`font-bold text-lg ${bitumenBookStockMT < 0 ? "text-red-600" : "text-foreground"}`}>
-                  {bitumenBookStockMT.toFixed(3)} MT
+                <div className={`font-bold text-lg ${(bitumenBookStockMT ?? 0) < 0 ? "text-red-600" : "text-foreground"}`}>
+                  {formatQty(bitumenBookStockMT, 3)} MT
                 </div>
                 <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
                   {bitumenPartyBalances.map(b => (
                     <div key={b.id} className="flex justify-between gap-2">
                       <span>{parties?.find(p => p.id === b.partyId)?.name ?? `Party ${b.partyId}`}:</span>
-                      <span className={b.balance < 0 ? "text-red-500" : ""}>{b.balance.toFixed(3)} {b.uom}</span>
+                      <span className={(toFiniteNumber(b.balance) ?? 0) < 0 ? "text-red-500" : ""}>{formatQty(b.balance, 3)} {b.uom}</span>
                     </div>
                   ))}
                 </div>
@@ -972,7 +979,7 @@ export default function PlantBitumenStock() {
               </div>
               <div className="bg-muted/50 rounded-lg p-3 col-span-2">
                 <div className="text-muted-foreground text-sm mb-1">Difference (Physical − Book)</div>
-                {(latestTank1 || latestTank2) ? (() => {
+                {(latestTank1 || latestTank2) && bitumenBookStockMT !== null ? (() => {
                   const physMT = combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000;
                   const diff = physMT - bitumenBookStockMT;
                   return (
@@ -1005,14 +1012,14 @@ export default function PlantBitumenStock() {
                           <SelectItem key={p.id} value={String(p.id)}>
                             {p.name}
                             {bitumenPartyBalances.find(b => b.partyId === p.id) !== undefined &&
-                              ` (${(bitumenPartyBalances.find(b => b.partyId === p.id)?.balance ?? 0).toFixed(3)} MT)`}
+                              ` (${formatQty(bitumenPartyBalances.find(b => b.partyId === p.id)?.balance, 3)} MT)`}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     {corrPartyId && selectedPartyBalance !== null && (
                       <p className="text-sm text-muted-foreground mt-1">
-                        Current book stock: <span className={selectedPartyBalance < 0 ? "text-red-500 font-medium" : "font-medium"}>{selectedPartyBalance.toFixed(3)} MT</span>
+                        Current book stock: <span className={(toFiniteNumber(selectedPartyBalance) ?? 0) < 0 ? "text-red-500 font-medium" : "font-medium"}>{formatQty(selectedPartyBalance, 3)} MT</span>
                       </p>
                     )}
                   </div>

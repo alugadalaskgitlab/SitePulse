@@ -1,0 +1,63 @@
+Physical Stock Reconciliation page is crashing on open with:
+n.toFixed is not a function
+Location:
+client/src/pages/PlantStockReconciliation.tsx
+formatter around line 53.
+Please fix this as a focused runtime-safety correction.
+
+1. Replace the unsafe formatter so it safely handles:
+   - numeric strings from PostgreSQL/API responses;
+   - numbers;
+   - null;
+   - undefined;
+   - empty strings;
+   - NaN/invalid values.
+
+2. Normalise the value before formatting through one shared numeric helper. Do not call toFixed directly on an unverified input anywhere it is used.
+
+   Place this helper in or alongside shared/stockReconciliation.ts, not as a client-only utility. That module already contains the conversion, adjustment and variance logic for this exact domain — the same normalization must serve both the server-side arithmetic in point 5 and the client-side display fix in point 1, from one implementation, so the two cannot drift apart.
+
+   The helper must preserve the distinction between valid numeric zero and missing/invalid data — these are not the same thing and must never be collapsed into one:
+   - 0, "0", "0.000" → valid numeric zero;
+   - null, undefined, empty string, NaN, and non-numeric text → invalid/missing.
+
+   Provide two distinct behaviours from this distinction, not one:
+   - a display-safe form, which may render invalid/missing values as "—";
+   - a calculation-safe form, which must NOT silently substitute zero for an invalid value. It must return an explicit invalid/null result and require the caller to detect it and block or handle the calculation safely, rather than letting a missing value flow into arithmetic as if it were zero.
+
+   This distinction is especially important for conversion factors, physical quantities, variance and adjustment values — a missing conversion factor or malformed quantity must never be silently treated as zero and allowed to produce a reconciliation result that looks valid but isn't.
+
+3. Use a clear fallback such as "—" for unavailable/invalid values in display. Do not silently convert invalid text to zero anywhere, in display or in calculation.
+
+4. Audit all mapped reconciliation values used by this page:
+   - book balance;
+   - physical balance;
+   - converted quantity;
+   - adjustment quantity;
+   - conversion factor;
+   - variance percentages;
+   - summary totals.
+
+   Do not stop at this one page. PostgreSQL returns NUMERIC/DECIMAL columns as strings by default, specifically to avoid floating-point precision loss — so any screen that reads a decimal-typed stock or reconciliation column and formats or calculates on it directly is a candidate for the same crash, not only this formatter. Search the codebase for every place calling .toFixed( directly on a value sourced from the API or database without going through the new shared normalization helper first, across the Stores and stock-related pages generally — including the Stock Balances & Ledger screen, which renders a large number of formatted stock values and is immediately adjacent to this one. Fix every instance found using the same shared helper from point 2, not page-by-page local patches.
+
+5. Ensure calculations also normalise numeric database strings before arithmetic, not only before display, using the calculation-safe form of the shared helper from point 2 — never the display-safe form, which is allowed to paper over invalid values in a way calculations must not.
+
+6. Add tests for:
+   - number input;
+   - numeric-string input;
+   - null/undefined;
+   - empty string;
+   - invalid string;
+   - negative quantity;
+   - zero;
+   - very small decimal;
+   - valid numeric zero (0, "0", "0.000") is treated as zero, not as invalid;
+   - invalid/missing input is never silently converted to zero by the calculation-safe form, and is distinguishable from a true zero by the caller.
+
+   Add these tests against the shared helper itself, so every consumer (this page and any others found in point 4) is covered by one test suite rather than duplicated per page.
+
+7. Open the Physical Stock Reconciliation page, and every other page corrected under point 4, using the current live/dev stock data and confirm each renders without the Vite runtime overlay.
+
+8. Do not change stock balances, ledger entries, conversions, reconciliation rules or production data in this fix.
+
+   Do not fix this by registering a global PostgreSQL type parser or otherwise changing how the database driver returns NUMERIC/DECIMAL columns app-wide. That would silently change the type of every decimal value the whole application touches, far beyond this bug's scope. The fix must stay defensive at the point of consumption — normalise before use, everywhere a value is used — not alter how the driver hands data over in the first place.
