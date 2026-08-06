@@ -1,0 +1,446 @@
+Instruction — Pre-Deployment Guided DPR Default and Secure Guided User Creation
+
+PURPOSE
+
+Complete two user-experience and access-control requirements before production deployment:
+
+1. Guided DPR must be the default DPR-entry view for every authorised user on every device.
+2. User creation must include a safe guided role-template and project/site-access setup.
+
+This task must also correct the underlying unsafe site-access default:
+
+A non-admin user with no explicit site-access records must have access to no sites—not all sites.
+
+Company-wide access must always be an explicit recorded grant.
+
+This is one bounded pre-deployment task.
+
+Do not add unrelated features or redesign the existing DPR or Permission System v2 architecture.
+
+PART A — GUIDED DPR DEFAULT FOR ALL AUTHORISED USERS
+
+1. Guided DPR must be the initial default for every user who has permission to create or edit DPRs, regardless of:
+
+- Owner/Admin role;
+- Manager role;
+- Site Engineer role;
+- other authorised role;
+- phone;
+- tablet/iPad;
+- laptop;
+- desktop.
+
+2. Remove role-based defaulting such as:
+
+defaultGuided = !isAdmin && isFieldEngineer
+
+3. For a user with no saved DPR-view preference:
+
+- open Guided DPR.
+
+4. Keep clearly visible actions:
+
+- “Switch to Classic View” in Guided DPR;
+- “Switch to Guided View” in Classic DPR.
+
+5. Remember the individual user’s deliberate view choice for future DPR visits.
+
+Use the existing user-preference/settings mechanism where available.
+
+Where no server-side preference mechanism exists, use a safe user-specific browser preference keyed to the authenticated user—not one shared device-wide value.
+
+6. Switching views must retain:
+
+- the same DPR ID;
+- the same draft;
+- all activity/progress rows;
+- programmeBarId;
+- BOQ item;
+- Reach;
+- Side;
+- chainages;
+- quantity;
+- quantity source;
+- photos;
+- remarks;
+- current Guided step;
+- save/submission state.
+
+7. Switching views must not:
+
+- create another draft;
+- duplicate progress rows;
+- drop programme linkage;
+- reset the current step;
+- submit anything automatically.
+
+8. Classic DPR must remain fully available and unchanged in capability.
+
+9. Do not make Guided View conditional on screen size.
+
+The layout may respond to device width, but Guided remains the default mode unless the user deliberately selects Classic.
+
+PART B — GUIDED USER CREATION FLOW
+
+Convert the existing Create User process into a guided flow using the current user, role-template, permission and site-access systems.
+
+Do not create a second permissions system.
+
+STEP 1 — BASIC DETAILS
+
+Capture:
+
+- Full name
+- Email and/or mobile/login identifier according to the existing system
+- Password or existing invitation/login setup
+- Notification preference
+- Session policy
+- Active status
+
+Validate duplicate email/mobile/login before final creation.
+
+STEP 2 — ROLE TEMPLATE
+
+Offer the actual existing supported templates using the current Permission System v2 definitions.
+
+Friendly choices may include:
+
+- Owner/Admin
+- Project Manager
+- Site Engineer
+- Stores
+- Procurement
+- Equipment/Plant
+- Billing/Measurements
+- Viewer/Auditor
+
+Do not create duplicate template definitions.
+
+Selecting a template must prefill:
+
+- Admin/Owner status where applicable;
+- field-user status where applicable;
+- existing permission groups;
+- approval/manage permissions;
+- permission-manager scope where relevant.
+
+Provide:
+
+“Adjust permissions”
+
+for authorised permission managers.
+
+Do not expose the full permission matrix by default.
+
+STEP 3 — PROJECT AND SITE ACCESS
+
+Require one explicit access choice:
+
+- All permitted current projects/sites; or
+- Selected projects/sites; or
+- No site access yet — Setup incomplete.
+
+Do not silently grant company-wide access.
+
+For Site Engineers and other site-specific operational roles, selected project/site access must be explicit.
+
+“All sites” must be represented by an explicit stored grant or existing explicit all-sites mechanism.
+
+It must never be inferred merely because no site-access rows exist.
+
+STEP 4 — REVIEW AND CREATE
+
+Before creation, show:
+
+- user identity/login;
+- selected role template;
+- Admin/field-user status;
+- selected project/site access;
+- explicit all-sites status where applicable;
+- permission-group summary;
+- notification/session settings.
+
+Primary action:
+
+“Create User”
+
+Secondary action:
+
+“Back and Edit”
+
+PART C — CORRECT THE UNDERLYING SITE-ACCESS DEFAULT
+
+Inspect the actual current implementation, including getUserPermittedSiteIds and every route/service that consumes its result.
+
+Correct the access semantics as follows:
+
+1. Admin/Owner
+
+Retain the existing authorised company-wide access behaviour.
+
+2. Non-admin user with explicit selected-site access
+
+Return only the permitted site IDs.
+
+3. Non-admin user with an explicit authorised all-sites grant
+
+Return the explicit all-sites state according to the existing access model.
+
+4. Non-admin user with zero site-access rows and no explicit all-sites grant
+
+Return no permitted sites.
+
+Do not return null or another value that downstream routes interpret as unrestricted access.
+
+5. Setup-incomplete user
+
+A non-admin user marked Setup incomplete must:
+
+- be denied all project/site operational data;
+- not access DPRs, Stores, Procurement, Plant or other site-scoped records;
+- be allowed only the minimum account/setup pages necessary according to existing permissions;
+- never receive company-wide access because configuration is incomplete.
+
+6. Route consistency
+
+Audit all site-scoped routes that consume the site-access result.
+
+Ensure that:
+
+- no sites means no site data;
+- explicit all-sites means authorised all-site access;
+- null/undefined cannot accidentally mean unrestricted access for non-admin users.
+
+Do not weaken Admin/Owner behaviour.
+
+PART D — EXISTING USER SAFETY BEFORE ENFORCEMENT
+
+Changing the zero-row meaning may affect existing non-admin users.
+
+Before enabling the new rule in production, generate a read-only audit report listing:
+
+- non-admin users with zero site-access rows;
+- active/inactive status;
+- current role/template;
+- whether they appear to rely on the old unrestricted fallback;
+- currently expected projects/sites where this can be inferred safely.
+
+Do not silently grant all-sites access to these users.
+
+Do not silently lock them out without reporting the impact.
+
+Provide an Admin resolution flow before deployment or immediately as a required migration step:
+
+- assign selected sites;
+- explicitly grant all sites where authorised;
+- keep no access and mark Setup incomplete;
+- deactivate the user.
+
+Release must not be marked ready while active non-admin users remain ambiguously dependent on the old zero-row behaviour.
+
+PART E — SAFE CREATION AND FAILURE HANDLING
+
+Creating a user must complete:
+
+1. user account creation;
+2. role-template application;
+3. adjusted permission save;
+4. project/site-access assignment;
+5. completion-state update.
+
+Use the existing APIs and data structures.
+
+Where practical, use one database transaction.
+
+Where several calls are unavoidable:
+
+- track each step;
+- do not display complete success when permissions or site access failed;
+- show the failed step;
+- provide “Retry Setup”;
+- do not create a duplicate user on retry.
+
+A partially configured account must be marked:
+
+“Setup incomplete”
+
+until permissions and access are saved successfully.
+
+A Setup-incomplete non-admin user must have no site access.
+
+PART F — EXISTING USER MANAGEMENT
+
+Keep the existing detailed capabilities:
+
+- edit user;
+- apply/change role template;
+- adjust permissions;
+- copy permissions from another user;
+- change project/site access;
+- grant/revoke explicit all-sites access;
+- activate/deactivate;
+- reset password/session;
+- notification settings.
+
+Do not alter correctly configured existing users automatically.
+
+PART G — PERMISSION SAFETY
+
+1. Only users with existing user-management authority may create users.
+
+2. Only authorised permission managers may:
+
+- apply templates;
+- adjust permissions;
+- assign project/site access;
+- grant all-sites access.
+
+3. A permission manager must not grant permissions or site scope beyond their own allowed management scope.
+
+4. Preserve Permission System v2 route and server checks.
+
+5. Do not treat client-side hiding as security enforcement.
+
+PART H — TESTS
+
+Add or update real tests.
+
+GUIDED DPR
+
+1. Admin with DPR permission and no preference opens Guided DPR.
+2. Manager with DPR permission and no preference opens Guided DPR.
+3. Site Engineer with DPR permission opens Guided DPR.
+4. Behaviour is the same at phone, tablet and desktop widths.
+5. User switches to Classic; preference is remembered.
+6. User switches back to Guided; preference is remembered.
+7. Guided → Classic → Guided retains the same draft and programmeBarId.
+8. Switching does not create duplicate DPRs or progress rows.
+9. Existing Classic DPR save/submit behaviour remains unchanged.
+
+USER CREATION
+
+10. Site Engineer template applies the correct current permissions.
+11. Stores, Procurement and Project Manager templates apply correctly.
+12. Selected project/site access is saved.
+13. All-sites access is saved only when explicitly selected and authorised.
+14. Adjusted permissions override template defaults correctly.
+15. Failed permission/access setup results in Setup incomplete.
+16. Retry does not create a duplicate user.
+17. Existing detailed permission editing continues to work.
+18. Permission managers cannot grant beyond their scope.
+
+UNDERLYING ACCESS-SEMANTICS TESTS
+
+19. Directly test getUserPermittedSiteIds or the authoritative equivalent:
+
+- non-admin + zero access rows + no explicit all-sites grant
+  → returns no sites, not unrestricted/all sites;
+
+- non-admin + selected-site rows
+  → returns only those sites;
+
+- non-admin + explicit all-sites grant
+  → returns authorised all-sites state;
+
+- Admin/Owner
+  → retains current authorised behaviour.
+
+20. A Setup-incomplete non-admin user cannot access any site-scoped route.
+
+21. A non-admin user with no site access receives no project/site records from:
+
+- DPR routes;
+- Stores routes;
+- Procurement routes;
+- Plant routes;
+- other representative site-scoped routes.
+
+22. No downstream route interprets empty/no-site access as unrestricted access.
+
+PART I — LIVE PROOF
+
+1. Login as Admin and open DPR:
+   - Guided DPR opens initially.
+
+2. Switch to Classic and reopen:
+   - preference is remembered.
+
+3. Switch back to Guided.
+
+4. Start one DPR draft and switch views twice:
+   - no data or programme link is lost;
+   - no duplicate draft is created.
+
+5. Create a test Site Engineer:
+   - apply Site Engineer template;
+   - assign only Takkadpally;
+   - review permissions;
+   - create.
+
+6. Login as that Site Engineer:
+   - only Takkadpally is visible;
+   - Guided DPR opens;
+   - authorised DPR functions work;
+   - other sites and unauthorised modules are blocked.
+
+7. Create or simulate a non-admin Setup-incomplete user with zero site-access rows:
+   - confirm the user cannot access any project/site operational data;
+   - confirm zero rows do not grant all sites.
+
+8. Explicitly grant an authorised user all-sites access:
+   - confirm company-wide access works only after the explicit grant.
+
+9. Clean up/deactivate the test accounts according to existing procedures.
+
+PART J — RELEASE CHECK
+
+After completion, run:
+
+- Guided DPR tests;
+- user-management tests;
+- permission/site-access tests;
+- npm test;
+- npm run build.
+
+Report:
+
+- pass/fail;
+- current commit SHA;
+- clean/dirty working tree;
+- known pre-existing failures separately;
+- results of the existing-user zero-site-access audit;
+- confirmation that ambiguous active users have been resolved;
+- confirmation that production data was not altered during development testing.
+
+DO NOT TOUCH
+
+- Work Programme sequencing
+- Project Scope & Working Reaches
+- Stock Reconciliation
+- Stores/Procurement calculations
+- SDB/SNL/mix templates
+- Existing submitted DPRs
+- Photo-storage configuration
+- Takkadpally data migration
+- Production deployment itself
+- Permission System v2 architecture except correcting the zero-site-access semantics and using its existing APIs/templates
+
+FINAL REQUIREMENT
+
+Do not mark complete until:
+
+- Guided DPR is the default for every DPR-authorised user on every device;
+- the user’s deliberate view preference is remembered;
+- switching views retains one draft without duplication;
+- Create User includes role template and explicit project/site access;
+- all-sites access requires an explicit recorded grant;
+- a non-admin user with zero site-access rows has no site access;
+- Setup-incomplete users are actually blocked from site data;
+- existing ambiguous users are identified and safely resolved;
+- correctly configured existing users remain unaffected;
+- Classic DPR and detailed User Management remain functional;
+- tests and production build pass.
+
+Return the completed release-readiness report.
+
+Do not deploy automatically.

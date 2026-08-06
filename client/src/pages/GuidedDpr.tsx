@@ -110,6 +110,13 @@ export default function GuidedDpr() {
   const { toast } = useToast();
   const { uploadFile } = useUpload();
   const returnTo = new URLSearchParams(searchStr).get("returnTo") ?? "/site";
+  // Pre-deployment Part A: Classic → Guided keeps the SAME server draft.
+  // `?draftId=` loads that draft here instead of starting a fresh one.
+  const urlDraftId = (() => {
+    const raw = new URLSearchParams(searchStr).get("draftId");
+    const n = raw ? Number(raw) : NaN;
+    return Number.isInteger(n) && n > 0 ? n : null;
+  })();
 
   // Visiting this screen counts as choosing it — remembered per user/device so
   // every Road DPR entry point routes here next time.
@@ -141,7 +148,9 @@ export default function GuidedDpr() {
   };
   const autosaveData: GuidedFormState = { date, siteName, engineer, entries, equipment, labour, remarks, draftId };
   const autosave = useAutosave<GuidedFormState>({
-    formKey: "guided-dpr-new",
+    // A URL-loaded draft autosaves under its own key so it never collides
+    // with (or duplicates into) the fresh-DPR autosave blob.
+    formKey: urlDraftId != null ? `guided-dpr-${urlDraftId}` : "guided-dpr-new",
     data: autosaveData,
     onRestore: (d) => {
       setDate(d.date); setSiteName(d.siteName); setEngineer(d.engineer);
@@ -149,6 +158,54 @@ export default function GuidedDpr() {
       setRemarks(d.remarks ?? ""); setDraftId(d.draftId ?? null);
     },
   });
+
+  // Hydrate from an existing server draft (Classic → Guided switch). Only
+  // once, and only if the autosave restore hasn't already loaded this draft.
+  const hydratedRef = useRef(false);
+  const { data: urlDraftDpr } = useQuery<any>({
+    queryKey: ["/api/dprs", urlDraftId],
+    queryFn: async () => {
+      const res = await fetch(`/api/dprs/${urlDraftId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("draft_load_failed");
+      return res.json();
+    },
+    enabled: urlDraftId != null,
+  });
+  useEffect(() => {
+    if (!urlDraftDpr || hydratedRef.current) return;
+    hydratedRef.current = true;
+    setDraftId(urlDraftDpr.id);
+    setDate(urlDraftDpr.date ?? today);
+    setSiteName(String(urlDraftDpr.site ?? "").replace(/ – (Edited by|Copy by) .+$/, "").trim());
+    setEngineer(urlDraftDpr.engineer ?? "");
+    setRemarks(urlDraftDpr.remarks ?? "");
+    setEntries((urlDraftDpr.progress ?? [])
+      .filter((p: any) => !p.noSiteWork)
+      .map((p: any): GuidedEntry => ({
+        activity: p.activity || "",
+        boqItemId: p.boqItemId ?? null,
+        programmeBarId: p.programmeBarId ?? null, // never stripped client-side
+        side: p.side || "",
+        chainageFrom: p.chainageFrom || "",
+        chainageTo: p.chainageTo || "",
+        quantity: p.quantity != null ? Number(p.quantity) : null,
+        uom: p.uom || "SQM",
+        expanded: false,
+        width: p.width != null ? Number(p.width) : null,
+        thickness: p.thickness != null ? Number(p.thickness) : null,
+        remark: "",
+        quantitySource: p.quantitySource || "",
+        quantitySourceNote: p.quantitySourceNote || "",
+        chainageOverrideReason: p.chainageOverrideReason || "",
+        executedBy: p.executedBy || "",
+      })));
+    setEquipment((urlDraftDpr.equipment ?? []).map((e: any): SimpleEquipmentRow => ({
+      machine: e.machine || "", vehicleNo: e.vehicleNo || "", operator: e.operator || "", task: e.task || "",
+    })));
+    setLabour((urlDraftDpr.labour ?? []).map((l: any): SimpleLabourRow => ({
+      category: l.category || "", count: l.count != null ? Number(l.count) : null, contractor: l.contractor || "", task: l.task || "",
+    })));
+  }, [urlDraftDpr]);
 
   // ── Master data ────────────────────────────────────────────────────────────
   const { data: sitesList = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });

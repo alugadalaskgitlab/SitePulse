@@ -25,6 +25,7 @@ import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@share
 import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
 import { parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
+import { setDprEntryMode } from "@/lib/dprEntryMode";
 
 interface ProgressEntry {
   activity: string;
@@ -624,6 +625,29 @@ export default function SiteEdit() {
 
   const isDraftMode = !!(dpr as any)?.dprStatus && (dpr as any).dprStatus === "draft";
 
+  // Classic → Guided is only offered when the draft carries nothing the
+  // Guided screen can't represent — otherwise a later Guided save would
+  // silently drop materials/site purchases/meter readings/etc.
+  const guidedCompatible = useMemo(() => {
+    const d = dpr as any;
+    if (!d) return false;
+    if (d.materials?.length || d.sitePurchases?.length || d.structureItems?.length) return false;
+    for (const p of d.progress ?? []) {
+      if (p.noSiteWork) return false;
+      if (p.personnelIds?.length) return false;
+      if (p.length != null) return false;
+    }
+    for (const e of d.equipment ?? []) {
+      if (!e.machine) continue;
+      if (e.startTime || e.endTime || e.openingReading != null || e.closingReading != null || e.diesel != null ||
+          e.numberOfTrips != null || e.totalKm != null || e.waterQuantity != null || e.amountPaid != null) return false;
+    }
+    for (const l of d.labour ?? []) {
+      if (l.boqItemId != null || l.structureId != null) return false;
+    }
+    return true;
+  }, [dpr]);
+
   const isEditFormComplete = (): boolean => {
     for (const p of progress) {
       if (p.chainageFrom && !p.chainageTo) return false;
@@ -809,6 +833,19 @@ export default function SiteEdit() {
         </div>
         {isDraftMode ? (
           <div className="flex items-center gap-2">
+            {workType === "road" && guidedCompatible && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setDprEntryMode("guided");
+                  setLocation(`/site/guided?draftId=${id}${_returnTo ? `&returnTo=${encodeURIComponent(_returnTo)}` : ""}`);
+                }}
+                className="gap-2"
+                data-testid="button-switch-guided"
+              >
+                Guided DPR
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={handleDraftSave}

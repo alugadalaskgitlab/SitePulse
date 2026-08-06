@@ -37,6 +37,8 @@ import {
   type PermissionMatrix,
   emptyMatrix,
   fullMatrix,
+  applyRoleTemplate,
+  ROLE_TEMPLATES,
   type SessionPolicy,
 } from "@shared/permissions";
 import {
@@ -77,6 +79,27 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const permissionMatrixSchema = z.record(
+  z.string(),
+  z.object({
+    view: z.boolean().optional(),
+    create: z.boolean().optional(),
+    edit: z.boolean().optional(),
+    delete: z.boolean().optional(),
+    view_reports: z.boolean().optional(),
+    export: z.boolean().optional(),
+    approve: z.boolean().optional(),
+    notify: z.boolean().optional(),
+  }),
+);
+
+// Guided-creation extension: role template + explicit site access are applied
+// in the SAME request so a new account is never silently left half-configured.
+const siteAccessChoiceSchema = z.object({
+  mode: z.enum(["all", "selected", "none"]),
+  siteIds: z.array(z.number().int().positive()).optional(),
+});
+
 const createUserSchema = z.object({
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
@@ -86,6 +109,11 @@ const createUserSchema = z.object({
   isFieldEngineer: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
   sessionPolicy: z.enum(["strict", "sticky"]).optional(),
+  isActive: z.boolean().optional(),
+  // Guided flow (all optional — the legacy bare create still works)
+  roleTemplate: z.string().optional(),
+  permissions: permissionMatrixSchema.optional(),
+  siteAccess: siteAccessChoiceSchema.optional(),
 }).superRefine((d, ctx) => {
   const hasEmail = !!d.email && d.email.trim().length > 0;
   const hasPhone = !!d.phone && d.phone.trim().length > 0;
@@ -110,21 +138,6 @@ const patchUserSchema = z.object({
 const passwordResetSchema = z.object({
   newPassword: z.string().min(8),
 });
-
-const permissionMatrixSchema = z.record(
-  z.string(),
-  z.object({
-    view: z.boolean().optional(),
-    create: z.boolean().optional(),
-    edit: z.boolean().optional(),
-    delete: z.boolean().optional(),
-    view_reports: z.boolean().optional(),
-    export: z.boolean().optional(),
-    approve: z.boolean().optional(),
-    notify: z.boolean().optional(),
-  }),
-);
-
 
 export function registerAuthRoutes(app: Express) {
   // -----------------------------------------------------------------
@@ -431,30 +444,182 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
+  // ── Guided setup helpers (creation + retry share these) ────────────────────
+  // Cap a requested matrix to the actor's own permissions for partial
+  // permission managers — a manager can never grant more than they hold.
+  const coerceAndCapMatrix = (req: Request, parsed: Record<string, any>): PermissionMatrix => {
+    const actor = req.authUser!;
+    const actorMatrix = !actor.isAdmin && actor.canManagePermissions && actor.permissionManagerScope === "partial"
+      ? req.authPermissions
+      : null;
+    const matrix: PermissionMatrix = emptyMatrix();
+    for (const k of SECTION_KEYS) {
+      const val = parsed[k];
+      const actorRow = actorMatrix ? actorMatrix[k] : null;
+      matrix[k] = {
+        view: !!val?.view && (actorRow ? !!actorRow.view : true),
+        create: !!val?.create && (actorRow ? !!actorRow.create : true),
+        edit: !!val?.edit && (actorRow ? !!actorRow.edit : true),
+        delete: !!val?.delete && (actorRow ? !!actorRow.delete : true),
+        view_reports: !!val?.view_reports && (actorRow ? !!actorRow.view_reports : true),
+        export: !!val?.export && (actorRow ? !!actorRow.export : true),
+        approve: !!val?.approve && (actorRow ? !!actorRow.approve : true),
+        notify: !!val?.notify && (actorRow ? !!actorRow.notify : true),
+      };
+    }
+    return matrix;
+  };
+
+  // A non-admin actor may only hand out site scope they themselves hold.
+  // Returns an error string, or null when the assignment is allowed.
+  const checkSiteScopeAllowed = async (req: Request, choice: { mode: string; siteIds?: number[] }): Promise<string | null> => {
+    const actor = req.authUser!;
+    if (actor.isAdmin || actor.isOwner) return null;
+    const actorSites = await storage.getUserPermittedSiteIds(actor.id);
+    if (actorSites === null) return null; // actor has authorised all-sites scope
+    if (choice.mode === "all") return "cannot_grant_all_sites_beyond_own_scope";
+    if (choice.mode === "selected") {
+      const allowed = new Set(actorSites);
+      const outside = (choice.siteIds ?? []).filter((id) => !allowed.has(id));
+      if (outside.length > 0) return "site_ids_beyond_own_scope";
+    }
+    return null;
+  };
+
+  /**
+   * Applies template/permissions + site access to an existing user and marks
+   * setup complete only when every step succeeded. Returns the per-step record
+   * so the client can show exactly which step failed and offer Retry.
+   */
+  const applyGuidedSetup = async (
+    req: Request,
+    userId: number,
+    isAdminUser: boolean,
+    opts: { roleTemplate?: string; permissions?: Record<string, any>; siteAccess?: { mode: "all" | "selected" | "none"; siteIds?: number[] } },
+  ) => {
+    const steps: Record<string, "ok" | "failed" | "skipped"> = { permissions: "skipped", siteAccess: "skipped", completion: "skipped" };
+    let failedError: string | null = null;
+
+    // Step: permissions (template, adjusted matrix, or defaults)
+    try {
+      if (isAdminUser) {
+        await setUserPermissions(userId, fullMatrix());
+      } else if (opts.permissions) {
+        await setUserPermissions(userId, coerceAndCapMatrix(req, opts.permissions));
+      } else if (opts.roleTemplate && opts.roleTemplate !== "custom") {
+        if (!ROLE_TEMPLATES.some((t) => t.id === opts.roleTemplate)) throw new Error("unknown_role_template");
+        // Partial managers cannot apply templates broader than their own scope.
+        await setUserPermissions(userId, coerceAndCapMatrix(req, applyRoleTemplate(opts.roleTemplate)));
+      } else {
+        await setUserPermissions(userId, emptyMatrix());
+      }
+      steps.permissions = "ok";
+    } catch (e: any) {
+      steps.permissions = "failed";
+      failedError = failedError ?? (e?.message === "unknown_role_template" ? "unknown_role_template" : "permissions_failed");
+    }
+
+    // Step: site access — an EXPLICIT choice is always recorded.
+    try {
+      const choice = opts.siteAccess ?? { mode: "none" as const };
+      const scopeErr = await checkSiteScopeAllowed(req, choice);
+      if (scopeErr) throw new Error(scopeErr);
+      if (choice.mode === "all") {
+        await storage.setUserAllSitesAccess(userId, true);
+      } else if (choice.mode === "selected") {
+        if (!choice.siteIds || choice.siteIds.length === 0) throw new Error("site_ids_required");
+        await storage.setUserAllSitesAccess(userId, false);
+        await storage.setUserSiteAccess(userId, choice.siteIds);
+      } else {
+        // "none" — explicit no-access; account stays Setup incomplete.
+        await storage.setUserAllSitesAccess(userId, false);
+        await storage.setUserSiteAccess(userId, []);
+      }
+      steps.siteAccess = "ok";
+    } catch (e: any) {
+      steps.siteAccess = "failed";
+      failedError = failedError ?? (e?.message || "site_access_failed");
+    }
+
+    // Step: completion state. Admins are complete by definition; a "none"
+    // choice deliberately leaves the account Setup incomplete.
+    const mode = opts.siteAccess?.mode ?? "none";
+    const complete = isAdminUser || (steps.permissions === "ok" && steps.siteAccess === "ok" && mode !== "none");
+    try {
+      await storage.setUserSetupComplete(userId, complete);
+      steps.completion = "ok";
+    } catch {
+      steps.completion = "failed";
+      failedError = failedError ?? "completion_failed";
+    }
+    return { steps, setupComplete: complete, error: failedError };
+  };
+
   app.post("/api/auth/users", requireAuth, requireUserMgmt("create"), async (req, res) => {
     try {
       const input = createUserSchema.parse(req.body);
-      // Check uniqueness for email and phone separately.
+      // Only admins may create admin accounts.
+      if (input.isAdmin && !req.authUser!.isAdmin) {
+        return res.status(403).json({ error: "cannot_create_admin_users" });
+      }
+      // Check uniqueness for email and phone separately BEFORE creating —
+      // guarantees a Retry after a partial failure never duplicates a user.
       if (input.email) {
         const existing = await getUserByEmail(input.email);
-        if (existing) return res.status(409).json({ error: "email_exists" });
+        if (existing) return res.status(409).json({ error: "email_exists", existingUserId: existing.id, existingSetupComplete: (existing as any).setupComplete !== false });
       }
       if (input.phone) {
         const existingPhone = await getUserByPhone(input.phone);
-        if (existingPhone) return res.status(409).json({ error: "phone_exists" });
+        if (existingPhone) return res.status(409).json({ error: "phone_exists", existingUserId: existingPhone.id, existingSetupComplete: (existingPhone as any).setupComplete !== false });
       }
+      const { roleTemplate, permissions, siteAccess, ...profile } = input;
       const u = await createUserRow({
-        ...input,
+        ...profile,
         email: input.email || null,
         phone: input.phone || null,
       });
-      // Initialize an empty permission set for the new user (admins skip).
-      if (!u.isAdmin) await setUserPermissions(u.id, emptyMatrix());
-      else await setUserPermissions(u.id, fullMatrix());
-      res.status(201).json(toSafeUser(u));
+      // New non-admin accounts start Setup-incomplete (no site access) until
+      // the guided setup below succeeds — never silently unrestricted.
+      if (!u.isAdmin) await storage.setUserSetupComplete(u.id, false);
+
+      const setup = await applyGuidedSetup(req, u.id, !!u.isAdmin, { roleTemplate, permissions, siteAccess });
+      const anyFailed = Object.values(setup.steps).includes("failed");
+      res.status(201).json({
+        ...toSafeUser(u),
+        setupComplete: setup.setupComplete,
+        setupSteps: setup.steps,
+        setupError: setup.error,
+        setupOk: !anyFailed,
+      });
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
       console.error("[POST /api/auth/users]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // Retry guided setup on an existing (possibly Setup-incomplete) user —
+  // never creates a duplicate account.
+  app.post("/api/auth/users/:id/complete-setup", requireAuth, requireUserMgmt("create"), async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const u = await getUserById(id);
+      if (!u) return res.status(404).json({ error: "not_found" });
+      // Non-admin actors can never re-run setup on admin/owner accounts.
+      if (!req.authUser!.isAdmin && (u.isAdmin || u.isOwner)) {
+        return res.status(403).json({ error: "cannot_edit_admin_users" });
+      }
+      const body = z.object({
+        roleTemplate: z.string().optional(),
+        permissions: permissionMatrixSchema.optional(),
+        siteAccess: siteAccessChoiceSchema.optional(),
+      }).parse(req.body);
+      const setup = await applyGuidedSetup(req, id, !!u.isAdmin, body);
+      const anyFailed = Object.values(setup.steps).includes("failed");
+      res.json({ ok: !anyFailed, setupComplete: setup.setupComplete, setupSteps: setup.steps, setupError: setup.error });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
+      console.error("[complete-setup]", err);
       res.status(500).json({ error: "server_error" });
     }
   });
@@ -467,6 +632,19 @@ export function registerAuthRoutes(app: Express) {
       // Load the current user record so we can enforce invariants.
       const current = await getUserById(id);
       if (!current) return res.status(404).json({ error: "not_found" });
+
+      // Privilege-escalation guards (pre-deployment security review):
+      // non-admin actors — including permission managers — can never modify
+      // admin/owner accounts, nor grant/change privileged flags.
+      const actor = req.authUser!;
+      if (!actor.isAdmin) {
+        if (current.isAdmin || current.isOwner) {
+          return res.status(403).json({ error: "cannot_edit_admin_users" });
+        }
+        if (input.isAdmin !== undefined || input.canManagePermissions !== undefined || input.permissionManagerScope !== undefined) {
+          return res.status(403).json({ error: "cannot_change_privileged_flags" });
+        }
+      }
 
       // Guard: at least one of email/phone must remain set after the patch.
       // `undefined` means "no change"; `null` / empty string means "clear".
@@ -592,7 +770,10 @@ export function registerAuthRoutes(app: Express) {
       if (!u) return res.status(404).json({ error: "not_found" });
       const rows = await storage.getUserSiteAccess(id);
       const siteIds = rows.map((r) => r.siteId);
-      res.json({ siteIds, allSites: siteIds.length === 0 });
+      // allSites is now the EXPLICIT recorded grant (or admin/owner), never
+      // inferred from zero rows.
+      const allSites = !!(u as any).allSitesAccess || !!u.isAdmin || !!(u as any).isOwner;
+      res.json({ siteIds, allSites, setupComplete: (u as any).setupComplete !== false });
     } catch (err) {
       console.error("[GET /api/auth/users/:id/site-access]", err);
       res.status(500).json({ error: "server_error" });
@@ -604,12 +785,64 @@ export function registerAuthRoutes(app: Express) {
       const id = Number(req.params.id);
       const u = await getUserById(id);
       if (!u) return res.status(404).json({ error: "not_found" });
-      const parsed = z.object({ siteIds: z.array(z.number().int().positive()) }).parse(req.body);
-      await storage.setUserSiteAccess(id, parsed.siteIds);
-      res.json({ ok: true, siteIds: parsed.siteIds, allSites: parsed.siteIds.length === 0 });
+      // Non-admin actors can never alter admin/owner site scope.
+      if (!req.authUser!.isAdmin && (u.isAdmin || u.isOwner)) {
+        return res.status(403).json({ error: "cannot_edit_admin_users" });
+      }
+      const parsed = z.object({
+        siteIds: z.array(z.number().int().positive()),
+        allSites: z.boolean().optional(),
+      }).parse(req.body);
+      const mode = parsed.allSites ? "all" : parsed.siteIds.length > 0 ? "selected" : "none";
+      const scopeErr = await checkSiteScopeAllowed(req, { mode, siteIds: parsed.siteIds });
+      if (scopeErr) return res.status(403).json({ error: scopeErr });
+      if (parsed.allSites) {
+        await storage.setUserAllSitesAccess(id, true); // also clears selected rows
+      } else {
+        await storage.setUserAllSitesAccess(id, false);
+        await storage.setUserSiteAccess(id, parsed.siteIds);
+      }
+      // Granting real access resolves a Setup-incomplete account; removing all
+      // access does NOT silently re-mark completed users (admin does that via
+      // the audit/resolution flow deliberately).
+      if ((parsed.allSites || parsed.siteIds.length > 0) && (u as any).setupComplete === false) {
+        await storage.setUserSetupComplete(id, true);
+      }
+      res.json({ ok: true, siteIds: parsed.allSites ? [] : parsed.siteIds, allSites: !!parsed.allSites });
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
       console.error("[PUT /api/auth/users/:id/site-access]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // Read-only pre-enforcement audit: non-admin users with zero site-access
+  // rows and no explicit all-sites grant — accounts that previously relied on
+  // the unsafe "zero rows = all sites" fallback. Admin resolves each via the
+  // existing site-access editor / all-sites grant / deactivate.
+  app.get("/api/auth/users/site-access-audit", requireAuth, requireUserMgmt("view"), async (_req, res) => {
+    try {
+      const all = await db.select().from(users);
+      const results = [] as any[];
+      for (const u of all) {
+        if (u.isAdmin || u.isOwner) continue;
+        if ((u as any).allSitesAccess) continue;
+        const rows = await storage.getUserSiteAccess(u.id);
+        if (rows.length > 0) continue;
+        results.push({
+          id: u.id,
+          fullName: u.fullName,
+          email: u.email,
+          phone: u.phone,
+          isActive: u.isActive,
+          isFieldEngineer: u.isFieldEngineer,
+          setupComplete: (u as any).setupComplete !== false,
+          reliedOnLegacyAllSites: true, // zero rows previously meant unrestricted
+        });
+      }
+      res.json({ ambiguousUsers: results, count: results.length, activeCount: results.filter((r) => r.isActive).length });
+    } catch (err) {
+      console.error("[site-access-audit]", err);
       res.status(500).json({ error: "server_error" });
     }
   });

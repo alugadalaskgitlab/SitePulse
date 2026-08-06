@@ -99,6 +99,7 @@ import {
   type StockReconciliationItem,
 } from "@shared/schema";
 import { resolveConversion, convertToBase, computeAdjustment, isNoChange, computeVarianceWarnings, type VarianceWarning } from "@shared/stockReconciliation";
+import { resolvePermittedSiteIds } from "@shared/siteAccess";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
@@ -8911,12 +8912,37 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(truckDispatches.date), desc(truckDispatches.id));
   }
   // User Site Access (Permission System v2)
+  // Pre-deployment access fix: semantics live in shared/siteAccess.ts —
+  // null = unrestricted ONLY for admin/owner or an explicit all-sites grant;
+  // zero rows for a plain non-admin user now means NO sites ([]), and
+  // setup-incomplete users are denied everything.
   async getUserPermittedSiteIds(userId: number): Promise<number[] | null> {
+    const [userRow] = await db.select({
+      isAdmin: users.isAdmin, isOwner: users.isOwner,
+      allSitesAccess: users.allSitesAccess, setupComplete: users.setupComplete,
+    }).from(users).where(eq(users.id, userId));
     const rows = await db.select({ siteId: userSiteAccess.siteId })
       .from(userSiteAccess)
       .where(eq(userSiteAccess.userId, userId));
-    if (rows.length === 0) return null; // null = all sites
-    return rows.map((r) => r.siteId);
+    return resolvePermittedSiteIds(userRow, rows.map((r) => r.siteId));
+  }
+
+  async setUserAllSitesAccess(userId: number, allSites: boolean): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.update(users).set({ allSitesAccess: allSites }).where(eq(users.id, userId));
+      // An explicit all-sites grant supersedes selected-site rows.
+      if (allSites) await tx.delete(userSiteAccess).where(eq(userSiteAccess.userId, userId));
+    });
+  }
+
+  async setUserSetupComplete(userId: number, complete: boolean): Promise<void> {
+    await db.update(users).set({ setupComplete: complete }).where(eq(users.id, userId));
+  }
+
+  /** Idempotent startup ensure for the new access-control columns. */
+  async ensureUserAccessColumns(): Promise<void> {
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS all_sites_access BOOLEAN NOT NULL DEFAULT FALSE`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS setup_complete BOOLEAN NOT NULL DEFAULT TRUE`);
   }
 
   async getUserSiteAccess(userId: number): Promise<UserSiteAccess[]> {

@@ -2177,6 +2177,12 @@ export const users = pgTable("users", {
   // "strict" = 5min idle + tab-close logout. "sticky" = no idle, tab-close
   // logout, 30-day max session age.
   sessionPolicy: text("session_policy").notNull().default("strict"),
+  // Pre-deployment access instruction — company-wide access is an EXPLICIT
+  // recorded grant. Zero user_site_access rows no longer means "all sites".
+  allSitesAccess: boolean("all_sites_access").notNull().default(false),
+  // False while guided user creation hasn't finished permissions + site
+  // access. Setup-incomplete non-admin users get NO site-scoped data.
+  setupComplete: boolean("setup_complete").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastLoginAt: timestamp("last_login_at"),
 });
@@ -2200,8 +2206,9 @@ export const userPermissions = pgTable("user_permissions", {
 // ============================================
 // USER SITE ACCESS (Permission System v2)
 // ============================================
-// If a user has NO rows here → they can see ALL sites (admin / backward-compat).
-// If they have rows → they only see data for those sites.
+// Explicit selected-site grants. NOTE (pre-deployment access fix): zero rows
+// no longer means "all sites" — company-wide access requires the explicit
+// users.all_sites_access grant (or isAdmin/isOwner). See shared/siteAccess.ts.
 export const userSiteAccess = pgTable("user_site_access", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

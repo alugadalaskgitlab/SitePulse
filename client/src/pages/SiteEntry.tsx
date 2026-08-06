@@ -291,19 +291,16 @@ export default function SiteEntry() {
   // choice is remembered for the session. Managers/admins always keep the
   // classic layout unless they explicitly opt into guided mode.
   //
-  // Role decides whether guided entry is the default (field engineers get
-  // it on every device — mobile, tablet, or desktop); device only decides
-  // how the guided steps are laid out (see `deviceType` below and
-  // `showStep`/step Card widths further down). Was keyed off `!isManager`,
-  // which is true for every non-admin authenticated user, so this never
-  // actually triggered for anyone logged in. Now keyed off the explicit
-  // isFieldEngineer flag, which defaults to false so existing users see no
-  // behavior change.
+  // Pre-deployment guided-DPR instruction: the /site/guided page is now the
+  // guided experience and it is the default for ALL DPR-authorised users
+  // (see lib/dprEntryMode.ts). This internal "guided mobile layout" inside
+  // the Classic page therefore no longer role-defaults on — anyone landing
+  // on the Classic page sees the classic layout, with an explicit toggle.
   const isMobileViewport = useIsMobile();
   const deviceType = useDeviceType();
   const { isAdmin, isFieldEngineer } = useAuth();
   const [guidedOverride, setGuidedOverride] = useState<boolean | null>(null);
-  const defaultGuided = !isAdmin && isFieldEngineer;
+  const defaultGuided = false;
   const guidedMode = guidedOverride ?? defaultGuided;
   const [guidedStep, setGuidedStep] = useState(0);
   const [remarksNote, setRemarksNote] = useState("");

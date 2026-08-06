@@ -361,6 +361,70 @@ const _PM_MATRIX = buildTemplateMatrix(
   ["qto_boq", "project_scope"],
 );
 
+const _STORES_MATRIX = buildTemplateMatrix(
+  [
+    "dashboard",
+    "stores_hub",
+    "stores_inventory",
+    "site_materials",
+    "irn_view",
+  ],
+  // approve — IRN issue happens at the store
+  ["irn_approve"],
+);
+
+const _PROCUREMENT_MATRIX = buildTemplateMatrix(
+  [
+    "dashboard",
+    "stores_hub", "finance_hub",
+    "purchase_indents_view", "purchase_indents_raise",
+    "irn_view",
+    "stores_inventory",
+    "vendor_bills_view", "vendor_bills_raise",
+    "master_parties", "master_materials",
+    "report_site_purchases",
+  ],
+);
+
+const _EQUIPMENT_PLANT_MATRIX = buildTemplateMatrix(
+  [
+    "dashboard",
+    "equipment_hub", "hmp_hub",
+    "plant_shift_logs", "plant_equipment", "plant_generator_logs",
+    "plant_maintenance", "plant_production", "plant_materials",
+    "plant_bitumen", "plant_ldo", "plant_heating",
+    "diesel_req_view", "diesel_req_raise",
+    "master_equipment",
+  ],
+);
+
+const _BILLING_MEASUREMENTS_MATRIX = buildTemplateMatrix(
+  [
+    "dashboard",
+    "finance_hub", "reports_hub",
+    "vendor_bills_view", "vendor_bills_raise", "vendor_bills_verify",
+    "report_management", "report_site_purchases",
+    "qto_boq",
+  ],
+);
+
+/** View-only across the operational read surfaces — no create/edit anywhere. */
+function buildViewerMatrix(): PermissionMatrix {
+  const m = emptyMatrix();
+  const viewSections: SectionKey[] = [
+    "dashboard",
+    "site_hub", "equipment_hub", "reports_hub", "stores_hub", "finance_hub", "hmp_hub",
+    "site_dprs", "site_materials",
+    "purchase_indents_view", "irn_view", "diesel_req_view",
+    "stores_inventory", "vendor_bills_view",
+    "report_management", "report_site_purchases",
+    "plant_daily_reports", "plant_stock",
+    "qto_boq", "project_scope",
+  ];
+  for (const k of viewSections) m[k] = { ...m[k], view: true, view_reports: true };
+  return m;
+}
+
 export const ROLE_TEMPLATES: RoleTemplate[] = [
   {
     id: "site_engineer",
@@ -372,12 +436,45 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     label: "Project Manager",
     description: "Oversight role. Approves PIs, DPRs, IRNs, and Vendor Bills. Full procurement access.",
   },
+  {
+    id: "stores",
+    label: "Stores",
+    description: "Store keeper. GRNs, issues, stock ledger, material receipts, IRN issue.",
+  },
+  {
+    id: "procurement",
+    label: "Procurement",
+    description: "Raises Purchase Indents and vendor bills, manages parties and materials.",
+  },
+  {
+    id: "equipment_plant",
+    label: "Equipment / Plant",
+    description: "Plant and fleet operations — shift logs, equipment usage, maintenance, diesel requests.",
+  },
+  {
+    id: "billing_measurements",
+    label: "Billing / Measurements",
+    description: "Vendor bill raise/verify, management reports, BOQ measurements.",
+  },
+  {
+    id: "viewer",
+    label: "Viewer / Auditor",
+    description: "Read-only access across operational modules. Cannot create or edit anything.",
+  },
 ];
 
+const _TEMPLATE_MATRICES: Record<string, () => PermissionMatrix> = {
+  site_engineer: () => _SITE_ENGINEER_MATRIX,
+  project_manager: () => _PM_MATRIX,
+  stores: () => _STORES_MATRIX,
+  procurement: () => _PROCUREMENT_MATRIX,
+  equipment_plant: () => _EQUIPMENT_PLANT_MATRIX,
+  billing_measurements: () => _BILLING_MEASUREMENTS_MATRIX,
+  viewer: buildViewerMatrix,
+};
+
 export function applyRoleTemplate(templateId: string): PermissionMatrix {
-  const base = templateId === "site_engineer" ? _SITE_ENGINEER_MATRIX
-    : templateId === "project_manager" ? _PM_MATRIX
-    : null;
+  const base = _TEMPLATE_MATRICES[templateId]?.();
   if (!base) return emptyMatrix();
   return Object.fromEntries(
     Object.entries(base).map(([k, v]) => [k, { ...v }])

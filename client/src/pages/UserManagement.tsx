@@ -104,6 +104,13 @@ export default function UserManagement() {
   const subCountByUser: Record<number, number> = {};
   for (const s of subsQ.data ?? []) subCountByUser[s.userId] = s.count;
 
+  // Pre-enforcement audit: non-admin users with zero site-access rows and no
+  // explicit all-sites grant (previously relied on the unsafe legacy default).
+  const auditQ = useQuery<{ ambiguousUsers: { id: number; fullName: string; isActive: boolean }[]; count: number; activeCount: number }>({
+    queryKey: ["/api/auth/users/site-access-audit"],
+    enabled: canView,
+  });
+
   const [createOpen, setCreateOpen] = useState(false);
   const [permsUserId, setPermsUserId] = useState<number | null>(null);
   const [pwUserId, setPwUserId] = useState<number | null>(null);
@@ -148,6 +155,18 @@ export default function UserManagement() {
           </Button>
         )}
       </div>
+
+      {(auditQ.data?.count ?? 0) > 0 && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 px-3 py-2.5 text-sm text-amber-800" data-testid="banner-site-access-audit">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>
+            <strong>{auditQ.data!.count} user{auditQ.data!.count === 1 ? "" : "s"} without site access</strong>
+            {" "}({auditQ.data!.activeCount} active): {auditQ.data!.ambiguousUsers.map((u) => u.fullName).join(", ")}.
+            These accounts have no site rows and no all-sites grant, so they currently see <strong>no site data</strong>.
+            Open Permissions → Site Access on each to grant specific sites or an explicit all-sites grant.
+          </span>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -318,9 +337,16 @@ function UserRow({
   );
 }
 
+// ── Guided user-creation wizard (pre-deployment instruction Parts B/E) ────────
+// 4 steps: basic details → role template → EXPLICIT site access → review.
+// The server applies template + site access in the same request; on partial
+// failure the account shows "Setup incomplete" and Retry re-runs the setup on
+// the SAME user (no duplicates).
 function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [step, setStep] = useState(0);
+  // Step 1 — basics
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [fullName, setFullName] = useState("");
@@ -329,6 +355,40 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const [isFieldEngineer, setIsFieldEngineer] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [policy, setPolicy] = useState<SessionPolicy>("strict");
+  // Step 2 — role template ("custom" = start with no permissions, edit later)
+  const [roleTemplate, setRoleTemplate] = useState<string>("");
+  // Step 3 — explicit site access
+  const [siteMode, setSiteMode] = useState<"all" | "selected" | "">("");
+  const [siteIds, setSiteIds] = useState<Set<number>>(new Set());
+  // Retry state after a partial failure
+  const [failedUserId, setFailedUserId] = useState<number | null>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
+
+  const sitesQ = useQuery<{ id: number; name: string; isActive: number }[]>({ queryKey: ["/api/sites"], enabled: open });
+  const activeSites = (sitesQ.data ?? []).filter((s) => s.isActive !== 0);
+
+  const setupPayload = () => ({
+    roleTemplate: roleTemplate || undefined,
+    siteAccess: siteMode === "all"
+      ? { mode: "all" as const }
+      : { mode: "selected" as const, siteIds: Array.from(siteIds) },
+  });
+
+  const finish = (data: any) => {
+    qc.invalidateQueries({ queryKey: ["/api/auth/users"] });
+    if (data.setupOk === false || data.ok === false) {
+      setFailedUserId(data.id ?? failedUserId);
+      setSetupError(data.setupError ?? "setup_failed");
+      toast({
+        title: "Setup incomplete",
+        description: "The account exists but permissions/site access didn't finish. Use Retry — it completes the SAME account.",
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({ title: "User created", description: "Permissions and site access applied." });
+    onClose();
+  };
 
   const create = useMutation({
     mutationFn: async () => {
@@ -341,74 +401,213 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
         isFieldEngineer,
         notificationsEnabled,
         sessionPolicy: policy,
+        ...setupPayload(),
       });
       return r.json();
     },
-    onSuccess: () => {
-      toast({ title: "User created" });
-      qc.invalidateQueries({ queryKey: ["/api/auth/users"] });
-      onClose();
-    },
+    onSuccess: finish,
     onError: (e: Error | { message?: string }) => {
-      toast({ title: "Couldn't create user", description: e?.message || "", variant: "destructive" });
+      toast({ title: "Couldn't create user", description: friendlyUserError(e?.message || ""), variant: "destructive" });
     },
   });
 
+  const retry = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/auth/users/${failedUserId}/complete-setup`, setupPayload());
+      return r.json();
+    },
+    onSuccess: finish,
+    onError: (e: Error | { message?: string }) => {
+      toast({ title: "Retry failed", description: friendlyUserError(e?.message || ""), variant: "destructive" });
+    },
+  });
+
+  const basicsValid = (!!email.trim() || !!phone.trim()) && !!fullName.trim() && password.length >= 8;
+  const siteValid = isAdmin || siteMode === "all" || (siteMode === "selected" && siteIds.size > 0);
+  const steps = ["Details", "Role", "Site access", "Review"];
+  const templateLabel = ROLE_TEMPLATES.find((t) => t.id === roleTemplate)?.label ?? "Custom (no template)";
+  const busy = create.isPending || retry.isPending;
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Create user</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Full name</Label>
-            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} data-testid="input-new-fullname" />
-          </div>
-          <div>
-            <Label>Email <span className="text-muted-foreground font-normal">(optional if phone provided)</span></Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="input-new-email" />
-          </div>
-          <div>
-            <Label>Phone <span className="text-muted-foreground font-normal">(optional if email provided)</span></Label>
-            <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" data-testid="input-new-phone" />
-          </div>
-          <div>
-            <Label>Password</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="input-new-password" />
-            <p className="text-sm text-muted-foreground mt-1">Minimum 8 characters.</p>
-          </div>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="isAdmin">Admin</Label>
-            <Switch id="isAdmin" checked={isAdmin} onCheckedChange={setIsAdmin} data-testid="switch-new-admin" />
-          </div>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="isFieldEngineer">Engineer / field user</Label>
-            <Switch id="isFieldEngineer" checked={isFieldEngineer} onCheckedChange={setIsFieldEngineer} data-testid="switch-new-field-engineer" />
-          </div>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="notifEnabled">Push notifications</Label>
-            <Switch id="notifEnabled" checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} data-testid="switch-new-notif" />
-          </div>
-          <div>
-            <Label>Session policy</Label>
-            <Select value={policy} onValueChange={(v) => setPolicy(v as SessionPolicy)}>
-              <SelectTrigger data-testid="select-new-policy"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="strict">Strict — 5 min idle, tab close ends session</SelectItem>
-                <SelectItem value="sticky">Sticky — 30 days max, tab close ends session</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Create user — {steps[step]}</DialogTitle>
+        </DialogHeader>
+        <div className="flex items-center gap-1 mb-1">
+          {steps.map((s, i) => (
+            <div key={s} className={`h-1.5 flex-1 rounded ${i <= step ? "bg-primary" : "bg-muted"}`} data-testid={`wizard-step-${i}`} />
+          ))}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button
-            onClick={() => create.mutate()}
-            disabled={(!email.trim() && !phone.trim()) || !fullName.trim() || password.length < 8 || create.isPending}
-            data-testid="button-create-user-confirm"
-          >
-            {create.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Create
-          </Button>
+
+        {step === 0 && (
+          <div className="space-y-3">
+            <div>
+              <Label>Full name</Label>
+              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} data-testid="input-new-fullname" />
+            </div>
+            <div>
+              <Label>Email <span className="text-muted-foreground font-normal">(optional if phone provided)</span></Label>
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="input-new-email" />
+            </div>
+            <div>
+              <Label>Phone <span className="text-muted-foreground font-normal">(optional if email provided)</span></Label>
+              <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" data-testid="input-new-phone" />
+            </div>
+            <div>
+              <Label>Password</Label>
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="input-new-password" />
+              <p className="text-sm text-muted-foreground mt-1">Minimum 8 characters.</p>
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="isAdmin">Admin</Label>
+              <Switch id="isAdmin" checked={isAdmin} onCheckedChange={setIsAdmin} data-testid="switch-new-admin" />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="isFieldEngineer">Engineer / field user</Label>
+              <Switch id="isFieldEngineer" checked={isFieldEngineer} onCheckedChange={setIsFieldEngineer} data-testid="switch-new-field-engineer" />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="notifEnabled">Push notifications</Label>
+              <Switch id="notifEnabled" checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} data-testid="switch-new-notif" />
+            </div>
+            <div>
+              <Label>Session policy</Label>
+              <Select value={policy} onValueChange={(v) => setPolicy(v as SessionPolicy)}>
+                <SelectTrigger data-testid="select-new-policy"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="strict">Strict — 5 min idle, tab close ends session</SelectItem>
+                  <SelectItem value="sticky">Sticky — 30 days max, tab close ends session</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
+        {step === 1 && (
+          <div className="space-y-2">
+            {isAdmin ? (
+              <p className="text-sm text-muted-foreground" data-testid="text-admin-skip-template">
+                Admins automatically get full permissions — no template needed.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">Pick a starting role. You can fine-tune permissions any time later.</p>
+                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                  {[{ id: "", label: "Custom (no template)", description: "Start with no permissions; grant manually afterwards." },
+                    ...ROLE_TEMPLATES].map((t: any) => (
+                    <label
+                      key={t.id || "custom"}
+                      className={`flex items-start gap-3 rounded-md border px-3 py-2 cursor-pointer text-sm ${roleTemplate === t.id ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
+                      data-testid={`wizard-template-${t.id || "custom"}`}
+                    >
+                      <input
+                        type="radio"
+                        className="mt-1"
+                        checked={roleTemplate === t.id}
+                        onChange={() => setRoleTemplate(t.id)}
+                      />
+                      <span>
+                        <span className="font-medium block">{t.label}</span>
+                        <span className="text-muted-foreground">{t.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-3">
+            {isAdmin ? (
+              <p className="text-sm text-muted-foreground" data-testid="text-admin-skip-sites">
+                Admins always see all sites.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Site access must be chosen explicitly — a user with no selection cannot see any site data.
+                </p>
+                <label className={`flex items-center gap-3 rounded-md border px-3 py-2 cursor-pointer text-sm ${siteMode === "all" ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`} data-testid="wizard-sites-all">
+                  <input type="radio" checked={siteMode === "all"} onChange={() => setSiteMode("all")} />
+                  <span><span className="font-medium">All sites</span> — explicit company-wide access</span>
+                </label>
+                <label className={`flex items-center gap-3 rounded-md border px-3 py-2 cursor-pointer text-sm ${siteMode === "selected" ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`} data-testid="wizard-sites-selected">
+                  <input type="radio" checked={siteMode === "selected"} onChange={() => setSiteMode("selected")} />
+                  <span><span className="font-medium">Specific sites</span> — pick from the list</span>
+                </label>
+                {siteMode === "selected" && (
+                  <div className="border rounded max-h-48 overflow-y-auto divide-y">
+                    {activeSites.length === 0 && <p className="px-3 py-3 text-sm text-muted-foreground">No active sites found.</p>}
+                    {activeSites.map((site) => (
+                      <label key={site.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/40 text-sm" data-testid={`wizard-site-${site.id}`}>
+                        <Checkbox
+                          checked={siteIds.has(site.id)}
+                          onCheckedChange={(v) => setSiteIds((prev) => {
+                            const next = new Set(prev);
+                            if (v) next.add(site.id); else next.delete(site.id);
+                            return next;
+                          })}
+                        />
+                        {site.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-2 text-sm" data-testid="wizard-review">
+            <div className="rounded-md border divide-y">
+              <div className="px-3 py-2 flex justify-between"><span className="text-muted-foreground">Name</span><span className="font-medium">{fullName}</span></div>
+              <div className="px-3 py-2 flex justify-between"><span className="text-muted-foreground">Contact</span><span>{email.trim() || phone.trim()}</span></div>
+              <div className="px-3 py-2 flex justify-between"><span className="text-muted-foreground">Type</span><span>{isAdmin ? "Admin" : isFieldEngineer ? "Engineer / field user" : "Standard user"}</span></div>
+              {!isAdmin && <div className="px-3 py-2 flex justify-between"><span className="text-muted-foreground">Role template</span><span>{templateLabel}</span></div>}
+              <div className="px-3 py-2 flex justify-between">
+                <span className="text-muted-foreground">Site access</span>
+                <span className="text-right">
+                  {isAdmin ? "All sites (admin)" : siteMode === "all" ? "All sites (explicit grant)" : `${siteIds.size} site${siteIds.size === 1 ? "" : "s"}: ${activeSites.filter((s) => siteIds.has(s.id)).map((s) => s.name).join(", ")}`}
+                </span>
+              </div>
+            </div>
+            {setupError && failedUserId != null && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-amber-800" data-testid="banner-setup-incomplete">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>Setup incomplete ({setupError}). Retry finishes the same account — it will not create a duplicate.</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter className="gap-2">
+          {step > 0 && (
+            <Button variant="outline" onClick={() => setStep(step - 1)} disabled={busy} data-testid="button-wizard-back">Back</Button>
+          )}
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          {step < 3 ? (
+            <Button
+              onClick={() => setStep(step + 1)}
+              disabled={(step === 0 && !basicsValid) || (step === 2 && !siteValid)}
+              data-testid="button-wizard-next"
+            >
+              Next
+            </Button>
+          ) : failedUserId != null ? (
+            <Button onClick={() => retry.mutate()} disabled={busy} data-testid="button-wizard-retry">
+              {retry.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Retry setup
+            </Button>
+          ) : (
+            <Button onClick={() => create.mutate()} disabled={busy || !basicsValid || !siteValid} data-testid="button-create-user-confirm">
+              {create.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Create user
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -874,10 +1073,10 @@ function SiteAccessTab({ userId, isAdmin }: { userId: number; isAdmin: boolean }
   const { toast } = useToast();
 
   const sitesQ = useQuery<{ id: number; name: string; isActive: number }[]>({ queryKey: ["/api/sites"] });
-  const accessQ = useQuery<{ siteIds: number[]; allSites: boolean }>({ queryKey: ["/api/auth/users", userId, "site-access"] });
+  const accessQ = useQuery<{ siteIds: number[]; allSites: boolean; setupComplete?: boolean }>({ queryKey: ["/api/auth/users", userId, "site-access"] });
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [allSites, setAllSites] = useState(true);
+  const [allSites, setAllSites] = useState(false);
 
   useEffect(() => {
     if (accessQ.data) {
@@ -888,8 +1087,10 @@ function SiteAccessTab({ userId, isAdmin }: { userId: number; isAdmin: boolean }
 
   const save = useMutation({
     mutationFn: async () => {
+      // Explicit semantics: allSites is a recorded grant; an empty selection
+      // with allSites off means NO site access (never "all sites").
       const siteIds = allSites ? [] : Array.from(selectedIds);
-      const r = await apiRequest("PUT", `/api/auth/users/${userId}/site-access`, { siteIds });
+      const r = await apiRequest("PUT", `/api/auth/users/${userId}/site-access`, { siteIds, allSites });
       return r.json();
     },
     onSuccess: () => {
@@ -922,9 +1123,14 @@ function SiteAccessTab({ userId, isAdmin }: { userId: number; isAdmin: boolean }
           data-testid="switch-all-sites"
         />
         <label htmlFor="all-sites-toggle" className="text-sm font-medium cursor-pointer">
-          All sites (no restrictions)
+          All sites (explicit company-wide grant)
         </label>
       </div>
+      {!allSites && selectedIds.size === 0 && !isAdmin && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="banner-no-site-access">
+          No sites selected — this user will not see any site data until sites are granted here.
+        </div>
+      )}
       {!allSites && (
         <div className="border rounded overflow-hidden">
           <div className="bg-muted px-3 py-1.5 text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">

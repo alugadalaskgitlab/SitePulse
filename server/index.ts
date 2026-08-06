@@ -93,6 +93,9 @@ app.use((req, res, next) => {
     storage.ensureProjectScopeSchema()
       .then(() => console.log("Startup: ensureProjectScopeSchema — project_scope_segments table + corridor/scope columns verified/added"))
       .catch(e => console.error("Pre-routes: Failed to ensure project scope schema:", e)),
+    storage.ensureUserAccessColumns()
+      .then(() => console.log("Startup: ensureUserAccessColumns — users.all_sites_access + setup_complete verified/added"))
+      .catch(e => console.error("Pre-routes: Failed to ensure user access columns:", e)),
     // ── Earthwork tables — MUST complete before routes register ───────────────
     // Earthwork POST/PATCH routes check the earthworkSchemaReady flag (set below).
     // Runs here (blocking) so the flag is true before any request arrives.

@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { bindDprEntryModeUser } from "@/lib/dprEntryMode";
 import {
   STRICT_IDLE_MINUTES,
   type PermissionMatrix,
@@ -101,6 +102,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refetchOnWindowFocus: true,
     staleTime: 60_000,
   });
+
+  // Bind the DPR entry-mode preference to the authenticated user so the
+  // Guided/Classic choice is remembered per user, never device-wide.
+  useEffect(() => {
+    bindDprEntryModeUser(meQuery.data?.user?.id ?? null);
+  }, [meQuery.data?.user?.id]);
 
   // Track activity for the strict (5-minute idle) policy.
   useEffect(() => {
