@@ -138,6 +138,14 @@ export const progressEntries = pgTable("progress_entries", {
   // Part H: who physically executed this row when the linked bar has an
   // execution arrangement — never silently assumed from the DPR author.
   executedBy: text("executed_by"), // null | "hlc" | "agency"
+  // ── Instruction 032 Part N: lightweight scope validation trail ───────────
+  // Persisted when the row's chainage hit a scope finding at save/submit:
+  // temporary_block (continued with reason) | no_scope | withdrawn (authorised
+  // override). null = normal in-scope row.
+  scopeWarningType: text("scope_warning_type"),
+  scopeOverrideReason: text("scope_override_reason"),
+  scopeOverrideBy: integer("scope_override_by"),
+  scopeOverrideAt: timestamp("scope_override_at"),
 });
 
 // Structure DPR Items (for workType = "structure")
@@ -2590,8 +2598,60 @@ export const boqProjects = pgTable("boq_projects", {
   // Actual project chainage range (e.g. 182.120 to 227.600 km on NH-167)
   chainageFrom: real("chainage_from"),
   chainageTo: real("chainage_to"),
+  // ── Instruction 032 Part A: reference corridor metadata ──────────────────
+  // chainageFrom/chainageTo above double as the contract/reference corridor.
+  // The corridor is NOT automatically the executable denominator — working
+  // reaches in project_scope_segments define where work actually happens.
+  corridorConfirmed: integer("corridor_confirmed").default(0), // 0 = provisional, 1 = confirmed
+  corridorRemarks: text("corridor_remarks"),
+  chainageDisplayFormat: text("chainage_display_format"), // e.g. "km+m" | "decimal"
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ── Instruction 032 Parts B–F: scope segments ────────────────────────────────
+// Independent records (NOT embedded in Auto Sequence stretch rows). A segment
+// may overlap any future planning reach and stays valid if reaches are
+// redrawn. Types: working_reach | no_scope | temporary_block | withdrawn.
+export const projectScopeSegments = pgTable("project_scope_segments", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
+  segmentType: text("segment_type").notNull(), // working_reach | no_scope | temporary_block | withdrawn
+  label: text("label"),
+  chainageFrom: real("chainage_from").notNull(),
+  chainageTo: real("chainage_to").notNull(),
+  side: text("side"), // barSide vocabulary; null = unspecified (side review required)
+  reason: text("reason"),
+  status: text("status").notNull().default("draft"), // draft | confirmed | superseded
+  // Applicability (Part E): all_linear (default for exclusions) | categories | items
+  applicability: text("applicability").notNull().default("all_linear"),
+  categoryIds: text("category_ids"),  // JSON array of boq_categories ids
+  itemIds: text("item_ids"),          // JSON array of boq_items ids
+  effectiveFrom: date("effective_from"), // withdrawal effective date / block start
+  effectiveTo: date("effective_to"),     // block release date
+  deptReference: text("dept_reference"),
+  documentRef: text("document_ref"),
+  notes: text("notes"),
+  // Withdrawn/omitted extras (Part D) — never required merely to save
+  withdrawalOrderRef: text("withdrawal_order_ref"),
+  consentRef: text("consent_ref"),
+  omittedQty: text("omitted_qty"),
+  omittedAmount: text("omitted_amount"),
+  originalScopeNote: text("original_scope_note"),
+  revisedScopeNote: text("revised_scope_note"),
+  // Audit (Part Q). Confirmed records are never silently overwritten — edits
+  // after confirmation supersede the old row (revisionOf points back).
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  approvedBy: integer("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  revisionOf: integer("revision_of"), // id of the superseded row, when revised
+});
+
+export const insertProjectScopeSegmentSchema = createInsertSchema(projectScopeSegments)
+  .omit({ id: true, createdAt: true, updatedAt: true, approvedBy: true, approvedAt: true });
+export type ProjectScopeSegment = typeof projectScopeSegments.$inferSelect;
+export type InsertProjectScopeSegment = z.infer<typeof insertProjectScopeSegmentSchema>;
 
 export const boqCategories = pgTable("boq_categories", {
   id: serial("id").primaryKey(),

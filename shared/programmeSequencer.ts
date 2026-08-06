@@ -176,6 +176,33 @@ export interface SeqResult {
   unclassifiedItems: UnclassifiedSeqItem[];
   /** Per-item classification trace for all items that reached the sequencer. */
   diagnostics: SeqDiagItem[];
+  /** Instruction 032 — per-item scope allocation summary, present only when
+   *  opts.scopeCoverage was supplied. Keyed by boqItemId. */
+  scopeSummary?: Record<number, ItemScopeSummary>;
+}
+
+/** Instruction 032 Part I — per-item scope figures for the allocation preview. */
+export interface ItemScopeSummary {
+  eligibleSideLenKm: number;
+  blockedSideLenKm: number;
+  excludedSideLenKm: number;
+  withdrawnSideLenKm: number;
+  /** Quantity kept in project balance but NOT programmed (temporary blocks). */
+  blockedQty: number;
+  /** True when the item had zero eligible coverage — no bars generated. */
+  fullyExcluded: boolean;
+}
+
+/** Coverage of one stretch for one item, precomputed by the eligible-scope
+ *  service (shared/projectScope.ts coverageForStretch). Kept structural here so
+ *  the sequencer stays independent of scope-segment types. */
+export interface SeqStretchCoverage {
+  subRanges: Array<{ from: number; to: number; eligibleSideLenKm: number }>;
+  eligibleSideLenKm: number;
+  blockedSideLenKm: number;
+  excludedSideLenKm: number;
+  withdrawnSideLenKm: number;
+  contractualSideLenKm: number;
 }
 
 export interface SeqOptions {
@@ -208,6 +235,21 @@ export interface SeqOptions {
    * formula; manualQtyFraction (share of the item's total qty, 0..1) overrides it.
    */
   stretches?: RoadStretchInput[];
+  /**
+   * Instruction 032 Part I — eligible-scope clipper. When supplied, every ROAD
+   * (pavement-track) bar is clipped to the item's executable scope: bars are
+   * generated only over eligible sub-ranges, quantities are distributed over
+   * contractual coverage (eligible + temporarily blocked), the blocked share is
+   * left unprogrammed (never forced into the final reach), and permanently
+   * excluded / withdrawn coverage receives nothing. Return null for an item
+   * with no applicable scope restrictions (legacy allocation applies).
+   * Structure/bridge group bars are untouched (discrete items are never
+   * spread by road length — Part J #4).
+   */
+  scopeCoverage?: (
+    boqItemId: number,
+    stretch: { chainageFrom: number; chainageTo: number; side?: string | null },
+  ) => SeqStretchCoverage | null;
 }
 
 /** Instruction 029 — one user-entered road stretch row. */
@@ -745,6 +787,46 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   const distinctStages = Array.from(new Set(byPriority.map(s => s.priority))).sort((a, b) => a - b);
   const stageRank = new Map(distinctStages.map((s, i) => [s, i]));
 
+  // ── Instruction 032: precompute per-item eligible-scope coverage ──────────
+  // For each pavement item with scope restrictions, coverage per stretch plus
+  // the item-level contractual denominator (eligible + blocked side length).
+  const scopeCov = opts.scopeCoverage ?? null;
+  const scopeByItem = new Map<number, {
+    perStretch: Map<number, SeqStretchCoverage>; // key = index in byPriority
+    contractualTotal: number;
+    eligibleTotal: number; blockedTotal: number; excludedTotal: number; withdrawnTotal: number;
+  }>();
+  const scopeSummary: Record<number, ItemScopeSummary> = {};
+  if (scopeCov) {
+    for (const c of pav) {
+      const perStretch = new Map<number, SeqStretchCoverage>();
+      let anyRestriction = false;
+      let contractualTotal = 0, eligibleTotal = 0, blockedTotal = 0, excludedTotal = 0, withdrawnTotal = 0;
+      byPriority.forEach((st, idx) => {
+        const cov = scopeCov(c.it.boqItemId, st);
+        if (!cov) return;
+        anyRestriction = true;
+        perStretch.set(idx, cov);
+        contractualTotal += cov.contractualSideLenKm;
+        eligibleTotal += cov.eligibleSideLenKm;
+        blockedTotal += cov.blockedSideLenKm;
+        excludedTotal += cov.excludedSideLenKm;
+        withdrawnTotal += cov.withdrawnSideLenKm;
+      });
+      if (!anyRestriction) continue;
+      scopeByItem.set(c.it.boqItemId, { perStretch, contractualTotal, eligibleTotal, blockedTotal, excludedTotal, withdrawnTotal });
+      const blockedQty = contractualTotal > 0 ? c.it.totalQty * (blockedTotal / contractualTotal) : 0;
+      scopeSummary[c.it.boqItemId] = {
+        eligibleSideLenKm: +eligibleTotal.toFixed(6),
+        blockedSideLenKm: +blockedTotal.toFixed(6),
+        excludedSideLenKm: +excludedTotal.toFixed(6),
+        withdrawnSideLenKm: +withdrawnTotal.toFixed(6),
+        blockedQty: +blockedQty.toFixed(3),
+        fullyExcluded: eligibleTotal <= 0,
+      };
+    }
+  }
+
   for (let rank = 0; rank < byPriority.length; rank++) {
     const st = byPriority[rank];
     const offset = (stageRank.get(st.priority) ?? 0) * stagger; // distinct-stage rank drives the stagger
@@ -764,9 +846,34 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     let prevPavStage = -1;
     let pavStageStart = offset;
     let pavStageDur = 0;
+    const stretchIdx = byPriority.indexOf(st);
     for (const c of pav) {
-      const qty = c.it.totalQty * share;
-      const dur = Math.max(0.1, c.it.fullDurationMonths * (totalRoadLen > 0 ? stretchLen / totalRoadLen : 1 / byPriority.length));
+      // ── Instruction 032: scope-aware targets for this item × stretch ─────
+      // Default (no scope restriction): one bar over the full stretch with the
+      // legacy length×side share. With scope: bars only over eligible
+      // sub-ranges; quantity ∝ eligible side-length / item contractual total;
+      // the blocked share stays unprogrammed.
+      const itemScope = scopeByItem.get(c.it.boqItemId);
+      const cov = itemScope?.perStretch.get(stretchIdx);
+      type Target = { chF: number; chT: number; qty: number; lenKm: number; scopeClipped: boolean };
+      let targets: Target[];
+      if (itemScope && cov) {
+        const denom = itemScope.contractualTotal;
+        const stretchEligible = cov.eligibleSideLenKm;
+        const manualQty = st.manualQtyFraction != null ? c.it.totalQty * st.manualQtyFraction : null;
+        targets = cov.subRanges.map(sr => ({
+          chF: sr.from, chT: sr.to,
+          qty: manualQty != null
+            ? (stretchEligible > 0 ? manualQty * (sr.eligibleSideLenKm / stretchEligible) : 0)
+            : (denom > 0 ? c.it.totalQty * (sr.eligibleSideLenKm / denom) : 0),
+          lenKm: sr.to - sr.from,
+          scopeClipped: true,
+        })).filter(t => t.qty > 0 || t.lenKm > CH_EPS);
+      } else {
+        targets = [{ chF: st.chainageFrom, chT: st.chainageTo, qty: c.it.totalQty * share, lenKm: stretchLen, scopeClipped: false }];
+      }
+      if (targets.length === 0) continue; // fully excluded/blocked in this stretch — no bar
+
       if (c.stage !== prevPavStage) {
         // Close the previous stage group and advance cursor
         if (prevPavStage !== -1) pavCursor = pavStageStart + pavStageDur + lag;
@@ -774,21 +881,27 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
         pavStageDur = 0;
         prevPavStage = c.stage;
       }
-      const bar = mkBar(c.it, st.label, st.chainageFrom, st.chainageTo, pavStageStart, pavStageStart + dur, qty);
-      bar.sequenceOrder = st.priority; // Instruction 029/029B — execution stage (shared = parallel)
-      bar.side = st.side;              // Instruction 030A — stretch side carried onto every road bar
-      bar.executionFront = st.front ?? null;           // 029B — front label
-      bar.executionOrder = st.executionOrder ?? null;  // 029B — display-only tiebreaker
-      bar.plannedWidthM = st.plannedWidthM;            // 029C — width carried for round-trip + width split
-      // 029C: category rule + labels — no user-facing basis selector.
-      const rule = st.manualQtyFraction != null ? "manual" : allocationRuleForItem(c.it);
-      bar.allocationRule = rule;
-      bar.allocationNote = st.manualQtyFraction != null ? null : sideShare.note;
-      if (rule === "earthwork-estimate") {
-        bar.notes = EARTHWORK_ESTIMATE_LABEL; // visible on the bar after persist
+      for (const t of targets) {
+        const dur = Math.max(0.1, c.it.fullDurationMonths * (totalRoadLen > 0 ? t.lenKm / totalRoadLen : 1 / byPriority.length));
+        const bar = mkBar(c.it, st.label, t.chF, t.chT, pavStageStart, pavStageStart + dur, t.qty);
+        bar.sequenceOrder = st.priority; // Instruction 029/029B — execution stage (shared = parallel)
+        bar.side = st.side;              // Instruction 030A — stretch side carried onto every road bar
+        bar.executionFront = st.front ?? null;           // 029B — front label
+        bar.executionOrder = st.executionOrder ?? null;  // 029B — display-only tiebreaker
+        bar.plannedWidthM = st.plannedWidthM;            // 029C — width carried for round-trip + width split
+        // 029C: category rule + labels — no user-facing basis selector.
+        const rule = st.manualQtyFraction != null ? "manual" : allocationRuleForItem(c.it);
+        bar.allocationRule = rule;
+        const scopeNote = t.scopeClipped && (t.chF > st.chainageFrom + CH_EPS || t.chT < st.chainageTo - CH_EPS || (cov && cov.eligibleSideLenKm < cov.contractualSideLenKm + cov.excludedSideLenKm + cov.withdrawnSideLenKm - 1e-9))
+          ? "Allocated over eligible scope only (exclusions/blocks applied)."
+          : null;
+        bar.allocationNote = st.manualQtyFraction != null ? scopeNote : (sideShare.note ?? scopeNote);
+        if (rule === "earthwork-estimate") {
+          bar.notes = EARTHWORK_ESTIMATE_LABEL; // visible on the bar after persist
+        }
+        bars.push(bar);
+        pavStageDur = Math.max(pavStageDur, dur);
       }
-      bars.push(bar);
-      pavStageDur = Math.max(pavStageDur, dur);
     }
     // "other" items are NOT scheduled here — they are returned in unclassifiedItemIds.
   }
@@ -863,7 +976,8 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     }
   }
 
-  if (!bars.length) return { bars, unclassifiedItemIds, unclassifiedItems, diagnostics };
+  const scopeOut = scopeCov ? { scopeSummary } : {};
+  if (!bars.length) return { bars, unclassifiedItemIds, unclassifiedItems, diagnostics, ...scopeOut };
 
   // Scale the critical chain so the last bar ends at (totalMonths - 1), then
   // shift everything to 1-indexed month numbers (Month 1 = project start).
@@ -878,5 +992,5 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     if (b.endMonth <= b.startMonth) b.endMonth = +(b.startMonth + 0.1).toFixed(2);
   }
 
-  return { bars, unclassifiedItemIds, unclassifiedItems, diagnostics };
+  return { bars, unclassifiedItemIds, unclassifiedItems, diagnostics, ...scopeOut };
 }

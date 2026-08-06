@@ -3615,6 +3615,15 @@ export default function WorkProgramme() {
               </Button>
             </a>
           </Link>
+          <Link href={`/work-program/${projectId}/scope`}>
+            <a onClick={e => { if (!confirmLeaveEditor()) e.preventDefault(); }}>
+              <Button variant="outline" size="sm" data-testid="button-project-scope"
+                className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+                <MapPin className="w-4 h-4 mr-1" />
+                Scope
+              </Button>
+            </a>
+          </Link>
           <Link href={`/work-program/${projectId}/settings`}>
             <a onClick={e => { if (!confirmLeaveEditor()) e.preventDefault(); }}>
               <Button variant="outline" size="sm" data-testid="button-programme-settings"

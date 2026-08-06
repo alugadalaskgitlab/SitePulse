@@ -1,0 +1,761 @@
+Instruction — Project Scope, Working Reaches, Exclusions, Constraints and Withdrawals
+
+PURPOSE
+
+Create a proper project-scope foundation for road works before Auto Sequence distributes BOQ quantities or generates the Work Programme.
+
+SitePulse must distinguish between:
+
+1. the overall contract/reference corridor;
+2. the chainages where the contractor is actually required to work;
+3. permanent no-scope/existing portions;
+4. temporarily blocked portions;
+5. portions later withdrawn or omitted by the department;
+6. item-specific or side-specific applicability.
+
+This must be a general road-project feature, not hardcoded for Takkadpally.
+
+The governing rule is:
+
+“BOQ quantities and programme demand must be distributed only over the approved executable scope applicable to that BOQ item and side—not automatically over the full chainage written in the project title.”
+
+ARCHITECTURE
+
+Add a dedicated project setup area:
+
+Projects & Sites
+→ Project Setup
+→ Scope & Working Reaches
+
+The workflow becomes:
+
+Project Basics
+→ Scope & Working Reaches
+→ BOQ Mapping
+→ Execution Arrangements
+→ Auto Sequence
+→ Gantt
+→ BOM / Procurement
+→ DPR / Progress
+
+Scope Setup answers:
+
+“Where and for which items is the contractor expected to work?”
+
+Execution Arrangement remains a separate project setup answering:
+
+“Who will execute the work and who supplies materials, equipment and labour?”
+
+The Gantt and Auto Sequence consume these setups; they must not become the master place where contractual scope is created.
+
+DO NOT TOUCH
+
+- Existing submitted DPR records.
+- Existing GRNs, Issues, Returns, PI, IRN or Procurement data.
+- Stores stock calculations.
+- SDB/SNL and mix-template resource formulas.
+- Existing execution-arrangement business rules.
+- Existing Work Programme quantity values on page load or deployment.
+- Existing programme bars linked to DPRs or approved arrangements.
+- Production data automatically.
+- Full Execution Report UI in this batch.
+- Draft RA billing in this batch.
+
+PART A — PROJECT REFERENCE CORRIDOR
+
+Allow the project/site to define an overall contract or reference corridor:
+
+- Start chainage
+- End chainage
+- Reference length
+- Chainage display format
+- Remarks/reference
+
+Example:
+
+Takkadpally–Sirur
+Ch. 0.000–3.700
+
+Maintenance-project example:
+
+Contract reference corridor
+Ch. 0.000–24.000
+
+The reference corridor is not automatically the executable quantity denominator.
+
+PART B — CONTRACT WORKING REACHES
+
+Allow one or more discontinuous working reaches.
+
+Each working-reach record must include:
+
+- label/name;
+- From chainage;
+- To chainage;
+- Side:
+  - LHS
+  - RHS
+  - Both Sides
+  - Full Width
+  - Median
+  - Service Road, where applicable;
+- status;
+- effective date;
+- source/reference;
+- notes.
+
+Example:
+
+- Ch. 2.000–4.000
+- Ch. 6.000–7.400
+- Ch. 8.100–10.800
+
+These are the reaches where applicable BOQ quantities may be distributed.
+
+Do not force the user to create one continuous reach covering the entire contract corridor.
+
+PART C — SCOPE SEGMENT TYPES
+
+Create independent scope-segment records that are not embedded inside Auto Sequence reach rows.
+
+A scope segment may overlap any future planning reach and must remain valid even if the user later redraws Reach boundaries.
+
+Support at least:
+
+1. Executable Working Reach
+
+The contractor is required to execute applicable BOQ items in this range.
+
+2. Permanent No-Scope / Existing Portion
+
+Examples:
+
+- existing CC pavement;
+- bridge;
+- railway crossing;
+- village concrete road;
+- client-executed portion;
+- another contractor’s completed section.
+
+Behaviour:
+
+- excluded from executable quantity denominator for applicable items;
+- no Work Programme bars for excluded items;
+- no BOM/resource demand for excluded items;
+- no procurement demand for excluded items;
+- shown as Excluded, not Pending.
+
+3. Temporary Constraint / Blocked Portion
+
+Examples:
+
+- land not handed over;
+- utility shifting pending;
+- forest clearance;
+- traffic restriction;
+- monsoon/access issue.
+
+Behaviour:
+
+- remains within contractual/BOQ scope;
+- remains part of the project balance;
+- excluded from the current programme until released;
+- shown as Blocked/Unprogrammed;
+- future material demand remains, but timing is deferred.
+
+4. Withdrawn / Omitted Portion
+
+Examples:
+
+- stretches removed by department order;
+- scope withdrawn under Clause 60(c);
+- deleted/omitted work.
+
+Behaviour:
+
+- preserve original scope and history;
+- remove from revised executable scope from the effective date;
+- retain work already executed before withdrawal;
+- show original quantity/scope, withdrawn scope and revised balance separately;
+- do not delete earlier DPRs or programme history.
+
+5. Item-Specific Included/Excluded Portion
+
+Allow a chainage to be excluded for some BOQ items but still applicable to others.
+
+Example:
+
+Existing CC pavement excludes:
+
+- earthwork;
+- subgrade;
+- GSB;
+- WMM;
+- prime;
+- tack;
+- DBM;
+- BC;
+- shoulders;
+
+but drainage, signage, markings or barriers may still remain applicable.
+
+PART D — SCOPE RECORD FIELDS
+
+Each scope segment must support:
+
+- project/site;
+- segment type;
+- From chainage;
+- To chainage;
+- Side;
+- reason;
+- status;
+- permanent or temporary;
+- effective from date;
+- effective to/release date where applicable;
+- department/client reference;
+- document/reference number;
+- notes;
+- created by;
+- created timestamp;
+- approved/confirmed by;
+- approved timestamp.
+
+For withdrawn/omitted scope, also support:
+
+- withdrawal order/reference;
+- consent/reference;
+- effective date;
+- original scope;
+- revised executable scope;
+- omitted quantity/amount where available.
+
+Do not require omitted quantity/amount merely to save a chainage withdrawal.
+
+PART E — ITEM APPLICABILITY
+
+Each scope segment must allow applicability to be defined as:
+
+1. All linear road items
+2. Selected BOQ categories
+3. Selected individual BOQ items
+
+Default behaviour for a permanent exclusion should be:
+
+“Applies to all linear road items”
+
+The user should only open detailed item/category selection when exceptions are required.
+
+Do not force a full BOQ-item matrix for every scope segment.
+
+Discrete structures, pipes, drains and location-specific items must not automatically inherit linear-road exclusions unless their category/item is selected or logically mapped.
+
+PART F — SIDE-SPECIFIC SCOPE
+
+Scope must be side-aware.
+
+Examples:
+
+- Ch. 5.000–5.500 RHS withdrawn, LHS remains executable.
+- Existing CC pavement applies to Both Sides.
+- Temporary utility block applies only to LHS.
+- Service-road work remains while main carriageway is excluded.
+
+Use the same side-compatibility principles already used in Work Programme:
+
+- LHS and RHS are distinct corridors;
+- Both Sides/Full Width overlaps both sides;
+- unspecified side requires review where side materially affects the result.
+
+PART G — SCOPE RECONCILIATION
+
+Provide a clear Scope Reconciliation summary.
+
+Show:
+
+- reference corridor length;
+- gross working-reach length;
+- executable length;
+- permanent excluded length;
+- withdrawn length;
+- temporarily blocked length;
+- unexplained gap length;
+- overlapping/conflicting length.
+
+Reconciliation must be side-aware where applicable.
+
+Flag:
+
+“Scope does not reconcile”
+
+when:
+
+- working reaches leave unexplained gaps;
+- working reaches exceed the reference corridor;
+- exclusions overlap incorrectly;
+- the same physical coverage is counted twice;
+- withdrawn/no-scope segments conflict;
+- the corridor end chainage is unclear.
+
+Do not assume reconciliation merely because the numeric total length matches; physical overlaps must also be checked.
+
+For Takkadpally, this should expose and resolve whether the true corridor ends at Ch. 3.700 or whether Ch. 3.700–3.800 is a separately measurable scope item.
+
+PART H — ELIGIBLE-SCOPE SERVICE
+
+Create one authoritative shared service/function that determines eligible scope for:
+
+- project;
+- BOQ item/category;
+- Side;
+- chainage;
+- effective date.
+
+It must calculate:
+
+- executable ranges;
+- permanently excluded ranges;
+- temporarily blocked ranges;
+- withdrawn ranges;
+- eligible length or side-length coverage;
+- unprogrammed but still contractual coverage.
+
+Auto Sequence, Gantt summaries, BOM/resource demand and later reports must use this common service rather than each page reimplementing scope logic.
+
+Do not hardcode Takkadpally chainages or material names.
+
+PART I — AUTO SEQUENCE INTEGRATION
+
+Auto Sequence must consume approved scope records.
+
+For each BOQ item:
+
+1. Start with applicable contract working reaches.
+2. Remove permanent no-scope ranges applicable to that item/category.
+3. Remove withdrawn/omitted ranges effective for the programme date.
+4. Keep temporary-block quantities in project balance but do not programme those ranges.
+5. Apply Side.
+6. Allocate the BOQ quantity only over eligible executable coverage.
+7. Generate programme bars only for eligible coverage.
+8. Show temporarily blocked coverage as unprogrammed/blocked, not deleted.
+9. Do not force unallocated balance into the final reach.
+
+The allocation preview must show:
+
+- BOQ quantity;
+- eligible coverage basis;
+- programmed quantity;
+- blocked/unprogrammed quantity;
+- permanently excluded coverage;
+- withdrawn coverage;
+- unallocated quantity;
+- overallocated quantity;
+- allocation basis.
+
+PART J — QUANTITY DISTRIBUTION RULES
+
+All allocation remains in the BOQ item’s UOM.
+
+1. Linear pavement/granular/spray items
+
+Use eligible Reach + Side coverage for proportional planning allocation.
+
+Examples:
+
+- subgrade;
+- GSB;
+- WMM;
+- prime;
+- tack;
+- DBM;
+- BC;
+- applicable shoulders.
+
+2. Earthwork/embankment/excavation
+
+Length-proportional eligible-scope allocation is only a planning estimate.
+
+Label it:
+
+“Planning estimate based on eligible reach length — review where cross-sections or location quantities differ.”
+
+Allow:
+
+- manual reach-level quantity;
+- approved location-wise quantity;
+- survey/estimate breakup override.
+
+Do not present length-proportional earthwork as survey-grade quantity.
+
+3. MT bituminous items
+
+Allocate in BOQ MT UOM.
+
+Do not invent density or geometry conversion.
+
+4. Discrete/location-specific items
+
+Do not automatically spread:
+
+- culverts;
+- bridges;
+- pipes;
+- structures;
+- isolated drains;
+- location-specific works;
+
+over the full eligible road length.
+
+Use mapped locations, manual allocation or existing BOQ location breakup.
+
+5. Existing approved manual quantities
+
+Preserve approved/manual location allocations unless the user deliberately chooses to regenerate them.
+
+PART K — TAKKADPALLY EXAMPLE
+
+Support the following setup without hardcoding it:
+
+Reference corridor:
+Ch. 0.000–3.700, subject to final confirmation.
+
+Working scope:
+- Ch. 0.000–2.100
+- Ch. 2.400–3.700
+
+Permanent no-scope:
+- Ch. 2.100–2.400
+- Both Sides / Full Width
+- Reason: Existing CC pavement
+- Default applicability: all normal linear earthwork, pavement and shoulder items
+
+Possible broad execution reaches:
+
+- Reach 1: Ch. 2.400–3.700
+- Reach 2: Ch. 1.250–2.400, with Ch. 2.100–2.400 excluded automatically
+- Reach 3: Ch. 0.000–1.250
+
+Expected eligible normal-road length:
+3.400 km, subject to the confirmed project corridor.
+
+Auto Sequence must allocate applicable BOQ quantities over eligible scope, not over the excluded CC portion.
+
+PART L — KAMKOLE–KAPPAD EXAMPLE
+
+Support recording the two stretches removed under Clause 60(c) as:
+
+Withdrawn / Omitted Scope
+
+Retain:
+
+- original contract corridor;
+- withdrawn chainages;
+- Side;
+- applicable BOQ items/categories;
+- department order/consent reference;
+- effective date;
+- work executed before withdrawal;
+- revised executable balance.
+
+Do not delete or rewrite historical DPRs or programme records for work done before withdrawal.
+
+PART M — EXECUTION ARRANGEMENT INTEGRATION
+
+Do not redesign the full Execution Arrangement module in this batch.
+
+Keep Execution Arrangement as a separate project setup.
+
+Add only:
+
+- a clear link from Scope Setup to Execution Arrangements;
+- a clear link from Auto Sequence/Gantt to review the applicable arrangement;
+- validation that arrangements cannot be assigned to permanently excluded or withdrawn scope unless they relate to historical work before the effective date.
+
+The Gantt may display:
+
+- HLC Execution;
+- Partly Outsourced;
+- Fully Outsourced;
+
+but the Gantt must not become the master arrangement editor.
+
+PART N — LIGHT DPR SCOPE VALIDATION
+
+Do not redesign DPR capture.
+
+Use the shared eligible-scope service to add lightweight validation when a DPR progress entry is saved/submitted.
+
+1. Valid executable scope
+
+Proceed normally.
+
+2. Temporary blocked scope
+
+Show a warning:
+
+“This chainage is currently marked as temporarily blocked.”
+
+Allow continuation only with a reason.
+
+3. Permanent no-scope segment
+
+Show:
+
+“This chainage is outside the executable scope for this BOQ item.”
+
+Block normal submission pending authorised review.
+
+4. Withdrawn/omitted segment
+
+Show:
+
+“This chainage was withdrawn from scope effective [date/reference].”
+
+Block normal submission pending authorised review unless the DPR date is before the withdrawal effective date.
+
+5. Item-specific exception
+
+Respect item/category applicability. Do not block drainage/signage merely because pavement is excluded in that chainage.
+
+Persist:
+
+- warning type;
+- reason;
+- authorised override;
+- user;
+- timestamp.
+
+Do not add new DPR steps or redesign the Guided/Classic DPR UI.
+
+PART O — EXISTING PROGRAMME PROTECTION
+
+Do not silently recalculate or move existing programme bars on:
+
+- deployment;
+- migration;
+- page load;
+- refresh;
+- scope-record creation.
+
+Corrected eligible-scope calculations apply only to:
+
+- new generation;
+- explicit dry-run;
+- controlled regeneration initiated by the user.
+
+Before regeneration show:
+
+- existing bars;
+- proposed bars;
+- old quantities;
+- proposed quantities;
+- old dates;
+- proposed dates;
+- exclusions/blocks causing the change;
+- linked DPRs;
+- execution arrangements;
+- approved revisions.
+
+Continue using the existing reconcile-in-place-or-block protections.
+
+PART P — USER EXPERIENCE
+
+The Scope & Working Reaches page should be simple.
+
+Default workflow:
+
+1. Confirm reference corridor.
+2. Add working reaches.
+3. Add exclusions/constraints/withdrawals.
+4. Review item applicability.
+5. Review reconciliation.
+6. Confirm scope.
+
+Provide quick-add types:
+
+- Working reach
+- Existing/no-scope portion
+- Temporary block
+- Withdrawn portion
+
+Show a visual chainage strip or compact corridor summary where practical, but do not delay the core build for advanced map/GIS functionality.
+
+Use plain language.
+
+Avoid technical labels unless necessary.
+
+PART Q — PERMISSIONS AND AUDIT
+
+Suggested permissions:
+
+- View Scope
+- Edit Draft Scope
+- Approve Scope
+- Record Constraint
+- Record Withdrawal
+- Override Scope Validation
+
+Only authorised users may confirm or approve:
+
+- permanent exclusions;
+- withdrawals;
+- item applicability;
+- effective dates.
+
+Every change must retain an audit trail.
+
+Do not silently overwrite confirmed scope records.
+
+Use revision/history where scope changes after programme generation or progress reporting.
+
+PART R — TESTS
+
+Add real regression tests covering:
+
+1. Discontinuous working reaches
+
+Contract 0–24 km with working reaches 2–4, 6–7.4 and 8.1–10.8 produces eligible coverage only in those ranges.
+
+2. Permanent exclusion
+
+Ch. 2.1–2.4 existing CC is excluded from normal pavement-item allocation and demand.
+
+3. Item exception
+
+Drainage/signage remains applicable where pavement items are excluded.
+
+4. Temporary block
+
+Quantity remains in project balance but is not currently programmed.
+
+5. Withdrawn stretch
+
+Withdrawn range is removed from revised executable scope from its effective date; historical progress remains.
+
+6. Side-specific scope
+
+RHS withdrawal does not remove LHS scope.
+
+7. Earthwork
+
+Length allocation is labelled as a planning estimate and can be manually overridden.
+
+8. Linear pavement item
+
+Eligible-length allocation uses only executable scope and totals correctly to the programmed share.
+
+9. Structure item
+
+Discrete structure is not automatically distributed by road length.
+
+10. Reconciliation
+
+Unexplained 0.10 km gap is flagged.
+
+11. Overlap
+
+Conflicting scope segments are detected.
+
+12. Existing programme protection
+
+Adding an exclusion does not silently alter existing bars.
+
+13. Controlled regeneration
+
+Dry-run shows old/new quantities and linked records before applying.
+
+14. DPR validation
+
+- executable scope accepted;
+- temporary block allowed with reason;
+- permanent exclusion blocked pending review;
+- withdrawal respects effective date;
+- item-specific exception works.
+
+15. Regression
+
+Confirm unchanged:
+
+- existing BOQ totals;
+- SDB/SNL formulas;
+- Stores;
+- Procurement;
+- existing execution-arrangement calculations;
+- submitted DPR history;
+- current Work Programme rows before explicit regeneration.
+
+PART S — LIVE PROOF
+
+Using Takkadpally in development:
+
+1. Set the confirmed reference corridor.
+2. Add permanent no-scope Ch. 2.100–2.400 for normal linear road items.
+3. Show reconciliation of:
+   - reference length;
+   - executable length;
+   - excluded length;
+   - any gap.
+4. Run Auto Sequence dry-run.
+5. Confirm applicable BOQ quantities are not distributed over Ch. 2.100–2.400.
+6. Confirm no pavement/earthwork Gantt bars are generated there.
+7. Confirm BOM/resource demand excludes that portion.
+8. Confirm item-specific exceptions can remain.
+9. Confirm earthwork is labelled Planning Estimate.
+10. Confirm existing programme bars remain unchanged until explicit regeneration.
+11. Test a DPR inside the excluded range and show the correct warning/block.
+
+Using a maintenance-project test:
+
+12. Define corridor 0–24 km.
+13. Add working reaches 2–4, 6–7.4 and 8.1–10.8.
+14. Confirm BOQ allocation uses only those reaches.
+
+Using a withdrawal test:
+
+15. Record a Kamkole–Kappad-style withdrawn stretch with effective date.
+16. Confirm revised executable scope changes without deleting historical progress.
+
+FINAL REQUIREMENT
+
+Do not mark this task complete merely because an exclusion form exists.
+
+It is complete only when:
+
+- project corridor and actual working reaches are separate concepts;
+- discontinuous reaches are supported;
+- permanent exclusions, temporary blocks and withdrawals behave differently;
+- scope can be side-specific and item-specific;
+- reconciliation exposes gaps and overlaps;
+- one shared eligible-scope service drives Auto Sequence and validation;
+- BOQ quantities are allocated only over applicable executable scope;
+- earthwork remains an honestly labelled planning estimate;
+- structures are not incorrectly distributed by length;
+- existing programmes are not silently changed;
+- DPR receives only lightweight scope-aware validation;
+- automated tests and Takkadpally/maintenance/withdrawal live proofs confirm the behaviour.
+
+FOLLOWING BATCH — DO NOT BUILD NOW
+
+The next separate batch will be:
+
+Execution Report — Stretch-wise and Item-wise Progress
+
+It will use:
+
+- approved scope segments;
+- existing DPR item/chainage/side entries;
+- planned BOQ quantities;
+- execution arrangements.
+
+It must include:
+
+- By Stretch;
+- By BOQ Item;
+- merged chainage coverage rather than summed overlapping lengths;
+- per-item/category completion tolerances;
+- excluded/blocked/withdrawn status;
+- HLC vs agency execution;
+- DPR drill-down;
+- readable defaults showing active/programmed/exception items rather than a full empty matrix.
+
+Do not include the full Execution Report UI in this scope-foundation batch.

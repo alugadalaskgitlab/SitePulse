@@ -5,7 +5,7 @@ import {
   ChevronRight, Upload, Pencil, ChevronDown, ChevronUp,
   Plus, Check, CheckCheck, Trash2, Loader2, FileSpreadsheet, AlertCircle,
   GitBranch, CalendarDays, Package, Settings2, BookOpen,
-  Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X, Sparkles, Zap, Wrench, Layers, ClipboardList,
+  Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X, Sparkles, Zap, Wrench, Layers, ClipboardList, MapPin,
 } from "lucide-react";
 import { BOQ_WORK_CATEGORIES, getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -1866,6 +1866,20 @@ export default function BoqProjectDetail() {
               >
                 <Settings2 className="w-3.5 h-3.5 mr-1.5" />
                 Settings
+              </Button>
+            </a>
+          </Link>
+          <Link href={`/work-program/${projectId}/scope`}>
+            <a>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 h-8"
+                data-testid="button-project-scope"
+                title="Project scope — corridor, working reaches, exclusions & withdrawals"
+              >
+                <MapPin className="w-3.5 h-3.5 mr-1.5" />
+                Scope
               </Button>
             </a>
           </Link>

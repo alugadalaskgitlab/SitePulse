@@ -90,6 +90,9 @@ app.use((req, res, next) => {
     storage.ensureStockReconciliationTables()
       .then(() => console.log("Startup: ensureStockReconciliationTables — stock_reconciliation_sessions/items tables verified/created"))
       .catch(e => console.error("Pre-routes: Failed to ensure stock reconciliation tables:", e)),
+    storage.ensureProjectScopeSchema()
+      .then(() => console.log("Startup: ensureProjectScopeSchema — project_scope_segments table + corridor/scope columns verified/added"))
+      .catch(e => console.error("Pre-routes: Failed to ensure project scope schema:", e)),
     // ── Earthwork tables — MUST complete before routes register ───────────────
     // Earthwork POST/PATCH routes check the earthworkSchemaReady flag (set below).
     // Runs here (blocking) so the flag is true before any request arrives.

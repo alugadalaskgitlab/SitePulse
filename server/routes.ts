@@ -41,6 +41,7 @@ import { insertAttachmentSchema, attachmentModuleTypes } from "@shared/schema";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
 import { checkProgrammeLinkRow, deriveChainageReviewStatus } from "@shared/dprProgrammeLink";
 import { checkQuantitySourceRow, resolveQuantitySource } from "@shared/dprGeometry";
+import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import {
   registerAuthRoutes,
   assertAdmin,
@@ -127,6 +128,18 @@ const RMC_ENABLED = process.env.ENABLE_RMC === "true";
 // Earthwork mutation routes (POST / PATCH / DELETE) check this flag and return
 // EARTHWORK_SCHEMA_NOT_READY (503) when it is still false, so the user gets a
 // clear actionable error rather than a cryptic "relation does not exist".
+// Instruction 032 — safe-parse a JSON-text id list column (scope segments).
+// Malformed values degrade to null instead of crashing the request.
+function safeIdList(v: unknown): number[] | null {
+  if (typeof v !== "string" || !v.trim()) return null;
+  try {
+    const arr = JSON.parse(v);
+    if (!Array.isArray(arr)) return null;
+    const ids = arr.map(n => Number(n)).filter(n => Number.isFinite(n));
+    return ids.length > 0 ? ids : null;
+  } catch { return null; }
+}
+
 let earthworkSchemaReady = false;
 export function setEarthworkSchemaReady(ready: boolean): void {
   earthworkSchemaReady = ready;
@@ -1358,6 +1371,83 @@ export async function registerRoutes(
     return null;
   }
 
+  /**
+   * Instruction 032 Part N — lightweight scope validation for DPR progress rows.
+   * Uses the shared eligible-scope service; adds NO new DPR steps. Rules:
+   *  - executable scope → proceed normally
+   *  - temporary block → warn; continuation requires a reason (drafts lenient)
+   *  - permanent no-scope / withdrawn (on/after effective date) → block normal
+   *    submission unless an authorised user (project_scope approve) overrides
+   *    with a reason. Item/category exceptions respected via applicability.
+   * Persists warning type / reason / user / timestamp on each affected row.
+   * Projects with no confirmed working reaches are untouched (no behaviour change).
+   */
+  async function validateProgressScope(input: any, req: any, opts: { draft?: boolean } = {}): Promise<{ error: string; code: string } | null> {
+    const progress: any[] = Array.isArray(input?.progress) ? input.progress : [];
+    const rows = progress.filter(p => !p?.noSiteWork && p?.boqItemId != null && p?.chainageFromKm != null && p?.chainageToKm != null);
+    if (rows.length === 0) return null;
+    const segCache = new Map<number, ScopeSegmentLike[]>();
+    const loadSegs = async (projectId: number): Promise<ScopeSegmentLike[]> => {
+      let s = segCache.get(projectId);
+      if (!s) {
+        const raw = await storage.getProjectScopeSegments(projectId);
+        s = (raw as any[]).map(x => ({
+          id: x.id, segmentType: x.segmentType, chainageFrom: Number(x.chainageFrom), chainageTo: Number(x.chainageTo),
+          side: x.side, status: x.status, applicability: x.applicability,
+          categoryIds: safeIdList(x.categoryIds),
+          itemIds: safeIdList(x.itemIds),
+          effectiveFrom: x.effectiveFrom, effectiveTo: x.effectiveTo, label: x.label, reason: x.reason,
+        }));
+        segCache.set(projectId, s);
+      }
+      return s;
+    };
+    const authUser = req?.authUser;
+    const canOverride = !!authUser && (authUser.isAdmin || authUser.isOwner ||
+      (req.authPermissions?.project_scope?.approve === true));
+    for (const p of rows) {
+      const boqItem: any = await storage.getBoqItem(Number(p.boqItemId));
+      if (!boqItem?.boqProjectId) continue;
+      const segs = await loadSegs(Number(boqItem.boqProjectId));
+      if (!segs.some(s => s.segmentType === "working_reach" && (s.status ?? "confirmed") === "confirmed")) continue;
+      const isLinear = !isStructureOrLocationScheduledItem(boqItem, { hasStructureImportBar: false });
+      const check = evaluateDprScope(segs, {
+        boqItemId: Number(p.boqItemId),
+        categoryId: boqItem.categoryId ?? null,
+        isLinear,
+        side: p.side ?? null,
+        chainageFromKm: Number(p.chainageFromKm),
+        chainageToKm: Number(p.chainageToKm),
+        dprDate: input?.date ?? null,
+      });
+      const reason = typeof p.scopeOverrideReason === "string" && p.scopeOverrideReason.trim() ? p.scopeOverrideReason.trim() : null;
+      if (check.status === "ok") {
+        p.scopeWarningType = null;
+        continue;
+      }
+      if (check.status === "temporary_block") {
+        p.scopeWarningType = "temporary_block";
+        if (!reason && !opts.draft) {
+          return { error: `Progress entry "${p.activity ?? ""}": ${check.message} Provide a reason to continue.`, code: "SCOPE_TEMP_BLOCKED" };
+        }
+        if (reason) { p.scopeOverrideBy = authUser?.id ?? null; p.scopeOverrideAt = new Date(); }
+        continue;
+      }
+      // no_scope / withdrawn — block pending authorised review (drafts may be saved with the flag)
+      p.scopeWarningType = check.status;
+      if (opts.draft) continue;
+      if (!canOverride || !reason) {
+        return {
+          error: `Progress entry "${p.activity ?? ""}": ${check.message} Submission is blocked pending authorised review${canOverride ? " — provide an override reason" : ""}.`,
+          code: "SCOPE_BLOCKED",
+        };
+      }
+      p.scopeOverrideBy = authUser?.id ?? null;
+      p.scopeOverrideAt = new Date();
+    }
+    return null;
+  }
+
   // Create new DPR (draft or submitted)
   app.post(api.dprs.create.path, async (req, res) => {
     try {
@@ -1369,6 +1459,8 @@ export async function registerRoutes(
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input, { draft: (input as any).dprStatus === "draft" });
       if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
+      const scopeError = await validateProgressScope(input, req, { draft: (input as any).dprStatus === "draft" });
+      if (scopeError) return res.status(422).json({ message: scopeError.error, error: scopeError.code });
       const dpr = await storage.createDpr(input, input.clientTimestamp);
       const isDraft = (input as any).dprStatus === "draft";
       if (!isDraft) {
@@ -1406,6 +1498,8 @@ export async function registerRoutes(
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input, { draft: true });
       if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
+      const scopeError = await validateProgressScope(input, req, { draft: true });
+      if (scopeError) return res.status(422).json({ message: scopeError.error, error: scopeError.code });
       const updated = await storage.updateDraftDpr(id, input);
       if (!updated) return res.status(404).json({ message: "DPR not found or not a draft" });
       res.json(updated);
@@ -1433,6 +1527,8 @@ export async function registerRoutes(
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input);
       if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
+      const scopeError = await validateProgressScope(input, req, {});
+      if (scopeError) return res.status(422).json({ message: scopeError.error, error: scopeError.code });
       const clientTimestamp = (req.body as any).clientTimestamp;
       const submitted = await storage.submitDraftDpr(id, input, clientTimestamp);
       if (!submitted) return res.status(404).json({ message: "DPR not found or not a draft" });
@@ -10797,6 +10893,196 @@ export async function registerRoutes(
     }
   });
 
+  // ── Instruction 032: Project Scope & Working Reaches ───────────────────────
+  // View is open to anyone who can see the Work Programme (qto_boq) or the
+  // dedicated project_scope section; mutations require project_scope edit;
+  // confirming (approving) scope requires project_scope approve.
+  const canViewScope = (req: any): boolean => {
+    const u = req.authUser;
+    if (!u) return false;
+    if (u.isAdmin || u.isOwner) return true;
+    const m = req.authPermissions;
+    return !!(m && ((m.project_scope && m.project_scope.view) || (m.qto_boq && m.qto_boq.view)));
+  };
+
+  app.get("/api/boq/projects/:id/scope-segments", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      if (!canViewScope(req)) return res.status(403).json({ error: "forbidden", section: "project_scope", action: "view" });
+      const projectId = parseInt(req.params.id);
+      const segments = await storage.getProjectScopeSegments(projectId);
+      res.json(segments);
+    } catch (err) {
+      console.error("GET scope-segments:", err);
+      res.status(500).json({ error: "Failed to fetch scope segments" });
+    }
+  });
+
+  const parseScopeSegmentBody = (body: any) => {
+    const segmentType = body?.segmentType;
+    if (!(SCOPE_SEGMENT_TYPES as readonly string[]).includes(segmentType)) throw new Error("segmentType must be one of: working_reach, no_scope, temporary_block, withdrawn");
+    const chainageFrom = Number(body?.chainageFrom);
+    const chainageTo = Number(body?.chainageTo);
+    if (!Number.isFinite(chainageFrom) || !Number.isFinite(chainageTo) || chainageTo <= chainageFrom)
+      throw new Error("chainage-to must be greater than chainage-from");
+    if (chainageFrom < 0) throw new Error("chainage cannot be negative");
+    const applicability = body?.applicability && (SCOPE_APPLICABILITY_MODES as readonly string[]).includes(body.applicability)
+      ? body.applicability : "all_linear";
+    const idList = (v: any) => Array.isArray(v) && v.length > 0
+      ? JSON.stringify(v.map((n: any) => parseInt(n)).filter((n: number) => Number.isFinite(n)))
+      : null;
+    const str = (v: any, max = 500) => typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
+    const dateStr = (v: any) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+    return {
+      segmentType,
+      label: str(body?.label, 80),
+      chainageFrom, chainageTo,
+      side: isBarSide(body?.side) ? body.side : null,
+      reason: str(body?.reason),
+      applicability,
+      categoryIds: applicability === "categories" ? idList(body?.categoryIds) : null,
+      itemIds: applicability === "items" ? idList(body?.itemIds) : null,
+      effectiveFrom: dateStr(body?.effectiveFrom),
+      effectiveTo: dateStr(body?.effectiveTo),
+      deptReference: str(body?.deptReference),
+      documentRef: str(body?.documentRef),
+      notes: str(body?.notes, 2000),
+      withdrawalOrderRef: str(body?.withdrawalOrderRef),
+      consentRef: str(body?.consentRef),
+      omittedQty: str(body?.omittedQty, 100),      // never required to save (Part D)
+      omittedAmount: str(body?.omittedAmount, 100),
+      originalScopeNote: str(body?.originalScopeNote, 1000),
+      revisedScopeNote: str(body?.revisedScopeNote, 1000),
+    };
+  };
+
+  app.post("/api/boq/projects/:id/scope-segments", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "project_scope")) return;
+      const projectId = parseInt(req.params.id);
+      let data: any;
+      try { data = parseScopeSegmentBody(req.body); }
+      catch (e: any) { return res.status(400).json({ error: e.message }); }
+      const authUser = (req as any).authUser;
+      const segment = await storage.createProjectScopeSegment({
+        ...data, boqProjectId: projectId, status: "draft", createdBy: authUser?.id ?? null,
+      });
+      res.json(segment);
+    } catch (err) {
+      console.error("POST scope-segments:", err);
+      res.status(500).json({ error: "Failed to create scope segment" });
+    }
+  });
+
+  app.patch("/api/boq/scope-segments/:segId", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "project_scope")) return;
+      const segId = parseInt(req.params.segId);
+      let data: any;
+      try { data = parseScopeSegmentBody(req.body); }
+      catch (e: any) { return res.status(400).json({ error: e.message }); }
+      const authUser = (req as any).authUser;
+      const result = await storage.updateProjectScopeSegment(segId, data, authUser?.id ?? null);
+      res.json({ ...result.segment, revised: result.revised });
+    } catch (err: any) {
+      const msg = String(err?.message ?? "");
+      if (msg.startsWith("SEGMENT_")) return res.status(422).json({ error: msg });
+      console.error("PATCH scope-segments:", err);
+      res.status(500).json({ error: "Failed to update scope segment" });
+    }
+  });
+
+  app.post("/api/boq/scope-segments/:segId/confirm", async (req, res) => {
+    try {
+      if (!assertApprove(req, res, "project_scope")) return;
+      const segId = parseInt(req.params.segId);
+      const authUser = (req as any).authUser;
+      const segment = await storage.confirmProjectScopeSegment(segId, authUser?.id ?? null);
+      await storage.logAudit({
+        module: "project_scope", transactionId: segment.boqProjectId, action: "scope_segment_confirmed",
+        userId: authUser?.id ?? null, userName: authUser?.name ?? authUser?.username ?? "unknown",
+        userRole: authUser?.role ?? null,
+        newValues: { segmentId: segment.id, segmentType: segment.segmentType, chainageFrom: segment.chainageFrom, chainageTo: segment.chainageTo, side: segment.side },
+      } as any).catch((e: any) => console.error("scope confirm audit:", e?.message ?? e));
+      res.json(segment);
+    } catch (err: any) {
+      const msg = String(err?.message ?? "");
+      if (msg.startsWith("SEGMENT_")) return res.status(422).json({ error: msg });
+      console.error("confirm scope-segment:", err);
+      res.status(500).json({ error: "Failed to confirm scope segment" });
+    }
+  });
+
+  app.delete("/api/boq/scope-segments/:segId", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "project_scope")) return;
+      await storage.deleteProjectScopeSegment(parseInt(req.params.segId));
+      res.json({ ok: true });
+    } catch (err: any) {
+      const msg = String(err?.message ?? "");
+      if (msg.startsWith("SEGMENT_")) return res.status(422).json({ error: msg });
+      console.error("DELETE scope-segments:", err);
+      res.status(500).json({ error: "Failed to delete scope segment" });
+    }
+  });
+
+  app.get("/api/boq/projects/:id/scope-reconciliation", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      if (!canViewScope(req)) return res.status(403).json({ error: "forbidden", section: "project_scope", action: "view" });
+      const projectId = parseInt(req.params.id);
+      const { computeScopeReconciliation } = await import("@shared/projectScope");
+      const [project, segments] = await Promise.all([
+        storage.getBoqProject(projectId),
+        storage.getProjectScopeSegments(projectId),
+      ]);
+      if (!project) return res.status(404).json({ error: "Project not found" });
+      const adapted = (segments as any[]).map(s => ({
+        id: s.id, segmentType: s.segmentType, chainageFrom: s.chainageFrom, chainageTo: s.chainageTo,
+        side: s.side, status: s.status, applicability: s.applicability,
+        categoryIds: safeIdList(s.categoryIds),
+        itemIds: safeIdList(s.itemIds),
+        effectiveFrom: s.effectiveFrom, effectiveTo: s.effectiveTo, label: s.label, reason: s.reason,
+      }));
+      const rec = computeScopeReconciliation(
+        { chainageFrom: (project as any).chainageFrom ?? null, chainageTo: (project as any).chainageTo ?? null },
+        adapted,
+        { includeDraft: true },
+      );
+      res.json({ ...rec, corridorConfirmed: (project as any).corridorConfirmed === 1 });
+    } catch (err) {
+      console.error("GET scope-reconciliation:", err);
+      res.status(500).json({ error: "Failed to compute scope reconciliation" });
+    }
+  });
+
+  app.patch("/api/boq/projects/:id/corridor", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "project_scope")) return;
+      const projectId = parseInt(req.params.id);
+      const patch: any = {};
+      if (req.body?.chainageFrom !== undefined) {
+        const v = req.body.chainageFrom === null ? null : Number(req.body.chainageFrom);
+        if (v !== null && !Number.isFinite(v)) return res.status(400).json({ error: "chainageFrom must be numeric" });
+        patch.chainageFrom = v;
+      }
+      if (req.body?.chainageTo !== undefined) {
+        const v = req.body.chainageTo === null ? null : Number(req.body.chainageTo);
+        if (v !== null && !Number.isFinite(v)) return res.status(400).json({ error: "chainageTo must be numeric" });
+        patch.chainageTo = v;
+      }
+      if (req.body?.corridorConfirmed !== undefined) patch.corridorConfirmed = req.body.corridorConfirmed ? 1 : 0;
+      if (req.body?.corridorRemarks !== undefined) patch.corridorRemarks = typeof req.body.corridorRemarks === "string" ? req.body.corridorRemarks.slice(0, 1000) : null;
+      if (req.body?.chainageDisplayFormat !== undefined) patch.chainageDisplayFormat = typeof req.body.chainageDisplayFormat === "string" ? req.body.chainageDisplayFormat.slice(0, 20) : null;
+      const project = await storage.updateBoqProject(projectId, patch);
+      if (!project) return res.status(404).json({ error: "Project not found" });
+      res.json(project);
+    } catch (err) {
+      console.error("PATCH corridor:", err);
+      res.status(500).json({ error: "Failed to update corridor" });
+    }
+  });
+
   // --- BOQ Mix Template Links ---
 
   app.get("/api/boq/projects/:id/mix-links", async (req, res) => {
@@ -13116,6 +13402,45 @@ export async function registerRoutes(
       if (plannedStart && targetEnd && targetEnd < plannedStart)
         return res.status(400).json({ error: "INVALID_DATE_RANGE", message: "targetCompletionDate cannot precede plannedStartDate" });
 
+      // ── Instruction 032 Part M (light): block arrangements over permanently
+      // excluded / withdrawn scope, unless the record is historical (the
+      // arrangement's chainage predates the withdrawal's effective date via
+      // evaluateDprScope's date gate). Temporary blocks do NOT block — the
+      // arrangement may be preparation for after the block lifts.
+      {
+        const arrChF = body.chainageFrom != null ? Number(body.chainageFrom) : null;
+        const arrChT = body.chainageTo != null ? Number(body.chainageTo) : null;
+        if (arrChF != null && arrChT != null && Number.isFinite(arrChF) && Number.isFinite(arrChT) && arrChT > arrChF) {
+          const rawSegs = await storage.getProjectScopeSegments(projectId);
+          const segs: ScopeSegmentLike[] = (rawSegs as any[]).map(x => ({
+            id: x.id, segmentType: x.segmentType, chainageFrom: Number(x.chainageFrom), chainageTo: Number(x.chainageTo),
+            side: x.side, status: x.status, applicability: x.applicability,
+            categoryIds: safeIdList(x.categoryIds),
+            itemIds: safeIdList(x.itemIds),
+            effectiveFrom: x.effectiveFrom, effectiveTo: x.effectiveTo, label: x.label, reason: x.reason,
+          }));
+          if (segs.some(s => s.segmentType === "working_reach" && (s.status ?? "confirmed") === "confirmed")) {
+            const arrItemId = singleBoqItemId ?? ((Array.isArray(boqItemAllocationsRaw) && boqItemAllocationsRaw[0]?.boqItemId) || null);
+            const arrItem: any = arrItemId ? await storage.getBoqItem(Number(arrItemId)) : null;
+            const scopeCheck = evaluateDprScope(segs, {
+              boqItemId: arrItemId != null ? Number(arrItemId) : null,
+              categoryId: arrItem?.categoryId ?? null,
+              isLinear: true,
+              side: body.side ?? null,
+              chainageFromKm: arrChF,
+              chainageToKm: arrChT,
+              dprDate: plannedStart ?? null,
+            });
+            if (scopeCheck.status === "no_scope" || scopeCheck.status === "withdrawn") {
+              return res.status(422).json({
+                error: "SCOPE_BLOCKED",
+                message: `This chainage is outside the project's executable scope (${scopeCheck.status === "withdrawn" ? "withdrawn" : "no scope"}). ${scopeCheck.message ?? ""}`.trim(),
+              });
+            }
+          }
+        }
+      }
+
       // Submit-specific validation — arrangement type must be confirmed before submitting
       if (saveIntent === "submit" && (!arrangementType || arrangementType === "not_decided")) {
         return res.status(400).json({
@@ -14622,6 +14947,43 @@ export async function registerRoutes(
         stretchGaps = v.gaps;
       }
 
+      // ── Instruction 032 Part I: eligible-scope coverage for allocation ──────
+      // Confirmed scope segments drive per-item clipping: bars only over
+      // eligible coverage, blocked coverage unprogrammed, excluded/withdrawn
+      // coverage receives nothing. When the project has no confirmed working
+      // reaches, scope setup is not in use → legacy allocation unchanged.
+      const scopeSegmentsRaw = await storage.getProjectScopeSegments(projectId);
+      const scopeSegs: ScopeSegmentLike[] = (scopeSegmentsRaw as any[]).map(s => ({
+        id: s.id, segmentType: s.segmentType, chainageFrom: Number(s.chainageFrom), chainageTo: Number(s.chainageTo),
+        side: s.side, status: s.status, applicability: s.applicability,
+        categoryIds: safeIdList(s.categoryIds),
+        itemIds: safeIdList(s.itemIds),
+        effectiveFrom: s.effectiveFrom, effectiveTo: s.effectiveTo, label: s.label, reason: s.reason,
+      }));
+      const scopeActive = scopeSegs.some(s => s.segmentType === "working_reach" && (s.status ?? "confirmed") === "confirmed")
+        && scopeSegs.some(s => s.segmentType !== "working_reach" || true); // reaches alone still define eligible coverage
+      // Date semantics for PLANNING (not DPRs): onDate is deliberately null →
+      // every recorded withdrawal applies (never programme withdrawn scope,
+      // even if its effective date is in the future) and every un-released
+      // temporary block stays blocked (blocked qty remains unprogrammed until
+      // the block is released and the programme regenerated). Conservative by
+      // design — a programme should never promise work on doubtful coverage.
+      const scopeItemCache = new Map<number, ReturnType<typeof resolveEligibleScope>>();
+      const scopeForItem = (boqItemId: number) => {
+        let r = scopeItemCache.get(boqItemId);
+        if (!r) {
+          const it: any = (items as any[]).find(x => x.id === boqItemId);
+          r = resolveEligibleScope(scopeSegs, {
+            boqItemId,
+            categoryId: it?.categoryId ?? null,
+            isLinear: true, // scopeCoverage is only consulted for pavement-track (linear) bars
+            onDate: null,
+          });
+          scopeItemCache.set(boqItemId, r);
+        }
+        return r;
+      };
+
       // Persist sequence options so the UI can pre-populate the dialog next time.
       // Skipped in dry-run mode so the diagnostic call doesn't mutate saved settings.
       // 029C: DEFERRED until after the overallocation guard — a blocked run must
@@ -14758,6 +15120,7 @@ export async function registerRoutes(
         unclassifiedItemIds,
         unclassifiedItems: seqUnclassifiedItems,
         diagnostics: seqDiagnostics,
+        scopeSummary: seqScopeSummary,
       } = generateSequencedProgramme(seqItems, {
         fronts,
         totalMonths,
@@ -14769,6 +15132,18 @@ export async function registerRoutes(
         bridgeGroups,
         disableStructureFronts,
         ...(stretches ? { stretches } : {}), // Instruction 029 — real stretch table
+        // Instruction 032 — clip road bars to each item's eligible executable scope
+        ...(scopeActive ? {
+          scopeCoverage: (boqItemId: number, stretch: { chainageFrom: number; chainageTo: number; side?: string | null }) => {
+            const scope = scopeForItem(boqItemId);
+            if (!scope.hasWorkingReaches) return null;
+            const cov = coverageForStretch(scope, stretch);
+            // No restriction hit within this stretch → legacy path for the stretch
+            // ONLY if the whole stretch is executable (eligible == stretch coverage
+            // with no excluded/blocked/withdrawn portions).
+            return cov;
+          },
+        } : {}),
       });
 
       // ── Instruction 029 Part D: regeneration PLAN (computed for dry-run AND real run) ──
@@ -14902,6 +15277,8 @@ export async function registerRoutes(
             boqQty, planned: +total.toFixed(3), excess: +over.toFixed(3),
           });
         }
+        // Instruction 032 — scope figures for this item (when scope is active).
+        const sc = seqScopeSummary?.[itemId];
         allocationPreview.push({
           boqItemId: itemId,
           description: ((it.displayName ?? it.description ?? "") as string).slice(0, 100),
@@ -14912,6 +15289,16 @@ export async function registerRoutes(
           overallocated: +Math.max(0, over).toFixed(3),
           programmedPct: boqQty > 0 ? +Math.min(100, (total / boqQty) * 100).toFixed(1) : null,
           rows: allocRows.get(itemId) ?? [],
+          ...(sc ? {
+            scope: {
+              eligibleSideLenKm: sc.eligibleSideLenKm,
+              blockedSideLenKm: sc.blockedSideLenKm,
+              excludedSideLenKm: sc.excludedSideLenKm,
+              withdrawnSideLenKm: sc.withdrawnSideLenKm,
+              blockedQty: sc.blockedQty,          // in balance, NOT programmed
+              fullyExcluded: sc.fullyExcluded,
+            },
+          } : {}),
         });
       }
 
@@ -14959,6 +15346,9 @@ export async function registerRoutes(
         allocationPreview,
         overallocatedItems,
         qtyConflicts,
+        // Instruction 032 — scope basis of this run (null = scope not in use)
+        scopeApplied: scopeActive,
+        scopeSummary: seqScopeSummary ?? null,
       };
 
       // ── Dry-run: return per-item classification trace without touching bars or DB ──

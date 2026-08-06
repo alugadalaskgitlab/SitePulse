@@ -93,6 +93,7 @@ export const SECTION_KEYS = [
   "mix_calculator",
   "concrete_calculator",
   "qto_boq",
+  "project_scope",
   "rate_cards",
 
   // ── Masters ───────────────────────────────────────────────────────────────
@@ -214,6 +215,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   mix_calculator: "Bituminous Mix Rate Calculator",
   concrete_calculator: "Concrete Rate Calculator (v1 & v2)",
   qto_boq: "QTO & BOQ Estimator",
+  project_scope: "Project Scope & Working Reaches",
   rate_cards: "Rate Cards — View & Edit",
 
   // Masters
@@ -351,12 +353,12 @@ const _PM_MATRIX = buildTemplateMatrix(
     "stores_inventory",
     "vendor_bills_view",
     "report_management", "report_site_purchases",
-    "qto_boq",
+    "qto_boq", "project_scope",
   ],
   // approve
-  ["purchase_indents_approve", "irn_approve", "vendor_bills_approve", "site_dprs"],
+  ["purchase_indents_approve", "irn_approve", "vendor_bills_approve", "site_dprs", "project_scope"],
   // edit
-  ["qto_boq"],
+  ["qto_boq", "project_scope"],
 );
 
 export const ROLE_TEMPLATES: RoleTemplate[] = [
@@ -465,7 +467,7 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
   {
     id: "calculators",
     label: "Rate Calculators & Estimator",
-    sections: ["estimator_portal", "mix_calculator", "concrete_calculator", "qto_boq", "rate_cards"],
+    sections: ["estimator_portal", "mix_calculator", "concrete_calculator", "qto_boq", "project_scope", "rate_cards"],
   },
   {
     id: "masters",

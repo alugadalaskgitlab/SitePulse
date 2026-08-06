@@ -290,6 +290,9 @@ import {
   planningLabourTypes,
   type BoqProject,
   type InsertBoqProject,
+  projectScopeSegments,
+  type ProjectScopeSegment,
+  type InsertProjectScopeSegment,
   type BoqCategory,
   type InsertBoqCategory,
   type BoqItem,
@@ -2272,6 +2275,11 @@ export class DatabaseStorage implements IStorage {
             // toward bar done-qty and drop the executed-by record.
             chainageReviewStatus: (p as any).chainageReviewStatus ?? null,
             executedBy: (p as any).executedBy ?? null,
+            // 032: preserve scope-warning flags + override attribution on clone
+            scopeWarningType: (p as any).scopeWarningType ?? null,
+            scopeOverrideReason: (p as any).scopeOverrideReason ?? null,
+            scopeOverrideBy: (p as any).scopeOverrideBy ?? null,
+            scopeOverrideAt: (p as any).scopeOverrideAt ?? null,
           }))
         ).returning();
         for (let i = 0; i < insertedProgress.length; i++) {
@@ -22360,6 +22368,122 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBoqProject(id: number): Promise<void> {
     await db.delete(boqProjects).where(eq(boqProjects.id, id));
+  }
+
+  // ── Instruction 032: Project Scope & Working Reaches ───────────────────────
+
+  /**
+   * Idempotent startup ensure (dev DB already migrated via direct DDL; this
+   * covers production at publish time and any fresh environment). Creates the
+   * project_scope_segments table, the boq_projects corridor columns, and the
+   * progress_entries scope-warning columns.
+   */
+  async ensureProjectScopeSchema(): Promise<void> {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS project_scope_segments (
+        id SERIAL PRIMARY KEY,
+        boq_project_id INTEGER NOT NULL,
+        segment_type TEXT NOT NULL,
+        label TEXT,
+        chainage_from DOUBLE PRECISION NOT NULL,
+        chainage_to DOUBLE PRECISION NOT NULL,
+        side TEXT,
+        reason TEXT,
+        applicability TEXT NOT NULL DEFAULT 'all_linear',
+        category_ids TEXT,
+        item_ids TEXT,
+        effective_from TEXT,
+        effective_to TEXT,
+        dept_reference TEXT,
+        document_ref TEXT,
+        notes TEXT,
+        withdrawal_order_ref TEXT,
+        consent_ref TEXT,
+        omitted_qty TEXT,
+        omitted_amount TEXT,
+        original_scope_note TEXT,
+        revised_scope_note TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        revision_of INTEGER,
+        created_by INTEGER,
+        approved_by INTEGER,
+        approved_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_scope_segments_project ON project_scope_segments (boq_project_id)`);
+    await db.execute(sql`ALTER TABLE boq_projects ADD COLUMN IF NOT EXISTS corridor_confirmed INTEGER NOT NULL DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE boq_projects ADD COLUMN IF NOT EXISTS corridor_remarks TEXT`);
+    await db.execute(sql`ALTER TABLE boq_projects ADD COLUMN IF NOT EXISTS chainage_display_format TEXT`);
+    await db.execute(sql`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS scope_warning_type TEXT`);
+    await db.execute(sql`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS scope_override_reason TEXT`);
+    await db.execute(sql`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS scope_override_by INTEGER`);
+    await db.execute(sql`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS scope_override_at TIMESTAMP`);
+  }
+
+  async getProjectScopeSegments(boqProjectId: number): Promise<ProjectScopeSegment[]> {
+    return await db.select().from(projectScopeSegments)
+      .where(eq(projectScopeSegments.boqProjectId, boqProjectId))
+      .orderBy(asc(projectScopeSegments.chainageFrom), asc(projectScopeSegments.id));
+  }
+
+  async createProjectScopeSegment(data: InsertProjectScopeSegment): Promise<ProjectScopeSegment> {
+    const [row] = await db.insert(projectScopeSegments).values(data).returning();
+    return row;
+  }
+
+  /**
+   * Part Q — confirmed records are never silently overwritten. Editing a
+   * confirmed segment creates a NEW row (revisionOf = old id) and marks the
+   * old row superseded, preserving history. Draft rows update in place.
+   */
+  async updateProjectScopeSegment(
+    id: number,
+    data: Partial<InsertProjectScopeSegment>,
+    userId: number | null,
+  ): Promise<{ segment: ProjectScopeSegment; revised: boolean }> {
+    return await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(projectScopeSegments)
+        .where(eq(projectScopeSegments.id, id)).for("update");
+      if (!existing) throw new Error("SEGMENT_NOT_FOUND");
+      if (existing.status === "superseded") throw new Error("SEGMENT_SUPERSEDED: this record was revised — edit the latest revision instead");
+      if (existing.status === "confirmed") {
+        // Supersede-and-revise, never overwrite (Part Q)
+        const { id: _i, createdAt: _c, updatedAt: _u, approvedBy: _ab, approvedAt: _aa, ...base } = existing as any;
+        const [revision] = await tx.insert(projectScopeSegments).values({
+          ...base, ...data,
+          status: "draft",
+          revisionOf: existing.id,
+          createdBy: userId ?? existing.createdBy,
+        }).returning();
+        await tx.update(projectScopeSegments)
+          .set({ status: "superseded", updatedAt: new Date() })
+          .where(eq(projectScopeSegments.id, existing.id));
+        return { segment: revision, revised: true };
+      }
+      const [row] = await tx.update(projectScopeSegments)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(projectScopeSegments.id, id)).returning();
+      return { segment: row, revised: false };
+    });
+  }
+
+  async confirmProjectScopeSegment(id: number, userId: number | null): Promise<ProjectScopeSegment> {
+    const [row] = await db.update(projectScopeSegments)
+      .set({ status: "confirmed", approvedBy: userId, approvedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(projectScopeSegments.id, id), eq(projectScopeSegments.status, "draft")))
+      .returning();
+    if (!row) throw new Error("SEGMENT_NOT_DRAFT: only draft segments can be confirmed");
+    return row;
+  }
+
+  /** Draft segments may be deleted; confirmed ones must be superseded via edit. */
+  async deleteProjectScopeSegment(id: number): Promise<void> {
+    const [existing] = await db.select().from(projectScopeSegments).where(eq(projectScopeSegments.id, id));
+    if (!existing) return;
+    if (existing.status !== "draft") throw new Error("SEGMENT_NOT_DRAFT: confirmed scope records cannot be deleted — revise them instead");
+    await db.delete(projectScopeSegments).where(eq(projectScopeSegments.id, id));
   }
 
   async duplicateBoqProject(id: number): Promise<BoqProject> {
