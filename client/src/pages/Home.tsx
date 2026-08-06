@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   HardHat, FileText, Fuel, ShoppingCart, CheckCircle2, Clock,
   AlertTriangle, Activity, Truck, ChevronRight, ArrowUpRight, MapPin, Smartphone, CalendarCheck,
@@ -8,24 +8,21 @@ import {
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
 import FieldHome from "@/pages/FieldHome";
+import { getWorkspaceMode, setWorkspaceMode, type WorkspaceMode } from "@/lib/workspaceMode";
 import { format } from "date-fns";
 
 
 export default function Home() {
-  const { isAdmin, isFieldEngineer } = useAuth();
+  const { isFieldEngineer, user } = useAuth();
+  const userId = user?.id ?? null;
 
-  // ── Role-based work view (product rule, see field-home-guided-dpr memory) ──
-  // Role decides the default WORKSPACE; device only decides the LAYOUT within
-  // it. Engineers/field users land on Field Home on every device — mobile,
-  // tablet, or desktop — because their workflow doesn't change with their
-  // device. Managers/admins always keep the classic Dashboard. Either side
-  // can toggle over for the session via fieldOverride.
-  //
-  // Task #1247 — this used to key off `!isManager`, but isManager is true
-  // for every non-admin authenticated user, so `!isManager` was only ever
-  // true when logged out. We key off the explicit, admin-settable
-  // isFieldEngineer flag instead. Default is false until an admin opts a
-  // user in, so existing users see no behavior change.
+  // ── Universal default landing page ──────────────────────────────────────
+  // Field Home is the default for EVERY user — role never decides the
+  // landing page (the old `!isAdmin && isFieldEngineer` rule was the same
+  // class of bug already fixed for DPR entry mode: a PM covering for an
+  // absent Site Engineer must see the identical workflow). Only the user's
+  // own deliberate switch to the Classic Dashboard is remembered, per user,
+  // via lib/workspaceMode.ts — exactly like the Guided/Classic DPR choice.
   //
   // IMPORTANT: the decision of which component to render lives in this
   // top-level wrapper, which itself calls no data-fetching hooks. This
@@ -33,18 +30,27 @@ export default function Home() {
   // a component with an early return also called useQuery hooks after that
   // return — the hook count/order must stay identical across renders of a
   // single component instance.
-  const [fieldOverride, setFieldOverride] = useState<boolean | null>(null);
-  const defaultField = !isAdmin && isFieldEngineer;
-  const showFieldHome = fieldOverride ?? defaultField;
+  // The user id is passed explicitly (not relied on via the auth-context
+  // binding, which only happens in a post-render effect — too late for the
+  // first render). Re-read whenever the authenticated user changes so a
+  // second user on the same browser never inherits the first user's choice.
+  const [mode, setMode] = useState<WorkspaceMode>(() => getWorkspaceMode(userId));
+  useEffect(() => {
+    setMode(getWorkspaceMode(userId));
+  }, [userId]);
+  const choose = (m: WorkspaceMode) => {
+    setWorkspaceMode(m, userId); // remembered per user for future logins
+    setMode(m);
+  };
 
-  if (showFieldHome) {
-    return <FieldHome onViewFullDashboard={() => setFieldOverride(false)} />;
+  if (mode === "field") {
+    return <FieldHome onViewFullDashboard={() => choose("classic")} />;
   }
 
   return (
     <HomeDashboard
       isFieldEngineer={isFieldEngineer}
-      onSwitchToFieldView={() => setFieldOverride(true)}
+      onSwitchToFieldView={() => choose("field")}
     />
   );
 }
@@ -161,8 +167,9 @@ function HomeDashboard({
             </h2>
             <p className="text-sm text-slate-500 mt-0.5">{todayDisplay}</p>
           </div>
-          {isFieldEngineer && !isAdmin && (
-            <button
+          {/* Every user can switch back to Field Home — the choice is
+              remembered per user, exactly like the DPR entry-mode switch. */}
+          <button
               type="button"
               onClick={onSwitchToFieldView}
               className="flex items-center gap-1.5 text-xs font-medium text-slate-500 border border-slate-200 rounded-full px-3 py-1.5 flex-shrink-0"
@@ -171,7 +178,6 @@ function HomeDashboard({
               <Smartphone className="w-3.5 h-3.5" />
               Field view
             </button>
-          )}
         </div>
 
         {/* ── Stat cards ── */}

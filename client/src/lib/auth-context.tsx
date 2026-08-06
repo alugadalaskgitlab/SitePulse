@@ -10,6 +10,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { bindDprEntryModeUser } from "@/lib/dprEntryMode";
+import { bindWorkspaceModeUser } from "@/lib/workspaceMode";
 import {
   STRICT_IDLE_MINUTES,
   type PermissionMatrix,
@@ -107,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Guided/Classic choice is remembered per user, never device-wide.
   useEffect(() => {
     bindDprEntryModeUser(meQuery.data?.user?.id ?? null);
+    bindWorkspaceModeUser(meQuery.data?.user?.id ?? null);
   }, [meQuery.data?.user?.id]);
 
   // Track activity for the strict (5-minute idle) policy.

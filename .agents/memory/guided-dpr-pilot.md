@@ -27,3 +27,8 @@ description: Programme-driven Guided DPR screen — routing, entry-mode preferen
 **How to apply:** every restore/hydration generation must set `deriveNeededRef` so override flags are re-derived once BOQ items load — never a one-shot `entries.length` guard (restore can land after the first entries render). Suggestions come from `suggestGuidedBars`/`emptySuggestionsReason` in `shared/dprProgrammeLink.ts` — role-independent by construction; keep it that way. Picker side/chainage narrowing (`sideLabel`/`fromKm`/`toKm` props) and `warnOverBalance` are opt-in props so Detailed DPR stays untouched.
 
 - Live-proof tip: API login needs an approved device row (`user_devices`); a fresh curl login is `device_pending` until approved (dev DB update works).
+
+## Landing page default (Aug 2026)
+- Field Home is the universal default landing page for EVERY user — role never decides (old `!isAdmin && isFieldEngineer` rule in Home.tsx removed; same bug class as the DPR entry-mode fix).
+- Per-user preference lives in client/src/lib/workspaceMode.ts (`sitelog.workspaceMode.u<id>`), pattern-identical to dprEntryMode.ts. Deliberate "classic" switch remembered per user; second user on same device unaffected.
+- Gotcha: auth-context binds user ids in a post-render effect — too late for a component's useState initializer. Components must pass user.id explicitly to getWorkspaceMode/setWorkspaceMode and re-read on userId change (Home.tsx does).

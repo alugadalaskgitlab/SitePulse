@@ -1,0 +1,45 @@
+Restore Field Home as the universal default landing page
+
+PURPOSE
+Which landing page a user sees — Field Home or the Classic Dashboard — is
+currently decided by role (!isAdmin && isFieldEngineer in Home.tsx), the
+same bug already fixed once for DPR entry mode. If a Site Engineer is
+absent and a supervisor or PM steps in to record the day's DPR, they must
+see the same landing page the Site Engineer would have seen — not a
+different, administrator-oriented view — because the whole point is that
+anyone authorised to do the work gets the same workflow.
+
+FIX
+1. Remove the role-based default in Home.tsx. Landing page choice must not
+   depend on isAdmin or isFieldEngineer.
+2. Build a per-user remembered workspace preference, the same pattern as
+   lib/dprEntryMode.ts — bound to the authenticated user id, not shared
+   device-wide, migrated safely, defaulting to Field Home for any user
+   with no saved preference.
+3. Keep an obvious, clearly labelled way to switch to the Classic
+   Dashboard for users who genuinely want it, and remember that choice
+   per user for future logins — exactly as "Switch to Classic View"
+   works for DPR entry mode today.
+4. Do not change FieldHome.tsx's own site-selection logic — it already
+   correctly lists only the sites the user has permitted access to, with
+   a picker when more than one site is active. This fix is only about
+   which page loads by default, not about FieldHome's internal behaviour.
+5. Do not change site-access permission rules, DPR entry-mode logic, or
+   any other already-fixed default.
+
+TESTS
+- Admin with no saved workspace preference lands on Field Home.
+- PM/non-field-engineer user with no saved preference lands on Field Home.
+- User who deliberately switches to Classic Dashboard sees Classic on
+  their next login, not Field Home.
+- Switching back to Field Home is remembered the same way.
+- A second user on the same device/browser is unaffected by the first
+  user's saved preference.
+- Field Home's site picker still works correctly for a user with access
+  to multiple sites.
+
+DO NOT TOUCH
+- FieldHome.tsx internal site-selection and data logic
+- lib/dprEntryMode.ts and the Guided/Classic DPR default
+- Site-access permission rules
+- Any other already-delivered fix
