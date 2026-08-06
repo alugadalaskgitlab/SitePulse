@@ -351,12 +351,28 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const [phone, setPhone] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isFieldEngineer, setIsFieldEngineer] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [policy, setPolicy] = useState<SessionPolicy>("strict");
-  // Step 2 — role template ("custom" = start with no permissions, edit later)
-  const [roleTemplate, setRoleTemplate] = useState<string>("");
+  // Step 2 — role template is the single authoritative source of the user's
+  // type: "__admin__" = administrator, "site_engineer" implies field user,
+  // "" = custom (no template), null = not chosen yet.
+  const [roleTemplate, setRoleTemplate] = useState<string | null>(null);
+  const isAdmin = roleTemplate === "__admin__";
+  const isFieldEngineer = roleTemplate === "site_engineer";
+
+  // Defensive: browsers sometimes autofill the logged-in login (email +
+  // saved password) into a freshly-opened dialog despite autocomplete
+  // hints. If an email lands in the Phone field, discard it.
+  useEffect(() => {
+    if (open && (phone.includes("@") || /[a-zA-Z]/.test(phone))) setPhone("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, phone]);
+
+  const sanitizePhone = (v: string) =>
+    v.includes("@") ? "" : v.replace(/[^0-9+()\-\s]/g, "");
+  const phoneDigits = phone.replace(/\D/g, "");
+  const phoneValid = phone.trim() === "" || phoneDigits.length >= 7;
+  const emailValid = email.trim() === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   // Step 3 — explicit site access
   const [siteMode, setSiteMode] = useState<"all" | "selected" | "">("");
   const [siteIds, setSiteIds] = useState<Set<number>>(new Set());
@@ -368,7 +384,7 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const activeSites = (sitesQ.data ?? []).filter((s) => s.isActive !== 0);
 
   const setupPayload = () => ({
-    roleTemplate: roleTemplate || undefined,
+    roleTemplate: roleTemplate && roleTemplate !== "__admin__" ? roleTemplate : undefined,
     siteAccess: siteMode === "all"
       ? { mode: "all" as const }
       : { mode: "selected" as const, siteIds: Array.from(siteIds) },
@@ -422,7 +438,8 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
     },
   });
 
-  const basicsValid = (!!email.trim() || !!phone.trim()) && !!fullName.trim() && password.length >= 8;
+  const basicsValid = (!!email.trim() || !!phone.trim()) && emailValid && phoneValid && !!fullName.trim() && password.length >= 8;
+  const roleValid = roleTemplate !== null;
   const siteValid = isAdmin || siteMode === "all" || (siteMode === "selected" && siteIds.size > 0);
   const steps = ["Details", "Role", "Site access", "Review"];
   const templateLabel = ROLE_TEMPLATES.find((t) => t.id === roleTemplate)?.label ?? "Custom (no template)";
@@ -444,28 +461,22 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
           <div className="space-y-3">
             <div>
               <Label>Full name</Label>
-              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} data-testid="input-new-fullname" />
+              <Input name="nu-fullname" autoComplete="off" value={fullName} onChange={(e) => setFullName(e.target.value)} data-testid="input-new-fullname" />
             </div>
             <div>
               <Label>Email <span className="text-muted-foreground font-normal">(optional if phone provided)</span></Label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="input-new-email" />
+              <Input type="email" name="nu-email" autoComplete="off" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="input-new-email" />
+              {!emailValid && <p className="text-sm text-destructive mt-1">Enter a valid email address.</p>}
             </div>
             <div>
               <Label>Phone <span className="text-muted-foreground font-normal">(optional if email provided)</span></Label>
-              <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" data-testid="input-new-phone" />
+              <Input type="tel" name="nu-phone" autoComplete="off" inputMode="tel" value={phone} onChange={(e) => setPhone(sanitizePhone(e.target.value))} placeholder="+91 98765 43210" data-testid="input-new-phone" />
+              {!phoneValid && <p className="text-sm text-destructive mt-1">Enter a valid phone number (at least 7 digits).</p>}
             </div>
             <div>
               <Label>Password</Label>
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="input-new-password" />
-              <p className="text-sm text-muted-foreground mt-1">Minimum 8 characters.</p>
-            </div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="isAdmin">Admin</Label>
-              <Switch id="isAdmin" checked={isAdmin} onCheckedChange={setIsAdmin} data-testid="switch-new-admin" />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="isFieldEngineer">Engineer / field user</Label>
-              <Switch id="isFieldEngineer" checked={isFieldEngineer} onCheckedChange={setIsFieldEngineer} data-testid="switch-new-field-engineer" />
+              <Input type="password" name="nu-password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="input-new-password" />
+              <p className="text-sm text-muted-foreground mt-1">Minimum 8 characters. Set a NEW password for this user.</p>
             </div>
             <div className="flex items-center justify-between">
               <Label htmlFor="notifEnabled">Push notifications</Label>
@@ -486,16 +497,15 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
 
         {step === 1 && (
           <div className="space-y-2">
-            {isAdmin ? (
-              <p className="text-sm text-muted-foreground" data-testid="text-admin-skip-template">
-                Admins automatically get full permissions — no template needed.
-              </p>
-            ) : (
+            {(
               <>
-                <p className="text-sm text-muted-foreground">Pick a starting role. You can fine-tune permissions any time later.</p>
+                <p className="text-sm text-muted-foreground">
+                  Pick a starting role — it determines the user's type and permissions. You can fine-tune permissions any time later.
+                </p>
                 <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                  {[{ id: "", label: "Custom (no template)", description: "Start with no permissions; grant manually afterwards." },
-                    ...ROLE_TEMPLATES].map((t: any) => (
+                  {[{ id: "__admin__", label: "Administrator", description: "Full access to everything, all sites, user management." },
+                    ...ROLE_TEMPLATES,
+                    { id: "", label: "Custom (no template)", description: "Start with no permissions; grant manually afterwards." }].map((t: any) => (
                     <label
                       key={t.id || "custom"}
                       className={`flex items-start gap-3 rounded-md border px-3 py-2 cursor-pointer text-sm ${roleTemplate === t.id ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
@@ -592,7 +602,7 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
           {step < 3 ? (
             <Button
               onClick={() => setStep(step + 1)}
-              disabled={(step === 0 && !basicsValid) || (step === 2 && !siteValid)}
+              disabled={(step === 0 && !basicsValid) || (step === 1 && !roleValid) || (step === 2 && !siteValid)}
               data-testid="button-wizard-next"
             >
               Next

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
-import { Bell, BellOff, Save, Loader2, CheckCircle, Zap } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, Save, Loader2, CheckCircle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
@@ -66,8 +67,20 @@ export default function NotificationPreferences() {
     (k) => notifyMap[k] && PUSH_ACTIVE_SECTIONS.has(k)
   ).length;
 
+  const [, navigate] = useLocation();
+  const goBack = () => {
+    // Prefer real browser history; fall back to User Management for
+    // direct/bookmarked visits.
+    if (window.history.length > 1) window.history.back();
+    else navigate("/users");
+  };
+
   return (
     <div className="space-y-6">
+      <Button variant="ghost" size="sm" onClick={goBack} className="-ml-2" data-testid="button-notif-prefs-back">
+        <ArrowLeft className="w-4 h-4 mr-1.5" />
+        Back
+      </Button>
       <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-start gap-3 shadow-sm">
         <Bell className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
         <div className="flex-1 min-w-0">
