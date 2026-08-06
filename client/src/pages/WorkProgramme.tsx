@@ -3199,6 +3199,7 @@ export default function WorkProgramme() {
     // Scope-load provenance travels with the saved stretches.
     setSeqScopeFingerprint((stored as any)?.scopeFingerprint ?? null);
     setSeqScopeReloadPrompt(false);
+    setSeqScopeAutoloaded(false);
     setSeqRegenSummary(null);
     setSeqDialogOpen(true);
   }
@@ -3215,6 +3216,18 @@ export default function WorkProgramme() {
   // scope has changed since. Never triggers silent regeneration — informational.
   const seqScopeStale = seqScopeFingerprint != null && scopeSegments.length > 0
     && currentScopeFingerprint !== seqScopeFingerprint;
+
+  // Auto-populate from confirmed scope when the dialog opens with no saved
+  // stretches (spec: "if no saved stretches exist, suggest or automatically
+  // populate"). Runs at most once per dialog open — never overwrites rows.
+  const [seqScopeAutoloaded, setSeqScopeAutoloaded] = useState(false);
+  const seqHasMeaningfulRows = seqStretches.some(r => r.from.trim() !== "" || r.to.trim() !== "" || r.label.trim() !== "");
+  useEffect(() => {
+    if (!seqDialogOpen || seqScopeAutoloaded || confirmedScopeRows.length === 0) return;
+    setSeqScopeAutoloaded(true);
+    if (!seqHasMeaningfulRows) loadScopeReaches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seqDialogOpen, seqScopeAutoloaded, confirmedScopeRows]);
 
   /** Manual stretch mutation: any hand edit/add/remove/clear/equal-split means
    *  the rows no longer represent the confirmed scope verbatim — drop the
@@ -3996,6 +4009,17 @@ export default function WorkProgramme() {
                       Reload from confirmed Scope
                     </Button>
                   </div>
+                </div>
+              )}
+              {!seqScopeReloadPrompt && !seqScopeStale && seqScopeFingerprint == null && seqHasMeaningfulRows && confirmedScopeRows.length > 0 && (
+                <div className="rounded border border-purple-200 dark:border-purple-900 bg-purple-50 dark:bg-purple-950/30 p-2 space-y-1.5" data-testid="panel-scope-suggest">
+                  <p className="text-[11px] text-purple-800 dark:text-purple-300">
+                    Project Scope has {confirmedScopeRows.length} confirmed working reach{confirmedScopeRows.length === 1 ? "" : "es"}. These stretch rows were not loaded from it — click below to replace them with the confirmed reaches ({confirmedScopeRows.map(r => `${r.chainageFrom.toFixed(3)}–${r.chainageTo.toFixed(3)}`).join(", ")}).
+                  </p>
+                  <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[11px]"
+                    onClick={requestLoadScopeReaches} data-testid="button-scope-suggest-load">
+                    Load confirmed scope reaches
+                  </Button>
                 </div>
               )}
               {seqScopeStale && !seqScopeReloadPrompt && (
