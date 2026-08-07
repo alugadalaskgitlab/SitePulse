@@ -1,0 +1,79 @@
+STOP THE CURRENT PRODUCTION DEPLOYMENT.
+
+The generated production migration contains destructive DROP COLUMN statements against populated production tables.
+
+Examples shown by the Publishing screen:
+
+- equipment_logs.plant_usage_id — 462 affected rows
+- equipment_usage.status — 102 affected rows
+- equipment_usage.opened_by_user_id — 102 affected rows
+- equipment_usage.opened_by_user_name — 102 affected rows
+- equipment_usage.opened_at — 102 affected rows
+- equipment_usage.closed_by_dpr_id — 102 affected rows
+- equipment_usage.closed_by_user_id — 102 affected rows
+- equipment_usage.closed_by_user_name — 102 affected rows
+- equipment_usage.closed_at — 102 affected rows
+- equipment_usage.destination_site — 102 affected rows
+
+CONFIRMED: none of these columns are missing from the current schema. shared/schema.ts still declares every one of them on equipment_usage and equipment_logs right now. Do not investigate this as "code no longer needs these columns" — it still does.
+
+Likely mechanism to check FIRST: this repo has no drizzle-kit migration journal (no migrations/meta/_journal.json) — only 15 hand-written SQL files, none referencing equipment_usage or equipment_logs. Schema changes have been applied via direct drizzle-kit push against the DEVELOPMENT database, not tracked migrations. Check whether the development database's actual live structure is missing these columns even though schema.ts declares them — if a push to dev silently failed or was skipped after these columns were added to the schema, Publish may be trying to force PRODUCTION to match an incomplete DEV database rather than the authoritative schema file. Confirm this before looking anywhere else.
+
+Do not publish, approve, execute or regenerate a destructive production migration until this investigation is complete.
+
+Required investigation:
+
+1. List every DROP COLUMN / DROP TABLE statement in the generated migration.
+
+2. For each proposed deletion, report:
+   - table and column;
+   - production row count;
+   - number of non-null values;
+   - current schema definition (confirm present in shared/schema.ts — it is);
+   - whether current server/client code still reads or writes it (it does — equipment open/close lifecycle, destination tracking);
+   - whether development database's live structure actually has this column;
+   - whether it was intentionally replaced;
+   - replacement table/column, if any;
+   - how existing production values were migrated to that replacement;
+   - whether deleting it would remove audit, DPR linkage, equipment lifecycle or historical reporting data.
+
+3. Compare:
+   - current Drizzle/schema definitions (shared/schema.ts);
+   - production database's actual live schema;
+   - development database's actual live schema;
+   - committed migration files in /migrations;
+   - recent equipment-usage and Equipment Hub changes.
+
+4. Specifically determine whether the development database itself is missing these columns despite schema.ts declaring them, and if so, why the drizzle push to dev never completed.
+
+5. Do not resolve schema drift by blindly dropping production columns.
+
+6. Prepare a safe migration using one of these approaches as appropriate:
+   - if development database is missing these columns, push/restore them to development first so dev matches schema.ts, then re-generate the production migration;
+   - retain legacy columns temporarily if a genuine replacement design exists;
+   - add replacement columns/tables first;
+   - backfill replacement data from legacy columns;
+   - update and verify all reads/writes;
+   - only drop legacy columns in a later separately approved migration after proving the data is fully preserved.
+
+7. Before any production migration:
+   - confirm a production database backup / point-in-time restore is available;
+   - run the migration against a disposable copy of production;
+   - compare row counts and critical equipment records before and after;
+   - prove no historical equipment usage, DPR link, status, open/close information or destination-site data is lost.
+
+8. The safe deployment may add the new shoulder_layer_class column on boq_items — confirmed intentional, tied to shoulder-layer sequencing — but must not include any unapproved destructive equipment-table changes.
+
+9. Before correcting development schema drift, first export the exact current development and production table definitions for equipment_usage and equipment_logs.
+   Do not run drizzle-kit push against either database until the schema diff has been reviewed. A push against the wrong database or environment could itself generate destructive changes.
+   Confirm which connection string/environment Replit Publishing, drizzle-kit push, development preview and production deployment are each using.
+
+DO NOT TOUCH OR DELETE PRODUCTION DATA.
+
+Return:
+- root cause (specifically: dev-database drift vs. genuine schema removal, and which environment/connection each tool was actually using);
+- full destructive migration list;
+- code-reference audit;
+- data-preservation plan;
+- revised non-destructive SQL;
+- test evidence.
