@@ -204,6 +204,8 @@ async function runBackgroundMigrations() {
       } catch (e) { console.error("Startup: seedPlanningMorthDefaults failed:", e); }
     })(),
     (async () => { try { const r = await storage.backfillMaterialBulkDensity(); console.log(`Startup: backfillMaterialBulkDensity — updated: ${r.updated}, skipped: ${r.skipped}`); } catch (e) { console.error("Startup: backfillMaterialBulkDensity failed:", e); } })(),
+    // Instruction 030 Part A: auto-allocate previously-approved arrangements that have no bar allocations yet
+    (async () => { try { const { backfillArrangementBarAllocations } = await import("./arrangementAllocationSync"); const r = await backfillArrangementBarAllocations(); if (r.arrangements > 0) console.log(`Startup: backfillArrangementBarAllocations — arrangements: ${r.arrangements}, allocations created: ${r.created}, with shortfall: ${r.shortfallCount}`); } catch (e) { console.error("Startup: backfillArrangementBarAllocations failed:", e); } })(),
   ]);
 
   // ── Phase 3: Independent data backfills (parallel) ─────────────────────────

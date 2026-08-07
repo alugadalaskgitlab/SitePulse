@@ -25053,6 +25053,25 @@ export class DatabaseStorage implements IStorage {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
+
+    // Instruction 030: programme-bar allocation table + auto/manual source
+    // marker. Must run in this BLOCKING pre-routes phase — the approval
+    // auto-sync inserts rows with source='auto', so the column has to exist
+    // before any arrangement route can be hit.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS earthwork_arrangement_programme_allocations (
+        id SERIAL PRIMARY KEY,
+        arrangement_id INTEGER NOT NULL REFERENCES earthwork_arrangements(id) ON DELETE CASCADE,
+        programme_bar_id INTEGER NOT NULL REFERENCES work_program_bars(id) ON DELETE CASCADE,
+        boq_item_id INTEGER NOT NULL,
+        allocated_qty REAL NOT NULL,
+        source TEXT NOT NULL DEFAULT 'manual',
+        created_by INTEGER,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`ALTER TABLE earthwork_arrangement_programme_allocations ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual'`);
   }
 
   async getEarthworkArrangements(boqProjectId: number): Promise<EarthworkArrangement[]> {

@@ -50,7 +50,8 @@ import {
   finishDateInputToIdx,
 } from "@shared/calendarAxis";
 import { BarArrangementPanel } from "@/components/BarArrangementPanel";
-import { ExecutionStateBadge, useBarExecutionState } from "@/components/ExecutionStateBadge";
+import { useBarExecutionState, useProjectArrangements, deriveBarExecutionStateFromProject } from "@/components/ExecutionStateBadge";
+import { EXECUTION_STATE_COLORS } from "@shared/executionState";
 import { SEQUENCE_RULES, validateStretches, type RoadStretchInput } from "@shared/programmeSequencer";
 import { BAR_SIDES, BAR_SIDE_LABELS, barSideLabel, geometryApplicability, areSidesDistinctCorridors } from "@shared/barSide";
 import { scopeReachesToStretchRows, scopeConstraints, scopeFingerprint } from "@shared/autoSequenceScope";
@@ -159,6 +160,44 @@ export interface StretchEditorApi {
   save: () => boolean;
   cancel: () => void;
   isDirty: () => boolean;
+}
+
+/**
+ * Instruction 030: item-header aggregate — how many stretches of this item
+ * still need an execution arrangement. Replaces the per-row full-text badge
+ * (rows now carry only the coloured Handshake icon).
+ */
+function ItemArrangementCount({ projectId, item, bars }: { projectId: number; item: any; bars: any[] }) {
+  const category = useMemo<"earthwork" | "bituminous" | null>(() => {
+    try { return executionArrangementCategoryForItem(item); } catch { return null; }
+  }, [item]);
+  const itemType = useMemo<string | null>(() => {
+    if (category !== "bituminous") return null;
+    try { return bituminousItemTypeOf(item); } catch { return null; }
+  }, [item, category]);
+  const { arrangements, allocations } = useProjectArrangements(projectId, category != null);
+  const needCount = useMemo(() => {
+    if (category == null) return 0;
+    let n = 0;
+    for (const bar of bars) {
+      const r = deriveBarExecutionStateFromProject(arrangements, allocations, {
+        barId: bar.id, boqItemId: bar.boqItemId, barPlannedQty: Number(bar.plannedQty ?? 0),
+        unit: bar.canonicalUnit ?? bar.unit ?? "CUM", category, itemType,
+      });
+      if (r.state === "arrangement_required") n++;
+    }
+    return n;
+  }, [category, itemType, arrangements, allocations, bars]);
+  if (category == null || needCount === 0) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded px-1 py-0.5 flex-shrink-0 whitespace-nowrap dark:bg-amber-900/30 dark:text-amber-300"
+      title={`${needCount} stretch${needCount > 1 ? "es" : ""} of this item still need an execution arrangement — click a stretch's Handshake icon for the execution plan.`}
+      data-testid={`badge-item-arrangement-count-${item.id}`}
+    >
+      <Handshake className="w-2.5 h-2.5" /> {needCount} need arrangement
+    </span>
+  );
 }
 
 function StretchRow({
@@ -1050,18 +1089,6 @@ function StretchRow({
 
         <div className="flex-1" />
 
-        {/* Meaningful execution/arrangement state (029A §2) */}
-        {isEarthworkBar && executionState && (
-          <span className="flex-shrink-0 mr-0.5">
-            <ExecutionStateBadge
-              result={executionState}
-              compact
-              onClick={() => setShowArrangements(true)}
-              testId={`badge-execution-state-${bar.id}`}
-            />
-          </span>
-        )}
-
         {/* 029A Part C: hover/focus actions (desktop) — hidden on touch widths */}
         <button
           onClick={() => onRequestEdit(bar.id)}
@@ -1072,11 +1099,20 @@ function StretchRow({
         >
           <Pencil className="w-3 h-3" />
         </button>
+        {/* Instruction 030: the full-text execution-state badge is gone — the
+            Handshake icon is now ALWAYS visible with a state-coloured ring;
+            the full label lives in the tooltip. Click opens the panel. */}
         {isEarthworkBar && (
           <button
             onClick={() => setShowArrangements(true)}
-            className="hidden md:inline-flex p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-            title="Execution arrangements for this stretch"
+            className={`inline-flex p-1 rounded-full border flex-shrink-0 transition-colors ${
+              executionState
+                ? `${EXECUTION_STATE_COLORS[executionState.state].bg} ${EXECUTION_STATE_COLORS[executionState.state].border} ${EXECUTION_STATE_COLORS[executionState.state].text} hover:brightness-95`
+                : "border-transparent text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+            }`}
+            title={executionState
+              ? `${executionState.badge}${executionState.pendingRevision ? " · Revision Pending" : ""} — click for the execution plan`
+              : "Execution arrangements for this stretch"}
             aria-label="Execution arrangements"
             data-testid={`button-arrangements-${bar.id}`}
           >
@@ -2263,6 +2299,7 @@ function InlineGanttTable({
                                 <Info className="w-2.5 h-2.5" /> no equipment
                               </span>
                             )}
+                            <ItemArrangementCount projectId={projectId} item={item} bars={itemBars} />
                           </div>
                         </div>
                         <button

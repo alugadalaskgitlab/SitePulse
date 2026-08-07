@@ -17,10 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import {
-  EarthworkArrangementCell,
-  ArrangementStatusBadge,
-} from "@/components/EarthworkArrangementDialog";
+import { ArrangementStatusBadge } from "@/components/EarthworkArrangementDialog";
+import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
 import type { EarthworkArrangementSummary } from "@shared/planningEngine";
 import { invalidateArrangementQueries } from "@/lib/arrangementCache";
 
@@ -297,11 +295,13 @@ export default function EarthworkControl() {
                           )}
                         </div>
                       ) : (
-                        <EarthworkArrangementCell
-                          row={row}
+                        <ArrangementRegisterLink
                           projectId={projectId}
-                          onSaved={handleSaved}
+                          arrangements={row.earthworkArrangements}
+                          totalDemand={row.totalDemand}
+                          uom={row.uom}
                         />
+
                       )}
                     </TableCell>
                   </TableRow>

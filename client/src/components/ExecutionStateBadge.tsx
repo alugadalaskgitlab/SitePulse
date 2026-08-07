@@ -67,21 +67,22 @@ export function useProjectArrangements(projectId: number, enabled = true) {
  * (legacy whole-item coverage) proportionally — kept simple: unlinked quantity
  * counts toward the bar only when NOT linked to any other bar of the same item.
  */
-export function useBarExecutionState(opts: {
-  projectId: number;
-  barId: number;
-  boqItemId: number;
-  barPlannedQty: number;
-  unit?: string;
-  enabled?: boolean;
-  /** Instruction 028: work category of the bar's BOQ item (earthwork default). */
-  category?: "earthwork" | "bituminous" | null;
-  itemType?: string | null;
-}): ExecutionStateResult | null {
-  const { arrangements, allocations } = useProjectArrangements(opts.projectId, opts.enabled !== false);
-
-  return useMemo(() => {
-    if (opts.enabled === false) return null;
+/**
+ * Pure derivation (Instruction 030): same rules as useBarExecutionState, but
+ * callable in a loop (e.g. item-header aggregate counts over all bars).
+ */
+export function deriveBarExecutionStateFromProject(
+  arrangements: ProjectArrangement[],
+  allocations: ProjectBarAllocation[],
+  opts: {
+    barId: number;
+    boqItemId: number;
+    barPlannedQty: number;
+    unit?: string;
+    category?: "earthwork" | "bituminous" | null;
+    itemType?: string | null;
+  },
+): ExecutionStateResult {
     const linkedByArr = new Map<number, number>();
     for (const al of allocations) {
       if (["cancelled", "rejected"].includes(String(al.arrangementStatus ?? ""))) continue;
@@ -113,6 +114,23 @@ export function useBarExecutionState(opts: {
       category: opts.category ?? "earthwork",
       itemType: opts.itemType ?? null,
     });
+}
+
+export function useBarExecutionState(opts: {
+  projectId: number;
+  barId: number;
+  boqItemId: number;
+  barPlannedQty: number;
+  unit?: string;
+  enabled?: boolean;
+  /** Instruction 028: work category of the bar's BOQ item (earthwork default). */
+  category?: "earthwork" | "bituminous" | null;
+  itemType?: string | null;
+}): ExecutionStateResult | null {
+  const { arrangements, allocations } = useProjectArrangements(opts.projectId, opts.enabled !== false);
+  return useMemo(() => {
+    if (opts.enabled === false) return null;
+    return deriveBarExecutionStateFromProject(arrangements, allocations, opts);
   }, [arrangements, allocations, opts.barId, opts.boqItemId, opts.barPlannedQty, opts.unit, opts.enabled, opts.category, opts.itemType]);
 }
 

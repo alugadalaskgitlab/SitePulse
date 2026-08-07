@@ -32,7 +32,7 @@ import {
 import { shortItemName, boqItemDisplayName } from "@/lib/itemName";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
-import { EarthworkArrangementCell } from "@/components/EarthworkArrangementDialog";
+import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
 import type { BoqProject } from "@shared/schema";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -1865,11 +1865,14 @@ function SuggestionBadge({
 
   // ── Instruction 023 §A: earthwork bulk requirement — execution arrangement flow ──
   if (ps === "earthwork_arrangement_required") {
+    // Instruction 030: arrangements are created/edited in the Execution
+    // Arrangements register only — this cell just summarises and links out.
     return (
-      <EarthworkArrangementCell
-        row={{ ...row, earthworkSourceBoqItemIds: row.earthworkSourceBoqItemIds }}
+      <ArrangementRegisterLink
         projectId={projectId}
-        onSaved={() => onMappingResolved?.()}
+        arrangements={row.earthworkArrangements}
+        totalDemand={row.totalDemand}
+        uom={row.uom}
       />
     );
   }

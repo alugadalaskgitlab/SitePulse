@@ -14,6 +14,7 @@ import {
   Wrench, Users, AlertTriangle, CheckCircle, Clock, XCircle, Pencil, Send,
   Pen, RefreshCw,
 } from "lucide-react";
+import { PlannedWorkArrangementWarning } from "@/components/PlannedWorkArrangementWarning";
 
 // ── Item-level status options per category ────────────────────────────────────
 
@@ -438,6 +439,8 @@ function RequirementCard({
                 <p className="text-xs text-slate-400">Qty: {req.plannedWork.plannedQty} {req.plannedWork.plannedUom}</p>
               )}
               {req.plannedWork.remarks && <p className="text-xs text-slate-400 italic">{req.plannedWork.remarks}</p>}
+              {/* Instruction 030 Part C: reviewer-side arrangement awareness (informational) */}
+              <PlannedWorkArrangementWarning siteId={req.siteId} plannedWork={req.plannedWork} />
             </div>
           )}
 

@@ -35,4 +35,5 @@
 - [Project Scope 032](project-scope-032.md) — shared/projectScope.ts is the only scope brain; scope inactive until a confirmed working_reach; planning ignores dates (conservative), DPRs use DPR date; `a ?? b || c` breaks esbuild.
 - [Site-Access Security](site-access-security.md) — zero site rows = deny-all; all-sites is an explicit grant; guided user creation + escalation guards; guided-DPR preference is per-user.
 - [BOQ Item Display Naming](boq-item-display-naming.md) — shared/boqItemName.ts is the only label source; operational screens show short names, BOQ management keeps full descriptions; pass displayName+itemName through reduced objects.
+- [Arrangement Auto-Allocation](arrangement-auto-allocation.md) — allocation writes must lock arrangement→bars (id order) or capacity double-books; auto rows reconcile on scope revisions, manual rows never touched.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

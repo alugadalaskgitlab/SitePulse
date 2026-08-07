@@ -3763,6 +3763,8 @@ export const earthworkArrangementProgrammeAllocations = pgTable("earthwork_arran
   programmeBarId: integer("programme_bar_id").notNull().references(() => workProgramBars.id, { onDelete: "cascade" }),
   boqItemId: integer("boq_item_id").notNull(),
   allocatedQty: real("allocated_qty").notNull(),
+  /** "manual" = user-created link (never auto-reconciled); "auto" = created by the Instruction 030 auto-sync (may be moved/removed when the arrangement's scope is revised). */
+  source: text("source").notNull().default("manual"),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

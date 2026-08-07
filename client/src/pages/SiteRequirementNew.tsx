@@ -18,6 +18,10 @@ import {
   ArrowLeft, ChevronDown, ChevronUp, Plus, Trash2, Send,
   HardHat, Package, Wrench, Users, AlertTriangle, ClipboardList,
 } from "lucide-react";
+import { EXECUTION_STATE_COLORS } from "@shared/executionState";
+import { executionArrangementCategoryForItem } from "@shared/planningEngine";
+import { useProjectArrangements } from "@/components/ExecutionStateBadge";
+import { derivePlannedWorkExecutionState, type PlannedWorkBar } from "@/lib/plannedWorkArrangement";
 
 type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; dprMeasurementMethod?: string | null };
 
@@ -151,6 +155,38 @@ export default function SiteRequirementNew() {
   // resolveBoqUomProfile when item selected (dims determined by explicit method or unit).
   const selectedBoqItem = useMemo(() => siteBoqItems.find(it => it.id === boqItemId) ?? null, [siteBoqItems, boqItemId]);
   const pwBoqProfile = useMemo(() => selectedBoqItem ? resolveBoqUomProfile(selectedBoqItem) : null, [selectedBoqItem]);
+
+  // ── Instruction 030 Part C: arrangement awareness (non-blocking) ────────────
+  const selectedArrangementEligible = useMemo(() => {
+    if (!selectedBoqItem) return false;
+    try { return executionArrangementCategoryForItem(selectedBoqItem as any) != null; } catch { return false; }
+  }, [selectedBoqItem]);
+  const { arrangements: projArrangements, allocations: projAllocations } = useProjectArrangements(
+    siteBoqProjectId ?? 0,
+    selectedArrangementEligible && siteBoqProjectId != null,
+  );
+  const { data: projBars = [] } = useQuery<PlannedWorkBar[]>({
+    queryKey: ["/api/boq/projects", siteBoqProjectId, "programme"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${siteBoqProjectId}/programme`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: selectedArrangementEligible && siteBoqProjectId != null,
+    staleTime: 30_000,
+  });
+  const plannedWorkExecState = useMemo(() => {
+    if (!selectedBoqItem || !selectedArrangementEligible) return null;
+    return derivePlannedWorkExecutionState({
+      item: selectedBoqItem as any,
+      chainageFrom: chainageFrom !== "" ? parseFloat(chainageFrom) : null,
+      chainageTo: chainageTo !== "" ? parseFloat(chainageTo) : null,
+      plannedQty: plannedQty !== "" ? parseFloat(plannedQty) : null,
+      arrangements: projArrangements,
+      allocations: projAllocations,
+      bars: projBars,
+    });
+  }, [selectedBoqItem, selectedArrangementEligible, chainageFrom, chainageTo, plannedQty, projArrangements, projAllocations, projBars]);
+  const arrangementWarning = plannedWorkExecState?.state === "arrangement_required";
   const showWidth = !pwBoqProfile || pwBoqProfile.dims.includes("W");
   const showThickness = !pwBoqProfile || pwBoqProfile.dims.includes("T");
 
@@ -375,6 +411,16 @@ export default function SiteRequirementNew() {
                 />
               ) : (
                 <Input value={activity} onChange={e => setActivity(e.target.value)} placeholder="e.g. Earthwork excavation, WMM layer..." className="text-sm" data-testid="input-activity" />
+              )}
+              {/* Instruction 030 Part C: inline execution-state badge (informational only) */}
+              {plannedWorkExecState && (
+                <span
+                  className={`mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold rounded border px-1.5 py-0.5 ${EXECUTION_STATE_COLORS[plannedWorkExecState.state].bg} ${EXECUTION_STATE_COLORS[plannedWorkExecState.state].border} ${EXECUTION_STATE_COLORS[plannedWorkExecState.state].text}`}
+                  data-testid="badge-planned-work-exec-state"
+                >
+                  {arrangementWarning && <AlertTriangle className="w-3 h-3" />}
+                  {plannedWorkExecState.badge}
+                </span>
               )}
             </div>
             {/* Field grid: Side → Ch.From → Ch.To → L(m) → W(m) → T(m) → UOM → Qty — same order as DPR */}
@@ -635,6 +681,16 @@ export default function SiteRequirementNew() {
 
         {/* Submit */}
         <div className="pb-6">
+          {/* Instruction 030 Part C: non-blocking arrangement warning — never blocks submission */}
+          {arrangementWarning && !isImmediateMode && (
+            <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800 dark:bg-amber-900/20 dark:text-amber-300" data-testid="banner-arrangement-warning">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>
+                <b>Execution arrangement not yet decided</b> for this stretch of the selected BOQ item.
+                You can still submit — the PM will see the same warning during review.
+              </span>
+            </div>
+          )}
           <Button
             onClick={() => saveMutation.mutate()}
             disabled={!hasAnyContent || saveMutation.isPending}

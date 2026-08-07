@@ -333,7 +333,13 @@ export function BarArrangementPanel({
                   onChange={(e) => setOverrideValue(e.target.value)}
                   data-testid="select-classification-override"
                 >
-                  <option value="">Keep auto-detected ({workCategory === "bituminous" ? "Bituminous" : "Earthwork"})…</option>
+                  <option value="">Select classification…</option>
+                  {/* Instruction 030: "Keep auto-detected" is now a real, confirmable
+                      choice (it records the auto value as a manual confirmation)
+                      instead of a placeholder that left Apply permanently disabled. */}
+                  <option value={workCategory === "bituminous" ? "bituminous" : "earthwork"}>
+                    Confirm auto-detected ({workCategory === "bituminous" ? "Bituminous" : "Earthwork"})
+                  </option>
                   <option value="bituminous">Bituminous Arrangement Eligible</option>
                   <option value="not_bituminous">Not Bituminous</option>
                   <option value="review_required">Review Required</option>
@@ -347,6 +353,9 @@ export function BarArrangementPanel({
                   {overrideMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Apply"}
                 </Button>
               </div>
+              {!overrideValue && (
+                <div className="text-[11px] text-slate-500">Choose a classification to enable Apply.</div>
+              )}
               {overrideValue && (
                 <Input
                   className="h-7 text-[12px]"

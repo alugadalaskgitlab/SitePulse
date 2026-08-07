@@ -30,10 +30,13 @@ function extractShortName(description: string, categoryName: string | null): str
   // Always try the item's own description first — keyword shortcuts, then raw text.
   // The category name is a last resort only when description is blank/unusable.
   const d = description.toUpperCase();
+  // SUBGRADE must be checked BEFORE the EMBANKMENT checks: many MoRTH subgrade
+  // descriptions mention "embankment/subgrade" together and would otherwise be
+  // mislabelled as Embankment (Instruction 030 Part B).
+  if (d.includes("SUBGRADE"))                          return "Subgrade Preparation";
   if (d.includes("EMBANKMENT") && (d.includes("BORROW") || d.includes("IMPORT"))) return "Embankment — Borrow Earth";
   if (d.includes("EMBANKMENT") && d.includes("CUT"))  return "Embankment — Cut Material";
   if (d.includes("EMBANKMENT"))                        return "Embankment";
-  if (d.includes("SUBGRADE"))                          return "Subgrade Preparation";
   if (d.includes("CLEARING") || d.includes("GRUBBING")) return "Clearing & Grubbing";
   if (d.includes("GSB") || d.includes("GRANULAR SUB-BASE") || d.includes("GRANULAR SUBBASE")) return "GSB — Granular Sub-base";
   if (d.includes("WMM") || d.includes("WET MIX MACADAM")) return "WMM — Wet Mix Macadam";

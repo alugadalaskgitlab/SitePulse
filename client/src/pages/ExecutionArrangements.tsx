@@ -14,7 +14,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { executionArrangementCategoryForItem, bituminousItemTypeOf } from "@shared/planningEngine";
+import { boqItemDisplayName } from "@shared/boqItemName";
 import {
   deriveExecutionState,
   EXECUTION_STATE_COLORS,
@@ -71,6 +74,9 @@ export default function ExecutionArrangements() {
   const [itemFilter, setItemFilter] = useState("");
   const [openPanel, setOpenPanel] = useState<{ barId: number; boqItemId: number; label: string; qty: number; unit: string } | null>(null);
   const [editTarget, setEditTarget] = useState<RegisterArrangement | null>(null);
+  // Instruction 030: the register is now where arrangements are CREATED too.
+  const [showCreatePicker, setShowCreatePicker] = useState(false);
+  const [createItemId, setCreateItemId] = useState<number | null>(null);
 
   const { arrangements, allocations } = useProjectArrangements(projectId, projectId > 0);
   const { data: bars = [], isLoading: barsLoading } = useQuery<ProgrammeBar[]>({
@@ -79,6 +85,27 @@ export default function ExecutionArrangements() {
     enabled: projectId > 0,
   });
   const barById = useMemo(() => new Map(bars.map(b => [b.id, b])), [bars]);
+
+  // Arrangement-eligible BOQ items for the New-arrangement picker
+  interface PickerItem { id: number; itemCode?: string | null; description: string; displayName?: string | null; itemName?: string | null; currentQty?: number; unit?: string | null; canonicalUnit?: string | null; }
+  const { data: allItems = [] } = useQuery<PickerItem[]>({
+    queryKey: ["/api/boq/projects", projectId, "items"],
+    queryFn: () => fetch(`/api/boq/projects/${projectId}/items`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
+    enabled: projectId > 0 && showCreatePicker,
+  });
+  const eligibleItems = useMemo(
+    () => allItems.filter(it => { try { return executionArrangementCategoryForItem(it as any) != null; } catch { return false; } }),
+    [allItems],
+  );
+  const createItem = createItemId != null ? eligibleItems.find(it => it.id === createItemId) ?? null : null;
+  const createCategory = useMemo<"earthwork" | "bituminous">(() => {
+    if (!createItem) return "earthwork";
+    try { return executionArrangementCategoryForItem(createItem as any) ?? "earthwork"; } catch { return "earthwork"; }
+  }, [createItem]);
+  const createItemType = useMemo<string | null>(() => {
+    if (!createItem || createCategory !== "bituminous") return null;
+    try { return bituminousItemTypeOf(createItem as any); } catch { return null; }
+  }, [createItem, createCategory]);
 
   const rows = useMemo(() => {
     return (arrangements as RegisterArrangement[])
@@ -129,10 +156,40 @@ export default function ExecutionArrangements() {
         <h1 className="text-lg font-semibold text-slate-800">Execution Arrangements</h1>
         <span className="text-[12px] text-slate-500">{rows.length} arrangement{rows.length !== 1 ? "s" : ""}</span>
         <div className="flex-1" />
+        <Button
+          size="sm"
+          className="h-8 text-[12px]"
+          onClick={() => { setShowCreatePicker(v => !v); setCreateItemId(null); }}
+          data-testid="button-new-arrangement"
+        >
+          <Plus className="w-3.5 h-3.5 mr-1" /> New arrangement
+        </Button>
         <Link href={`/work-program/${projectId}/earthwork`} className="text-[12px] text-teal-600 hover:underline">
           Classification & demand view →
         </Link>
       </div>
+
+      {showCreatePicker && (
+        <Card className="p-3 flex items-center gap-2 flex-wrap" data-testid="create-arrangement-picker">
+          <span className="text-[12px] font-semibold text-slate-600">Create arrangement for BOQ item:</span>
+          <select
+            className="h-8 min-w-[280px] max-w-full rounded border border-slate-300 bg-white px-2 text-[12px]"
+            value={createItemId ?? ""}
+            onChange={e => setCreateItemId(e.target.value ? Number(e.target.value) : null)}
+            data-testid="select-create-item"
+          >
+            <option value="">Select an arrangement-eligible item…</option>
+            {eligibleItems.map(it => (
+              <option key={it.id} value={it.id}>
+                {(it.itemCode ? `${it.itemCode} — ` : "") + boqItemDisplayName(it as any)} ({Number(it.currentQty ?? 0).toLocaleString()} {it.canonicalUnit ?? it.unit ?? ""})
+              </option>
+            ))}
+          </select>
+          {eligibleItems.length === 0 && (
+            <span className="text-[12px] text-slate-500">No earthwork/bituminous items found in this project.</span>
+          )}
+        </Card>
+      )}
 
       {/* §14 filters */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -256,6 +313,20 @@ export default function ExecutionArrangements() {
           barLabel={openPanel.label}
           barPlannedQty={openPanel.qty}
           unit={openPanel.unit}
+        />
+      )}
+      {createItem && (
+        <EarthworkArrangementDialog
+          open={!!createItem}
+          onClose={() => { setCreateItemId(null); setShowCreatePicker(false); }}
+          onSaved={() => invalidateArrangementQueries(queryClient, projectId)}
+          projectId={projectId}
+          boqItemId={createItem.id}
+          materialLabel={boqItemDisplayName(createItem as any)}
+          boqQty={Number(createItem.currentQty ?? 0)}
+          workCategory={createCategory}
+          bituminousItemType={createItemType}
+          uom={createItem.canonicalUnit ?? createItem.unit ?? undefined}
         />
       )}
       {editTarget && (

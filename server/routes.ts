@@ -24,6 +24,8 @@ import { siteMatchesPermitted } from "@shared/siteName";
 import { shortItemName as sharedShortItemName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
+import { syncArrangementBarAllocations } from "./arrangementAllocationSync";
+import { AUTO_SYNC_STATUSES } from "@shared/arrangementAutoAllocation";
 import {
   isValidWorkCategory, isArrangementTypeAllowed, invalidComponentKeys,
   isValidBituminousItemType, getCategoryDescriptor,
@@ -13689,6 +13691,27 @@ export async function registerRoutes(
   });
 
   /** Update an earthwork arrangement — full status lifecycle. */
+  /**
+   * Instruction 030: non-blocking, idempotent auto-sync of arrangement → bar
+   * allocations. Called from every path that makes approved quantity/scope
+   * effective: status transitions into an operational status, scope edits on
+   * operational arrangements, revision approval, and Edit-and-Apply-Now.
+   */
+  async function runArrangementAutoSync(id: number, user: any, trigger: string): Promise<void> {
+    try {
+      const sync = await syncArrangementBarAllocations(id, user?.id ?? null);
+      if (sync.created > 0 || sync.updated > 0 || sync.removed > 0) {
+        await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null,
+          module: "earthwork_arrangements", transactionId: Number(id),
+          action: "programme_allocation_autosync", userId: user?.id ?? null,
+          newValues: { ...sync, trigger },
+        }).catch(() => {});
+      }
+    } catch (syncErr) {
+      console.error(`Auto-allocation sync failed for arrangement ${id} (${trigger}):`, syncErr);
+    }
+  }
+
   app.patch("/api/earthwork-arrangements/:id", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
@@ -13905,6 +13928,12 @@ export async function registerRoutes(
         if (result.audit) {
           await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null, module: "earthwork_arrangements", transactionId: Number(id), userId: user?.id ?? null, ...result.audit }).catch(() => {});
         }
+        // Instruction 030: an APPROVED revision can raise quantity / change the
+        // BOQ split or chainage — re-run the idempotent auto-sync so newly
+        // available approved quantity reaches the programme bars immediately.
+        if (result.status === 200 && body.revisionAction === "approve" && AUTO_SYNC_STATUSES.has(String((result.body as any)?.status ?? ""))) {
+          await runArrangementAutoSync(id, user, "revision_approved");
+        }
         return res.status(result.status).json(result.body);
       }
 
@@ -13945,6 +13974,11 @@ export async function registerRoutes(
             });
             if (result.status === 200) {
               await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null, module: "earthwork_arrangements", transactionId: Number(id), action: "revision_applied_now", userId: user?.id ?? null, oldValues: result.previous, newValues: materialChanges }).catch(() => {});
+              // Instruction 030: Edit-and-Apply-Now changes effective qty/split/
+              // chainage on an operational arrangement — re-sync bar allocations.
+              if (AUTO_SYNC_STATUSES.has(String((result.body as any)?.status ?? ""))) {
+                await runArrangementAutoSync(id, user, "revision_applied_now");
+              }
             }
             return res.status(result.status).json(result.body);
           }
@@ -14094,6 +14128,19 @@ export async function registerRoutes(
       const updated = await storage.updateEarthworkArrangement(id, patch as any);
       if (!updated) return res.status(404).json({ error: "Arrangement not found" });
 
+      // ── Instruction 030 Part A: auto-allocate to overlapping bars ──────────
+      // Never blocks the update itself; failures only log. Idempotent —
+      // existing (manual) allocations are preserved, only the unassigned
+      // remainder is distributed to bars overlapping the arrangement's chainage.
+      // Triggers: ANY transition into an operational status (approved,
+      // mobilisation_pending, in_progress, on_hold), and any change to the
+      // arrangement's quantity, BOQ split or chainage while it is operational.
+      const enteredOperational = !!newStatus && AUTO_SYNC_STATUSES.has(newStatus) && newStatus !== current.status;
+      const scopeChanged = patchChangesLinkage || "chainageFrom" in body || "chainageTo" in body;
+      if (AUTO_SYNC_STATUSES.has(String(updated.status)) && (enteredOperational || scopeChanged)) {
+        await runArrangementAutoSync(id, user, enteredOperational ? `status_${newStatus}` : "scope_changed");
+      }
+
       await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null,
         module: "earthwork_arrangements",
         transactionId: Number(id),
@@ -14202,7 +14249,11 @@ export async function registerRoutes(
         }
       }
       const barId = opts.programmeBarId ?? existing!.programmeBarId;
-      const [bar] = await tx.select().from(workProgramBars).where(eq(workProgramBars.id, barId));
+      // Lock the bar row too — same arrangement → bar lock order as the
+      // Instruction 030 auto-sync path, so concurrent allocation writes for
+      // different arrangements serialize on the shared bar and cannot both
+      // observe the same remaining capacity (review fix).
+      const [bar] = await tx.select().from(workProgramBars).where(eq(workProgramBars.id, barId)).for("update");
 
       // Active allocations (exclude cancelled/rejected arrangements + the row being edited)
       const allocRows = await tx.select({
