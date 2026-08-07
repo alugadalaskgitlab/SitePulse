@@ -289,21 +289,24 @@ export default function SiteEdit() {
 
   // editGranted: gates the edit form for submitted DPRs.
   // True if: came through EditPermissionButton flow (token already in sessionStorage),
-  // in complete mode, or user is admin (admins never need a request).
+  // in complete mode, user is admin, or the Permission Panel grants site_dprs.edit
+  // (direct editors never need a request).
   const [editGranted, setEditGranted] = useState(() => {
     if (isCompleteMode) return true;
     if (typeof sessionStorage !== "undefined" && sessionStorage.getItem(`edit_pin_${id}`)) return true;
     if (authUser?.isAdmin) return true;
+    if (canEditLive) return true;
     return false;
   });
   const { data: dpr, isLoading } = useDpr(id);
 
-  // Auto-grant for draft DPRs and admins when DPR data arrives.
+  // Auto-grant for draft DPRs, admins, and Permission-Panel direct editors
+  // when DPR/auth data arrives (permissions may load after mount).
   useEffect(() => {
     if (editGranted || !dpr) return;
     const isDraft = (dpr as any).dprStatus === "draft";
-    if (isDraft || authUser?.isAdmin) setEditGranted(true);
-  }, [dpr, editGranted, authUser?.isAdmin]);
+    if (isDraft || authUser?.isAdmin || canEditLive) setEditGranted(true);
+  }, [dpr, editGranted, authUser?.isAdmin, canEditLive]);
 
   // Auto-issue sessionStorage token when derived from live permission — but only
   // once edit has been granted (prevents bypassing the EditPermissionButton flow).

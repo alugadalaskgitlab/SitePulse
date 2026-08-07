@@ -1031,7 +1031,9 @@ export async function registerRoutes(
 
   app.put("/api/site-purchases/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      // Permission Panel: users with report_site_purchases.edit may edit
+      // directly (admins/owners still bypass inside assertEdit).
+      if (!assertEdit(req, res, "report_site_purchases")) return;
       const id = Number(req.params.id);
       const { data } = req.body;
 
@@ -7149,12 +7151,11 @@ export async function registerRoutes(
       const existing = await storage.getPurchaseIndent(id);
       if (!existing) return res.status(404).json({ message: "Purchase indent not found" });
 
-      // Permission check: non-pending records require admin.
-      if (existing.status !== "pending") {
-        if (!assertAdmin(req, res)) return;
-      } else {
-        if (!assertEdit(req, res, "site_procurement")) return;
-      }
+      // Permission check: the Permission Panel's site_procurement.edit right
+      // governs edits (admins/owners bypass inside assertEdit). Finalized
+      // (non-pending) indents reach this route via the EditPermissionButton
+      // direct-edit flow, which is gated by the same section on the client.
+      if (!assertEdit(req, res, "site_procurement")) return;
 
       const validatedData = createPurchaseIndentRequestSchema.parse(data);
       const indent = await storage.updatePurchaseIndent(id, validatedData);

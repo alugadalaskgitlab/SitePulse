@@ -898,7 +898,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {selectedGrn.status === "finalized" && (
                     <EditPermissionButton
-                      recordType="stores_grn"
+                      recordType="store_grn"
                       recordId={selectedGrn.id}
                       onEditGranted={() => openDraftForEdit(selectedGrn)}
                       size="sm"

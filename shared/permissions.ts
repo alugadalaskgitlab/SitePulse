@@ -616,6 +616,26 @@ export const PUSH_ACTIVE_SECTIONS = new Set<SectionKey>([
   "vendor_bills_approve",
 ]);
 
+// ── Edit-permission record types → permission section mapping ───────────────
+// Single source of truth for which Permission Panel section governs DIRECT
+// editing of each finalized record type (EditPermissionButton flow). A user
+// whose panel grants `edit` on the mapped section edits directly; everyone
+// else goes through the Request Edit approval flow. Keep in sync with the
+// server route guards (assertEdit(section)) for each record type's edit route.
+export const EDIT_RECORD_TYPE_SECTION: Record<string, SectionKey> = {
+  dpr: "site_dprs",
+  plant_shift_log: "plant_shift_logs",
+  heating_session: "plant_heating",
+  material_receipt: "plant_materials",
+  site_material_trip: "site_materials",
+  site_purchase: "report_site_purchases",
+  store_grn: "stores_inventory",
+  diesel_requirement: "site_diesel",
+  purchase_indent: "site_procurement",
+  truck_dispatch: "plant_production",
+  equipment_usage: "plant_equipment",
+};
+
 export const SESSION_POLICIES = ["strict", "sticky"] as const;
 export type SessionPolicy = (typeof SESSION_POLICIES)[number];
 

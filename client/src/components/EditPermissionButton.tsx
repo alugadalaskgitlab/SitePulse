@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth-context";
 import { useEditPermission } from "@/hooks/useEditPermission";
 import type { EditPermissionRecordType } from "@shared/schema";
+import { EDIT_RECORD_TYPE_SECTION } from "@shared/permissions";
 
 interface EditPermissionButtonProps {
   recordType: EditPermissionRecordType;
@@ -36,11 +37,15 @@ export function EditPermissionButton({
   className,
   size = "sm",
 }: EditPermissionButtonProps) {
-  const { isAdmin, isOwner } = useAuth();
+  const { isAdmin, isOwner, sectionCan } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [previewMode, setPreviewMode] = useState(false);
   const isAdminOrOwner = isAdmin || isOwner;
+  // Permission Panel: users granted "edit" on the section governing this
+  // record type edit directly — same as admins — instead of requesting.
+  const mappedSection = EDIT_RECORD_TYPE_SECTION[recordType];
+  const canEditDirect = isAdminOrOwner || (!!mappedSection && sectionCan(mappedSection, "edit"));
 
   const {
     currentStatus,
@@ -52,10 +57,10 @@ export function EditPermissionButton({
     consumePermission,
   } = useEditPermission(recordType, recordId);
 
-  // Admin/Owner not previewing: render a plain Edit button, plus a "Preview as
-  // requester" toggle so they can see what non-admin users experience without
-  // leaving their own session.
-  if (isAdminOrOwner && !previewMode) {
+  // Direct editors (admin/owner or Permission Panel edit right) not previewing:
+  // render a plain Edit button, plus a "Preview as requester" toggle so they
+  // can see what request-flow users experience without leaving their session.
+  if (canEditDirect && !previewMode) {
     return (
       <div className="flex items-center gap-1">
         <Button
@@ -81,12 +86,12 @@ export function EditPermissionButton({
     );
   }
 
-  // From here on, both real non-admin requesters AND admins in preview mode
-  // render the exact same branches, driven by the same useEditPermission data
-  // for this record. Admins previewing simply see their own (normally idle)
-  // requester state — nothing is faked or simulated.
+  // From here on, both real request-flow users AND direct editors in preview
+  // mode render the exact same branches, driven by the same useEditPermission
+  // data for this record. Direct editors previewing simply see their own
+  // (normally idle) requester state — nothing is faked or simulated.
   const previewWrapper = (children: React.ReactNode) =>
-    isAdminOrOwner ? (
+    canEditDirect ? (
       <div className="flex items-center gap-2 flex-wrap">
         <Badge variant="outline" className="text-xs text-muted-foreground border-dashed">
           Preview mode
@@ -107,7 +112,7 @@ export function EditPermissionButton({
       children
     );
 
-  if (isLoading || !recordId) return isAdminOrOwner ? previewWrapper(null) : null;
+  if (isLoading || !recordId) return canEditDirect ? previewWrapper(null) : null;
 
   // Already has an active approved permission — let them start editing.
   // (Admins previewing can never actually reach this branch for a real record,
@@ -121,7 +126,7 @@ export function EditPermissionButton({
         variant="default"
         className={`bg-green-600 hover:bg-green-700 text-white ${className ?? ""}`}
         onClick={() => {
-          if (isAdminOrOwner) return;
+          if (canEditDirect) return;
           consumePermission(activeRequest.id);
           onConsumed?.();
           onEditGranted?.(activeRequest.id);
@@ -180,10 +185,10 @@ export function EditPermissionButton({
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Request Edit Permission{isAdminOrOwner ? " (Preview)" : ""}</DialogTitle>
+            <DialogTitle>Request Edit Permission{canEditDirect ? " (Preview)" : ""}</DialogTitle>
             <DialogDescription>
-              {isAdminOrOwner
-                ? "This is a preview of what a non-admin user sees. Submission is disabled for admins so no real request is created."
+              {canEditDirect
+                ? "This is a preview of what a request-flow user sees. Submission is disabled so no real request is created."
                 : "This record is finalized. Describe why you need to edit it. An admin will review and approve or deny your request."}
             </DialogDescription>
           </DialogHeader>
@@ -206,16 +211,16 @@ export function EditPermissionButton({
             </Button>
             <Button
               onClick={() => {
-                if (isAdminOrOwner || !reason.trim()) return;
+                if (canEditDirect || !reason.trim()) return;
                 requestEditPermission(reason.trim());
                 setDialogOpen(false);
               }}
-              disabled={isAdminOrOwner || !reason.trim() || isRequesting}
-              title={isAdminOrOwner ? "Preview only — submission disabled for admins" : undefined}
+              disabled={canEditDirect || !reason.trim() || isRequesting}
+              title={canEditDirect ? "Preview only — submission disabled for direct editors" : undefined}
               data-testid="btn-submit-edit-request"
             >
               {isRequesting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
-              {isAdminOrOwner ? "Submit Request (disabled in preview)" : "Submit Request"}
+              {canEditDirect ? "Submit Request (disabled in preview)" : "Submit Request"}
             </Button>
           </DialogFooter>
         </DialogContent>
