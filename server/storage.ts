@@ -100,6 +100,7 @@ import {
 } from "@shared/schema";
 import { resolveConversion, convertToBase, computeAdjustment, isNoChange, computeVarianceWarnings, toFiniteNumber, type VarianceWarning } from "@shared/stockReconciliation";
 import { resolvePermittedSiteIds } from "@shared/siteAccess";
+import { getBaseSiteName, siteMatchesPermitted } from "@shared/siteName";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
@@ -1851,37 +1852,54 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(dprs.isCancelled, false));
       conditions.push(eq(dprs.isDeleted, false));
     }
-    if (filters?.site) conditions.push(eq(dprs.site, filters.site));
+    // Site filter: match by BASE site name — edited/copied DPRs carry an
+    // "– Edited by …" suffix in `site`. SQL prefix-LIKE keeps selectivity;
+    // the exact base-name comparison happens in JS below.
+    if (filters?.site) {
+      conditions.push(ilike(dprs.site, `${filters.site.replace(/[%_]/g, "\\$&")}%`));
+    }
     if (filters?.engineer) conditions.push(eq(dprs.engineer, filters.engineer));
     if (filters?.dateFrom) conditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(dprs.date, filters.dateTo));
-    // Permission System v2: if permitted site names are provided, filter to those sites only
-    if (filters?.permittedSiteNames && filters.permittedSiteNames.length > 0) {
-      conditions.push(inArray(dprs.site, filters.permittedSiteNames));
-    } else if (filters?.permittedSiteNames && filters.permittedSiteNames.length === 0) {
-      // User has site restrictions but none match → return nothing
+    // Permission System v2: user has site restrictions but none match → nothing
+    if (filters?.permittedSiteNames && filters.permittedSiteNames.length === 0) {
       return [];
     }
 
-    return await db.select()
+    // Coarse SQL prefilter for restricted users: prefix-LIKE per permitted
+    // site keeps DB selectivity (avoids fetching every site's DPRs). Exact
+    // base-name authorization happens in JS below — prefix collisions like
+    // "SITE-EXTENSION" matching "SITE%" are filtered out there.
+    if (filters?.permittedSiteNames && filters.permittedSiteNames.length > 0) {
+      const prefixConds = filters.permittedSiteNames.map((name) =>
+        ilike(dprs.site, `${getBaseSiteName(name).replace(/[%_]/g, "\\$&")}%`),
+      );
+      conditions.push(or(...prefixConds)!);
+    }
+
+    let rows = await db.select()
       .from(dprs)
       .where(and(...conditions))
       .orderBy(desc(dprs.date));
+
+    // Exact base-name matching in JS — edited/copied DPRs carry an
+    // "– Edited by …" suffix in `site` and must remain visible; prefix-LIKE
+    // false positives (different sites sharing a prefix) are rejected here.
+    if (filters?.site) {
+      const wanted = getBaseSiteName(filters.site);
+      rows = rows.filter((r) => getBaseSiteName(r.site) === wanted);
+    }
+    if (filters?.permittedSiteNames && filters.permittedSiteNames.length > 0) {
+      const permitted = filters.permittedSiteNames;
+      rows = rows.filter((r) => siteMatchesPermitted(r.site, permitted));
+    }
+    return rows;
   }
 
-  // Helper to extract base site name (strips " – Edited by..." or " – Copy by..." suffix)
+  // Helper to extract base site name — delegates to the shared single source
+  // of truth (shared/siteName.ts) so client and server can't drift.
   private getBaseSiteName(site: string): string {
-    // More robust pattern: look for "Edited by" or "Copy by" anywhere in the string
-    // and strip everything from there onwards (including any preceding dash/whitespace)
-    // This handles all dash variants and spacing issues
-    const editPattern = /\s*[-–—:]\s*(Edited by|Copy by)\s+.*/i;
-    let result = site.replace(editPattern, '').trim();
-    
-    // Fallback: also check for just "Edited by" or "Copy by" without dash
-    const directPattern = /\s+(Edited by|Copy by)\s+.*/i;
-    result = result.replace(directPattern, '').trim();
-    
-    return result || site;
+    return getBaseSiteName(site);
   }
 
   // Helper to get the effective timestamp for comparison

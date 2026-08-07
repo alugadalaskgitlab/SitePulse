@@ -20,6 +20,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
+import { siteMatchesPermitted } from "@shared/siteName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
 import {
@@ -423,8 +424,9 @@ export async function registerRoutes(
       const permittedSiteNames = await getPermittedSiteNames(req);
       let dprs = await storage.getDprsWithDetails({ dateFrom, dateTo });
       if (permittedSiteNames !== null) {
-        const nameSet = new Set(permittedSiteNames);
-        dprs = dprs.filter((d) => nameSet.has(d.site));
+        // Compare base site names — edited/copied DPRs carry a provenance
+        // suffix in `site` and must stay visible to site-restricted users.
+        dprs = dprs.filter((d) => siteMatchesPermitted(d.site, permittedSiteNames));
       }
       const dur = Date.now() - t0;
       if (dur > 200 || process.env.NODE_ENV !== "production") {
@@ -1294,7 +1296,7 @@ export async function registerRoutes(
     }
     // Permission System v2: check that the requesting user can access this DPR's site
     const permittedSiteNames = await getPermittedSiteNames(req);
-    if (permittedSiteNames !== null && !permittedSiteNames.includes(dpr.site)) {
+    if (permittedSiteNames !== null && !siteMatchesPermitted(dpr.site, permittedSiteNames)) {
       return res.status(403).json({ message: 'Access denied for this site' });
     }
     const progressIds = dpr.progress?.map(p => p.id) || [];
@@ -1503,8 +1505,7 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "DPR not found" });
       if ((existing as any).dprStatus !== "draft") return res.status(400).json({ message: "Only draft DPRs can be updated via this endpoint" });
       const permittedSiteNames = await getPermittedSiteNames(req);
-      const baseSite = existing.site.split(" –")[0].trim();
-      if (permittedSiteNames !== null && !permittedSiteNames.includes(baseSite)) {
+      if (permittedSiteNames !== null && !siteMatchesPermitted(existing.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
       }
       const input = createDprRequestSchema.parse(req.body);
@@ -1532,8 +1533,7 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "DPR not found" });
       if ((existing as any).dprStatus !== "draft") return res.status(400).json({ message: "Only draft DPRs can be submitted via this endpoint" });
       const permittedSiteNames = await getPermittedSiteNames(req);
-      const baseSite = existing.site.split(" –")[0].trim();
-      if (permittedSiteNames !== null && !permittedSiteNames.includes(baseSite)) {
+      if (permittedSiteNames !== null && !siteMatchesPermitted(existing.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
       }
       const input = createDprRequestSchema.parse(req.body);
@@ -1715,7 +1715,7 @@ export async function registerRoutes(
       }
       {
         const permittedSiteNames = await getPermittedSiteNames(req);
-        if (permittedSiteNames !== null && !permittedSiteNames.includes(versionOriginal.site)) {
+        if (permittedSiteNames !== null && !siteMatchesPermitted(versionOriginal.site, permittedSiteNames)) {
           return res.status(403).json({ message: "Access denied for this site" });
         }
       }
@@ -1783,7 +1783,7 @@ export async function registerRoutes(
       }
       {
         const permittedSiteNames = await getPermittedSiteNames(req);
-        if (permittedSiteNames !== null && !permittedSiteNames.includes(cloneSource.site)) {
+        if (permittedSiteNames !== null && !siteMatchesPermitted(cloneSource.site, permittedSiteNames)) {
           return res.status(403).json({ message: "Access denied for this site" });
         }
       }

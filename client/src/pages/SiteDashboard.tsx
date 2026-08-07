@@ -59,12 +59,8 @@ const MATERIAL_OPTIONS = [
 
 const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 
-// Helper to strip "Edited by..." suffix from site names
-function getBaseSiteName(site: string): string {
-  // Pattern: "Site Name – Edited by Role – YYYY-MM-DD HH:MM:SS"
-  const editedPattern = / – Edited by .+$/;
-  return site.replace(editedPattern, "").trim();
-}
+// Base site name helper — shared with the server so filtering can't drift.
+import { getBaseSiteName } from "@shared/siteName";
 
 export default function SiteDashboard() {
   const { toast } = useToast();
