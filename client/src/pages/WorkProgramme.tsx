@@ -57,7 +57,7 @@ import { scopeReachesToStretchRows, scopeConstraints, scopeFingerprint } from "@
 import { SCOPE_SEGMENT_TYPE_LABELS } from "@shared/projectScope";
 import { isStructureOrLocationScheduledItem, isShoulderDesc, classifyShoulderLayer, SHOULDER_DEPENDENCY_NOTES, SHOULDER_CLASSES, type ShoulderClass } from "@shared/workTypeRecipes";
 import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
-import { shortItemName } from "@/lib/itemName";
+import { shortItemName, boqItemDisplayName } from "@/lib/itemName";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import type {
   BoqProject,
@@ -1236,7 +1236,7 @@ function StretchRow({
           projectId={projectId}
           barId={bar.id}
           boqItemId={bar.boqItemId}
-          barLabel={`${shortItemName(item.description)} — ${bar.reachLabel ?? `Ch ${bar.chainageFrom ?? "?"}–${bar.chainageTo ?? "?"}`}`}
+          barLabel={`${boqItemDisplayName(item as any) || shortItemName(item.description)} — ${bar.reachLabel ?? `Ch ${bar.chainageFrom ?? "?"}–${bar.chainageTo ?? "?"}`}`}
           barPlannedQty={Number(bar.plannedQty ?? 0)}
           unit={(bar as any).canonicalUnit ?? bar.unit ?? ""}
           workCategory={arrangementCategory ?? "earthwork"}
@@ -2239,7 +2239,7 @@ function InlineGanttTable({
                             <HoverCard openDelay={120} closeDelay={40}>
                               <HoverCardTrigger asChild>
                                 <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate min-w-0 cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
-                                  {(item as any).displayName || shortItemName(item.description)}
+                                  {boqItemDisplayName(item as any)}
                                 </span>
                               </HoverCardTrigger>
                               <HoverCardContent align="start" side="bottom" className="w-96 max-w-[90vw]">
@@ -2591,7 +2591,7 @@ function MonthlyPlanView({
                         <HoverCard openDelay={120} closeDelay={40}>
                           <HoverCardTrigger asChild>
                             <span className="block truncate cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
-                              {item.itemCode ? `[${item.itemCode}] ` : ""}{(item as any).displayName || shortItemName(item.description)}
+                              {item.itemCode ? `[${item.itemCode}] ` : ""}{boqItemDisplayName(item as any)}
                             </span>
                           </HoverCardTrigger>
                           <HoverCardContent align="start" side="bottom" className="w-96 max-w-[90vw]">
@@ -3836,7 +3836,7 @@ export default function WorkProgramme() {
                 />
                 <span className="font-mono">{(b as any).reachLabel ?? `#${b.id}`}</span>
                 <span className="text-muted-foreground">Ch {b.chainageFrom ?? "?"}–{b.chainageTo ?? "?"}</span>
-                <span className="text-muted-foreground truncate">{shortItemName(items.find(it => it.id === b.boqItemId) as any)}</span>
+                <span className="text-muted-foreground truncate">{boqItemDisplayName(items.find(it => it.id === b.boqItemId) as any)}</span>
               </label>
             ))}
             {nullSideRoadBars.length === 0 && <p className="text-xs text-muted-foreground">No bars need side confirmation.</p>}

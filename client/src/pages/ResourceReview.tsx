@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, ChevronLeft, Wrench, CheckCircle2, Sparkles } from "lucide-react";
 import { classifyItem, detectAnomalies, plantToClear } from "@/lib/resourceReview";
-import { shortItemName } from "@/lib/itemName";
+import { boqItemDisplayName } from "@/lib/itemName";
 
 type RecipeItem = {
   id: number; itemCode: string | null; description: string; unit: string;
@@ -113,7 +113,7 @@ export default function ResourceReview() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     {r.it.itemCode && <span className="font-mono text-xs text-slate-500">{r.it.itemCode}</span>}
-                    <span className="font-semibold text-sm" title={r.it.description}>{shortItemName(r.it.description)}</span>
+                    <span className="font-semibold text-sm" title={r.it.description}>{boqItemDisplayName(r.it as any)}</span>
                     <Badge className={`text-[10px] ${clsColor[r.cls]}`}>{r.cls}</Badge>
                     <span className="text-[11px] text-slate-400">{(r.it as any).canonicalUnit ?? r.it.unit} · {r.it.equipment.length} eq · {r.it.labour.length} lab · {r.it.materials.length} mat</span>
                   </div>

@@ -1,0 +1,193 @@
+Fix BOQ item display naming consistently across SitePulse.
+
+BUSINESS RULE
+
+The full imported BOQ description belongs on the BOQ / Item Review / BOQ-management screens.
+
+Every operational screen should display the BOQ item's SHORT NAME as the primary label.
+
+This includes DPRs, programme, reports, equipment/labour/material links, procurement references and other operational selectors.
+
+Do not make users read the full contract description in dropdowns or normal operational screens.
+
+PART A — AUTHORITATIVE DISPLAY NAME
+
+Create or use one shared helper for operational BOQ item display.
+
+Priority:
+
+1. Use the saved BOQ short name / itemName when it exists and is non-empty.
+2. If no saved short name exists, derive a concise fallback from description using the existing shortItemName logic.
+3. Only fall back to the full description when neither produces a usable label.
+
+Do not independently implement slightly different short-name logic in GuidedDpr.tsx, SiteEntry.tsx, BillItemPicker.tsx and other screens.
+
+Use one shared implementation so the naming cannot drift.
+
+PART B — FIX CLASSIC / DETAILED DPR
+
+Current bug:
+
+In SiteEntry.tsx, BOQ selection currently assigns:
+
+updated[idx].activity = it ? it.description.toUpperCase() : "";
+
+This causes the DPR Activity Progress row to store/display the full BOQ description.
+
+Change this so the activity label used for normal DPR display is the operational short name.
+
+The BOQ item ID remains the authoritative linkage.
+
+Do not lose access to the original full description — it remains available through the linked BOQ item for detail/report/tooltips where appropriate.
+
+PART C — BILL ITEM PICKER
+
+BillItemPicker should show:
+
+Primary line:
+[Item Code] Short Name    UOM
+
+Optional secondary line:
+full BOQ description, truncated/tooltip/detail only.
+
+Do not allow the full description to expand horizontally across the screen as shown in the current DPR screenshot.
+
+The dropdown/popup must have a sensible max width and wrapping/truncation behaviour on desktop/tablet/mobile.
+
+A user must be able to scan the item list quickly.
+
+PART D — GUIDED DPR
+
+Guided DPR already uses short-name logic in several places.
+
+Move it to the same shared display helper and remove duplicated local short-name implementations.
+
+Do not change Guided DPR business logic.
+
+PART E — OTHER DPR BOQ LINKS
+
+Audit and correct BOQ item labels used in:
+
+- Road Activity Progress
+- Structure Progress
+- Equipment → BOQ item
+- Labour → BOQ item
+- Materials → BOQ item
+- programme-bar pickers
+- same-as-yesterday display
+- DPR preview/history/report display where full descriptions are currently shown as the main activity name
+
+Use short name as primary display.
+
+PART F — APP-WIDE OPERATIONAL AUDIT
+
+Search the codebase for places rendering:
+
+- boqItem.description
+- bi.description
+- item.description
+- itemName || description
+- description || itemName
+
+when the value is being used as the visible label of a BOQ item.
+
+For operational screens, replace the visible primary label with the shared BOQ display-name helper.
+
+Important screens include:
+
+- Guided DPR
+- Detailed / Classic DPR
+- Work Programme / Gantt
+- Auto Sequence
+- Tomorrow's Programme
+- DPR History / Reports
+- Equipment usage links
+- Labour links
+- Material links
+- Procurement / requirements
+- Stores references where BOQ items are shown
+- progress and management summaries
+
+DO NOT change the BOQ page itself.
+
+On:
+- BOQ
+- BOQ Item Review
+- original imported BOQ detail/audit views
+
+the complete BOQ description must remain visible.
+
+PART G — DATA SAFETY
+
+Do not rewrite historical BOQ descriptions in the database.
+
+Do not replace BOQ descriptions with short names.
+
+Do not change item IDs or programme linkage.
+
+This is primarily a display/use-layer correction.
+
+If an existing DPR activity text contains the historic full description, do not bulk-update submitted DPR history.
+
+For current/new BOQ-linked DPR rows, use the short name for the operational activity label while the boqItemId retains the authoritative original item.
+
+PART H — EXAMPLE
+
+Instead of showing:
+
+“CONSTRUCTION OF EMBANKMENT WITH MATERIAL OBTAINED FROM BORROWED USEFUL EARTH FROM OUTSIDE ROAD BOUNDARY MDD OF 18 KN/CUM...”
+
+show:
+
+“Embankment — Borrow Earth”
+
+or the saved BOQ short name for that item.
+
+The full imported description may appear only as secondary detail/tool tip if needed.
+
+PART I — TESTS
+
+Add tests proving:
+
+1. Saved itemName/short name is preferred over full description.
+2. Fallback short name is generated only when itemName is absent.
+3. Detailed DPR activity picker shows short name.
+4. Selecting the item does not populate the visible DPR activity with the full BOQ description.
+5. Guided DPR uses the same shared helper.
+6. Equipment BOQ links use short names.
+7. Labour BOQ links use short names.
+8. Material BOQ links use short names.
+9. Programme-related operational selectors use short names.
+10. BOQ management page still shows the complete imported description.
+11. Historic submitted DPR data is not bulk modified.
+12. Long full descriptions cannot overflow across the DPR screen.
+
+LIVE PROOF — TAKKADPALLY
+
+Open the DPR shown in the current screenshot.
+
+For Activity Progress:
+
+- open BOQ Item / Activity;
+- confirm the dropdown shows short names such as Excavation, Embankment — Borrow Earth, GSB, WMM, etc.;
+- confirm no full BOQ description stretches across the page;
+- select an item;
+- confirm the selected field continues to show the short name;
+- confirm the linked boqItemId is unchanged;
+- confirm programme-bar matching still works.
+
+Repeat one check each for Equipment, Labour and Material BOQ links.
+
+DO NOT TOUCH
+
+- BOQ imported descriptions
+- BOQ quantities
+- SDB/SNL mapping
+- programme sequencing calculations
+- DPR quantity calculations
+- programme-bar linkage
+- submitted DPR historical data
+- permissions
+- Stores stock logic
+
+This task is complete only when operational BOQ references consistently use short names everywhere except the BOQ/detail-management screens.

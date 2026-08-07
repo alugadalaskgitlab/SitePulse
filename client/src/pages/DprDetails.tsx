@@ -14,6 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import type { EquipmentMasterType, Site } from "@shared/schema";
+import { boqItemDisplayName } from "@shared/boqItemName";
 
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
@@ -73,9 +74,14 @@ export default function DprDetails() {
   });
 
   const boqItemMap = useMemo(() => {
-    const map = new Map<number, { itemCode: string | null; description: string }>();
+    const map = new Map<number, { itemCode: string | null; description: string; displayName: string | null; itemName: string | null }>();
     for (const item of siteBoqItems) {
-      map.set(item.id, { itemCode: item.itemCode ?? null, description: item.description });
+      map.set(item.id, {
+        itemCode: item.itemCode ?? null,
+        description: item.description,
+        displayName: (item as any).displayName ?? null,
+        itemName: item.itemName ?? null,
+      });
     }
     return map;
   }, [siteBoqItems]);
@@ -288,7 +294,7 @@ export default function DprDetails() {
                                 {boqItemMap.get(item.boqItemId)!.itemCode}
                               </Badge>
                             )}
-                            <span>{boqItemMap.get(item.boqItemId)!.description}</span>
+                            <span title={boqItemMap.get(item.boqItemId)!.description}>{boqItemDisplayName(boqItemMap.get(item.boqItemId)!)}</span>
                           </span>
                         ) : (
                           <span className="flex items-center gap-1.5">

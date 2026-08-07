@@ -104,18 +104,9 @@ const sideKeyOf = (label: string | null | undefined): string | null => {
 };
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 
-// Same label shortener behaviour as the Detailed DPR (kept local so we don't
-// export from SiteEntry and risk coupling).
-function shortName(full?: string | null): string {
-  if (!full) return "";
-  let s = String(full).replace(/\s+/g, " ").trim();
-  s = s.replace(/^(providing\s*(&|and)\s*(laying|fixing|casting)\s*(in\s*position\s*)?(of\s*)?|supplying\s*(&|and)\s*\w*\s*(of\s*)?|construction\s*of\s*|laying\s*(of\s*)?)/i, "").trim();
-  s = s.split(/\b(complete as per|as per drawing|as per technical|including all lead|all complete|including cost of)/i)[0].trim();
-  s = s.replace(/[,;:.\-\s]+$/, "").trim();
-  if (s.length < 4) return String(full).trim().slice(0, 60);
-  if (s.length > 70) s = s.slice(0, 70).replace(/\s+\S*$/, "") + "…";
-  return s;
-}
+// BOQ item labels use the shared display-name helper (shared/boqItemName.ts)
+// so operational naming can't drift between Guided DPR, Detailed DPR and pickers.
+import { boqItemDisplayName } from "@shared/boqItemName";
 
 function fmtCh(km: number | null | undefined): string {
   if (km == null) return "?";
@@ -351,7 +342,7 @@ export default function GuidedDpr() {
   const addEntryFromBar = (bar: ProgrammeBar) => {
     const item = itemById.get(bar.boqItemId);
     setEntries((prev) => [...prev, {
-      activity: shortName(item?.itemName || item?.description) || `BOQ item ${bar.boqItemId}`,
+      activity: boqItemDisplayName(item) || `BOQ item ${bar.boqItemId}`,
       boqItemId: bar.boqItemId,
       programmeBarId: bar.id,
       side: prefillSideFor(bar.side),
@@ -373,7 +364,7 @@ export default function GuidedDpr() {
 
   const addEntryFromItem = (item: SiteBoqItem) => {
     setEntries((prev) => [...prev, {
-      activity: shortName(item.itemName || item.description),
+      activity: boqItemDisplayName(item),
       boqItemId: item.id,
       programmeBarId: null,
       side: "",
@@ -794,7 +785,7 @@ export default function GuidedDpr() {
                     data-testid={`button-suggested-bar-${bar.id}`}
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{shortName(item?.itemName || item?.description) || `BOQ item ${bar.boqItemId}`}</p>
+                      <p className="text-sm font-medium truncate">{boqItemDisplayName(item) || `BOQ item ${bar.boqItemId}`}</p>
                       <p className="text-xs text-muted-foreground">
                         {bar.reachLabel || `Ch ${fmtCh(bar.chainageFrom)}–${fmtCh(bar.chainageTo)}`}
                         {bar.side ? ` · ${barSideLabel(bar.side as any)}` : ""}
@@ -1165,7 +1156,7 @@ export default function GuidedDpr() {
                 onClick={() => addEntryFromItem(item)}
                 data-testid={`button-boq-item-${item.id}`}
               >
-                <p className="text-sm font-medium">{shortName(item.itemName || item.description)}</p>
+                <p className="text-sm font-medium">{boqItemDisplayName(item)}</p>
                 <p className="text-xs text-muted-foreground">{item.itemCode ? `${item.itemCode} · ` : ""}{item.unit}</p>
               </button>
             ))}

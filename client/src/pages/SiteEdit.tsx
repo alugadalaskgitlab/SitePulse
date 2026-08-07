@@ -27,6 +27,7 @@ import { isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } 
 import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
 import { setDprEntryMode } from "@/lib/dprEntryMode";
+import { boqItemDisplayName } from "@shared/boqItemName";
 
 interface ProgressEntry {
   activity: string;
@@ -1201,7 +1202,7 @@ export default function SiteEdit() {
                           } else {
                             const boqItem = siteBoqItems.find((i) => i.id === parseInt(val));
                             updated[idx].boqItemId = parseInt(val);
-                            updated[idx].activity = boqItem ? boqItem.description.toUpperCase() : "";
+                            updated[idx].activity = boqItem ? boqItemDisplayName(boqItem).toUpperCase() : "";
                           }
                           setProgress(updated);
                         }}
@@ -1214,7 +1215,7 @@ export default function SiteEdit() {
                           <SelectItem value="__none__">— Unlink from BOQ —</SelectItem>
                           {siteBoqItems.map((item) => (
                             <SelectItem key={item.id} value={String(item.id)}>
-                              {item.itemCode ? `${item.itemCode} · ` : ""}{item.description}
+                              {item.itemCode ? `${item.itemCode} · ` : ""}{boqItemDisplayName(item)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1227,7 +1228,7 @@ export default function SiteEdit() {
                           if (val !== "__none__") {
                             const boqItem = siteBoqItems.find((i) => i.id === parseInt(val));
                             updated[idx].boqItemId = parseInt(val);
-                            updated[idx].activity = boqItem ? boqItem.description.toUpperCase() : "";
+                            updated[idx].activity = boqItem ? boqItemDisplayName(boqItem).toUpperCase() : "";
                           }
                           setProgress(updated);
                         }}
@@ -1240,7 +1241,7 @@ export default function SiteEdit() {
                           <SelectItem value="__none__">— Select activity —</SelectItem>
                           {siteBoqItems.map((item) => (
                             <SelectItem key={item.id} value={String(item.id)}>
-                              {item.itemCode ? `${item.itemCode} · ` : ""}{item.description}
+                              {item.itemCode ? `${item.itemCode} · ` : ""}{boqItemDisplayName(item)}
                             </SelectItem>
                           ))}
                         </SelectContent>

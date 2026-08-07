@@ -29,7 +29,7 @@ import {
   type EarthworkArrangementSummary,
   deriveEarthworkSourcingBadge,
 } from "@shared/planningEngine";
-import { shortItemName } from "@/lib/itemName";
+import { shortItemName, boqItemDisplayName } from "@/lib/itemName";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import { EarthworkArrangementCell } from "@/components/EarthworkArrangementDialog";
@@ -605,6 +605,8 @@ interface PlanVsActualItemRow {
   boqItemId: number;
   itemCode: string | null;
   description: string;
+  displayName?: string | null;
+  itemName?: string | null;
   unit: string;
   plannedEquipHours: number;
   actualEquipHours: number;
@@ -713,6 +715,8 @@ function computePlanVsActual(
       boqItemId: item.id,
       itemCode: item.itemCode ?? null,
       description: item.description,
+      displayName: (item as any).displayName ?? null,
+      itemName: item.itemName ?? null,
       unit: (item as any).canonicalUnit ?? item.unit,
       plannedEquipHours: planned.equipment.reduce((s, e) => s + e.totalHours, 0),
       actualEquipHours,
@@ -834,7 +838,7 @@ function EquipLabourPlanVsActualTable({
                       <div className="flex items-center gap-1.5">
                         {isExpanded ? <ChevronUp className="w-3 h-3 text-teal-500 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />}
                         {row.itemCode && <span className="font-mono text-[11px] text-slate-400">[{row.itemCode}]</span>}
-                        <span className="font-medium text-slate-700 truncate">{shortItemName(row.description)}</span>
+                        <span className="font-medium text-slate-700 truncate">{boqItemDisplayName(row as any)}</span>
                       </div>
                     </td>
                     <td className="px-2 py-2 text-right font-mono">{fmtQty(row.plannedEquipHours, 1)}</td>
@@ -1036,7 +1040,7 @@ function ItemWiseTable({
           <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
             <span className="text-sm font-semibold text-slate-700 truncate">
               {row.itemCode ? <span className="font-mono text-[12px] text-muted-foreground mr-1">[{row.itemCode}]</span> : null}
-              {shortItemName(row.description)}
+              {boqItemDisplayName(row as any)}
             </span>
             {row.compositeLabel && (
               <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex-shrink-0" title="Composite bituminous item — BOM split across sub-layers">
@@ -2899,8 +2903,8 @@ export default function WorkDemand() {
                           <ul className="mt-1 ml-5 space-y-0.5">
                             {g.items.slice(0, 6).map((it, j) => (
                               <li key={j} className="flex items-center gap-2 text-[11px] text-slate-600">
-                                <span className="truncate flex-1 min-w-0">
-                                  {it.itemCode ? <span className="font-mono text-slate-500">{it.itemCode} </span> : null}{it.description}
+                                <span className="truncate flex-1 min-w-0" title={it.description}>
+                                  {it.itemCode ? <span className="font-mono text-slate-500">{it.itemCode} </span> : null}{shortItemName(it.description)}
                                 </span>
                                 <button
                                   type="button"

@@ -34,4 +34,5 @@
 - [Physical Stock Reconciliation](stock-reconciliation-1385.md) — server recomputes with configured-factor-only conversion; clientRequestId idempotency; sorted FOR UPDATE locks; stock_balances lacks unique (material,party).
 - [Project Scope 032](project-scope-032.md) — shared/projectScope.ts is the only scope brain; scope inactive until a confirmed working_reach; planning ignores dates (conservative), DPRs use DPR date; `a ?? b || c` breaks esbuild.
 - [Site-Access Security](site-access-security.md) — zero site rows = deny-all; all-sites is an explicit grant; guided user creation + escalation guards; guided-DPR preference is per-user.
+- [BOQ Item Display Naming](boq-item-display-naming.md) — shared/boqItemName.ts is the only label source; operational screens show short names, BOQ management keeps full descriptions; pass displayName+itemName through reduced objects.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

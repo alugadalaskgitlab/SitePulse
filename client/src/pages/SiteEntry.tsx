@@ -216,49 +216,10 @@ function formatTimeDuration(start: string, end: string): string | null {
   } catch { return null; }
 }
 
-// Turn a verbose BOQ description into a short, still-identifiable label.
-// Removes only boilerplate wrappers; KEEPS grade (M15/M20…), material (PCC/RCC) and the
-// structural location/component so the user can still match the right item. Never returns
-// something useless like just "Providing and laying".
-function shortItemName(full?: string | null): string {
-  if (!full) return "";
-  let s = String(full).replace(/\s+/g, " ").trim();
-
-  // 1) Strip leading boilerplate verbs/phrases (repeatedly, in case they stack).
-  const PREFIXES = [
-    /^providing\s*(&|and)\s*laying\s*(in\s*position\s*)?(of\s*)?/i,
-    /^providing\s*(&|and)\s*fixing\s*(of\s*)?/i,
-    /^providing\s*(&|and)\s*casting\s*(of\s*)?/i,
-    /^providing,?\s*laying\s*(&|and)?\s*(compacting|finishing)?\s*(of\s*)?/i,
-    /^providing\s*(of\s*)?/i,
-    /^supplying\s*(&|and)\s*(laying|fixing|installing|stacking)?\s*(of\s*)?/i,
-    /^supply\s*(&|and)\s*(laying|fixing)?\s*(of\s*)?/i,
-    /^construction\s*of\s*/i,
-    /^constructing\s*(of\s*)?/i,
-    /^laying\s*(of\s*)?/i,
-    /^casting\s*(of\s*)?/i,
-    /^fixing\s*(of\s*)?/i,
-  ];
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const re of PREFIXES) {
-      const next = s.replace(re, "");
-      if (next !== s) { s = next.trim(); changed = true; }
-    }
-  }
-
-  // 2) Cut trailing boilerplate (rate / "complete as per…" / leads & lifts / etc.).
-  s = s.split(/\b(complete as per|as per drawing|as per technical|as per specification|including all lead|including all lift|all complete|at all (heights|leads|lifts)|including cost of|excluding cost of|i\/c\b|incl\.? )/i)[0].trim();
-
-  // 3) Trim trailing connectors/punctuation.
-  s = s.replace(/[,;:.\-\s]+$/, "").trim();
-
-  // 4) Safety nets.
-  if (s.length < 4) return String(full).replace(/\s+/g, " ").trim().slice(0, 60);
-  if (s.length > 80) s = s.slice(0, 80).replace(/\s+\S*$/, "") + "…";
-  return s;
-}
+// BOQ item display naming — shared single source of truth (shared/boqItemName.ts).
+// Operational screens show the item's short name; the full imported description
+// stays on the BOQ / Item Review management screens.
+import { boqItemDisplayName } from "@shared/boqItemName";
 
 // Steps for the mobile-first guided DPR flow (Phase 1 UX facelift). Each step
 // maps to one or more of the existing form sections below — no new business
@@ -1915,7 +1876,7 @@ export default function SiteEntry() {
                         onChange={(id, it) => {
                           const updated = [...progress];
                           updated[idx].boqItemId = id;
-                          updated[idx].activity = it ? it.description.toUpperCase() : "";
+                          updated[idx].activity = it ? boqItemDisplayName(it).toUpperCase() : "";
                           setProgress(updated);
                         }}
                       />
@@ -2470,7 +2431,7 @@ export default function SiteEntry() {
                           <SelectItem value="__none__">Not linked</SelectItem>
                           {siteBoqItems.map((bi) => (
                             <SelectItem key={bi.id} value={String(bi.id)}>
-                              {bi.itemCode ? `[${bi.itemCode}] ` : ""}{bi.itemName || bi.description}
+                              {bi.itemCode ? `[${bi.itemCode}] ` : ""}{boqItemDisplayName(bi)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -2957,7 +2918,7 @@ export default function SiteEntry() {
                         <SelectItem value="__none__">Not linked</SelectItem>
                         {siteBoqItems.map((bi) => (
                           <SelectItem key={bi.id} value={String(bi.id)}>
-                            {bi.itemCode ? `[${bi.itemCode}] ` : ""}{bi.itemName || bi.description}
+                            {bi.itemCode ? `[${bi.itemCode}] ` : ""}{boqItemDisplayName(bi)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -3114,7 +3075,7 @@ export default function SiteEntry() {
                           <SelectItem value="__none__">Not linked</SelectItem>
                           {siteBoqItems.map((bi) => (
                             <SelectItem key={bi.id} value={String(bi.id)}>
-                              {bi.itemCode ? `[${bi.itemCode}] ` : ""}{bi.itemName || bi.description}
+                              {bi.itemCode ? `[${bi.itemCode}] ` : ""}{boqItemDisplayName(bi)}
                             </SelectItem>
                           ))}
                         </SelectContent>

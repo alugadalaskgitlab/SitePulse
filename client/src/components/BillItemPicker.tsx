@@ -22,6 +22,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { BOQ_WORK_CATEGORIES } from "@shared/boqWorkCategories";
+import { shortItemName, boqItemDisplayName } from "@shared/boqItemName";
 
 export type BillItem = {
   id: number;
@@ -40,44 +41,15 @@ export type BillItem = {
 
 const WORK_CAT_LABEL = new Map(BOQ_WORK_CATEGORIES.map(c => [c.code, { label: c.label, sortOrder: c.sortOrder }]));
 
-// Same smart short-name used elsewhere — strips boilerplate, keeps grade + location.
-export function shortItemName(full?: string | null): string {
-  if (!full) return "";
-  let s = String(full).replace(/\s+/g, " ").trim();
-  const PREFIXES = [
-    /^providing\s*(&|and)\s*laying\s*(in\s*position\s*)?(of\s*)?/i,
-    /^providing\s*(&|and)\s*fixing\s*(of\s*)?/i,
-    /^providing\s*(&|and)\s*casting\s*(of\s*)?/i,
-    /^providing,?\s*laying\s*(&|and)?\s*(compacting|finishing)?\s*(of\s*)?/i,
-    /^providing\s*(of\s*)?/i,
-    /^supplying\s*(&|and)\s*(laying|fixing|installing|stacking)?\s*(of\s*)?/i,
-    /^supply\s*(&|and)\s*(laying|fixing)?\s*(of\s*)?/i,
-    /^construction\s*of\s*/i,
-    /^constructing\s*(of\s*)?/i,
-    /^laying\s*(of\s*)?/i,
-    /^casting\s*(of\s*)?/i,
-    /^fixing\s*(of\s*)?/i,
-  ];
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const re of PREFIXES) {
-      const next = s.replace(re, "");
-      if (next !== s) { s = next.trim(); changed = true; }
-    }
-  }
-  s = s.split(/\b(complete as per|as per drawing|as per technical|as per specification|including all lead|including all lift|all complete|at all (heights|leads|lifts)|including cost of|excluding cost of|i\/c\b|incl\.? )/i)[0].trim();
-  s = s.replace(/[,;:.\-\s]+$/, "").trim();
-  if (s.length < 4) return String(full).replace(/\s+/g, " ").trim().slice(0, 60);
-  if (s.length > 80) s = s.slice(0, 80).replace(/\s+\S*$/, "") + "…";
-  return s;
-}
+// Shared short-name helper — single source of truth (shared/boqItemName.ts).
+// Re-exported for backwards compatibility with existing imports.
+export { shortItemName };
 
 const BILL_OTHER = "Other / Unbilled";
 const NEEDS_MAPPING = "⚠ Needs Mapping";
 
 function ItemRow({ it, unitSuffix }: { it: BillItem; unitSuffix: string }) {
-  const short = it.displayName || shortItemName(it.itemName || it.description);
+  const short = boqItemDisplayName(it);
   return (
     <div className="flex flex-col min-w-0" title={it.description}>
       <span className="flex items-center gap-1.5 font-medium leading-snug truncate">
