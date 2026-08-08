@@ -12753,8 +12753,14 @@ export async function registerRoutes(
       // Cut-to-fill by contract: BOQ item id → description lookup for detecting
       // rows whose earthwork is contractually sourced from roadway excavation.
       const boqItemDescById = new Map<number, string>();
-      for (const it of expandedItems as Array<{ id: number; description?: string | null }>) {
+      // PROCUREMENT CORRECTION Part D: id → operational SHORT NAME for the
+      // "BOQ Work Item(s)" column. Priority: saved itemName → shared
+      // short-name fallback → (client falls back to description last).
+      const boqItemShortNameById = new Map<number, string>();
+      for (const it of expandedItems as Array<{ id: number; description?: string | null; itemName?: string | null; itemCode?: string | null }>) {
         boqItemDescById.set(it.id, String(it.description ?? ""));
+        const short = (it.itemName && String(it.itemName).trim()) || sharedShortItemName(it.description ?? "");
+        boqItemShortNameById.set(it.id, short || String(it.description ?? ""));
       }
       // Cut-to-fill: batch-load current qty of any linked excavation BOQ items so
       // arrangement summaries can report cut-available vs fill-required.
@@ -13254,6 +13260,13 @@ export async function registerRoutes(
 
         return {
           ...shortageRow,
+          // PROCUREMENT CORRECTION Part D/E: contributing BOQ items resolved to
+          // short names. Per-item contributed quantities are NOT invented —
+          // only ids + names until the engine provides a real breakdown.
+          sourceBoqItems: distinctBoqItemIds.map(id => ({
+            id,
+            name: boqItemShortNameById.get(id) ?? `BOQ #${id}`,
+          })),
           ...(materialMappingAmbiguous ? { materialMappingAmbiguous: true, ambiguousCandidates } : {}),
           resolvedVia: mappedId ? "mapping" as const : (aliasOrNameMatchId ? "alias" as const : null),
           ...(conversionBasis ? { conversionBasis, canonicalUom, conversionProfileId: convProfileId } : {}),

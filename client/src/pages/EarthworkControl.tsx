@@ -212,7 +212,7 @@ export default function EarthworkControl() {
         <Card className="p-8 text-center">
           <p className="text-slate-500 text-[13px]">No earthwork items found for this project.</p>
           <p className="text-slate-400 text-[12px] mt-1">
-            Earthwork BOQ items with "Execution Arrangement Required" or "Classification Required" status will appear here.
+            Earthwork BOQ items needing material-mapping resolution or bulk-material classification will appear here.
           </p>
         </Card>
       )}

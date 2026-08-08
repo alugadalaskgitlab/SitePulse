@@ -37,8 +37,8 @@ function ea(overrides: Partial<ExecutionStateArrangement> = {}): ExecutionStateA
 }
 
 describe("§29 A–H: execution-state mapping", () => {
-  it("A: no arrangements → Execution Arrangement Required", () => {
-    expect(deriveExecutionState(5000, []).state).toBe("arrangement_required");
+  it("A: no arrangements → default HLC self-execution (frozen business rule)", () => {
+    expect(deriveExecutionState(5000, []).state).toBe("self_execution");
   });
 
   it("B: draft/submitted outsourcing proposal → Outsourcing Proposed", () => {
@@ -96,8 +96,8 @@ describe("§29 A–H: execution-state mapping", () => {
     expect(r.effectiveOutsourcedQty).toBe(5000);
   });
 
-  it("H: cancelled/rejected arrangements are ignored entirely", () => {
-    expect(deriveExecutionState(5000, [ea({ status: "cancelled" }), ea({ id: 2, status: "rejected" })]).state).toBe("arrangement_required");
+  it("H: cancelled/rejected arrangements are ignored entirely (back to self-execution)", () => {
+    expect(deriveExecutionState(5000, [ea({ status: "cancelled" }), ea({ id: 2, status: "rejected" })]).state).toBe("self_execution");
   });
 
   it("pendingRevision flag surfaces without changing the state", () => {

@@ -1,0 +1,407 @@
+FINAL EXECUTION ARRANGEMENT / PROCUREMENT CORRECTION
+
+This is a focused correction against the frozen business rules.
+
+IMPORTANT:
+Instructions 030 and 031 are already working.
+
+Do not rebuild:
+- arrangement creation
+- arrangement register
+- arrangement-first Open behaviour
+- multi-bar Programme Coverage
+- scopeSegmentIds linkage
+- arrangementAutoAllocation
+- buildArrangementEffects
+- hlcRetainedFraction
+- component-level outsourcing effects
+- arrangement approval/revision workflows
+
+FROZEN BUSINESS RULE
+
+No Execution Arrangement record means:
+
+HLC / Contractor self-execution by default.
+
+Absence of an arrangement is NOT:
+- an error;
+- a missing setup;
+- an “Arrangement Required” condition.
+
+Execution Arrangements are created only deliberately where all or part of a BOQ item is:
+- outsourced/sublet;
+- externally supplied;
+- client supplied;
+- split by responsibility;
+- otherwise different from normal HLC self-execution.
+
+PART A — REMOVE “ARRANGEMENT REQUIRED” DEFAULT STATE
+
+1. In shared/executionState.ts:
+
+Current zero-arrangement behaviour returns:
+arrangement_required
+
+Change this.
+
+When there are no active arrangement records for the BOQ item/bar:
+- treat execution as default HLC/self-execution;
+- return a neutral/default self-execution state;
+- do not render an amber warning;
+- do not require user action.
+
+Do not disturb states for arrangements that actually exist:
+- draft
+- submitted
+- approved
+- mobilisation_pending
+- in_progress
+- on_hold
+- returned
+- rejected
+- cancelled
+- completed
+
+2. In shared/planningEngine.ts / deriveEarthworkSourcingBadge:
+
+Zero active arrangements must not produce an “Execution Arrangement Required” message.
+
+It should mean:
+Default HLC execution / no outsourcing arrangement.
+
+This may be represented as:
+- no badge at all; or
+- a neutral “HLC / Self-execution” status where a status is useful.
+
+Prefer no warning badge in Gantt.
+
+3. Gantt:
+
+Do not display:
+Execution Arrangement Required
+
+merely because no arrangement exists.
+
+Only show arrangement information when a deliberate arrangement exists.
+
+Examples:
+- Outsourced — Approved
+- Partly Outsourced — Submitted
+- Client Supplied
+- HLC + Agency Split
+
+No arrangement:
+show no outsourcing warning.
+
+PART B — PROCUREMENT / BOM MUST BE READ-ONLY ABOUT ARRANGEMENTS
+
+The Procurement tab is for:
+- material demand;
+- stock;
+- incoming quantity;
+- shortfall;
+- procurement action.
+
+It is NOT an Execution Arrangement setup, management or navigation screen.
+
+1. Remove clickable:
+“Manage in Execution Arrangements →”
+
+from Procurement / BOM rows.
+
+2. Remove narratives such as:
+“X CUM not covered by an arrangement yet”
+
+when absence of an arrangement simply means HLC/self-execution.
+
+3. Do not route the user from Procurement to arrangement creation, editing or management.
+
+4. Procurement may show a read-only arrangement-status badge only when useful.
+
+Examples:
+
+No arrangement:
+- blank; or
+- HLC / Self-execution
+
+Existing arrangement:
+- Draft
+- Submitted
+- Approved
+- Partly Outsourced
+- Fully Outsourced
+- Client Supplied
+
+No action button.
+
+5. Remove the separate bituminous arrangement navigation action as well.
+
+WorkDemand.tsx currently has BituminousArrangementSummaryLine which, when a bituminous arrangement exists, renders a:
+“View in Work Programme →”
+link.
+
+Remove that navigation action.
+
+When a bituminous arrangement exists, Procurement/BOM must show only the read-only arrangement status text/badge.
+
+Do not provide any arrangement-management OR arrangement-navigation link from Procurement for:
+- earthwork;
+- bituminous;
+- future categories.
+
+Execution Arrangements must be opened from its own dedicated project-level section.
+
+6. Keep procurement actions independent.
+
+Examples:
+- Covered by stock
+- Purchase required
+- PI raised
+- Confirmed incoming
+- Partially covered
+- Internal stock available
+
+These remain procurement statuses.
+
+Arrangement status must not replace procurement status.
+
+PART C — PRESERVE EXISTING DEMAND-REDUCTION ENGINE
+
+Do not change:
+
+buildArrangementEffects
+hlcRetainedFraction
+DEMAND_AFFECTING_ARRANGEMENT_STATUSES
+
+Existing correct behaviour must remain:
+
+No arrangement:
+100% HLC demand.
+
+Draft/submitted/returned/rejected/cancelled:
+do not reduce HLC demand.
+
+Approved/mobilisation_pending/in_progress/on_hold:
+reduce HLC demand only for the approved outsourced/client/not-applicable components and applicable quantity.
+
+Partly outsourced:
+reduce only the outsourced share/components.
+
+Do not simplify this to a binary outsourced/not-outsourced model.
+
+PART D — SHOW CONTRIBUTING BOQ ITEMS FOR EACH MATERIAL
+
+Current ShortageRow already carries:
+sourceBoqItemIds
+
+Use that data.
+
+Add a new column beside Material:
+
+BOQ Work Item(s)
+
+For each material row, resolve sourceBoqItemIds to BOQ items and display their authoritative operational SHORT NAMES.
+
+Display priority:
+1. saved BOQ itemName / short name
+2. shared operational short-name fallback
+3. full description only as last fallback
+
+Never use the full long BOQ description as the primary visible label.
+
+Examples:
+
+Material:
+Selected Soil / Subgrade Material
+
+BOQ Work Item(s):
+Subgrade
+
+Material:
+Earth / Borrow Soil
+
+BOQ Work Item(s):
+Embankment — Borrow Earth
+
+Material:
+WMM Material
+
+BOQ Work Item(s):
+WMM
+Shoulder WMM
+
+PART E — MULTIPLE BOQ ITEMS / DRILL-DOWN
+
+Where one material contributes to several BOQ items:
+
+Primary cell:
+WMM · Shoulder WMM · +2 more
+
+Allow expand/view details.
+
+Detail must show, where data exists:
+- BOQ short name
+- BOQ item ID/code
+- work quantity
+- material demand contributed by that item
+- UOM
+- horizon demand where available
+
+Important:
+sourceBoqItemIds currently may contain only BOQ IDs without per-item contributed quantity.
+
+Do NOT invent or proportionally manufacture per-item quantities.
+
+If only source IDs are available:
+- show the contributing short names;
+- show IDs/codes where useful;
+- omit per-item quantity breakdown until the engine actually provides it.
+
+PART F — SHORT NAMES CONSISTENCY
+
+Use the same shared BOQ operational display-name helper already being standardised elsewhere.
+
+Do not add another local short-name parser in WorkDemand.tsx.
+
+Apply the same short-name display to:
+- Procurement/BOM material-source BOQ items
+- arrangement-related item labels
+- status tooltips
+- expandable material details
+
+Do not modify the BOQ page itself.
+
+PART G — STATUS NAMING CLEANUP
+
+The internal procurementStatus value:
+earthwork_arrangement_required
+
+is misleading if it actually represents:
+isEarthworkBulkRequirement && materialMappingUnresolved
+
+Do not let that internal name drive user-facing text.
+
+Either:
+- rename the internal state safely if feasible without broad regression; or
+- leave the internal enum temporarily but render an accurate user-facing procurement status.
+
+If the real condition is unresolved material mapping, show something such as:
+
+Material mapping required
+
+NOT:
+
+Execution Arrangement Required
+
+Do not change business logic merely to rename a UI label.
+
+PART H — TESTS
+
+Add tests proving:
+
+1. BOQ item with no arrangement is treated as normal HLC/self-execution.
+
+2. Gantt shows no “Execution Arrangement Required” warning when no arrangement exists.
+
+3. Procurement shows no “Manage in Execution Arrangements →” action.
+
+4. Procurement shows no “View in Work Programme →” arrangement-navigation action for bituminous rows.
+
+5. Procurement does not say “not covered by an arrangement” merely because no arrangement exists.
+
+6. Approved full outsourcing reduces HLC demand.
+
+7. Approved partial outsourcing reduces only the applicable component/share.
+
+8. Draft/submitted arrangements do not reduce HLC demand.
+
+9. Cancelled/rejected arrangements return to full HLC demand.
+
+10. Material rows display contributing BOQ short names from sourceBoqItemIds.
+
+11. Multiple source BOQ items display cleanly with +N / expand behaviour.
+
+12. Full BOQ descriptions do not become the primary Procurement label.
+
+13. Procurement action/status remains independent from arrangement status.
+
+14. Existing arrangement register, Programme Coverage and scope linkage remain unchanged.
+
+15. Existing arrangement-effect tests continue to pass unchanged.
+
+LIVE PROOF — TAKKADPALLY
+
+1. Open Work Programme Gantt.
+
+2. Pick a normal BOQ item with no Execution Arrangement.
+
+3. Confirm:
+   - no “Execution Arrangement Required” warning;
+   - item remains fully planned as HLC/self-execution.
+
+4. Open BOM / Procurement.
+
+5. Confirm each material row now shows:
+   - Material
+   - BOQ Work Item(s)
+   - Unit
+   - Total Demand
+   - Horizon Demand
+   - HLC Stock
+   - Other Parties
+   - Confirmed Incoming
+   - Actionable Shortfall
+   - Future Requirement
+   - Status
+
+6. Confirm mappings such as:
+   Selected Soil / Subgrade Material → Subgrade
+   Earth / Borrow Soil → Embankment — Borrow Earth
+   WMM Material → WMM / applicable WMM items
+
+7. Confirm no row shows:
+   “Execution Arrangement Required”
+   merely because no arrangement exists.
+
+8. Confirm there is no:
+   “Manage in Execution Arrangements →”
+   button in Procurement.
+
+9. Confirm there is no:
+   “View in Work Programme →”
+   arrangement-navigation action for bituminous rows.
+
+10. Open a BOQ item with an APPROVED arrangement.
+
+11. Confirm Procurement reflects the reduced HLC responsibility automatically but shows arrangement information only as read-only status.
+
+12. Confirm the arrangement itself is still managed only from:
+   Work Program & BOQ → Execution Arrangements
+
+DO NOT TOUCH
+
+- ExecutionArrangements register architecture
+- + New arrangement
+- arrangement-first Open
+- Programme Coverage child list
+- scopeSegmentIds
+- arrangementAutoAllocation
+- buildArrangementEffects
+- hlcRetainedFraction
+- Scope
+- BOQ quantities
+- programme sequencing
+- DPR quantities
+- Stores stock
+- historical arrangements
+- arrangement approval/revision workflow
+
+FINAL REQUIREMENT
+
+This task is complete only when:
+
+- no arrangement means normal HLC/self-execution everywhere;
+- Procurement/BOM never asks the user to create, manage or navigate into an arrangement;
+- approved arrangements still affect HLC demand automatically;
+- every material row clearly shows which BOQ work item(s) generated that demand using BOQ short names;
+- earthwork and bituminous rows follow the same read-only Procurement rule.

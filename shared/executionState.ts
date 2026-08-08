@@ -12,6 +12,7 @@
 // ─── Execution states (§1) ────────────────────────────────────────────────────
 
 export type ExecutionState =
+  | "self_execution"
   | "arrangement_required"
   | "hlc_inhouse"
   | "outsourcing_proposed"
@@ -21,6 +22,7 @@ export type ExecutionState =
   | "on_hold";
 
 export const EXECUTION_STATE_LABELS: Record<ExecutionState, string> = {
+  self_execution: "HLC / Self-execution",
   arrangement_required: "Execution Arrangement Required",
   hlc_inhouse: "HLC In-house",
   outsourcing_proposed: "Outsourcing Proposed",
@@ -32,6 +34,7 @@ export const EXECUTION_STATE_LABELS: Record<ExecutionState, string> = {
 
 /** Tailwind-ish colour tokens per state (badge bg/border/text). */
 export const EXECUTION_STATE_COLORS: Record<ExecutionState, { bg: string; border: string; text: string }> = {
+  self_execution:       { bg: "bg-slate-50", border: "border-slate-200", text: "text-slate-500" },
   arrangement_required: { bg: "bg-amber-50", border: "border-amber-300", text: "text-amber-700" },
   hlc_inhouse:          { bg: "bg-slate-100", border: "border-slate-300", text: "text-slate-700" },
   outsourcing_proposed: { bg: "bg-sky-50", border: "border-sky-300", text: "text-sky-700" },
@@ -164,8 +167,13 @@ export function deriveExecutionState(
     if (effOnly <= TOL) return build("on_hold");
   }
 
-  // 2. No active decision at all.
-  if (active.length === 0 || (effQty <= TOL && propQty <= TOL)) return build("arrangement_required");
+  // 2. FROZEN BUSINESS RULE — no arrangement record at all means normal
+  // HLC/contractor self-execution BY DEFAULT. It is not an error, not a
+  // missing setup, and must never render as "Arrangement Required".
+  if (active.length === 0) return build("self_execution");
+  // Arrangements exist but none carries any quantity for this scope — a
+  // deliberate arrangement record awaits a decision, so keep the amber state.
+  if (effQty <= TOL && propQty <= TOL) return build("arrangement_required");
 
   // 3. Effective (approved) decisions drive the state.
   if (effQty > TOL) {

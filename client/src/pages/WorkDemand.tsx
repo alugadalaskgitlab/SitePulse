@@ -1210,6 +1210,8 @@ interface ShortageRow {
   materialId: number | null;
   sourceBoqItemId: number | null;
   sourceBoqItemIds: number[];
+  /** PROCUREMENT CORRECTION Part D: contributing BOQ items with operational short names. */
+  sourceBoqItems?: Array<{ id: number; name: string }>;
   stockElsewhere: number;
   isProgrammed: boolean;
   materialMappingUnresolved: boolean;
@@ -1641,6 +1643,41 @@ function ResolveMappingDialog({
 
 type DialogStep = "closed" | "confirm_dest" | "awaiting_review" | "authorize_alloc";
 
+/** PROCUREMENT CORRECTION Part D/E — "BOQ Work Item(s)" cell: contributing BOQ
+ * items shown by operational SHORT NAME; several items collapse to
+ * "A · B · +N more" with an expandable detail list (name + item id). Per-item
+ * contributed quantities are intentionally omitted — the engine does not
+ * provide them yet and they must not be invented. */
+function BoqSourceCell({ row }: { row: ShortageRow }) {
+  const [expanded, setExpanded] = useState(false);
+  const items = row.sourceBoqItems ?? [];
+  if (items.length === 0) return <span className="text-slate-300">—</span>;
+  const MAX_INLINE = 2;
+  const inline = items.slice(0, MAX_INLINE);
+  const extra = items.length - inline.length;
+  return (
+    <div className="flex flex-col gap-0.5" data-testid={`boq-source-${row.materialName}`}>
+      <span className="text-[12px] text-slate-700">
+        {inline.map(i => i.name).join(" · ")}
+        {extra > 0 && (
+          <button
+            className="ml-1 text-teal-700 font-semibold hover:underline"
+            onClick={() => setExpanded(e => !e)}
+            data-testid={`boq-source-more-${row.materialName}`}
+          >{expanded ? "show less" : `+${extra} more`}</button>
+        )}
+      </span>
+      {expanded && (
+        <ul className="text-[11px] text-slate-500 space-y-0.5" data-testid={`boq-source-detail-${row.materialName}`}>
+          {items.map(i => (
+            <li key={i.id}>{i.name} <span className="text-slate-400">· BOQ #{i.id}</span></li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** 028A Part B: concise execution summary line for bituminous procurement rows.
  * No full arrangement card — state, agency qty, company actionable, WP link. */
 function BituminousArrangementSummaryLine({ row, projectId }: { row: ShortageRow; projectId: number }) {
@@ -1663,11 +1700,9 @@ function BituminousArrangementSummaryLine({ row, projectId }: { row: ShortageRow
         <span className="text-slate-500">Agency-covered: <b className="font-mono">{fmtQty(row.arrangementAgencyQty, 1)}</b> {row.uom}</span>
       )}
       <span className="text-slate-500">Company actionable: <b className="font-mono">{fmtQty(row.companyActionableQty ?? row.actionableShortfall, 1)}</b> {row.uom}</span>
-      <a
-        href={`/work-program/${projectId}/programme`}
-        className="text-teal-700 underline decoration-dotted hover:text-teal-900"
-        data-testid={`wp-link-${row.materialName}`}
-      >View in Work Programme</a>
+      {/* PROCUREMENT CORRECTION Part B5: read-only status only — no
+          arrangement-navigation link from Procurement. Arrangements are
+          opened from Work Program & BOQ → Execution Arrangements. */}
     </div>
   );
 }
@@ -1865,15 +1900,21 @@ function SuggestionBadge({
 
   // ── Instruction 023 §A: earthwork bulk requirement — execution arrangement flow ──
   if (ps === "earthwork_arrangement_required") {
-    // Instruction 030: arrangements are created/edited in the Execution
-    // Arrangements register only — this cell just summarises and links out.
+    // PROCUREMENT CORRECTION Part G: this internal status actually means
+    // "recognised earthwork with no Plant Material mapping resolved". The
+    // user-facing label must describe the real condition — NOT demand an
+    // execution arrangement (absence of one = normal HLC self-execution).
+    // Arrangement info below is READ-ONLY status only (no manage/nav links).
     return (
-      <ArrangementRegisterLink
-        projectId={projectId}
-        arrangements={row.earthworkArrangements}
-        totalDemand={row.totalDemand}
-        uom={row.uom}
-      />
+      <div className="flex flex-col gap-1">
+        <span className="inline-flex w-fit items-center gap-1 text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+          <AlertTriangle className="w-3 h-3" /> Material mapping required
+        </span>
+        <ArrangementRegisterLink
+          arrangements={row.earthworkArrangements}
+          totalDemand={row.totalDemand}
+        />
+      </div>
     );
   }
 
@@ -2412,6 +2453,7 @@ function ProcurementTable({
           <thead>
             <tr style={{ background: "#0F5F64" }}>
               <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[180px]" style={{ background: "#0F5F64" }}>Material</th>
+              <th className="px-2 py-2 font-semibold text-white text-left min-w-[140px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ Work Item(s)</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Unit</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Total Demand</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>
@@ -2480,6 +2522,7 @@ function ProcurementTable({
                       <BituminousArrangementSummaryLine row={row} projectId={projectId} />
                     )}
                   </td>
+                  <td className="px-2 py-2 align-top"><BoqSourceCell row={row} /></td>
                   <td className="px-2 py-2 text-right text-muted-foreground">{row.uom}</td>
                   <td className="px-2 py-2 text-right font-mono font-semibold text-teal-700">
                     {fmtQty(row.totalDemand, 1)}
