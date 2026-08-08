@@ -13,11 +13,13 @@ import {
   earthworkArrangements,
   earthworkArrangementProgrammeAllocations,
   workProgramBars,
+  projectScopeSegments,
 } from "@shared/schema";
 import {
   planArrangementBarAutoAllocations,
   AUTO_SYNC_STATUSES,
 } from "@shared/arrangementAutoAllocation";
+import { resolveEligibleScope, coverageForStretch } from "@shared/projectScope";
 
 export interface AutoSyncResult {
   created: number;
@@ -73,6 +75,46 @@ export async function syncArrangementBarAllocations(
         barIds.length > 0 ? inArray(earthworkArrangementProgrammeAllocations.programmeBarId, barIds) : undefined,
       ));
 
+    // Instruction 031 B3 — resolve the Applicable Scope link to PRECISE reach
+    // ranges (current geometry, confirmed working reaches only). Non-contiguous
+    // selections keep their gaps; a linked reach that has since been superseded
+    // or withdrawn contributes NO range, so its auto allocations are removed on
+    // the next sync instead of silently persisting stale scope.
+    let scopeRanges: Array<{ from: number; to: number; side?: string | null }> | null = null;
+    const linkedIds = Array.isArray((arr as any).scopeSegmentIds)
+      ? ((arr as any).scopeSegmentIds as unknown[]).map(Number).filter(n => Number.isFinite(n) && n > 0)
+      : [];
+    if (linkedIds.length > 0) {
+      // Load the WHOLE project scope (not just the linked ids): constraint
+      // segments (no_scope / withdrawn / temporary_block) must clip the
+      // selected reaches, exactly like the dialog's eligibility preview.
+      const allSegs = await tx.select().from(projectScopeSegments)
+        .where(eq(projectScopeSegments.boqProjectId, arr.boqProjectId));
+      const linkedSet = new Set(linkedIds);
+      const reaches = allSegs.filter(s => linkedSet.has(Number(s.id))
+        && s.segmentType === "working_reach" && s.status === "confirmed"
+        && s.chainageFrom != null && s.chainageTo != null);
+      const eligible = resolveEligibleScope(allSegs as any, {
+        boqItemId: arr.boqItemId != null ? Number(arr.boqItemId) : null,
+        isLinear: true,
+      });
+      scopeRanges = [];
+      for (const s of reaches) {
+        const cov = coverageForStretch(eligible, {
+          chainageFrom: Number(s.chainageFrom),
+          chainageTo: Number(s.chainageTo),
+          side: (s as any).side ?? null,
+        });
+        for (const r of cov.subRanges) {
+          scopeRanges.push({ from: Number(r.from), to: Number(r.to), side: (s as any).side ?? null });
+        }
+      }
+      // All linked reaches gone or fully excluded → no eligible ranges at all:
+      // pass an impossible range rather than falling back to the stale
+      // envelope, so every auto row is reconciled off.
+      if (scopeRanges.length === 0) scopeRanges = [{ from: -1, to: -1 }];
+    }
+
     const plan = planArrangementBarAutoAllocations(
       {
         id: arr.id,
@@ -83,6 +125,7 @@ export async function syncArrangementBarAllocations(
         boqItemAllocations: arr.boqItemAllocations as any,
         chainageFrom: arr.chainageFrom != null ? Number(arr.chainageFrom) : null,
         chainageTo: arr.chainageTo != null ? Number(arr.chainageTo) : null,
+        scopeRanges,
       },
       bars.map(b => ({
         id: b.id,
@@ -91,6 +134,7 @@ export async function syncArrangementBarAllocations(
         plannedQty: Number(b.plannedQty ?? 0),
         chainageFrom: b.chainageFrom != null ? Number(b.chainageFrom) : null,
         chainageTo: b.chainageTo != null ? Number(b.chainageTo) : null,
+        side: (b as any).side ?? null,
       })),
       allocRows.map(r => ({
         id: r.alloc.id,

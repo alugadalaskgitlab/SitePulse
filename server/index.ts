@@ -121,6 +121,7 @@ app.use((req, res, next) => {
           "completed_at","rejection_reason","cancellation_reason","created_at","updated_at",
           "source_excavation_boq_item_id",
           "work_category","bituminous_item_type",
+          "scope_segment_ids", // Instruction 031 B3 — Applicable Scope linkage
         ];
         const missing = required.filter(c => !existing.has(c));
         if (missing.length > 0) {

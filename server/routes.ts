@@ -16,7 +16,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable } from "@shared/schema";
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -11001,6 +11001,17 @@ export async function registerRoutes(
       catch (e: any) { return res.status(400).json({ error: e.message }); }
       const authUser = (req as any).authUser;
       const result = await storage.updateProjectScopeSegment(segId, data, authUser?.id ?? null);
+      // Instruction 031: revising a CONFIRMED reach supersedes it — linked
+      // arrangements lose that range now (stale auto rows stripped); when the
+      // revision is confirmed, links are re-pointed and coverage redistributes.
+      // A revised CONSTRAINT changes every linked reach's eligible clipping.
+      if (result.revised) {
+        if (result.segment.segmentType === "working_reach") {
+          await reconcileArrangementsForScopeSegments([segId], authUser);
+        } else {
+          await reconcileLinkedArrangementsForProject(result.segment.boqProjectId, authUser);
+        }
+      }
       res.json({ ...result.segment, revised: result.revised });
     } catch (err: any) {
       const msg = String(err?.message ?? "");
@@ -11022,6 +11033,17 @@ export async function registerRoutes(
         userRole: authUser?.role ?? null,
         newValues: { segmentId: segment.id, segmentType: segment.segmentType, chainageFrom: segment.chainageFrom, chainageTo: segment.chainageTo, side: segment.side },
       } as any).catch((e: any) => console.error("scope confirm audit:", e?.message ?? e));
+      // Instruction 031: confirming a revision of a linked reach re-points the
+      // arrangements to the new geometry, then reconciles their bar coverage.
+      if (segment.segmentType === "working_reach") {
+        if ((segment as any).revisionOf != null) {
+          await repointArrangementScopeLinks(Number((segment as any).revisionOf), segment.id);
+        }
+        await reconcileArrangementsForScopeSegments([segment.id, Number((segment as any).revisionOf ?? 0)], authUser);
+      } else {
+        // Newly confirmed constraint clips all linked reaches in the project.
+        await reconcileLinkedArrangementsForProject(segment.boqProjectId, authUser);
+      }
       res.json(segment);
     } catch (err: any) {
       const msg = String(err?.message ?? "");
@@ -11034,7 +11056,17 @@ export async function registerRoutes(
   app.delete("/api/boq/scope-segments/:segId", async (req, res) => {
     try {
       if (!assertEdit(req, res, "project_scope")) return;
-      await storage.deleteProjectScopeSegment(parseInt(req.params.segId));
+      const delSegId = parseInt(req.params.segId);
+      const [delSeg] = await db.select().from(projectScopeSegmentsTable)
+        .where(eq(projectScopeSegmentsTable.id, delSegId));
+      await storage.deleteProjectScopeSegment(delSegId);
+      // Draft-only deletes normally don't affect eligibility, but reconcile
+      // defensively — linked reaches directly, constraints project-wide.
+      if (delSeg && delSeg.segmentType !== "working_reach") {
+        await reconcileLinkedArrangementsForProject(delSeg.boqProjectId, (req as any).authUser);
+      } else {
+        await reconcileArrangementsForScopeSegments([delSegId], (req as any).authUser);
+      }
       res.json({ ok: true });
     } catch (err: any) {
       const msg = String(err?.message ?? "");
@@ -13358,6 +13390,43 @@ export async function registerRoutes(
   });
 
   /** Create a new earthwork arrangement. */
+  /**
+   * Instruction 031 B3 — validate an arrangement's authoritative Scope linkage.
+   * scopeSegmentIds must be an array of IDs of CONFIRMED working_reach records
+   * belonging to the arrangement's project. Draft/superseded records and
+   * constraint types (no_scope / temporary_block / withdrawn) are never linkable.
+   * Returns the normalised (deduped, numeric) id list, or null when empty.
+   */
+  async function validateArrangementScopeSegments(
+    projectId: number,
+    raw: unknown,
+  ): Promise<{ ok: true; ids: number[] | null } | { ok: false; status: number; body: unknown }> {
+    if (raw == null) return { ok: true, ids: null };
+    if (!Array.isArray(raw)) {
+      return { ok: false, status: 400, body: { error: "INVALID_SCOPE_SEGMENTS", message: "scopeSegmentIds must be an array of scope segment IDs." } };
+    }
+    const ids = Array.from(new Set(raw.map(Number)));
+    if (ids.length === 0) return { ok: true, ids: null };
+    if (ids.some(n => !Number.isInteger(n) || n <= 0)) {
+      return { ok: false, status: 400, body: { error: "INVALID_SCOPE_SEGMENTS", message: "scopeSegmentIds must contain positive integer segment IDs." } };
+    }
+    const segs = await storage.getProjectScopeSegments(projectId) as any[];
+    const byId = new Map(segs.map(s => [Number(s.id), s]));
+    for (const segId of ids) {
+      const seg = byId.get(segId);
+      if (!seg) {
+        return { ok: false, status: 400, body: { error: "SCOPE_SEGMENT_NOT_FOUND", message: `Scope segment ${segId} does not belong to this project.` } };
+      }
+      if (seg.segmentType !== "working_reach") {
+        return { ok: false, status: 400, body: { error: "SCOPE_SEGMENT_NOT_LINKABLE", message: `Scope segment ${segId} is a ${seg.segmentType} constraint — only working reaches can be linked to an arrangement.` } };
+      }
+      if ((seg.status ?? "confirmed") !== "confirmed") {
+        return { ok: false, status: 400, body: { error: "SCOPE_SEGMENT_NOT_CONFIRMED", message: `Scope segment ${segId} is ${seg.status} — only confirmed working reaches can be linked.` } };
+      }
+    }
+    return { ok: true, ids };
+  }
+
   app.post("/api/boq/projects/:id/earthwork-arrangements", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
@@ -13406,12 +13475,20 @@ export async function registerRoutes(
       if (plannedStart && targetEnd && targetEnd < plannedStart)
         return res.status(400).json({ error: "INVALID_DATE_RANGE", message: "targetCompletionDate cannot precede plannedStartDate" });
 
+      // ── Instruction 031 B3: authoritative Scope linkage (validated first —
+      // a reach-linked arrangement is exempt from the raw-chainage guard below,
+      // because its internal no-scope/withdrawn intervals are clipped by the
+      // eligibility engine instead of blocking the whole selection).
+      const scopeCheckResult = await validateArrangementScopeSegments(projectId, body.scopeSegmentIds);
+      if (!scopeCheckResult.ok) return res.status(scopeCheckResult.status).json(scopeCheckResult.body);
+      const scopeSegmentIdsValue = scopeCheckResult.ids;
+
       // ── Instruction 032 Part M (light): block arrangements over permanently
       // excluded / withdrawn scope, unless the record is historical (the
       // arrangement's chainage predates the withdrawal's effective date via
       // evaluateDprScope's date gate). Temporary blocks do NOT block — the
       // arrangement may be preparation for after the block lifts.
-      {
+      if (scopeSegmentIdsValue == null) {
         const arrChF = body.chainageFrom != null ? Number(body.chainageFrom) : null;
         const arrChT = body.chainageTo != null ? Number(body.chainageTo) : null;
         if (arrChF != null && arrChT != null && Number.isFinite(arrChF) && Number.isFinite(arrChT) && arrChT > arrChF) {
@@ -13619,6 +13696,7 @@ export async function registerRoutes(
         reachLabel: body.reachLabel?.trim() || null,
         chainageFrom: body.chainageFrom != null ? Number(body.chainageFrom) : null,
         chainageTo: body.chainageTo != null ? Number(body.chainageTo) : null,
+        scopeSegmentIds: scopeSegmentIdsValue,
         agreedRate: body.agreedRate != null ? Number(body.agreedRate) : null,
         borrowSource: body.borrowSource?.trim() || null,
         avgLeadKm: body.avgLeadKm != null ? Number(body.avgLeadKm) : null,
@@ -13712,6 +13790,85 @@ export async function registerRoutes(
     }
   }
 
+  /**
+   * Instruction 031 — when Project Scope itself changes (a linked reach is
+   * revised/superseded, confirmed, or deleted), reconcile every OPERATIONAL
+   * arrangement whose Applicable Scope links any of the affected segment ids.
+   * The auto-sync resolves ranges from CURRENT geometry, so superseded reaches
+   * strip their auto rows and confirmed revisions redistribute; manual rows are
+   * never touched (planner rule).
+   */
+  async function reconcileArrangementsForScopeSegments(segIds: number[], user: any): Promise<void> {
+    const ids = segIds.map(Number).filter(n => Number.isFinite(n) && n > 0);
+    if (ids.length === 0) return;
+    try {
+      const linked = await db.select({
+        id: earthworkArrangementsTable.id,
+        status: earthworkArrangementsTable.status,
+        scopeSegmentIds: earthworkArrangementsTable.scopeSegmentIds,
+      }).from(earthworkArrangementsTable)
+        .where(sql`${earthworkArrangementsTable.scopeSegmentIds} IS NOT NULL`);
+      for (const a of linked) {
+        const linkIds = Array.isArray(a.scopeSegmentIds) ? (a.scopeSegmentIds as unknown[]).map(Number) : [];
+        if (!linkIds.some(x => ids.includes(x))) continue;
+        if (!AUTO_SYNC_STATUSES.has(String(a.status))) continue;
+        await runArrangementAutoSync(a.id, user, "scope_segment_changed");
+      }
+    } catch (e) {
+      console.error("Scope-segment → arrangement reconciliation failed:", e);
+    }
+  }
+
+  /**
+   * Constraint segments (no_scope / withdrawn / temporary_block) are never in
+   * scope_segment_ids, but they clip every linked reach's eligible ranges — so
+   * a constraint change must reconcile ALL reach-linked operational
+   * arrangements in the project.
+   */
+  async function reconcileLinkedArrangementsForProject(projectId: number, user: any): Promise<void> {
+    if (!Number.isFinite(projectId) || projectId <= 0) return;
+    try {
+      const linked = await db.select({
+        id: earthworkArrangementsTable.id,
+        status: earthworkArrangementsTable.status,
+      }).from(earthworkArrangementsTable)
+        .where(and(
+          eq(earthworkArrangementsTable.boqProjectId, projectId),
+          sql`${earthworkArrangementsTable.scopeSegmentIds} IS NOT NULL AND jsonb_array_length(${earthworkArrangementsTable.scopeSegmentIds}) > 0`,
+        ));
+      for (const a of linked) {
+        if (!AUTO_SYNC_STATUSES.has(String(a.status))) continue;
+        await runArrangementAutoSync(a.id, user, "scope_constraint_changed");
+      }
+    } catch (e) {
+      console.error("Scope-constraint → arrangement reconciliation failed:", e);
+    }
+  }
+
+  /**
+   * When a scope revision is CONFIRMED, re-point linked arrangements from the
+   * superseded predecessor to the confirmed revision so a geometry change
+   * redistributes allocations instead of permanently stripping them.
+   */
+  async function repointArrangementScopeLinks(oldSegId: number, newSegId: number): Promise<void> {
+    try {
+      const linked = await db.select({
+        id: earthworkArrangementsTable.id,
+        scopeSegmentIds: earthworkArrangementsTable.scopeSegmentIds,
+      }).from(earthworkArrangementsTable)
+        .where(sql`${earthworkArrangementsTable.scopeSegmentIds} @> ${JSON.stringify([oldSegId])}::jsonb`);
+      for (const a of linked) {
+        const cur = Array.isArray(a.scopeSegmentIds) ? (a.scopeSegmentIds as unknown[]).map(Number) : [];
+        const next = Array.from(new Set(cur.map(x => (x === oldSegId ? newSegId : x))));
+        await db.update(earthworkArrangementsTable)
+          .set({ scopeSegmentIds: next } as any)
+          .where(eq(earthworkArrangementsTable.id, a.id));
+      }
+    } catch (e) {
+      console.error("Scope-revision arrangement re-point failed:", e);
+    }
+  }
+
   app.patch("/api/earthwork-arrangements/:id", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
@@ -13741,6 +13898,7 @@ export async function registerRoutes(
         "rejectionReason", "cancellationReason", "onHoldReason",
         "boqItemAllocations", "sourceExcavationBoqItemId",
         "bituminousItemType",
+        "scopeSegmentIds", // Instruction 031 B3
       ];
       const patch: Record<string, unknown> = {};
       for (const field of allowedFields) {
@@ -13754,6 +13912,13 @@ export async function registerRoutes(
 
       const current = await storage.getEarthworkArrangementById(id);
       if (!current) return res.status(404).json({ error: "Arrangement not found" });
+
+      // ── Instruction 031 B3: validate + normalise Scope linkage on edit ────
+      if ("scopeSegmentIds" in patch) {
+        const scopeCheckResult = await validateArrangementScopeSegments(current.boqProjectId, patch.scopeSegmentIds);
+        if (!scopeCheckResult.ok) return res.status(scopeCheckResult.status).json(scopeCheckResult.body);
+        patch.scopeSegmentIds = scopeCheckResult.ids;
+      }
 
       // ── Instruction 028 §35 — category validation on PATCH ────────────────
       const rowCategory: string = (current as any).workCategory ?? "earthwork"; // old rows = earthwork during transition
@@ -13945,6 +14110,26 @@ export async function registerRoutes(
           const materialChanges: Record<string, unknown> = {};
           for (const f of cls.material) materialChanges[f] = body[f];
 
+          // Instruction 031: operational fields submitted ALONGSIDE material
+          // changes must not be silently dropped — they are applied immediately
+          // (same semantics as a pure operational edit) while the material part
+          // follows the revision flow. Collected here, merged into the update tx.
+          const sideOperational: Record<string, unknown> = {};
+          const sideOperationalOld: Record<string, unknown> = {};
+          for (const f of cls.operational) {
+            // Use the VALIDATED/normalised patch value when present (e.g.
+            // scopeSegmentIds deduped + coerced to numbers) — never the raw body.
+            sideOperational[f] = f in patch ? (patch as any)[f] : (body[f] ?? null);
+            sideOperationalOld[f] = (current as any)[f] ?? null;
+          }
+          const hasSideOperational = cls.operational.length > 0;
+          const sideOpHistoryEntry = hasSideOperational ? {
+            type: "operational", outcome: "applied", previous: sideOperationalOld,
+            changes: sideOperational,
+            reason: body.editReason ? String(body.editReason) : (body.revisionReason ? String(body.revisionReason) : null),
+            changedByUserId: user?.id ?? null, changedAt: now,
+          } : null;
+
           if (body.saveIntent === "apply_now") {
             // §21 Admin Edit and Apply Now — approver-only, reason mandatory, versioned.
             if (!assertApprove(req, res, "qto_boq")) return;
@@ -13967,8 +14152,9 @@ export async function registerRoutes(
                 proposedByUserId: user?.id ?? null, proposedAt: now,
                 approvedByUserId: user?.id ?? null, approvedAt: now, effectiveFrom: now,
               });
+              if (sideOpHistoryEntry) history.push(sideOpHistoryEntry);
               const [applied] = await tx.update(earthworkArrangementsTable)
-                .set({ ...(materialChanges as any), revisionHistory: history } as any)
+                .set({ ...(materialChanges as any), ...(sideOperational as any), revisionHistory: history } as any)
                 .where(eq(earthworkArrangementsTable.id, id)).returning();
               return { status: 200, body: { ...applied, appliedNow: true }, previous };
             });
@@ -14006,13 +14192,21 @@ export async function registerRoutes(
               return { status: 409, body: { error: "REVISION_ALREADY_PENDING", message: "A revision is already pending on this arrangement. Approve, reject or discard it first." } };
             }
             const pendingRevision = { fields: materialChanges, reason: String(body.revisionReason), proposedByUserId: user?.id ?? null, proposedAt: now };
+            const historyOp = Array.isArray((row as any).revisionHistory) ? [...(row as any).revisionHistory] : [];
+            if (sideOpHistoryEntry) historyOp.push(sideOpHistoryEntry);
             const [updated2] = await tx.update(earthworkArrangementsTable)
-              .set({ pendingRevision } as any)
+              .set({ pendingRevision, ...(sideOperational as any), ...(sideOpHistoryEntry ? { revisionHistory: historyOp } : {}) } as any)
               .where(eq(earthworkArrangementsTable.id, id)).returning();
             return { status: 200, body: { ...updated2, revisionPending: true } };
           });
           if (result.status === 200) {
             await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null, module: "earthwork_arrangements", transactionId: Number(id), action: "revision_proposed", userId: user?.id ?? null, newValues: materialChanges }).catch(() => {});
+            // Instruction 031: an operational scope-link change applied alongside
+            // the revision proposal takes effect immediately — reconcile bars now.
+            if (hasSideOperational && ("scopeSegmentIds" in sideOperational || "reachLabel" in sideOperational || "chainageFrom" in sideOperational || "chainageTo" in sideOperational)
+              && AUTO_SYNC_STATUSES.has(String((result.body as any)?.status ?? ""))) {
+              await runArrangementAutoSync(id, user, "scope_changed");
+            }
           }
           return res.status(result.status).json(result.body);
         }
@@ -14136,7 +14330,7 @@ export async function registerRoutes(
       // mobilisation_pending, in_progress, on_hold), and any change to the
       // arrangement's quantity, BOQ split or chainage while it is operational.
       const enteredOperational = !!newStatus && AUTO_SYNC_STATUSES.has(newStatus) && newStatus !== current.status;
-      const scopeChanged = patchChangesLinkage || "chainageFrom" in body || "chainageTo" in body;
+      const scopeChanged = patchChangesLinkage || "chainageFrom" in body || "chainageTo" in body || "scopeSegmentIds" in body;
       if (AUTO_SYNC_STATUSES.has(String(updated.status)) && (enteredOperational || scopeChanged)) {
         await runArrangementAutoSync(id, user, enteredOperational ? `status_${newStatus}` : "scope_changed");
       }

@@ -156,10 +156,10 @@ export default function EarthworkControl() {
         </Link>
       </div>
       <div className="text-[11px] text-slate-400" data-testid="text-breadcrumb">
-        Work Programme › Earthwork Control
+        Work Programme › Earthwork Classification & Cut/Fill
       </div>
       <div>
-        <h1 className="text-xl font-bold text-slate-800">Execution Arrangements — Classification & Demand</h1>
+        <h1 className="text-xl font-bold text-slate-800">Earthwork Classification & Cut/Fill</h1>
         <Link href={`/work-program/${projectId}/execution-arrangements`} className="text-[12px] text-teal-600 hover:underline ml-2">
           Open register →
         </Link>

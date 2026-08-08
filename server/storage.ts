@@ -25072,6 +25072,8 @@ export class DatabaseStorage implements IStorage {
       )
     `);
     await db.execute(sql`ALTER TABLE earthwork_arrangement_programme_allocations ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual'`);
+    // Instruction 031 B3: authoritative Scope linkage (additive-only, legacy-safe)
+    await db.execute(sql`ALTER TABLE earthwork_arrangements ADD COLUMN IF NOT EXISTS scope_segment_ids jsonb`);
   }
 
   async getEarthworkArrangements(boqProjectId: number): Promise<EarthworkArrangement[]> {

@@ -214,6 +214,9 @@ export const OPERATIONAL_EDIT_FIELDS = [
   "reachLabel",
   "chainageFrom",
   "chainageTo",
+  // Instruction 031 B3: scope linkage follows the same class as reachLabel /
+  // chainage — an operational (audited, immediate) edit, not a material revision.
+  "scopeSegmentIds",
   "mobilisationDate",
   "plannedStartDate",
   "actualStartDate",

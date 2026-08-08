@@ -376,7 +376,7 @@ export function BarArrangementPanel({
                 <Plus className="w-3 h-3 mr-1" /> New arrangement for this stretch
               </Button>
               <Link href={`/work-program/${projectId}/earthwork`} className="text-[11px] text-teal-600 hover:underline">
-                Earthwork Control →
+                Earthwork Classification & Cut/Fill →
               </Link>
             </div>
           </div>

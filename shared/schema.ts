@@ -3689,6 +3689,11 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
   reachLabel: text("reach_label"),              // null = whole BOQ item
   chainageFrom: real("chainage_from"),
   chainageTo: real("chainage_to"),
+  // Instruction 031 B3: authoritative link to confirmed project_scope_segments
+  // working reaches (JSONB array of segment IDs). Chainages above are kept as
+  // resolved copies for reporting/audit. Null = whole eligible scope or legacy
+  // free-text reach.
+  scopeSegmentIds: jsonb("scope_segment_ids"),
 
   // Quantities
   allocatedQty: real("allocated_qty").notNull().default(0),

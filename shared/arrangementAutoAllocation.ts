@@ -18,6 +18,7 @@
  *    they stay flagged with a shortfall by the existing execution-state logic.
  *  - Pure: no IO. The server wraps this in a FOR UPDATE transaction.
  */
+import { corridorsForSide } from "./projectScope";
 
 export interface AutoAllocArrangement {
   id: number;
@@ -28,6 +29,18 @@ export interface AutoAllocArrangement {
   boqItemAllocations?: Array<{ boqItemId: number; qty: number }> | null;
   chainageFrom: number | null;
   chainageTo: number | null;
+  /**
+   * Instruction 031 B3 — precise Applicable Scope membership. When present
+   * (reach-linked arrangement), a bar is a candidate only if it overlaps AT
+   * LEAST ONE of these reach ranges in BOTH chainage and side (corridor
+   * intersection via corridorsForSide: a null/unknown side means the full
+   * carriageway on either end — legacy null-side bars therefore match any
+   * reach, and a null-side reach matches any bar). This preserves gaps
+   * between non-contiguous selected reaches, which the single
+   * chainageFrom/To envelope cannot express. When null/empty, the envelope
+   * behaviour is unchanged.
+   */
+  scopeRanges?: Array<{ from: number; to: number; side?: string | null }> | null;
 }
 
 export interface AutoAllocBar {
@@ -37,6 +50,8 @@ export interface AutoAllocBar {
   plannedQty: number;
   chainageFrom: number | null;
   chainageTo: number | null;
+  /** Bar carriageway side; null/undefined = legacy full-width bar (matches any reach side). */
+  side?: string | null;
 }
 
 export interface AutoAllocExisting {
@@ -114,11 +129,21 @@ export function planArrangementBarAutoAllocations(
     .filter(b => b.boqProjectId === arrangement.boqProjectId)
     .filter(b => itemBudget.has(b.boqItemId))
     .filter(b => {
+      const scopeRanges = Array.isArray(arrangement.scopeRanges) && arrangement.scopeRanges.length > 0
+        ? arrangement.scopeRanges : null;
       // A bar with no chainage at all only matches an arrangement with no range
-      // (whole-item arrangements); with a bounded arrangement we cannot tell
-      // where the bar sits, so leave it flagged rather than guess.
+      // (whole-item arrangements); with a bounded or reach-linked arrangement we
+      // cannot tell where the bar sits, so leave it flagged rather than guess.
       if (b.chainageFrom == null && b.chainageTo == null) {
-        return arrangement.chainageFrom == null && arrangement.chainageTo == null;
+        return scopeRanges == null && arrangement.chainageFrom == null && arrangement.chainageTo == null;
+      }
+      // Reach-linked (031): exact membership — overlap any selected reach range
+      // in both chainage AND side (corridor intersection).
+      if (scopeRanges != null) {
+        const barCorridors = corridorsForSide(b.side ?? null);
+        return scopeRanges.some(r =>
+          chainageRangesOverlap(r.from, r.to, b.chainageFrom, b.chainageTo)
+          && corridorsForSide(r.side ?? null).some(c => barCorridors.includes(c)));
       }
       return chainageRangesOverlap(arrangement.chainageFrom, arrangement.chainageTo, b.chainageFrom, b.chainageTo);
     })

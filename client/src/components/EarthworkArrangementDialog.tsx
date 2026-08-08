@@ -25,6 +25,12 @@ import { deriveEarthworkSourcingBadge, checkCutFillBalance, suggestCutToFillSour
 import { invalidateArrangementQueries } from "@/lib/arrangementCache";
 import { deriveExecutionState, EXECUTION_STATE_COLORS } from "@shared/executionState";
 import {
+  confirmedWorkingReaches,
+  scopeConstraints,
+  type ScopeSegmentRecordLike,
+} from "@shared/autoSequenceScope";
+import { resolveEligibleScope, coverageForStretch } from "@shared/projectScope";
+import {
   type WorkCategoryKey,
   BITUMINOUS_ARRANGEMENT_TYPE_LABELS,
   BITUMINOUS_COMPONENT_LABELS,
@@ -616,6 +622,37 @@ export function EarthworkArrangementDialog({
   );
   const [agencyName, setAgencyName] = useState(editArrangement?.agencyName ?? "");
   const [reachLabel, setReachLabel] = useState(editArrangement?.reachLabel ?? "");
+
+  // ── Instruction 031 B2/B3: Applicable Scope ────────────────────────────────
+  // whole  = whole eligible BOQ scope (default; scopeSegmentIds = null)
+  // reaches = confirmed Working Reach(es) from Project Scope (authoritative link)
+  // custom = free-text reach label + optional chainage (legacy-compatible, B7)
+  type ScopeMode = "whole" | "reaches" | "custom";
+  const editScopeSegmentIds: number[] = Array.isArray((editArrangement as any)?.scopeSegmentIds)
+    ? ((editArrangement as any).scopeSegmentIds as unknown[]).map(Number).filter(n => Number.isFinite(n))
+    : [];
+  const [scopeMode, setScopeMode] = useState<ScopeMode>(
+    editScopeSegmentIds.length > 0 ? "reaches"
+      : (editArrangement?.reachLabel || (editArrangement as any)?.chainageFrom != null) ? "custom"
+      : "whole"
+  );
+  const [selectedSegIds, setSelectedSegIds] = useState<number[]>(editScopeSegmentIds);
+  const [customChFrom, setCustomChFrom] = useState(
+    (editArrangement as any)?.chainageFrom != null ? String((editArrangement as any).chainageFrom) : ""
+  );
+  const [customChTo, setCustomChTo] = useState(
+    (editArrangement as any)?.chainageTo != null ? String((editArrangement as any).chainageTo) : ""
+  );
+
+  // Project Scope segments — same query key used by ScopeSetup / WorkProgramme.
+  const { data: scopeSegments = [] } = useQuery<ScopeSegmentRecordLike[]>({
+    queryKey: [`/api/boq/projects/${projectId}/scope-segments`],
+    queryFn: () => fetch(`/api/boq/projects/${projectId}/scope-segments`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
+    enabled: open && projectId > 0,
+    staleTime: 30_000,
+  });
+  const reaches = confirmedWorkingReaches(scopeSegments);
+  const constraints = scopeConstraints(scopeSegments);
   const [allocatedQty, setAllocatedQty] = useState(
     editArrangement?.allocatedQty != null ? String(editArrangement.allocatedQty) : ""
   );
@@ -654,6 +691,36 @@ export function EarthworkArrangementDialog({
     return Object.fromEntries(sourceBoqItems.map(s => [s.id, ""]));
   };
   const [sourceAllocations, setSourceAllocations] = useState<Record<number, string>>(initSourceAllocations);
+
+  // ── Instruction 031 B4/B5: eligible vs excluded ranges + suggested qty ─────
+  const selectedReaches = reaches.filter(r => selectedSegIds.includes(Number(r.id)));
+  const eligibleScope = (scopeSegments.length > 0)
+    ? resolveEligibleScope(scopeSegments as any, { boqItemId: boqItemId ?? null, isLinear: true })
+    : null;
+  const reachCoverage = (eligibleScope && scopeMode === "reaches")
+    ? selectedReaches.map(r => ({
+        reach: r,
+        cov: coverageForStretch(eligibleScope, {
+          chainageFrom: Number(r.chainageFrom), chainageTo: Number(r.chainageTo), side: r.side ?? null,
+        }),
+      }))
+    : [];
+  const selectedEligibleLen = reachCoverage.reduce((s, rc) => s + rc.cov.eligibleSideLenKm, 0);
+  const wholeEligibleLen = eligibleScope?.eligibleSideLenKm ?? 0;
+  // B5 — conservative suggestion: single-source only, proportional to eligible
+  // side-length; never shown for multi-source (component/overlap splits) and
+  // never auto-applied over a manual entry.
+  const suggestedQty = (!isEdit && !isMultiSource && scopeMode === "reaches" && boqQty != null && boqQty > 0
+      && wholeEligibleLen > 0 && selectedEligibleLen > 0)
+    ? Math.round(boqQty * Math.min(1, selectedEligibleLen / wholeEligibleLen) * 100) / 100
+    : null;
+
+  // Resolved copies of the selected reaches (kept on the record for reporting/audit, B3)
+  const resolvedScope = selectedReaches.length > 0 ? {
+    reachLabel: selectedReaches.map((r, i) => (r.label && String(r.label).trim()) || `Reach ${i + 1}`).join(", "),
+    chainageFrom: Math.min(...selectedReaches.map(r => Number(r.chainageFrom))),
+    chainageTo: Math.max(...selectedReaches.map(r => Number(r.chainageTo))),
+  } : null;
 
   // Apply template when arrangement type changes
   function handleTypeChange(t: ArrangementType) {
@@ -703,7 +770,24 @@ export function EarthworkArrangementDialog({
       allocatedQty: allocQtyNum,
       uom: displayUom,
       agencyName: agencyName.trim() || null,
-      reachLabel: reachLabel.trim() || null,
+      // Instruction 031 B2/B3 — Applicable Scope: authoritative segment link
+      // (reaches mode) plus resolved chainage copies; custom mode keeps the
+      // legacy free-text behaviour (B7); whole scope clears the fields.
+      ...(scopeMode === "reaches"
+        ? {
+            scopeSegmentIds: selectedSegIds,
+            reachLabel: resolvedScope?.reachLabel ?? null,
+            chainageFrom: resolvedScope?.chainageFrom ?? null,
+            chainageTo: resolvedScope?.chainageTo ?? null,
+          }
+        : scopeMode === "custom"
+          ? {
+              scopeSegmentIds: null,
+              reachLabel: reachLabel.trim() || null,
+              chainageFrom: customChFrom.trim() !== "" && isFinite(parseFloat(customChFrom)) ? parseFloat(customChFrom) : null,
+              chainageTo: customChTo.trim() !== "" && isFinite(parseFloat(customChTo)) ? parseFloat(customChTo) : null,
+            }
+          : { scopeSegmentIds: null, reachLabel: null, chainageFrom: null, chainageTo: null }),
       agreedRate: rateNum > 0 ? rateNum : null,
       // Earthwork-only source fields — never sent for bituminous (028 §17)
       borrowSource: isBituminous ? null : (borrowSource.trim() || null),
@@ -908,6 +992,13 @@ export function EarthworkArrangementDialog({
                 value={allocatedQty}
                 onChange={e => setAllocatedQty(e.target.value)}
               />
+              {/* B5 — conservative suggestion; never overwrites a manual entry */}
+              {suggestedQty != null && allocatedQty.trim() === "" && (
+                <p className="text-[11px] text-teal-700 bg-teal-50 rounded px-2 py-1 flex items-center gap-2" data-testid="suggested-qty-hint">
+                  Suggested applicable quantity for the selected reach(es): <span className="font-mono font-semibold">{suggestedQty.toLocaleString()} {displayUom}</span>
+                  <button type="button" className="underline" onClick={() => setAllocatedQty(String(suggestedQty))} data-testid="button-use-suggested-qty">Use</button>
+                </p>
+              )}
             </div>
           )}
 
@@ -931,15 +1022,122 @@ export function EarthworkArrangementDialog({
             </p>
           )}
 
-          {/* Reach / scope */}
-          <div className="space-y-1">
-            <Label className="text-xs font-semibold">Reach / Scope Label (optional)</Label>
-            <Input
-              className="h-8 text-[12px]"
-              placeholder="e.g. 0+000 to 2+500 (LHS), or Leave blank for full item"
-              value={reachLabel}
-              onChange={e => setReachLabel(e.target.value)}
-            />
+          {/* Instruction 031 B2 — Applicable Scope */}
+          <div className="space-y-2" data-testid="section-applicable-scope">
+            <Label className="text-xs font-semibold">Applicable Scope</Label>
+            <div className="flex gap-3 flex-wrap text-[12px]">
+              {([
+                ["whole", "Whole eligible BOQ scope"],
+                ["reaches", "Confirmed Working Reach(es)"],
+                ["custom", "Custom chainage"],
+              ] as const).map(([mode, label]) => (
+                <label key={mode} className="inline-flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="scope-mode"
+                    checked={scopeMode === mode}
+                    onChange={() => setScopeMode(mode)}
+                    data-testid={`radio-scope-${mode}`}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+
+            {scopeMode === "reaches" && (
+              <div className="space-y-2">
+                {reaches.length === 0 ? (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1">
+                    No confirmed Working Reaches exist in Project Scope yet. Confirm reaches in Scope Setup, or use Whole scope / Custom chainage.
+                  </p>
+                ) : (
+                  <div className="border border-slate-200 rounded divide-y" data-testid="list-working-reaches">
+                    {reaches.map((r, i) => {
+                      const rid = Number(r.id);
+                      const checked = selectedSegIds.includes(rid);
+                      return (
+                        <label key={rid} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-slate-50">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setSelectedSegIds(prev => checked ? prev.filter(x => x !== rid) : [...prev, rid])}
+                            data-testid={`checkbox-reach-${rid}`}
+                          />
+                          <span className="text-[12px] text-slate-700 flex-1">
+                            {(r.label && String(r.label).trim()) || `Reach ${i + 1}`}
+                            <span className="text-slate-400 ml-2 font-mono text-[11px]">
+                              Ch. {Number(r.chainageFrom).toFixed(3)}–{Number(r.chainageTo).toFixed(3)}
+                            </span>
+                            {r.side && <span className="ml-1.5 rounded bg-slate-100 border border-slate-200 px-1 text-[10px] uppercase">{r.side}</span>}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* B4 — eligible vs excluded sub-ranges within the selected reaches (no manual split needed) */}
+                {reachCoverage.length > 0 && (
+                  <div className="space-y-1" data-testid="scope-coverage-preview">
+                    {reachCoverage.map(({ reach, cov }) => (
+                      <div key={Number(reach.id)} className="text-[11px] rounded border border-slate-200 px-2 py-1.5 bg-slate-50/60">
+                        <span className="font-semibold text-slate-600">{(reach.label && String(reach.label).trim()) || `Reach ${Number(reach.id)}`}:</span>{" "}
+                        {cov.subRanges.length > 0 ? (
+                          <span className="text-emerald-700">
+                            eligible {cov.subRanges.map(sr => `Ch. ${sr.from.toFixed(3)}–${sr.to.toFixed(3)}`).join(", ")}
+                          </span>
+                        ) : (
+                          <span className="text-red-600">no eligible coverage for this item</span>
+                        )}
+                        {(cov.excludedSideLenKm > 0 || cov.withdrawnSideLenKm > 0 || cov.blockedSideLenKm > 0) && (
+                          <span className="text-slate-500">
+                            {" "}· excluded/blocked ranges are clipped automatically — no manual split needed
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Constraints (read-only, never selectable) */}
+                {constraints.length > 0 && (
+                  <div className="text-[11px] text-slate-500 space-y-0.5" data-testid="scope-constraints">
+                    <span className="font-semibold text-slate-600">Scope constraints (informational):</span>
+                    {constraints.map(c => (
+                      <div key={c.id}>
+                        <span className={c.temporary ? "text-blue-600" : "text-red-600"}>
+                          {c.segmentType.replace(/_/g, " ")}
+                        </span>{" "}
+                        Ch. {c.chainageFrom.toFixed(3)}–{c.chainageTo.toFixed(3)}
+                        {c.side ? ` (${c.side})` : ""}{c.reason ? ` — ${c.reason}` : ""}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {scopeMode === "custom" && (
+              <div className="space-y-2">
+                <Input
+                  className="h-8 text-[12px]"
+                  placeholder="Reach / scope label, e.g. 0+000 to 2+500 (LHS)"
+                  value={reachLabel}
+                  onChange={e => setReachLabel(e.target.value)}
+                  data-testid="input-reach-label"
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Chainage From (km)</Label>
+                    <Input className="h-8 text-[12px] font-mono" type="number" step="0.001" placeholder="e.g. 2.400" value={customChFrom} onChange={e => setCustomChFrom(e.target.value)} data-testid="input-chainage-from" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Chainage To (km)</Label>
+                    <Input className="h-8 text-[12px] font-mono" type="number" step="0.001" placeholder="e.g. 3.100" value={customChTo} onChange={e => setCustomChTo(e.target.value)} data-testid="input-chainage-to" />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Source details (earthwork-only: borrow pits / leads — hidden for bituminous, 028 §17) */}
@@ -1347,7 +1545,7 @@ export function EarthworkArrangementCell({ row, projectId, onSaved }: EarthworkA
       {/* Multiple BOQ sources note */}
       {hasMultipleSources && (
         <p className="text-[11px] text-slate-500 italic">
-          Multiple BOQ sources — use Earthwork Control for split allocation
+          Multiple BOQ sources — use Earthwork Classification & Cut/Fill for split allocation
         </p>
       )}
 

@@ -1890,7 +1890,7 @@ function SuggestionBadge({
           href={`/work-program/${projectId}/earthwork`}
           className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5 hover:bg-teal-100 transition-colors"
         >
-          <Settings2 className="w-3 h-3" /> Classify in Earthwork Control
+          <Settings2 className="w-3 h-3" /> Classify in Earthwork Classification & Cut/Fill
         </a>
         <span className="text-[11px] text-orange-600">
           Specify whether this item is earthwork-inclusive or vendor-supplied before raising any procurement.

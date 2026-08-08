@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -34,15 +35,29 @@ interface ProgrammeBar {
   id: number;
   boqItemId: number;
   reachLabel: string | null;
+  side?: string | null;
   chainageFrom: number | null;
   chainageTo: number | null;
   plannedQty: number;
   unit: string | null;
 }
 
+interface ScopeSegmentRow {
+  id: number;
+  segmentType: string;
+  status?: string | null;
+  label?: string | null;
+  chainageFrom: number | string;
+  chainageTo: number | string;
+  side?: string | null;
+}
+
 type RegisterArrangement = ProjectArrangement & {
   materialLabel?: string | null;
   reachLabel?: string | null;
+  chainageFrom?: number | null;
+  chainageTo?: number | null;
+  scopeSegmentIds?: number[] | null;
   agreedRate?: number | null;
   completedQty?: number | null;
   mobilisationDate?: string | null;
@@ -74,6 +89,8 @@ export default function ExecutionArrangements() {
   const [itemFilter, setItemFilter] = useState("");
   const [openPanel, setOpenPanel] = useState<{ barId: number; boqItemId: number; label: string; qty: number; unit: string } | null>(null);
   const [editTarget, setEditTarget] = useState<RegisterArrangement | null>(null);
+  // Instruction 031 B1: Open always shows the arrangement detail first.
+  const [detailTargetId, setDetailTargetId] = useState<number | null>(null);
   // Instruction 030: the register is now where arrangements are CREATED too.
   const [showCreatePicker, setShowCreatePicker] = useState(false);
   const [createItemId, setCreateItemId] = useState<number | null>(null);
@@ -85,6 +102,35 @@ export default function ExecutionArrangements() {
     enabled: projectId > 0,
   });
   const barById = useMemo(() => new Map(bars.map(b => [b.id, b])), [bars]);
+
+  // Instruction 031 B6: resolve scope_segment_ids → reach labels for the register column.
+  const { data: scopeSegments = [] } = useQuery<ScopeSegmentRow[]>({
+    queryKey: [`/api/boq/projects/${projectId}/scope-segments`],
+    queryFn: () => fetch(`/api/boq/projects/${projectId}/scope-segments`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
+    enabled: projectId > 0,
+    staleTime: 30_000,
+  });
+  const segById = useMemo(() => new Map(scopeSegments.map(s => [Number(s.id), s])), [scopeSegments]);
+
+  /** B6 — "Whole eligible scope" / "Reach 1, Reach 2" / "Custom Ch. 2.400–3.100" */
+  const applicableScopeLabel = (a: RegisterArrangement): string => {
+    const ids = Array.isArray(a.scopeSegmentIds) ? a.scopeSegmentIds.map(Number) : [];
+    if (ids.length > 0) {
+      return ids.map(id => {
+        const s = segById.get(id);
+        if (!s) return `Reach #${id}`;
+        const name = (s.label && String(s.label).trim()) || `Reach #${id}`;
+        // Flag linked reaches that are no longer confirmed (scope was revised
+        // after linking) so the register never silently presents stale scope.
+        return s.status === "confirmed" ? name : `${name} (${s.status})`;
+      }).join(", ");
+    }
+    if (a.chainageFrom != null && a.chainageTo != null) {
+      return `Custom Ch. ${Number(a.chainageFrom).toFixed(3)}–${Number(a.chainageTo).toFixed(3)}`;
+    }
+    if (a.reachLabel) return a.reachLabel; // legacy free text (B7)
+    return "Whole eligible scope";
+  };
 
   // Arrangement-eligible BOQ items for the New-arrangement picker
   interface PickerItem { id: number; itemCode?: string | null; description: string; displayName?: string | null; itemName?: string | null; currentQty?: number; unit?: string | null; canonicalUnit?: string | null; }
@@ -134,7 +180,6 @@ export default function ExecutionArrangements() {
         return {
           arr: a, allocs, linkedQty, stretchLabels, state,
           qty, rate, value, completed, balance: Math.max(0, qty - completed),
-          firstBarAlloc: allocs[0] ?? null,
         };
       })
       .filter(r => {
@@ -165,7 +210,7 @@ export default function ExecutionArrangements() {
           <Plus className="w-3.5 h-3.5 mr-1" /> New arrangement
         </Button>
         <Link href={`/work-program/${projectId}/earthwork`} className="text-[12px] text-teal-600 hover:underline">
-          Classification & demand view →
+          Earthwork Classification & Cut/Fill →
         </Link>
       </div>
 
@@ -224,7 +269,8 @@ export default function ExecutionArrangements() {
             <TableRow className="text-[11px]">
               <TableHead>BOQ Item</TableHead>
               <TableHead>Category</TableHead>
-              <TableHead>Stretch / Reach</TableHead>
+              <TableHead>Applicable Scope</TableHead>
+              <TableHead>Programme Coverage</TableHead>
               <TableHead>Agency</TableHead>
               <TableHead>Execution State</TableHead>
               <TableHead>Type</TableHead>
@@ -240,7 +286,7 @@ export default function ExecutionArrangements() {
           </TableHeader>
           <TableBody>
             {rows.length === 0 && (
-              <TableRow><TableCell colSpan={14} className="text-center text-slate-400 text-sm py-8">No execution arrangements match the current filters.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={15} className="text-center text-slate-400 text-sm py-8">No execution arrangements match the current filters.</TableCell></TableRow>
             )}
             {rows.map(r => {
               const c = EXECUTION_STATE_COLORS[r.state.state];
@@ -255,8 +301,22 @@ export default function ExecutionArrangements() {
                       {CATEGORY_LABELS[r.arr.workCategory ?? "earthwork"] ?? r.arr.workCategory}
                     </span>
                   </TableCell>
-                  <TableCell className="max-w-[160px] truncate" title={r.stretchLabels.join(", ")}>
-                    {r.stretchLabels.length > 0 ? r.stretchLabels.join(", ") : (r.arr.reachLabel || <span className="text-amber-600" title="Not assigned to a programme stretch">Whole item (legacy)</span>)}
+                  <TableCell className="max-w-[180px] truncate" title={applicableScopeLabel(r.arr)} data-testid={`register-scope-${r.arr.id}`}>
+                    {applicableScopeLabel(r.arr)}
+                  </TableCell>
+                  <TableCell className="max-w-[170px]" data-testid={`register-coverage-${r.arr.id}`}>
+                    {r.allocs.length > 0 ? (
+                      <button
+                        className="text-[11px] text-teal-700 hover:underline text-left whitespace-nowrap"
+                        onClick={() => setDetailTargetId(r.arr.id)}
+                        title={r.stretchLabels.join(", ")}
+                        data-testid={`button-view-allocations-${r.arr.id}`}
+                      >
+                        {r.allocs.length} bar{r.allocs.length !== 1 ? "s" : ""} · {r.linkedQty.toLocaleString()} {uom} allocated
+                      </button>
+                    ) : (
+                      <span className="text-slate-400 text-[11px]">Not linked to programme</span>
+                    )}
                   </TableCell>
                   <TableCell>{r.arr.agencyName ?? "—"}</TableCell>
                   <TableCell>
@@ -276,21 +336,10 @@ export default function ExecutionArrangements() {
                   <TableCell className="text-right font-mono">{r.completed > 0 ? r.completed.toLocaleString() : "—"}</TableCell>
                   <TableCell className="text-right font-mono">{r.balance.toLocaleString()}</TableCell>
                   <TableCell>
+                    {/* Instruction 031 B1: Open always opens the arrangement itself first */}
                     <button
                       className="text-[11px] text-teal-600 hover:underline whitespace-nowrap"
-                      onClick={() => {
-                        const al = r.firstBarAlloc;
-                        const b = al ? barById.get(al.programmeBarId) : null;
-                        if (al && b) {
-                          setOpenPanel({
-                            barId: b.id, boqItemId: al.boqItemId,
-                            label: b.reachLabel || (b.chainageFrom != null ? `Ch ${b.chainageFrom}–${b.chainageTo}` : `Bar #${b.id}`),
-                            qty: Number(b.plannedQty ?? 0), unit: b.unit ?? uom,
-                          });
-                        } else {
-                          setEditTarget(r.arr);
-                        }
-                      }}
+                      onClick={() => setDetailTargetId(r.arr.id)}
                       data-testid={`button-open-${r.arr.id}`}
                     >
                       Open →
@@ -302,6 +351,92 @@ export default function ExecutionArrangements() {
           </TableBody>
         </Table>
       </Card>
+
+      {/* Instruction 031 B1 — arrangement detail: arrangement first, bars as children */}
+      {detailTargetId != null && (() => {
+        const r = rows.find(x => x.arr.id === detailTargetId)
+          ?? (arrangements as RegisterArrangement[]).filter(a => a.id === detailTargetId).map(a => ({
+            arr: a,
+            allocs: allocations.filter(al => al.arrangementId === a.id),
+            linkedQty: allocations.filter(al => al.arrangementId === a.id).reduce((s, al) => s + Number(al.allocatedQty), 0),
+          }))[0];
+        if (!r) return null;
+        const a = r.arr as RegisterArrangement;
+        const uom = a.uom ?? "CUM";
+        return (
+          <Dialog open onOpenChange={o => { if (!o) setDetailTargetId(null); }}>
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="arrangement-detail">
+              <DialogHeader>
+                <DialogTitle className="text-base">
+                  {a.materialLabel ?? `Arrangement #${a.id}`}
+                </DialogTitle>
+                <p className="text-[12px] text-slate-500">
+                  {(a.arrangementType ?? "").replace(/_/g, " ")} · <ArrangementStatusBadge status={a.status} />
+                </p>
+              </DialogHeader>
+              <div className="space-y-3 text-[12px]">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  <div><span className="text-slate-500">Agency:</span> {a.agencyName ?? "—"}</div>
+                  <div><span className="text-slate-500">Allocated:</span> <span className="font-mono">{Number(a.allocatedQty).toLocaleString()} {uom}</span></div>
+                  <div className="col-span-2"><span className="text-slate-500">Applicable Scope:</span> {applicableScopeLabel(a)}</div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="font-semibold text-slate-700">
+                    Programme Coverage — {r.allocs.length} bar{r.allocs.length !== 1 ? "s" : ""} · {Number(r.linkedQty).toLocaleString()} {uom} allocated
+                  </p>
+                  {r.allocs.length === 0 && (
+                    <p className="text-slate-400">Not linked to any programme bar{a.reachLabel ? ` — legacy scope: ${a.reachLabel}` : ""}.</p>
+                  )}
+                  {r.allocs.length > 0 && (
+                    <div className="border border-slate-200 rounded divide-y" data-testid="detail-bar-list">
+                      {r.allocs.map(al => {
+                        const b = barById.get(al.programmeBarId);
+                        const label = b ? (b.reachLabel || (b.chainageFrom != null ? `Ch ${b.chainageFrom}–${b.chainageTo}` : `Bar #${b.id}`)) : `Bar #${al.programmeBarId}`;
+                        return (
+                          <div key={al.id} className="flex items-center gap-2 px-2 py-1.5" data-testid={`detail-bar-${al.programmeBarId}`}>
+                            <div className="flex-1 min-w-0">
+                              <span className="font-medium text-slate-700">{label}</span>
+                              {b?.side && <span className="ml-1.5 rounded bg-slate-100 border border-slate-200 px-1 text-[10px] uppercase">{b.side}</span>}
+                              {b?.chainageFrom != null && b.reachLabel && (
+                                <span className="ml-1.5 text-slate-400 font-mono text-[11px]">Ch. {b.chainageFrom}–{b.chainageTo}</span>
+                              )}
+                            </div>
+                            <span className="font-mono text-slate-600 shrink-0">{Number(al.allocatedQty).toLocaleString()} {uom}</span>
+                            {al.arrangementStatus && <span className="text-[10px] text-slate-400 shrink-0">{al.arrangementStatus}</span>}
+                            {b && (
+                              <button
+                                className="text-[11px] text-teal-600 hover:underline shrink-0"
+                                onClick={() => {
+                                  setDetailTargetId(null);
+                                  setOpenPanel({
+                                    barId: b.id, boqItemId: al.boqItemId, label,
+                                    qty: Number(b.plannedQty ?? 0), unit: b.unit ?? uom,
+                                  });
+                                }}
+                                data-testid={`button-open-bar-${al.programmeBarId}`}
+                              >
+                                Open bar →
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <Button size="sm" className="h-7 text-[11px]" onClick={() => { setDetailTargetId(null); setEditTarget(a); }} data-testid="button-edit-arrangement">
+                    Edit arrangement
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => setDetailTargetId(null)}>Close</Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {openPanel && (
         <BarArrangementPanel

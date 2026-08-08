@@ -36,4 +36,5 @@
 - [Site-Access Security](site-access-security.md) — zero site rows = deny-all; all-sites is an explicit grant; guided user creation + escalation guards; guided-DPR preference is per-user.
 - [BOQ Item Display Naming](boq-item-display-naming.md) — shared/boqItemName.ts is the only label source; operational screens show short names, BOQ management keeps full descriptions; pass displayName+itemName through reduced objects.
 - [Arrangement Auto-Allocation](arrangement-auto-allocation.md) — allocation writes must lock arrangement→bars (id order) or capacity double-books; auto rows reconcile on scope revisions, manual rows never touched.
+- [Arrangement Scope Linkage](arrangement-scope-linkage.md) — scope_segment_ids links confirmed reaches; reach-linked skips 032 chainage guard; PATCH must not drop operational fields beside material changes.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.
