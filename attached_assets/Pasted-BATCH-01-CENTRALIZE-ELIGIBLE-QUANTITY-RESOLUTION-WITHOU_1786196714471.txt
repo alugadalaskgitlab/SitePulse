@@ -1,0 +1,348 @@
+BATCH 01 — CENTRALIZE ELIGIBLE QUANTITY RESOLUTION WITHOUT CHANGING CURRENT BEHAVIOUR
+
+We are beginning a phased Quantity Engine improvement for SitePulse.
+
+This first batch is ONLY a refactor/foundation batch.
+
+Do not introduce:
+- new quantity rules
+- geometry calculations
+- No-Scope quantity-treatment UI
+- schema changes
+- changed Gantt status logic
+- changed planning behaviour
+
+The purpose is to understand and centralize the quantity-resolution logic that already exists, while preserving current behaviour exactly.
+
+OBJECTIVE
+
+Create one shared backend quantity-resolution service/function that can become the single reusable place for resolving an item's contractual quantity, scope eligibility and current quantity-allocation basis.
+
+Later consumers may include:
+- Auto Sequence / Gantt
+- Execution Arrangements
+- DPR checks
+- BOM/material forecasting
+- Plan vs Actual
+- reports
+
+But Batch 01 must remain small and safe.
+
+1. FIRST INVESTIGATE THE CURRENT IMPLEMENTATION
+
+Please independently verify the current code rather than assuming the notes below are fully correct.
+
+Useful starting points from previous investigation:
+
+- shared/projectScope.ts
+  • resolveEligibleScope
+  • coverageForStretch
+
+resolveEligibleScope appears to determine executable / blocked / excluded / withdrawn ranges per BOQ item using confirmed scope records.
+
+coverageForStretch appears to clip an individual programme stretch/bar against that resolved scope.
+
+- shared/programmeSequencer.ts
+
+Previous investigation indicates that one existing quantity allocation formula is broadly equivalent to:
+
+item contract quantity
+×
+(sub-range eligible length / item's contractual length)
+
+Important:
+the existing definition of "contractual length" appears to:
+- exclude No-Scope
+- exclude Withdrawn
+- include Blocked
+
+Please verify this precisely from the current code.
+
+manualQtyFraction appears to bypass the automatic formula when set at stretch level.
+
+Do not simply rely on these observations. Confirm the actual implementation and report any differences.
+
+2. CHECK WHETHER QUANTITY LOGIC BRANCHES BY ITEM/ALLOCATION TYPE
+
+This is important.
+
+The existing codebase appears to classify items into different quantity/allocation rules, including concepts such as:
+
+- pavement
+- earthwork-estimate
+- mt-proportional
+
+Please determine whether:
+
+a. all of these ultimately use one shared quantity formula;
+
+b. they use parallel implementations of similar formulas; or
+
+c. they use materially different calculation rules.
+
+In particular, identify for each allocation type:
+- which function calculates quantity;
+- which denominator/basis is used;
+- whether width/thickness is involved;
+- whether eligible length is involved;
+- whether manualQtyFraction or another override bypasses the normal logic.
+
+Do not merge genuinely different current behaviours merely to make the new resolver look cleaner.
+
+Batch 01 must preserve them.
+
+3. IDENTIFY ALL EXISTING QUANTITY CONSUMERS / DUPLICATES
+
+Before refactoring, identify where quantity eligibility or applicable quantity is independently calculated today.
+
+At minimum inspect:
+
+- Auto Sequence / programme sequencer
+- Gantt quantity/status calculations
+- Execution Arrangement form's "Suggested applicable quantity"
+
+Previous investigation indicates that the Execution Arrangement dialog may calculate:
+
+selected reach eligible length
+/
+total eligible length across all reaches
+
+and apply that ratio to the item quantity.
+
+This may not use the same denominator/basis as Auto Sequence.
+
+Please explicitly compare the two calculations for the same representative BOQ item.
+
+If Auto Sequence and Execution Arrangement currently produce different applicable quantities for the same scope, DO NOT silently unify them in this batch.
+
+Instead:
+- preserve current shipped behaviour;
+- document the difference clearly;
+- identify which calculation each screen uses;
+- report it for a later business-rule decision.
+
+4. CREATE ONE SHARED QUANTITY RESOLVER
+
+Create a centrally reusable service/function with a clear interface conceptually similar to:
+
+getItemScopeQuantity(projectId, boqItemId, optionalChainageRange)
+
+Use naming appropriate to the existing codebase.
+
+Its structure should be suitable for future expansion, but Batch 01 must implement only existing calculation bases/behaviours.
+
+Return structured information including, where applicable:
+
+- contractQty
+- unit
+- resolved/applicable quantity
+- calculationBasis / allocationRule
+- contractual/applicable length
+- eligible length
+- eligible chainage/range information
+- exclusion / No-Scope information used
+- blocked/withdrawn handling where relevant
+- whether manualQtyFraction or another existing override affected the result
+- any item allocation type such as pavement / earthwork-estimate / mt-proportional
+
+Do not invent geometry/manual-confirmed quantity modes yet.
+
+5. REUSE EXISTING SCOPE LOGIC
+
+The resolver must use the existing scope-resolution mechanisms rather than creating a second interpretation of scope.
+
+Preserve current behaviour for:
+
+- confirmed Working Reaches
+- confirmed No-Scope
+- Withdrawn scope
+- Blocked / Temporary Block scope
+- “Applies to”:
+  • all applicable linear items
+  • selected categories
+  • selected BOQ items
+- LHS / RHS / Both handling
+- manualQtyFraction or equivalent overrides
+- existing clipping/splitting logic
+
+6. MIGRATE AUTO SEQUENCE CAREFULLY
+
+Use the shared resolver for Auto Sequence quantity/scope information where the existing logic can be moved without changing results.
+
+After migration:
+
+- generated chainages must remain identical;
+- allocated quantities must remain identical;
+- programme dates must remain identical;
+- sequencing must remain identical.
+
+Do not alter:
+- sequencing logic
+- production rates
+- dependencies
+- activity generation
+- chainage splitting
+- UI
+
+If different allocation types currently use genuinely different code paths, preserve those behaviours inside the resolver rather than forcing one generic formula.
+
+7. DO NOT CHANGE GANTT UNDER/OVER BADGE LOGIC
+
+This is explicit.
+
+Do NOT migrate or modify the current Under-by / Over-by / Fully Programmed badge calculation in Batch 01.
+
+Previous investigation indicates this badge compares total programmed quantity against raw Contract BOQ Qty.
+
+Whether that is ultimately the desired business rule will be decided separately.
+
+For this batch:
+- document where this calculation lives;
+- document exactly what it compares;
+- leave its behaviour unchanged.
+
+Do not reinterpret the badge using Eligible Qty.
+
+8. EXECUTION ARRANGEMENT
+
+Do NOT modify the Execution Arrangement form or its calculations in Batch 01.
+
+Only inspect and document its current "Suggested applicable quantity" logic.
+
+Compare it against Auto Sequence for at least one representative item.
+
+If there is a mismatch, report the exact figures and formulas.
+
+Do not fix the mismatch yet.
+
+9. NO DATABASE / SCHEMA CHANGE
+
+Do NOT add:
+
+- geometry tables
+- engineering quantity fields
+- eligible_qty columns
+- No-Scope quantity-treatment tables/columns
+- BOQ quantity fields
+- reach quantity storage
+- Execution Arrangement schema changes
+
+Derived quantity remains derived.
+
+No migration should be required.
+
+10. ARCHITECTURAL RULE
+
+Do not create separate new quantity utilities inside each module.
+
+The shared resolver should become the future seam through which alternative calculation bases could later be added, for example:
+
+- existing proportional basis
+- geometry basis
+- manually confirmed basis
+
+But Batch 01 implements ONLY current existing behaviour.
+
+Design the structure for extensibility without implementing future rules.
+
+11. REGRESSION VERIFICATION
+
+Before and after the refactor, compare representative BOQ items including:
+
+- normal full-scope linear item
+- item affected by confirmed No-Scope
+- selected-item/category No-Scope if available
+- side-specific item if available
+- item using manualQtyFraction / existing override
+- one pavement allocation item
+- one earthwork-estimate item
+- one mt-proportional item if available
+
+Verify as applicable:
+
+- Contract Qty before = after
+- Eligible/resolved scope before = after
+- Eligible chainages before = after
+- Auto Sequence allocated quantity before = after
+- Programme bars before = after
+- Dates before = after
+
+Also record, without changing:
+
+- Gantt Under/Over result
+- Execution Arrangement suggested quantity
+
+for at least one common item, so we can see whether these consumers currently agree or differ.
+
+12. REPORT BACK BEFORE ANY FURTHER BATCH
+
+After completing Batch 01, report:
+
+A. Files/functions inspected
+
+B. Actual existing quantity calculation flow found
+
+C. Allocation types found:
+   - pavement
+   - earthwork-estimate
+   - mt-proportional
+   - any others
+
+D. Exact calculation/formula used by each type
+
+E. Shared resolver created:
+   - file
+   - function/service name
+   - return structure
+
+F. Existing consumers migrated in Batch 01
+
+G. Consumers still calculating quantities independently
+
+H. Specific comparison:
+   Auto Sequence quantity vs Execution Arrangement suggested quantity
+   for the same representative BOQ item
+
+I. Current Gantt Under/Over calculation:
+   - file/function
+   - exact comparison basis
+   - confirm it was NOT changed
+
+J. Before/after regression examples with actual values
+
+K. Confirmation that NO database/schema migration was made
+
+L. Risks, duplicate logic, ambiguities, or business-rule conflicts discovered
+
+DO NOT START BATCH 02.
+
+WHAT NOT TO TOUCH
+
+Do not modify:
+
+- Project Scope UI
+- No-Scope UI or behaviour
+- BOQ import/mapping
+- Work Programme UI
+- Gantt Under/Over status logic
+- production rates
+- Gantt layout
+- Execution Arrangement form or calculations
+- BOM/material logic
+- DPR forms/workflow
+- Tomorrow's Programme
+- vendor billing
+- RA bill functionality
+- profitability
+- permissions
+- database schema
+
+SUCCESS CRITERION
+
+Batch 01 succeeds if:
+
+1. We have a clear map of every current quantity/allocation rule;
+2. a reusable central quantity-resolution foundation exists;
+3. Auto Sequence can safely consume it where appropriate;
+4. production behaviour and numbers remain unchanged;
+5. any disagreement between Auto Sequence, Gantt and Execution Arrangement is documented rather than silently "fixed".

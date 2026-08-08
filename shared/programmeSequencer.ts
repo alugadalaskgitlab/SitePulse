@@ -460,17 +460,10 @@ export const WIDTH_SPLIT_FALLBACK_NOTE =
 export const EARTHWORK_ESTIMATE_LABEL =
   "Planning Estimate — based on BOQ quantity and reach length.";
 
-/** 029C #12: MT-UOM detection for bituminous items — proportional only, never density/geometry. */
-function isMtUnit(unit: string): boolean {
-  return /^\s*(mt|ton(ne)?s?)\b/i.test(unit ?? "");
-}
-
-/** 029C: automatic allocation rule for an item (no user selector). */
-export function allocationRuleForItem(it: Pick<SeqInputItem, "layerType" | "unit">): "pavement" | "earthwork-estimate" | "mt-proportional" {
-  if (it.layerType === "earthwork") return "earthwork-estimate";
-  if (it.layerType === "bituminous" && isMtUnit(it.unit)) return "mt-proportional";
-  return "pavement";
-}
+/** Batch 01: allocation-rule logic now lives in the shared quantity resolver
+ *  (shared/quantityResolver.ts) — re-exported here for existing importers. */
+export { allocationRuleForItem } from "./quantityResolver";
+import { allocationRuleForItem, allocateStretchQuantity, aggregateStretchCoverages, type ItemScopeAggregate } from "./quantityResolver";
 
 /**
  * 029C #9-#11: side fraction for a stretch, given all stretches for the run.
@@ -793,28 +786,21 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   const scopeCov = opts.scopeCoverage ?? null;
   const scopeByItem = new Map<number, {
     perStretch: Map<number, SeqStretchCoverage>; // key = index in byPriority
-    contractualTotal: number;
-    eligibleTotal: number; blockedTotal: number; excludedTotal: number; withdrawnTotal: number;
+    aggregate: ItemScopeAggregate;               // Batch 01 — shared-resolver basis
   }>();
   const scopeSummary: Record<number, ItemScopeSummary> = {};
   if (scopeCov) {
     for (const c of pav) {
       const perStretch = new Map<number, SeqStretchCoverage>();
-      let anyRestriction = false;
-      let contractualTotal = 0, eligibleTotal = 0, blockedTotal = 0, excludedTotal = 0, withdrawnTotal = 0;
       byPriority.forEach((st, idx) => {
         const cov = scopeCov(c.it.boqItemId, st);
-        if (!cov) return;
-        anyRestriction = true;
-        perStretch.set(idx, cov);
-        contractualTotal += cov.contractualSideLenKm;
-        eligibleTotal += cov.eligibleSideLenKm;
-        blockedTotal += cov.blockedSideLenKm;
-        excludedTotal += cov.excludedSideLenKm;
-        withdrawnTotal += cov.withdrawnSideLenKm;
+        if (cov) perStretch.set(idx, cov);
       });
-      if (!anyRestriction) continue;
-      scopeByItem.set(c.it.boqItemId, { perStretch, contractualTotal, eligibleTotal, blockedTotal, excludedTotal, withdrawnTotal });
+      if (perStretch.size === 0) continue;
+      // Batch 01: item-level totals via the shared resolver (identical accumulation).
+      const aggregate = aggregateStretchCoverages(perStretch.values());
+      scopeByItem.set(c.it.boqItemId, { perStretch, aggregate });
+      const { contractualTotal, eligibleTotal, blockedTotal, excludedTotal, withdrawnTotal } = aggregate;
       const blockedQty = contractualTotal > 0 ? c.it.totalQty * (blockedTotal / contractualTotal) : 0;
       scopeSummary[c.it.boqItemId] = {
         eligibleSideLenKm: +eligibleTotal.toFixed(6),
@@ -855,23 +841,14 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
       // the blocked share stays unprogrammed.
       const itemScope = scopeByItem.get(c.it.boqItemId);
       const cov = itemScope?.perStretch.get(stretchIdx);
-      type Target = { chF: number; chT: number; qty: number; lenKm: number; scopeClipped: boolean };
-      let targets: Target[];
-      if (itemScope && cov) {
-        const denom = itemScope.contractualTotal;
-        const stretchEligible = cov.eligibleSideLenKm;
-        const manualQty = st.manualQtyFraction != null ? c.it.totalQty * st.manualQtyFraction : null;
-        targets = cov.subRanges.map(sr => ({
-          chF: sr.from, chT: sr.to,
-          qty: manualQty != null
-            ? (stretchEligible > 0 ? manualQty * (sr.eligibleSideLenKm / stretchEligible) : 0)
-            : (denom > 0 ? c.it.totalQty * (sr.eligibleSideLenKm / denom) : 0),
-          lenKm: sr.to - sr.from,
-          scopeClipped: true,
-        })).filter(t => t.qty > 0 || t.lenKm > CH_EPS);
-      } else {
-        targets = [{ chF: st.chainageFrom, chT: st.chainageTo, qty: c.it.totalQty * share, lenKm: stretchLen, scopeClipped: false }];
-      }
+      // Batch 01: quantity math extracted verbatim into the shared resolver.
+      const targets = allocateStretchQuantity({
+        totalQty: c.it.totalQty,
+        stretch: { chainageFrom: st.chainageFrom, chainageTo: st.chainageTo, manualQtyFraction: st.manualQtyFraction },
+        fallbackShare: share,
+        scope: itemScope && cov ? { aggregate: itemScope.aggregate, cov } : null,
+        chEps: CH_EPS,
+      });
       if (targets.length === 0) continue; // fully excluded/blocked in this stretch — no bar
 
       if (c.stage !== prevPavStage) {
