@@ -1,0 +1,63 @@
+Instruction 031 — Execution Arrangements UX & Scope Linkage
+
+Do not rebuild the arrangement engine. Instruction 030 is implemented and working: shared/arrangementAutoAllocation.ts is active and wired into approval/revision/scope-change flows with a startup backfill; Work Demand and Earthwork Control link to the register instead of embedding the editor (verified — EarthworkControl.tsx no longer imports EarthworkArrangementDialog); the register's "+ New arrangement" action works without requiring a programme bar; Cut-to-Fill works; existing tests pass. Preserve all of this.
+
+Goal: one clear, authoritative project-level Execution Arrangements workflow — fix the naming collision, fix multi-bar navigation, and let arrangements select confirmed Working Reaches from Project Scope instead of relying only on free text. Do not expand to a generic all-category data-model redesign in this batch — that's Part C, explicitly gated below.
+
+Part A — Fix the naming collision
+
+EarthworkControl.tsx's heading currently reads "Execution Arrangements — Classification & Demand" (verified, line ~162), colliding with the actual register at /work-program/:id/execution-arrangements. Rename it to "Earthwork Classification & Cut/Fill." Update the page title, breadcrumbs, links, button labels, menu/tooltip text, and any help text referencing the old name. Do not change its underlying classification/demand/cut-fill logic.
+
+Part B — Fix multi-bar arrangement Open behaviour, and give arrangements a real Scope linkage
+
+B1 — Open behaviour. ExecutionArrangements.tsx currently sets firstBarAlloc: allocs[0] ?? null (line ~137) and Open jumps straight into that one bar, misrepresenting a multi-bar arrangement as a single stretch — confirmed in code. Fix:
+
+Open must always open the arrangement itself first.
+The arrangement detail view must show every linked programme bar as a child section, with reach label, side, chainage, allocated quantity, and status — not just bar names.
+The register row should show an aggregate summary: "3 bars · 3,200 CUM allocated," with a "View programme allocations" affordance to expand or open the detail panel.
+From the child list, the user may still open an individual bar if needed.
+Do not change the underlying auto-allocation logic.
+
+B2 — Applicable Scope on create/edit. Add an "Applicable Scope" section to the arrangement create/edit flow with three options: Whole eligible BOQ scope (default), Confirmed Working Reach(es), or Custom chainage. For confirmed reaches: fetch active confirmed working_reach records for the selected BOQ project (reuse the existing confirmedWorkingReaches/scopeConstraints split from shared/autoSequenceScope.ts — do not duplicate this logic), show reach label + Ch. From/To + side as a checklist, allow multi-select. Draft/superseded records must not be selectable. No-Scope/Temporary Block/Withdrawn records are constraints, not selectable reaches — do not offer them.
+
+B3 — Persist the Scope linkage, not just copied chainages. When a confirmed Working Reach is selected, store the selected project_scope_segment ID(s) on the arrangement as its authoritative scope link, in addition to the resolved chainages (kept for reporting/audit). This needs an additive-only schema change: ALTER TABLE earthwork_arrangements ADD COLUMN IF NOT EXISTS scope_segment_ids jsonb. Without this, the arrangement degrades back into a static chainage record the moment Scope is revised — confirmed the current schema has no such column.
+
+B4 — Scope constraint awareness. If a selected Working Reach contains an internal confirmed No-Scope interval, do not force a manual split. Reuse the existing scope eligibility service (resolveEligibleScope/coverageForStretch in shared/projectScope.ts — do not duplicate) to compute and display eligible sub-ranges vs. excluded ranges, e.g. "Eligible: Ch. 1.250–2.100, Ch. 2.400–2.500 · Excluded: Ch. 2.100–2.400 (No-Scope)."
+
+B5 — Quantity default. Show a "Suggested applicable quantity" derived from current BOQ quantity, confirmed eligible scope, and non-overlapping existing allocations, where determinable. Do not guess when arrangements overlap in scope or split by component responsibility — in that case show the eligible scope quantity and require the user to confirm manually rather than silently subtracting. Never silently overwrite a manually entered quantity.
+
+B6 — Register display. Add an "Applicable Scope" column (e.g. "Whole eligible scope" / "Reach 1, Reach 2" / "Custom Ch. 2.400–3.100"). The primary BOQ label column already uses the short-name helper for newly created arrangements (boqItemDisplayName(), confirmed in ExecutionArrangements.tsx line ~325) — no change needed there, just extend the same helper to the new Applicable Scope column's item references.
+
+B7 — Legacy compatibility. Existing arrangements with only free-text reachLabel/chainageFrom/chainageTo must keep working unchanged — display them as-is, and optionally allow linking to a confirmed Working Reach on a later edit/revision. Do not require migration just to open them, and do not rewrite historical records.
+
+STOP after Part B. Return live proof and test evidence. Do not start Part C without separate approval.
+
+Part C — Category generalization (separate phase, not this batch)
+
+Extending beyond earthwork/bituminous to a generic category model (GSB/WMM, shoulders, drainage, structures, etc.) touches the arrangement-type enum, executionState.ts derivation, and the register's category filter simultaneously. Do not start this until Part B is verified and separately approved.
+
+Explicitly do NOT in this instruction: create a new generic arrangement table, redesign all work categories, replace earthwork_arrangements, rewrite arrangementAutoAllocation, change BOQ quantities, change Work Programme sequencing, change DPR quantities, alter approved historical arrangements, alter procurement stock logic, change Cut-to-Fill calculation logic, or build the Structures execution model.
+
+Tests to add:
+
+Register still creates a new arrangement; can be created without a programme bar.
+Confirmed Working Reaches populate Applicable Scope; draft/superseded records are excluded; No-Scope/Temporary Block/Withdrawn are shown as constraints, not selectable.
+One arrangement can select multiple Working Reaches.
+An internal No-Scope interval does not force a manual split (eligible/excluded ranges computed correctly).
+Existing legacy free-text reach arrangements still open and display correctly.
+Multi-bar arrangement Open opens the arrangement, not allocs[0]; all linked bars appear as child detail with correct quantities.
+Programme coverage count/aggregate is correct.
+scope_segment_ids persists on save and survives a reload.
+EarthworkControl page renders the new heading without any logic change.
+Work Demand / Procurement / Scope / Work Programme links all resolve to the same register — no dead links, no duplicate editors.
+Existing arrangementAutoAllocation tests remain passing (23 tests, currently green).
+
+Live proof — Takkadpally:
+
+Work Program & BOQ → Takkadpally → Execution Arrangements. Confirm "+ New arrangement" still works.
+Create/review "Embankment — Borrow Earth." Choose Applicable Scope → Confirmed Working Reaches → select Reach 2 (Ch. 1.250–2.500) and Reach 3 (Ch. 2.500–3.800).
+Confirm the screen shows the confirmed No-Scope interval (Ch. 2.100–2.400) as excluded within Reach 2, without forcing a manual split.
+Save Draft, reopen — confirm the arrangement opens first (not a bar), all affected programme bars show in a child Programme Coverage section, and the scope linkage persisted.
+Open "Earthwork Classification & Cut/Fill" — confirm the duplicate name is gone and its links still open the same authoritative register.
+
+Final requirement: do not mark complete until page naming is unambiguous, multi-bar arrangements open as arrangements with full child detail, confirmed Working Reaches are selectable and their linkage persists, Scope constraints are acknowledged without artificial splits, and all Instruction 030 allocation behaviour remains intact.
