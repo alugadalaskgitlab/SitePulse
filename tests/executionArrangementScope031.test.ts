@@ -356,10 +356,11 @@ describe("arrangement dialog Applicable Scope (B2/B5/B7)", () => {
     expect(dialog).toContain("coverageForStretch");
   });
 
-  it("suggested quantity is conservative and never overwrites a manual entry", () => {
-    expect(dialog).toContain("suggested-qty-hint");
-    // hidden for multi-source and once the user has typed anything
-    expect(dialog).toMatch(/!isMultiSource && scopeMode === "reaches"/);
+  it("applicable quantity is resolver-driven (Batch 02) and never overwrites a manual entry", () => {
+    // Batch 02: persistent reference panel replaces the old suggested-qty hint;
+    // the Use button (only writer of the input) still requires an empty field.
+    expect(dialog).toContain("qty-reference-panel");
+    expect(dialog).toContain("resolveArrangementApplicableQty");
     expect(dialog).toMatch(/allocatedQty\.trim\(\) === ""/);
   });
 

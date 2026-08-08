@@ -137,7 +137,9 @@ export default function ExecutionArrangements() {
   const { data: allItems = [] } = useQuery<PickerItem[]>({
     queryKey: ["/api/boq/projects", projectId, "items"],
     queryFn: () => fetch(`/api/boq/projects/${projectId}/items`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
-    enabled: projectId > 0 && showCreatePicker,
+    // Batch 02: also fetched while editing so the dialog can show the item's
+    // contract qty + resolver-based Applicable Qty reference panel.
+    enabled: projectId > 0 && (showCreatePicker || editTarget != null),
   });
   const eligibleItems = useMemo(
     () => allItems.filter(it => { try { return executionArrangementCategoryForItem(it as any) != null; } catch { return false; } }),
@@ -459,6 +461,7 @@ export default function ExecutionArrangements() {
           boqItemId={createItem.id}
           materialLabel={boqItemDisplayName(createItem as any)}
           boqQty={Number(createItem.currentQty ?? 0)}
+          contractQty={Number(createItem.currentQty ?? 0)}
           workCategory={createCategory}
           bituminousItemType={createItemType}
           uom={createItem.canonicalUnit ?? createItem.unit ?? undefined}
@@ -472,6 +475,13 @@ export default function ExecutionArrangements() {
           projectId={projectId}
           boqItemId={editTarget.boqItemId}
           materialLabel={editTarget.materialLabel ?? `Arrangement #${editTarget.id}`}
+          contractQty={(() => {
+            // Batch 02: contract qty for the reference panel (undefined until
+            // the items query resolves — the panel simply stays hidden).
+            const it = editTarget.boqItemId != null ? allItems.find(i => i.id === editTarget.boqItemId) : undefined;
+            const q = Number(it?.currentQty ?? NaN);
+            return isFinite(q) && q > 0 ? q : undefined;
+          })()}
           editArrangement={editTarget as any}
           workCategory={(editTarget.workCategory as "earthwork" | "bituminous") ?? "earthwork"}
           bituminousItemType={editTarget.bituminousItemType ?? null}

@@ -32,6 +32,7 @@ import {
   type ScopeSegmentRecordLike,
 } from "@shared/autoSequenceScope";
 import { resolveEligibleScope, coverageForStretch } from "@shared/projectScope";
+import { resolveArrangementApplicableQty } from "@shared/arrangementApplicableQty";
 import {
   type WorkCategoryKey,
   BITUMINOUS_ARRANGEMENT_TYPE_LABELS,
@@ -568,6 +569,13 @@ interface EarthworkArrangementDialogProps {
   materialLabel: string;
   boqQty?: number;
   /**
+   * Batch 02: the item's CONTRACT BOQ quantity. Drives the resolver-based
+   * "Contract BOQ Qty / Applicable Qty" reference panel. Pass only when the
+   * value truly is the contract quantity (NOT a bar's planned/remaining qty);
+   * omit it and the reference panel is hidden rather than mislabelled.
+   */
+  contractQty?: number;
+  /**
    * Instruction 024: When the Work Demand row has multiple contributing BOQ items
    * (multi-source), pass their IDs here so the dialog can record a split allocation
    * via boqItemAllocations. Each entry also carries the BOQ description for display.
@@ -592,7 +600,7 @@ interface EarthworkArrangementDialogProps {
 }
 
 export function EarthworkArrangementDialog({
-  open, onClose, onSaved, projectId, boqItemId, materialLabel, boqQty, sourceBoqItems, sourceItemCount, editArrangement,
+  open, onClose, onSaved, projectId, boqItemId, materialLabel, boqQty, contractQty, sourceBoqItems, sourceItemCount, editArrangement,
   workCategory: workCategoryProp, bituminousItemType: bituminousItemTypeProp, uom: uomProp,
 }: EarthworkArrangementDialogProps) {
   // ── Instruction 028: category resolution (edit rows win over props) ────────
@@ -707,15 +715,49 @@ export function EarthworkArrangementDialog({
         }),
       }))
     : [];
-  const selectedEligibleLen = reachCoverage.reduce((s, rc) => s + rc.cov.eligibleSideLenKm, 0);
-  const wholeEligibleLen = eligibleScope?.eligibleSideLenKm ?? 0;
-  // B5 — conservative suggestion: single-source only, proportional to eligible
-  // side-length; never shown for multi-source (component/overlap splits) and
-  // never auto-applied over a manual entry.
-  const suggestedQty = (!isEdit && !isMultiSource && scopeMode === "reaches" && boqQty != null && boqQty > 0
-      && wholeEligibleLen > 0 && selectedEligibleLen > 0)
-    ? Math.round(boqQty * Math.min(1, selectedEligibleLen / wholeEligibleLen) * 100) / 100
+  // ── Batch 02: resolver-driven Applicable Qty (shared/quantityResolver seam) ─
+  // Replaces the old dialog-local eligible-denominator suggestedQty formula.
+  // denominatorBasis is always "whole-scope" — arrangement figures must not
+  // depend on current programme-bar coverage (see shared/arrangementApplicableQty).
+  const customRangeParsed = (() => {
+    const f = parseFloat(customChFrom), t = parseFloat(customChTo);
+    return isFinite(f) && isFinite(t) && t > f ? { chainageFrom: f, chainageTo: t } : null;
+  })();
+  const selectedReachRanges = selectedReaches.map(r => ({
+    chainageFrom: Number(r.chainageFrom), chainageTo: Number(r.chainageTo), side: r.side ?? null,
+  }));
+  // Shown in create AND edit mode (reference info) whenever the true contract
+  // qty is known; single-source only — multi-source gets per-source figures below.
+  const applicable = (!isMultiSource && contractQty != null && contractQty > 0 && boqItemId != null)
+    ? resolveArrangementApplicableQty({
+        scopeMode,
+        item: { boqItemId, totalQty: contractQty, unit: displayUom },
+        scopeSegments: scopeSegments as any,
+        selectedReaches: selectedReachRanges,
+        customRange: customRangeParsed,
+      })
     : null;
+  // Multi-source: one combined figure would be ambiguous (different BOQ items
+  // have different scope applicability), so resolve per source item instead.
+  const sourceApplicable: Record<number, number | null> = (isMultiSource && sourceBoqItems && scopeSegments.length > 0)
+    ? Object.fromEntries(sourceBoqItems.map(s => {
+        const r = resolveArrangementApplicableQty({
+          scopeMode,
+          item: { boqItemId: s.id, totalQty: s.currentQty, unit: "CUM" },
+          scopeSegments: scopeSegments as any,
+          selectedReaches: selectedReachRanges,
+          customRange: customRangeParsed,
+        });
+        return [s.id, r.status === "ok" ? r.applicableQty : null];
+      }))
+    : {};
+  const scopeQtyLabel = scopeMode === "whole"
+    ? "for whole eligible scope"
+    : scopeMode === "reaches"
+      ? "for selected reach(es)"
+      : customRangeParsed
+        ? `for Ch. ${customRangeParsed.chainageFrom.toFixed(3)}–${customRangeParsed.chainageTo.toFixed(3)}`
+        : "for custom chainage";
 
   // Resolved copies of the selected reaches (kept on the record for reporting/audit, B3)
   const resolvedScope = selectedReaches.length > 0 ? {
@@ -965,7 +1007,12 @@ export function EarthworkArrangementDialog({
                   <div key={src.id} className="flex items-center gap-2 px-2 py-1.5">
                     <span className="text-[11px] text-slate-600 flex-1 truncate" title={src.description}>
                       {src.description.length > 55 ? src.description.slice(0, 55) + "…" : src.description}
-                      <span className="text-slate-400 ml-1">({src.currentQty.toLocaleString()} CUM)</span>
+                      <span className="text-slate-400 ml-1">(contract {src.currentQty.toLocaleString()} CUM)</span>
+                      {sourceApplicable[src.id] != null && (
+                        <span className="text-teal-700 ml-1" data-testid={`text-source-applicable-${src.id}`}>
+                          · applicable {sourceApplicable[src.id]!.toLocaleString()}
+                        </span>
+                      )}
                     </span>
                     <Input
                       className="h-7 text-[12px] font-mono w-28 shrink-0"
@@ -986,7 +1033,29 @@ export function EarthworkArrangementDialog({
             </div>
           ) : (
             <div className="space-y-1">
-              <Label className="text-xs font-semibold">Allocated Quantity ({boqQty != null ? `BOQ: ${boqQty} ${displayUom}` : displayUom})</Label>
+              {/* Batch 02 — persistent reference figures (never hidden or replaced
+                  by the user-entered Arrangement Qty). */}
+              {applicable != null && (
+                <div className="text-[11px] rounded border border-teal-100 bg-teal-50/60 px-2 py-1.5 space-y-0.5" data-testid="qty-reference-panel">
+                  <p data-testid="text-contract-qty">
+                    Contract BOQ Qty: <span className="font-mono font-semibold">{applicable.contractQty.toLocaleString()} {displayUom}</span>
+                  </p>
+                  {applicable.status === "ok" && applicable.applicableQty != null ? (
+                    <p className="text-teal-700 flex items-center gap-2 flex-wrap" data-testid="text-applicable-qty">
+                      Applicable Qty {scopeQtyLabel}: <span className="font-mono font-semibold">{applicable.applicableQty.toLocaleString()} {displayUom}</span>
+                      {!applicable.scopeActive && <span className="text-slate-500">(whole contract — project scope not configured)</span>}
+                      {allocatedQty.trim() === "" && (
+                        <button type="button" className="underline" onClick={() => setAllocatedQty(String(applicable.applicableQty))} data-testid="button-use-suggested-qty">Use</button>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-slate-500" data-testid="text-applicable-pending">
+                      Applicable Qty: {scopeMode === "reaches" ? "select at least one working reach" : "enter a valid chainage range"} to calculate
+                    </p>
+                  )}
+                </div>
+              )}
+              <Label className="text-xs font-semibold">Arrangement Quantity ({boqQty != null ? `BOQ: ${boqQty} ${displayUom}` : displayUom})</Label>
               <Input
                 className="h-8 text-[12px] font-mono"
                 type="number" min={0}
@@ -994,11 +1063,10 @@ export function EarthworkArrangementDialog({
                 value={allocatedQty}
                 onChange={e => setAllocatedQty(e.target.value)}
               />
-              {/* B5 — conservative suggestion; never overwrites a manual entry */}
-              {suggestedQty != null && allocatedQty.trim() === "" && (
-                <p className="text-[11px] text-teal-700 bg-teal-50 rounded px-2 py-1 flex items-center gap-2" data-testid="suggested-qty-hint">
-                  Suggested applicable quantity for the selected reach(es): <span className="font-mono font-semibold">{suggestedQty.toLocaleString()} {displayUom}</span>
-                  <button type="button" className="underline" onClick={() => setAllocatedQty(String(suggestedQty))} data-testid="button-use-suggested-qty">Use</button>
+              {/* UI-only advisory — commercially arranging a different qty stays allowed */}
+              {applicable?.applicableQty != null && allocQtyNum > applicable.applicableQty && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1" data-testid="warning-over-applicable">
+                  Arrangement quantity exceeds the applicable quantity {scopeQtyLabel} ({applicable.applicableQty.toLocaleString()} {displayUom}).
                 </p>
               )}
             </div>

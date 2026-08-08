@@ -1,0 +1,296 @@
+BATCH 02 — WIRE SHARED QUANTITY RESOLVER INTO EXECUTION ARRANGEMENT
+
+Batch 01 is complete and verified.
+
+This batch must stay narrow.
+
+OBJECTIVE
+
+Use the new shared quantity resolver from Batch 01 inside the existing Execution Arrangement dialog so that the quantity shown for the selected scope is calculated from the same central quantity logic instead of the dialog maintaining its own independent formula.
+
+Do NOT change quantity semantics, Auto Sequence behaviour, Gantt logic, No-Scope behaviour, Road Geometry, or database schema in this batch.
+
+1. CURRENT ISSUE
+
+The Execution Arrangement dialog currently has its own `suggestedQty` calculation.
+
+Previous investigation found that this calculation is independent from Auto Sequence and may use a different denominator.
+
+The new Batch-01 resolver is now the central quantity foundation.
+
+We want the Arrangement dialog to consume that resolver for its scope quantity display.
+
+2. AFTER BOQ ITEM SELECTION
+
+After selecting a BOQ item, always show clearly:
+
+Contract BOQ Qty: [quantity] [unit]
+
+This must remain visible regardless of scope mode or whether the user enters an arrangement quantity.
+
+Do not modify the Contract BOQ Qty.
+
+3. APPLICATION SCOPE MODES
+
+Keep the existing scope modes and current UI structure.
+
+Do not redesign the form.
+
+For each mode, show a clearly labelled calculated quantity:
+
+A. WHOLE ELIGIBLE SCOPE
+
+Show:
+
+Applicable Qty: [resolver result]
+
+Under the CURRENT Batch-01 quantity model, the full Contract Qty is redistributed over the applicable programme domain after No-Scope/Withdrawn location exclusions.
+
+Do not introduce any No-Scope quantity reduction rule.
+
+B. CONFIRMED WORKING REACHES
+
+When a confirmed Working Reach is selected, calculate and show:
+
+Applicable Qty for selected reach: [resolver result]
+
+Use the shared resolver and existing side-aware scope logic.
+
+Do not use a separate ratio inside the component.
+
+C. CUSTOM CHAINAGE
+
+For the existing single From / To custom-chainage entry, calculate live and show:
+
+Applicable Qty for Ch. X–Y: [resolver result]
+
+The resolver must automatically respect existing:
+- No-Scope
+- Withdrawn
+- Temporary Block semantics
+- item/category applicability
+- LHS/RHS/Both scope handling
+
+Do NOT add multiple custom-chainage rows in this batch.
+
+4. KEEP CALCULATED QTY VISIBLE
+
+Currently the suggested/applicable quantity may disappear or cease to be useful after the user enters the actual arrangement/allocation quantity.
+
+Fix this.
+
+The dialog should clearly distinguish:
+
+Contract BOQ Qty: 10,185.10 Cum
+Applicable Qty for selected scope: 2,460.75 Cum
+Arrangement Qty: [user-entered field]
+
+The first two are system/reference figures.
+
+The Arrangement Qty is the quantity actually being assigned/agreed with the vendor.
+
+Entering Arrangement Qty must NOT hide or replace the Contract Qty or Applicable Qty.
+
+5. IMPORTANT — VERIFY CURRENT ARRANGEMENT VS RESOLVER BEFORE MIGRATION
+
+Before replacing the current `suggestedQty` calculation, compare both calculations for representative real/test data:
+
+- current Arrangement dialog calculation
+- new resolver calculation used by Auto Sequence
+
+Do this for at least:
+
+a. Whole scope
+b. One confirmed Working Reach
+c. One Custom Chainage range
+d. One case involving Temporary Block, if available
+
+Report the exact figures and denominator/basis used.
+
+If the two calculations differ, identify WHY before completing the migration.
+
+The known possible difference is:
+
+- current Arrangement logic may use eligible-only length;
+- Auto Sequence/resolver may use the programme/contractual domain that includes Temporary Block in the denominator.
+
+Do not silently change behaviour without understanding this difference.
+
+6. DESIRED RULE FOR THIS BATCH
+
+Once the difference is understood, the Execution Arrangement's displayed Applicable Qty should be sourced from the shared resolver rather than from independent component math.
+
+The resolver remains the source of truth for the current quantity-distribution model.
+
+Do NOT alter the resolver formula itself in this batch.
+
+Do NOT change Auto Sequence to accommodate the Arrangement dialog.
+
+7. ARRANGEMENT QUANTITY VALIDATION
+
+Do not automatically force Arrangement Qty to equal Applicable Qty.
+
+The user may commercially arrange a lower/different quantity.
+
+However:
+
+- if Arrangement Qty > Applicable Qty, show a warning;
+- do not silently block/save unless an existing rule already does so;
+- preserve existing save behaviour unless a very small validation message can be added safely without schema/API changes.
+
+If adding this warning expands scope materially, leave it out and report it for a later batch.
+
+8. DO NOT IMPLEMENT MULTI-RANGE ARRANGEMENTS YET
+
+We ultimately want one vendor arrangement to support multiple discontinuous chainage ranges.
+
+Do NOT solve that by:
+- creating multiple arrangements automatically;
+- converting chainage fields into arrays;
+- adding child range tables;
+- adding "Add Chainage Row" UI.
+
+Leave the current single Custom Chainage From/To structure intact.
+
+We will design the proper multi-range arrangement model separately.
+
+9. DO NOT CHANGE NO-SCOPE QUANTITY TREATMENT
+
+Do NOT add:
+
+- Reduce Eligible Qty
+- Retain Full Qty
+- No Impact
+- excluded quantity entry
+- scope quantity adjustment table
+- geometry-based exclusion quantity
+
+Current Batch-01 quantity semantics remain unchanged.
+
+10. DO NOT TOUCH GANTT / AUTO SEQUENCE
+
+Do NOT modify:
+
+- `programmeSequencer.ts` quantity formula
+- sequencing logic
+- programme bars
+- production rates
+- Gantt Under/Over / Fully Programmed badge
+- `CoverageBadge`
+- programme dates
+- scope splitting
+
+Batch 01 behaviour must remain identical.
+
+11. DO NOT ADD ROAD GEOMETRY
+
+No:
+
+- carriageway width fields
+- shoulder dimensions
+- pavement layer thickness setup
+- formation width
+- side slopes
+- cut/fill depth
+- geometry quantity calculation
+
+That is a later phase.
+
+12. NO DATABASE / SCHEMA CHANGE
+
+Expected schema change: NONE.
+
+Do not alter:
+- arrangement schema
+- BOQ schema
+- scope schema
+- quantity storage
+
+The applicable quantity is derived from the shared resolver.
+
+If a migration appears necessary, STOP and report why before creating it.
+
+13. TESTS
+
+Add focused tests covering:
+
+A. Contract BOQ Qty remains unchanged.
+
+B. Whole Eligible Scope displays resolver quantity.
+
+C. Confirmed Working Reach displays correct resolver quantity.
+
+D. Custom Chainage displays correct resolver quantity.
+
+E. Custom Chainage overlapping No-Scope excludes that location according to current resolver behaviour.
+
+F. Temporary Block behaviour matches the current resolver/programme-domain semantics.
+
+G. LHS/RHS/Both handling remains correct.
+
+H. Entering Arrangement Qty does not hide Contract Qty or Applicable Qty.
+
+I. Auto Sequence regression remains unchanged.
+
+J. Gantt Under/Over remains unchanged.
+
+14. REPORT BACK
+
+After completion report:
+
+A. Files/components modified.
+
+B. Existing Arrangement `suggestedQty` formula found.
+
+C. Exact comparison between old Arrangement calculation and shared resolver for:
+   - Whole scope
+   - Confirmed Working Reach
+   - Custom Chainage
+   - Temporary Block case if available
+
+D. Explanation of any difference found.
+
+E. Final source used for Applicable Qty.
+
+F. Screens/UI behaviour after BOQ item selection.
+
+G. Confirmation that Contract Qty and Applicable Qty remain visible after Arrangement Qty is entered.
+
+H. Test results.
+
+I. Confirmation that:
+   - no schema migration was made;
+   - Auto Sequence was not changed;
+   - Gantt Under/Over was not changed;
+   - No-Scope quantity treatment was not changed;
+   - Road Geometry was not added.
+
+J. Any remaining issue that should be handled in the next batch.
+
+DO NOT START THE NEXT BATCH.
+
+WHAT NOT TO TOUCH
+
+Do not modify:
+
+- Project Scope UI
+- No-Scope UI
+- BOQ import/mapping
+- Work Programme/Gantt logic
+- Auto Sequence formula
+- production rates
+- Execution Arrangement schema
+- multi-range arrangements
+- BOM/material logic
+- DPR workflow
+- Tomorrow's Programme
+- vendor bills
+- RA bills
+- profitability
+- permissions
+- Road Geometry
+- database schema
+
+SUCCESS CRITERION
+
+The Execution Arrangement dialog must use the shared Batch-01 quantity resolver to show a stable, transparent Applicable Qty for Whole Scope, Confirmed Working Reach and the existing single Custom Chainage, while preserving all current planning behaviour.

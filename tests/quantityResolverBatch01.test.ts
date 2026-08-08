@@ -214,9 +214,10 @@ describe("Batch 01 — documented consumer disagreements (NOT fixed)", () => {
     expect(arrangementSuggested).not.toBeCloseTo(autoSeq, 0);          // they DISAGREE — business decision pending
   });
 
-  it("Arrangement dialog source still uses the eligible-denominator formula (unchanged)", () => {
+  it("Arrangement dialog migrated to the shared resolver in Batch 02 (old formula retired)", () => {
     const src = readFileSync("client/src/components/EarthworkArrangementDialog.tsx", "utf8");
-    expect(src).toContain("selectedEligibleLen / wholeEligibleLen");
+    expect(src).not.toContain("selectedEligibleLen / wholeEligibleLen");
+    expect(src).toContain("resolveArrangementApplicableQty");
   });
 
   it("Gantt Under/Over badge still compares programmed total vs raw contract qty (unchanged)", () => {

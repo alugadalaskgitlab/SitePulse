@@ -10,5 +10,7 @@ description: shared/quantityResolver.ts is the single seam for BOQ eligible-quan
 **Key facts:**
 - Allocation rules (pavement / earthwork-estimate / mt-proportional) are LABELS only — all use the same length-proportional formulas.
 - Auto Sequence denominator = Σ per-stretch CONTRACTUAL coverage (eligible + temp-blocked; excludes no_scope + withdrawn). Stretches may leave gaps, so pass `stretchDomain` to `getItemScopeQuantity` for the exact sequencer basis; omitting it gives the whole-scope basis (`denominatorBasis` field says which).
-- KNOWN DISAGREEMENTS (documented, not fixed): Execution Arrangement suggested qty uses ELIGIBLE denominator (`selectedEligibleLen / wholeEligibleLen`), diverging from Auto Sequence whenever blocks exist; Gantt Under/Over badge (WorkProgramme CoverageBadge) compares programmed vs RAW contract qty, never eligible qty. Locked by tests/quantityResolverBatch01.test.ts.
-- Batch 02+ not started; no schema changes made or needed.
+- Batch 02 (Aug 2026): Execution Arrangement dialog migrated to the resolver via `shared/arrangementApplicableQty.ts` (thin wrapper, ALWAYS whole-scope basis — arrangement figures must never depend on programme-bar coverage). Old eligible-denominator suggestedQty retired; arrangement now matches Auto Sequence's contractual denominator. Selected reaches may OVERLAP — always union per side (normaliseReachSelection) before summing resolver results.
+- Only pass `contractQty` to the arrangement dialog when it truly is the contract BOQ qty; BarArrangementPanel's boqQty is bar planned/remaining, so it deliberately omits contractQty (panel hidden, not mislabelled).
+- REMAINING DISAGREEMENT (documented, not fixed): Gantt Under/Over badge (WorkProgramme CoverageBadge) compares programmed vs RAW contract qty, never eligible qty. Locked by tests.
+- Batch 03+ not started; no schema changes made or needed.
