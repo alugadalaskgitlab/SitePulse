@@ -1,0 +1,272 @@
+BATCH 03 — FIX CONFIRMED WORKING REACH EDIT / REVISION FLOW
+
+This is a small standalone hotfix.
+
+Do NOT start Road Geometry yet.
+
+CURRENT BUG
+
+On Project Scope, clicking Edit on an existing CONFIRMED Working Reach is opening a blank/new Working Reach form instead of loading that confirmed reach for revision.
+
+This is incorrect.
+
+The Existing / No-Scope confirmed-record revision flow already demonstrates the expected behaviour:
+
+- existing confirmed record opens populated;
+- user edits the existing values;
+- saving creates a new DRAFT revision;
+- previous confirmed record remains preserved as superseded history;
+- the confirmed record is not edited destructively in place.
+
+Working Reach must follow the same revision pattern.
+
+1. INVESTIGATE FIRST
+
+Inspect the current Project Scope implementation and identify:
+
+- Working Reach list/card Edit action;
+- new Working Reach form opening logic;
+- confirmed-record revision logic;
+- Existing / No-Scope "Revise confirmed scope record" implementation;
+- Temporary Block / Withdrawn revision flows if relevant;
+- backend/API used for scope-record revisions.
+
+Confirm why the Working Reach Edit action loses the existing record context and opens the create-new flow.
+
+Do not assume the UI alone is responsible.
+
+IMPORTANT REFERENCE-INTEGRITY CHECK
+
+Working Reach records may already be referenced elsewhere by ID.
+
+In particular, inspect:
+
+- earthworkArrangements.scopeSegmentIds
+- Execution Arrangements register/display logic such as applicableScopeLabel()
+- any other tables/modules that persist confirmed Working Reach IDs
+
+Confirm whether revising and later confirming a Working Reach:
+
+A. preserves the same scope-segment ID; or
+
+B. creates a new scope-segment ID and supersedes the previous record.
+
+If a new ID is created, determine exactly what happens to existing Execution Arrangements or any other records whose stored scopeSegmentIds reference the superseded Working Reach.
+
+Do NOT silently change reference behaviour in this batch.
+
+If existing references would become stale or broken, report the issue and implement only a safe fix if it can be done without broad schema/business-rule changes.
+
+If resolving reference migration would materially expand the batch, STOP and report before proceeding with that part.
+
+2. REQUIRED WORKING REACH BEHAVIOUR
+
+When Edit is clicked on a CONFIRMED Working Reach:
+
+Open a revision form populated with that exact confirmed record's existing values, including all fields that currently belong to the Working Reach record, such as:
+
+- From chainage
+- To chainage
+- Side
+- Label, if present
+- applicable scope/item/category settings if Working Reach supports them
+- Notes or other existing fields
+
+The form should clearly indicate that this is a revision of a confirmed record, not creation of a new unrelated Working Reach.
+
+Use wording/pattern consistent with the existing confirmed No-Scope revision UI where practical.
+
+3. SAVE SEMANTICS
+
+Saving changes to a confirmed Working Reach must:
+
+- create a NEW draft revision;
+- preserve the currently confirmed record as historical/superseded;
+- maintain the proper revision linkage already used by the scope system;
+- NOT directly mutate the confirmed historical record;
+- NOT create a second unrelated Working Reach.
+
+Reuse the existing scope revision mechanism.
+
+Do not invent a separate Working-Reach-only revision system.
+
+4. REFERENCE INTEGRITY
+
+Any existing records that refer to the Working Reach by ID must remain understandable and safe after revision.
+
+Investigate and report the current behaviour for existing Execution Arrangements whose:
+
+scopeSegmentIds
+
+contain the ID of the Working Reach being revised.
+
+If confirming the revision creates a new Working Reach ID:
+
+- do not allow existing arrangements to silently point at an invalid/non-resolvable scope;
+- do not rewrite historical arrangements without understanding whether they are meant to preserve the originally agreed scope;
+- document whether existing arrangements should continue referencing the historical superseded reach or should follow the newly confirmed revision.
+
+Do NOT invent a new business rule if the intended behaviour is ambiguous.
+
+Report the exact current behaviour and any decision required from us.
+
+5. CANCEL / CLOSE
+
+If the user cancels or closes the revision form:
+
+- no new record should be created;
+- no existing confirmed record should change;
+- reopening Edit should again show the currently confirmed values.
+
+6. DRAFT WORKING REACHES
+
+Check current behaviour for editing an existing DRAFT Working Reach.
+
+Do not unnecessarily create another revision of a draft if the current data model already allows the draft itself to be edited.
+
+Preserve existing correct draft behaviour.
+
+The bug being fixed is specifically the confirmed Working Reach Edit flow.
+
+7. SCOPE RECONCILIATION
+
+After a Working Reach revision is created/confirmed through the existing workflow, all existing scope reconciliation calculations must continue to work exactly as they do now:
+
+- Corridor
+- Working reaches
+- Executable side-km
+- No-Scope side-km
+- Blocked side-km
+- Withdrawn side-km
+- Gap / reconciliation status
+
+Do not modify the reconciliation formula in this batch.
+
+8. DO NOT CHANGE QUANTITY LOGIC
+
+Do NOT modify:
+
+- quantityResolver.ts
+- Arrangement Applicable Qty logic
+- Auto Sequence allocation
+- Gantt quantity calculation
+- No-Scope quantity semantics
+- Contract Qty / Eligible Qty semantics
+
+This is only a scope-record editing/revision bug fix.
+
+9. NO ROAD GEOMETRY YET
+
+Do NOT add:
+
+- carriageway width
+- shoulder widths
+- pavement layer thicknesses
+- formation width
+- cut/fill depths
+- side slopes
+- engineering quantities
+- geometry tables
+
+Road Geometry will start only after this hotfix is verified.
+
+10. DATABASE / SCHEMA
+
+Expected schema migration: NONE.
+
+Use the existing scope revision/history model.
+
+If the confirmed Working Reach cannot be revised correctly without a schema migration, STOP and report why before making one.
+
+Do not create a migration merely to solve the reference-integrity question without first reporting the existing ID/revision behaviour.
+
+11. TESTS
+
+Add/verify focused tests covering:
+
+A. Confirmed Working Reach Edit opens populated with the existing record.
+
+B. From/To/Side and other existing values are retained when the revision form opens.
+
+C. Saving creates a new draft revision.
+
+D. Original confirmed record remains preserved as superseded/history.
+
+E. Saving does not create an unrelated duplicate Working Reach.
+
+F. Cancel makes no data change.
+
+G. Existing Draft Working Reach editing behaviour remains unchanged.
+
+H. No-Scope confirmed revision behaviour remains unchanged.
+
+I. Scope reconciliation calculations remain unchanged.
+
+J. Determine whether a confirmed Working Reach revision preserves or changes the scope-segment ID.
+
+K. If the ID changes, test/document what happens to an existing Execution Arrangement whose scopeSegmentIds reference the original Working Reach.
+
+L. Existing Execution Arrangement register/display must not silently fail to resolve its stored reach reference after revision.
+
+12. REPORT BACK
+
+After implementation report:
+
+A. Root cause of the bug.
+
+B. Files/functions modified.
+
+C. How Working Reach Edit was previously routed.
+
+D. How it is routed now.
+
+E. Confirmation that confirmed values populate correctly.
+
+F. Confirmation that Save creates a draft revision and preserves confirmed history.
+
+G. Confirmation that Draft Working Reach editing remains correct.
+
+H. WORKING REACH ID / REFERENCE REPORT:
+
+- Does revision preserve the same scope-segment ID or create a new one?
+- If a new ID is created, what happens to the original ID?
+- What happens to existing Execution Arrangements whose scopeSegmentIds point to the original reach?
+- Can the Arrangement register still resolve/display the original scope?
+- Are any other modules storing Working Reach IDs?
+- Is any business-rule decision required from us regarding whether historical arrangements should remain tied to the old reach or follow the revised reach?
+
+I. Test results.
+
+J. Confirmation that:
+- no schema migration was made;
+- quantity resolver was not changed;
+- Execution Arrangement quantity logic was not changed;
+- Auto Sequence/Gantt were not changed;
+- Road Geometry was not started.
+
+DO NOT START THE NEXT BATCH.
+
+WHAT NOT TO TOUCH
+
+Do not modify:
+
+- quantity resolver
+- Auto Sequence
+- Gantt
+- Execution Arrangement quantity logic/UI except only if a tiny reference-resolution safeguard is strictly necessary to prevent broken display
+- BOQ
+- BOM/material logic
+- DPR
+- Tomorrow's Programme
+- vendor billing
+- RA bills
+- profitability
+- permissions
+- Road Geometry
+- database schema
+
+SUCCESS CRITERION
+
+Clicking Edit on a confirmed Working Reach must open that same reach as a populated REVISION, and saving must use SitePulse's existing confirmed-record revision/history workflow instead of opening or creating an unrelated new Working Reach.
+
+Additionally, the batch must prove that revising a Working Reach does not silently break any existing records that reference that reach by ID.
