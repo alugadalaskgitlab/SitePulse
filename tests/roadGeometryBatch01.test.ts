@@ -377,6 +377,91 @@ describe("01A F–M — Formation Width + independent suggested widths", () => {
   });
 });
 
+// ═════════════════════════════════════════════════════════════════════════════
+// GEOMETRY BATCH 01B — generic calculation types (spec §17 A–N)
+// ═════════════════════════════════════════════════════════════════════════════
+describe("01B — generic calc types: area / volume_layer, width & thickness sources", () => {
+  it("B — explicit Layer Config stays highest-priority evidence; A/M — 01A results identical", () => {
+    // WMM via config → volume_layer bound to physical WMM layer
+    const r = calcOne(item("Generic granular layer", "Cum", { layerConfig: { mixType: "WMM" } }));
+    expect(r.status).toBe("calculated");
+    if (r.status !== "calculated") return;
+    expect(r.basis.calcType).toBe("volume_layer");
+    expect(r.basis.calcLabel).toBe("WMM");
+    expect(r.basis.widthSource).toMatch(/WMM layer width/);
+    expect(r.basis.thicknessSource).toBe("profile_layer");
+    expect(r.quantity).toBeCloseTo(3800 * 10 * 0.25, 2); // unchanged 01A math
+  });
+
+  it("C/J — AREA calc: prime/tack = length × width, width source reported", () => {
+    const r = calcOne(item("Providing and applying tack coat with bitumen emulsion", "Sqm"));
+    expect(r.status).toBe("calculated");
+    if (r.status !== "calculated") return;
+    expect(r.basis.calcType).toBe("area");
+    expect(r.basis.widthSource).toMatch(/Paved width/);
+    expect(r.basis.thicknessSource).toBeNull();
+    expect(r.quantity).toBeCloseTo(3800 * 10, 2);
+    expect(r.unit).toBe("Sqm");
+  });
+
+  it("F — Scarifying (area) supported WITHOUT adding it to GEOMETRY_LAYER_TYPES", () => {
+    expect((GEOMETRY_LAYER_TYPES as readonly string[]).includes("scarifying")).toBe(false);
+    const r = calcOne(item("Scarifying existing bituminous surface including disposal", "Sqm"));
+    expect(r.status).toBe("calculated");
+    if (r.status !== "calculated") return;
+    expect(r.basis.calcType).toBe("area");
+    expect(r.basis.calcLabel).toMatch(/Scarifying/);
+    expect(r.quantity).toBeCloseTo(3800 * 10, 2);
+    expect(r.unit).toBe("Sqm");
+    // same item NOT in Sqm → needs_mapping, never guessed (spec §12E)
+    const r2 = calcOne(item("Scarifying existing bituminous surface including disposal", "Cum"));
+    expect(r2.status).toBe("needs_mapping");
+  });
+
+  it("G/D/K — SDBC (volume) mapped via Layer Config without a new engine formula", () => {
+    const sdbc = item("Providing semi dense course", "Cum", { layerConfig: { mixType: "SDBC", thicknessMm: 25 } });
+    const r = calcOne(sdbc);
+    expect(r.status).toBe("calculated");
+    if (r.status !== "calculated") return;
+    expect(r.basis.calcType).toBe("volume_layer");
+    expect(r.basis.calcLabel).toBe("SDBC");
+    expect(r.basis.widthSource).toMatch(/Paved width/);
+    expect(r.basis.thicknessSource).toBe("item_config");
+    expect(r.quantity).toBeCloseTo(3800 * 10 * 0.025, 2);
+    expect(r.unit).toBe("Cum");
+  });
+
+  it("L — SDBC without item thickness → needs_mapping (no zero/fabricated qty)", () => {
+    const r = calcOne(item("Providing semi dense course", "Cum", { layerConfig: { mixType: "SDBC" } }));
+    expect(r.status).toBe("needs_mapping");
+    if (r.status !== "needs_mapping") return;
+    expect(r.reason).toMatch(/Layer Config/i);
+    // Sqm thickness-gating hole (review finding): even in Sqm, a thickness-
+    // bearing course without configured thickness must NOT calculate.
+    expect(calcOne(item("Providing semi dense course", "Sqm", { layerConfig: { mixType: "SDBC" } })).status).toBe("needs_mapping");
+    expect(calcOne(item("Bituminous macadam course", "Sqm", { layerConfig: { mixType: "BM" } })).status).toBe("needs_mapping");
+  });
+
+  it("E — final unit is ALWAYS the BOQ item's own UoM; MT still conversion_required", () => {
+    const r = calcOne(item("Bituminous macadam course", "MT", { layerConfig: { mixType: "BM", thicknessMm: 50 } }));
+    expect(r.status).toBe("conversion_required");
+    const r2 = calcOne(item("Bituminous macadam course", "Cum", { layerConfig: { mixType: "BM", thicknessMm: 50 } }));
+    expect(r2.status).toBe("calculated");
+    if (r2.status !== "calculated") return;
+    expect(r2.unit).toBe("Cum");
+  });
+
+  it("H/I — unknown items are not guessed; structures stay unsupported", () => {
+    const r = calcOne(item("Construction of RCC box culvert 2x2m", "Nos"));
+    expect(r.status).toBe("unsupported");
+    const r2 = calcOne(item("Miscellaneous provisional sum", "LS"));
+    expect(r2.status).toBe("unsupported");
+    // dismantling a structure (not scarifying) never becomes area
+    const r3 = calcOne(item("Dismantling of existing culvert headwall", "Cum"));
+    expect(r3.status).not.toBe("calculated");
+  });
+});
+
 describe("01A G/N/O/P — decimal precision + UoM invariant regression", () => {
   it("G/N — decimal widths flow through the math without rounding the inputs", () => {
     const p = profile({ carriagewayWidthM: 7.25, pavedShoulderLhsM: 1.5, pavedShoulderRhsM: 1.5, formationWidthM: 9.375 });

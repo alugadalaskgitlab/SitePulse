@@ -22,4 +22,11 @@ description: Optional project-level road geometry profile + shared quantity engi
 - Decimal-input trap: per-keystroke `Number(e.target.value)` on controlled inputs swallows the trailing "." (can't type 8.75); keep raw string state, convert at compute/save.
 - Form hydration on pages with a `:id` route param must be project-scoped (track hydrated project id, not a boolean) or navigating between projects saves one project's form against another.
 
+**Batch 01B generalisation (Aug 2026):**
+- Items resolve to a reusable calc type (`area` | `volume_layer`), not a fixed layer list; `GeometryCalcSpec` carries widthSource (`layer_width:<layer>` | `paved_width`) + thicknessSource (`profile_layer` | `item_config`), all reported in result basis metadata.
+- SDBC/BM map via layerConfig.mixType with thickness from layerConfig.thicknessMm — thickness required REGARDLESS of UoM (a Sqm SDBC without thickness must be needs_mapping, not a degraded area calc — review-caught hole).
+- Scarifying/milling: workType "dismantling" + explicit scarify/milling regex + Sqm unit → area calc; anything else stays out.
+- No schema change; single config source rule: needs-attention UI routes to the EXISTING Layer Config dialog via `/work-program/:id?recipeItem=<itemId>` deep-link — never a geometry-specific mapping modal.
+- LINEAR calc type deliberately not added (no safe current use).
+
 **How to apply:** any later geometry batch (earthwork geometry, No-Scope masking, density-based MT conversion, feeding downstream) must extend the engine's result statuses, not bypass them; keep PUT route's strict 400 validation pattern (bounded finite numbers, unique layer types).

@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { ChevronRight, Ruler, Loader2, Info, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,7 @@ export default function RoadGeometry() {
   });
 
   // ── form state ─────────────────────────────────────────────────────────────
+  const [, navigate] = useLocation();
   const [enabled, setEnabled] = useState(false);
   const [widths, setWidths] = useState({ formation: "", cw: "", pavedL: "", pavedR: "", softL: "", softR: "" });
   // 01A decimal fix: keep RAW STRINGS while editing (a per-keystroke Number()
@@ -295,7 +296,8 @@ export default function RoadGeometry() {
                     <thead className="bg-muted/50 text-xs text-muted-foreground">
                       <tr>
                         <th className="text-left px-3 py-1.5">Item</th>
-                        <th className="text-left px-3 py-1.5">Layer</th>
+                        <th className="text-left px-3 py-1.5">Calculation</th>
+                        <th className="text-left px-3 py-1.5">Width source</th>
                         <th className="text-right px-3 py-1.5">BOQ Qty</th>
                         <th className="text-right px-3 py-1.5">Geometry Calculated Qty</th>
                         <th className="text-right px-3 py-1.5">Difference</th>
@@ -311,7 +313,11 @@ export default function RoadGeometry() {
                         return (
                           <tr key={r.boqItemId} className="border-t align-top">
                             <td className="px-3 py-1.5 max-w-[280px]"><span className="line-clamp-2">{it?.displayName ?? it?.description}</span></td>
-                            <td className="px-3 py-1.5"><Badge variant="outline">{GEOMETRY_LAYER_LABELS[r.layer]}</Badge></td>
+                            <td className="px-3 py-1.5 whitespace-nowrap">
+                              <Badge variant="outline">{r.basis.calcLabel}</Badge>
+                              <span className="ml-1 text-[10px] text-muted-foreground uppercase">{r.basis.calcType === "area" ? "area" : "volume"}</span>
+                            </td>
+                            <td className="px-3 py-1.5 text-xs text-muted-foreground max-w-[160px]"><span className="line-clamp-2">{r.basis.widthSource}</span></td>
                             <td className="px-3 py-1.5 text-right whitespace-nowrap">{fmtQty(boqQty)} {r.unit}</td>
                             <td className="px-3 py-1.5 text-right whitespace-nowrap font-medium">{fmtQty(r.quantity)} {r.unit}</td>
                             <td className={`px-3 py-1.5 text-right whitespace-nowrap ${Math.abs(diff) > 0.005 ? (diff < 0 ? "text-amber-700" : "text-blue-700") : ""}`}>
@@ -331,9 +337,18 @@ export default function RoadGeometry() {
                   {attention.map(r => {
                     const it = itemById.get(r.boqItemId);
                     return (
-                      <p key={r.boqItemId} className="text-xs text-muted-foreground">
-                        <b>{(it?.displayName ?? it?.description ?? "").slice(0, 70)}</b> — {(r as any).reason}
-                      </p>
+                      <div key={r.boqItemId} className="flex items-start gap-2 text-xs text-muted-foreground">
+                        <p className="flex-1">
+                          <b>{(it?.displayName ?? it?.description ?? "").slice(0, 70)}</b> — {(r as any).reason}
+                        </p>
+                        {/* 01B: single source of item configuration — reuse the EXISTING
+                            BOQ Layer Config dialog via its ?recipeItem deep-link. */}
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs shrink-0"
+                          data-testid={`button-configure-geometry-${r.boqItemId}`}
+                          onClick={() => navigate(`/work-program/${projectId}?recipeItem=${r.boqItemId}`)}>
+                          Configure in Layer Config
+                        </Button>
+                      </div>
                     );
                   })}
                 </div>

@@ -1,0 +1,483 @@
+GEOMETRY BATCH 01B — GENERALIZE BOQ ITEM → GEOMETRY CALCULATION MAPPING
+
+Geometry Batch 01A is complete.
+
+This batch extends the geometry foundation so it is not limited to the currently hard-coded pavement item list.
+
+Do NOT start earthwork cut/fill calculations yet.
+Do NOT integrate geometry into No-Scope, Auto Sequence, Execution Arrangement, BOM, DPR or RA bills yet.
+
+OBJECTIVE
+
+Allow any suitable LINEAR BOQ item to participate in Road Geometry by resolving it to a reusable geometry calculation type rather than requiring the item itself to be one of a fixed hard-coded list such as:
+
+- Subgrade
+- GSB
+- WMM
+- DBM
+- BC
+- Prime
+- Tack
+
+The engine should become extensible enough to support additional road items without new code for every BOQ description.
+
+1. INVESTIGATE FIRST
+
+Inspect the current Geometry Batch 01A implementation and report:
+
+- hard-coded GEOMETRY_LAYER_TYPES
+- GeometryItemLayer / GeometrySurfaceType
+- classifyItemForGeometry()
+- geometryLayerFromMixType()
+- WORK_TYPE_TO_LAYER
+- layerConfig structure
+- workTypeRecipes / resolveWorkType
+- BOQ workCategory
+- displayName / short name
+- existing SNL / Norm mapping if relevant
+- existing Layer Config UI
+- current geometry profile `layers` JSON structure
+
+Identify which concepts are:
+
+A. physical/design geometry layers
+
+versus
+
+B. BOQ items that merely USE a geometry calculation.
+
+Do not conflate the two.
+
+2. ARCHITECTURAL PRINCIPLE
+
+Separate:
+
+PHYSICAL GEOMETRY INPUT
+
+from:
+
+BOQ ITEM CALCULATION TYPE
+
+Example:
+
+The project may physically have:
+- Formation
+- GSB
+- WMM
+- DBM
+- BC
+
+But BOQ items may additionally include:
+- Scarifying
+- Prime Coat
+- Tack Coat
+- Seal Coat
+- SDBC
+- BM
+- DLC
+- PQC
+- shoulders
+- surface dressing
+- milling
+- other linear treatments
+
+These should not require SitePulse to add every possible BOQ description to GEOMETRY_LAYER_TYPES.
+
+3. GENERIC CALCULATION TYPES
+
+Introduce a small reusable geometry calculation vocabulary.
+
+Conceptually support at least:
+
+A. AREA
+
+Quantity basis:
+length × applicable width
+
+Typical possible uses:
+- Prime
+- Tack
+- Scarifying
+- surface treatments
+- other BOQ items measured in Sqm
+
+B. VOLUME_LAYER
+
+Quantity basis:
+length × applicable width × thickness
+
+Typical possible uses:
+- GSB
+- WMM
+- DBM
+- BC
+- SDBC
+- BM
+- DLC/PQC where appropriate in future
+- other linear thickness-based layers
+
+C. LINEAR
+
+Quantity basis:
+length or side-aware length
+
+Only if a current BOQ item and UoM clearly require this.
+
+Do not manufacture LINEAR support merely for completeness if no safe current use exists.
+
+D. UNSUPPORTED
+
+For:
+- structures
+- culverts
+- lump sum
+- Nos.
+- non-linear/miscellaneous items
+- any item whose geometry basis is not safely known
+
+Do NOT add earthwork cross-section calculation type in 01B.
+
+That comes in Geometry Batch 02.
+
+4. BOQ UOM REMAINS THE FINAL AUTHORITY
+
+The existing hard rule remains mandatory:
+
+Every calculated output must use the actual BOQ item's UoM.
+
+Calculation type does NOT decide the final display/output UoM.
+
+Examples:
+
+AREA calculation + BOQ unit Sqm → return Sqm.
+
+VOLUME_LAYER + BOQ unit Cum → return Cum.
+
+If a BOQ item's UoM requires a conversion not safely available:
+return conversion_required.
+
+Do not fabricate conversion factors.
+
+Do not infer MT because an item is bituminous.
+
+5. ITEM → CALCULATION MAPPING
+
+Design the smallest clean mapping mechanism.
+
+Reuse existing data before adding new fields.
+
+Mapping priority should conceptually use:
+
+1. explicit existing Layer Config / persisted item configuration;
+2. reliable existing work type / SNL classification;
+3. short name / deterministic classification;
+4. description heuristic fallback;
+5. manual confirmation when still ambiguous.
+
+Do not make long-description regex the primary architecture.
+
+6. USE EXISTING LAYER CONFIG WHERE POSSIBLE
+
+Current `layerConfig.mixType` already tells Geometry about items such as:
+- WMM
+- DBM
+- BC
+
+Investigate whether the existing `layerConfig` can be safely extended/reused to carry a geometry calculation classification without confusing its current BOM/material purpose.
+
+If yes, reuse it.
+
+If not, propose the smallest explicit item-level geometry mapping structure.
+
+Do not add a new schema field merely because it is convenient.
+
+If a schema addition is genuinely needed, STOP and report the proposed field/table and why existing metadata is insufficient before implementing it.
+
+Any user-facing correction/mapping flow should preferentially route back to the existing Layer Config UI rather than persist duplicate geometry-specific classification data.
+
+7. PHYSICAL LAYER SETTINGS VS ITEM MAPPING
+
+Keep the current project geometry profile for actual project/design dimensions.
+
+For example:
+
+- formation width
+- GSB thickness/width
+- WMM thickness/width
+- DBM thickness/width
+- BC thickness/width
+
+Those are physical project settings.
+
+An additional BOQ item such as Scarifying should reference an applicable geometry width/calculation rule without becoming a new physical pavement layer unless it truly is one.
+
+Likewise:
+
+Prime/Tack may use the width of an underlying physical layer without needing a separate thickness-bearing layer row.
+
+8. WIDTH SOURCE
+
+Every calculable BOQ item must resolve an applicable width source.
+
+Possible width sources may include:
+
+- Formation Width
+- GSB resolved width
+- WMM resolved width
+- paved width
+- carriageway width
+- another configured physical layer width
+- explicit item-level width override where genuinely necessary
+
+Do not silently assume one width for all items.
+
+The result metadata should state which width source was used.
+
+9. THICKNESS SOURCE
+
+For VOLUME_LAYER items, thickness must come from a reliable source.
+
+Priority should use:
+
+- physical project geometry layer thickness, where mapped;
+- existing explicit item/layer configuration if reliable;
+- explicit geometry override/configuration where necessary.
+
+Do not parse an arbitrary BOQ description and silently trust a number such as “40 mm” unless the existing classifier already treats that extraction as reliable and tested.
+
+If thickness cannot be resolved safely:
+show needs_mapping/configuration rather than fabricate a quantity.
+
+10. SIMPLE UI
+
+Do NOT clutter the main Road Geometry page with a configuration row for every BOQ item.
+
+Keep the existing Typical Road Section / physical layers UI simple.
+
+Below the geometry preview, items requiring geometry confirmation may have a compact action such as:
+
+"Configure geometry"
+or
+"Map geometry"
+
+IMPORTANT:
+
+That action should reuse/open the EXISTING BOQ Layer Config UI wherever the required information belongs there.
+
+Do NOT create a separate Geometry-specific configuration modal merely to tell SitePulse that an item is WMM / GSB / DBM / BC / Prime / Tack or another existing configured work/layer type.
+
+The objective is to preserve ONE source of item configuration.
+
+For example:
+
+BOQ Item
+→ existing Layer Config
+→ Geometry consumes that configuration
+
+not:
+
+BOQ Item
+→ Layer Config for BOM
++
+separate Geometry mapping for the same fact.
+
+If Geometry requires some genuinely geometry-only information that the existing Layer Config cannot safely represent, report that gap first rather than creating a second configuration screen silently.
+
+Only items needing attention should require user interaction.
+
+For an item already resolvable from existing metadata, no extra configuration should be required.
+
+11. PREVIEW
+
+The Contract BOQ vs Geometry preview should now include all safely calculable supported linear items, not merely the current fixed list.
+
+For each result show:
+
+- BOQ item
+- Geometry calculation type
+- geometry/width source
+- BOQ Qty
+- BOQ UoM
+- Geometry Calculated Qty
+- Difference
+- Difference %
+- How calculated
+
+Keep the screen compact.
+
+12. EXAMPLES TO SUPPORT / TEST
+
+Use representative cases such as:
+
+A. WMM
+Existing Layer Config confirms WMM.
+Calculation type = volume_layer.
+Width = WMM resolved design width.
+Thickness = WMM project thickness.
+Output = BOQ UoM.
+
+B. BC
+volume_layer.
+Output Cum where BOQ is Cum.
+
+C. Prime Coat
+area.
+Width source = appropriate paved/granular surface.
+Output Sqm.
+
+D. Tack Coat
+area.
+Output Sqm.
+
+E. Scarifying existing BT
+If classification and BOQ UoM make the area basis unambiguous:
+area calculation.
+
+If not safely resolvable:
+needs_mapping rather than guessing.
+
+F. A non-linear structure item
+unsupported.
+
+13. EXISTING PHYSICAL LAYER MODEL
+
+Do not remove the existing:
+
+- Subgrade
+- GSB
+- WMM
+- DBM
+- BC
+
+project-layer configuration.
+
+These remain useful physical design layers.
+
+The purpose of 01B is to stop treating that list as the complete universe of BOQ items Geometry can calculate.
+
+14. NO EARTHWORK YET
+
+Do NOT add:
+
+- excavation
+- embankment
+- cut/fill
+- side slopes
+- embankment cross-sections
+- reach-wise depth profiles
+
+Earthwork begins only in Geometry Batch 02.
+
+15. NO SCOPE MASKING
+
+Continue using full confirmed corridor geometry only.
+
+Do not deduct:
+- No-Scope
+- Withdrawn
+- Temporary Block
+
+Do not alter quantityResolver.
+
+16. NO DOWNSTREAM CONSUMERS
+
+Do NOT modify:
+
+- Auto Sequence
+- Gantt
+- Execution Arrangement
+- Project Scope
+- BOM
+- DPR
+- Tomorrow's Programme
+- vendor bills
+- RA bills
+- profitability
+
+This remains a geometry preview/calculation foundation.
+
+17. TESTS
+
+Add focused tests covering:
+
+A. Existing Geometry 01A items remain identical.
+
+B. Explicit Layer Config remains highest-priority evidence.
+
+C. AREA calculation type returns correct length × width quantity.
+
+D. VOLUME_LAYER returns correct length × width × thickness quantity.
+
+E. Final quantity unit is always actual BOQ UoM.
+
+F. Scarifying or another area-based linear item can be supported without adding it to GEOMETRY_LAYER_TYPES when safely mapped.
+
+G. Another volume-based pavement item can be added/mapped without hardcoding a new engine formula.
+
+H. Unknown item does not get guessed.
+
+I. Structure/non-linear item remains unsupported.
+
+J. Width source metadata is returned.
+
+K. Thickness source metadata is returned for volume items.
+
+L. Missing required thickness returns needs_mapping/configuration rather than zero or fabricated quantity.
+
+M. Current WMM/GSB/DBM/BC/Prime/Tack preview results do not regress.
+
+N. Auto Sequence/Gantt/Arrangement tests remain unchanged.
+
+18. REPORT BACK
+
+After implementation report:
+
+A. Current fixed-layer coupling found.
+
+B. Final generic calculation-type vocabulary.
+
+C. Item→calculation-type mapping mechanism.
+
+D. Whether any schema change was needed.
+If yes, explain why existing Layer Config could not safely carry the mapping.
+
+E. Exact width-source model.
+
+F. Exact thickness-source model.
+
+G. UoM behaviour.
+
+H. Worked examples for:
+- WMM
+- BC in Cum
+- Prime/Tack
+- at least one newly supported BOQ item outside the original fixed list
+- one unsupported item
+
+I. UI behaviour for a needs-mapping item.
+
+J. Test results.
+
+K. Confirmation that:
+- physical layer settings remain intact;
+- earthwork was not started;
+- No-Scope was not integrated;
+- quantityResolver was unchanged;
+- Auto Sequence/Gantt were unchanged;
+- Execution Arrangement was unchanged;
+- BOM/DPR/RA bills were unchanged.
+
+L. Configuration-source check:
+- for items requiring user intervention, state exactly which existing UI is opened;
+- confirm whether the existing Layer Config is sufficient;
+- confirm that no second Geometry-specific mapping source was created for facts already represented in Layer Config.
+
+DO NOT START GEOMETRY BATCH 02.
+
+SUCCESS CRITERION
+
+Geometry is no longer limited to a fixed list of BOQ items.
+
+Any suitable linear BOQ item can be resolved to a reusable geometry calculation type and calculated safely using existing physical geometry inputs, while every final quantity continues to use the BOQ item's actual UoM.
+
+Where user intervention is required, SitePulse must reuse the existing Layer Config UI rather than create a competing Geometry-specific source of truth.

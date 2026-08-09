@@ -130,13 +130,51 @@ export function applicableLayerWidthM(layer: GeometryItemLayer, p: RoadGeometryP
 //    when the description explicitly says subgrade; other earthwork is
 //    unsupported until Geometry Batch 02.
 export type GeometryItemStatus =
-  | "calculable"          // mapped to a layer, math possible
+  | "calculable"          // mapped to a calculation, math possible
   | "needs_mapping"       // looks like pavement but cannot be safely mapped
   | "unsupported";        // non-linear / structures / out of Batch-01 scope
+
+// ── 01B — generic calculation vocabulary ─────────────────────────────────────
+// Physical design layers (GEOMETRY_LAYER_TYPES) stay what they are: project
+// settings. BOQ items now resolve to a reusable CALCULATION TYPE instead of
+// having to BE one of the fixed layers.
+//  • area         = length × applicable width            (Sqm-basis)
+//  • volume_layer = length × applicable width × thickness (Cum-basis)
+// LINEAR was deliberately NOT added — no current BOQ item/UoM safely requires
+// it (spec §3C: don't manufacture support for completeness).
+export type GeometryCalcType = "area" | "volume_layer";
+
+/** Where the applicable width comes from — always reported, never assumed silently. */
+export type GeometryWidthSource =
+  | { kind: "layer_width"; layer: GeometryLayerType }   // resolved physical layer width (override-aware; subgrade → Formation Width)
+  | { kind: "paved_width" };                            // carriageway + paved shoulders
+
+/** Where a volume item's thickness comes from. */
+export type GeometryThicknessSource = "profile_layer" | "item_config";
+
+export interface GeometryCalcSpec {
+  calcType: GeometryCalcType;
+  /** Short user-facing label, e.g. "WMM", "SDBC", "Scarifying". */
+  label: string;
+  /** Physical layer binding when the item IS one of the design layers. */
+  layer: GeometryItemLayer | null;
+  widthSource: GeometryWidthSource;
+  thicknessSource: GeometryThicknessSource | null; // null for area calcs
+  /** Item-level thickness (mm) when thicknessSource = "item_config". */
+  itemThicknessMm?: number | null;
+}
+
+export function widthSourceLabel(ws: GeometryWidthSource): string {
+  if (ws.kind === "paved_width") return "Paved width (carriageway + paved shoulders)";
+  if (ws.layer === "subgrade") return "Formation Width";
+  return `${GEOMETRY_LAYER_LABELS[ws.layer]} layer width`;
+}
 
 export interface GeometryClassification {
   status: GeometryItemStatus;
   layer: GeometryItemLayer | null;
+  /** Present when status = "calculable" — the reusable calculation to run. */
+  calc?: GeometryCalcSpec;
   reason: string;
 }
 
@@ -147,8 +185,8 @@ export interface GeometryBoqItemLike {
   canonicalUnit?: string | null;
   workCategory?: string | null;
   displayName?: string | null;
-  /** 01A — existing saved BOQ Layer Config (boq_items.layer_config jsonb). */
-  layerConfig?: { layerType?: string | null; mixType?: string | null } | null;
+  /** 01A/01B — existing saved BOQ Layer Config (boq_items.layer_config jsonb). */
+  layerConfig?: { layerType?: string | null; mixType?: string | null; thicknessMm?: number | null } | null;
 }
 
 // 01A — explicit saved Layer Config mixType is the HIGHEST-priority source.
@@ -162,6 +200,21 @@ const MIXTYPE_TO_LAYER: Record<string, GeometryLayerType> = {
   "DBM": "dbm", "DENSE BITUMINOUS MACADAM": "dbm",
   "BC": "bc", "BITUMINOUS CONCRETE": "bc",
 };
+
+// 01B — mixTypes that are real thickness-bearing pavement courses but NOT one
+// of the five physical design layers. They calculate as volume_layer using the
+// paved width, with thickness from the item's OWN Layer Config (thicknessMm) —
+// no new engine formula and no new GEOMETRY_LAYER_TYPES entry per mix.
+const MIXTYPE_ITEM_COURSE: Record<string, string> = {
+  "SDBC": "SDBC", "SEMI DENSE BITUMINOUS CONCRETE": "SDBC", "SEMI-DENSE BITUMINOUS CONCRETE": "SDBC",
+  "BM": "BM", "BITUMINOUS MACADAM": "BM",
+};
+
+export function geometryItemCourseFromMixType(mixType: string | null | undefined): string | null {
+  if (typeof mixType !== "string") return null;
+  const key = mixType.trim().toUpperCase();
+  return key ? MIXTYPE_ITEM_COURSE[key] ?? null : null;
+}
 
 export function geometryLayerFromMixType(mixType: string | null | undefined): GeometryLayerType | null {
   if (typeof mixType !== "string") return null;
@@ -185,6 +238,19 @@ const WORK_TYPE_TO_LAYER: Record<string, GeometryItemLayer> = {
 /** Units the Batch-01 pavement math can express results in. */
 const CALCULABLE_UNITS = new Set(["Cum", "Sqm", "MT"]);
 
+// 01B — build the calc spec for a physical design layer (the original seven).
+function specForLayer(layer: GeometryItemLayer, label?: string): GeometryCalcSpec {
+  if (layer === "prime_coat" || layer === "tack_coat") {
+    return { calcType: "area", label: GEOMETRY_LAYER_LABELS[layer], layer, widthSource: { kind: "paved_width" }, thicknessSource: null };
+  }
+  return {
+    calcType: "volume_layer", label: label ?? GEOMETRY_LAYER_LABELS[layer], layer,
+    widthSource: { kind: "layer_width", layer }, thicknessSource: "profile_layer",
+  };
+}
+
+const SCARIFY_RE = /\bscarif\w*|\bmilling\b/i;
+
 export function classifyItemForGeometry(item: GeometryBoqItemLike): GeometryClassification {
   const desc = item.description ?? "";
   const canon = canonicalizeUnit(item.canonicalUnit || item.unit || "");
@@ -199,7 +265,30 @@ export function classifyItemForGeometry(item: GeometryBoqItemLike): GeometryClas
         reason: `Layer Config confirms ${GEOMETRY_LAYER_LABELS[fromMixType]} but BOQ unit "${item.unit}" is not a supported geometry unit (Cum/Sqm/MT).`,
       };
     }
-    return { status: "calculable", layer: fromMixType, reason: `Confirmed by BOQ Layer Config (mixType = ${String(item.layerConfig!.mixType).trim()}).` };
+    return { status: "calculable", layer: fromMixType, calc: specForLayer(fromMixType), reason: `Confirmed by BOQ Layer Config (mixType = ${String(item.layerConfig!.mixType).trim()}).` };
+  }
+
+  // Priority 1b (01B): mixTypes that are real pavement courses but not one of
+  // the five physical design layers (SDBC, BM). volume_layer over the paved
+  // width; thickness from the item's own Layer Config — never parsed from the
+  // description and never fabricated.
+  const itemCourse = geometryItemCourseFromMixType(item.layerConfig?.mixType);
+  if (itemCourse) {
+    if (!CALCULABLE_UNITS.has(canon)) {
+      return { status: "needs_mapping", layer: null, reason: `Layer Config confirms ${itemCourse} but BOQ unit "${item.unit}" is not a supported geometry unit (Cum/Sqm/MT).` };
+    }
+    const tMm = item.layerConfig?.thicknessMm;
+    // Thickness is required REGARDLESS of UoM: SDBC/BM are thickness-bearing
+    // courses, and an unconfigured thickness must surface as needs_mapping —
+    // never silently degrade to an area quantity.
+    if (!(typeof tMm === "number" && Number.isFinite(tMm) && tMm > 0)) {
+      return { status: "needs_mapping", layer: null, reason: `${itemCourse} needs its thickness set in the item's Layer Config before geometry can calculate it.` };
+    }
+    return {
+      status: "calculable", layer: null,
+      calc: { calcType: "volume_layer", label: itemCourse, layer: null, widthSource: { kind: "paved_width" }, thicknessSource: "item_config", itemThicknessMm: tMm ?? null },
+      reason: `Confirmed by BOQ Layer Config (mixType = ${String(item.layerConfig!.mixType).trim()}); thickness from item Layer Config.`,
+    };
   }
 
   const resolution = resolveWorkType(desc, item.unit ?? "", {
@@ -227,7 +316,21 @@ export function classifyItemForGeometry(item: GeometryBoqItemLike): GeometryClas
         reason: `Recognised as ${GEOMETRY_LAYER_LABELS[mapped]} but BOQ unit "${item.unit}" is not a supported geometry unit (Cum/Sqm/MT) — check the item or its unit.`,
       };
     }
-    return { status: "calculable", layer: mapped, reason: `Classified as ${GEOMETRY_LAYER_LABELS[mapped]} by work-type resolver.` };
+    return { status: "calculable", layer: mapped, calc: specForLayer(mapped), reason: `Classified as ${GEOMETRY_LAYER_LABELS[mapped]} by work-type resolver.` };
+  }
+
+  // 01B — scarifying/milling of existing pavement: an AREA treatment when
+  // the description is explicit AND the BOQ unit is Sqm (unambiguous basis).
+  // Any other dismantling (structures, Cum, LS…) stays out of geometry.
+  if (wt === "dismantling" && SCARIFY_RE.test(desc)) {
+    if (canon === "Sqm") {
+      return {
+        status: "calculable", layer: null,
+        calc: { calcType: "area", label: "Scarifying / Milling", layer: null, widthSource: { kind: "paved_width" }, thicknessSource: null },
+        reason: "Scarifying/milling of existing pavement measured in Sqm — area basis.",
+      };
+    }
+    return { status: "needs_mapping", layer: null, reason: `Scarifying/milling item in "${item.unit}" — area basis needs a Sqm unit; confirm the item before geometry can calculate it.` };
   }
 
   if (wt === "earthwork") {
@@ -235,7 +338,7 @@ export function classifyItemForGeometry(item: GeometryBoqItemLike): GeometryClas
       if (!CALCULABLE_UNITS.has(canon)) {
         return { status: "needs_mapping", layer: "subgrade", reason: `Subgrade item with unsupported BOQ unit "${item.unit}".` };
       }
-      return { status: "calculable", layer: "subgrade", reason: "Earthwork item explicitly describing subgrade." };
+      return { status: "calculable", layer: "subgrade", calc: specForLayer("subgrade"), reason: "Earthwork item explicitly describing subgrade." };
     }
     return { status: "unsupported", layer: null, reason: "Earthwork (embankment/cut/fill) — geometry for earthwork comes in Geometry Batch 02." };
   }
@@ -256,7 +359,11 @@ export interface GeometryCorridorInput {
 }
 
 export interface GeometryCalcBasis {
-  layer: GeometryItemLayer;
+  layer: GeometryItemLayer | null; // physical layer binding, when there is one
+  calcType: GeometryCalcType;      // 01B — which reusable calculation ran
+  calcLabel: string;               // 01B — e.g. "WMM", "SDBC", "Scarifying / Milling"
+  widthSource: string;             // 01B — human-readable width provenance
+  thicknessSource: GeometryThicknessSource | null; // 01B — provenance for volume items
   lengthM: number;
   widthM: number;
   thicknessM: number | null;   // null for area-based results
@@ -267,9 +374,9 @@ export interface GeometryCalcBasis {
 }
 
 export type GeometryItemResult =
-  | { boqItemId: number; status: "calculated"; layer: GeometryItemLayer; quantity: number; unit: string; basis: GeometryCalcBasis }
-  | { boqItemId: number; status: "conversion_required"; layer: GeometryItemLayer; unit: string; reason: string; basis: Omit<GeometryCalcBasis, "outputUnit" | "conversion"> }
-  | { boqItemId: number; status: "layer_not_configured"; layer: GeometryItemLayer; unit: string; reason: string }
+  | { boqItemId: number; status: "calculated"; layer: GeometryItemLayer | null; quantity: number; unit: string; basis: GeometryCalcBasis }
+  | { boqItemId: number; status: "conversion_required"; layer: GeometryItemLayer | null; unit: string; reason: string; basis: Omit<GeometryCalcBasis, "outputUnit" | "conversion"> }
+  | { boqItemId: number; status: "layer_not_configured"; layer: GeometryItemLayer | null; unit: string; reason: string }
   | { boqItemId: number; status: "needs_mapping"; layer: GeometryItemLayer | null; unit: string; reason: string }
   | { boqItemId: number; status: "unsupported"; layer: null; unit: string; reason: string };
 
@@ -310,41 +417,61 @@ export function computeGeometryPreview(
     if (cls.status === "unsupported") {
       return { boqItemId: item.id, status: "unsupported", layer: null, unit: item.unit, reason: cls.reason };
     }
-    if (cls.status === "needs_mapping") {
+    if (cls.status === "needs_mapping" || !cls.calc) {
       return { boqItemId: item.id, status: "needs_mapping", layer: cls.layer, unit: item.unit, reason: cls.reason };
     }
-    const layer = cls.layer as GeometryItemLayer;
-    const widthM = applicableLayerWidthM(layer, profile);
+    const calc = cls.calc;
+    const layer = cls.layer;
+
+    // ── Width (01B: resolved from the spec's declared source, reported back) ──
+    const widthM = calc.widthSource.kind === "layer_width"
+      ? applicableLayerWidthM(calc.widthSource.layer, profile)
+      : n(profile.carriagewayWidthM) + n(profile.pavedShoulderLhsM) + n(profile.pavedShoulderRhsM);
+    const wsLabel = widthSourceLabel(calc.widthSource);
     if (!(widthM > 0)) {
       return { boqItemId: item.id, status: "layer_not_configured", layer, unit: item.unit, reason: "Enter road widths in the geometry profile first." };
     }
 
     const canon = canonicalizeUnit(item.canonicalUnit || item.unit || "");
-    const isSurface = layer === "prime_coat" || layer === "tack_coat";
 
-    // Thickness (mm → m) for volume math on configurable layers.
+    // ── Thickness (mm → m) for volume calculations, from the declared source ──
     let thicknessM: number | null = null;
-    if (!isSurface) {
-      const cfg = profile.layers.find(l => l.layerType === layer);
-      if (!cfg || !cfg.enabled) {
-        return { boqItemId: item.id, status: "layer_not_configured", layer, unit: item.unit, reason: `${GEOMETRY_LAYER_LABELS[layer]} layer is not enabled in the geometry profile.` };
-      }
-      if (canon !== "Sqm") { // Sqm items need no thickness
-        if (cfg.thicknessMm == null || !(cfg.thicknessMm > 0)) {
-          return { boqItemId: item.id, status: "layer_not_configured", layer, unit: item.unit, reason: `Enter ${GEOMETRY_LAYER_LABELS[layer]} thickness in the geometry profile.` };
+    if (calc.calcType === "volume_layer" && canon !== "Sqm") { // Sqm items need no thickness
+      if (calc.thicknessSource === "profile_layer") {
+        const layerCfg = profile.layers.find(l => l.layerType === calc.layer);
+        if (!layerCfg || !layerCfg.enabled) {
+          return { boqItemId: item.id, status: "layer_not_configured", layer, unit: item.unit, reason: `${calc.label} layer is not enabled in the geometry profile.` };
         }
-        thicknessM = cfg.thicknessMm / 1000;
+        if (layerCfg.thicknessMm == null || !(layerCfg.thicknessMm > 0)) {
+          return { boqItemId: item.id, status: "layer_not_configured", layer, unit: item.unit, reason: `Enter ${calc.label} thickness in the geometry profile.` };
+        }
+        thicknessM = layerCfg.thicknessMm / 1000;
+      } else if (calc.thicknessSource === "item_config") {
+        if (calc.itemThicknessMm == null || !(calc.itemThicknessMm > 0)) {
+          return { boqItemId: item.id, status: "needs_mapping", layer, unit: item.unit, reason: `${calc.label} needs its thickness set in the item's Layer Config.` };
+        }
+        thicknessM = calc.itemThicknessMm / 1000;
+      } else {
+        return { boqItemId: item.id, status: "needs_mapping", layer, unit: item.unit, reason: `${calc.label} volume calculation has no reliable thickness source.` };
+      }
+    }
+    // volume_layer + Sqm items also need the layer enabled when profile-bound
+    if (calc.calcType === "volume_layer" && canon === "Sqm" && calc.thicknessSource === "profile_layer") {
+      const layerCfg = profile.layers.find(l => l.layerType === calc.layer);
+      if (!layerCfg || !layerCfg.enabled) {
+        return { boqItemId: item.id, status: "layer_not_configured", layer, unit: item.unit, reason: `${calc.label} layer is not enabled in the geometry profile.` };
       }
     }
 
     const fmtNum = (v: number) => (Number.isInteger(v) ? String(v) : String(round2(v)));
+    const baseMeta = { layer, calcType: calc.calcType, calcLabel: calc.label, widthSource: wsLabel, thicknessSource: canon === "Sqm" || calc.calcType === "area" ? null : calc.thicknessSource } as const;
 
     if (canon === "Sqm") {
       const qty = round2(lengthM * widthM);
       return {
         boqItemId: item.id, status: "calculated", layer, quantity: qty, unit: item.unit,
         basis: {
-          layer, lengthM, widthM, thicknessM: null,
+          ...baseMeta, lengthM, widthM, thicknessM: null,
           formula: `${fmtNum(lengthM)} m × ${fmtNum(widthM)} m`,
           internalUnit: "Sqm", outputUnit: item.unit,
           conversion: canonicalizeUnit(item.unit) === "Sqm" && item.unit !== "Sqm" ? `displayed in BOQ unit "${item.unit}" (≡ Sqm)` : null,
@@ -353,17 +480,16 @@ export function computeGeometryPreview(
     }
 
     if (canon === "Cum") {
-      const t = thicknessM ?? (isSurface ? null : thicknessM);
-      if (t == null) {
-        // Surface treatment measured in Cum is unusual — don't guess.
-        return { boqItemId: item.id, status: "needs_mapping", layer, unit: item.unit, reason: `${GEOMETRY_LAYER_LABELS[layer]} measured in "${item.unit}" needs a thickness basis — not supported in Batch 01.` };
+      if (calc.calcType === "area" || thicknessM == null) {
+        // Area treatment measured in Cum is unusual — don't guess.
+        return { boqItemId: item.id, status: "needs_mapping", layer, unit: item.unit, reason: `${calc.label} measured in "${item.unit}" needs a thickness basis — not safely available.` };
       }
-      const qty = round2(lengthM * widthM * t);
+      const qty = round2(lengthM * widthM * thicknessM);
       return {
         boqItemId: item.id, status: "calculated", layer, quantity: qty, unit: item.unit,
         basis: {
-          layer, lengthM, widthM, thicknessM: t,
-          formula: `${fmtNum(lengthM)} m × ${fmtNum(widthM)} m × ${t} m`,
+          ...baseMeta, lengthM, widthM, thicknessM,
+          formula: `${fmtNum(lengthM)} m × ${fmtNum(widthM)} m × ${thicknessM} m`,
           internalUnit: "Cum", outputUnit: item.unit,
           conversion: canonicalizeUnit(item.unit) === "Cum" && item.unit !== "Cum" ? `displayed in BOQ unit "${item.unit}" (≡ Cum)` : null,
         },
@@ -371,12 +497,12 @@ export function computeGeometryPreview(
     }
 
     // MT — mass output needs an explicit density/conversion basis. Batch 01
-    // has no density input, so never fabricate a number (spec §7C / §18 H).
+    // has no density input, so never fabricate a number.
     return {
       boqItemId: item.id, status: "conversion_required", layer, unit: item.unit,
       reason: `BOQ unit is "${item.unit}" (mass). A density/conversion basis is required to convert geometry volume to ${item.unit} — none is configured.`,
       basis: {
-        layer, lengthM, widthM, thicknessM,
+        ...baseMeta, lengthM, widthM, thicknessM,
         formula: thicknessM != null ? `${fmtNum(lengthM)} m × ${fmtNum(widthM)} m × ${thicknessM} m` : `${fmtNum(lengthM)} m × ${fmtNum(widthM)} m`,
         internalUnit: thicknessM != null ? "Cum" : "Sqm",
       },
