@@ -1,0 +1,18 @@
+---
+name: Road Geometry Batch 01
+description: Optional project-level road geometry profile + shared quantity engine (preview-only); invariants and safety gates
+---
+
+# Road Geometry & Quantities (Geometry Batch 01)
+
+- `shared/roadGeometry.ts` is the ONLY geometry-quantity engine (pure, no React/DB). UI (`client/src/pages/RoadGeometry.tsx`, route `/work-program/:id/geometry`, gated `qto_boq`) computes the preview client-side from the shared engine — nothing feeds Auto Sequence/Gantt/Arrangements/BOM/DPR.
+- Storage: isolated `road_geometry_profiles` table (one row per project, layers as jsonb, `enabled` int default 0 = OFF for existing projects). Deliberately separate from `work_program_bars.plannedWidthM/plannedThicknessMm` — never merge these. Calculated qty is never persisted; BOQ qty never modified.
+- **Why:** preview/comparison feature only; corrupting planning fields or persisting derived qty was the spec's top risk.
+
+**Hard invariants (enforced in engine + tests `tests/roadGeometryBatch01.test.ts`):**
+- Output UoM = BOQ item's own unit (alias preserved); MT with no density → `conversion_required`, never a fabricated number.
+- Corridor from `boq_projects.chainageFrom/To` + `corridorConfirmed`; unconfirmed/invalid/inverted → `corridor_unconfirmed`, zero math. Full corridor, no scope deductions (Batch 02+).
+- Classification reuses `resolveWorkType` but ONLY high-confidence resolutions calculate; medium-confidence category fallbacks (BITUMINOUS→bituminous_base, SUBBASE_BASE→gsb) → `needs_mapping`. Subgrade only via explicit `/sub-?grade/` description (resolver has no subgrade key). Other earthwork → unsupported until Geometry Batch 02.
+- Default width rule (PROPOSED, pending user sign-off, overridable per layer): DBM/BC/tack & GSB/WMM/prime = carriageway + paved shoulders; subgrade = + soft shoulders.
+
+**How to apply:** any later geometry batch (earthwork geometry, No-Scope masking, density-based MT conversion, feeding downstream) must extend the engine's result statuses, not bypass them; keep PUT route's strict 400 validation pattern (bounded finite numbers, unique layer types).

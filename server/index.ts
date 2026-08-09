@@ -90,6 +90,9 @@ app.use((req, res, next) => {
     storage.ensureStockReconciliationTables()
       .then(() => console.log("Startup: ensureStockReconciliationTables — stock_reconciliation_sessions/items tables verified/created"))
       .catch(e => console.error("Pre-routes: Failed to ensure stock reconciliation tables:", e)),
+    storage.ensureRoadGeometryTable()
+      .then(() => console.log("Startup: ensureRoadGeometryTable — road_geometry_profiles table verified/created"))
+      .catch(e => console.error("Pre-routes: Failed to ensure road_geometry_profiles table:", e)),
     storage.ensureProjectScopeSchema()
       .then(() => console.log("Startup: ensureProjectScopeSchema — project_scope_segments table + corridor/scope columns verified/added"))
       .catch(e => console.error("Pre-routes: Failed to ensure project scope schema:", e)),

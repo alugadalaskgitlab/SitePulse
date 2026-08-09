@@ -10869,6 +10869,95 @@ export async function registerRoutes(
     }
   });
 
+  // ── Geometry Batch 01: project Road Geometry profile (optional) ────────────
+  app.get("/api/boq/projects/:id/road-geometry", async (req, res) => {
+    try {
+      if (!assertView(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      if (!Number.isFinite(projectId) || projectId <= 0) {
+        return res.status(400).json({ error: "invalid_project_id" });
+      }
+      const profile = await storage.getRoadGeometryProfile(projectId);
+      // null profile = geometry never enabled — existing projects unaffected.
+      res.json(profile ?? null);
+    } catch (err) {
+      console.error("GET road-geometry:", err);
+      res.status(500).json({ error: "Failed to fetch road geometry profile" });
+    }
+  });
+
+  app.put("/api/boq/projects/:id/road-geometry", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      if (!Number.isFinite(projectId) || projectId <= 0) {
+        return res.status(400).json({ error: "invalid_project_id" });
+      }
+      const project = await storage.getBoqProject(projectId);
+      if (!project) return res.status(404).json({ error: "project_not_found" });
+
+      const b = req.body ?? {};
+      // Strict measurement parsing: null/"" = not set; anything else must be
+      // a finite non-negative number within a sane bound — otherwise 400.
+      const errors: string[] = [];
+      const num = (v: any, field: string, max: number) => {
+        if (v == null || v === "") return null;
+        const x = Number(v);
+        if (!Number.isFinite(x) || x < 0 || x > max) {
+          errors.push(`${field} must be a number between 0 and ${max}`);
+          return null;
+        }
+        return x;
+      };
+      const VALID_LAYERS = new Set(["subgrade", "gsb", "wmm", "dbm", "bc"]);
+      let layers: any[] | null = null;
+      if (b.layers != null) {
+        if (!Array.isArray(b.layers)) {
+          errors.push("layers must be an array");
+        } else {
+          const seen = new Set<string>();
+          layers = [];
+          for (const l of b.layers) {
+            if (!l || !VALID_LAYERS.has(l.layerType)) {
+              errors.push(`invalid layerType: ${l?.layerType}`);
+              continue;
+            }
+            if (seen.has(l.layerType)) {
+              errors.push(`duplicate layerType: ${l.layerType}`);
+              continue;
+            }
+            seen.add(l.layerType);
+            layers.push({
+              layerType: l.layerType,
+              enabled: l.enabled === true,
+              thicknessMm: num(l.thicknessMm, `${l.layerType}.thicknessMm`, 2000),
+              overrideWidthM: num(l.overrideWidthM, `${l.layerType}.overrideWidthM`, 100),
+            });
+          }
+        }
+      }
+      const widths = {
+        carriagewayWidthM: num(b.carriagewayWidthM, "carriagewayWidthM", 100),
+        pavedShoulderLhsM: num(b.pavedShoulderLhsM, "pavedShoulderLhsM", 50),
+        pavedShoulderRhsM: num(b.pavedShoulderRhsM, "pavedShoulderRhsM", 50),
+        softShoulderLhsM: num(b.softShoulderLhsM, "softShoulderLhsM", 50),
+        softShoulderRhsM: num(b.softShoulderRhsM, "softShoulderRhsM", 50),
+      };
+      if (errors.length > 0) {
+        return res.status(400).json({ error: "invalid_geometry_payload", details: errors });
+      }
+      const profile = await storage.upsertRoadGeometryProfile(projectId, {
+        enabled: b.enabled === true || b.enabled === 1 ? 1 : 0,
+        ...widths,
+        layers: layers as any,
+      });
+      res.json(profile);
+    } catch (err) {
+      console.error("PUT road-geometry:", err);
+      res.status(500).json({ error: "Failed to save road geometry profile" });
+    }
+  });
+
   app.put("/api/boq/projects/:id/program-settings", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id);

@@ -1,0 +1,679 @@
+GEOMETRY BATCH 01 — ROAD GEOMETRY + PAVEMENT QUANTITY ENGINE FOUNDATION
+
+Batch 03 is closed.
+
+We are now starting the optional Enterprise Road Geometry / Engineering Quantity feature.
+
+This first geometry batch must remain deliberately small.
+
+OBJECTIVE
+
+Create a simple project-level Road Geometry setup and a reusable geometry quantity engine for linear pavement items.
+
+For this batch:
+
+- geometry is OPTIONAL;
+- Contract BOQ quantities remain untouched;
+- calculated quantities are for preview/comparison only;
+- do NOT feed geometry quantities into Auto Sequence, Gantt, Execution Arrangement, BOM, DPR, No-Scope quantity deductions or RA bills yet.
+
+The purpose is to establish and verify the engineering calculation foundation first.
+
+1. HARD UOM INVARIANT
+
+This is mandatory throughout the design.
+
+EVERY calculated quantity exposed by the geometry/quantity engine must be returned and displayed in the ACTUAL UoM of that BOQ item.
+
+Never infer output UoM from work type.
+
+Examples:
+
+- BOQ DBM unit = Cum → calculated DBM must be shown in Cum.
+- BOQ BC unit = Cum → calculated BC must be shown in Cum.
+- BOQ Tack Coat unit = Sqm → calculated Tack must be shown in Sqm.
+- BOQ WMM unit = Cum → calculated WMM must be shown in Cum.
+- If another project's BOQ genuinely uses MT for an item → only then may the final result be MT.
+- Rmt / Nos / other units must similarly respect the actual BOQ item unit.
+
+Internal calculations may use length, area, volume, density, etc., but before a calculated quantity leaves the engine it must be normalized to:
+
+{
+  quantity,
+  unit: actual BOQ item UoM,
+  calculationBasis / explanation
+}
+
+Do not hardcode "bituminous = MT" or similar assumptions.
+
+2. INVESTIGATE BEFORE BUILDING
+
+First inspect and report:
+
+- Project schema and current project setup/settings UI.
+- BOQ item fields:
+  • unit/UoM
+  • category/work classification
+  • description/short name
+  • any current plannedWidthM / plannedThicknessMm fields.
+- `shared/quantityResolver.ts`.
+- Existing quantity calculations in programme/Gantt that already use width/thickness.
+- Existing work classification such as pavement / earthwork-estimate / mt-proportional.
+- Existing unit-normalization helpers and tests.
+
+IMPORTANT:
+
+Identify the existing canonical BOQ/UoM normalization helper(s) by exact file/function name before writing any new unit-normalization code.
+
+Inspect relevant existing tests such as:
+- `tests/uomConvert.test.ts`
+- `tests/boqNormalise.test.ts`
+or their current equivalents.
+
+Reuse the existing canonical normalization path.
+
+If any new UoM logic is genuinely required, justify why the existing helper cannot handle it.
+
+Do NOT create a second parallel normalization implementation.
+
+Also confirm explicitly whether existing work classification distinguishes individual pavement layers:
+
+- Subgrade
+- GSB
+- WMM
+- DBM
+- BC
+- Prime
+- Tack
+
+or whether it only has coarse groups such as:
+- pavement
+- earthwork-estimate
+- mt-proportional.
+
+If existing classification is too coarse, design and report the proposed item→geometry-layer mapping mechanism before relying on it.
+
+Possible approaches may include:
+- existing persisted work category/layer field;
+- deterministic description/short-name mapping;
+- explicit manual mapping where necessary.
+
+Do NOT assume individual pavement-layer classification already exists.
+
+3. FEATURE AVAILABILITY
+
+This feature is intended for the Enterprise version/module.
+
+However, do not implement broad commercial licensing/plan logic in this batch unless an existing feature-gate mechanism already exists and this can plug into it trivially.
+
+At project level provide an explicit optional state conceptually like:
+
+Enable Road Geometry & Quantities
+
+Default for existing projects must be OFF / unset so existing projects behave exactly as before.
+
+4. SIMPLE UI — DO NOT CREATE A ROAD-DESIGN FORM
+
+Create a compact project-level section/page/card:
+
+ROAD GEOMETRY & QUANTITIES
+
+The UI must be simple enough for a PM/site engineer and avoid unnecessary technical fields.
+
+For Geometry Batch 01 capture only the typical/proposed pavement section needed for pavement quantities.
+
+Suggested basic inputs:
+
+A. ROAD WIDTHS
+
+- Carriageway width
+- Paved shoulder LHS — optional
+- Paved shoulder RHS — optional
+- Soft shoulder LHS — optional
+- Soft shoulder RHS — optional
+
+Do not require shoulder values if the project has none.
+
+Existing carriageway dimensions may be deferred unless they are already needed by the chosen architecture.
+
+The main Batch-01 requirement is the PROPOSED / FINISHED section used for pavement quantities.
+
+B. PAVEMENT LAYERS
+
+Keep this visually compact.
+
+Support initially:
+
+- Subgrade
+- GSB
+- WMM
+- DBM
+- BC
+
+For each applicable layer:
+
+- enabled / applicable
+- thickness
+
+Prefer thickness entry in mm for normal UX.
+
+Do not expose unnecessary engineering parameters.
+
+5. LAYER WIDTHS
+
+SitePulse must know the applicable width for each layer.
+
+Do NOT blindly assume every layer has exactly the carriageway width.
+
+For Batch 01:
+
+- derive a sensible proposed default layer width from the entered road section;
+- allow a compact override only where needed.
+
+For example, a proposed rule might be:
+
+- bituminous layers = carriageway + applicable paved shoulders
+- granular layers = defined pavement/formation width
+- Subgrade = its intended formation/subgrade width
+
+BUT THIS IS AN ENGINEERING BUSINESS RULE, NOT JUST A CODING DETAIL.
+
+Before treating any default rule as final:
+
+- report the proposed default width rule for every supported layer;
+- identify the assumptions behind it;
+- make the rule easy to override;
+- do not represent the rule as engineeringly authoritative merely because it is implemented consistently.
+
+We will review/sign off the default rules after seeing the report and preview.
+
+A simple model is sufficient:
+
+Layer | Default Width | Thickness | Override Width (optional)
+
+The UI may hide width overrides behind:
+
+Advanced / Adjust layer widths
+
+Do not create a complicated cross-section designer.
+
+6. PROJECT LENGTH / CHAINAGE BASIS
+
+Use the existing Project Scope/corridor information as the geometry length source.
+
+Do not ask the user to re-enter project length if SitePulse already knows the corridor From/To.
+
+IMPORTANT:
+
+If corridor From/To is missing, invalid, or not yet confirmed, do NOT calculate using zero, draft, partial, or guessed length.
+
+Show a clear state such as:
+
+"Confirm project corridor first to calculate geometry quantities."
+
+Do not create a second corridor length field inside Road Geometry.
+
+For Batch 01, calculate against the FULL confirmed contractual/project corridor geometry only.
+
+Do NOT deduct:
+- No-Scope
+- Withdrawn
+- Temporary Block
+
+from geometry quantity in this batch.
+
+Scope masking comes later.
+
+The purpose now is:
+
+"What quantity does this typical road geometry produce for the full confirmed project corridor?"
+
+7. PAVEMENT QUANTITY CALCULATIONS
+
+Build a reusable geometry quantity engine/service in shared code.
+
+Do not calculate quantities inside the React component.
+
+At minimum support:
+
+A. AREA-BASED ITEMS
+
+Where the BOQ UoM and mapped work type require area:
+
+Quantity = applicable width × length
+
+Typical examples:
+- Prime Coat
+- Tack Coat
+- other Sqm linear treatments
+
+B. VOLUME-BASED PAVEMENT ITEMS
+
+For layer quantities:
+
+Quantity = applicable width × thickness × length
+
+with thickness converted correctly from mm to metres internally.
+
+Typical examples:
+- Subgrade
+- GSB
+- WMM
+- DBM
+- BC
+
+If BOQ UoM is Cum, return Cum directly.
+
+C. MASS-BASED BOQ ITEMS
+
+Only if the actual BOQ item UoM requires mass:
+
+geometry volume may be converted using an explicit density/conversion basis.
+
+Do not add a complicated density UI in this batch unless needed by actual test data.
+
+If a mass conversion cannot be safely calculated because no density is configured:
+
+return a clear "conversion input required" state rather than inventing a density.
+
+Again:
+work type must NEVER determine the final output UoM.
+BOQ UoM determines the final output UoM.
+
+8. BOQ ITEM → GEOMETRY LAYER MAPPING
+
+Do not automatically apply geometry math to every BOQ item.
+
+Identify only suitable LINEAR pavement items.
+
+Existing `allocationRuleForItem` or equivalent coarse classification may NOT be sufficient to distinguish individual layers.
+
+Before implementation, report whether the current code can reliably distinguish:
+
+- Subgrade
+- GSB
+- WMM
+- Prime
+- Tack
+- DBM
+- BC
+
+If not, implement the smallest clean mapping mechanism necessary for Geometry Batch 01.
+
+The mapping must distinguish between:
+
+- Geometry calculable
+- Needs mapping/configuration
+- Unsupported/non-linear for this geometry phase
+
+Do not rely on fragile description regex alone if an existing persisted classification can be reused.
+
+If deterministic description/short-name matching is required as a fallback:
+- keep it centralized;
+- test it;
+- surface uncertain/unmapped items instead of guessing.
+
+Do not attempt to calculate:
+- structures
+- culverts
+- LS items
+- Nos.
+- miscellaneous/non-linear items
+
+merely because they appear in the BOQ.
+
+Do not modify BOQ mappings globally in this batch unless strictly required for this feature.
+
+9. CONTRACT BOQ VS GEOMETRY PREVIEW
+
+Provide a simple calculated preview/comparison.
+
+For each geometry-calculable BOQ item show conceptually:
+
+Item
+BOQ Qty
+BOQ UoM
+Geometry Calculated Qty
+Difference
+Difference %
+
+Example:
+
+WMM
+BOQ Qty: 2,950.00 Cum
+Geometry Qty: 2,880.00 Cum
+Difference: -70.00 Cum (-2.37%)
+
+BC
+BOQ Qty: 1,460.00 Cum
+Geometry Qty: 1,425.00 Cum
+Difference: -35.00 Cum (-2.40%)
+
+Do not overwrite BOQ quantity.
+
+Do not call Geometry Qty "Eligible Qty" yet.
+
+Use terminology such as:
+
+Geometry Calculated Qty
+or
+Engineering Calculated Qty
+
+This is a comparison/diagnostic figure in Batch 01.
+
+10. CALCULATION TRANSPARENCY
+
+For each calculated result, retain enough metadata so the user/system can know how it was derived.
+
+Conceptually return:
+
+- quantity
+- unit
+- basis: "geometry"
+- length used
+- width used
+- thickness used where applicable
+- geometry layer type
+- any unit conversion used
+- density/conversionBasis only if applicable
+
+The UI can show a compact "How calculated" detail/tooltip rather than cluttering the screen.
+
+Example:
+
+BC Geometry Qty: 1,425.00 Cum
+Based on:
+3,800 m × 9.375 m × 0.040 m
+
+Do not show unnecessary calculation detail by default.
+
+11. UNIT NORMALIZATION
+
+This must use the EXISTING canonical BOQ/UoM normalization path identified during investigation.
+
+Do not introduce independent aliases or a new normalization table unless the existing canonical module genuinely cannot support the required unit.
+
+Internally normalize compatible aliases where already supported, e.g.:
+
+Cum / cum / m3 / m³
+Sqm / sqm / m2 / m²
+Rmt / rm / m
+MT / tonne / ton where already supported
+
+BUT:
+
+- preserve the BOQ's original/display UoM for user-facing output;
+- use normalized unit only internally for calculation compatibility;
+- final output unit must be the BOQ item's UoM.
+
+Do not recreate the previous "1 cum / 1 hec" class of normalization bugs.
+
+In the report state:
+- exact shared helper/module reused;
+- whether any new alias was added;
+- why any addition was necessary.
+
+12. ARCHITECTURE
+
+Prefer a shared service/module conceptually like:
+
+shared/roadGeometry.ts
+or
+shared/geometryQuantityEngine.ts
+
+Use naming consistent with the codebase.
+
+It should NOT depend on React/UI.
+
+Its inputs should be physical geometry + BOQ item metadata.
+
+Its output should be deterministic and testable.
+
+Keep this engine separate from `quantityResolver.ts` for this batch if that reduces risk.
+
+Do NOT yet change the resolver's production calculation basis.
+
+Later, Geometry can plug into the resolver as an alternate calculation basis.
+
+13. DATA MODEL / SCHEMA
+
+A small schema addition IS acceptable in this batch because geometry inputs are persistent physical project facts.
+
+The new project-level geometry data must live in its OWN geometry/profile table or similarly isolated structure.
+
+Do NOT:
+
+- add these project-level typical-section fields to `work_program_bars`;
+- repurpose `plannedWidthM`;
+- repurpose `plannedThicknessMm`;
+- use per-bar planning fields as project design geometry storage.
+
+These are two distinct concepts:
+
+A. Project-level typical/design geometry
+B. Per-stretch/per-bar planning or actual width/thickness
+
+Keep them structurally separate.
+
+Prefer:
+
+one project-level road geometry/profile record
+
+with only the necessary Batch-01 inputs.
+
+If layer data is cleaner as child rows, keep the model simple and extensible.
+
+Do not add:
+- calculated geometry quantity columns to BOQ items
+- eligibleQty storage
+- noScopeQty storage
+- programmeQty storage
+
+Calculated quantities must remain derived.
+
+Before running any migration:
+- inspect generated SQL;
+- confirm it is additive only;
+- no DROP TABLE / DROP COLUMN;
+- no unrelated schema drift.
+
+Report the migration before/after structure.
+
+14. EXISTING PROJECT SAFETY
+
+Existing projects with no geometry configuration must behave exactly as they do today.
+
+No Auto Sequence or other workflow should fail because road geometry is absent.
+
+Geometry configuration is optional.
+
+15. DO NOT ADD EARTHWORK YET
+
+Do NOT add:
+
+- formation width
+- average fill depth
+- average cut depth
+- side slopes
+- trapezoidal earthwork calculations
+- reach-wise earthwork profiles
+
+Those belong to Geometry Batch 02.
+
+16. DO NOT INTEGRATE NO-SCOPE YET
+
+Do NOT calculate:
+
+Geometry Full Qty - Geometry No-Scope Qty
+
+yet.
+
+Do not change any No-Scope behaviour.
+
+No-Scope geometry masking belongs to a later batch after the full-scope geometry calculations are verified.
+
+17. DO NOT FEED DOWNSTREAM MODULES YET
+
+Do NOT modify:
+
+- quantityResolver production basis
+- Auto Sequence
+- Gantt
+- Under/Over badges
+- Execution Arrangement
+- Scope applicable quantities
+- BOM/material forecasts
+- DPR quantities
+- Tomorrow's Programme
+- vendor bills
+- RA bills
+- profitability
+
+Geometry Batch 01 is INPUT + ENGINE + PREVIEW only.
+
+18. TESTS
+
+Add focused tests covering at minimum:
+
+A. Geometry disabled/absent:
+existing project behaviour unaffected.
+
+B. Corridor unset/unconfirmed:
+show/return "confirm project corridor first";
+do not calculate against zero/partial length.
+
+C. Area calculation:
+length × width returns correct quantity.
+
+D. Volume calculation:
+length × width × thickness returns correct quantity.
+
+E. Thickness mm→m conversion.
+
+F. BOQ UOM INVARIANT:
+BC/DBM whose BOQ unit is Cum returns and displays Cum.
+
+G. Another item whose BOQ unit is Sqm returns Sqm.
+
+H. If a BOQ item genuinely uses MT and density is unavailable:
+do not fabricate a number;
+return conversion-required state.
+
+I. Original BOQ display UoM preserved despite internal normalized unit.
+
+J. Existing canonical UoM normalizer is reused.
+
+K. Optional shoulder values = zero/no contribution safely.
+
+L. Layer-width override works without changing other layer widths.
+
+M. Unsupported/non-linear BOQ item is not geometry-calculated.
+
+N. Coarse item classification does not silently misclassify individual pavement layers.
+
+O. Uncertain/unmapped pavement item is surfaced as needs-mapping rather than guessed.
+
+P. BOQ Qty remains unchanged.
+
+Q. Geometry calculated quantity is derived, not persisted as BOQ quantity.
+
+R. Project-level geometry fields remain separate from `plannedWidthM` / `plannedThicknessMm`.
+
+S. Existing Batch 01/02/03 regression suites continue to pass.
+
+19. REPORT BACK
+
+After completion report:
+
+A. Files/functions inspected before implementation.
+
+B. Exact existing canonical UoM normalization module/helper reused.
+
+C. Existing BOQ/work classification found.
+
+D. Whether existing classification distinguished individual pavement layers.
+
+E. Final item→geometry-layer mapping mechanism.
+
+F. Files/schema added or modified.
+
+G. Migration SQL and confirmation it was additive only.
+
+H. Confirmation that project geometry is stored separately from per-bar `plannedWidthM` / `plannedThicknessMm`.
+
+I. Final project geometry fields stored.
+
+J. Corridor source used and behaviour when corridor is unconfirmed.
+
+K. PROPOSED DEFAULT APPLICABLE-WIDTH RULE for:
+- Subgrade
+- GSB
+- WMM
+- DBM
+- BC
+- Prime/Tack if supported
+
+For each, explain the engineering assumption.
+
+IMPORTANT:
+Treat these proposed defaults as requiring our review/sign-off.
+Do not assume implementation consistency alone makes the engineering rule final.
+
+L. Geometry engine API and result structure.
+
+M. Exact BOQ UoM normalization/output strategy.
+
+N. At least three worked examples from real/test BOQ items showing:
+- BOQ Qty
+- BOQ UoM
+- geometry inputs
+- Geometry Calculated Qty
+- final output UoM
+- difference
+
+Include at least one bituminous item whose BOQ UoM is Cum.
+
+O. Screenshot/description of the simple Road Geometry UI and quantity comparison.
+
+P. Test results.
+
+Q. Confirmation that:
+- Contract BOQ quantities were not modified;
+- No-Scope was not changed;
+- quantityResolver production basis was not changed;
+- Auto Sequence/Gantt were not changed;
+- Execution Arrangement was not changed;
+- BOM/DPR/RA bills were not changed;
+- Earthwork geometry was not started.
+
+R. Any ambiguity to decide before Geometry Batch 02.
+
+DO NOT START GEOMETRY BATCH 02.
+
+WHAT NOT TO TOUCH
+
+Do not modify:
+- Auto Sequence
+- programmeSequencer quantity semantics
+- Gantt Under/Over
+- Execution Arrangement
+- Project Scope/No-Scope behaviour
+- BOM/material calculations
+- DPR
+- Tomorrow's Programme
+- vendor billing
+- RA bills
+- profitability
+- permissions unrelated to exposing this Enterprise geometry page
+- existing BOQ quantities
+- `work_program_bars` project-design geometry semantics
+
+SUCCESS CRITERION
+
+An optional, simple Road Geometry setup exists and SitePulse can deterministically calculate and preview full-corridor pavement quantities against Contract BOQ quantities.
+
+Every calculated result MUST be expressed in the actual UoM of its BOQ item.
+
+The new project-level geometry must remain structurally separate from per-bar planning geometry.
+
+No existing operational workflow changes yet.

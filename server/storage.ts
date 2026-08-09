@@ -293,6 +293,8 @@ import {
   type BoqProject,
   type InsertBoqProject,
   projectScopeSegments,
+  roadGeometryProfiles,
+  type RoadGeometryProfile,
   type ProjectScopeSegment,
   type InsertProjectScopeSegment,
   type BoqCategory,
@@ -22534,6 +22536,45 @@ export class DatabaseStorage implements IStorage {
     if (!existing) return;
     if (existing.status !== "draft") throw new Error("SEGMENT_NOT_DRAFT: confirmed scope records cannot be deleted — revise them instead");
     await db.delete(projectScopeSegments).where(eq(projectScopeSegments.id, id));
+  }
+
+  // ── Geometry Batch 01: project road geometry profile ───────────────────────
+  /** Idempotent — CREATE TABLE IF NOT EXISTS, safe on every startup. */
+  async ensureRoadGeometryTable(): Promise<void> {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS road_geometry_profiles (
+        id SERIAL PRIMARY KEY,
+        boq_project_id INTEGER NOT NULL UNIQUE,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        carriageway_width_m REAL,
+        paved_shoulder_lhs_m REAL,
+        paved_shoulder_rhs_m REAL,
+        soft_shoulder_lhs_m REAL,
+        soft_shoulder_rhs_m REAL,
+        layers JSONB,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+  }
+
+  async getRoadGeometryProfile(boqProjectId: number): Promise<RoadGeometryProfile | undefined> {
+    const [row] = await db.select().from(roadGeometryProfiles)
+      .where(eq(roadGeometryProfiles.boqProjectId, boqProjectId));
+    return row;
+  }
+
+  async upsertRoadGeometryProfile(boqProjectId: number, data: Partial<RoadGeometryProfile>): Promise<RoadGeometryProfile> {
+    const existing = await this.getRoadGeometryProfile(boqProjectId);
+    if (existing) {
+      const [row] = await db.update(roadGeometryProfiles)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(roadGeometryProfiles.id, existing.id)).returning();
+      return row;
+    }
+    const [row] = await db.insert(roadGeometryProfiles)
+      .values({ ...(data as any), boqProjectId }).returning();
+    return row;
   }
 
   async duplicateBoqProject(id: number): Promise<BoqProject> {

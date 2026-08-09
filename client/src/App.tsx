@@ -135,6 +135,7 @@ const NormsLibrary       = lazy(() => import("@/pages/NormsLibrary"));
 const EarthworkControl   = lazy(() => import("@/pages/EarthworkControl"));
 const ExecutionArrangements = lazy(() => import("@/pages/ExecutionArrangements"));
 const ScopeSetup         = lazy(() => import("@/pages/ScopeSetup"));
+const RoadGeometry       = lazy(() => import("@/pages/RoadGeometry"));
 
 // Estimator / calculator pages
 const EstimatorLogin         = lazy(() => import("@/pages/EstimatorLogin"));
@@ -345,6 +346,7 @@ function AuthedShell() {
           {WP_ENABLED && <Route path="/work-program/:id/earthwork" component={gated(EarthworkControl, "qto_boq")} />}
           {WP_ENABLED && <Route path="/work-program/:id/execution-arrangements" component={gated(ExecutionArrangements, "qto_boq")} />}
           {WP_ENABLED && <Route path="/work-program/:id/scope" component={gatedEither(ScopeSetup, "project_scope", "qto_boq")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/geometry" component={gated(RoadGeometry, "qto_boq")} />}
           {WP_ENABLED && <Route path="/work-program/:id/resource-review" component={gated(ResourceReview, "qto_boq")} />}
           {WP_ENABLED && <Route path="/work-program/:id/item-review" component={gated(BoqItemReview, "qto_boq")} />}
           {WP_ENABLED && <Route path="/norms" component={gated(NormsLibrary, "qto_boq")} />}

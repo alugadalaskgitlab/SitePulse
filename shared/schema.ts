@@ -2660,6 +2660,30 @@ export const insertProjectScopeSegmentSchema = createInsertSchema(projectScopeSe
 export type ProjectScopeSegment = typeof projectScopeSegments.$inferSelect;
 export type InsertProjectScopeSegment = z.infer<typeof insertProjectScopeSegmentSchema>;
 
+// ── Geometry Batch 01: project-level Road Geometry profile ───────────────────
+// One optional record per BOQ project holding the typical/proposed pavement
+// section (widths + layer thicknesses). Deliberately SEPARATE from per-bar
+// planning fields (work_program_bars.plannedWidthM / plannedThicknessMm) —
+// those are per-stretch planning values, this is the project design section.
+// Calculated geometry quantities are always derived, never stored.
+export const roadGeometryProfiles = pgTable("road_geometry_profiles", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull().unique().references(() => boqProjects.id, { onDelete: "cascade" }),
+  enabled: integer("enabled").notNull().default(0), // 0 = off (default for existing projects)
+  carriagewayWidthM: real("carriageway_width_m"),
+  pavedShoulderLhsM: real("paved_shoulder_lhs_m"),
+  pavedShoulderRhsM: real("paved_shoulder_rhs_m"),
+  softShoulderLhsM: real("soft_shoulder_lhs_m"),
+  softShoulderRhsM: real("soft_shoulder_rhs_m"),
+  // JSON array of { layerType: "subgrade"|"gsb"|"wmm"|"dbm"|"bc",
+  //                 enabled: boolean, thicknessMm: number|null,
+  //                 overrideWidthM: number|null }
+  layers: jsonb("layers"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type RoadGeometryProfile = typeof roadGeometryProfiles.$inferSelect;
+
 export const boqCategories = pgTable("boq_categories", {
   id: serial("id").primaryKey(),
   boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
