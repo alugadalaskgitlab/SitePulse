@@ -15,4 +15,11 @@ description: Optional project-level road geometry profile + shared quantity engi
 - Classification reuses `resolveWorkType` but ONLY high-confidence resolutions calculate; medium-confidence category fallbacks (BITUMINOUS→bituminous_base, SUBBASE_BASE→gsb) → `needs_mapping`. Subgrade only via explicit `/sub-?grade/` description (resolver has no subgrade key). Other earthwork → unsupported until Geometry Batch 02.
 - Default width rule (PROPOSED, pending user sign-off, overridable per layer): DBM/BC/tack & GSB/WMM/prime = carriageway + paved shoulders; subgrade = + soft shoulders.
 
+**Batch 01A corrections (Aug 2026):**
+- Classification priority 1 is now explicit `boq_items.layerConfig.mixType` (trim/case-insensitive; only GSB/WMM/DBM/BC map; unknown values like SDBC/BM fall through to the high-confidence resolver, never guessed).
+- `formationWidthM` is a first-class design input (additive column); subgrade suggested width = Formation Width, section-sum fallback only when blank; never auto-overwrite a user value — UI offers an explicit "Use suggested" button.
+- GSB/WMM suggested width = paved width but is a SUGGESTION needing confirmation, not an engineering rule.
+- Decimal-input trap: per-keystroke `Number(e.target.value)` on controlled inputs swallows the trailing "." (can't type 8.75); keep raw string state, convert at compute/save.
+- Form hydration on pages with a `:id` route param must be project-scoped (track hydrated project id, not a boolean) or navigating between projects saves one project's form against another.
+
 **How to apply:** any later geometry batch (earthwork geometry, No-Scope masking, density-based MT conversion, feeding downstream) must extend the engine's result statuses, not bypass them; keep PUT route's strict 400 validation pattern (bounded finite numbers, unique layer types).

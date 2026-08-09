@@ -46,6 +46,9 @@ export interface GeometryLayerConfig {
 
 export interface RoadGeometryProfileInput {
   enabled: boolean;
+  /** 01A — explicit DESIGN INPUT: the prepared formation/subgrade platform width.
+   *  Never derived silently from shoulders once the user has entered it. */
+  formationWidthM?: number | null;
   carriagewayWidthM: number | null;
   pavedShoulderLhsM: number | null;
   pavedShoulderRhsM: number | null;
@@ -74,12 +77,31 @@ export function defaultGeometryLayers(): GeometryLayerConfig[] {
 // Every width is overridable per layer (overrideWidthM).
 const n = (v: number | null | undefined) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
 
+/** 01A — one-time convenience suggestion for Formation Width when blank:
+ *  carriageway + paved + soft shoulders. NEVER silently re-applied once the
+ *  user has entered/confirmed their own value. */
+export function suggestedFormationWidthM(p: Pick<RoadGeometryProfileInput, "carriagewayWidthM" | "pavedShoulderLhsM" | "pavedShoulderRhsM" | "softShoulderLhsM" | "softShoulderRhsM">): number {
+  return n(p.carriagewayWidthM)
+    + n(p.pavedShoulderLhsM) + n(p.pavedShoulderRhsM)
+    + n(p.softShoulderLhsM) + n(p.softShoulderRhsM);
+}
+
+/**
+ * SUGGESTED width per layer (01A wording: suggestion, not engineering truth):
+ *  • Subgrade → Formation Width (design input); falls back to the formation
+ *    suggestion only while no Formation Width has been entered.
+ *  • DBM / BC / Tack → paved width (carriageway + paved shoulders).
+ *  • GSB / WMM / Prime → paved width as an INITIAL suggestion only — these
+ *    commonly differ by design; the per-layer override is the confirmation.
+ */
 export function defaultLayerWidthM(layer: GeometryItemLayer, p: RoadGeometryProfileInput): number {
   const cw = n(p.carriagewayWidthM);
   const paved = n(p.pavedShoulderLhsM) + n(p.pavedShoulderRhsM);
-  const soft = n(p.softShoulderLhsM) + n(p.softShoulderRhsM);
   switch (layer) {
-    case "subgrade": return cw + paved + soft;
+    case "subgrade": {
+      const fw = n(p.formationWidthM);
+      return fw > 0 ? fw : suggestedFormationWidthM(p);
+    }
     case "gsb":
     case "wmm":
     case "prime_coat": return cw + paved;
@@ -125,6 +147,27 @@ export interface GeometryBoqItemLike {
   canonicalUnit?: string | null;
   workCategory?: string | null;
   displayName?: string | null;
+  /** 01A — existing saved BOQ Layer Config (boq_items.layer_config jsonb). */
+  layerConfig?: { layerType?: string | null; mixType?: string | null } | null;
+}
+
+// 01A — explicit saved Layer Config mixType is the HIGHEST-priority source.
+// Matching is trim-safe and case-insensitive; the stored value is never
+// modified. Only mixTypes that correspond to a Batch-01 geometry layer map;
+// anything unknown (SDBC, BM, MA, SD, …) falls through safely to the next
+// classification source instead of being guessed.
+const MIXTYPE_TO_LAYER: Record<string, GeometryLayerType> = {
+  "GSB": "gsb", "GRANULAR SUB BASE": "gsb",
+  "WMM": "wmm", "WET MIX MACADAM": "wmm",
+  "DBM": "dbm", "DENSE BITUMINOUS MACADAM": "dbm",
+  "BC": "bc", "BITUMINOUS CONCRETE": "bc",
+};
+
+export function geometryLayerFromMixType(mixType: string | null | undefined): GeometryLayerType | null {
+  if (typeof mixType !== "string") return null;
+  const key = mixType.trim().toUpperCase();
+  if (!key) return null;
+  return MIXTYPE_TO_LAYER[key] ?? null;
 }
 
 const SUBGRADE_RE = /\bsub\s*-?\s*grade\b/i;
@@ -145,6 +188,20 @@ const CALCULABLE_UNITS = new Set(["Cum", "Sqm", "MT"]);
 export function classifyItemForGeometry(item: GeometryBoqItemLike): GeometryClassification {
   const desc = item.description ?? "";
   const canon = canonicalizeUnit(item.canonicalUnit || item.unit || "");
+
+  // Priority 1 (01A): explicit saved Layer Config mixType — SitePulse already
+  // knows this item's layer; never make the user configure it again.
+  const fromMixType = geometryLayerFromMixType(item.layerConfig?.mixType);
+  if (fromMixType) {
+    if (!CALCULABLE_UNITS.has(canon)) {
+      return {
+        status: "needs_mapping", layer: fromMixType,
+        reason: `Layer Config confirms ${GEOMETRY_LAYER_LABELS[fromMixType]} but BOQ unit "${item.unit}" is not a supported geometry unit (Cum/Sqm/MT).`,
+      };
+    }
+    return { status: "calculable", layer: fromMixType, reason: `Confirmed by BOQ Layer Config (mixType = ${String(item.layerConfig!.mixType).trim()}).` };
+  }
+
   const resolution = resolveWorkType(desc, item.unit ?? "", {
     workCategory: item.workCategory ?? null,
     canonicalUnit: item.canonicalUnit ?? null,

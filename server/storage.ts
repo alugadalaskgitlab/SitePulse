@@ -22556,6 +22556,10 @@ export class DatabaseStorage implements IStorage {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
+    // 01A — additive column, idempotent.
+    await db.execute(sql`
+      ALTER TABLE road_geometry_profiles ADD COLUMN IF NOT EXISTS formation_width_m REAL
+    `);
   }
 
   async getRoadGeometryProfile(boqProjectId: number): Promise<RoadGeometryProfile | undefined> {

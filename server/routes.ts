@@ -10937,6 +10937,7 @@ export async function registerRoutes(
         }
       }
       const widths = {
+        formationWidthM: num(b.formationWidthM, "formationWidthM", 100),
         carriagewayWidthM: num(b.carriagewayWidthM, "carriagewayWidthM", 100),
         pavedShoulderLhsM: num(b.pavedShoulderLhsM, "pavedShoulderLhsM", 50),
         pavedShoulderRhsM: num(b.pavedShoulderRhsM, "pavedShoulderRhsM", 50),

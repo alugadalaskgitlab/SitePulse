@@ -11,6 +11,8 @@ import {
   applicableLayerWidthM,
   classifyItemForGeometry,
   computeGeometryPreview,
+  geometryLayerFromMixType,
+  suggestedFormationWidthM,
   type RoadGeometryProfileInput,
   type GeometryBoqItemLike,
   type GeometryItemResult,
@@ -277,9 +279,126 @@ describe("M–S — isolation and end-to-end preview", () => {
   it("R/S — engine module has no imports from planning/sequencer/BOM modules", async () => {
     const fs = await import("node:fs");
     const src = fs.readFileSync("shared/roadGeometry.ts", "utf8");
-    // Isolation guarantee: preview-only, feeds nothing downstream.
     for (const banned of ["planningEngine", "programmeSequencer", "quantityResolver", "workProgramBars", "plannedWidthM", "plannedThicknessMm"]) {
       expect(src.includes(banned), `roadGeometry.ts must not reference ${banned}`).toBe(false);
     }
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GEOMETRY BATCH 01A — correction pass (spec §14 tests A–P)
+// ═════════════════════════════════════════════════════════════════════════════
+describe("01A A–E — explicit layerConfig.mixType classification priority", () => {
+  it("A — layerConfig.mixType = WMM resolves as WMM (real-data shape)", () => {
+    // Mirrors the reported case: generic description that the heuristic can't
+    // map, but the BOQ Layer Config already knows the layer.
+    const r = classifyItemForGeometry(item(
+      "Providing, Laying, Spreading and compacting graded HBG/HBG crushed stone", "Cum",
+      { layerConfig: { layerType: "granular", mixType: "WMM" } },
+    ));
+    expect(r).toMatchObject({ status: "calculable", layer: "wmm" });
+    expect(r.reason).toMatch(/Layer Config/i);
+  });
+
+  it("B — explicit mixType beats a conflicting description heuristic", () => {
+    // Description screams GSB, but the saved config says WMM — config wins.
+    const r = classifyItemForGeometry(item(
+      "Construction of Granular Sub Base coarse graded material", "Cum",
+      { layerConfig: { mixType: "WMM" } },
+    ));
+    expect(r).toMatchObject({ status: "calculable", layer: "wmm" });
+  });
+
+  it("C — mixType matching is trim-safe and case-insensitive", () => {
+    for (const v of ["WMM", "wmm", " WMM ", "Wmm", "\twmm  "]) {
+      const r = classifyItemForGeometry(item("Some generic layer description", "Cum", { layerConfig: { mixType: v } }));
+      expect(r, `mixType ${JSON.stringify(v)}`).toMatchObject({ status: "calculable", layer: "wmm" });
+    }
+    expect(geometryLayerFromMixType("Dbm")).toBe("dbm");
+    expect(geometryLayerFromMixType(" bc ")).toBe("bc");
+    expect(geometryLayerFromMixType("granular sub base")).toBe("gsb");
+  });
+
+  it("D — unknown/non-standard mixType falls through to the next source, never guessed", () => {
+    expect(geometryLayerFromMixType("SDBC")).toBeNull();
+    expect(geometryLayerFromMixType("BM")).toBeNull();
+    expect(geometryLayerFromMixType("")).toBeNull();
+    expect(geometryLayerFromMixType(null)).toBeNull();
+    // Unknown mixType + explicit description → description classifier still works.
+    const r = classifyItemForGeometry(item("Providing Wet Mix Macadam base course", "Cum", { layerConfig: { mixType: "SDBC-ish??" } }));
+    expect(r).toMatchObject({ status: "calculable", layer: "wmm" });
+    // Unknown mixType + vague pavement description → needs_mapping, not a guess.
+    const r2 = classifyItemForGeometry(item("Supply of bituminous mixture for miscellaneous patching works", "LS", { layerConfig: { mixType: "MA" } }));
+    expect(r2.status).toBe("needs_mapping");
+  });
+
+  it("E — items with no layerConfig behave exactly as before (no regression)", () => {
+    const r = classifyItemForGeometry(item("Providing, Laying, Spreading and compacting graded HBG stone", "Cum", { layerConfig: { layerType: "granular" } }));
+    expect(r.status).not.toBe("calculable"); // no mixType, vague description → surfaced, not guessed
+  });
+
+  it("mixType-confirmed layer with unsupported unit still needs attention", () => {
+    const r = classifyItemForGeometry(item("Generic layer", "Rmt", { layerConfig: { mixType: "WMM" } }));
+    expect(r).toMatchObject({ status: "needs_mapping", layer: "wmm" });
+  });
+});
+
+describe("01A F–M — Formation Width + independent suggested widths", () => {
+  it("H — formation suggestion = carriageway + paved + soft shoulders when blank", () => {
+    expect(suggestedFormationWidthM(profile({ formationWidthM: null }))).toBeCloseTo(12.0);
+  });
+
+  it("J — Subgrade suggested width uses Formation Width when entered", () => {
+    const p = profile({ formationWidthM: 9.375 });
+    expect(defaultLayerWidthM("subgrade", p)).toBeCloseTo(9.375);
+    // blank formation → falls back to the suggestion (12.0), engine never zeroes out
+    expect(defaultLayerWidthM("subgrade", profile({ formationWidthM: null }))).toBeCloseTo(12.0);
+  });
+
+  it("I — user Formation Width is respected even when shoulders change (no silent overwrite)", () => {
+    const p = profile({ formationWidthM: 11.0, softShoulderLhsM: 2.5, softShoulderRhsM: 2.5 });
+    expect(defaultLayerWidthM("subgrade", p)).toBeCloseTo(11.0); // NOT 13.0 recomputed
+  });
+
+  it("K — DBM/BC suggested width = paved width, independent of formation", () => {
+    const p = profile({ formationWidthM: 14.0 });
+    expect(defaultLayerWidthM("dbm", p)).toBeCloseTo(10.0);
+    expect(defaultLayerWidthM("bc", p)).toBeCloseTo(10.0);
+  });
+
+  it("L/M — GSB and WMM overrides are fully independent", () => {
+    const p = profile();
+    p.layers.find(l => l.layerType === "wmm")!.overrideWidthM = 8.75;
+    expect(applicableLayerWidthM("wmm", p)).toBeCloseTo(8.75);
+    expect(applicableLayerWidthM("gsb", p)).toBeCloseTo(10.0); // untouched
+    p.layers.find(l => l.layerType === "gsb")!.overrideWidthM = 11.25;
+    expect(applicableLayerWidthM("gsb", p)).toBeCloseTo(11.25);
+    expect(applicableLayerWidthM("wmm", p)).toBeCloseTo(8.75); // still independent
+  });
+});
+
+describe("01A G/N/O/P — decimal precision + UoM invariant regression", () => {
+  it("G/N — decimal widths flow through the math without rounding the inputs", () => {
+    const p = profile({ carriagewayWidthM: 7.25, pavedShoulderLhsM: 1.5, pavedShoulderRhsM: 1.5, formationWidthM: 9.375 });
+    p.layers.find(l => l.layerType === "gsb")!.overrideWidthM = 8.75;
+    expect(applicableLayerWidthM("gsb", p)).toBeCloseTo(8.75);
+    expect(defaultLayerWidthM("bc", p)).toBeCloseTo(10.25);
+    expect(defaultLayerWidthM("subgrade", p)).toBeCloseTo(9.375);
+    const r = calcOne(item("Construction of Granular Sub Base coarse graded material", "Cum"), p);
+    expect(r.status).toBe("calculated");
+    if (r.status !== "calculated") return;
+    expect(r.quantity).toBeCloseTo(3800 * 8.75 * 0.2, 2); // 6,650 Cum
+  });
+
+  it("P — mixType-classified BC in Cum stays Cum (UoM invariant unchanged)", () => {
+    const r = calcOne(item("40 mm thick compacted wearing surface", "Cum", { layerConfig: { mixType: "BC" } }));
+    expect(r.status).toBe("calculated");
+    if (r.status !== "calculated") return;
+    expect(r.unit).toBe("Cum");
+    expect(r.quantity).toBeCloseTo(3800 * 10 * 0.04, 2);
+    // and MT still requires a density
+    const r2 = calcOne(item("Dense bituminous layer", "MT", { layerConfig: { mixType: "DBM" } }));
+    expect(r2.status).toBe("conversion_required");
+  });
+});
+

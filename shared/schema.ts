@@ -2670,6 +2670,9 @@ export const roadGeometryProfiles = pgTable("road_geometry_profiles", {
   id: serial("id").primaryKey(),
   boqProjectId: integer("boq_project_id").notNull().unique().references(() => boqProjects.id, { onDelete: "cascade" }),
   enabled: integer("enabled").notNull().default(0), // 0 = off (default for existing projects)
+  // 01A — explicit design input: prepared formation/subgrade platform width.
+  // Suggested once from carriageway+shoulders when blank; never auto-overwritten.
+  formationWidthM: real("formation_width_m"),
   carriagewayWidthM: real("carriageway_width_m"),
   pavedShoulderLhsM: real("paved_shoulder_lhs_m"),
   pavedShoulderRhsM: real("paved_shoulder_rhs_m"),

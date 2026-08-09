@@ -19,7 +19,7 @@ import { apiRequest } from "@/lib/queryClient";
 import type { BoqProject } from "@shared/schema";
 import {
   GEOMETRY_LAYER_TYPES, GEOMETRY_LAYER_LABELS, defaultGeometryLayers,
-  defaultLayerWidthM, applicableLayerWidthM, computeGeometryPreview,
+  defaultLayerWidthM, applicableLayerWidthM, computeGeometryPreview, suggestedFormationWidthM,
   type GeometryLayerConfig, type RoadGeometryProfileInput, type GeometryItemResult,
 } from "@shared/roadGeometry";
 
@@ -40,28 +40,59 @@ export default function RoadGeometry() {
 
   // ── form state ─────────────────────────────────────────────────────────────
   const [enabled, setEnabled] = useState(false);
-  const [widths, setWidths] = useState({ cw: "", pavedL: "", pavedR: "", softL: "", softR: "" });
-  const [layers, setLayers] = useState<GeometryLayerConfig[]>(defaultGeometryLayers());
+  const [widths, setWidths] = useState({ formation: "", cw: "", pavedL: "", pavedR: "", softL: "", softR: "" });
+  // 01A decimal fix: keep RAW STRINGS while editing (a per-keystroke Number()
+  // conversion swallowed the "." of e.g. "8.75"); convert only when computing/saving.
+  const [layerEnabled, setLayerEnabled] = useState<Record<string, boolean>>({});
+  const [layerText, setLayerText] = useState<Record<string, { thickness: string; override: string }>>({});
   const [showOverrides, setShowOverrides] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
+  // Hydration is PROJECT-SCOPED: tracking the hydrated project id (not a bare
+  // boolean) so navigating between projects re-hydrates instead of carrying
+  // one project's form values (and Save payload) over to another.
+  const [hydratedProjectId, setHydratedProjectId] = useState<number | null>(null);
+  const hydrated = hydratedProjectId === projectId;
 
   useEffect(() => {
     if (profileLoading || hydrated) return;
     if (saved) {
       setEnabled(saved.enabled === 1 || saved.enabled === true);
       const s = (v: any) => (v != null ? String(v) : "");
-      setWidths({ cw: s(saved.carriagewayWidthM), pavedL: s(saved.pavedShoulderLhsM), pavedR: s(saved.pavedShoulderRhsM), softL: s(saved.softShoulderLhsM), softR: s(saved.softShoulderRhsM) });
+      setWidths({ formation: s(saved.formationWidthM), cw: s(saved.carriagewayWidthM), pavedL: s(saved.pavedShoulderLhsM), pavedR: s(saved.pavedShoulderRhsM), softL: s(saved.softShoulderLhsM), softR: s(saved.softShoulderRhsM) });
       const savedLayers: GeometryLayerConfig[] = Array.isArray(saved.layers) ? saved.layers : [];
-      setLayers(defaultGeometryLayers().map(d => savedLayers.find(l => l.layerType === d.layerType) ?? d));
+      const en: Record<string, boolean> = {}; const tx: Record<string, { thickness: string; override: string }> = {};
+      for (const d of defaultGeometryLayers()) {
+        const l = savedLayers.find(x => x.layerType === d.layerType) ?? d;
+        en[d.layerType] = l.enabled;
+        tx[d.layerType] = { thickness: s(l.thicknessMm), override: s(l.overrideWidthM) };
+      }
+      setLayerEnabled(en); setLayerText(tx);
       if (savedLayers.some(l => l.overrideWidthM != null)) setShowOverrides(true);
+    } else {
+      const en: Record<string, boolean> = {}; const tx: Record<string, { thickness: string; override: string }> = {};
+      for (const d of defaultGeometryLayers()) { en[d.layerType] = false; tx[d.layerType] = { thickness: "", override: "" }; }
+      setLayerEnabled(en); setLayerText(tx);
     }
-    setHydrated(true);
-  }, [saved, profileLoading, hydrated]);
+    setHydratedProjectId(projectId);
+  }, [saved, profileLoading, hydrated, projectId]);
 
-  const num = (v: string) => (v.trim() === "" ? null : Number(v));
+  const num = (v: string) => {
+    const t = (v ?? "").trim();
+    if (t === "") return null;
+    const x = Number(t);
+    return Number.isFinite(x) ? x : null;
+  };
+
+  const layers: GeometryLayerConfig[] = useMemo(() =>
+    defaultGeometryLayers().map(d => ({
+      layerType: d.layerType,
+      enabled: layerEnabled[d.layerType] ?? false,
+      thicknessMm: num(layerText[d.layerType]?.thickness ?? ""),
+      overrideWidthM: num(layerText[d.layerType]?.override ?? ""),
+    })), [layerEnabled, layerText]);
 
   const profileInput: RoadGeometryProfileInput = useMemo(() => ({
     enabled,
+    formationWidthM: num(widths.formation),
     carriagewayWidthM: num(widths.cw),
     pavedShoulderLhsM: num(widths.pavedL),
     pavedShoulderRhsM: num(widths.pavedR),
@@ -80,7 +111,7 @@ export default function RoadGeometry() {
     (items as any[]).map(it => ({
       id: it.id, description: it.description ?? "", unit: it.unit ?? "",
       canonicalUnit: it.canonicalUnit ?? null, workCategory: it.workCategory ?? null,
-      displayName: it.displayName ?? null,
+      displayName: it.displayName ?? null, layerConfig: it.layerConfig ?? null,
     })),
   ), [project, profileInput, items]);
 
@@ -89,6 +120,7 @@ export default function RoadGeometry() {
   const saveMutation = useMutation({
     mutationFn: async () => (await apiRequest("PUT", `/api/boq/projects/${projectId}/road-geometry`, {
       enabled,
+      formationWidthM: num(widths.formation),
       carriagewayWidthM: num(widths.cw),
       pavedShoulderLhsM: num(widths.pavedL),
       pavedShoulderRhsM: num(widths.pavedR),
@@ -103,8 +135,10 @@ export default function RoadGeometry() {
     onError: (e: any) => toast({ title: "Could not save", description: String(e?.message ?? e), variant: "destructive" }),
   });
 
-  const setLayer = (t: string, patch: Partial<GeometryLayerConfig>) =>
-    setLayers(ls => ls.map(l => (l.layerType === t ? { ...l, ...patch } : l)));
+  const setLayerField = (t: string, field: "thickness" | "override", value: string) =>
+    setLayerText(m => ({ ...m, [t]: { ...(m[t] ?? { thickness: "", override: "" }), [field]: value } }));
+
+  const formationSuggestion = suggestedFormationWidthM(profileInput);
 
   const calculated = preview.status === "ok" ? preview.results.filter(r => r.status === "calculated") : [];
   const attention = preview.status === "ok" ? preview.results.filter(r => r.status === "needs_mapping" || r.status === "conversion_required" || r.status === "layer_not_configured") : [];
@@ -148,10 +182,29 @@ export default function RoadGeometry() {
             ] as const).map(([k, label]) => (
               <div key={k}>
                 <Label className="text-xs">{label}</Label>
-                <Input value={(widths as any)[k]} inputMode="decimal" placeholder={k === "cw" ? "e.g. 7.0" : "optional"}
+                <Input value={(widths as any)[k]} inputMode="decimal" placeholder={k === "cw" ? "e.g. 7.25" : "optional"}
                   onChange={e => setWidths(w => ({ ...w, [k]: e.target.value }))} data-testid={`input-width-${k}`} />
               </div>
             ))}
+          </div>
+
+          {/* 01A — Formation Width: explicit design input, suggested once when blank, never auto-overwritten */}
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <Label className="text-xs">Formation Width (m) — design input</Label>
+              <Input className="w-40" value={widths.formation} inputMode="decimal" placeholder="e.g. 12.0"
+                onChange={e => setWidths(w => ({ ...w, formation: e.target.value }))} data-testid="input-width-formation" />
+            </div>
+            {widths.formation.trim() === "" && formationSuggestion > 0 && (
+              <Button size="sm" variant="outline" data-testid="button-use-suggested-formation"
+                onClick={() => setWidths(w => ({ ...w, formation: String(formationSuggestion) }))}>
+                Use suggested: {fmtQty(formationSuggestion)} m
+              </Button>
+            )}
+            <p className="text-xs text-muted-foreground max-w-md">
+              Width of the prepared formation/subgrade platform. The suggestion is carriageway + all shoulders;
+              once you enter your own value it is never recalculated automatically.
+            </p>
           </div>
 
           {/* ── layers ── */}
@@ -162,7 +215,7 @@ export default function RoadGeometry() {
                   <th className="text-left px-3 py-1.5">Layer</th>
                   <th className="text-left px-3 py-1.5">Applicable</th>
                   <th className="text-left px-3 py-1.5">Thickness (mm)</th>
-                  <th className="text-left px-3 py-1.5">Default width</th>
+                  <th className="text-left px-3 py-1.5">Suggested width</th>
                   {showOverrides && <th className="text-left px-3 py-1.5">Override width (m)</th>}
                 </tr>
               </thead>
@@ -175,11 +228,11 @@ export default function RoadGeometry() {
                     <tr key={t} className="border-t">
                       <td className="px-3 py-1.5 font-medium">{GEOMETRY_LAYER_LABELS[t]}</td>
                       <td className="px-3 py-1.5">
-                        <input type="checkbox" checked={l.enabled} onChange={e => setLayer(t, { enabled: e.target.checked })} data-testid={`check-layer-${t}`} />
+                        <input type="checkbox" checked={l.enabled} onChange={e => setLayerEnabled(m => ({ ...m, [t]: e.target.checked }))} data-testid={`check-layer-${t}`} />
                       </td>
                       <td className="px-3 py-1.5">
-                        <Input className="w-24 h-8" value={l.thicknessMm ?? ""} inputMode="numeric" disabled={!l.enabled}
-                          onChange={e => setLayer(t, { thicknessMm: e.target.value.trim() === "" ? null : Number(e.target.value) })}
+                        <Input className="w-24 h-8" value={layerText[t]?.thickness ?? ""} inputMode="decimal" disabled={!l.enabled}
+                          onChange={e => setLayerField(t, "thickness", e.target.value)}
                           data-testid={`input-thickness-${t}`} />
                       </td>
                       <td className="px-3 py-1.5 text-muted-foreground">
@@ -188,8 +241,8 @@ export default function RoadGeometry() {
                       </td>
                       {showOverrides && (
                         <td className="px-3 py-1.5">
-                          <Input className="w-24 h-8" value={l.overrideWidthM ?? ""} inputMode="decimal" disabled={!l.enabled}
-                            onChange={e => setLayer(t, { overrideWidthM: e.target.value.trim() === "" ? null : Number(e.target.value) })}
+                          <Input className="w-24 h-8" value={layerText[t]?.override ?? ""} inputMode="decimal" disabled={!l.enabled}
+                            onChange={e => setLayerField(t, "override", e.target.value)}
                             data-testid={`input-override-${t}`} />
                         </td>
                       )}
@@ -209,8 +262,9 @@ export default function RoadGeometry() {
           </div>
           <p className="text-xs text-muted-foreground flex items-start gap-1">
             <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            Default widths (proposed rule, adjustable per layer): DBM / BC / Tack = carriageway + paved shoulders ·
-            GSB / WMM / Prime = carriageway + paved shoulders · Subgrade = carriageway + paved + soft shoulders.
+            Suggested widths are convenience starting points, not confirmed design values: Subgrade = Formation Width ·
+            DBM / BC / Tack = carriageway + paved shoulders · GSB / WMM / Prime start from the paved width but often
+            differ by design — confirm or adjust them via the per-layer override.
           </p>
         </CardContent>
       </Card>

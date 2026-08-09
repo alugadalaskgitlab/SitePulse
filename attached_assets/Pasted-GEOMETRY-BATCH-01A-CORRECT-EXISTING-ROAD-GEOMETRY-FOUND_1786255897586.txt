@@ -1,0 +1,466 @@
+GEOMETRY BATCH 01A — CORRECT EXISTING ROAD GEOMETRY FOUNDATION
+
+Geometry Batch 01 is implemented and working as a preview foundation.
+
+This batch is a narrow correction pass on that existing implementation.
+
+Do NOT generalize Geometry to arbitrary BOQ item calculation types yet.
+Do NOT start Earthwork geometry yet.
+Do NOT feed Geometry into Auto Sequence, No-Scope, Execution Arrangement, BOM, DPR or RA bills.
+
+OBJECTIVE
+
+Correct the current project geometry foundation in four areas:
+
+1. use existing BOQ Layer Config when identifying WMM/DBM/BC/etc.;
+2. add explicit Formation Width as a project design input;
+3. improve the independent suggested width handling for pavement layers;
+4. investigate the reported decimal-width issue and fix it only if reproducible.
+
+No broad redesign.
+
+1. INVESTIGATE CURRENT IMPLEMENTATION FIRST
+
+Inspect:
+
+- shared/roadGeometry.ts
+- RoadGeometry.tsx
+- road_geometry_profiles schema/storage/API
+- BOQ item `layerConfig`
+- existing `layerConfig.mixType`
+- current item classification path
+- current default/suggested width logic
+- width/thickness input parsing and save/reload behaviour
+
+Confirm current behaviour before changing it.
+
+2. FIX WMM / LAYER IDENTIFICATION USING EXISTING LAYER CONFIG
+
+Current issue:
+
+A BOQ item already configured as WMM through the existing BOQ Layer Config can still appear in Geometry as:
+
+"Needs attention"
+
+because Geometry currently relies on generic description/category classification and does not consume the explicit saved layer config.
+
+The BOQ already has:
+
+item.layerConfig?.mixType
+
+which may contain explicit resolved values such as:
+- WMM
+- GSB
+- DBM
+- BC
+- etc.
+
+For Geometry classification, use the following priority:
+
+1. explicit existing `layerConfig.mixType`
+2. other existing persisted reliable item/layer mapping if available
+3. short name / deterministic existing classification
+4. generic description/category heuristic fallback
+5. needs-mapping if still uncertain
+
+Normalize `layerConfig.mixType` safely for comparison:
+- trim surrounding whitespace;
+- compare case-insensitively;
+- preserve the original stored value.
+
+Do not require exact casing such as "WMM" if saved data contains values such as:
+- "wmm"
+- " WMM "
+- "Dbm"
+
+Unknown or unsupported mixType values must fall back safely to the next classification source rather than being guessed.
+
+Do NOT require the user to configure the same BOQ item again in Geometry if SitePulse already knows its layer type.
+
+For the current WMM example, an item whose saved layerConfig.mixType confirms WMM must resolve as WMM and no longer show "Needs attention."
+
+Do not modify the Layer Config workflow itself.
+
+3. ADD EXPLICIT FORMATION WIDTH
+
+Add a project-level geometry input:
+
+Formation Width (m)
+
+This is a DESIGN INPUT.
+
+Do not treat formation width as being derived from side slope.
+
+For initial convenience, when geometry is first configured and no Formation Width has been entered, SitePulse may SUGGEST:
+
+carriageway
++ paved shoulder LHS/RHS
++ soft shoulder LHS/RHS
+
+But Formation Width must then exist as its own editable value.
+
+Do not silently keep recalculating/overwriting a user-confirmed Formation Width whenever shoulder values change.
+
+The distinction is:
+
+- finished/paved widths describe the road crust/surface;
+- Formation Width describes the prepared formation/subgrade platform;
+- future earthwork geometry will use Formation Width together with cut/fill depth and side slopes.
+
+Store Formation Width in the existing road geometry profile structure.
+
+A small additive schema field is acceptable.
+
+Use the app's existing idempotent schema-evolution pattern.
+
+4. LAYER WIDTHS — INDEPENDENT SUGGESTIONS, NOT ONE PAVED-WIDTH RULE
+
+Current behaviour is too simplistic:
+
+- Subgrade derives from carriageway + paved + soft shoulders
+- GSB/WMM derive from paved width
+- DBM/BC derive from paved width
+
+Keep the existing per-layer override concept, but improve the meaning.
+
+Each layer must have its own independently resolved:
+
+Suggested Width
+and
+Override Width (optional)
+
+For this correction batch:
+
+- Subgrade suggested width → Formation Width
+- DBM suggested width → paved width
+- BC suggested width → paved width
+- Prime/Tack suggested width → paved width where applicable
+
+For GSB and WMM:
+
+Do NOT hard-code them permanently to paved width as an engineering truth.
+
+Use a simple initial suggestion, but clearly treat it as a suggestion requiring confirmation/override.
+
+Preferred safe behaviour:
+
+- if a user has entered a layer width override, use it;
+- otherwise show a suggested width;
+- make the suggested width plainly editable through the existing Advanced / Adjust layer widths control.
+
+If a sensible project-level design width for GSB/WMM cannot be derived reliably from current inputs, it is acceptable for the suggested width to start from the current paved width, PROVIDED the UI/report makes clear that this is only a suggested default and not a design assumption guaranteed to be correct.
+
+Do not create a complex cross-section designer in this batch.
+
+5. UI WORDING
+
+Where the table currently says:
+
+"Default width"
+
+change it to:
+
+"Suggested width"
+
+or similarly clear wording.
+
+Reason:
+
+the value is a convenience/default derived from the simple road section, not necessarily the project's final design width.
+
+Keep:
+
+Override width
+
+as the explicit user-confirmed per-layer adjustment.
+
+6. DECIMAL WIDTHS — INVESTIGATE BEFORE FIXING
+
+User reports that decimal widths are not being accepted.
+
+Do NOT assume the cause.
+
+First reproduce using examples such as:
+
+- carriageway = 7.25
+- paved shoulder = 1.50
+- Formation Width = 9.375
+- GSB override = 8.75
+
+Check separately:
+
+A. Can "." be typed in the field?
+
+B. Does the field temporarily accept an incomplete decimal such as "7." while editing?
+
+C. Does blur/save round or truncate the value?
+
+D. Does API validation reject it?
+
+E. Is precision lost on persistence/reload?
+
+F. Is this browser/input behaviour rather than backend validation?
+
+If decimals already work correctly in the current build:
+- do not change production code merely to create a diff;
+- report the reproduction result.
+
+If a real issue is found:
+- fix the narrow cause;
+- support reasonable road-design precision;
+- retain finite-number validation.
+
+Store enough numeric precision for values such as:
+9.375 m.
+
+Do not unnecessarily force integer widths.
+
+7. UOM INVARIANT REMAINS UNCHANGED
+
+Do not alter the Geometry Batch 01 hard rule:
+
+EVERY calculated output must use the actual UoM of that BOQ item.
+
+Do not infer output unit from layer/work type.
+
+BC/DBM in Cum remain Cum.
+
+Use the existing canonical BOQ UoM normalization helper.
+
+No new UoM conversion system.
+
+8. GEOMETRY CALCULATIONS
+
+Update existing full-corridor preview calculations only as required by:
+
+- corrected explicit layer identification;
+- Formation Width;
+- revised layer suggested/override widths.
+
+Examples:
+
+Subgrade volume:
+confirmed corridor length × Subgrade resolved width × Subgrade thickness
+
+GSB/WMM:
+confirmed corridor length × that layer's resolved width × thickness
+
+DBM/BC:
+confirmed corridor length × that layer's resolved width × thickness
+
+Prime/Tack:
+confirmed corridor length × resolved applicable width
+
+Continue returning the actual BOQ UoM.
+
+9. DO NOT GENERALIZE GEOMETRY ITEM TYPES YET
+
+Do NOT build the proposed generic:
+
+BOQ item → geometry calculation type
+
+architecture in Batch 01A.
+
+Do not add:
+- generic area_layer mapping
+- generic volume_layer mapping
+- arbitrary new geometry item configuration
+- Geometry support for every possible road BOQ item
+
+That is a real architecture enhancement and will be handled as Geometry Batch 01B.
+
+For 01A, only correct the mapping of currently supported layer/item types by making proper use of existing Layer Config.
+
+10. DO NOT ADD EARTHWORK YET
+
+Do NOT add:
+
+- fill/cut depth
+- side slopes
+- trapezoidal cross-section calculations
+- bottom/toe width
+- reach-wise earthwork geometry
+
+Only add Formation Width now because it is a required project design input and will be reused by Earthwork later.
+
+11. DO NOT INTEGRATE SCOPE / NO-SCOPE YET
+
+Continue calculating full confirmed corridor geometry only.
+
+Do NOT:
+- deduct No-Scope quantity
+- deduct Withdrawn quantity
+- change Temporary Block treatment
+- change quantityResolver semantics
+
+Scope masking comes later.
+
+12. NO DOWNSTREAM INTEGRATION
+
+Do NOT modify:
+
+- quantityResolver production basis
+- Auto Sequence
+- Gantt
+- Execution Arrangement
+- BOM
+- DPR
+- Tomorrow's Programme
+- RA bills
+- profitability
+
+This remains Geometry INPUT + ENGINE + PREVIEW only.
+
+13. SCHEMA
+
+Expected schema change:
+
+add Formation Width to the existing project road geometry profile.
+
+Keep project-level geometry separate from:
+- plannedWidthM
+- plannedThicknessMm
+- work programme bars
+
+Do not persist calculated quantities.
+
+Use the existing app schema-evolution convention.
+
+No destructive schema operations.
+
+14. TESTS
+
+Add/update focused tests for:
+
+A. Explicit layerConfig.mixType = WMM resolves as WMM.
+
+B. Explicit layerConfig takes priority over weaker description/category heuristics.
+
+C. mixType matching is trim-safe and case-insensitive.
+
+Examples such as:
+- "WMM"
+- "wmm"
+- " WMM "
+
+must resolve identically.
+
+D. Unknown/non-standard mixType safely falls back to the next classification source rather than being guessed.
+
+E. Existing unresolved items still safely show needs-mapping rather than being guessed.
+
+F. Formation Width persists and reloads.
+
+G. Formation Width can be decimal, e.g. 9.375.
+
+H. Initial Formation Width suggestion can be derived from road section when blank.
+
+I. User-entered Formation Width is not silently overwritten by later road-width changes.
+
+J. Subgrade suggested width uses Formation Width.
+
+K. DBM/BC suggested width uses paved width.
+
+L. GSB and WMM each retain independent override capability.
+
+M. Changing WMM override does not change GSB width.
+
+N. Decimal carriageway/shoulder/layer override values preserve precision after save/reload.
+
+O. If decimal issue is not reproducible, add a regression test proving decimal support instead of changing behaviour unnecessarily.
+
+P. BOQ-UoM invariant still passes, including BC/DBM in Cum.
+
+Q. Full Geometry Batch 01 regression remains green.
+
+R. Batch 01/02/03 non-geometry regression suites remain unchanged.
+
+15. REPORT BACK
+
+After completion report:
+
+A. Files/functions inspected.
+
+B. Exact current Geometry classifier found.
+
+C. How layerConfig.mixType is now consumed.
+
+D. WMM before/after example from the current BOQ.
+
+E. Formation Width:
+   - schema field
+   - initial suggestion rule
+   - edit/persistence behaviour
+
+F. Final suggested-width rules for:
+   - Subgrade
+   - GSB
+   - WMM
+   - DBM
+   - BC
+   - Prime/Tack
+
+Clearly distinguish:
+- engineering-confirmed input
+- SitePulse suggestion
+- user override
+
+G. Decimal-width investigation:
+   - exact reproduction steps
+   - whether issue reproduced
+   - root cause if found
+   - fix if any
+   - precision supported
+
+H. UI wording changes such as Default Width → Suggested Width.
+
+I. Worked preview examples showing revised geometry quantities.
+
+J. Test results.
+
+K. Confirmation that:
+   - BOQ quantities were untouched;
+   - BOQ UoM behaviour was untouched;
+   - no generic geometry-item architecture was added;
+   - earthwork was not started;
+   - No-Scope was not integrated;
+   - quantityResolver/Auto Sequence/Gantt were unchanged;
+   - Execution Arrangement was unchanged.
+
+L. layerConfig.mixType real-data verification:
+   - list the exact mixType values observed in current project data for relevant items such as WMM / GSB / DBM / BC;
+   - state whether matching is case-insensitive and whitespace-tolerant;
+   - state how unknown or non-standard values fall back safely;
+   - confirm that a case/spacing mismatch cannot silently bypass an otherwise valid explicit Layer Config.
+
+DO NOT START GEOMETRY BATCH 01B OR BATCH 02.
+
+WHAT NOT TO TOUCH
+
+Do not modify:
+- Auto Sequence
+- Gantt
+- quantityResolver production semantics
+- Execution Arrangement
+- Project Scope / No-Scope behaviour
+- BOM
+- DPR
+- Tomorrow's Programme
+- vendor bills
+- RA bills
+- profitability
+- unrelated permissions
+- generic geometry item architecture
+
+SUCCESS CRITERION
+
+The existing Geometry Batch 01 foundation is corrected so that:
+
+- WMM and other explicitly configured layers reuse existing BOQ Layer Config;
+- layerConfig.mixType matching is robust to case/whitespace variation;
+- Formation Width exists as a first-class project design input;
+- pavement layers have clear independent suggested/override widths;
+- decimal geometry inputs are proven to work correctly or narrowly fixed if they do not;
+- all geometry quantities continue to use the BOQ item's actual UoM.
+
+No new geometry architecture beyond those corrections is introduced.
