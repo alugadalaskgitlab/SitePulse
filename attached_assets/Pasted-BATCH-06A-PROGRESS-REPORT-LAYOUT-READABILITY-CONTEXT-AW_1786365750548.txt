@@ -1,0 +1,348 @@
+BATCH 06A — PROGRESS REPORT LAYOUT, READABILITY & CONTEXT-AWARE BACK NAVIGATION
+
+This is a focused UI/navigation cleanup for the newly published Progress Report.
+
+Do NOT change report calculations, quantities, overlap logic, DPR data, export logic, Guided DPR, Tomorrow's Programme, Geometry, or schema.
+
+CURRENT ISSUES OBSERVED IN LIVE APP / VIDEO
+
+1. Progress Report page is visually narrow/right-shifted with excessive unused space.
+2. Typography across the report is too muted/light for an RA/measurement-register style screen.
+3. Clicking a DPR from Progress Report correctly opens the DPR, but Back/navigation does not reliably return to the originating Progress Report context.
+4. Progress Report itself should return to Reports Hub when entered from Reports Hub.
+5. Navigation should preserve the user's context where possible, not use a hard-coded destination.
+
+OBJECTIVE
+
+Make the Progress Report:
+- use the available content width properly;
+- improve readability without redesigning the app;
+- preserve report filters/view when drilling into a DPR and returning;
+- use context-aware back navigation.
+
+1. INVESTIGATE FIRST
+
+Inspect:
+
+- ProgressReport.tsx
+- ReportsHub.tsx
+- submitted DPR detail page / `/site/report/:id`
+- breadcrumb/back-button components
+- existing navigation helper patterns
+- useLocation / navigation state / returnTo patterns already used elsewhere
+- app shell/main-content width containers
+- shared typography classes/tokens
+- existing responsive max-width conventions
+
+Do not invent a second navigation system if `returnTo`, location state, or an equivalent existing pattern already exists.
+
+2. PROGRESS REPORT PAGE WIDTH / ALIGNMENT
+
+The Progress Report should use the main content area naturally.
+
+Current live page appears too narrow and shifted toward the right.
+
+Fix the page container so that:
+
+- it aligns consistently with other Reports Hub pages;
+- the report occupies an appropriate responsive width;
+- large desktop screens do not leave an excessive blank column on the left;
+- tables can use available width without unnecessary compression;
+- filters and tabs align with the report content.
+
+Do NOT stretch content edge-to-edge without margins.
+
+Use the app's existing responsive page-width/container convention.
+
+Do not change sidebar width or global shell layout unless the root cause is genuinely shared.
+
+3. REPORT TYPOGRAPHY / READABILITY
+
+Improve readability specifically for this dense report.
+
+Do not redesign typography globally in this batch.
+
+Within Progress Report:
+
+- primary table text should use normal/high-contrast foreground text;
+- BOQ item names should be clearly readable;
+- quantities and cumulative values should not appear washed out;
+- date/chainage values should have sufficient contrast;
+- table headers should be stronger than body secondary text;
+- helper/caption text may remain secondary but must still be readable;
+- warning/overlap text should remain distinct and accessible.
+
+Avoid using muted-foreground for core measurement data.
+
+Do not make everything bold.
+
+Use hierarchy:
+
+Primary:
+BOQ item, Qty, chainage, date, cumulative.
+
+Secondary:
+Prepared By, remarks, explanatory captions.
+
+4. KEEP THE RA-STYLE DENSITY
+
+Do not make the table excessively large or card-heavy.
+
+This is an engineering/RA measurement register.
+
+Preserve compact row density while improving readability.
+
+The aim is:
+more legible, not more decorative.
+
+5. CONTEXT-AWARE DPR DRILL-DOWN
+
+When the user clicks a DPR number from Progress Report:
+
+Progress Report
+→ DPR Detail
+
+the DPR detail page must know it was opened from Progress Report.
+
+Use the application's existing navigation-context pattern if available.
+
+Pass enough context to return to:
+
+- `/reports/progress`
+- same project
+- same site
+- same From/To date
+- same tab:
+  • Item-wise
+  • Chainage-wise
+  • Date-wise
+- selected BOQ item where applicable
+- Measurement/Abstract view where applicable
+- current display sort where applicable
+
+Do not rely only on browser history if a structured `returnTo` mechanism already exists.
+
+6. BACK FROM DPR MUST RETURN TO PROGRESS REPORT
+
+If a DPR was opened from Progress Report:
+
+Back / breadcrumb / "Back" action on the DPR detail page must return to that Progress Report context.
+
+It must NOT hard-code:
+
+- Site Operations Hub
+- DPR Summary
+- Field Home
+
+for this navigation path.
+
+Example:
+
+Reports Hub
+→ Progress Report
+→ Item-wise
+→ WMM
+→ DPR-266
+→ Back
+
+Expected:
+
+same Progress Report
+same project/site/date range
+same Item-wise tab
+same WMM expansion/selection where practical.
+
+7. PRESERVE OTHER DPR ENTRY CONTEXTS
+
+Do NOT make every DPR detail page return to Progress Report.
+
+If the DPR was opened from:
+
+- Field Home
+- Site Operations
+- DPR Summary
+- another report
+
+it should return to that originating context according to existing behavior.
+
+Progress Report should add a navigation context, not replace every existing destination.
+
+Fallback rule only when no origin context exists:
+use the application's existing default DPR-detail fallback.
+
+8. REPORTS HUB NAVIGATION
+
+Progress Report breadcrumb/header should correctly represent:
+
+Reports Hub > Progress Report
+
+Clicking Reports Hub should return to Reports Hub.
+
+If there is a Back button on Progress Report:
+
+- when entered from Reports Hub, return to Reports Hub;
+- if entered from another valid app context, prefer origin context where existing conventions support it.
+
+Do not route Progress Report Back to Site Operations.
+
+9. FILTER/VIEW STATE PRESERVATION
+
+When drilling into a DPR and returning, preserve report state.
+
+At minimum preserve:
+
+- project
+- site
+- from date
+- to date
+- Item-wise / Chainage-wise / Date-wise tab
+
+Prefer also preserving:
+
+- selected BOQ item
+- Measurement / Abstract view
+- Chainage→Date / Date→Chainage sort
+- entered chainage range
+
+Use URL query parameters or existing navigation-state mechanism consistently.
+
+Do not create hidden fragile global state solely for this.
+
+10. BROWSER BACK
+
+Browser Back should also behave sensibly.
+
+Do not break normal browser history.
+
+If the user:
+
+Reports Hub
+→ Progress Report
+→ DPR
+
+browser Back should naturally restore Progress Report.
+
+Avoid unnecessary replace-navigation that destroys history unless existing app patterns require it.
+
+11. RESPONSIVE CHECK
+
+Verify at least:
+
+- desktop wide screen
+- typical laptop
+- tablet-width responsive layout if currently supported
+
+Ensure:
+
+- no rightward disorientation;
+- filters wrap cleanly;
+- tables remain usable;
+- no horizontal overflow caused solely by the container fix.
+
+A horizontally scrollable measurement table is acceptable on narrower screens if that is the app's existing pattern.
+
+12. GLOBAL FONT ISSUE — DO NOT BROADLY FIX HERE
+
+The user has noticed muted typography elsewhere in the app too.
+
+Do NOT perform an app-wide typography overhaul in this batch.
+
+Only fix Progress Report-specific misuse of muted/secondary text classes.
+
+During investigation, report if there is an obvious shared typography/root theme problem worth addressing later.
+
+13. DATABASE / SCHEMA
+
+Expected schema change: NONE.
+
+No data changes.
+
+Do not add or alter tables/columns.
+
+14. WHAT NOT TO TOUCH
+
+Do NOT modify:
+
+- Progress Report calculation logic
+- BOQ quantities
+- cumulative formulas
+- overlap detection
+- coverage logic
+- Excel export quantities
+- DPR Save/Submit
+- Batch 05 Guided DPR workflow
+- Equipment Usage
+- programme-bar aggregation
+- Tomorrow's Programme
+- Geometry
+- Project Scope
+- Auto Sequence
+- Gantt
+- Execution Arrangement
+
+15. TESTS
+
+Add/update tests covering:
+
+A. Progress Report route renders in correct content container.
+
+B. Core report data does not use muted text styling intended only for secondary content.
+
+C. Reports Hub breadcrumb returns to Reports Hub.
+
+D. DPR opened from Progress Report carries return context.
+
+E. Back from DPR returns to `/reports/progress`.
+
+F. Project/site/date filters are preserved.
+
+G. Active Item-wise/Chainage-wise/Date-wise tab is preserved.
+
+H. Selected item/view/sort state is preserved where implemented.
+
+I. DPR opened from Site Operations still returns according to its original behavior.
+
+J. No global DPR back-navigation regression.
+
+K. Browser Back retains natural navigation history.
+
+L. No calculation/export regression.
+
+M. No schema change.
+
+16. REPORT BACK
+
+Report:
+
+A. Root cause of right-shift/narrow page alignment.
+
+B. Exact container/layout change.
+
+C. Typography classes changed and why.
+
+D. Whether a broader app-wide muted-font issue exists.
+
+E. Existing navigation-context mechanism reused.
+
+F. Before/after route flow:
+Reports Hub → Progress Report → DPR → Back.
+
+G. Exact report state preserved on return.
+
+H. Confirmation other DPR entry contexts still work.
+
+I. Tests.
+
+J. Confirm no schema/data/calculation changes.
+
+DO NOT START ANOTHER BATCH.
+
+SUCCESS CRITERION
+
+1. Progress Report is visually centered/aligned and uses available width appropriately.
+2. Core RA/measurement data is clearly readable.
+3. Reports Hub → Progress Report navigation is correct.
+4. Progress Report → DPR → Back returns to the originating Progress Report.
+5. Report filters/view context survive the round-trip.
+6. Other DPR navigation paths do not regress.
+7. No calculation, export, workflow, or schema logic changes.

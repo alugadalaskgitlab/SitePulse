@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
-import { Link, useRoute, useLocation } from "wouter";
+import { Link, useRoute, useLocation, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
+import { resolveReturnTo } from "@/lib/progressReportNav";
 import { ChevronLeft, Loader2, Printer, Trash2, Fuel, Home, ShoppingCart, History, Ban } from "lucide-react";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import CancelDialog from "@/components/CancelDialog";
@@ -38,7 +39,14 @@ export default function SiteReport() {
     return ids.map(id => personnelList.find(p => p.id === id)?.name).filter(Boolean).join(", ");
   };
   const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/site/dashboard");
+  const searchString = useSearch();
+  // Batch 06A — context-aware Back: honour a validated in-app `returnTo`
+  // (e.g. from the Progress Report drill-down); otherwise keep the existing
+  // default destination so all other entry contexts behave exactly as before.
+  const backLink = resolveReturnTo(
+    searchString || (typeof window !== "undefined" ? window.location.search : ""),
+    appendOrigin("/site/dashboard"),
+  );
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
