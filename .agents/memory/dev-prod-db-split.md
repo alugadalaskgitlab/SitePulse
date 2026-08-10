@@ -49,3 +49,7 @@ This is expected and correct. The second boot will show all of these as 0.
 ## Publish diff source (critical — Aug 2026 incident)
 Replit Publishing diffs the **Replit-managed dev DB (heliumdb via workspace DATABASE_URL)** against production — NOT schema.ts and NOT sitelog_dev. Because all schema work goes to sitelog_dev, heliumdb silently drifts and Publish then generates destructive DROP COLUMN/TABLE statements against populated prod tables.
 **Rule:** after any schema change to sitelog_dev, apply the same additive DDL to heliumdb ($DATABASE_URL) before the user publishes. To repair drift: diff information_schema columns of both DBs, then pg_dump -s missing tables from sitelog_dev into heliumdb + generated ADD COLUMN IF NOT EXISTS statements (never drizzle-kit push blindly — review first). Aug 2026 repair: 13 tables + 73 columns; scripts kept in .agents/outputs/schema-audit/.
+
+## Publish migration drift trap (Aug 2026)
+- Replit publishing diffs the built-in dev DB (DATABASE_URL) against production — but the dev server runs on sitelog_dev, so runtime startup `ensure*` ALTERs never reach DATABASE_URL. Result: publish proposed DROP COLUMN for prod columns "missing" in dev (nearly deleted earthwork_arrangements.scope_segment_ids data).
+- **How to apply:** whenever a startup script adds a column, mirror it into DATABASE_URL too (or before publishing, apply the missing ADD COLUMNs there). Never approve a publish migration containing DROP without checking this drift first.
