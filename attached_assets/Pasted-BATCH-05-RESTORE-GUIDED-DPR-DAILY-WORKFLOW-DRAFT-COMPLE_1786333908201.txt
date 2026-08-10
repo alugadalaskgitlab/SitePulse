@@ -1,0 +1,788 @@
+BATCH 05 — RESTORE GUIDED DPR DAILY WORKFLOW, DRAFT COMPLETION & EQUIPMENT-USAGE LINKING
+
+This is the next priority LIVE FIELD hotfix.
+
+Batch 04 is complete.
+
+Do NOT start any follow-up reporting, programme-bar quantity, Tomorrow's Programme, or Geometry work in this batch.
+
+CURRENT LIVE PROBLEMS
+
+1. The normal daily Guided DPR journey is fragmented.
+
+From Field Home:
+- "Start Today's Site Work" can enter Guided DPR;
+- but once a draft exists, "Complete Today's DPR" routes to Detailed/Edit DPR instead of reopening the same Guided draft.
+
+Current code confirms repeated hard-coded `/site/edit/:id?draft` routes in FieldHome.
+
+Guided DPR already supports reopening a server draft through `?draftId=`.
+
+2. Earlier DPR behaviour allowed:
+
+MORNING:
+- select activity;
+- enter opening chainage;
+- select equipment;
+- enter opening reading/start time;
+- Save Draft.
+
+EVENING:
+- dashboard clearly shows that today's DPR still needs completion;
+- reopen SAME DPR;
+- enter closing chainage/quantity;
+- enter closing equipment reading/end time/task/etc.;
+- Final Submit.
+
+That behavioural model must be restored.
+
+3. Current Field Home completion indicators are too shallow.
+
+For example:
+- equipment row exists → "Equipment closing meter" marked done;
+- progress row exists → "Activity quantities entered" marked done.
+
+Existence is not completion.
+
+The repo already contains more accurate `eqClosed` / `eqOpen` style calculations elsewhere in FieldHome. Reuse/centralise existing logic rather than inventing a new completeness model.
+
+4. Guided DPR currently has no awareness of standalone Equipment & Fleet usage, while Detailed DPR already has working `openPlantMap` / `plantUsageId` linking logic.
+
+Therefore an Engineer can currently:
+- record JCB usage in Equipment & Fleet;
+- later enter JCB independently in Guided DPR;
+- fail to establish `closedByDprId`;
+- create genuine duplicate-count risk.
+
+5. Guided and Detailed each maintain independent local-autosave silos.
+
+Switching between the two can leave both:
+- `guided-dpr-new`
+- `site-entry-new`
+
+local autosaves behind.
+
+This can produce repeated "Unsaved draft found" prompts even when a real server draft already exists.
+
+6. The "Detailed DPR" action inside Guided currently also changes the user's persistent DPR entry mode.
+
+A user merely looking at Detailed DPR can therefore silently make Detailed the default for future days.
+
+That is not acceptable.
+
+OBJECTIVE
+
+Restore one simple daily workflow:
+
+Field Home
+→ Start Today's Site Work
+→ Guided DPR
+→ Save Draft
+→ Field Home shows exactly what remains incomplete
+→ Complete Today's DPR
+→ SAME Guided DPR draft
+→ finish closing values
+→ Submit.
+
+Detailed DPR must remain available as an explicit secondary/advanced view, but viewing it must not silently reprogram the user's future default.
+
+Equipment already recorded in Equipment & Fleet must be recognised/reused in Guided DPR rather than blindly entered twice.
+
+--------------------------------------------------
+1. INVESTIGATE FIRST
+--------------------------------------------------
+
+Trace all Road DPR navigation and persistence paths:
+
+- FieldHome.tsx
+- roadDprHref / dprEntryMode
+- GuidedDpr.tsx
+- SiteEntry.tsx
+- SiteEdit.tsx
+- NewDpr.tsx if involved
+- SiteDashboard / SiteHub
+- DPR success screen
+- Complete Today's DPR
+- Resume DPR
+- Edit Draft
+- Guided → Detailed
+- Detailed → Guided
+
+Map current behaviour for:
+
+A. no DPR today
+B. own draft exists
+C. own submitted DPR exists
+D. another Engineer's DPR exists
+E. Guided → Detailed
+F. Detailed → Guided
+G. local autosave exists but server draft also exists
+
+Also inspect:
+
+- FieldHome pendingChecks
+- eqClosed / eqOpen calculations already present
+- Today's Focus
+- Today's Activity
+- existing pending-closing badges
+- Batch 04 `evaluateDprSubmitReadiness`
+- existing equipment-output-gap logic
+- `openPlantMap`
+- `plantUsageId`
+- `closedByDprId`
+- local autosave keys:
+  • guided-dpr-new
+  • site-entry-new
+
+Do not invent another completeness or equipment-linking model where working code already exists.
+
+--------------------------------------------------
+2. GUIDED DPR IS THE DEFAULT DAILY ROAD-DPR FLOW
+--------------------------------------------------
+
+For the ordinary Field Home workflow:
+
+NO DPR EXISTS:
+
+"Start Today's Site Work"
+→ Guided DPR.
+
+OWN DRAFT EXISTS:
+
+"Complete Today's DPR"
+→ SAME Guided DPR server draft.
+
+Conceptually:
+
+/site/guided?...&draftId={existingDraftId}
+
+Use the actual route convention already supported.
+
+Do NOT route the main completion CTA to:
+
+/site/edit/:id?draft
+
+Do NOT create another DPR.
+
+Detailed/Edit DPR remains available as a clearly secondary:
+
+"Detailed / Advanced View"
+
+action.
+
+--------------------------------------------------
+3. ONE DPR — TWO VIEWS
+--------------------------------------------------
+
+Guided and Detailed are views over the SAME DPR record.
+
+They must never behave as separate daily DPRs.
+
+For one Engineer + site + work context/date:
+
+- Start creates one draft.
+- Save Draft updates that draft.
+- leave/reopen restores that draft.
+- Complete Today reopens that draft.
+- switching view retains the same DPR ID.
+- Final Submit submits that same draft.
+
+Preserve existing legitimate support for multiple DPRs by different Engineers/sections.
+
+Do not impose a new one-DPR-per-site rule.
+
+--------------------------------------------------
+4. VIEWING DETAILED DPR MUST NOT CHANGE FUTURE DEFAULT
+--------------------------------------------------
+
+Current Guided DPR's "Detailed DPR" action also calls:
+
+`setDprEntryMode("detailed")`
+
+Simply looking at Detailed DPR must NOT silently change the user's future default entry mode.
+
+Change this behaviour.
+
+Opening:
+
+"Detailed / Advanced View"
+
+should navigate to the detailed representation of the SAME DPR only.
+
+It must NOT modify the persistent/default `dprEntryMode`.
+
+If SitePulse wants to retain a user-selectable preferred entry mode, changing that preference must require a separate explicit action such as:
+
+"Use Detailed DPR as my default"
+
+or the existing Settings mechanism.
+
+Do not change the user's default merely because they inspected another view.
+
+Test that after opening Detailed and returning later/new day:
+
+"Start Today's Site Work"
+
+still opens Guided DPR unless the user explicitly changed the preference.
+
+--------------------------------------------------
+5. RESTORE MORNING → EVENING PARTIAL-DPR BEHAVIOUR
+--------------------------------------------------
+
+Draft Save remains deliberately lenient.
+
+ACTIVITY EXAMPLE
+
+Morning:
+
+Activity = Embankment
+From = 2+570
+To = blank
+Quantity = blank
+
+Save Draft:
+ALLOWED.
+
+Evening:
+
+reopen SAME Guided draft;
+enter To = 2+660;
+complete quantity/dimensions;
+submit.
+
+EQUIPMENT EXAMPLE
+
+Morning:
+
+Machine = JCB
+Opening Reading = 1234.5
+Closing Reading = blank
+
+Save Draft:
+ALLOWED.
+
+Evening:
+
+reopen SAME Guided draft;
+Closing Reading = 1241.0;
+Task = Excavation;
+complete applicable fields;
+submit.
+
+Batch 04 Final Submit readiness remains authoritative.
+
+Do not weaken Draft Save.
+
+--------------------------------------------------
+6. FIELD HOME MUST USE REAL COMPLETENESS
+--------------------------------------------------
+
+Do not mark a section complete merely because rows exist.
+
+Current shallow logic must be replaced/reconnected to real completeness semantics.
+
+Example:
+
+equipment.length > 0
+
+must NOT mean:
+
+"Equipment closing meter — Done"
+
+Likewise:
+
+progress.length > 0
+
+must NOT mean:
+
+"Activity quantities entered — Done"
+
+Reuse the correct logic already present in FieldHome (`eqClosed` / `eqOpen`) and/or Batch 04's shared readiness/completeness semantics.
+
+Avoid a third validator.
+
+For an open draft show meaningful pending information such as:
+
+ACTIVITIES
+1 activity needs completion
+- Embankment — closing chainage / quantity pending
+
+EQUIPMENT
+2 equipment entries need closing
+- JCB — closing reading pending
+- Roller — end time pending
+
+LABOUR / MATERIALS
+Only flag genuine entered-but-incomplete rows.
+
+Blank optional placeholder rows must not produce warnings.
+
+--------------------------------------------------
+7. RESTORE CLEAR DASHBOARD CTA / BADGE
+--------------------------------------------------
+
+When today's DPR draft is incomplete, Field Home must clearly communicate it.
+
+Example:
+
+Today's Site Work
+[IN PROGRESS]
+
+2 items need completion
+
+Activity: 1 open
+Equipment: 1 open
+
+[Complete Today's DPR]
+
+Reuse existing Today's Focus / Pending Before Submit / Today's Activity components where sensible.
+
+Do not create duplicate warning panels.
+
+The main CTA must reopen the SAME Guided server draft.
+
+--------------------------------------------------
+8. ACTIVITY SELECTED MUST PERSIST
+--------------------------------------------------
+
+Investigate the reported case where Babu selected an activity but it did not appear after save/reopen.
+
+Trace:
+
+UI activity selection
+→ Guided state
+→ Save Draft payload
+→ server draft update
+→ progress_entries
+→ reload with draftId
+→ Guided hydration.
+
+Test:
+
+A. activity + opening chainage only
+B. complete activity + quantity
+
+An incomplete activity may prevent Final Submit, but Save Draft must preserve it.
+
+Do not discard a selected activity simply because it is incomplete.
+
+--------------------------------------------------
+9. EQUIPMENT OPENING DATA MUST PERSIST
+--------------------------------------------------
+
+Verify:
+
+machine + opening reading
+
+and:
+
+machine + start time
+
+survive:
+
+Save Draft
+→ leave screen
+→ dashboard
+→ Complete Today's DPR
+→ same Guided draft reload.
+
+Preserve all Batch 04 `guidedEquipment` passthrough fixes.
+
+Do not blank or fabricate equipment fields.
+
+--------------------------------------------------
+10. FIX LOCAL AUTOSAVE VS SERVER DRAFT CONFUSION
+--------------------------------------------------
+
+Guided and Detailed currently use separate local-autosave keys:
+
+- guided-dpr-new
+- site-entry-new
+
+These can behave as two independent stale draft silos.
+
+Once a real server `draftId` exists and has been successfully saved:
+
+the app must NOT keep presenting unrelated:
+
+"Unsaved draft found"
+
+prompts from another DPR view as if they represent a second active DPR.
+
+Investigate existing autosave semantics carefully.
+
+Desired behaviour:
+
+A. Before a server draft exists:
+local autosave recovery may work as today.
+
+B. Once a server draft exists:
+the server draft becomes authoritative for that DPR.
+
+C. Opening the same DPR in Guided or Detailed:
+must use that server draft ID.
+
+D. Stale "new DPR" local autosaves from the alternate view should not nag the user for the same site/date/context.
+
+Do not globally delete potentially legitimate unrelated autosaves.
+
+Suppress/clear only when the relationship to the active server draft is safely established.
+
+Report exact cleanup/suppression rule.
+
+--------------------------------------------------
+11. VERIFY ALL FINAL-SUBMIT PATHS
+--------------------------------------------------
+
+The user reports some cases where Final Submit appeared possible despite incomplete activity/equipment context.
+
+Do not assume Batch 04 fixed every UI path.
+
+Verify:
+
+- Guided DPR
+- Detailed DPR
+- SiteEdit draft completion
+- preview submit
+- any other submit route
+- direct server submit
+
+Every Final Submit must ultimately use the shared Batch 04 server readiness validator.
+
+UI may show Submit enabled only where consistent with the intended advisory/mandatory behaviour.
+
+Do not make advisory-only cases mandatory.
+
+--------------------------------------------------
+12. EQUIPMENT USAGE VS DPR — INVESTIGATE CURRENT LINKING
+--------------------------------------------------
+
+Trace the relationship between:
+
+A. DPR `equipment_logs`
+
+and
+
+B. Equipment & Fleet `equipment_usage`.
+
+Existing architecture already includes:
+
+- `plantUsageId`
+- `closedByDprId`
+- `openPlantMap`
+- `closePlantUsage()`
+
+Detailed DPR already uses an "existing/open plant usage" linking path.
+
+Guided DPR currently appears to have no `openPlantMap` / `plantUsageId` handling.
+
+Confirm this.
+
+Report:
+
+A. Does standalone Equipment Usage automatically appear in DPR today?
+B. Does DPR create/update standalone Equipment Usage?
+C. What exactly does `plantUsageId` reference?
+D. What exactly does `closedByDprId` prevent/deduplicate?
+E. Which reports/KPIs combine DPR logs + standalone Equipment Usage?
+F. Where can the same equipment/date/site currently be double-counted?
+
+--------------------------------------------------
+13. PORT THE EXISTING WORKING LINKING MECHANISM INTO GUIDED DPR
+--------------------------------------------------
+
+Do NOT invent a new equipment-linking architecture.
+
+The Detailed DPR already has working:
+
+- `openPlantMap`
+- existing/open usage lookup
+- `plantUsageId`
+- "from plant / locked" behaviour
+- server-side `closePlantUsage()`
+
+Reuse/port that same mechanism into Guided DPR where applicable.
+
+Preferred Guided experience:
+
+"Equipment usage already recorded today"
+
+JCB
+Opening: 1234.5
+Closing: 1241.0
+Hours/time/trips as available
+Task/site context as available
+
+[Use in this DPR]
+
+or the simplest equivalent consistent with Detailed DPR.
+
+Once linked:
+
+- DPR should reference/reuse the existing usage;
+- do not ask the Engineer to type the same readings/time/diesel/trips twice;
+- do not create a second standalone operational usage record;
+- server should establish the same close/link audit behaviour already used by Detailed DPR.
+
+If the existing Detailed mechanism cannot safely support general Guided equipment usage without schema change:
+
+STOP and report that portion before inventing something else.
+
+--------------------------------------------------
+14. DUPLICATE EQUIPMENT PROTECTION
+--------------------------------------------------
+
+If Guided DPR encounters same-date / same-site / same-equipment standalone Equipment Usage:
+
+do not silently create another usage record.
+
+Where the match is strong, surface the existing usage and allow reuse/linking through the existing mechanism.
+
+Where the match is ambiguous:
+
+show an advisory such as:
+
+"Usage for this equipment is already recorded in Equipment & Fleet today."
+
+Do not hard-block legitimate separate runs merely because the same machine appears twice on a date.
+
+Do not attempt fuzzy destructive merging.
+
+--------------------------------------------------
+15. SOURCE-OF-TRUTH PRINCIPLE
+--------------------------------------------------
+
+For road-site work:
+
+DPR = DAILY SITE RECORD.
+
+Equipment Usage = MACHINE USAGE RECORD.
+
+They can represent the same physical work.
+
+The Engineer should normally enter the operational data ONCE.
+
+SitePulse should link/reuse it rather than demand duplicate entry.
+
+Do not erase the distinction between the two records.
+
+--------------------------------------------------
+16. HISTORICAL / CURRENT LIVE DATA
+--------------------------------------------------
+
+Do not rewrite existing DPR or Equipment Usage records.
+
+Inspect recent Takkadpally data where available and report:
+
+- equipment appearing only in DPR;
+- equipment appearing only in Equipment Usage;
+- equipment appearing in both;
+- whether any same-day/site/equipment pair is currently double-counted;
+- whether `closedByDprId` is populated.
+
+Do not merge/delete production records.
+
+--------------------------------------------------
+17. DATABASE / SCHEMA SAFETY
+--------------------------------------------------
+
+Expected schema change: NONE.
+
+This batch may inspect:
+
+- dprs
+- progress_entries
+- equipment_logs
+- equipment_usage
+- BOQ/activity linkage
+- existing audit/link fields
+
+but inspection does NOT authorize schema modification.
+
+If a schema change genuinely becomes necessary:
+
+STOP BEFORE IMPLEMENTING and report:
+
+A. exact table/column/change
+B. why existing fields cannot support the requirement
+C. production-data impact
+D. exact proposed SQL/schema effect
+E. no-schema alternative
+
+Do not add/drop/change:
+- columns
+- constraints
+- nullability
+- tables
+
+without explicit approval.
+
+--------------------------------------------------
+18. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- Batch 04 BOQ/UoM conversion
+- programme-bar aggregation / reported-quantity logic
+- Project Scope / No-Scope
+- Auto Sequence
+- Gantt
+- Execution Arrangement
+- Geometry
+- Progress Report
+- Tomorrow's Programme allocation/cancellation workflow
+- Stores workflows
+- unrelated equipment KPI formulas
+
+Only inspect KPI/report code where necessary to identify duplicate-count risk.
+
+--------------------------------------------------
+19. TESTS — LIVE FIELD WORKFLOW IS HIGH RISK
+--------------------------------------------------
+
+Add integration/regression tests for at least:
+
+A. No DPR:
+Start Today's Site Work → Guided DPR.
+
+B. Morning activity:
+activity + From chainage only → Save Draft succeeds.
+
+C. Reopen:
+Complete Today's DPR → SAME Guided draft.
+
+D. Activity preserved after reload.
+
+E. Dashboard shows From-only activity as incomplete.
+
+F. Add closing chainage/quantity → pending resolves.
+
+G. Morning equipment:
+machine + opening reading → Save Draft succeeds.
+
+H. Dashboard still shows equipment OPEN when closing reading is missing.
+
+I. Reopen preserves opening reading.
+
+J. Add closing reading → pending resolves.
+
+K. startTime without endTime behaves equivalently.
+
+L. Final Submit still blocks genuinely incomplete meter/time pairs.
+
+M. machine selected with no usage remains Batch-04 advisory only.
+
+N. incomplete selected activity is preserved, never discarded from Draft.
+
+O. Complete Today's DPR never automatically routes to Detailed.
+
+P. Explicit Detailed/Advanced view retains SAME DPR ID.
+
+Q. Viewing Detailed does NOT change persistent/default DPR entry mode.
+
+R. A new day's Start Today's Site Work still opens Guided after user merely viewed Detailed.
+
+S. server draft suppresses/conflicts safely with stale alternate-view local autosave.
+
+T. switching Guided ↔ Detailed does not create duplicate DPR.
+
+U. Guided can discover/reuse/link existing Equipment Usage using the same mechanism as Detailed DPR.
+
+V. linked Equipment Usage does not generate duplicate operational usage.
+
+W. existing `closedByDprId` / linkage behaviour remains correct.
+
+X. multiple legitimate runs by the same machine are not falsely treated as duplicates.
+
+Y. multiple Engineers/sections remain supported.
+
+Z. existing submitted DPR edit/completion flow does not regress.
+
+Treat any:
+- lost draft data;
+- wrong CTA route;
+- duplicate DPR;
+- duplicate equipment usage;
+- silent default-mode change;
+- stale autosave nag tied to the active server draft;
+- false Final Submit block
+
+as a RELEASE BLOCKER.
+
+--------------------------------------------------
+20. REPORT BACK
+--------------------------------------------------
+
+A. Explain exactly why the video journey moved between different screens.
+
+B. List each current Road DPR CTA and corrected destination.
+
+C. Confirm "Complete Today's DPR" reopens the SAME Guided draft.
+
+D. Explain why old completion badges stopped reflecting real completeness.
+
+E. Before/after examples:
+
+Activity:
+From entered / To blank
+
+Equipment:
+Opening entered / Closing blank
+
+F. State whether the selected-activity-not-saved bug was reproduced and its root cause.
+
+G. State whether any Final Submit path bypassed Batch 04 readiness.
+
+H. Explain current `dprEntryMode` behaviour and confirm merely viewing Detailed no longer changes the user's future default.
+
+I. Explain the two local autosave silos:
+- guided-dpr-new
+- site-entry-new
+
+and the final suppression/cleanup rule once a real server draft exists.
+
+J. Equipment Usage/DPR audit:
+- what each record represents;
+- current Detailed linking mechanism;
+- what was missing in Guided;
+- exact mechanism reused/ported;
+- duplicate-count risk before/after.
+
+K. For recent Takkadpally data if available:
+identify:
+- DPR-only equipment
+- Equipment-Usage-only equipment
+- both
+- any suspected duplicates
+
+Do not modify them.
+
+L. Tests.
+
+M. Confirm:
+- no schema change;
+- no historical rewrite;
+- no programme-bar quantity change;
+- no Progress Report work;
+- no Tomorrow's Programme workflow change;
+- no Geometry change.
+
+DO NOT START ANOTHER BATCH.
+
+SUCCESS CRITERION
+
+The normal daily road-site experience must be:
+
+1. Engineer starts one Guided DPR.
+2. Morning partial activity/equipment data can be saved.
+3. Nothing entered disappears.
+4. Field Home clearly shows exactly what is still open.
+5. Complete Today's DPR reopens the SAME Guided draft.
+6. Evening closing information can be added.
+7. Final Submit uses Batch 04 readiness.
+8. Detailed DPR is optional/advanced, not an accidental route.
+9. Merely viewing Detailed DPR does not change future default behaviour.
+10. A real server draft is authoritative and does not compete with stale Guided/Detailed "new DPR" autosaves.
+11. Existing Equipment & Fleet usage is recognised/reused in Guided rather than blindly duplicated.
+12. No schema or historical-data mutation is introduced.
