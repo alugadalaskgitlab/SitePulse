@@ -68,6 +68,15 @@ export default function ReportsHub() {
                 enabled={canSiteDprs}
               />
               <HubActionTile
+                href="/reports/progress"
+                icon={ClipboardList}
+                title="Progress Report"
+                description="RA-style item-wise, chainage-wise & date-wise DPR rollup"
+                accent="blue"
+                iconBg="bg-blue-100"
+                enabled={canSiteDprs}
+              />
+              <HubActionTile
                 href={`/site/materials-received?returnTo=${HUB}`}
                 icon={Package}
                 title="Materials Received"

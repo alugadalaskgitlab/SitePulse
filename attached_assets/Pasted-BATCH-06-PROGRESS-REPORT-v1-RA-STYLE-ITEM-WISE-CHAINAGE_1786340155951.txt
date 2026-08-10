@@ -1,0 +1,1011 @@
+BATCH 06 — PROGRESS REPORT v1
+RA-STYLE ITEM-WISE, CHAINAGE-WISE & DATE-WISE DPR ROLLUP
+
+This is a READ-ONLY reporting batch.
+
+Build one new Progress Report under:
+
+Reports Hub → Site Reports → Progress Report
+
+The report must use submitted DPR actuals only and behave like a DPR-based measurement register / RA-bill measurement sheet.
+
+Do NOT start:
+- Tomorrow's Programme workflow changes
+- Geometry/Earthwork integration
+- programme-bar quantity changes
+- RA billing write-back
+- profitability
+- Project Scope changes
+
+No schema change is expected.
+
+--------------------------------------------------
+OBJECTIVE
+--------------------------------------------------
+
+Provide one Progress Report screen with three views:
+
+1. ITEM-WISE
+2. CHAINAGE-WISE
+3. DATE-WISE
+
+The primary use case is:
+
+"What work has actually been recorded through submitted DPRs, where was it done, when was it done, how much has been credited against the BOQ, and what is the balance?"
+
+The Item-wise view should feel like an RA bill / measurement-book register:
+
+- Contract BOQ Qty
+- Previous cumulative
+- This-period quantity
+- Cumulative to date
+- Balance
+- % complete
+- every individual DPR measurement row underneath
+
+This report is an AUDIT tool.
+
+Do not silently correct or rewrite historical DPR records merely to make the report look cleaner.
+
+--------------------------------------------------
+1. INVESTIGATE FIRST
+--------------------------------------------------
+
+Before coding, inspect:
+
+- progress_entries schema
+- dprs / site DPR schema
+- boq_items
+- DPR status / superseded logic
+- `shared/dprGeometry.ts`
+- `calculateDprQuantity`
+- `quantitiesMatch`
+- `dprConversionFactor`
+- `dprMeasurementMethod`
+- existing DPR cumulative-progress SQL
+- existing submitted/superseded filters
+- existing report/export patterns
+- Daily Plant Report Excel export
+- Vendor Bills Excel export
+- existing DPR report route `/site/report/:id`
+- existing `site_dprs` permission checks
+- current BOQ item quantity fields
+
+Also inspect current real progress-entry data and answer explicitly:
+
+A. What does `progress_entries.quantity` represent today?
+   - raw physical measurement?
+   - BOQ-credited quantity?
+   - historically inconsistent depending on when the row was created?
+
+B. Are raw dimensions sufficient to recompute physical measurement where applicable?
+
+C. How does existing cumulative BOQ progress currently apply `dprConversionFactor`?
+
+D. How are superseded/revised DPRs excluded elsewhere?
+
+Reuse those exact semantics.
+
+Do not create a second definition of submitted progress.
+
+--------------------------------------------------
+2. DATA SCOPE — SUBMITTED DPR ACTUALS ONLY
+--------------------------------------------------
+
+v1 must read only actual submitted DPR progress.
+
+Include only DPR/progress rows that are valid under the application's existing submitted-DPR rules.
+
+At minimum:
+
+- dprStatus = submitted
+- exclude drafts
+- exclude superseded/replaced rows using the SAME filter already used elsewhere
+- preserve any existing review-status exclusions that determine whether progress counts toward BOQ actuals
+
+Do not invent a new "valid DPR" rule.
+
+No Geometry quantity.
+No Tomorrow's Programme quantity.
+No Execution Arrangement quantity.
+No forecast quantity.
+
+This is actual DPR progress only.
+
+--------------------------------------------------
+3. CONTRACT BOQ QTY IS THE PRIMARY DENOMINATOR
+--------------------------------------------------
+
+For this RA-style report, use the raw Contract BOQ Qty as the primary quantity basis.
+
+Show:
+
+Contract BOQ Qty
+Previous cumulative
+This period
+Cumulative executed
+Balance
+% Complete
+
+Do NOT use `getItemScopeQuantity()` or eligible/applicable scope quantity as a silent replacement for Contract BOQ Qty.
+
+Reason:
+
+This is a contractual / RA-style progress report.
+
+Scope/eligible quantity may later be shown separately as informational data, but it must not redefine:
+
+- BOQ Qty
+- Balance
+- % Complete
+
+in v1.
+
+Formula:
+
+Balance =
+Contract BOQ Qty - Cumulative BOQ-credit Qty
+
+% Complete =
+Cumulative BOQ-credit Qty / Contract BOQ Qty × 100
+
+Handle zero/null BOQ Qty safely.
+
+--------------------------------------------------
+4. PHYSICAL MEASUREMENT VS BOQ-CREDITED QTY
+--------------------------------------------------
+
+Reuse Batch 04 quantity semantics.
+
+Do NOT implement a new conversion engine inside the report.
+
+Use existing shared logic from `shared/dprGeometry.ts`, including:
+
+- calculateDprQuantity
+- quantitiesMatch
+- dprConversionFactor
+- dprMeasurementMethod
+- existing UoM normalization/formatting
+
+The report must distinguish:
+
+A. physical/site measurement
+
+from
+
+B. BOQ-credited quantity
+
+ONLY where they genuinely differ.
+
+Example:
+
+Clearing & Grubbing
+
+150 m × 1.5 m
+Physical = 225 SQM
+
+BOQ UoM = Ha
+Factor = 0.0001
+
+BOQ-credit Qty = 0.0225 Ha
+
+Display both:
+
+Measured Qty: 225 SQM
+BOQ Qty: 0.0225 Ha
+
+But for:
+
+WMM
+Physical = 126 Cum
+BOQ = 126 Cum
+
+do NOT show two identical quantity columns unnecessarily.
+
+Rule:
+
+- same physical and BOQ quantity/unit → one Qty column
+- different unit/value → show Measured Qty + BOQ Qty
+
+Never invent compaction, loose-volume, density, tonnage, or other conversions.
+
+Any conversion must come from existing BOQ/DPR configuration.
+
+--------------------------------------------------
+5. HISTORICAL DATA MUST REMAIN HONEST
+--------------------------------------------------
+
+This report is an audit surface.
+
+Do NOT silently rewrite, normalize, or backfill old progress entries.
+
+If historical rows were saved before Batch 04 with inconsistent measurement/conversion semantics:
+
+show what the data/recomputed measurement actually indicates and surface the inconsistency clearly.
+
+Where raw dimensions allow a trustworthy physical measurement to be recomputed:
+
+use the shared measurement helper for the Measured view.
+
+Where BOQ-credit quantity can be deterministically resolved using existing item conversion rules:
+
+show it.
+
+Where a historical row is ambiguous:
+
+flag it as:
+
+"Review quantity"
+
+or equivalent.
+
+Do not fabricate certainty.
+
+Report how many such rows exist, if any.
+
+--------------------------------------------------
+6. SCREEN STRUCTURE
+--------------------------------------------------
+
+One Progress Report page.
+
+Top controls:
+
+- Project
+- Site / Reach where applicable
+- From Date
+- To Date
+- reset/apply
+- Export Excel
+
+Default date range:
+
+Programme/project start date → today
+
+If project start date is unavailable, use earliest submitted DPR date → today.
+
+Tabs:
+
+ITEM-WISE
+CHAINAGE-WISE
+DATE-WISE
+
+Keep one screen, not three disconnected report pages.
+
+--------------------------------------------------
+7. ITEM-WISE VIEW — PRIMARY RA/MB VIEW
+--------------------------------------------------
+
+This is the main report.
+
+First show an Abstract list/table of BOQ items:
+
+Columns:
+
+- Sl.
+- BOQ Item
+- BOQ UoM
+- Contract BOQ Qty
+- Previous Qty
+- This Period Qty
+- Cumulative Qty
+- Balance
+- % Complete
+- DPR count
+- Status / View Details
+
+Example:
+
+WMM
+Contract BOQ Qty: 5,000 Cum
+Previous cumulative: 1,486 Cum
+Measured this period: 364 Cum
+Cumulative: 1,850 Cum
+Balance: 3,150 Cum
+Complete: 37%
+
+Clicking/expanding an item shows its full measurement sheet.
+
+--------------------------------------------------
+8. ITEM-WISE MEASUREMENT SHEET
+--------------------------------------------------
+
+For the selected BOQ item, show EVERY submitted DPR progress line.
+
+RA/MB-style columns:
+
+- Sl.
+- Date
+- Side
+- From Chainage
+- To Chainage
+- Length
+- Width/Breadth
+- Thickness
+- Qty
+- Running Cumulative
+- DPR No.
+- Prepared By
+- Remarks
+
+If physical and BOQ-credit quantities differ:
+
+replace Qty with:
+
+- Measured Qty
+- BOQ Qty
+
+Do not show fake dimensions.
+
+Area item:
+L × W
+
+Volume item:
+L × W × T
+
+Linear:
+length
+
+Manual/non-geometric:
+quantity only
+
+Use Batch 04 shared dimension formatting.
+
+--------------------------------------------------
+9. RUNNING CUMULATIVE — CRITICAL RULE
+--------------------------------------------------
+
+The running cumulative must be computed CHRONOLOGICALLY.
+
+This is mandatory.
+
+Conceptually:
+
+1. obtain all valid progress rows
+2. order chronologically using:
+   - DPR date
+   - stable secondary identifier/timestamp
+3. calculate running BOQ-credit cumulative
+4. attach that cumulative to each row
+5. ONLY AFTER THAT may the UI apply a display sort
+
+The cumulative value must NOT change simply because the user switches visual sort.
+
+DO NOT:
+
+sort by chainage first
+→ then calculate cumulative
+
+That would produce a false running total.
+
+Display sort and cumulative chronology are separate concepts.
+
+--------------------------------------------------
+10. SORT OPTIONS
+--------------------------------------------------
+
+For Item-wise measurement view provide:
+
+- Chainage → Date
+- Date → Chainage
+
+Default:
+
+Chainage → Date
+
+because this is easier for RA/measurement verification.
+
+But the cumulative values shown on rows must remain based on chronological execution as defined in §9.
+
+--------------------------------------------------
+11. MEASUREMENT VIEW / ABSTRACT VIEW
+--------------------------------------------------
+
+Within Item-wise provide a compact toggle:
+
+Measurement View
+Abstract View
+
+Measurement View:
+full DPR measurement lines.
+
+Abstract View:
+one row per BOQ item with:
+
+- Contract BOQ Qty
+- Previous
+- This Period
+- Cumulative
+- Balance
+- %
+
+Do not create a second navigation screen.
+
+--------------------------------------------------
+12. PREVIOUS / THIS PERIOD / CUMULATIVE
+--------------------------------------------------
+
+For selected report From/To dates:
+
+Previous Qty =
+valid submitted DPR BOQ-credit qty before From Date
+
+This Period Qty =
+valid submitted DPR BOQ-credit qty within From Date–To Date
+
+Cumulative Qty =
+Previous + This Period
+
+Balance =
+Contract BOQ Qty - Cumulative
+
+This is the RA-style basis.
+
+If From Date is the beginning of the project:
+
+Previous = 0.
+
+--------------------------------------------------
+13. DPR CHAINAGE COVERAGE STRIP
+--------------------------------------------------
+
+For chainage-based items, show a visual coverage strip above the measurement table.
+
+One strip per side where side matters:
+
+RHS
+LHS
+Both/Centre where applicable
+
+Visual states:
+
+- Recorded DPR coverage
+- No recorded progress
+- Possible overlap
+
+IMPORTANT LABEL:
+
+Call this:
+
+"DPR Chainage Coverage"
+
+Do NOT call green areas:
+
+"Completed"
+
+or imply the physical item/layer is finished.
+
+Add a visible caption:
+
+"Shows where submitted DPR progress has been recorded. It does not by itself mean the item is fully complete at that chainage."
+
+This is important for:
+
+- multiple WMM layers
+- GSB layers
+- embankment lifts
+- repeated operations
+- corrections/rework
+
+The strip is a spatial audit aid only.
+
+--------------------------------------------------
+14. POSSIBLE OVERLAP DETECTION
+--------------------------------------------------
+
+Detect possible overlapping progress entries for the SAME:
+
+- BOQ item
+- compatible side
+- overlapping chainage range
+
+Highlight the relevant measurement row and coverage portion.
+
+Example:
+
+⚠ Possible overlap with DPR-07
+RHS 2+150–2+180
+
+NEVER label it:
+
+"Duplicate"
+
+unless some future explicit business rule proves duplication.
+
+Do NOT:
+
+- reject the row
+- deduct quantity
+- alter cumulative
+- merge rows
+- modify historical data
+
+This is advisory only.
+
+Possible overlap may legitimately represent:
+
+- second layer
+- second lift
+- correction
+- rework
+- another pass
+- intentionally repeated operation
+
+--------------------------------------------------
+15. CLICKABLE DPR REFERENCE
+--------------------------------------------------
+
+DPR number must be clickable.
+
+Use the existing submitted DPR detail route:
+
+`/site/report/:id`
+
+Reuse existing `site_dprs` view permission checks.
+
+Do not create a new DPR permission model.
+
+If user lacks permission, render DPR number as non-clickable text or follow the app's existing permission convention.
+
+--------------------------------------------------
+16. CHAINAGE-WISE VIEW
+--------------------------------------------------
+
+Purpose:
+
+"At this stretch, what items have actually been recorded and when?"
+
+Allow:
+
+- enter/select From Chainage
+- To Chainage
+- optional side
+
+Return every submitted DPR progress row intersecting that range.
+
+Columns:
+
+- Date
+- BOQ Item / Activity
+- Side
+- Actual From
+- Actual To
+- dimensions where meaningful
+- Qty
+- UoM
+- DPR No.
+- Remarks
+
+Where physical vs BOQ quantity differs, apply the same conditional dual-qty rule.
+
+Sort:
+
+Date → Item by default.
+
+At bottom:
+
+group totals by BOQ item.
+
+Do NOT total unlike UoMs into one meaningless grand total.
+
+--------------------------------------------------
+17. DATE-WISE VIEW
+--------------------------------------------------
+
+Purpose:
+
+"What work was recorded on this date?"
+
+Group submitted DPR progress by date.
+
+For each date show:
+
+- BOQ Item / Activity
+- Side
+- From–To
+- dimensions
+- Qty
+- BOQ Qty where different
+- DPR
+- Engineer / Prepared By
+- remarks
+
+Allow date-range filtering.
+
+This is not a replacement for opening individual DPRs.
+
+DPR references remain clickable.
+
+--------------------------------------------------
+18. NON-CHAINAGE / STRUCTURE ITEMS
+--------------------------------------------------
+
+Do not force chainage presentation onto every BOQ item.
+
+For structure/location/manual items:
+
+show the most meaningful stored location reference available.
+
+Examples:
+
+- structure
+- location
+- description
+- manual measurement reference
+
+Do not fabricate From/To chainage if none exists.
+
+Coverage strip should appear only when meaningful chainage data exists.
+
+--------------------------------------------------
+19. UOM INVARIANT
+--------------------------------------------------
+
+Final BOQ progress values must always be expressed in the BOQ item's actual UoM.
+
+Never infer final output unit from work type.
+
+Examples:
+
+Sqm physical → Ha BOQ:
+show 0.0225 Ha BOQ credit.
+
+Cum → Cum:
+remain 27 Cum.
+
+Use the existing Batch 04 conversion semantics.
+
+Do not double-convert.
+
+--------------------------------------------------
+20. PLAN VS ACTUAL
+--------------------------------------------------
+
+For v1, "Plan" means:
+
+Contract BOQ Qty.
+
+Actual means:
+
+Cumulative submitted-DPR BOQ-credit quantity.
+
+Do NOT introduce:
+
+- Tomorrow's Programme plan
+- Gantt planned qty
+- eligible qty
+- arrangement qty
+
+into the primary Plan-vs-Actual calculation.
+
+If UI terminology "Plan vs Actual" would confuse Contract BOQ with schedule plan, prefer:
+
+"BOQ vs Actual"
+
+or:
+
+"Contract Qty vs Executed"
+
+--------------------------------------------------
+21. EXCEL EXPORT
+--------------------------------------------------
+
+Add:
+
+Export Excel
+
+Reuse existing export infrastructure/pattern from:
+
+- Daily Plant Reports
+- Vendor Bills
+
+Follow the existing endpoint convention:
+
+`.../export?format=xlsx`
+
+Do not add a new spreadsheet/export library.
+
+Workbook should include:
+
+SHEET 1 — Summary / Abstract
+
+- Project
+- Site
+- report period
+- generated date
+- BOQ item
+- Contract Qty
+- Previous
+- This Period
+- Cumulative
+- Balance
+- %
+- UoM
+
+SHEET 2 — Measurement Details
+
+- Date
+- Item
+- Side
+- From
+- To
+- L
+- W
+- T
+- Measured Qty
+- Measured UoM
+- BOQ Qty
+- BOQ UoM
+- Running cumulative
+- DPR No.
+- Prepared By
+- Remarks
+- Possible overlap indicator
+
+For same-unit rows, duplicate Measured/BOQ values may be kept in Excel if that creates a stable export schema.
+
+UI may hide the redundant second column.
+
+SHEET 3 — Chainage View
+
+Optional only if existing export pattern makes it straightforward.
+
+Do not delay v1 merely to create multiple decorative sheets.
+
+--------------------------------------------------
+22. PERFORMANCE
+--------------------------------------------------
+
+Do not issue one API/database query per BOQ item or per DPR row.
+
+Build the report using bounded aggregate/detail queries.
+
+Avoid N+1 fetching.
+
+The report should remain usable for a road project with:
+
+- many BOQ items
+- many months of DPRs
+- hundreds/thousands of progress rows
+
+Pagination/virtualisation may be used where needed, but do not hide totals.
+
+--------------------------------------------------
+23. PERMISSIONS
+--------------------------------------------------
+
+Use existing Reports Hub / site-report permissions.
+
+Reuse existing BOQ/DPR access rules.
+
+Do not create a new permission family unless the existing architecture genuinely requires it.
+
+If a new permission becomes necessary:
+
+STOP and report before implementing it.
+
+--------------------------------------------------
+24. DATABASE / SCHEMA SAFETY
+--------------------------------------------------
+
+Expected schema change: NONE.
+
+Everything required already exists in:
+
+- dprs
+- progress_entries
+- boq_items
+- users/projects/sites
+- existing conversion/configuration fields
+
+Do NOT:
+
+- add columns
+- drop columns
+- change nullability
+- create a materialized progress table
+- write computed progress back into progress_entries
+- alter historical DPRs
+
+If a schema change appears genuinely necessary:
+
+STOP and report before implementing.
+
+--------------------------------------------------
+25. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- Guided DPR
+- Detailed DPR
+- Batch 05 workflow
+- DPR Save/Submit
+- equipment logs
+- Equipment Usage
+- Tomorrow's Programme
+- programme-bar reported quantity
+- Project Scope
+- quantityResolver
+- Auto Sequence
+- Gantt
+- Execution Arrangement
+- Geometry
+- BOQ Contract quantities
+- Stores
+- Vendor Bills logic
+- RA billing write-back
+- profitability
+
+This batch is READ-ONLY reporting.
+
+--------------------------------------------------
+26. TESTS
+--------------------------------------------------
+
+Add focused tests covering at least:
+
+A. Draft DPR excluded.
+
+B. Submitted DPR included.
+
+C. Superseded/replaced DPR excluded using existing canonical rule.
+
+D. Contract BOQ Qty used as denominator.
+
+E. Previous Qty before From Date is correct.
+
+F. This Period Qty inside date range is correct.
+
+G. Cumulative = Previous + This Period.
+
+H. Balance = Contract BOQ - cumulative.
+
+I. % correct.
+
+J. 225 SQM physical / 0.0225 Ha BOQ-credit displayed correctly.
+
+K. Same-unit WMM shows one UI Qty, not duplicate columns.
+
+L. Existing conversion helper reused / factor applied exactly once.
+
+M. Area item displays L×W only.
+
+N. Volume item displays L×W×T.
+
+O. Manual item does not fabricate dimensions.
+
+P. Running cumulative computed chronologically.
+
+Q. Switching visual sort does NOT alter each row's cumulative value.
+
+R. Chainage→Date sort works.
+
+S. Date→Chainage sort works.
+
+T. LHS and RHS remain separate.
+
+U. Possible overlap is detected on same-item/same-side intersecting chainages.
+
+V. Possible overlap does NOT change quantity/cumulative.
+
+W. Non-overlapping adjacent ranges do not warn.
+
+X. Opposite sides do not falsely overlap.
+
+Y. Coverage strip shows recorded vs unrecorded chainage.
+
+Z. Coverage strip does not label recorded coverage as complete.
+
+AA. Chainage-wise range returns intersecting progress rows.
+
+AB. Chainage-wise totals are grouped by BOQ item/UoM.
+
+AC. Date-wise view returns correct submitted DPR progress.
+
+AD. DPR link points to existing submitted report route.
+
+AE. permission handling for DPR link follows existing rules.
+
+AF. historical ambiguous row is surfaced, not silently rewritten.
+
+AG. Excel export matches on-screen quantities.
+
+AH. Export reuses existing XLSX infrastructure.
+
+AI. No DB writes occur from viewing/exporting report.
+
+AJ. No schema change.
+
+Run full existing suite.
+
+--------------------------------------------------
+27. REPORT BACK
+--------------------------------------------------
+
+After implementation report:
+
+A. Exact route/page added.
+
+B. Where it appears in Reports Hub.
+
+C. Exact submitted/superseded filtering reused.
+
+D. What `progress_entries.quantity` actually represents in current data.
+
+E. How physical measurement is derived.
+
+F. How BOQ-credit quantity is derived.
+
+G. How historical pre-Batch-04 rows are handled.
+
+H. Contract BOQ denominator logic.
+
+I. Previous / This Period / Cumulative formulas.
+
+J. How chronological cumulative is computed independently of display sorting.
+
+K. Coverage-strip implementation and its limits.
+
+L. Possible-overlap algorithm.
+
+M. Confirmation overlap is advisory only.
+
+N. DPR-click route and permission reuse.
+
+O. Chainage-wise behaviour.
+
+P. Date-wise behaviour.
+
+Q. Excel export implementation and reused pattern/library.
+
+R. Query/performance approach.
+
+S. Any historical rows flagged for review.
+
+T. Test results.
+
+U. Confirm explicitly:
+- no schema change
+- no historical rewrite
+- no DPR workflow change
+- no Tomorrow's Programme change
+- no Geometry change
+- no Project Scope change
+- no programme-bar quantity change
+
+DO NOT START ANOTHER BATCH.
+
+--------------------------------------------------
+SUCCESS CRITERION
+--------------------------------------------------
+
+Batch 06 succeeds only when:
+
+1. Submitted DPR actuals can be audited item-wise, chainage-wise and date-wise.
+
+2. Item-wise view behaves like an RA/MB measurement register.
+
+3. Contract BOQ Qty remains the primary contractual denominator.
+
+4. Previous / This Period / Cumulative / Balance are transparent.
+
+5. Physical DPR measurement and BOQ-credit quantity are distinguished only when genuinely different.
+
+6. Existing Batch 04 conversion logic is reused rather than recreated.
+
+7. Every relevant submitted DPR measurement line is visible.
+
+8. Running cumulative is chronological and does not change with display sorting.
+
+9. Chainage coverage clearly means "DPR recorded here", not "work complete".
+
+10. Possible overlaps are visible but never auto-treated as duplicates.
+
+11. DPR references are traceable back to the submitted DPR.
+
+12. Excel export follows the existing SitePulse export pattern.
+
+13. Historical anomalies are surfaced honestly, not silently corrected.
+
+14. The report is fully read-only and introduces no schema or operational workflow changes.

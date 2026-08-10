@@ -23394,6 +23394,134 @@ export class DatabaseStorage implements IStorage {
     return map;
   }
 
+  // ── Batch 06: RA-style Progress Report (READ-ONLY) ────────────────────────
+  // Valid submitted DPR actuals only — the SAME canonical inclusion rule as
+  // getReportedQtyByBar (Instruction 031): submitted, not superseded, not
+  // cancelled, chainage review not pending. Two bounded queries (progress +
+  // structure rows) for the whole project — no per-item/per-DPR fetching.
+  async getProgressReportEntries(boqProjectId: number): Promise<Array<{
+    kind: "progress" | "structure";
+    entryId: number; dprId: number; dprDate: string; submittedAt: string | null;
+    site: string | null; engineer: string | null; boqItemId: number;
+    chainageFrom: string | null; chainageTo: string | null;
+    chainageFromKm: number | null; chainageToKm: number | null;
+    side: string | null; length: number | null; width: number | null; thickness: number | null;
+    quantity: number | null; uom: string | null;
+    quantitySource: string | null; quantitySourceNote: string | null;
+    location: string | null; remarks: string | null; rowConversionFactor: number | null;
+  }>> {
+    const validDpr = and(
+      eq(dprs.dprStatus, "submitted"),
+      eq(dprs.isSuperseded, false),
+      eq(dprs.isCancelled, false),
+      eq(dprs.isDeleted, false),
+    );
+    const progressRows = await db
+      .select({
+        entryId: progressEntries.id,
+        dprId: dprs.id,
+        dprDate: dprs.date,
+        submittedAt: dprs.submittedAt,
+        site: dprs.site,
+        engineer: dprs.engineer,
+        boqItemId: progressEntries.boqItemId,
+        chainageFrom: progressEntries.chainageFrom,
+        chainageTo: progressEntries.chainageTo,
+        chainageFromKm: progressEntries.chainageFromKm,
+        chainageToKm: progressEntries.chainageToKm,
+        side: progressEntries.side,
+        length: progressEntries.length,
+        width: progressEntries.width,
+        thickness: progressEntries.thickness,
+        quantity: progressEntries.quantity,
+        uom: progressEntries.uom,
+        quantitySource: progressEntries.quantitySource,
+        quantitySourceNote: progressEntries.quantitySourceNote,
+        activity: progressEntries.activity,
+      })
+      .from(progressEntries)
+      .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+      .innerJoin(boqItems, eq(boqItems.id, progressEntries.boqItemId))
+      .where(and(
+        eq(boqItems.boqProjectId, boqProjectId),
+        validDpr,
+        sql`(${progressEntries.chainageReviewStatus} IS NULL OR ${progressEntries.chainageReviewStatus} <> 'review_required')`,
+      ));
+    const structureRows = await db
+      .select({
+        entryId: dprStructureItems.id,
+        dprId: dprs.id,
+        dprDate: dprs.date,
+        submittedAt: dprs.submittedAt,
+        site: dprs.site,
+        engineer: dprs.engineer,
+        boqItemId: dprStructureItems.boqItemId,
+        quantity: dprStructureItems.quantity,
+        uom: dprStructureItems.uom,
+        remarks: dprStructureItems.remarks,
+        structureType: dprStructureItems.structureType,
+        structureName: dprStructureItems.structureName,
+        itemOfWork: dprStructureItems.itemOfWork,
+        rowConversionFactor: dprStructureItems.dprConversionFactor,
+      })
+      .from(dprStructureItems)
+      .innerJoin(dprs, eq(dprStructureItems.dprId, dprs.id))
+      .innerJoin(boqItems, eq(boqItems.id, dprStructureItems.boqItemId))
+      .where(and(eq(boqItems.boqProjectId, boqProjectId), validDpr));
+    return [
+      ...progressRows.map((r) => ({
+        kind: "progress" as const,
+        entryId: r.entryId,
+        dprId: r.dprId,
+        dprDate: String(r.dprDate),
+        submittedAt: r.submittedAt ?? null,
+        site: r.site ?? null,
+        engineer: r.engineer ?? null,
+        boqItemId: r.boqItemId as number,
+        chainageFrom: r.chainageFrom ?? null,
+        chainageTo: r.chainageTo ?? null,
+        chainageFromKm: r.chainageFromKm != null ? Number(r.chainageFromKm) : null,
+        chainageToKm: r.chainageToKm != null ? Number(r.chainageToKm) : null,
+        side: r.side ?? null,
+        length: r.length != null ? Number(r.length) : null,
+        width: r.width != null ? Number(r.width) : null,
+        thickness: r.thickness != null ? Number(r.thickness) : null,
+        quantity: r.quantity != null ? Number(r.quantity) : null,
+        uom: r.uom ?? null,
+        quantitySource: r.quantitySource ?? null,
+        quantitySourceNote: r.quantitySourceNote ?? null,
+        location: null,
+        remarks: r.quantitySourceNote ?? null,
+        rowConversionFactor: null,
+      })),
+      ...structureRows.map((r) => ({
+        kind: "structure" as const,
+        entryId: r.entryId,
+        dprId: r.dprId,
+        dprDate: String(r.dprDate),
+        submittedAt: r.submittedAt ?? null,
+        site: r.site ?? null,
+        engineer: r.engineer ?? null,
+        boqItemId: r.boqItemId as number,
+        chainageFrom: null,
+        chainageTo: null,
+        chainageFromKm: null,
+        chainageToKm: null,
+        side: null,
+        length: null,
+        width: null,
+        thickness: null,
+        quantity: r.quantity != null ? Number(r.quantity) : null,
+        uom: r.uom ?? null,
+        quantitySource: null,
+        quantitySourceNote: null,
+        location: [r.structureType, r.structureName, r.itemOfWork].filter(Boolean).join(" — ") || null,
+        remarks: r.remarks ?? null,
+        rowConversionFactor: r.rowConversionFactor != null ? Number(r.rowConversionFactor) : null,
+      })),
+    ];
+  }
+
   async deleteStructureLocationBars(boqProjectId: number): Promise<number> {
     const result = await db.delete(workProgramBars).where(
       and(eq(workProgramBars.boqProjectId, boqProjectId), eq(workProgramBars.planningMode as any, "structure_location"))

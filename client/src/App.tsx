@@ -45,6 +45,7 @@ const SiteEdit              = lazy(() => import("@/pages/SiteEdit"));
 const SiteMaterialStock     = lazy(() => import("@/pages/SiteMaterialStock"));
 const SiteSuccess           = lazy(() => import("@/pages/SiteSuccess"));
 const SiteReport            = lazy(() => import("@/pages/SiteReport"));
+const ProgressReport        = lazy(() => import("@/pages/ProgressReport"));
 const SiteMaterialTrips     = lazy(() => import("@/pages/SiteMaterialTrips"));
 const SiteMaterialsReceived = lazy(() => import("@/pages/SiteMaterialsReceived"));
 const SitePurchasesReport   = lazy(() => import("@/pages/SitePurchasesReport"));
@@ -269,6 +270,7 @@ function AuthedShell() {
           <Route path="/site/edit/:id" component={gated(SiteEdit, "site_dprs")} />
           <Route path="/site/success/:id" component={gated(SiteSuccess, "site_dprs")} />
           <Route path="/site/report/:id" component={gated(SiteReport, "site_dprs")} />
+          <Route path="/reports/progress" component={gated(ProgressReport, "site_dprs")} />
           <Route path="/site/material-trips" component={gated(SiteMaterialTrips, "site_materials")} />
           <Route path="/site/materials-received" component={gated(SiteMaterialsReceived, "site_materials")} />
           <Route path="/site/material-stock" component={gated(SiteMaterialStock, "site_materials")} />

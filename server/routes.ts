@@ -21,6 +21,7 @@ import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { siteMatchesPermitted } from "@shared/siteName";
+import { computeItemEntries, computeItemAbstract } from "@shared/progressReport";
 import { shortItemName as sharedShortItemName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
@@ -12166,6 +12167,171 @@ export async function registerRoutes(
     } catch (err) {
       console.error("GET /api/boq/projects/:id/plan-vs-actual:", err);
       res.status(500).json({ error: "Failed to fetch plan vs actual" });
+    }
+  });
+
+  // ── Batch 06: RA-style Progress Report (READ-ONLY) ─────────────────────────
+  // Shared assembly for the report page and the Excel export so both always
+  // agree. Uses shared/progressReport.ts (chronological cumulative computed
+  // BEFORE any display sort) and the canonical submitted-DPR inclusion rule.
+  const round3 = (n: number) => Number(n.toFixed(3));
+  const round4 = (n: number) => Number(n.toFixed(4));
+  /** Returns the report, "forbidden" (site-restricted user, unpermitted project), or null (no project). */
+  async function assembleProgressReport(req: Express.Request, projectId: number, siteFilter?: string) {
+    const project = await storage.getBoqProject(projectId);
+    if (!project) return null;
+    // Site-access security: restricted users may only open projects whose
+    // site is permitted — not merely have their DPR rows filtered, since the
+    // report also exposes BOQ metadata (items, contract quantities).
+    const permittedSiteNames = await getPermittedSiteNames(req);
+    if (permittedSiteNames !== null) {
+      const projectSite = project.siteId != null
+        ? (await storage.getSites()).find((s) => s.id === project.siteId)?.name ?? null
+        : null;
+      if (projectSite == null || !siteMatchesPermitted(projectSite, permittedSiteNames)) {
+        return "forbidden" as const;
+      }
+    }
+    const boqItems = await storage.getBoqItems(projectId);
+    let entries = await storage.getProgressReportEntries(projectId);
+    if (permittedSiteNames !== null) {
+      entries = entries.filter((e) => e.site != null && siteMatchesPermitted(e.site, permittedSiteNames));
+    }
+    if (siteFilter) {
+      entries = entries.filter((e) => e.site != null && siteMatchesPermitted(e.site, [siteFilter]));
+    }
+    const itemsById = new Map(boqItems.map((i) => [i.id, i]));
+    const byItem = new Map<number, typeof entries>();
+    for (const e of entries) {
+      if (!itemsById.has(e.boqItemId)) continue;
+      (byItem.get(e.boqItemId) ?? byItem.set(e.boqItemId, []).get(e.boqItemId)!).push(e);
+    }
+    const items = [] as Array<{ boqItem: any; entries: ReturnType<typeof computeItemEntries> }>;
+    for (const item of boqItems) {
+      const list = byItem.get(item.id);
+      if (!list || list.length === 0) continue;
+      items.push({
+        boqItem: {
+          id: item.id,
+          itemCode: item.itemCode ?? null,
+          description: item.description,
+          displayName: (item as any).displayName ?? null,
+          itemName: (item as any).itemName ?? null,
+          unit: item.unit,
+          boqQty: item.boqQty != null ? Number(item.boqQty) : null,
+          dprConversionFactor: (item as any).dprConversionFactor ?? null,
+          dprMeasurementMethod: (item as any).dprMeasurementMethod ?? null,
+          sortOrder: (item as any).sortOrder ?? null,
+        },
+        entries: computeItemEntries(list, item as any),
+      });
+    }
+    const dprSites = Array.from(new Set(entries.map((e) => e.site).filter((s): s is string => !!s))).sort();
+    const earliest = entries.reduce<string | null>((min, e) => (min == null || e.dprDate < min ? e.dprDate : min), null);
+    return {
+      project: { id: project.id, name: project.name, startDate: (project as any).startDate ?? null },
+      defaultFromDate: ((project as any).startDate as string | null) ?? earliest,
+      sites: dprSites,
+      items,
+    };
+  }
+
+  app.get("/api/reports/progress", async (req, res) => {
+    const t0 = Date.now();
+    try {
+      if (!assertView(req, res, "site_dprs")) return;
+      const projectId = parseInt(req.query.projectId as string);
+      if (!Number.isFinite(projectId)) return res.status(400).json({ error: "projectId is required" });
+      const report = await assembleProgressReport(req, projectId, (req.query.site as string) || undefined);
+      if (report === "forbidden") return res.status(403).json({ error: "forbidden" });
+      if (!report) return res.status(404).json({ error: "Project not found" });
+      const dur = Date.now() - t0;
+      if (dur > 300 || process.env.NODE_ENV !== "production") {
+        console.log(`[perf] GET /api/reports/progress p${projectId} → ${report.items.length} items in ${dur}ms`);
+      }
+      res.json(report);
+    } catch (err) {
+      console.error("GET /api/reports/progress:", err);
+      res.status(500).json({ error: "Failed to build progress report" });
+    }
+  });
+
+  app.get("/api/reports/progress/export", async (req, res) => {
+    try {
+      if (!assertView(req, res, "site_dprs")) return;
+      const projectId = parseInt(req.query.projectId as string);
+      if (!Number.isFinite(projectId)) return res.status(400).json({ error: "projectId is required" });
+      const report = await assembleProgressReport(req, projectId, (req.query.site as string) || undefined);
+      if (report === "forbidden") return res.status(403).json({ error: "forbidden" });
+      if (!report) return res.status(404).json({ error: "Project not found" });
+      const from = (req.query.from as string) || report.defaultFromDate || "1900-01-01";
+      const to = (req.query.to as string) || new Date().toISOString().slice(0, 10);
+
+      const summaryRows: any[][] = [
+        ["Progress Report — RA-style DPR Rollup"],
+        ["Project", report.project.name],
+        ["Site", (req.query.site as string) || "All sites"],
+        ["Period", `${from} to ${to}`],
+        ["Generated", new Date().toISOString().slice(0, 10)],
+        [],
+        ["Sl.", "BOQ Item", "UoM", "Contract Qty", "Previous", "This Period", "Cumulative", "Balance", "% Complete", "DPR Count"],
+      ];
+      const detailRows: any[][] = [
+        ["Date", "Item", "Side", "From", "To", "L", "W", "T", "Measured Qty", "Measured UoM", "BOQ Qty", "BOQ UoM", "Running Cumulative", "DPR No.", "Prepared By", "Remarks", "Possible Overlap"],
+      ];
+      let sl = 0;
+      for (const it of report.items) {
+        const abstract = computeItemAbstract(it.entries, it.boqItem, from, to);
+        sl++;
+        summaryRows.push([
+          sl,
+          it.boqItem.displayName || it.boqItem.itemName || it.boqItem.description,
+          it.boqItem.unit,
+          abstract.contractQty,
+          round3(abstract.previousQty),
+          round3(abstract.thisPeriodQty),
+          round3(abstract.cumulativeQty),
+          abstract.balanceQty != null ? round3(abstract.balanceQty) : "",
+          abstract.pctComplete != null ? Number(abstract.pctComplete.toFixed(1)) : "",
+          abstract.dprCount,
+        ]);
+        for (const e of it.entries) {
+          if (e.dprDate < from || e.dprDate > to) continue;
+          detailRows.push([
+            e.dprDate,
+            it.boqItem.displayName || it.boqItem.itemName || it.boqItem.description,
+            e.side ?? "",
+            e.chainageFrom ?? "",
+            e.chainageTo ?? "",
+            e.length ?? "",
+            e.width ?? "",
+            e.thickness ?? "",
+            e.quantity ?? "",
+            e.uom ?? "",
+            e.boqCreditQty != null ? round4(e.boqCreditQty) : "",
+            it.boqItem.unit,
+            round4(e.runningCumulative),
+            `DPR-${e.dprId}`,
+            e.engineer ?? "",
+            [e.location, e.remarks, e.reviewFlag].filter(Boolean).join(" | "),
+            e.overlaps.length ? e.overlaps.map((o) => `DPR-${o.withDprId}`).join(", ") : "",
+          ]);
+        }
+      }
+      const wb = xlsx.utils.book_new();
+      const ws1 = xlsx.utils.aoa_to_sheet(summaryRows);
+      ws1["!cols"] = [{ wch: 5 }, { wch: 45 }, { wch: 8 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
+      const ws2 = xlsx.utils.aoa_to_sheet(detailRows);
+      ws2["!cols"] = [{ wch: 11 }, { wch: 40 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 7 }, { wch: 7 }, { wch: 7 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 30 }, { wch: 16 }];
+      xlsx.utils.book_append_sheet(wb, ws1, "Summary");
+      xlsx.utils.book_append_sheet(wb, ws2, "Measurement Details");
+      const buf = xlsx.write(wb, { type: "buffer", bookType: "xlsx" });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="progress-report-${from}-to-${to}.xlsx"`);
+      res.send(buf);
+    } catch (err) {
+      console.error("GET /api/reports/progress/export:", err);
+      res.status(500).json({ error: "Failed to export progress report" });
     }
   });
 
