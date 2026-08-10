@@ -1,0 +1,693 @@
+BATCH 04 — DPR DATA INTEGRITY, UOM CONSISTENCY & SUBMIT READINESS
+
+This is a focused DPR integrity hotfix.
+
+Do NOT start Progress Report, Tomorrow's Programme workflow changes, or further Geometry work in this batch.
+
+There are THREE related real-data issues to resolve:
+
+1. DPR physical quantity / BOQ-UoM inconsistency
+2. Summary vs Detailed DPR dimension inconsistency
+3. DPR fields — especially Guided DPR equipment details — may not be saved exactly as entered, and an incomplete DPR can presently reach submission without sufficiently warning the Engineer.
+
+IMPORTANT RISK NOTE
+
+Sections dealing with measurement/UoM/save fidelity are corrective bug fixes.
+
+The Final Submit readiness gate is different: it introduces new blocking behaviour into a LIVE field workflow used by Engineers/Foremen every day.
+
+Therefore:
+
+- false-positive blocking is a higher operational risk;
+- Draft Save must remain available at all times;
+- mandatory checks must be conservative and clearly justified;
+- ambiguous/incomplete cases without a valid resolution path should default to WARNING rather than hard block;
+- submit-readiness tests must be reviewed especially carefully before this batch is accepted.
+
+CURRENT REAL EXAMPLE
+
+For the same submitted DPR:
+
+CLEARING AND GRUBBING
+Chainage 2.900–3.050
+Length = 150 m
+Width = 1.5 m
+
+Physical measurement:
+150 × 1.5 = 225 Sqm
+
+BOQ UoM:
+Ha
+
+The Detailed DPR shows approximately:
+150 m × 1.5 m
+Quantity 225
+UoM Ha
+
+The Summary shows:
+0 × 1.5 × 0
+Qty 225
+UoM Ha
+
+Expected BOQ-progress quantity, if Sqm → Ha conversion applies:
+
+225 Sqm × 0.0001 = 0.0225 Ha
+
+Also investigate Guided DPR equipment persistence: the current code path appears capable of collecting equipment information but may serialize only part of it and replace entered fields with blank/null values.
+
+OBJECTIVE
+
+Make DPR data trustworthy end-to-end:
+
+A. what the Engineer enters is what is saved;
+B. Summary and Detailed DPR represent the same stored measurement consistently;
+C. physical measurement is converted correctly to the BOQ item's UoM;
+D. an Engineer is clearly notified before Final Submit if selected/entered DPR sections are incomplete;
+E. Draft remains lenient so the Engineer can save unfinished work and return later.
+
+1. INVESTIGATE THE REAL DPR END-TO-END FIRST
+
+Trace:
+
+- GuidedDpr.tsx
+- SiteEntry.tsx / Detailed DPR
+- SiteEdit.tsx
+- shared/dprGeometry.ts
+- client DPR calculation/UoM helpers
+- createDprRequestSchema / API input
+- server DPR create/update/submit routes
+- server storage createDpr / updateDraftDpr / submitDraftDpr
+- progress_entries schema
+- equipment_logs schema
+- BOQ item:
+  • unit
+  • dprMeasurementMethod
+  • dprConversionFactor
+
+Also search for any existing earlier equipment-completeness / "equipment output gap" logic, comments, tests, prompts, helpers, or memory/documentation concepts already present in the repo.
+
+Do not duplicate an existing partial-completeness solution if one already exists.
+
+For the actual Takkadpally Clearing & Grubbing row report:
+
+A. stored chainageFrom
+B. stored chainageTo
+C. stored length
+D. stored width
+E. stored thickness
+F. stored quantity
+G. stored UoM
+H. BOQ UoM
+I. BOQ dprMeasurementMethod
+J. BOQ dprConversionFactor
+K. whether dprConversionFactor is populated for this real item
+L. where the factor is currently read/applied, if anywhere
+
+Also trace one actual equipment row from UI state → request payload → equipment_logs row → Detailed/Summary view.
+
+Do not assume this is only a display bug.
+
+2. EXPLICITLY DISTINGUISH CONVERSION-FACTOR ROOT CAUSE
+
+Determine which is true for Clearing & Grubbing:
+
+CASE A — CODE BUG
+
+The BOQ item's dprConversionFactor is correctly populated, e.g. 0.0001, but the auto-calculated L×W DPR path never applies it.
+
+OR
+
+CASE B — CONFIGURATION/DATA GAP
+
+The physical quantity calculation is correctly 225 Sqm, but dprConversionFactor is blank/default 1 even though the BOQ is in Ha.
+
+OR
+
+CASE C — BOTH
+
+There is both missing configuration and a code path that ignores the factor.
+
+Report the actual case.
+
+Do not silently invent or populate conversion factors for unrelated BOQ items.
+
+If this specific item's correct deterministic factor is obvious from its standard units, report what should be configured and whether automatic standard conversion is safer than relying on manual configuration.
+
+3. ONE SHARED DPR MEASUREMENT PATH
+
+Use/reuse one shared helper for measurement semantics across:
+
+- Guided DPR
+- Detailed DPR
+- DPR Edit
+- Summary/List
+- submitted DPR Detail
+
+Where chainage is the source:
+
+Length =
+(To - From) × 1000 m
+
+unless a valid explicit measured-length override exists.
+
+Preserve the existing intentional explicit-length override mechanism where supported.
+
+Do not maintain separate arithmetic between Summary and Detailed views.
+
+4. DIMENSION DISPLAY MUST MATCH MEASUREMENT TYPE
+
+VOLUME ITEM:
+90 m × 1.0 m × 0.30 m
+= 27.000 Cum
+
+AREA ITEM:
+150 m × 1.50 m
+= 225 Sqm
+
+Do NOT display:
+150 × 1.5 × 0
+or
+0 × 1.5 × 0
+
+LINEAR ITEM:
+show meaningful length only.
+
+MANUAL/WEIGHMENT/COUNT ITEM:
+do not fabricate geometric dimensions.
+
+Summary and Detail must use the same measurement helper.
+
+5. HARD DPR → BOQ UOM RULE
+
+Physical measurement and BOQ progress are distinct when units differ.
+
+Example:
+
+Physical:
+225 Sqm
+
+BOQ:
+Ha
+
+BOQ progress:
+0.0225 Ha
+
+The final quantity used against BOQ progress/balance must be in the actual BOQ item's UoM.
+
+Do NOT merely calculate 225 Sqm and label it "Ha."
+
+Preserve the physical measurement for transparency.
+
+A compact display may be:
+
+Measured: 225 Sqm
+BOQ Progress: 0.0225 Ha
+
+or:
+
+150 m × 1.5 m = 225 Sqm → 0.0225 Ha
+
+6. DPR CONVERSION PRECEDENCE
+
+Reuse the existing canonical DPR/UoM and dprConversionFactor mechanisms.
+
+Do not create a parallel conversion system.
+
+Explicitly define and test the precedence between:
+
+1. physical geometry quantity
+2. canonical standard-unit conversion
+3. BOQ item's dprConversionFactor
+4. final BOQ progress quantity
+
+The existing BOQ `dprConversionFactor` field is specifically intended for DPR-unit → BOQ-unit conversion and must be investigated rather than bypassed.
+
+Prevent double conversion.
+
+State whether the auto-calculated L×W/L×W×T path currently reads dprConversionFactor.
+
+7. SAVE FIDELITY — WHAT THE USER ENTERS MUST BE SAVED
+
+Audit all DPR child sections for loss/transformation between UI state and API payload:
+
+- progress
+- equipment
+- labour
+- materials
+- remarks
+- site purchases where applicable
+
+Pay particular attention to Guided DPR equipment.
+
+The current Guided path must NOT take an entered equipment row and replace valid user-entered fields with hard-coded:
+
+- startTime = ""
+- endTime = ""
+- openingReading = null
+- closingReading = null
+- diesel = null
+- equipmentId = null
+- plantUsageId = null
+- trip values = null
+- other valid entered fields = null
+
+unless that field genuinely does not exist in the Guided UI and the user never entered it.
+
+If Guided DPR exposes/retains a field, it must round-trip:
+
+UI
+→ draft save
+→ reload
+→ submit
+→ database
+→ detail/edit view
+
+without silent loss.
+
+Reuse the same EquipmentEntry semantics used by Detailed DPR where practical.
+
+Do not create a second incompatible equipment data model.
+
+8. DRAFT MUST REMAIN LENIENT
+
+The Engineer must still be able to:
+
+- start a DPR;
+- select activities;
+- enter partial quantities;
+- record opening equipment readings;
+- leave closing readings/time incomplete;
+- save as Draft;
+- return later and complete the SAME draft.
+
+Do not block Draft Save because an end-of-day value is missing.
+
+Draft is intentionally incomplete.
+
+9. FINAL SUBMIT READINESS — NOTIFY THE ENGINEER
+
+Before Final Submit, run one consistent completeness check.
+
+This should identify incomplete selected/entered records and show a clear checklist to the Engineer.
+
+Do not silently submit an incomplete DPR.
+
+MANDATORY checks must be conservative.
+
+Where SitePulse cannot currently distinguish a legitimate "not used / no work happened" case from an incomplete row, treat it as ADVISORY until the proper outcome workflow exists.
+
+At minimum check:
+
+A. PROGRESS / ACTIVITIES
+
+For every activity row actually selected/added:
+
+- BOQ/activity selected
+- applicable From/To chainage completed where required
+- side selected where required
+- required dimensions or manual quantity completed
+- quantity > 0 where work was done
+- quantity source completed if manual
+- required override/reason completed where applicable
+
+Do not force every BOQ item in the project to be selected.
+
+However, if an activity has been deliberately added/selected and left incomplete, flag it.
+
+If the existing programme/Tomorrow's Plan provides a reliable list of activities expected today, investigate whether missing outcomes can be surfaced as a WARNING only:
+
+"Planned activity X has no DPR outcome."
+
+Do not build Tomorrow's Programme outcome workflow in this batch.
+
+B. EQUIPMENT
+
+For every equipment row with a machine selected:
+
+Require a meaningful closure before Final Submit ONLY where the row clearly represents equipment that was actually used.
+
+Depending on entry type, validate the appropriate fields.
+
+For normal time/meter equipment:
+
+- machine
+- task
+- operator where the current business rule expects it
+- opening reading and closing reading if meter method is being used
+OR
+- start time and end time if time method is being used
+
+If openingReading exists but closingReading is blank:
+flag:
+"Closing meter reading required."
+
+If startTime exists but endTime is blank:
+flag:
+"End time required."
+
+If machine exists AND some usage data has been entered but the row cannot be completed:
+this may be a mandatory issue.
+
+IMPORTANT — MACHINE SELECTED BUT NOT USED
+
+If a machine is selected but NO actual usage details were entered:
+
+- no opening/closing meter;
+- no start/end time;
+- no trips;
+- no other evidence of actual use;
+
+and SitePulse does NOT yet have a proper explicit "Not used" outcome:
+
+DO NOT hard-block Final Submit solely for this case.
+
+Show an ADVISORY warning such as:
+
+"JCB is selected but no usage was recorded. Confirm whether it was not used."
+
+This remains advisory until a proper Not Used / Released / Cancelled outcome is introduced in the planned Tomorrow's Programme / Equipment workflow batch.
+
+Do not invent zero hours.
+
+If a lightweight existing "not used" concept already exists and can be reused without schema/business-rule expansion, use it.
+
+Otherwise report the gap and keep this specific case non-blocking.
+
+Trip-based equipment:
+validate trips/distance according to the existing entry type.
+
+C. LABOUR
+
+For an entered labour row:
+
+- category
+- positive count
+- task where expected
+
+Rows with zero count/blank category should not masquerade as completed labour records.
+
+If a blank placeholder labour row can exist naturally in the UI without meaning labour was actually used, avoid false-positive blocking.
+
+D. MATERIALS
+
+For an entered material row:
+
+- material
+- quantity
+- UoM
+- other currently required fields depending on type
+
+Do not invent a broader Stores workflow here.
+
+10. USER EXPERIENCE FOR INCOMPLETE DPR
+
+Do not give the Engineer a sequence of ten separate toast errors if several things are incomplete.
+
+Prefer one clear Submit Readiness panel/dialog such as:
+
+"DPR is not ready to submit"
+
+Mandatory issues:
+⚠ Embankment — quantity/source incomplete
+⚠ JCB — closing meter reading missing
+
+Advisories:
+ℹ Soil Compactor selected but no usage recorded
+ℹ Planned activity X has no DPR outcome
+
+Activities
+✓ Roadway Excavation complete
+
+Actions:
+- Go back and complete
+- Save Draft
+
+Do not allow ordinary Final Submit while MANDATORY completeness issues remain.
+
+Advisory warnings must not block Final Submit.
+
+Make mandatory vs advisory visually clear.
+
+11. SERVER-SIDE SUBMIT VALIDATION
+
+Do not rely only on frontend validation.
+
+Create/reuse a shared DPR submit-readiness validator so the server rejects Final Submit if MANDATORY closure requirements are incomplete.
+
+Draft endpoints must stay lenient.
+
+The same rule should be consumed by:
+
+- Guided DPR
+- Detailed DPR
+- Edit/complete Draft
+- server Final Submit
+
+Avoid four separate slightly different validation implementations.
+
+IMPORTANT:
+
+Server-side validation must distinguish:
+- mandatory errors
+- advisory warnings
+
+The server must not reject Final Submit for advisory-only cases such as "machine selected but no usage recorded" when there is currently no explicit Not Used outcome available.
+
+12. PRESERVE EXISTING ENGINEER COMPLETION FLOW
+
+There is already an existing concept around equipment with pending closing entries and Engineer completion/edit access.
+
+Inspect it carefully.
+
+Also inspect any earlier "equipment output gap" implementation/concept found during investigation.
+
+Do not break or duplicate it.
+
+Report how the new submit-readiness rule relates to that existing flow.
+
+If historical/legacy submitted DPRs intentionally allowed pending equipment closure, do not retroactively invalidate them.
+
+13. CLEARING & GRUBBING REAL VERIFICATION
+
+For:
+
+Ch. 2.900–3.050
+Width 1.5 m
+
+Expected physical measurement:
+
+150 × 1.5 = 225 Sqm
+
+If BOQ UoM = Ha and factor/conversion is 0.0001:
+
+Expected BOQ progress:
+
+0.0225 Ha
+
+Summary must not show:
+0 × 1.5 × 0
+
+Detail must not show:
+225 Ha
+
+14. VOLUME ITEMS MUST NOT REGRESS
+
+ROADWAY EXCAVATION:
+
+90 × 1 × 0.3
+= 27 Cum
+
+EMBANKMENT – EXCAVATED EARTH:
+
+90 × 2.5 × 0.3
+= 67.5 Cum
+
+If BOQ UoM = Cum, these remain unchanged.
+
+15. HISTORICAL DPR DATA — NO SILENT BACKFILL
+
+Do NOT rewrite old submitted DPRs in this batch.
+
+Determine whether historical rows contain:
+
+- wrong stored quantities;
+- correct physical quantities with wrong UoM labels;
+- lost Guided equipment fields;
+- other deterministic inconsistencies.
+
+If historical correction is possible, report:
+
+- affected count if practical;
+- affected BOQ items/UoMs;
+- whether source dimensions are sufficient for safe recalculation;
+- whether lost equipment information is recoverable or irrecoverable.
+
+Do not fabricate missing historical values.
+
+16. CUMULATIVE PROGRESS / BALANCE
+
+Inspect every existing consumer that sums DPR quantity against the BOQ.
+
+Determine whether it applies:
+
+quantity
+× dprConversionFactor
+
+or uses raw progress quantity.
+
+Report the exact current path.
+
+IMPORTANT:
+
+Because this batch must NOT silently rewrite historical entries, explicitly state what the Clearing & Grubbing cumulative/balance figure will show immediately after the fix.
+
+If old bad entries remain as 225 instead of 0.0225, say so clearly.
+
+Do not describe the item as "fully fixed" if its historical cumulative remains wrong pending a separate approved backfill.
+
+17. TESTS
+
+Add focused tests for:
+
+A. Chainage 2.900–3.050 derives 150 m.
+
+B. Area geometry:
+150 × 1.5 = 225 Sqm.
+
+C. BOQ factor 0.0001:
+225 Sqm → 0.0225 Ha.
+
+D. dprConversionFactor is applied exactly once.
+
+E. Factor blank/default behaviour is explicit and tested.
+
+F. Area display does not include fake thickness.
+
+G. Summary and Detail use the same measurement representation.
+
+H. Roadway Excavation remains 27 Cum.
+
+I. Embankment remains 67.5 Cum.
+
+J. Guided DPR equipment field round-trip:
+entered start/end, opening/closing, operator, task, equipmentId, etc. survive payload/save/reload.
+
+K. Draft with opening but no closing reading can be saved.
+
+L. Final Submit with opening but no closing reading is rejected/notified.
+
+M. Final Submit with startTime but no endTime is rejected/notified.
+
+N. Equipment with complete meter/time data submits successfully.
+
+O. Selected activity left incomplete appears in Submit Readiness.
+
+P. Multiple incomplete sections produce one consolidated readiness result.
+
+Q. Server rejects the same MANDATORY incomplete submit even if frontend is bypassed.
+
+R. Detailed DPR and Guided DPR use the same submit-readiness rules.
+
+S. Existing Engineer pending-closing completion flow does not regress.
+
+T. Existing DPR draft/reopen flow does not regress.
+
+U. Machine selected with NO usage details and no Not Used concept:
+appears as ADVISORY only and does NOT block Final Submit.
+
+V. Advisory-only readiness result is accepted by server Final Submit.
+
+W. Existing quantityResolver/Geometry/Arrangement/Gantt tests remain unchanged.
+
+18. REPORT BACK
+
+A. Root cause of Summary `0×1.5×0`.
+
+B. Root cause of `225 Ha`.
+
+C. Exact real Clearing & Grubbing:
+- BOQ UoM
+- dprMeasurementMethod
+- dprConversionFactor
+- stored progress quantity/UoM
+
+D. State explicitly:
+- is dprConversionFactor populated for this item?
+- does the auto L×W path currently read/apply it?
+
+E. Final conversion precedence.
+
+F. Guided DPR save-fidelity audit:
+list every equipment field that was previously being dropped/reset and what now happens.
+
+G. Confirm whether any other DPR section was losing entered fields.
+
+H. Shared Submit Readiness validator:
+- file/function
+- Guided consumer
+- Detailed consumer
+- server consumer
+
+I. Final mandatory vs advisory completeness rules.
+
+J. Explicitly report:
+- what happens when a machine is selected but not used;
+- whether a Not Used concept already existed;
+- whether this case is advisory or mandatory;
+- confirmation that an advisory-only case does not block Final Submit.
+
+K. Before/after Clearing & Grubbing example.
+
+L. Before/after Equipment round-trip example.
+
+M. Existing pending-closing Engineer completion flow and how it coexists with the new rule.
+
+N. Historical data impact and whether any safe backfill should be proposed separately.
+
+O. State explicitly what the item's cumulative/balance will display immediately after this batch with historical records left untouched.
+
+P. HIGH-RISK SUBMIT-GATE VERIFICATION
+
+Report submit-readiness results separately from quantity/display tests.
+
+For mandatory vs advisory validation, include at least:
+
+- legitimate complete DPR submits;
+- draft incomplete DPR saves;
+- incomplete meter usage blocks;
+- incomplete time usage blocks;
+- machine selected/no usage advisory does NOT block;
+- blank placeholder labour/material rows do not falsely block;
+- frontend and server agree on mandatory/advisory classification;
+- no known false-positive blocking case remains.
+
+Treat any false-positive Final Submit block as a release blocker for this batch.
+
+Q. Test results.
+
+R. Confirm:
+- no silent historical rewrite;
+- no Project Scope change;
+- no Auto Sequence/Gantt change;
+- no Execution Arrangement change;
+- no Geometry change;
+- no Tomorrow's Programme change.
+
+DO NOT START THE PROGRESS REPORT BATCH.
+
+SUCCESS CRITERION
+
+Batch 04 succeeds only when:
+
+1. DPR physical measurement and BOQ progress quantity are correctly distinguished.
+2. BOQ-unit conversion is correctly applied exactly once.
+3. Summary and Detailed DPR agree.
+4. Anything the Engineer actually enters is preserved through save/reload/submit.
+5. Drafts may remain incomplete.
+6. Final Submit clearly notifies the Engineer of incomplete selected activities/equipment/labour/materials.
+7. Only genuinely mandatory incomplete records block Final Submit.
+8. A machine merely selected but with no usage recorded does NOT hard-block Final Submit until a proper Not Used outcome exists.
+9. Advisory warnings remain non-blocking in both frontend and server.
+10. Historical bad data is explicitly identified rather than silently rewritten.
+11. The report states clearly whether cumulative historical progress remains temporarily incorrect pending a separate backfill.
+12. No false-positive Final Submit blocking case is known at batch completion.

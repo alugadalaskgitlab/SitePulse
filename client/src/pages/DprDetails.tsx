@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import type { EquipmentMasterType, Site } from "@shared/schema";
 import { boqItemDisplayName } from "@shared/boqItemName";
+import { dprMeasurementSummary } from "@shared/dprGeometry";
 
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
@@ -74,13 +75,17 @@ export default function DprDetails() {
   });
 
   const boqItemMap = useMemo(() => {
-    const map = new Map<number, { itemCode: string | null; description: string; displayName: string | null; itemName: string | null }>();
+    const map = new Map<number, { itemCode: string | null; description: string; displayName: string | null; itemName: string | null; unit: string | null; dprMeasurementMethod: string | null; dprConversionFactor: number | null }>();
     for (const item of siteBoqItems) {
       map.set(item.id, {
         itemCode: item.itemCode ?? null,
         description: item.description,
         displayName: (item as any).displayName ?? null,
         itemName: item.itemName ?? null,
+        // Batch 04: measurement profile for the shared measurement summary
+        unit: item.unit ?? null,
+        dprMeasurementMethod: (item as any).dprMeasurementMethod ?? null,
+        dprConversionFactor: (item as any).dprConversionFactor ?? null,
       });
     }
     return map;
@@ -262,27 +267,18 @@ export default function DprDetails() {
                   <TableHead>Side</TableHead>
                   <TableHead>From</TableHead>
                   <TableHead>To</TableHead>
-                  <TableHead className="text-right">Length (m)</TableHead>
-                  <TableHead className="text-right">Width (m)</TableHead>
-                  <TableHead className="text-right">Thickness (m)</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead>UOM</TableHead>
+                  <TableHead>Dimensions</TableHead>
+                  <TableHead className="text-right">Measured</TableHead>
+                  <TableHead className="text-right">BOQ Progress</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {dpr.progress.map((item: any, i: number) => {
-                  const calculateQty = (length?: number, width?: number, thickness?: number, uom?: string) => {
-                    if (!length || !width || !uom) return null;
-                    if (uom.toLowerCase() === 'sqm') {
-                      return (length * width).toFixed(3);
-                    } else if (uom.toLowerCase() === 'cum') {
-                      if (!thickness) return null;
-                      return (length * width * thickness).toFixed(3);
-                    }
-                    return null;
-                  };
-                  const calculated = calculateQty(item.length, item.width, item.thickness, item.uom);
-                  const displayQty = item.quantity || calculated || '-';
+                  // Batch 04: ONE shared measurement representation (same
+                  // helper as Summary/exports). Physical measurement stays in
+                  // its own unit; BOQ progress is factor-converted separately.
+                  const boqItem = item.boqItemId != null ? boqItemMap.get(item.boqItemId) ?? null : null;
+                  const m = dprMeasurementSummary(item, boqItem);
                   
                   return (
                     <TableRow key={i} data-testid={`row-progress-${i}`}>
@@ -308,18 +304,15 @@ export default function DprDetails() {
                       <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
                       <TableCell>{item.chainageFrom || '-'}</TableCell>
                       <TableCell>{item.chainageTo || '-'}</TableCell>
-                      <TableCell className="text-right">
-                        {(() => {
-                          const derivedLength = (!item.length && item.chainageFrom && item.chainageTo) 
-                            ? Math.abs((parseFloat(item.chainageTo) - parseFloat(item.chainageFrom)) * 1000)
-                            : null;
-                          return item.length || (derivedLength ? derivedLength.toFixed(0) : null) || '-';
-                        })()}
+                      <TableCell className="whitespace-nowrap">{m.dims ?? '-'}</TableCell>
+                      <TableCell className="text-right font-semibold whitespace-nowrap" data-testid={`text-measured-${i}`}>
+                        {m.measuredQty != null ? `${m.measuredQty} ${m.measuredUom ?? ''}`.trim() : '-'}
                       </TableCell>
-                      <TableCell className="text-right">{item.width || '-'}</TableCell>
-                      <TableCell className="text-right">{item.thickness || '-'}</TableCell>
-                      <TableCell className="text-right font-semibold">{displayQty}</TableCell>
-                      <TableCell className="text-muted-foreground">{item.uom}</TableCell>
+                      <TableCell className="text-right whitespace-nowrap" data-testid={`text-boq-progress-${i}`}>
+                        {m.converted && m.boqQty != null
+                          ? `${Number(m.boqQty.toFixed(4))} ${m.boqUom}`
+                          : m.boqQty != null ? `${Number(m.boqQty.toFixed(3))} ${m.boqUom ?? ''}`.trim() : '-'}
+                      </TableCell>
                     </TableRow>
                   );
                 })}

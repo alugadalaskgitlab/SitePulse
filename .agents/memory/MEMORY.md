@@ -40,4 +40,5 @@
 - [Quantity Resolver Batch 01](quantity-resolver-batch01.md) — shared/quantityResolver.ts is the only quantity-math seam; Arrangement (eligible denom) vs Auto Sequence (contractual denom) disagreement documented, never silently unify.
 - [Arrangement absence default](arrangement-absence-default.md) — no arrangement record = neutral self_execution state; Procurement read-only about arrangements; earthwork_arrangement_required renders as "Material mapping required".
 - [Road Geometry Batch 01](road-geometry-batch01.md) — shared/roadGeometry.ts is the only geometry engine; preview-only, high-confidence-only classification, UoM = item's own unit, MT needs density.
+- [DPR UOM & Submit Readiness](dpr-batch04-uom-readiness.md) — stored qty stays physical, factor (??1) applied exactly once; shared readiness validator mandatory-vs-advisory contract; Guided equipment passthrough bag.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

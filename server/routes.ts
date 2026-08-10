@@ -45,6 +45,7 @@ import { insertAttachmentSchema, attachmentModuleTypes } from "@shared/schema";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
 import { checkProgrammeLinkRow, deriveChainageReviewStatus, barSideCoverage, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { checkQuantitySourceRow, resolveQuantitySource } from "@shared/dprGeometry";
+import { evaluateDprSubmitReadiness } from "@shared/dprSubmitReadiness";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import {
   registerAuthRoutes,
@@ -1482,6 +1483,19 @@ export async function registerRoutes(
       if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
       const scopeError = await validateProgressScope(input, req, { draft: (input as any).dprStatus === "draft" });
       if (scopeError) return res.status(422).json({ message: scopeError.error, error: scopeError.code });
+      // Batch 04: shared submit-readiness gate. Drafts stay lenient; Final
+      // Submit is rejected only for MANDATORY issues (advisories never block).
+      if ((input as any).dprStatus !== "draft") {
+        const readiness = evaluateDprSubmitReadiness(input as any);
+        if (!readiness.ready) {
+          return res.status(422).json({
+            message: "DPR is not ready to submit",
+            error: "DPR_NOT_READY",
+            mandatory: readiness.mandatory,
+            advisories: readiness.advisories,
+          });
+        }
+      }
       const dpr = await storage.createDpr(input, input.clientTimestamp);
       const isDraft = (input as any).dprStatus === "draft";
       if (!isDraft) {
@@ -1548,6 +1562,18 @@ export async function registerRoutes(
       if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
       const scopeError = await validateProgressScope(input, req, {});
       if (scopeError) return res.status(422).json({ message: scopeError.error, error: scopeError.code });
+      // Batch 04: same shared submit-readiness gate as non-draft create.
+      {
+        const readiness = evaluateDprSubmitReadiness(input as any);
+        if (!readiness.ready) {
+          return res.status(422).json({
+            message: "DPR is not ready to submit",
+            error: "DPR_NOT_READY",
+            mandatory: readiness.mandatory,
+            advisories: readiness.advisories,
+          });
+        }
+      }
       const clientTimestamp = (req.body as any).clientTimestamp;
       const submitted = await storage.submitDraftDpr(id, input, clientTimestamp);
       if (!submitted) return res.status(404).json({ message: "DPR not found or not a draft" });

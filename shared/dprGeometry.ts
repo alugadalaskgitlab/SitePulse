@@ -196,3 +196,106 @@ export function checkQuantitySourceRow(
 
 /** Manual source options (excludes "calculated" — only the system may set that). */
 export const MANUAL_QUANTITY_SOURCES = ["measured", "survey", "weighment_mt", "other"] as const;
+
+// ── Batch 04: physical measurement vs BOQ progress ──────────────────────────
+//
+// A DPR row stores the PHYSICAL measurement (e.g. 150 m × 1.5 m = 225 SQM).
+// BOQ progress is that quantity converted into the BOQ item's own unit via
+// dprConversionFactor (e.g. × 0.0001 → 0.0225 Ha). The server-side cumulative
+// aggregation already applies COALESCE(dpr_conversion_factor, 1) — these
+// helpers are the SAME rule for every display surface, so the factor is
+// applied exactly once and Summary/Detail never disagree.
+
+/** The one factor rule (identical to the SQL aggregation): factor ?? 1. */
+export function resolveDprConversionFactor(
+  boqItem?: { dprConversionFactor?: number | null } | null,
+): number {
+  const f = boqItem?.dprConversionFactor;
+  return typeof f === "number" && Number.isFinite(f) && f > 0 ? f : 1;
+}
+
+/** Physical quantity → BOQ-unit progress quantity (applied exactly once). */
+export function boqProgressQty(
+  measuredQty: number | null | undefined,
+  boqItem?: { dprConversionFactor?: number | null } | null,
+): number | null {
+  if (measuredQty == null || !Number.isFinite(Number(measuredQty))) return null;
+  return Number(measuredQty) * resolveDprConversionFactor(boqItem);
+}
+
+const fmtNum = (n: number, dp = 3): string => {
+  const s = n.toFixed(dp);
+  return s.replace(/\.?0+$/, "");
+};
+
+export type DprRowLike = GeometryRowInput & { uom?: string | null };
+
+/**
+ * Dimension string that matches the row's measurement type — never fabricates
+ * zero dimensions. Area rows show "150 × 1.5 m", volume rows "90 × 1 × 0.3 m",
+ * linear rows "150 m"; count/weighment/manual rows show no dimensions at all.
+ * Dimension class comes from the BOQ item's measurement profile when known,
+ * else from the row's stored UOM.
+ */
+export function formatDprDimensions(
+  row: DprRowLike,
+  boqItem?: { unit?: string | null; dprMeasurementMethod?: string | null } | null,
+): string | null {
+  const prof = boqItem ? resolveBoqUomProfile(boqItem) : boqUomProfile(row.uom);
+  if (prof.dims.length === 0) return null;
+  const L = getEffectiveLength(row.length, row.chainageFrom ?? "", row.chainageTo ?? "");
+  const vals: number[] = [];
+  for (const d of prof.dims) {
+    const v = d === "L" ? L : d === "W" ? row.width : row.thickness;
+    if (v == null || !(Number(v) > 0)) return vals.length ? `${vals.map((x) => fmtNum(x)).join(" × ")} m` : null;
+    vals.push(Number(v));
+  }
+  return `${vals.map((x) => fmtNum(x)).join(" × ")} m`;
+}
+
+export type DprMeasurementSummary = {
+  /** e.g. "150 × 1.5 m" — null when the row has no geometric dimensions */
+  dims: string | null;
+  measuredQty: number | null;
+  /** UOM of the physical measurement (stored row uom, else profile uom) */
+  measuredUom: string | null;
+  factor: number;
+  /** measuredQty × factor — null when no BOQ item / no quantity */
+  boqQty: number | null;
+  boqUom: string | null;
+  /** true when a real unit conversion applies (factor ≠ 1) */
+  converted: boolean;
+};
+
+/** One shared measurement representation for Summary, Detail, and exports. */
+export function dprMeasurementSummary(
+  row: DprRowLike,
+  boqItem?: { unit?: string | null; dprMeasurementMethod?: string | null; dprConversionFactor?: number | null } | null,
+): DprMeasurementSummary {
+  const prof = boqItem ? resolveBoqUomProfile(boqItem) : boqUomProfile(row.uom);
+  const measuredQty = row.quantity != null && Number.isFinite(Number(row.quantity)) ? Number(row.quantity) : null;
+  const measuredUom = (row.uom || (prof.dims.length ? prof.uom : null)) ?? null;
+  const factor = resolveDprConversionFactor(boqItem);
+  const converted = boqItem != null && factor !== 1;
+  return {
+    dims: formatDprDimensions(row, boqItem),
+    measuredQty,
+    measuredUom,
+    factor,
+    boqQty: boqItem != null && measuredQty != null ? measuredQty * factor : null,
+    boqUom: boqItem?.unit ?? null,
+    converted,
+  };
+}
+
+/** "150 × 1.5 m = 225 SQM → 0.0225 Ha" (arrow only when a conversion applies). */
+export function formatDprMeasurement(s: DprMeasurementSummary): string {
+  const parts: string[] = [];
+  if (s.dims) parts.push(s.dims);
+  if (s.measuredQty != null) {
+    const qty = `${fmtNum(s.measuredQty)}${s.measuredUom ? ` ${s.measuredUom}` : ""}`;
+    parts.push(parts.length ? `= ${qty}` : qty);
+    if (s.converted && s.boqQty != null && s.boqUom) parts.push(`→ ${fmtNum(s.boqQty, 4)} ${s.boqUom}`);
+  }
+  return parts.join(" ") || "-";
+}

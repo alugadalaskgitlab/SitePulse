@@ -23,6 +23,8 @@ import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
+import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
+import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
@@ -409,6 +411,8 @@ export default function SiteEdit() {
   ]);
 
   const [materials, setMaterials] = useState<MaterialEntry[]>([]);
+  // Batch 04: consolidated submit-readiness panel (one dialog, not N toasts).
+  const [readiness, setReadiness] = useState<DprReadinessResult | null>(null);
 
   const [sitePurchases, setSitePurchases] = useState<SitePurchaseEntry[]>([]);
 
@@ -750,7 +754,14 @@ export default function SiteEdit() {
       toast({ title: "Missing Fields", description: "Please fill in date, site name, and engineer name.", variant: "destructive" });
       return;
     }
-    submitDraftMutation.mutate(buildPayload());
+    // Batch 04: same shared readiness rule as Guided/Detailed/server.
+    const payload = buildPayload();
+    const r = evaluateDprSubmitReadiness(payload as any);
+    if (r.mandatory.length > 0 || r.advisories.length > 0) {
+      setReadiness(r);
+      return;
+    }
+    submitDraftMutation.mutate(payload);
   };
 
   const handleSave = () => {
@@ -2297,6 +2308,14 @@ export default function SiteEdit() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Batch 04: consolidated submit-readiness panel */}
+      <DprReadinessDialog
+        readiness={readiness}
+        onClose={() => setReadiness(null)}
+        onSubmitAnyway={() => submitDraftMutation.mutate(buildPayload())}
+        onSaveDraft={handleDraftSave}
+      />
     </div>
   );
 }

@@ -40,6 +40,8 @@ import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { checkQuantitySourceRow, quantitiesMatch, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
+import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
+import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { History } from "lucide-react";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
@@ -245,6 +247,8 @@ export default function SiteEntry() {
   const backLink = returnTo ?? appendOrigin("/site/dashboard");
   const [showPreview, setShowPreview] = useState(false);
   const [overBalanceWarnings, setOverBalanceWarnings] = useState<string[] | null>(null);
+  // Batch 04: consolidated submit-readiness panel (one dialog, not N toasts).
+  const [readiness, setReadiness] = useState<DprReadinessResult | null>(null);
 
   // ── Guided mobile mode (Phase 1 UX facelift) ──────────────────────────
   // Engineers on mobile land on a simplified one-step-at-a-time flow by
@@ -1311,6 +1315,24 @@ export default function SiteEntry() {
         }
       }
     }
+    // Batch 04: one consolidated readiness check before Final Submit.
+    // Mandatory issues block; advisories only ask for confirmation.
+    const r = evaluateDprSubmitReadiness({
+      workType,
+      progress: workType === "structure" ? [] : progress,
+      equipment,
+      labour,
+      materials,
+    });
+    if (r.mandatory.length > 0 || r.advisories.length > 0) {
+      setReadiness(r);
+      return;
+    }
+    continueSubmitAfterReadiness();
+  };
+
+  // Over-balance confirmation runs AFTER readiness (both are confirm steps).
+  const continueSubmitAfterReadiness = () => {
     const warnings = getOverBalanceWarnings();
     if (warnings.length > 0) {
       setOverBalanceWarnings(warnings);
@@ -1340,6 +1362,18 @@ export default function SiteEntry() {
       materialsAbstract: getMaterialsAbstract(),
     };
   };
+
+  // SiteEntry showPreview trap: confirm dialogs wired through handleSubmit
+  // must render in BOTH the preview and main branches (see readinessDialog
+  // and overBalanceDialog usage below).
+  const readinessDialog = (
+    <DprReadinessDialog
+      readiness={readiness}
+      onClose={() => setReadiness(null)}
+      onSubmitAnyway={continueSubmitAfterReadiness}
+      onSaveDraft={handleSaveDraft}
+    />
+  );
 
   const overBalanceDialog = (
     <Dialog open={!!overBalanceWarnings} onOpenChange={(open) => { if (!open) setOverBalanceWarnings(null); }}>
@@ -1382,6 +1416,7 @@ export default function SiteEntry() {
           onSubmit={handleSubmit}
           isSubmitting={createMutation.isPending}
         />
+        {readinessDialog}
         {overBalanceDialog}
       </>
     );
@@ -3444,6 +3479,7 @@ export default function SiteEntry() {
         </DialogContent>
       </Dialog>
 
+      {readinessDialog}
       {overBalanceDialog}
     </div>
   );

@@ -45,6 +45,9 @@ import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { setDprEntryMode } from "@/lib/dprEntryMode";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
+import { splitGuidedEquipmentRow, buildGuidedEquipmentPayload, newGuidedEquipmentRow, type GuidedEquipmentRow } from "@shared/guidedEquipment";
+import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
+import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
@@ -83,7 +86,9 @@ interface GuidedEntry {
   qtyOverridden: boolean;
 }
 
-interface SimpleEquipmentRow { machine: string; vehicleNo: string; operator: string; task: string; }
+// Batch 04 save fidelity: Guided edits 4 fields but must round-trip every
+// other equipment field untouched (shared/guidedEquipment.ts).
+type SimpleEquipmentRow = GuidedEquipmentRow;
 interface SimpleLabourRow { category: string; count: number | null; contractor: string; task: string; }
 
 // Batch 1: actual-execution-side choices come from the shared matrix — the
@@ -148,6 +153,14 @@ export default function GuidedDpr() {
   // Instruction 031 Part A: once a draft is saved, later saves UPDATE the same
   // record (PATCH) and submit promotes it — never a duplicate row.
   const [draftId, setDraftId] = useState<number | null>(null);
+  // Batch 04: sections the Guided UI doesn't manage (materials / site
+  // purchases / structure items) loaded with a server draft — passed back
+  // verbatim on save so the child-row replacement can't delete them.
+  const unmanagedSectionsRef = useRef<{ materials: any[]; sitePurchases: any[]; structureItems: any[] }>({
+    materials: [], sitePurchases: [], structureItems: [],
+  });
+  // Batch 04: consolidated submit-readiness panel (one dialog, not N toasts).
+  const [readiness, setReadiness] = useState<DprReadinessResult | null>(null);
 
   // Part A: local autosave so accidental navigation/refresh loses nothing
   // (same mechanism as the Detailed DPR, guided-specific key).
@@ -168,7 +181,10 @@ export default function GuidedDpr() {
     onRestore: (d) => {
       setDate(d.date); setSiteName(d.siteName); setEngineer(d.engineer);
       setEntries((d.entries ?? []).map((e) => ({ ...e, qtyOverridden: e.qtyOverridden ?? false })));
-      setEquipment(d.equipment ?? []); setLabour(d.labour ?? []);
+      // Legacy autosave blobs predate `passthrough` — normalise so old rows
+      // don't crash the payload builder.
+      setEquipment((d.equipment ?? []).map((e: any) => ({ ...newGuidedEquipmentRow(), ...e, passthrough: e.passthrough ?? {} })));
+      setLabour(d.labour ?? []);
       setRemarks(d.remarks ?? ""); setDraftId(d.draftId ?? null);
       // Restored rows (incl. legacy blobs without the flag) get their override
       // state re-derived from geometry once BOQ items are available.
@@ -220,9 +236,16 @@ export default function GuidedDpr() {
         qtyOverridden: p.quantitySource != null && p.quantitySource !== "" && p.quantitySource !== "calculated",
       })));
     deriveNeededRef.current = true;
-    setEquipment((urlDraftDpr.equipment ?? []).map((e: any): SimpleEquipmentRow => ({
-      machine: e.machine || "", vehicleNo: e.vehicleNo || "", operator: e.operator || "", task: e.task || "",
-    })));
+    // Batch 04: keep every non-edited equipment field for round-trip — a
+    // Guided save must never wipe readings/times/fuel entered elsewhere.
+    setEquipment((urlDraftDpr.equipment ?? []).map((e: any): SimpleEquipmentRow => splitGuidedEquipmentRow(e)));
+    // Sections the Guided UI doesn't manage must be passed back on save,
+    // otherwise the child-row replacement deletes them from the draft.
+    unmanagedSectionsRef.current = {
+      materials: (urlDraftDpr.materials ?? []).map(({ id, dprId, ...rest }: any) => rest),
+      sitePurchases: (urlDraftDpr.sitePurchases ?? []).map(({ id, dprId, ...rest }: any) => rest),
+      structureItems: (urlDraftDpr.structureItems ?? []).map(({ id, dprId, ...rest }: any) => rest),
+    };
     setLabour((urlDraftDpr.labour ?? []).map((l: any): SimpleLabourRow => ({
       category: l.category || "", count: l.count != null ? Number(l.count) : null, contractor: l.contractor || "", task: l.task || "",
     })));
@@ -450,7 +473,9 @@ export default function GuidedDpr() {
       executedBy: "",
       qtyOverridden: false,
     })));
-    setEquipment(st.equipment);
+    // Yesterday copy is structure-only: seeds carry the 4 edited fields and an
+    // empty passthrough (no readings/times are ever copied across days).
+    setEquipment(st.equipment.map((e: any) => ({ ...newGuidedEquipmentRow(), ...e, passthrough: {} })));
     setLabour(st.labour);
     // photos / readings / remarks / submit status intentionally NOT copied
     setRemarks("");
@@ -553,21 +578,16 @@ export default function GuidedDpr() {
       boqProjectId: boqProjectId ?? undefined,
       ...(asDraft ? { dprStatus: "draft" } : {}),
       progress,
-      structureItems: [],
-      equipment: equipment.filter((e) => e.machine).map((e) => ({
-        machine: e.machine, vehicleNo: e.vehicleNo, operator: e.operator, task: e.task,
-        entryType: "", startTime: "", endTime: "",
-        openingReading: null, closingReading: null, diesel: null, equipmentId: null,
-        dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null,
-        numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null,
-        boqItemId: null, structureId: null, plantUsageId: null,
-      })),
+      structureItems: unmanagedSectionsRef.current.structureItems,
+      // Batch 04: edited fields on top of the untouched passthrough — no more
+      // hard-coded ""/null wiping of values entered in the Detailed editor.
+      equipment: equipment.filter((e) => e.machine).map((e) => buildGuidedEquipmentPayload(e)),
       labour: labour.filter((l) => l.category).map((l) => ({
         category: l.category, gender: "", count: l.count ?? 0, task: l.task,
         contractor: l.contractor, boqItemId: null, structureId: null,
       })),
-      materials: [],
-      sitePurchases: [],
+      materials: unmanagedSectionsRef.current.materials,
+      sitePurchases: unmanagedSectionsRef.current.sitePurchases,
       remarks: allRemarks || undefined,
       clientTimestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
     };
@@ -604,7 +624,16 @@ export default function GuidedDpr() {
         setLocation(`/site/success/${data.id ?? draftId}?type=road&returnTo=${encodeURIComponent(returnTo)}`);
       }
     },
-    onError: () => toast({ title: "Error", description: "Failed to save report. Please try again.", variant: "destructive" }),
+    onError: (err: any) => {
+      // Server-side readiness backstop (DPR_NOT_READY) — show the same panel
+      // instead of a generic failure toast.
+      const msg = String(err?.message ?? "");
+      if (msg.includes("DPR_NOT_READY") || msg.includes("not ready to submit")) {
+        toast({ title: "DPR is not ready to submit", description: "The server found incomplete mandatory records. Complete them or save as draft.", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Error", description: "Failed to save report. Please try again.", variant: "destructive" });
+    },
   });
 
   const validateHeader = (): boolean => {
@@ -1036,7 +1065,7 @@ export default function GuidedDpr() {
                     <Button variant="ghost" size="icon" onClick={() => setEquipment((p) => p.filter((_, j) => j !== i))}><Trash2 className="w-4 h-4" /></Button>
                   </div>
                 ))}
-                <Button variant="outline" size="sm" onClick={() => setEquipment((p) => [...p, { machine: "", vehicleNo: "", operator: "", task: "" }])} data-testid="button-add-equipment">
+                <Button variant="outline" size="sm" onClick={() => setEquipment((p) => [...p, newGuidedEquipmentRow()])} data-testid="button-add-equipment">
                   <Plus className="w-3.5 h-3.5 mr-1" />Equipment
                 </Button>
               </div>
@@ -1081,7 +1110,19 @@ export default function GuidedDpr() {
           <Button
             className="flex-1"
             disabled={saveMutation.isPending || !entriesComplete}
-            onClick={() => { if (validateHeader() && validateForSubmit()) saveMutation.mutate(false); }}
+            onClick={() => {
+              if (!validateHeader() || !validateForSubmit()) return;
+              // Batch 04: one consolidated readiness panel before Final Submit.
+              const r = evaluateDprSubmitReadiness({
+                workType: "road",
+                progress: entries.map((e) => ({ activity: e.activity, boqItemId: e.boqItemId, chainageFrom: e.chainageFrom, chainageTo: e.chainageTo, quantity: e.quantity })),
+                equipment: equipment.filter((e) => e.machine).map((e) => buildGuidedEquipmentPayload(e)) as any[],
+                labour: labour as any[],
+                materials: unmanagedSectionsRef.current.materials as any[],
+              });
+              if (r.mandatory.length > 0 || r.advisories.length > 0) { setReadiness(r); return; }
+              saveMutation.mutate(false);
+            }}
             data-testid="button-submit"
           >
             {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4 mr-1" />Submit DPR</>}
@@ -1093,6 +1134,14 @@ export default function GuidedDpr() {
           </p>
         )}
       </div>
+
+      {/* Batch 04: consolidated submit-readiness panel */}
+      <DprReadinessDialog
+        readiness={readiness}
+        onClose={() => setReadiness(null)}
+        onSubmitAnyway={() => saveMutation.mutate(false)}
+        onSaveDraft={() => { if (validateHeader()) saveMutation.mutate(true); }}
+      />
 
       {/* Yesterday preview dialog */}
       <Dialog open={showYesterdayPreview} onOpenChange={setShowYesterdayPreview}>

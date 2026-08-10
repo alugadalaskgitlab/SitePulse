@@ -38,6 +38,9 @@ import {
 } from "lucide-react";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import type { EquipmentMasterType } from "@shared/schema";
+// Batch 04: shared measurement representation — Summary must never fabricate
+// zero dimensions (e.g. "0 × 1.5 × 0" for an area row).
+import { formatDprDimensions } from "@shared/dprGeometry";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -377,10 +380,11 @@ export default function SiteDashboard() {
           Side: p.side || "",
           "Chainage From": p.chainageFrom || "",
           "Chainage To": p.chainageTo || "",
-          "Length (m)": p.length || 0,
-          "Width (m)": p.width || 0,
-          "Thickness (mm)": p.thickness || 0,
-          Quantity: p.quantity || 0,
+          // Batch 04: never fabricate zero dimensions in exports.
+          "Length (m)": p.length ?? "",
+          "Width (m)": p.width ?? "",
+          "Thickness (mm)": p.thickness ?? "",
+          Quantity: p.quantity ?? "",
           UOM: p.uom || "",
         });
       });
@@ -584,8 +588,8 @@ export default function SiteDashboard() {
           p.activity || "",
           p.side || "",
           `${p.chainageFrom || ""} - ${p.chainageTo || ""}`,
-          `${p.length || 0} x ${p.width || 0} x ${p.thickness || 0}`,
-          `${p.quantity || 0} ${p.uom || ""}`,
+          formatDprDimensions(p) ?? "-",
+          `${p.quantity ?? "-"} ${p.uom || ""}`,
         ]);
         
         autoTable(doc, {
@@ -788,8 +792,8 @@ export default function SiteDashboard() {
                   <td>${p.activity || ""}</td>
                   <td>${p.side || ""}</td>
                   <td>${p.chainageFrom || ""} - ${p.chainageTo || ""}</td>
-                  <td>${p.length || 0} x ${p.width || 0} x ${p.thickness || 0}</td>
-                  <td>${p.quantity || 0} ${p.uom || ""}</td>
+                  <td>${formatDprDimensions(p) ?? "-"}</td>
+                  <td>${p.quantity ?? "-"} ${p.uom || ""}</td>
                 </tr>
               `).join("")}
             </table>
@@ -1293,7 +1297,7 @@ export default function SiteDashboard() {
                                           </td>
                                           <td className="p-2 border">{p.side || "-"}</td>
                                           <td className="p-2 border">{p.chainageFrom} - {p.chainageTo}</td>
-                                          <td className="p-2 border text-right">{p.length || 0}×{p.width || 0}×{p.thickness || 0}</td>
+                                          <td className="p-2 border text-right">{formatDprDimensions(p) ?? "-"}</td>
                                           <td className="p-2 border text-right">{p.quantity?.toFixed(3) || "-"}</td>
                                           <td className="p-2 border">{p.uom || "-"}</td>
                                         </tr>
