@@ -46,7 +46,8 @@ import { insertAttachmentSchema, attachmentModuleTypes } from "@shared/schema";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
 import { checkProgrammeLinkRow, deriveChainageReviewStatus, barSideCoverage, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { checkQuantitySourceRow, resolveQuantitySource } from "@shared/dprGeometry";
-import { evaluateDprSubmitReadiness } from "@shared/dprSubmitReadiness";
+import { evaluateDprSubmitReadiness, type DprReadinessIssue } from "@shared/dprSubmitReadiness";
+import { chainageOverlapReadinessIssues, isChainageGuardRow, type CandidateChainageRow } from "@shared/chainageOverlap";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import {
   registerAuthRoutes,
@@ -1297,6 +1298,10 @@ export async function registerRoutes(
 
   // Get single DPR details
   app.get(api.dprs.get.path, async (req, res) => {
+    // Batch 06B: require DPR view permission — this endpoint returns full DPR
+    // contents (and now backs the read-only overlap preview), so it must not
+    // be readable by authenticated users without site_dprs access.
+    if (!assertView(req, res, "site_dprs")) return;
     const dpr = await storage.getDpr(Number(req.params.id));
     if (!dpr) {
       return res.status(404).json({ message: 'DPR not found' });
@@ -1471,6 +1476,74 @@ export async function registerRoutes(
     return null;
   }
 
+  /**
+   * Batch 06B — server-side chainage-overlap recheck for Final Submit.
+   * Uses the SAME neutral shared helper as Progress Report and the entry
+   * screens (shared/chainageOverlap.ts). Checks BOTH:
+   *  A. overlapping rows inside the submitted payload itself (same DPR);
+   *  B. overlap with prior VALID submitted progress (canonical filter:
+   *     submitted, not superseded, not cancelled, not deleted, chainage
+   *     review not pending), excluding the DPR being submitted.
+   * Overlap is never a hard block: a row with a chainageOverrideReason
+   * passes. Rows without meaningful From/To km or without a BOQ item are
+   * out of scope (structures/manual locations). Drafts never call this.
+   * Returns Batch 04-shaped mandatory readiness issues.
+   */
+  async function evaluateChainageOverlapIssues(input: any, excludeDprId?: number | null): Promise<DprReadinessIssue[]> {
+    const progress: any[] = Array.isArray(input?.progress) ? input.progress : [];
+    const rows: CandidateChainageRow[] = progress.map((p, i) => ({
+      rowKey: i,
+      boqItemId: p?.boqItemId != null ? Number(p.boqItemId) : null,
+      side: p?.side ?? null,
+      fromKm: p?.chainageFromKm != null ? Number(p.chainageFromKm) : parseChainageKm(p?.chainageFrom),
+      toKm: p?.chainageToKm != null ? Number(p.chainageToKm) : parseChainageKm(p?.chainageTo),
+      chainageOverrideReason: p?.chainageOverrideReason ?? null,
+      label: p?.activity ?? null,
+      noSiteWork: !!p?.noSiteWork,
+    }));
+    const itemIds = Array.from(new Set(rows.filter(isChainageGuardRow).map((r) => Number(r.boqItemId))));
+    const priors = itemIds.length > 0 ? await storage.getSubmittedChainageEntries(itemIds, excludeDprId ?? null) : [];
+    return chainageOverlapReadinessIssues(rows, priors).map(({ section, label, message }) => ({ section, label, message }));
+  }
+
+  // Batch 06B — prior submitted chainage progress for the entry-screen
+  // overlap warning. READ-ONLY. Same canonical filter as the server recheck,
+  // so client warning and server enforcement always agree.
+  app.get("/api/dprs/chainage-overlap-context", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "site_dprs")) return;
+      const itemIds = String(req.query.boqItemIds ?? "")
+        .split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n > 0);
+      const excludeDprId = req.query.excludeDprId != null && String(req.query.excludeDprId).trim() !== ""
+        ? Number(req.query.excludeDprId) : null;
+      if (itemIds.length === 0) return res.json({ entries: [] });
+      if (itemIds.length > 200) return res.status(400).json({ message: "Too many BOQ items" });
+      // Site-access security: restricted users may only read progress for
+      // projects whose site is permitted (same rule as the Progress Report).
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      if (permittedSiteNames !== null) {
+        const items = await Promise.all(itemIds.map((id) => storage.getBoqItem(id)));
+        const projectIds = new Set<number>();
+        for (const item of items as any[]) {
+          if (item?.boqProjectId != null) projectIds.add(Number(item.boqProjectId));
+        }
+        const sites = await storage.getSites();
+        const projects = await Promise.all(Array.from(projectIds).map((pid) => storage.getBoqProject(pid)));
+        for (const project of projects) {
+          const projectSite = project?.siteId != null ? sites.find((s) => s.id === project.siteId)?.name ?? null : null;
+          if (projectSite == null || !siteMatchesPermitted(projectSite, permittedSiteNames)) {
+            return res.status(403).json({ message: "Access denied for this site" });
+          }
+        }
+      }
+      const entries = await storage.getSubmittedChainageEntries(itemIds, excludeDprId);
+      res.json({ entries });
+    } catch (err) {
+      console.error("GET /api/dprs/chainage-overlap-context:", err);
+      res.status(500).json({ message: "Failed to load overlap context" });
+    }
+  });
+
   // Create new DPR (draft or submitted)
   app.post(api.dprs.create.path, async (req, res) => {
     try {
@@ -1488,11 +1561,15 @@ export async function registerRoutes(
       // Submit is rejected only for MANDATORY issues (advisories never block).
       if ((input as any).dprStatus !== "draft") {
         const readiness = evaluateDprSubmitReadiness(input as any);
-        if (!readiness.ready) {
+        // Batch 06B: server-side chainage-overlap recheck (same-DPR + prior
+        // submitted DPRs) — mandatory unless the row carries a reason.
+        const overlapIssues = await evaluateChainageOverlapIssues(input, null);
+        const mandatory = [...readiness.mandatory, ...overlapIssues];
+        if (mandatory.length > 0) {
           return res.status(422).json({
             message: "DPR is not ready to submit",
             error: "DPR_NOT_READY",
-            mandatory: readiness.mandatory,
+            mandatory,
             advisories: readiness.advisories,
           });
         }
@@ -1566,11 +1643,15 @@ export async function registerRoutes(
       // Batch 04: same shared submit-readiness gate as non-draft create.
       {
         const readiness = evaluateDprSubmitReadiness(input as any);
-        if (!readiness.ready) {
+        // Batch 06B: chainage-overlap recheck against current DB state,
+        // excluding the draft being submitted.
+        const overlapIssues = await evaluateChainageOverlapIssues(input, id);
+        const mandatory = [...readiness.mandatory, ...overlapIssues];
+        if (mandatory.length > 0) {
           return res.status(422).json({
             message: "DPR is not ready to submit",
             error: "DPR_NOT_READY",
-            mandatory: readiness.mandatory,
+            mandatory,
             advisories: readiness.advisories,
           });
         }
@@ -1770,6 +1851,20 @@ export async function registerRoutes(
         }
       }
 
+      // Batch 06B: versioning creates a new SUBMITTED DPR — it must pass the
+      // same chainage-overlap recheck as create/submit, or the guard could be
+      // bypassed by editing. The original is excluded (it gets superseded).
+      {
+        const overlapIssues = await evaluateChainageOverlapIssues(input.data, originalId);
+        if (overlapIssues.length > 0) {
+          return res.status(422).json({
+            message: "DPR is not ready to submit",
+            error: "DPR_NOT_READY",
+            mandatory: overlapIssues,
+            advisories: [],
+          });
+        }
+      }
       const newVersion = await storage.createVersionDpr(originalId, input.data, editedBy, input.clientTimestamp);
 
       const actor = currentUserName(req);

@@ -28,6 +28,8 @@ import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
+import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
+import { type CandidateChainageRow } from "@shared/chainageOverlap";
 import { boqItemDisplayName } from "@shared/boqItemName";
 
 interface ProgressEntry {
@@ -401,6 +403,25 @@ export default function SiteEdit() {
     { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }
   ]);
 
+  // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
+  // as Guided/Detailed entry, Progress Report and the server recheck). The
+  // DPR being edited is excluded from the prior-progress comparison.
+  const overlapCandidateRows: CandidateChainageRow[] = progress.map((p, i) => ({
+    rowKey: i,
+    boqItemId: p.boqItemId,
+    side: p.side || null,
+    fromKm: parseChainageKm(p.chainageFrom),
+    toKm: parseChainageKm(p.chainageTo),
+    chainageOverrideReason: p.chainageOverrideReason,
+    label: p.activity,
+    noSiteWork: p.noSiteWork,
+  }));
+  const { priors: overlapPriors } = useChainageOverlapContext(
+    progress.map((p) => p.boqItemId).filter((bid): bid is number => bid != null),
+    id,
+  );
+  const overlapHits = useChainageOverlapHits(overlapCandidateRows, overlapPriors);
+
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
     { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }
   ]);
@@ -752,6 +773,16 @@ export default function SiteEdit() {
     if (!header.date || !header.site || !header.engineer) {
       toast({ title: "Missing Fields", description: "Please fill in date, site name, and engineer name.", variant: "destructive" });
       return;
+    }
+    // Batch 06B — a real chainage overlap needs a reason before Final Submit
+    // (draft save stays lenient).
+    for (let i = 0; i < progress.length; i++) {
+      const p = progress[i];
+      if (p.noSiteWork) continue;
+      if ((overlapHits.get(i) ?? []).length > 0 && !p.chainageOverrideReason.trim()) {
+        toast({ title: `Row ${i + 1}: reason required`, description: "Possible chainage overlap requires a reason before submission — tap \u201cGive reason\u201d on the overlap warning.", variant: "destructive" });
+        return;
+      }
     }
     // Batch 04: same shared readiness rule as Guided/Detailed/server.
     const payload = buildPayload();
@@ -1350,6 +1381,19 @@ export default function SiteEdit() {
                         />
                       );
                     })()}
+                    {/* Batch 06B: possible-overlap advisory — reuses this row's
+                        chainageOverrideReason; prior DPRs open read-only in a
+                        modal over this form. */}
+                    <ChainageOverlapWarning
+                      hits={overlapHits.get(idx) ?? []}
+                      overrideReason={entry.chainageOverrideReason}
+                      onOverrideReason={(v) => {
+                        const updated = [...progress];
+                        updated[idx].chainageOverrideReason = v;
+                        setProgress(updated);
+                      }}
+                      testidPrefix={`progress-${idx}`}
+                    />
                   </div>
                   <div>
                     <Label className="text-sm">Side</Label>

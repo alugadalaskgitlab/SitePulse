@@ -49,6 +49,8 @@ import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { splitGuidedEquipmentRow, buildGuidedEquipmentPayload, newGuidedEquipmentRow, type GuidedEquipmentRow } from "@shared/guidedEquipment";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
+import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
+import { type CandidateChainageRow } from "@shared/chainageOverlap";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
@@ -357,6 +359,24 @@ export default function GuidedDpr() {
     boqItems.forEach((i) => m.set(i.id, i));
     return m;
   }, [boqItems]);
+
+  // Batch 06B — chainage duplicate/overlap guard: same neutral shared helper
+  // as the Progress Report and the server Final-Submit recheck. Advisory
+  // until acknowledged; the existing per-row chainageOverrideReason is reused.
+  const overlapRows: CandidateChainageRow[] = entries.map((e, i) => ({
+    rowKey: i,
+    boqItemId: e.boqItemId,
+    side: e.side || null,
+    fromKm: parseChainageKm(e.chainageFrom),
+    toKm: parseChainageKm(e.chainageTo),
+    chainageOverrideReason: e.chainageOverrideReason,
+    label: e.activity,
+  }));
+  const { priors: overlapPriors } = useChainageOverlapContext(
+    entries.map((e) => e.boqItemId).filter((id): id is number => id != null),
+    draftId,
+  );
+  const overlapHits = useChainageOverlapHits(overlapRows, overlapPriors);
 
   // Part C (scoped balance): whole-BOQ-item totals — same endpoint the
   // Detailed DPR uses — shown smaller/separate from the bar's own figures.
@@ -749,6 +769,16 @@ export default function GuidedDpr() {
           return false;
         }
       }
+      // Batch 06B — a real chainage overlap (this DPR or a prior submitted
+      // DPR) needs a reason before Final Submit. Draft save stays lenient.
+      {
+        const idx = entries.indexOf(e);
+        const hits = overlapHits.get(idx) ?? [];
+        if (hits.length > 0 && !e.chainageOverrideReason.trim()) {
+          toast({ title: "Reason required", description: `"${e.activity}": possible chainage overlap requires a reason before submission — tap “Give reason” on the overlap warning.`, variant: "destructive" });
+          return false;
+        }
+      }
       // Instruction 031 Parts F/H — same rules as the Detailed DPR.
       if (e.programmeBarId != null && e.boqItemId != null) {
         const bars = queryClient.getQueryData<PickerBar[]>(["/api/dpr/programme-bars", boqProjectId, e.boqItemId]) ?? [];
@@ -978,6 +1008,15 @@ export default function GuidedDpr() {
                 testidPrefix={`guided-${idx}`}
               />
             )}
+            {/* Batch 06B: possible-overlap advisory (same-DPR + prior submitted
+                DPRs) — reuses the row's chainageOverrideReason; prior DPRs open
+                read-only in a modal over this form. */}
+            <ChainageOverlapWarning
+              hits={overlapHits.get(idx) ?? []}
+              overrideReason={e.chainageOverrideReason}
+              onOverrideReason={(v) => updateEntry(idx, { chainageOverrideReason: v })}
+              testidPrefix={`guided-${idx}`}
+            />
             {/* Batch 1 Part A: actual execution side is a core, ALWAYS-visible,
                 editable field — never just a fixed badge. Options come from the
                 shared matrix, narrowed by the linked bar's planned side. */}

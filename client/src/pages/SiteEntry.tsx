@@ -45,6 +45,8 @@ import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { History } from "lucide-react";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
+import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
+import { type CandidateChainageRow } from "@shared/chainageOverlap";
 import { setDprEntryMode, getDprEntryMode } from "@/lib/dprEntryMode";
 import { reconcileNewDprAutosaves } from "@/lib/dprAutosaveReconcile";
 import { calculateBomDemand, fmtQty, type BomInputItem, type BomInputBar, type BomDemand } from "@shared/planningEngine";
@@ -745,6 +747,24 @@ export default function SiteEntry() {
     { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }
   ]);
 
+  // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
+  // as Guided DPR, Progress Report and the server Final-Submit recheck).
+  const overlapCandidateRows: CandidateChainageRow[] = progress.map((p, i) => ({
+    rowKey: i,
+    boqItemId: p.boqItemId,
+    side: p.side || null,
+    fromKm: parseChainageKm(p.chainageFrom),
+    toKm: parseChainageKm(p.chainageTo),
+    chainageOverrideReason: p.chainageOverrideReason,
+    label: p.activity,
+    noSiteWork: p.noSiteWork,
+  }));
+  const { priors: overlapPriors } = useChainageOverlapContext(
+    progress.map((p) => p.boqItemId).filter((id): id is number => id != null),
+    null,
+  );
+  const overlapHits = useChainageOverlapHits(overlapCandidateRows, overlapPriors);
+
   const [openPlantMap, setOpenPlantMap] = useState<Record<number, any>>({});
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
     { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }
@@ -1291,6 +1311,12 @@ export default function SiteEntry() {
     for (let i = 0; i < progress.length; i++) {
       const p = progress[i];
       if (p.noSiteWork) continue;
+      // Batch 06B — a real chainage overlap needs a reason before Final
+      // Submit (draft save stays lenient; drafts never reach this loop).
+      if ((overlapHits.get(i) ?? []).length > 0 && !p.chainageOverrideReason.trim()) {
+        toast({ title: `Row ${i + 1}: reason required`, description: "Possible chainage overlap requires a reason before submission — tap \u201cGive reason\u201d on the overlap warning.", variant: "destructive" });
+        return;
+      }
       const bar = p.programmeBarId != null ? programmeBars.find(b => b.id === p.programmeBarId) : null;
       if (bar) {
         const fromKm = parseChainageKm(p.chainageFrom);
@@ -2000,6 +2026,19 @@ export default function SiteEntry() {
                         testidPrefix={`progress-${idx}`}
                       />
                     )}
+                    {/* Batch 06B: possible-overlap advisory — reuses this row's
+                        chainageOverrideReason; prior DPRs open read-only in a
+                        modal over this form. */}
+                    <ChainageOverlapWarning
+                      hits={overlapHits.get(idx) ?? []}
+                      overrideReason={entry.chainageOverrideReason}
+                      onOverrideReason={(v) => {
+                        const updated = [...progress];
+                        updated[idx].chainageOverrideReason = v;
+                        setProgress(updated);
+                      }}
+                      testidPrefix={`progress-${idx}`}
+                    />
                     {siteBoqItems.length > 0 && entry.boqItemId != null && hasRoadProgramme && (activeRoadBarsByItem.get(entry.boqItemId)?.length ?? 0) === 0 && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 mt-1" data-testid={`badge-unplanned-progress-${idx}`}>
                         <AlertTriangle className="w-3 h-3" /> Unplanned DPR entry — no active programme for {header.date}

@@ -159,6 +159,10 @@ vi.mock("../server/storage", () => {
     calls.createdDprs.push(input);
     return { id: 5001, ...input };
   });
+  // registerRoutes fires seedDatabase() without awaiting it; it seeds an
+  // example DPR whenever getDprs() is empty, and that stray createDpr can land
+  // mid-test (timing-dependent flake). Report non-empty so seeding skips.
+  methods.getDprs = vi.fn(async () => [{ id: 1 }]);
   methods.createNotification = vi.fn(async () => ({}));
   methods.getReportedQtyByBar = vi.fn(async () => new Map());
   methods.getArrangementProgrammeAllocationsForProject = vi.fn(async () => []);

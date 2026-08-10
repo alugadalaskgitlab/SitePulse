@@ -17,6 +17,12 @@
  */
 
 import { resolveDprConversionFactor, geometryQtyForRow, quantitiesMatch, resolveBoqUomProfile } from "./dprGeometry";
+import { KM_EPS, normaliseReportSide, sidesMayOverlap } from "./chainageOverlap";
+
+// Batch 06B: the generic side/interval semantics now live in the neutral
+// shared/chainageOverlap.ts module (used by DPR entry + server submit too).
+// Re-exported here so existing Progress Report consumers are unchanged.
+export { normaliseReportSide, sidesMayOverlap };
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -152,33 +158,6 @@ export function entryReviewFlag(entry: ReportEntry, item: ReportBoqItem | undefi
 }
 
 // ── Possible-overlap detection (§14) — advisory only ────────────────────────
-
-const KM_EPS = 1e-6;
-
-type SideNorm = string; // normalised bar-side token or raw lowercase
-
-export function normaliseReportSide(raw: string | null | undefined): SideNorm | null {
-  if (raw == null) return null;
-  const s = String(raw).trim().toLowerCase();
-  if (!s) return null;
-  if (s === "lhs" || s === "left" || s === "l") return "lhs";
-  if (s === "rhs" || s === "right" || s === "r") return "rhs";
-  if (s.includes("both")) return "both_sides";
-  if (s.includes("full")) return "full_width";
-  if (s.includes("median")) return "median";
-  return s.replace(/\s+/g, "_");
-}
-
-/** Sides can spatially overlap unless they are distinct specific corridors. */
-export function sidesMayOverlap(a: string | null | undefined, b: string | null | undefined): boolean {
-  const na = normaliseReportSide(a);
-  const nb = normaliseReportSide(b);
-  // Unknown side = conservative: could be anywhere on the corridor.
-  if (na == null || nb == null) return true;
-  if (na === nb) return true;
-  if (na === "both_sides" || na === "full_width" || nb === "both_sides" || nb === "full_width") return true;
-  return false; // distinct specific corridors (lhs vs rhs, median vs lhs, …)
-}
 
 function kmRange(e: ReportEntry): { from: number; to: number } | null {
   const f = e.chainageFromKm;

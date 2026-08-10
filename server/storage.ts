@@ -23394,6 +23394,55 @@ export class DatabaseStorage implements IStorage {
     return map;
   }
 
+  // ── Batch 06B: prior submitted chainage progress for overlap recheck ──────
+  // Same canonical valid-DPR filter as getProgressReportEntries (submitted,
+  // not superseded, not cancelled, not deleted, chainage review not pending).
+  // Drafts are NEVER included — they are not authoritative prior work.
+  async getSubmittedChainageEntries(boqItemIds: number[], excludeDprId?: number | null): Promise<Array<{
+    entryId: number; dprId: number; dprDate: string; boqItemId: number;
+    side: string | null; fromKm: number | null; toKm: number | null;
+    chainageFrom: string | null; chainageTo: string | null;
+    quantity: number | null; uom: string | null; activity: string | null;
+  }>> {
+    if (boqItemIds.length === 0) return [];
+    const conds = [
+      inArray(progressEntries.boqItemId, boqItemIds),
+      eq(dprs.dprStatus, "submitted"),
+      eq(dprs.isSuperseded, false),
+      eq(dprs.isCancelled, false),
+      eq(dprs.isDeleted, false),
+      sql`(${progressEntries.chainageReviewStatus} IS NULL OR ${progressEntries.chainageReviewStatus} <> 'review_required')`,
+      isNotNull(progressEntries.chainageFromKm),
+      isNotNull(progressEntries.chainageToKm),
+    ];
+    if (excludeDprId != null) conds.push(ne(dprs.id, excludeDprId));
+    const rows = await db
+      .select({
+        entryId: progressEntries.id,
+        dprId: dprs.id,
+        dprDate: dprs.date,
+        boqItemId: progressEntries.boqItemId,
+        side: progressEntries.side,
+        fromKm: progressEntries.chainageFromKm,
+        toKm: progressEntries.chainageToKm,
+        chainageFrom: progressEntries.chainageFrom,
+        chainageTo: progressEntries.chainageTo,
+        quantity: progressEntries.quantity,
+        uom: progressEntries.uom,
+        activity: progressEntries.activity,
+      })
+      .from(progressEntries)
+      .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+      .where(and(...conds));
+    return rows.map((r) => ({
+      ...r,
+      boqItemId: Number(r.boqItemId),
+      fromKm: r.fromKm != null ? Number(r.fromKm) : null,
+      toKm: r.toKm != null ? Number(r.toKm) : null,
+      quantity: r.quantity != null ? Number(r.quantity) : null,
+    }));
+  }
+
   // ── Batch 06: RA-style Progress Report (READ-ONLY) ────────────────────────
   // Valid submitted DPR actuals only — the SAME canonical inclusion rule as
   // getReportedQtyByBar (Instruction 031): submitted, not superseded, not

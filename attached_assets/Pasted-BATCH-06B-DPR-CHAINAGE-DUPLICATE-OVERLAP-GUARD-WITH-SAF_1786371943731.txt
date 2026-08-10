@@ -1,0 +1,857 @@
+BATCH 06B — DPR CHAINAGE DUPLICATE / OVERLAP GUARD
+WITH SAFE READ-ONLY PRIOR-DPR PREVIEW
+
+This is a focused DPR-entry integrity batch.
+
+Purpose:
+
+Prevent accidental duplicate/overlapping chainage progress from being silently submitted, while still allowing legitimate repeated work such as:
+
+- WMM/GSB multiple layers
+- embankment lifts
+- rework
+- correction
+- remeasurement
+- intentionally repeated operations
+
+The rule is:
+
+WARN + REQUIRE REASON where overlap is real,
+NOT a blanket hard prohibition.
+
+Draft Save remains lenient.
+Final Submit must recheck server-side.
+
+IMPORTANT LIVE-FORM NAVIGATION RULE:
+
+If an overlap warning references an earlier submitted DPR, the Engineer must be able to inspect that DPR READ-ONLY without losing or disrupting the current in-progress DPR form.
+
+Preferred behavior:
+open the referenced DPR in a read-only modal/drawer/overlay over the current entry form.
+
+Closing the preview must return immediately to the untouched current DPR.
+
+Do NOT casually navigate away from an unsaved live DPR form.
+
+Do NOT modify Progress Report calculations, BOQ quantities, Geometry, Tomorrow's Programme, programme-bar quantities, Project Scope, Auto Sequence, Gantt, Execution Arrangement, or schema.
+
+--------------------------------------------------
+1. INVESTIGATE FIRST
+--------------------------------------------------
+
+Inspect:
+
+- shared/progressReport.ts
+- normaliseReportSide
+- sidesMayOverlap
+- kmRange / interval-overlap logic
+- GuidedDpr.tsx
+- SiteEntry.tsx
+- SiteEdit.tsx
+- SiteReport.tsx
+- shared/dprSubmitReadiness.ts
+- DPR create/update/submit server routes
+- progress_entries
+- existing chainageOverrideReason handling
+- existing "outside programme bar" warning/reason flow
+- Work Programme CHAINAGE_OVERLAP logic for reference only
+- Batch 06A `returnTo` / `resolveReturnTo` navigation
+- any existing reusable read-only DPR renderer/component
+- any existing component with an `embedded`, `compact`, `readonly`, `preview`, dialog, drawer or similar rendering mode
+
+Confirm:
+
+A. exact current overlap semantics used by Progress Report
+B. whether adjacent ranges are correctly treated as non-overlapping
+C. whether LHS and RHS are correctly independent
+D. how Both/Centre/unspecified sides are treated
+E. whether outside-programme-bar override reason is currently server-enforced or client-only
+F. whether Detailed DPR and Guided DPR both currently lack actual-progress overlap checks
+G. whether SiteReport or its constituent report sections can safely be reused in read-only embedded mode
+H. whether an existing generic DPR preview/modal already exists
+
+Do not code until these are mapped.
+
+--------------------------------------------------
+2. EXTRACT ONE NEUTRAL SHARED CHAINAGE-OVERLAP HELPER
+--------------------------------------------------
+
+Do not let DPR entry import overlap semantics from a report-specific module.
+
+Move/extract the relevant generic functions from:
+
+shared/progressReport.ts
+
+into a neutral shared module, for example:
+
+shared/chainageOverlap.ts
+
+This helper should contain only generic road-chainage logic such as:
+
+- side normalization
+- side compatibility / may-overlap
+- chainage range normalization
+- interval overlap
+- overlap segment calculation
+
+Then:
+
+- Progress Report imports from the neutral helper
+- Guided DPR uses the same helper
+- Detailed DPR uses the same helper
+- server submit validation uses the same helper
+
+Do not duplicate overlap math in four places.
+
+Existing Progress Report behavior must remain unchanged.
+
+--------------------------------------------------
+3. SCOPE — CHAINAGE-BASED ROAD PROGRESS ONLY
+--------------------------------------------------
+
+Apply this guard only where the progress entry genuinely has meaningful road chainage.
+
+Examples:
+- pavement
+- earthwork
+- shoulders
+- road linear/area/volume activities
+
+Do NOT try to invent overlap comparison for:
+
+- structures without chainage
+- manual location strings
+- non-linear items
+- unrelated plant/material/labour records
+
+If no usable From/To chainage exists, this overlap guard does not apply.
+
+--------------------------------------------------
+4. TWO TYPES OF OVERLAP MUST BE CHECKED
+--------------------------------------------------
+
+A. SAME DPR / SAME EDITING SESSION
+
+If the Engineer adds two progress rows in the same DPR for:
+
+- same BOQ item
+- compatible side
+- overlapping chainage
+
+warn immediately.
+
+Example:
+
+Row 1:
+WMM RHS 2+000–2+200
+
+Row 2:
+WMM RHS 2+150–2+300
+
+Second row must surface:
+
+"Possible overlap with another row in this DPR:
+RHS Ch. 2+150–2+200"
+
+Do not silently allow it without acknowledgement/reason.
+
+B. PRIOR SUBMITTED DPRs
+
+When entering/editing a chainage row, check prior valid submitted DPR progress for:
+
+- same BOQ item
+- compatible side
+- overlapping chainage
+
+Use the same canonical submitted/superseded/review filters already used by Progress Report / BOQ actual aggregation.
+
+Do not treat drafts as authoritative prior executed work.
+
+--------------------------------------------------
+5. OVERLAP IS ADVISORY UNTIL ACKNOWLEDGED, NOT AUTOMATIC DUPLICATE
+--------------------------------------------------
+
+Never label the condition:
+
+"Duplicate"
+
+unless some future business rule proves that.
+
+Use:
+
+"Possible overlap"
+
+Example:
+
+⚠ Possible overlap with previously recorded progress
+
+DPR-123
+08-Aug-2026
+RHS Ch. 2+150–2+180
+35.000 Cum
+
+Possible reasons may include:
+- another layer
+- another lift
+- rework
+- correction
+- repeated operation
+
+The system must not:
+
+- auto-delete
+- auto-reduce quantity
+- auto-merge
+- alter cumulative
+- reject legitimate repeated work merely because chainage overlaps
+
+--------------------------------------------------
+6. EXACT DUPLICATE VS PARTIAL OVERLAP
+--------------------------------------------------
+
+Differentiate visually:
+
+A. Exact same item + side + same From/To
+
+Show stronger warning:
+
+"Progress has already been recorded for this exact chainage."
+
+B. Partial overlap
+
+Show:
+
+"Part of this chainage overlaps previously recorded progress."
+
+Also show exact overlapping segment.
+
+Example:
+
+Entered:
+2+100–2+300
+
+Existing:
+2+250–2+400
+
+Overlap:
+2+250–2+300
+
+Both remain allowable with a proper reason.
+
+--------------------------------------------------
+7. REUSE EXISTING REASON-CAPTURE UX
+--------------------------------------------------
+
+Do not create a second independent overlap-reason field if the existing model can support it.
+
+Guided/Detailed already carry:
+
+`chainageOverrideReason`
+
+and an existing "Give reason" style flow for outside-programme-bar chainage.
+
+Reuse/extend that existing field/UX where semantically safe.
+
+Examples:
+
+"Second WMM layer"
+"Embankment lift 3"
+"Rework after rain damage"
+"Correction to earlier measurement"
+
+If the same field can represent both:
+- outside-bar override
+- overlap acknowledgement
+
+make it visually clear which warning(s) the reason satisfies.
+
+Do not overwrite an already-entered reason.
+
+If one field cannot safely represent both semantics, STOP and report before adding schema.
+
+--------------------------------------------------
+8. DRAFT SAVE REMAINS LENIENT
+--------------------------------------------------
+
+Draft Save must NOT be blocked by overlap.
+
+The Engineer may save:
+
+- partial chainage
+- overlapping row
+- unresolved warning
+- no overlap reason yet
+
+and return later.
+
+Draft must preserve:
+
+- row
+- entered chainage
+- entered reason
+- all other DPR data
+
+Final Submit is where acknowledgement becomes mandatory.
+
+--------------------------------------------------
+9. FINAL SUBMIT RULE
+--------------------------------------------------
+
+For a chainage-based progress row with a real overlap:
+
+Final Submit requires an explicit reason/acknowledgement.
+
+If no reason:
+
+mandatory readiness issue:
+
+"Possible chainage overlap requires a reason before submission."
+
+If reason exists:
+
+submission allowed.
+
+This applies to:
+
+- same-DPR overlaps
+- prior submitted-DPR overlaps
+
+Do not make overlap itself a permanent hard block.
+
+--------------------------------------------------
+10. SERVER-SIDE RECHECK
+--------------------------------------------------
+
+Do not rely on client warnings.
+
+On Final Submit, server must re-evaluate overlaps using current database state.
+
+Reasons:
+
+- another Engineer may submit overlapping progress after the draft was opened;
+- client state can be bypassed;
+- same-DPR payload can itself contain overlapping rows.
+
+Server should return the overlap readiness issue using the existing Batch 04 readiness response shape where possible.
+
+Draft endpoint remains lenient.
+
+--------------------------------------------------
+11. GUIDED + DETAILED MUST BOTH USE SAME RULE
+--------------------------------------------------
+
+Implement symmetrically in:
+
+- Guided DPR
+- Detailed DPR / SiteEntry
+- SiteEdit draft completion
+- server Final Submit
+
+Detailed mode remains supported post-Batch-05 and must not bypass this guard.
+
+Do not fix Guided only.
+
+--------------------------------------------------
+12. PRIOR DPR REFERENCE MUST BE READ-ONLY
+--------------------------------------------------
+
+When an overlap warning references an earlier submitted DPR:
+
+show the DPR number/date as an inspectable reference.
+
+The prior DPR must be READ-ONLY.
+
+The Engineer must not enter edit mode for the previous DPR from the overlap warning.
+
+Do not expose:
+- Edit
+- Cancel
+- Delete
+- any mutation action
+
+inside this overlap-inspection experience.
+
+The purpose is only:
+
+"Show me what was recorded earlier so I can decide whether today's overlap is legitimate."
+
+--------------------------------------------------
+13. PREFERRED UX — READ-ONLY DPR PREVIEW WITHOUT LEAVING CURRENT FORM
+--------------------------------------------------
+
+Preferred implementation:
+
+Click:
+
+"DPR-123"
+
+→ open a modal / drawer / overlay containing the relevant submitted DPR information.
+
+The live Guided/Detailed DPR entry form underneath must remain mounted.
+
+Closing the preview returns immediately to the exact same entry state.
+
+At minimum show:
+
+- DPR date
+- site
+- Engineer
+- activity progress
+- relevant chainage rows
+- quantity/UoM
+- equipment/log sections only if existing reusable report renderer makes this straightforward
+- remarks
+
+Ideally reuse the existing SiteReport rendering or shared report sections.
+
+Do NOT create a second unrelated read-only DPR presentation if existing components can be safely extracted/reused.
+
+The preview should have:
+
+[Close]
+
+and optionally:
+
+[Open full report]
+
+only if full navigation is useful and safe.
+
+No editing actions.
+
+--------------------------------------------------
+14. FOCUS THE PREVIEW ON THE RELEVANT OVERLAP
+--------------------------------------------------
+
+Where practical, when opening the previous DPR from an overlap warning:
+
+highlight or scroll to the referenced progress entry.
+
+Example:
+
+Current:
+WMM RHS 2+150–2+300
+
+Previous DPR contains:
+WMM RHS 2+100–2+180
+
+Preview should make that prior row easy to identify.
+
+Do not require the Engineer to search a long DPR manually if the matching row ID/reference is already available.
+
+This is usability only.
+
+Do not build a complex new report engine.
+
+--------------------------------------------------
+15. FALLBACK IF EMBEDDED/MODAL DPR PREVIEW IS NOT SAFELY FEASIBLE
+--------------------------------------------------
+
+If the existing DPR report cannot reasonably be reused in an embedded read-only preview without substantial refactoring:
+
+do NOT force a rushed second renderer.
+
+Fallback:
+
+navigate to:
+
+`/site/report/:id`
+
+using the existing Batch 06A validated `returnTo` mechanism.
+
+But this fallback is permitted ONLY if the following is proven:
+
+A. the current in-progress Guided/Detailed DPR is safely preserved before navigation;
+
+B. returning restores the SAME draft;
+
+C. unsaved:
+- activity rows
+- chainages
+- width/thickness
+- quantities
+- chainageOverrideReason
+- equipment opening/closing values
+- labour/material rows
+- other edited state
+
+survive the round trip;
+
+D. no second DPR is created;
+
+E. stale local-autosave recovery does not replace the active server draft.
+
+Use existing autosave/server-draft mechanisms.
+
+Do not invent another navigation persistence store.
+
+--------------------------------------------------
+16. FULL-NAVIGATION FALLBACK MUST RETURN TO CURRENT DPR ENTRY
+--------------------------------------------------
+
+If fallback navigation is used:
+
+Current Guided/Detailed DPR
+→ referenced submitted DPR
+→ Back
+
+must return to:
+
+the exact current DPR entry form,
+same draft ID,
+same view mode,
+same current editing context.
+
+It must NOT go to:
+
+- Site Dashboard
+- DPR Summary
+- Progress Report
+- Field Home
+
+unless that genuinely was the originating page before opening the current DPR.
+
+For this specific reference drill-down, the immediate origin is the live DPR entry form.
+
+Use validated internal `returnTo` semantics.
+
+--------------------------------------------------
+17. DO NOT RELY ON BROWSER BACK ALONE
+--------------------------------------------------
+
+For full-page fallback:
+
+pass an explicit validated return context.
+
+Browser Back should still work naturally, but correctness must not depend only on history stack behavior.
+
+Do not use unsafe raw external return URLs.
+
+Reuse the existing Batch 06A `resolveReturnTo` validation.
+
+--------------------------------------------------
+18. VERIFY EXISTING OUTSIDE-PROGRAMME-BAR OVERRIDE
+--------------------------------------------------
+
+During this work, confirm whether the existing rule:
+
+"chainage outside assigned/programme bar requires reason"
+
+is enforced only on client or also on server.
+
+If already server-enforced:
+leave it alone.
+
+If client-only AND the same shared submit-validation path can enforce it safely with a minimal change:
+add server enforcement so it cannot be bypassed.
+
+Do NOT redesign programme-bar scope logic.
+
+Report exactly what was found and changed.
+
+--------------------------------------------------
+19. SIDE SEMANTICS
+--------------------------------------------------
+
+Reuse the extracted shared side rules.
+
+Expected behavior:
+
+LHS vs LHS:
+may overlap.
+
+RHS vs RHS:
+may overlap.
+
+LHS vs RHS:
+do not overlap.
+
+Both / Full Width / compatible shared-side semantics:
+follow existing Progress Report behavior.
+
+Do not invent another side compatibility table.
+
+--------------------------------------------------
+20. CHAINAGE SEMANTICS
+--------------------------------------------------
+
+Reuse existing normalized chainage math.
+
+Adjacent ranges are NOT overlap.
+
+Example:
+
+2+000–2+100
+and
+2+100–2+200
+
+→ no warning.
+
+True interval intersection is required.
+
+Preserve existing behavior for invalid/reverse-entered chainage.
+
+--------------------------------------------------
+21. LIVE / HISTORICAL DATA
+--------------------------------------------------
+
+Do not rewrite existing submitted DPRs.
+
+Existing overlaps already visible in Progress Report remain visible.
+
+This batch prevents future silent overlap submissions and makes legitimate repeated work auditable.
+
+For recent Takkadpally data, inspect and report:
+
+- exact-overlap cases
+- partial-overlap cases
+- same-side vs opposite-side cases
+
+Do not modify them.
+
+--------------------------------------------------
+22. PROGRESS REPORT BEHAVIOR
+--------------------------------------------------
+
+Progress Report remains advisory-only for historical data.
+
+Do not hide rows because overlap exists.
+
+Where practical, Progress Report and DPR entry should use the same neutral shared overlap helper after extraction.
+
+No report total/cumulative changes.
+
+--------------------------------------------------
+23. DATABASE / SCHEMA SAFETY
+--------------------------------------------------
+
+Expected schema change: NONE.
+
+Do not:
+
+- add overlap columns
+- add duplicate flags
+- add reason columns
+- change nullability
+- alter progress_entries schema
+
+Use existing `chainageOverrideReason` if safe.
+
+If a schema change becomes genuinely necessary:
+
+STOP and report:
+
+A. exact table/column
+B. why existing fields cannot support the rule
+C. alternative no-schema approach
+D. production-data impact
+E. exact schema effect
+
+Do not implement without approval.
+
+--------------------------------------------------
+24. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- DPR quantity/UoM conversion
+- Progress Report cumulative formulas
+- BOQ Contract Qty
+- programme-bar reported quantity
+- Project Scope
+- Geometry
+- Auto Sequence
+- Gantt
+- Execution Arrangement
+- Tomorrow's Programme
+- Stores
+- Equipment Usage
+- RA billing
+- historical submitted DPR data
+
+Do not broadly redesign SiteReport.
+
+Only refactor its read-only rendering if necessary to safely support embedded reuse.
+
+--------------------------------------------------
+25. TESTS
+--------------------------------------------------
+
+Add focused tests covering at least:
+
+A. Same item + same side + exact same chainage in same DPR → overlap warning.
+
+B. Same item + same side + partial overlap in same DPR → warning.
+
+C. Adjacent chainages → no warning.
+
+D. LHS vs RHS same chainage → no warning.
+
+E. Prior submitted DPR same item/side overlap → warning.
+
+F. Prior draft overlap only → not authoritative prior progress.
+
+G. Superseded submitted DPR excluded using canonical rule.
+
+H. Exact overlap displays prior DPR reference.
+
+I. Partial overlap displays exact intersecting range.
+
+J. Overlap without reason:
+Draft Save succeeds.
+
+K. Overlap without reason:
+Final Submit blocked.
+
+L. Overlap with reason:
+Final Submit succeeds.
+
+M. Legitimate second-layer reason preserved.
+
+N. Same-DPR overlap is server-detected if frontend bypassed.
+
+O. Cross-DPR overlap is server-detected if frontend bypassed.
+
+P. Guided DPR shows same warning.
+
+Q. Detailed DPR shows same warning.
+
+R. SiteEdit completion uses same rule.
+
+S. Existing Progress Report overlap tests remain green.
+
+T. Extracted helper does not alter Progress Report overlap behavior.
+
+U. Outside-programme-bar reason server-enforcement verified.
+
+V. Structure/non-chainage items unaffected.
+
+W. Prior-DPR reference opens READ-ONLY.
+
+X. Prior-DPR preview exposes no edit/cancel/delete actions.
+
+Y. Preferred modal/overlay leaves current DPR form mounted.
+
+Z. Closing preview restores exact current editing state.
+
+AA. chainageOverrideReason survives opening/closing prior-DPR preview.
+
+AB. equipment/activity unsaved values remain untouched.
+
+IF FULL-PAGE FALLBACK IS USED, ALSO TEST:
+
+AC. current Guided server draft survives DPR-reference round trip.
+
+AD. current Detailed draft survives DPR-reference round trip.
+
+AE. unsaved activity row survives.
+
+AF. unsaved chainage survives.
+
+AG. unsaved chainageOverrideReason survives.
+
+AH. unsaved equipment readings/time survive.
+
+AI. return lands on SAME draft ID and SAME entry mode.
+
+AJ. no second DPR created.
+
+AK. stale alternate-view autosave does not replace active draft.
+
+AL. `returnTo` is validated with existing Batch 06A rules.
+
+AM. No schema change.
+
+Run full suite.
+
+Treat loss of any current DPR-entry data during prior-DPR inspection as a RELEASE BLOCKER.
+
+--------------------------------------------------
+26. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. Where overlap helpers previously lived.
+
+B. New neutral shared helper.
+
+C. Exact side compatibility semantics.
+
+D. Exact interval-overlap semantics.
+
+E. Same-DPR overlap behavior.
+
+F. Prior-submitted-DPR overlap query/filter behavior.
+
+G. Guided UX.
+
+H. Detailed UX.
+
+I. Reason capture reuse.
+
+J. Final Submit mandatory rule.
+
+K. Server-side enforcement.
+
+L. Whether outside-programme-bar override was client-only or already server-enforced.
+
+M. Prior-DPR inspection implementation:
+- modal/drawer/overlay OR full-navigation fallback
+- why that choice was made
+- components reused
+
+N. Confirmation prior DPR is read-only.
+
+O. If modal:
+confirm current form remains mounted and state untouched.
+
+P. If full navigation:
+document exact returnTo/autosave preservation flow and prove same draft/state restoration.
+
+Q. Any recent Takkadpally overlaps found, read-only.
+
+R. Progress Report behavior after helper extraction.
+
+S. Tests.
+
+T. Confirm:
+- no schema change
+- no historical rewrite
+- no quantity change
+- no Progress Report total change
+- no Tomorrow's Programme/Geometry/Scope change
+
+DO NOT START ANOTHER BATCH.
+
+--------------------------------------------------
+SUCCESS CRITERION
+--------------------------------------------------
+
+1. Accidental same-item/same-side chainage overlap can no longer be silently final-submitted.
+
+2. Legitimate repeated work remains possible with an explicit reason.
+
+3. Same-DPR duplicate/overlap rows are caught.
+
+4. Prior submitted-DPR overlaps are caught.
+
+5. Draft Save remains lenient.
+
+6. Guided and Detailed behave identically.
+
+7. Server independently rechecks before Final Submit.
+
+8. Progress Report and DPR entry use one shared chainage-overlap definition.
+
+9. LHS/RHS and adjacent-chainage cases do not generate false warnings.
+
+10. The Engineer can inspect the referenced earlier DPR read-only.
+
+11. Inspecting an earlier DPR must NEVER cause loss of the current live DPR entry state.
+
+12. Preferred implementation keeps the current DPR form mounted through a read-only modal/overlay.
+
+13. If full navigation is used instead, exact draft/state survival and return to the current DPR must be proven.
+
+14. No schema or historical-data changes are introduced.
