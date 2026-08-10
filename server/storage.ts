@@ -22541,27 +22541,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Geometry Batch 01: project road geometry profile ───────────────────────
-  /** Idempotent — CREATE TABLE IF NOT EXISTS, safe on every startup. */
+  /**
+   * DEPRECATED no-op. road_geometry_profiles is defined in shared/schema.ts
+   * and exists in dev, workspace (DATABASE_URL) and production databases.
+   * Runtime DDL here caused the publish flow to generate a destructive
+   * DROP TABLE migration (table existed in prod but not in the database the
+   * publish diff compares against). Schema changes must go through the
+   * normal drizzle schema-push path only — do not reintroduce DDL here.
+   */
   async ensureRoadGeometryTable(): Promise<void> {
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS road_geometry_profiles (
-        id SERIAL PRIMARY KEY,
-        boq_project_id INTEGER NOT NULL UNIQUE,
-        enabled INTEGER NOT NULL DEFAULT 0,
-        carriageway_width_m REAL,
-        paved_shoulder_lhs_m REAL,
-        paved_shoulder_rhs_m REAL,
-        soft_shoulder_lhs_m REAL,
-        soft_shoulder_rhs_m REAL,
-        layers JSONB,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      )
-    `);
-    // 01A — additive column, idempotent.
-    await db.execute(sql`
-      ALTER TABLE road_geometry_profiles ADD COLUMN IF NOT EXISTS formation_width_m REAL
-    `);
+    // intentionally empty
   }
 
   async getRoadGeometryProfile(boqProjectId: number): Promise<RoadGeometryProfile | undefined> {

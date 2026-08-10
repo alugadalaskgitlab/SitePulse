@@ -90,9 +90,9 @@ app.use((req, res, next) => {
     storage.ensureStockReconciliationTables()
       .then(() => console.log("Startup: ensureStockReconciliationTables — stock_reconciliation_sessions/items tables verified/created"))
       .catch(e => console.error("Pre-routes: Failed to ensure stock reconciliation tables:", e)),
-    storage.ensureRoadGeometryTable()
-      .then(() => console.log("Startup: ensureRoadGeometryTable — road_geometry_profiles table verified/created"))
-      .catch(e => console.error("Pre-routes: Failed to ensure road_geometry_profiles table:", e)),
+    // road_geometry_profiles is now managed through the normal schema path
+    // (shared/schema.ts + drizzle push) — startup DDL removed so the publish
+    // migration diff can never see a runtime-created table it wants to drop.
     storage.ensureProjectScopeSchema()
       .then(() => console.log("Startup: ensureProjectScopeSchema — project_scope_segments table + corridor/scope columns verified/added"))
       .catch(e => console.error("Pre-routes: Failed to ensure project scope schema:", e)),
