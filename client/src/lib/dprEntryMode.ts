@@ -78,3 +78,17 @@ export function roadDprHref(returnTo?: string): string {
   const sep = base.includes("?") ? "&" : "?";
   return `${base}${sep}returnTo=${encodeURIComponent(returnTo)}`;
 }
+
+/**
+ * Batch 05 — href for CONTINUING an existing road-DPR server draft, honouring
+ * the persisted mode choice. Guided (the default) reopens the SAME server
+ * draft via `?draftId=`; only an explicit Detailed preference routes to the
+ * Detailed draft editor. Never creates a second DPR.
+ */
+export function roadDprDraftHref(draftId: number, returnTo?: string): string {
+  const base = getDprEntryMode() === "guided"
+    ? `/site/guided?draftId=${draftId}`
+    : `/site/edit/${draftId}?draft`;
+  if (!returnTo) return base;
+  return `${base}&returnTo=${encodeURIComponent(returnTo)}`;
+}

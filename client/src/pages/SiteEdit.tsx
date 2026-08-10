@@ -28,7 +28,6 @@ import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
-import { setDprEntryMode } from "@/lib/dprEntryMode";
 import { boqItemDisplayName } from "@shared/boqItemName";
 
 interface ProgressEntry {
@@ -853,7 +852,8 @@ export default function SiteEdit() {
               <Button
                 variant="ghost"
                 onClick={() => {
-                  setDprEntryMode("guided");
+                  // Batch 05 (spec §4): view switch only — never changes the
+                  // persistent default entry mode.
                   setLocation(`/site/guided?draftId=${id}${_returnTo ? `&returnTo=${encodeURIComponent(_returnTo)}` : ""}`);
                 }}
                 className="gap-2"

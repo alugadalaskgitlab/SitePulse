@@ -45,7 +45,8 @@ import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { History } from "lucide-react";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
-import { setDprEntryMode } from "@/lib/dprEntryMode";
+import { setDprEntryMode, getDprEntryMode } from "@/lib/dprEntryMode";
+import { reconcileNewDprAutosaves } from "@/lib/dprAutosaveReconcile";
 import { calculateBomDemand, fmtQty, type BomInputItem, type BomInputBar, type BomDemand } from "@shared/planningEngine";
 
 interface ProgressEntry {
@@ -1197,6 +1198,9 @@ export default function SiteEntry() {
     },
     onSuccess: async (data) => {
       await clearDraft();
+      // Batch 05 (spec §10): the server draft is now authoritative — clear a
+      // stale Guided "new DPR" blob for the same draft/site/date context.
+      await reconcileNewDprAutosaves({ draftId: data.id, site: header.site, date: header.date });
       if (stagedPhotos.length > 0) {
         await uploadStagedPhotos(data.id);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", data.id] });
@@ -1443,7 +1447,8 @@ export default function SiteEntry() {
             variant="ghost"
             size="sm"
             onClick={() => confirmLeave(() => {
-              setDprEntryMode("guided");
+              // Batch 05 (spec §4): a view switch never changes the persistent
+              // default — only the explicit control below does.
               setLocation(returnTo ? `/site/guided?returnTo=${encodeURIComponent(returnTo)}` : "/site/guided");
             })}
             data-testid="button-switch-guided"
@@ -1451,6 +1456,23 @@ export default function SiteEntry() {
             Guided DPR
           </Button>
         )}
+        {/* Batch 05: the ONLY way the persistent entry-mode default changes —
+            a deliberate, labelled action (spec §4). */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const next = getDprEntryMode() === "detailed" ? "guided" : "detailed";
+            setDprEntryMode(next);
+            toast({
+              title: next === "detailed" ? "Detailed DPR is now your default" : "Guided DPR is now your default",
+              description: "\u201cStart Today's Site Work\u201d will open this view from now on. You can change it here anytime.",
+            });
+          }}
+          data-testid="button-set-default-mode"
+        >
+          {getDprEntryMode() === "detailed" ? "Set Guided as my default" : "Set Detailed as my default"}
+        </Button>
       </div>
 
       {hasDraft && (

@@ -582,7 +582,7 @@ export interface IStorage {
   createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage>;
   updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined>;
   deleteEquipmentUsage(id: number): Promise<boolean>;
-  getOpenEquipmentUsageForDate(date: string, equipmentIds: number[]): Promise<EquipmentUsage[]>;
+  getOpenEquipmentUsageForDate(date: string, equipmentIds?: number[]): Promise<EquipmentUsage[]>;
   ensureEquipmentUsageAuditColumns(): Promise<void>;
   
   getGeneratorLogs(filters?: { dateFrom?: string; dateTo?: string }): Promise<GeneratorLog[]>;
@@ -4029,14 +4029,16 @@ export class DatabaseStorage implements IStorage {
     return this._updateEquipmentUsageTxn(id, usage);
   }
 
-  async getOpenEquipmentUsageForDate(date: string, equipmentIds: number[]): Promise<EquipmentUsage[]> {
-    if (!equipmentIds.length) return [];
-    return db.select().from(equipmentUsage)
-      .where(and(
-        eq(equipmentUsage.date, date),
-        eq((equipmentUsage as any).status, 'open'),
-        inArray(equipmentUsage.equipmentId, equipmentIds)
-      ));
+  async getOpenEquipmentUsageForDate(date: string, equipmentIds?: number[]): Promise<EquipmentUsage[]> {
+    // Batch 05: undefined = no equipment filter (all open usage for the date,
+    // used by Guided DPR discovery). An explicit empty list still returns [].
+    if (equipmentIds !== undefined && !equipmentIds.length) return [];
+    const conds = [
+      eq(equipmentUsage.date, date),
+      eq((equipmentUsage as any).status, 'open'),
+    ];
+    if (equipmentIds !== undefined) conds.push(inArray(equipmentUsage.equipmentId, equipmentIds));
+    return db.select().from(equipmentUsage).where(and(...conds));
   }
 
   async ensureEquipmentUsageAuditColumns(): Promise<void> {

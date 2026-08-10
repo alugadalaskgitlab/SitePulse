@@ -43,7 +43,8 @@ import { requiredDims, applyGeometryChange, applyQuantityEdit, overrideMismatch,
 import { ProgrammeBarPicker, BarLinkFeedback, type PickerBar } from "@/components/ProgrammeBarPicker";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
-import { setDprEntryMode } from "@/lib/dprEntryMode";
+import { reconcileNewDprAutosaves } from "@/lib/dprAutosaveReconcile";
+import { unlinkedOpenUsages, usageToGuidedRow, duplicateUsageAdvisory, type OpenUsageLike } from "@shared/dprPlantLink";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { splitGuidedEquipmentRow, buildGuidedEquipmentPayload, newGuidedEquipmentRow, type GuidedEquipmentRow } from "@shared/guidedEquipment";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
@@ -133,9 +134,10 @@ export default function GuidedDpr() {
     return Number.isInteger(n) && n > 0 ? n : null;
   })();
 
-  // Visiting this screen counts as choosing it — remembered per user/device so
-  // every Road DPR entry point routes here next time.
-  useEffect(() => { setDprEntryMode("guided"); }, []);
+  // Batch 05 (spec §4): merely VIEWING a screen must never change the user's
+  // persistent entry-mode preference — the old mount-time setDprEntryMode
+  // call is gone. Preference changes only through the explicit
+  // "Set … as my default" control on the Detailed screen.
 
   const today = format(new Date(), "yyyy-MM-dd");
   const [date, setDate] = useState(today);
@@ -174,9 +176,12 @@ export default function GuidedDpr() {
   const deriveNeededRef = useRef(false);
   const autosaveData: GuidedFormState = { date, siteName, engineer, entries, equipment, labour, remarks, draftId };
   const autosave = useAutosave<GuidedFormState>({
-    // A URL-loaded draft autosaves under its own key so it never collides
-    // with (or duplicates into) the fresh-DPR autosave blob.
-    formKey: urlDraftId != null ? `guided-dpr-${urlDraftId}` : "guided-dpr-new",
+    // A draft with a server id autosaves under its own key so it never
+    // collides with (or duplicates into) the fresh-DPR autosave blob.
+    // Batch 05: the key follows draftId too — the moment a fresh DPR is saved
+    // as a server draft, subsequent autosave writes move to the draft-specific
+    // key and can never recreate a stale "guided-dpr-new" blob.
+    formKey: (urlDraftId ?? draftId) != null ? `guided-dpr-${urlDraftId ?? draftId}` : "guided-dpr-new",
     data: autosaveData,
     onRestore: (d) => {
       setDate(d.date); setSiteName(d.siteName); setEngineer(d.engineer);
@@ -249,7 +254,64 @@ export default function GuidedDpr() {
     setLabour((urlDraftDpr.labour ?? []).map((l: any): SimpleLabourRow => ({
       category: l.category || "", count: l.count != null ? Number(l.count) : null, contractor: l.contractor || "", task: l.task || "",
     })));
+    // Batch 05 (spec §10): this server draft is authoritative — silence any
+    // stale "new DPR" autosave blob that belongs to the same draft/context.
+    reconcileNewDprAutosaves({
+      draftId: urlDraftDpr.id,
+      site: String(urlDraftDpr.site ?? ""),
+      date: urlDraftDpr.date ?? today,
+    });
   }, [urlDraftDpr]);
+
+  // ── Batch 05: Equipment & Fleet linkage (same mechanism as Detailed DPR) ──
+  // Open usage records for the DPR date are discoverable and linkable via
+  // plantUsageId; the server closes them on Final Submit (closePlantUsage).
+  // Discovery is site-scoped server-side: only open usage recorded for this
+  // DPR's site is returned (no cross-site disclosure).
+  const { data: openUsages = [] } = useQuery<OpenUsageLike[]>({
+    queryKey: ["/api/plant-module/equipment-usage/open-today", date, siteName],
+    queryFn: async () => {
+      const res = await fetch(`/api/plant-module/equipment-usage/open-today?date=${encodeURIComponent(date)}&site=${encodeURIComponent(siteName)}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!date && !!siteName,
+  });
+  const { data: equipmentMasterList = [] } = useQuery<any[]>({
+    queryKey: ["/api/plant-module/equipment", "guided"],
+    queryFn: async () => {
+      const res = await fetch("/api/plant-module/equipment?includeInactive=true", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: openUsages.length > 0,
+  });
+  const equipmentNameOf = (equipmentId: number): string | undefined =>
+    equipmentMasterList.find((e: any) => e.id === equipmentId)?.name;
+  const unlinkedUsages = unlinkedOpenUsages(openUsages, equipment);
+  // Batch 05 (spec §10): backstop sweep — a debounced autosave write that was
+  // already scheduled under "guided-dpr-new" when the server draft got saved
+  // could land AFTER the success-handler cleanup. Once a server draft exists,
+  // this delayed reconcile clears any such stale blob for the same context
+  // (rule: same draftId, or same site+date). Runs after the 1s debounce window.
+  useEffect(() => {
+    if (draftId == null || !siteName) return;
+    const t = setTimeout(() => { reconcileNewDprAutosaves({ draftId, site: siteName, date }); }, 2000);
+    return () => clearTimeout(t);
+  }, [draftId, siteName, date]);
+
+  // Edit a field the simple Guided UI now exposes but that lives in the
+  // Batch 04 passthrough bag (readings/times). Blank input removes the key so
+  // no ""/null values are fabricated for fields the user never set.
+  const setPassthroughField = (idx: number, key: string, raw: string, numeric: boolean) => {
+    setEquipment((prev) => prev.map((r, j) => {
+      if (j !== idx) return r;
+      const pt = { ...r.passthrough };
+      if (raw === "") delete pt[key];
+      else pt[key] = numeric ? Number(raw) : raw;
+      return { ...r, passthrough: pt };
+    }));
+  };
 
   // ── Master data ────────────────────────────────────────────────────────────
   const { data: sitesList = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
@@ -616,10 +678,17 @@ export default function GuidedDpr() {
       }
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
       if (asDraft) {
-        setDraftId(data.id ?? draftId);
+        const savedId = data.id ?? draftId;
+        setDraftId(savedId);
+        // Batch 05 (spec §10): once the server draft holds this work, the
+        // server is authoritative — clear this screen's local blob and any
+        // stale new-DPR blob (either silo) for the same draft/site/date.
+        await autosave.clearDraft();
+        if (savedId != null) await reconcileNewDprAutosaves({ draftId: savedId, site: siteName, date });
         toast({ title: "Draft Saved", description: "Keep working here — saving again updates this same draft. Submit promotes it." });
       } else {
         await autosave.clearDraft();
+        if ((data.id ?? draftId) != null) await reconcileNewDprAutosaves({ draftId: data.id ?? draftId!, site: siteName, date });
         toast({ title: "Report Saved Successfully", description: "Your site report has been submitted." });
         setLocation(`/site/success/${data.id ?? draftId}?type=road&returnTo=${encodeURIComponent(returnTo)}`);
       }
@@ -708,14 +777,15 @@ export default function GuidedDpr() {
   // Part J: switching views mid-entry never loses data. If a server draft
   // exists, continue it in the Detailed editor; otherwise the local autosave
   // (plus a confirm) protects unsaved entries.
+  // Batch 05 (spec §4): this is a VIEW switch over the same DPR — it must NOT
+  // call setDprEntryMode. The persistent default changes only via the
+  // explicit control on the Detailed screen.
   const switchToDetailed = () => {
-    setDprEntryMode("detailed");
     if (draftId != null) {
       setLocation(`/site/edit/${draftId}?draft&returnTo=${encodeURIComponent(returnTo)}`);
       return;
     }
     if (entries.length > 0 && !window.confirm("You have unsaved activities. They stay locally autosaved on this screen, but the Detailed DPR starts fresh — save a draft first to continue it there. Switch anyway?")) {
-      setDprEntryMode("guided");
       return;
     }
     setLocation(`/site/new?type=road&returnTo=${encodeURIComponent(returnTo)}`);
@@ -730,7 +800,7 @@ export default function GuidedDpr() {
           <Button variant="ghost" size="sm" data-testid="button-back"><ChevronLeft className="w-4 h-4 mr-1" />Back</Button>
         </Link>
         <Button variant="ghost" size="sm" onClick={switchToDetailed} data-testid="button-switch-detailed">
-          <LayoutList className="w-4 h-4 mr-1" />Detailed DPR
+          <LayoutList className="w-4 h-4 mr-1" />Detailed / Advanced view
         </Button>
       </div>
       <h1 className="text-xl font-bold" data-testid="text-guided-title">Guided DPR{draftId != null ? <Badge variant="outline" className="ml-2 align-middle" data-testid="badge-editing-draft">Draft #{draftId}</Badge> : null}</h1>
@@ -1058,13 +1128,73 @@ export default function GuidedDpr() {
             <div className="space-y-4 mt-3">
               <div>
                 <Label className="mb-1 block">Equipment</Label>
-                {equipment.map((eq, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2 mb-2">
-                    <Input placeholder="Machine" value={eq.machine} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, machine: ev.target.value } : r))} data-testid={`input-eq-machine-${i}`} />
-                    <Input placeholder="Task" value={eq.task} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, task: ev.target.value } : r))} data-testid={`input-eq-task-${i}`} />
-                    <Button variant="ghost" size="icon" onClick={() => setEquipment((p) => p.filter((_, j) => j !== i))}><Trash2 className="w-4 h-4" /></Button>
+                {/* Batch 05: surface open Equipment & Fleet usage for reuse —
+                    same linking mechanism as the Detailed DPR, so nothing is
+                    typed twice and no duplicate usage record is created. */}
+                {unlinkedUsages.length > 0 && (
+                  <div className="mb-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 text-sm" data-testid="panel-open-usages">
+                    <p className="font-medium text-amber-800 dark:text-amber-300 mb-1">Equipment usage already recorded today</p>
+                    {unlinkedUsages.map((u) => (
+                      <div key={u.id} className="flex items-center justify-between gap-2 py-0.5">
+                        <span className="text-amber-900 dark:text-amber-200">
+                          {equipmentNameOf(u.equipmentId) ?? `Equipment #${u.equipmentId}`}
+                          {u.openingReading != null ? ` · Opening ${u.openingReading}` : ""}
+                          {u.startTime ? ` · Start ${u.startTime}` : ""}
+                          {u.siteName ? ` · ${u.siteName}` : ""}
+                        </span>
+                        <Button size="sm" variant="outline" className="shrink-0"
+                          onClick={() => setEquipment((p) => [...p, usageToGuidedRow(u, equipmentNameOf(u.equipmentId) ?? "")])}
+                          data-testid={`button-use-usage-${u.id}`}>
+                          Use in this DPR
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+                {equipment.map((eq, i) => {
+                  const pt = eq.passthrough as Record<string, any>;
+                  const linked = pt.plantUsageId != null;
+                  const advisory = duplicateUsageAdvisory(eq, openUsages, equipmentNameOf);
+                  return (
+                    <div key={i} className="mb-3 space-y-1.5">
+                      <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                        <Input placeholder="Machine" value={eq.machine} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, machine: ev.target.value } : r))} data-testid={`input-eq-machine-${i}`} />
+                        <Input placeholder="Task" value={eq.task} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, task: ev.target.value } : r))} data-testid={`input-eq-task-${i}`} />
+                        <Button variant="ghost" size="icon" onClick={() => setEquipment((p) => p.filter((_, j) => j !== i))}><Trash2 className="w-4 h-4" /></Button>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Opening{linked ? " (from plant — locked)" : ""}</Label>
+                          <Input type="number" inputMode="decimal" placeholder="Reading" value={pt.openingReading ?? ""} readOnly={linked}
+                            className={linked ? "bg-amber-50 dark:bg-amber-950/30 border-amber-300" : ""}
+                            onChange={(ev) => { if (!linked) setPassthroughField(i, "openingReading", ev.target.value, true); }}
+                            data-testid={`input-eq-opening-${i}`} />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Closing</Label>
+                          <Input type="number" inputMode="decimal" placeholder="Reading" value={pt.closingReading ?? ""}
+                            onChange={(ev) => setPassthroughField(i, "closingReading", ev.target.value, true)}
+                            data-testid={`input-eq-closing-${i}`} />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Start time</Label>
+                          <Input type="time" value={pt.startTime ?? ""}
+                            onChange={(ev) => setPassthroughField(i, "startTime", ev.target.value, false)}
+                            data-testid={`input-eq-start-${i}`} />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">End time</Label>
+                          <Input type="time" value={pt.endTime ?? ""}
+                            onChange={(ev) => setPassthroughField(i, "endTime", ev.target.value, false)}
+                            data-testid={`input-eq-end-${i}`} />
+                        </div>
+                      </div>
+                      {advisory && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400" data-testid={`text-eq-dup-advisory-${i}`}>{advisory}</p>
+                      )}
+                    </div>
+                  );
+                })}
                 <Button variant="outline" size="sm" onClick={() => setEquipment((p) => [...p, newGuidedEquipmentRow()])} data-testid="button-add-equipment">
                   <Plus className="w-3.5 h-3.5 mr-1" />Equipment
                 </Button>

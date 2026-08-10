@@ -3015,6 +3015,12 @@ export async function registerRoutes(
     }
   });
 
+  // Batch 05: DPR sites carry " – Edited by …" suffixes; usage rows store the
+  // plain site name — compare on the normalised base label.
+  function normaliseSiteLabel(s: unknown): string {
+    return String(s ?? "").replace(/ [–-] (Edited by|Copy by) .+$/, "").trim().toLowerCase();
+  }
+
   // Batch 6: helper — closes open plant equipment_usage records that were linked by a DPR submission
   async function closePlantUsageLinkedToEquipment(
     equipment: any[] | undefined,
@@ -3025,9 +3031,33 @@ export async function registerRoutes(
     const now = new Date();
     const closedByUserId = (req as any).authUser?.id ?? null;
     const closedByUserName = (req as any).authUser ? currentUserName(req) : null;
+    // Batch 05 guard: a DPR may only close usage records that are still OPEN
+    // on the SAME date and (when the usage names a site) the SAME site as the
+    // DPR — a client cannot close an arbitrary plantUsageId.
+    let openById = new Map<number, any>();
+    let dprSite = "";
+    try {
+      const dpr = await storage.getDpr(dprId);
+      dprSite = normaliseSiteLabel((dpr as any)?.site);
+      const open = dpr?.date ? await (storage as any).getOpenEquipmentUsageForDate(dpr.date) : [];
+      openById = new Map(open.map((u: any) => [u.id, u]));
+    } catch (e) {
+      console.error("Batch05 closePlantUsage: could not load open usage for validation:", e);
+      return; // fail closed — never close unvalidated records
+    }
     for (const entry of equipment) {
       const puid = (entry as any).plantUsageId;
       if (!puid) continue;
+      const usage = openById.get(Number(puid));
+      if (!usage) {
+        console.warn(`Batch05 closePlantUsage: skipping equipment_usage #${puid} — not an open record for this DPR's date`);
+        continue;
+      }
+      const usageSite = normaliseSiteLabel(usage.siteName);
+      if (usageSite && dprSite && usageSite !== dprSite) {
+        console.warn(`Batch05 closePlantUsage: skipping equipment_usage #${puid} — site mismatch (${usage.siteName} vs DPR site)`);
+        continue;
+      }
       try {
         await storage.updateEquipmentUsage(Number(puid), {
           closingReading: entry.closingReading ?? undefined,
@@ -3074,14 +3104,33 @@ export async function registerRoutes(
   });
 
   // Batch 6: open plant records for a given date + equipmentIds — used by SiteEntry to detect P&M-dispatched equipment
-  app.get("/api/plant-module/equipment-usage/open-today", async (req, res) => {
+  app.get("/api/plant-module/equipment-usage/open-today", requireAuth, async (req, res) => {
     try {
       const date = req.query.date as string;
       if (!date) return res.status(400).json({ message: "date is required" });
       const ids = req.query.equipmentIds;
+      // Batch 05: omitted equipmentIds = open usage discovery for Guided DPR.
+      // Discovery is SITE-SCOPED: a `site` param is required and only usage
+      // rows recorded for that site are returned (no cross-site disclosure).
+      // The existing per-equipment lookup (Detailed DPR) is unchanged.
+      if (ids === undefined) {
+        const site = req.query.site as string | undefined;
+        if (!site || !normaliseSiteLabel(site)) {
+          return res.status(400).json({ message: "site is required when equipmentIds is omitted" });
+        }
+        // Site-access authorization: same helper as the DPR routes — a user
+        // may only discover open usage for a site they are permitted to see.
+        const permittedSiteNames = await getPermittedSiteNames(req);
+        if (permittedSiteNames !== null && !siteMatchesPermitted(site, permittedSiteNames)) {
+          return res.status(403).json({ message: "You do not have access to this site" });
+        }
+        const all = await (storage as any).getOpenEquipmentUsageForDate(date);
+        const wanted = normaliseSiteLabel(site);
+        return res.json(all.filter((u: any) => normaliseSiteLabel(u.siteName) === wanted));
+      }
       const equipmentIds: number[] = Array.isArray(ids)
         ? (ids as string[]).map(Number).filter(Boolean)
-        : ids ? [Number(ids)].filter(Boolean) : [];
+        : [Number(ids)].filter(Boolean);
       const records = await (storage as any).getOpenEquipmentUsageForDate(date, equipmentIds);
       res.json(records);
     } catch (err) {

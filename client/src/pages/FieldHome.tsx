@@ -19,7 +19,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { format, addDays } from "date-fns";
-import { roadDprHref } from "@/lib/dprEntryMode";
+import { roadDprHref, roadDprDraftHref } from "@/lib/dprEntryMode";
+import { deriveDprChecklist } from "@shared/dprFieldChecklist";
 import type { PlanVsActualRow, BoqProjectWithCounts } from "@shared/schema";
 
 // ─── Short name extraction ────────────────────────────────────────────────────
@@ -902,41 +903,24 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   const mat = (myDpr?.materials ?? []).length;
   const prg = (myDpr?.progress  ?? []).length;
 
-  const pendingChecks: CheckItem[] = [
-    {
-      id: "c1", label: "Equipment closing meter",
-      state: eq > 0 ? "done" : "pending",
-      sub: eq > 0 ? `${eq} equipment logged` : "No equipment recorded yet",
-    },
-    {
-      id: "c2", label: "Final labour count",
-      state: lab > 0 ? "done" : "pending",
-      sub: lab > 0 ? `${lab} labour records` : "No labour entries yet",
-    },
-    {
-      id: "c3", label: "Material challan recorded",
-      state: mat > 0 ? "done" : "pending",
-      sub: mat > 0 ? `${mat} material log${mat > 1 ? "s" : ""}` : "No material entries yet",
-    },
-    {
-      id: "c4", label: "Activity quantities entered",
-      state: prg > 0 ? "done" : "pending",
-      sub: prg > 0 ? `${prg} activit${prg === 1 ? "y" : "ies"} logged` : "No activities recorded yet",
-    },
-    {
-      id: "c5", label: "DPR submitted",
-      state: dprPhase === "submitted-own" ? "done" : "pending",
-      sub: dprPhase === "submitted-own" ? "Submitted successfully" : "Submit once all items are done",
-    },
-  ];
+  // Batch 05: real completeness — derived from the SAME Batch 04 readiness
+  // validator used by every Final Submit path (no row-existence shortcuts,
+  // no third validator).
+  const checklist = deriveDprChecklist(myDpr, dprPhase === "submitted-own");
+  const pendingChecks: CheckItem[] = checklist.items;
 
   const doneCount    = pendingChecks.filter(c => c.state === "done").length;
   const pendingCount = pendingChecks.filter(c => c.state === "pending").length;
   const donePct      = Math.round((doneCount / pendingChecks.length) * 100);
 
   // ── CTA config (user + site + date aware) ─────────────────────────────────
+  // Batch 05: continuing an own road draft reopens the SAME Guided server
+  // draft (?draftId=) — never a Detailed edit route, never a second DPR.
+  // Structure DPRs (no guided flow) keep the Detailed draft editor.
+  const continueDraftHref = (d: any): string =>
+    (d?.workType === "structure") ? `/site/edit/${d.id}?draft` : roadDprDraftHref(d.id, "/");
   const dprHref = myDpr
-    ? (dprPhase === "submitted-own" ? `/site/report/${myDpr.id}` : `/site/edit/${myDpr.id}`)
+    ? (dprPhase === "submitted-own" ? `/site/report/${myDpr.id}` : continueDraftHref(myDpr))
     : otherDpr
     ? `/site/report/${otherDpr.id}`
     : roadDprHref("/");
@@ -966,7 +950,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
       case "draft-own":
         return {
           label: "Complete Today's DPR",
-          href: `/site/edit/${myDpr!.id}?draft`,
+          href: continueDraftHref(myDpr!),
           status: `Draft open · ${doneCount}/${pendingChecks.length} items done`,
           color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200",
           dotColor: "bg-orange-400",
@@ -1047,7 +1031,9 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   });
 
   // ── Quick actions ──────────────────────────────────────────────────────────
-  const editHref = myDpr ? `/site/edit/${myDpr.id}` : roadDprHref("/");
+  const editHref = myDpr
+    ? (dprPhase === "draft-own" ? continueDraftHref(myDpr) : `/site/edit/${myDpr.id}`)
+    : roadDprHref("/");
   const firstEditablePlan = tomorrowPlans.find(p => !isPlanLocked(p));
   const tomorrowPlanHref = firstEditablePlan
     ? `/site/requirements/new?editId=${firstEditablePlan.id}&returnTo=/`
@@ -1384,7 +1370,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
                 {/* Equipment row */}
                 {sectionVisible("site_dprs") && (
-                  <Link href={myDpr ? `/site/edit/${myDpr.id}` : roadDprHref("/")}>
+                  <Link href={myDpr ? (dprPhase === "draft-own" ? continueDraftHref(myDpr) : `/site/edit/${myDpr.id}`) : roadDprHref("/")}>
                     <a className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors" data-testid="activity-row-equipment">
                       <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
                         <Wrench className="w-4 h-4 text-amber-500" />
@@ -1749,7 +1735,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
               <div className="px-4 pb-3 pt-2">
                 {dprPhase !== "submitted-own" ? (
-                  <Link href={myDpr ? `/site/edit/${myDpr.id}` : roadDprHref("/")}>
+                  <Link href={myDpr ? continueDraftHref(myDpr) : roadDprHref("/")}>
                     <a
                       className={`block w-full py-3 rounded-xl font-bold text-sm text-center transition-all ${
                         pendingCount === 0
