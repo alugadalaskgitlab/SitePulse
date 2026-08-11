@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { formatChainageKm } from "@shared/barSide";
+import { DprPhotoGroups } from "@/components/DprPhotoGroups";
 
 type PreviewDpr = {
   id: number;
@@ -34,6 +35,7 @@ type PreviewDpr = {
     quantity: number | null;
     uom: string | null;
     chainageOverrideReason?: string | null;
+    entryKey?: string | null;
   }>;
   equipment?: Array<{ id: number; machine: string | null; hoursWorked: number | null; numberOfTrips: number | null; diesel: number | null }>;
 };
@@ -137,6 +139,16 @@ export function DprPreviewDialog({
                 <p className="text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{dpr.remarks}</p>
               </div>
             )}
+            {/* Task #1409: photos, grouped per activity (read-only) */}
+            <div>
+              <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">Photos</p>
+              <DprPhotoGroups
+                dprId={dpr.id}
+                progress={dpr.progress ?? []}
+                allowDelete={false}
+                emptyText="No photos on this report."
+              />
+            </div>
           </div>
         )}
       </DialogContent>

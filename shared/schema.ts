@@ -104,6 +104,10 @@ export const progressEntries = pgTable("progress_entries", {
   uom: text("uom"),
   noSiteWork: boolean("no_site_work").default(false),
   noSiteWorkDescription: text("no_site_work_description"),
+  // Task #1409: stable client-generated key (uuid) that survives the
+  // wholesale progress-row replacement on draft PATCH — per-activity photo
+  // attachments reference this key, never the serial id.
+  entryKey: text("entry_key"),
   // Optional link to a BOQ item for Plan vs Actual tracking
   boqItemId: integer("boq_item_id"),
   // Optional link to an earthwork arrangement for progress tracking (Instruction 024)
@@ -3321,6 +3325,9 @@ export const attachments = pgTable("attachments", {
   mimeType: text("mime_type"),
   fileSize: integer("file_size"),
   caption: text("caption"),
+  // Task #1409: links a dpr_progress photo to a specific activity row via the
+  // progress row's stable entryKey (null = general DPR-level photo).
+  progressEntryKey: text("progress_entry_key"),
   docType: text("doc_type"), // "challan" | "dc" | "invoice" | "bill" | "receipt" | "photo" | "other" — used for missing-document indicators in the Draft/Pending Document workflow
   uploadedBy: integer("uploaded_by").references(() => users.id, { onDelete: "set null" }),
   uploadedAt: timestamp("uploaded_at").defaultNow(),

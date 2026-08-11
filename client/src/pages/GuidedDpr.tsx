@@ -51,6 +51,8 @@ import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dpr
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
 import { type CandidateChainageRow } from "@shared/chainageOverlap";
+import { GUIDED_STEPS, clampGuidedStep, guidedStepBlocker, guidedEntryComplete, type GuidedStepId } from "@/lib/guidedWizard";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
@@ -67,6 +69,14 @@ type ProgrammeBar = {
 };
 
 interface GuidedEntry {
+  // Task #1409: stable client-generated key — survives the wholesale
+  // progress-row replacement on draft PATCH; per-activity photos link to it.
+  entryKey: string;
+  // Task #1409: per-activity "No Site Work" (rain / suspension / non-billable
+  // rework like re-clearing vegetation). Mirrors the Detailed DPR semantics:
+  // clears geometry/quantity, excluded from BOQ progress and overlap checks.
+  noSiteWork: boolean;
+  noSiteWorkDescription: string;
   activity: string;
   boqItemId: number | null;
   programmeBarId: number | null;
@@ -116,6 +126,11 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 // so operational naming can't drift between Guided DPR, Detailed DPR and pickers.
 import { boqItemDisplayName } from "@shared/boqItemName";
 
+const newEntryKey = (): string =>
+  (typeof crypto !== "undefined" && "randomUUID" in crypto)
+    ? crypto.randomUUID()
+    : `ek-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
 function fmtCh(km: number | null | undefined): string {
   if (km == null) return "?";
   const m = Math.round(km * 1000);
@@ -154,6 +169,19 @@ export default function GuidedDpr() {
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const photoCameraRef = useRef<HTMLInputElement>(null);
+  // Task #1409: wizard step (1 Report · 2 Activities · 3 Details · 4 Photos &
+  // crew · 5 Review). Steps 1–2 gate Next; later steps stay draft-lenient.
+  const [step, setStep] = useState<GuidedStepId>(1);
+  // Task #1409: per-activity staged photos, keyed by the row's stable
+  // entryKey. Kept OUT of the (JSON) autosave blob — File objects don't
+  // serialise; like the DPR-level staged list they live only in this session.
+  const [entryPhotos, setEntryPhotos] = useState<Record<string, File[]>>({});
+  // Which activity row the per-entry Camera/Gallery/File inputs feed.
+  const entryPhotoTargetRef = useRef<string | null>(null);
+  const entryCameraRef = useRef<HTMLInputElement>(null);
+  const entryGalleryRef = useRef<HTMLInputElement>(null);
+  const entryFileRef = useRef<HTMLInputElement>(null);
   // Instruction 031 Part A: once a draft is saved, later saves UPDATE the same
   // record (PATCH) and submit promotes it — never a duplicate row.
   const [draftId, setDraftId] = useState<number | null>(null);
@@ -172,11 +200,12 @@ export default function GuidedDpr() {
     date: string; siteName: string; engineer: string;
     entries: GuidedEntry[]; equipment: SimpleEquipmentRow[]; labour: SimpleLabourRow[];
     remarks: string; draftId: number | null;
+    step?: number;
   };
   // Set true by every restore/hydration generation; consumed by the
   // override-derivation effect once BOQ items are available.
   const deriveNeededRef = useRef(false);
-  const autosaveData: GuidedFormState = { date, siteName, engineer, entries, equipment, labour, remarks, draftId };
+  const autosaveData: GuidedFormState = { date, siteName, engineer, entries, equipment, labour, remarks, draftId, step };
   const autosave = useAutosave<GuidedFormState>({
     // A draft with a server id autosaves under its own key so it never
     // collides with (or duplicates into) the fresh-DPR autosave blob.
@@ -187,7 +216,16 @@ export default function GuidedDpr() {
     data: autosaveData,
     onRestore: (d) => {
       setDate(d.date); setSiteName(d.siteName); setEngineer(d.engineer);
-      setEntries((d.entries ?? []).map((e) => ({ ...e, qtyOverridden: e.qtyOverridden ?? false })));
+      // Legacy blobs predate entryKey / No Work — normalise so old rows keep
+      // working (fresh keys are fine: their photos were session-local anyway).
+      setEntries((d.entries ?? []).map((e) => ({
+        ...e,
+        qtyOverridden: e.qtyOverridden ?? false,
+        entryKey: e.entryKey || newEntryKey(),
+        noSiteWork: e.noSiteWork ?? false,
+        noSiteWorkDescription: e.noSiteWorkDescription ?? "",
+      })));
+      setStep(clampGuidedStep(d.step));
       // Legacy autosave blobs predate `passthrough` — normalise so old rows
       // don't crash the payload builder.
       setEquipment((d.equipment ?? []).map((e: any) => ({ ...newGuidedEquipmentRow(), ...e, passthrough: e.passthrough ?? {} })));
@@ -219,9 +257,13 @@ export default function GuidedDpr() {
     setSiteName(String(urlDraftDpr.site ?? "").replace(/ – (Edited by|Copy by) .+$/, "").trim());
     setEngineer(urlDraftDpr.engineer ?? "");
     setRemarks(urlDraftDpr.remarks ?? "");
+    // Task #1409: no-work rows are first-class in Guided now — hydrate them
+    // instead of silently dropping them from the draft.
     setEntries((urlDraftDpr.progress ?? [])
-      .filter((p: any) => !p.noSiteWork)
       .map((p: any): GuidedEntry => ({
+        entryKey: p.entryKey || newEntryKey(),
+        noSiteWork: !!p.noSiteWork,
+        noSiteWorkDescription: p.noSiteWorkDescription || "",
         activity: p.activity || "",
         boqItemId: p.boqItemId ?? null,
         programmeBarId: p.programmeBarId ?? null, // never stripped client-side
@@ -371,6 +413,7 @@ export default function GuidedDpr() {
     toKm: parseChainageKm(e.chainageTo),
     chainageOverrideReason: e.chainageOverrideReason,
     label: e.activity,
+    noSiteWork: e.noSiteWork,
   }));
   const { priors: overlapPriors } = useChainageOverlapContext(
     entries.map((e) => e.boqItemId).filter((id): id is number => id != null),
@@ -447,6 +490,9 @@ export default function GuidedDpr() {
   const addEntryFromBar = (bar: ProgrammeBar) => {
     const item = itemById.get(bar.boqItemId);
     setEntries((prev) => [...prev, {
+      entryKey: newEntryKey(),
+      noSiteWork: false,
+      noSiteWorkDescription: "",
       activity: boqItemDisplayName(item) || `BOQ item ${bar.boqItemId}`,
       boqItemId: bar.boqItemId,
       programmeBarId: bar.id,
@@ -469,6 +515,9 @@ export default function GuidedDpr() {
 
   const addEntryFromItem = (item: SiteBoqItem) => {
     setEntries((prev) => [...prev, {
+      entryKey: newEntryKey(),
+      noSiteWork: false,
+      noSiteWorkDescription: "",
       activity: boqItemDisplayName(item),
       boqItemId: item.id,
       programmeBarId: null,
@@ -529,7 +578,29 @@ export default function GuidedDpr() {
       qtyOverridden: deriveOverridden(e, e.boqItemId != null ? itemById.get(e.boqItemId) : null),
     })));
   }, [boqItems, entries, itemById]);
-  const removeEntry = (idx: number) => setEntries((prev) => prev.filter((_, i) => i !== idx));
+  const removeEntry = (idx: number) => {
+    const key = entries[idx]?.entryKey;
+    setEntries((prev) => prev.filter((_, i) => i !== idx));
+    if (key) setEntryPhotos((prev) => { const { [key]: _gone, ...rest } = prev; return rest; });
+  };
+
+  // Task #1409: ticking No Site Work clears geometry/quantity (same semantics
+  // as the Detailed DPR) so a suspension/rework note can never carry stale
+  // billable measurements; unticking clears the description.
+  const setNoSiteWork = (idx: number, checked: boolean) =>
+    setEntries((prev) => prev.map((e, i) => {
+      if (i !== idx) return e;
+      if (checked) {
+        return {
+          ...e, noSiteWork: true,
+          side: "", chainageFrom: "", chainageTo: "",
+          width: null, thickness: null, quantity: null,
+          quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "",
+          qtyOverridden: false,
+        };
+      }
+      return { ...e, noSiteWork: false, noSiteWorkDescription: "" };
+    }));
 
   // ── Same as yesterday (structure-only copy, always previewed) ─────────────
   const applyYesterdayStructure = () => {
@@ -537,6 +608,9 @@ export default function GuidedDpr() {
     // 031 Part I: shared structure-only extraction (same module as SiteEntry).
     const st = extractYesterdayStructure(yesterdayDpr as any);
     setEntries(st.progress.map((p) => ({
+      entryKey: newEntryKey(),
+      noSiteWork: false,
+      noSiteWorkDescription: "",
       activity: p.activity,
       boqItemId: p.boqItemId,
       programmeBarId: p.programmeBarId,
@@ -562,49 +636,81 @@ export default function GuidedDpr() {
     // photos / readings / remarks / submit status intentionally NOT copied
     setRemarks("");
     setStagedPhotos([]);
+    setEntryPhotos({});
     setShowYesterdayPreview(false);
     toast({ title: "Structure copied", description: "Yesterday's work items and crew copied. Enter today's chainage and quantities." });
   };
 
   // ── Photos ────────────────────────────────────────────────────────────────
-  const addPhotos = (files: FileList | null) => {
-    if (!files) return;
-    const valid = Array.from(files).filter((f) => {
+  const filterValidPhotos = (files: FileList | null): File[] => {
+    if (!files) return [];
+    return Array.from(files).filter((f) => {
       if (f.size > 15 * 1024 * 1024) { toast({ title: "File too large", description: `${f.name} exceeds 15MB.`, variant: "destructive" }); return false; }
       if (!f.type.startsWith("image/")) { toast({ title: "Unsupported file", description: `${f.name} must be an image.`, variant: "destructive" }); return false; }
       return true;
     });
-    setStagedPhotos((prev) => [...prev, ...valid]);
+  };
+  const addPhotos = (files: FileList | null) => {
+    const valid = filterValidPhotos(files);
+    if (valid.length) setStagedPhotos((prev) => [...prev, ...valid]);
+  };
+  // Task #1409: per-activity staged photos (Camera / Gallery / File inputs
+  // share one target row via entryPhotoTargetRef).
+  const addEntryPhotos = (files: FileList | null) => {
+    const key = entryPhotoTargetRef.current;
+    const valid = filterValidPhotos(files);
+    if (!key || valid.length === 0) return;
+    setEntryPhotos((prev) => ({ ...prev, [key]: [...(prev[key] ?? []), ...valid] }));
+  };
+  const removeEntryPhoto = (key: string, i: number) =>
+    setEntryPhotos((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((_, j) => j !== i) }));
+  const stagedPhotoCount = stagedPhotos.length + Object.values(entryPhotos).reduce((n, l) => n + l.length, 0);
+
+  /**
+   * Uploads one staged photo and attaches it to the DPR (optionally to a
+   * specific activity row via progressEntryKey). Returns true on success.
+   */
+  const uploadOnePhoto = async (dprId: number, file: File, progressEntryKey: string | null): Promise<boolean> => {
+    const up = await uploadFile(file);
+    if (!up) return false;
+    try {
+      await apiRequest("POST", "/api/attachments", {
+        moduleType: "dpr_progress", linkedRecordId: dprId,
+        siteId: selectedSiteId ?? null, boqProjectId: boqProjectId ?? null,
+        fileName: file.name, objectPath: up.objectPath,
+        mimeType: file.type || "application/octet-stream", fileSize: file.size,
+        progressEntryKey,
+      });
+      return true;
+    } catch {
+      toast({ title: "Photo failed to attach — kept for retry", description: file.name, variant: "destructive" });
+      return false;
+    }
   };
   /**
-   * Uploads staged photos and returns the files that FAILED, so the caller can
-   * keep only those staged for retry — successfully attached photos leave the
-   * staged list (otherwise the next draft save re-uploads them as duplicates).
+   * Uploads all staged photos (DPR-level + per-activity) and returns the
+   * files that FAILED per bucket, so the caller keeps only those staged for
+   * retry — successfully attached photos leave the staged lists (otherwise
+   * the next draft save re-uploads them as duplicates).
    */
-  const uploadStagedPhotos = async (dprId: number): Promise<File[]> => {
+  const uploadStagedPhotos = async (dprId: number): Promise<{ failed: File[]; failedByEntry: Record<string, File[]> }> => {
     const failed: File[] = [];
     for (const file of stagedPhotos) {
-      const up = await uploadFile(file);
-      if (!up) { failed.push(file); continue; }
-      try {
-        await apiRequest("POST", "/api/attachments", {
-          moduleType: "dpr_progress", linkedRecordId: dprId,
-          siteId: selectedSiteId ?? null, boqProjectId: boqProjectId ?? null,
-          fileName: file.name, objectPath: up.objectPath,
-          mimeType: file.type || "application/octet-stream", fileSize: file.size,
-        });
-      } catch {
-        failed.push(file);
-        toast({ title: "Photo failed to attach — kept for retry", description: file.name, variant: "destructive" });
+      if (!(await uploadOnePhoto(dprId, file, null))) failed.push(file);
+    }
+    const failedByEntry: Record<string, File[]> = {};
+    for (const [key, files] of Object.entries(entryPhotos)) {
+      for (const file of files) {
+        if (!(await uploadOnePhoto(dprId, file, key))) {
+          (failedByEntry[key] ??= []).push(file);
+        }
       }
     }
-    return failed;
+    return { failed, failedByEntry };
   };
 
   // ── Save / submit ─────────────────────────────────────────────────────────
-  const entriesComplete = entries.length > 0 && entries.every(
-    (e) => e.chainageFrom && e.chainageTo && e.quantity != null && e.quantity > 0,
-  );
+  const entriesComplete = entries.length > 0 && entries.every(guidedEntryComplete);
 
   /**
    * Quantity-source state for a guided entry, recomputed from geometry —
@@ -623,12 +729,32 @@ export default function GuidedDpr() {
 
   const buildPayload = (asDraft: boolean) => {
     const progress = entries.map((e) => {
+      // Task #1409: No Site Work rows carry only the activity + description —
+      // no geometry, quantity or programme measurements (same as Detailed).
+      if (e.noSiteWork) {
+        return {
+          entryKey: e.entryKey,
+          activity: e.activity,
+          side: "", chainageFrom: "", chainageTo: "",
+          length: null, width: null, thickness: null, quantity: null,
+          uom: e.uom || null,
+          noSiteWork: true,
+          noSiteWorkDescription: e.noSiteWorkDescription,
+          personnelIds: [] as number[],
+          boqItemId: e.boqItemId,
+          programmeBarId: e.programmeBarId,
+          chainageFromKm: null, chainageToKm: null,
+          quantitySource: null, quantitySourceNote: null,
+          chainageOverrideReason: null, executedBy: null,
+        };
+      }
       const fromKm = parseChainageKm(e.chainageFrom);
       const toKm = parseChainageKm(e.chainageTo);
       // Instruction 031 Part B: the server is now draft-lenient — a draft row
       // with incomplete chainage KEEPS its programmeBarId (no more dropping
       // the link to survive validation).
       return {
+        entryKey: e.entryKey,
         activity: e.activity,
         side: e.side,
         chainageFrom: e.chainageFrom,
@@ -653,7 +779,7 @@ export default function GuidedDpr() {
         executedBy: e.executedBy || null,
       };
     });
-    const entryRemarks = entries.filter((e) => e.remark.trim()).map((e) => `${e.activity}: ${e.remark.trim()}`);
+    const entryRemarks = entries.filter((e) => !e.noSiteWork && e.remark.trim()).map((e) => `${e.activity}: ${e.remark.trim()}`);
     const allRemarks = [...entryRemarks, remarks.trim()].filter(Boolean).join("\n");
     return {
       date, site: siteName, engineer, role: "engineer", workType: "road",
@@ -689,11 +815,12 @@ export default function GuidedDpr() {
       return { data: await res.json(), asDraft };
     },
     onSuccess: async ({ data, asDraft }) => {
-      if (stagedPhotos.length > 0) {
-        // Attached photos leave the staged list (no duplicate re-upload on the
-        // next save); failed ones stay staged so the user can retry.
-        const failed = await uploadStagedPhotos(data.id);
+      if (stagedPhotoCount > 0) {
+        // Attached photos leave the staged lists (no duplicate re-upload on
+        // the next save); failed ones stay staged so the user can retry.
+        const { failed, failedByEntry } = await uploadStagedPhotos(data.id);
         setStagedPhotos(failed);
+        setEntryPhotos(failedByEntry);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", data.id] });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
@@ -741,6 +868,15 @@ export default function GuidedDpr() {
   // the server's chainage validation with a raw error.
   const validateForSubmit = (): boolean => {
     for (const e of entries) {
+      // Task #1409: a No Site Work row needs only its activity text — no
+      // chainage/side/quantity/programme rules apply (excluded from BOQ math).
+      if (e.noSiteWork) {
+        if (!e.activity.trim()) {
+          toast({ title: "Activity needed", description: "Name the no-work activity (e.g. RE-CLEARING VEGETATION, MACHINERY SHIFTING).", variant: "destructive" });
+          return false;
+        }
+        continue;
+      }
       const fromKm = parseChainageKm(e.chainageFrom);
       const toKm = parseChainageKm(e.chainageTo);
       if (fromKm == null || toKm == null) {
@@ -846,7 +982,35 @@ export default function GuidedDpr() {
         Records today's road progress against the work programme — same official record as the Detailed DPR, faster entry.
       </p>
 
-      {/* Report header */}
+      {/* Task #1409: wizard step indicator */}
+      <div className="flex items-center gap-1 mb-4" data-testid="wizard-stepper">
+        {GUIDED_STEPS.map((s, i) => (
+          <div key={s.id} className="flex items-center gap-1 flex-1 min-w-0">
+            <button
+              type="button"
+              className="flex flex-col items-center gap-0.5 flex-1 min-w-0"
+              // Completed steps are tappable to go back; forward jumps go
+              // through Next so the step gates run.
+              onClick={() => { if (s.id < step) setStep(s.id as GuidedStepId); }}
+              data-testid={`wizard-step-${s.id}`}
+            >
+              <span className={`w-6 h-6 rounded-full text-xs font-semibold flex items-center justify-center shrink-0 ${
+                s.id === step ? "bg-primary text-primary-foreground"
+                : s.id < step ? "bg-primary/15 text-primary"
+                : "bg-muted text-muted-foreground"}`}>
+                {s.id < step ? <Check className="w-3.5 h-3.5" /> : s.id}
+              </span>
+              <span className={`text-[10px] leading-tight truncate w-full text-center ${s.id === step ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                {s.label}
+              </span>
+            </button>
+            {i < GUIDED_STEPS.length - 1 && <div className={`h-px flex-1 max-w-6 ${s.id < step ? "bg-primary/40" : "bg-border"}`} />}
+          </div>
+        ))}
+      </div>
+
+      {/* Step 1 — Report header */}
+      {step === 1 && (
       <Card className="mb-4">
         <CardContent className="pt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
@@ -877,7 +1041,10 @@ export default function GuidedDpr() {
           </div>
         </CardContent>
       </Card>
+      )}
 
+      {/* Step 2 — pick today's activities */}
+      {step === 2 && (<>
       {/* Same as yesterday */}
       {yesterdayDpr && entries.length === 0 && (
         <Button variant="outline" className="w-full mb-4" onClick={() => setShowYesterdayPreview(true)} data-testid="button-same-as-yesterday">
@@ -929,6 +1096,41 @@ export default function GuidedDpr() {
         </div>
       )}
 
+      {/* Chosen activities so far (details entered in the next step) */}
+      {entries.length > 0 && (
+        <div className="mb-4" data-testid="chosen-activities">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Today's selected activities</h2>
+          <div className="space-y-1.5">
+            {entries.map((e, idx) => (
+              <div key={e.entryKey} className="flex items-center justify-between gap-2 border rounded-md px-3 py-2 bg-white dark:bg-slate-900" data-testid={`chosen-activity-${idx}`}>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{e.activity}</p>
+                  {e.noSiteWork && <Badge variant="secondary" className="mt-0.5">No site work</Badge>}
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => removeEntry(idx)} data-testid={`button-remove-chosen-${idx}`}>
+                  <Trash2 className="w-4 h-4 text-muted-foreground" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* + Record another activity (manual add) */}
+      {siteName && (
+        <Button variant="outline" className="w-full mb-4" onClick={() => setAddItemOpen(true)} data-testid="button-add-activity">
+          <Plus className="w-4 h-4 mr-2" />Record another activity
+        </Button>
+      )}
+      </>)}
+
+      {/* Step 3 — per-activity details */}
+      {step === 3 && (<>
+      {entries.length === 0 && (
+        <p className="text-sm text-muted-foreground mb-4" data-testid="text-no-entries-step3">
+          No activities selected yet — go back to pick today's activities.
+        </p>
+      )}
       {/* Entry cards */}
       {entries.map((e, idx) => {
         // Batch 1 Part B: planned side (from the linked bar) and actual
@@ -961,6 +1163,47 @@ export default function GuidedDpr() {
                 <Trash2 className="w-4 h-4 text-muted-foreground" />
               </Button>
             </div>
+            {/* Task #1409: per-activity No Site Work toggle (rain/suspension/
+                non-billable rework). Same semantics as the Detailed DPR:
+                clears measurements, excluded from BOQ progress & overlap. */}
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id={`guided-no-work-${idx}`}
+                checked={e.noSiteWork}
+                onCheckedChange={(checked) => setNoSiteWork(idx, checked === true)}
+                data-testid={`checkbox-no-site-work-${idx}`}
+              />
+              <Label htmlFor={`guided-no-work-${idx}`} className="text-sm cursor-pointer">No site work (rain / suspension / non-billable rework)</Label>
+            </div>
+            {e.noSiteWork && (
+              <div className="space-y-2" data-testid={`no-work-block-${idx}`}>
+                <div>
+                  <Label className="text-sm">Activity</Label>
+                  <Input
+                    placeholder="e.g., RE-CLEARING VEGETATION, MACHINERY SHIFTING"
+                    value={e.activity}
+                    onChange={(ev) => updateEntry(idx, { activity: ev.target.value.toUpperCase() })}
+                    className="uppercase"
+                    data-testid={`input-nowork-activity-${idx}`}
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">Description</Label>
+                  <Textarea
+                    placeholder="Describe what was done and why it isn't billable progress…"
+                    value={e.noSiteWorkDescription}
+                    onChange={(ev) => updateEntry(idx, { noSiteWorkDescription: ev.target.value.toUpperCase() })}
+                    className="uppercase"
+                    rows={3}
+                    data-testid={`input-nowork-description-${idx}`}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  This row is recorded on the daily report but never counts toward BOQ quantities or billing.
+                </p>
+              </div>
+            )}
+            {!e.noSiteWork && (<>
             {/* 031 Part C: manually-added items get the shared bar picker with
                 auto-matching (1 candidate → auto-link, several → pick,
                 incompatible bars stay behind "Other bars"). */}
@@ -1121,6 +1364,44 @@ export default function GuidedDpr() {
                 <Input value={e.remark} onChange={(ev) => updateEntry(idx, { remark: ev.target.value })} data-testid={`input-note-${idx}`} />
               </div>
             )}
+            </>)}
+            {/* Task #1409: per-activity photos — Camera / Gallery / File */}
+            <div className="pt-1 border-t" data-testid={`entry-photos-${idx}`}>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <Label className="flex items-center gap-1.5 text-xs"><Camera className="w-3.5 h-3.5" />Photos for this activity</Label>
+                <div className="flex gap-1.5">
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1"
+                    onClick={() => { entryPhotoTargetRef.current = e.entryKey; entryCameraRef.current?.click(); }}
+                    data-testid={`button-entry-photo-camera-${idx}`}>
+                    <Camera className="w-3.5 h-3.5" />Camera
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1"
+                    onClick={() => { entryPhotoTargetRef.current = e.entryKey; entryGalleryRef.current?.click(); }}
+                    data-testid={`button-entry-photo-gallery-${idx}`}>
+                    <Plus className="w-3.5 h-3.5" />Gallery
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1"
+                    onClick={() => { entryPhotoTargetRef.current = e.entryKey; entryFileRef.current?.click(); }}
+                    data-testid={`button-entry-photo-file-${idx}`}>
+                    <LayoutList className="w-3.5 h-3.5" />File
+                  </Button>
+                </div>
+              </div>
+              {(entryPhotos[e.entryKey] ?? []).length > 0 && (
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {(entryPhotos[e.entryKey] ?? []).map((f, i) => (
+                    <div key={i} className="relative">
+                      <img src={URL.createObjectURL(f)} alt={f.name} className="w-14 h-14 object-cover rounded-md border" />
+                      <button className="absolute -top-1.5 -right-1.5 bg-slate-800 text-white rounded-full p-0.5"
+                        onClick={() => removeEntryPhoto(e.entryKey, i)}
+                        data-testid={`button-remove-entry-photo-${idx}-${i}`}>
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
         );
@@ -1128,19 +1409,42 @@ export default function GuidedDpr() {
 
       {/* + Record another activity */}
       {siteName && (
-        <Button variant="outline" className="w-full mb-4" onClick={() => setAddItemOpen(true)} data-testid="button-add-activity">
+        <Button variant="outline" className="w-full mb-4" onClick={() => setAddItemOpen(true)} data-testid="button-add-activity-step3">
           <Plus className="w-4 h-4 mr-2" />Record another activity
         </Button>
       )}
+      {/* Shared hidden inputs for per-activity photos (one set, routed by
+          entryPhotoTargetRef — capture=environment opens the camera). */}
+      <input ref={entryCameraRef} type="file" accept="image/*" capture="environment" className="hidden"
+        data-testid="input-entry-photo-camera"
+        onChange={(ev) => { addEntryPhotos(ev.target.files); ev.target.value = ""; }} />
+      <input ref={entryGalleryRef} type="file" accept="image/*" multiple className="hidden"
+        data-testid="input-entry-photo-gallery"
+        onChange={(ev) => { addEntryPhotos(ev.target.files); ev.target.value = ""; }} />
+      <input ref={entryFileRef} type="file" accept="image/*" multiple className="hidden"
+        data-testid="input-entry-photo-file"
+        onChange={(ev) => { addEntryPhotos(ev.target.files); ev.target.value = ""; }} />
+      </>)}
 
+      {/* Step 4 — site photos, equipment, labour & remarks */}
+      {step === 4 && (<>
       {/* Photos */}
       <Card className="mb-4">
         <CardContent className="pt-4">
-          <div className="flex items-center justify-between">
-            <Label className="flex items-center gap-1.5"><Camera className="w-4 h-4" />Site photos</Label>
-            <Button variant="outline" size="sm" onClick={() => photoInputRef.current?.click()} data-testid="button-add-photos">Add photos</Button>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <Label className="flex items-center gap-1.5"><Camera className="w-4 h-4" />General site photos</Label>
+            <div className="flex gap-1.5">
+              <Button variant="outline" size="sm" className="gap-1" onClick={() => photoCameraRef.current?.click()} data-testid="button-add-photos-camera">
+                <Camera className="w-3.5 h-3.5" />Camera
+              </Button>
+              <Button variant="outline" size="sm" className="gap-1" onClick={() => photoInputRef.current?.click()} data-testid="button-add-photos">
+                <Plus className="w-3.5 h-3.5" />Gallery / file
+              </Button>
+            </div>
+            <input ref={photoCameraRef} type="file" accept="image/*" capture="environment" className="hidden" data-testid="input-photo-camera" onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
             <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
           </div>
+          <p className="text-xs text-muted-foreground mt-1">Photos of a specific activity are better added on that activity's card (previous step).</p>
           {stagedPhotos.length > 0 && (
             <div className="flex gap-2 mt-3 flex-wrap">
               {stagedPhotos.map((f, i) => (
@@ -1263,10 +1567,75 @@ export default function GuidedDpr() {
           )}
         </CardContent>
       </Card>
+      </>)}
+
+      {/* Step 5 — review & submit */}
+      {step === 5 && (
+      <Card className="mb-4" data-testid="card-review">
+        <CardContent className="pt-4 space-y-3 text-sm">
+          <div>
+            <p className="font-semibold mb-0.5">Report</p>
+            <p className="text-muted-foreground">{date} · {siteName || "No site"} · {engineer || "No engineer"}</p>
+          </div>
+          <div>
+            <p className="font-semibold mb-1">Activities ({entries.length})</p>
+            {entries.length === 0 && <p className="text-muted-foreground">None — go back to add today's work.</p>}
+            <div className="space-y-1.5">
+              {entries.map((e, idx) => {
+                const complete = guidedEntryComplete(e);
+                const photoCount = (entryPhotos[e.entryKey] ?? []).length;
+                return (
+                  <div key={e.entryKey} className="border rounded-md px-3 py-2" data-testid={`review-entry-${idx}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium truncate">{e.activity || "Unnamed activity"}</p>
+                      {complete
+                        ? <Badge variant="secondary" className="shrink-0">Ready</Badge>
+                        : <Badge variant="destructive" className="shrink-0">Incomplete</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {e.noSiteWork
+                        ? `No site work${e.noSiteWorkDescription ? ` — ${e.noSiteWorkDescription}` : ""}`
+                        : [
+                            e.side || null,
+                            e.chainageFrom && e.chainageTo ? `Ch ${e.chainageFrom}–${e.chainageTo}` : "No chainage",
+                            e.quantity != null ? `${e.quantity} ${e.uom || ""}`.trim() : "No quantity",
+                          ].filter(Boolean).join(" · ")}
+                      {photoCount > 0 ? ` · ${photoCount} photo${photoCount > 1 ? "s" : ""}` : ""}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <p className="font-semibold mb-0.5">Resources</p>
+            <p className="text-muted-foreground">
+              {equipment.filter((e) => e.machine).length} equipment · {labour.filter((l) => l.category).length} labour rows · {stagedPhotos.length} general photo{stagedPhotos.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          {remarks.trim() && (
+            <div>
+              <p className="font-semibold mb-0.5">Remarks</p>
+              <p className="text-muted-foreground whitespace-pre-wrap">{remarks}</p>
+            </div>
+          )}
+          {!entriesComplete && entries.length > 0 && (
+            <p className="text-xs text-amber-700 dark:text-amber-400" data-testid="text-review-incomplete">
+              Some activities are incomplete — go back to Details to finish them, or save a draft.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+      )}
 
       {/* Sticky action bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-950 border-t p-3 z-20">
         <div className="max-w-2xl mx-auto flex gap-2">
+          {step > 1 && (
+            <Button variant="outline" onClick={() => setStep((s) => (s - 1) as GuidedStepId)} data-testid="button-step-back">
+              Back
+            </Button>
+          )}
           <Button
             variant="outline"
             className="flex-1"
@@ -1276,6 +1645,20 @@ export default function GuidedDpr() {
           >
             {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Draft"}
           </Button>
+          {step < 5 && (
+            <Button
+              className="flex-1"
+              onClick={() => {
+                const blocker = guidedStepBlocker(step, { siteName, engineer, entryCount: entries.length });
+                if (blocker) { toast({ title: "Not yet", description: blocker, variant: "destructive" }); return; }
+                setStep((s) => (s + 1) as GuidedStepId);
+              }}
+              data-testid="button-step-next"
+            >
+              Next
+            </Button>
+          )}
+          {step === 5 && (
           <Button
             className="flex-1"
             disabled={saveMutation.isPending || !entriesComplete}
@@ -1284,7 +1667,7 @@ export default function GuidedDpr() {
               // Batch 04: one consolidated readiness panel before Final Submit.
               const r = evaluateDprSubmitReadiness({
                 workType: "road",
-                progress: entries.map((e) => ({ activity: e.activity, boqItemId: e.boqItemId, chainageFrom: e.chainageFrom, chainageTo: e.chainageTo, quantity: e.quantity })),
+                progress: entries.map((e) => ({ activity: e.activity, boqItemId: e.boqItemId, noSiteWork: e.noSiteWork, chainageFrom: e.chainageFrom, chainageTo: e.chainageTo, quantity: e.quantity })),
                 equipment: equipment.filter((e) => e.machine).map((e) => buildGuidedEquipmentPayload(e)) as any[],
                 labour: labour as any[],
                 materials: unmanagedSectionsRef.current.materials as any[],
@@ -1296,10 +1679,11 @@ export default function GuidedDpr() {
           >
             {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4 mr-1" />Submit DPR</>}
           </Button>
+          )}
         </div>
-        {!entriesComplete && entries.length > 0 && (
+        {step === 5 && !entriesComplete && entries.length > 0 && (
           <p className="max-w-2xl mx-auto text-xs text-muted-foreground mt-1.5" data-testid="text-submit-hint">
-            Enter chainage from/to and quantity for every activity to submit — or save a draft and finish later.
+            Enter chainage from/to and quantity for every activity (or mark it No site work) to submit — or save a draft and finish later.
           </p>
         )}
       </div>

@@ -2280,6 +2280,9 @@ export class DatabaseStorage implements IStorage {
             uom: p.uom,
             noSiteWork: (p as any).noSiteWork || false,
             noSiteWorkDescription: (p as any).noSiteWorkDescription,
+            // Task #1409: keep the stable entryKey so per-activity photo
+            // grouping (attachments.progress_entry_key) survives edit/clone.
+            entryKey: (p as any).entryKey ?? null,
             boqItemId: (p as any).boqItemId ?? null,
             earthworkArrangementId: (p as any).earthworkArrangementId ?? null,
             // 030A: preserve programme linkage + geometry context on clone

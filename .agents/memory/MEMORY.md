@@ -45,4 +45,5 @@
 - [Progress Report seam](progress-report-batch06.md) — shared/progressReport.ts is the only report-math seam; canonical valid-DPR filter incl. isDeleted; cumulative is chronological, sort-independent; endpoints need assertView + project-site authz.
 - [Guided DPR Batch 05](guided-dpr-batch05.md) — draft CTA routing, autosave debounce-race defenses, explicit-only entry-mode default, site-scoped plant-usage discovery/closure.
 - [Chainage Overlap Guard](chainage-overlap-guard.md) — shared/chainageOverlap.ts is the only overlap seam; reason field dual-purpose; version route is the submit bypass; unawaited seedDatabase() flakes route tests.
+- [Guided DPR Wizard](guided-dpr-wizard.md) — 5-step wizard model; No Work in Guided; entryKey photo-link pattern (never link photos to progress serial ids; cloneDpr must copy entryKey manually).
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

@@ -12,7 +12,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { DprPhotoGroups } from "@/components/DprPhotoGroups";
 import type { EquipmentMasterType, Site } from "@shared/schema";
 import { boqItemDisplayName } from "@shared/boqItemName";
 import { dprMeasurementSummary } from "@shared/dprGeometry";
@@ -503,9 +503,9 @@ export default function DprDetails() {
           <CardTitle>Activity Photos</CardTitle>
         </CardHeader>
         <CardContent>
-          <AttachmentGallery
-            moduleType="dpr_progress"
-            linkedRecordId={dpr.id}
+          <DprPhotoGroups
+            dprId={dpr.id}
+            progress={dpr.progress ?? []}
             allowDelete={canEdit}
             emptyText="No photos attached to this report."
           />

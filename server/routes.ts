@@ -17616,6 +17616,7 @@ export async function registerRoutes(
   (async () => {
     await ensureDprBoqProjectColumn();
     await ensureBoqItemNameColumn();
+    await ensureDprEntryKeyColumns();
     await ensureBoqDprConversionFactor();
     seedDatabase();
     seedPlantMasterData();
@@ -18054,6 +18055,19 @@ async function ensureBoqDprConversionFactor() {
     console.log("boq_items: dpr_conversion_factor column ensured");
   } catch (err) {
     console.error("ensureBoqDprConversionFactor failed:", err);
+  }
+}
+
+// Task #1409: idempotent startup DDL so per-customer deployments get the
+// per-activity photo columns without a manual schema push (publish-drop-trap:
+// also applied via direct ALTER to the current dev + prod databases).
+async function ensureDprEntryKeyColumns() {
+  try {
+    await db.execute(sql.raw(`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS entry_key text`));
+    await db.execute(sql.raw(`ALTER TABLE attachments ADD COLUMN IF NOT EXISTS progress_entry_key text`));
+    console.log("progress_entries.entry_key / attachments.progress_entry_key ensured");
+  } catch (err) {
+    console.error("ensureDprEntryKeyColumns failed:", err);
   }
 }
 

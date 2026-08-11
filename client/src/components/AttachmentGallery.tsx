@@ -25,7 +25,6 @@ export function AttachmentGallery({
   emptyText = "No attachments yet.",
   className,
 }: AttachmentGalleryProps) {
-  const { toast } = useToast();
   const { data: items, isLoading } = useQuery<Attachment[]>({
     queryKey: ["/api/attachments", moduleType, linkedRecordId],
     queryFn: async () => {
@@ -39,18 +38,6 @@ export function AttachmentGallery({
     enabled: Number.isFinite(linkedRecordId) && linkedRecordId > 0,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/attachments/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/attachments", moduleType, linkedRecordId] });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to delete attachment", description: err?.message, variant: "destructive" });
-    },
-  });
-
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -62,6 +49,48 @@ export function AttachmentGallery({
   if (!items || items.length === 0) {
     return <p className="text-sm text-muted-foreground" data-testid="text-no-attachments">{emptyText}</p>;
   }
+
+  return (
+    <AttachmentGrid
+      items={items}
+      allowDelete={allowDelete}
+      moduleType={moduleType}
+      linkedRecordId={linkedRecordId}
+      className={className}
+    />
+  );
+}
+
+/**
+ * Presentational attachment grid — shared by AttachmentGallery (self-fetching)
+ * and DprPhotoGroups (Task #1409 per-activity grouping, one fetch for all
+ * groups). Delete invalidates the shared attachments query.
+ */
+export function AttachmentGrid({
+  items,
+  allowDelete = true,
+  moduleType,
+  linkedRecordId,
+  className,
+}: {
+  items: Attachment[];
+  allowDelete?: boolean;
+  moduleType: AttachmentModuleType;
+  linkedRecordId: number;
+  className?: string;
+}) {
+  const { toast } = useToast();
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/attachments/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/attachments", moduleType, linkedRecordId] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to delete attachment", description: err?.message, variant: "destructive" });
+    },
+  });
 
   return (
     <div className={className ?? "grid grid-cols-3 sm:grid-cols-4 gap-2"}>
