@@ -339,15 +339,20 @@ export default function SiteEntry() {
       return false;
     }
   };
-  const uploadStagedPhotos = async (dprId: number) => {
+  // Batch 06D: report failures so explicit Save Draft can avoid navigating
+  // away (and thereby silently dropping) photos that didn't make it up.
+  const uploadStagedPhotos = async (dprId: number): Promise<{ failed: File[]; failedByEntry: Record<string, File[]> }> => {
+    const failed: File[] = [];
+    const failedByEntry: Record<string, File[]> = {};
     for (const file of stagedPhotos) {
-      await uploadOnePhoto(dprId, file, null);
+      if (!(await uploadOnePhoto(dprId, file, null))) failed.push(file);
     }
     for (const [key, files] of Object.entries(entryPhotos)) {
       for (const file of files) {
-        await uploadOnePhoto(dprId, file, key);
+        if (!(await uploadOnePhoto(dprId, file, key))) (failedByEntry[key] ??= []).push(file);
       }
     }
+    return { failed, failedByEntry };
   };
 
   // Fetch equipment master for unified equipment tracking
@@ -1252,19 +1257,40 @@ export default function SiteEntry() {
       // Batch 05 (spec §10): the server draft is now authoritative — clear a
       // stale Guided "new DPR" blob for the same draft/site/date context.
       await reconcileNewDprAutosaves({ draftId: data.id, site: header.site, date: header.date });
+      let failedPhotoCount = 0;
       if (stagedPhotos.length > 0 || Object.values(entryPhotos).some((f) => f.length > 0)) {
-        await uploadStagedPhotos(data.id);
+        const { failed, failedByEntry } = await uploadStagedPhotos(data.id);
+        setStagedPhotos(failed);
+        setEntryPhotos(failedByEntry);
+        failedPhotoCount = failed.length + Object.values(failedByEntry).reduce((n, f) => n + f.length, 0);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", data.id] });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      // Batch 06D: never exit while failed photos are still staged — leaving
+      // unmounts them and silently loses the files. This screen has no PATCH
+      // path for a fresh DPR, so the safe retry destination is the draft
+      // editor for the JUST-SAVED draft id (same record, no duplicate DPR).
+      if (failedPhotoCount > 0) {
+        toast({
+          title: "Draft saved — photos need retry",
+          description: `${failedPhotoCount} photo${failedPhotoCount !== 1 ? "s" : ""} failed to upload. Opening the saved draft — please re-attach ${failedPhotoCount !== 1 ? "them" : "it"} there.`,
+          variant: "destructive",
+        });
+        const draftUrl = returnTo
+          ? `/site/edit/${data.id}?draft&returnTo=${encodeURIComponent(returnTo)}`
+          : `/site/edit/${data.id}?draft`;
+        setLocation(draftUrl);
+        return;
+      }
       toast({
         title: "Draft Saved",
-        description: "Your draft DPR is saved. Open it from Field Home to complete and submit.",
+        description: "You can complete today's DPR later from Field Home.",
       });
-      const draftUrl = returnTo
-        ? `/site/edit/${data.id}?draft&returnTo=${encodeURIComponent(returnTo)}`
-        : `/site/edit/${data.id}?draft`;
-      setLocation(draftUrl);
+      // Batch 06D §5: an explicit Save Draft parks the work and EXITS to the
+      // originating context (returnTo when the caller provided one — e.g.
+      // Field Home — otherwise the screen's normal back destination). The
+      // draft reopens later via /site/edit/:id?draft from Field Home.
+      setLocation(returnTo ?? "/site/dashboard");
     },
     onError: () => {
       toast({

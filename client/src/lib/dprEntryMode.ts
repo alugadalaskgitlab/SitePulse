@@ -85,10 +85,19 @@ export function roadDprHref(returnTo?: string): string {
  * draft via `?draftId=`; only an explicit Detailed preference routes to the
  * Detailed draft editor. Never creates a second DPR.
  */
-export function roadDprDraftHref(draftId: number, returnTo?: string): string {
-  const base = getDprEntryMode() === "guided"
+export function roadDprDraftHref(
+  draftId: number,
+  returnTo?: string,
+  opts?: { complete?: boolean },
+): string {
+  const guided = getDprEntryMode() === "guided";
+  let base = guided
     ? `/site/guided?draftId=${draftId}`
     : `/site/edit/${draftId}?draft`;
+  // Batch 06D — deliberate "Complete" intent: Guided may open at the first
+  // incomplete step instead of the autosaved step. Guided-only (the Detailed
+  // form has no wizard steps); accidental-refresh restore is unaffected.
+  if (guided && opts?.complete) base += `&complete=1`;
   if (!returnTo) return base;
   return `${base}&returnTo=${encodeURIComponent(returnTo)}`;
 }

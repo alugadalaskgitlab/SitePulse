@@ -549,11 +549,19 @@ export default function SiteEdit() {
   };
   const removeEntryPhoto = (key: string, pIdx: number) =>
     setEntryPhotos((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((_, i) => i !== pIdx) }));
-  const uploadEntryPhotos = async (targetDprId: number) => {
+  // Batch 06D: report failures so explicit Save Draft can keep failed files
+  // staged instead of navigating away and silently dropping them.
+  const uploadEntryPhotos = async (targetDprId: number): Promise<{ failedByEntry: Record<string, File[]>; failedCount: number }> => {
+    const failedByEntry: Record<string, File[]> = {};
+    let failedCount = 0;
+    const markFailed = (key: string, file: File) => {
+      (failedByEntry[key] ??= []).push(file);
+      failedCount += 1;
+    };
     for (const [key, files] of Object.entries(entryPhotos)) {
       for (const file of files) {
         const uploadResponse = await uploadFile(file);
-        if (!uploadResponse) continue;
+        if (!uploadResponse) { markFailed(key, file); continue; }
         try {
           await apiRequest("POST", "/api/attachments", {
             moduleType: "dpr_progress",
@@ -568,10 +576,12 @@ export default function SiteEdit() {
           });
         } catch {
           toast({ title: "Some photos failed to attach", description: file.name, variant: "destructive" });
+          markFailed(key, file);
         }
       }
     }
     queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", targetDprId] });
+    return { failedByEntry, failedCount };
   };
 
   const updateMutation = useMutation({
@@ -808,13 +818,34 @@ export default function SiteEdit() {
       sessionStorage.removeItem(DRAFT_KEY);
       // Batch 06C §22: draft saves keep the same DPR id — upload staged
       // per-activity photos now so they survive close/reopen.
+      let failedPhotoCount = 0;
       if (Object.values(entryPhotos).some((f) => f.length > 0)) {
-        await uploadEntryPhotos(id as number);
-        setEntryPhotos({});
+        const { failedByEntry, failedCount } = await uploadEntryPhotos(id as number);
+        // Keep only failed files staged so a retry never double-uploads.
+        setEntryPhotos(failedByEntry);
+        failedPhotoCount = failedCount;
       }
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dprs/:id", id] });
-      toast({ title: "Draft Saved", description: "Your progress has been saved. Come back to complete and submit." });
+      // Batch 06D: never exit while failed photos remain staged — leaving
+      // would unmount and silently lose them. Retrying Save Progress here is
+      // safe (PATCHes the same draft id).
+      if (failedPhotoCount > 0) {
+        toast({
+          title: "Draft saved — photos need retry",
+          description: `${failedPhotoCount} photo${failedPhotoCount !== 1 ? "s" : ""} failed to upload and ${failedPhotoCount !== 1 ? "are" : "is"} still attached here. Save again to retry.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({ title: "Draft Saved", description: "You can complete today's DPR later from Field Home." });
+      // Batch 06D §5: explicit Save Draft exits to the originating context
+      // (returnTo when provided, otherwise Field Home), same expectation as
+      // the Guided wizard. Navigation happens only after the server save.
+      {
+        const returnToParam = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("returnTo");
+        setLocation(returnToParam ?? appendOrigin("/"));
+      }
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to save draft", variant: "destructive" });

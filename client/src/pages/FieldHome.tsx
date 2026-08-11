@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { format, addDays } from "date-fns";
 import { roadDprHref, roadDprDraftHref } from "@/lib/dprEntryMode";
+import { findOlderPendingDprs } from "@/lib/dprLifecycle";
 import { deriveDprChecklist } from "@shared/dprFieldChecklist";
 import type { PlanVsActualRow, BoqProjectWithCounts } from "@shared/schema";
 
@@ -85,6 +86,8 @@ interface CheckItem {
   label: string;
   state: CheckState;
   sub: string;
+  /** Batch 06D — per-row pending lines from the shared readiness validator */
+  details?: string[];
 }
 
 interface FocusItem {
@@ -140,6 +143,15 @@ function PendingRow({ item }: { item: CheckItem }) {
         </p>
         {item.sub && (
           <p className={`text-xs mt-0.5 ${item.state === "done" ? "text-gray-300" : "text-gray-400"}`}>{item.sub}</p>
+        )}
+        {/* Batch 06D §8: itemised per-row pending lines straight from the
+            shared readiness validator — no fabricated generic messages. */}
+        {item.state === "pending" && (item.details?.length ?? 0) > 0 && (
+          <ul className="mt-1 space-y-0.5" data-testid={`pending-details-${item.id}`}>
+            {item.details!.map((line, i) => (
+              <li key={i} className="text-xs text-amber-700 leading-snug">• {line}</li>
+            ))}
+          </ul>
         )}
       </div>
     </div>
@@ -663,12 +675,14 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
   const { data: sites = [] } = useQuery<any[]>({ queryKey: ["/api/sites"] });
 
-  // Fetch only today's DPRs — the server now accepts dateFrom/dateTo to avoid
-  // returning the full history on every field-home load (was fetching 200+ DPRs).
+  // Batch 06D: bounded recent window (last 7 days + today) instead of
+  // today-only, so an older unsubmitted own draft is detectable — still a
+  // single dateFrom/dateTo-bounded query, never the full DPR history.
+  const lookbackFromStr = format(addDays(new Date(), -7), "yyyy-MM-dd");
   const { data: allDprsWithDetails = [] } = useQuery<any[]>({
-    queryKey: ["/api/dprs/with-details", todayStr],
+    queryKey: ["/api/dprs/with-details", lookbackFromStr, todayStr],
     queryFn: () =>
-      fetch(`/api/dprs/with-details?dateFrom=${todayStr}&dateTo=${todayStr}`)
+      fetch(`/api/dprs/with-details?dateFrom=${lookbackFromStr}&dateTo=${todayStr}`)
         .then(r => r.json()),
   });
 
@@ -794,6 +808,18 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   const activeDpr = myDpr ?? otherDpr ?? null;
   const dprId: number | null = activeDpr?.id ?? null;
 
+  // ── Batch 06D §13–15: own unsubmitted DPRs BEFORE today (7-day window) ────
+  // Warn-only: an older pending DPR never blocks starting today's DPR.
+  const olderPendingDprs = findOlderPendingDprs(allDprsWithDetails as any[], {
+    todayStr, siteName: currentSiteName, myName,
+  });
+  const olderPendingDpr = olderPendingDprs[0] ?? null;
+  const olderPendingChecklist = olderPendingDpr ? deriveDprChecklist(olderPendingDpr, false) : null;
+  const olderPendingLines = olderPendingChecklist
+    ? olderPendingChecklist.items.flatMap(i => i.details)
+    : [];
+  const yesterdayStr = format(addDays(new Date(), -1), "yyyy-MM-dd");
+
   // ── Today's Site Goal rows ────────────────────────────────────────────────
   interface GoalRow {
     id: string;
@@ -917,8 +943,10 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   // Batch 05: continuing an own road draft reopens the SAME Guided server
   // draft (?draftId=) — never a Detailed edit route, never a second DPR.
   // Structure DPRs (no guided flow) keep the Detailed draft editor.
+  // Batch 06D §10/§12: "Complete" is a deliberate intent — Guided may open at
+  // the first incomplete step (complete=1) instead of the autosaved step.
   const continueDraftHref = (d: any): string =>
-    (d?.workType === "structure") ? `/site/edit/${d.id}?draft` : roadDprDraftHref(d.id, "/");
+    (d?.workType === "structure") ? `/site/edit/${d.id}?draft` : roadDprDraftHref(d.id, "/", { complete: true });
   const dprHref = myDpr
     ? (dprPhase === "submitted-own" ? `/site/report/${myDpr.id}` : continueDraftHref(myDpr))
     : otherDpr
@@ -939,7 +967,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
     switch (dprPhase) {
       case "not-started":
         return {
-          label: "Start Today's Site Work",
+          label: "Start Today's DPR",
           href: roadDprHref("/"),
           status: "DPR not started yet",
           color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200",
@@ -951,7 +979,14 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
         return {
           label: "Complete Today's DPR",
           href: continueDraftHref(myDpr!),
-          status: `Draft open · ${doneCount}/${pendingChecks.length} items done`,
+          // Batch 06D §7: actionable status — the draft is safely saved, not
+          // submitted, and X specific items still need completion.
+          status: (() => {
+            const n = pendingChecks.flatMap(c => c.details ?? []).length;
+            return n > 0
+              ? `Draft in progress · ${n} item${n !== 1 ? "s" : ""} need${n === 1 ? "s" : ""} completion`
+              : "Draft in progress · ready to review & submit";
+          })(),
           color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200",
           dotColor: "bg-orange-400",
           badge: "In progress",
@@ -1272,6 +1307,49 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
               3. READINESS FOR TODAY'S WORK
               ══════════════════════════════════════════════════════ */}
           <ReadinessSection />
+
+          {/* ══════════════════════════════════════════════════════
+              Batch 06D §15 — OLDER PENDING DPR banner (warn, never block)
+              ══════════════════════════════════════════════════════ */}
+          {olderPendingDpr && (
+            <div className="bg-red-50 rounded-xl border-2 border-red-200 px-4 py-4 space-y-2" data-testid="banner-older-pending-dpr">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                <h2 className="text-sm font-bold text-red-800">
+                  {olderPendingDpr.date === yesterdayStr ? "Yesterday's" : "Older"} DPR pending submission — {format(new Date(olderPendingDpr.date + "T00:00:00"), "d MMM")}
+                </h2>
+              </div>
+              {olderPendingLines.length > 0 && (
+                <>
+                  <p className="text-xs font-semibold text-red-700">
+                    {olderPendingLines.length} item{olderPendingLines.length !== 1 ? "s" : ""} need{olderPendingLines.length === 1 ? "s" : ""} completion
+                  </p>
+                  <ul className="space-y-0.5">
+                    {olderPendingLines.slice(0, 4).map((line, i) => (
+                      <li key={i} className="text-xs text-red-700 leading-snug">• {line}</li>
+                    ))}
+                    {olderPendingLines.length > 4 && (
+                      <li className="text-xs text-red-500">+{olderPendingLines.length - 4} more</li>
+                    )}
+                  </ul>
+                </>
+              )}
+              {olderPendingDprs.length > 1 && (
+                <p className="text-xs text-red-600 font-medium" data-testid="text-more-pending-dprs">
+                  {olderPendingDprs.length - 1} more pending DPR{olderPendingDprs.length > 2 ? "s" : ""} from the last 7 days — complete this one first.
+                </p>
+              )}
+              <Link href={continueDraftHref(olderPendingDpr)}>
+                <a
+                  className="block w-full py-3 rounded-xl font-bold text-sm text-center bg-red-500 hover:bg-red-600 text-white shadow-md shadow-red-200 transition-all active:scale-[0.98]"
+                  data-testid="button-complete-pending-dpr"
+                >
+                  Complete Pending DPR
+                </a>
+              </Link>
+              <p className="text-[11px] text-red-500">Today's DPR can still be started below.</p>
+            </div>
+          )}
 
           {/* ══════════════════════════════════════════════════════
               4. TODAY'S SITE WORK — dynamic CTA

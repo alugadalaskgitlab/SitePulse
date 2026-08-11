@@ -33,6 +33,35 @@ export const clampGuidedStep = (raw: unknown): GuidedStepId => {
   return (Number.isInteger(n) && n >= 1 && n <= 7 ? n : 1) as GuidedStepId;
 };
 
+/**
+ * Batch 06D — "Complete Today's DPR" deep link: map the shared readiness
+ * validator's SEMANTIC sections (not fragile checklist item ids like c1/c4)
+ * to the Guided step that actually fixes them, and pick the earliest.
+ *
+ *   activities → 3 Details   (chainage / quantity closure lives there)
+ *   labour     → 4 Labour
+ *   equipment  → 5 Equipment
+ *   materials  → 7 Review    (Guided has no materials step; Review shows the
+ *                             readiness panel that names the material issue)
+ *
+ * No mandatory incomplete section → 7 Review.
+ */
+export const READINESS_SECTION_TO_GUIDED_STEP: Record<string, GuidedStepId> = {
+  activities: 3,
+  labour: 4,
+  equipment: 5,
+  materials: 7,
+};
+
+export function firstIncompleteGuidedStep(sections: readonly string[]): GuidedStepId {
+  let best: GuidedStepId = 7;
+  for (const s of sections) {
+    const step = READINESS_SECTION_TO_GUIDED_STEP[s];
+    if (step != null && step < best) best = step;
+  }
+  return best;
+}
+
 export type GuidedWizardState = {
   siteName: string;
   engineer: string;

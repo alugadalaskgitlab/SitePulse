@@ -32,3 +32,10 @@ description: Programme-driven Guided DPR screen — routing, entry-mode preferen
 - Field Home is the universal default landing page for EVERY user — role never decides (old `!isAdmin && isFieldEngineer` rule in Home.tsx removed; same bug class as the DPR entry-mode fix).
 - Per-user preference lives in client/src/lib/workspaceMode.ts (`sitelog.workspaceMode.u<id>`), pattern-identical to dprEntryMode.ts. Deliberate "classic" switch remembered per user; second user on same device unaffected.
 - Gotcha: auth-context binds user ids in a post-render effect — too late for a component's useState initializer. Components must pass user.id explicitly to getWorkspaceMode/setWorkspaceMode and re-read on userId change (Home.tsx does).
+
+## Batch 06D — DPR lifecycle (Aug 2026)
+- Field Home lifecycle is deliberately simple: not-started / draft-own / submitted-own / submitted-other. Never split draft-own by doneCount or clock time — sections finish early and would flip the CTA wrongly.
+- Explicit Save Draft = "park and exit": Guided → returnTo, Detailed (SiteEntry/SiteEdit) → returnTo ?? back default. Exit ONLY after server success AND zero failed photo uploads — navigating with failed files still staged silently loses them (they live in component state).
+- "Complete Today's DPR" deep link: guided draft href carries complete=1; GuidedDpr then derives the opening step from the SHARED readiness validator via firstIncompleteGuidedStep (activities→3, labour→4, equipment→5, materials→7; none→7). Autosave stored-step restore is skipped only for that explicit intent.
+- Field Home fetches a bounded 7-day with-details window (one query); older own unsubmitted drafts come from findOlderPendingDprs in client/src/lib/dprLifecycle.ts — warn-only banner, never blocks starting today.
+- Pending guidance must come from deriveDprChecklist details lines (shared validator) — never fabricate generic messages or key navigation off checklist ids c1–c5.

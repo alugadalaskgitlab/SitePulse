@@ -51,7 +51,7 @@ import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dpr
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
 import { type CandidateChainageRow } from "@shared/chainageOverlap";
-import { GUIDED_STEPS, clampGuidedStep, guidedStepBlocker, guidedEntryComplete, type GuidedStepId } from "@/lib/guidedWizard";
+import { GUIDED_STEPS, clampGuidedStep, guidedStepBlocker, guidedEntryComplete, firstIncompleteGuidedStep, type GuidedStepId } from "@/lib/guidedWizard";
 import { MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -160,6 +160,11 @@ export default function GuidedDpr() {
     const n = raw ? Number(raw) : NaN;
     return Number.isInteger(n) && n > 0 ? n : null;
   })();
+  // Batch 06D — deliberate "Complete Today's DPR" entry: open at the first
+  // incomplete step derived from the server draft's readiness instead of the
+  // autosaved step. Only this explicit intent overrides the normal
+  // accidental-refresh step restore.
+  const completeIntent = new URLSearchParams(searchStr).get("complete") === "1";
 
   // Batch 05 (spec §4): merely VIEWING a screen must never change the user's
   // persistent entry-mode preference — the old mount-time setDprEntryMode
@@ -233,7 +238,9 @@ export default function GuidedDpr() {
         noSiteWork: e.noSiteWork ?? false,
         noSiteWorkDescription: e.noSiteWorkDescription ?? "",
       })));
-      setStep(clampGuidedStep(d.step));
+      // Normal restore keeps the stored step; a deliberate Complete entry
+      // computes its own step from the server draft's readiness instead.
+      if (!completeIntent) setStep(clampGuidedStep(d.step));
       // Legacy autosave blobs predate `passthrough` — normalise so old rows
       // don't crash the payload builder.
       setEquipment((d.equipment ?? []).map((e: any) => ({ ...newGuidedEquipmentRow(), ...e, passthrough: e.passthrough ?? {} })));
@@ -317,6 +324,19 @@ export default function GuidedDpr() {
       site: String(urlDraftDpr.site ?? ""),
       date: urlDraftDpr.date ?? today,
     });
+    // Batch 06D §10/§12: "Complete Today's DPR" opens at the first relevant
+    // incomplete step, derived from the SAME shared readiness validator (no
+    // new rules, no fragile checklist item ids). Nothing incomplete → Review.
+    if (completeIntent) {
+      const r = evaluateDprSubmitReadiness({
+        workType: urlDraftDpr.workType ?? "road",
+        progress: (urlDraftDpr.progress ?? []).filter((p: any) => !p?.noSiteWork),
+        equipment: urlDraftDpr.equipment ?? [],
+        labour: urlDraftDpr.labour ?? [],
+        materials: urlDraftDpr.materials ?? [],
+      });
+      setStep(firstIncompleteGuidedStep(r.mandatory.map((i) => i.section)));
+    }
   }, [urlDraftDpr]);
 
   // ── Batch 05: Equipment & Fleet linkage (same mechanism as Detailed DPR) ──
@@ -873,12 +893,14 @@ export default function GuidedDpr() {
       return { data: await res.json(), asDraft };
     },
     onSuccess: async ({ data, asDraft }) => {
+      let failedPhotoCount = 0;
       if (stagedPhotoCount > 0) {
         // Attached photos leave the staged lists (no duplicate re-upload on
         // the next save); failed ones stay staged so the user can retry.
         const { failed, failedByEntry } = await uploadStagedPhotos(data.id);
         setStagedPhotos(failed);
         setEntryPhotos(failedByEntry);
+        failedPhotoCount = failed.length + Object.values(failedByEntry).reduce((n, f) => n + f.length, 0);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", data.id] });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
@@ -890,7 +912,21 @@ export default function GuidedDpr() {
         // stale new-DPR blob (either silo) for the same draft/site/date.
         await autosave.clearDraft();
         if (savedId != null) await reconcileNewDprAutosaves({ draftId: savedId, site: siteName, date });
-        toast({ title: "Draft Saved", description: "Keep working here — saving again updates this same draft. Submit promotes it." });
+        // Batch 06D §3: explicit Save Draft = "park it safely and leave".
+        // Navigate only AFTER the server confirmed the save (we're in
+        // onSuccess) AND every staged photo uploaded — leaving would unmount
+        // the still-staged failed files and silently lose them. Retrying
+        // Save Draft here is safe (PATCHes the same draft).
+        if (failedPhotoCount > 0) {
+          toast({
+            title: "Draft saved — photos need retry",
+            description: `${failedPhotoCount} photo${failedPhotoCount !== 1 ? "s" : ""} failed to upload and ${failedPhotoCount !== 1 ? "are" : "is"} still attached here. Tap Save Draft again to retry.`,
+            variant: "destructive",
+          });
+          return;
+        }
+        toast({ title: "Draft Saved", description: "You can complete today's DPR later from Field Home." });
+        setLocation(returnTo);
       } else {
         await autosave.clearDraft();
         if ((data.id ?? draftId) != null) await reconcileNewDprAutosaves({ draftId: data.id ?? draftId!, site: siteName, date });

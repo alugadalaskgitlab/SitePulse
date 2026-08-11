@@ -1,0 +1,781 @@
+BATCH 06D — FIELD HOME DPR LIFECYCLE
++ SAVE DRAFT EXIT
++ PENDING-SUBMISSION GUIDANCE
+
+This is a focused DPR lifecycle / Field Home usability batch.
+
+It must NOT change the current working Guided DPR wizard, DPR quantity logic,
+programme logic, weather, equipment entry, photos, or reporting.
+
+CURRENT VERIFIED STATE
+
+1. Guided Save Draft currently saves successfully and only shows a toast.
+   It does NOT navigate away from the Guided wizard.
+
+2. Field Home currently uses:
+   - not-started
+   - draft-own
+   - submitted-own
+   - submitted-other
+
+3. Field Home already derives section completeness and per-row pending
+   messages through `deriveDprChecklist`, which itself uses the common
+   Batch 04 submit-readiness validator.
+
+4. Field Home currently fetches DPRs only for today:
+   dateFrom=today
+   dateTo=today
+
+   Therefore an older unsubmitted DPR is currently invisible there.
+
+5. Existing own road drafts already reopen through the SAME draft route /
+   draft ID.
+
+Expected schema change: NONE.
+
+--------------------------------------------------
+1. IMPORTANT LIFECYCLE RULE
+--------------------------------------------------
+
+Do NOT introduce a new `continue-own` vs `complete-own` phase based on
+`doneCount`.
+
+Keep the existing single:
+
+`draft-own`
+
+phase.
+
+Reason:
+
+`doneCount` is section-based.
+
+A Labour or Materials section may become "done" early in the day and would
+therefore incorrectly flip the CTA from Continue to Complete even though
+the Engineer is still recording normal site operations.
+
+For this batch use the simpler lifecycle:
+
+NO DPR:
+"Start Today's DPR"
+
+OWN DRAFT EXISTS:
+"Complete Today's DPR"
+
+OWN DPR SUBMITTED:
+"View Today's Site Report"
+
+OTHER USER'S DPR SUBMITTED:
+"View Today's Site Report"
+
+The secondary status beneath "Complete Today's DPR" may say:
+
+"Draft in progress"
+
+and show actual outstanding items.
+
+Do not infer morning/evening from:
+- clock time;
+- checklist doneCount;
+- percentage complete.
+
+--------------------------------------------------
+2. SAVE DRAFT — SAVE WHATEVER IS FILLED
+--------------------------------------------------
+
+The explicit Save Draft action must continue to save the current DPR
+exactly as entered.
+
+Draft saving remains intentionally lenient.
+
+It may contain, for example:
+
+ACTIVITY
+- From Chainage entered
+- To Chainage missing
+
+EQUIPMENT
+- Opening Reading entered
+- Closing Reading missing
+- Start Time entered
+- End Time missing
+
+LABOUR
+- partial/current information
+
+Do NOT run Final Submit readiness as a blocker for Save Draft.
+
+Preserve the existing draft payload and same-draft update semantics.
+
+--------------------------------------------------
+3. GUIDED SAVE DRAFT — RETURN TO FIELD HOME
+--------------------------------------------------
+
+Current Guided behavior:
+
+Save Draft
+→ toast
+→ stays on current wizard page.
+
+Change only the explicit Save Draft action:
+
+Save Draft
+→ successful server save
+→ show confirmation
+→ return to Field Home.
+
+Suggested confirmation:
+
+"Draft saved. You can complete today's DPR later from Field Home."
+
+Do not navigate away before the server confirms success.
+
+If save fails:
+- stay on the current wizard step;
+- preserve the entered data;
+- show the existing error feedback.
+
+--------------------------------------------------
+4. NEXT / BACK MUST NOT EXIT
+--------------------------------------------------
+
+Only the explicit:
+
+Save Draft
+
+action should exit to Field Home.
+
+Wizard:
+
+Back
+Next
+
+must continue navigating within the current DPR.
+
+Do not treat step navigation as Save Draft + exit.
+
+Local/autosave behavior may continue as currently implemented.
+
+--------------------------------------------------
+5. DETAILED SAVE DRAFT — CONSISTENT EXIT
+--------------------------------------------------
+
+Investigate the current Detailed/SiteEntry Save Draft behavior.
+
+For an explicit Save Draft action in Detailed DPR, use the same user
+expectation:
+
+successful Save Draft
+→ return to the appropriate Field Home / originating Field Home context.
+
+Do NOT alter ordinary autosave behavior.
+
+Do NOT make every background save navigate away.
+
+If Detailed was opened from another legitimate management/report context,
+preserve its existing returnTo semantics rather than hard-coding `/`.
+
+Report the final routing rule.
+
+--------------------------------------------------
+6. FIELD HOME — START BECOMES COMPLETE AFTER DPR START
+--------------------------------------------------
+
+Before today's DPR exists:
+
+Primary CTA:
+"Start Today's DPR"
+
+After the current Engineer has created/saved today's draft:
+
+Primary CTA:
+"Complete Today's DPR"
+
+The Start action must disappear for that Engineer/site/date.
+
+"Complete Today's DPR" must reopen:
+
+THE SAME server draft.
+
+Never create a second DPR.
+
+Do not use checklist doneCount to choose the CTA wording.
+
+--------------------------------------------------
+7. FIELD HOME — DRAFT STATUS
+--------------------------------------------------
+
+For `draft-own`, show a useful secondary status such as:
+
+"Draft in progress"
+
+plus:
+
+X items need completion
+
+where meaningful.
+
+Do not merely show:
+
+"Draft open · X/Y items done"
+
+if a more actionable pending message is available.
+
+The Engineer should understand:
+
+- the DPR is safely saved;
+- it has not been submitted;
+- some closure information may remain.
+
+--------------------------------------------------
+8. ITEMIZED PENDING-SUBMISSION DETAILS
+--------------------------------------------------
+
+Reuse the EXISTING `deriveDprChecklist()` output.
+
+Do NOT create another readiness/completeness model.
+
+Display its actual per-row details where appropriate.
+
+Example:
+
+Today's DPR is pending submission
+
+2 items need completion:
+
+• WMM — chainage is incomplete — enter both From and To
+• Roller TS09... — closing meter reading required
+• Roller TS09... — end time required
+
+Use the existing `details` strings.
+
+If one row has multiple missing fields, it is acceptable to show multiple
+specific lines, or group them cleanly under that row.
+
+Do not fabricate generic messages when the shared validator has a specific
+one.
+
+--------------------------------------------------
+9. FIELD HOME PENDING PANEL
+--------------------------------------------------
+
+For an own draft with pending mandatory closure items, make the existing
+Pending Before Submit area more immediately useful.
+
+It should show:
+
+- section
+- affected Activity / Equipment
+- actual missing information
+
+Examples:
+
+ACTIVITY
+WMM
+Closing/To chainage missing
+
+EQUIPMENT
+Tandem Roller
+Closing meter reading required
+End time required
+
+The CTA from this panel should be:
+
+Complete Today's DPR
+
+and reopen the same draft.
+
+--------------------------------------------------
+10. REOPEN AT FIRST RELEVANT INCOMPLETE STEP
+--------------------------------------------------
+
+When the Engineer taps:
+
+Complete Today's DPR
+
+do not automatically dump him on Review if known mandatory closure items
+exist.
+
+Use the existing checklist/readiness output to select the earliest relevant
+Guided wizard step.
+
+Current separate Guided steps include:
+
+Activities / Details
+Labour
+Equipment
+Photos / other applicable steps
+Review
+
+Map readiness sections to the actual CURRENT Guided step IDs after
+investigation.
+
+Conceptually:
+
+activities
+→ Activity Details
+
+labour
+→ Labour
+
+equipment
+→ Equipment
+
+materials
+→ the actual step that manages/materially presents Materials, if any
+
+If no mandatory incomplete section remains:
+→ Review.
+
+Do NOT create new readiness rules just for navigation.
+
+--------------------------------------------------
+11. DO NOT USE CHECKLIST ITEM IDs BLINDLY
+--------------------------------------------------
+
+Claude's draft proposed mapping:
+
+c1 equipment
+c2 labour
+c3 materials
+c4 activities
+
+That reflects today's checklist ordering.
+
+Do not hard-code UI navigation around fragile labels/order if a safer shared
+section mapping is possible.
+
+Prefer mapping by semantic readiness section:
+
+activities
+equipment
+labour
+materials
+
+to the corresponding GuidedStepId.
+
+If using c1/c2/c3/c4 is unavoidable, centralize that mapping in one helper
+and test it.
+
+--------------------------------------------------
+12. AUTOSAVE STEP VS FIRST-INCOMPLETE STEP
+--------------------------------------------------
+
+Current Guided autosave stores the wizard `step`.
+
+On normal accidental refresh/restore:
+preserve the existing stored-step behavior.
+
+But when the user intentionally enters through:
+
+Complete Today's DPR
+
+Field Home should be allowed to request:
+
+first incomplete step
+
+based on the server draft's actual readiness.
+
+Do not destroy the normal autosave restore mechanism.
+
+A clean implementation may use a route/query intent such as:
+
+complete=true
+
+or an existing safe equivalent.
+
+Do NOT add schema just to persist this navigation intention.
+
+--------------------------------------------------
+13. YESTERDAY / OLDER PENDING DPR
+--------------------------------------------------
+
+Field Home currently requests only today's DPRs.
+
+Add a separate, bounded check for the current Engineer's own unsubmitted
+DPR(s) before today.
+
+Investigate the safest query first.
+
+Do NOT replace today's efficient bounded query with an unbounded fetch of
+all DPR history.
+
+Preferred approaches, in order:
+
+A. use existing `/api/dprs/with-details` dateFrom/dateTo with a small recent
+   lookback window;
+
+or
+
+B. add a lightweight read endpoint only if the existing query cannot do
+   this safely/efficiently.
+
+Do not create a new endpoint merely by default.
+
+--------------------------------------------------
+14. HOW FAR BACK TO CHECK
+--------------------------------------------------
+
+Do not search unlimited DPR history on every Field Home load.
+
+Use a bounded recent lookback suitable for field operations.
+
+At minimum detect:
+
+yesterday.
+
+A short recent window, for example the previous 7 days, is acceptable if
+the existing endpoint remains efficient and Replit can justify it.
+
+If more than one older own draft is pending:
+
+show the most recent prominently and indicate that additional pending DPRs
+exist.
+
+Do not silently hide multiple pending drafts.
+
+Report the chosen lookback behavior.
+
+--------------------------------------------------
+15. OLDER DPR BANNER
+--------------------------------------------------
+
+If yesterday's DPR remains unsubmitted, show a visually stronger banner
+separate from today's normal DPR card.
+
+Example:
+
+"Yesterday's DPR pending submission — 10 Aug"
+
+"3 items need completion"
+
+Then specific details where space permits:
+
+• WMM — closing chainage missing
+• Roller — closing reading required
+
+Primary action:
+
+Complete Pending DPR
+
+Tap:
+→ reopen THAT draft
+→ first relevant incomplete step.
+
+Never create a new DPR.
+
+--------------------------------------------------
+16. TODAY MAY STILL START — WARN, DO NOT BLOCK
+--------------------------------------------------
+
+An older pending DPR must NOT hard-block today's site work in this batch.
+
+The Engineer may still:
+
+Start Today's DPR.
+
+Reason:
+
+there are legitimate site cases where yesterday cannot immediately be
+closed but today's work must proceed.
+
+Show a strong warning, but no blocking rule.
+
+Whether an overdue DPR should later require escalation/Manager action is a
+separate future lifecycle decision.
+
+--------------------------------------------------
+17. AFTER SAVE DRAFT — EXPECTED FIELD HOME STATE
+--------------------------------------------------
+
+Example:
+
+Engineer starts today's DPR.
+
+Morning:
+
+WMM
+From = 2+500
+To = blank
+
+Roller
+Opening = 1250
+Closing = blank
+Start = 08:30
+End = blank
+
+Clicks:
+
+Save Draft
+
+Expected:
+
+1. Same server DPR saved as Draft.
+2. Engineer returns to Field Home.
+3. Start Today's DPR is no longer shown.
+4. Primary CTA says:
+
+   Complete Today's DPR
+
+5. Pending details show, for example:
+
+   WMM — chainage incomplete
+   Roller — closing meter reading required
+   Roller — end time required
+
+6. Tapping Complete Today's DPR opens the SAME draft at the first relevant
+   incomplete step.
+
+--------------------------------------------------
+18. AFTER FINAL SUBMIT
+--------------------------------------------------
+
+Final Submit behavior remains unchanged.
+
+Mandatory readiness issues:
+block submission.
+
+Successful Submit:
+existing submitted flow/route remains.
+
+Field Home subsequently shows:
+
+View Today's Site Report
+
+and no pending-submission warning for that submitted DPR.
+
+--------------------------------------------------
+19. NO SITE WORK — DO NOT CHANGE IN THIS BATCH
+--------------------------------------------------
+
+Do not change No Site Work semantics here.
+
+Current readiness/checklist behavior around `noSiteWork` is outside this
+lifecycle batch.
+
+Important report-back note:
+
+`deriveDprChecklist` currently excludes `noSiteWork` progress rows from
+normal Activity closure checks, and the shared submit-readiness validator
+also skips those rows.
+
+Do NOT silently change that now.
+
+Simply report this current behavior so we can separately decide whether a
+No Site Work row should require a meaningful Description before Final
+Submit.
+
+--------------------------------------------------
+20. PROGRAMME INFORMATION — DO NOT MODIFY
+--------------------------------------------------
+
+Do not alter:
+
+- Today's Programme
+- Tomorrow's Programme
+- planned/done/to-do reconciliation
+- programme-bar statuses
+- allocation outcomes
+
+The Programme remains visible/reference information according to current
+behavior.
+
+Automated reconciliation between DPR actual and programme plan is
+explicitly deferred.
+
+--------------------------------------------------
+21. WEATHER — DO NOT BUILD HERE
+--------------------------------------------------
+
+Do not add:
+
+- Morning weather
+- Afternoon weather
+- Closing weather
+- Field Home weather card
+- forecast API
+
+Weather is explicitly deferred to its own planned batch.
+
+--------------------------------------------------
+22. DATABASE / SCHEMA
+--------------------------------------------------
+
+Expected schema change:
+
+NONE.
+
+Do not add:
+
+- DPR lifecycle columns
+- wizard-step columns
+- overdue flags
+- completion-state fields
+
+Derive the state from existing:
+- DPR status
+- date
+- readiness/checklist data
+
+If any schema change appears necessary:
+STOP and report.
+
+--------------------------------------------------
+23. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- current Guided wizard structure
+- Equipment fields
+- Labour fields
+- per-activity photos
+- BOQ/UoM calculations
+- Batch 04 readiness classification
+- Batch 05 same-draft semantics
+- Batch 06B overlap guard
+- Progress Report
+- programme reconciliation
+- Today's/Tomorrow's Programme business logic
+- weather
+- Structure DPR
+- Geometry
+- Stores
+- RA billing
+- historical submitted DPRs
+
+--------------------------------------------------
+24. TESTS
+--------------------------------------------------
+
+Add focused tests covering at least:
+
+A. Explicit Guided Save Draft saves incomplete data.
+
+B. Successful Guided Save Draft returns to Field Home.
+
+C. Updated Draft-saved confirmation is shown.
+
+D. Failed Draft save remains on the current wizard with data preserved.
+
+E. Next does not exit.
+
+F. Back does not exit.
+
+G. Autosave does not exit.
+
+H. Detailed explicit Save Draft follows the correct return-context rule.
+
+I. Before any DPR exists, CTA says Start Today's DPR.
+
+J. Once own draft exists, CTA says Complete Today's DPR.
+
+K. No doneCount-based Continue/Complete phase split exists.
+
+L. Complete Today's DPR opens the SAME draft.
+
+M. Pending panel uses `deriveDprChecklist` output.
+
+N. Activity pending line shows actual chainage/quantity issue.
+
+O. Equipment pending line shows closing reading/end-time issue.
+
+P. Complete action opens first relevant incomplete Guided step.
+
+Q. If no mandatory item remains, Complete opens Review.
+
+R. Normal autosave restore still restores its stored step.
+
+S. Yesterday's own unsubmitted DPR is detected.
+
+T. Older submitted DPR does not show pending banner.
+
+U. Other Engineer's old draft is not represented as the current user's
+   pending DPR.
+
+V. Clicking old-DPR banner opens THAT DPR.
+
+W. Today's Start DPR remains available despite an older pending DPR.
+
+X. Multiple recent pending own DPRs are not silently collapsed/lost.
+
+Y. Today's DPR query remains bounded/efficient.
+
+Z. No Site Work readiness semantics remain unchanged.
+
+AA. Final Submit behavior remains unchanged.
+
+AB. No Programme/weather code changed.
+
+AC. No schema change.
+
+Run full suite.
+
+--------------------------------------------------
+25. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. Exact Guided Save Draft behavior before/after.
+
+B. Exact Detailed Save Draft return behavior.
+
+C. Final Field Home DPR phase model.
+
+D. Confirmation that no doneCount-based Continue/Complete split was added.
+
+E. Final CTA wording by phase.
+
+F. Itemized pending-message source.
+
+G. Readiness-section → Guided-step mapping.
+
+H. Interaction between explicit Complete intent and stored autosave step.
+
+I. Yesterday/older pending-DPR query mechanism.
+
+J. Lookback window chosen and why.
+
+K. Behavior with multiple older drafts.
+
+L. Confirmation today's DPR is NOT blocked.
+
+M. Current No Site Work readiness behavior noted but unchanged.
+
+N. Tests.
+
+O. Confirm:
+- no schema change
+- no Programme reconciliation
+- no weather
+- no Guided wizard restructure
+- no reporting change
+
+DO NOT START ANOTHER BATCH.
+
+--------------------------------------------------
+SUCCESS CRITERION
+--------------------------------------------------
+
+1. Save Draft safely saves incomplete work and exits to Field Home.
+
+2. Once today's DPR has started, Start Today's DPR becomes Complete Today's
+   DPR.
+
+3. Field Home tells the Engineer specifically what remains to be closed.
+
+4. Complete Today's DPR always reopens the SAME server draft.
+
+5. It opens at the first meaningful incomplete step when possible.
+
+6. Yesterday's unsubmitted DPR is clearly visible and actionable.
+
+7. Yesterday's pending DPR does not block today's legitimate work.
+
+8. Final Submit remains governed by the existing shared readiness validator.
+
+9. No artificial doneCount/time-of-day lifecycle state is introduced.
+
+10. No schema, Programme, weather, quantity, reporting, or wizard-structure
+    change is introduced.
