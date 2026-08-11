@@ -28,3 +28,10 @@ description: Wizard step model, No Work semantics in Guided, and the entryKey ph
 - Length is display-only, derived via shared/dprGeometry calculateLengthFromChainage; never re-implement chainage arithmetic in a page.
 - SiteEntry's legacy internal step-wizard (guidedMode/showStep/GUIDED_STEPS) is fully removed — Detailed is a continuous Classic form; /site/guided is the SOLE guided experience. Do not reintroduce an internal wizard toggle.
 - SiteEntry's Remarks & general-photos card is now an always-visible Classic section (it was previously reachable only through the removed wizard).
+
+## Batch 06C-Q (Aug 2026)
+- Guided Equipment now has full Detailed parity: entry/deployment type (hired only, plus fallback when a stored non-default type exists but master isn't loaded), trip/water/fuel conditional sections, diesel + source + purchase details — all via the passthrough bag.
+- shared/guidedEquipment.ts also owns computeTotalDiesel / computeTripTotalKm / isWaterTankerName — both screens must use these, never inline the math.
+- Deleting a passthrough key is save-safe: DPR child rows are replaced wholesale on save (_replaceDprChildRecords), so a missing key stores NULL, same as Detailed's explicit null.
+- Guided sticky footer must carry md:left-56 — the app shell has a fixed 224px sidebar on md+, so a viewport-fixed bar drifts left of the content grid without it.
+- Detailed DPR add buttons are named Add Activity / Add Equipment / Add Labour (structure "Add Item" intentionally kept).

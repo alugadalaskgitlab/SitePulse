@@ -1,0 +1,825 @@
+BATCH 06C-Q — GUIDED EQUIPMENT PARITY
++ DETAILED BUTTON NAMING
++ FINAL GUIDED LAYOUT / ACTION-BAR BALANCE
+
+This is a focused finishing pass on the CURRENT working DPR flow.
+
+DO NOT redesign the Guided wizard.
+
+Current working behavior that must remain intact:
+
+- real `/site/guided` wizard
+- separate Labour step
+- separate Equipment step
+- per-row No Site Work
+- Add Activity in Guided
+- derived Length field
+- per-activity photos
+- Batch 04 submit-readiness
+- Batch 05 draft / Equipment Usage linking
+- Batch 06B overlap protection
+
+This batch corrects three remaining gaps:
+
+1. Guided Equipment entry is still incomplete compared with Detailed.
+2. Detailed DPR still shows technical "Add Row" labels.
+3. Guided page/footer/button visual alignment still feels unbalanced.
+
+Expected NEW schema change: NONE.
+
+--------------------------------------------------
+1. INVESTIGATE FIRST
+--------------------------------------------------
+
+Compare the CURRENT equipment row in:
+
+- GuidedDpr.tsx
+- SiteEntry.tsx Detailed Equipment Log
+- shared/guidedEquipment.ts
+- shared/dprPlantLink.ts
+- equipment master / usage helpers
+- submit-readiness rules
+
+Map every Detailed Equipment field and classify it as:
+
+A. always applicable
+B. applicable by Entry/Deployment Type
+C. applicable only to hired equipment
+D. applicable only to water tanker
+E. diesel/fuel details
+F. optional descriptive/link fields
+
+Do not simply dump every Detailed field into Guided at once.
+
+Guided must use the SAME equipment semantics, but keep conditional presentation clean.
+
+--------------------------------------------------
+2. EQUIPMENT ENTRY / DEPLOYMENT TYPE
+--------------------------------------------------
+
+Guided Equipment must expose the same existing Entry Type / Deployment Type choices as Detailed where applicable.
+
+Use the existing values:
+
+- Time / Meter Reading
+- Hourly Hire
+- Daily Hire
+- Trip Based
+- Monthly Hire
+
+Do not create new enum values.
+
+For owned equipment, preserve existing Detailed behavior/default.
+
+For hired equipment, allow the appropriate deployment type selection.
+
+The selected type must persist through:
+
+Guided
+→ Save Draft
+→ reopen
+→ Detailed
+
+and the reverse.
+
+--------------------------------------------------
+3. CALL IT CLEARLY IN GUIDED
+--------------------------------------------------
+
+Use a field label understandable to field users.
+
+Preferred:
+
+Deployment / Usage Type
+
+or, if consistency with Detailed is more important:
+
+Entry Type
+
+Do NOT alter the stored `entryType` values.
+
+Report the final visible wording.
+
+--------------------------------------------------
+4. EQUIPMENT TYPE MUST DRIVE THE FIELDS SHOWN
+--------------------------------------------------
+
+Reuse Detailed's existing conditional behavior.
+
+TIME / METER or HOURLY:
+
+show as applicable:
+- Start Time
+- End Time
+- Duration / Working Hours
+- Opening Meter / Odometer
+- Closing Meter / Odometer
+- Diesel Qty
+
+DAILY / MONTHLY:
+
+show the fields meaningful under the existing Detailed rule.
+
+TRIP BASED:
+
+show:
+- No. of Trips
+- Trip Distance
+- Total Km / existing computed values
+- other existing trip fields
+
+WATER TANKER:
+
+retain:
+- Water Quantity
+- Trips
+- existing tanker-specific semantics
+
+Do not invent a second usage calculator.
+
+Reuse Detailed/shared helpers wherever possible.
+
+--------------------------------------------------
+5. DIESEL QUANTITY — MISSING IN GUIDED
+--------------------------------------------------
+
+Guided Equipment must expose the existing:
+
+Diesel (Litres)
+
+field.
+
+Use the same stored equipment-log field:
+
+`diesel`
+
+Do not add another fuel quantity field.
+
+A morning entry may record diesel while Closing Reading / End Time remains blank.
+
+Draft Save must remain allowed.
+
+--------------------------------------------------
+6. DIESEL SOURCE — MISSING IN GUIDED
+--------------------------------------------------
+
+Expose the same existing Diesel Source choices as Detailed:
+
+- Plant Stock
+- Direct Site Purchase
+- Contractor
+
+Use existing:
+
+`dieselSource`
+
+Default according to the existing Detailed/current model.
+
+Do not invent new values.
+
+--------------------------------------------------
+7. DIRECT SITE PURCHASE DIESEL DETAILS
+--------------------------------------------------
+
+If:
+
+Diesel Source = Direct Site Purchase
+
+show the existing fields:
+
+- Fuel Station
+- Bill No.
+- Amount Paid
+
+Use existing:
+
+- fuelStation
+- billNumber
+- amountPaid
+
+No schema change.
+
+If source changes away from Direct Site Purchase, follow the same clearing/preservation behavior as Detailed.
+
+Do not leave misleading purchase details active under Plant Stock / Contractor.
+
+--------------------------------------------------
+8. CONTRACTOR / PLANT-STOCK DIESEL
+--------------------------------------------------
+
+If source is:
+
+Plant Stock
+or
+Contractor
+
+show only the fields that are meaningful under the existing Detailed behavior.
+
+Do not require Fuel Station/Bill/Amount for these sources unless existing rules already do.
+
+--------------------------------------------------
+9. TOTAL DIESEL
+--------------------------------------------------
+
+Guided Equipment page should show a compact:
+
+Total Diesel: X.XXX L
+
+for the DPR/equipment rows where diesel is entered.
+
+Reuse the same calculation semantics as Detailed.
+
+Do not create another total formula.
+
+This is display only.
+
+--------------------------------------------------
+10. EQUIPMENT MASTER / LINKING MUST REMAIN INTACT
+--------------------------------------------------
+
+Preserve:
+
+- Equipment & Fleet master selector
+- equipmentId
+- canonical name
+- registration
+- ownership / hired status
+- Work Item link
+- structureId
+- plantUsageId
+- existing open Equipment Usage reuse
+
+Do not regress to free-text Machine.
+
+--------------------------------------------------
+11. EXISTING EQUIPMENT USAGE REUSE
+--------------------------------------------------
+
+If Equipment Usage already exists:
+
+"Use in this DPR"
+
+must continue preserving the existing usage values.
+
+When linked, display all applicable inherited values in Guided, including:
+
+- entryType
+- readings
+- times
+- diesel
+- trips
+- other passthrough fields
+
+where present.
+
+Do not silently overwrite linked data.
+
+Opening data that is locked from the usage record stays locked according to existing behavior.
+
+--------------------------------------------------
+12. GUIDED EQUIPMENT ROUND-TRIP — NO HIDDEN FIELD LOSS
+--------------------------------------------------
+
+This is mandatory.
+
+A Detailed-created Equipment row containing:
+
+- equipmentId
+- entryType
+- startTime
+- endTime
+- openingReading
+- closingReading
+- diesel
+- dieselSource
+- fuelStation
+- billNumber
+- amountPaid
+- trips
+- tripDistance
+- totalKm
+- waterQuantity
+- operator
+- task
+- boqItemId
+- structureId
+- plantUsageId
+
+must survive:
+
+Detailed
+→ Guided
+→ Save Draft
+→ Detailed
+
+with no fields erased merely because Guided formerly did not expose them.
+
+Likewise a Guided-created full row must appear correctly in Detailed.
+
+--------------------------------------------------
+13. DO NOT DUPLICATE EQUIPMENT FORM LOGIC
+--------------------------------------------------
+
+Where practical, extract/reuse the Detailed equipment field logic or shared helpers.
+
+The goal is:
+
+one equipment data model,
+same conditional semantics,
+two presentations.
+
+Do not independently recreate:
+
+- entry-type decision rules
+- diesel-source behavior
+- working-hours calculations
+- trip calculations
+
+inside Guided if a shared/working implementation exists.
+
+--------------------------------------------------
+14. GUIDED EQUIPMENT LAYOUT
+--------------------------------------------------
+
+The Equipment step should remain a clean Guided page.
+
+For each equipment card, group fields logically:
+
+A. Identity
+- Equipment
+- Registration
+- Deployment / Usage Type
+
+B. Work
+- Operator
+- Task
+- Work Item
+
+C. Usage
+- Start / End
+- Opening / Closing
+- Duration / Hours
+or trip-specific fields
+
+D. Fuel
+- Diesel Qty
+- Diesel Source
+- conditional purchase details
+
+Do not make one long unstructured row of inputs.
+
+Use responsive grids consistent with Detailed.
+
+--------------------------------------------------
+15. DETAILED — RENAME ACTIVITY `ADD ROW`
+--------------------------------------------------
+
+In Detailed/Classic Road Activity Progress:
+
+rename all user-facing:
+
+Add Row
+
+to:
+
+Add Activity
+
+This includes:
+
+- top Activity Progress action
+- bottom dashed add action
+
+Do not change `addRow('progress')` code/function semantics merely for wording.
+
+Structure-specific:
+
+Add Item
+
+may remain as-is unless it represents an Activity in that context.
+
+Do not rename Structure controls blindly.
+
+--------------------------------------------------
+16. DETAILED — RENAME EQUIPMENT `ADD ROW`
+--------------------------------------------------
+
+In Detailed Equipment Log:
+
+rename all user-facing:
+
+Add Row
+
+to:
+
+Add Equipment
+
+This includes:
+
+- top button
+- bottom dashed button
+
+Do not change equipment logic.
+
+--------------------------------------------------
+17. DETAILED — RENAME LABOUR `ADD ROW`
+--------------------------------------------------
+
+In Detailed Labour Strength:
+
+rename all user-facing:
+
+Add Row
+
+to:
+
+Add Labour
+
+This includes:
+
+- top button
+- bottom dashed button
+
+Do not change Labour logic.
+
+--------------------------------------------------
+18. OTHER GENERIC ADD LABELS
+--------------------------------------------------
+
+Do NOT globally replace every "Add" or "Add Row" string across the app.
+
+Only change the DPR labels explicitly in scope:
+
+- Activity → Add Activity
+- Equipment → Add Equipment
+- Labour → Add Labour
+
+Material / Site Purchase labels remain according to their current business wording unless an obvious equivalent DPR-specific naming issue is found.
+
+--------------------------------------------------
+19. GUIDED PAGE / ACTION-BAR ALIGNMENT — ROOT CAUSE
+--------------------------------------------------
+
+Current Guided body uses:
+
+`max-w-3xl mx-auto`
+
+and the fixed bottom action bar independently contains another:
+
+`max-w-3xl mx-auto`
+
+Even though the nominal width matches, the footer lives in a viewport-wide fixed layer and can visually detach from the page/body/sidebar layout.
+
+Investigate the app-shell content offset and actual rendered geometry.
+
+Do not fix this by arbitrary margins.
+
+Determine the real main-content container/sidebar behavior.
+
+--------------------------------------------------
+20. GUIDED LAYOUT TARGET
+--------------------------------------------------
+
+Header, stepper, cards, and bottom controls must share the same perceived horizontal grid.
+
+On desktop/laptop:
+
+- centered within the actual content area, not the full browser viewport;
+- equal left/right visual gutters;
+- no rightward or leftward drift;
+- action buttons align with the form cards.
+
+On mobile:
+
+- full usable width with safe padding;
+- no clipping;
+- buttons remain reachable.
+
+--------------------------------------------------
+21. STICKY ACTION-BAR BUTTON BALANCE
+--------------------------------------------------
+
+Current Back button has intrinsic width while Save Draft / Next use flex-1.
+
+This creates visual imbalance.
+
+Use a deliberate layout.
+
+Preferred desktop:
+
+Back | Save Draft | Next
+
+with stable proportions and aligned heights.
+
+For example:
+- Back: consistent minimum width
+- Save Draft: flexible
+- Next/Submit: flexible and primary
+
+or another balanced pattern matching the app.
+
+Do not make Back visually tiny beside two huge buttons.
+
+Final step:
+
+Back | Save Draft | Submit DPR
+
+same alignment pattern.
+
+--------------------------------------------------
+22. BUTTON WIDTH / SPACING CONSISTENCY
+--------------------------------------------------
+
+Ensure:
+
+- same height
+- same vertical alignment
+- consistent icon/text spacing
+- consistent gap
+- no one-pixel shifts between steps
+- fixed footer does not overlap page content
+
+Keep enough `padding-bottom` in the page for the sticky bar.
+
+--------------------------------------------------
+23. WIZARD STEPPER
+--------------------------------------------------
+
+Do not redesign step order.
+
+Keep the current working separate:
+
+- Labour step
+- Equipment step
+
+and current 7-step flow.
+
+Only fix alignment/readability if necessary.
+
+Do not disturb routing/state logic.
+
+--------------------------------------------------
+24. PRESERVE LENGTH FIX
+--------------------------------------------------
+
+Length is already restored in current Guided code.
+
+Do NOT rework it.
+
+Verify it remains:
+
+- visible
+- read-only
+- derived from chainage
+- using canonical helper
+
+Example:
+
+2+570 → 2+660 = 90.00 m
+
+No regression.
+
+--------------------------------------------------
+25. PRESERVE NO SITE WORK
+--------------------------------------------------
+
+Per-row No Site Work remains exactly as currently working.
+
+Mixed-day behavior remains.
+
+Do not change its semantics in this batch.
+
+--------------------------------------------------
+26. PRESERVE PHOTOS
+--------------------------------------------------
+
+Per-activity photos remain:
+
+- Camera
+- Gallery
+- File
+- max 3
+
+No photo/schema changes in this batch.
+
+--------------------------------------------------
+27. PRESERVE LABOUR STEP
+--------------------------------------------------
+
+Labour is already its own Guided wizard step now.
+
+Do not restructure it.
+
+Preserve:
+
+- gender
+- count
+- contractor
+- task
+- work-item linkage
+- field round-trip fixes
+
+--------------------------------------------------
+28. DATABASE / SCHEMA SAFETY
+--------------------------------------------------
+
+Expected NEW schema change: NONE.
+
+All equipment fields already exist.
+
+Do not add/drop/change:
+
+- equipment_logs columns
+- DPR columns
+- attachment columns
+- constraints
+- nullability
+
+If anything appears to require schema:
+STOP and report.
+
+--------------------------------------------------
+29. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- current Guided wizard step structure/business flow
+- Batch 04 BOQ/UoM conversion
+- Batch 04 submit-readiness semantics
+- Batch 05 draft routing
+- Batch 05 Equipment Usage linking
+- Batch 06B overlap semantics
+- Progress Report
+- programme-bar aggregation
+- Project Scope
+- Auto Sequence
+- Gantt
+- Execution Arrangement
+- Tomorrow's Programme
+- Geometry
+- Structure DPR
+- Stores
+- Material Receipt photos
+- RA billing
+- historical submitted DPRs
+
+--------------------------------------------------
+30. TESTS
+--------------------------------------------------
+
+Add/update focused tests for at least:
+
+A. Guided Equipment shows Entry/Deployment Type.
+
+B. Hourly Hire available.
+
+C. Daily Hire available.
+
+D. Monthly Hire available.
+
+E. Trip Based available.
+
+F. Time / Meter available.
+
+G. Entry type persists save/reopen.
+
+H. Guided shows Diesel quantity.
+
+I. Diesel persists save/reopen.
+
+J. Guided shows Diesel Source.
+
+K. Plant Stock works.
+
+L. Direct Site Purchase works.
+
+M. Contractor source works.
+
+N. Direct Site Purchase exposes:
+- Fuel Station
+- Bill No.
+- Amount Paid.
+
+O. Those fields persist.
+
+P. Trip Based displays correct existing trip fields.
+
+Q. Water tanker special fields remain correct.
+
+R. Linked Equipment Usage hydrates full applicable fields.
+
+S. Detailed → Guided → Save causes zero Equipment field loss.
+
+T. Guided → Detailed shows equivalent Equipment values.
+
+U. Total Diesel matches Detailed calculation.
+
+V. Detailed Activity top button says Add Activity.
+
+W. Detailed Activity bottom button says Add Activity.
+
+X. Detailed Equipment top/bottom say Add Equipment.
+
+Y. Detailed Labour top/bottom say Add Labour.
+
+Z. No unrelated global button labels are changed.
+
+AA. Guided body and sticky footer align to same actual app-content grid.
+
+AB. Back / Save Draft / Next are visually balanced.
+
+AC. Final Back / Save Draft / Submit uses same layout.
+
+AD. Mobile action bar remains usable.
+
+AE. Length remains visible and correct.
+
+AF. Labour remains separate step.
+
+AG. Equipment remains separate step.
+
+AH. No Site Work unchanged.
+
+AI. Per-activity photos unchanged.
+
+AJ. Batch 04/05/06B tests remain green.
+
+AK. No schema change.
+
+Run full suite.
+
+Treat as RELEASE BLOCKERS:
+
+- loss of existing Equipment fields
+- wrong hire/entry-type behavior
+- diesel values wiped
+- linked Equipment Usage regression
+- broken action-bar navigation
+- Guided wizard flow regression
+
+--------------------------------------------------
+31. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. Exact Guided Equipment fields before this batch.
+
+B. Detailed Equipment fields used as parity reference.
+
+C. Final Guided Equipment fields.
+
+D. Entry/Deployment Type implementation.
+
+E. Diesel quantity/source implementation.
+
+F. Direct-purchase diesel details.
+
+G. Type-specific field visibility.
+
+H. Any Detailed logic/helper extracted/reused.
+
+I. Detailed → Guided round-trip results.
+
+J. Guided → Detailed round-trip results.
+
+K. Exact DPR button labels changed.
+
+L. Root cause of remaining Guided layout/action-bar imbalance.
+
+M. Exact layout fix.
+
+N. Desktop/laptop/mobile verification.
+
+O. Confirmation Length remains intact.
+
+P. Confirmation Labour/Equipment remain separate wizard steps.
+
+Q. Tests.
+
+R. Confirm:
+- no new schema change
+- no historical rewrite
+- no Progress Report change
+- no Structure DPR work
+- no Tomorrow's Programme/Geometry/Scope change
+
+DO NOT START ANOTHER BATCH.
+
+SUCCESS CRITERION
+
+1. Guided Equipment provides the same operational data capture as Detailed for the applicable equipment/deployment type.
+
+2. Hired-equipment deployment type is visible and correctly persisted.
+
+3. Diesel Qty, Diesel Source and applicable purchase details are available in Guided.
+
+4. Detailed/Guided round-trip loses no Equipment data.
+
+5. Detailed DPR uses clear Add Activity / Add Equipment / Add Labour labels instead of Add Row.
+
+6. Guided body/footer/buttons are visually balanced within the real app content area.
+
+7. Existing Length, Labour step, Equipment step, No Site Work, photos, draft, overlap and readiness behavior remain intact.
+
+8. No new schema or unrelated workflow changes are introduced.

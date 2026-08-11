@@ -41,6 +41,7 @@ import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { checkQuantitySourceRow, quantitiesMatch, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
+import { computeTotalDiesel, computeTripTotalKm } from "@shared/guidedEquipment";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { History } from "lucide-react";
@@ -958,9 +959,8 @@ export default function SiteEntry() {
     return calculateHours(entry.startTime, entry.endTime);
   };
 
-  const getTotalDiesel = (): number => {
-    return equipment.reduce((sum, e) => sum + (e.diesel || 0), 0);
-  };
+  // Batch 06C-Q: shared helper — same total the Guided wizard displays.
+  const getTotalDiesel = (): number => computeTotalDiesel(equipment);
 
   const getMaterialsAbstract = () => {
     const grouped: Record<string, { material: string; uom: string; trips: number; total: number }> = {};
@@ -1086,7 +1086,7 @@ export default function SiteEntry() {
       const normalizedEquipment = equipment.map(eq => ({
         ...eq,
         totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
-          ? Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2 : eq.totalKm || null,
+          ? computeTripTotalKm(eq.numberOfTrips, eq.tripDistance) : eq.totalKm || null,
       }));
 
       const response = await apiRequest("POST", "/api/dprs", {
@@ -1222,7 +1222,7 @@ export default function SiteEntry() {
       const normalizedEquipment = equipment.map(eq => ({
         ...eq,
         totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
-          ? Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2 : eq.totalKm || null,
+          ? computeTripTotalKm(eq.numberOfTrips, eq.tripDistance) : eq.totalKm || null,
       }));
       const response = await apiRequest("POST", "/api/dprs", {
         date: header.date,
@@ -1640,7 +1640,7 @@ export default function SiteEntry() {
           </div>
           {workType === "road" ? (
             <Button size="sm" variant="outline" onClick={() => addRow('progress')} data-testid="button-add-progress">
-              <Plus className="w-4 h-4 mr-1" /> Add Row
+              <Plus className="w-4 h-4 mr-1" /> Add Activity
             </Button>
           ) : (
             <Button size="sm" variant="outline" onClick={() => setStructureItems(prev => [...prev, { structureType: "Culvert", structureSubType: "Pipe Culvert", structureName: "", stage: "Excavation", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }])} data-testid="button-add-structure-item">
@@ -2382,7 +2382,7 @@ export default function SiteEntry() {
           )}
           {workType !== "structure" && (
             <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('progress')} data-testid="button-add-progress-bottom">
-              <Plus className="w-4 h-4 mr-1" /> Add Row
+              <Plus className="w-4 h-4 mr-1" /> Add Activity
             </Button>
           )}
         </CardContent>
@@ -2395,7 +2395,7 @@ export default function SiteEntry() {
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Equipment Log</CardTitle>
           <Button size="sm" variant="outline" onClick={() => addRow('equipment')} data-testid="button-add-equipment">
-            <Plus className="w-4 h-4 mr-1" /> Add Row
+            <Plus className="w-4 h-4 mr-1" /> Add Equipment
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -2407,7 +2407,7 @@ export default function SiteEntry() {
             const isTimeMeter = !entry.entryType || entry.entryType === "time_meter" || entry.entryType === "hourly";
             const isTripBased = entry.entryType === "trip_based";
             const isDailyOrMonthly = entry.entryType === "daily" || entry.entryType === "monthly";
-            const calculatedTotalKm = (entry.numberOfTrips && entry.tripDistance) ? entry.numberOfTrips * entry.tripDistance * 2 : 0;
+            const calculatedTotalKm = computeTripTotalKm(entry.numberOfTrips, entry.tripDistance);
             const isWaterTanker = (entry.machine || '').toUpperCase().includes('WATER') || (entry.machine || '').toUpperCase().includes('TANKER');
             
             return (
@@ -2913,7 +2913,7 @@ export default function SiteEntry() {
             <p className="text-2xl font-bold text-primary">{getTotalDiesel().toFixed(3)} L</p>
           </div>
           <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('equipment')} data-testid="button-add-equipment-bottom">
-            <Plus className="w-4 h-4 mr-1" /> Add Row
+            <Plus className="w-4 h-4 mr-1" /> Add Equipment
           </Button>
         </CardContent>
       </Card>
@@ -2925,7 +2925,7 @@ export default function SiteEntry() {
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Labour Strength</CardTitle>
           <Button size="sm" variant="outline" onClick={() => addRow('labour')} data-testid="button-add-labour">
-            <Plus className="w-4 h-4 mr-1" /> Add Row
+            <Plus className="w-4 h-4 mr-1" /> Add Labour
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -3095,7 +3095,7 @@ export default function SiteEntry() {
             </div>
           ))}
           <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('labour')} data-testid="button-add-labour-bottom">
-            <Plus className="w-4 h-4 mr-1" /> Add Row
+            <Plus className="w-4 h-4 mr-1" /> Add Labour
           </Button>
         </CardContent>
       </Card>

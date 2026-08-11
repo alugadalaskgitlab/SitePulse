@@ -29,6 +29,8 @@ export type OpenUsageLike = {
   numberOfTrips?: number | null;
   tripDistance?: number | null;
   totalKm?: number | null;
+  diesel?: number | null;
+  dieselSource?: string | null;
   operator?: string | null;
   task?: string | null;
   siteName?: string | null;
@@ -66,7 +68,7 @@ export function usageToGuidedRow(usage: OpenUsageLike, machineName: string): Gui
   const pt: Record<string, unknown> = { equipmentId: usage.equipmentId, plantUsageId: usage.id };
   const copy: Array<keyof OpenUsageLike> = [
     "entryType", "openingReading", "closingReading", "startTime", "endTime",
-    "numberOfTrips", "tripDistance", "totalKm",
+    "numberOfTrips", "tripDistance", "totalKm", "diesel", "dieselSource",
   ];
   for (const k of copy) {
     const v = usage[k];

@@ -57,3 +57,32 @@ export function buildGuidedEquipmentPayload(row: GuidedEquipmentRow): Record<str
     task: row.task,
   };
 }
+
+/* ------------------------------------------------------------------ *
+ * Batch 06C-Q — shared equipment calculation semantics.
+ * These mirror the Detailed DPR rules exactly; both screens must call
+ * these instead of re-implementing the arithmetic.
+ * ------------------------------------------------------------------ */
+
+const num = (v: unknown): number => {
+  const n = typeof v === "string" ? parseFloat(v) : typeof v === "number" ? v : NaN;
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** Total Diesel across DPR equipment rows — same semantics as Detailed's sum. */
+export function computeTotalDiesel(rows: Array<{ diesel?: unknown } | Record<string, unknown>>): number {
+  return (rows ?? []).reduce((sum, r) => sum + num((r as Record<string, unknown>)?.diesel), 0);
+}
+
+/** Trip-based round-trip kilometres: trips × one-way distance × 2 (Detailed rule). */
+export function computeTripTotalKm(numberOfTrips: unknown, tripDistance: unknown): number {
+  const trips = num(numberOfTrips);
+  const dist = num(tripDistance);
+  return trips > 0 && dist > 0 ? trips * dist * 2 : 0;
+}
+
+/** Water-tanker detection — the existing Detailed name rule. */
+export function isWaterTankerName(machine: unknown): boolean {
+  const m = String(machine ?? "").toUpperCase();
+  return m.includes("WATER") || m.includes("TANKER");
+}

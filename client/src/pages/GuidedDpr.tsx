@@ -46,7 +46,7 @@ import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { reconcileNewDprAutosaves } from "@/lib/dprAutosaveReconcile";
 import { unlinkedOpenUsages, usageToGuidedRow, duplicateUsageAdvisory, type OpenUsageLike } from "@shared/dprPlantLink";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
-import { splitGuidedEquipmentRow, buildGuidedEquipmentPayload, newGuidedEquipmentRow, type GuidedEquipmentRow } from "@shared/guidedEquipment";
+import { splitGuidedEquipmentRow, buildGuidedEquipmentPayload, newGuidedEquipmentRow, computeTotalDiesel, computeTripTotalKm, isWaterTankerName, type GuidedEquipmentRow } from "@shared/guidedEquipment";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
@@ -1600,9 +1600,25 @@ export default function GuidedDpr() {
                   const pt = eq.passthrough as Record<string, any>;
                   const linked = pt.plantUsageId != null;
                   const advisory = duplicateUsageAdvisory(eq, openUsages, equipmentNameOf);
+                  // Batch 06C-Q: same conditional semantics as Detailed —
+                  // entry type is selectable for hired equipment only, and it
+                  // drives which usage fields appear. No new enum values.
+                  const master = activeEquipmentMaster.find((m: any) => m.id === pt.equipmentId);
+                  const isHired = master?.ownership === "hired";
+                  const entryType = (pt.entryType as string) || "time_meter";
+                  const isTripBased = entryType === "trip_based";
+                  const isDailyOrMonthly = entryType === "daily" || entryType === "monthly";
+                  // Robustness: a linked/draft row can carry a hired-only
+                  // entryType while the master list is still loading (or the
+                  // master row was retired) — keep the selector visible so the
+                  // stored type is never hidden or silently lost.
+                  const showEntryType = isHired || entryType !== "time_meter";
+                  const isWaterTanker = isWaterTankerName(eq.machine);
+                  const isDirectPurchase = (pt.dieselSource ?? "plant_stock") === "direct_purchase";
                   return (
-                    <div key={i} className="mb-3 space-y-1.5">
-                      <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                    <div key={i} className="mb-3 p-3 border rounded-lg bg-muted/20 space-y-2">
+                      {/* A. Identity */}
+                      <div className="grid grid-cols-[1fr_auto] gap-2">
                         {/* Batch 06C §8: machine comes from the Equipment & Fleet
                             master (same selector as Detailed) — no free-typed
                             machine identity. Selecting sets equipmentId, canonical
@@ -1616,6 +1632,14 @@ export default function GuidedDpr() {
                               if (j !== i) return r;
                               const nextPt = { ...r.passthrough, equipmentId: sel.id } as Record<string, any>;
                               delete nextPt.plantUsageId; // reset link until reuse/fetch resolves
+                              // Same rule as Detailed: owned equipment is always
+                              // Time / Meter — trip fields don't apply.
+                              if (sel.ownership !== "hired") {
+                                nextPt.entryType = "time_meter";
+                                delete nextPt.numberOfTrips;
+                                delete nextPt.tripDistance;
+                                delete nextPt.totalKm;
+                              }
                               return { ...r, machine: sel.name, vehicleNo: sel.registrationNumber || "", passthrough: nextPt };
                             }));
                           }}
@@ -1633,8 +1657,59 @@ export default function GuidedDpr() {
                             ))}
                           </SelectContent>
                         </Select>
-                        <Input placeholder="Task" value={eq.task} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, task: ev.target.value } : r))} data-testid={`input-eq-task-${i}`} />
                         <Button variant="ghost" size="icon" onClick={() => setEquipment((p) => p.filter((_, j) => j !== i))}><Trash2 className="w-4 h-4" /></Button>
+                      </div>
+                      {eq.vehicleNo && (
+                        <p className="text-xs text-muted-foreground" data-testid={`text-eq-reg-${i}`}>Reg: {eq.vehicleNo}</p>
+                      )}
+                      {/* Deployment / Usage Type — hired equipment only, same
+                          stored entryType values as Detailed */}
+                      {showEntryType && (
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1">
+                            <Label className="text-xs text-muted-foreground">Deployment / Usage Type</Label>
+                            <Select
+                              value={entryType}
+                              onValueChange={(v) => {
+                                setEquipment((p) => p.map((r, j) => {
+                                  if (j !== i) return r;
+                                  const nextPt = { ...r.passthrough, entryType: v } as Record<string, any>;
+                                  if (v !== "trip_based") {
+                                    delete nextPt.numberOfTrips;
+                                    delete nextPt.tripDistance;
+                                    delete nextPt.totalKm;
+                                  }
+                                  return { ...r, passthrough: nextPt };
+                                }));
+                              }}
+                            >
+                              <SelectTrigger data-testid={`select-eq-entry-type-${i}`}><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="time_meter">Time / Meter Reading</SelectItem>
+                                <SelectItem value="hourly">Hourly Hire</SelectItem>
+                                <SelectItem value="daily">Daily Hire</SelectItem>
+                                <SelectItem value="trip_based">Trip Based</SelectItem>
+                                <SelectItem value="monthly">Monthly Hire</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {isDailyOrMonthly && (
+                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 mt-4" data-testid={`badge-eq-entry-type-${i}`}>
+                              {entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                      {/* B. Work */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Operator</Label>
+                          <Input placeholder="Operator name" value={eq.operator} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, operator: ev.target.value } : r))} data-testid={`input-eq-operator-${i}`} />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Task</Label>
+                          <Input placeholder="Task" value={eq.task} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, task: ev.target.value } : r))} data-testid={`input-eq-task-${i}`} />
+                        </div>
                       </div>
                       {/* Batch 06C §11: optional Work Item linkage (same fields as
                           Detailed — boqItemId; structure link is preserved on
@@ -1662,6 +1737,10 @@ export default function GuidedDpr() {
                           </SelectContent>
                         </Select>
                       </div>
+                      {/* C. Usage — time/meter fields hidden for Trip Based rows
+                          (type-driven presentation); any previously entered
+                          values stay preserved in the passthrough bag. */}
+                      {!isTripBased && (
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <div>
                           <Label className="text-xs text-muted-foreground">Opening{linked ? " (from plant — locked)" : ""}</Label>
@@ -1689,12 +1768,123 @@ export default function GuidedDpr() {
                             data-testid={`input-eq-end-${i}`} />
                         </div>
                       </div>
+                      )}
+                      {/* Trip Based — same fields and round-trip km rule as Detailed */}
+                      {isTripBased && (
+                        <div className="grid grid-cols-3 gap-2" data-testid={`section-eq-trip-${i}`}>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">No. of Trips</Label>
+                            <Input type="number" inputMode="numeric" placeholder="0" value={pt.numberOfTrips ?? ""}
+                              onChange={(ev) => {
+                                setEquipment((p) => p.map((r, j) => {
+                                  if (j !== i) return r;
+                                  const nextPt = { ...r.passthrough } as Record<string, any>;
+                                  if (ev.target.value === "") delete nextPt.numberOfTrips; else nextPt.numberOfTrips = parseInt(ev.target.value);
+                                  const km = computeTripTotalKm(nextPt.numberOfTrips, nextPt.tripDistance);
+                                  if (km > 0) nextPt.totalKm = km; else delete nextPt.totalKm;
+                                  return { ...r, passthrough: nextPt };
+                                }));
+                              }}
+                              data-testid={`input-eq-trips-${i}`} />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Trip Distance (km)</Label>
+                            <Input type="number" inputMode="decimal" placeholder="One-way" value={pt.tripDistance ?? ""}
+                              onChange={(ev) => {
+                                setEquipment((p) => p.map((r, j) => {
+                                  if (j !== i) return r;
+                                  const nextPt = { ...r.passthrough } as Record<string, any>;
+                                  if (ev.target.value === "") delete nextPt.tripDistance; else nextPt.tripDistance = parseFloat(ev.target.value);
+                                  const km = computeTripTotalKm(nextPt.numberOfTrips, nextPt.tripDistance);
+                                  if (km > 0) nextPt.totalKm = km; else delete nextPt.totalKm;
+                                  return { ...r, passthrough: nextPt };
+                                }));
+                              }}
+                              data-testid={`input-eq-trip-distance-${i}`} />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Total KM (round trip)</Label>
+                            <div className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm" data-testid={`display-eq-total-km-${i}`}>
+                              {computeTripTotalKm(pt.numberOfTrips, pt.tripDistance) > 0 ? `${computeTripTotalKm(pt.numberOfTrips, pt.tripDistance).toFixed(1)} km` : "-"}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {/* Water tanker — same special fields as Detailed */}
+                      {isWaterTanker && (
+                        <div className="grid grid-cols-2 gap-2" data-testid={`section-eq-water-${i}`}>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Water Quantity (Litres)</Label>
+                            <Input type="number" inputMode="decimal" placeholder="0" value={pt.waterQuantity ?? ""}
+                              onChange={(ev) => setPassthroughField(i, "waterQuantity", ev.target.value, true)}
+                              data-testid={`input-eq-water-qty-${i}`} />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">No. of Trips</Label>
+                            <Input type="number" inputMode="numeric" placeholder="0" value={pt.numberOfTrips ?? ""}
+                              onChange={(ev) => setPassthroughField(i, "numberOfTrips", ev.target.value, true)}
+                              data-testid={`input-eq-water-trips-${i}`} />
+                          </div>
+                        </div>
+                      )}
+                      {/* D. Fuel — same stored fields (diesel / dieselSource /
+                          purchase details) as Detailed; purchase details are
+                          hidden but preserved when the source changes. */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Diesel (Litres)</Label>
+                          <Input type="number" inputMode="decimal" placeholder="0" value={pt.diesel ?? ""}
+                            onChange={(ev) => setPassthroughField(i, "diesel", ev.target.value, true)}
+                            data-testid={`input-eq-diesel-${i}`} />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Diesel Source</Label>
+                          <Select
+                            value={(pt.dieselSource as string) ?? "plant_stock"}
+                            onValueChange={(v) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, passthrough: { ...r.passthrough, dieselSource: v } } : r))}
+                          >
+                            <SelectTrigger data-testid={`select-eq-diesel-source-${i}`}><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="plant_stock">Plant Stock</SelectItem>
+                              <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
+                              <SelectItem value="contractor">Contractor</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      {isDirectPurchase && (
+                        <div className="grid grid-cols-3 gap-2" data-testid={`section-eq-purchase-${i}`}>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Fuel Station</Label>
+                            <Input placeholder="HP / BPCL" value={pt.fuelStation ?? ""}
+                              onChange={(ev) => setPassthroughField(i, "fuelStation", ev.target.value.toUpperCase(), false)}
+                              className="uppercase" data-testid={`input-eq-fuel-station-${i}`} />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Bill No.</Label>
+                            <Input placeholder="Receipt #" value={pt.billNumber ?? ""}
+                              onChange={(ev) => setPassthroughField(i, "billNumber", ev.target.value.toUpperCase(), false)}
+                              className="uppercase" data-testid={`input-eq-bill-number-${i}`} />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Amount (Rs)</Label>
+                            <Input type="number" inputMode="decimal" placeholder="0" value={pt.amountPaid ?? ""}
+                              onChange={(ev) => setPassthroughField(i, "amountPaid", ev.target.value, true)}
+                              data-testid={`input-eq-amount-paid-${i}`} />
+                          </div>
+                        </div>
+                      )}
                       {advisory && (
                         <p className="text-xs text-amber-700 dark:text-amber-400" data-testid={`text-eq-dup-advisory-${i}`}>{advisory}</p>
                       )}
                     </div>
                   );
                 })}
+                {computeTotalDiesel(equipment.map((e) => e.passthrough)) > 0 && (
+                  <p className="text-sm font-semibold text-primary mb-2" data-testid="text-total-diesel">
+                    Total Diesel: {computeTotalDiesel(equipment.map((e) => e.passthrough)).toFixed(3)} L
+                  </p>
+                )}
                 <Button variant="outline" size="sm" onClick={() => setEquipment((p) => [...p, newGuidedEquipmentRow()])} data-testid="button-add-equipment">
                   <Plus className="w-3.5 h-3.5 mr-1" />Add Equipment
                 </Button>
@@ -1829,11 +2019,14 @@ export default function GuidedDpr() {
       </Card>
       )}
 
-      {/* Sticky action bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-950 border-t p-3 z-20">
-        <div className="max-w-3xl mx-auto flex gap-2">
+      {/* Sticky action bar — Batch 06C-Q §19: the app shell has a fixed
+          224px sidebar on md+ (md:pl-56), so the bar must start after it
+          (md:left-56) or its centered inner container drifts left relative
+          to the page body, which centers inside the content area. */}
+      <div className="fixed bottom-0 left-0 right-0 md:left-56 bg-white dark:bg-slate-950 border-t p-3 z-20">
+        <div className="max-w-3xl mx-auto flex items-center gap-2">
           {step > 1 && (
-            <Button variant="outline" onClick={() => setStep((s) => (s - 1) as GuidedStepId)} data-testid="button-step-back">
+            <Button variant="outline" className="min-w-[96px]" onClick={() => setStep((s) => (s - 1) as GuidedStepId)} data-testid="button-step-back">
               Back
             </Button>
           )}
