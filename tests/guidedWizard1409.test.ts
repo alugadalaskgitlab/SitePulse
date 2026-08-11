@@ -7,12 +7,14 @@ import { GUIDED_STEPS, clampGuidedStep, guidedStepBlocker, canAdvanceGuidedStep,
 import { groupDprPhotos } from "../shared/dprPhotos";
 
 describe("guided wizard steps (Task #1409)", () => {
-  it("defines the 5 wizard steps in order", () => {
-    expect(GUIDED_STEPS.map((s) => s.id)).toEqual([1, 2, 3, 4, 5]);
+  it("defines the 7 wizard steps in order (06C-P: Labour and Equipment are separate pages)", () => {
+    expect(GUIDED_STEPS.map((s) => s.id)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(GUIDED_STEPS.map((s) => s.key)).toEqual(["report", "activities", "details", "labour", "equipment", "photos", "review"]);
   });
 
   it("clamps restored step values to a valid step", () => {
     expect(clampGuidedStep(3)).toBe(3);
+    expect(clampGuidedStep(7)).toBe(7);
     expect(clampGuidedStep(undefined)).toBe(1);
     expect(clampGuidedStep(0)).toBe(1);
     expect(clampGuidedStep(99)).toBe(1);
@@ -31,10 +33,12 @@ describe("guided wizard steps (Task #1409)", () => {
     expect(canAdvanceGuidedStep(2, { siteName: "s", engineer: "e", entryCount: 1 })).toBe(true);
   });
 
-  it("steps 3 and 4 never block (draft-lenient)", () => {
+  it("steps 3–6 never block (draft-lenient: details, labour, equipment, photos)", () => {
     const empty = { siteName: "", engineer: "", entryCount: 0 };
     expect(guidedStepBlocker(3, empty)).toBeNull();
     expect(guidedStepBlocker(4, empty)).toBeNull();
+    expect(guidedStepBlocker(5, empty)).toBeNull();
+    expect(guidedStepBlocker(6, empty)).toBeNull();
   });
 });
 

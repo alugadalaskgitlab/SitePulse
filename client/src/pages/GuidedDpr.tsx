@@ -38,7 +38,7 @@ import { format, subDays } from "date-fns";
 import type { Site, Personnel, DprWithDetails } from "@shared/schema";
 import { barSideLabel, parseChainageKm, QUANTITY_SOURCE_LABELS, allowedDprSides, dprSideOptionsForBar, isDprSideCompatible, isBarSide } from "@shared/barSide";
 import { chainageOutsideBar, suggestGuidedBars, emptySuggestionsReason, normalizeDprSideKey } from "@shared/dprProgrammeLink";
-import { resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
+import { resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage } from "@shared/dprGeometry";
 import { requiredDims, applyGeometryChange, applyQuantityEdit, overrideMismatch, deriveOverridden } from "@/lib/guidedEntryGeometry";
 import { ProgrammeBarPicker, BarLinkFeedback, type PickerBar } from "@/components/ProgrammeBarPicker";
 import { useAutosave } from "@/hooks/use-autosave";
@@ -174,7 +174,6 @@ export default function GuidedDpr() {
   const [equipment, setEquipment] = useState<SimpleEquipmentRow[]>([]);
   const [labour, setLabour] = useState<SimpleLabourRow[]>([]);
   const [remarks, setRemarks] = useState("");
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [showYesterdayPreview, setShowYesterdayPreview] = useState(false);
   const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -1018,7 +1017,7 @@ export default function GuidedDpr() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-2xl mx-auto pb-28">
+    <div className="max-w-3xl mx-auto w-full pb-28">
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <Link href={returnTo}>
@@ -1180,7 +1179,7 @@ export default function GuidedDpr() {
           checkbox and BOQ item selector. */}
       {siteName && (
         <Button variant="outline" className="w-full mb-4" onClick={addBlankEntry} data-testid="button-add-activity">
-          <Plus className="w-4 h-4 mr-2" />Add Row
+          <Plus className="w-4 h-4 mr-2" />Add Activity
         </Button>
       )}
       </>)}
@@ -1386,6 +1385,20 @@ export default function GuidedDpr() {
                       <Label>Ch. To</Label>
                       <Input value={e.chainageTo} placeholder="0+000" onChange={(ev) => updateGeometry(idx, { chainageTo: ev.target.value })} data-testid={`input-ch-to-${idx}`} />
                     </div>
+                    {/* Batch 06C-P §13/14: derived Length — canonical chainage
+                        math (shared/dprGeometry), read-only; the Engineer never
+                        types the same length twice. */}
+                    <div>
+                      <Label>Length (m)</Label>
+                      <Input
+                        readOnly
+                        tabIndex={-1}
+                        className="bg-muted/50"
+                        value={(() => { const L = calculateLengthFromChainage(e.chainageFrom, e.chainageTo); return L != null ? L.toFixed(2) : ""; })()}
+                        placeholder="—"
+                        data-testid={`input-length-${idx}`}
+                      />
+                    </div>
                     {needW && (
                       <div>
                         <Label>Width (m)</Label>
@@ -1493,7 +1506,7 @@ export default function GuidedDpr() {
       {/* Batch 06C §7: direct row creation — no BOQ-picker modal */}
       {siteName && (
         <Button variant="outline" className="w-full mb-4" onClick={addBlankEntry} data-testid="button-add-activity-step3">
-          <Plus className="w-4 h-4 mr-2" />Add Row
+          <Plus className="w-4 h-4 mr-2" />Add Activity
         </Button>
       )}
       {/* Shared hidden inputs for per-activity photos (one set, routed by
@@ -1509,8 +1522,9 @@ export default function GuidedDpr() {
         onChange={(ev) => { addEntryPhotos(ev.target.files); ev.target.value = ""; }} />
       </>)}
 
-      {/* Step 4 — site photos, equipment, labour & remarks */}
-      {step === 4 && (<>
+      {/* Step 6 — general site photos & remarks (Batch 06C-P: Labour and
+          Equipment moved to their own dedicated steps 4 and 5) */}
+      {step === 6 && (<>
       {/* Photos */}
       <Card className="mb-4">
         <CardContent className="pt-4">
@@ -1543,17 +1557,22 @@ export default function GuidedDpr() {
         </CardContent>
       </Card>
 
-      {/* DPR-level Add details: equipment / labour / remarks */}
+      {/* Remarks stay with general photos on this step */}
       <Card className="mb-4">
         <CardContent className="pt-4">
-          <button className="w-full flex items-center justify-between text-sm font-medium" onClick={() => setDetailsOpen((v) => !v)} data-testid="button-dpr-details">
-            <span>Equipment, labour &amp; remarks {equipment.length + labour.length > 0 ? `(${equipment.length + labour.length})` : ""}</span>
-            {detailsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
-          {detailsOpen && (
-            <div className="space-y-4 mt-3">
+          <Label>Remarks</Label>
+          <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={2} data-testid="input-remarks" />
+        </CardContent>
+      </Card>
+      </>)}
+
+      {/* Step 5 — Equipment (dedicated wizard page, Batch 06C-P §18) */}
+      {step === 5 && (
+      <Card className="mb-4" data-testid="card-equipment-step">
+        <CardContent className="pt-4">
+          <div className="space-y-4">
               <div>
-                <Label className="mb-1 block">Equipment</Label>
+                <Label className="mb-1 block font-semibold">Equipment</Label>
                 {/* Batch 05: surface open Equipment & Fleet usage for reuse —
                     same linking mechanism as the Detailed DPR, so nothing is
                     typed twice and no duplicate usage record is created. */}
@@ -1677,11 +1696,21 @@ export default function GuidedDpr() {
                   );
                 })}
                 <Button variant="outline" size="sm" onClick={() => setEquipment((p) => [...p, newGuidedEquipmentRow()])} data-testid="button-add-equipment">
-                  <Plus className="w-3.5 h-3.5 mr-1" />Equipment
+                  <Plus className="w-3.5 h-3.5 mr-1" />Add Equipment
                 </Button>
               </div>
+          </div>
+        </CardContent>
+      </Card>
+      )}
+
+      {/* Step 4 — Labour (dedicated wizard page, Batch 06C-P §16) */}
+      {step === 4 && (
+      <Card className="mb-4" data-testid="card-labour-step">
+        <CardContent className="pt-4">
+          <div className="space-y-4">
               <div>
-                <Label className="mb-1 block">Labour</Label>
+                <Label className="mb-1 block font-semibold">Labour</Label>
                 {labour.map((l, i) => (
                   <div key={i} className="mb-3 space-y-1.5">
                     <div className="grid grid-cols-[1fr_90px_70px_auto] gap-2">
@@ -1720,21 +1749,16 @@ export default function GuidedDpr() {
                   </div>
                 ))}
                 <Button variant="outline" size="sm" onClick={() => setLabour((p) => [...p, newLabourRow()])} data-testid="button-add-labour">
-                  <Plus className="w-3.5 h-3.5 mr-1" />Labour
+                  <Plus className="w-3.5 h-3.5 mr-1" />Add Labour
                 </Button>
               </div>
-              <div>
-                <Label>Remarks</Label>
-                <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={2} data-testid="input-remarks" />
-              </div>
-            </div>
-          )}
+          </div>
         </CardContent>
       </Card>
-      </>)}
+      )}
 
-      {/* Step 5 — review & submit */}
-      {step === 5 && (
+      {/* Step 7 — review & submit */}
+      {step === 7 && (
       <Card className="mb-4" data-testid="card-review">
         <CardContent className="pt-4 space-y-3 text-sm">
           <div>
@@ -1771,10 +1795,23 @@ export default function GuidedDpr() {
               })}
             </div>
           </div>
+          {/* Batch 06C-P §24: Labour and Equipment summarised separately */}
           <div>
-            <p className="font-semibold mb-0.5">Resources</p>
-            <p className="text-muted-foreground">
-              {equipment.filter((e) => e.machine).length} equipment · {labour.filter((l) => l.category).length} labour rows · {stagedPhotos.length} general photo{stagedPhotos.length === 1 ? "" : "s"}
+            <p className="font-semibold mb-0.5">Labour</p>
+            <p className="text-muted-foreground" data-testid="review-labour">
+              {labour.filter((l) => l.category).length === 0 ? "No labour recorded" : labour.filter((l) => l.category).map((l) => `${l.category}${l.count != null ? ` × ${l.count}` : ""}`).join(" · ")}
+            </p>
+          </div>
+          <div>
+            <p className="font-semibold mb-0.5">Equipment</p>
+            <p className="text-muted-foreground" data-testid="review-equipment">
+              {equipment.filter((e) => e.machine).length === 0 ? "No equipment recorded" : equipment.filter((e) => e.machine).map((e) => e.machine).join(" · ")}
+            </p>
+          </div>
+          <div>
+            <p className="font-semibold mb-0.5">Photos</p>
+            <p className="text-muted-foreground" data-testid="review-photos">
+              {stagedPhotos.length} general photo{stagedPhotos.length === 1 ? "" : "s"}{Object.values(entryPhotos).reduce((n, l) => n + l.length, 0) > 0 ? ` · ${Object.values(entryPhotos).reduce((n, l) => n + l.length, 0)} activity photo(s)` : ""}
             </p>
           </div>
           {remarks.trim() && (
@@ -1794,7 +1831,7 @@ export default function GuidedDpr() {
 
       {/* Sticky action bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-950 border-t p-3 z-20">
-        <div className="max-w-2xl mx-auto flex gap-2">
+        <div className="max-w-3xl mx-auto flex gap-2">
           {step > 1 && (
             <Button variant="outline" onClick={() => setStep((s) => (s - 1) as GuidedStepId)} data-testid="button-step-back">
               Back
@@ -1809,7 +1846,7 @@ export default function GuidedDpr() {
           >
             {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Draft"}
           </Button>
-          {step < 5 && (
+          {step < 7 && (
             <Button
               className="flex-1"
               onClick={() => {
@@ -1822,7 +1859,7 @@ export default function GuidedDpr() {
               Next
             </Button>
           )}
-          {step === 5 && (
+          {step === 7 && (
           <Button
             className="flex-1"
             disabled={saveMutation.isPending || !entriesComplete}
@@ -1845,8 +1882,8 @@ export default function GuidedDpr() {
           </Button>
           )}
         </div>
-        {step === 5 && !entriesComplete && entries.length > 0 && (
-          <p className="max-w-2xl mx-auto text-xs text-muted-foreground mt-1.5" data-testid="text-submit-hint">
+        {step === 7 && !entriesComplete && entries.length > 0 && (
+          <p className="max-w-3xl mx-auto text-xs text-muted-foreground mt-1.5" data-testid="text-submit-hint">
             Enter chainage from/to and quantity for every activity (or mark it No site work) to submit — or save a draft and finish later.
           </p>
         )}

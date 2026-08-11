@@ -230,18 +230,6 @@ function formatTimeDuration(start: string, end: string): string | null {
 // stays on the BOQ / Item Review management screens.
 import { boqItemDisplayName } from "@shared/boqItemName";
 
-// Steps for the mobile-first guided DPR flow (Phase 1 UX facelift). Each step
-// maps to one or more of the existing form sections below — no new business
-// logic, just a different presentation shell around the same state/handlers.
-const GUIDED_STEPS = [
-  { key: "setup", label: "Today's Work" },
-  { key: "activity", label: "Work Item & Qty" },
-  { key: "labour", label: "Labour" },
-  { key: "equipment", label: "Equipment" },
-  { key: "materials", label: "Materials" },
-  { key: "review", label: "Remarks & Submit" },
-] as const;
-
 export default function SiteEntry() {
   const [, setLocation] = useLocation();
   const searchStr = useSearch();
@@ -271,10 +259,9 @@ export default function SiteEntry() {
   const isMobileViewport = useIsMobile();
   const deviceType = useDeviceType();
   const { isAdmin, isFieldEngineer } = useAuth();
-  const [guidedOverride, setGuidedOverride] = useState<boolean | null>(null);
-  const defaultGuided = false;
-  const guidedMode = guidedOverride ?? defaultGuided;
-  const [guidedStep, setGuidedStep] = useState(0);
+  // Batch 06C-P §3: the legacy internal step-wizard (guidedMode/guidedStep/
+  // showStep) is gone — /site/guided is the one real Guided experience and
+  // this page is always the continuous Classic/Detailed form.
   const [remarksNote, setRemarksNote] = useState("");
   // Photos are staged locally until the DPR is saved (it needs a DB id
   // before an attachment can be linked to it), then uploaded in one batch.
@@ -361,8 +348,6 @@ export default function SiteEntry() {
       }
     }
   };
-  const showStep = (n: number) => !guidedMode || guidedStep === n;
-  const goToStep = (n: number) => setGuidedStep(Math.max(0, Math.min(GUIDED_STEPS.length - 1, n)));
 
   // Fetch equipment master for unified equipment tracking
   const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
@@ -1498,14 +1483,8 @@ export default function SiteEntry() {
     );
   }
 
-  // Same guided workflow on every device — only the container width and
-  // step-dot density adapt: mobile stays a tight single-column wizard,
-  // tablet/desktop get a wider card layout with more context visible at once.
-  const guidedContainerClass =
-    deviceType === "mobile" ? "max-w-lg" : deviceType === "tablet" ? "max-w-3xl" : "max-w-5xl";
-
   return (
-    <div className={`${guidedMode ? guidedContainerClass : "max-w-5xl"} mx-auto space-y-6 pb-20`}>
+    <div className="max-w-5xl mx-auto space-y-6 pb-20">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-back">
           <ChevronLeft className="w-5 h-5" />
@@ -1555,58 +1534,8 @@ export default function SiteEntry() {
         />
       )}
 
-      {guidedMode && (
-        <div className="space-y-3" data-testid="guided-flow-shell">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              {GUIDED_STEPS.map((s, i) => (
-                <div
-                  key={s.key}
-                  className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold border ${
-                    i === guidedStep
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : i < guidedStep
-                      ? "bg-primary/15 text-primary border-primary/30"
-                      : "bg-muted text-muted-foreground border-transparent"
-                  }`}
-                  data-testid={`guided-step-dot-${i}`}
-                >
-                  {i < guidedStep ? <Check className="w-3.5 h-3.5" /> : i + 1}
-                </div>
-              ))}
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1 text-xs text-muted-foreground"
-              onClick={() => setGuidedOverride(false)}
-              data-testid="button-switch-classic-view"
-            >
-              <LayoutList className="w-3.5 h-3.5" /> Classic view
-            </Button>
-          </div>
-          <p className="text-sm font-semibold text-foreground" data-testid="text-guided-step-label">
-            Step {guidedStep + 1} of {GUIDED_STEPS.length}: {GUIDED_STEPS[guidedStep].label}
-          </p>
-        </div>
-      )}
-
-      {!guidedMode && (
-        <div className="flex justify-end -mt-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1 text-xs text-muted-foreground"
-            onClick={() => { setGuidedOverride(true); setGuidedStep(0); }}
-            data-testid="button-switch-guided-view"
-          >
-            <LayoutList className="w-3.5 h-3.5" /> Switch to guided view
-          </Button>
-        </div>
-      )}
-
       {/* Header Section */}
-      {showStep(0) && (
+      {(
       <Card>
         <CardHeader>
           <CardTitle>Report Details</CardTitle>
@@ -1681,7 +1610,7 @@ export default function SiteEntry() {
       )}
 
       {/* Activity Progress */}
-      {showStep(1) && (
+      {(
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
@@ -2461,7 +2390,7 @@ export default function SiteEntry() {
       )}
 
       {/* Equipment Log */}
-      {showStep(3) && (
+      {(
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Equipment Log</CardTitle>
@@ -2991,7 +2920,7 @@ export default function SiteEntry() {
       )}
 
       {/* Labour Strength */}
-      {showStep(2) && (
+      {(
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Labour Strength</CardTitle>
@@ -3173,7 +3102,7 @@ export default function SiteEntry() {
       )}
 
       {/* Materials Consumed/Issued (linked to work item for Plan vs Actual) */}
-      {showStep(4) && (
+      {(
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-teal-600">Materials Consumed / Issued</CardTitle>
@@ -3332,8 +3261,8 @@ export default function SiteEntry() {
       </Card>
       )}
 
-      {/* Site Purchases — kept in classic view only; guided flow keeps materials focused */}
-      {!guidedMode && (
+      {/* Site Purchases */}
+      {(
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-teal-600">Site Purchases</CardTitle>
@@ -3430,8 +3359,9 @@ export default function SiteEntry() {
       </Card>
       )}
 
-      {/* Remarks & Review — guided flow only, final step before submit */}
-      {guidedMode && showStep(5) && (
+      {/* Remarks & general photos (previously only reachable via the removed
+          internal wizard — kept as a normal Classic-form section) */}
+      {(
         <Card>
           <CardHeader>
             <CardTitle>Remarks & Review</CardTitle>
@@ -3500,7 +3430,7 @@ export default function SiteEntry() {
               <p className="text-xs text-muted-foreground mt-1">Photos are uploaded once you save the report.</p>
             </div>
             <p className="text-sm text-muted-foreground">
-              Review your entries using the step dots above, then tap Preview Report to finish.
+              Review your entries above, then tap Preview Report to finish.
             </p>
           </CardContent>
         </Card>
@@ -3509,35 +3439,7 @@ export default function SiteEntry() {
       {/* Action Buttons - sticky on mobile so Save/Preview stay reachable while scrolling a long form */}
       <div className="sticky bottom-0 left-0 right-0 z-10 -mx-4 sm:mx-0 mt-2 flex flex-wrap items-center justify-end gap-3 border-t bg-background/95 backdrop-blur px-4 py-3 sm:static sm:border-0 sm:bg-transparent sm:backdrop-blur-0 sm:px-0 sm:py-0">
         <AutoSaveIndicator lastSavedAt={lastSavedAt} isDirty={isDirty} className="mr-auto" />
-        {guidedMode ? (
-          <>
-            {guidedStep > 0 && (
-              <Button variant="outline" onClick={() => goToStep(guidedStep - 1)} className="gap-1" data-testid="button-guided-prev">
-                <ChevronLeft className="w-4 h-4" /> Back
-              </Button>
-            )}
-            {guidedStep < GUIDED_STEPS.length - 1 ? (
-              <Button onClick={() => goToStep(guidedStep + 1)} className="gap-1" data-testid="button-guided-next">
-                Next <ChevronRight className="w-4 h-4" />
-              </Button>
-            ) : isFormComplete() ? (
-              <Button onClick={handlePreview} className="gap-2" data-testid="button-preview">
-                <Eye className="w-4 h-4" />
-                Preview Report
-              </Button>
-            ) : (
-              <Button
-                onClick={handleSaveDraft}
-                disabled={draftMutation.isPending}
-                className="gap-2 bg-amber-500 hover:bg-amber-600 text-white"
-                data-testid="button-save-draft"
-              >
-                {draftMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                Save Start / Draft
-              </Button>
-            )}
-          </>
-        ) : (
+        {(
           <>
             <Button variant="outline" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-cancel">
               Cancel

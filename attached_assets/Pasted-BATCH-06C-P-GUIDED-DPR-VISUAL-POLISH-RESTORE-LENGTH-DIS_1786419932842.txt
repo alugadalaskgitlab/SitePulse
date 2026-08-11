@@ -1,0 +1,994 @@
+BATCH 06C-P — GUIDED DPR VISUAL POLISH
++ RESTORE LENGTH DISPLAY
++ SEPARATE LABOUR / EQUIPMENT WIZARD STEPS
++ REMOVE OBSOLETE INTERNAL DETAILED WIZARD
+
+This is a focused finishing pass on the CURRENT restored Guided DPR.
+
+IMPORTANT CURRENT STATE
+
+The REAL Guided DPR at:
+
+`/site/guided`
+
+is working and must be preserved.
+
+Current verified functionality already includes:
+
+- restored Guided wizard
+- per-row No Site Work
+- per-activity photos
+- Equipment & Fleet master selection
+- Labour gender/work-item preservation
+- Batch 04 submit-readiness
+- Batch 05 draft/equipment-usage linking
+- Batch 06B chainage-overlap protection
+
+DO NOT redesign or replace this working Guided flow.
+
+This batch is limited to:
+
+1. visual alignment/polish;
+2. `Add Row` → `Add Activity`;
+3. restore visible derived Length;
+4. make Labour and Equipment separate Guided wizard steps again;
+5. remove the obsolete second/legacy wizard that still exists inside Detailed DPR.
+
+No NEW schema change is expected in this polish batch.
+
+--------------------------------------------------
+1. INVESTIGATE CURRENT STATE FIRST
+--------------------------------------------------
+
+Inspect:
+
+- GuidedDpr.tsx
+- guided wizard step definitions/helpers
+- SiteEntry.tsx
+- SiteEdit.tsx
+- current Guided root/container
+- sticky Back / Save Draft / Next controls
+- Activity Details layout
+- Labour UI
+- Equipment UI
+- Photos / Remarks
+- Review page
+- current per-row No Site Work
+- current per-activity photos
+- Batch 05 Equipment Usage reuse
+- Batch 04 readiness
+- Batch 06B overlap guard
+
+Also inspect the obsolete internal guided presentation still remaining in SiteEntry, including:
+
+- GUIDED_STEPS
+- guidedOverride
+- guidedMode
+- guidedStep
+- showStep()
+- Step x of 6 UI
+- "Switch to guided view"
+
+Before coding, distinguish clearly between:
+
+A. REAL `/site/guided` wizard — KEEP.
+
+B. legacy internal SiteEntry wizard — REMOVE.
+
+Do not confuse them.
+
+--------------------------------------------------
+2. PRESERVE THE CURRENT REAL GUIDED WIZARD
+--------------------------------------------------
+
+Do NOT:
+
+- delete the current `/site/guided` wizard;
+- convert it to one long page;
+- rebuild it from scratch;
+- change its existing business logic unnecessarily;
+- remove current No Site Work behavior;
+- remove per-activity photos;
+- break Equipment/Labour parity fixes.
+
+Only make the specific flow/visual corrections below.
+
+--------------------------------------------------
+3. REMOVE THE OBSOLETE INTERNAL WIZARD FROM DETAILED DPR
+--------------------------------------------------
+
+SiteEntry/Detailed still contains an old second Guided experience using:
+
+- GUIDED_STEPS
+- guidedOverride
+- guidedMode
+- guidedStep
+- showStep()
+- Step 1 of 6 → Step 6 of 6
+- "Switch to guided view"
+
+This legacy wizard is redundant now that `/site/guided` exists.
+
+Remove the legacy PRESENTATION/NAVIGATION machinery from SiteEntry.
+
+Do NOT remove underlying DPR business logic used by Detailed.
+
+Preserve:
+
+- progress-entry state
+- BOQ calculations
+- chainage logic
+- equipment
+- labour
+- materials
+- photos
+- overlap guard
+- readiness
+- draft save
+- submit
+- work-item linking
+
+If any business logic sits inside a legacy guidedMode branch, extract/preserve it before deleting that branch.
+
+FINAL STATE:
+
+`/site/guided`
+= the one real Guided wizard.
+
+`SiteEntry` / Detailed
+= the normal continuous Classic/Detailed form.
+
+No second internal wizard remains inside Detailed.
+
+--------------------------------------------------
+4. APPLICATION-LEVEL GUIDED / DETAILED SWITCH
+--------------------------------------------------
+
+If Detailed retains an action such as:
+
+"Open Guided DPR"
+
+it must navigate to the REAL `/site/guided` route.
+
+It must preserve the SAME DPR/draft ID.
+
+It must NOT activate an internal Step-1-of-6 mode.
+
+Switching views must not create a second DPR.
+
+Merely viewing Detailed/Guided must not silently change future default mode unless existing explicit preference behavior says so.
+
+Preserve Batch 05 semantics.
+
+--------------------------------------------------
+5. TARGET REAL GUIDED WIZARD STRUCTURE
+--------------------------------------------------
+
+Current Guided combines Equipment and Labour too much.
+
+Restore separate logical wizard pages.
+
+Preferred structure:
+
+1. Report
+2. Activities
+3. Activity Details
+4. Labour
+5. Equipment
+6. Photos & Remarks
+7. Review
+
+If Materials currently has real editable Guided functionality, place it logically either:
+
+- as its own Materials step,
+or
+- with Photos/Remarks only if that matches actual current behavior.
+
+Do NOT create an empty decorative Materials page.
+
+CRITICAL REQUIREMENT:
+
+Labour and Equipment must be separate wizard pages.
+
+Do not keep them hidden together under one generic Resources/crew accordion.
+
+--------------------------------------------------
+6. DO NOT DISTURB THE CURRENT FLOW MORE THAN NECESSARY
+--------------------------------------------------
+
+The user already likes the restored Guided wizard.
+
+This batch should NOT introduce a new interaction model.
+
+Only separate the current combined Labour/Equipment content into dedicated steps.
+
+Do not add extra landing pages or picker screens.
+
+Back / Next remains the ordinary wizard navigation.
+
+--------------------------------------------------
+7. PAGE / CONTENT ALIGNMENT
+--------------------------------------------------
+
+The Guided page currently feels visually narrow/unbalanced.
+
+Use one shared responsive content container for:
+
+- page header
+- title
+- stepper
+- activity cards
+- labour step
+- equipment step
+- photos/remarks
+- review
+- sticky footer/button group
+
+Do not let the body and sticky footer use visibly different horizontal grids.
+
+Use an existing SitePulse responsive page-width convention.
+
+Do not stretch content edge-to-edge.
+
+The result should feel:
+
+- centered
+- balanced
+- professional
+- consistent with Reports/other modern pages
+
+--------------------------------------------------
+8. STICKY BUTTON ALIGNMENT
+--------------------------------------------------
+
+Align:
+
+Back
+Save Draft
+Next
+
+and on final step:
+
+Back
+Save Draft
+Submit DPR
+
+to the same content width as the body.
+
+Keep:
+
+- equal button heights
+- consistent spacing
+- Back secondary
+- Save Draft clearly available
+- Next / Submit primary
+
+Do not change button behavior.
+
+Ensure laptop/mobile wrapping remains sensible.
+
+--------------------------------------------------
+9. STEPPER ALIGNMENT
+--------------------------------------------------
+
+With separate Labour/Equipment steps, update the wizard stepper cleanly.
+
+Use concise labels such as:
+
+Report
+Activities
+Details
+Labour
+Equipment
+Photos
+Review
+
+or the actual final section names.
+
+Keep step circles/connectors evenly spaced.
+
+Do not force unreadably tiny typography.
+
+Use the existing responsive approach where possible.
+
+--------------------------------------------------
+10. RENAME `ADD ROW` TO `ADD ACTIVITY`
+--------------------------------------------------
+
+Where Guided currently shows:
+
++ Add Row
+
+change the user-facing label to:
+
++ Add Activity
+
+Do not change the underlying row behavior.
+
+Clicking Add Activity must continue adding the same inline Activity Progress row.
+
+Do not reintroduce the old activity-picker modal.
+
+--------------------------------------------------
+11. NO SITE WORK — PRESERVE PER-ROW BEHAVIOR
+--------------------------------------------------
+
+Every activity row must retain its own:
+
+[ ] No Site Work
+
+exactly as currently restored.
+
+This remains PER ROW.
+
+Mixed day must continue working:
+
+Row 1:
+No Site Work
+Re-clearing vegetation after rain/suspension
+
+Row 2:
+Normal BOQ activity
+WMM / excavation / etc.
+
+Do not turn No Site Work into:
+
+- whole-DPR status
+- separate workflow
+- separate add button
+
+Do not change its BOQ-exclusion behavior.
+
+--------------------------------------------------
+12. ACTIVITY ROW — NORMAL BOQ MODE
+--------------------------------------------------
+
+For a normal activity row, retain the existing measurement fields appropriate to the item.
+
+Common road entry should expose:
+
+- BOQ Item / Activity
+- Side
+- From Chainage
+- To Chainage
+- Length
+- Width
+- Thickness
+- Qty
+- UoM / quantity context as existing
+
+Use measurement-type rules.
+
+Do not show irrelevant fields.
+
+--------------------------------------------------
+13. RESTORE VISIBLE LENGTH FIELD
+--------------------------------------------------
+
+The current Guided Details step no longer visibly shows Length.
+
+Restore:
+
+Length (m)
+
+for chainage-based entries.
+
+Length must be derived using the canonical chainage logic:
+
+(To - From) × 1000
+
+Reuse the same helper/logic already used by Batch 04 / Detailed DPR.
+
+Do not duplicate arithmetic.
+
+Example:
+
+From:
+2+570
+
+To:
+2+660
+
+Length:
+90.00 m
+
+--------------------------------------------------
+14. LENGTH IS NORMALLY DERIVED / READ-ONLY
+--------------------------------------------------
+
+For normal road chainage work:
+
+Length should be read-only/derived.
+
+Do not require the Engineer to enter the same length twice.
+
+If existing DPR semantics support a legitimate explicit-length override for a particular measurement method, preserve that existing rule.
+
+Report the precedence.
+
+Do not silently remove valid override behavior.
+
+--------------------------------------------------
+15. MEASUREMENT-TYPE DISPLAY
+--------------------------------------------------
+
+Use meaningful dimensions only.
+
+VOLUME:
+From / To / Length / Width / Thickness / Qty
+
+AREA:
+From / To / Length / Width / Qty
+
+LINEAR:
+From / To / Length / Qty where applicable
+
+MANUAL:
+only meaningful fields
+
+NO SITE WORK:
+do not show billable measurement fields unnecessarily.
+
+Preserve Batch 04 quantity/UoM behavior.
+
+--------------------------------------------------
+16. LABOUR — SEPARATE WIZARD STEP
+--------------------------------------------------
+
+Create/restore a dedicated Guided Labour page.
+
+Show Labour rows directly.
+
+Do NOT require expanding:
+
+"Equipment, labour & remarks"
+
+or another combined accordion.
+
+Preserve current fields/parity work:
+
+- Category
+- Gender
+- Count
+- Contractor / Gang
+- Task
+- Link to Work Item
+- structure/reach where applicable
+
+Provide:
+
++ Add Labour
+
+on this page.
+
+Do not redesign Labour business logic.
+
+--------------------------------------------------
+17. PRESERVE LABOUR DATA-FIDELITY FIX
+--------------------------------------------------
+
+The recent fix preventing Guided from wiping:
+
+- gender
+- boqItemId
+- structureId
+
+must remain intact.
+
+Do not regress to hard-coded:
+
+gender = ""
+boqItemId = null
+structureId = null
+
+Detailed → Guided → Save must remain lossless.
+
+--------------------------------------------------
+18. EQUIPMENT — SEPARATE WIZARD STEP
+--------------------------------------------------
+
+Create/restore a dedicated Guided Equipment page.
+
+Show Equipment rows directly.
+
+Do NOT hide Equipment under a Labour/Resources accordion.
+
+Preserve current functionality:
+
+- Equipment & Fleet master selector
+- equipmentId
+- canonical machine name
+- registration
+- operator
+- task
+- work-item linkage
+- start/end times
+- opening/closing readings
+- trips / applicable special fields
+- diesel
+- Batch 05 open Equipment Usage reuse
+
+Provide:
+
++ Add Equipment
+
+directly on the Equipment step.
+
+--------------------------------------------------
+19. PRESERVE EQUIPMENT MASTER FIX
+--------------------------------------------------
+
+Do not regress to a free-text Machine field.
+
+Equipment must continue using Equipment & Fleet master.
+
+The equipment master must continue loading even when there are zero open Equipment Usage records.
+
+Preserve the corrected fetch condition.
+
+--------------------------------------------------
+20. PRESERVE EQUIPMENT USAGE REUSE
+--------------------------------------------------
+
+On Equipment step, if Equipment & Fleet already contains matching open usage:
+
+show prominently:
+
+"Equipment usage already recorded today"
+
+[Use in this DPR]
+
+Preserve:
+
+- equipmentId
+- plantUsageId
+- opening/usage details
+- server close/link behavior
+
+No duplicate operational usage.
+
+--------------------------------------------------
+21. EQUIPMENT WORK-ITEM LINK
+--------------------------------------------------
+
+Preserve Guided parity with Detailed:
+
+"Link to Work Item (optional)"
+
+using existing:
+
+- boqItemId
+- structureId
+
+For No Site Work/non-billable activity, BOQ link may remain blank and Task may describe:
+
+"Re-clearing vegetation"
+
+Do not force false BOQ linkage.
+
+--------------------------------------------------
+22. PHOTOS — PRESERVE CURRENT PER-ACTIVITY IMPLEMENTATION
+--------------------------------------------------
+
+Do NOT redesign photo architecture in this polish batch.
+
+Preserve the current 06C implementation:
+
+Each Activity Progress row may have up to:
+
+3 photos
+
+with:
+
+- Camera
+- Gallery
+- File Upload
+
+This applies to:
+
+- normal BOQ row
+- No Site Work row
+
+Do not change the current photo-linking schema/behavior unless fixing an actual regression.
+
+--------------------------------------------------
+23. GENERAL PHOTOS / REMARKS
+--------------------------------------------------
+
+Per-activity photos stay with their activity.
+
+General site/day photos may remain on the Photos & Remarks step.
+
+Remarks may be captured there.
+
+Do not mix all activity photos into one flat gallery.
+
+Material Receipt photos remain untouched.
+
+--------------------------------------------------
+24. REVIEW PAGE
+--------------------------------------------------
+
+Review should clearly summarize:
+
+- Activities
+- Labour
+- Equipment
+- Materials where applicable
+- Photos
+- Remarks
+
+Do not reduce Labour and Equipment to one generic Resources count.
+
+Show them separately.
+
+Preserve current readiness information.
+
+--------------------------------------------------
+25. DRAFT / MORNING-EVENING FLOW
+--------------------------------------------------
+
+The current working morning/evening flow must remain.
+
+Morning:
+
+Activity:
+BOQ item / From chainage only
+
+Equipment:
+machine / opening reading / start time
+
+Labour:
+actual count
+
+Photos where needed
+
+Save Draft.
+
+Evening:
+
+Complete Today's DPR
+→ SAME Guided draft
+
+finish:
+
+- To chainage
+- quantity
+- closing meter/time
+- other applicable details
+
+Submit.
+
+Do not make Next buttons equivalent to final validation.
+
+--------------------------------------------------
+26. REOPEN SAME DRAFT
+--------------------------------------------------
+
+Complete Today's DPR must reopen the same server draft.
+
+Do not create another DPR.
+
+Where practical:
+
+- resume last step
+or
+- go to first incomplete step
+
+Use existing safe behavior.
+
+Do not add new persistence/schema just to remember a wizard step unless already supported.
+
+--------------------------------------------------
+27. FINAL SUBMIT READINESS
+--------------------------------------------------
+
+Preserve Batch 04.
+
+Draft:
+lenient.
+
+Final Submit:
+consolidated readiness check.
+
+Do not change mandatory/advisory classification.
+
+Examples remain:
+
+- closing chainage missing
+- closing reading missing
+- end time missing
+- activity incomplete
+
+No Site Work row follows its current rules.
+
+--------------------------------------------------
+28. BATCH 06B OVERLAP GUARD
+--------------------------------------------------
+
+Preserve:
+
+- same-DPR overlap warning
+- prior submitted-DPR warning
+- reason requirement
+- server recheck
+- read-only prior-DPR modal
+
+The prior-DPR modal must continue overlaying the current Guided wizard without losing current state.
+
+No Site Work rows remain excluded from BOQ overlap enforcement.
+
+--------------------------------------------------
+29. VISUAL READABILITY
+--------------------------------------------------
+
+Improve Guided-specific typography where it is visibly muted.
+
+Core fields should have normal foreground contrast:
+
+- BOQ item
+- chainages
+- Length
+- dimensions
+- quantities
+- equipment
+- labour values
+
+Secondary helper text may remain muted.
+
+Do NOT perform a global app typography redesign here.
+
+--------------------------------------------------
+30. REMOVE LEGACY INTERNAL DETAILED WIZARD SAFELY
+--------------------------------------------------
+
+This cleanup must NOT disturb the current Guided wizard.
+
+Verify after removal:
+
+A. Detailed DPR opens as normal continuous Classic/Detailed form.
+
+B. No Step 1-of-6 wizard is reachable inside Detailed.
+
+C. No internal toggle activates that wizard.
+
+D. If "Open Guided" exists, it opens the real `/site/guided`.
+
+E. Same DPR/draft ID is preserved.
+
+F. Detailed save/edit/submit behavior is unchanged.
+
+This is a release requirement.
+
+--------------------------------------------------
+31. SCHEMA SAFETY
+--------------------------------------------------
+
+Expected NEW schema change from this polish batch:
+
+NONE.
+
+Do not add/drop/change columns or constraints.
+
+Existing photo-related additive columns from the preceding 06C work remain as-is.
+
+Do not alter them in this polish batch.
+
+If Publishing proposes any unrelated:
+
+- DROP COLUMN
+- DROP TABLE
+- SET NOT NULL
+- constraint tightening
+
+STOP and report.
+
+--------------------------------------------------
+32. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- BOQ quantity/UoM conversion
+- Batch 04 readiness semantics
+- Batch 05 draft routing
+- Batch 05 Equipment Usage business logic
+- Batch 06B overlap semantics
+- Progress Report calculations
+- programme-bar reported quantity
+- Project Scope
+- Auto Sequence
+- Gantt
+- Execution Arrangement
+- Tomorrow's Programme business logic
+- Geometry
+- Structure DPR
+- Stores
+- Material Receipt photo behavior
+- RA billing
+- historical submitted DPR data
+
+Do NOT restructure or replace the current working `/site/guided` wizard while removing the obsolete SiteEntry internal wizard.
+
+--------------------------------------------------
+33. TESTS
+--------------------------------------------------
+
+Add/update focused tests covering at least:
+
+A. Real `/site/guided` wizard still works.
+
+B. Start Today's Work still opens real Guided.
+
+C. Guided has separate Labour step.
+
+D. Guided has separate Equipment step.
+
+E. Labour is not hidden under combined Resources accordion.
+
+F. Equipment is not hidden under combined Resources accordion.
+
+G. `+ Add Activity` replaces `+ Add Row`.
+
+H. Add Activity still creates the same inline row.
+
+I. Every activity row retains No Site Work.
+
+J. Mixed No Site Work + BOQ rows still work.
+
+K. Length appears for chainage-based activity.
+
+L. 2+570 → 2+660 gives 90 m.
+
+M. Length updates when chainage changes.
+
+N. Area items do not show irrelevant Thickness.
+
+O. Volume items show Length + Width + Thickness.
+
+P. No Site Work hides/ignores billable dimensions appropriately.
+
+Q. Page body and sticky action controls align to same responsive grid.
+
+R. Back / Save Draft / Next work through every step.
+
+S. Draft can save at Activity Details.
+
+T. Draft can save at Labour.
+
+U. Draft can save at Equipment.
+
+V. Same draft reopens correctly.
+
+W. Equipment master remains controlled.
+
+X. Equipment master loads with zero open usages.
+
+Y. Existing Equipment Usage reuse remains functional.
+
+Z. Equipment work-item link remains preserved.
+
+AA. Labour gender remains preserved.
+
+AB. Labour boqItemId remains preserved.
+
+AC. Labour structureId remains preserved.
+
+AD. Per-activity photos remain correctly associated.
+
+AE. Camera/Gallery/File controls still work.
+
+AF. Max-3 photo rule still works.
+
+AG. Batch 06B overlap modal remains read-only and non-destructive.
+
+AH. SiteEntry no longer contains/reaches the legacy internal wizard.
+
+AI. No Step 1-of-6 / Step 6-of-6 UI remains in Detailed.
+
+AJ. Detailed remains the continuous Classic form.
+
+AK. Application-level Open Guided action opens the real `/site/guided` with same draft/DPR ID.
+
+AL. Removing legacy wizard causes no Detailed save/edit/submit regression.
+
+AM. No new schema change.
+
+Run the full suite.
+
+Treat as RELEASE BLOCKERS:
+
+- any field loss
+- duplicate DPR creation
+- old internal wizard still reachable
+- real Guided wizard regression
+- Equipment/Labour parity regression
+- per-activity photo regression
+- Batch 04/05/06B regression
+
+--------------------------------------------------
+34. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. Current Guided step structure before polish.
+
+B. Final Guided step structure.
+
+C. Exact visual/container alignment fix.
+
+D. Sticky button alignment fix.
+
+E. Stepper alignment fix.
+
+F. Add Row → Add Activity change.
+
+G. Root cause of missing Length.
+
+H. Length derivation/helper used.
+
+I. Labour dedicated step.
+
+J. Equipment dedicated step.
+
+K. Confirmation Equipment master/reuse behavior unchanged.
+
+L. Confirmation Labour data-preservation behavior unchanged.
+
+M. Confirmation No Site Work behavior unchanged.
+
+N. Confirmation per-activity photos unchanged.
+
+O. Exact SiteEntry legacy wizard code removed.
+
+P. Any business logic extracted/preserved before removing the legacy wizard.
+
+Q. Confirmation Detailed now has only continuous Classic form.
+
+R. Confirmation `/site/guided` remains the sole Guided wizard.
+
+S. Morning → evening walkthrough.
+
+T. Tests.
+
+U. Confirm explicitly:
+- no new schema change
+- no historical rewrite
+- no BOQ/report quantity change
+- no Structure DPR change
+- no Tomorrow's Programme/Geometry/Scope work
+
+DO NOT START ANOTHER BATCH.
+
+--------------------------------------------------
+SUCCESS CRITERION
+--------------------------------------------------
+
+1. The current working `/site/guided` wizard remains intact.
+
+2. Guided page, stepper, fields and bottom buttons are visually centered and balanced.
+
+3. Labour and Equipment are separate Guided wizard pages.
+
+4. `+ Add Activity` replaces `+ Add Row`.
+
+5. Derived Length is visible for applicable chainage-based activities.
+
+6. Per-row No Site Work remains unchanged and mixed-day DPRs still work.
+
+7. Equipment master, Equipment Usage linking and work-item linkage remain intact.
+
+8. Labour gender/work-item/structure preservation remains intact.
+
+9. Per-activity Camera/Gallery/File photos and max-3 behavior remain intact.
+
+10. The obsolete second wizard inside Detailed is completely removed.
+
+11. Detailed remains the continuous Classic/Detailed form.
+
+12. There is only one actual Guided experience: `/site/guided`.
+
+13. Batch 04/05/06B protections remain intact.
+
+14. No NEW schema or historical-data mutation is introduced.
