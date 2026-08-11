@@ -16,6 +16,7 @@ import type { SiteMaterialTrip, Site } from "@shared/schema";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { useUpload } from "@/hooks/use-upload";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { ReceiptWorkContext, TripWorkContextSummary, EMPTY_WORK_CONTEXT, type TripWorkContext } from "@/components/ReceiptWorkContext";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -73,6 +74,27 @@ export default function SiteMaterialTrips() {
     enteredBy: "",
     notes: "",
   });
+
+  // Batch 06E-F: optional Work Context (project / work item / arrangement /
+  // programme reach). Additional to procurement links — never required.
+  const [workCtx, setWorkCtx] = useState<TripWorkContext>(EMPTY_WORK_CONTEXT);
+  // Prefill must not silently overwrite a deliberate user entry: remember what
+  // we prefilled so a later arrangement change only replaces untouched values.
+  const [lastPrefill, setLastPrefill] = useState<{ material: string; supplier: string }>({ material: "", supplier: "" });
+  const applyArrangementPrefill = (p: { material: string | null; supplier: string | null; clientSupplied: boolean; external: boolean }) => {
+    setNewTrip((prev) => {
+      const next = { ...prev };
+      if (p.material && (!prev.material || prev.material === lastPrefill.material)) next.material = p.material;
+      const supplierValue = p.supplier ? (p.clientSupplied ? `${p.supplier} (CLIENT SUPPLIED)` : p.supplier) : null;
+      if (supplierValue && (!prev.supplier || prev.supplier === lastPrefill.supplier)) next.supplier = supplierValue;
+      if ((p.material && prev.material && prev.material !== lastPrefill.material && prev.material !== p.material) ||
+          (supplierValue && prev.supplier && prev.supplier !== lastPrefill.supplier && prev.supplier !== supplierValue)) {
+        toast({ title: "Kept your entries", description: "Material/Supplier were not overwritten by the arrangement — update them yourself if needed." });
+      }
+      setLastPrefill({ material: next.material === p.material ? p.material : lastPrefill.material, supplier: next.supplier === supplierValue ? supplierValue ?? "" : lastPrefill.supplier });
+      return next;
+    });
+  };
 
   // Photos are staged locally while creating a new trip (no DB id yet to
   // link an attachment to), then uploaded in one batch once the trip is saved.
@@ -141,6 +163,11 @@ export default function SiteMaterialTrips() {
         payload.indentItemId = piParams.piItemId;
         payload.pendingReceiptId = piParams.pendingReceiptId || undefined;
       }
+      // 06E-F: optional work-context linkage (additive; server validates).
+      if (workCtx.boqProjectId != null) payload.boqProjectId = workCtx.boqProjectId;
+      if (workCtx.boqItemId != null) payload.boqItemId = workCtx.boqItemId;
+      if (workCtx.programmeBarId != null) payload.programmeBarId = workCtx.programmeBarId;
+      if (workCtx.earthworkArrangementId != null) payload.earthworkArrangementId = workCtx.earthworkArrangementId;
       const res = await apiRequest("POST", "/api/site-material-trips", payload);
       return res.json();
     },
@@ -185,6 +212,8 @@ export default function SiteMaterialTrips() {
           enteredBy: newTrip.enteredBy,
           notes: "",
         });
+        setWorkCtx(EMPTY_WORK_CONTEXT);
+        setLastPrefill({ material: "", supplier: "" });
       }
     },
     onError: (error) => {
@@ -430,6 +459,19 @@ export default function SiteMaterialTrips() {
                 </div>
               </div>
 
+              {/* 06E-F: optional work-context linkage — hidden in PI-linked
+                  mode (procurement receipts keep their own linkage). */}
+              {!isPILinked && newTrip.site && (
+                <ReceiptWorkContext
+                  siteName={newTrip.site}
+                  sitesList={sitesList}
+                  value={workCtx}
+                  onChange={setWorkCtx}
+                  onArrangementPrefill={applyArrangementPrefill}
+                  testIdPrefix="trip-work-ctx"
+                />
+              )}
+
               <div className="space-y-1.5">
                 <Label className="text-sm">Attachments <span className="text-muted-foreground">(receipt/challan photo)</span></Label>
                 <input
@@ -560,7 +602,10 @@ export default function SiteMaterialTrips() {
                       <tr key={trip.id} className="border-b hover:bg-muted/30" data-testid={`row-trip-${trip.id}`}>
                         <td className="p-2">{trip.time || '-'}</td>
                         <td className="p-2 font-medium">{trip.site}</td>
-                        <td className="p-2">{trip.material}</td>
+                        <td className="p-2">
+                          {trip.material}
+                          <TripWorkContextSummary trip={trip} testIdPrefix="trip-list-ctx" />
+                        </td>
                         <td className="p-2">{trip.supplier || '-'}</td>
                         <td className="p-2">{trip.vehicleNumber || '-'}</td>
                         <td className="p-2 text-right font-mono">{trip.quantity?.toFixed(3)}</td>

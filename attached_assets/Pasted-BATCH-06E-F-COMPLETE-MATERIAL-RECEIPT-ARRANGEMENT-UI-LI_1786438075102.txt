@@ -1,0 +1,408 @@
+BATCH 06E-F — COMPLETE MATERIAL RECEIPT ↔ ARRANGEMENT UI LINKAGE
+
+The 06E backend/data linkage exists, but the CURRENT frontend does not expose it.
+
+Verified current state:
+
+- `site_material_trips` has:
+  - boqProjectId
+  - boqItemId
+  - programmeBarId
+  - earthworkArrangementId
+
+- server create/update validation exists for those links.
+
+BUT:
+
+- `SiteMaterialTrips.tsx` does not expose any of those linkage fields;
+- `SiteMaterialsReceived.tsx` does not expose them;
+- the current `GuidedDpr.tsx` also does not contain the planned
+  Arrangement / Received Today / Record Receipt activity integration.
+
+This batch completes the USER-FACING linkage only.
+
+Do NOT change schema again.
+
+--------------------------------------------------
+1. STANDALONE MATERIAL RECEIVED FORM
+--------------------------------------------------
+
+In the normal Site Material Received / Site Material Trip entry form,
+add an optional WORK CONTEXT section.
+
+The user-facing fields should be:
+
+- Project / BOQ Project
+- Work Item / BOQ Activity
+- Execution Arrangement
+- Programme / Reach, where applicable
+
+Do not expose raw IDs.
+
+Use controlled selectors.
+
+--------------------------------------------------
+2. WORK ITEM SELECTION
+--------------------------------------------------
+
+After Site/Project is known, show only BOQ items belonging to that project.
+
+Label clearly:
+
+Work Item / BOQ Activity
+
+Example:
+
+Embankment with Borrow Earth
+
+Selecting the Work Item should populate:
+
+boqProjectId
+boqItemId
+
+Do not require the user to type BOQ descriptions.
+
+--------------------------------------------------
+3. EXECUTION ARRANGEMENT SELECTOR
+--------------------------------------------------
+
+After Work Item is selected, fetch/filter applicable Execution Arrangements.
+
+Use:
+
+- same BOQ project
+- allocated BOQ item
+- applicable reach/programme context where available
+- approved / in_progress status
+
+Show a readable label such as:
+
+ABC Earthworks — Borrow Earth supply/carting
+Ch. 2+000–4+000
+₹180/Cum
+
+Do not expose:
+
+earthworkArrangementId = 17
+
+as the primary UI.
+
+Persist the selected arrangement ID in:
+
+earthworkArrangementId.
+
+--------------------------------------------------
+4. AUTO-PREFILL WHEN ONLY ONE ARRANGEMENT APPLIES
+--------------------------------------------------
+
+If exactly one valid arrangement applies:
+
+preselect it.
+
+Then prefill where appropriate:
+
+Material:
+arrangement.materialLabel
+
+Supplier:
+arrangement.agencyName
+
+Do not overwrite a deliberate user change without warning.
+
+If multiple arrangements apply:
+require user selection.
+
+If none apply:
+allow:
+
+No execution arrangement linked
+
+Receipt entry must still work.
+
+--------------------------------------------------
+5. PROGRAMME / REACH CONTEXT
+--------------------------------------------------
+
+If the selected arrangement/work item has an applicable programme bar for
+the receipt date/reach:
+
+allow/show:
+
+Programme / Reach
+
+and persist:
+
+programmeBarId.
+
+Do not force a programme-bar link when no reliable bar exists.
+
+Do not fuzzy-select a bar solely from text.
+
+--------------------------------------------------
+6. LINK VISIBILITY ON SAVED RECEIPT
+--------------------------------------------------
+
+After save, the receipt detail/history/list should visibly show its context.
+
+Example:
+
+Borrow Earth — 16 Cum
+Vehicle TS09AB1234
+
+Linked Work:
+Embankment
+
+Arrangement:
+ABC Earthworks — Borrow Earth supply/carting
+
+Programme / Reach:
+RHS Ch. 2+000–2+150
+
+The user should not have to infer that a hidden integer ID exists.
+
+--------------------------------------------------
+7. GUIDED DPR — ACTIVITY RECEIPT STRIP
+--------------------------------------------------
+
+Complete the previously approved 06E Guided integration.
+
+For relevant billable Activity Details rows, show a compact receipt section:
+
+Arrangement:
+ABC Earthworks — Borrow Earth supply/carting
+
+Required / Planned:
+[authoritative value or Not determined]
+
+Received Today:
+285 Cum · 18 trips
+
+[View Receipts]
+[Record Receipt]
+
+Do NOT restructure the Guided wizard.
+
+This sits inside the existing Activity Details step.
+
+--------------------------------------------------
+8. RECORD RECEIPT FROM DPR
+--------------------------------------------------
+
+When the user taps:
+
+Record Receipt
+
+from a DPR activity, open/reuse the existing Site Material Trip form with
+the context already supplied:
+
+- date
+- site
+- boqProjectId
+- boqItemId
+- programmeBarId where known
+- earthworkArrangementId where resolved
+- material
+- supplier
+- reach/location context
+
+The user then enters only actual receipt evidence:
+
+- time
+- vehicle
+- quantity
+- UoM
+- challan
+- unloading location
+- notes
+- photos
+
+Do NOT create a separate DPR receipt table.
+
+--------------------------------------------------
+9. EXISTING RECEIPT LINKING
+--------------------------------------------------
+
+If material was already recorded earlier through the standalone form and
+has matching stable IDs:
+
+show it automatically in the DPR activity's Received Today summary.
+
+If an older receipt lacks IDs but looks potentially relevant:
+
+show it only as a suggestion.
+
+Do not silently link on text matching.
+
+--------------------------------------------------
+10. DETAILED DPR PARITY
+--------------------------------------------------
+
+Detailed DPR should also show:
+
+Linked Site Receipts
+
+for the relevant activity/work context.
+
+Read-only display is sufficient in Detailed if normal creation continues
+through the Site Material Trip form.
+
+Do not create a Guided-only linkage.
+
+--------------------------------------------------
+11. ARRANGEMENT TYPES
+--------------------------------------------------
+
+Respect arrangement type.
+
+Examples:
+
+vendor_material_delivered
+→ normal vendor/material receipt linkage.
+
+fully_outsourced_composite
+→ receipt may be linked as evidence, but do not imply receipt quantity is
+  payable quantity.
+
+reused_excavated
+→ do not prefill an external supplier/vendor.
+
+client_supplied
+→ clearly show client-supplied context, not HLC vendor payable.
+
+Do not change billing logic.
+
+--------------------------------------------------
+12. EXISTING PROCUREMENT RECEIPTS
+--------------------------------------------------
+
+Do NOT break receipt flows that originate from:
+
+- indent
+- PI
+- pending receipt
+
+Their existing linkage fields remain intact.
+
+The new Work Context section is additional.
+
+Do not require an Execution Arrangement for ordinary procurement receipts.
+
+--------------------------------------------------
+13. NO DUPLICATE ENTRY
+--------------------------------------------------
+
+One physical delivery must remain:
+
+one `site_material_trips` record.
+
+Whether entered from:
+
+- standalone Material Received
+or
+- DPR → Record Receipt
+
+it must land in the same table/API.
+
+No duplicate DPR material receipt.
+
+--------------------------------------------------
+14. SCHEMA
+--------------------------------------------------
+
+Expected schema change: NONE.
+
+The four nullable linkage fields already exist.
+
+Do not add more columns/tables.
+
+If any schema change appears necessary:
+STOP and report.
+
+--------------------------------------------------
+15. TESTS
+--------------------------------------------------
+
+Test at least:
+
+A. Standalone receipt form exposes Work Item.
+
+B. Standalone form exposes Execution Arrangement.
+
+C. Correct arrangement list is filtered by project/work item.
+
+D. One valid arrangement auto-prefills.
+
+E. Multiple arrangements require selection.
+
+F. No arrangement still permits receipt entry.
+
+G. Selected arrangement persists earthworkArrangementId.
+
+H. BOQ item persists boqItemId.
+
+I. Project persists boqProjectId.
+
+J. Programme bar persists when reliably selected.
+
+K. Supplier prefills from agencyName.
+
+L. Material prefills from materialLabel.
+
+M. Saved receipt visibly shows linked arrangement/work context.
+
+N. Guided DPR activity shows linked arrangement.
+
+O. Guided DPR shows Received Today from linked trips.
+
+P. Record Receipt from DPR prefills all stable IDs.
+
+Q. Existing standalone linked receipt appears in DPR summary without duplication.
+
+R. Unlinked text-only historical receipt is not silently auto-linked.
+
+S. Detailed DPR shows linked receipts.
+
+T. Existing indent/PI receipt workflow unchanged.
+
+U. Cancelled receipt excluded from Received Today.
+
+V. No schema change.
+
+Run full suite.
+
+--------------------------------------------------
+16. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. Exact Material Received form before/after.
+
+B. Work Item selector behavior.
+
+C. Arrangement selector/filtering.
+
+D. Auto-prefill rules.
+
+E. Saved receipt context display.
+
+F. Guided DPR receipt-strip implementation.
+
+G. Record Receipt prefill from DPR.
+
+H. Existing-receipt linking behavior.
+
+I. Detailed parity.
+
+J. Procurement-flow regression check.
+
+K. Tests.
+
+Confirm:
+- no new schema
+- no duplicate receipt model
+- no vendor billing changes
+- no programme lifecycle changes
+- no Guided wizard restructuring
+
+DO NOT START ANOTHER BATCH.

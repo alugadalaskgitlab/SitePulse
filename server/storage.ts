@@ -8818,6 +8818,12 @@ export class DatabaseStorage implements IStorage {
       time: t.time || null,
       notes: t.notes || null,
       workType: t.workType || null,
+      // 06E-F: work-context linkage pass-through so the materials-received
+      // view can show the linked-work summary on trip rows.
+      boqProjectId: t.boqProjectId ?? null,
+      boqItemId: t.boqItemId ?? null,
+      programmeBarId: t.programmeBarId ?? null,
+      earthworkArrangementId: t.earthworkArrangementId ?? null,
     }));
 
     const waterConditions: any[] = [

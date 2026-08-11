@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { TripWorkContextSummary } from "@/components/ReceiptWorkContext";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { useAuth } from "@/lib/auth-context";
@@ -365,7 +366,10 @@ export default function SiteMaterialsReceived() {
                         </td>
                         <td className="p-2 border text-sm">{trip.site || "-"}</td>
                         <td className="p-2 border text-sm">{trip.vehicleNumber || "-"}</td>
-                        <td className="p-2 border text-sm font-medium">{trip.material || "-"}</td>
+                        <td className="p-2 border text-sm font-medium">
+                          {trip.material || "-"}
+                          {trip.source === "trip" && <TripWorkContextSummary trip={trip} testIdPrefix="received-list-ctx" />}
+                        </td>
                         <td className="p-2 border text-sm text-right">{trip.quantity} {trip.uom}</td>
                         <td className="p-2 border text-sm">{trip.supplier || "-"}</td>
                         <td className="p-2 border text-sm">{trip.receiptNumber || "-"}</td>
@@ -617,6 +621,12 @@ export default function SiteMaterialsReceived() {
                     <div className="col-span-2">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Remarks</p>
                       <p className="font-semibold mt-0.5">{selectedTrip.notes}</p>
+                    </div>
+                  )}
+                  {selectedTrip.source === "trip" && (selectedTrip.boqItemId != null || selectedTrip.earthworkArrangementId != null || selectedTrip.programmeBarId != null) && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Linked Work Context</p>
+                      <TripWorkContextSummary trip={selectedTrip} testIdPrefix="received-detail-ctx" />
                     </div>
                   )}
                 </div>

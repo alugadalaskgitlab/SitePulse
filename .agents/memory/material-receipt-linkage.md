@@ -17,3 +17,5 @@ description: How bulk material receipts (site_material_trips) link to earthwork 
 
 ## Known future gap (reported, not built)
 Vendor billing tie-in: arrangements store agencyName as free text (no vendor master FK); `getVendorBillAutoItems` matches supplier text only.
+
+**06E-F standalone form:** `client/src/components/ReceiptWorkContext.tsx` is the standalone-form UI seam (optional Work Context section + read-only `TripWorkContextSummary` + readable arrangement/bar labels). Trap: `getAllMaterialsReceived` remaps trip rows to a reduced shape — any new trip column shown in the materials-received view must be explicitly added to that map or it arrives `undefined` and the UI silently hides it.
