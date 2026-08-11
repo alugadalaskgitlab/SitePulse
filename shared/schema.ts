@@ -765,6 +765,14 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   indentItemId: integer("indent_item_id"),
   piTransactionId: integer("pi_transaction_id"),
   pendingReceiptId: integer("pending_receipt_id"),
+  // Batch 06E linkage — plain nullable IDs (NO DB-level FKs by design; app-level
+  // validation on write). Identifies what a bulk receipt was FOR so DPR/
+  // arrangement views can display it. DPR id is deliberately NOT a link:
+  // a receipt is valid before any DPR exists.
+  boqProjectId: integer("boq_project_id"),
+  boqItemId: integer("boq_item_id"),
+  programmeBarId: integer("programme_bar_id"),
+  earthworkArrangementId: integer("earthwork_arrangement_id"),
   createdAt: timestamp("created_at").defaultNow(),
   ...cancellationFields,
 }, (table) => ({

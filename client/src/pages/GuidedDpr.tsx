@@ -48,6 +48,7 @@ import { unlinkedOpenUsages, usageToGuidedRow, duplicateUsageAdvisory, type Open
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { splitGuidedEquipmentRow, buildGuidedEquipmentPayload, newGuidedEquipmentRow, computeTotalDiesel, computeTripTotalKm, isWaterTankerName, type GuidedEquipmentRow } from "@shared/guidedEquipment";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
+import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
 import { type CandidateChainageRow } from "@shared/chainageOverlap";
@@ -1484,6 +1485,29 @@ export default function GuidedDpr() {
                     ) : null}
                   </div>
                 </>
+              );
+            })()}
+            {/* Batch 06E: material receipt strip — arrangement-linked bulk
+                receipts (site_material_trips) for this activity. Renders only
+                where it has meaning (arrangement exists or receipts linked). */}
+            {e.boqItemId != null && boqProjectId != null && siteName && (() => {
+              const item = itemById.get(e.boqItemId);
+              const factor = item?.dprConversionFactor ?? 1;
+              const executedQty = e.quantity != null ? e.quantity * factor : null;
+              const loc = [e.side ? barSideLabel(e.side) : null, e.chainageFrom && e.chainageTo ? `Ch. ${e.chainageFrom}–${e.chainageTo}` : null].filter(Boolean).join(" ");
+              return (
+                <ActivityReceiptStrip
+                  siteName={siteName}
+                  date={date}
+                  boqProjectId={boqProjectId}
+                  boqItemId={e.boqItemId}
+                  programmeBarId={e.programmeBarId}
+                  executedQty={executedQty}
+                  executedUom={item?.unit ?? e.uom ?? null}
+                  locationLabel={loc || null}
+                  barPlannedQty={linkedBar?.plannedQty ?? null}
+                  testIdPrefix={`guided-receipt-${idx}`}
+                />
               );
             })()}
             <button className="text-xs text-primary flex items-center gap-1" onClick={() => updateEntry(idx, { expanded: !e.expanded })} data-testid={`button-details-${idx}`}>

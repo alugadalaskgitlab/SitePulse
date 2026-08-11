@@ -29,6 +29,7 @@ import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
+import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
 import { type CandidateChainageRow } from "@shared/chainageOverlap";
 import { boqItemDisplayName } from "@shared/boqItemName";
@@ -1500,6 +1501,21 @@ export default function SiteEdit() {
                         />
                       );
                     })()}
+                    {/* Batch 06E: Detailed parity — read-only Linked Site
+                        Receipts (linkage lives on site_material_trips). */}
+                    {entry.boqItemId != null && siteBoqProjectId != null && header.site && !entry.noSiteWork && (
+                      <ActivityReceiptStrip
+                        siteName={header.site}
+                        date={header.date}
+                        boqProjectId={siteBoqProjectId}
+                        boqItemId={entry.boqItemId}
+                        programmeBarId={entry.programmeBarId}
+                        executedQty={(() => { const q = entry.quantity ?? calculateQuantity(entry); const f = (siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.dprConversionFactor ?? 1; return q != null ? q * f : null; })()}
+                        executedUom={(siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.unit ?? entry.uom ?? null}
+                        readOnly
+                        testIdPrefix={`detailed-receipt-${idx}`}
+                      />
+                    )}
                     {/* Batch 06B: possible-overlap advisory — reuses this row's
                         chainageOverrideReason; prior DPRs open read-only in a
                         modal over this form. */}

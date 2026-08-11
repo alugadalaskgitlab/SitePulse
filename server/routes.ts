@@ -513,6 +513,10 @@ export async function registerRoutes(
         dateTo: req.query.dateTo as string | undefined,
         indentItemId: req.query.indentItemId ? parseInt(req.query.indentItemId as string) : undefined,
         indentId: req.query.indentId ? parseInt(req.query.indentId as string) : undefined,
+        boqProjectId: req.query.boqProjectId ? parseInt(req.query.boqProjectId as string) : undefined,
+        boqItemId: req.query.boqItemId ? parseInt(req.query.boqItemId as string) : undefined,
+        programmeBarId: req.query.programmeBarId ? parseInt(req.query.programmeBarId as string) : undefined,
+        earthworkArrangementId: req.query.earthworkArrangementId ? parseInt(req.query.earthworkArrangementId as string) : undefined,
         ...(permittedSiteNames !== null && !req.query.indentItemId && !req.query.indentId ? { permittedSiteNames } : {}),
       };
       const trips = await storage.getSiteMaterialTrips(filters);
@@ -523,11 +527,66 @@ export async function registerRoutes(
     }
   });
 
+  // Batch 06E: app-level validation for the four nullable linkage IDs on a
+  // site material trip (no DB FKs by design). Confirms each supplied ID
+  // exists and is mutually compatible. Returns an error string or null.
+  const validateTripLinkage = async (input: {
+    boqProjectId?: number | null;
+    boqItemId?: number | null;
+    programmeBarId?: number | null;
+    earthworkArrangementId?: number | null;
+  }): Promise<string | null> => {
+    const { boqProjectId, boqItemId, programmeBarId, earthworkArrangementId } = input;
+    if (boqProjectId != null) {
+      const project = await storage.getBoqProject(boqProjectId);
+      if (!project) return `BOQ project ${boqProjectId} not found`;
+    }
+    if (boqItemId != null) {
+      const item = await storage.getBoqItem(boqItemId);
+      if (!item) return `BOQ item ${boqItemId} not found`;
+      if (boqProjectId != null && item.boqProjectId !== boqProjectId) {
+        return `BOQ item ${boqItemId} does not belong to project ${boqProjectId}`;
+      }
+    }
+    if (programmeBarId != null) {
+      const bar = await storage.getWorkProgramBar(programmeBarId);
+      if (!bar) return `Programme bar ${programmeBarId} not found`;
+      if (boqProjectId != null && bar.boqProjectId !== boqProjectId) {
+        return `Programme bar ${programmeBarId} does not belong to project ${boqProjectId}`;
+      }
+      if (boqItemId != null && bar.boqItemId !== boqItemId) {
+        return `Programme bar ${programmeBarId} is not for BOQ item ${boqItemId}`;
+      }
+    }
+    if (earthworkArrangementId != null) {
+      const arrangement = await storage.getEarthworkArrangementById(earthworkArrangementId);
+      if (!arrangement) return `Execution arrangement ${earthworkArrangementId} not found`;
+      if (boqProjectId != null && arrangement.boqProjectId !== boqProjectId) {
+        return `Arrangement ${earthworkArrangementId} does not belong to project ${boqProjectId}`;
+      }
+      // Single-item arrangements must match the receipt's BOQ item; multi-item
+      // arrangements (boqItemId null + jsonb allocations) are checked against
+      // their allocation list when present.
+      if (boqItemId != null && arrangement.boqItemId != null && arrangement.boqItemId !== boqItemId) {
+        return `Arrangement ${earthworkArrangementId} is not for BOQ item ${boqItemId}`;
+      }
+      if (boqItemId != null && arrangement.boqItemId == null && Array.isArray(arrangement.boqItemAllocations) && (arrangement.boqItemAllocations as any[]).length > 0) {
+        const ids = (arrangement.boqItemAllocations as any[]).map((a: any) => Number(a?.boqItemId)).filter((n) => Number.isFinite(n));
+        if (ids.length > 0 && !ids.includes(boqItemId)) {
+          return `Arrangement ${earthworkArrangementId} allocations do not include BOQ item ${boqItemId}`;
+        }
+      }
+    }
+    return null;
+  };
+
   // Create a new site material trip
   app.post("/api/site-material-trips", async (req, res) => {
     try {
       if (!assertCreate(req, res, "site_materials")) return;
       const input = insertSiteMaterialTripSchema.parse(req.body);
+      const linkageError = await validateTripLinkage(input);
+      if (linkageError) return res.status(400).json({ message: linkageError });
       const trip = await storage.createSiteMaterialTrip(input);
       sendPushToSection("site_materials", "Site Material Trip Added", `${input.material || 'Material'} - ${input.site || ''}`, "/site-reports").catch(() => {});
       res.status(201).json(trip);
@@ -543,6 +602,29 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "site_materials")) return;
       const id = Number(req.params.id);
       const input = insertSiteMaterialTripSchema.partial().parse(req.body);
+      if ("boqProjectId" in input || "boqItemId" in input || "programmeBarId" in input || "earthworkArrangementId" in input) {
+        const existing = await storage.getSiteMaterialTripById(id);
+        if (!existing) return res.status(404).json({ message: "Site material trip not found" });
+        // 06E conflict guard: a receipt already linked to DPR/BOQ context may
+        // not be silently re-linked to different context — unlink (null) first.
+        const linkFields = ["boqProjectId", "boqItemId", "programmeBarId", "earthworkArrangementId"] as const;
+        for (const f of linkFields) {
+          if (f in input && input[f] != null && existing[f] != null && input[f] !== existing[f]) {
+            return res.status(409).json({ message: `This receipt is already linked (${f} #${existing[f]}). Remove the existing link before linking it elsewhere.` });
+          }
+        }
+        // Validate the MERGED record, not just the patch fields.
+        const merged = {
+          boqProjectId: "boqProjectId" in input ? input.boqProjectId : existing.boqProjectId,
+          boqItemId: "boqItemId" in input ? input.boqItemId : existing.boqItemId,
+          programmeBarId: "programmeBarId" in input ? input.programmeBarId : existing.programmeBarId,
+          earthworkArrangementId: "earthworkArrangementId" in input ? input.earthworkArrangementId : existing.earthworkArrangementId,
+        };
+        if (merged.boqProjectId != null || merged.boqItemId != null || merged.programmeBarId != null || merged.earthworkArrangementId != null) {
+          const linkageError = await validateTripLinkage(merged);
+          if (linkageError) return res.status(400).json({ message: linkageError });
+        }
+      }
       const trip = await storage.updateSiteMaterialTrip(id, input);
       sendPushToSection("site_materials", "Site Material Trip Updated", `Trip #${id} updated`, "/site-reports").catch(() => {});
       res.json(trip);

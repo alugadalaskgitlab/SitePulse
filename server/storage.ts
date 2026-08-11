@@ -1144,8 +1144,9 @@ export interface IStorage {
   updateSitePurchase(id: number, data: { itemDescription?: string; quantity?: number | null; uom?: string | null; vendor?: string | null; billNo?: string | null; amount?: number | null }): Promise<any>;
 
   // Site Material Trips (Quick Entry)
-  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; indentItemId?: number; indentId?: number; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
+  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
+  getSiteMaterialTripById(id: number): Promise<SiteMaterialTrip | undefined>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
   getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[]; dateFrom?: string; dateTo?: string }): Promise<{
@@ -8509,7 +8510,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; indentItemId?: number; indentId?: number; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<SiteMaterialTrip[]> {
+  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<SiteMaterialTrip[]> {
     let conditions = [];
     
     if (filters?.site) conditions.push(eq(siteMaterialTrips.site, filters.site));
@@ -8518,6 +8519,11 @@ export class DatabaseStorage implements IStorage {
     if (filters?.dateTo) conditions.push(lte(siteMaterialTrips.date, filters.dateTo));
     if (filters?.indentItemId) conditions.push(eq(siteMaterialTrips.indentItemId, filters.indentItemId));
     if (filters?.indentId) conditions.push(eq(siteMaterialTrips.indentId, filters.indentId));
+    // Batch 06E linkage filters
+    if (filters?.boqProjectId) conditions.push(eq(siteMaterialTrips.boqProjectId, filters.boqProjectId));
+    if (filters?.boqItemId) conditions.push(eq(siteMaterialTrips.boqItemId, filters.boqItemId));
+    if (filters?.programmeBarId) conditions.push(eq(siteMaterialTrips.programmeBarId, filters.programmeBarId));
+    if (filters?.earthworkArrangementId) conditions.push(eq(siteMaterialTrips.earthworkArrangementId, filters.earthworkArrangementId));
     if (!filters?.includeCancelled) {
       conditions.push(eq(siteMaterialTrips.isCancelled, false));
       conditions.push(eq(siteMaterialTrips.isDeleted, false));
@@ -8591,6 +8597,11 @@ export class DatabaseStorage implements IStorage {
         ));
       await this.checkAndCompleteIndent(piItem.indentId);
     }
+  }
+
+  async getSiteMaterialTripById(id: number): Promise<SiteMaterialTrip | undefined> {
+    const [trip] = await db.select().from(siteMaterialTrips).where(eq(siteMaterialTrips.id, id)).limit(1);
+    return trip;
   }
 
   async updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip> {
@@ -11207,7 +11218,11 @@ export class DatabaseStorage implements IStorage {
         ADD COLUMN IF NOT EXISTS indent_id integer,
         ADD COLUMN IF NOT EXISTS indent_item_id integer,
         ADD COLUMN IF NOT EXISTS pi_transaction_id integer,
-        ADD COLUMN IF NOT EXISTS pending_receipt_id integer
+        ADD COLUMN IF NOT EXISTS pending_receipt_id integer,
+        ADD COLUMN IF NOT EXISTS boq_project_id integer,
+        ADD COLUMN IF NOT EXISTS boq_item_id integer,
+        ADD COLUMN IF NOT EXISTS programme_bar_id integer,
+        ADD COLUMN IF NOT EXISTS earthwork_arrangement_id integer
     `));
   }
 
@@ -25322,14 +25337,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getEarthworkArrangementsForItem(boqProjectId: number, boqItemId: number): Promise<EarthworkArrangement[]> {
-    return db.select().from(earthworkArrangements)
-      .where(
-        and(
-          eq(earthworkArrangements.boqProjectId, boqProjectId),
-          eq(earthworkArrangements.boqItemId, boqItemId),
-        )
-      )
+    // Batch 06E: multi-item arrangements have boq_item_id NULL with the item
+    // list in boqItemAllocations (jsonb) — include those too, filtered in JS.
+    const rows = await db.select().from(earthworkArrangements)
+      .where(eq(earthworkArrangements.boqProjectId, boqProjectId))
       .orderBy(earthworkArrangements.createdAt);
+    return rows.filter((a) =>
+      a.boqItemId === boqItemId ||
+      (a.boqItemId == null && Array.isArray(a.boqItemAllocations) &&
+        (a.boqItemAllocations as Array<{ boqItemId?: number }>).some((al) => al?.boqItemId === boqItemId))
+    );
   }
 
   /**

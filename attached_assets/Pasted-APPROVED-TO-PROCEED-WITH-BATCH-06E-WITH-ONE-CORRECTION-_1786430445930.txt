@@ -1,0 +1,438 @@
+APPROVED TO PROCEED WITH BATCH 06E, WITH ONE CORRECTION
+
+The investigation and proposed minimal linkage are approved.
+
+Proceed with the build using the four nullable additive integer columns on
+`site_material_trips`:
+
+- boq_project_id
+- boq_item_id
+- programme_bar_id
+- earthwork_arrangement_id
+
+Use plain nullable IDs with application-level validation.
+Do NOT add DB-level FK constraints in this batch.
+
+All historical rows remain valid with NULL links.
+
+IMPORTANT CORRECTION — REQUIRED TODAY QTY
+
+Do NOT derive "Required Today" by automatically prorating a programme bar's
+plannedQty across its start/end date window.
+
+A multi-day programme bar does not imply equal daily planned production.
+
+Use this priority instead:
+
+1. An arrangement/programme allocation that genuinely represents the
+   applicable planned requirement for the activity/reach.
+
+2. An existing day-specific programme quantity, if SitePulse already has one.
+
+3. A reliable material requirement derived from the actual planned
+   activity/reach/BOM where such a resolver already exists.
+
+4. Otherwise:
+   Required Today = "Not determined"
+
+Do NOT invent:
+- equal daily prorating;
+- swell/shrinkage factors;
+- loose-to-compacted conversion;
+- material factors not already configured.
+
+If the only available value is the programme bar's total plannedQty across
+a multi-day window, show it only as programme-bar planned quantity/context,
+not as "Required Today".
+
+--------------------------------------------------
+IMPLEMENTATION APPROVAL
+--------------------------------------------------
+
+Proceed with the investigated design:
+
+A. SITE MATERIAL TRIP LINKS
+
+Add nullable fields:
+
+- boqProjectId
+- boqItemId
+- programmeBarId
+- earthworkArrangementId
+
+Update:
+
+- shared schema
+- insert/update schemas
+- POST /api/site-material-trips
+- relevant read endpoints
+- app-level validation
+
+Validation must confirm supplied IDs exist and are compatible with the
+selected project/site/context where practical.
+
+Do not make DPR ID the authoritative receipt link.
+
+--------------------------------------------------
+B. GUIDED DPR UX
+--------------------------------------------------
+
+Do NOT add/restructure the Guided wizard.
+
+Keep the current working wizard.
+
+On the relevant billable Activity Details card, add a compact material
+receipt section only where applicable.
+
+Conceptually:
+
+EMBANKMENT
+RHS Ch. 2+000–2+150
+
+Arrangement:
+ABC Earthworks — Borrow Earth supply/carting
+
+Planned / Required:
+300 Cum
+or:
+Not determined
+
+Received Today:
+285 Cum · 18 trips
+
+Executed:
+260 Cum
+
+[View Receipts]
+[Record Receipt]
+
+Do not show this strip for activities/material types where it has no
+meaning.
+
+--------------------------------------------------
+C. RECORD RECEIPT
+--------------------------------------------------
+
+Record Receipt must use the EXISTING Site Material Trip transaction.
+
+Do not create a second DPR receipt record.
+
+Prefill where available:
+
+- date
+- site
+- workType = road
+- material from arrangement.materialLabel
+- supplier from arrangement.agencyName
+- boqProjectId
+- boqItemId
+- programmeBarId
+- earthworkArrangementId
+- relevant reach/location context
+
+Engineer enters the actual evidence:
+
+- time
+- vehicle
+- quantity
+- UoM
+- receipt/challan number
+- unloading location
+- notes
+- existing receipt photos
+
+Preserve the existing site_material_trip attachment model.
+
+--------------------------------------------------
+D. EXISTING RECEIPTS
+--------------------------------------------------
+
+If matching receipts already exist for the same site/date/context, surface
+them.
+
+Do not duplicate them.
+
+Auto-link only when stable IDs already prove the relationship.
+
+Otherwise show them as conservative suggestions requiring user selection.
+
+Do not fuzzy-auto-link only on supplier/material text.
+
+--------------------------------------------------
+E. ARRANGEMENT RESOLUTION
+--------------------------------------------------
+
+Exactly one applicable approved/in-progress arrangement:
+prefill it.
+
+Multiple applicable arrangements:
+show a controlled selector.
+
+No applicable arrangement:
+allow the receipt, clearly show:
+"No execution arrangement linked."
+
+Do not fabricate an arrangement.
+
+Respect arrangementType.
+
+Do not prompt for external vendor receipt for:
+- reused_excavated
+where it is not appropriate.
+
+Treat client_supplied correctly and do not make it look like an HLC vendor
+payable.
+
+--------------------------------------------------
+F. REQUIRED / RECEIVED / EXECUTED SUMMARY
+--------------------------------------------------
+
+Implement one shared resolver/helper.
+
+Return conceptually:
+
+{
+  requiredQty,
+  requiredUom,
+  requiredSource,
+
+  receivedQty,
+  receivedUom,
+
+  executedQty,
+  executedUom,
+
+  comparable,
+  comparisonReason
+}
+
+REQUIRED:
+follow the corrected priority above.
+
+RECEIVED:
+sum active linked site_material_trips only:
+- !isCancelled
+- !isDeleted
+
+Do not silently combine mixed UoMs.
+
+EXECUTED:
+reuse existing DPR BOQ-credit semantics and Batch 04 conversion helpers.
+
+Do not create another execution quantity formula.
+
+--------------------------------------------------
+G. COMPARISON SAFETY
+--------------------------------------------------
+
+Only calculate numerical variance if the quantity bases are genuinely
+comparable.
+
+Example if all are truly comparable CUM:
+
+Required: 300 Cum
+Received: 285 Cum
+Executed: 260 Cum
+
+Variance to requirement: -15 Cum
+Received less Executed: +25 Cum
+
+Do NOT label +25 Cum as:
+- stock
+- balance material
+- payable balance
+
+Use neutral wording.
+
+If UoMs/bases differ:
+
+show all values separately and state:
+
+"Comparison only — receipt and BOQ measurement bases differ."
+
+Do not show a misleading numerical variance.
+
+--------------------------------------------------
+H. DETAILED DPR PARITY
+--------------------------------------------------
+
+Detailed DPR must also be able to display the linked Site Receipts for the
+same activity/context.
+
+Do not create a Guided-only relationship.
+
+Guided ↔ Detailed must preserve the same linkage because linkage lives on
+the receipt record.
+
+--------------------------------------------------
+I. DPR MATERIAL_LOGS
+--------------------------------------------------
+
+Do NOT merge or delete existing DPR material_logs.
+
+Keep their current purpose for:
+- consumed
+- issued
+- existing DPR material semantics
+
+Bulk vehicle deliveries remain authoritative in site_material_trips.
+
+Do not cause duplicate receipt entry.
+
+--------------------------------------------------
+J. DRAFT / RECEIPT INDEPENDENCE
+--------------------------------------------------
+
+A valid Site Material Receipt is its own operational transaction.
+
+It may exist before DPR Final Submit.
+
+DPR Save Draft must preserve/show the linkage.
+
+Deleting/discarding a DPR draft must NOT delete or cancel a valid material
+receipt.
+
+--------------------------------------------------
+K. VENDOR BILLING
+--------------------------------------------------
+
+Do NOT create vendor bills or vendor bill lines in this batch.
+
+Do NOT automatically decide payable quantity.
+
+The batch must only establish the evidence chain:
+
+Arrangement
+→ Site Material Receipt
+→ BOQ/programme context
+→ DPR execution
+
+Future Vendor Billing will determine whether payment basis is:
+
+- delivered material
+- executed quantity
+- trips
+- equipment/time
+- composite/manual measurement
+
+according to the arrangement.
+
+--------------------------------------------------
+L. VENDOR IDENTITY GAP
+--------------------------------------------------
+
+Keep `earthworkArrangementId` as the stable relationship in this batch.
+
+Do not broaden this task into a Vendor/Party master migration merely
+because agencyName is currently text.
+
+Report that vendor-master linkage remains a future improvement.
+
+--------------------------------------------------
+M. SCHEMA / PUBLISH SAFETY
+--------------------------------------------------
+
+The ONLY intended schema changes are four nullable additive columns on
+site_material_trips:
+
+- boq_project_id
+- boq_item_id
+- programme_bar_id
+- earthwork_arrangement_id
+
+No:
+- DROP TABLE
+- DROP COLUMN
+- SET NOT NULL
+- destructive FK
+- unrelated constraint tightening
+- historical rewrite
+
+Before publishing, inspect the generated migration carefully.
+
+If any unrelated/destructive change appears:
+STOP and report.
+
+--------------------------------------------------
+N. TESTS
+--------------------------------------------------
+
+Implement all tests from the investigation report, with these additional
+requirements:
+
+1. Multi-day programme bar must NOT automatically produce
+   plannedQty / numberOfDays as Required Today.
+
+2. If no authoritative daily/material requirement exists:
+   Required Today = Not determined.
+
+3. Existing programme-bar total may be displayed only as context, not
+   mislabeled as daily requirement.
+
+4. Mixed receipt UoMs do not get summed into a false single quantity.
+
+5. Receipt deletion/cancellation rules continue to exclude inactive
+   receipts from totals.
+
+6. Existing procurement-linked site material trips continue to work.
+
+7. New linkage fields do not interfere with:
+   indentId
+   indentItemId
+   piTransactionId
+   pendingReceiptId.
+
+8. No vendor bill auto-line is created.
+
+9. No programme bar status changes.
+
+10. No Guided wizard restructuring.
+
+Run full suite.
+
+--------------------------------------------------
+O. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. Exact schema migration applied.
+
+B. App-level validation for each new link.
+
+C. Guided receipt-strip UX.
+
+D. Detailed parity.
+
+E. Arrangement resolution logic.
+
+F. Record Receipt prefill behavior.
+
+G. Existing-receipt suggestion/link behavior.
+
+H. Required Qty source priority actually implemented.
+
+I. Explicit confirmation that multi-day plannedQty is NOT equally prorated.
+
+J. Received aggregation.
+
+K. Executed quantity helper reused.
+
+L. Comparable/non-comparable examples.
+
+M. Cancelled/deleted receipt handling.
+
+N. Guided ↔ Detailed preservation.
+
+O. Future vendor-billing evidence chain.
+
+P. Tests.
+
+Q. Confirm:
+- only four intended nullable columns added
+- no vendor billing built
+- no programme lifecycle change
+- no DPR wizard restructure
+- no historical rewrite
+
+DO NOT START ANOTHER BATCH.
