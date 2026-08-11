@@ -2404,6 +2404,29 @@ export class DatabaseStorage implements IStorage {
       // Mark original DPR as superseded so it no longer appears in listings or reports
       await tx.update(dprs).set({ isSuperseded: true }).where(eq(dprs.id, id));
 
+      // Batch 06C: copy photo attachment records to the clone (same immutable
+      // object paths) so per-activity photos — keyed by the entryKeys we just
+      // preserved — and general site photos stay visible on the new DPR.
+      const originalAttachments = await tx.select().from(attachments)
+        .where(and(eq(attachments.moduleType, "dpr_progress"), eq(attachments.linkedRecordId, id)));
+      if (originalAttachments.length > 0) {
+        await tx.insert(attachments).values(
+          originalAttachments.map((a) => ({
+            moduleType: a.moduleType,
+            linkedRecordId: dprId,
+            siteId: a.siteId,
+            boqProjectId: a.boqProjectId,
+            fileName: a.fileName,
+            objectPath: a.objectPath,
+            mimeType: a.mimeType,
+            fileSize: a.fileSize,
+            uploadedBy: a.uploadedBy,
+            docType: a.docType,
+            progressEntryKey: a.progressEntryKey,
+          }))
+        );
+      }
+
       return newDpr;
     });
   }

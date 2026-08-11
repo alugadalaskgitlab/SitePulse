@@ -52,6 +52,7 @@ import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
 import { type CandidateChainageRow } from "@shared/chainageOverlap";
 import { GUIDED_STEPS, clampGuidedStep, guidedStepBlocker, guidedEntryComplete, type GuidedStepId } from "@/lib/guidedWizard";
+import { MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
 import { Checkbox } from "@/components/ui/checkbox";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
@@ -102,7 +103,16 @@ interface GuidedEntry {
 // Batch 04 save fidelity: Guided edits 4 fields but must round-trip every
 // other equipment field untouched (shared/guidedEquipment.ts).
 type SimpleEquipmentRow = GuidedEquipmentRow;
-interface SimpleLabourRow { category: string; count: number | null; contractor: string; task: string; }
+// Batch 06C §12–13: Guided labour carries the SAME fields as Detailed —
+// gender, task and the optional Work Item linkage are preserved, never
+// hard-coded away on save.
+interface SimpleLabourRow {
+  category: string; gender: string; count: number | null; contractor: string; task: string;
+  boqItemId: number | null; structureId: string | null;
+}
+const newLabourRow = (): SimpleLabourRow =>
+  ({ category: "", gender: "", count: null, contractor: "", task: "", boqItemId: null, structureId: null });
+const GENDER_OPTIONS = ["Male", "Female"];
 
 // Batch 1: actual-execution-side choices come from the shared matrix — the
 // four roadway values by default, narrowed to the matching corridor when the
@@ -166,7 +176,6 @@ export default function GuidedDpr() {
   const [remarks, setRemarks] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [showYesterdayPreview, setShowYesterdayPreview] = useState(false);
-  const [addItemOpen, setAddItemOpen] = useState(false);
   const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const photoCameraRef = useRef<HTMLInputElement>(null);
@@ -229,7 +238,8 @@ export default function GuidedDpr() {
       // Legacy autosave blobs predate `passthrough` — normalise so old rows
       // don't crash the payload builder.
       setEquipment((d.equipment ?? []).map((e: any) => ({ ...newGuidedEquipmentRow(), ...e, passthrough: e.passthrough ?? {} })));
-      setLabour(d.labour ?? []);
+      // Legacy autosave blobs predate gender/work-item fields — normalise.
+      setLabour((d.labour ?? []).map((l: any) => ({ ...newLabourRow(), ...l })));
       setRemarks(d.remarks ?? ""); setDraftId(d.draftId ?? null);
       // Restored rows (incl. legacy blobs without the flag) get their override
       // state re-derived from geometry once BOQ items are available.
@@ -296,7 +306,10 @@ export default function GuidedDpr() {
       structureItems: (urlDraftDpr.structureItems ?? []).map(({ id, dprId, ...rest }: any) => rest),
     };
     setLabour((urlDraftDpr.labour ?? []).map((l: any): SimpleLabourRow => ({
-      category: l.category || "", count: l.count != null ? Number(l.count) : null, contractor: l.contractor || "", task: l.task || "",
+      category: l.category || "", gender: l.gender || "",
+      count: l.count != null ? Number(l.count) : null,
+      contractor: l.contractor || "", task: l.task || "",
+      boqItemId: l.boqItemId ?? null, structureId: l.structureId ?? null,
     })));
     // Batch 05 (spec §10): this server draft is authoritative — silence any
     // stale "new DPR" autosave blob that belongs to the same draft/context.
@@ -328,11 +341,27 @@ export default function GuidedDpr() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: openUsages.length > 0,
+    // Batch 06C §9: the master must load whenever the Equipment step is
+    // usable — open-usage reuse is an ADDITIONAL mechanism, not a
+    // prerequisite for picking a machine from the Equipment & Fleet master.
   });
+  const activeEquipmentMaster = useMemo(
+    () => equipmentMasterList.filter((e: any) => e.isActive !== 0 && e.isActive !== false),
+    [equipmentMasterList],
+  );
   const equipmentNameOf = (equipmentId: number): string | undefined =>
     equipmentMasterList.find((e: any) => e.id === equipmentId)?.name;
   const unlinkedUsages = unlinkedOpenUsages(openUsages, equipment);
+  // Batch 06C §18: photos already attached to this draft on the server —
+  // they count toward each activity's 3-photo cap across save/reopen cycles.
+  const { data: existingAttachments = [] } = useQuery<Array<{ progressEntryKey?: string | null }>>({
+    queryKey: ["/api/attachments", "dpr_progress", draftId],
+    queryFn: async () => {
+      const res = await fetch(`/api/attachments?moduleType=dpr_progress&linkedRecordId=${draftId}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: draftId != null,
+  });
   // Batch 05 (spec §10): backstop sweep — a debounced autosave write that was
   // already scheduled under "guided-dpr-new" when the server draft got saved
   // could land AFTER the success-handler cleanup. Once a server draft exists,
@@ -513,19 +542,22 @@ export default function GuidedDpr() {
     }]);
   };
 
-  const addEntryFromItem = (item: SiteBoqItem) => {
+  // Batch 06C §7: "+ Add Row" creates the activity row DIRECTLY — no modal.
+  // The row itself carries the No Site Work checkbox and (when off) the BOQ
+  // item selector; programme suggestions in step 2 stay as one-tap adds.
+  const addBlankEntry = () => {
     setEntries((prev) => [...prev, {
       entryKey: newEntryKey(),
       noSiteWork: false,
       noSiteWorkDescription: "",
-      activity: boqItemDisplayName(item),
-      boqItemId: item.id,
+      activity: "",
+      boqItemId: null,
       programmeBarId: null,
       side: "",
       chainageFrom: "",
       chainageTo: "",
       quantity: null,
-      uom: item.unit ?? "",
+      uom: "",
       expanded: false,
       width: null,
       thickness: null,
@@ -536,8 +568,18 @@ export default function GuidedDpr() {
       executedBy: "",
       qtyOverridden: false,
     }]);
-    setAddItemOpen(false);
+    if (step === 2) setStep(3);
   };
+
+  // Selecting/changing the row's BOQ item (rows not linked to a programme bar).
+  const setEntryBoqItem = (idx: number, item: SiteBoqItem) =>
+    setEntries((prev) => prev.map((e, i) => (i === idx ? {
+      ...e,
+      boqItemId: item.id,
+      activity: boqItemDisplayName(item),
+      uom: item.unit ?? "",
+      programmeBarId: null,
+    } : e)));
 
   const updateEntry = (idx: number, patch: Partial<GuidedEntry>) =>
     setEntries((prev) => prev.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
@@ -632,7 +674,7 @@ export default function GuidedDpr() {
     // Yesterday copy is structure-only: seeds carry the 4 edited fields and an
     // empty passthrough (no readings/times are ever copied across days).
     setEquipment(st.equipment.map((e: any) => ({ ...newGuidedEquipmentRow(), ...e, passthrough: {} })));
-    setLabour(st.labour);
+    setLabour(st.labour.map((l: any) => ({ ...newLabourRow(), ...l })));
     // photos / readings / remarks / submit status intentionally NOT copied
     setRemarks("");
     setStagedPhotos([]);
@@ -656,11 +698,26 @@ export default function GuidedDpr() {
   };
   // Task #1409: per-activity staged photos (Camera / Gallery / File inputs
   // share one target row via entryPhotoTargetRef).
+  // Batch 06C §18: hard cap — already-attached (server) + staged (local) may
+  // never exceed MAX_ACTIVITY_PHOTOS per activity row. The server rejects a
+  // fourth independently; this stops it earlier with a clear message.
+  const entryAttachedCount = (key: string): number => countEntryAttachments(existingAttachments, key);
+  const entryPhotoCapacityOf = (key: string): number =>
+    activityPhotoCapacity(entryAttachedCount(key), (entryPhotos[key] ?? []).length);
   const addEntryPhotos = (files: FileList | null) => {
     const key = entryPhotoTargetRef.current;
     const valid = filterValidPhotos(files);
     if (!key || valid.length === 0) return;
-    setEntryPhotos((prev) => ({ ...prev, [key]: [...(prev[key] ?? []), ...valid] }));
+    const capacity = entryPhotoCapacityOf(key);
+    if (capacity <= 0) {
+      toast({ title: "Photo limit reached", description: `Maximum ${MAX_ACTIVITY_PHOTOS} photos per activity.`, variant: "destructive" });
+      return;
+    }
+    if (valid.length > capacity) {
+      toast({ title: "Some photos not added", description: `Only ${capacity} more allowed — maximum ${MAX_ACTIVITY_PHOTOS} photos per activity.`, variant: "destructive" });
+    }
+    const accepted = valid.slice(0, capacity);
+    setEntryPhotos((prev) => ({ ...prev, [key]: [...(prev[key] ?? []), ...accepted] }));
   };
   const removeEntryPhoto = (key: string, i: number) =>
     setEntryPhotos((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((_, j) => j !== i) }));
@@ -790,9 +847,11 @@ export default function GuidedDpr() {
       // Batch 04: edited fields on top of the untouched passthrough — no more
       // hard-coded ""/null wiping of values entered in the Detailed editor.
       equipment: equipment.filter((e) => e.machine).map((e) => buildGuidedEquipmentPayload(e)),
+      // Batch 06C §12: real values round-trip — gender / work-item / structure
+      // links are never wiped by a Guided save.
       labour: labour.filter((l) => l.category).map((l) => ({
-        category: l.category, gender: "", count: l.count ?? 0, task: l.task,
-        contractor: l.contractor, boqItemId: null, structureId: null,
+        category: l.category, gender: l.gender, count: l.count ?? 0, task: l.task,
+        contractor: l.contractor, boqItemId: l.boqItemId, structureId: l.structureId,
       })),
       materials: unmanagedSectionsRef.current.materials,
       sitePurchases: unmanagedSectionsRef.current.sitePurchases,
@@ -1116,10 +1175,12 @@ export default function GuidedDpr() {
         </div>
       )}
 
-      {/* + Record another activity (manual add) */}
+      {/* Batch 06C §7: + Add Row creates the activity row directly (no modal)
+          and jumps to Details where the row carries its own No Site Work
+          checkbox and BOQ item selector. */}
       {siteName && (
-        <Button variant="outline" className="w-full mb-4" onClick={() => setAddItemOpen(true)} data-testid="button-add-activity">
-          <Plus className="w-4 h-4 mr-2" />Record another activity
+        <Button variant="outline" className="w-full mb-4" onClick={addBlankEntry} data-testid="button-add-activity">
+          <Plus className="w-4 h-4 mr-2" />Add Row
         </Button>
       )}
       </>)}
@@ -1204,6 +1265,28 @@ export default function GuidedDpr() {
               </div>
             )}
             {!e.noSiteWork && (<>
+            {/* Batch 06C §7: rows created via "+ Add Row" pick their BOQ item
+                right here — programme-suggested rows keep their item fixed
+                (the bar defines it), so the selector shows only for unlinked
+                rows. Changing the item resets the bar link. */}
+            {e.programmeBarId == null && (
+              <div>
+                <Label>BOQ Item / Activity</Label>
+                <Select
+                  value={e.boqItemId != null ? String(e.boqItemId) : ""}
+                  onValueChange={(v) => { const item = itemById.get(Number(v)); if (item) setEntryBoqItem(idx, item); }}
+                >
+                  <SelectTrigger data-testid={`select-boq-item-${idx}`}><SelectValue placeholder="Select BOQ item…" /></SelectTrigger>
+                  <SelectContent>
+                    {boqItems.map((item) => (
+                      <SelectItem key={item.id} value={String(item.id)}>
+                        {boqItemDisplayName(item)}{item.unit ? ` · ${item.unit}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {/* 031 Part C: manually-added items get the shared bar picker with
                 auto-matching (1 candidate → auto-link, several → pick,
                 incompatible bars stay behind "Other bars"). */}
@@ -1407,10 +1490,10 @@ export default function GuidedDpr() {
         );
       })}
 
-      {/* + Record another activity */}
+      {/* Batch 06C §7: direct row creation — no BOQ-picker modal */}
       {siteName && (
-        <Button variant="outline" className="w-full mb-4" onClick={() => setAddItemOpen(true)} data-testid="button-add-activity-step3">
-          <Plus className="w-4 h-4 mr-2" />Record another activity
+        <Button variant="outline" className="w-full mb-4" onClick={addBlankEntry} data-testid="button-add-activity-step3">
+          <Plus className="w-4 h-4 mr-2" />Add Row
         </Button>
       )}
       {/* Shared hidden inputs for per-activity photos (one set, routed by
@@ -1501,9 +1584,64 @@ export default function GuidedDpr() {
                   return (
                     <div key={i} className="mb-3 space-y-1.5">
                       <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                        <Input placeholder="Machine" value={eq.machine} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, machine: ev.target.value } : r))} data-testid={`input-eq-machine-${i}`} />
+                        {/* Batch 06C §8: machine comes from the Equipment & Fleet
+                            master (same selector as Detailed) — no free-typed
+                            machine identity. Selecting sets equipmentId, canonical
+                            name, registration and keeps ownership context. */}
+                        <Select
+                          value={pt.equipmentId != null ? String(pt.equipmentId) : ""}
+                          onValueChange={(v) => {
+                            const sel = activeEquipmentMaster.find((m: any) => m.id === Number(v));
+                            if (!sel) return;
+                            setEquipment((p) => p.map((r, j) => {
+                              if (j !== i) return r;
+                              const nextPt = { ...r.passthrough, equipmentId: sel.id } as Record<string, any>;
+                              delete nextPt.plantUsageId; // reset link until reuse/fetch resolves
+                              return { ...r, machine: sel.name, vehicleNo: sel.registrationNumber || "", passthrough: nextPt };
+                            }));
+                          }}
+                        >
+                          <SelectTrigger data-testid={`select-eq-machine-${i}`}>
+                            <SelectValue placeholder="Select equipment…">
+                              {eq.machine || undefined}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {activeEquipmentMaster.map((m: any) => (
+                              <SelectItem key={m.id} value={String(m.id)}>
+                                {m.name} {m.registrationNumber ? `(${m.registrationNumber})` : ""} — {m.ownership === "hired" ? `HIRED: ${m.vendorName ?? ""}` : "HLC OWN"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <Input placeholder="Task" value={eq.task} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, task: ev.target.value } : r))} data-testid={`input-eq-task-${i}`} />
                         <Button variant="ghost" size="icon" onClick={() => setEquipment((p) => p.filter((_, j) => j !== i))}><Trash2 className="w-4 h-4" /></Button>
+                      </div>
+                      {/* Batch 06C §11: optional Work Item linkage (same fields as
+                          Detailed — boqItemId; structure link is preserved on
+                          round-trip and cleared when the item changes). */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Work item (optional)</Label>
+                        <Select
+                          value={pt.boqItemId != null ? String(pt.boqItemId) : "none"}
+                          onValueChange={(v) => {
+                            setEquipment((p) => p.map((r, j) => {
+                              if (j !== i) return r;
+                              const nextPt = { ...r.passthrough } as Record<string, any>;
+                              if (v === "none") { delete nextPt.boqItemId; nextPt.structureId = null; }
+                              else { nextPt.boqItemId = Number(v); nextPt.structureId = null; }
+                              return { ...r, passthrough: nextPt };
+                            }));
+                          }}
+                        >
+                          <SelectTrigger data-testid={`select-eq-workitem-${i}`}><SelectValue placeholder="None" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {boqItems.map((item) => (
+                              <SelectItem key={item.id} value={String(item.id)}>{boqItemDisplayName(item)}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <div>
@@ -1545,17 +1683,43 @@ export default function GuidedDpr() {
               <div>
                 <Label className="mb-1 block">Labour</Label>
                 {labour.map((l, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_70px_1fr_auto] gap-2 mb-2">
-                    <Select value={l.category} onValueChange={(v) => setLabour((p) => p.map((r, j) => j === i ? { ...r, category: v } : r))}>
-                      <SelectTrigger data-testid={`select-labour-cat-${i}`}><SelectValue placeholder="Category" /></SelectTrigger>
-                      <SelectContent>{LABOUR_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                  <div key={i} className="mb-3 space-y-1.5">
+                    <div className="grid grid-cols-[1fr_90px_70px_auto] gap-2">
+                      <Select value={l.category} onValueChange={(v) => setLabour((p) => p.map((r, j) => j === i ? { ...r, category: v } : r))}>
+                        <SelectTrigger data-testid={`select-labour-cat-${i}`}><SelectValue placeholder="Category" /></SelectTrigger>
+                        <SelectContent>{LABOUR_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                      </Select>
+                      {/* Batch 06C §12: gender is a real field, same as Detailed */}
+                      <Select value={l.gender} onValueChange={(v) => setLabour((p) => p.map((r, j) => j === i ? { ...r, gender: v } : r))}>
+                        <SelectTrigger data-testid={`select-labour-gender-${i}`}><SelectValue placeholder="Gender" /></SelectTrigger>
+                        <SelectContent>{GENDER_OPTIONS.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                      </Select>
+                      <Input type="number" placeholder="Nos" value={l.count ?? ""} onChange={(ev) => setLabour((p) => p.map((r, j) => j === i ? { ...r, count: ev.target.value === "" ? null : Number(ev.target.value) } : r))} data-testid={`input-labour-count-${i}`} />
+                      <Button variant="ghost" size="icon" onClick={() => setLabour((p) => p.filter((_, j) => j !== i))}><Trash2 className="w-4 h-4" /></Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input placeholder="Agency / contractor" value={l.contractor} onChange={(ev) => setLabour((p) => p.map((r, j) => j === i ? { ...r, contractor: ev.target.value } : r))} data-testid={`input-labour-contractor-${i}`} />
+                      <Input placeholder="Task (e.g. RE-CLEARING VEGETATION)" value={l.task} onChange={(ev) => setLabour((p) => p.map((r, j) => j === i ? { ...r, task: ev.target.value } : r))} data-testid={`input-labour-task-${i}`} />
+                    </div>
+                    {/* Batch 06C §13: optional Work Item linkage — blank for
+                        No Site Work crews, a BOQ item for billable work. */}
+                    <Select
+                      value={l.boqItemId != null ? String(l.boqItemId) : "none"}
+                      onValueChange={(v) => setLabour((p) => p.map((r, j) => j === i
+                        ? { ...r, boqItemId: v === "none" ? null : Number(v), structureId: null }
+                        : r))}
+                    >
+                      <SelectTrigger data-testid={`select-labour-workitem-${i}`}><SelectValue placeholder="Work item (optional)" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No work item</SelectItem>
+                        {boqItems.map((item) => (
+                          <SelectItem key={item.id} value={String(item.id)}>{boqItemDisplayName(item)}</SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
-                    <Input type="number" placeholder="Nos" value={l.count ?? ""} onChange={(ev) => setLabour((p) => p.map((r, j) => j === i ? { ...r, count: ev.target.value === "" ? null : Number(ev.target.value) } : r))} data-testid={`input-labour-count-${i}`} />
-                    <Input placeholder="Agency / contractor" value={l.contractor} onChange={(ev) => setLabour((p) => p.map((r, j) => j === i ? { ...r, contractor: ev.target.value } : r))} data-testid={`input-labour-contractor-${i}`} />
-                    <Button variant="ghost" size="icon" onClick={() => setLabour((p) => p.filter((_, j) => j !== i))}><Trash2 className="w-4 h-4" /></Button>
                   </div>
                 ))}
-                <Button variant="outline" size="sm" onClick={() => setLabour((p) => [...p, { category: "", count: null, contractor: "", task: "" }])} data-testid="button-add-labour">
+                <Button variant="outline" size="sm" onClick={() => setLabour((p) => [...p, newLabourRow()])} data-testid="button-add-labour">
                   <Plus className="w-3.5 h-3.5 mr-1" />Labour
                 </Button>
               </div>
@@ -1742,29 +1906,6 @@ export default function GuidedDpr() {
         </DialogContent>
       </Dialog>
 
-      {/* Add-another-activity dialog */}
-      <Dialog open={addItemOpen} onOpenChange={setAddItemOpen}>
-        <DialogContent data-testid="dialog-add-activity">
-          <DialogHeader>
-            <DialogTitle>Record another activity</DialogTitle>
-            <DialogDescription>Pick the BOQ item you worked on today.</DialogDescription>
-          </DialogHeader>
-          <div className="max-h-72 overflow-y-auto space-y-1">
-            {boqItems.length === 0 && <p className="text-sm text-muted-foreground">No BOQ items found for this site's project.</p>}
-            {boqItems.map((item) => (
-              <button
-                key={item.id}
-                className="w-full text-left border rounded-md p-2.5 hover:border-primary transition-colors"
-                onClick={() => addEntryFromItem(item)}
-                data-testid={`button-boq-item-${item.id}`}
-              >
-                <p className="text-sm font-medium">{boqItemDisplayName(item)}</p>
-                <p className="text-xs text-muted-foreground">{item.itemCode ? `${item.itemCode} · ` : ""}{item.unit}</p>
-              </button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

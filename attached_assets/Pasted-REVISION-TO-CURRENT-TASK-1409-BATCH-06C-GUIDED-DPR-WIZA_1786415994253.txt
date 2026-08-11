@@ -1,0 +1,836 @@
+REVISION TO CURRENT TASK #1409 / BATCH 06C
+GUIDED DPR WIZARD + PER-ROW NO SITE WORK + RESOURCE PARITY + ACTIVITY PHOTOS
+
+Do NOT restart this task from scratch.
+
+The current ZIP already contains substantial Task #1409 work.
+
+Continue from the CURRENT implementation, but correct/complete it according to the requirements below.
+
+CURRENT IMPLEMENTATION VERIFIED IN THE ZIP
+
+The real `/site/guided` page now has a 5-step wizard:
+
+1. Report
+2. Activities
+3. Details
+4. Photos & crew
+5. Review
+
+Keep this restored Guided wizard.
+
+Do NOT remove it and do NOT convert Guided back into one long page.
+
+The current Task #1409 also already contains:
+
+- per-row `entryKey`
+- per-row `noSiteWork`
+- `noSiteWorkDescription`
+- per-activity staged-photo support
+- `progress_entries.entry_key`
+- `attachments.progress_entry_key`
+
+Continue from this state.
+
+--------------------------------------------------
+1. NO SITE WORK — EXACT PER-ROW MODEL
+--------------------------------------------------
+
+The required UX is the existing Classic/Detailed pattern shown in the supplied screenshot:
+
+EVERY Activity Progress row has its own:
+
+[ ] No Site Work
+
+This is per row.
+
+It is NOT:
+- a whole-DPR switch;
+- a separate "Add Non-Billable Activity" workflow;
+- a separate activity type.
+
+Use one normal activity row.
+
+A DPR may contain any combination of:
+
+Row 1:
+No Site Work = ON
+
+Row 2:
+No Site Work = OFF
+
+Row 3:
+No Site Work = OFF
+
+etc.
+
+This is mandatory for mixed working days.
+
+--------------------------------------------------
+2. REAL BUSINESS EXAMPLE
+--------------------------------------------------
+
+The following must work in ONE DPR:
+
+ROW 1
+No Site Work = ON
+
+Activity:
+RE-CLEARING VEGETATION
+
+Description:
+VEGETATION REGROWTH AFTER PROLONGED RAIN / WORK SUSPENSION.
+RE-CLEARING REQUIRED BUT NOT BILLABLE.
+
+This row must NOT contribute to BOQ progress.
+
+ROW 2
+No Site Work = OFF
+
+BOQ Item:
+WMM
+
+RHS
+Ch. 3+200 – 3+350
+Qty = normal calculated/entered BOQ progress.
+
+This row DOES contribute to BOQ progress.
+
+Equipment and labour used during the day must also be recordable normally.
+
+--------------------------------------------------
+3. KEEP USER-FACING LABEL "NO SITE WORK"
+--------------------------------------------------
+
+For now, keep the familiar user-facing label:
+
+"No Site Work"
+
+as shown in the existing Classic screenshot.
+
+Do not rename it to "Non-billable Activity" in this task.
+
+However, helper text may explain:
+
+"Use when this activity should be recorded in the DPR but must not count toward BOQ progress — for example rain suspension, re-clearing/rework, cleaning, restoration, etc."
+
+The existing schema field names remain unchanged.
+
+--------------------------------------------------
+4. NO SITE WORK TOGGLE SEMANTICS
+--------------------------------------------------
+
+When No Site Work is OFF:
+
+show normal BOQ progress fields:
+
+- BOQ Item / Activity
+- Side
+- From Chainage
+- To Chainage
+- L
+- W
+- T
+- UoM
+- Qty
+- programme/quantity controls
+- applicable overlap warnings
+
+When No Site Work is ON:
+
+on that SAME row:
+
+- hide/disable billable measurement inputs;
+- clear stale billable geometry/quantity;
+- expose Activity;
+- expose Description / Reason;
+- keep the row in the DPR;
+- exclude it from BOQ progress calculations;
+- exclude it from BOQ overlap enforcement.
+
+Do not remove other activity rows.
+
+--------------------------------------------------
+5. GUIDED HYDRATION
+--------------------------------------------------
+
+The current Task #1409 correction that hydrates existing `noSiteWork` rows instead of filtering them out is correct.
+
+Preserve it.
+
+Verify:
+
+Detailed-created No Site Work row
+→ Guided
+→ Save Draft
+→ reopen
+
+must remain visible and intact.
+
+Guided-created No Site Work row
+→ Detailed
+must also appear correctly.
+
+--------------------------------------------------
+6. GUIDED WIZARD FLOW
+--------------------------------------------------
+
+Keep the current restored 5-step Guided wizard unless investigation proves the earlier known Guided flow used a materially different step order.
+
+Current ZIP:
+
+1 Report
+2 Activities
+3 Details
+4 Photos & crew
+5 Review
+
+The user must not have to enter the old Detailed form and then activate a second internal wizard.
+
+Field Home:
+
+Start Today's Work
+→ `/site/guided`
+→ Step 1 of the REAL Guided wizard.
+
+Complete Today's DPR
+→ SAME server draft
+→ Guided wizard.
+
+Draft remains resumable.
+
+--------------------------------------------------
+7. STEP 2 / STEP 3 ACTIVITY FLOW — REDUCE EXTRA CLICKS
+--------------------------------------------------
+
+Current Task #1409 still has:
+
+"Record another activity"
+→ modal BOQ picker.
+
+Reduce this unnecessary interaction.
+
+Preferred behavior:
+
++ Add Row
+
+creates a new Activity Progress row directly.
+
+The row itself contains:
+
+- No Site Work checkbox
+- BOQ Item selector when No Site Work is OFF
+- Activity/Description when No Site Work is ON
+
+If Step 2 is deliberately the programme-selection step and Step 3 is details,
+retain that distinction for programme-suggested items.
+
+But a manually added activity must not require an unnecessary modal merely to create a row.
+
+Report the final click flow.
+
+--------------------------------------------------
+8. EQUIPMENT — CURRENT ZIP IS STILL WRONG
+--------------------------------------------------
+
+The current ZIP still renders:
+
+Machine [free text]
+Task [free text]
+
+for new Guided Equipment rows.
+
+This remains a confirmed parity/data-integrity gap.
+
+Replace Machine free text with the same Equipment & Fleet master selector used by Detailed DPR.
+
+New Guided equipment must preserve:
+
+- equipmentId
+- canonical machine
+- registration / vehicle no.
+- ownership/hired context
+- applicable usage type
+
+Do not create arbitrary equipment identity from typed machine names.
+
+--------------------------------------------------
+9. EQUIPMENT MASTER FETCH
+--------------------------------------------------
+
+Current Guided equipment master query is still enabled only when:
+
+`openUsages.length > 0`
+
+That is wrong.
+
+The Equipment master must load whenever the Guided Equipment step is usable.
+
+Open Equipment Usage is an additional reuse mechanism, not the prerequisite for loading master equipment.
+
+--------------------------------------------------
+10. KEEP BATCH 05 EQUIPMENT-USAGE REUSE
+--------------------------------------------------
+
+Preserve:
+
+"Equipment usage already recorded today"
+
+→ Use in this DPR
+
+with existing:
+
+- equipmentId
+- plantUsageId
+- opening details
+- closePlantUsage behavior
+
+Do not create a duplicate operational usage record.
+
+--------------------------------------------------
+11. EQUIPMENT — LINK TO WORK ITEM
+--------------------------------------------------
+
+Detailed DPR already supports optional Work Item linkage.
+
+Guided must expose/preserve the same existing fields:
+
+- boqItemId
+- structureId
+
+For billable work:
+
+JCB
+→ Roadway Excavation
+
+Roller
+→ WMM
+
+For No Site Work:
+
+BOQ Work Item may remain blank
+
+Task:
+RE-CLEARING VEGETATION
+
+Do not add a new schema relationship to the activity row in this task.
+
+--------------------------------------------------
+12. LABOUR — CURRENT ZIP IS STILL INCOMPLETE
+--------------------------------------------------
+
+The Guided Labour UI in the ZIP still only shows roughly:
+
+- Category
+- Count
+- Agency/Contractor
+
+It does not yet match the existing Detailed semantics.
+
+Also preserve/fix the already-confirmed save-fidelity issue.
+
+Guided must preserve/use:
+
+- category
+- gender
+- count
+- contractor/gang
+- task
+- boqItemId
+- structureId
+
+Do not hard-code:
+
+gender = ""
+boqItemId = null
+structureId = null
+
+on save.
+
+--------------------------------------------------
+13. LABOUR WORK ITEM LINK
+--------------------------------------------------
+
+Expose the same optional Work Item linkage already present in Detailed DPR.
+
+For billable work:
+
+8 Unskilled
+Work Item: WMM
+
+For No Site Work:
+
+6 Unskilled
+Work Item: none
+Task: RE-CLEARING VEGETATION
+
+Both are valid.
+
+--------------------------------------------------
+14. PHOTOS — PER ACTIVITY
+--------------------------------------------------
+
+The business requirement is:
+
+EVERY Activity Progress row gets its own photos.
+
+This applies to:
+
+- normal BOQ row;
+- No Site Work row.
+
+Maximum:
+
+3 photos PER ACTIVITY ROW.
+
+Each activity row must provide the same source choices:
+
+- Camera
+- Gallery
+- File Upload
+
+Do not use only one generic file picker.
+
+The photo controls should sit with the relevant activity in the Details step.
+
+--------------------------------------------------
+15. GENERAL DPR PHOTOS
+--------------------------------------------------
+
+General day/site photos may remain available separately if useful.
+
+They are different from activity photos.
+
+So the report may contain:
+
+General Site Photos
+
+plus:
+
+Activity 1 Photos
+Activity 2 Photos
+Activity 3 Photos
+
+Do not mix all activity photos back into one flat gallery.
+
+--------------------------------------------------
+16. MATERIAL RECEIPT PHOTOS — DO NOT TOUCH
+--------------------------------------------------
+
+Material Receipt already stores photos per individual receipt.
+
+Leave that workflow exactly as it is.
+
+Do not reuse or alter material-receipt attachment behavior for this change.
+
+--------------------------------------------------
+17. IMPORTANT — CURRENT PHOTO IMPLEMENTATION HAS ALREADY INTRODUCED SCHEMA
+--------------------------------------------------
+
+The current ZIP has already added:
+
+`progress_entries.entry_key`
+
+and
+
+`attachments.progress_entry_key`
+
+and startup DDL:
+
+ALTER TABLE progress_entries
+ADD COLUMN IF NOT EXISTS entry_key text
+
+ALTER TABLE attachments
+ADD COLUMN IF NOT EXISTS progress_entry_key text
+
+Therefore this task is NO LONGER a "no schema change" task.
+
+Before completing/publishing:
+
+explicitly report and justify this design.
+
+Confirm:
+
+A. why `linkedRecordId` alone was not sufficient;
+
+B. why a stable client-generated `entryKey` is required;
+
+C. how the key survives:
+   - Draft save
+   - Draft update
+   - Guided ↔ Detailed
+   - DPR version/edit/clone;
+
+D. how old DPR-level photos remain visible;
+
+E. whether the new columns are additive-only and nullable;
+
+F. whether production already has/needs these additive columns.
+
+Do not conceal this schema change behind startup DDL.
+
+--------------------------------------------------
+18. MAX 3 PHOTOS — CLIENT AND SERVER
+--------------------------------------------------
+
+Current ZIP staging logic appears to append activity photos without enforcing the required maximum.
+
+Fix this.
+
+For each activity:
+
+existing attached photos
++
+currently staged photos
+
+must never exceed 3.
+
+Client:
+prevent selecting/uploading more than remaining capacity.
+
+Example:
+
+2 already attached
+→ user may add only 1.
+
+Server:
+independently reject a fourth `dpr_progress` attachment for the same activity key.
+
+Do not rely only on the browser.
+
+Return a clear error:
+
+"Maximum 3 photos allowed for this activity."
+
+General DPR-level photos may retain their current limit/behavior unless another existing rule applies.
+
+--------------------------------------------------
+19. PHOTO SAVE / RETRY SAFETY
+--------------------------------------------------
+
+Verify staged activity photos survive normal Draft-save behavior.
+
+Successful uploads must leave the staged queue.
+
+Failed uploads must remain available for retry.
+
+Repeated Draft Save must NOT re-upload already-successful activity photos.
+
+Deleting/removing an activity row before upload must remove only that row's staged photos.
+
+Do not attach its photos to another row accidentally.
+
+--------------------------------------------------
+20. HISTORICAL PHOTO COMPATIBILITY
+--------------------------------------------------
+
+Existing historical DPR photos were stored as:
+
+moduleType = dpr_progress
+linkedRecordId = DPR id
+without progressEntryKey.
+
+Do NOT orphan them.
+
+They should continue appearing as:
+
+General / legacy DPR photos
+
+in:
+- DPR Detail
+- submitted report
+- prior-DPR read-only preview
+
+Do not guess which historical activity they belonged to.
+
+--------------------------------------------------
+21. DPR REPORT DISPLAY
+--------------------------------------------------
+
+Submitted DPR Detail/Report should display activity photos under the correct activity.
+
+Conceptually:
+
+ROADWAY EXCAVATION
+Ch. ...
+Qty ...
+[Photo 1] [Photo 2]
+
+NO SITE WORK
+RE-CLEARING VEGETATION
+Description ...
+[Photo 1] [Photo 2] [Photo 3]
+
+Then:
+
+General Site Photos
+
+for unlinked/legacy DPR-level photos.
+
+Do not show an activity's photo under another activity.
+
+--------------------------------------------------
+22. DETAILED DPR PHOTO PARITY
+--------------------------------------------------
+
+Per-activity photo support must work in BOTH:
+
+- Guided
+- Detailed/Classic
+
+The user should not lose or move photo associations merely by switching DPR view.
+
+Use the same `entryKey` semantics if the current chosen architecture is retained.
+
+--------------------------------------------------
+23. OVERLAP / BOQ REPORTING
+--------------------------------------------------
+
+No Site Work rows:
+
+- remain excluded from BOQ progress;
+- remain excluded from Batch 06B BOQ overlap enforcement;
+- do not enter RA-style Progress Report totals.
+
+Normal billable rows continue existing behavior.
+
+Do not modify Progress Report formulas.
+
+--------------------------------------------------
+24. DRAFT / MORNING-EVENING FLOW
+--------------------------------------------------
+
+Morning:
+
+Activity row:
+From chainage only
+
+or:
+
+No Site Work:
+Activity + partial Description
+
+Equipment:
+opening reading/time
+
+Labour:
+actual count
+
+Save Draft.
+
+Evening:
+
+reopen SAME Guided draft.
+
+Complete remaining fields.
+
+Submit.
+
+Activity photos already taken in the morning must still be attached to the correct activity.
+
+--------------------------------------------------
+25. FINAL SUBMIT READINESS
+--------------------------------------------------
+
+Keep Batch 04 rules.
+
+No Site Work row should require meaningful:
+
+- Activity
+- Description/reason
+
+before Final Submit.
+
+It must NOT require:
+
+- BOQ Item
+- BOQ quantity
+- programme bar
+- overlap reason
+
+Draft remains lenient.
+
+--------------------------------------------------
+26. SCHEMA / PUBLISH SAFETY
+--------------------------------------------------
+
+Because Task #1409 has already introduced additive schema columns:
+
+Before publish, verify the generated production migration carefully.
+
+Allowed intended schema additions only:
+
+- progress_entries.entry_key nullable text
+- attachments.progress_entry_key nullable text
+
+There must be NO:
+
+- DROP TABLE
+- DROP COLUMN
+- unrelated SET NOT NULL
+- unrelated constraint tightening
+
+If Replit Publishing proposes anything destructive or unrelated:
+
+STOP and report.
+
+Do not approve it automatically.
+
+--------------------------------------------------
+27. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT change:
+
+- Batch 04 BOQ/UoM conversion
+- Batch 05 draft routing
+- Batch 06B overlap rules
+- Progress Report totals
+- programme-bar quantity logic
+- Project Scope
+- Auto Sequence
+- Gantt
+- Execution Arrangement
+- Tomorrow's Programme business logic
+- Geometry
+- Stores/material receipt photo logic
+- RA billing
+- historical submitted DPR data
+
+--------------------------------------------------
+28. TESTS
+--------------------------------------------------
+
+Add/complete tests for at least:
+
+A. Guided wizard is the real `/site/guided` flow.
+
+B. Start Today's Work enters Guided wizard.
+
+C. Complete Today's DPR reopens same Guided draft.
+
+D. Every Activity row has No Site Work checkbox.
+
+E. One DPR can contain No Site Work + normal BOQ rows.
+
+F. No Site Work row contributes zero BOQ progress.
+
+G. No Site Work row does not trigger BOQ overlap.
+
+H. Existing No Site Work row hydrates in Guided.
+
+I. Guided Equipment uses Equipment master.
+
+J. Equipment master loads with zero open usages.
+
+K. Existing Equipment Usage reuse still works.
+
+L. Equipment Work Item linkage persists.
+
+M. Guided Labour preserves gender.
+
+N. Guided Labour preserves boqItemId.
+
+O. Guided Labour preserves structureId.
+
+P. Labour Work Item linkage works.
+
+Q. Each Activity row can add photos from Camera.
+
+R. Each Activity row can add photos from Gallery.
+
+S. Each Activity row can add photos from File Upload.
+
+T. No Site Work row can also have activity photos.
+
+U. Fourth photo for same activity is rejected client-side.
+
+V. Fourth photo for same activity is rejected server-side.
+
+W. Two different activities may each have up to 3 photos.
+
+X. Activity photo remains linked after Draft save/reopen.
+
+Y. Activity photo remains linked across Guided ↔ Detailed.
+
+Z. Removing one row does not move its photos to another row.
+
+AA. Failed upload remains retryable without duplicating successful uploads.
+
+AB. Legacy DPR-level photos remain visible as general photos.
+
+AC. Material Receipt photos unchanged.
+
+AD. Only intended additive schema columns introduced.
+
+AE. Batch 04/05/06B regression suites remain green.
+
+Run full suite.
+
+--------------------------------------------------
+29. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. Final Guided wizard steps.
+
+B. Normal morning/evening click flow.
+
+C. Per-row No Site Work behavior.
+
+D. Mixed No Site Work + billable activity demonstration.
+
+E. Equipment master/parity correction.
+
+F. Labour preservation/parity correction.
+
+G. Per-activity photo implementation.
+
+H. Camera/Gallery/File behavior.
+
+I. Max-3 enforcement:
+   - client
+   - server.
+
+J. entryKey / progressEntryKey architecture.
+
+K. Exact schema additions.
+
+L. Historical photo compatibility.
+
+M. Guided ↔ Detailed photo/data fidelity.
+
+N. Material Receipt photo confirmation.
+
+O. Tests.
+
+P. Confirm no unrelated schema/workflow changes.
+
+DO NOT START ANOTHER BATCH.
+
+SUCCESS CRITERION
+
+1. The restored real Guided DPR wizard remains the normal field-user flow.
+
+2. Every Activity Progress row has its own No Site Work checkbox exactly like the Classic pattern.
+
+3. One DPR may contain both non-billable No Site Work rows and normal billable BOQ progress rows.
+
+4. Equipment and labour for that same day remain fully recordable.
+
+5. Guided Equipment uses Equipment & Fleet master and preserves work-item linkage.
+
+6. Guided Labour no longer loses gender/work-item/structure data.
+
+7. Every activity row — including No Site Work — supports maximum 3 photos.
+
+8. Activity photos support Camera, Gallery and File Upload.
+
+9. Photos appear under their correct activity in the DPR report.
+
+10. Legacy general DPR photos remain visible.
+
+11. Material Receipt photos remain untouched.
+
+12. Only the explicitly justified additive schema columns are introduced.

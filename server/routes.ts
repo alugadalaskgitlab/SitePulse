@@ -43,6 +43,7 @@ import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } fro
 import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupSessionFromCookie, loadUserPermissionsMatrix } from "./auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
 import { insertAttachmentSchema, attachmentModuleTypes } from "@shared/schema";
+import { MAX_ACTIVITY_PHOTOS } from "@shared/dprPhotos";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
 import { checkProgrammeLinkRow, deriveChainageReviewStatus, barSideCoverage, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { checkQuantitySourceRow, resolveQuantitySource } from "@shared/dprGeometry";
@@ -907,6 +908,16 @@ export async function registerRoutes(
       if (parsed.fileSize && parsed.fileSize > MAX_FILE_SIZE) {
         return res.status(400).json({ message: "File is too large. Maximum size is 15MB." });
       }
+      // Batch 06C: per-activity photo cap — a dpr_progress attachment linked
+      // to an activity row (progressEntryKey) may never be the 4th for that
+      // row. Server-side backstop; the client blocks staging past capacity.
+      if (parsed.moduleType === "dpr_progress" && parsed.progressEntryKey) {
+        const existing = await storage.getAttachments(parsed.moduleType, parsed.linkedRecordId);
+        const forEntry = existing.filter((a: any) => a.progressEntryKey === parsed.progressEntryKey).length;
+        if (forEntry >= MAX_ACTIVITY_PHOTOS) {
+          return res.status(400).json({ message: "Maximum 3 photos allowed for this activity." });
+        }
+      }
       const record = await storage.createAttachment({ ...parsed, uploadedBy: req.authUser.id });
       res.status(201).json(record);
     } catch (err: any) {
@@ -1302,7 +1313,12 @@ export async function registerRoutes(
     // contents (and now backs the read-only overlap preview), so it must not
     // be readable by authenticated users without site_dprs access.
     if (!assertView(req, res, "site_dprs")) return;
-    const dpr = await storage.getDpr(Number(req.params.id));
+    // Guard: a non-numeric id must 400, not crash the pg driver with NaN.
+    const dprIdNum = Number(req.params.id);
+    if (!Number.isInteger(dprIdNum) || dprIdNum <= 0) {
+      return res.status(400).json({ message: "Invalid DPR id" });
+    }
+    const dpr = await storage.getDpr(dprIdNum);
     if (!dpr) {
       return res.status(404).json({ message: 'DPR not found' });
     }

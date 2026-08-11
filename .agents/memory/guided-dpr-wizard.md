@@ -14,3 +14,11 @@ description: Wizard step model, No Work semantics in Guided, and the entryKey ph
 - **Why:** serial ids change on every draft save; entryKey is stable across saves/clones.
 - **How to apply:** cloneDpr's manual progress field list must copy `entryKey` (it enumerates fields — new columns don't flow automatically there, unlike the spread paths). Grouped display goes through `shared/dprPhotos.ts` groupDprPhotos + `DprPhotoGroups` component (one fetch, shared query key with AttachmentGallery). Staged Files live in a separate map keyed by entryKey (never in the JSON-autosaved entries).
 - Startup DDL `ensureDprEntryKeyColumns()` in routes.ts keeps per-customer deployments in sync (both columns also ALTERed directly on dev+prod DBs Aug 2026).
+
+## Batch 06C additions (Aug 2026)
+- Photo cap: `shared/dprPhotos.ts` (MAX_ACTIVITY_PHOTOS=3, activityPhotoCapacity, countEntryAttachments) is the ONE seam — client staging guards in GuidedDpr/SiteEntry/SiteEdit AND the server reject in POST /api/attachments all use it. Never enforce the cap in only one place.
+- entryKey now lives in Detailed too: SiteEntry + SiteEdit ProgressEntry carry entryKey (generated on new rows, preserved on edit hydration). Any new progress-row creation path MUST set entryKey or photos orphan.
+- Attachment survival: `createVersionDpr` RE-POINTS dpr_progress attachments to the new version; `cloneDpr` COPIES attachment rows (same objectPath). Both are required — clone without copy leaves entryKeys pointing at photos on the superseded DPR.
+- Upload-gate trap: SiteEntry photo upload was gated on `stagedPhotos.length > 0` only — per-activity queues must also be checked or activity photos silently vanish. Gate on BOTH buckets.
+- Guided equipment master query must NOT be gated on open usages; master select + work-item link ride the passthrough bag (equipmentId/boqItemId; changing item clears structureId, changing machine resets plantUsageId).
+- Guided labour rows now carry gender/task/boqItemId/structureId end-to-end; legacy autosave blobs are normalised with a newLabourRow() spread on restore.

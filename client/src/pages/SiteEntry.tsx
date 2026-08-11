@@ -8,7 +8,7 @@ import { useDeviceType } from "@/hooks/use-device-type";
 import { useAuth } from "@/lib/auth-context";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Eye, Loader2, UserPlus, X, Shield, AlertTriangle, Check, Camera, LayoutList } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Eye, Loader2, UserPlus, X, Shield, AlertTriangle, Check, Camera, LayoutList, Image as ImageIcon, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,8 +50,12 @@ import { type CandidateChainageRow } from "@shared/chainageOverlap";
 import { setDprEntryMode, getDprEntryMode } from "@/lib/dprEntryMode";
 import { reconcileNewDprAutosaves } from "@/lib/dprAutosaveReconcile";
 import { calculateBomDemand, fmtQty, type BomInputItem, type BomInputBar, type BomDemand } from "@shared/planningEngine";
+import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity } from "@shared/dprPhotos";
 
 interface ProgressEntry {
+  // Batch 06C §22: stable client key so photos can link to this activity row
+  // (same entryKey semantics as Guided DPR).
+  entryKey: string;
   activity: string;
   side: string;
   chainageFrom: string;
@@ -295,24 +299,65 @@ export default function SiteEntry() {
     setStagedPhotos((prev) => [...prev, ...valid]);
   };
   const removeStagedPhoto = (idx: number) => setStagedPhotos((prev) => prev.filter((_, i) => i !== idx));
+  // Batch 06C §22: per-activity photos in the Detailed form too — staged per
+  // progress-row entryKey (max 3 per activity), uploaded with progressEntryKey
+  // after the DPR gets its id. General site photos stay a separate bucket.
+  const [entryPhotos, setEntryPhotos] = useState<Record<string, File[]>>({});
+  const entryPhotoTargetRef = useRef<string | null>(null);
+  const entryCameraInputRef = useRef<HTMLInputElement>(null);
+  const entryGalleryInputRef = useRef<HTMLInputElement>(null);
+  const entryFileInputRef = useRef<HTMLInputElement>(null);
+  const addEntryPhotos = (files: FileList | null) => {
+    const key = entryPhotoTargetRef.current;
+    if (!key || !files || files.length === 0) return;
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    const valid = Array.from(files).filter((f) => {
+      if (f.size > MAX_FILE_SIZE) { toast({ title: "File too large", description: `${f.name} exceeds 15MB.`, variant: "destructive" }); return false; }
+      if (!f.type.startsWith("image/")) { toast({ title: "Unsupported file", description: `${f.name} must be an image.`, variant: "destructive" }); return false; }
+      return true;
+    });
+    if (valid.length === 0) return;
+    const capacity = activityPhotoCapacity(0, (entryPhotos[key] ?? []).length);
+    if (capacity <= 0) {
+      toast({ title: "Photo limit reached", description: `Maximum ${MAX_ACTIVITY_PHOTOS} photos per activity.`, variant: "destructive" });
+      return;
+    }
+    if (valid.length > capacity) {
+      toast({ title: "Some photos not added", description: `Only ${capacity} more allowed — maximum ${MAX_ACTIVITY_PHOTOS} photos per activity.`, variant: "destructive" });
+    }
+    setEntryPhotos((prev) => ({ ...prev, [key]: [...(prev[key] ?? []), ...valid.slice(0, capacity)] }));
+  };
+  const removeEntryPhoto = (key: string, idx: number) =>
+    setEntryPhotos((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((_, i) => i !== idx) }));
+  const uploadOnePhoto = async (dprId: number, file: File, progressEntryKey: string | null) => {
+    const uploadResponse = await uploadFile(file);
+    if (!uploadResponse) return false;
+    try {
+      await apiRequest("POST", "/api/attachments", {
+        moduleType: "dpr_progress",
+        linkedRecordId: dprId,
+        siteId: selectedSiteId ?? null,
+        boqProjectId: header.boqProjectId ?? null,
+        fileName: file.name,
+        objectPath: uploadResponse.objectPath,
+        mimeType: file.type || "application/octet-stream",
+        fileSize: file.size,
+        ...(progressEntryKey ? { progressEntryKey } : {}),
+      });
+      return true;
+    } catch {
+      // Non-fatal — DPR is already saved; surface via toast but don't block navigation.
+      toast({ title: "Some photos failed to attach", description: file.name, variant: "destructive" });
+      return false;
+    }
+  };
   const uploadStagedPhotos = async (dprId: number) => {
     for (const file of stagedPhotos) {
-      const uploadResponse = await uploadFile(file);
-      if (!uploadResponse) continue;
-      try {
-        await apiRequest("POST", "/api/attachments", {
-          moduleType: "dpr_progress",
-          linkedRecordId: dprId,
-          siteId: selectedSiteId ?? null,
-          boqProjectId: header.boqProjectId ?? null,
-          fileName: file.name,
-          objectPath: uploadResponse.objectPath,
-          mimeType: file.type || "application/octet-stream",
-          fileSize: file.size,
-        });
-      } catch {
-        // Non-fatal — DPR is already saved; surface via toast but don't block navigation.
-        toast({ title: "Some photos failed to attach", description: file.name, variant: "destructive" });
+      await uploadOnePhoto(dprId, file, null);
+    }
+    for (const [key, files] of Object.entries(entryPhotos)) {
+      for (const file of files) {
+        await uploadOnePhoto(dprId, file, key);
       }
     }
   };
@@ -744,7 +789,7 @@ export default function SiteEntry() {
   }, [attachPersonnelToTarget, toast]);
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }
+    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }
   ]);
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
@@ -948,7 +993,7 @@ export default function SiteEntry() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour' | 'materials') => {
     if (section === 'progress') {
-      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }]);
+      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }]);
     } else if (section === 'labour') {
@@ -1014,6 +1059,7 @@ export default function SiteEntry() {
     // Shared structure-only extraction — same module as the Guided DPR.
     const st = extractYesterdayStructure(yesterdayDpr);
     setProgress(st.progress.map(p => ({
+      entryKey: newEntryKey(),
       activity: p.activity, side: p.side, chainageFrom: "", chainageTo: "",
       length: null, width: null, thickness: null, quantity: null,
       uom: p.uom || "SQM", noSiteWork: false, noSiteWorkDescription: "",
@@ -1083,7 +1129,7 @@ export default function SiteEntry() {
     },
     onSuccess: async (data) => {
       await clearDraft();
-      if (stagedPhotos.length > 0) {
+      if (stagedPhotos.length > 0 || Object.values(entryPhotos).some((f) => f.length > 0)) {
         await uploadStagedPhotos(data.id);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", data.id] });
       }
@@ -1221,7 +1267,7 @@ export default function SiteEntry() {
       // Batch 05 (spec §10): the server draft is now authoritative — clear a
       // stale Guided "new DPR" blob for the same draft/site/date context.
       await reconcileNewDprAutosaves({ draftId: data.id, site: header.site, date: header.date });
-      if (stagedPhotos.length > 0) {
+      if (stagedPhotos.length > 0 || Object.values(entryPhotos).some((f) => f.length > 0)) {
         await uploadStagedPhotos(data.id);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", data.id] });
       }
@@ -2352,8 +2398,59 @@ export default function SiteEntry() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Batch 06C §22: per-activity photos (max 3) — same entryKey
+                  semantics as Guided. Uploaded with progressEntryKey once the
+                  DPR is saved. General site photos remain a separate section. */}
+              <div className="mt-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Label className="text-sm text-muted-foreground">Photos ({(entryPhotos[entry.entryKey] ?? []).length}/{MAX_ACTIVITY_PHOTOS}):</Label>
+                  <Button type="button" variant="outline" size="sm" className="h-7 gap-1"
+                    disabled={(entryPhotos[entry.entryKey] ?? []).length >= MAX_ACTIVITY_PHOTOS}
+                    onClick={() => { entryPhotoTargetRef.current = entry.entryKey; entryCameraInputRef.current?.click(); }}
+                    data-testid={`button-entry-photo-camera-${idx}`}>
+                    <Camera className="w-3.5 h-3.5" /> Camera
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="h-7 gap-1"
+                    disabled={(entryPhotos[entry.entryKey] ?? []).length >= MAX_ACTIVITY_PHOTOS}
+                    onClick={() => { entryPhotoTargetRef.current = entry.entryKey; entryGalleryInputRef.current?.click(); }}
+                    data-testid={`button-entry-photo-gallery-${idx}`}>
+                    <ImageIcon className="w-3.5 h-3.5" /> Gallery
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="h-7 gap-1"
+                    disabled={(entryPhotos[entry.entryKey] ?? []).length >= MAX_ACTIVITY_PHOTOS}
+                    onClick={() => { entryPhotoTargetRef.current = entry.entryKey; entryFileInputRef.current?.click(); }}
+                    data-testid={`button-entry-photo-file-${idx}`}>
+                    <Paperclip className="w-3.5 h-3.5" /> File
+                  </Button>
+                </div>
+                {(entryPhotos[entry.entryKey] ?? []).length > 0 && (
+                  <div className="flex gap-2 mt-1.5 flex-wrap">
+                    {(entryPhotos[entry.entryKey] ?? []).map((file, pIdx) => (
+                      <div key={pIdx} className="relative">
+                        <img src={URL.createObjectURL(file)} alt={file.name} className="w-14 h-14 object-cover rounded-md border" />
+                        <button type="button" className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5"
+                          onClick={() => removeEntryPhoto(entry.entryKey, pIdx)} data-testid={`button-remove-entry-photo-${idx}-${pIdx}`}>
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )))}
+          {workType !== "structure" && (
+            <>
+              {/* Shared hidden inputs for per-activity photos */}
+              <input ref={entryCameraInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+                onChange={(e) => { addEntryPhotos(e.target.files); if (entryCameraInputRef.current) entryCameraInputRef.current.value = ""; }} />
+              <input ref={entryGalleryInputRef} type="file" accept="image/*" multiple className="hidden"
+                onChange={(e) => { addEntryPhotos(e.target.files); if (entryGalleryInputRef.current) entryGalleryInputRef.current.value = ""; }} />
+              <input ref={entryFileInputRef} type="file" accept="image/*" multiple className="hidden"
+                onChange={(e) => { addEntryPhotos(e.target.files); if (entryFileInputRef.current) entryFileInputRef.current.value = ""; }} />
+            </>
+          )}
           {workType !== "structure" && (
             <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('progress')} data-testid="button-add-progress-bottom">
               <Plus className="w-4 h-4 mr-1" /> Add Row
