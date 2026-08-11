@@ -1,0 +1,825 @@
+BATCH 06E — EARTHWORK ARRANGEMENT
++ SITE MATERIAL RECEIPT
++ DPR ACTIVITY LINKAGE
+
+This is a focused evidence-linkage batch.
+
+OBJECTIVE
+
+For outsourced / vendor-supplied earthwork and other bulk-fill materials,
+connect:
+
+Execution Arrangement
+→ today's programmed / DPR activity
+→ actual material received at site
+→ actual DPR execution
+
+so SitePulse can show:
+
+- what was needed/planned today;
+- which arrangement/vendor was responsible;
+- how much material was actually received;
+- how much BOQ work was actually executed;
+- variance between those quantities;
+
+and establish clean source data for a FUTURE vendor-billing batch.
+
+Do NOT build automatic vendor billing in this batch.
+
+--------------------------------------------------
+1. INVESTIGATE CURRENT DATA MODEL FIRST
+--------------------------------------------------
+
+Inspect and report current behavior for:
+
+A. `earthwork_arrangements`
+B. `earthwork_arrangement_programme_allocations`
+C. `site_material_trips`
+D. `/api/materials-received`
+E. DPR `material_logs`
+F. DPR progress entries
+G. Work Programme bars
+H. DPR `programmeBarId`
+I. reusable attachments for `site_material_trip`
+J. Vendor Bills / `getVendorBillAutoItems`
+
+Confirm current verified facts:
+
+- Site Material Trips already record actual bulk receipt by vehicle/trip.
+- DPR material_logs are a separate DPR child record.
+- Earthwork Arrangements already identify BOQ scope/vendor/rate/reach.
+- Vendor Bills currently have no authoritative arrangement/receipt link.
+
+Do not duplicate an existing mechanism.
+
+--------------------------------------------------
+2. PRINCIPLE — ENTER MATERIAL RECEIPT ONCE
+--------------------------------------------------
+
+Do NOT create another independent "Borrow Earth Received" table inside DPR.
+
+The authoritative actual receipt for bulk site deliveries should remain:
+
+`site_material_trips`
+
+The DPR should LINK / DISPLAY those receipt records.
+
+Engineer must not have to enter:
+
+280 Cum Borrow Earth in Materials Received
+
+and then again:
+
+280 Cum Borrow Earth in DPR Materials.
+
+One physical receipt = one source record.
+
+--------------------------------------------------
+3. REQUIRED LINKAGE FOR SITE MATERIAL TRIPS
+--------------------------------------------------
+
+The existing `site_material_trips` record needs enough linkage to identify
+what the receipt was for.
+
+Investigate whether any existing columns/helpers can safely carry these
+links.
+
+Target authoritative relationships are:
+
+- site / siteId where available
+- boqProjectId
+- boqItemId
+- programmeBarId where applicable
+- earthworkArrangementId where applicable
+- DPR/progress activity reference only if needed and safely resolvable
+
+Do NOT add every foreign key automatically.
+
+First determine the minimum stable linkage.
+
+Preferred minimum for this batch:
+
+- boqProjectId
+- boqItemId
+- earthworkArrangementId
+- programmeBarId where a programmed reach exists
+
+The receipt should remain valid even if no DPR has yet been created.
+
+Therefore DO NOT make DPR ID the primary business link.
+
+--------------------------------------------------
+4. SCHEMA STOP GATE
+--------------------------------------------------
+
+This linkage may require additive nullable columns on `site_material_trips`.
+
+Expected candidate additions, ONLY if repo investigation confirms they do
+not already exist elsewhere:
+
+- boq_project_id
+- boq_item_id
+- programme_bar_id
+- earthwork_arrangement_id
+
+All must be:
+
+- nullable
+- additive
+- non-destructive
+
+Before implementing ANY schema change:
+
+STOP and report:
+
+A. exact columns required;
+B. why existing fields are insufficient;
+C. whether FK constraints are safe;
+D. migration generated;
+E. whether any production data is affected.
+
+Do NOT proceed past schema mutation without explicit approval.
+
+No DROP / SET NOT NULL / destructive reconciliation.
+
+--------------------------------------------------
+5. ARRANGEMENT RESOLUTION
+--------------------------------------------------
+
+When recording Material Received for a BOQ activity such as:
+
+Embankment
+Borrow Earth / Soil
+
+SitePulse should check approved/active applicable Execution Arrangements for:
+
+- same BOQ project
+- same BOQ item / allocation
+- compatible reach / programme bar
+- current date/status where relevant
+
+If exactly one applicable arrangement exists:
+
+prefill:
+
+Arrangement:
+ABC Earthworks — Borrow Earth supply/carting
+
+Vendor:
+ABC Earthworks
+
+Material:
+Earth / Borrow Soil
+
+Do not require the Engineer to type the vendor again.
+
+If multiple arrangements apply:
+
+show a controlled Arrangement selector.
+
+Do not guess between vendors.
+
+If no arrangement exists:
+
+receipt may still be recorded,
+but show:
+
+"No execution arrangement linked"
+
+and do not fabricate one.
+
+--------------------------------------------------
+6. MATERIAL NAME
+--------------------------------------------------
+
+Use the arrangement's existing:
+
+`materialLabel`
+
+as the preferred material identity for arranged earthwork.
+
+Examples:
+
+- Earth / Borrow Soil
+- Gravel
+- Moorum
+- Selected Soil
+
+Do not rely only on free-text matching.
+
+Preserve historical free-text material receipts.
+
+--------------------------------------------------
+7. DPR ACTIVITY → MATERIAL REQUIREMENT
+--------------------------------------------------
+
+For a billable DPR activity with:
+
+- boqItemId
+- programmeBarId
+- date
+- reach
+
+derive/display Today's Required / Planned Qty using the best existing source.
+
+Priority:
+
+A. programme bar quantity/allocation for that day/reach if authoritative;
+
+B. arrangement programme allocation if more specific;
+
+C. existing BOM / demand calculation if the material requirement comes
+   from a recipe;
+
+D. otherwise leave as "Not determined".
+
+Do NOT ask the Engineer to retype a quantity that SitePulse already knows.
+
+Do not use full Contract BOQ quantity as "Needed Today".
+
+--------------------------------------------------
+8. IMPORTANT — BOQ QTY VS MATERIAL QTY
+--------------------------------------------------
+
+Do NOT assume:
+
+BOQ executed quantity
+=
+material supplied quantity
+
+unless UoM / material basis genuinely matches.
+
+Example:
+
+Embankment BOQ = compacted CUM
+
+Borrow Soil receipt may be:
+- loose CUM;
+- vehicle capacity/trips;
+- MT;
+- another measurement basis.
+
+SitePulse must show these as separate quantities unless an explicit
+conversion/billing basis exists.
+
+Do NOT invent shrinkage/swell/conversion factors.
+
+--------------------------------------------------
+9. GUIDED DPR — MATERIALS STEP
+--------------------------------------------------
+
+In the current Guided DPR flow, add/use a real Materials page only if the
+current wizard already has a Materials step or can accommodate it without
+disturbing the working flow.
+
+The page should have two clear concepts:
+
+A. MATERIALS RECEIVED AT SITE
+   Linked actual bulk receipts
+
+B. MATERIALS ISSUED / CONSUMED
+   Existing DPR material-log semantics where applicable
+
+Do not mix them into one ambiguous list.
+
+--------------------------------------------------
+10. ACTIVITY-SPECIFIC RECEIPTS
+--------------------------------------------------
+
+For each billable activity row, show linked receipt summary where relevant.
+
+Example:
+
+EMBANKMENT
+RHS Ch. 2+000–2+150
+
+Required Today:
+300 Cum
+
+Arrangement:
+ABC Earthworks
+
+Received Today:
+285 Cum
+18 Trips
+
+[View Receipts]
+[Record Receipt]
+
+The receipt belongs to the BOQ/programme/arrangement context, not merely to
+the whole DPR.
+
+--------------------------------------------------
+11. RECORD RECEIPT FROM DPR
+--------------------------------------------------
+
+`Record Receipt` from DPR must use the existing Site Material Trip creation
+path.
+
+It should prefill:
+
+- date
+- site
+- workType = road
+- material
+- supplier/vendor
+- linked BOQ item
+- linked arrangement
+- linked programme bar where applicable
+- location / chainage/reach where helpful
+
+Engineer enters only actual receipt evidence such as:
+
+- arrival time
+- vehicle number
+- actual quantity
+- UoM
+- challan/receipt number
+- unloading location
+- notes
+- photos
+
+Do NOT create a DPR-only duplicate receipt.
+
+--------------------------------------------------
+12. LINK EXISTING RECEIPTS
+--------------------------------------------------
+
+The Engineer must also be able to link receipts already entered earlier in
+the day from:
+
+Materials Received / Site Material Trip
+
+Example:
+
+Truck arrived at 9:10 AM.
+Supervisor already recorded it.
+
+Later DPR:
+do NOT enter again.
+
+Show:
+
+"3 matching receipts already recorded today"
+
+and allow them to be associated/displayed against the relevant activity
+where safe.
+
+Do not duplicate the receipt row.
+
+--------------------------------------------------
+13. MATCHING RULES
+--------------------------------------------------
+
+For suggesting existing receipts, match conservatively on:
+
+- same site
+- same date
+- material
+- arrangement/vendor where available
+- BOQ item / programme bar where available
+
+Do NOT fuzzy-auto-link based only on supplier/material text.
+
+Suggestion is okay.
+
+Automatic authoritative linkage is only okay when IDs already match.
+
+--------------------------------------------------
+14. RECEIPT DETAIL
+--------------------------------------------------
+
+Retain existing Site Material Trip fields:
+
+- Date
+- Time
+- Site
+- Material
+- Supplier
+- Vehicle Number
+- Quantity
+- UoM
+- Location
+- Receipt/Challan Number
+- Entered By
+- Notes
+- Work Type
+
+Keep existing cancellation/audit behavior.
+
+Do not simplify away receipt evidence.
+
+--------------------------------------------------
+15. RECEIPT PHOTOS
+--------------------------------------------------
+
+Preserve existing reusable attachment behavior:
+
+moduleType:
+`site_material_trip`
+
+Each receipt keeps its own photos/documents.
+
+Do NOT move receipt photos onto the DPR activity-photo record.
+
+Activity photos and Material Receipt photos remain separate evidence.
+
+--------------------------------------------------
+16. DAILY ACTIVITY MATERIAL SUMMARY
+--------------------------------------------------
+
+For relevant DPR activity, display a comparison summary.
+
+Example:
+
+EMBANKMENT — 11 AUG
+
+Planned / Required:
+300 Cum
+
+Received:
+285 Cum
+
+Executed BOQ Qty:
+260 Cum
+
+Variance to planned receipt:
+-15 Cum
+
+Receipt vs executed:
++25 Cum
+
+Use neutral labels.
+
+Do NOT call `+25 Cum` "stock" automatically.
+
+Preferred wording:
+
+"Received less Executed: +25 Cum"
+
+with helper:
+
+"Comparison only — receipt and BOQ measurement bases may differ."
+
+--------------------------------------------------
+17. ARRANGEMENT SUMMARY
+--------------------------------------------------
+
+When a receipt is linked to an Execution Arrangement, show:
+
+- Arrangement ID/reference
+- Agency/vendor
+- Arrangement type
+- agreed rate
+- arrangement UoM
+- allocated quantity
+- received-to-date
+- DPR executed-to-date where reliably comparable
+
+Do not calculate vendor payable amount here.
+
+--------------------------------------------------
+18. ARRANGEMENT TYPE MATTERS
+--------------------------------------------------
+
+Respect existing arrangement types such as:
+
+- fully_outsourced_composite
+- vendor_material_delivered
+- hlc_source_outsourced_execution
+- hlc_in_house
+- client_supplied
+- reused_excavated
+
+Material receipt behavior must differ appropriately.
+
+Examples:
+
+vendor_material_delivered
+→ vendor receipt is highly relevant.
+
+fully_outsourced_composite
+→ delivery evidence may still be relevant but payment basis may be executed
+   work, not delivered loose quantity.
+
+reused_excavated
+→ do not create a fictitious external supplier receipt.
+
+client_supplied
+→ supplier/vendor should represent client-supplied context, not an HLC
+   payable vendor.
+
+Do not use one billing assumption for all arrangement types.
+
+--------------------------------------------------
+19. VENDOR BILLING — PREPARE, DO NOT BUILD
+--------------------------------------------------
+
+Do NOT automatically create Vendor Bill lines in this batch.
+
+However, structure the linkage so a future Vendor Billing batch can query:
+
+Vendor / Arrangement
+→ Date range
+→ Material Receipts
+→ DPR execution
+→ arrangement rate/UoM
+
+The future bill engine should be able to choose the correct billing basis
+from the Arrangement.
+
+Do not decide billing basis from receipt quantity alone.
+
+--------------------------------------------------
+20. FUTURE BILLING BASIS — REPORT ONLY
+--------------------------------------------------
+
+As part of report-back, classify existing Arrangement types into likely
+future billing evidence:
+
+A. delivered-material basis
+B. executed-work basis
+C. trip basis
+D. hourly/equipment basis
+E. composite/manual-measurement basis
+
+This is analysis only.
+
+Do NOT implement the bill calculation.
+
+--------------------------------------------------
+21. DETAILED DPR PARITY
+--------------------------------------------------
+
+Whatever receipt links Guided DPR shows must remain visible/readable in
+Detailed DPR.
+
+Do not create a Guided-only data relationship.
+
+Detailed may expose:
+
+Linked Site Receipts
+
+under the relevant Activity/Materials section.
+
+Switching Guided ↔ Detailed must not lose receipt linkage.
+
+--------------------------------------------------
+22. DRAFT BEHAVIOR
+--------------------------------------------------
+
+Receipts may be recorded before the DPR is finally submitted.
+
+Save Draft must preserve all linkage.
+
+DPR Final Submit does NOT own the receipt record.
+
+A valid Site Material Receipt remains a valid transaction even if the DPR
+is still draft.
+
+Do not delete/cancel receipt when a DPR draft is discarded.
+
+--------------------------------------------------
+23. CANCELLED RECEIPTS
+--------------------------------------------------
+
+Cancelled Site Material Trips must:
+
+- remain in audit/history;
+- be excluded from active received totals;
+- display as Cancelled if viewed historically.
+
+Do not silently count them in:
+
+Received Today
+Received to Date
+future vendor-billing source quantities.
+
+--------------------------------------------------
+24. REQUIRED TODAY / SUPPLIED TODAY / EXECUTED TODAY
+--------------------------------------------------
+
+Create a single shared resolver/helper for this comparison if practical.
+
+Return conceptually:
+
+{
+  requiredQty,
+  requiredUom,
+  requiredSource,
+
+  receivedQty,
+  receivedUom,
+
+  executedQty,
+  executedUom,
+
+  comparable: boolean,
+  comparisonReason
+}
+
+Do not scatter separate formulas across Guided DPR, Detailed DPR and future
+reports.
+
+If UoMs/bases are not comparable:
+
+show each quantity,
+but do NOT calculate a misleading variance.
+
+--------------------------------------------------
+25. NO SITE WORK
+--------------------------------------------------
+
+Do not require material requirement/receipt linkage for a No Site Work row.
+
+If physical non-billable work genuinely received material, the receipt may
+still exist independently, but do not force it through BOQ progress logic.
+
+No Site Work remains zero BOQ progress.
+
+--------------------------------------------------
+26. PROGRAMME / TOMORROW'S PROGRAMME
+--------------------------------------------------
+
+Do NOT alter Today's/Tomorrow's Programme lifecycle in this batch.
+
+Only READ existing programme allocation data to derive:
+
+Today's Required / Planned Qty.
+
+Do not automatically mark programme bars:
+
+Done
+Fulfilled
+Deferred
+etc.
+
+That remains separate future work.
+
+--------------------------------------------------
+27. VENDOR / ARRANGEMENT IDENTITY
+--------------------------------------------------
+
+Prefer stable Arrangement ID for linkage.
+
+Do not rely on:
+
+agencyName string
+
+as the authoritative relationship.
+
+The visible supplier may still use agencyName.
+
+If there is a stable Party/Vendor master ID already tied to Arrangement,
+reuse it.
+
+If there is not, report the gap.
+
+Do NOT broaden this batch into a vendor-master migration.
+
+--------------------------------------------------
+28. SCHEMA SAFETY
+--------------------------------------------------
+
+Expected possibility:
+
+small additive linkage fields on `site_material_trips`.
+
+DO NOT IMPLEMENT SCHEMA UNTIL REPORTED/APPROVED.
+
+If approved later:
+
+only nullable additive columns.
+
+No:
+- DROP COLUMN
+- SET NOT NULL
+- historical rewrite
+- destructive FK enforcement
+
+Publishing migration must be inspected manually.
+
+--------------------------------------------------
+29. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- Contract BOQ Qty
+- BOQ UoM conversion
+- Batch 04 readiness
+- Batch 05 draft lifecycle
+- Batch 06B overlap
+- current Guided wizard flow
+- activity photos
+- Equipment/Labour
+- Progress Report quantities
+- Project Scope
+- Auto Sequence
+- Gantt
+- Tomorrow's Programme workflow
+- Geometry
+- Structure DPR
+- Plant Material Receipt
+- Store GRN
+- Vendor Bill creation/calculation
+- historical submitted DPRs
+
+--------------------------------------------------
+30. TESTS
+--------------------------------------------------
+
+Add focused tests covering at least:
+
+A. Existing Site Material Trip still creates normally.
+
+B. Arrangement-linked receipt retains all normal receipt fields.
+
+C. Receipt can link to correct BOQ item.
+
+D. Receipt can link to correct arrangement.
+
+E. Receipt can link to programme bar when applicable.
+
+F. Receipt remains valid without DPR ID.
+
+G. Guided activity shows matching linked receipts.
+
+H. Existing earlier-day receipt can be surfaced without duplication.
+
+I. Record Receipt from DPR uses existing Site Material Trip endpoint.
+
+J. Supplier prefills from arrangement.
+
+K. Material prefills from arrangement materialLabel.
+
+L. Multiple applicable arrangements require user selection.
+
+M. No arrangement does not block receipt creation.
+
+N. Cancelled receipt excluded from Received Today.
+
+O. Two vehicle trips aggregate correctly.
+
+P. Activity required qty uses programme/allocation, not full BOQ qty.
+
+Q. Executed qty uses existing DPR BOQ progress semantics.
+
+R. Different UoM/basis does not calculate false variance.
+
+S. Same comparable UoM displays required/received/executed comparison.
+
+T. No Site Work does not require material linkage.
+
+U. Receipt photos stay per `site_material_trip`.
+
+V. Activity photos remain untouched.
+
+W. Detailed/Guided round-trip preserves linkage.
+
+X. Save Draft preserves linkage.
+
+Y. DPR deletion/discard does not delete valid receipt transaction.
+
+Z. No vendor bill is automatically generated.
+
+AA. No Programme status is automatically changed.
+
+AB. No unrelated schema migration.
+
+Run full suite.
+
+--------------------------------------------------
+31. REPORT BACK — STOP BEFORE SCHEMA
+--------------------------------------------------
+
+FIRST REPORT BACK BEFORE ANY SCHEMA CHANGE:
+
+A. Exact current data paths for:
+   - Site Material Trip
+   - DPR Materials
+   - Earthwork Arrangement
+   - Programme bar
+   - Vendor Bill auto-items.
+
+B. Exact missing IDs/links.
+
+C. Minimal proposed schema additions, if any.
+
+D. Whether FK constraints are advisable or plain nullable IDs are safer.
+
+E. Existing data/backward compatibility.
+
+F. Proposed Guided/Detailed UX.
+
+G. Proposed Required / Received / Executed resolver.
+
+H. How cancelled receipts are excluded.
+
+I. Future vendor-billing evidence chain.
+
+J. Tests planned.
+
+STOP HERE AND WAIT FOR APPROVAL BEFORE SCHEMA OR BUILD.
+
+DO NOT START ANOTHER BATCH.
