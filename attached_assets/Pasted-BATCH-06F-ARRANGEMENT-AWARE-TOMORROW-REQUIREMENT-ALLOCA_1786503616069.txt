@@ -1,0 +1,947 @@
+BATCH 06F — ARRANGEMENT-AWARE TOMORROW REQUIREMENT ALLOCATION
++ PRESERVE ARRANGEMENT-ADJUSTED BOM SEMANTICS
+
+This is a focused Tomorrow's Requirements / allocation-context batch.
+
+IMPORTANT BUSINESS RULE
+
+The Site Engineer does NOT select:
+
+- vendor
+- Execution Arrangement
+- daily supplying agency
+
+while raising Tomorrow's Requirement.
+
+The Engineer continues raising the requirement exactly as today:
+
+- planned work
+- material requirement
+- equipment requirement
+- labour requirement
+- immediate requirement
+
+The allocating / approving authority decides HOW the requirement will be
+fulfilled.
+
+Execution Arrangement intelligence belongs on the APPROVAL / ALLOCATION
+side, not on the Engineer's requirement-entry side.
+
+--------------------------------------------------
+1. INVESTIGATE FIRST — DO NOT BUILD YET
+--------------------------------------------------
+
+Inspect current:
+
+- site_requirements
+- allocationStatus JSONB
+- Tomorrow Requirement Engineer entry UI
+- PM / allocating-authority review UI
+- material requirement rows
+- equipment requirement rows
+- labour requirement rows
+- plannedWork context
+- programmeBar / BOQ-item context carried by Tomorrow's Programme
+- Execution Arrangement APIs
+- earthwork_arrangement_programme_allocations
+- calculateBomDemand()
+- buildArrangementEffects()
+- arrangementExclusionEffect()
+- Equipment / Diesel / Labour / Material arrangement exclusion helpers
+
+Also identify whether today's individual requirement rows have:
+
+- stable row IDs / client keys
+or
+- only array index inside JSONB.
+
+Report this before choosing how to persist per-requirement allocation context.
+
+--------------------------------------------------
+2. CONFIRM EXISTING BOM BEHAVIOR — DO NOT REBUILD IT
+--------------------------------------------------
+
+The current planning engine already applies active Execution Arrangements
+to HLC BOM/resource demand.
+
+Preserve this.
+
+Verified current concepts include:
+
+- Equipment demand reduced when the relevant component is agency/client
+  responsibility.
+
+- Diesel demand follows equipment/component responsibility BUT remains in
+  HLC demand where HLC is explicitly responsible for fuel.
+
+- Labour demand is reduced only for the execution components that are
+  positively non-HLC.
+
+- Material/source demand is reduced where agency/client owns that material
+  component.
+
+- "not_decided" responsibility remains in HLC demand provisionally rather
+  than being silently excluded.
+
+- arrangement allocations linked to programme bars phase the exclusion to
+  that bar/quantity.
+
+DO NOT create a second BOM formula inside Tomorrow's Requirements.
+
+DO NOT alter these existing shared calculation rules.
+
+--------------------------------------------------
+3. PURPOSE OF THIS BATCH
+--------------------------------------------------
+
+This batch is NOT:
+
+"make Execution Arrangement start affecting BOM."
+
+It already does.
+
+This batch is:
+
+"surface the existing arrangement context to the allocating authority and
+record the DAILY fulfilment decision without changing the permanent
+Execution Arrangement."
+
+The chain should be:
+
+Standing Execution Arrangement
+        ↓
+BOM / resource responsibility
+        ↓
+Engineer raises Tomorrow requirement
+        ↓
+Allocating authority sees applicable arrangement context
+        ↓
+Authority chooses tomorrow's actual fulfilment source
+        ↓
+Next-day receipt / equipment / DPR actual
+
+--------------------------------------------------
+4. ENGINEER REQUIREMENT SCREEN — KEEP SIMPLE
+--------------------------------------------------
+
+Do NOT add an Execution Arrangement selector to the Site Engineer's
+Tomorrow Requirement entry.
+
+Do NOT ask Engineer to choose vendor.
+
+Do NOT ask Engineer to decide:
+
+- outsourced vs HLC
+- primary vendor
+- alternate vendor
+
+The Engineer simply states what is required.
+
+Example:
+
+Tomorrow:
+
+EMBANKMENT
+RHS Ch. 2+000–2+200
+
+Borrow Earth:
+350 Cum
+
+or:
+
+Excavator:
+1 No.
+
+Labour:
+8 Unskilled
+
+This workflow stays as it is unless minor contextual BOQ/programme linkage
+already exists and needs preservation.
+
+--------------------------------------------------
+5. ALLOCATING AUTHORITY — SHOW ARRANGEMENT CONTEXT
+--------------------------------------------------
+
+When PM / Manager / Stores / Equipment authority opens a requirement for
+allocation, SitePulse should resolve relevant Execution Arrangement context
+from the requirement's:
+
+- project/site
+- BOQ item / planned work
+- programme bar
+- reach / chainage
+- requirement category
+
+where those stable links exist.
+
+Show this information only to the allocation/review side.
+
+Example:
+
+BORROW EARTH
+Required: 350 Cum
+For: Embankment — RHS Ch. 2+000–2+200
+
+Applicable Execution Arrangement:
+ABC Earthworks
+Borrow Earth supply & carting
+Ch. 1+500–3+000
+
+Do not make the Engineer enter this.
+
+--------------------------------------------------
+6. NO ARRANGEMENT IS NOT AN ERROR
+--------------------------------------------------
+
+If NO applicable Execution Arrangement exists:
+
+DO NOT show:
+
+"Arrangement required"
+"Missing Arrangement"
+"Create Arrangement"
+
+for ordinary requirement allocation.
+
+Treat the responsibility as:
+
+HLC / Main Contractor
+
+The allocating authority may simply mark:
+
+Arranged
+
+with the current normal internal allocation/procurement process.
+
+Execution Arrangement is optional operational/commercial context, not a
+mandatory prerequisite for tomorrow's work.
+
+--------------------------------------------------
+7. EXACTLY ONE APPLICABLE ARRANGEMENT
+--------------------------------------------------
+
+If exactly one active/applicable arrangement exists:
+
+show it prominently as the SUGGESTED fulfilment context.
+
+Example:
+
+Suggested:
+ABC Earthworks
+
+Arrangement:
+Borrow Earth supply & carting
+
+Do NOT automatically lock the authority to that vendor.
+
+The PM must still be able to choose another valid fulfilment route for
+tomorrow.
+
+--------------------------------------------------
+8. MULTIPLE APPLICABLE ARRANGEMENTS
+--------------------------------------------------
+
+If multiple active arrangements can legitimately fulfil the requirement:
+
+show all compatible choices.
+
+Example:
+
+Applicable vendors:
+
+○ ABC Earthworks
+   Arrangement #17
+   Ch. 1+500–3+000
+
+○ XYZ Infra
+   Arrangement #24
+   Embankment / Borrow Earth
+
+The authority chooses tomorrow's actual allocation.
+
+Do NOT guess solely from vendor name.
+
+Use stable arrangement IDs and BOQ/reach/programme compatibility.
+
+--------------------------------------------------
+9. DAILY TEMPORARY VENDOR EXCEPTION
+--------------------------------------------------
+
+Critical requirement:
+
+A standing Execution Arrangement must NOT be rewritten merely because PM
+uses a different vendor for one day.
+
+Example:
+
+Permanent/stretch arrangement:
+ABC Earthworks
+
+Tomorrow:
+ABC reports a breakdown / no tippers available.
+
+PM agrees:
+XYZ Infra will supply tomorrow.
+
+Record:
+
+Tomorrow Fulfilment:
+XYZ Infra / relevant Arrangement
+
+Reason:
+"Primary vendor unavailable"
+
+This is a DAILY operational allocation.
+
+It does NOT transfer the permanent stretch arrangement from ABC to XYZ.
+
+Do not mutate:
+
+- earthwork_arrangements agencyName
+- scopeSegmentIds
+- allocatedQty
+- programme allocations
+
+merely because of a one-day substitution.
+
+--------------------------------------------------
+10. HLC / INTERNAL OPTION
+--------------------------------------------------
+
+The allocating authority must always have an option conceptually equivalent
+to:
+
+HLC / Internally Arranged
+
+when valid.
+
+Example:
+
+Borrow Earth — 350 Cum
+
+Fulfilment:
+HLC / Contractor
+
+Status:
+Arranged
+
+This does NOT create an Execution Arrangement.
+
+It simply records the daily operational decision.
+
+--------------------------------------------------
+11. ARRANGEMENT-AWARE RESOURCE TYPES
+--------------------------------------------------
+
+Do not limit this intelligence only to Borrow Earth.
+
+Use the same principle for:
+
+MATERIALS
+- Earth / Soil
+- Gravel
+- vendor-delivered granular material
+- other arrangement-owned materials
+
+EQUIPMENT
+- Excavator
+- Tippers
+- Grader
+- Roller
+- etc.
+
+LABOUR
+- where execution responsibility clearly belongs to an agency
+
+FUEL / DIESEL
+- where the Execution Arrangement defines who supplies diesel.
+
+But only show allocation context where the arrangement component mapping
+actually supports it.
+
+Do not infer ownership merely because an arrangement exists.
+
+--------------------------------------------------
+12. COMPONENT RESPONSIBILITY IS AUTHORITATIVE
+--------------------------------------------------
+
+The authority-facing suggestion must follow the same responsibility
+semantics already used by BOM.
+
+Example:
+
+Arrangement:
+Agency handles excavation + loading + transport.
+HLC handles spreading + compaction.
+HLC supplies diesel.
+
+Then Tomorrow Requirements should conceptually show:
+
+Excavator:
+Agency context
+
+Tippers:
+Agency context
+
+Grader:
+HLC responsibility
+
+Roller:
+HLC responsibility
+
+Diesel:
+HLC responsibility
+
+Do NOT simply say:
+
+"Arrangement exists → all requirements go to vendor."
+
+That would contradict the current BOM engine.
+
+--------------------------------------------------
+13. BOM MUST REMAIN CONSISTENT
+--------------------------------------------------
+
+The daily allocation UI must not contradict the BOM.
+
+For every requirement where an arrangement is shown, expose enough context
+for the authority to understand:
+
+Responsibility:
+Agency / HLC / Client / Not decided
+
+and, where useful:
+
+BOM impact:
+Agency component — excluded from HLC requirement
+or
+HLC component — retained in HLC requirement
+
+Do not expose technical internals unnecessarily to field users.
+
+Manager/PM view may use simple labels such as:
+
+Responsibility: Vendor
+Responsibility: HLC
+
+--------------------------------------------------
+14. TEMPORARY DAILY ALLOCATION DOES NOT REWRITE BOM
+--------------------------------------------------
+
+A one-day exception does NOT immediately alter the standing project BOM
+responsibility model.
+
+Example:
+
+Permanent arrangement says agency supplies Tippers.
+
+PM temporarily gives the job to another approved agency tomorrow.
+
+HLC BOM remains:
+Tippers = agency responsibility.
+
+Only the DAILY vendor identity changed.
+
+However:
+
+if PM deliberately chooses:
+
+HLC / Internally Arranged
+
+for a resource that the standing arrangement assigns to the agency, show a
+clear informational warning:
+
+"Standing arrangement assigns this component to ABC Earthworks. Tomorrow
+has been allocated internally as an exception."
+
+Do NOT silently rewrite the standing BOM.
+
+Do NOT block the allocation.
+
+--------------------------------------------------
+15. FUTURE FEEDBACK LOOP — DO NOT BUILD YET
+--------------------------------------------------
+
+Later we may analyse repeated daily exceptions and suggest:
+
+"Execution Arrangement may need revision."
+
+Do NOT implement this now.
+
+Daily exceptions remain operational records only.
+
+--------------------------------------------------
+16. LINK TO NEXT-DAY MATERIAL RECEIPT
+--------------------------------------------------
+
+For material requirements that are allocated to a vendor/arrangement:
+
+the NEXT-DAY Material Received form should be able to inherit/suggest the
+daily allocation context.
+
+Example:
+
+Tomorrow allocation:
+Borrow Earth — 350 Cum
+XYZ Infra
+
+Next-day receipt:
+Supplier prefill/suggestion:
+XYZ Infra
+
+Arrangement context:
+the selected daily arrangement where applicable.
+
+Do NOT create the receipt during allocation.
+
+Actual received quantity remains entered only when the material physically
+arrives.
+
+--------------------------------------------------
+17. IMPORTANT — ACTUAL RECEIPT VS PLANNED REQUIREMENT
+--------------------------------------------------
+
+Never convert:
+
+Tomorrow Required = 350 Cum
+
+into:
+
+Received = 350 Cum.
+
+Requirement is planned demand.
+
+Material Received is actual site evidence.
+
+DPR execution is actual work.
+
+Keep:
+
+Required
+Allocated/Arranged
+Received
+Executed
+
+as separate facts.
+
+--------------------------------------------------
+18. DAILY ALLOCATION PERSISTENCE — INVESTIGATE BEFORE SCHEMA
+--------------------------------------------------
+
+We need a stable way to persist, per requirement line:
+
+- chosen fulfilment type:
+  HLC / arrangement / other existing controlled route
+
+- executionArrangementId where selected
+
+- chosen agency/vendor display snapshot where useful
+
+- allocation status
+
+- allocation reason / exception reason where applicable
+
+- allocated by / at
+
+Do NOT immediately add database columns.
+
+First inspect whether current:
+
+`site_requirements.allocationStatus`
+
+can safely store this PER REQUIREMENT LINE.
+
+Key question:
+
+Are individual material/equipment/labour requirement rows stably
+identifiable?
+
+If they only live as array indexes, do NOT build a fragile:
+
+materials[1] → arrangement 17
+
+relationship that can shift when the Engineer edits/reorders rows.
+
+--------------------------------------------------
+19. SCHEMA STOP GATE
+--------------------------------------------------
+
+Expected schema change:
+
+UNKNOWN — investigate first.
+
+Preferred outcome:
+reuse existing allocationStatus JSONB only if it can be made stable,
+auditable and row-specific without index coupling.
+
+If stable per-row identity does not exist, STOP and report the minimum
+additive design needed.
+
+Possible safe options may include:
+
+- stable client-generated requirement-line keys inside existing JSON rows;
+or
+- a dedicated daily allocation child record;
+
+but DO NOT choose before investigation.
+
+Before ANY schema change report:
+
+A. current requirement-row identity;
+B. current allocationStatus shape;
+C. whether JSONB can safely hold daily vendor/arrangement allocation;
+D. audit/edit implications;
+E. minimum schema proposal if required.
+
+STOP FOR APPROVAL.
+
+--------------------------------------------------
+20. ALLOCATION STATUS
+--------------------------------------------------
+
+Do not create unnecessary complicated statuses.
+
+Preserve existing user-facing operational terms as much as possible.
+
+For a material requirement, authority should still be able to say:
+
+Arranged
+
+The additional context answers:
+
+Arranged by whom / through what?
+
+Examples:
+
+Status:
+Arranged
+
+Fulfilment:
+ABC Earthworks
+
+or:
+
+Status:
+Arranged
+
+Fulfilment:
+HLC / Internally Arranged
+
+Do not replace the existing simple status workflow with a new procurement
+state machine.
+
+--------------------------------------------------
+21. REQUIREMENT CATEGORIES
+--------------------------------------------------
+
+Keep authority assignment consistent with existing section responsibility.
+
+Engineer raises everything.
+
+Then appropriate authority handles:
+
+Materials
+→ PM / Stores / authorised allocator according to current permissions.
+
+Equipment
+→ PM / Equipment authority.
+
+Labour
+→ PM / authorised allocator.
+
+Immediate requirements
+→ current workflow.
+
+Do not change role permissions in this batch unless a confirmed existing
+permission bug prevents the allocation view.
+
+--------------------------------------------------
+22. ARRANGEMENT STATUS FILTER
+--------------------------------------------------
+
+Only operational arrangements should influence automatic allocation
+suggestions.
+
+Use the same current demand-affecting/operational status principles where
+appropriate:
+
+- approved
+- mobilisation_pending
+- in_progress
+- on_hold, if responsibility remains valid
+
+Do not suggest:
+
+- draft
+- submitted
+- returned
+- rejected
+- cancelled
+
+as normal tomorrow fulfilment options.
+
+Investigate whether "on_hold" should be visually flagged:
+
+"Arrangement on hold"
+
+even if the standing responsibility still affects BOM.
+
+Do not hide that fact from allocator.
+
+--------------------------------------------------
+23. PROGRAMME-BAR / REACH MATCH
+--------------------------------------------------
+
+Where programme-bar allocation exists:
+
+prefer the arrangement already linked to that exact programme bar/reach.
+
+This is the strongest suggestion.
+
+Priority conceptually:
+
+1. exact programmeBarId allocation
+2. compatible scope/reach + BOQ item
+3. compatible BOQ item
+4. no arrangement → HLC / internal context
+
+Do not auto-select a vendor from a different reach merely because the BOQ
+item description matches.
+
+--------------------------------------------------
+24. MULTIPLE VENDOR DISPLAY
+--------------------------------------------------
+
+Where more than one compatible vendor arrangement exists, show enough
+information to make the choice meaningful:
+
+- Agency
+- Arrangement type
+- Reach
+- available/allocated arrangement quantity where meaningful
+- status
+
+Do not show just:
+
+Vendor A
+Vendor B
+
+without scope context.
+
+--------------------------------------------------
+25. NO OVER-ALLOCATION SIDE EFFECT
+--------------------------------------------------
+
+Selecting an arrangement for tomorrow's requirement must NOT automatically
+increase:
+
+earthwork_arrangement_programme_allocations.allocatedQty
+
+or the standing arrangement's allocatedQty.
+
+Those quantities belong to the Execution Arrangement/programme allocation
+model.
+
+The daily requirement is fulfilment planning.
+
+If a selected vendor is outside the standing allocated scope, record it as
+a daily exception and reason — do not silently expand its contractual
+arrangement quantity.
+
+--------------------------------------------------
+26. READINESS NEXT MORNING
+--------------------------------------------------
+
+The existing Engineer morning-readiness confirmation should be able to show
+the outcome of allocation.
+
+Example:
+
+Borrow Earth — 350 Cum
+Arranged through XYZ Infra
+
+Engineer confirms:
+Available / Partly Available / Not Available
+
+Do not make the Engineer reconfirm or choose the vendor.
+
+He confirms actual readiness only.
+
+--------------------------------------------------
+27. REPORTING / TRACEABILITY
+--------------------------------------------------
+
+The requirement detail/history should make the chain readable:
+
+Engineer:
+Requested 350 Cum Borrow Earth
+
+PM:
+Arranged through XYZ Infra
+Reason: ABC unavailable
+
+Next morning:
+Partly available
+
+Actual receipts:
+280 Cum
+
+DPR executed:
+250 Cum
+
+This batch only needs to establish/preserve the daily allocation context.
+
+Do NOT build the full comparison report if one does not already exist.
+
+--------------------------------------------------
+28. DO NOT CHANGE ENGINEER UX
+--------------------------------------------------
+
+Explicit lock:
+
+Do NOT add these to Engineer requirement entry:
+
+- Execution Arrangement selector
+- Vendor selector
+- Responsibility selector
+- "Arrangement required"
+- daily fulfilment method
+
+Engineer raises requirement only.
+
+--------------------------------------------------
+29. DO NOT CHANGE BOM FORMULAS
+--------------------------------------------------
+
+Do NOT alter:
+
+- equipmentSliceExcluded
+- dieselSliceExcluded
+- labourSliceExcluded
+- materialSliceExcluded
+- buildArrangementEffects
+- arrangementExclusionEffect
+- calculateBomDemand
+
+unless investigation finds a demonstrable bug against existing documented
+responsibility semantics.
+
+If a BOM bug is found:
+
+STOP and report it separately before changing calculation logic.
+
+--------------------------------------------------
+30. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- Contract BOQ Qty
+- Eligible Qty
+- Geometry
+- Auto Sequence
+- Gantt quantity logic
+- Execution Arrangement commercial/scope setup
+- permanent arrangement allocation quantities
+- current DPR wizard
+- DPR readiness
+- overlap guard
+- Progress Report
+- Material Receipt actual quantity logic
+- Vendor Bill calculation
+- Structure DPR
+- weather
+- historical submitted data
+
+--------------------------------------------------
+31. TESTS — INVESTIGATION PLAN
+--------------------------------------------------
+
+Plan tests for:
+
+A. Existing BOM still receives active arrangements.
+
+B. Agency-owned equipment remains excluded from HLC BOM.
+
+C. HLC-retained equipment remains in BOM.
+
+D. Agency equipment + HLC diesel retains diesel demand.
+
+E. Agency diesel excludes HLC diesel demand.
+
+F. Agency execution labour exclusion behaves as existing rules specify.
+
+G. HLC-retained labour remains.
+
+H. Vendor/client material responsibility reduces HLC material demand.
+
+I. Not-decided responsibility does NOT silently remove HLC demand.
+
+J. Bar-linked arrangement affects only its relevant bar/phasing.
+
+K. Engineer requirement UI contains no arrangement/vendor control.
+
+L. Allocator sees exact-bar arrangement first.
+
+M. Allocator sees multiple compatible arrangements when appropriate.
+
+N. No applicable arrangement gives HLC/Internal option — no error.
+
+O. Allocator may select another compatible vendor for tomorrow.
+
+P. Temporary alternate-vendor selection does NOT rewrite permanent
+   arrangement.
+
+Q. Daily HLC exception does NOT rewrite BOM/arrangement.
+
+R. Daily allocation stores stable arrangement/vendor context.
+
+S. Status can remain simply "Arranged".
+
+T. Morning readiness displays allocator's fulfilment context.
+
+U. Material Receipt can later inherit/suggest daily allocation context
+   without creating a duplicate receipt.
+
+V. No schema change before approval.
+
+--------------------------------------------------
+32. REPORT BACK — STOP BEFORE BUILD IF PERSISTENCE IS UNCLEAR
+--------------------------------------------------
+
+Report first:
+
+A. Confirm current BOM arrangement-awareness with exact code paths.
+
+B. Confirm Equipment / Diesel / Labour / Material responsibility behavior.
+
+C. Confirm how programme-bar allocation affects demand.
+
+D. Current Tomorrow Requirement Engineer UX.
+
+E. Current allocating-authority UX.
+
+F. Exact current `allocationStatus` JSON shape.
+
+G. Whether individual requirement lines have stable IDs.
+
+H. Exact proposed daily fulfilment model.
+
+I. Whether it can safely use existing JSONB without schema.
+
+J. If not, minimum additive schema design.
+
+K. Exact applicable-arrangement resolution priority.
+
+L. How temporary alternate-vendor allocation avoids changing standing
+   arrangement.
+
+M. How No Arrangement maps to HLC/Internal Arranged.
+
+N. How next-day receipt will consume the daily allocation context.
+
+O. Tests planned.
+
+STOP HERE AND WAIT FOR APPROVAL BEFORE ANY SCHEMA CHANGE OR BUILD.
+
+DO NOT START ANOTHER BATCH.
