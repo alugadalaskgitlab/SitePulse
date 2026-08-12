@@ -22,6 +22,7 @@ import { EXECUTION_STATE_COLORS } from "@shared/executionState";
 import { executionArrangementCategoryForItem } from "@shared/planningEngine";
 import { useProjectArrangements } from "@/components/ExecutionStateBadge";
 import { derivePlannedWorkExecutionState, type PlannedWorkBar } from "@/lib/plannedWorkArrangement";
+import { newLineKey } from "@shared/requirementFulfilment";
 
 type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; dprMeasurementMethod?: string | null };
 
@@ -39,22 +40,24 @@ const STATUS_LABEL: Record<string, string> = {
   sent_plant: "Sent to Plant", rejected: "Rejected", clarification: "Need Clarification",
 };
 
-type MaterialLine = { materialName: string; qty: string; uom: string; requiredBy: string; sourcePreference: string; urgency: string };
-type EquipmentLine = { equipmentType: string; numberRequired: string; requiredFromTime: string; expectedDuration: string; operatorRequired: boolean };
-type LabourLine = { labourType: string; count: string; skilledType: string; requiredFromTime: string };
-type ImmediateLine = { description: string; category: string; urgency: string; reason: string };
+// 06F: every NEW line gets a stable client-generated lineKey (once, at row
+// creation). It survives reorder/save/reopen; legacy rows without one stay as-is.
+type MaterialLine = { lineKey?: string; materialName: string; qty: string; uom: string; requiredBy: string; sourcePreference: string; urgency: string };
+type EquipmentLine = { lineKey?: string; equipmentType: string; numberRequired: string; requiredFromTime: string; expectedDuration: string; operatorRequired: boolean };
+type LabourLine = { lineKey?: string; labourType: string; count: string; skilledType: string; requiredFromTime: string };
+type ImmediateLine = { lineKey?: string; description: string; category: string; urgency: string; reason: string };
 
 function emptyMaterial(): MaterialLine {
-  return { materialName: "", qty: "", uom: "", requiredBy: TOMORROW, sourcePreference: "store", urgency: "normal" };
+  return { lineKey: newLineKey(), materialName: "", qty: "", uom: "", requiredBy: TOMORROW, sourcePreference: "store", urgency: "normal" };
 }
 function emptyEquipment(): EquipmentLine {
-  return { equipmentType: "", numberRequired: "1", requiredFromTime: "07:00", expectedDuration: "", operatorRequired: false };
+  return { lineKey: newLineKey(), equipmentType: "", numberRequired: "1", requiredFromTime: "07:00", expectedDuration: "", operatorRequired: false };
 }
 function emptyLabour(): LabourLine {
-  return { labourType: "", count: "", skilledType: "skilled", requiredFromTime: "07:00" };
+  return { lineKey: newLineKey(), labourType: "", count: "", skilledType: "skilled", requiredFromTime: "07:00" };
 }
 function emptyImmediate(): ImmediateLine {
-  return { description: "", category: "material", urgency: "urgent", reason: "" };
+  return { lineKey: newLineKey(), description: "", category: "material", urgency: "urgent", reason: "" };
 }
 
 function Section({ title, icon: Icon, color, open, onToggle, children }: {
@@ -92,6 +95,11 @@ export default function SiteRequirementNew() {
   const editId = new URLSearchParams(search).get("editId");
   const isImmediateMode = mode === "immediate";
   const isEditMode = !!editId;
+  // 06F: programmeBarId is persisted ONLY when the requirement is created
+  // from a genuinely known programme bar (?barId=), or when editing a record
+  // that already carries one. Never inferred from text/chainage matching.
+  const barIdParam = new URLSearchParams(search).get("barId");
+  const knownBarIdRef = useRef<number | null>(barIdParam ? parseInt(barIdParam) || null : null);
 
   const { data: sites = [] } = useQuery<any[]>({ queryKey: ["/api/sites"] });
   const { data: existingReq } = useQuery<any>({
@@ -221,6 +229,7 @@ export default function SiteRequirementNew() {
     if (existingReq.plannedWork) {
       setActivity(existingReq.plannedWork.activity ?? "");
       setBoqItemId(existingReq.plannedWork.boqItemId ?? null);
+      if (existingReq.plannedWork.programmeBarId != null) knownBarIdRef.current = existingReq.plannedWork.programmeBarId;
       // Backward-compat: old records have a single `chainage` text field; new ones have chainageFrom/chainageTo numbers
       setChainageFrom(existingReq.plannedWork.chainageFrom != null ? String(existingReq.plannedWork.chainageFrom) : (existingReq.plannedWork.chainage ?? ""));
       setChainageTo(existingReq.plannedWork.chainageTo != null ? String(existingReq.plannedWork.chainageTo) : "");
@@ -274,6 +283,7 @@ export default function SiteRequirementNew() {
       if (activity || boqItemId != null || chFrom != null || chTo != null || plannedQty || pwRemarks) {
         body.plannedWork = {
           activity, boqItemId, chainageFrom: chFrom, chainageTo: chTo,
+          programmeBarId: knownBarIdRef.current,
           side: side || undefined,
           pwLength: pwLength ? parseFloat(pwLength) : null,
           pwWidth: pwWidth !== "" ? parseFloat(pwWidth) : null,

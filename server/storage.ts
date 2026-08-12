@@ -24846,12 +24846,26 @@ export class DatabaseStorage implements IStorage {
       : category === "labour" ? "labourItems"
       : "immediateItems";
     const currentItems: any[] = Array.isArray(currentAlloc[arrayKey]) ? [...currentAlloc[arrayKey]] : [];
-    const existingIdx = currentItems.findIndex((item: any) => item.index === itemIndex);
+    // 06F: entries are keyed by stable lineKey when the requirement line has
+    // one (index kept only as compat metadata); legacy unkeyed lines keep
+    // pure index matching so historical records behave exactly as before.
+    const lineKey: string | null = data.lineKey ?? null;
+    const existingIdx = lineKey
+      ? currentItems.findIndex((item: any) => item.lineKey === lineKey)
+      : currentItems.findIndex((item: any) => (item.lineKey == null || item.lineKey === "") && item.index === itemIndex);
     const newItem = {
+      lineKey: lineKey ?? undefined,
       index: itemIndex,
       status: data.status ?? null,
       expectedBy: data.expectedBy ?? null,
       remarks: data.remarks ?? null,
+      // 06F daily fulfilment context (optional; validated in the route).
+      // Records only tomorrow's operational decision — NEVER mutates the
+      // standing earthwork arrangement, its scope/quantities, or BOM.
+      fulfilmentType: data.fulfilmentType ?? null,
+      arrangementId: data.arrangementId ?? null,
+      agencyNameSnapshot: data.agencyNameSnapshot ?? null,
+      exceptionReason: data.exceptionReason ?? null,
       updatedBy: data.updatedBy ?? null,
       updatedAt: new Date().toISOString(),
     };

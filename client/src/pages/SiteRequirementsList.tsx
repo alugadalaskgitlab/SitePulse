@@ -15,6 +15,11 @@ import {
   Pen, RefreshCw,
 } from "lucide-react";
 import { PlannedWorkArrangementWarning } from "@/components/PlannedWorkArrangementWarning";
+import { findAllocationEntry } from "@shared/requirementFulfilment";
+import {
+  FulfilmentBadge, FulfilmentEditor, useRequirementFulfilmentContext,
+  EMPTY_FULFILMENT, type FulfilmentValue,
+} from "@/components/RequirementFulfilmentPanel";
 
 // ── Item-level status options per category ────────────────────────────────────
 
@@ -74,14 +79,15 @@ const ITEM_STATUS_BADGE: Record<string, { label: string; color: string }> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getItemAlloc(allocationStatus: any, category: string, index: number): any {
+function getItemAlloc(allocationStatus: any, category: string, index: number, line?: any): any {
   const arrayKey = category === "materials" ? "materialItems"
     : category === "equipment" ? "equipmentItems"
     : category === "labour" ? "labourItems"
     : "immediateItems";
   const items = allocationStatus?.[arrayKey];
   if (!Array.isArray(items)) return null;
-  return items.find((item: any) => item.index === index) ?? null;
+  // 06F: lineKey match first (stable across reorders), legacy index fallback.
+  return findAllocationEntry(items, line ?? null, index);
 }
 
 function hasItemLevelData(allocationStatus: any): boolean {
@@ -154,19 +160,23 @@ function SectionIcon({ type }: { type: string }) {
 // ── ItemEditPanel — inline form for per-item status update ────────────────────
 
 function ItemEditPanel({
-  category, onSave, onCancel, isPending, initial,
+  category, onSave, onCancel, isPending, initial, fulfilmentResolution,
 }: {
   category: string;
-  onSave: (status: string, expectedBy: string, remarks: string) => void;
+  onSave: (status: string, expectedBy: string, remarks: string, fulfilment: FulfilmentValue) => void;
   onCancel: () => void;
   isPending: boolean;
-  initial?: { status?: string; expectedBy?: string; remarks?: string };
+  initial?: { status?: string; expectedBy?: string; remarks?: string; fulfilment?: FulfilmentValue };
+  /** 06F: arrangement context — pass null to hide the fulfilment section. */
+  fulfilmentResolution?: any;
 }) {
   const [status, setStatus] = useState(initial?.status ?? "");
   const [expectedBy, setExpectedBy] = useState(initial?.expectedBy ?? "");
   const [remarks, setRemarks] = useState(initial?.remarks ?? "");
+  const [fulfilment, setFulfilment] = useState<FulfilmentValue>(initial?.fulfilment ?? { ...EMPTY_FULFILMENT });
   const options = ITEM_STATUS_OPTIONS[category] ?? [];
   const showExpectedBy = status === "expected_at_site" || status === "expected_by_time";
+  const otherAgencyIncomplete = fulfilment.fulfilmentType === "other_agency" && !(fulfilment.agencyNameSnapshot ?? "").trim();
 
   return (
     <div className="mt-1.5 mb-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2.5 space-y-2">
@@ -202,11 +212,14 @@ function ItemEditPanel({
         className="w-full text-xs border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 bg-white dark:bg-slate-900"
         data-testid="input-item-remarks"
       />
+      {fulfilmentResolution != null && (
+        <FulfilmentEditor resolution={fulfilmentResolution} value={fulfilment} onChange={setFulfilment} />
+      )}
       <div className="flex gap-2">
         <Button
           type="button" size="sm"
-          onClick={() => onSave(status, expectedBy, remarks)}
-          disabled={!status || isPending}
+          onClick={() => onSave(status, expectedBy, remarks, fulfilment)}
+          disabled={!status || isPending || otherAgencyIncomplete}
           className="bg-blue-600 hover:bg-blue-700 h-7 text-xs px-3"
           data-testid="button-save-item-status"
         >
@@ -310,13 +323,18 @@ function RequirementCard({
   });
 
   const itemStatusMutation = useMutation({
-    mutationFn: (payload: { category: string; index: number; status: string; expectedBy: string; remarks: string }) =>
+    mutationFn: (payload: { category: string; index: number; lineKey?: string | null; status: string; expectedBy: string; remarks: string; fulfilment?: FulfilmentValue }) =>
       apiRequest("PATCH", `/api/site-requirements/${req.id}/item-status`, {
         category:   payload.category,
         itemIndex:  payload.index,
+        lineKey:    payload.lineKey || null,
         status:     payload.status || null,
         expectedBy: payload.expectedBy || null,
         remarks:    payload.remarks || null,
+        fulfilmentType:     payload.fulfilment?.fulfilmentType ?? null,
+        arrangementId:      payload.fulfilment?.arrangementId ?? null,
+        agencyNameSnapshot: payload.fulfilment?.agencyNameSnapshot ?? null,
+        exceptionReason:    payload.fulfilment?.exceptionReason ?? null,
       }),
     onSuccess: () => { invalidate(); toast({ title: "Item status updated" }); setEditingItem(null); },
     onError: (err: any) => {
@@ -351,6 +369,19 @@ function RequirementCard({
     setEditingItem({ category, index });
   }
 
+  // 06F: arrangement context for the allocator's fulfilment chooser.
+  // Resolved once per requirement card from its planned work; only enabled
+  // for reviewers (the Engineer's entry screen never sees this).
+  const anyCanUpdate = canUpdateMaterials || canUpdateEquipment || canUpdateLabour;
+  const fulfilmentResolution = useRequirementFulfilmentContext(req.siteId, req.plannedWork, open && anyCanUpdate);
+
+  const fulfilmentInitial = (alloc: any): FulfilmentValue => ({
+    fulfilmentType: alloc?.fulfilmentType ?? null,
+    arrangementId: alloc?.arrangementId ?? null,
+    agencyNameSnapshot: alloc?.agencyNameSnapshot ?? null,
+    exceptionReason: alloc?.exceptionReason ?? null,
+  });
+
   const sc = STATUS_CONFIG[req.status] ?? STATUS_CONFIG.submitted;
   const hasShortage = req.readinessStatus === "confirmed_with_shortage";
   const sections: string[] = [];
@@ -368,6 +399,7 @@ function RequirementCard({
         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg?.color ?? "bg-slate-100 text-slate-600"}`}>
           {cfg?.label ?? alloc.status}
         </span>
+        <FulfilmentBadge entry={alloc} testId={`fulfilment-badge-${req.id}`} />
         {alloc.expectedBy && (
           <span className="text-[10px] text-blue-600 ml-1.5">⏰ {alloc.expectedBy}</span>
         )}
@@ -450,7 +482,7 @@ function RequirementCard({
               <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-2">Materials</p>
               <div className="space-y-0.5">
                 {req.materials.map((m: any, i: number) => {
-                  const alloc = getItemAlloc(req.allocationStatus, "materials", i);
+                  const alloc = getItemAlloc(req.allocationStatus, "materials", i, m);
                   const isEditingThis = editingItem?.category === "materials" && editingItem.index === i;
                   return (
                     <div key={i} className="border-b border-slate-50 dark:border-slate-800 pb-1.5 last:border-0">
@@ -481,11 +513,12 @@ function RequirementCard({
                       {isEditingThis && (
                         <ItemEditPanel
                           category="materials"
-                          initial={{ status: alloc?.status, expectedBy: alloc?.expectedBy, remarks: alloc?.remarks }}
+                          initial={{ status: alloc?.status, expectedBy: alloc?.expectedBy, remarks: alloc?.remarks, fulfilment: fulfilmentInitial(alloc) }}
+                          fulfilmentResolution={fulfilmentResolution}
                           isPending={itemStatusMutation.isPending}
                           onCancel={() => setEditingItem(null)}
-                          onSave={(status, expectedBy, remarks) =>
-                            itemStatusMutation.mutate({ category: "materials", index: i, status, expectedBy, remarks })
+                          onSave={(status, expectedBy, remarks, fulfilment) =>
+                            itemStatusMutation.mutate({ category: "materials", index: i, lineKey: m.lineKey ?? null, status, expectedBy, remarks, fulfilment })
                           }
                         />
                       )}
@@ -502,7 +535,7 @@ function RequirementCard({
               <p className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">Equipment</p>
               <div className="space-y-0.5">
                 {req.equipment.map((e: any, i: number) => {
-                  const alloc = getItemAlloc(req.allocationStatus, "equipment", i);
+                  const alloc = getItemAlloc(req.allocationStatus, "equipment", i, e);
                   const isEditingThis = editingItem?.category === "equipment" && editingItem.index === i;
                   const eqConflicts = allReqs.filter(other =>
                     other.id !== req.id &&
@@ -550,11 +583,12 @@ function RequirementCard({
                       {isEditingThis && (
                         <ItemEditPanel
                           category="equipment"
-                          initial={{ status: alloc?.status, expectedBy: alloc?.expectedBy, remarks: alloc?.remarks }}
+                          initial={{ status: alloc?.status, expectedBy: alloc?.expectedBy, remarks: alloc?.remarks, fulfilment: fulfilmentInitial(alloc) }}
+                          fulfilmentResolution={fulfilmentResolution}
                           isPending={itemStatusMutation.isPending}
                           onCancel={() => setEditingItem(null)}
-                          onSave={(status, expectedBy, remarks) =>
-                            itemStatusMutation.mutate({ category: "equipment", index: i, status, expectedBy, remarks })
+                          onSave={(status, expectedBy, remarks, fulfilment) =>
+                            itemStatusMutation.mutate({ category: "equipment", index: i, lineKey: e.lineKey ?? null, status, expectedBy, remarks, fulfilment })
                           }
                         />
                       )}
@@ -571,7 +605,7 @@ function RequirementCard({
               <p className="text-xs font-bold text-teal-600 uppercase tracking-wider mb-2">Labour</p>
               <div className="space-y-0.5">
                 {req.labour.map((l: any, i: number) => {
-                  const alloc = getItemAlloc(req.allocationStatus, "labour", i);
+                  const alloc = getItemAlloc(req.allocationStatus, "labour", i, l);
                   const isEditingThis = editingItem?.category === "labour" && editingItem.index === i;
                   const labConflicts = allReqs.filter(other =>
                     other.id !== req.id &&
@@ -618,11 +652,12 @@ function RequirementCard({
                       {isEditingThis && (
                         <ItemEditPanel
                           category="labour"
-                          initial={{ status: alloc?.status, expectedBy: alloc?.expectedBy, remarks: alloc?.remarks }}
+                          initial={{ status: alloc?.status, expectedBy: alloc?.expectedBy, remarks: alloc?.remarks, fulfilment: fulfilmentInitial(alloc) }}
+                          fulfilmentResolution={fulfilmentResolution}
                           isPending={itemStatusMutation.isPending}
                           onCancel={() => setEditingItem(null)}
-                          onSave={(status, expectedBy, remarks) =>
-                            itemStatusMutation.mutate({ category: "labour", index: i, status, expectedBy, remarks })
+                          onSave={(status, expectedBy, remarks, fulfilment) =>
+                            itemStatusMutation.mutate({ category: "labour", index: i, lineKey: l.lineKey ?? null, status, expectedBy, remarks, fulfilment })
                           }
                         />
                       )}
@@ -639,7 +674,7 @@ function RequirementCard({
               <p className="text-xs font-bold text-red-600 uppercase tracking-wider mb-2">Immediate Requirements</p>
               <div className="space-y-0.5">
                 {visibleImmediate.map((item: any, i: number) => {
-                  const alloc = getItemAlloc(req.allocationStatus, "immediate", i);
+                  const alloc = getItemAlloc(req.allocationStatus, "immediate", i, item);
                   const isEditingThis = editingItem?.category === "immediate" && editingItem.index === i;
                   return (
                     <div key={i} className="border-b border-slate-50 dark:border-slate-800 pb-1.5 last:border-0">
@@ -674,7 +709,7 @@ function RequirementCard({
                           isPending={itemStatusMutation.isPending}
                           onCancel={() => setEditingItem(null)}
                           onSave={(status, expectedBy, remarks) =>
-                            itemStatusMutation.mutate({ category: "immediate", index: i, status, expectedBy, remarks })
+                            itemStatusMutation.mutate({ category: "immediate", index: i, lineKey: item.lineKey ?? null, status, expectedBy, remarks })
                           }
                         />
                       )}

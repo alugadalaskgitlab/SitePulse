@@ -22,6 +22,7 @@ import { format, addDays } from "date-fns";
 import { roadDprHref, roadDprDraftHref } from "@/lib/dprEntryMode";
 import { findOlderPendingDprs } from "@/lib/dprLifecycle";
 import { deriveDprChecklist } from "@shared/dprFieldChecklist";
+import { findAllocationEntry, fulfilmentLabel } from "@shared/requirementFulfilment";
 import type { PlanVsActualRow, BoqProjectWithCounts } from "@shared/schema";
 
 // ─── Short name extraction ────────────────────────────────────────────────────
@@ -206,14 +207,23 @@ function ItemAllocBadgeFH({ status }: { status?: string }) {
   return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>;
 }
 
-function getItemAllocFH(allocationStatus: any, category: string, index: number): any {
+function getItemAllocFH(allocationStatus: any, category: string, index: number, line?: any): any {
   const arrayKey = category === "materials" ? "materialItems"
     : category === "equipment" ? "equipmentItems"
     : category === "labour" ? "labourItems"
     : "immediateItems";
   const items = allocationStatus?.[arrayKey];
   if (!Array.isArray(items)) return null;
-  return items.find((item: any) => item.index === index) ?? null;
+  // 06F: lineKey match first (stable across reorders), legacy index fallback.
+  return findAllocationEntry(items, line ?? null, index);
+}
+
+/** 06F: read-only "arranged through whom" context shown to the Engineer at
+ * morning readiness. Display only — the Engineer never selects the vendor. */
+function FulfilmentNoteFH({ alloc }: { alloc: any }) {
+  const label = fulfilmentLabel(alloc);
+  if (!label) return null;
+  return <p className="text-[10px] text-indigo-600 font-medium">Arranged through: {label}</p>;
 }
 
 function hasItemLevelAllocFH(allocationStatus: any): boolean {
@@ -408,7 +418,7 @@ function ReadinessSection() {
 
                   {/* Material items */}
                   {req.materials?.map((m: any, i: number) => {
-                    const alloc = getItemAllocFH(req.allocationStatus, "materials", i);
+                    const alloc = getItemAllocFH(req.allocationStatus, "materials", i, m);
                     if (!alloc?.status) return null;
                     return (
                       <div key={`mat-${i}`} className="flex items-start gap-2">
@@ -422,6 +432,7 @@ function ReadinessSection() {
                             <ItemAllocBadgeFH status={alloc.status} />
                             {alloc.expectedBy && <span className="text-[10px] text-blue-600">⏰ {alloc.expectedBy}</span>}
                           </div>
+                          <FulfilmentNoteFH alloc={alloc} />
                           {alloc.remarks && <p className="text-[11px] text-gray-400 italic">{alloc.remarks}</p>}
                         </div>
                       </div>
@@ -438,7 +449,7 @@ function ReadinessSection() {
 
                   {/* Equipment items */}
                   {req.equipment?.map((e: any, i: number) => {
-                    const alloc = getItemAllocFH(req.allocationStatus, "equipment", i);
+                    const alloc = getItemAllocFH(req.allocationStatus, "equipment", i, e);
                     if (!alloc?.status) return null;
                     return (
                       <div key={`eq-${i}`} className="flex items-start gap-2">
@@ -451,6 +462,7 @@ function ReadinessSection() {
                             <ItemAllocBadgeFH status={alloc.status} />
                             {alloc.expectedBy && <span className="text-[10px] text-blue-600">⏰ {alloc.expectedBy}</span>}
                           </div>
+                          <FulfilmentNoteFH alloc={alloc} />
                           {alloc.remarks && <p className="text-[11px] text-gray-400 italic">{alloc.remarks}</p>}
                         </div>
                       </div>
@@ -467,7 +479,7 @@ function ReadinessSection() {
 
                   {/* Labour items */}
                   {req.labour?.map((l: any, i: number) => {
-                    const alloc = getItemAllocFH(req.allocationStatus, "labour", i);
+                    const alloc = getItemAllocFH(req.allocationStatus, "labour", i, l);
                     if (!alloc?.status) return null;
                     return (
                       <div key={`lab-${i}`} className="flex items-start gap-2">
@@ -480,6 +492,7 @@ function ReadinessSection() {
                             <ItemAllocBadgeFH status={alloc.status} />
                             {alloc.expectedBy && <span className="text-[10px] text-blue-600">⏰ {alloc.expectedBy}</span>}
                           </div>
+                          <FulfilmentNoteFH alloc={alloc} />
                           {alloc.remarks && <p className="text-[11px] text-gray-400 italic">{alloc.remarks}</p>}
                         </div>
                       </div>
@@ -496,7 +509,7 @@ function ReadinessSection() {
 
                   {/* Immediate items */}
                   {req.immediateRequirements?.map((im: any, i: number) => {
-                    const alloc = getItemAllocFH(req.allocationStatus, "immediate", i);
+                    const alloc = getItemAllocFH(req.allocationStatus, "immediate", i, im);
                     if (!alloc?.status) return null;
                     return (
                       <div key={`imm-${i}`} className="flex items-start gap-2">

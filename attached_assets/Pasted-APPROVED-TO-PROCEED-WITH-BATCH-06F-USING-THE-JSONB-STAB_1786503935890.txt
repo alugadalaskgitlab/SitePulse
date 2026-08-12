@@ -1,0 +1,556 @@
+APPROVED TO PROCEED WITH BATCH 06F USING THE JSONB + STABLE LINEKEY ROUTE,
+WITH THE FOLLOWING CORRECTIONS.
+
+No DB schema change is approved or required.
+
+--------------------------------------------------
+1. APPROVE STABLE LINEKEY
+--------------------------------------------------
+
+Add a stable client-generated `lineKey` to every NEW requirement line:
+
+- material
+- equipment
+- labour
+- immediate
+
+Generate it ONCE when the Engineer creates the row.
+
+It must survive:
+
+- Save Draft
+- submit
+- reopen
+- row reorder
+- row insertion/deletion around it
+- allocation updates
+
+Do NOT regenerate lineKey from:
+- array index
+- row order
+- label/material name
+
+Existing historical requirement records without lineKey remain readable
+through the existing index fallback.
+
+For NEW records, allocationStatus must key per-line allocation data by
+lineKey, with index retained only as compatibility metadata/fallback.
+
+--------------------------------------------------
+2. DO NOT CHANGE ENGINEER UX
+--------------------------------------------------
+
+Engineer continues raising only the requirement.
+
+Do NOT add:
+
+- Vendor selector
+- Execution Arrangement selector
+- Responsibility selector
+- Fulfilment Type selector
+
+to SiteRequirementNew.
+
+Engineer simply states:
+
+what is required
+for what planned work/reach
+and how much.
+
+--------------------------------------------------
+3. PRESERVE PROGRAMME BAR ID WHEN IT IS ACTUALLY KNOWN
+--------------------------------------------------
+
+Current plannedWork does not persist programmeBarId.
+
+If a requirement is created from / against an identified programme bar,
+preserve that programmeBarId inside the existing plannedWork JSON.
+
+This is a JSON-shape addition only.
+
+Do NOT add a DB column.
+
+Do NOT attempt to infer an exact programmeBarId later from loose text
+matching.
+
+Arrangement-resolution priority becomes:
+
+1. Exact programmeBarId allocation ONLY when programmeBarId is genuinely
+   known/persisted.
+
+2. Compatible BOQ item + reach/scope.
+
+3. Compatible BOQ item.
+
+4. No applicable arrangement
+   → HLC/Internal context.
+
+Do not call a probabilistic match "exact programme bar".
+
+--------------------------------------------------
+4. DAILY FULFILMENT MODEL
+--------------------------------------------------
+
+Extend the existing per-line allocationStatus entry with optional:
+
+- lineKey
+- fulfilmentType
+- arrangementId
+- agencyNameSnapshot
+- exceptionReason
+- updatedBy
+- updatedAt
+
+Use:
+
+fulfilmentType:
+- "hlc"
+- "arrangement"
+- "other_agency"
+
+Do NOT create a new state machine.
+
+Existing operational status remains:
+
+Arranged
+Available in store
+Issued
+Direct supply arranged
+etc.
+
+Fulfilment fields only answer:
+
+"Who/how is this requirement being fulfilled tomorrow?"
+
+--------------------------------------------------
+5. `hlc`
+--------------------------------------------------
+
+Use when the requirement is being handled internally by HLC / the main
+contractor.
+
+No Execution Arrangement is required.
+
+Example:
+
+Status:
+Arranged
+
+Fulfilment:
+HLC / Internally Arranged
+
+No "Arrangement required" warning.
+
+--------------------------------------------------
+6. `arrangement`
+--------------------------------------------------
+
+Use when the allocating authority chooses an applicable existing Execution
+Arrangement.
+
+Persist:
+
+- arrangementId
+- agencyNameSnapshot
+
+The arrangement ID is authoritative.
+
+The name snapshot is for readable historical context.
+
+Do not modify the standing arrangement.
+
+--------------------------------------------------
+7. `other_agency` — DAILY EXCEPTION
+--------------------------------------------------
+
+Support the real operational case:
+
+Standing arrangement:
+ABC Earthworks
+
+But ABC cannot supply tomorrow.
+
+PM arranges:
+XYZ Infra for this day.
+
+If XYZ does NOT have an applicable standing Execution Arrangement, allow:
+
+Fulfilment Type:
+Other Agency / Daily Exception
+
+Agency:
+XYZ Infra
+
+Reason:
+Primary vendor unavailable
+
+Persist:
+
+- fulfilmentType = other_agency
+- agencyNameSnapshot
+- exceptionReason
+- arrangementId = null
+
+This must NOT:
+
+- create a new Execution Arrangement;
+- transfer ABC's standing reach;
+- alter arrangement allocations;
+- alter BOM responsibility;
+- expand another vendor's permanent scope.
+
+It is only tomorrow's operational fulfilment record.
+
+--------------------------------------------------
+8. WHEN AN ALTERNATE VENDOR HAS AN EXISTING COMPATIBLE ARRANGEMENT
+--------------------------------------------------
+
+If XYZ already has a compatible active Execution Arrangement, prefer:
+
+fulfilmentType = arrangement
+arrangementId = XYZ arrangement
+
+rather than other_agency.
+
+Show all compatible arrangements to the allocator.
+
+Do not force selection of the arrangement normally assigned to that exact
+stretch if PM has deliberately chosen another compatible agency for the
+day.
+
+Record an exception reason where the daily allocation differs from the
+normal/strongest arrangement suggestion.
+
+--------------------------------------------------
+9. BOM SEMANTICS REMAIN STANDING-ARRANGEMENT BASED
+--------------------------------------------------
+
+Do NOT alter calculateBomDemand or the arrangement exclusion engine.
+
+The investigation confirms that BOM is already arrangement-aware for:
+
+- Equipment
+- Diesel
+- Labour
+- Materials
+
+and correctly respects component responsibility.
+
+Daily fulfilment is an operational decision.
+
+It does NOT rewrite the standing BOM responsibility model.
+
+Example:
+
+Standing arrangement assigns tippers to ABC.
+
+Tomorrow PM allocates XYZ instead.
+
+BOM remains:
+Agency supplies tippers.
+
+Only daily agency identity changes.
+
+If PM chooses HLC internally despite standing agency responsibility,
+show an informational exception warning but do not recalculate permanent
+BOM responsibility.
+
+--------------------------------------------------
+10. ALLOCATOR VIEW
+--------------------------------------------------
+
+On approval/allocation side, for each requirement line show:
+
+Requirement:
+Borrow Earth — 350 Cum
+
+For:
+Embankment — Ch. 2+000–2+200
+
+Responsibility from standing arrangement/BOM context:
+Vendor / HLC / Client / Not decided
+
+Applicable arrangement(s), if any.
+
+Then allow allocator to record:
+
+Status:
+Arranged
+
+Fulfilment:
+- suggested arrangement/vendor
+- another compatible arrangement
+- HLC / Internally Arranged
+- Other Agency / Daily Exception
+
+Do NOT expose this choice to the Engineer's requirement-entry screen.
+
+--------------------------------------------------
+11. EXACTLY ONE APPLICABLE ARRANGEMENT
+--------------------------------------------------
+
+Show it as:
+
+Suggested Fulfilment
+
+not mandatory fulfilment.
+
+PM may still choose:
+- HLC
+- another compatible arrangement
+- Other Agency
+
+where operationally necessary.
+
+Do not silently auto-lock the requirement.
+
+--------------------------------------------------
+12. MULTIPLE ARRANGEMENTS
+--------------------------------------------------
+
+Show enough context:
+
+- agency
+- arrangement type
+- reach/scope
+- status
+- relevant allocated quantity where meaningful
+
+Do not list only agency names.
+
+--------------------------------------------------
+13. NO ARRANGEMENT
+--------------------------------------------------
+
+No arrangement is normal.
+
+Do NOT show:
+
+Arrangement Required
+Missing Arrangement
+Create Arrangement
+
+Default fulfilment choice may be:
+
+HLC / Internally Arranged
+
+The allocator can simply mark the requirement Arranged.
+
+If PM actually arranges an outside agency for that day, use
+`other_agency`.
+
+--------------------------------------------------
+14. ON-HOLD ARRANGEMENT
+--------------------------------------------------
+
+If an otherwise applicable arrangement is on hold:
+
+show it clearly as:
+
+Arrangement on hold
+
+Do not silently hide the standing responsibility context.
+
+Do not auto-select it as the normal recommended fulfilment without warning.
+
+Allocator can choose another route.
+
+--------------------------------------------------
+15. NEXT-DAY MATERIAL RECEIPT
+--------------------------------------------------
+
+For a matching next-day Material Received transaction:
+
+If daily fulfilment is `arrangement`:
+suggest/prefill the selected arrangement and agency.
+
+If daily fulfilment is `other_agency`:
+suggest the agency name as today's allocated supplier, but do NOT fabricate
+an earthworkArrangementId.
+
+If daily fulfilment is `hlc`:
+use HLC/internal context.
+
+Receipt remains an ACTUAL transaction.
+
+Never pre-create a receipt from the requirement.
+
+Never assume:
+
+Required 350 Cum
+=
+Received 350 Cum.
+
+--------------------------------------------------
+16. NEXT-DAY READINESS
+--------------------------------------------------
+
+Morning readiness should show the allocator's operational outcome.
+
+Example:
+
+Borrow Earth — 350 Cum
+Arranged through XYZ Infra
+
+Engineer then confirms only:
+
+Available
+Partly Available
+Not Available
+
+Engineer does NOT select/change the vendor at morning readiness.
+
+--------------------------------------------------
+17. TRACEABILITY
+--------------------------------------------------
+
+Requirement history should be able to tell the simple story:
+
+Engineer:
+Requested Borrow Earth — 350 Cum
+
+Standing arrangement:
+ABC Earthworks
+
+PM daily allocation:
+XYZ Infra
+Reason: ABC unavailable
+
+Morning readiness:
+Partly available
+
+Actual receipt later:
+280 Cum from XYZ
+
+DPR:
+250 Cum executed
+
+Do not build the full report/analytics now.
+
+Just preserve the daily allocation context so this chain can later be
+reported.
+
+--------------------------------------------------
+18. LEGACY RECORDS
+--------------------------------------------------
+
+Old requirement lines without lineKey remain fully readable.
+
+Continue to support legacy index-based allocation entries.
+
+Do NOT rewrite historical requirement JSON merely to add keys.
+
+All NEW lines must use stable lineKey.
+
+--------------------------------------------------
+19. NO DB SCHEMA CHANGE
+--------------------------------------------------
+
+Use the existing JSONB columns.
+
+No:
+- new table
+- new column
+- FK
+- migration
+
+If implementation unexpectedly requires database schema:
+STOP and report before doing it.
+
+--------------------------------------------------
+20. TESTS
+--------------------------------------------------
+
+In addition to the planned tests, explicitly cover:
+
+A. New requirement row gets lineKey once.
+
+B. lineKey survives save/reopen.
+
+C. Reordering rows does not move allocation to another requirement.
+
+D. Inserting a new row before an existing one does not move its allocation.
+
+E. Deleting another row does not move its allocation.
+
+F. Legacy index-only allocation still loads.
+
+G. Requirement created from a known programme bar preserves programmeBarId
+   in plannedWork JSON.
+
+H. Exact-bar resolution is used only when programmeBarId is genuinely known.
+
+I. No arrangement defaults cleanly to HLC/Internal — no error.
+
+J. One arrangement is suggested but not locked.
+
+K. Multiple compatible arrangements are selectable.
+
+L. Alternate compatible arrangement does not modify the standing arrangement.
+
+M. Other Agency daily exception works with arrangementId = null.
+
+N. Other Agency requires an agency name and preferably a reason.
+
+O. HLC exception against standing vendor responsibility gives informational
+   warning only.
+
+P. Daily fulfilment does not modify BOM arrangement exclusions.
+
+Q. Daily fulfilment does not change earthwork arrangement scope/qty/vendor.
+
+R. Receipt suggestion correctly distinguishes:
+   arrangement
+   vs other_agency
+   vs HLC.
+
+S. No receipt is automatically created.
+
+T. Engineer requirement UI remains unchanged.
+
+U. No DB schema change.
+
+Run the full suite.
+
+--------------------------------------------------
+21. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. lineKey generation and persistence.
+
+B. Legacy index fallback behavior.
+
+C. programmeBarId preservation where known.
+
+D. Final allocationStatus JSON shape.
+
+E. Allocator UI.
+
+F. Exact arrangement-resolution order.
+
+G. HLC/Internal behavior.
+
+H. Alternate compatible-arrangement behavior.
+
+I. Other Agency daily-exception behavior.
+
+J. Confirmation standing arrangement is never modified.
+
+K. Confirmation BOM formulas are untouched.
+
+L. Next-day readiness behavior.
+
+M. Material Receipt suggestion behavior.
+
+N. Tests.
+
+O. Confirm:
+- no schema change
+- no Engineer workflow change
+- no BOM formula change
+- no arrangement-scope/quantity mutation
+- no automatic receipt creation
+
+DO NOT START ANOTHER BATCH.

@@ -17,6 +17,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { useUpload } from "@/hooks/use-upload";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { ReceiptWorkContext, TripWorkContextSummary, EMPTY_WORK_CONTEXT, type TripWorkContext } from "@/components/ReceiptWorkContext";
+import { findAllocationEntry, receiptSuggestionFromFulfilment, fulfilmentLabel } from "@shared/requirementFulfilment";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -95,6 +96,33 @@ export default function SiteMaterialTrips() {
       return next;
     });
   };
+
+  // 06F: next-day receipt suggestion from the allocator's daily fulfilment.
+  // Suggestion only — never creates a receipt, never inherits quantities.
+  const tripSiteId = useMemo(() => sitesList.find(s => s.name === newTrip.site)?.id ?? null, [sitesList, newTrip.site]);
+  const { data: dayRequirements = [] } = useQuery<any[]>({
+    queryKey: ["/api/site-requirements", "receipt-suggest", tripSiteId, newTrip.date],
+    queryFn: async () => {
+      const res = await fetch(`/api/site-requirements?siteId=${tripSiteId}&dateFrom=${newTrip.date}&dateTo=${newTrip.date}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !isPILinked && tripSiteId != null && !!newTrip.date,
+    staleTime: 30_000,
+  });
+  const fulfilmentSuggestion = useMemo(() => {
+    const wanted = (newTrip.material || "").trim().toLowerCase();
+    for (const r of dayRequirements) {
+      const mats: any[] = Array.isArray(r.materials) ? r.materials : [];
+      const entries: any[] = r.allocationStatus?.materialItems ?? [];
+      for (let i = 0; i < mats.length; i++) {
+        if (wanted && (mats[i].materialName || "").trim().toLowerCase() !== wanted) continue;
+        const entry = findAllocationEntry(entries, mats[i], i);
+        const s = entry ? receiptSuggestionFromFulfilment(entry) : null;
+        if (s && entry?.fulfilmentType) return { suggestion: s, entry, materialName: mats[i].materialName };
+      }
+    }
+    return null;
+  }, [dayRequirements, newTrip.material]);
 
   // Photos are staged locally while creating a new trip (no DB id yet to
   // link an attachment to), then uploaded in one batch once the trip is saved.
@@ -458,6 +486,40 @@ export default function SiteMaterialTrips() {
                   </Button>
                 </div>
               </div>
+
+              {/* 06F: daily-allocation suggestion (informational; apply is optional) */}
+              {!isPILinked && fulfilmentSuggestion && (
+                <div className="rounded border border-indigo-200 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2 text-xs space-y-1" data-testid="receipt-fulfilment-suggestion">
+                  <p className="font-semibold text-indigo-800 dark:text-indigo-200">
+                    Tomorrow's Requirement allocation: {fulfilmentLabel(fulfilmentSuggestion.entry)}
+                  </p>
+                  <p className="text-indigo-700 dark:text-indigo-300">{fulfilmentSuggestion.suggestion.note} ({fulfilmentSuggestion.materialName})</p>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {fulfilmentSuggestion.suggestion.supplierSuggestion && (
+                      <button
+                        type="button"
+                        className="text-[11px] font-medium text-indigo-700 underline"
+                        onClick={() => setNewTrip(prev => ({ ...prev, supplier: prev.supplier || fulfilmentSuggestion.suggestion.supplierSuggestion || "" }))}
+                        data-testid="button-apply-fulfilment-supplier"
+                      >
+                        Use "{fulfilmentSuggestion.suggestion.supplierSuggestion}" as supplier
+                      </button>
+                    )}
+                    {/* Only 'arrangement' fulfilments carry an arrangementId —
+                        other_agency never links to an arrangement. */}
+                    {fulfilmentSuggestion.suggestion.arrangementId != null && (
+                      <button
+                        type="button"
+                        className="text-[11px] font-medium text-indigo-700 underline"
+                        onClick={() => setWorkCtx(prev => ({ ...prev, earthworkArrangementId: prev.earthworkArrangementId ?? fulfilmentSuggestion.suggestion.arrangementId }))}
+                        data-testid="button-apply-fulfilment-arrangement"
+                      >
+                        Link this arrangement to the receipt
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* 06E-F: optional work-context linkage — hidden in PI-linked
                   mode (procurement receipts keep their own linkage). */}

@@ -25,6 +25,7 @@ import { computeItemEntries, computeItemAbstract } from "@shared/progressReport"
 import { shortItemName as sharedShortItemName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
+import { validateFulfilment } from "@shared/requirementFulfilment";
 import { syncArrangementBarAllocations } from "./arrangementAllocationSync";
 import { AUTO_SYNC_STATUSES } from "@shared/arrangementAutoAllocation";
 import {
@@ -18311,9 +18312,15 @@ export function registerSiteRequirementRoutes(app: Express) {
       const canEquipment = isManagerOrAdmin || !!(perms["plant_equipment"]?.create);
       const canLabour    = isManagerOrAdmin || !!(perms["labour_management"]?.create);
 
-      const { category, itemIndex, status, expectedBy, remarks } = req.body;
+      const { category, itemIndex, lineKey, status, expectedBy, remarks,
+        fulfilmentType, arrangementId, agencyNameSnapshot, exceptionReason } = req.body;
       if (!category || itemIndex === undefined || itemIndex === null) {
         return res.status(400).json({ error: "category and itemIndex are required" });
+      }
+      // 06F: optional daily fulfilment context — validated by the shared seam.
+      const fv = validateFulfilment({ fulfilmentType, arrangementId, agencyNameSnapshot, exceptionReason });
+      if (!fv.ok) {
+        return res.status(400).json({ error: fv.message, code: fv.code });
       }
       const allowed = ["materials", "equipment", "labour", "immediate"];
       if (!allowed.includes(category)) {
@@ -18333,10 +18340,72 @@ export function registerSiteRequirementRoutes(app: Express) {
       if (category === "immediate" && !(isManagerOrAdmin || canStores || canEquipment)) {
         return res.status(403).json({ error: "Updating immediate requirements requires Stores, Equipment, or PM access" });
       }
-      const row = await storage.updateSiteRequirementItemStatus(parseInt(req.params.id), category, Number(itemIndex), {
+
+      // 06F: authoritative line identity — validate the target line against the
+      // requirement's OWN stored lines. Clients cannot invent lineKeys or write
+      // out-of-range indexes; the server derives the canonical (lineKey, index).
+      const reqId = parseInt(req.params.id);
+      const reqRow = await storage.getSiteRequirement(reqId);
+      if (!reqRow) return res.status(404).json({ error: "Not found" });
+      const lines: any[] =
+        category === "materials" ? ((reqRow.materials as any[]) ?? [])
+        : category === "equipment" ? ((reqRow.equipment as any[]) ?? [])
+        : category === "labour" ? ((reqRow.labour as any[]) ?? [])
+        : ((reqRow.immediateRequirements as any[]) ?? []);
+      const idxNum = Number(itemIndex);
+      const clientKey = typeof lineKey === "string" && lineKey ? lineKey : null;
+      let resolvedIndex: number;
+      let resolvedKey: string | null;
+      if (clientKey) {
+        const at = lines.findIndex((l: any) => l?.lineKey === clientKey);
+        if (at < 0) return res.status(400).json({ error: "lineKey does not match any line in this category", code: "UNKNOWN_LINE_KEY" });
+        resolvedIndex = at;           // authoritative current position
+        resolvedKey = clientKey;
+      } else {
+        if (!Number.isInteger(idxNum) || idxNum < 0 || idxNum >= lines.length) {
+          return res.status(400).json({ error: "itemIndex out of range for this category", code: "INVALID_ITEM_INDEX" });
+        }
+        resolvedIndex = idxNum;
+        // Legacy caller on a keyed line: adopt the line's own key so the
+        // allocation stays attached to the line, not the position.
+        resolvedKey = typeof lines[idxNum]?.lineKey === "string" && lines[idxNum].lineKey ? lines[idxNum].lineKey : null;
+      }
+
+      // 06F: an 'arrangement' fulfilment must reference a real, operational
+      // arrangement compatible with this requirement's planned BOQ item.
+      // Reading only — the arrangement itself is never modified here.
+      let agencySnapshotFinal = fv.value.agencyNameSnapshot;
+      if (fv.value.fulfilmentType === "arrangement") {
+        const [arrRow] = await db.select().from(earthworkArrangementsTable)
+          .where(eq(earthworkArrangementsTable.id, fv.value.arrangementId!));
+        if (!arrRow) return res.status(400).json({ error: "Arrangement not found", code: "ARRANGEMENT_NOT_FOUND" });
+        const okStatuses = ["approved", "mobilisation_pending", "in_progress", "on_hold"];
+        if (!okStatuses.includes(arrRow.status as string)) {
+          return res.status(400).json({ error: `Arrangement is ${arrRow.status} — not available for daily allocation`, code: "ARRANGEMENT_NOT_OPERATIONAL" });
+        }
+        const plannedItemId = (reqRow.plannedWork as any)?.boqItemId ?? null;
+        if (plannedItemId != null) {
+          const itemAllocs = (arrRow.boqItemAllocations as Array<{ boqItemId: number }> | null) ?? null;
+          const covers = arrRow.boqItemId != null
+            ? arrRow.boqItemId === plannedItemId
+            : Array.isArray(itemAllocs) && itemAllocs.some((x) => x?.boqItemId === plannedItemId);
+          if (!covers) {
+            return res.status(400).json({ error: "Arrangement does not cover this requirement's BOQ item", code: "ARRANGEMENT_INCOMPATIBLE" });
+          }
+        }
+        // Snapshot the agency name from the arrangement itself (authoritative).
+        agencySnapshotFinal = (arrRow.agencyName as string | null) ?? agencySnapshotFinal;
+      }
+
+      const row = await storage.updateSiteRequirementItemStatus(reqId, category, resolvedIndex, {
+        lineKey: resolvedKey,
         status: status ?? null,
         expectedBy: expectedBy ?? null,
         remarks: remarks ?? null,
+        fulfilmentType: fv.value.fulfilmentType,
+        arrangementId: fv.value.arrangementId,
+        agencyNameSnapshot: agencySnapshotFinal,
+        exceptionReason: fv.value.exceptionReason,
         updatedBy: req.session?.username ?? null,
       });
       if (!row) return res.status(404).json({ error: "Not found" });
