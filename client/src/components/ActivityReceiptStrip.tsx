@@ -385,7 +385,7 @@ function ViewReceiptsDialog({ open, onOpenChange, trips, testIdPrefix }: { open:
   );
 }
 
-function RecordReceiptDialog({ open, onOpenChange, props, arrangement, dailyOverride, received, uploadFile, toast, testIdPrefix }: {
+function RecordReceiptDialog({ open, onOpenChange, props, arrangement, dailyOverride, dailyMaterialName, received, uploadFile, toast, testIdPrefix }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   props: ActivityReceiptStripProps;

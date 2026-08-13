@@ -1,0 +1,115 @@
+INSTRUCTION 06G-HF — FIX GUIDED DPR WHITE SCREEN AFTER BOQ ITEM SELECTION
+
+This is an URGENT, extremely narrow runtime hotfix.
+
+Do NOT change any DPR workflow, arrangement resolution, material receipt
+logic, wizard flow, schema, or calculations.
+
+ROOT CAUSE CONFIRMED IN CURRENT REPO
+
+File:
+client/src/components/ActivityReceiptStrip.tsx
+
+`ActivityReceiptStrip` correctly passes:
+
+dailyMaterialName={dailyFulfilment?.materialName ?? null}
+
+to `RecordReceiptDialog`.
+
+The `RecordReceiptDialog` props TYPE also declares:
+
+dailyMaterialName: string | null
+
+BUT the function parameter destructuring currently omits
+`dailyMaterialName`.
+
+It currently starts conceptually as:
+
+function RecordReceiptDialog({
+  open,
+  onOpenChange,
+  props,
+  arrangement,
+  dailyOverride,
+  received,
+  uploadFile,
+  toast,
+  testIdPrefix
+}: { ... dailyMaterialName: string | null ... })
+
+Inside the component, `dailyMaterialName` is then referenced in the render
+and mutation payload.
+
+This causes:
+
+ReferenceError: dailyMaterialName is not defined
+
+as soon as an ActivityReceiptStrip mounts after selecting a BOQ item,
+blanking the whole Guided DPR page.
+
+FIX
+
+Add `dailyMaterialName` to the RecordReceiptDialog function destructuring.
+
+Nothing else.
+
+Expected corrected parameter conceptually:
+
+function RecordReceiptDialog({
+  open,
+  onOpenChange,
+  props,
+  arrangement,
+  dailyOverride,
+  dailyMaterialName,
+  received,
+  uploadFile,
+  toast,
+  testIdPrefix
+}: { ... })
+
+Then verify both usages work:
+
+- display:
+  arrangement?.materialLabel || dailyMaterialName
+
+- receipt create payload:
+  material: arrangement?.materialLabel || dailyMaterialName || ""
+
+DO NOT replace or rewrite ActivityReceiptStrip.
+
+REGRESSION TESTS
+
+1. Guided DPR:
+   select Site
+   → Engineer
+   → Activity Details
+   → select ANY BOQ item
+   → page must remain rendered.
+
+2. BOQ item with execution arrangement:
+   receipt strip renders normally.
+
+3. BOQ item without execution arrangement:
+   HLC/Main Contractor context renders normally.
+
+4. BOQ item with daily fulfilment material name but no standing arrangement:
+   material name renders without crash.
+
+5. Open Record Receipt:
+   material prefills from dailyMaterialName where appropriate.
+
+6. Save receipt:
+   payload uses dailyMaterialName where no arrangement materialLabel exists.
+
+7. Run the focused ActivityReceiptStrip / Guided DPR tests and full suite.
+
+Expected schema change: NONE.
+
+REPORT BACK:
+- exact one-line/runtime fix;
+- focused tests;
+- full-suite result;
+- confirm no other files/business logic changed.
+
+DO NOT START ANOTHER BATCH.
