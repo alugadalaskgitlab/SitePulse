@@ -79,6 +79,8 @@ export default function SiteMaterialTrips() {
   // Batch 06E-F: optional Work Context (project / work item / arrangement /
   // programme reach). Additional to procurement links — never required.
   const [workCtx, setWorkCtx] = useState<TripWorkContext>(EMPTY_WORK_CONTEXT);
+  // 06G: keep material/supplier/location/work-context between trucks (default ON).
+  const [keepContext, setKeepContext] = useState(true);
   // Prefill must not silently overwrite a deliberate user entry: remember what
   // we prefilled so a later arrangement change only replaces untouched values.
   const [lastPrefill, setLastPrefill] = useState<{ material: string; supplier: string }>({ material: "", supplier: "" });
@@ -220,6 +222,17 @@ export default function SiteMaterialTrips() {
         // In PI-linked mode reset material/qty but keep site + PI context for next truckload
         setNewTrip(prev => ({
           ...prev,
+          vehicleNumber: "",
+          quantity: "",
+          receiptNumber: "",
+          notes: "",
+        }));
+      } else if (keepContext) {
+        // 06G rapid repeat-trip: keep site/material/supplier/location/UoM +
+        // work context between trucks; clear only truck-specific fields.
+        setNewTrip(prev => ({
+          ...prev,
+          time: format(new Date(), "HH:mm"),
           vehicleNumber: "",
           quantity: "",
           receiptNumber: "",
@@ -469,7 +482,18 @@ export default function SiteMaterialTrips() {
                     data-testid="input-trip-enteredby"
                   />
                 </div>
-                <div className="flex items-end">
+                <div className="flex flex-col justify-end gap-1">
+                  {!isPILinked && (
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none" data-testid="checkbox-keep-context">
+                      <input
+                        type="checkbox"
+                        checked={keepContext}
+                        onChange={(e) => setKeepContext(e.target.checked)}
+                        className="rounded border-slate-300"
+                      />
+                      Keep this work context for next trip
+                    </label>
+                  )}
                   <Button 
                     type="submit" 
                     className="w-full"

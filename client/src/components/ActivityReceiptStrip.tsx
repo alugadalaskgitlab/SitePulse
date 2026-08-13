@@ -7,7 +7,7 @@
 //
 // Used by Guided DPR (Step 3 activity cards) and Detailed DPR (read parity).
 // All quantity/matching rules live in shared/materialReceiptSummary.ts.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Truck, ImagePlus, X, Loader2 } from "lucide-react";
@@ -34,6 +34,7 @@ import {
   type ArrangementBarAllocation,
   type SuggestableTrip,
 } from "@shared/materialReceiptSummary";
+import { findDailyFulfilmentForItem, fulfilmentLabel } from "@shared/requirementFulfilment";
 
 const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 
@@ -111,14 +112,49 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     enabled: !!siteName && !!date,
   });
 
+  // 06G: today's PM daily allocation (fulfilment) for this activity's BOQ
+  // item. Operational display context only — governs today's supplier
+  // suggestion; NEVER mutates the standing arrangement.
+  const { data: sitesList = [] } = useQuery<Array<{ id: number; name: string }>>({
+    queryKey: ["/api/sites"],
+  });
+  const stripSiteId = useMemo(() => sitesList.find((s) => s.name === siteName)?.id ?? null, [sitesList, siteName]);
+  const { data: dayRequirements = [] } = useQuery<any[]>({
+    queryKey: ["/api/site-requirements", "daily-fulfilment", stripSiteId, date],
+    queryFn: async () => {
+      const res = await fetch(`/api/site-requirements?siteId=${stripSiteId}&dateFrom=${date}&dateTo=${date}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: stripSiteId != null && !!date,
+    staleTime: 30_000,
+  });
+  const dailyFulfilment = useMemo(
+    () => findDailyFulfilmentForItem(dayRequirements, boqItemId),
+    [dayRequirements, boqItemId],
+  );
+
   const resolution = useMemo(
     () => resolveApplicableArrangements(arrangements, { boqProjectId, boqItemId, programmeBarId }, allocations),
     [arrangements, boqProjectId, boqItemId, programmeBarId, allocations],
   );
+  // Operational resolution priority (06G §3):
+  //  1. today's daily fulfilment naming a specific arrangement;
+  //  2. exact-bar/single standing arrangement prefill;
+  //  3. Engineer's controlled selection when several genuinely apply.
+  const dailyArrangement =
+    dailyFulfilment?.entry.fulfilmentType === "arrangement" && dailyFulfilment.entry.arrangementId != null
+      ? arrangements.find((a) => a.id === dailyFulfilment.entry.arrangementId) ?? null
+      : null;
   const arrangement =
+    dailyArrangement ??
     resolution.prefill ??
     (selectedArrangementId != null ? resolution.applicable.find((a) => a.id === selectedArrangementId) ?? null : null);
   const relevance = receiptRelevanceForType(arrangement?.arrangementType);
+  // Non-arrangement daily overrides for TODAY's supplier display:
+  const dailyOverride =
+    dailyFulfilment?.entry.fulfilmentType === "other_agency" || dailyFulfilment?.entry.fulfilmentType === "hlc"
+      ? dailyFulfilment.entry
+      : null;
 
   const ctx = {
     siteName,
@@ -162,9 +198,11 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     executedUom: props.executedUom ?? null,
   });
 
-  // Hide entirely when the strip has no meaning: no arrangement context AND
-  // no linked receipts (e.g. plant-produced layers procured elsewhere).
-  if (resolution.none && linkedTrips.length === 0 && suggestedTrips.length === 0) return null;
+  // 06G: only hide when receipt evidence is genuinely NOT applicable for the
+  // resolved arrangement type (e.g. reused excavated material) and nothing is
+  // linked. Having no arrangement is NOT a reason to hide — the Engineer
+  // still needs "Received today: 0" context before the first truck arrives.
+  if (relevance === "none" && linkedTrips.length === 0 && suggestedTrips.length === 0) return null;
 
   const fmt = (q: number | null | undefined, u?: string | null) =>
     q == null ? "—" : `${Number(q.toFixed ? q.toFixed(2) : q)} ${u ?? ""}`.trim();
@@ -174,19 +212,29 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
       <div className="flex items-center gap-2 font-medium">
         <Truck className="w-4 h-4 text-muted-foreground" />
         <span>Material receipt</span>
-        {arrangement ? (
+        {dailyOverride ? (
+          <Badge variant="secondary" data-testid={`${testIdPrefix}-daily-override-badge`}>
+            Today: {fulfilmentLabel(dailyOverride)}
+          </Badge>
+        ) : arrangement ? (
           <Badge variant="secondary" data-testid={`${testIdPrefix}-arrangement-badge`}>
             {arrangement.agencyName || "Arrangement"} · {arrangement.materialLabel}
+            {dailyArrangement ? " · today's allocation" : ""}
           </Badge>
         ) : (
-          <Badge variant="outline" data-testid={`${testIdPrefix}-no-arrangement-badge`}>No execution arrangement linked</Badge>
+          <Badge variant="outline" data-testid={`${testIdPrefix}-no-arrangement-badge`}>HLC / Main Contractor — no execution arrangement</Badge>
+        )}
+        {dailyOverride && arrangement && (
+          <Badge variant="outline" className="text-[10px]" data-testid={`${testIdPrefix}-standing-context-badge`}>
+            Standing: {arrangement.agencyName || "Arrangement"}
+          </Badge>
         )}
         {arrangement?.arrangementType === "client_supplied" && (
           <Badge variant="outline">Client supplied — not an HLC payable</Badge>
         )}
       </div>
 
-      {resolution.requiresSelection && !readOnly && (
+      {resolution.requiresSelection && dailyArrangement == null && !readOnly && (
         <div>
           <Label className="text-xs">Multiple arrangements apply — select one</Label>
           <Select value={selectedArrangementId != null ? String(selectedArrangementId) : ""} onValueChange={(v) => setSelectedArrangementId(Number(v))}>
@@ -267,6 +315,9 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
           onOpenChange={setRecordOpen}
           props={props}
           arrangement={arrangement}
+          dailyOverride={dailyOverride}
+          dailyMaterialName={dailyFulfilment?.materialName ?? null}
+          received={received}
           uploadFile={uploadFile}
           toast={toast}
           testIdPrefix={testIdPrefix}
@@ -334,11 +385,18 @@ function ViewReceiptsDialog({ open, onOpenChange, trips, testIdPrefix }: { open:
   );
 }
 
-function RecordReceiptDialog({ open, onOpenChange, props, arrangement, uploadFile, toast, testIdPrefix }: {
+function RecordReceiptDialog({ open, onOpenChange, props, arrangement, dailyOverride, received, uploadFile, toast, testIdPrefix }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   props: ActivityReceiptStripProps;
   arrangement: ArrangementRow | null;
+  /** 06G: today's non-arrangement daily allocation (other_agency | hlc). */
+  dailyOverride: { fulfilmentType?: string | null; agencyNameSnapshot?: string | null } | null;
+  /** Material name from the matched daily-fulfilment requirement line —
+   * fallback when no standing arrangement resolves a material label. */
+  dailyMaterialName: string | null;
+  /** Today's aggregate for this activity — running total inside the dialog. */
+  received: ReturnType<typeof aggregateReceived>;
   uploadFile: (file: File) => Promise<{ objectPath: string } | null>;
   toast: any;
   testIdPrefix: string;
@@ -353,6 +411,28 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, uploadFil
     notes: "",
   });
   const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
+  const [sessionTrips, setSessionTrips] = useState(0);
+  const vehicleRef = useRef<HTMLInputElement | null>(null);
+
+  // Fresh time whenever the dialog opens; reset the session counter.
+  useEffect(() => {
+    if (open) {
+      setForm((f) => ({ ...f, time: format(new Date(), "HH:mm") }));
+      setSessionTrips(0);
+    }
+  }, [open]);
+
+  // 06G §4: today's operational supplier. Daily override governs display;
+  // other_agency must NEVER carry the standing earthworkArrangementId.
+  const supplierToday =
+    dailyOverride?.fulfilmentType === "other_agency"
+      ? (dailyOverride.agencyNameSnapshot ?? "")
+      : dailyOverride?.fulfilmentType === "hlc"
+        ? "HLC (Internal)"
+        : arrangement?.arrangementType === "client_supplied"
+          ? (arrangement?.agencyName ? `${arrangement.agencyName} (client supplied)` : "Client supplied")
+          : arrangement?.agencyName ?? "";
+  const arrangementIdForTrip = dailyOverride ? undefined : arrangement?.id ?? undefined;
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -362,8 +442,8 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, uploadFil
         date: props.date,
         time: form.time,
         site: props.siteName,
-        material: arrangement?.materialLabel || "",
-        supplier: arrangement?.arrangementType === "client_supplied" ? (arrangement?.agencyName ? `${arrangement.agencyName} (client supplied)` : "Client supplied") : arrangement?.agencyName ?? "",
+        material: arrangement?.materialLabel || dailyMaterialName || "",
+        supplier: supplierToday,
         vehicleNumber: form.vehicleNumber,
         quantity: parseFloat(form.quantity) || 0,
         uom: form.uom,
@@ -374,7 +454,7 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, uploadFil
         boqProjectId: props.boqProjectId,
         boqItemId: props.boqItemId,
         programmeBarId: props.programmeBarId ?? undefined,
-        earthworkArrangementId: arrangement?.id ?? undefined,
+        earthworkArrangementId: arrangementIdForTrip,
       });
       return res.json();
     },
@@ -395,12 +475,22 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, uploadFil
           toast({ title: "Some photos failed to attach", description: file.name, variant: "destructive" });
         }
       }
-      setStagedPhotos([]);
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips", props.siteName, props.date] });
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips"] });
-      toast({ title: "Receipt recorded", description: "Saved as a Site Material Trip and linked to this activity." });
-      onOpenChange(false);
-      setForm((f) => ({ ...f, vehicleNumber: "", quantity: "", receiptNumber: "", notes: "" }));
+      // 06G rapid repeat-trip mode: the dialog STAYS OPEN. Keep all context;
+      // clear only the truck-specific fields; refresh time; focus vehicle no.
+      setStagedPhotos([]);
+      setForm((f) => ({
+        ...f,
+        vehicleNumber: "",
+        quantity: "",
+        receiptNumber: "",
+        notes: "",
+        time: format(new Date(), "HH:mm"),
+      }));
+      setSessionTrips((n) => n + 1);
+      toast({ title: "Trip added", description: "Saved and linked. Ready for the next truck." });
+      setTimeout(() => vehicleRef.current?.focus(), 50);
     },
     onError: (e: any) => toast({ title: "Could not record receipt", description: e?.message ?? "Check your Site Materials permission.", variant: "destructive" }),
   });
@@ -410,9 +500,27 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, uploadFil
       <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Record Material Receipt</DialogTitle></DialogHeader>
         <div className="space-y-3 text-sm">
-          <p className="text-xs text-muted-foreground">
-            {props.siteName} · {props.date}
-            {arrangement ? <> · {arrangement.agencyName} · {arrangement.materialLabel}</> : <> · No execution arrangement linked</>}
+          <div className="rounded bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground space-y-0.5" data-testid={`${testIdPrefix}-rr-context`}>
+            <p><span className="font-medium text-foreground">{props.siteName}</span> · {props.date}</p>
+            {props.locationLabel && <p>Reach: {props.locationLabel}</p>}
+            {(arrangement?.materialLabel || dailyMaterialName) && <p>Material: {arrangement?.materialLabel || dailyMaterialName}</p>}
+            {supplierToday && <p>Supplier today: <span className="font-medium text-foreground">{supplierToday}</span></p>}
+            {dailyOverride ? (
+              <p>Today's allocation: {dailyOverride.fulfilmentType === "hlc" ? "HLC / Internally Arranged" : "Other agency — daily exception"}{arrangement ? ` (standing: ${arrangement.agencyName ?? "arrangement"})` : ""}</p>
+            ) : arrangement ? (
+              <p>Execution Arrangement: {arrangement.agencyName ?? "—"}{arrangement.workDescription ? ` — ${arrangement.workDescription}` : ""}</p>
+            ) : (
+              <p>HLC / Main Contractor — no execution arrangement</p>
+            )}
+          </div>
+          <p className="text-xs font-medium" data-testid={`${testIdPrefix}-rr-today-total`}>
+            Today so far for this activity:{" "}
+            {received.tripCount === 0
+              ? "no trips yet"
+              : received.mixedUoms
+                ? `${received.tripCount} trips · ${received.byUom.map((r) => `${r.qty} ${r.uom}`).join(" + ")}`
+                : `${received.tripCount} trip${received.tripCount === 1 ? "" : "s"} · ${received.receivedQty ?? 0} ${received.receivedUom ?? ""}`}
+            {sessionTrips > 0 && <span className="text-muted-foreground"> ({sessionTrips} this session)</span>}
           </p>
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -421,7 +529,7 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, uploadFil
             </div>
             <div>
               <Label className="text-xs">Vehicle number</Label>
-              <Input value={form.vehicleNumber} onChange={(e) => setForm({ ...form, vehicleNumber: e.target.value.toUpperCase() })} data-testid={`${testIdPrefix}-rr-vehicle`} />
+              <Input ref={vehicleRef} value={form.vehicleNumber} onChange={(e) => setForm({ ...form, vehicleNumber: e.target.value.toUpperCase() })} data-testid={`${testIdPrefix}-rr-vehicle`} />
             </div>
             <div>
               <Label className="text-xs">Quantity</Label>
@@ -473,15 +581,17 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, uploadFil
             </div>
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid={`${testIdPrefix}-rr-done`}>
+            {sessionTrips > 0 ? "Done / Close" : "Cancel"}
+          </Button>
           <Button
             onClick={() => createMutation.mutate()}
             disabled={createMutation.isPending || !form.quantity || parseFloat(form.quantity) <= 0}
             data-testid={`${testIdPrefix}-rr-save`}
           >
             {createMutation.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
-            Save Receipt
+            Add Trip
           </Button>
         </DialogFooter>
       </DialogContent>

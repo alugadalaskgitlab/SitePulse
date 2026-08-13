@@ -1,0 +1,838 @@
+BATCH 06G — MATERIAL RECEIPT RAPID REPEAT-TRIP
++ EXECUTION / DAILY-ALLOCATION VISIBILITY
++ TOMORROW PLAN DATE & ACTION TIMESTAMPS
+
+This is a focused operational UX/audit batch.
+
+IMPORTANT CURRENT STATE
+
+The Guided DPR already contains:
+
+`ActivityReceiptStrip.tsx`
+→ embedded `RecordReceiptDialog`
+
+This dialog is already wired into Guided DPR Activity Details and already
+prefills much of the receipt context.
+
+DO NOT replace it with navigation to the standalone Material Trip page.
+
+Fix the existing embedded flow in place.
+
+No schema change is expected.
+
+--------------------------------------------------
+1. INVESTIGATE CURRENT IMPLEMENTATION FIRST
+--------------------------------------------------
+
+Inspect:
+
+- ActivityReceiptStrip.tsx
+- RecordReceiptDialog
+- GuidedDpr.tsx
+- SiteMaterialTrips.tsx
+- materialReceiptSummary.ts
+- requirementFulfilment.ts
+- ReceiptWorkContext.tsx
+- SiteRequirementsList.tsx
+- site_requirements schema
+- site-requirement item-status/update routes
+
+Confirm before coding:
+
+A. current ActivityReceiptStrip hide condition;
+
+B. current RecordReceiptDialog fields and reset behavior;
+
+C. current receipt-query invalidation after save;
+
+D. current daily-allocation suggestion path;
+
+E. current standalone non-PI Material Trip reset behavior;
+
+F. availability of:
+   - siteRequirements.createdAt
+   - siteRequirements.reviewedAt
+   - allocationStatus item.updatedAt
+   - allocationStatus item.updatedBy
+   - readinessConfirmation.confirmedAt / confirmedByName.
+
+Do not redesign unrelated workflows.
+
+--------------------------------------------------
+2. DPR RECEIPT STRIP MUST NOT HIDE JUST BECAUSE RECEIVED = ZERO
+--------------------------------------------------
+
+Current ActivityReceiptStrip suppresses itself when there is:
+
+- no resolved arrangement;
+- no linked trip;
+- no suggested trip.
+
+That causes the Engineer to see no material/execution context at all.
+
+Remove that overly broad hide rule.
+
+For a receipt-relevant billable activity, the strip should remain visible
+even before the first truck arrives.
+
+Example:
+
+EMBANKMENT — BORROW EARTH
+
+Execution Arrangement:
+MARSIMULU — Borrow Earth supply/carting
+
+Material:
+Soil
+
+Required Today:
+Not determined
+
+Received Today:
+0 Cum
+
+[Record Receipt]
+
+Only suppress the material-receipt strip when:
+
+- `receiptRelevanceForType()` says the activity does not require external
+  receipt evidence;
+
+or
+
+- the row is No Site Work and normal material receipt prompting is not
+  applicable.
+
+Do NOT use `resolution.none` alone as a reason to hide the strip.
+
+--------------------------------------------------
+3. OPERATIONAL FULFILMENT RESOLUTION
+--------------------------------------------------
+
+For today's DPR activity, resolve the operational source in this priority:
+
+1. Today's matching PM/allocating-authority daily fulfilment.
+
+2. Exact persisted programmeBarId arrangement allocation.
+
+3. Compatible reach/scope + BOQ item arrangement.
+
+4. Compatible BOQ item arrangement.
+
+5. No applicable arrangement
+   → HLC / Main Contractor.
+
+Daily fulfilment is operational context only.
+
+It must NEVER mutate:
+
+- standing Execution Arrangement
+- vendor
+- scope
+- allocated quantity
+- programme allocation.
+
+--------------------------------------------------
+4. DAILY ALLOCATION SHOULD OVERRIDE DISPLAY/SUPPLIER FOR TODAY
+--------------------------------------------------
+
+If PM allocated today's requirement through:
+
+Arrangement A:
+show Arrangement A/vendor.
+
+If PM used:
+
+Other Agency / Daily Exception:
+show that agency as today's operational supplier,
+but do NOT fabricate an earthworkArrangementId.
+
+If PM used:
+
+HLC / Internally Arranged:
+show HLC/Internal context.
+
+The standing arrangement remains available as background context where
+helpful, but today's operational allocation governs today's supplier
+suggestion.
+
+--------------------------------------------------
+5. ONE STANDING ARRANGEMENT
+--------------------------------------------------
+
+If no daily override exists and exactly one applicable arrangement resolves:
+
+show it automatically.
+
+The Engineer should not have to select it again.
+
+Example:
+
+Execution Arrangement:
+MARSIMULU
+Borrow Earth supply/carting
+
+--------------------------------------------------
+6. MULTIPLE ARRANGEMENTS
+--------------------------------------------------
+
+If multiple arrangements genuinely apply and there is no PM daily
+selection:
+
+show a controlled selector before the first trip.
+
+Do not guess.
+
+Once confirmed for that receipt-entry session, retain the chosen context
+for subsequent trucks.
+
+Do not ask again for every truck.
+
+--------------------------------------------------
+7. KEEP RECORD RECEIPT INSIDE DPR
+--------------------------------------------------
+
+Use the existing embedded:
+
+RecordReceiptDialog
+
+inside ActivityReceiptStrip.
+
+Do NOT navigate to SiteMaterialTrips.tsx for the normal DPR flow.
+
+This avoids:
+- losing DPR state;
+- unnecessary navigation;
+- duplicate context selection.
+
+--------------------------------------------------
+8. PREFILLED RECEIPT CONTEXT
+--------------------------------------------------
+
+RecordReceiptDialog should visibly confirm the resolved context.
+
+Example:
+
+For:
+Embankment — Borrow Earth
+
+Site:
+TAKKADPALLY-SIRUR
+
+Reach:
+Both Sides · Ch. 2+400–2+500
+
+Material:
+Soil
+
+Supplier:
+MARSIMULU
+
+Execution Arrangement:
+MARSIMULU — Borrow Earth supply/carting
+
+Where values are unambiguous, they should be prefilled/read-only context.
+
+Do not force repeated typing.
+
+--------------------------------------------------
+9. PER-TRUCK FAST ENTRY
+--------------------------------------------------
+
+For each incoming truck, the Engineer should normally enter only:
+
+- Vehicle Number
+- Quantity
+- UOM if not already fixed/prefilled
+- Receipt / Challan No. where available
+- Time — auto-current, editable
+- optional notes
+- Camera / Gallery evidence
+
+Then:
+
+[Add Trip]
+
+Do not ask him again for:
+
+- Site
+- BOQ Item
+- Reach
+- Material
+- Supplier
+- Arrangement
+
+for every truck.
+
+--------------------------------------------------
+10. RAPID REPEAT-TRIP MODE — CRITICAL
+--------------------------------------------------
+
+After successful Add Trip:
+
+DO NOT close the RecordReceiptDialog automatically.
+
+KEEP:
+
+- site
+- date
+- boqProjectId
+- boqItemId
+- programmeBarId
+- earthworkArrangementId where applicable
+- material
+- supplier
+- reach/location
+- uom
+- enteredBy
+- current operational fulfilment context
+
+CLEAR ONLY:
+
+- vehicleNumber
+- quantity
+- receipt/challan number
+- truck-specific notes
+- staged photos
+
+REFRESH:
+
+- time = current local time.
+
+Where practical, focus Vehicle Number ready for the next truck.
+
+Provide an explicit:
+
+[Done / Close]
+
+button when the Engineer has finished receiving trucks.
+
+--------------------------------------------------
+11. DO NOT CLOSE DIALOG AFTER SAVE
+--------------------------------------------------
+
+Current successful receipt save closes the modal.
+
+Change this for rapid-entry mode.
+
+Expected flow:
+
+Truck 1:
+TS15...
+14 Cum
+→ Add Trip
+
+Dialog remains open.
+
+Truck 2:
+TS15...
+14 Cum
+→ Add Trip
+
+Dialog remains open.
+
+Truck 3:
+...
+
+This is central to avoiding missed trips.
+
+--------------------------------------------------
+12. RUNNING SESSION / TODAY TOTAL
+--------------------------------------------------
+
+Inside the dialog show:
+
+Today so far for this activity:
+
+8 Trips
+112 Cum
+
+Reuse existing receipt aggregation.
+
+If there are mixed UoMs, display separately:
+
+112 Cum
+25 MT
+
+Do NOT sum incompatible UoMs.
+
+This is an operational check so the Engineer can detect if a truck was
+missed.
+
+--------------------------------------------------
+13. LIVE DPR RECEIPT UPDATE
+--------------------------------------------------
+
+After every successful trip:
+
+invalidate/refetch the existing receipt query.
+
+Confirm that the DPR Activity card immediately updates:
+
+Received Today:
+9 trips · 126 Cum
+
+without full page refresh.
+
+If current query invalidation does not update it, fix that query-key
+relationship only.
+
+Do not add another data store.
+
+--------------------------------------------------
+14. STANDALONE MATERIAL TRIP — KEEP CONTEXT BETWEEN TRUCKS
+--------------------------------------------------
+
+The standalone non-PI Material Trip form currently clears:
+
+- material
+- supplier
+- location
+- workCtx
+
+after a normal trip.
+
+Change it to mirror the already safer PI-linked repeat-entry pattern.
+
+Default behavior after Add Trip:
+
+KEEP:
+
+- site
+- material
+- supplier
+- location
+- work context
+- arrangement
+- BOQ/programme links
+- UoM
+- enteredBy
+
+CLEAR:
+
+- vehicle
+- quantity
+- receipt/challan
+- notes
+- staged photos
+
+REFRESH time.
+
+If there is a real operational reason to reset everything, provide:
+
+[ ] Keep this work context for next trip
+
+default ON.
+
+Do not make the Engineer re-enter the same stretch/material/vendor for
+successive trucks.
+
+--------------------------------------------------
+15. PI / PROCUREMENT FLOW
+--------------------------------------------------
+
+Do NOT disturb the PI-linked receipt workflow.
+
+Confirm it remains unchanged.
+
+No procurement allocation/business-rule change.
+
+--------------------------------------------------
+16. NO RECEIPT SCHEMA CHANGE
+--------------------------------------------------
+
+Use existing:
+
+- boqProjectId
+- boqItemId
+- programmeBarId
+- earthworkArrangementId
+
+No new site_material_trips columns.
+
+--------------------------------------------------
+17. SITE REQUIREMENTS QUEUE — HEADER
+--------------------------------------------------
+
+Change each Tomorrow Plan / Requirement card header.
+
+Current:
+
+Wed, 12 Aug 2026
+
+Change to:
+
+Plan for Wed, 12 Aug 2026
+
+or responsive equivalent:
+
+Plan for
+Wed, 12 Aug 2026
+
+Keep submittedByName nearby where useful.
+
+The date is the TARGET WORK DATE, not the submission date.
+
+Do not confuse these two dates.
+
+--------------------------------------------------
+18. SHOW WHEN THE PLAN WAS SUBMITTED
+--------------------------------------------------
+
+The original plan submission time already exists as:
+
+`site_requirements.createdAt`
+
+because the requirement is initially created in submitted state.
+
+Show beneath the header/status area:
+
+Submitted:
+12 Aug 2026 · 8:48 AM
+by <Engineer Name>
+
+Use local project/user display time.
+
+Do NOT use the target plan date as the submission timestamp.
+
+For historical records where createdAt is available, use it directly.
+
+No new submittedAt column is required in this batch.
+
+--------------------------------------------------
+19. OVERALL PM REVIEW / STATUS TIMESTAMP
+--------------------------------------------------
+
+`site_requirements.reviewedAt` already exists.
+
+When an overall PM status has been updated, show:
+
+Approved:
+12 Aug 2026 · 9:05 AM
+
+or:
+
+Arranged:
+12 Aug 2026 · 9:18 AM
+
+as applicable.
+
+Also show reviewer name if already returned by the API or safely resolvable.
+
+Do NOT fabricate a reviewer name.
+
+If reviewedAt is null for historical records:
+do not invent a timestamp.
+
+--------------------------------------------------
+20. PER-RESOURCE ALLOCATION TIMESTAMP
+--------------------------------------------------
+
+The per-line allocation entries already store:
+
+- updatedBy
+- updatedAt
+
+The UI currently shows only updatedBy.
+
+Show BOTH.
+
+Example:
+
+SOIL — 412.5 CUM
+Direct supply
+Marsimulu
+
+Updated:
+12 Aug 2026 · 9:14 AM
+by Sunil Kumar
+
+For equipment:
+
+TRACTOR DOZER
+Allocated
+
+Updated:
+12 Aug 2026 · 9:20 AM
+by Equipment Manager
+
+For labour:
+
+2 Unskilled
+Arranged
+
+Updated:
+12 Aug 2026 · 9:23 AM
+by PM
+
+Use the existing allocationStatus item fields.
+
+Do not create another audit timestamp.
+
+--------------------------------------------------
+21. KEEP STATUS BADGES COMPACT
+--------------------------------------------------
+
+Do not make the main card header visually heavy.
+
+Preferred structure:
+
+Plan for Wed, 12 Aug 2026
+by Engineer
+
+Submitted · 12 Aug, 8:48 AM
+[Readiness OK]
+
+Then inside each resource line:
+
+[Allocated]
+Updated 9:20 AM by ...
+
+Exact layout may adapt responsively.
+
+The objective is to answer quickly:
+
+- what date is this plan for?
+- when was it submitted?
+- when was this item last allocated/updated?
+- by whom?
+
+--------------------------------------------------
+22. READINESS TIMESTAMP
+--------------------------------------------------
+
+The existing readinessConfirmation JSON already supports:
+
+- confirmedAt
+- confirmedByName
+
+Where Readiness OK / Shortage is shown, also display when available:
+
+Readiness confirmed:
+13 Aug 2026 · 7:45 AM
+by Site Engineer
+
+Do not add schema.
+
+This is useful because readiness may happen the next morning.
+
+--------------------------------------------------
+23. HISTORICAL / LEGACY RECORDS
+--------------------------------------------------
+
+Do not fabricate missing historical timestamps.
+
+Rules:
+
+- createdAt available
+  → show Submitted timestamp.
+
+- reviewedAt available
+  → show PM review/status timestamp.
+
+- item.updatedAt available
+  → show item allocation/update timestamp.
+
+- readinessConfirmation.confirmedAt available
+  → show readiness confirmation timestamp.
+
+If a legacy field is missing:
+omit that timestamp gracefully.
+
+Do not rewrite history.
+
+--------------------------------------------------
+24. TIME DISPLAY
+--------------------------------------------------
+
+Use one shared formatting helper if practical.
+
+Display consistently:
+
+12 Aug 2026 · 8:48 AM
+
+or the app's established local-date format.
+
+Do not show raw ISO strings.
+
+Do not unintentionally convert local Telangana site times to confusing UTC
+display.
+
+--------------------------------------------------
+25. IMPORTANT STATUS HISTORY LIMITATION
+--------------------------------------------------
+
+This batch is NOT a full audit-history engine.
+
+Existing fields provide:
+
+- original submitted time
+- latest overall reviewed/status time
+- latest per-item update time
+- readiness confirmation time
+
+If a requirement went:
+
+Submitted
+→ Approved
+→ Sent to Store
+→ Arranged
+
+and the database currently stores only the latest `reviewedAt`, do NOT
+pretend we have a timestamp for every historical transition.
+
+Show only timestamps actually represented by persisted data.
+
+Report this limitation.
+
+Do NOT add a status-history table in this batch.
+
+--------------------------------------------------
+26. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- Guided wizard structure
+- standing Execution Arrangement scope/vendor/allocated quantity
+- BOM formulas
+- Tomorrow Requirement Engineer entry flow
+- daily allocation semantics
+- BOQ/UoM conversion
+- Progress Report
+- DPR readiness
+- overlap guard
+- Vendor Bills
+- Structure DPR
+- historical receipt data
+- procurement/PI business logic
+
+--------------------------------------------------
+27. TESTS — MATERIAL TRIP
+--------------------------------------------------
+
+A. Activity receipt strip shows applicable arrangement with zero receipts.
+
+B. Receipt-irrelevant activity still suppresses receipt controls.
+
+C. Daily allocation has operational display precedence.
+
+D. Daily allocation does not mutate standing arrangement.
+
+E. RecordReceiptDialog stays open after Add Trip.
+
+F. Vehicle clears.
+
+G. Quantity clears.
+
+H. Challan clears.
+
+I. truck notes clear.
+
+J. staged photos clear.
+
+K. Time refreshes.
+
+L. Site remains.
+
+M. Material remains.
+
+N. Supplier remains.
+
+O. Arrangement remains.
+
+P. Work Item remains.
+
+Q. Reach remains.
+
+R. UoM remains.
+
+S. Second truck needs only truck-specific data.
+
+T. Running totals update.
+
+U. Mixed UoMs remain separate.
+
+V. DPR Received Today updates without page refresh.
+
+W. Standalone non-PI form retains context.
+
+X. PI-linked workflow unchanged.
+
+--------------------------------------------------
+28. TESTS — TOMORROW PLAN TIMESTAMPS
+--------------------------------------------------
+
+Y. Card header reads `Plan for <target date>`.
+
+Z. Target plan date is not confused with submit date.
+
+AA. createdAt displays as Submitted timestamp.
+
+AB. submittedByName displays correctly.
+
+AC. reviewedAt displays when present.
+
+AD. missing reviewedAt does not fabricate a timestamp.
+
+AE. per-item updatedAt displays beside allocation status.
+
+AF. per-item updatedBy displays with it.
+
+AG. readiness confirmedAt displays when present.
+
+AH. readiness confirmedByName displays when present.
+
+AI. legacy item without updatedAt renders cleanly.
+
+AJ. date/time formatting uses local display, not raw ISO.
+
+AK. no schema change.
+
+Run full suite.
+
+--------------------------------------------------
+29. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. exact ActivityReceiptStrip visibility bug and fix.
+
+B. daily-allocation/standing-arrangement resolution.
+
+C. RecordReceiptDialog behavior before/after.
+
+D. exact retained fields between trips.
+
+E. exact cleared fields between trips.
+
+F. running totals.
+
+G. live DPR refresh.
+
+H. standalone trip repeat-mode fix.
+
+I. final Tomorrow Plan card header.
+
+J. Submitted timestamp source.
+
+K. PM review/status timestamp source.
+
+L. per-resource allocation timestamp source.
+
+M. readiness timestamp source.
+
+N. exact legacy behavior where timestamps are unavailable.
+
+O. tests.
+
+Confirm:
+- no schema change
+- no standing arrangement mutation
+- no BOM change
+- no Guided wizard restructure
+- no PI/procurement change
+- no historical rewrite
+
+DO NOT START ANOTHER BATCH.

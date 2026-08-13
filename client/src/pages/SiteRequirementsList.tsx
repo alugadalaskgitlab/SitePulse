@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { PlannedWorkArrangementWarning } from "@/components/PlannedWorkArrangementWarning";
 import { findAllocationEntry } from "@shared/requirementFulfilment";
+import { fmtDateTime } from "@/lib/dateTimeDisplay";
 import {
   FulfilmentBadge, FulfilmentEditor, useRequirementFulfilmentContext,
   EMPTY_FULFILMENT, type FulfilmentValue,
@@ -406,8 +407,10 @@ function RequirementCard({
         {alloc.remarks && (
           <p className="text-[11px] text-slate-400 italic">{alloc.remarks}</p>
         )}
-        {alloc.updatedBy && (
-          <p className="text-[10px] text-slate-300">↳ {alloc.updatedBy}</p>
+        {(alloc.updatedAt || alloc.updatedBy) && (
+          <p className="text-[10px] text-slate-400" data-testid={`alloc-updated-${req.id}`}>
+            Updated{fmtDateTime(alloc.updatedAt) ? ` ${fmtDateTime(alloc.updatedAt)}` : ""}{alloc.updatedBy ? ` by ${alloc.updatedBy}` : ""}
+          </p>
         )}
       </div>
     );
@@ -426,13 +429,27 @@ function RequirementCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-              {req.date ? format(new Date(req.date + "T00:00:00"), "EEE, d MMM yyyy") : "—"}
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100" data-testid={`plan-for-date-${req.id}`}>
+              Plan for {req.date ? format(new Date(req.date + "T00:00:00"), "EEE, d MMM yyyy") : "—"}
             </span>
             {req.submittedByName && (
               <span className="text-xs text-slate-400">by {req.submittedByName}</span>
             )}
           </div>
+          {/* 06G: submission timestamp = createdAt (the record is created in
+              submitted state). The header date above is the TARGET WORK DATE. */}
+          {fmtDateTime(req.createdAt) && (
+            <p className="text-[10px] text-slate-400 mt-0.5" data-testid={`submitted-at-${req.id}`}>
+              Submitted · {fmtDateTime(req.createdAt)}{req.submittedByName ? ` by ${req.submittedByName}` : ""}
+            </p>
+          )}
+          {/* 06G: latest PM review/status timestamp (only when actually stored —
+              never fabricated for legacy records). */}
+          {req.status !== "submitted" && fmtDateTime(req.reviewedAt) && (
+            <p className="text-[10px] text-slate-400" data-testid={`reviewed-at-${req.id}`}>
+              {sc.label} · {fmtDateTime(req.reviewedAt)}
+            </p>
+          )}
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <Badge className={`text-[11px] px-1.5 py-0 ${sc.color}`}>{sc.label}</Badge>
             {revStatus && revStatus !== "original" && REVISION_CONFIG[revStatus] && (
@@ -758,8 +775,10 @@ function RequirementCard({
                   {req.readinessConfirmation.remarks}
                 </p>
               )}
-              {req.readinessConfirmation.confirmedByName && (
-                <p className="text-[10px] text-slate-400 mt-0.5">by {req.readinessConfirmation.confirmedByName}</p>
+              {(req.readinessConfirmation.confirmedAt || req.readinessConfirmation.confirmedByName) && (
+                <p className="text-[10px] text-slate-400 mt-0.5" data-testid={`readiness-at-${req.id}`}>
+                  Readiness confirmed{fmtDateTime(req.readinessConfirmation.confirmedAt) ? ` · ${fmtDateTime(req.readinessConfirmation.confirmedAt)}` : ""}{req.readinessConfirmation.confirmedByName ? ` by ${req.readinessConfirmation.confirmedByName}` : ""}
+                </p>
               )}
             </div>
           )}

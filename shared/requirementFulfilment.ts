@@ -281,6 +281,45 @@ export function standingArrangementExceptionNote(
   return null;
 }
 
+// ---------- 3b. Today's operational fulfilment for a DPR activity (06G) ----------
+
+export interface RequirementRowLike {
+  plannedWork?: { boqItemId?: number | null } | null;
+  materials?: Array<RequirementLineLike & { materialName?: string | null }> | null;
+  allocationStatus?: { materialItems?: AllocationEntryLike[] | null } | null;
+}
+
+export interface DailyFulfilmentMatch {
+  entry: AllocationEntryLike;
+  materialName: string | null;
+}
+
+/**
+ * 06G: find today's PM daily-allocation fulfilment for a DPR activity.
+ * Matches requirement rows whose plannedWork.boqItemId equals the activity's
+ * BOQ item, then returns the first material-line entry carrying a fulfilment
+ * decision. Operational display context ONLY — callers must never use this
+ * to mutate arrangements, vendors, scope, quantities, or programme allocations.
+ */
+export function findDailyFulfilmentForItem(
+  requirements: RequirementRowLike[] | null | undefined,
+  boqItemId: number | null | undefined,
+): DailyFulfilmentMatch | null {
+  if (!Array.isArray(requirements) || boqItemId == null) return null;
+  for (const r of requirements) {
+    if ((r.plannedWork?.boqItemId ?? null) !== boqItemId) continue;
+    const mats = Array.isArray(r.materials) ? r.materials : [];
+    const entries = r.allocationStatus?.materialItems ?? [];
+    for (let i = 0; i < mats.length; i++) {
+      const entry = findAllocationEntry(entries ?? [], mats[i], i);
+      if (entry?.fulfilmentType) {
+        return { entry, materialName: (mats[i].materialName as string | null) ?? null };
+      }
+    }
+  }
+  return null;
+}
+
 // ---------- 4. Next-day Material Receipt suggestion ----------
 
 export interface ReceiptSuggestion {
