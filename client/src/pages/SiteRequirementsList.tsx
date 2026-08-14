@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, addDays } from "date-fns";
@@ -15,6 +15,10 @@ import {
   Pen, RefreshCw,
 } from "lucide-react";
 import { PlannedWorkArrangementWarning } from "@/components/PlannedWorkArrangementWarning";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { OUTCOME_LABELS, DEFERRAL_REASONS, type ExecutionOutcome, type CarryForwardMode } from "@shared/planOutcome";
 import { findAllocationEntry } from "@shared/requirementFulfilment";
 import { fmtDateTime } from "@/lib/dateTimeDisplay";
 import {
@@ -271,6 +275,12 @@ function RequirementCard({
   // Item-level edit state
   const [editingItem, setEditingItem] = useState<{category: string; index: number} | null>(null);
 
+  // 06J: execution outcome + carry forward
+  const [outcomeOpen, setOutcomeOpen] = useState(false);
+  const outcomeRec = req.allocationStatus?.executionOutcome ?? null;
+  const carriedFrom = req.allocationStatus?.carriedForwardFrom ?? null;
+  const prevAllocRef = req.allocationStatus?.previousAllocationReference ?? null;
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -448,6 +458,31 @@ function RequirementCard({
           {req.status !== "submitted" && fmtDateTime(req.reviewedAt) && (
             <p className="text-[10px] text-slate-400" data-testid={`reviewed-at-${req.id}`}>
               {sc.label} · {fmtDateTime(req.reviewedAt)}
+            </p>
+          )}
+          {/* 06J: execution outcome + carry-forward links */}
+          {outcomeRec && (
+            <p className="text-[10px] text-slate-500" data-testid={`outcome-line-${req.id}`}>
+              Outcome: <span className="font-semibold">{OUTCOME_LABELS[outcomeRec.outcome as ExecutionOutcome] ?? outcomeRec.outcome}</span>
+              {outcomeRec.reason ? ` — ${outcomeRec.reason}` : ""}
+              {fmtDateTime(outcomeRec.updatedAt) ? ` · ${fmtDateTime(outcomeRec.updatedAt)}` : ""}
+              {outcomeRec.updatedByName ? ` by ${outcomeRec.updatedByName}` : ""}
+            </p>
+          )}
+          {outcomeRec?.carriedForwardTo && (
+            <p className="text-[10px] text-amber-600" data-testid={`carried-to-${req.id}`}>
+              Carried forward to: {format(new Date(outcomeRec.carriedForwardTo.date + "T00:00:00"), "d MMM yyyy")}
+              <button type="button" className="ml-1 underline" onClick={(e) => { e.stopPropagation(); document.querySelector(`[data-testid="card-requirement-${outcomeRec.carriedForwardTo.requirementId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }); }}>
+                View new plan
+              </button>
+            </p>
+          )}
+          {carriedFrom && (
+            <p className="text-[10px] text-amber-600" data-testid={`carried-from-${req.id}`}>
+              Carried forward from: {format(new Date(carriedFrom.date + "T00:00:00"), "d MMM yyyy")}
+              <button type="button" className="ml-1 underline" onClick={(e) => { e.stopPropagation(); document.querySelector(`[data-testid="card-requirement-${carriedFrom.requirementId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }); }}>
+                View original plan
+              </button>
             </p>
           )}
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
@@ -783,6 +818,21 @@ function RequirementCard({
             </div>
           )}
 
+          {/* 06J: previous day's allocation — REFERENCE ONLY, must be reconfirmed */}
+          {prevAllocRef && Array.isArray(prevAllocRef) && prevAllocRef.length > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 space-y-0.5" data-testid={`prev-alloc-ref-${req.id}`}>
+              <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider">
+                Previous day's allocation (reference — reconfirm for this date)
+              </p>
+              {prevAllocRef.map((r: any, i: number) => (
+                <p key={i} className="text-[11px] text-amber-800 dark:text-amber-200">
+                  {r.materialName ?? "Material"}: {r.fulfilmentType === "hlc" ? "HLC / Internally Arranged" : r.agencyNameSnapshot ?? r.fulfilmentType}
+                  {r.fulfilmentType === "other_agency" ? " (other agency — daily exception)" : ""}
+                </p>
+              ))}
+            </div>
+          )}
+
           {/* Section-level allocation (shown when no item-level data yet, or as overall summary) */}
           {req.allocationStatus && !hasItemLevelData(req.allocationStatus) && !allocEditing && (
             <div className="bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 space-y-1">
@@ -999,9 +1049,17 @@ function RequirementCard({
 
               {/* Status review */}
               {!editing ? (
-                <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)} data-testid={`button-review-${req.id}`}>
-                  Update Overall Status
-                </Button>
+                <div className="flex gap-2 flex-wrap">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)} data-testid={`button-review-${req.id}`}>
+                    Update Overall Status
+                  </Button>
+                  {/* 06J: execution outcome — only once the target date has passed */}
+                  {req.date && req.date < format(new Date(), "yyyy-MM-dd") && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setOutcomeOpen(true)} data-testid={`button-outcome-${req.id}`}>
+                      {outcomeRec ? "Change Work Outcome" : "Update Work Outcome"}
+                    </Button>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-2">
                   <Select value={newStatus} onValueChange={setNewStatus}>
@@ -1029,7 +1087,179 @@ function RequirementCard({
 
         </div>
       )}
+      {outcomeOpen && (
+        <OutcomeDialog req={req} existing={outcomeRec} onClose={() => setOutcomeOpen(false)} onSaved={invalidate} />
+      )}
     </div>
+  );
+}
+
+// ── 06J: Update Work Outcome dialog (PM/Admin only) ──────────────────────────
+
+function OutcomeDialog({ req, existing, onClose, onSaved }: {
+  req: any; existing: any; onClose: () => void; onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [outcome, setOutcome] = useState<ExecutionOutcome | "">(existing?.outcome ?? "");
+  const [reason, setReason] = useState(existing?.reason ?? "");
+  const [remarks, setRemarks] = useState(existing?.remarks ?? "");
+  const [carryMode, setCarryMode] = useState<CarryForwardMode>("none");
+  const [targetDate, setTargetDate] = useState("");
+  const [carryQty, setCarryQty] = useState("");
+
+  const alreadyCarried = existing?.carriedForwardTo ?? null;
+  const needsReason = outcome === "deferred" || outcome === "cancelled";
+  const canCarry = !alreadyCarried && (outcome === "deferred" || outcome === "partly_executed" || outcome === "cancelled");
+
+  // Planned vs executed (submitted DPR progress) — informational + suggestion.
+  const { data: summary } = useQuery<any>({
+    queryKey: [`/api/site-requirements/${req.id}/execution-summary`],
+    enabled: outcome === "partly_executed" || outcome === "executed",
+  });
+
+  // Prefill suggested balance once when it becomes available (PM can edit).
+  const suggested = summary?.comparable && summary?.suggestedBalance != null ? summary.suggestedBalance : null;
+  const [qtyTouched, setQtyTouched] = useState(false);
+  useEffect(() => {
+    if (suggested != null && !qtyTouched && carryQty === "") {
+      setCarryQty(String(suggested));
+    }
+  }, [suggested, qtyTouched, carryQty]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/site-requirements/${req.id}/outcome`, {
+        outcome,
+        reason: reason || null,
+        remarks: remarks || null,
+        carryForward: canCarry && carryMode !== "none"
+          ? { mode: carryMode, targetDate: carryMode === "date" ? targetDate : null, carryQty: carryQty !== "" ? parseFloat(carryQty) : null }
+          : { mode: "none" },
+      });
+      return res.json();
+    },
+    onSuccess: (r: any) => {
+      onSaved();
+      toast({
+        title: "Work outcome recorded",
+        description: r.newPlan ? `New plan created for ${format(new Date(r.newPlan.date + "T00:00:00"), "d MMM yyyy")}.` : undefined,
+      });
+      onClose();
+    },
+    onError: async (e: any) => {
+      toast({ title: "Could not save outcome", description: e?.message ?? "Please check the details.", variant: "destructive" });
+    },
+  });
+
+  const saveDisabled =
+    !outcome ||
+    (needsReason && !reason) ||
+    (canCarry && carryMode === "date" && !targetDate) ||
+    saveMutation.isPending;
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Update Work Outcome</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <p className="text-xs text-muted-foreground">
+            Plan for {req.date ? format(new Date(req.date + "T00:00:00"), "EEE, d MMM yyyy") : "—"} — record what actually happened. This never changes the original plan's date or creates a DPR.
+          </p>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Outcome</Label>
+            <Select value={outcome} onValueChange={(v) => setOutcome(v as ExecutionOutcome)}>
+              <SelectTrigger className="h-9 text-sm" data-testid={`select-outcome-${req.id}`}><SelectValue placeholder="Select outcome..." /></SelectTrigger>
+              <SelectContent>
+                {(Object.keys(OUTCOME_LABELS) as ExecutionOutcome[]).map((k) => (
+                  <SelectItem key={k} value={k}>{OUTCOME_LABELS[k]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {needsReason && (
+            <div className="space-y-1">
+              <Label className="text-xs">Reason (required)</Label>
+              <Select value={reason} onValueChange={setReason}>
+                <SelectTrigger className="h-9 text-sm" data-testid={`select-outcome-reason-${req.id}`}><SelectValue placeholder="Select reason..." /></SelectTrigger>
+                <SelectContent>
+                  {DEFERRAL_REASONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {(outcome === "partly_executed" || outcome === "executed") && summary && (
+            <div className="rounded bg-muted/50 px-2 py-1.5 text-xs space-y-0.5" data-testid={`execution-summary-${req.id}`}>
+              {!summary.dprExists ? (
+                <p>No submitted DPR found for this site/date.</p>
+              ) : summary.billableEntryCount === 0 ? (
+                <p>A DPR exists, but no billable progress was recorded for this BOQ item.</p>
+              ) : summary.comparable ? (
+                <>
+                  <p>Planned: {summary.plannedQty ?? "—"} {summary.plannedUom ?? ""}</p>
+                  <p>Executed: {summary.executedQty} {summary.plannedUom ?? ""}</p>
+                  <p className="font-medium">Suggested carry-forward: {summary.suggestedBalance} {summary.plannedUom ?? ""}</p>
+                </>
+              ) : (
+                <p>Execution recorded, but automatic balance cannot be determined ({summary.executedByUom.map((r: any) => `${r.qty} ${r.uom}`).join(" + ")}). Enter the carry-forward quantity manually.</p>
+              )}
+            </div>
+          )}
+
+          {remarks !== undefined && (
+            <div className="space-y-1">
+              <Label className="text-xs">Remarks</Label>
+              <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={2} className="text-sm" data-testid={`input-outcome-remarks-${req.id}`} />
+            </div>
+          )}
+
+          {alreadyCarried && (
+            <p className="text-xs text-amber-600" data-testid={`already-carried-${req.id}`}>
+              Already carried forward to {format(new Date(alreadyCarried.date + "T00:00:00"), "d MMM yyyy")}. A second carry-forward from this plan is not allowed — defer the new plan itself if needed.
+            </p>
+          )}
+
+          {canCarry && (
+            <div className="space-y-2 border-t pt-2">
+              <Label className="text-xs">Carry unexecuted work forward?</Label>
+              <Select value={carryMode} onValueChange={(v) => setCarryMode(v as CarryForwardMode)}>
+                <SelectTrigger className="h-9 text-sm" data-testid={`select-carry-mode-${req.id}`}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Do Not Carry Forward</SelectItem>
+                  <SelectItem value="tomorrow">Carry Forward to Tomorrow</SelectItem>
+                  <SelectItem value="date">Move to Selected Date</SelectItem>
+                </SelectContent>
+              </Select>
+              {carryMode === "date" && (
+                <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="h-9 text-sm" data-testid={`input-carry-date-${req.id}`} />
+              )}
+              {carryMode !== "none" && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Quantity to carry forward {suggested != null ? `(suggested: ${suggested} ${summary?.plannedUom ?? ""})` : "(optional — leave blank to copy plan as-is)"}</Label>
+                  <Input type="number" min="0" step="any" value={carryQty} onChange={(e) => { setQtyTouched(true); setCarryQty(e.target.value); }}
+                    placeholder={suggested != null ? String(suggested) : ""} className="h-9 text-sm" data-testid={`input-carry-qty-${req.id}`} />
+                </div>
+              )}
+              {carryMode !== "none" && (
+                <p className="text-[11px] text-muted-foreground">
+                  Creates a NEW plan for the target date with the same work and requirement lines. Yesterday's allocation is shown on the new plan as reference only — it must be reconfirmed. The original plan stays on its own date as history.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="button" onClick={() => saveMutation.mutate()} disabled={saveDisabled} data-testid={`button-save-outcome-${req.id}`}>
+            {saveMutation.isPending ? "Saving..." : "Save Outcome"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

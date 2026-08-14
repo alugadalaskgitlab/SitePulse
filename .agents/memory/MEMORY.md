@@ -48,5 +48,6 @@
 - [Guided DPR Wizard](guided-dpr-wizard.md) — 5-step wizard model; No Work in Guided; entryKey photo-link pattern (never link photos to progress serial ids; cloneDpr must copy entryKey manually).
 - [Material Receipt Linkage](material-receipt-linkage.md) — shared/materialReceiptSummary.ts is the only receipt/arrangement/comparison seam; no-FK linkage columns, never prorate bar plannedQty, conservative matching.
 - [Requirement Fulfilment 06F](requirement-fulfilment-06f.md) — lineKey-first allocation identity in site_requirements JSONB; server re-validates lineKey + arrangement compatibility; no schema change.
+- [Plan Outcome & Carry Forward](plan-outcome-carry-forward.md) — JSONB-only outcome; carry via FOR UPDATE tx (no double-clone, link preserved on edits); allocation PATCH whitelisted.
 - [Receipt Rapid Repeat 06G](receipt-rapid-repeat-06g.md) — strip hides only for reused_excavated; daily fulfilment display-override never links arrangementId for other_agency/hlc; fmtDateTime never fabricates.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

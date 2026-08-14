@@ -24830,11 +24830,148 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateSiteRequirementAllocation(id: number, data: any): Promise<any | undefined> {
+    // 06J: merge-preserving write — section-level allocation edits must not
+    // wipe per-item arrays or outcome/carry-forward metadata that also live
+    // in this JSONB (executionOutcome, carriedForwardFrom, materialItems...).
+    const existing = await this.getSiteRequirement(id);
+    const merged = { ...(existing?.allocationStatus ?? {}), ...data };
     const [row] = await db.update(siteRequirements)
-      .set({ allocationStatus: data })
+      .set({ allocationStatus: merged })
       .where(eq(siteRequirements.id, id))
       .returning();
     return row;
+  }
+
+  // ── 06J: execution outcome + carry-forward ────────────────────────────────
+
+  /** Merge outcome metadata into allocationStatus (JSONB only, no schema). */
+  async setSiteRequirementOutcome(id: number, patch: Record<string, any>): Promise<any | undefined> {
+    const existing = await this.getSiteRequirement(id);
+    if (!existing) return undefined;
+    const merged = { ...(existing.allocationStatus ?? {}), ...patch };
+    const [row] = await db.update(siteRequirements)
+      .set({ allocationStatus: merged })
+      .where(eq(siteRequirements.id, id))
+      .returning();
+    return row;
+  }
+
+  /**
+   * 06J: record outcome + optional carry-forward ATOMICALLY. The old plan row
+   * is locked (FOR UPDATE) so concurrent carry attempts cannot both clone;
+   * an existing carriedForwardTo link is always preserved on outcome edits.
+   */
+  async recordSiteRequirementOutcome(planId: number, args: {
+    outcomeInput: { outcome: string; reason?: string | null; remarks?: string | null };
+    byName: string | null;
+    byId?: number | null;
+    /** null = no carry-forward requested */
+    carry: { targetDate: string; carryQty: number | null } | null;
+    buildCarryForwardPlan: (oldReq: any, opts: any) => { create: any; allocationStatus: any };
+    buildOutcomeRecord: (input: any, byName: string | null, atIso: string, carriedTo: any) => any;
+  }): Promise<
+    | { ok: true; updated: any; newPlan: any | null }
+    | { ok: false; code: "NOT_FOUND" }
+    | { ok: false; code: "ALREADY_CARRIED_FORWARD"; link: { requirementId: number; date: string } }
+  > {
+    return db.transaction(async (tx) => {
+      const [plan] = await tx.select().from(siteRequirements)
+        .where(eq(siteRequirements.id, planId))
+        .for("update");
+      if (!plan) return { ok: false as const, code: "NOT_FOUND" as const };
+
+      const alloc: any = plan.allocationStatus ?? {};
+      const existingLink = alloc?.executionOutcome?.carriedForwardTo ?? null;
+
+      if (args.carry && existingLink?.requirementId != null) {
+        return { ok: false as const, code: "ALREADY_CARRIED_FORWARD" as const, link: existingLink };
+      }
+
+      let newPlan: any = null;
+      if (args.carry) {
+        const built = args.buildCarryForwardPlan(plan, {
+          targetDate: args.carry.targetDate,
+          carryQty: args.carry.carryQty,
+          createdByName: args.byName,
+          createdById: args.byId ?? null,
+        });
+        const [created] = await tx.insert(siteRequirements).values({
+          date: String(built.create.date),
+          siteId: built.create.siteId ?? null,
+          submittedBy: built.create.submittedBy ?? null,
+          submittedByName: built.create.submittedByName ?? null,
+          plannedWork: built.create.plannedWork ?? null,
+          materials: built.create.materials ?? null,
+          equipment: built.create.equipment ?? null,
+          labour: built.create.labour ?? null,
+          immediateRequirements: built.create.immediateRequirements ?? null,
+          status: "submitted",
+          allocationStatus: built.allocationStatus,
+        }).returning();
+        newPlan = created;
+      }
+
+      // Preserve an existing link on edits — never null-out traceability.
+      const carriedTo = newPlan
+        ? { requirementId: newPlan.id, date: newPlan.date }
+        : existingLink;
+      const outcomeRecord = args.buildOutcomeRecord(
+        args.outcomeInput, args.byName, new Date().toISOString(), carriedTo,
+      );
+      const [updated] = await tx.update(siteRequirements)
+        .set({ allocationStatus: { ...alloc, executionOutcome: outcomeRecord } })
+        .where(eq(siteRequirements.id, planId))
+        .returning();
+      return { ok: true as const, updated, newPlan };
+    });
+  }
+
+  /**
+   * Executed billable DPR progress for a plan's site/date/BOQ item, summed by
+   * physical UoM. Canonical valid-DPR filter (submitted, not superseded,
+   * not cancelled, not deleted). Bar filter applied only when the plan has one
+   * AND at least one matching entry carries it (conservative narrowing).
+   */
+  async getExecutedProgressForPlan(args: { site: string; date: string; boqItemId: number; programmeBarId?: number | null }): Promise<{
+    dprExists: boolean;
+    executedByUom: Array<{ uom: string; qty: number; entryCount: number }>;
+  }> {
+    const dayDprs = await db.select({ id: dprs.id })
+      .from(dprs)
+      .where(and(
+        eq(dprs.site, args.site),
+        eq(dprs.date, args.date),
+        eq(dprs.dprStatus, "submitted"),
+        eq(dprs.isSuperseded, false),
+        eq(dprs.isCancelled, false),
+        eq(dprs.isDeleted, false),
+      ));
+    if (dayDprs.length === 0) return { dprExists: false, executedByUom: [] };
+    const rows = await db.select({
+      quantity: progressEntries.quantity,
+      uom: progressEntries.uom,
+      programmeBarId: progressEntries.programmeBarId,
+      noSiteWork: progressEntries.noSiteWork,
+    })
+      .from(progressEntries)
+      .where(and(
+        inArray(progressEntries.dprId, dayDprs.map(d => d.id)),
+        eq(progressEntries.boqItemId, args.boqItemId),
+      ));
+    let billable = rows.filter(r => !r.noSiteWork && r.quantity != null && Number(r.quantity) > 0);
+    if (args.programmeBarId != null) {
+      const barRows = billable.filter(r => r.programmeBarId === args.programmeBarId);
+      if (barRows.length > 0) billable = barRows;
+    }
+    const byUom = new Map<string, { uom: string; qty: number; entryCount: number }>();
+    for (const r of billable) {
+      const key = (r.uom ?? "").trim().toLowerCase();
+      const cur = byUom.get(key) ?? { uom: (r.uom ?? "").trim(), qty: 0, entryCount: 0 };
+      cur.qty += Number(r.quantity);
+      cur.entryCount += 1;
+      byUom.set(key, cur);
+    }
+    return { dprExists: true, executedByUom: [...byUom.values()] };
   }
 
   async updateSiteRequirementItemStatus(id: number, category: string, itemIndex: number, data: any): Promise<any | undefined> {

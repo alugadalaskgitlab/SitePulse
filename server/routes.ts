@@ -26,6 +26,7 @@ import { shortItemName as sharedShortItemName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
 import { validateFulfilment } from "@shared/requirementFulfilment";
+import { validateOutcomeInput, resolveCarryTargetDate, buildCarryForwardPlan, buildOutcomeRecord, computeExecutionComparison } from "@shared/planOutcome";
 import { syncArrangementBarAllocations } from "./arrangementAllocationSync";
 import { AUTO_SYNC_STATUSES } from "@shared/arrangementAutoAllocation";
 import {
@@ -18290,11 +18291,14 @@ export function registerSiteRequirementRoutes(app: Express) {
       if (role !== "admin" && role !== "manager") {
         return res.status(403).json({ error: "Only managers or admins can update allocation" });
       }
-      const data = {
-        ...req.body,
+      // 06J: whitelist section-level fields only — this endpoint must never
+      // write outcome/carry-forward/item-array keys (forgery + wipe protection).
+      const ALLOWED = ["materials", "materialsRemark", "equipment", "equipmentRemark", "labour", "labourRemark", "immediate", "immediateRemark"] as const;
+      const data: Record<string, any> = {
         updatedByName: req.session?.username ?? null,
         updatedAt: new Date().toISOString(),
       };
+      for (const k of ALLOWED) if (k in req.body) data[k] = req.body[k];
       const row = await storage.updateSiteRequirementAllocation(parseInt(req.params.id), data);
       res.json(row);
     } catch (err: any) {
@@ -18441,6 +18445,106 @@ export function registerSiteRequirementRoutes(app: Express) {
         readinessStatus: hasShortage ? "confirmed_with_shortage" : "confirmed_ok",
       });
       res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── 06J: execution outcome + carry forward ─────────────────────────────────
+
+  // GET /api/site-requirements/:id/execution-summary — planned vs executed
+  // (submitted DPR billable progress) for the plan's BOQ item. PM/Admin only.
+  app.get("/api/site-requirements/:id/execution-summary", requireAuth, async (req: any, res) => {
+    try {
+      const role = req.session?.role ?? "engineer";
+      if (role !== "admin" && role !== "manager") {
+        return res.status(403).json({ error: "Only managers or admins can review outcomes" });
+      }
+      const plan = await storage.getSiteRequirement(parseInt(req.params.id));
+      if (!plan) return res.status(404).json({ error: "Not found" });
+      const pw: any = plan.plannedWork ?? {};
+      const boqItemId = pw.boqItemId != null ? Number(pw.boqItemId) : null;
+      let dprExists = false;
+      let executedByUom: Array<{ uom: string; qty: number; entryCount: number }> = [];
+      if (boqItemId != null && plan.siteId != null) {
+        const sites = await storage.getSites();
+        const siteName = sites.find((s: any) => s.id === plan.siteId)?.name;
+        if (siteName) {
+          const r = await storage.getExecutedProgressForPlan({
+            site: siteName,
+            date: plan.date,
+            boqItemId,
+            programmeBarId: pw.programmeBarId != null ? Number(pw.programmeBarId) : null,
+          });
+          dprExists = r.dprExists;
+          executedByUom = r.executedByUom;
+        }
+      }
+      const comparison = computeExecutionComparison({
+        plannedQty: pw.plannedQty != null ? Number(pw.plannedQty) : null,
+        plannedUom: pw.plannedUom ?? null,
+        executedByUom,
+        dprExists,
+      });
+      res.json(comparison);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/site-requirements/:id/outcome — PM/Admin records the execution
+  // outcome and (optionally) carries unexecuted work forward to a NEW plan.
+  // JSONB-only persistence; never creates a DPR; never mutates arrangements.
+  app.post("/api/site-requirements/:id/outcome", requireAuth, async (req: any, res) => {
+    try {
+      const role = req.session?.role ?? "engineer";
+      if (role !== "admin" && role !== "manager") {
+        return res.status(403).json({ error: "Only managers or admins can record work outcomes" });
+      }
+      const plan = await storage.getSiteRequirement(parseInt(req.params.id));
+      if (!plan) return res.status(404).json({ error: "Not found" });
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+      // Lifecycle rule enforced server-side, not just hidden in the UI:
+      // outcomes are recorded only for plans whose target date has passed.
+      if (!(plan.date < todayStr)) {
+        return res.status(400).json({ error: "Work outcome can only be recorded after the plan's target date has passed.", code: "PLAN_DATE_NOT_PASSED" });
+      }
+      const input = {
+        outcome: req.body.outcome,
+        reason: req.body.reason ?? null,
+        remarks: req.body.remarks ?? null,
+        carryForward: req.body.carryForward ?? null,
+      };
+      const v = validateOutcomeInput(input as any, plan.date, todayStr);
+      if (!v.ok) return res.status(400).json({ error: v.message, code: v.code });
+
+      const wantsCarry = input.carryForward && input.carryForward.mode !== "none";
+      // Atomic: row lock on the old plan prevents concurrent duplicate clones;
+      // an existing carriedForwardTo link is preserved on outcome edits.
+      const result = await storage.recordSiteRequirementOutcome(plan.id, {
+        outcomeInput: input as any,
+        byName: req.session?.username ?? null,
+        byId: req.session?.userId ?? null,
+        carry: wantsCarry
+          ? {
+              targetDate: resolveCarryTargetDate(input.carryForward!, todayStr),
+              carryQty: input.carryForward!.carryQty != null ? Number(input.carryForward!.carryQty) : null,
+            }
+          : null,
+        buildCarryForwardPlan,
+        buildOutcomeRecord,
+      });
+      if (!result.ok && result.code === "NOT_FOUND") return res.status(404).json({ error: "Not found" });
+      if (!result.ok && result.code === "ALREADY_CARRIED_FORWARD") {
+        return res.status(409).json({
+          error: `Already carried forward to ${result.link.date}.`,
+          code: "ALREADY_CARRIED_FORWARD",
+          link: result.link,
+        });
+      }
+      if (!result.ok) return res.status(500).json({ error: "Unexpected outcome state" });
+      res.json({ updated: result.updated, newPlan: result.newPlan });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

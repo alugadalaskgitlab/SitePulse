@@ -1,0 +1,514 @@
+BATCH 06J — TOMORROW PLAN OUTCOME + CARRY FORWARD
+
+This is a focused Site Requirements / Tomorrow Plan lifecycle batch.
+
+OBJECTIVE
+
+When a Tomorrow Plan was raised for a date but the planned work did not
+happen, PM/Admin must be able to close that plan honestly and move the
+unexecuted work/requirements to another date.
+
+Do NOT create a fake DPR just to close a plan.
+Do NOT alter the current working DPR or Material Trip flow.
+
+Expected schema change: investigate first; prefer existing JSON/status fields
+if safe.
+
+--------------------------------------------------
+1. INVESTIGATE FIRST
+--------------------------------------------------
+
+Inspect:
+- site_requirements schema
+- SiteRequirementsList.tsx
+- current plan statuses
+- allocationStatus JSONB
+- plannedWork JSON
+- material/equipment/labour requirement rows
+- programmeBarId / boqItemId / reach data
+- DPRs for the same site/date
+- Progress entries for planned BOQ items
+- existing clone/copy/revision helpers if any
+
+PRE-INVESTIGATED FINDINGS (verified directly against the current repo —
+confirm still true, but do not re-derive from scratch):
+
+A. Current plan-level status fields: STATUS_CONFIG / PM_STATUS_OPTIONS in
+   SiteRequirementsList.tsx are entirely procurement-workflow — submitted,
+   approved, arranged, sent_store, sent_purchase, sent_plant, rejected,
+   clarification. No execution-outcome value exists among them.
+
+B. No existing execution-outcome field. Confirmed by A — there is nothing
+   equivalent to Executed/Deferred/Not Started anywhere in the current
+   status model.
+
+C. No existing clone/copy-to-new-date mechanism. Searched storage.ts and
+   routes.ts for anything that duplicates a site_requirements row — nothing
+   exists. The only adjacent feature is the revision workflow
+   (revisionStatus / revisionApprovedAt / revisionOneTimeUsed, routes.ts
+   ~lines 18496-18535) — but that is a DIFFERENT feature: an in-place
+   edit-permission flow where an Engineer requests to revise their own
+   already-acted-upon plan, PM approves, and the Engineer gets a one-time
+   window to edit the SAME record. It does not create a new record for a
+   new date and should not be reused/conflated with carry-forward.
+
+D. Individual plannedWork/material/equipment/labour rows DO already have
+   stable lineKeys. Confirmed via storage.ts's updateSiteRequirementItemStatus
+   (~line 24852): items are matched by a stable lineKey where the
+   requirement line has one, with positional index as a legacy fallback
+   only for unkeyed lines. Carry-forward should key off lineKey, not
+   position.
+
+E. What actual DPR data can safely be used to detect partial execution —
+   NOT pre-investigated, genuinely open. Report your findings here per the
+   original instruction.
+
+ADDITIONAL PRE-INVESTIGATED FINDING relevant to Section 17 below:
+
+Multiple site_requirements rows CAN already coexist for the same site+date
+today — confirmed no unique index on (site, date) in the schema, and
+SiteRequirementNew.tsx's mode=immediate path already creates a SEPARATE
+requirement row (dated today) alongside a normal Tomorrow Plan for the same
+site+date raised the day before. So "multiple plans per site/date" is an
+existing, live condition, not a hypothetical — factor this into Section 17's
+duplicate-handling design (see note there).
+
+Do not build before mapping the rest of this.
+
+--------------------------------------------------
+2. NEW USER-FACING OUTCOME FOR PM / ADMIN
+--------------------------------------------------
+
+On a plan whose target date has passed, PM/Admin should have an action:
+
+Update Work Outcome
+
+Allow:
+- Executed
+- Partly Executed
+- Not Started / Deferred
+- Not Required / Cancelled
+
+Do not expose this as an Engineer planning decision.
+Engineer continues to raise requirements only.
+
+--------------------------------------------------
+3. NOT STARTED / DEFERRED
+--------------------------------------------------
+
+If nothing was executed:
+
+PM/Admin selects:
+Not Started / Deferred
+
+Require a reason.
+
+Suggested reasons:
+- Rain / weather
+- Site not available
+- Vendor unavailable
+- Equipment unavailable / breakdown
+- Labour shortage
+- Material not available
+- Department / client instruction
+- Access / traffic issue
+- Other
+
+Allow free-text remarks.
+
+--------------------------------------------------
+4. CARRY FORWARD OPTIONS
+--------------------------------------------------
+
+After choosing Deferred, offer:
+- Carry Forward to Tomorrow
+- Move to Selected Date
+- Do Not Carry Forward
+
+For selected date: use a date picker.
+
+Do NOT silently change the original plan date.
+
+--------------------------------------------------
+5. ORIGINAL PLAN MUST REMAIN AS HISTORY
+--------------------------------------------------
+
+The old plan remains visible against its original date.
+
+Example:
+
+Plan for 12 Aug 2026
+Status: Deferred
+Reason: Rain / vendor unavailable
+Carried forward to: 14 Aug 2026
+Updated by: PM
+Updated at: timestamp
+
+Do not mutate the original plan into the new date.
+
+--------------------------------------------------
+6. CREATE A NEW PLAN FOR THE TARGET DATE
+--------------------------------------------------
+
+Carry Forward must create a NEW site requirement / plan for the selected date.
+
+Preserve where appropriate:
+- site
+- plannedWork
+- boqItemId
+- programmeBarId if still valid
+- reach / chainage / side
+- material requirements
+- equipment requirements
+- labour requirements
+- immediate requirement context
+
+Do NOT copy historical audit timestamps/statuses as if the new plan had
+already been acted upon.
+
+New plan starts as a fresh plan for the new date.
+
+--------------------------------------------------
+7. ALLOCATION CONTEXT
+--------------------------------------------------
+
+Do NOT automatically assume yesterday's allocations remain valid.
+
+Carry the standing work context, but distinguish:
+A. requirement data
+B. previous day's operational allocation
+
+Preferred behavior:
+- preserve the requirement lines and BOQ/reach context;
+- show the previous day's fulfilment/allocation as a suggestion/reference;
+- require PM/authority to reconfirm if operational allocation should continue.
+
+If the existing JSON model makes safe carry-forward of allocation context
+possible, mark it explicitly as copied/reference rather than silently
+treating it as today's confirmed allocation.
+
+Do not modify standing Execution Arrangements.
+
+--------------------------------------------------
+8. PARTLY EXECUTED
+--------------------------------------------------
+
+If part of the planned work happened:
+
+PM/Admin selects:
+Partly Executed
+
+SitePulse should identify actual submitted DPR progress for the same:
+- site/date
+- BOQ item
+- programmeBarId/reach where available.
+
+Where quantity comparison is reliable:
+
+show:
+Planned: 350 Cum
+Executed: 250 Cum
+Suggested carry-forward: 100 Cum
+
+PM/Admin must confirm/edit the carry-forward quantity before creation.
+
+Do NOT blindly copy the full original planned quantity.
+
+--------------------------------------------------
+9. DIFFERENT UOM / NON-COMPARABLE CASES
+--------------------------------------------------
+
+If planned and executed quantities are not safely comparable:
+do not calculate a false balance.
+
+Show:
+Execution recorded, but automatic balance cannot be determined.
+
+Require PM/Admin to enter/confirm the quantity to carry forward.
+
+Reuse existing BOQ UoM/conversion helpers where applicable.
+Do not invent conversion factors.
+
+--------------------------------------------------
+10. NO DPR EXISTS
+--------------------------------------------------
+
+This is a key scenario.
+
+If:
+- a plan existed for 12 Aug
+- no DPR was ever started
+- no submitted actual progress exists
+
+the plan must still be closable as:
+Not Started / Deferred
+
+This must NOT depend on an older-DPR record existing.
+
+This is exactly the gap this batch must solve.
+
+--------------------------------------------------
+11. DPR EXISTS BUT ZERO BILLABLE PROGRESS
+--------------------------------------------------
+
+If a DPR exists for the day but contains only:
+- No Site Work / non-billable activities
+- equipment/labour logs
+- zero BOQ progress
+
+the plan may still be:
+Not Started / Deferred
+or
+Partly Executed
+
+depending on actual context.
+
+Do not automatically call the plan Executed merely because a DPR exists.
+
+--------------------------------------------------
+12. EXECUTED
+--------------------------------------------------
+
+If the plan was completed satisfactorily:
+
+PM/Admin may mark: Executed
+
+Where submitted DPR progress clearly supports that outcome, show it as
+supporting information.
+
+Do not auto-close unless the current product already has a safe matching rule.
+Manual PM confirmation remains acceptable.
+
+--------------------------------------------------
+13. NOT REQUIRED / CANCELLED
+--------------------------------------------------
+
+If the planned activity is no longer needed:
+
+mark: Not Required / Cancelled
+
+Require reason.
+
+Do not carry it forward unless PM explicitly chooses otherwise.
+Do not delete the original plan.
+
+--------------------------------------------------
+14. PLAN HEADER / TIMELINE
+--------------------------------------------------
+
+Preserve the current 06G timestamp improvements.
+
+Show:
+
+Plan for <date>
+Submitted: <date/time> by Engineer
+Allocation updates: existing per-line updatedAt / updatedBy
+Readiness: existing confirmedAt / confirmedBy
+Outcome: Deferred / Partly Executed / Executed / Not Required
+  <date/time> by PM/Admin
+
+If the current schema cannot store outcome timestamp/by safely, STOP and
+report minimum persistence needed.
+
+Do not fabricate timestamps.
+
+--------------------------------------------------
+15. CARRY-FORWARD TRACEABILITY
+--------------------------------------------------
+
+The old and new plans should link visibly.
+
+Old plan:
+Carried forward to: 14 Aug 2026 [View new plan]
+
+New plan:
+Carried forward from: 12 Aug 2026 [View original plan]
+
+Do not rely only on remarks text if a stable existing JSON link can be used.
+
+Investigate the safest persistence mechanism before schema.
+
+--------------------------------------------------
+16. DUPLICATE SAFETY
+--------------------------------------------------
+
+Prevent accidental repeated carry-forward.
+
+If plan 123 has already been carried forward to plan 145:
+do not create another clone on repeated click.
+
+Show: Already carried forward to 14 Aug 2026.
+
+Allow another carry-forward only through an explicit new action if the
+new plan itself later needs deferment.
+
+--------------------------------------------------
+17. NEW PLAN + EXISTING PLAN ON TARGET DATE
+--------------------------------------------------
+
+If the target date already has a plan for the same site:
+do not blindly create a duplicate plan.
+
+NOTE: multiple site_requirements rows for the same site+date are ALREADY a
+live, existing condition today (no unique index on site+date; the
+mode=immediate path already creates a separate same-day row alongside a
+normal Tomorrow Plan). Given that, prefer creating an additional, explicitly
+linked plan over merging into the existing target-date plan — merging would
+be ambiguous in a model that already tolerates multiple same-day plans,
+whereas an additional linked plan (via the carry-forward link from Section
+15) is consistent with what the app already does. Confirm this reasoning
+during investigation before implementing either branch.
+
+Do not invent a hidden duplicate.
+
+--------------------------------------------------
+18. ENGINEER UX
+--------------------------------------------------
+
+Do NOT add outcome/carry-forward controls to the Engineer's requirement-entry
+form.
+
+Engineer should only see the resulting new/current plan when planning or
+confirming readiness.
+
+PM/Admin owns the execution outcome and carry-forward decision.
+
+--------------------------------------------------
+19. TOMORROW / TODAY NAMING
+--------------------------------------------------
+
+Avoid hard-coding the phrase "Tomorrow's Plan" when reviewing an old plan.
+
+Use:
+Plan for <date>
+and:
+Carry Forward to Tomorrow
+or
+Move to Selected Date
+
+This keeps historical plans understandable.
+
+--------------------------------------------------
+20. DO NOT BLOCK DPR
+--------------------------------------------------
+
+Starting today's DPR must remain independent of whether today's plan exists.
+
+Do not add: "No plan — cannot start DPR."
+
+DPR records actual work. Plan records intended work.
+
+--------------------------------------------------
+21. DO NOT CREATE FAKE DPR
+--------------------------------------------------
+
+Never create a zero-progress DPR automatically merely because a plan is
+deferred.
+
+If no field activity happened: plan outcome is sufficient.
+If actual equipment/labour/non-billable activity happened: Engineer records
+the real DPR separately.
+
+--------------------------------------------------
+22. NO EXECUTION ARRANGEMENT MUTATION
+--------------------------------------------------
+
+Carry Forward must NOT modify:
+- earthwork_arrangements
+- arrangement scope
+- arrangement vendor
+- arrangement allocatedQty
+- programme allocations
+
+Standing arrangement remains separate.
+Daily allocation may be reconfirmed on the new plan.
+
+--------------------------------------------------
+23. SCHEMA STOP GATE
+--------------------------------------------------
+
+Investigate whether this can be stored safely in existing:
+- status
+- allocationStatus JSONB
+- plannedWork JSON
+
+Potential required persistence concepts:
+- executionOutcome
+- outcomeReason
+- outcomeRemarks
+- outcomeUpdatedBy
+- outcomeUpdatedAt
+- carriedForwardToRequirementId
+- carriedForwardFromRequirementId
+
+Prefer JSONB additions if stable and auditable.
+
+If DB schema changes are needed: STOP and report before implementing.
+No schema change is pre-approved.
+
+--------------------------------------------------
+24. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+- current Guided DPR wizard
+- DPR readiness
+- Material Trip
+- Equipment/Labour
+- BOQ conversion
+- Progress Report calculations
+- Execution Arrangement logic
+- daily fulfilment semantics
+- BOM
+- Vendor Billing
+- Structure DPR
+- historical submitted DPRs
+
+--------------------------------------------------
+25. TESTS
+--------------------------------------------------
+
+Plan tests for at least:
+A. Old plan with no DPR can be marked Deferred.
+B. Deferred requires reason.
+C. Carry Forward to Tomorrow creates correct new plan.
+D. Move to Selected Date works.
+E. Original plan date/history remains unchanged.
+F. Old plan shows link to new plan.
+G. New plan shows source plan.
+H. repeated carry-forward does not create duplicate.
+I. No DPR is auto-created.
+J. Partly Executed finds submitted DPR actual where safely matchable.
+K. comparable planned/executed quantities produce suggested balance.
+L. non-comparable quantities require manual confirmation.
+M. zero-billable-progress DPR does not automatically mean Executed.
+N. Not Required/Cancelled does not silently carry forward.
+O. target date with existing plan does not create hidden duplicate.
+P. Engineer entry UI unchanged.
+Q. current Submitted/Allocation/Readiness timestamps remain intact.
+R. no Execution Arrangement mutation.
+S. no DPR/Material Trip regression.
+T. no schema before approval.
+
+--------------------------------------------------
+26. REPORT BACK — STOP BEFORE SCHEMA/BUILD IF NEEDED
+--------------------------------------------------
+
+Report:
+A. current site_requirements persistence suitable for outcome.
+B. proposed executionOutcome JSON shape.
+C. carry-forward source/target linking design.
+D. target-date duplicate handling.
+E. partial-execution matching rules.
+F. how actual DPR quantity is resolved.
+G. non-comparable quantity behavior.
+H. allocation carry-forward/reconfirmation behavior.
+I. duplicate-prevention mechanism.
+J. exact PM/Admin UX.
+K. tests.
+
+If schema change is needed: STOP and wait for approval.
+If existing JSONB is sufficient: proceed with the focused build after
+reporting that conclusion.
+
+DO NOT START ANOTHER BATCH.
