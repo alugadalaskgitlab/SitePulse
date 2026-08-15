@@ -13146,7 +13146,7 @@ export class DatabaseStorage implements IStorage {
     return result as DieselRequirementWithItems | undefined;
   }
 
-  async updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string }): Promise<DieselRequirementWithItems | undefined> {
+  async updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string; paymentMode?: string; paidBy?: string }): Promise<DieselRequirementWithItems | undefined> {
     const existing = await this.getDieselRequirement(id);
     if (!existing) return undefined;
 

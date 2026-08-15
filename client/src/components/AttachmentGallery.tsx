@@ -9,6 +9,8 @@ interface AttachmentGalleryProps {
   linkedRecordId: number;
   /** Allow deleting attachments from this gallery. Default true. */
   allowDelete?: boolean;
+  /** Only show attachments with this docType (e.g. "bill" vs "payment_evidence"). */
+  docType?: string;
   emptyText?: string;
   className?: string;
 }
@@ -22,10 +24,11 @@ export function AttachmentGallery({
   moduleType,
   linkedRecordId,
   allowDelete = true,
+  docType,
   emptyText = "No attachments yet.",
   className,
 }: AttachmentGalleryProps) {
-  const { data: items, isLoading } = useQuery<Attachment[]>({
+  const { data: allItems, isLoading } = useQuery<Attachment[]>({
     queryKey: ["/api/attachments", moduleType, linkedRecordId],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -37,6 +40,8 @@ export function AttachmentGallery({
     },
     enabled: Number.isFinite(linkedRecordId) && linkedRecordId > 0,
   });
+
+  const items = docType ? allItems?.filter((a) => a.docType === docType) : allItems;
 
   if (isLoading) {
     return (

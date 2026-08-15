@@ -7906,6 +7906,9 @@ export async function registerRoutes(
         amount: z.number().optional(),
         purchasedAt: z.string().optional(),
         purchaseRemarks: z.string().optional(),
+        // Batch 06M: PI-style payment details (same option values as PI).
+        paymentMode: z.enum(["cash", "credit", "advance", "upi", "cheque", "rtgs"]).optional(),
+        paidBy: z.string().max(120).optional(),
       });
       const purchaseData = updateSchema.parse(req.body);
       const requirement = await storage.updateDieselPurchase(id, purchaseData);

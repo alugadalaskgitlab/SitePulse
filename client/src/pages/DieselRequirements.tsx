@@ -20,6 +20,9 @@ import type { DieselRequirementWithItems, DieselRequirement, DieselRequirementIt
 import { LocationPicker, locationLabel, SECTION_OPTIONS } from "@/components/LocationPicker";
 import type { LocationValue } from "@/components/LocationPicker";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { AttachmentUploader } from "@/components/AttachmentUploader";
+import { AttachmentGallery } from "@/components/AttachmentGallery";
+import type { Attachment } from "@shared/schema";
 
 type ViewMode = "list" | "form" | "detail" | "update" | "report";
 
@@ -90,6 +93,80 @@ function StatusSteps({ status }: { status: string }) {
   );
 }
 
+// Batch 06M: compact purchase summary shown on purchased requirements —
+// bill/payment evidence indicators + PI-style payment details + evidence viewer.
+function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirementWithItems }) {
+  const { data: attachments } = useQuery<Attachment[]>({
+    queryKey: ["/api/attachments", "diesel_purchase", requirement.id],
+    queryFn: async () => {
+      const params = new URLSearchParams({ moduleType: "diesel_purchase", linkedRecordId: String(requirement.id) });
+      const res = await apiRequest("GET", `/api/attachments?${params.toString()}`);
+      return res.json();
+    },
+  });
+  const hasBill = (attachments || []).some((a) => a.docType === "bill");
+  const hasEvidence = (attachments || []).some((a) => a.docType === "payment_evidence");
+  const paymentMode = (requirement as any).paymentMode as string | null;
+  const paidBy = (requirement as any).paidBy as string | null;
+  const modeLabels: Record<string, string> = { cash: "CASH", credit: "CREDIT", advance: "ADVANCE", upi: "UPI", cheque: "CHEQUE", rtgs: "RTGS / NEFT" };
+
+  return (
+    <Card data-testid="card-purchase-summary">
+      <CardHeader>
+        <CardTitle className="text-base">PURCHASE SUMMARY</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <p className="text-[12px] font-semibold text-muted-foreground uppercase">QTY PURCHASED</p>
+            <p className="font-semibold mt-1">{requirement.qtyPurchased != null ? `${requirement.qtyPurchased} L` : "\u2014"}</p>
+          </div>
+          <div>
+            <p className="text-[12px] font-semibold text-muted-foreground uppercase">SUPPLIER</p>
+            <p className="font-semibold mt-1">{requirement.supplier || "\u2014"}</p>
+          </div>
+          <div>
+            <p className="text-[12px] font-semibold text-muted-foreground uppercase">BILL NO.</p>
+            <p className="font-semibold mt-1">{requirement.billNo || "\u2014"}</p>
+          </div>
+          <div>
+            <p className="text-[12px] font-semibold text-muted-foreground uppercase">AMOUNT</p>
+            <p className="font-semibold mt-1">{requirement.amount != null ? `\u20B9${requirement.amount.toLocaleString()}` : "\u2014"}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2" data-testid="row-purchase-indicators">
+          <Badge variant="outline" className={hasBill ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 border-green-300 dark:border-green-700" : "text-muted-foreground"} data-testid="badge-bill-attached">
+            {hasBill ? <Check className="w-3 h-3 mr-1" /> : null}BILL {hasBill ? "ATTACHED" : "NOT ATTACHED"}
+          </Badge>
+          {hasEvidence && (
+            <Badge variant="outline" className="bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 border-green-300 dark:border-green-700" data-testid="badge-payment-evidence">
+              <Check className="w-3 h-3 mr-1" />PAYMENT EVIDENCE
+            </Badge>
+          )}
+          {paymentMode && <Badge variant="outline" data-testid="badge-payment-mode">MODE: {modeLabels[paymentMode] || paymentMode.toUpperCase()}</Badge>}
+          {paidBy && (
+            <Badge variant="outline" data-testid="badge-paid-by">
+              PAID BY: {paidBy === "company" ? "COMPANY ACCOUNT" : `PERSONAL${paidBy !== "PERSONAL" ? ` \u2014 ${paidBy}` : ""}`}
+            </Badge>
+          )}
+        </div>
+        {hasBill && (
+          <div>
+            <p className="text-[12px] font-semibold text-muted-foreground uppercase mb-2">BILL / INVOICE</p>
+            <AttachmentGallery moduleType="diesel_purchase" linkedRecordId={requirement.id} docType="bill" allowDelete={false} />
+          </div>
+        )}
+        {hasEvidence && (
+          <div>
+            <p className="text-[12px] font-semibold text-muted-foreground uppercase mb-2">PAYMENT / QR EVIDENCE</p>
+            <AttachmentGallery moduleType="diesel_purchase" linkedRecordId={requirement.id} docType="payment_evidence" allowDelete={false} />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function DieselRequirements() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
@@ -148,6 +225,10 @@ export default function DieselRequirements() {
   const [purchaseAmount, setPurchaseAmount] = useState("");
   const [purchasedAt, setPurchasedAt] = useState("");
   const [purchaseRemarks, setPurchaseRemarks] = useState("");
+  // Batch 06M: PI-style payment details.
+  const [purchasePaymentMode, setPurchasePaymentMode] = useState("");
+  const [purchasePaidBy, setPurchasePaidBy] = useState<"company" | "personal" | "">("");
+  const [purchasePayerName, setPurchasePayerName] = useState("");
 
   const [reportDateFrom, setReportDateFrom] = useState("");
   const [reportDateTo, setReportDateTo] = useState("");
@@ -405,6 +486,18 @@ export default function DieselRequirements() {
       setPurchaseAmount(req.amount ? String(req.amount) : "");
       setPurchasedAt(req.purchasedAt || "");
       setPurchaseRemarks(req.purchaseRemarks || "");
+      setPurchasePaymentMode((req as any).paymentMode || "");
+      const existingPaidBy = (req as any).paidBy as string | null;
+      if (!existingPaidBy) {
+        setPurchasePaidBy("");
+        setPurchasePayerName("");
+      } else if (existingPaidBy === "company") {
+        setPurchasePaidBy("company");
+        setPurchasePayerName("");
+      } else {
+        setPurchasePaidBy("personal");
+        setPurchasePayerName(existingPaidBy === "PERSONAL" ? "" : existingPaidBy);
+      }
       setView("update");
     } else {
       setView("detail");
@@ -466,6 +559,12 @@ export default function DieselRequirements() {
         amount: computedAmount,
         purchasedAt: purchasedAt || undefined,
         purchaseRemarks: purchaseRemarks.toUpperCase() || undefined,
+        paymentMode: purchasePaymentMode || undefined,
+        paidBy: purchasePaidBy === "company"
+          ? "company"
+          : purchasePaidBy === "personal"
+            ? (purchasePayerName.trim().toUpperCase() || "PERSONAL")
+            : undefined,
       },
     });
   };
@@ -1016,6 +1115,10 @@ export default function DieselRequirements() {
                 </CardContent>
               </Card>
 
+              {selectedRequirement.status === "purchased" && (
+                <DieselPurchaseSummary requirement={selectedRequirement} />
+              )}
+
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2">
                   <CardTitle className="text-base">
@@ -1293,6 +1396,82 @@ export default function DieselRequirements() {
                       <Label className="text-sm">PURCHASED AT</Label>
                       <Input type="time" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} data-testid="input-purchased-at" />
                     </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label className="text-sm">PAYMENT MODE</Label>
+                      <Select value={purchasePaymentMode} onValueChange={setPurchasePaymentMode}>
+                        <SelectTrigger data-testid="select-payment-mode">
+                          <SelectValue placeholder="SELECT MODE" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">CASH</SelectItem>
+                          <SelectItem value="credit">CREDIT</SelectItem>
+                          <SelectItem value="advance">ADVANCE</SelectItem>
+                          <SelectItem value="upi">UPI</SelectItem>
+                          <SelectItem value="cheque">CHEQUE</SelectItem>
+                          <SelectItem value="rtgs">RTGS / NEFT</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm">PAID BY</Label>
+                      <Select value={purchasePaidBy} onValueChange={(v) => setPurchasePaidBy(v as "company" | "personal")}>
+                        <SelectTrigger data-testid="select-paid-by">
+                          <SelectValue placeholder="SELECT PAYER" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="company">COMPANY ACCOUNT</SelectItem>
+                          <SelectItem value="personal">PERSONAL</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {purchasePaidBy === "personal" && (
+                      <div>
+                        <Label className="text-sm">PAYER NAME</Label>
+                        <Input
+                          value={purchasePayerName}
+                          onChange={(e) => setPurchasePayerName(e.target.value)}
+                          onBlur={(e) => setPurchasePayerName(e.target.value.toUpperCase())}
+                          placeholder="WHO PAID?"
+                          className="uppercase"
+                          data-testid="input-payer-name"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm">BILL / INVOICE</Label>
+                    <AttachmentUploader
+                      moduleType="diesel_purchase"
+                      linkedRecordId={selectedRequirement.id}
+                      siteId={(selectedRequirement as any).siteId ?? null}
+                      docType="bill"
+                      label="Add Bill (Gallery / File)"
+                    />
+                    <AttachmentGallery
+                      moduleType="diesel_purchase"
+                      linkedRecordId={selectedRequirement.id}
+                      docType="bill"
+                      emptyText="No bill uploaded yet."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm">PAYMENT / QR EVIDENCE (OPTIONAL)</Label>
+                    <p className="text-xs text-muted-foreground">e.g. fuel station QR, UPI payment screenshot, payment acknowledgement</p>
+                    <AttachmentUploader
+                      moduleType="diesel_purchase"
+                      linkedRecordId={selectedRequirement.id}
+                      siteId={(selectedRequirement as any).siteId ?? null}
+                      docType="payment_evidence"
+                      label="Add Evidence (Gallery / File)"
+                    />
+                    <AttachmentGallery
+                      moduleType="diesel_purchase"
+                      linkedRecordId={selectedRequirement.id}
+                      docType="payment_evidence"
+                      emptyText="No payment evidence uploaded."
+                    />
                   </div>
                   <div>
                     <Label className="text-sm">REMARKS</Label>

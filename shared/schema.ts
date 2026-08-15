@@ -1917,6 +1917,11 @@ export const dieselRequirements = pgTable("diesel_requirements", {
   amount: real("amount"),
   purchasedAt: text("purchased_at"),
   purchaseRemarks: text("purchase_remarks"),
+  // Batch 06M: PI-style payment details on the diesel purchase action.
+  // paymentMode mirrors PI options (cash/credit/advance/upi/cheque/rtgs);
+  // paidBy mirrors PI semantics: "company" or the payer's name for personal.
+  paymentMode: text("payment_mode"),
+  paidBy: text("paid_by"),
   createdAt: timestamp("created_at").defaultNow(),
   siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
   raisedFrom: text("raised_from"),
@@ -3315,6 +3320,9 @@ export const attachmentModuleTypes = [
   "equipment_maintenance",
   "equipment_fuel_proof",
   "quality_test",
+  // Batch 06M: Daily Diesel Requirement purchase evidence (bill / payment QR).
+  // docType distinguishes "bill" vs "payment_evidence" within this moduleType.
+  "diesel_purchase",
 ] as const;
 export type AttachmentModuleType = typeof attachmentModuleTypes[number];
 

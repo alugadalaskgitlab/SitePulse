@@ -50,4 +50,5 @@
 - [Requirement Fulfilment 06F](requirement-fulfilment-06f.md) — lineKey-first allocation identity in site_requirements JSONB; server re-validates lineKey + arrangement compatibility; no schema change.
 - [Plan Outcome & Carry Forward](plan-outcome-carry-forward.md) — JSONB-only outcome; carry via FOR UPDATE tx (no double-clone, link preserved on edits); allocation PATCH whitelisted.
 - [Receipt Rapid Repeat 06G](receipt-rapid-repeat-06g.md) — strip hides only for reused_excavated; daily fulfilment display-override never links arrangementId for other_agency/hlc; fmtDateTime never fabricates.
+- [Diesel Purchase Evidence](diesel-purchase-evidence.md) — diesel_purchase attachments + PI paymentMode/paidBy (PI has no payment-status); purchased diesel never enters stock (chain broken, unfixed).
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.
