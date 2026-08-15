@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { storage, StockShortageError } from "./storage";
+import { storage, StockShortageError, InsufficientPlantStockError } from "./storage";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -1645,6 +1645,22 @@ export async function registerRoutes(
   });
 
   // Create new DPR (draft or submitted)
+  // 06M-B: shared 409 mapping for the diesel plant-stock sufficiency guard.
+  // Fires whenever a DPR equipment log or Equipment Usage row would push the
+  // recorded plant Diesel stock below zero. Returns the structured payload
+  // the client dialogs render (required/available/shortage in litres).
+  const handleInsufficientPlantStock = (err: unknown, res: any): boolean => {
+    if (err instanceof InsufficientPlantStockError) {
+      res.status(409).json({
+        code: err.code,
+        ...err.payload,
+        message: `INSUFFICIENT DIESEL IN PLANT STOCK — Required: ${err.payload.requestedQty} L, Available: ${err.payload.availableQty} L, Short: ${err.payload.shortageQty} L. If purchased Diesel has already arrived, first enter its physical receipt under Material Receipt so it is added to Plant Stock.`,
+      });
+      return true;
+    }
+    return false;
+  };
+
   app.post(api.dprs.create.path, async (req, res) => {
     try {
       if (!assertCreate(req, res, "site_dprs")) return;
@@ -1689,6 +1705,7 @@ export async function registerRoutes(
           field: err.errors[0].path.join('.'),
         });
       }
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to create DPR" });
     }
   });
@@ -1717,6 +1734,7 @@ export async function registerRoutes(
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to update draft DPR" });
     }
   });
@@ -1765,6 +1783,7 @@ export async function registerRoutes(
       res.json(submitted);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to submit DPR" });
     }
   });
@@ -1984,6 +2003,7 @@ export async function registerRoutes(
           field: err.errors[0].path.join('.'),
         });
       }
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to create version" });
     }
   });
@@ -2037,6 +2057,7 @@ export async function registerRoutes(
           field: err.errors[0].path.join('.'),
         });
       }
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to clone DPR" });
     }
   });
@@ -3368,6 +3389,7 @@ export async function registerRoutes(
       sendPushToSection("plant_equipment", "Equipment Entry", `${eqName} - Opening: ${req.body.openingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
       res.status(201).json(usage);
     } catch (err) {
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to create equipment usage" });
     }
   });
@@ -3384,6 +3406,7 @@ export async function registerRoutes(
       sendPushToSection("plant_equipment", "Equipment Updated", `${eqName} - Closing: ${req.body.closingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
       res.json(updated);
     } catch (err) {
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to update equipment usage" });
     }
   });

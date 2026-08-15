@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { InsufficientDieselDialog, parseInsufficientPlantStock, type InsufficientPlantStockPayload } from "@/components/InsufficientDieselDialog";
 import { format } from "date-fns";
 import { useDpr } from "@/hooks/use-dprs";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
@@ -303,6 +304,8 @@ export default function SiteEdit() {
   // True if: came through EditPermissionButton flow (token already in sessionStorage),
   // in complete mode, user is admin, or the Permission Panel grants site_dprs.edit
   // (direct editors never need a request).
+  // 06M-B: structured shortage from the server's plant-stock diesel guard
+  const [dieselShortage, setDieselShortage] = useState<InsufficientPlantStockPayload | null>(null);
   const [editGranted, setEditGranted] = useState(() => {
     if (isCompleteMode) return true;
     if (typeof sessionStorage !== "undefined" && sessionStorage.getItem(`edit_pin_${id}`)) return true;
@@ -621,6 +624,8 @@ export default function SiteEdit() {
       setLocation(appendOrigin(`/site/report/${newVersion.id}`));
     },
     onError: (error: any) => {
+      const shortage = parseInsufficientPlantStock(error);
+      if (shortage) { setDieselShortage(shortage); return; }
       toast({
         title: "Error",
         description: error.message || "Failed to save changes",
@@ -849,6 +854,8 @@ export default function SiteEdit() {
       }
     },
     onError: (error: any) => {
+      const shortage = parseInsufficientPlantStock(error);
+      if (shortage) { setDieselShortage(shortage); return; }
       toast({ title: "Error", description: error.message || "Failed to save draft", variant: "destructive" });
     },
   });
@@ -877,6 +884,8 @@ export default function SiteEdit() {
       setLocation(returnToParam ?? appendOrigin(`/site/report/${data.id}`));
     },
     onError: (error: any) => {
+      const shortage = parseInsufficientPlantStock(error);
+      if (shortage) { setDieselShortage(shortage); return; }
       toast({ title: "Error", description: error.message || "Failed to submit DPR", variant: "destructive" });
     },
   });
@@ -981,6 +990,7 @@ export default function SiteEdit() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300">
+      <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
       {isDraftMode && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
           <Shield className="w-4 h-4 shrink-0" />

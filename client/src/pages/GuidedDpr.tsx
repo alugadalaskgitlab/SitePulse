@@ -33,6 +33,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { InsufficientDieselDialog, parseInsufficientPlantStock, type InsufficientPlantStockPayload } from "@/components/InsufficientDieselDialog";
 import { useUpload } from "@/hooks/use-upload";
 import { format, subDays } from "date-fns";
 import type { Site, Personnel, DprWithDetails } from "@shared/schema";
@@ -174,6 +175,8 @@ export default function GuidedDpr() {
 
   const today = format(new Date(), "yyyy-MM-dd");
   const [date, setDate] = useState(today);
+  // 06M-B: structured shortage from the server's plant-stock diesel guard
+  const [dieselShortage, setDieselShortage] = useState<InsufficientPlantStockPayload | null>(null);
   const [siteName, setSiteName] = useState("");
   const [engineer, setEngineer] = useState("");
   const [entries, setEntries] = useState<GuidedEntry[]>([]);
@@ -936,6 +939,8 @@ export default function GuidedDpr() {
       }
     },
     onError: (err: any) => {
+      const shortage = parseInsufficientPlantStock(err);
+      if (shortage) { setDieselShortage(shortage); return; }
       // Server-side readiness backstop (DPR_NOT_READY) — show the same panel
       // instead of a generic failure toast.
       const msg = String(err?.message ?? "");
@@ -1055,6 +1060,7 @@ export default function GuidedDpr() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-3xl mx-auto w-full pb-28">
+      <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <Link href={returnTo}>

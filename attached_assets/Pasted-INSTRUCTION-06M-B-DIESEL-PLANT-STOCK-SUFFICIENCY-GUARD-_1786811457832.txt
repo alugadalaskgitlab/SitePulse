@@ -1,0 +1,301 @@
+INSTRUCTION 06M-B — DIESEL PLANT-STOCK SUFFICIENCY GUARD
+
+This is a very narrow stock-integrity hotfix.
+
+OBJECTIVE
+
+Prevent Diesel issued from Plant Stock through:
+
+1. DPR Equipment Log
+2. Equipment & Fleet → Equipment Usage
+
+from reducing the recorded Diesel stock below zero.
+
+If recorded Plant Stock is insufficient, block the Plant Stock issue and
+prompt the user to first record the physical Diesel receipt under the
+existing Material Receipt flow.
+
+Direct Purchase and Contractor Diesel must remain unchanged.
+
+Expected schema change: NONE.
+
+--------------------------------------------------
+1. CONFIRMED CURRENT BEHAVIOR
+--------------------------------------------------
+
+Current repo has been verified:
+
+- `_adjustStockBalance()` locks the stock_balances row.
+- It calculates:
+  newBalance = currentBalance + delta
+- It currently has NO floor check.
+- DPR Equipment Log deducts Diesel from stock when:
+  dieselSource === "plant_stock"
+- Equipment & Fleet Usage does the same.
+- Therefore Plant Stock can currently become negative.
+- `direct_purchase` remains a separate IN/OUT flow with no net stock effect.
+- contractor diesel does not affect Plant Stock.
+
+Do not redesign these paths.
+
+--------------------------------------------------
+2. BUSINESS RULE
+--------------------------------------------------
+
+For Diesel Source = Plant Stock:
+
+Recorded Available Diesel Stock must be >= the Diesel quantity being issued.
+
+If sufficient:
+allow the existing transaction exactly as today.
+
+If insufficient:
+BLOCK the Plant Stock issue.
+
+Do NOT allow negative Diesel stock.
+
+--------------------------------------------------
+3. USE RECORDED STOCK — NOT PURCHASE STATUS
+--------------------------------------------------
+
+Do NOT check whether a particular Diesel purchase exists.
+
+Do NOT require today's purchase to be received if sufficient previous stock
+already exists.
+
+Example:
+
+Recorded Plant Stock: 1,000 L
+Today's Diesel purchase: 500 L, not yet received
+Equipment issue: 200 L
+
+ALLOW.
+
+The 200 L is supported by already-recorded Plant Stock.
+
+--------------------------------------------------
+4. DPR EQUIPMENT LOG GUARD
+--------------------------------------------------
+
+For a DPR equipment entry where:
+
+dieselSource = "plant_stock"
+and diesel quantity > 0
+
+before applying the stock OUT:
+
+check the actual current HLC Diesel balance.
+
+If sufficient:
+continue normally.
+
+If insufficient:
+reject the stock-affecting operation with a structured error containing:
+
+- material = Diesel
+- requestedQty
+- availableQty
+- shortageQty
+- source = plant_stock
+
+Do not write a partial deduction.
+
+--------------------------------------------------
+5. EQUIPMENT & FLEET USAGE GUARD
+--------------------------------------------------
+
+Apply the identical rule to Equipment Usage.
+
+Do not create a second/different validation rule.
+
+Prefer one shared Diesel/stock sufficiency helper around the existing
+stock-balance transaction seam.
+
+--------------------------------------------------
+6. USER MESSAGE
+--------------------------------------------------
+
+On insufficient Plant Stock show:
+
+INSUFFICIENT DIESEL IN PLANT STOCK
+
+Required: <x> L
+Available: <y> L
+Short: <z> L
+
+If purchased Diesel has already arrived, first enter its physical receipt
+under Material Receipt so it is added to Plant Stock.
+
+Actions:
+
+[Go to Material Receipt]
+[Cancel]
+
+Do not merely display "Insufficient stock."
+
+--------------------------------------------------
+7. GO TO MATERIAL RECEIPT
+--------------------------------------------------
+
+Use the existing Material Receipt screen.
+
+If safe using the current route/query parameters:
+prefill Material = Diesel.
+
+Do NOT create a receipt automatically.
+
+Do NOT create a new receipt workflow.
+
+--------------------------------------------------
+8. DIRECT PURCHASE — LEAVE EXACTLY AS IS
+--------------------------------------------------
+
+For:
+
+dieselSource = "direct_purchase"
+
+do not:
+- check Plant Stock;
+- require Material Receipt;
+- change existing IN/OUT ledger behavior;
+- change fuel supplier/bill/payment behavior.
+
+Direct Site Purchase remains the existing flow.
+
+--------------------------------------------------
+9. CONTRACTOR DIESEL — LEAVE AS IS
+--------------------------------------------------
+
+No Plant Stock validation for contractor-supplied/included Diesel.
+
+--------------------------------------------------
+10. EDIT / REVISION SAFETY
+--------------------------------------------------
+
+When editing an existing Plant Stock Diesel issue:
+
+do not compare the new total quantity blindly against the current balance
+while its previous deduction is still reflected in that balance.
+
+Validate only the NET additional requirement.
+
+Example:
+
+Original issue: 100 L
+Current available after that deduction: 50 L
+Edited issue: 120 L
+
+Additional stock required = 20 L
+
+ALLOW if 20 L is available.
+
+Do not falsely require another 120 L.
+
+Preserve existing reversal/edit behavior.
+
+--------------------------------------------------
+11. CONCURRENCY
+--------------------------------------------------
+
+The decisive validation must happen server-side within the existing
+transaction/row-lock stock path.
+
+Frontend warning alone is not sufficient.
+
+Two simultaneous users must not both consume the same available Diesel.
+
+--------------------------------------------------
+12. NO SCHEMA CHANGE
+--------------------------------------------------
+
+Expected schema change: NONE.
+
+If any schema change appears necessary:
+STOP and report.
+
+--------------------------------------------------
+13. DO NOT TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- Diesel Requirement purchase form
+- Diesel Bill upload
+- Payment Mode / Paid By
+- Vendor Bills
+- Material Receipt logic
+- Diesel Receipt-Pending lifecycle
+- notification architecture
+- DPR workflow outside the stock guard
+- Equipment Usage outside the stock guard
+- Direct Purchase
+- Contractor Diesel
+- stock calculation for other materials
+
+--------------------------------------------------
+14. TESTS
+--------------------------------------------------
+
+A. Plant Stock 500 L, DPR issue 200 L → succeeds, balance 300 L.
+
+B. Plant Stock 100 L, DPR issue 200 L → blocked.
+
+C. Shortage response reports:
+   required 200
+   available 100
+   shortage 100.
+
+D. Material Receipt +300 L → balance increases normally.
+
+E. Retry same DPR issue → succeeds.
+
+F. Equipment & Fleet Usage follows identical rule.
+
+G. Direct Purchase remains unchanged.
+
+H. Contractor Diesel remains unchanged.
+
+I. Existing Plant Stock edit/reversal works.
+
+J. Editing 100 L → 120 L validates only additional 20 L.
+
+K. Simultaneous Plant Stock issues cannot overdraw the same balance.
+
+L. no schema change.
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+15. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. exact previous negative-stock path.
+
+B. shared sufficiency guard implemented.
+
+C. DPR guard.
+
+D. Equipment Usage guard.
+
+E. structured shortage response.
+
+F. Go to Material Receipt behavior.
+
+G. edit/net-additional logic.
+
+H. concurrency protection.
+
+I. confirmation Direct Purchase unchanged.
+
+J. tests.
+
+Confirm:
+- no schema change
+- no purchase-flow change
+- no Vendor Bill change
+- no Material Receipt redesign
+- no notification change
+
+DO NOT START ANOTHER BATCH.

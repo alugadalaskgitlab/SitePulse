@@ -29,6 +29,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { InsufficientDieselDialog, parseInsufficientPlantStock, type InsufficientPlantStockPayload } from "@/components/InsufficientDieselDialog";
 import { useUpload } from "@/hooks/use-upload";
 import { format, subDays } from "date-fns";
 import SitePreview from "@/pages/SitePreview";
@@ -243,6 +244,8 @@ export default function SiteEntry() {
   const returnTo = _urlParams.get("returnTo") ?? null;
   const backLink = returnTo ?? appendOrigin("/site/dashboard");
   const [showPreview, setShowPreview] = useState(false);
+  // 06M-B: structured shortage from the server's plant-stock diesel guard
+  const [dieselShortage, setDieselShortage] = useState<InsufficientPlantStockPayload | null>(null);
   const [overBalanceWarnings, setOverBalanceWarnings] = useState<string[] | null>(null);
   // Batch 04: consolidated submit-readiness panel (one dialog, not N toasts).
   const [readiness, setReadiness] = useState<DprReadinessResult | null>(null);
@@ -1140,7 +1143,9 @@ export default function SiteEntry() {
         : appendOrigin(successBase);
       setLocation(successUrl);
     },
-    onError: () => {
+    onError: (err: any) => {
+      const shortage = parseInsufficientPlantStock(err);
+      if (shortage) { setDieselShortage(shortage); return; }
       toast({
         title: "Error",
         description: "Failed to save report. Please try again.",
@@ -1293,7 +1298,9 @@ export default function SiteEntry() {
       // draft reopens later via /site/edit/:id?draft from Field Home.
       setLocation(returnTo ?? "/site/dashboard");
     },
-    onError: () => {
+    onError: (err: any) => {
+      const shortage = parseInsufficientPlantStock(err);
+      if (shortage) { setDieselShortage(shortage); return; }
       toast({
         title: "Error",
         description: "Failed to save draft. Please try again.",
@@ -1506,12 +1513,14 @@ export default function SiteEntry() {
         />
         {readinessDialog}
         {overBalanceDialog}
+        <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
       </>
     );
   }
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-20">
+      <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-back">
           <ChevronLeft className="w-5 h-5" />

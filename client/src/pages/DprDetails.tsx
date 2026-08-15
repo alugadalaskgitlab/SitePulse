@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation } from "wouter";
 import { ChevronLeft, Loader2, Printer, Edit, Trash2 } from "lucide-react";
@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAuth } from "@/lib/auth-context";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { InsufficientDieselDialog, parseInsufficientPlantStock, type InsufficientPlantStockPayload } from "@/components/InsufficientDieselDialog";
 import { useToast } from "@/hooks/use-toast";
 import { DprPhotoGroups } from "@/components/DprPhotoGroups";
 import type { EquipmentMasterType, Site } from "@shared/schema";
@@ -91,6 +92,9 @@ export default function DprDetails() {
     return map;
   }, [siteBoqItems]);
 
+  // 06M-B: structured shortage from the server's plant-stock diesel guard
+  const [dieselShortage, setDieselShortage] = useState<InsufficientPlantStockPayload | null>(null);
+
   const cloneMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", `/api/dprs/${id}/clone`, {});
@@ -107,7 +111,9 @@ export default function DprDetails() {
       });
       setLocation(`/dpr/${newDpr.id}`);
     },
-    onError: () => {
+    onError: (error: any) => {
+      const shortage = parseInsufficientPlantStock(error);
+      if (shortage) { setDieselShortage(shortage); return; }
       toast({
         title: "Error",
         description: "Failed to clone report",
@@ -194,6 +200,7 @@ export default function DprDetails() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-300 print:p-0">
+      <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
       {/* Header Actions */}
       <div className="flex items-center justify-between print:hidden flex-col md:flex-row gap-4">
         <div className="flex items-center gap-4">

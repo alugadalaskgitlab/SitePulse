@@ -17,6 +17,7 @@ import { useFormDraft } from "@/hooks/use-form-draft";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronLeft, ChevronRight, Plus, Gauge, Loader2, Edit, Trash2, Download, Printer, ArrowRightLeft } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { InsufficientDieselDialog, parseInsufficientPlantStock, type InsufficientPlantStockPayload } from "@/components/InsufficientDieselDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
@@ -39,6 +40,8 @@ export default function PlantEquipmentUsage() {
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
+  // 06M-B: structured shortage from the server's plant-stock diesel guard
+  const [dieselShortage, setDieselShortage] = useState<InsufficientPlantStockPayload | null>(null);
   const [editingUsage, setEditingUsage] = useState<EquipmentUsage | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -294,7 +297,9 @@ export default function PlantEquipmentUsage() {
       resetForm();
       toast({ title: "Equipment usage recorded successfully" });
     },
-    onError: () => {
+    onError: (err: Error) => {
+      const shortage = parseInsufficientPlantStock(err);
+      if (shortage) { setDieselShortage(shortage); return; }
       toast({ title: "Failed to record equipment usage. Please try again.", variant: "destructive" });
     },
   });
@@ -310,6 +315,8 @@ export default function PlantEquipmentUsage() {
       toast({ title: "Equipment usage updated successfully" });
     },
     onError: (err: Error) => {
+      const shortage = parseInsufficientPlantStock(err);
+      if (shortage) { setDieselShortage(shortage); return; }
       if (err.message.startsWith("423")) {
         toast({
           title: "Record is locked",
@@ -977,6 +984,7 @@ export default function PlantEquipmentUsage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
           <Link href={backLink}>

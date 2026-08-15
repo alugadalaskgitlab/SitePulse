@@ -1696,6 +1696,27 @@ export class StockShortageError extends Error {
   }
 }
 
+// 06M-B: structured hard-block when a plant-stock diesel issue would push
+// the recorded balance below zero. Thrown inside the row-locked balance
+// transaction so it is concurrency-safe; routes map it to a 409 payload.
+export interface InsufficientPlantStockPayload {
+  material: string;
+  source: string;
+  materialId: number;
+  requestedQty: number;
+  availableQty: number;
+  shortageQty: number;
+}
+export class InsufficientPlantStockError extends Error {
+  readonly code = "INSUFFICIENT_PLANT_STOCK" as const;
+  readonly payload: InsufficientPlantStockPayload;
+  constructor(payload: InsufficientPlantStockPayload) {
+    super("INSUFFICIENT_PLANT_STOCK");
+    this.payload = payload;
+    this.name = "InsufficientPlantStockError";
+  }
+}
+
 /**
  * Safely extract the rows array from a raw db.execute() result.
  *
@@ -2645,27 +2666,18 @@ export class DatabaseStorage implements IStorage {
           notes: `Direct purchase at ${fuelStation}${billNumber ? `, Bill: ${billNumber}` : ''}${amountPaid ? `, Rs. ${amountPaid}` : ''} - ${eLog.machine || 'Equipment'} at ${siteName}`,
         });
       } else if (eLog.dieselSource === 'plant_stock') {
-        const [existingBalance] = await tx.select().from(stockBalances)
-          .where(and(
-            hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
-            eq(stockBalances.materialId, dieselMaterial.id)
-          ))
-          .limit(1);
-
-        const newBalance = Number(existingBalance?.balance ?? 0) - dieselQty;
-
-        if (existingBalance) {
-          await tx.update(stockBalances)
-            .set({ balance: newBalance, lastUpdated: new Date() })
-            .where(eq(stockBalances.id, existingBalance.id));
-        } else {
-          await tx.insert(stockBalances).values({
-            partyId: hlcPartyId,
-            materialId: dieselMaterial.id,
-            balance: newBalance,
-            uom: dieselMaterial.defaultUom || 'Liters',
-          });
-        }
+        // 06M-B: route the deduction through the shared row-locked helper so
+        // (a) concurrent DPRs can't double-spend the same litres and
+        // (b) an insufficient balance aborts the whole DPR transaction with
+        // a structured error instead of writing a negative stock.
+        const { newBalance } = await this._adjustStockBalance(
+          tx,
+          dieselMaterial.id,
+          hlcPartyId,
+          -dieselQty,
+          dieselMaterial.defaultUom || 'Liters',
+          { material: dieselMaterial.name || 'Diesel', source: 'plant_stock' },
+        );
 
         await tx.insert(stockLedger).values({
           date: dprDate,
@@ -4015,7 +4027,8 @@ export class DatabaseStorage implements IStorage {
         if (dieselMaterial) {
           if (dieselSource === 'plant_stock') {
             // Deduct from HLC stock (row-level locking)
-            const { newBalance } = await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, -dieselIssued, dieselMaterial.defaultUom || 'Liters');
+            const { newBalance } = await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, -dieselIssued, dieselMaterial.defaultUom || 'Liters',
+              { material: dieselMaterial.name || 'Diesel', source: 'plant_stock' }); // 06M-B guard
             
             // Create ledger entry for equipment diesel issue (stock deduction)
             await tx.insert(stockLedger).values({
@@ -4240,12 +4253,16 @@ export class DatabaseStorage implements IStorage {
         
         // If new source affects stock but old didn't, deduct the new amount
         if (!oldAffectsStock && newAffectsStock && newDieselIssued > 0) {
-          await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, -newDieselIssued, dieselMaterial.defaultUom || 'Liters');
+          await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, -newDieselIssued, dieselMaterial.defaultUom || 'Liters',
+            { material: dieselMaterial.name || 'Diesel', source: 'plant_stock' }); // 06M-B guard
         }
         
-        // If both old and new affect stock, handle the difference
+        // If both old and new affect stock, handle the difference.
+        // 06M-B: only the NET additional litres are validated (dieselDiff > 0);
+        // a reduction (dieselDiff < 0) restores stock and can never be blocked.
         if (oldAffectsStock && newAffectsStock && dieselDiff !== 0) {
-          await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, -dieselDiff, dieselMaterial.defaultUom || 'Liters');
+          await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, -dieselDiff, dieselMaterial.defaultUom || 'Liters',
+            { material: dieselMaterial.name || 'Diesel', source: 'plant_stock' });
         }
         
         // Create new ledger entry based on current source
@@ -4542,6 +4559,12 @@ export class DatabaseStorage implements IStorage {
     partyId: number | null,
     delta: number,
     uom: string | null = null,
+    // 06M-B: optional sufficiency guard. When set and delta is a deduction
+    // that would push the balance below zero, the whole transaction is
+    // aborted with a structured InsufficientPlantStockError. The check runs
+    // AFTER the FOR UPDATE lock, so two concurrent issuers cannot both
+    // consume the same available stock.
+    guard?: { material: string; source: string },
   ): Promise<{ id: number; newBalance: number }> {
     const partyClause = partyId === null
       ? sql`party_id IS NULL`
@@ -4557,7 +4580,19 @@ export class DatabaseStorage implements IStorage {
 
     const row = locked.rows?.[0] as { id: number; balance: string | number; uom: string | null } | undefined;
     // Round to 6 decimal places to eliminate floating-point accumulation errors.
-    const newBalance = Math.round(((Number(row?.balance) || 0) + delta) * 1e6) / 1e6;
+    const currentBalance = Number(row?.balance) || 0;
+    const newBalance = Math.round((currentBalance + delta) * 1e6) / 1e6;
+
+    if (guard && delta < 0 && newBalance < 0) {
+      throw new InsufficientPlantStockError({
+        material: guard.material,
+        source: guard.source,
+        materialId,
+        requestedQty: Math.round(-delta * 1e6) / 1e6,
+        availableQty: Math.round(currentBalance * 1e6) / 1e6,
+        shortageQty: Math.round(-newBalance * 1e6) / 1e6,
+      });
+    }
 
     if (row) {
       await tx.update(stockBalances)
