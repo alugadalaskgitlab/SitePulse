@@ -26,7 +26,7 @@ import { shortItemName as sharedShortItemName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
 import { validateFulfilment } from "@shared/requirementFulfilment";
-import { validateOutcomeInput, resolveCarryTargetDate, buildCarryForwardPlan, buildOutcomeRecord, computeExecutionComparison } from "@shared/planOutcome";
+import { validateOutcomeInput, resolveCarryTargetDate, buildCarryForwardPlan, buildOutcomeRecord, computeExecutionComparison, businessToday } from "@shared/planOutcome";
 import { syncArrangementBarAllocations } from "./arrangementAllocationSync";
 import { AUTO_SYNC_STATUSES } from "@shared/arrangementAutoAllocation";
 import {
@@ -18466,6 +18466,7 @@ export function registerSiteRequirementRoutes(app: Express) {
       const boqItemId = pw.boqItemId != null ? Number(pw.boqItemId) : null;
       let dprExists = false;
       let executedByUom: Array<{ uom: string; qty: number; entryCount: number }> = [];
+      let creditApplied = true;
       if (boqItemId != null && plan.siteId != null) {
         const sites = await storage.getSites();
         const siteName = sites.find((s: any) => s.id === plan.siteId)?.name;
@@ -18478,6 +18479,7 @@ export function registerSiteRequirementRoutes(app: Express) {
           });
           dprExists = r.dprExists;
           executedByUom = r.executedByUom;
+          creditApplied = r.creditApplied;
         }
       }
       const comparison = computeExecutionComparison({
@@ -18485,6 +18487,7 @@ export function registerSiteRequirementRoutes(app: Express) {
         plannedUom: pw.plannedUom ?? null,
         executedByUom,
         dprExists,
+        creditApplied,
       });
       res.json(comparison);
     } catch (err: any) {
@@ -18504,7 +18507,9 @@ export function registerSiteRequirementRoutes(app: Express) {
       const plan = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!plan) return res.status(404).json({ error: "Not found" });
 
-      const todayStr = new Date().toISOString().slice(0, 10);
+      // 06J-HF: business day in site-local time (Asia/Kolkata), NOT the UTC
+      // calendar date — the UI's local "today" and the server must agree.
+      const todayStr = businessToday();
       // Lifecycle rule enforced server-side, not just hidden in the UI:
       // outcomes are recorded only for plans whose target date has passed.
       if (!(plan.date < todayStr)) {

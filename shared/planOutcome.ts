@@ -18,6 +18,17 @@
  * never mutates execution arrangements or programme allocations.
  */
 import { newLineKey, type AllocationEntryLike, findAllocationEntry } from "./requirementFulfilment";
+import { entryBoqCredit, type ReportEntry, type ReportBoqItem } from "./progressReport";
+
+/**
+ * 06J-HF: the site operational day, NOT the UTC calendar date. The client
+ * uses the browser's local date; the server must agree. Site operations run
+ * on India time, so the business day is resolved in Asia/Kolkata.
+ */
+export function businessToday(tz: string = "Asia/Kolkata", at?: Date): string {
+  // en-CA locale formats as YYYY-MM-DD. `at` is injectable for tests.
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(at ?? new Date());
+}
 
 export type ExecutionOutcome = "executed" | "partly_executed" | "deferred" | "cancelled";
 
@@ -129,6 +140,50 @@ export interface ExecutionComparison {
 const normUom = (u: string | null | undefined) => (u ?? "").trim().toLowerCase().replace(/\.+$/, "");
 
 /**
+ * 06J-HF: convert raw physical DPR entries into credited BOQ quantity using
+ * the CANONICAL DPR→BOQ credit rule (shared/progressReport.entryBoqCredit —
+ * "single rule, reused"). Never invents a conversion.
+ *
+ * Once credit is applied, the executed quantity is denominated in the BOQ
+ * ITEM'S UNIT, so the returned uom is item.unit — NOT the physical entry uom.
+ *
+ * If the BOQ item (or its unit) cannot be established, credit cannot be
+ * safely applied: returns creditApplied=false with raw-uom grouping, and the
+ * comparison below treats that as non-comparable (manual confirmation) — it
+ * never falls back to raw physical quantity just because the text matches.
+ */
+export function creditExecutedEntries(
+  rows: Array<{ quantity: number | string | null; uom?: string | null; rowConversionFactor?: number | null }>,
+  boqItem: Pick<ReportBoqItem, "id" | "unit" | "dprConversionFactor"> | null | undefined,
+): { executedByUom: ExecutedByUom[]; creditApplied: boolean } {
+  if (!boqItem || !boqItem.unit?.trim()) {
+    // No safe credit basis — group by raw physical uom, flagged non-creditable.
+    const byUom = new Map<string, ExecutedByUom>();
+    for (const r of rows) {
+      const key = normUom(r.uom);
+      const cur = byUom.get(key) ?? { uom: (r.uom ?? "").trim(), qty: 0, entryCount: 0 };
+      cur.qty += Number(r.quantity) || 0;
+      cur.entryCount += 1;
+      byUom.set(key, cur);
+    }
+    return { executedByUom: Array.from(byUom.values()), creditApplied: false };
+  }
+  let qty = 0;
+  let count = 0;
+  for (const r of rows) {
+    const credit = entryBoqCredit(
+      { quantity: r.quantity == null ? null : Number(r.quantity), rowConversionFactor: r.rowConversionFactor ?? null } as ReportEntry,
+      boqItem as ReportBoqItem,
+    );
+    if (credit == null) continue;
+    qty += credit;
+    count += 1;
+  }
+  if (count === 0) return { executedByUom: [], creditApplied: true };
+  return { executedByUom: [{ uom: boqItem.unit.trim(), qty, entryCount: count }], creditApplied: true };
+}
+
+/**
  * Strict comparability: planned qty > 0 with a UoM, and every executed entry
  * uses the SAME normalised UoM (or nothing executed at all). No conversion
  * factors are ever invented (spec §9).
@@ -138,6 +193,12 @@ export function computeExecutionComparison(args: {
   plannedUom: string | null | undefined;
   executedByUom: ExecutedByUom[];
   dprExists: boolean;
+  /**
+   * 06J-HF: false when DPR→BOQ credit could not be safely established for
+   * executed entries — forces manual confirmation even if raw uom text
+   * happens to match the planned uom.
+   */
+  creditApplied?: boolean;
 }): ExecutionComparison {
   const plannedQty = args.plannedQty != null && Number(args.plannedQty) > 0 ? Number(args.plannedQty) : null;
   const plannedUom = args.plannedUom?.trim() || null;
@@ -157,6 +218,8 @@ export function computeExecutionComparison(args: {
     // Nothing executed — full planned quantity is the safe suggestion.
     return { ...base, comparable: true, executedQty: 0, suggestedBalance: plannedQty };
   }
+  // Credit rule unavailable → never trust a textual uom match (06J-HF §1).
+  if (args.creditApplied === false) return base;
   if (args.executedByUom.length === 1 && normUom(args.executedByUom[0].uom) === normUom(plannedUom)) {
     const executed = Number(args.executedByUom[0].qty) || 0;
     return { ...base, comparable: true, executedQty: executed, suggestedBalance: Math.max(0, plannedQty - executed) };

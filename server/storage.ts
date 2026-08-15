@@ -359,6 +359,7 @@ import { convertSolidQty } from "@shared/uomConvert";
 import { canonMaterialName } from "@shared/materialMatch";
 import { suggestWorkCategory, suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
 import { canonicalizeUnit } from "@shared/boqNormalise";
+import { creditExecutedEntries } from "@shared/planOutcome";
 import {
   HEATING_TRENDS_HOT_OIL_END_TEMP_MIN_C,
   HEATING_TRENDS_HOT_OIL_DELTA_MIN_C,
@@ -24935,6 +24936,8 @@ export class DatabaseStorage implements IStorage {
   async getExecutedProgressForPlan(args: { site: string; date: string; boqItemId: number; programmeBarId?: number | null }): Promise<{
     dprExists: boolean;
     executedByUom: Array<{ uom: string; qty: number; entryCount: number }>;
+    /** 06J-HF: false when DPR→BOQ credit could not be safely established. */
+    creditApplied: boolean;
   }> {
     const dayDprs = await db.select({ id: dprs.id })
       .from(dprs)
@@ -24946,7 +24949,7 @@ export class DatabaseStorage implements IStorage {
         eq(dprs.isCancelled, false),
         eq(dprs.isDeleted, false),
       ));
-    if (dayDprs.length === 0) return { dprExists: false, executedByUom: [] };
+    if (dayDprs.length === 0) return { dprExists: false, executedByUom: [], creditApplied: true };
     const rows = await db.select({
       quantity: progressEntries.quantity,
       uom: progressEntries.uom,
@@ -24963,15 +24966,15 @@ export class DatabaseStorage implements IStorage {
       const barRows = billable.filter(r => r.programmeBarId === args.programmeBarId);
       if (barRows.length > 0) billable = barRows;
     }
-    const byUom = new Map<string, { uom: string; qty: number; entryCount: number }>();
-    for (const r of billable) {
-      const key = (r.uom ?? "").trim().toLowerCase();
-      const cur = byUom.get(key) ?? { uom: (r.uom ?? "").trim(), qty: 0, entryCount: 0 };
-      cur.qty += Number(r.quantity);
-      cur.entryCount += 1;
-      byUom.set(key, cur);
-    }
-    return { dprExists: true, executedByUom: [...byUom.values()] };
+    // 06J-HF: executed quantity is the credited BOQ quantity (canonical
+    // entryBoqCredit rule via the shared seam), denominated in the BOQ
+    // item's unit — never the raw physical entry quantity/uom.
+    const boqItem = await this.getBoqItem(args.boqItemId);
+    const { executedByUom, creditApplied } = creditExecutedEntries(
+      billable.map(r => ({ quantity: r.quantity, uom: r.uom })),
+      boqItem ? { id: boqItem.id, unit: (boqItem as any).unit, dprConversionFactor: (boqItem as any).dprConversionFactor ?? null } : null,
+    );
+    return { dprExists: true, executedByUom, creditApplied };
   }
 
   async updateSiteRequirementItemStatus(id: number, category: string, itemIndex: number, data: any): Promise<any | undefined> {

@@ -1,0 +1,129 @@
+INSTRUCTION 06J-HF — PLAN OUTCOME QUANTITY + DATE SAFETY
+
+Batch 06J is implemented and should remain intact.
+Two narrow correctness issues were found during repo review.
+
+Expected schema change: NONE.
+
+--------------------------------------------------
+1. PARTLY EXECUTED — DO NOT USE RAW PHYSICAL DPR QUANTITY AS BOQ CREDIT
+--------------------------------------------------
+
+Current:
+server/storage.ts
+getExecutedProgressForPlan()
+
+sums:
+progressEntries.quantity
+progressEntries.uom
+
+and 06J compares that directly with plannedWork.plannedQty/plannedUom.
+
+This is unsafe because DPR physical/reported quantity is not always the
+credited BOQ quantity.
+
+SitePulse already has established DPR → BOQ credit/conversion semantics from
+the DPR/Progress Report work.
+
+CONFIRMED CANONICAL HELPER — REUSE THIS, DO NOT REDERIVE:
+
+- shared/progressReport.ts → entryBoqCredit(entry, item)
+  Computes credited BOQ quantity = entry.quantity × entryConversionFactor(entry, item).
+  Comment in-file labels this "single rule, reused" — this is the same logic
+  Progress Report v1 already uses for planned-vs-actual. Use it, do not write
+  a parallel conversion calculation.
+
+- shared/progressReport.ts → entryConversionFactor(entry, item)
+  Uses entry.rowConversionFactor when present (structure-row override),
+  otherwise falls back to resolveDprConversionFactor(item).
+
+- shared/dprGeometry.ts → resolveDprConversionFactor(boqItem)
+  Reads boqItem.dprConversionFactor; defaults to 1 only when the field is
+  absent/invalid.
+
+For 06J Planned vs Executed:
+
+Planned = programme/plan quantity in the BOQ/programme UoM.
+Executed = submitted DPR BOQ-CREDIT quantity for that BOQ item (via
+entryBoqCredit), not blindly progress_entries.quantity.
+
+IMPORTANT — UoM MUST ALSO SWITCH:
+Once entryBoqCredit is applied, the resulting quantity is denominated in the
+BOQ ITEM'S UNIT (ReportBoqItem.unit / boq_items.unit) — NOT the physical
+progressEntries.uom the entry was recorded in. getExecutedProgressForPlan's
+returned executedByUom must report the BOQ item's unit as the uom once
+conversion has been applied, not the raw entry uom. Comparing "Executed" to
+"Planned" using the physical entry's uom after a conversion factor has
+already been applied would itself produce a wrong/misleading label even if
+the quantity math is correct.
+
+Rules:
+- submitted DPR only
+- exclude superseded/cancelled/deleted DPRs
+- exclude No Site Work rows
+- same BOQ item
+- use programmeBarId narrowing where reliably linked
+- reuse existing DPR→BOQ conversion factor/credit logic (entryBoqCredit /
+  entryConversionFactor / resolveDprConversionFactor — see above)
+- never invent conversion
+- report the executed-side UoM as the BOQ item's unit once credit is applied
+
+If credited BOQ quantity cannot be safely established:
+return non-comparable and require PM manual confirmation.
+
+Do NOT fall back to raw physical quantity merely because its textual UoM
+matches the planned UoM.
+
+Do not change stored DPR values.
+
+--------------------------------------------------
+2. DATE/TIMEZONE SAFETY
+--------------------------------------------------
+
+Current frontend uses local date:
+format(new Date(), "yyyy-MM-dd")
+
+but server outcome endpoint uses:
+new Date().toISOString().slice(0, 10)
+
+which is UTC.
+
+For India/local deployment this can disagree after local midnight.
+
+Use the application's existing local/business-date helper consistently on
+the server for deciding whether the plan target date has passed.
+
+Do not use UTC calendar date for a site operational day.
+
+The UI and server must agree on "today".
+
+--------------------------------------------------
+3. TESTS
+--------------------------------------------------
+
+A. same physical and BOQ UoM, no conversion → correct balance.
+B. DPR physical quantity requires DPR→BOQ conversion → balance uses credited
+   BOQ quantity via entryBoqCredit.
+C. physical UoM differs from BOQ UoM with valid existing conversion → use
+   existing canonical conversion only (entryConversionFactor /
+   resolveDprConversionFactor), never a new/invented factor.
+D. no safe conversion → non-comparable/manual confirmation.
+E. No Site Work excluded.
+F. cancelled/superseded/deleted/draft DPR excluded.
+G. programme-bar narrowing preserved.
+H. local date immediately after midnight agrees between UI/server.
+I. existing Deferred carry-forward remains unchanged.
+J. executed-side UoM reported as the BOQ item's unit once conversion is
+   applied, not the physical entry's uom.
+K. no schema change.
+
+REPORT BACK:
+- canonical BOQ-credit helper reused (entryBoqCredit / entryConversionFactor
+  / resolveDprConversionFactor)
+- old vs corrected calculation
+- executed-side UoM handling before/after
+- timezone/date helper used
+- tests
+- confirm no other 06J behavior changed
+
+DO NOT START ANOTHER BATCH.

@@ -5,6 +5,8 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  businessToday,
+  creditExecutedEntries,
   validateOutcomeInput,
   resolveCarryTargetDate,
   alreadyCarriedForward,
@@ -103,6 +105,67 @@ describe("computeExecutionComparison (J/K/L/M)", () => {
   it("no planned qty/uom → never comparable", () => {
     const c = computeExecutionComparison({ plannedQty: null, plannedUom: null, executedByUom: [{ uom: "Cum", qty: 10, entryCount: 1 }], dprExists: true });
     expect(c.comparable).toBe(false);
+  });
+});
+
+// ── 06J-HF: DPR→BOQ credit + date safety ────────────────────────────────────
+
+describe("creditExecutedEntries (06J-HF §1, tests A/B/C/D/J)", () => {
+  const rows = [
+    { quantity: 100, uom: "Cum" },
+    { quantity: 150, uom: "Cum" },
+  ];
+  it("A: factor 1 (absent) — credited qty equals physical, uom becomes BOQ unit", () => {
+    const r = creditExecutedEntries(rows, { id: 11, unit: "Cum", dprConversionFactor: null });
+    expect(r.creditApplied).toBe(true);
+    expect(r.executedByUom).toEqual([{ uom: "Cum", qty: 250, entryCount: 2 }]);
+  });
+  it("B/C/J: canonical conversion factor applied; executed uom is BOQ item's unit, not physical uom", () => {
+    // e.g. DPR records Cum loose, BOQ credits MT via item factor 2.4
+    const r = creditExecutedEntries(rows, { id: 11, unit: "MT", dprConversionFactor: 2.4 });
+    expect(r.creditApplied).toBe(true);
+    expect(r.executedByUom).toEqual([{ uom: "MT", qty: 600, entryCount: 2 }]);
+  });
+  it("D: no BOQ item / unit — credit not applied, raw grouping flagged", () => {
+    const r = creditExecutedEntries(rows, null);
+    expect(r.creditApplied).toBe(false);
+    expect(r.executedByUom[0].qty).toBe(250);
+    const r2 = creditExecutedEntries(rows, { id: 11, unit: "  ", dprConversionFactor: null } as any);
+    expect(r2.creditApplied).toBe(false);
+  });
+  it("D: creditApplied=false forces non-comparable even when raw uom text matches planned", () => {
+    const raw = creditExecutedEntries(rows, null);
+    const c = computeExecutionComparison({ plannedQty: 350, plannedUom: "Cum", executedByUom: raw.executedByUom, dprExists: true, creditApplied: raw.creditApplied });
+    expect(c.comparable).toBe(false);
+    expect(c.suggestedBalance).toBeNull();
+  });
+  it("credited-but-mismatched BOQ unit vs planned uom stays non-comparable (never invent conversion)", () => {
+    const r = creditExecutedEntries(rows, { id: 11, unit: "MT", dprConversionFactor: 2.4 });
+    const c = computeExecutionComparison({ plannedQty: 350, plannedUom: "Cum", executedByUom: r.executedByUom, dprExists: true, creditApplied: true });
+    expect(c.comparable).toBe(false);
+  });
+  it("entries with null/invalid quantity are skipped, not zero-credited", () => {
+    const r = creditExecutedEntries([{ quantity: null, uom: "Cum" }, { quantity: 50, uom: "Cum" }], { id: 1, unit: "Cum", dprConversionFactor: null });
+    expect(r.executedByUom).toEqual([{ uom: "Cum", qty: 50, entryCount: 1 }]);
+  });
+});
+
+describe("businessToday (06J-HF §2, test H)", () => {
+  it("returns the Asia/Kolkata calendar date in YYYY-MM-DD", () => {
+    const s = businessToday();
+    expect(s).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Must equal the IST calendar date, not necessarily the UTC one.
+    const ist = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+    expect(s).toBe(ist);
+  });
+  it("H: after IST midnight but before UTC midnight, businessToday is ahead of UTC date", () => {
+    // 2026-08-14T19:30:00Z == 2026-08-15T01:00 IST — UTC slice would say the
+    // plan date "hasn't passed" while the site is already on the next day.
+    const at = new Date("2026-08-14T19:30:00Z");
+    expect(businessToday("Asia/Kolkata", at)).toBe("2026-08-15");
+    expect(at.toISOString().slice(0, 10)).toBe("2026-08-14");
+    // A 2026-08-14 plan HAS passed at that instant on the site's business day.
+    expect("2026-08-14" < businessToday("Asia/Kolkata", at)).toBe(true);
   });
 });
 

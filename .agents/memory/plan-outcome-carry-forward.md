@@ -12,4 +12,7 @@ description: 06J — Tomorrow Plan execution outcome + carry-forward design rule
 - Server enforces plan.date < today for outcomes — UI hiding is not enforcement.
 - Outcome never creates/blocks a DPR, never mutates arrangements/programme allocations, never changes the original plan's date.
 
+- 06J-HF: executed quantity = credited BOQ quantity via canonical `entryBoqCredit` (shared/progressReport), never raw physical DPR qty; once credit applies, executed UoM = BOQ item's unit. If credit can't be established, `creditApplied=false` → non-comparable (no fallback on textual UoM match).
+- "Today" for outcome eligibility = `businessToday()` (Asia/Kolkata business day, injectable instant), never UTC `toISOString().slice(0,10)` — UI local date and server must agree after IST midnight.
+
 **Why:** plans that never executed had no honest closure path; a fake DPR or silent date mutation would corrupt history; concurrent PM clicks were shown to double-clone before the row lock.
