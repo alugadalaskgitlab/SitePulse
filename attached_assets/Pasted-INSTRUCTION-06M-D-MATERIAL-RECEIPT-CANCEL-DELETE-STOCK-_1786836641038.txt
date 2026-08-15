@@ -1,0 +1,621 @@
+INSTRUCTION 06M-D — MATERIAL RECEIPT CANCEL/DELETE STOCK REVERSAL SAFETY
+
+This is a narrow stock-integrity fix.
+
+OBJECTIVE
+
+When a stock-affecting Material Receipt is cancelled or deleted, reverse the
+exact stock quantity that receipt originally added — once and only once.
+
+This must keep:
+
+- Material Receipt history
+- stockBalances
+- stockLedger
+- Diesel Purchase Received/Pending figures
+
+consistent with each other.
+
+This batch applies generally to stock-affecting Material Receipts, including
+Diesel receipts linked through 06M-C.
+
+Expected schema change: NONE unless investigation proves current ledger data
+cannot identify/reverse the original receipt safely.
+
+--------------------------------------------------
+1. INVESTIGATE CURRENT RECEIPT STOCK-IN PATH
+--------------------------------------------------
+
+Inspect:
+
+- createMaterialReceipt()
+- material_receipts schema
+- stockBalances
+- stockLedger
+- Material Receipt cancel route
+- Material Receipt delete route
+- Material Receipt edit/update path
+- transaction/reference fields written into stockLedger for a receipt
+- 06M-C linkedDieselRequirementId behavior
+
+Confirm:
+
+A. exact stock IN written when a Material Receipt is created.
+
+B. how that stockLedger row references the source receipt.
+
+C. what happens today on Cancel.
+
+D. what happens today on hard Delete.
+
+E. whether receipt Qty can be edited after creation and, if so, whether stock is
+   currently adjusted.
+
+F. whether any existing reversal helper already exists.
+
+Do not redesign stock accounting.
+
+--------------------------------------------------
+2. CORE RULE
+--------------------------------------------------
+
+A valid Material Receipt creates stock IN.
+
+If that receipt later becomes invalid through:
+
+- Cancel
+or
+- Hard Delete
+
+the stock previously added by that receipt must be reversed.
+
+Example:
+
+Receipt:
+Diesel +600 L
+
+Later Cancelled:
+
+Stock reversal:
+Diesel -600 L
+
+Net stock effect of that receipt becomes zero.
+
+--------------------------------------------------
+3. CANCEL — REVERSE STOCK
+--------------------------------------------------
+
+When an active stock-affecting Material Receipt is cancelled:
+
+inside the same safe server-side transaction:
+
+1. verify receipt is currently active/not already cancelled;
+2. identify the exact original stock quantity/material/party/site context;
+3. reverse that stock quantity from stockBalances;
+4. write an auditable stockLedger reversal entry;
+5. mark the receipt cancelled using the existing cancellation fields/reason.
+
+Do not simply mark it cancelled while leaving stock unchanged.
+
+--------------------------------------------------
+4. REVERSAL LEDGER ENTRY
+--------------------------------------------------
+
+Do NOT delete the original stock-IN ledger row.
+
+Preserve audit history.
+
+Create a compensating OUT/reversal ledger entry linked to the same receipt.
+
+Use existing stockLedger conventions.
+
+Prefer an explicit transaction/reference description such as:
+
+material_receipt_cancel_reversal
+
+or the nearest existing canonical transaction type.
+
+The reversal must identify:
+
+- source Material Receipt ID
+- original material
+- quantity reversed
+- party/site/plant context
+- user performing cancellation
+- timestamp
+- cancellation reason/reference where possible
+
+Do not invent a parallel ledger.
+
+--------------------------------------------------
+5. IDEMPOTENCY — CANCEL ONLY ONCE
+--------------------------------------------------
+
+Repeated cancel requests must NOT reverse stock repeatedly.
+
+Example:
+
+Original receipt +600
+First Cancel -> -600
+Second Cancel attempt -> no additional -600
+
+Use receipt status and/or existing ledger reference to ensure one reversal only.
+
+Return a clear already-cancelled response where appropriate.
+
+--------------------------------------------------
+6. HARD DELETE — STOCK SAFETY FIRST
+--------------------------------------------------
+
+Investigate current hard-delete semantics.
+
+If Admin/Owner hard-deletes an ACTIVE stock-affecting Material Receipt:
+
+stock must first be reversed exactly once before/delete within the same
+transaction.
+
+Do not allow:
+
+delete receipt row
+while leaving its stock IN behind.
+
+Preferred sequence:
+
+1. lock/read receipt
+2. if active and stock-affecting:
+   reverse stock
+3. preserve required audit trail
+4. perform existing hard-delete behavior
+
+If current hard-delete would remove the only source reference needed for audit,
+prefer retaining/cancelling rather than destructive delete and REPORT that
+constraint.
+
+Do not weaken existing Admin/Owner permission rules.
+
+--------------------------------------------------
+7. CANCELLED THEN DELETE
+--------------------------------------------------
+
+If a receipt was already cancelled and its stock already reversed:
+
+subsequent hard Delete must NOT reverse it again.
+
+Net stock effect remains zero.
+
+--------------------------------------------------
+8. STOCK SUFFICIENCY DURING REVERSAL
+--------------------------------------------------
+
+A receipt cancellation reversal is correcting prior stock IN.
+
+Do not incorrectly apply the 06M-B "Plant Stock issue" guard as though this were
+a normal equipment issue.
+
+However, investigate what happens if stock has already been consumed.
+
+Example:
+
+Receipt +600
+Equipment consumed 500
+Current stock = 100
+
+User tries to cancel the 600 receipt.
+
+Blindly reversing -600 would make stock -500.
+
+This is a critical case.
+
+Do NOT silently allow negative stock.
+
+Preferred safe behavior:
+
+BLOCK cancellation and explain:
+
+"Cannot cancel this receipt because part of the received stock has already been
+consumed/issued. Available stock is only 100 L against receipt quantity 600 L."
+
+Then require an authorised correction workflow/manual reconciliation.
+
+Do not fabricate replacement stock.
+
+--------------------------------------------------
+9. PARTIALLY CONSUMED RECEIPT — NO LOT ASSUMPTION
+--------------------------------------------------
+
+Stock is pooled, not lot-tracked.
+
+Therefore do NOT attempt to determine exactly which litres came from which
+receipt.
+
+For cancellation safety, use current available balance at the same
+material/party stock scope.
+
+If current available balance is less than the reversal quantity:
+
+block the cancellation.
+
+This is a safety control, not lot accounting.
+
+--------------------------------------------------
+10. MATERIAL RECEIPT EDIT / QTY CHANGE
+--------------------------------------------------
+
+Investigate whether Material Receipt quantity can currently be edited after
+creation.
+
+If YES:
+
+editing Qty must keep stock synchronized.
+
+Example:
+
+Original receipt 600 L
+Edit to 550 L
+
+Required stock adjustment:
+-50 L
+
+Edit to 700 L:
++100 L
+
+Apply only the NET difference.
+
+Do not add the full new quantity again.
+
+If edit stock synchronization is currently absent and cannot be safely fixed
+without broad changes:
+REPORT and STOP that part, but still complete safe Cancel/Delete reversal if
+possible.
+
+--------------------------------------------------
+11. MATERIAL / PARTY CHANGE ON EDIT
+--------------------------------------------------
+
+If existing edit allows changing:
+
+- material
+- party/owner
+- plant/site stock scope
+
+after receipt creation, stock must not silently move incorrectly.
+
+Investigate current guards.
+
+Preferred:
+block changing stock identity fields after stock has been posted unless the
+existing system already has a safe reversal-and-repost flow.
+
+Do not create a large edit architecture in this batch.
+
+--------------------------------------------------
+12. DIESEL 06M-C INTEGRATION
+--------------------------------------------------
+
+For a Material Receipt linked to a Daily Diesel Requirement:
+
+on cancellation:
+
+- linked receipt becomes excluded from valid Received Qty;
+- Diesel Purchase summary automatically recalculates:
+  Purchased
+  Received
+  Pending
+  Receipt Status.
+
+Example:
+
+Purchased 600
+Receipt 1 = 400
+Receipt 2 = 200
+Fully Received
+
+Cancel Receipt 2:
+
+Received = 400
+Pending = 200
+Status = Partly Received
+
+Do not manually store duplicate Received totals on diesel_requirements.
+
+Reuse the linked-receipt aggregation from 06M-C.
+
+--------------------------------------------------
+13. DIESEL STOCK CONSISTENCY
+--------------------------------------------------
+
+For linked Diesel receipts:
+
+before:
+Material Receipt +600
+Plant Stock +600
+Diesel Purchase Received = 600
+
+after safe cancellation:
+stock reversal -600
+Plant Stock effect from receipt = 0
+Diesel Purchase Received excludes cancelled receipt
+Pending returns accordingly.
+
+All views must agree.
+
+--------------------------------------------------
+14. DIRECT SITE PURCHASE — DO NOT TOUCH
+--------------------------------------------------
+
+This batch is ONLY Material Receipt reversal.
+
+Do NOT modify:
+
+- Direct Site Purchase
+- direct_purchase diesel IN/OUT logic
+- Equipment Usage direct purchase
+- DPR direct purchase
+
+--------------------------------------------------
+15. 06M-B PLANT-STOCK GUARD — PRESERVE
+--------------------------------------------------
+
+Do not change the 06M-B normal Plant Stock issue protection.
+
+Equipment/DPR Plant Stock issues must still be blocked when available stock is
+insufficient.
+
+Receipt reversal has its own cancellation safety rule described above.
+
+--------------------------------------------------
+16. CANCEL UI WARNING
+--------------------------------------------------
+
+Before cancelling a stock-affecting Material Receipt show a clear confirmation.
+
+Example:
+
+CANCEL MATERIAL RECEIPT?
+
+Diesel
+600 L
+Supplier: ABC Fuels
+Receipt: MR-...
+
+Cancelling this receipt will reverse 600 L from recorded Plant Stock.
+
+[Keep Receipt]
+[Cancel Receipt]
+
+Existing mandatory cancellation reason remains.
+
+--------------------------------------------------
+17. BLOCKED CANCEL MESSAGE
+--------------------------------------------------
+
+If stock has already been consumed and full reversal is impossible:
+
+show:
+
+CANNOT CANCEL MATERIAL RECEIPT
+
+Receipt Qty: 600 L
+Current Available Stock: 100 L
+
+This receipt cannot be cancelled because the stock required for reversal is no
+longer fully available.
+
+Please contact PM/Admin for reconciliation.
+
+Do not partially reverse.
+
+Do not mark receipt cancelled.
+
+--------------------------------------------------
+18. HARD DELETE CONFIRMATION
+--------------------------------------------------
+
+If hard Delete remains supported:
+
+confirmation must explicitly mention stock effect.
+
+Example:
+
+PERMANENTLY DELETE MATERIAL RECEIPT?
+
+This receipt added 600 L to Plant Stock.
+
+The stock effect will be reversed before deletion.
+
+This cannot be undone.
+
+[Cancel]
+[Delete Permanently]
+
+If reversal cannot be completed safely:
+block deletion.
+
+--------------------------------------------------
+19. TRANSACTION SAFETY / CONCURRENCY
+--------------------------------------------------
+
+Cancellation/delete reversal must occur server-side inside a DB transaction.
+
+Lock the relevant stock balance row before:
+
+- checking available balance
+- applying reversal
+- marking cancelled/deleting
+
+Two concurrent users must not be able to cancel/reverse the same receipt twice.
+
+Frontend-only protection is not sufficient.
+
+--------------------------------------------------
+20. STOCK LEDGER AUDIT
+--------------------------------------------------
+
+After cancellation, stockLedger must tell a complete story:
+
+Original:
+Material Receipt +600
+
+Reversal:
+Material Receipt Cancel -600
+
+Do not erase either ledger event.
+
+Hard-delete behavior must retain sufficient audit trail according to existing
+audit conventions.
+
+--------------------------------------------------
+21. NOTIFICATIONS
+--------------------------------------------------
+
+Do NOT redesign notifications.
+
+If current Material Receipt cancellation already generates notification/audit
+activity, preserve it.
+
+For linked Diesel receipt cancellation, existing 06M-C receipt-status
+visibility should naturally show the purchase as pending again.
+
+No new notification architecture in this batch.
+
+--------------------------------------------------
+22. HISTORICAL RECEIPTS
+--------------------------------------------------
+
+Do not retroactively rewrite old cancelled receipts automatically.
+
+This batch governs future cancel/delete/edit operations.
+
+If existing historical cancelled receipts have stock inconsistencies:
+
+REPORT the count/diagnostic possibility if easy to determine.
+
+Do not auto-repair historical stock without explicit instruction.
+
+--------------------------------------------------
+23. NO SCHEMA CHANGE EXPECTED
+--------------------------------------------------
+
+Expected schema change: NONE.
+
+Reuse:
+
+- material_receipts
+- stockBalances
+- stockLedger
+- cancellation fields
+- linkedDieselRequirementId
+
+If current ledger lacks a safe source reference needed for idempotent reversal:
+
+STOP and report minimum schema requirement.
+
+Do not migrate automatically.
+
+--------------------------------------------------
+24. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- Diesel Purchase form
+- Diesel Payment Mode/Paid By
+- Vendor Bills
+- Daily Diesel Requirement workflow
+- Material Receipt create stock-IN formula
+- Direct Purchase
+- Equipment general usage logic
+- DPR general workflow
+- Site Material Trips
+- Store GRN
+- PI workflow
+- Tomorrow Plan
+- Execution Arrangement
+- Vendor Billing
+- notification architecture
+
+--------------------------------------------------
+25. TESTS
+--------------------------------------------------
+
+A. Create receipt +600 → stock +600.
+
+B. Cancel active receipt with sufficient stock → stock -600 and receipt
+   cancelled.
+
+C. reversal ledger entry created.
+
+D. repeated cancel does not reverse twice.
+
+E. create +600, consume 500, current 100 → cancellation blocked.
+
+F. blocked cancellation leaves receipt active.
+
+G. blocked cancellation leaves stock unchanged.
+
+H. cancelled receipt then hard Delete does not reverse twice.
+
+I. active receipt hard Delete reverses once before delete, if current policy
+   permits hard delete.
+
+J. hard Delete blocked when reversal stock unavailable.
+
+K. linked Diesel receipt cancellation recalculates Purchased/Received/Pending.
+
+L. Fully Received → cancel partial linked receipt → Partly Received.
+
+M. Direct Site Purchase unchanged.
+
+N. 06M-B equipment Plant Stock guard unchanged.
+
+O. simultaneous cancellation attempts cannot double-reverse.
+
+P. receipt edit Qty decrease adjusts only net difference, if edit is supported.
+
+Q. receipt edit Qty increase adjusts only net difference, if edit is supported.
+
+R. no schema change.
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+26. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. current Material Receipt create/cancel/delete/edit stock behavior.
+
+B. exact original stock-ledger reference available.
+
+C. cancellation reversal implementation.
+
+D. idempotency method.
+
+E. insufficient-stock cancellation behavior.
+
+F. hard-delete stock behavior.
+
+G. receipt-edit stock synchronization findings/implementation.
+
+H. 06M-C Diesel Purchased/Received/Pending recalculation verification.
+
+I. ledger audit entries.
+
+J. concurrency/locking.
+
+K. historical cancelled-receipt diagnostic findings, if any.
+
+L. tests.
+
+Confirm:
+
+- no schema change
+- no negative-stock reversal allowed
+- no double reversal
+- no Direct Purchase change
+- no 06M-B regression
+- no Diesel purchase-flow change
+- no unrelated workflow changes
+
+DO NOT START ANOTHER BATCH.

@@ -18,6 +18,8 @@ interface CancelDialogProps {
   /** Query keys to invalidate after a successful cancel */
   invalidateQueryKeys: (string | (string | number)[])[];
   onCancelled?: () => void;
+  /** Optional extra warning shown in the dialog (e.g. stock-reversal effect) */
+  warningText?: string;
 }
 
 export default function CancelDialog({
@@ -27,6 +29,7 @@ export default function CancelDialog({
   recordLabel,
   invalidateQueryKeys,
   onCancelled,
+  warningText,
 }: CancelDialogProps) {
   const { toast } = useToast();
   const [reason, setReason] = useState("");
@@ -64,6 +67,12 @@ export default function CancelDialog({
             but excludes it from reports and totals. This action is logged.
           </DialogDescription>
         </DialogHeader>
+
+        {warningText ? (
+          <p className="text-sm font-medium text-amber-700 dark:text-amber-400" data-testid="text-cancel-warning">
+            {warningText}
+          </p>
+        ) : null}
 
         <div className="space-y-2 py-2">
           <Label htmlFor="cancel-reason">Reason for cancellation *</Label>

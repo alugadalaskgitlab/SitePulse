@@ -122,6 +122,10 @@ export default function PlantMaterialReceipts() {
   const [localHighlightId, setLocalHighlightId] = useState<number | null>(null);
   const [autoEditDone, setAutoEditDone] = useState(false);
   const [autoOpenDone, setAutoOpenDone] = useState(false);
+
+  const { data: materials } = useQuery<PlantMaterial[]>({
+    queryKey: ["/api/plant-module/materials"],
+  });
   // When true the receipt dialog was opened from a PI "Record Receipt" link — indent ref is locked
   const [indentLockedFromPi, setIndentLockedFromPi] = useState(false);
   useEffect(() => {
@@ -293,6 +297,7 @@ export default function PlantMaterialReceipts() {
       url.searchParams.delete("dieselReqId");
       url.searchParams.delete("qty");
       url.searchParams.delete("supplier");
+      url.searchParams.delete("uom");
       history.replaceState(null, "", url.toString());
     }
   }, [autoOpenParams, autoOpenDone, editingReceipt, materials]);
@@ -317,10 +322,6 @@ export default function PlantMaterialReceipts() {
 
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
-  });
-
-  const { data: materials } = useQuery<PlantMaterial[]>({
-    queryKey: ["/api/plant-module/materials"],
   });
 
   const selectedMaterialName = useMemo(() => {
@@ -432,6 +433,10 @@ export default function PlantMaterialReceipts() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       setDeleteConfirmId(null);
       toast({ title: "Receipt deleted successfully" });
+    },
+    onError: (err: any) => {
+      setDeleteConfirmId(null);
+      toast({ title: "Cannot delete receipt", description: err?.message || "Failed to delete material receipt", variant: "destructive" });
     },
   });
 
@@ -1336,7 +1341,15 @@ export default function PlantMaterialReceipts() {
           <DialogHeader>
             <DialogTitle>Confirm Delete</DialogTitle>
           </DialogHeader>
-          <p>Are you sure you want to delete this receipt? This will also reverse the stock balance.</p>
+          <p>
+            {(() => {
+              const r = receipts?.find((x) => x.id === deleteConfirmId);
+              const qtyText = r ? `${r.quantity} ${r.uom}` : "its quantity";
+              return r?.isCancelled
+                ? `This receipt is already cancelled — its stock was reversed at cancellation. Deleting removes the record permanently. This cannot be undone.`
+                : `This receipt added ${qtyText} to Plant Stock. The stock effect will be reversed before deletion. This cannot be undone.`;
+            })()}
+          </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
             <Button variant="destructive" onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)} disabled={deleteMutation.isPending}>
@@ -1479,12 +1492,18 @@ export default function PlantMaterialReceipts() {
                                 )}
                                 {(canEdit || isOwnerOrAdmin) && ((receipt as any).documentStatus !== "submitted" || isOwnerOrAdmin) && (
                                   <>
-                                    <Button size="icon" variant="ghost" onClick={() => handleEditClick(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
-                                      <Edit className="w-4 h-4" />
-                                    </Button>
-                                    <Button size="icon" variant="ghost" onClick={() => setCancelReceiptId(receipt.id)} data-testid={`button-cancel-receipt-${receipt.id}`} title="Cancel">
-                                      <Ban className="w-4 h-4 text-amber-600" />
-                                    </Button>
+                                    {/* 06M-D: a cancelled receipt is terminal — no edit or re-cancel;
+                                        its stock was already reversed. Delete stays (admin-gated). */}
+                                    {!(receipt as any).isCancelled && (
+                                      <>
+                                        <Button size="icon" variant="ghost" onClick={() => handleEditClick(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
+                                          <Edit className="w-4 h-4" />
+                                        </Button>
+                                        <Button size="icon" variant="ghost" onClick={() => setCancelReceiptId(receipt.id)} data-testid={`button-cancel-receipt-${receipt.id}`} title="Cancel">
+                                          <Ban className="w-4 h-4 text-amber-600" />
+                                        </Button>
+                                      </>
+                                    )}
                                     <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(receipt.id)} data-testid={`button-delete-receipt-${receipt.id}`}>
                                       <Trash2 className="w-4 h-4 text-destructive" />
                                     </Button>
@@ -1616,7 +1635,18 @@ export default function PlantMaterialReceipts() {
         onOpenChange={(v) => !v && setCancelReceiptId(null)}
         cancelUrl={`/api/plant-module/material-receipts/${cancelReceiptId}/cancel`}
         recordLabel={`Material Receipt #${cancelReceiptId}`}
-        invalidateQueryKeys={["/api/plant-module/material-receipts"]}
+        invalidateQueryKeys={[
+          "/api/plant-module/material-receipts",
+          "/api/plant-module/stock-balances",
+          "/api/plant-module/stock-ledger",
+          "/api/diesel-requirements/receipt-status",
+        ]}
+        warningText={(() => {
+          const r = receipts?.find((x) => x.id === cancelReceiptId);
+          if (!r) return undefined;
+          const matName = materials?.find((m) => m.id === r.materialId)?.name ?? "this material";
+          return `Cancelling this receipt will reverse ${r.quantity} ${r.uom} of ${matName} from recorded Plant Stock.`;
+        })()}
       />
       <HistoryDialog
         open={historyReceiptId !== null}

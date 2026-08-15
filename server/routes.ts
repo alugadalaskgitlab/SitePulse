@@ -2688,6 +2688,11 @@ export async function registerRoutes(
       if (existing.documentStatus === "submitted" && !isOwnerOrAdmin) {
         return res.status(403).json({ message: "This receipt has been Final Submitted and is locked. Contact an admin/owner to make changes." });
       }
+      // 06M-D: a cancelled receipt is terminal — its stock was already reversed.
+      // Editing it would re-apply stock on a record whose net effect must stay zero.
+      if (existing.isCancelled) {
+        return res.status(409).json({ code: "RECEIPT_ALREADY_CANCELLED", message: "This receipt is cancelled and cannot be edited. Its stock effect was already reversed. Create a new receipt instead." });
+      }
       const body = { ...req.body };
       if (typeof body.isPlantCommon === 'boolean') {
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
@@ -2769,11 +2774,21 @@ export async function registerRoutes(
         userName: currentUserName(req),
         userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
         oldValues: before ?? null,
-        stockImpact: "Receipt deleted; verify stock ledger balance for this material",
+        // 06M-D: stock reversal happens inside the delete transaction (skipped
+        // when the receipt was already cancelled — that reversal already ran).
+        stockImpact: "Receipt deleted; stock effect reversed within the delete transaction (or previously at cancellation)",
       });
       sendPushToSection("plant_materials", "Material Receipt Deleted", `Receipt #${req.params.id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.code === "INSUFFICIENT_PLANT_STOCK") {
+        const p = err.payload;
+        return res.status(409).json({
+          code: "RECEIPT_REVERSAL_STOCK_UNAVAILABLE",
+          message: `CANNOT DELETE MATERIAL RECEIPT. Receipt Qty: ${p.requestedQty} — Current Available Stock: ${p.availableQty}. This receipt cannot be deleted because the stock required for reversal is no longer fully available. Please contact PM/Admin for reconciliation.`,
+          ...p,
+        });
+      }
       res.status(500).json({ message: "Failed to delete material receipt" });
     }
   });
@@ -2798,11 +2813,23 @@ export async function registerRoutes(
         oldValues: before,
         newValues: updated ?? null,
         reason,
-        stockImpact: "Receipt cancelled; requires manual reversal in stock ledger if already posted",
+        // 06M-D: reversal now happens automatically inside the cancellation transaction.
+        stockImpact: "Receipt cancelled; stock reversed automatically via material_receipt_cancel_reversal ledger entry",
       });
       sendPushToSection("plant_materials", "Material Receipt Cancelled", `Receipt #${id} cancelled`, "/plant").catch(() => {});
       res.json(updated);
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.code === "RECEIPT_ALREADY_CANCELLED") {
+        return res.status(409).json({ code: err.code, message: "This receipt is already cancelled — its stock was already reversed." });
+      }
+      if (err?.code === "INSUFFICIENT_PLANT_STOCK") {
+        const p = err.payload;
+        return res.status(409).json({
+          code: "RECEIPT_REVERSAL_STOCK_UNAVAILABLE",
+          message: `CANNOT CANCEL MATERIAL RECEIPT. Receipt Qty: ${p.requestedQty} — Current Available Stock: ${p.availableQty}. This receipt cannot be cancelled because the stock required for reversal is no longer fully available. Please contact PM/Admin for reconciliation.`,
+          ...p,
+        });
+      }
       console.error("POST /api/plant-module/material-receipts/:id/cancel:", err);
       res.status(500).json({ message: "Failed to cancel material receipt" });
     }

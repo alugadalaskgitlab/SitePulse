@@ -1709,6 +1709,18 @@ export interface InsufficientPlantStockPayload {
   availableQty: number;
   shortageQty: number;
 }
+// 06M-D: thrown when a cancel/reversal is attempted on a receipt whose stock
+// has already been reversed — repeated cancels must never double-reverse.
+export class ReceiptAlreadyCancelledError extends Error {
+  readonly code = "RECEIPT_ALREADY_CANCELLED" as const;
+  readonly receiptId: number;
+  constructor(receiptId: number) {
+    super("RECEIPT_ALREADY_CANCELLED");
+    this.receiptId = receiptId;
+    this.name = "ReceiptAlreadyCancelledError";
+  }
+}
+
 export class InsufficientPlantStockError extends Error {
   readonly code = "INSUFFICIENT_PLANT_STOCK" as const;
   readonly payload: InsufficientPlantStockPayload;
@@ -1825,8 +1837,83 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // 06M-D: cancelling a stock-affecting Material Receipt must reverse the
+  // exact stock it added — once and only once — inside one transaction.
+  // Throws ReceiptAlreadyCancelledError on repeat cancels and
+  // InsufficientPlantStockError when the stock has already been consumed
+  // (never partially reverse, never allow negative stock).
   async cancelMaterialReceipt(id: number, userId: number, reason: string): Promise<MaterialReceipt | undefined> {
-    const [updated] = await db.update(materialReceipts)
+    return db.transaction(async (tx) => this._cancelMaterialReceiptWithinTx(tx, id, userId, reason));
+  }
+
+  // Tx-scoped body, separated so tests can drive it with a stub transaction
+  // (same pattern as the 06M-B _adjustStockBalance guard tests).
+  async _cancelMaterialReceiptWithinTx(tx: any, id: number, userId: number, reason: string): Promise<MaterialReceipt | undefined> {
+    // Lock the receipt row first — two concurrent cancels serialize here,
+    // and the second one sees isCancelled=true.
+    const lockedRes = await tx.execute(sql`
+      SELECT * FROM material_receipts WHERE id = ${id} LIMIT 1 FOR UPDATE
+    `);
+    const lockedRow = (lockedRes.rows ?? [])[0] as any;
+    if (!lockedRow) return undefined;
+    if (lockedRow.is_cancelled === true || lockedRow.is_cancelled === 1) {
+      throw new ReceiptAlreadyCancelledError(id);
+    }
+
+    const [receipt] = await tx.select().from(materialReceipts).where(eq(materialReceipts.id, id)).limit(1);
+    if (!receipt) return undefined;
+
+    const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+    if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
+
+    // Same conversion the stock-IN used at creation (do not redesign).
+    let stockQuantity = receipt.quantity;
+    if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
+      if (receipt.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
+        stockQuantity = receipt.quantity * material.conversionFactor;
+      }
+    }
+    const targetPartyId = receipt.isPlantCommon ? null : (receipt.partyId ?? null);
+
+    // Belt & braces idempotency: never write a second reversal for the same receipt.
+    const existingReversal = await tx.execute(sql`
+      SELECT id FROM stock_ledger
+      WHERE transaction_type = 'material_receipt_cancel_reversal' AND reference_id = ${id}
+      LIMIT 1
+    `);
+    if ((existingReversal.rows ?? []).length > 0) {
+      throw new ReceiptAlreadyCancelledError(id);
+    }
+
+    // Reverse the stock. The guard runs after the FOR UPDATE balance lock and
+    // aborts the whole transaction when consumed stock makes a full reversal
+    // impossible — the receipt then stays active and stock stays unchanged.
+    const { newBalance } = await this._adjustStockBalance(
+      tx, receipt.materialId, targetPartyId, -stockQuantity, null,
+      { material: material.name, source: "material_receipt_cancel" },
+    );
+
+    // Compensating ledger entry — the original stock-IN row is preserved.
+    await tx.insert(stockLedger).values({
+      date: new Date().toISOString().slice(0, 10),
+      partyId: targetPartyId,
+      materialId: receipt.materialId,
+      transactionType: "material_receipt_cancel_reversal",
+      referenceId: id,
+      quantityIn: 0,
+      quantityOut: stockQuantity,
+      balanceAfter: newBalance,
+      uom: material.conversionToUom || receipt.uom,
+      notes: `Reversal of cancelled Material Receipt #${id} (${receipt.quantity} ${receipt.uom}) by user #${userId}. Reason: ${reason}`,
+      tankNumber: receipt.tankNumber ?? null,
+    });
+
+    // A cancelled receipt must stop counting everywhere: remove the linked
+    // LDO flow-meter reading too (same rule the hard-delete path applies),
+    // so cancelled tank Diesel/LDO no longer shows as received in the tracker.
+    await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceMaterialReceiptId, id));
+
+    const [updated] = await tx.update(materialReceipts)
       .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
       .where(eq(materialReceipts.id, id))
       .returning();
@@ -3587,40 +3674,60 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteMaterialReceipt(id: number): Promise<boolean> {
-    return db.transaction(async (tx) => {
-      // Get the receipt to reverse the stock balance
-      const [receipt] = await tx.select().from(materialReceipts).where(eq(materialReceipts.id, id)).limit(1);
-      if (!receipt) return false;
-      
-      // Get material for conversion factor
-      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
-      if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
-      
-      // Calculate the converted quantity that was added
-      let stockQuantity = receipt.quantity;
-      if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
-        if (receipt.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
-          stockQuantity = receipt.quantity * material.conversionFactor;
-        }
-      }
-      
-      // Reverse the stock balance (row-level locking)
-      const targetPartyId = receipt.isPlantCommon ? null : (receipt.partyId ?? null);
-      await this._adjustStockBalance(tx, receipt.materialId, targetPartyId, -stockQuantity, null);
-      
-      // Delete related ledger entry
-      await tx.delete(stockLedger).where(and(
-        eq(stockLedger.transactionType, "receipt"),
-        eq(stockLedger.referenceId, id)
-      ));
+    return db.transaction(async (tx) => this._deleteMaterialReceiptWithinTx(tx, id));
+  }
 
-      // Task #490 — Remove linked ldo_flow_readings receipt row if present.
-      await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceMaterialReceiptId, id));
-      
-      // Delete the receipt
-      await tx.delete(materialReceipts).where(eq(materialReceipts.id, id));
-      return true;
-    });
+  // 06M-D: tx-scoped body. Locks the receipt row, reverses stock exactly once
+  // (only when the receipt is still ACTIVE — a cancelled receipt's stock was
+  // already reversed at cancellation), blocks when consumed stock makes a
+  // full reversal impossible, then performs the existing hard-delete.
+  async _deleteMaterialReceiptWithinTx(tx: any, id: number): Promise<boolean> {
+    // Lock — a concurrent cancel/delete of the same receipt serializes here.
+    const lockedRes = await tx.execute(sql`
+      SELECT id, is_cancelled FROM material_receipts WHERE id = ${id} LIMIT 1 FOR UPDATE
+    `);
+    const lockedRow = (lockedRes.rows ?? [])[0] as any;
+    if (!lockedRow) return false;
+    const alreadyCancelled = lockedRow.is_cancelled === true || lockedRow.is_cancelled === 1;
+
+    const [receipt] = await tx.select().from(materialReceipts).where(eq(materialReceipts.id, id)).limit(1);
+    if (!receipt) return false;
+
+    // Get material for conversion factor
+    const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+    if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
+
+    // Calculate the converted quantity that was added
+    let stockQuantity = receipt.quantity;
+    if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
+      if (receipt.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
+        stockQuantity = receipt.quantity * material.conversionFactor;
+      }
+    }
+
+    const targetPartyId = receipt.isPlantCommon ? null : (receipt.partyId ?? null);
+    if (!alreadyCancelled) {
+      // Reverse the stock balance (row-level locking). Guarded: never let a
+      // hard delete leave a negative balance behind when part of the stock
+      // has already been consumed — block the delete instead.
+      await this._adjustStockBalance(tx, receipt.materialId, targetPartyId, -stockQuantity, null,
+        { material: material.name, source: "material_receipt_delete" });
+    }
+
+    // Delete related ledger entries. For a cancelled receipt the IN and its
+    // compensating reversal net to zero, so both go together and the balance
+    // is untouched (no second reversal).
+    await tx.delete(stockLedger).where(and(
+      inArray(stockLedger.transactionType, ["receipt", "material_receipt_cancel_reversal"]),
+      eq(stockLedger.referenceId, id)
+    ));
+
+    // Task #490 — Remove linked ldo_flow_readings receipt row if present.
+    await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceMaterialReceiptId, id));
+
+    // Delete the receipt
+    await tx.delete(materialReceipts).where(eq(materialReceipts.id, id));
+    return true;
   }
 
   // Truck Dispatches
