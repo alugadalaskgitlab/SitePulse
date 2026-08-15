@@ -1996,6 +1996,9 @@ export const vendorBills = pgTable("vendor_bills", {
   approvedAt: text("approved_at"),
   paidAt: text("paid_at"),
   paymentRemarks: text("payment_remarks"),
+  // 06M-A: PI/diesel-style payment details — nullable, never backfilled.
+  paymentMode: text("payment_mode"),
+  paidBy: text("paid_by"),
   adjustmentLabel: text("adjustment_label"),
   adjustmentAmount: real("adjustment_amount").default(0),
   gstRateEquipment: real("gst_rate_equipment"),

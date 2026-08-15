@@ -1284,6 +1284,10 @@ export interface IStorage {
   createVendorBill(data: CreateVendorBillRequest): Promise<VendorBillWithItems>;
   updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined>;
   updateVendorBillStatus(id: number, status: string, actor: string): Promise<VendorBillWithItems | undefined>;
+  updateVendorBillPaymentDetails(id: number, details: { paymentMode?: string | null; paidBy?: string | null }): Promise<VendorBillWithItems | undefined>;
+  // 06M-A: ensures nullable payment_mode/paid_by columns on vendor_bills.
+  // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
+  ensureVendorBillPaymentColumns(): Promise<void>;
   deleteVendorBill(id: number): Promise<boolean>;
   getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<Partial<InsertVendorBillItem>[]>;
   getVendorNames(): Promise<string[]>;
@@ -12344,6 +12348,9 @@ export class DatabaseStorage implements IStorage {
           gstRateLabour: (data as any).gstRateLabour || null,
           tdsRate: (data as any).tdsRate || null,
           paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,
+          // 06M-A: payment details ride along on full edits (undefined = skip).
+          paymentMode: (data as any).paymentMode,
+          paidBy: (data as any).paidBy,
         };
       if (data.status) {
         setData.status = data.status;
@@ -12385,6 +12392,27 @@ export class DatabaseStorage implements IStorage {
 
       return { ...updated, items };
     });
+  }
+
+  // 06M-A: idempotent additive migration for vendor-bill payment details —
+  // keeps replicated/published databases in sync without manual ALTERs.
+  async ensureVendorBillPaymentColumns(): Promise<void> {
+    await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS payment_mode text`));
+    await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS paid_by text`));
+  }
+
+  // 06M-A: retrospective payment details on a bill — touches ONLY
+  // payment_mode/paid_by; never status, paidAt, or any lifecycle timestamp.
+  async updateVendorBillPaymentDetails(id: number, details: { paymentMode?: string | null; paidBy?: string | null }): Promise<VendorBillWithItems | undefined> {
+    const existing = await this.getVendorBill(id);
+    if (!existing) return undefined;
+    const setData: any = {};
+    if (details.paymentMode !== undefined) setData.paymentMode = details.paymentMode;
+    if (details.paidBy !== undefined) setData.paidBy = details.paidBy;
+    if (Object.keys(setData).length > 0) {
+      await db.update(vendorBills).set(setData).where(eq(vendorBills.id, id));
+    }
+    return this.getVendorBill(id);
   }
 
   async updateVendorBillStatus(id: number, status: string, actor: string): Promise<VendorBillWithItems | undefined> {

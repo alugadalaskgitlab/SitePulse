@@ -105,7 +105,8 @@ function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirement
     },
   });
   const hasBill = (attachments || []).some((a) => a.docType === "bill");
-  const hasEvidence = (attachments || []).some((a) => a.docType === "payment_evidence");
+  // 06M-A: payment/QR evidence removed from the diesel purchase UI. Historical
+  // payment_evidence attachments stay in DB/storage — just no longer surfaced.
   const paymentMode = (requirement as any).paymentMode as string | null;
   const paidBy = (requirement as any).paidBy as string | null;
   const modeLabels: Record<string, string> = { cash: "CASH", credit: "CREDIT", advance: "ADVANCE", upi: "UPI", cheque: "CHEQUE", rtgs: "RTGS / NEFT" };
@@ -138,11 +139,6 @@ function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirement
           <Badge variant="outline" className={hasBill ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 border-green-300 dark:border-green-700" : "text-muted-foreground"} data-testid="badge-bill-attached">
             {hasBill ? <Check className="w-3 h-3 mr-1" /> : null}BILL {hasBill ? "ATTACHED" : "NOT ATTACHED"}
           </Badge>
-          {hasEvidence && (
-            <Badge variant="outline" className="bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 border-green-300 dark:border-green-700" data-testid="badge-payment-evidence">
-              <Check className="w-3 h-3 mr-1" />PAYMENT EVIDENCE
-            </Badge>
-          )}
           {paymentMode && <Badge variant="outline" data-testid="badge-payment-mode">MODE: {modeLabels[paymentMode] || paymentMode.toUpperCase()}</Badge>}
           {paidBy && (
             <Badge variant="outline" data-testid="badge-paid-by">
@@ -154,12 +150,6 @@ function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirement
           <div>
             <p className="text-[12px] font-semibold text-muted-foreground uppercase mb-2">BILL / INVOICE</p>
             <AttachmentGallery moduleType="diesel_purchase" linkedRecordId={requirement.id} docType="bill" allowDelete={false} />
-          </div>
-        )}
-        {hasEvidence && (
-          <div>
-            <p className="text-[12px] font-semibold text-muted-foreground uppercase mb-2">PAYMENT / QR EVIDENCE</p>
-            <AttachmentGallery moduleType="diesel_purchase" linkedRecordId={requirement.id} docType="payment_evidence" allowDelete={false} />
           </div>
         )}
       </CardContent>
@@ -471,6 +461,33 @@ export default function DieselRequirements() {
     }
   };
 
+  // 06M-A: shared prefill for the purchase-update form — used both when an
+  // approved requirement opens for purchase AND when a purchased one is
+  // reopened to edit its details retrospectively.
+  const openPurchaseForm = (req: DieselRequirementWithItems) => {
+    setSelectedId(req.id);
+    setPurchaseQty(req.qtyPurchased ? String(req.qtyPurchased) : "");
+    setPurchaseSupplier(req.supplier || "");
+    setPurchaseBillNo(req.billNo || "");
+    setPurchaseRate(req.rate ? String(req.rate) : "");
+    setPurchaseAmount(req.amount ? String(req.amount) : "");
+    setPurchasedAt(req.purchasedAt || "");
+    setPurchaseRemarks(req.purchaseRemarks || "");
+    setPurchasePaymentMode((req as any).paymentMode || "");
+    const existingPaidBy = (req as any).paidBy as string | null;
+    if (!existingPaidBy) {
+      setPurchasePaidBy("");
+      setPurchasePayerName("");
+    } else if (existingPaidBy === "company") {
+      setPurchasePaidBy("company");
+      setPurchasePayerName("");
+    } else {
+      setPurchasePaidBy("personal");
+      setPurchasePayerName(existingPaidBy === "PERSONAL" ? "" : existingPaidBy);
+    }
+    setView("update");
+  };
+
   const openDetail = (req: DieselRequirementWithItems) => {
     setSelectedId(req.id);
     if (req.status === "pending") {
@@ -479,26 +496,7 @@ export default function DieselRequirements() {
       );
       setView("detail");
     } else if (req.status === "approved") {
-      setPurchaseQty(req.qtyPurchased ? String(req.qtyPurchased) : "");
-      setPurchaseSupplier(req.supplier || "");
-      setPurchaseBillNo(req.billNo || "");
-      setPurchaseRate(req.rate ? String(req.rate) : "");
-      setPurchaseAmount(req.amount ? String(req.amount) : "");
-      setPurchasedAt(req.purchasedAt || "");
-      setPurchaseRemarks(req.purchaseRemarks || "");
-      setPurchasePaymentMode((req as any).paymentMode || "");
-      const existingPaidBy = (req as any).paidBy as string | null;
-      if (!existingPaidBy) {
-        setPurchasePaidBy("");
-        setPurchasePayerName("");
-      } else if (existingPaidBy === "company") {
-        setPurchasePaidBy("company");
-        setPurchasePayerName("");
-      } else {
-        setPurchasePaidBy("personal");
-        setPurchasePayerName(existingPaidBy === "PERSONAL" ? "" : existingPaidBy);
-      }
-      setView("update");
+      openPurchaseForm(req);
     } else {
       setView("detail");
     }
@@ -1116,7 +1114,26 @@ export default function DieselRequirements() {
               </Card>
 
               {selectedRequirement.status === "purchased" && (
-                <DieselPurchaseSummary requirement={selectedRequirement} />
+                <>
+                  <DieselPurchaseSummary requirement={selectedRequirement} />
+                  {/* 06M-A: reopen the SAME purchase-update form on a completed
+                      purchase so paymentMode/paidBy can be filled retrospectively.
+                      Uses the existing purchase-update endpoint; status stays
+                      "purchased" (storage re-asserts it). */}
+                  {canEdit && (
+                    <div className="flex justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-600 border-blue-300"
+                        onClick={() => openPurchaseForm(selectedRequirement)}
+                        data-testid="button-edit-purchase-details"
+                      >
+                        <Pencil className="w-3 h-3 mr-1" /> EDIT PURCHASE DETAILS
+                      </Button>
+                    </div>
+                  )}
+                </>
               )}
 
               <Card>
@@ -1454,23 +1471,6 @@ export default function DieselRequirements() {
                       linkedRecordId={selectedRequirement.id}
                       docType="bill"
                       emptyText="No bill uploaded yet."
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm">PAYMENT / QR EVIDENCE (OPTIONAL)</Label>
-                    <p className="text-xs text-muted-foreground">e.g. fuel station QR, UPI payment screenshot, payment acknowledgement</p>
-                    <AttachmentUploader
-                      moduleType="diesel_purchase"
-                      linkedRecordId={selectedRequirement.id}
-                      siteId={(selectedRequirement as any).siteId ?? null}
-                      docType="payment_evidence"
-                      label="Add Evidence (Gallery / File)"
-                    />
-                    <AttachmentGallery
-                      moduleType="diesel_purchase"
-                      linkedRecordId={selectedRequirement.id}
-                      docType="payment_evidence"
-                      emptyText="No payment evidence uploaded."
                     />
                   </div>
                   <div>

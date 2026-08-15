@@ -93,6 +93,9 @@ app.use((req, res, next) => {
     // road_geometry_profiles is now managed through the normal schema path
     // (shared/schema.ts + drizzle push) — startup DDL removed so the publish
     // migration diff can never see a runtime-created table it wants to drop.
+    storage.ensureVendorBillPaymentColumns()
+      .then(() => console.log("Startup: ensureVendorBillPaymentColumns — vendor_bills payment_mode/paid_by verified/added"))
+      .catch(e => console.error("Pre-routes: Failed to ensure vendor bill payment columns:", e)),
     storage.ensureProjectScopeSchema()
       .then(() => console.log("Startup: ensureProjectScopeSchema — project_scope_segments table + corridor/scope columns verified/added"))
       .catch(e => console.error("Pre-routes: Failed to ensure project scope schema:", e)),

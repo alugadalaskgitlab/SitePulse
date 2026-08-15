@@ -8454,6 +8454,29 @@ export async function registerRoutes(
     }
   });
 
+  // 06M-A: retrospective Payment Mode / Paid By on a vendor bill. Same
+  // permission as marking a bill paid; never changes status or timestamps.
+  app.patch("/api/vendor-bills/:id/payment-details", async (req, res) => {
+    try {
+      if (!assertApprove(req, res, "vendor_bills_approve")) return;
+      const id = Number(req.params.id);
+      const detailsSchema = z.object({
+        paymentMode: z.enum(["cash", "credit", "advance", "upi", "cheque", "rtgs"]).nullable().optional(),
+        paidBy: z.string().max(120).nullable().optional(),
+      });
+      const details = detailsSchema.parse(req.body);
+      const bill = await storage.updateVendorBillPaymentDetails(id, details);
+      if (!bill) return res.status(404).json({ message: "Vendor bill not found" });
+      res.json(bill);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error updating vendor bill payment details:", err);
+      res.status(500).json({ message: "Failed to update payment details" });
+    }
+  });
+
   app.patch("/api/vendor-bills/:id/status", async (req, res) => {
     try {
       const id = Number(req.params.id);

@@ -1,0 +1,283 @@
+BATCH 06M-A — PAYMENT MODE / PAID BY CLEANUP
++ EDIT COMPLETED DIESEL PURCHASE DETAILS
+
+This is a small cleanup/enhancement.
+
+OBJECTIVE
+
+1. Remove Payment / QR Evidence from Daily Diesel Purchase.
+2. Keep Bill / Invoice photo upload.
+3. Allow an already PURCHASED Diesel requirement to reopen/edit its purchase
+   details so Payment Mode / Paid By can be filled retrospectively.
+4. Add Payment Mode + Paid By to Vendor Bills, similar to PI/Diesel.
+5. Do NOT add payment evidence to Vendor Bills.
+
+--------------------------------------------------
+1. DAILY DIESEL — REMOVE PAYMENT EVIDENCE
+--------------------------------------------------
+
+Current Diesel purchase UI uses:
+
+moduleType="diesel_purchase"
+docType="payment_evidence"
+
+Remove the Payment / QR Evidence UI from:
+- purchase form
+- purchase summary/detail
+- badges/labels
+
+Keep:
+
+BILL / INVOICE
+
+with existing Camera / Gallery / File upload.
+
+Do NOT remove the generic attachment infrastructure.
+
+Do NOT delete historical payment_evidence attachments from DB/storage.
+
+If old Diesel records already have payment_evidence attachments:
+simply stop surfacing/creating them in the normal UI.
+Do not rewrite history.
+
+--------------------------------------------------
+2. KEEP DIESEL PAYMENT MODE + PAID BY
+--------------------------------------------------
+
+Keep existing Diesel fields:
+
+paymentMode
+paidBy
+
+Keep existing options/semantics.
+
+No change to current purchase calculation/status flow.
+
+--------------------------------------------------
+3. EDIT ALREADY PURCHASED DIESEL PURCHASE
+--------------------------------------------------
+
+Current UI opens Purchase Update only when status === "approved".
+
+For status === "purchased", Admin/PM/permitted direct editor must be able to
+choose:
+
+EDIT PURCHASE DETAILS
+
+This should reopen the SAME existing purchase-update form with existing values
+prefilled:
+
+- Qty Purchased
+- Supplier
+- Bill No.
+- Rate
+- Amount
+- Purchased At
+- Purchase Remarks
+- Payment Mode
+- Paid By
+- existing Bill attachment
+
+Saving must use the existing:
+/api/diesel-requirements/:id/purchase-update
+
+Do not create a second purchase record.
+
+Do not change status away from "purchased".
+
+Do not reset approved/purchased timestamps unnecessarily.
+
+This allows older completed purchases whose paymentMode/paidBy are NULL to be
+updated now.
+
+--------------------------------------------------
+4. PERMISSION
+--------------------------------------------------
+
+Use existing direct-edit permission rules.
+
+Admin/Owner/permitted editor:
+Edit Purchase Details directly.
+
+Other users:
+retain existing request-edit behavior where applicable.
+
+Do not broaden permissions.
+
+--------------------------------------------------
+5. VENDOR BILLS — ADD PAYMENT MODE + PAID BY
+--------------------------------------------------
+
+Current vendor_bills already contains:
+
+paidAt
+paymentRemarks
+
+but does not contain:
+
+paymentMode
+paidBy
+
+Add:
+
+paymentMode
+paidBy
+
+using the same practical option semantics already used in PI/Diesel.
+
+Suggested Payment Mode values:
+- Cash
+- Credit
+- Advance
+- UPI
+- Cheque
+- RTGS / NEFT
+
+Paid By:
+- Company Account
+- Personal
+- payer/name where existing PI-style pattern supports it
+
+Do NOT add:
+- Payment Evidence
+- QR upload
+- payment screenshot upload
+
+to Vendor Bills.
+
+--------------------------------------------------
+6. WHEN TO SHOW VENDOR BILL PAYMENT FIELDS
+--------------------------------------------------
+
+Show Payment Mode and Paid By in the Vendor Bill payment/status area.
+
+Prefer entry when bill is marked PAID.
+
+Also display them in the paid bill detail/summary.
+
+Existing:
+paidAt
+paymentRemarks
+
+remain unchanged.
+
+Do not redesign the Vendor Bill approval lifecycle:
+
+Draft
+→ Verified
+→ Approved
+→ Paid
+
+--------------------------------------------------
+7. EXISTING VENDOR BILLS
+--------------------------------------------------
+
+New fields must be nullable.
+
+Historical Vendor Bills remain valid with:
+
+paymentMode = NULL
+paidBy = NULL
+
+Admin/permitted user should be able to add them later according to existing
+Vendor Bill edit/payment permissions.
+
+Do not backfill guessed values.
+
+--------------------------------------------------
+8. SCHEMA SAFETY
+--------------------------------------------------
+
+Expected schema change:
+
+vendor_bills:
++ payment_mode nullable
++ paid_by nullable
+
+No Diesel schema change expected because those fields already exist.
+
+If migration shows anything else:
+STOP and report.
+
+Do not DROP/alter unrelated columns.
+
+--------------------------------------------------
+9. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- Diesel stock flow
+- Diesel purchase quantity/rate calculations
+- Daily requirement workflow
+- DPR
+- Equipment usage
+- Vendor Bill GST/TDS calculations
+- Vendor Bill auto-items
+- Vendor Bill approval rules
+- PI workflow
+- notification architecture
+- permissions architecture
+
+--------------------------------------------------
+10. TESTS
+--------------------------------------------------
+
+A. Diesel purchase form still supports Bill photo.
+
+B. Payment/QR Evidence no longer appears.
+
+C. Historical payment_evidence attachment is not deleted.
+
+D. Purchased Diesel record can open Edit Purchase Details.
+
+E. Existing purchase values prefill correctly.
+
+F. Old purchased record with blank paymentMode/paidBy can save them.
+
+G. Saving does not create duplicate purchase or change status.
+
+H. Vendor Bill supports Payment Mode.
+
+I. Vendor Bill supports Paid By.
+
+J. Paid Vendor Bill displays both.
+
+K. Existing Vendor Bills with NULL values remain valid.
+
+L. No payment-evidence feature added to Vendor Bills.
+
+M. Only expected vendor_bills additive migration occurs.
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+11. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. Diesel payment-evidence UI removed.
+
+B. treatment of historical payment_evidence attachments.
+
+C. purchased-Diesel edit flow.
+
+D. confirmation old completed purchases can now receive Payment Mode/Paid By.
+
+E. Vendor Bill Payment Mode implementation.
+
+F. Vendor Bill Paid By implementation.
+
+G. exact schema migration.
+
+H. tests.
+
+Confirm:
+- no Diesel stock change
+- no purchase-flow redesign
+- no Vendor Bill calculation change
+- no PI change
+- no payment evidence in Vendor Bills
+
+DO NOT START ANOTHER BATCH.

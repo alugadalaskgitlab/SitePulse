@@ -240,6 +240,104 @@ function getBillTypeLabel(type: string) {
   return BILL_TYPES.find(t => t.value === type.toLowerCase())?.label || type.toUpperCase();
 }
 
+// 06M-A: Payment Mode / Paid By on a vendor bill — same option semantics as
+// PI/diesel. Entry preferred once the bill is PAID; values display read-only
+// otherwise. Deliberately NO payment evidence / QR / screenshot upload.
+const VB_MODE_LABELS: Record<string, string> = { cash: "CASH", credit: "CREDIT", advance: "ADVANCE", upi: "UPI", cheque: "CHEQUE", rtgs: "RTGS / NEFT" };
+function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; canEditPayment: boolean }) {
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState<string>(bill.paymentMode || "");
+  const [paidByKind, setPaidByKind] = useState<"" | "company" | "personal">(
+    !bill.paidBy ? "" : bill.paidBy === "company" ? "company" : "personal");
+  const [payerName, setPayerName] = useState<string>(
+    bill.paidBy && bill.paidBy !== "company" && bill.paidBy !== "PERSONAL" ? bill.paidBy : "");
+
+  const saveMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/vendor-bills/${bill.id}/payment-details`, {
+      paymentMode: mode || null,
+      paidBy: paidByKind === "" ? null : paidByKind === "company" ? "company" : (payerName.trim() ? payerName.trim().toUpperCase() : "PERSONAL"),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/vendor-bills/${bill.id}`] });
+      toast({ title: "Payment details saved" });
+      setEditing(false);
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to save payment details",
+        description: isForbiddenError(err) ? NO_PERMISSION_DESCRIPTION : err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <div className="border-t pt-4" data-testid="section-payment-details">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Payment Details</p>
+        {canEditPayment && !editing && (
+          <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit-payment-details">
+            <Edit className="w-3 h-3 mr-1" /> {bill.paymentMode || bill.paidBy ? "EDIT" : "ADD"}
+          </Button>
+        )}
+      </div>
+      {!editing ? (
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline" data-testid="badge-vb-payment-mode">
+            MODE: {bill.paymentMode ? (VB_MODE_LABELS[bill.paymentMode] || String(bill.paymentMode).toUpperCase()) : "\u2014"}
+          </Badge>
+          <Badge variant="outline" data-testid="badge-vb-paid-by">
+            PAID BY: {!bill.paidBy ? "\u2014" : bill.paidBy === "company" ? "COMPANY ACCOUNT" : `PERSONAL${bill.paidBy !== "PERSONAL" ? ` \u2014 ${bill.paidBy}` : ""}`}
+          </Badge>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Payment Mode</p>
+            <Select value={mode} onValueChange={setMode}>
+              <SelectTrigger data-testid="select-vb-payment-mode"><SelectValue placeholder="SELECT MODE" /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(VB_MODE_LABELS).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Paid By</p>
+            <Select value={paidByKind} onValueChange={(v) => setPaidByKind(v as any)}>
+              <SelectTrigger data-testid="select-vb-paid-by"><SelectValue placeholder="SELECT PAYER" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="company">COMPANY ACCOUNT</SelectItem>
+                <SelectItem value="personal">PERSONAL</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {paidByKind === "personal" && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Payer Name</p>
+              <Input
+                value={payerName}
+                onChange={(e) => setPayerName(e.target.value)}
+                onBlur={(e) => setPayerName(e.target.value.toUpperCase())}
+                placeholder="WHO PAID?"
+                className="uppercase"
+                data-testid="input-vb-payer-name"
+              />
+            </div>
+          )}
+          <div className="sm:col-span-3 flex gap-2 justify-end">
+            <Button variant="outline" size="sm" onClick={() => setEditing(false)} data-testid="button-cancel-payment-details">CANCEL</Button>
+            <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-payment-details">
+              {saveMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />} SAVE
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function VendorBills() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
@@ -250,6 +348,10 @@ export default function VendorBills() {
   const canEdit = sectionCan("vendor_bills", "edit") || sectionCan("vendor_bills_verify", "edit") || sectionCan("vendor_bills_approve", "edit");
   const canViewBills = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view");
   const canDelete = isAdmin;
+  // 06M-A: payment details use the SAME capability the server enforces for
+  // the payment-details PATCH and for marking a bill paid (approve on
+  // vendor_bills_approve) — never show an edit control a 403 would reject.
+  const canMarkPaid = isAdmin || sectionCan("vendor_bills_approve", "approve");
   const canExport = sectionCan("vendor_bills", "view_reports") || sectionCan("vendor_bills_view", "view_reports");
 
   const [view, setView] = useState<ViewMode>("list");
@@ -2362,6 +2464,16 @@ export default function VendorBills() {
                 </p>
               </div>
             </div>
+
+            {/* 06M-A: Payment Mode / Paid By — entry preferred once PAID, shown
+                whenever values exist. No payment evidence/QR upload here. */}
+            {(bill.status === "paid" || (bill as any).paymentMode || (bill as any).paidBy) && (
+              <VendorBillPaymentDetails
+                key={bill.id}
+                bill={bill}
+                canEditPayment={canMarkPaid && bill.status === "paid"}
+              />
+            )}
 
             <div className="border-t pt-4">
               <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Status Progress</p>
