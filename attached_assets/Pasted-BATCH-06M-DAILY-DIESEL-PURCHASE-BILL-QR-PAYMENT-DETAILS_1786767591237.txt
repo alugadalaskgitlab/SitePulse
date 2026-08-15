@@ -1,0 +1,295 @@
+BATCH 06M — DAILY DIESEL PURCHASE: BILL/QR + PAYMENT DETAILS
+
+This is a SMALL enhancement to the EXISTING Daily Diesel Requirement
+purchase action.
+
+Do not redesign the diesel procurement workflow.
+
+OBJECTIVE
+
+When the Purchaser records a Diesel requirement as Purchased, add:
+1. Bill / Invoice photo upload
+2. QR / Payment Evidence photo upload — optional
+3. If straightforward using the existing PI pattern:
+   - Payment Status
+   - Payment Mode
+   - Paid By
+
+Also investigate and report whether the EXISTING diesel Purchase action
+already adds the purchased quantity to Diesel stock, and whether that same
+stock is later reduced through:
+- DPR Equipment Log
+- Equipment Usage in Equipment & Fleet.
+
+If stock is not currently connected correctly, REPORT ONLY.
+Do not build a new stock workflow in this batch.
+
+Expected schema change: NONE if existing attachment/payment infrastructure
+can be reused.
+
+--------------------------------------------------
+1. EXISTING DIESEL PURCHASE ACTION
+--------------------------------------------------
+
+Locate the current flow:
+Daily/Site Requirement
+→ Diesel
+→ Sent to Purchase
+→ Purchaser records Purchased.
+
+Do not change its existing status flow, quantity logic or approval flow.
+Keep the current purchase form as it is except for the additions below.
+
+NOTE: "Purchased" may not be a literal, separately-named status value in
+the current Requirements Queue status model (the known status options are
+requested/approved/arranged/available/expected/partly/not_available/
+rejected/clarification — no confirmed distinct "purchased" state). It is
+possible diesel purchase is currently represented via "Arranged" or
+"Available" rather than a dedicated status. As part of this section, report
+the EXACT current status/label value the Purchaser action actually sets for
+Diesel today, so we can confirm this is really the right attachment point
+before relying on it.
+
+--------------------------------------------------
+2. BILL / INVOICE PHOTO
+--------------------------------------------------
+
+At the existing Purchased action/form add:
+BILL / INVOICE
+Allow:
+- Camera
+- Gallery
+- File
+
+Reuse the existing generic AttachmentUploader / AttachmentGallery pattern
+already used in PI purchaser actions.
+
+Do not create a new photo table.
+Use an appropriate existing/new moduleType within the generic attachment
+system.
+
+The Purchaser should be able to upload the actual fuel bill while completing
+the purchase.
+
+--------------------------------------------------
+3. QR / PAYMENT EVIDENCE
+--------------------------------------------------
+
+Add:
+PAYMENT / QR EVIDENCE
+Allow:
+- Camera
+- Gallery
+- File
+
+This is optional.
+
+Examples:
+- fuel station QR
+- UPI payment screenshot
+- payment acknowledgement
+
+Keep Bill and Payment Evidence separately identifiable if the existing
+attachment system supports that cleanly.
+
+--------------------------------------------------
+4. PAYMENT DETAILS — REUSE PI PATTERN
+--------------------------------------------------
+
+Check the existing PI purchaser-action UI.
+
+If the following can be reused without introducing a new accounting model,
+add the same/similar fields to Diesel purchase:
+Payment Status
+Payment Mode
+Paid By
+
+Use the existing PI options/semantics rather than inventing new ones.
+
+Examples may include existing PI values such as:
+- Paid / Pending
+- UPI / Cash / Bank / Credit
+- Paid By
+
+Use the actual values already supported by PI.
+Do not create a new payment system.
+
+If reuse requires schema changes or significant redesign:
+STOP and report rather than expanding this batch.
+
+--------------------------------------------------
+5. PURCHASE SUMMARY
+--------------------------------------------------
+
+After purchase, wherever the existing Diesel requirement shows its Purchased
+status/details, also show compactly:
+- Bill attached ✓
+- Payment Evidence ✓ if attached
+- Payment Status
+- Payment Mode
+- Paid By
+where available.
+
+PM/Admin/permitted users should be able to open/view the uploaded evidence
+according to the existing permission model.
+
+--------------------------------------------------
+6. DO NOT CHANGE PURCHASE QUANTITY/RATE FLOW
+--------------------------------------------------
+
+Do not add or redesign:
+- purchased qty
+- rate
+- amount
+- supplier
+- purchase stages
+
+unless these fields already exist in the current Diesel purchase action.
+
+This batch is primarily:
+BILL + QR + PI-LIKE PAYMENT DETAILS.
+Do not expand scope.
+
+--------------------------------------------------
+7. STOCK FLOW — INVESTIGATION ONLY
+--------------------------------------------------
+
+Trace the CURRENT behavior after Diesel is marked Purchased.
+
+Answer:
+A. Does recording Diesel as Purchased currently increase any stock?
+B. If yes:
+   - which table/ledger?
+   - which material record?
+   - at what exact action?
+   - by what quantity?
+C. Is that the SAME Diesel stock later consumed by:
+   1. DPR Equipment Log?
+   2. Equipment Usage in Equipment & Fleet?
+D. For each consumption path, identify:
+   - source field/status required
+   - stock ledger/table reduced
+   - whether actual diesel quantity is deducted.
+E. Can we currently obtain a clean flow:
+Purchased Diesel
+→ Diesel Stock
+→ DPR/Equipment Usage consumption
+→ balance
+using the existing implementation?
+
+If YES: report and do not change it.
+If NO: report exactly where the chain breaks.
+
+DO NOT fix stock linkage in this batch.
+
+--------------------------------------------------
+8. NO NEW RECEIPT WORKFLOW
+--------------------------------------------------
+
+Do NOT add:
+- Material Receipt prompt
+- Store GRN
+- site_material_trip
+- new diesel stock receipt flow
+
+in this batch.
+
+We will handle stock separately only if the investigation in Section 7 shows
+the current flow is incomplete.
+
+--------------------------------------------------
+9. EXISTING TIMESTAMPS
+--------------------------------------------------
+
+Do not redesign the requirement timeline in this batch.
+
+Preserve existing:
+- raised/submitted timestamp
+- allocation/status timestamps
+- purchaser update timestamp
+
+If the existing Purchased action already records updatedBy/updatedAt, display
+it normally.
+
+Do not create a new audit system.
+
+--------------------------------------------------
+10. PERMISSIONS
+--------------------------------------------------
+
+Use the existing permission panel/rules.
+
+Do not change:
+- who can purchase
+- PM/Admin permissions
+- notification recipient rules.
+
+--------------------------------------------------
+11. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+- Tomorrow Plan outcome/carry-forward
+- DPR workflow
+- Equipment logging
+- Equipment & Fleet usage
+- stock calculation
+- Material Trips
+- Store GRN
+- Material Receipt
+- PI workflow itself
+- Vendor Billing
+- notification architecture
+- permission architecture
+
+--------------------------------------------------
+12. TESTS
+--------------------------------------------------
+
+A. Existing Diesel purchase action still works.
+B. Purchaser can upload Bill via Camera/Gallery/File.
+C. Purchaser can upload optional QR/payment evidence.
+D. Attachments persist and can be reopened.
+E. PI-like payment fields persist if implemented.
+F. PM/Admin/permitted user can view the purchase evidence.
+G. No change to existing Diesel purchase quantity/status behavior.
+H. No stock behavior changed.
+I. No DPR/Equipment Usage behavior changed.
+J. No schema change unless explicitly stopped/reported first.
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+13. REPORT BACK
+--------------------------------------------------
+
+Report:
+A. exact Diesel purchase form/component modified.
+B. exact current status/label value used for Diesel purchase (per Section 1
+   note — confirm whether "Purchased" is a real distinct status or is
+   represented via Arranged/Available).
+C. attachment moduleType used.
+D. Bill upload behavior.
+E. QR/payment-evidence behavior.
+F. which PI payment fields/options were reused.
+G. whether any schema change was necessary.
+H. CURRENT STOCK FLOW INVESTIGATION:
+   Diesel Purchased
+   → does stock increase? YES/NO
+   → exact ledger/table/action
+   DPR Equipment Log diesel
+   → does it decrease same stock? YES/NO
+   Equipment & Fleet Usage diesel
+   → does it decrease same stock? YES/NO
+I. If there is a break in the stock chain, identify it only.
+   DO NOT FIX IT.
+J. tests.
+
+Confirm:
+- no procurement redesign
+- no new receipt workflow
+- no stock changes
+- no notification changes
+- no unrelated changes
+
+DO NOT START ANOTHER BATCH.
