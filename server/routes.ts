@@ -25,6 +25,7 @@ import { computeItemEntries, computeItemAbstract } from "@shared/progressReport"
 import { shortItemName as sharedShortItemName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
+import { computeDieselReceiptState } from "@shared/dieselReceiptStatus";
 import { validateFulfilment } from "@shared/requirementFulfilment";
 import { validateOutcomeInput, resolveCarryTargetDate, buildCarryForwardPlan, buildOutcomeRecord, computeExecutionComparison, businessToday } from "@shared/planOutcome";
 import { syncArrangementBarAllocations } from "./arrangementAllocationSync";
@@ -2626,6 +2627,21 @@ export async function registerRoutes(
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
       }
       const input = insertMaterialReceiptSchema.parse(body);
+      // 06M-C: a purchase↔receipt link must point at a real PURCHASED Daily
+      // Diesel Requirement and the receipt must be for the canonical Diesel
+      // material — otherwise arbitrary receipts could inflate a purchase's
+      // Received total and corrupt the audit chain.
+      if (input.linkedDieselRequirementId != null) {
+        const linkedReq = await storage.getDieselRequirement(input.linkedDieselRequirementId);
+        if (!linkedReq || linkedReq.status !== "purchased" || !(linkedReq as any).qtyPurchased) {
+          return res.status(400).json({ message: "Linked diesel requirement not found or not a completed purchase" });
+        }
+        const mat = (await storage.getAllPlantMaterials()).find((m) => m.id === input.materialId);
+        const matName = (mat?.name || "").toUpperCase().trim();
+        if (matName !== "DIESEL" && matName !== "HSD") {
+          return res.status(400).json({ message: "Only Diesel receipts can be linked to a diesel purchase" });
+        }
+      }
       const receipt = await storage.createMaterialReceipt(input);
       
       await storage.createNotification({
@@ -2635,7 +2651,25 @@ export async function registerRoutes(
         isRead: 0,
       });
       sendPushToSection("plant_materials", "Material Receipt", `${receipt.quantity} ${receipt.uom} received on ${receipt.date}`, "/plant").catch(() => {});
-      
+
+      // 06M-C: receipt linked to a Daily Diesel Purchase — recompute derived
+      // Received/Pending and notify PM/site diesel visibility holders.
+      if ((receipt as any).linkedDieselRequirementId) {
+        try {
+          const reqId = (receipt as any).linkedDieselRequirementId as number;
+          const dieselReq = await storage.getDieselRequirement(reqId);
+          if (dieselReq) {
+            const linked = await storage.getDieselRequirementReceipts([reqId]);
+            const state = computeDieselReceiptState((dieselReq as any).qtyPurchased, linked);
+            const title = state.status === "fully_received" ? "DIESEL FULLY RECEIVED" : "DIESEL PARTLY RECEIVED";
+            const body = `Purchased: ${state.purchasedQty} L · Received: ${state.receivedQty} L · Pending: ${state.pendingQty} L`;
+            sendPushToSection("site_diesel", title, body, "/plant/diesel-requirements").catch(() => {});
+          }
+        } catch (e) {
+          console.error("06M-C: failed to notify diesel receipt progress:", e);
+        }
+      }
+
       res.status(201).json(receipt);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid receipt data", errors: err.errors });
@@ -2659,6 +2693,9 @@ export async function registerRoutes(
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
       }
       const input = insertMaterialReceiptSchema.partial().parse(body);
+      // 06M-C: purchase↔receipt linkage is immutable through the normal edit
+      // path — it can only be set at creation via the deep-linked flow.
+      delete (input as any).linkedDieselRequirementId;
       const updated = await storage.updateMaterialReceipt(id, input);
       if (!updated) return res.status(404).json({ message: "Receipt not found" });
       await storage.logAudit({
@@ -7829,6 +7866,50 @@ export async function registerRoutes(
     }
   });
 
+  // 06M-C: linked Material Receipts + derived Purchased/Received/Pending
+  // state for purchased Daily Diesel Requirements. ?ids=1,2,3 (batch) — the
+  // list screen uses this to badge Receipt Pending / Partly / Fully Received.
+  app.get("/api/diesel-requirements/receipt-status", async (req, res) => {
+    try {
+      if (!assertView(req, res, "site_diesel")) return;
+      const ids = String(req.query.ids || "")
+        .split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n > 0);
+      if (ids.length === 0) return res.json({});
+      const receipts = await storage.getDieselRequirementReceipts(ids);
+      const byReq: Record<number, any[]> = {};
+      for (const r of receipts) {
+        const key = (r as any).linkedDieselRequirementId as number;
+        (byReq[key] ||= []).push(r);
+      }
+      const requirements = await Promise.all(ids.map((id) => storage.getDieselRequirement(id)));
+      const result: Record<number, any> = {};
+      for (const dr of requirements) {
+        if (!dr) continue;
+        const linked = byReq[dr.id] || [];
+        const state = computeDieselReceiptState((dr as any).qtyPurchased, linked);
+        result[dr.id] = {
+          ...state,
+          receipts: linked.map((r: any) => ({
+            id: r.id,
+            date: r.date,
+            time: r.time,
+            quantity: r.quantity,
+            uom: r.uom,
+            supplier: r.supplier,
+            challanNumber: r.challanNumber,
+            receiptNo: r.receiptNo,
+            isCancelled: !!r.isCancelled,
+            finalSubmittedBy: r.finalSubmittedBy,
+          })),
+        };
+      }
+      res.json(result);
+    } catch (err) {
+      console.error("Error fetching diesel receipt status:", err);
+      res.status(500).json({ message: "Failed to fetch diesel receipt status" });
+    }
+  });
+
   app.get("/api/diesel-requirements/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -7937,6 +8018,17 @@ export async function registerRoutes(
       const requirement = await storage.updateDieselPurchase(id, purchaseData);
       if (!requirement) {
         return res.status(404).json({ message: "Diesel requirement not found" });
+      }
+      // 06M-C: purchase completion does NOT add stock — notify the users who
+      // hold Material Receipt authority that a physical receipt is pending.
+      if (purchaseData.qtyPurchased !== undefined && purchaseData.qtyPurchased > 0) {
+        const supplier = purchaseData.supplier || (requirement as any).supplier || "";
+        sendPushToSection(
+          "plant_materials",
+          "DIESEL PURCHASED — RECEIPT PENDING",
+          `Purchased: ${purchaseData.qtyPurchased} L${supplier ? ` · Supplier: ${supplier}` : ""}. Physical receipt is pending — record a Material Receipt.`,
+          "/plant/diesel-requirements",
+        ).catch(() => {});
       }
       res.json(requirement);
     } catch (err) {

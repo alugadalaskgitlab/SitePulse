@@ -460,6 +460,9 @@ export const materialReceipts = pgTable("material_receipts", {
   indentRef: text("indent_ref"),
   tankNumber: integer("tank_number"),
   notes: text("notes"),
+  // 06M-C: links a Diesel receipt back to the Daily Diesel Requirement purchase
+  // it fulfils (nullable — only set for receipts recorded against a purchase).
+  linkedDieselRequirementId: integer("linked_diesel_requirement_id"),
   plantName: text("plant_name").notNull().default("Main Plant"),
   createdAt: timestamp("created_at").defaultNow(),
   ...cancellationFields,

@@ -21,6 +21,8 @@ vi.mock("../server/push", () => ({
   sendPushToAll: vi.fn().mockResolvedValue(undefined),
   sendTestPush: vi.fn().mockResolvedValue(undefined),
   sendPushToAudience: vi.fn().mockResolvedValue(undefined),
+  sendPushToSection: vi.fn().mockResolvedValue(undefined),
+  sendPushToRaiser: vi.fn().mockResolvedValue(undefined),
   initPush: vi.fn(),
 }));
 

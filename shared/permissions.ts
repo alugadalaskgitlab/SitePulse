@@ -596,6 +596,7 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
 // Keep this in sync whenever new push calls are added.
 export const PUSH_ACTIVE_SECTIONS = new Set<SectionKey>([
   "site_dprs",
+  "site_diesel", // 06M-C: diesel purchase receipt partial/full progress alerts
   "site_materials",
   "purchase_indents_view",
   "diesel_req_raise",

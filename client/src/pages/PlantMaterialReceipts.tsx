@@ -113,6 +113,9 @@ export default function PlantMaterialReceipts() {
       materialId: params.get("materialId") ?? "",
       qty: params.get("qty") ?? "",
       supplier: params.get("supplier") ?? "",
+      uom: params.get("uom") ?? "",
+      // 06M-C: link a Diesel receipt back to its Daily Diesel Purchase
+      dieselReqId: params.get("dieselReqId") ? parseInt(params.get("dieselReqId")!, 10) : null,
     };
   }, [searchString]);
   const highlightRowRef = useRef<HTMLDivElement | null>(null);
@@ -169,6 +172,9 @@ export default function PlantMaterialReceipts() {
   const [indentOverride, setIndentOverride] = useState(false);
   // tracks the PI item id from a pending Material Indent so we can close the loop after receipt creation
   const [selectedPendingPiItemId, setSelectedPendingPiItemId] = useState<number | null>(null);
+  // 06M-C: when opened from a Daily Diesel Purchase, this links the new
+  // receipt back to that purchase (audit / Purchased-vs-Received tracking).
+  const [linkedDieselRequirementId, setLinkedDieselRequirementId] = useState<number | null>(null);
 
   interface ReceiptFormData {
     date: string;
@@ -268,15 +274,28 @@ export default function PlantMaterialReceipts() {
       if (autoOpenParams.piItemId) setSelectedPendingPiItemId(autoOpenParams.piItemId);
       if (autoOpenParams.qty) setQuantity(autoOpenParams.qty);
       if (autoOpenParams.supplier) setSupplier(autoOpenParams.supplier);
+      // 06M-C: deep links set materialId programmatically, bypassing the
+      // Select's onChange (which normally applies defaultUom) — apply the
+      // material's default UoM here so litres never get saved as Tons.
+      if (autoOpenParams.uom) {
+        setUom(autoOpenParams.uom);
+      } else if (autoOpenParams.materialId) {
+        const mat = materials?.find((m) => m.id === parseInt(autoOpenParams.materialId, 10));
+        if (mat?.defaultUom) setUom(mat.defaultUom);
+      }
+      if (autoOpenParams.dieselReqId) setLinkedDieselRequirementId(autoOpenParams.dieselReqId);
       setDialogOpen(true);
       const url = new URL(window.location.href);
       url.searchParams.delete("autoOpen");
       url.searchParams.delete("piRef");
       url.searchParams.delete("piItemId");
       url.searchParams.delete("materialId");
+      url.searchParams.delete("dieselReqId");
+      url.searchParams.delete("qty");
+      url.searchParams.delete("supplier");
       history.replaceState(null, "", url.toString());
     }
-  }, [autoOpenParams, autoOpenDone, editingReceipt]);
+  }, [autoOpenParams, autoOpenDone, editingReceipt, materials]);
 
   // When the page was opened via a deep-link ?edit= (e.g. from the stock ledger),
   // navigate back to the origin page once the user closes the dialog.
@@ -453,6 +472,7 @@ export default function PlantMaterialReceipts() {
     setIndentOverride(false);
     setSelectedPendingPiItemId(null);
     setIndentLockedFromPi(false);
+    setLinkedDieselRequirementId(null);
   };
 
   const openEditDialog = (receipt: MaterialReceipt) => {
@@ -536,6 +556,8 @@ export default function PlantMaterialReceipts() {
         invoiceDate: invoiceDate || null,
         indentRef: indentRef || null,
         tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
+        // 06M-C: purchase↔receipt audit linkage (never inferred, only deep-linked)
+        linkedDieselRequirementId: linkedDieselRequirementId ?? null,
       };
       createMutation.mutate(data);
     }

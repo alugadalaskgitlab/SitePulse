@@ -1,0 +1,771 @@
+BATCH 06M-C — DAILY DIESEL PURCHASE
+RECEIPT PENDING + LINKED MATERIAL RECEIPT + VARIANCE CONTROL
+
+This is a focused anti-pilferage / stock-control batch.
+
+--------------------------------------------------
+OBJECTIVE
+--------------------------------------------------
+When Diesel is purchased through the Daily Diesel Requirement workflow:
+
+Purchase completion must NOT automatically increase Plant Stock.
+
+Instead, the purchase must remain visibly:
+PURCHASED — RECEIPT PENDING
+until an authorised Stores / Site / Equipment / Plant user records the
+physical Diesel receipt through the EXISTING Material Receipt flow.
+
+SitePulse must then show:
+Purchased Qty
+Received Qty
+Pending Qty
+
+and distinguish:
+- Receipt Pending
+- Partly Received
+- Fully Received
+
+The Material Receipt must be positively linked back to the Diesel Requirement
+purchase so Purchased vs Received can be audited reliably.
+
+Direct Site Purchase remains completely unchanged.
+
+Expected schema change: likely ONE small additive nullable linkage field on
+material_receipts. Investigate first and STOP before migration if a different
+schema is needed.
+
+--------------------------------------------------
+1. CONFIRMED CURRENT ARCHITECTURE
+--------------------------------------------------
+Current verified behavior:
+
+A. Daily Diesel Requirement purchase records:
+   - purchased quantity
+   - supplier
+   - rate / amount
+   - bill
+   - Payment Mode
+   - Paid By
+   - purchased status
+
+B. Purchase completion itself does NOT add Diesel to stock.
+
+C. Existing Material Receipt is the correct Diesel stock-IN path.
+
+D. Material Receipt increases the Plant Material / stockLedger balance.
+
+E. DPR Equipment Log and Equipment & Fleet Usage with:
+   dieselSource = plant_stock
+   consume from that same recorded Diesel stock.
+
+F. 06M-B now prevents Plant Stock from going negative.
+
+G. There is currently NO stable linkage between:
+   diesel_requirements
+   and
+   material_receipts.
+   That linkage is the missing control this batch addresses.
+
+--------------------------------------------------
+2. BUSINESS CONTROL
+--------------------------------------------------
+Keep these facts separate:
+
+REQUIRED
+= what site requested.
+
+PURCHASED
+= what Purchaser says was bought.
+
+RECEIVED
+= what an independent receiver physically confirms.
+
+CONSUMED
+= what equipment later uses.
+
+Do not automatically treat Purchased as Received.
+
+Example:
+Required: 600 L
+Purchased: 600 L
+Received: 570 L
+Pending: 30 L
+
+The 30 L must remain visibly unresolved.
+
+--------------------------------------------------
+3. RECEIPT STATUS
+--------------------------------------------------
+For a purchased Daily Diesel Requirement derive:
+
+A. RECEIPT PENDING
+   receivedQty = 0
+
+B. PARTLY RECEIVED
+   receivedQty > 0
+   and receivedQty < purchasedQty
+
+C. FULLY RECEIVED
+   receivedQty >= purchasedQty
+
+Do not create another manually-maintained status if this can be derived safely
+from linked Material Receipts.
+Prefer derived receipt state.
+
+--------------------------------------------------
+4. MATERIAL RECEIPT LINK
+--------------------------------------------------
+Investigate the current material_receipts schema.
+
+Preferred minimum linkage:
+material_receipts.linked_diesel_requirement_id
+nullable FK/reference to diesel_requirements.id
+
+Use a clear name consistent with current naming conventions.
+
+This allows every Diesel Material Receipt created from a Daily Diesel Purchase
+to be traced back to its purchase.
+
+If current schema already has a generic source/reference field that can do this
+safely and uniquely, reuse it instead.
+Do NOT overload free-text remarks as the linkage.
+
+--------------------------------------------------
+5. SCHEMA STOP GATE
+--------------------------------------------------
+If one additive nullable linkage field is sufficient:
+report it and proceed only if additive/safe under the current migration rules.
+
+If more schema is required:
+STOP and report before implementation.
+
+No destructive migration.
+
+Expected form:
+ALTER TABLE material_receipts
+ADD COLUMN linked_diesel_requirement_id ... NULL
+
+Exact type/FK/index according to existing schema conventions.
+
+--------------------------------------------------
+6. AFTER PURCHASE COMPLETION
+--------------------------------------------------
+When Purchaser successfully records Daily Diesel Purchase:
+
+show:
+PURCHASE RECORDED
+Purchased:
+600 L
+Receipt Status:
+Awaiting Physical Receipt
+[RECORD MATERIAL RECEIPT]
+[NOT NOW]
+
+Do not add stock at this stage.
+Do not require the Purchaser personally to receive it.
+
+--------------------------------------------------
+7. PERSISTENT RECEIPT-PENDING ACTION
+--------------------------------------------------
+If user chooses Not Now:
+the purchase remains visible as:
+PURCHASED — RECEIPT PENDING
+
+Do not make the action disappear.
+
+On the Diesel Requirement detail/card provide:
+[Record Material Receipt]
+until fully received.
+
+This is not a one-time toast.
+It must remain an outstanding operational item.
+
+--------------------------------------------------
+8. WHO CAN RECORD RECEIPT
+--------------------------------------------------
+Use EXISTING permissions.
+Do not invent new roles.
+
+Allow Record Material Receipt for users who already have the relevant
+Material Receipt / Plant Stock entry permission, such as authorised:
+- Stores
+- Site user
+- Equipment / Plant
+- PM/Admin
+according to the Permissions Panel.
+
+Purchaser may also record it only if their existing permissions allow Material
+Receipt.
+Do not grant stock-entry permission merely because someone is Purchaser.
+
+--------------------------------------------------
+9. OPEN EXISTING MATERIAL RECEIPT FORM
+--------------------------------------------------
+Record Material Receipt must open the EXISTING Material Receipt entry form.
+Do not build a Diesel-specific receipt screen.
+
+Prefill:
+- Material = Diesel
+- Supplier = Diesel purchase supplier
+- suggested Qty = outstanding pending quantity
+- UoM = purchase UoM / Diesel master UoM
+- purchase reference / bill number where field exists
+- linkedDieselRequirementId
+- relevant site/plant/party context where determinable
+
+Receiver must confirm actual Received Qty.
+Do not auto-save.
+
+--------------------------------------------------
+10. RECEIVER MUST ENTER ACTUAL PHYSICAL QTY
+--------------------------------------------------
+Suggested Qty may equal Pending Qty.
+But the receiver must be able to enter the actual physical quantity received.
+
+Example:
+Purchased: 600 L
+Suggested Receipt: 600 L
+Actual Received: 570 L
+
+Save:
+570 L receipt
+
+Then show:
+Purchased: 600 L
+Received: 570 L
+Pending: 30 L
+Status: Partly Received
+
+Do not silently force 600 L.
+
+--------------------------------------------------
+11. MULTIPLE / PARTIAL RECEIPTS
+--------------------------------------------------
+Allow more than one linked Material Receipt if the existing receipt system
+supports multiple receipts safely.
+
+Example:
+Purchase: 600 L
+Receipt 1: 400 L
+Receipt 2: 170 L
+Total Received: 570 L
+Pending: 30 L
+
+Each receipt remains its own stock-IN transaction.
+Do not consolidate them into one fake receipt.
+
+--------------------------------------------------
+12. FULL RECEIPT
+--------------------------------------------------
+Once cumulative valid linked receipts >= purchased quantity:
+
+show:
+FULLY RECEIVED
+Purchased: 600 L
+Received: 600 L
+Pending: 0 L
+
+Disable the normal:
+Record Material Receipt
+action.
+
+If over-receipt exists:
+show it explicitly rather than hiding it.
+
+Example:
+Purchased 600 L
+Received 620 L
+Variance +20 L
+
+Do not silently clamp Received to Purchased.
+
+--------------------------------------------------
+13. RECEIPT AGGREGATION RULE
+--------------------------------------------------
+Received Qty must be calculated only from valid linked Material Receipts.
+
+Exclude according to existing receipt rules:
+- cancelled
+- deleted
+- rejected / invalid receipt records
+  if the current Material Receipt lifecycle has such states
+
+Use the same stock-validity rule already used by Plant Stock.
+Do not count free-text/unlinked Diesel receipts.
+
+--------------------------------------------------
+14. CANCEL / EDIT RECEIPT
+--------------------------------------------------
+If a linked Material Receipt is later:
+- cancelled
+- deleted
+- quantity edited
+
+the Diesel purchase Received/Pending figures must recalculate from current
+valid linked receipt records.
+Do not store a stale receivedQty on the Diesel requirement if it can be
+derived.
+
+Example:
+Purchased 600
+Received 600
+Later 100 L receipt cancelled
+New state:
+Received 500
+Pending 100
+Partly Received
+
+IMPORTANT — verified against current code: cancelling a Material Receipt
+(cancelMaterialReceipt) currently only flags the record isCancelled=true; it
+does NOT reverse the stock ledger/balance the way edit and delete already do.
+This is a pre-existing behavior of Material Receipt generally, not something
+to fix in this batch (Section 37 keeps Material Receipt stock calculation out
+of scope). But because of it, after a receipt is cancelled the Diesel
+purchase's recalculated "Pending" figure and the actual Plant Stock balance
+can diverge — the phantom quantity from the cancelled receipt may still be
+sitting in stock even though the purchase now shows it as Pending again.
+Do not let this go unstated. When a linked receipt is cancelled and the
+purchase reverts to Partly/Receipt-Pending, show a visible note such as:
+"A previously linked receipt was cancelled. Plant Stock may not have been
+automatically reversed — verify stock before recording a new receipt."
+Report this explicitly in section 39(G) rather than silently assuming stock
+and the derived Received figure stay in sync on cancel.
+
+--------------------------------------------------
+15. PURCHASE EDIT SAFETY
+--------------------------------------------------
+If Purchased Qty is edited after linked receipts already exist:
+show a warning.
+
+Example:
+Existing:
+Purchased 600
+Received 570
+User changes Purchased Qty to 500.
+
+Do not silently hide the 70 L over-receipt.
+
+After save derive:
+Purchased 500
+Received 570
+Variance +70
+
+Use current purchase edit permissions.
+Do not alter linked stock receipts automatically.
+
+--------------------------------------------------
+16. DIRECT SITE PURCHASE — EXCLUDED
+--------------------------------------------------
+Direct Site Purchase remains exactly as it works today.
+
+Do NOT:
+- create Receipt Pending
+- require Material Receipt
+- link it to Daily Diesel Purchase
+- alter its current IN/OUT behavior
+
+This batch applies only to Diesel purchased through the Daily Diesel
+Requirement purchase process where source is intended for Plant Stock.
+
+--------------------------------------------------
+17. EXISTING PLANT STOCK
+--------------------------------------------------
+Do not earmark Diesel stock by purchase.
+Material Receipt adds Diesel into the common Plant Stock pool.
+Equipment consumes from that common recorded balance.
+
+The purchase-to-receipt link is for:
+- audit
+- completeness
+- anti-pilferage
+- purchased-vs-received variance
+
+not lot-based stock reservation.
+
+--------------------------------------------------
+18. PURCHASE DETAIL UI
+--------------------------------------------------
+For a purchased Diesel requirement show a compact receipt control:
+
+PURCHASE
+Purchased: 600 L
+Supplier: ABC Fuels
+Bill: ✓
+Payment: UPI · Company Account
+Purchased by: ...
+Purchased at: ...
+
+PHYSICAL RECEIPT
+Received: 570 L
+Pending: 30 L
+Status: Partly Received
+[View Receipts]
+[Record Balance Receipt]
+
+Keep mobile layout compact.
+
+--------------------------------------------------
+19. VIEW LINKED RECEIPTS
+--------------------------------------------------
+Provide:
+View Receipts
+
+Show linked Material Receipts with:
+- Receipt date/time
+- Qty/UoM
+- Received By
+- supplier
+- reference/challan if present
+- receipt ID/reference
+- status
+
+Do not add edit/delete controls here if those already belong to Material
+Receipt screens.
+
+--------------------------------------------------
+20. NOTIFICATIONS / ACTION PROMPT
+--------------------------------------------------
+When Daily Diesel Purchase is completed and receipt is still pending:
+use the EXISTING targeted push notification mechanism / permission routing.
+
+Notify relevant authorised users for the operational action:
+- Stores / Material Receipt authority
+- Site / Equipment / Plant users who are permitted to receive/record Diesel
+- PM/Admin according to existing permissions
+
+Do not redesign the notification architecture.
+Do not depend only on the global bell.
+Use the existing section/permission-based recipient resolver already used by
+push notifications.
+
+--------------------------------------------------
+21. PURCHASED NOTIFICATION CONTENT
+--------------------------------------------------
+Example:
+DIESEL PURCHASED — RECEIPT PENDING
+Takkadpally–Sirur
+Purchased: 600 L
+Supplier: ABC Fuels
+Bill recorded
+Physical receipt is pending.
+[Record Material Receipt]
+
+Navigation should open the relevant Diesel Requirement / receipt action if
+existing push links support it.
+
+--------------------------------------------------
+22. PARTIAL RECEIPT NOTIFICATION
+--------------------------------------------------
+If a receipt is recorded but balance remains:
+
+example:
+DIESEL PARTLY RECEIVED
+Purchased: 600 L
+Received: 570 L
+Pending: 30 L
+
+Do not necessarily notify every role repeatedly if current notification
+patterns would create noise.
+At minimum PM/Admin and relevant receiving authority should have visibility.
+Reuse existing routing conventions.
+
+--------------------------------------------------
+23. FULL RECEIPT NOTIFICATION
+--------------------------------------------------
+When the linked cumulative receipt reaches the purchased quantity:
+
+show/update the purchase as:
+FULLY RECEIVED
+
+A completion notification may be sent through the existing relevant section
+routing if consistent with current app behavior.
+Do not build a new notification engine.
+
+--------------------------------------------------
+24. PENDING RECEIPT VISIBILITY
+--------------------------------------------------
+Do not rely only on notifications.
+
+Where practical in the existing Diesel Requirements list/detail:
+visibly flag:
+Receipt Pending
+Partly Received
+
+so a missed push notification does not make the control disappear.
+This is important.
+The outstanding state must remain visible until resolved.
+
+--------------------------------------------------
+25. PM / ADMIN OVERSIGHT
+--------------------------------------------------
+PM/Admin/permitted users should be able to see:
+Purchased
+Received
+Pending
+Variance
+Receipt status
+
+for each purchased Daily Diesel Requirement.
+Do not require PM/Admin to manually reconcile Material Receipt records.
+The linked data should calculate it.
+
+--------------------------------------------------
+26. STOCK BEHAVIOR
+--------------------------------------------------
+Preserve existing behavior:
+
+Purchase:
+NO stock increase.
+
+Linked Material Receipt:
+stock IN using existing Material Receipt path.
+
+DPR Equipment Log plant_stock:
+stock OUT using existing 06M-B sufficiency guard.
+
+Equipment Usage plant_stock:
+stock OUT using existing 06M-B sufficiency guard.
+
+Do not change stock arithmetic.
+
+--------------------------------------------------
+27. SHORTAGE DIALOG INTEGRATION
+--------------------------------------------------
+The existing 06M-B insufficient-stock dialog should remain.
+
+If there is a known Diesel purchase with Receipt Pending for the same site/
+plant context, the dialog may additionally show:
+"Purchased Diesel is awaiting Material Receipt."
+
+But do NOT require complex purchase matching if the current context cannot be
+reliably resolved.
+The core guard remains based on actual stock balance.
+
+--------------------------------------------------
+28. HISTORICAL PURCHASES
+--------------------------------------------------
+Do not fabricate receipt links for old purchased Diesel requirements.
+
+For historical purchases without a linked receipt:
+show receipt linkage/status only from actual linked records created after this
+feature.
+
+Do not infer linkage solely by:
+- date
+- supplier
+- qty
+- bill number
+
+unless an Admin explicitly links them through a future/manual reconciliation
+feature.
+No automatic historical backfill in this batch.
+
+--------------------------------------------------
+29. DUPLICATE RECEIPT SAFETY
+--------------------------------------------------
+If a user opens Record Material Receipt twice:
+do not automatically create duplicate receipt rows.
+Normal Material Receipt save semantics remain.
+
+After first save:
+recalculate Pending Qty.
+
+If fully received:
+normal Record Receipt action disappears.
+
+If partly received:
+next action should suggest only the remaining Pending Qty.
+
+--------------------------------------------------
+30. UOM SAFETY
+--------------------------------------------------
+For Diesel use the canonical Plant Material UoM.
+
+Note: diesel_requirements has no stored UoM column of its own (qtyPurchased is
+a bare number) — only material_receipts.uom is an explicit field. Treat all
+diesel_requirements quantities as Liters, matching the canonical Diesel plant
+material's defaultUom, when comparing against linked receipt quantities.
+
+Do not mix:
+L
+LTR
+Litres
+without existing normalization.
+
+If purchase UoM differs from the canonical Diesel stock UoM and there is no
+safe existing conversion:
+STOP and report.
+Do not invent conversions.
+
+--------------------------------------------------
+31. MATERIAL RESOLUTION
+--------------------------------------------------
+Use the existing canonical Diesel Plant Material.
+Do not create duplicate Diesel material records.
+
+If no canonical Diesel row can be resolved:
+STOP and report.
+
+--------------------------------------------------
+32. ATTACHMENTS
+--------------------------------------------------
+Do not duplicate Bill attachment into Material Receipt automatically unless
+the existing receipt form has a safe reference/link mechanism.
+
+The purchase Bill remains attached to the purchase.
+Material Receipt can have its own receipt/challan evidence according to the
+existing receipt flow.
+
+--------------------------------------------------
+33. AUDIT / TRACEABILITY
+--------------------------------------------------
+The Diesel Requirement detail should provide a traceable chain:
+
+Requirement
+→ Purchase
+→ Material Receipt(s)
+→ Plant Stock
+
+Use stable IDs.
+Do not rely on remarks text for audit linkage.
+
+--------------------------------------------------
+34. NO NEW DIESEL-SPECIFIC STOCK TABLE
+--------------------------------------------------
+Do NOT create:
+- diesel stock table
+- diesel receipt table
+- diesel issue table
+
+Reuse:
+diesel_requirements
+material_receipts
+plantMaterials
+stockBalances
+stockLedger
+
+Only the missing purchase↔receipt linkage should be added if required.
+
+--------------------------------------------------
+35. PERMISSIONS
+--------------------------------------------------
+Respect existing Permissions Panel.
+
+Do not hard-code:
+role === "stores"
+role === "pm"
+
+where the app already has permission-based section access.
+
+Use the same permission checks as:
+Material Receipt
+Diesel Requirement
+Plant/Equipment stock
+
+Do not broaden access.
+
+--------------------------------------------------
+36. SCHEMA SAFETY
+--------------------------------------------------
+Expected schema:
+ONE additive nullable receipt-link field on material_receipts,
+if no reusable generic reference already exists.
+
+If adding FK/index:
+make it additive and non-destructive.
+
+No:
+- DROP
+- SET NOT NULL on historical data
+- table replacement
+- unrelated migration
+
+If the diff is larger than the minimum linkage:
+STOP and report.
+
+--------------------------------------------------
+37. WHAT NOT TO TOUCH
+--------------------------------------------------
+Do NOT modify:
+- Direct Site Purchase
+- Diesel payment fields
+- Diesel Bill upload
+- Vendor Bills
+- 06M-B stock sufficiency rules
+- DPR general workflow
+- Equipment Usage general workflow
+- Material Receipt stock calculation
+- Plant stock arithmetic
+- Site Material Trips
+- Store GRN
+- PI workflow
+- notification architecture
+- Tomorrow Plan
+- Execution Arrangement
+- Vendor Billing calculations
+
+--------------------------------------------------
+38. TESTS
+--------------------------------------------------
+A. Daily Diesel Purchase 600 L → stock remains unchanged.
+B. purchase displays Receipt Pending.
+C. Record Material Receipt opens existing receipt form with Diesel context.
+D. linked receipt 400 L → stock +400.
+E. purchase displays:
+   Purchased 600
+   Received 400
+   Pending 200
+   Partly Received.
+F. second linked receipt 200 L → stock +200.
+G. purchase displays Fully Received.
+H. cancelled linked receipt recalculates Received/Pending correctly, AND the
+   Diesel purchase detail shows the "stock may not have been reversed" note
+   from Section 14 when this happens.
+I. edited receipt quantity recalculates correctly.
+J. purchase qty edit does not modify receipt stock entries.
+K. over-receipt displays variance.
+L. Direct Site Purchase unaffected.
+M. DPR plant_stock issue still uses 06M-B guard.
+N. Equipment Usage plant_stock issue still uses 06M-B guard.
+O. linked receipt is traceable back to Diesel Requirement.
+P. unrelated Diesel Material Receipt is not counted toward purchase.
+Q. old historical purchase is not auto-linked.
+R. relevant authorised users receive existing targeted push notification.
+S. pending state remains visible even if notification is missed.
+T. no duplicate receipt on repeated action.
+U. canonical Diesel material/UoM preserved.
+V. only approved additive schema change.
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+39. REPORT BACK
+--------------------------------------------------
+Report:
+A. current Material Receipt schema/reference options found.
+B. exact linkage field chosen.
+C. migration diff.
+D. purchase → receipt navigation/prefill.
+E. Purchased/Received/Pending calculation.
+F. partial/full receipt behavior.
+G. receipt cancel/edit recalculation — explicitly confirm whether the
+   cancel-does-not-reverse-stock note from Section 14 was implemented, and
+   how it is surfaced to the user.
+H. PM/Admin visibility.
+I. notification routing reused.
+J. stock behavior verification.
+K. Direct Purchase verification.
+L. tests.
+
+Confirm:
+- Purchase still does NOT increase stock.
+- Only Material Receipt increases stock.
+- 06M-B stock guard unchanged.
+- Direct Site Purchase unchanged.
+- no duplicate stock model.
+- no global notification redesign.
+- no unrelated workflow changes.
+- cancelling a linked receipt does not silently misrepresent Plant Stock —
+  the divergence risk from Section 14 is disclosed to the user, not hidden.
+
+DO NOT START ANOTHER BATCH.

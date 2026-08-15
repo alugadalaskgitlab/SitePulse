@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { DIESEL_RECEIPT_STATUS_LABELS, CANCELLED_RECEIPT_STOCK_NOTE, type DieselReceiptStatus } from "@shared/dieselReceiptStatus";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Fuel, X, Check, ArrowRight, Trash2, Pencil, AlertTriangle } from "lucide-react";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
@@ -95,6 +97,123 @@ function StatusSteps({ status }: { status: string }) {
 
 // Batch 06M: compact purchase summary shown on purchased requirements —
 // bill/payment evidence indicators + PI-style payment details + evidence viewer.
+// 06M-C: derived receipt state served by /api/diesel-requirements/receipt-status
+export interface DieselReceiptStatusEntry {
+  purchasedQty: number;
+  receivedQty: number;
+  pendingQty: number;
+  overReceiptQty: number;
+  status: DieselReceiptStatus;
+  validReceiptCount: number;
+  cancelledReceiptCount: number;
+  receipts: {
+    id: number;
+    date: string;
+    time: string | null;
+    quantity: number;
+    uom: string;
+    supplier: string | null;
+    challanNumber: string | null;
+    receiptNo: string | null;
+    isCancelled: boolean;
+    finalSubmittedBy: string | null;
+  }[];
+}
+
+function receiptStatusBadge(state: DieselReceiptStatusEntry | undefined) {
+  if (!state) return null;
+  const cls =
+    state.status === "fully_received"
+      ? "bg-green-50 text-green-700 border-green-300 dark:bg-green-900/20 dark:text-green-400 dark:border-green-700"
+      : state.status === "partly_received"
+        ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-700"
+        : "bg-red-50 text-red-700 border-red-300 dark:bg-red-900/20 dark:text-red-400 dark:border-red-700";
+  return (
+    <Badge variant="outline" className={cls} data-testid="badge-receipt-status">
+      {DIESEL_RECEIPT_STATUS_LABELS[state.status].toUpperCase()}
+    </Badge>
+  );
+}
+
+// 06M-C: PHYSICAL RECEIPT panel on a purchased Daily Diesel Requirement —
+// Purchased / Received / Pending / Variance, linked receipts, and the
+// persistent Record Material Receipt action (until fully received).
+function DieselReceiptPanel({
+  state,
+  canRecordReceipt,
+  onRecordReceipt,
+}: {
+  state: DieselReceiptStatusEntry | undefined;
+  canRecordReceipt: boolean;
+  onRecordReceipt: () => void;
+}) {
+  const [showReceipts, setShowReceipts] = useState(false);
+  if (!state) return null;
+  return (
+    <Card data-testid="card-physical-receipt">
+      <CardHeader>
+        <CardTitle className="text-base">PHYSICAL RECEIPT</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <p className="text-[12px] font-semibold text-muted-foreground uppercase">PURCHASED</p>
+            <p className="font-semibold mt-1" data-testid="text-receipt-purchased">{state.purchasedQty} L</p>
+          </div>
+          <div>
+            <p className="text-[12px] font-semibold text-muted-foreground uppercase">RECEIVED</p>
+            <p className="font-semibold mt-1" data-testid="text-receipt-received">{state.receivedQty} L</p>
+          </div>
+          <div>
+            <p className="text-[12px] font-semibold text-muted-foreground uppercase">PENDING</p>
+            <p className="font-semibold mt-1" data-testid="text-receipt-pending">{state.pendingQty} L</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {receiptStatusBadge(state)}
+          {state.overReceiptQty > 0 && (
+            <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-700" data-testid="badge-over-receipt">
+              VARIANCE +{state.overReceiptQty} L OVER-RECEIVED
+            </Badge>
+          )}
+        </div>
+        {state.cancelledReceiptCount > 0 && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3 text-sm text-amber-800 dark:text-amber-300" data-testid="note-cancelled-receipt">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{CANCELLED_RECEIPT_STOCK_NOTE}</span>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {state.receipts.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setShowReceipts((v) => !v)} data-testid="button-view-receipts">
+              {showReceipts ? "HIDE RECEIPTS" : `VIEW RECEIPTS (${state.receipts.length})`}
+            </Button>
+          )}
+          {canRecordReceipt && state.status !== "fully_received" && (
+            <Button size="sm" onClick={onRecordReceipt} data-testid="button-record-receipt">
+              {state.status === "partly_received" ? "RECORD BALANCE RECEIPT" : "RECORD MATERIAL RECEIPT"}
+            </Button>
+          )}
+        </div>
+        {showReceipts && (
+          <div className="space-y-2" data-testid="list-linked-receipts">
+            {state.receipts.map((r) => (
+              <div key={r.id} className={`rounded-md border p-2 text-sm flex flex-wrap gap-x-4 gap-y-1 ${r.isCancelled ? "opacity-60" : ""}`} data-testid={`row-linked-receipt-${r.id}`}>
+                <span className="font-medium">{r.date}{r.time ? ` ${r.time}` : ""}</span>
+                <span className="font-semibold">{r.quantity} {r.uom}</span>
+                {r.supplier && <span>{r.supplier}</span>}
+                {(r.challanNumber || r.receiptNo) && <span className="text-muted-foreground">{r.challanNumber || r.receiptNo}</span>}
+                {r.finalSubmittedBy && <span className="text-muted-foreground">By {r.finalSubmittedBy}</span>}
+                <span className={r.isCancelled ? "text-red-600 font-medium" : "text-green-600"}>{r.isCancelled ? "CANCELLED" : "VALID"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirementWithItems }) {
   const { data: attachments } = useQuery<Attachment[]>({
     queryKey: ["/api/attachments", "diesel_purchase", requirement.id],
@@ -260,6 +379,49 @@ export default function DieselRequirements() {
     queryKey: ["/api/sites"],
   });
 
+  // 06M-C: canonical Diesel plant material (for Material Receipt prefill) and
+  // derived receipt status for every purchased requirement in view.
+  const [, navigate] = useLocation();
+  const { data: plantMaterialsList } = useQuery<{ id: number; name: string; defaultUom: string | null }[]>({
+    queryKey: ["/api/plant-module/materials"],
+  });
+  const dieselMaterial = useMemo(
+    () => (plantMaterialsList || []).find((m) => {
+      const n = (m.name || "").toUpperCase().trim();
+      return n === "DIESEL" || n === "HSD";
+    }),
+    [plantMaterialsList],
+  );
+  const purchasedIds = useMemo(
+    () => (requirements || []).filter((r) => r.status === "purchased" && r.qtyPurchased).map((r) => r.id),
+    [requirements],
+  );
+  const receiptStatusKey = purchasedIds.join(",");
+  const { data: receiptStatusMap } = useQuery<Record<number, DieselReceiptStatusEntry>>({
+    queryKey: ["/api/diesel-requirements/receipt-status", receiptStatusKey],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/diesel-requirements/receipt-status?ids=${receiptStatusKey}`);
+      return res.json();
+    },
+    enabled: purchasedIds.length > 0,
+  });
+  // Matches the server gate on POST /api/plant-module/material-receipts
+  // (assertCreate "plant_materials") — do not show an action that would 403.
+  const canRecordReceipt = isAdmin || sectionCan("plant_materials", "create");
+  // Post-purchase prompt: PURCHASE RECORDED → [RECORD MATERIAL RECEIPT] [NOT NOW]
+  const [postPurchase, setPostPurchase] = useState<{ id: number; qty: number; supplier: string } | null>(null);
+  const goToMaterialReceipt = (reqId: number, suggestedQty: number, supplier?: string | null) => {
+    const params = new URLSearchParams({ autoOpen: "1", dieselReqId: String(reqId) });
+    if (dieselMaterial) {
+      params.set("materialId", String(dieselMaterial.id));
+      // canonical Diesel UoM — diesel_requirements quantities are Liters
+      params.set("uom", dieselMaterial.defaultUom || "Liters");
+    }
+    if (suggestedQty > 0) params.set("qty", String(suggestedQty));
+    if (supplier) params.set("supplier", supplier);
+    navigate(`/plant/material-receipts?${params.toString()}`);
+  };
+
   const { data: comparisonReport, isLoading: reportLoading } = useQuery<any>({
     queryKey: ["/api/diesel-requirements/comparison?dateFrom=" + reportDateFrom + "&dateTo=" + reportDateTo],
     enabled: reportGenerated && !!reportDateFrom && !!reportDateTo,
@@ -316,12 +478,16 @@ export default function DieselRequirements() {
   const purchaseMutation = useMutation({
     mutationFn: (data: { id: number; purchaseData: any }) =>
       apiRequest("PATCH", `/api/diesel-requirements/${data.id}/purchase-update`, data.purchaseData),
-    onSuccess: () => {
+    onSuccess: (_res, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements/summary"] });
       if (selectedId) queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements", selectedId] });
       toast({ title: "Purchase details updated" });
       setView("list");
+      // 06M-C: purchase does NOT add stock — prompt for the physical receipt.
+      if (vars.purchaseData?.qtyPurchased > 0) {
+        setPostPurchase({ id: vars.id, qty: vars.purchaseData.qtyPurchased, supplier: vars.purchaseData.supplier || "" });
+      }
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -607,6 +773,36 @@ export default function DieselRequirements() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">
+      {/* 06M-C: purchase recorded — physical receipt still pending */}
+      <AlertDialog open={!!postPurchase} onOpenChange={(open) => { if (!open) setPostPurchase(null); }}>
+        <AlertDialogContent data-testid="dialog-purchase-recorded">
+          <AlertDialogHeader>
+            <AlertDialogTitle>PURCHASE RECORDED</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>Purchased: <strong>{postPurchase?.qty} L</strong>{postPurchase?.supplier ? <> · Supplier: <strong>{postPurchase.supplier}</strong></> : null}</p>
+                <p>Receipt Status: <strong>Awaiting Physical Receipt</strong></p>
+                <p className="text-sm">Plant Stock is NOT increased by the purchase. Stock goes up only when the physical Diesel receipt is recorded through Material Receipt.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-receipt-not-now">NOT NOW</AlertDialogCancel>
+            {canRecordReceipt && (
+              <AlertDialogAction
+                data-testid="button-record-receipt-now"
+                onClick={() => {
+                  const p = postPurchase!;
+                  setPostPurchase(null);
+                  goToMaterialReceipt(p.id, p.qty, p.supplier);
+                }}
+              >
+                RECORD MATERIAL RECEIPT
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {showDeleteConfirm && (
         <Card className="border-red-200 dark:border-red-800">
           <CardContent className="p-4 space-y-3">
@@ -808,7 +1004,10 @@ export default function DieselRequirements() {
                                   : "Planned"}
                             </p>
                           </div>
-                          {getStatusBadge(req.status)}
+                          <div className="flex flex-col items-end gap-1">
+                            {getStatusBadge(req.status)}
+                            {req.status === "purchased" && receiptStatusBadge(receiptStatusMap?.[req.id])}
+                          </div>
                         </div>
                       </div>
                     </CardContent>
@@ -1116,6 +1315,30 @@ export default function DieselRequirements() {
               {selectedRequirement.status === "purchased" && (
                 <>
                   <DieselPurchaseSummary requirement={selectedRequirement} />
+                  {/* 06M-C: Purchased ≠ Received — physical receipt tracking */}
+                  {selectedRequirement.qtyPurchased ? (
+                    <DieselReceiptPanel
+                      state={receiptStatusMap?.[selectedRequirement.id] ?? {
+                        purchasedQty: selectedRequirement.qtyPurchased,
+                        receivedQty: 0,
+                        pendingQty: selectedRequirement.qtyPurchased,
+                        overReceiptQty: 0,
+                        status: "receipt_pending",
+                        validReceiptCount: 0,
+                        cancelledReceiptCount: 0,
+                        receipts: [],
+                      }}
+                      canRecordReceipt={canRecordReceipt}
+                      onRecordReceipt={() => {
+                        const st = receiptStatusMap?.[selectedRequirement.id];
+                        goToMaterialReceipt(
+                          selectedRequirement.id,
+                          st ? st.pendingQty : selectedRequirement.qtyPurchased!,
+                          selectedRequirement.supplier,
+                        );
+                      }}
+                    />
+                  ) : null}
                   {/* 06M-A: reopen the SAME purchase-update form on a completed
                       purchase so paymentMode/paidBy can be filled retrospectively.
                       Uses the existing purchase-update endpoint; status stays

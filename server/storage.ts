@@ -1288,6 +1288,8 @@ export interface IStorage {
   // 06M-A: ensures nullable payment_mode/paid_by columns on vendor_bills.
   // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
   ensureVendorBillPaymentColumns(): Promise<void>;
+  ensureMaterialReceiptDieselLinkColumn(): Promise<void>;
+  getDieselRequirementReceipts(requirementIds: number[]): Promise<MaterialReceipt[]>;
   deleteVendorBill(id: number): Promise<boolean>;
   getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<Partial<InsertVendorBillItem>[]>;
   getVendorNames(): Promise<string[]>;
@@ -12434,6 +12436,23 @@ export class DatabaseStorage implements IStorage {
   async ensureVendorBillPaymentColumns(): Promise<void> {
     await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS payment_mode text`));
     await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS paid_by text`));
+  }
+
+  // 06M-C: idempotent additive migration — nullable linkage from a Diesel
+  // Material Receipt back to the Daily Diesel Requirement purchase it fulfils.
+  async ensureMaterialReceiptDieselLinkColumn(): Promise<void> {
+    await db.execute(sql.raw(`ALTER TABLE material_receipts ADD COLUMN IF NOT EXISTS linked_diesel_requirement_id integer`));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS material_receipts_diesel_req_idx ON material_receipts (linked_diesel_requirement_id) WHERE linked_diesel_requirement_id IS NOT NULL`));
+  }
+
+  // 06M-C: all VALID (not cancelled, not deleted) Material Receipts linked to
+  // the given Diesel Requirement purchases, plus cancelled ones flagged so the
+  // UI can disclose the "stock may not have been reversed" divergence.
+  async getDieselRequirementReceipts(requirementIds: number[]): Promise<MaterialReceipt[]> {
+    if (requirementIds.length === 0) return [];
+    return db.select().from(materialReceipts)
+      .where(inArray(materialReceipts.linkedDieselRequirementId, requirementIds))
+      .orderBy(materialReceipts.date, materialReceipts.id);
   }
 
   // 06M-A: retrospective payment details on a bill — touches ONLY

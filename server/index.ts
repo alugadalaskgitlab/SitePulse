@@ -96,6 +96,9 @@ app.use((req, res, next) => {
     storage.ensureVendorBillPaymentColumns()
       .then(() => console.log("Startup: ensureVendorBillPaymentColumns — vendor_bills payment_mode/paid_by verified/added"))
       .catch(e => console.error("Pre-routes: Failed to ensure vendor bill payment columns:", e)),
+    storage.ensureMaterialReceiptDieselLinkColumn()
+      .then(() => console.log("Startup: ensureMaterialReceiptDieselLinkColumn — material_receipts.linked_diesel_requirement_id verified/added"))
+      .catch(e => console.error("Pre-routes: Failed to ensure material receipt diesel link column:", e)),
     storage.ensureProjectScopeSchema()
       .then(() => console.log("Startup: ensureProjectScopeSchema — project_scope_segments table + corridor/scope columns verified/added"))
       .catch(e => console.error("Pre-routes: Failed to ensure project scope schema:", e)),
