@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { format, isToday, isTomorrow, isPast, parseISO } from "date-fns";
 import { ArrowLeft, ClipboardList, Package, Wrench, Users, AlertTriangle, PlusCircle, Pencil, CheckCircle2, Clock } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
+import { getPlannedActivities } from "@shared/plannedWork";
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -134,7 +135,12 @@ function PlanCard({ plan }: { plan: any }) {
         {plan.plannedWork?.activity ? (
           <div className="flex items-start gap-2">
             <ClipboardList className="w-3.5 h-3.5 text-orange-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-gray-800 font-medium leading-snug">{plan.plannedWork.activity}</p>
+            <p className="text-xs text-gray-800 font-medium leading-snug">
+              {plan.plannedWork.activity}
+              {getPlannedActivities(plan.plannedWork).length > 1 && (
+                <span className="text-gray-400 font-normal"> +{getPlannedActivities(plan.plannedWork).length - 1} more</span>
+              )}
+            </p>
           </div>
         ) : plan.immediateRequirements?.length > 0 ? (
           <div className="flex items-start gap-2">

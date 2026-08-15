@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OUTCOME_LABELS, DEFERRAL_REASONS, type ExecutionOutcome, type CarryForwardMode } from "@shared/planOutcome";
 import { findAllocationEntry } from "@shared/requirementFulfilment";
+import { getPlannedActivities } from "@shared/plannedWork";
 import { fmtDateTime } from "@/lib/dateTimeDisplay";
 import {
   FulfilmentBadge, FulfilmentEditor, useRequirementFulfilmentContext,
@@ -396,7 +397,8 @@ function RequirementCard({
   const sc = STATUS_CONFIG[req.status] ?? STATUS_CONFIG.submitted;
   const hasShortage = req.readinessStatus === "confirmed_with_shortage";
   const sections: string[] = [];
-  if (req.plannedWork?.activity) sections.push("planned");
+  const plannedActivities = getPlannedActivities(req.plannedWork);
+  if (plannedActivities.length > 0) sections.push("planned");
   if (req.materials?.length)    sections.push("materials");
   if (req.equipment?.length)    sections.push("equipment");
   if (req.labour?.length)       sections.push("labour");
@@ -509,21 +511,31 @@ function RequirementCard({
       {open && (
         <div className="border-t border-slate-100 dark:border-slate-800 px-4 py-3 space-y-3">
 
-          {/* Planned work */}
-          {req.plannedWork?.activity && (
+          {/* Planned work — 06N: renders every activity of the plan */}
+          {plannedActivities.length > 0 && (
             <div>
               <p className="text-xs font-bold text-orange-500 uppercase tracking-wider mb-1">Planned Work</p>
-              <p className="text-sm text-slate-700 dark:text-slate-200">{req.plannedWork.activity}</p>
-              {req.plannedWork.chainageFrom != null || req.plannedWork.chainageTo != null ? (
-                <p className="text-xs text-slate-400">Ch. {req.plannedWork.chainageFrom ?? "?"} – {req.plannedWork.chainageTo ?? "?"} km</p>
-              ) : req.plannedWork.chainage ? (
-                <p className="text-xs text-slate-400">Chainage: {req.plannedWork.chainage}</p>
-              ) : null}
-              {req.plannedWork.plannedQty && (
-                <p className="text-xs text-slate-400">Qty: {req.plannedWork.plannedQty} {req.plannedWork.plannedUom}</p>
-              )}
-              {req.plannedWork.remarks && <p className="text-xs text-slate-400 italic">{req.plannedWork.remarks}</p>}
-              {/* Instruction 030 Part C: reviewer-side arrangement awareness (informational) */}
+              <div className="space-y-2">
+                {plannedActivities.map((pa: any, ai: number) => (
+                  <div key={ai} data-testid={`planned-activity-view-${ai}`}>
+                    {plannedActivities.length > 1 && (
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Activity {ai + 1}</p>
+                    )}
+                    <p className="text-sm text-slate-700 dark:text-slate-200">{pa.activity}</p>
+                    {pa.chainageFrom != null || pa.chainageTo != null ? (
+                      <p className="text-xs text-slate-400">Ch. {pa.chainageFrom ?? "?"} – {pa.chainageTo ?? "?"} km</p>
+                    ) : pa.chainage ? (
+                      <p className="text-xs text-slate-400">Chainage: {pa.chainage}</p>
+                    ) : null}
+                    {pa.plannedQty && (
+                      <p className="text-xs text-slate-400">Qty: {pa.plannedQty} {pa.plannedUom}</p>
+                    )}
+                    {pa.remarks && <p className="text-xs text-slate-400 italic">{pa.remarks}</p>}
+                  </div>
+                ))}
+              </div>
+              {/* Instruction 030 Part C: reviewer-side arrangement awareness (informational).
+                  06N: stays driven by the plan-level object (mirrors activity #1). */}
               <PlannedWorkArrangementWarning siteId={req.siteId} plannedWork={req.plannedWork} />
             </div>
           )}

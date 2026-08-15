@@ -23,6 +23,7 @@ import { executionArrangementCategoryForItem } from "@shared/planningEngine";
 import { useProjectArrangements } from "@/components/ExecutionStateBadge";
 import { derivePlannedWorkExecutionState, type PlannedWorkBar } from "@/lib/plannedWorkArrangement";
 import { newLineKey } from "@shared/requirementFulfilment";
+import { buildPlannedWork, getPlannedActivities } from "@shared/plannedWork";
 
 type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; dprMeasurementMethod?: string | null };
 
@@ -60,6 +61,37 @@ function emptyImmediate(): ImmediateLine {
   return { lineKey: newLineKey(), description: "", category: "material", urgency: "urgent", reason: "" };
 }
 
+// 06N: repeatable planned-work activity row (form state — strings for inputs).
+type PwActivityLine = {
+  key: string;
+  activity: string;
+  boqItemId: number | null;
+  programmeBarId: number | null;
+  side: string;
+  chainageFrom: string;
+  chainageTo: string;
+  /** Legacy free-text chainage from very old plans — preserved verbatim on
+   *  save unless the user enters numeric From/To values. Never fed into the
+   *  numeric chainage inputs (parseFloat would corrupt "5+200 to 5+800"). */
+  legacyChainage: string;
+  pwLength: string;
+  pwWidth: string;
+  pwThickness: string;
+  plannedQty: string;
+  plannedUom: string;
+  pwRemarks: string;
+};
+function emptyPwActivity(): PwActivityLine {
+  return {
+    key: newLineKey(), activity: "", boqItemId: null, programmeBarId: null, side: "",
+    chainageFrom: "", chainageTo: "", legacyChainage: "", pwLength: "", pwWidth: "", pwThickness: "",
+    plannedQty: "", plannedUom: "", pwRemarks: "",
+  };
+}
+function pwActivityHasContent(a: PwActivityLine): boolean {
+  return Boolean(a.activity || a.boqItemId != null || a.chainageFrom || a.chainageTo || a.legacyChainage || a.plannedQty || a.pwRemarks);
+}
+
 function Section({ title, icon: Icon, color, open, onToggle, children }: {
   title: string; icon: any; color: string; open: boolean; onToggle: () => void; children: React.ReactNode;
 }) {
@@ -80,6 +112,200 @@ function Section({ title, icon: Icon, color, open, onToggle, children }: {
         {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
       </button>
       {open && <div className="px-4 pb-4 pt-1 border-t border-slate-100 dark:border-slate-800">{children}</div>}
+    </div>
+  );
+}
+
+// 06N: one repeatable planned-activity card. Owns exactly the per-activity
+// logic the old single-activity section had — BOQ UoM profile, arrangement
+// execution-state badge, chainage→L auto-fill, L/W/T→qty auto-calc — so
+// each row resolves its BOQ item/programme independently.
+function PlannedActivityCard({ act, index, showHeader, canRemove, onPatch, onRemove, siteBoqItems, siteBoqProjectId, projArrangements, projAllocations, projBars, onAutoQty, onArrangementWarning }: {
+  act: PwActivityLine;
+  index: number;
+  showHeader: boolean;
+  canRemove: boolean;
+  onPatch: (patch: Partial<PwActivityLine>) => void;
+  onRemove: () => void;
+  siteBoqItems: SiteBoqItem[];
+  siteBoqProjectId: number | null;
+  projArrangements: any[];
+  projAllocations: any[];
+  projBars: PlannedWorkBar[];
+  onAutoQty?: (qtyStr: string) => void;
+  onArrangementWarning?: (warn: boolean) => void;
+}) {
+  const selectedBoqItem = useMemo(() => siteBoqItems.find(it => it.id === act.boqItemId) ?? null, [siteBoqItems, act.boqItemId]);
+  const pwBoqProfile = useMemo(() => selectedBoqItem ? resolveBoqUomProfile(selectedBoqItem) : null, [selectedBoqItem]);
+  const itemArrangementEligible = useMemo(() => {
+    if (!selectedBoqItem) return false;
+    try { return executionArrangementCategoryForItem(selectedBoqItem as any) != null; } catch { return false; }
+  }, [selectedBoqItem]);
+  const plannedWorkExecState = useMemo(() => {
+    if (!selectedBoqItem || !itemArrangementEligible) return null;
+    return derivePlannedWorkExecutionState({
+      item: selectedBoqItem as any,
+      chainageFrom: act.chainageFrom !== "" ? parseFloat(act.chainageFrom) : null,
+      chainageTo: act.chainageTo !== "" ? parseFloat(act.chainageTo) : null,
+      plannedQty: act.plannedQty !== "" ? parseFloat(act.plannedQty) : null,
+      arrangements: projArrangements,
+      allocations: projAllocations,
+      bars: projBars,
+    });
+  }, [selectedBoqItem, itemArrangementEligible, act.chainageFrom, act.chainageTo, act.plannedQty, projArrangements, projAllocations, projBars]);
+  const arrangementWarning = plannedWorkExecState?.state === "arrangement_required";
+  useEffect(() => {
+    onArrangementWarning?.(arrangementWarning);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrangementWarning]);
+  const showWidth = !pwBoqProfile || pwBoqProfile.dims.includes("W");
+  const showThickness = !pwBoqProfile || pwBoqProfile.dims.includes("T");
+
+  // Auto-set L (m) from chainage using the same shared parser DPR uses
+  useEffect(() => {
+    const l = calculateLengthFromChainage(act.chainageFrom, act.chainageTo);
+    if (l !== null) onPatch({ pwLength: String(Math.round(l)) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [act.chainageFrom, act.chainageTo]);
+
+  // Auto-calculate planned qty using the same shared calculateDprQuantity DPR uses —
+  // identical code path guarantees identical numbers for the same inputs in both forms.
+  useEffect(() => {
+    const l = parseFloat(act.pwLength);
+    if (isNaN(l) || l <= 0) return;
+    const w = parseFloat(act.pwWidth) || null;
+    const t = parseFloat(act.pwThickness) || null;
+    const qty = calculateDprQuantity(l, w ?? undefined, t ?? undefined, selectedBoqItem);
+    if (qty !== null) {
+      const qtyStr = String(Math.round(qty * 1000) / 1000);
+      onPatch({ plannedQty: qtyStr });
+      onAutoQty?.(qtyStr);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [act.pwLength, act.pwWidth, act.pwThickness, selectedBoqItem]);
+
+  const tid = (base: string) => index === 0 ? base : `${base}-${index}`;
+
+  return (
+    <div className={showHeader ? "bg-slate-50 dark:bg-slate-800 rounded-lg p-3 space-y-3 relative" : "space-y-3 relative"} data-testid={`planned-activity-${index}`}>
+      {showHeader && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Activity {index + 1}</p>
+          {canRemove && (
+            <button type="button" onClick={onRemove} className="text-slate-400 hover:text-red-500" data-testid={`remove-activity-${index}`}>
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+      <div>
+        <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">
+          {siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}
+        </label>
+        {siteBoqItems.length > 0 ? (
+          <BillItemPicker
+            items={siteBoqItems}
+            value={act.boqItemId}
+            stacked
+            labels={false}
+            testidPrefix={index === 0 ? "req-activity" : `req-activity-${index}`}
+            reviewPath={siteBoqProjectId ? `/work-program/${siteBoqProjectId}/item-review` : undefined}
+            onChange={(id, it) => {
+              onPatch({
+                boqItemId: id,
+                activity: it ? it.description : "",
+                ...(it ? { plannedUom: canonicalizeUnit(it.unit ?? "") } : {}),
+                pwWidth: "",
+                pwThickness: "",
+              });
+            }}
+          />
+        ) : (
+          <Input value={act.activity} onChange={e => onPatch({ activity: e.target.value })} placeholder="e.g. Earthwork excavation, WMM layer..." className="text-sm" data-testid={tid("input-activity")} />
+        )}
+        {/* Instruction 030 Part C: inline execution-state badge (informational only) */}
+        {plannedWorkExecState && (
+          <span
+            className={`mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold rounded border px-1.5 py-0.5 ${EXECUTION_STATE_COLORS[plannedWorkExecState.state].bg} ${EXECUTION_STATE_COLORS[plannedWorkExecState.state].border} ${EXECUTION_STATE_COLORS[plannedWorkExecState.state].text}`}
+            data-testid={tid("badge-planned-work-exec-state")}
+          >
+            {arrangementWarning && <AlertTriangle className="w-3 h-3" />}
+            {plannedWorkExecState.badge}
+          </span>
+        )}
+      </div>
+      {/* Legacy free-text chainage (old plans): shown verbatim, kept on save
+          unless numeric From/To values are entered below. */}
+      {act.legacyChainage && (
+        <p className="text-xs text-slate-500 dark:text-slate-400" data-testid={tid("text-legacy-chainage")}>
+          Chainage (as originally entered): <span className="font-medium">{act.legacyChainage}</span>
+        </p>
+      )}
+      {/* Field grid: Side → Ch.From → Ch.To → L(m) → W(m) → T(m) → UOM → Qty — same order as DPR */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+        <div>
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Side</label>
+          <Select value={act.side} onValueChange={v => onPatch({ side: v })}>
+            <SelectTrigger className="text-sm" data-testid={tid("select-side")}>
+              <SelectValue placeholder="Side" />
+            </SelectTrigger>
+            <SelectContent>
+              {SIDE_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">From (Ch.)</label>
+          <Input value={act.chainageFrom} onChange={e => onPatch({ chainageFrom: e.target.value })} placeholder="5.000" type="number" step="0.001" className="text-sm" data-testid={tid("input-chainage-from")} />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">To (Ch.)</label>
+          <Input value={act.chainageTo} onChange={e => onPatch({ chainageTo: e.target.value })} placeholder="5.500" type="number" step="0.001" className="text-sm" data-testid={tid("input-chainage-to")} />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">L (m)</label>
+          <Input value={act.pwLength} onChange={e => onPatch({ pwLength: e.target.value })} type="number" step="0.01" placeholder="0" className="text-sm" data-testid={tid("input-pw-length")} />
+        </div>
+        {showWidth && (
+          <div>
+            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">W (m)</label>
+            <Input value={act.pwWidth} onChange={e => onPatch({ pwWidth: e.target.value })} type="number" step="0.01" min="0" placeholder="0" className="text-sm" data-testid={tid("input-pw-width")} />
+          </div>
+        )}
+        {showThickness && (
+          <div>
+            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">T (m)</label>
+            <Input value={act.pwThickness} onChange={e => onPatch({ pwThickness: e.target.value })} type="number" step="0.001" min="0" placeholder="0" className="text-sm" data-testid={tid("input-pw-thickness")} />
+          </div>
+        )}
+        <div>
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+            UOM
+            {act.boqItemId != null && !!act.plannedUom && (
+              <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700">auto</span>
+            )}
+          </label>
+          <Select value={act.plannedUom} disabled={act.boqItemId != null && !!act.plannedUom} onValueChange={v => onPatch({ plannedUom: v })}>
+            <SelectTrigger className="text-sm" data-testid={tid("select-planned-uom")}>
+              <SelectValue placeholder="UOM" />
+            </SelectTrigger>
+            <SelectContent>
+              {PLANNED_UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+            Qty
+            {!!act.plannedQty && <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700">auto</span>}
+          </label>
+          <Input value={act.plannedQty} onChange={e => onPatch({ plannedQty: e.target.value })} type="number" placeholder="0" className="text-sm" data-testid={tid("input-planned-qty")} />
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Remarks</label>
+        <Textarea value={act.pwRemarks} onChange={e => onPatch({ pwRemarks: e.target.value })} placeholder="Any notes about tomorrow's plan..." className="text-sm resize-none" rows={2} data-testid={tid("input-pw-remarks")} />
+      </div>
     </div>
   );
 }
@@ -146,29 +372,36 @@ export default function SiteRequirementNew() {
   const toggleSection = (s: keyof typeof openSections) =>
     setOpenSections(prev => ({ ...prev, [s]: !prev[s] }));
 
-  // Section A — Planned work
-  const [activity, setActivity] = useState("");
-  const [side, setSide] = useState("");
-  const [pwLength, setPwLength] = useState(""); // L (m) — auto-set from chainage, manually editable
-  const [boqItemId, setBoqItemId] = useState<number | null>(null);
-  const [chainageFrom, setChainageFrom] = useState("");
-  const [chainageTo, setChainageTo] = useState("");
-  const [pwWidth, setPwWidth] = useState("");
-  const [pwThickness, setPwThickness] = useState("");
-  const [plannedQty, setPlannedQty] = useState("");
-  const [plannedUom, setPlannedUom] = useState("");
-  const [pwRemarks, setPwRemarks] = useState("");
+  // Section A — Planned work. 06N: repeatable activity rows; one blank row by
+  // default so the single-activity experience is unchanged.
+  const [pwActivities, setPwActivities] = useState<PwActivityLine[]>([emptyPwActivity()]);
+  const patchPwActivity = (key: string, patch: Partial<PwActivityLine>) =>
+    setPwActivities(prev => prev.map(a => a.key === key ? { ...a, ...patch } : a));
+  const addPwActivity = () => setPwActivities(prev => [...prev, emptyPwActivity()]);
+  const removePwActivity = (key: string) =>
+    setPwActivities(prev => {
+      const next = prev.filter(a => a.key !== key);
+      return next.length > 0 ? next : [emptyPwActivity()];
+    });
+  const firstPlannedQty = pwActivities[0]?.plannedQty ?? "";
 
-  // Derive profile exactly as DPR does: null when no item selected (both dims shown),
-  // resolveBoqUomProfile when item selected (dims determined by explicit method or unit).
-  const selectedBoqItem = useMemo(() => siteBoqItems.find(it => it.id === boqItemId) ?? null, [siteBoqItems, boqItemId]);
-  const pwBoqProfile = useMemo(() => selectedBoqItem ? resolveBoqUomProfile(selectedBoqItem) : null, [selectedBoqItem]);
+  // 06N: cards report their arrangement-required state up so the plan-level
+  // submit banner shows when ANY activity needs an arrangement decision.
+  const [warnKeys, setWarnKeys] = useState<Record<string, boolean>>({});
+  const reportArrangementWarning = (key: string, warn: boolean) =>
+    setWarnKeys(prev => (prev[key] === warn ? prev : { ...prev, [key]: warn }));
+  const arrangementWarning = pwActivities.some(a => warnKeys[a.key]);
 
   // ── Instruction 030 Part C: arrangement awareness (non-blocking) ────────────
+  // Queries stay plan-level (one fetch); eligibility is true when ANY activity
+  // row has an arrangement-eligible BOQ item selected.
   const selectedArrangementEligible = useMemo(() => {
-    if (!selectedBoqItem) return false;
-    try { return executionArrangementCategoryForItem(selectedBoqItem as any) != null; } catch { return false; }
-  }, [selectedBoqItem]);
+    return pwActivities.some(a => {
+      const it = siteBoqItems.find(i => i.id === a.boqItemId);
+      if (!it) return false;
+      try { return executionArrangementCategoryForItem(it as any) != null; } catch { return false; }
+    });
+  }, [pwActivities, siteBoqItems]);
   const { arrangements: projArrangements, allocations: projAllocations } = useProjectArrangements(
     siteBoqProjectId ?? 0,
     selectedArrangementEligible && siteBoqProjectId != null,
@@ -182,42 +415,11 @@ export default function SiteRequirementNew() {
     enabled: selectedArrangementEligible && siteBoqProjectId != null,
     staleTime: 30_000,
   });
-  const plannedWorkExecState = useMemo(() => {
-    if (!selectedBoqItem || !selectedArrangementEligible) return null;
-    return derivePlannedWorkExecutionState({
-      item: selectedBoqItem as any,
-      chainageFrom: chainageFrom !== "" ? parseFloat(chainageFrom) : null,
-      chainageTo: chainageTo !== "" ? parseFloat(chainageTo) : null,
-      plannedQty: plannedQty !== "" ? parseFloat(plannedQty) : null,
-      arrangements: projArrangements,
-      allocations: projAllocations,
-      bars: projBars,
-    });
-  }, [selectedBoqItem, selectedArrangementEligible, chainageFrom, chainageTo, plannedQty, projArrangements, projAllocations, projBars]);
-  const arrangementWarning = plannedWorkExecState?.state === "arrangement_required";
-  const showWidth = !pwBoqProfile || pwBoqProfile.dims.includes("W");
-  const showThickness = !pwBoqProfile || pwBoqProfile.dims.includes("T");
-
-  // Auto-set L (m) from chainage using the same shared parser DPR uses
-  useEffect(() => {
-    const l = calculateLengthFromChainage(chainageFrom, chainageTo);
-    if (l !== null) setPwLength(String(Math.round(l)));
-  }, [chainageFrom, chainageTo]);
-
-  // Auto-calculate planned qty using the same shared calculateDprQuantity DPR uses —
-  // identical code path guarantees identical numbers for the same inputs in both forms.
-  useEffect(() => {
-    const l = parseFloat(pwLength);
-    if (isNaN(l) || l <= 0) return;
-    const w = parseFloat(pwWidth) || null;
-    const t = parseFloat(pwThickness) || null;
-    const qty = calculateDprQuantity(l, w ?? undefined, t ?? undefined, selectedBoqItem);
-    if (qty !== null) {
-      const qtyStr = String(Math.round(qty * 1000) / 1000);
-      setPlannedQty(qtyStr);
-      setMaterials(prev => prev.map(m => m.qty === "" ? { ...m, qty: qtyStr } : m));
-    }
-  }, [pwLength, pwWidth, pwThickness, selectedBoqItem]);
+  // 06N: qty auto-calc from activity #1 still seeds empty material qtys —
+  // unchanged behavior; additional activities never touch materials.
+  const handleFirstActivityAutoQty = (qtyStr: string) => {
+    setMaterials(prev => prev.map(m => m.qty === "" ? { ...m, qty: qtyStr } : m));
+  };
 
   // Prefill from existing requirement when editing
   const prefillDone = useRef(false);
@@ -226,20 +428,28 @@ export default function SiteRequirementNew() {
     prefillDone.current = true;
     setDate(existingReq.date ?? TOMORROW);
     setSiteId(existingReq.siteId ? String(existingReq.siteId) : "");
-    if (existingReq.plannedWork) {
-      setActivity(existingReq.plannedWork.activity ?? "");
-      setBoqItemId(existingReq.plannedWork.boqItemId ?? null);
-      if (existingReq.plannedWork.programmeBarId != null) knownBarIdRef.current = existingReq.plannedWork.programmeBarId;
-      // Backward-compat: old records have a single `chainage` text field; new ones have chainageFrom/chainageTo numbers
-      setChainageFrom(existingReq.plannedWork.chainageFrom != null ? String(existingReq.plannedWork.chainageFrom) : (existingReq.plannedWork.chainage ?? ""));
-      setChainageTo(existingReq.plannedWork.chainageTo != null ? String(existingReq.plannedWork.chainageTo) : "");
-      setPlannedQty(existingReq.plannedWork.plannedQty ?? "");
-      setPlannedUom(existingReq.plannedWork.plannedUom ?? "");
-      setPwRemarks(existingReq.plannedWork.remarks ?? "");
-      setPwWidth(existingReq.plannedWork.pwWidth != null ? String(existingReq.plannedWork.pwWidth) : "");
-      setPwThickness(existingReq.plannedWork.pwThickness != null ? String(existingReq.plannedWork.pwThickness) : "");
-      setPwLength(existingReq.plannedWork.pwLength != null ? String(existingReq.plannedWork.pwLength) : "");
-      setSide(existingReq.plannedWork.side ?? "");
+    const acts = getPlannedActivities(existingReq.plannedWork);
+    if (acts.length > 0) {
+      if (acts[0].programmeBarId != null) knownBarIdRef.current = acts[0].programmeBarId;
+      setPwActivities(acts.map(a => ({
+        key: newLineKey(),
+        activity: a.activity ?? "",
+        boqItemId: a.boqItemId ?? null,
+        programmeBarId: a.programmeBarId ?? null,
+        // Backward-compat: old records have a single `chainage` text field; new
+        // ones have chainageFrom/chainageTo numbers. Legacy text is preserved
+        // separately — never pushed into the numeric inputs.
+        chainageFrom: a.chainageFrom != null ? String(a.chainageFrom) : "",
+        chainageTo: a.chainageTo != null ? String(a.chainageTo) : "",
+        legacyChainage: a.chainageFrom == null && a.chainageTo == null ? (a.chainage ?? "") : "",
+        plannedQty: a.plannedQty != null ? String(a.plannedQty) : "",
+        plannedUom: a.plannedUom ?? "",
+        pwRemarks: a.remarks ?? "",
+        pwWidth: a.pwWidth != null ? String(a.pwWidth) : "",
+        pwThickness: a.pwThickness != null ? String(a.pwThickness) : "",
+        pwLength: a.pwLength != null ? String(a.pwLength) : "",
+        side: a.side ?? "",
+      })));
     }
     if (existingReq.materials?.length) setMaterials(existingReq.materials);
     if (existingReq.equipment?.length) setEquipment(existingReq.equipment);
@@ -249,7 +459,7 @@ export default function SiteRequirementNew() {
 
   // Section B — Materials
   const [materials, setMaterials] = useState<MaterialLine[]>([]);
-  const addMaterial = () => setMaterials(p => [...p, { ...emptyMaterial(), qty: plannedQty || "" }]);
+  const addMaterial = () => setMaterials(p => [...p, { ...emptyMaterial(), qty: firstPlannedQty || "" }]);
   const updateMaterial = (i: number, field: keyof MaterialLine, val: string) =>
     setMaterials(p => p.map((m, idx) => idx === i ? { ...m, [field]: val } : m));
   const removeMaterial = (i: number) => setMaterials(p => p.filter((_, idx) => idx !== i));
@@ -278,19 +488,27 @@ export default function SiteRequirementNew() {
   const saveMutation = useMutation({
     mutationFn: () => {
       const body: any = {};
-      const chFrom = chainageFrom !== "" ? parseFloat(chainageFrom) : null;
-      const chTo = chainageTo !== "" ? parseFloat(chainageTo) : null;
-      if (activity || boqItemId != null || chFrom != null || chTo != null || plannedQty || pwRemarks) {
-        body.plannedWork = {
-          activity, boqItemId, chainageFrom: chFrom, chainageTo: chTo,
-          programmeBarId: knownBarIdRef.current,
-          side: side || undefined,
-          pwLength: pwLength ? parseFloat(pwLength) : null,
-          pwWidth: pwWidth !== "" ? parseFloat(pwWidth) : null,
-          pwThickness: pwThickness !== "" ? parseFloat(pwThickness) : null,
-          plannedQty, plannedUom, remarks: pwRemarks,
-        };
-      }
+      // 06N: build one persisted object per meaningful activity row. Activity
+      // #1 keeps the 06F programmeBarId rule (?barId= or pre-existing value);
+      // additional rows keep only a bar id they were loaded with.
+      const activityObjects = pwActivities.filter(pwActivityHasContent).map((a, i) => ({
+        activity: a.activity,
+        boqItemId: a.boqItemId,
+        chainageFrom: a.chainageFrom !== "" ? parseFloat(a.chainageFrom) : null,
+        chainageTo: a.chainageTo !== "" ? parseFloat(a.chainageTo) : null,
+        // Legacy free-text chainage survives an edit round-trip verbatim
+        // unless the user filled the numeric From/To fields.
+        ...(a.legacyChainage && a.chainageFrom === "" && a.chainageTo === ""
+          ? { chainage: a.legacyChainage } : {}),
+        programmeBarId: i === 0 ? knownBarIdRef.current : (a.programmeBarId ?? null),
+        side: a.side || undefined,
+        pwLength: a.pwLength ? parseFloat(a.pwLength) : null,
+        pwWidth: a.pwWidth !== "" ? parseFloat(a.pwWidth) : null,
+        pwThickness: a.pwThickness !== "" ? parseFloat(a.pwThickness) : null,
+        plannedQty: a.plannedQty, plannedUom: a.plannedUom, remarks: a.pwRemarks,
+      }));
+      const builtPlannedWork = buildPlannedWork(activityObjects as any);
+      if (builtPlannedWork) body.plannedWork = builtPlannedWork;
       const filteredMaterials = materials.filter(m => m.materialName);
       const filteredEquipment = equipment.filter(e => e.equipmentType);
       const filteredLabour = labour.filter(l => l.labourType);
@@ -330,7 +548,7 @@ export default function SiteRequirementNew() {
 
   const hasAnyContent = isImmediateMode
     ? immediate.some(i => i.description)
-    : (activity || boqItemId != null || chainageFrom || chainageTo || plannedQty ||
+    : (pwActivities.some(pwActivityHasContent) ||
        materials.some(m => m.materialName) ||
        equipment.some(e => e.equipmentType) ||
        labour.some(l => l.labourType) ||
@@ -399,105 +617,27 @@ export default function SiteRequirementNew() {
         {/* Section A — Planned Work (hidden in immediate mode) */}
         {!isImmediateMode && <Section title="A. Tomorrow's Planned Work" icon={ClipboardList} color="bg-orange-500" open={openSections.plannedWork} onToggle={() => toggleSection("plannedWork")}>
           <div className="space-y-3 mt-2">
-            <div>
-              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">
-                {siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}
-              </label>
-              {siteBoqItems.length > 0 ? (
-                <BillItemPicker
-                  items={siteBoqItems}
-                  value={boqItemId}
-                  stacked
-                  labels={false}
-                  testidPrefix="req-activity"
-                  reviewPath={siteBoqProjectId ? `/work-program/${siteBoqProjectId}/item-review` : undefined}
-                  onChange={(id, it) => {
-                    setBoqItemId(id);
-                    setActivity(it ? it.description : "");
-                    if (it) setPlannedUom(canonicalizeUnit(it.unit ?? ""));
-                    setPwWidth("");
-                    setPwThickness("");
-                  }}
-                />
-              ) : (
-                <Input value={activity} onChange={e => setActivity(e.target.value)} placeholder="e.g. Earthwork excavation, WMM layer..." className="text-sm" data-testid="input-activity" />
-              )}
-              {/* Instruction 030 Part C: inline execution-state badge (informational only) */}
-              {plannedWorkExecState && (
-                <span
-                  className={`mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold rounded border px-1.5 py-0.5 ${EXECUTION_STATE_COLORS[plannedWorkExecState.state].bg} ${EXECUTION_STATE_COLORS[plannedWorkExecState.state].border} ${EXECUTION_STATE_COLORS[plannedWorkExecState.state].text}`}
-                  data-testid="badge-planned-work-exec-state"
-                >
-                  {arrangementWarning && <AlertTriangle className="w-3 h-3" />}
-                  {plannedWorkExecState.badge}
-                </span>
-              )}
-            </div>
-            {/* Field grid: Side → Ch.From → Ch.To → L(m) → W(m) → T(m) → UOM → Qty — same order as DPR */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
-              <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Side</label>
-                <Select value={side} onValueChange={setSide}>
-                  <SelectTrigger className="text-sm" data-testid="select-side">
-                    <SelectValue placeholder="Side" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SIDE_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">From (Ch.)</label>
-                <Input value={chainageFrom} onChange={e => setChainageFrom(e.target.value)} placeholder="5.000" type="number" step="0.001" className="text-sm" data-testid="input-chainage-from" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">To (Ch.)</label>
-                <Input value={chainageTo} onChange={e => setChainageTo(e.target.value)} placeholder="5.500" type="number" step="0.001" className="text-sm" data-testid="input-chainage-to" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">L (m)</label>
-                <Input value={pwLength} onChange={e => setPwLength(e.target.value)} type="number" step="0.01" placeholder="0" className="text-sm" data-testid="input-pw-length" />
-              </div>
-              {showWidth && (
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">W (m)</label>
-                  <Input value={pwWidth} onChange={e => setPwWidth(e.target.value)} type="number" step="0.01" min="0" placeholder="0" className="text-sm" data-testid="input-pw-width" />
-                </div>
-              )}
-              {showThickness && (
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">T (m)</label>
-                  <Input value={pwThickness} onChange={e => setPwThickness(e.target.value)} type="number" step="0.001" min="0" placeholder="0" className="text-sm" data-testid="input-pw-thickness" />
-                </div>
-              )}
-              <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
-                  UOM
-                  {boqItemId != null && !!plannedUom && (
-                    <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700">auto</span>
-                  )}
-                </label>
-                <Select value={plannedUom} disabled={boqItemId != null && !!plannedUom} onValueChange={setPlannedUom}>
-                  <SelectTrigger className="text-sm" data-testid="select-planned-uom">
-                    <SelectValue placeholder="UOM" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PLANNED_UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
-                  Qty
-                  {!!plannedQty && <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700">auto</span>}
-                </label>
-                <Input value={plannedQty} onChange={e => setPlannedQty(e.target.value)} type="number" placeholder="0" className="text-sm" data-testid="input-planned-qty" />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Remarks</label>
-              <Textarea value={pwRemarks} onChange={e => setPwRemarks(e.target.value)} placeholder="Any notes about tomorrow's plan..." className="text-sm resize-none" rows={2} data-testid="input-pw-remarks" />
-            </div>
+            {pwActivities.map((act, i) => (
+              <PlannedActivityCard
+                key={act.key}
+                act={act}
+                index={i}
+                showHeader={pwActivities.length > 1}
+                canRemove={pwActivities.length > 1 || pwActivityHasContent(act)}
+                onPatch={(patch) => patchPwActivity(act.key, patch)}
+                onRemove={() => removePwActivity(act.key)}
+                siteBoqItems={siteBoqItems}
+                siteBoqProjectId={siteBoqProjectId}
+                projArrangements={projArrangements}
+                projAllocations={projAllocations}
+                projBars={projBars}
+                onAutoQty={i === 0 ? handleFirstActivityAutoQty : undefined}
+                onArrangementWarning={(warn) => reportArrangementWarning(act.key, warn)}
+              />
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={addPwActivity} className="w-full border-dashed" data-testid="button-add-activity">
+              <Plus className="w-3.5 h-3.5 mr-1" /> Add Activity
+            </Button>
           </div>
         </Section>}
 

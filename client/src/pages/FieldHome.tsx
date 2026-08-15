@@ -23,6 +23,7 @@ import { roadDprHref, roadDprDraftHref } from "@/lib/dprEntryMode";
 import { findOlderPendingDprs } from "@/lib/dprLifecycle";
 import { deriveDprChecklist } from "@shared/dprFieldChecklist";
 import { findAllocationEntry, fulfilmentLabel } from "@shared/requirementFulfilment";
+import { getPlannedActivities } from "@shared/plannedWork";
 import type { PlanVsActualRow, BoqProjectWithCounts } from "@shared/schema";
 
 // ─── Short name extraction ────────────────────────────────────────────────────
@@ -364,16 +365,24 @@ function ReadinessSection() {
                 </p>
               )}
 
-              {/* Planned work */}
-              {req.plannedWork?.activity && (
-                <div className="bg-orange-50 rounded-lg px-3 py-2.5">
+              {/* Planned work — 06N: shows every activity of the plan */}
+              {getPlannedActivities(req.plannedWork).length > 0 && (
+                <div className="bg-orange-50 rounded-lg px-3 py-2.5 space-y-1.5">
                   <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Planned Today</p>
-                  <p className="text-sm font-semibold text-gray-800">{req.plannedWork.activity}</p>
-                  {req.plannedWork.chainage && <p className="text-xs text-gray-500">Chainage: {req.plannedWork.chainage}</p>}
-                  {req.plannedWork.plannedQty && (
-                    <p className="text-xs text-gray-500">Qty: {req.plannedWork.plannedQty} {req.plannedWork.plannedUom}</p>
-                  )}
-                  {req.plannedWork.remarks && <p className="text-xs text-gray-400 italic">{req.plannedWork.remarks}</p>}
+                  {getPlannedActivities(req.plannedWork).map((pa: any, ai: number) => (
+                    <div key={ai}>
+                      <p className="text-sm font-semibold text-gray-800">{pa.activity}</p>
+                      {pa.chainageFrom != null || pa.chainageTo != null ? (
+                        <p className="text-xs text-gray-500">Ch. {pa.chainageFrom ?? "?"} – {pa.chainageTo ?? "?"} km</p>
+                      ) : pa.chainage ? (
+                        <p className="text-xs text-gray-500">Chainage: {pa.chainage}</p>
+                      ) : null}
+                      {pa.plannedQty && (
+                        <p className="text-xs text-gray-500">Qty: {pa.plannedQty} {pa.plannedUom}</p>
+                      )}
+                      {pa.remarks && <p className="text-xs text-gray-400 italic">{pa.remarks}</p>}
+                    </div>
+                  ))}
                 </div>
               )}
 

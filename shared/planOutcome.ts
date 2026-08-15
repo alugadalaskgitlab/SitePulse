@@ -19,6 +19,7 @@
  */
 import { newLineKey, type AllocationEntryLike, findAllocationEntry } from "./requirementFulfilment";
 import { entryBoqCredit, type ReportEntry, type ReportBoqItem } from "./progressReport";
+import { applyCarryToPlannedWork } from "./plannedWork";
 
 /**
  * 06J-HF: the site operational day, NOT the UTC calendar date. The client
@@ -244,11 +245,12 @@ export function buildCarryForwardPlan(oldReq: any, opts: {
   const relabel = (lines: any[] | null | undefined) =>
     Array.isArray(lines) ? lines.map((l) => ({ ...l, lineKey: newLineKey() })) : null;
 
-  const plannedWork = oldReq.plannedWork ? { ...oldReq.plannedWork } : null;
-  if (plannedWork && opts.carryQty != null) {
-    plannedWork.plannedQty = opts.carryQty;
-    plannedWork.carryForwardNote = `Balance carried forward from plan #${oldReq.id} (${oldReq.date})`;
-  }
+  // 06N: activity-#1 mirror sync lives in the plannedWork seam, not here.
+  const plannedWork = oldReq.plannedWork
+    ? (opts.carryQty != null
+        ? applyCarryToPlannedWork(oldReq.plannedWork, opts.carryQty, `Balance carried forward from plan #${oldReq.id} (${oldReq.date})`)
+        : { ...oldReq.plannedWork })
+    : null;
 
   // Reference-only snapshot of the old plan's fulfilment decisions (§7):
   const oldEntries: AllocationEntryLike[] = oldReq.allocationStatus?.materialItems ?? [];

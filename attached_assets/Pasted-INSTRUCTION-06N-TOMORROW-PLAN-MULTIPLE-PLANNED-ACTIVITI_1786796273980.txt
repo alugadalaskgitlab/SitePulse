@@ -1,0 +1,270 @@
+INSTRUCTION 06N — TOMORROW PLAN: MULTIPLE PLANNED ACTIVITIES
+
+This is a narrow UI/data-entry fix.
+
+OBJECTIVE
+
+In Tomorrow's Plan / Site Requirement entry, allow the Engineer to add
+MULTIPLE planned work activities for the same target date.
+
+Current problem:
+
+The Planned Work / Activity section allows only one activity, while
+Materials, Equipment and Labour already support multiple repeatable rows.
+
+Tomorrow's road programme frequently contains more than one BOQ activity or
+more than one reach, so Planned Work must also be repeatable.
+
+Expected schema change: NONE.
+
+--------------------------------------------------
+1. INVESTIGATE CURRENT plannedWork SHAPE FIRST
+--------------------------------------------------
+
+Inspect the Tomorrow Plan entry component and site_requirements.plannedWork.
+
+Confirm whether plannedWork is already stored as an array.
+
+Batch 06J already relies on plannedWork arrays and stable lineKey-style
+handling where applicable, so do NOT redesign the persistence model if the
+array structure already supports multiple entries.
+
+Report any existing assumptions that only plannedWork[0] exists.
+
+--------------------------------------------------
+2. ADD ACTIVITY BUTTON
+--------------------------------------------------
+
+At the bottom of the Planned Work / Activity section add:
+
++ Add Activity
+
+Use the same visual pattern as:
+
++ Add Material
++ Add Equipment
+
+Each click adds another independent planned activity card/row.
+
+--------------------------------------------------
+3. EACH ACTIVITY MUST KEEP ITS OWN CONTEXT
+--------------------------------------------------
+
+Each planned activity should independently retain the existing fields such as:
+
+- BOQ Item / Activity
+- Programme / Reach
+- Chainage / side where applicable
+- Planned Qty
+- UoM
+- any existing work description/context fields
+
+Do not make one activity's selection overwrite another.
+
+--------------------------------------------------
+4. DEFAULT FIRST ACTIVITY
+--------------------------------------------------
+
+Keep one blank activity row available by default, matching the current
+single-activity experience.
+
+The Engineer should not need to press Add Activity merely to enter the first
+item.
+
+--------------------------------------------------
+5. REMOVE ACTIVITY
+--------------------------------------------------
+
+For additional activity rows provide the same delete/trash behavior already
+used for Material/Equipment rows.
+
+Do not allow accidental removal without preserving at least one blank row if
+that is how the current form behaves.
+
+--------------------------------------------------
+6. BOQ / PROGRAMME SELECTION
+--------------------------------------------------
+
+Each row must independently resolve its BOQ item/programme/reach.
+
+Example:
+
+Activity 1
+Embankment – Borrow Earth
+Ch. 2+500–3+800
+
+Activity 2
+WMM
+Ch. 5+000–5+400
+
+Activity 3
+BC
+Ch. 8+200–8+650
+
+All three must save in the same Tomorrow Plan.
+
+Do not restrict the plan to one BOQ item.
+
+--------------------------------------------------
+7. REQUIREMENTS REMAIN PLAN-LEVEL
+--------------------------------------------------
+
+Do NOT redesign Material/Equipment/Labour requirement sections in this batch.
+
+They remain as they currently work.
+
+This batch is only to allow multiple Planned Work activities.
+
+If existing requirement rows already carry programmeBarId/BOQ linkage, leave
+that behavior unchanged.
+
+--------------------------------------------------
+8. SAVE / REOPEN
+--------------------------------------------------
+
+After saving/submitting:
+
+all planned activities must persist.
+
+When reopening/viewing the plan:
+
+all activities must display in the same order they were entered.
+
+When editing/revising where permitted:
+
+all activities must reopen correctly.
+
+--------------------------------------------------
+9. CARRY FORWARD COMPATIBILITY
+--------------------------------------------------
+
+Do not alter Batch 06J carry-forward logic.
+
+Verify only that a plan with multiple plannedWork entries:
+
+- can be deferred;
+- can be carried forward;
+- preserves all selected activities;
+- partial-execution logic continues matching each BOQ/programme item
+  independently where currently supported.
+
+If 06J contains any accidental plannedWork[0]-only assumption, fix that
+narrowly and report it.
+
+Do not redesign 06J.
+
+--------------------------------------------------
+10. DPR INDEPENDENCE
+--------------------------------------------------
+
+Do not change Guided DPR.
+
+Tomorrow Plan may contain multiple activities.
+
+The Engineer may later execute:
+- all,
+- some,
+- or none
+
+and DPR continues to record actual work independently.
+
+Do not force DPR activity count to match Tomorrow Plan activity count.
+
+--------------------------------------------------
+11. MOBILE UI
+--------------------------------------------------
+
+Keep the mobile layout simple.
+
+Use numbered/repeatable cards such as:
+
+Activity 1
+[fields]
+[trash]
+
+Activity 2
+[fields]
+[trash]
+
++ Add Activity
+
+Avoid making the form horizontally wider.
+
+--------------------------------------------------
+12. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- Material requirements
+- Equipment requirements
+- Labour requirements
+- Immediate requirements
+- Execution Arrangement
+- allocation/fulfilment logic
+- DPR
+- Material Trip
+- Diesel Purchase
+- Plan Outcome / Carry Forward except a proven plannedWork[0] regression
+- BOQ quantity/conversion logic
+- notification system
+- schema
+
+--------------------------------------------------
+13. TESTS
+--------------------------------------------------
+
+A. New plan opens with one activity row.
+
+B. Add Activity adds a second independent row.
+
+C. Three different BOQ activities can be entered.
+
+D. Different programme/reach can be selected for each activity.
+
+E. Editing one activity does not alter another.
+
+F. Additional activity can be removed.
+
+G. Submit saves all plannedWork entries.
+
+H. Reopen/view displays all activities.
+
+I. Revision/edit preserves all activities.
+
+J. Existing single-activity plan remains compatible.
+
+K. 06J carry-forward preserves multiple activities.
+
+L. Material/Equipment/Labour behavior unchanged.
+
+M. No schema change.
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+14. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. current plannedWork persistence shape.
+
+B. whether any plannedWork[0]-only assumptions were found.
+
+C. Add Activity implementation.
+
+D. save/reopen behavior with 3 activities.
+
+E. carry-forward verification.
+
+F. tests.
+
+Confirm:
+- no schema change
+- no DPR change
+- no requirement-allocation change
+- no BOQ formula change
+- no unrelated change
+
+DO NOT START ANOTHER BATCH.
