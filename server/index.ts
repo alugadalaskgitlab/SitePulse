@@ -94,7 +94,7 @@ app.use((req, res, next) => {
     // (shared/schema.ts + drizzle push) — startup DDL removed so the publish
     // migration diff can never see a runtime-created table it wants to drop.
     storage.ensureVendorBillPaymentColumns()
-      .then(() => console.log("Startup: ensureVendorBillPaymentColumns — vendor_bills payment_mode/paid_by verified/added"))
+      .then(() => console.log("Startup: ensureVendorBillPaymentColumns — vendor_bills payment columns + diesel payment_status columns verified/added"))
       .catch(e => console.error("Pre-routes: Failed to ensure vendor bill payment columns:", e)),
     storage.ensureMaterialReceiptDieselLinkColumn()
       .then(() => console.log("Startup: ensureMaterialReceiptDieselLinkColumn — material_receipts.linked_diesel_requirement_id verified/added"))

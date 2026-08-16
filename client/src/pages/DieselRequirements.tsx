@@ -214,6 +214,93 @@ function DieselReceiptPanel({
   );
 }
 
+// 06M-F §5: explicit, deliberate Mark-as-Paid dialog — its own action so
+// filling in Payment Mode while recording the purchase can never flip the
+// status. Reuses the same mode/payer options as Edit Purchase Details.
+function MarkAsPaidDialog({ requirement, open, onClose }: { requirement: DieselRequirementWithItems; open: boolean; onClose: () => void }) {
+  const { toast } = useToast();
+  const [mode, setMode] = useState<string>((requirement as any).paymentMode || "");
+  const existingPaidBy = (requirement as any).paidBy as string | null;
+  const [payer, setPayer] = useState<"company" | "personal">(existingPaidBy && existingPaidBy !== "company" ? "personal" : "company");
+  const [payerName, setPayerName] = useState<string>(existingPaidBy && existingPaidBy !== "company" ? existingPaidBy : "");
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const paidBy = payer === "company" ? "company" : payerName.trim();
+      const res = await apiRequest("PATCH", `/api/diesel-requirements/${requirement.id}/payment-status`, {
+        paymentStatus: "paid",
+        paymentMode: mode,
+        paidBy,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements"] });
+      toast({ title: "MARKED AS PAID" });
+      onClose();
+    },
+    onError: (err: any) => toast({ title: "COULD NOT MARK AS PAID", description: err?.message, variant: "destructive" }),
+  });
+
+  const valid = !!mode && (payer === "company" || payerName.trim().length > 0);
+
+  return (
+    <AlertDialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <AlertDialogContent data-testid="dialog-mark-paid">
+        <AlertDialogHeader>
+          <AlertDialogTitle>MARK PAYMENT AS PAID</AlertDialogTitle>
+          <AlertDialogDescription>
+            Confirm this diesel purchase bill has actually been settled. Payment Mode and Paid By are required.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-sm">PAYMENT MODE</Label>
+            <Select value={mode} onValueChange={setMode}>
+              <SelectTrigger data-testid="select-markpaid-mode">
+                <SelectValue placeholder="SELECT MODE" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cash">CASH</SelectItem>
+                <SelectItem value="credit">CREDIT</SelectItem>
+                <SelectItem value="advance">ADVANCE</SelectItem>
+                <SelectItem value="upi">UPI</SelectItem>
+                <SelectItem value="cheque">CHEQUE</SelectItem>
+                <SelectItem value="rtgs">RTGS / NEFT</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-sm">PAID BY</Label>
+            <Select value={payer} onValueChange={(v) => setPayer(v as "company" | "personal")}>
+              <SelectTrigger data-testid="select-markpaid-paidby">
+                <SelectValue placeholder="SELECT PAYER" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="company">COMPANY ACCOUNT</SelectItem>
+                <SelectItem value="personal">PERSONAL</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {payer === "personal" && (
+            <div>
+              <Label className="text-sm">PAYER NAME</Label>
+              <Input value={payerName} onChange={(e) => setPayerName(e.target.value)} onBlur={(e) => setPayerName(e.target.value.toUpperCase())} placeholder="WHO PAID?" className="uppercase" data-testid="input-markpaid-payer" />
+            </div>
+          )}
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel data-testid="button-markpaid-cancel">CANCEL</AlertDialogCancel>
+          <AlertDialogAction disabled={!valid || mutation.isPending} onClick={(e) => { e.preventDefault(); mutation.mutate(); }} data-testid="button-markpaid-confirm">
+            {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            MARK AS PAID
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirementWithItems }) {
   const { data: attachments } = useQuery<Attachment[]>({
     queryKey: ["/api/attachments", "diesel_purchase", requirement.id],
@@ -224,13 +311,19 @@ function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirement
     },
   });
   const hasBill = (attachments || []).some((a) => a.docType === "bill");
-  // 06M-E: payment evidence restored (06M-A had hidden it). Historical
-  // payment_evidence attachments surface again automatically via docType filter.
-  const hasPaymentEvidence = (attachments || []).some((a) => a.docType === "payment_evidence");
-  const [showEvidence, setShowEvidence] = useState(false);
+  // 06M-F: Payment Evidence UI removed for good (supersedes 06M-E's restore).
+  // Historical payment_evidence attachments stay untouched in the database —
+  // they are simply no longer surfaced, same principle as 06M-A.
   const paymentMode = (requirement as any).paymentMode as string | null;
   const paidBy = (requirement as any).paidBy as string | null;
   const modeLabels: Record<string, string> = { cash: "CASH", credit: "CREDIT", advance: "ADVANCE", upi: "UPI", cheque: "CHEQUE", rtgs: "RTGS / NEFT" };
+  // 06M-F: explicit payment status — pending until the deliberate Mark-as-Paid action.
+  const paymentStatus = ((requirement as any).paymentStatus as string | null) || "pending";
+  const paidAt = (requirement as any).paidAt as string | null;
+  const paymentRecordedBy = (requirement as any).paymentRecordedBy as string | null;
+  const [showMarkPaid, setShowMarkPaid] = useState(false);
+  const { sectionCan } = useAuth();
+  const canEditDiesel = sectionCan("site_diesel", "edit");
 
   return (
     <Card data-testid="card-purchase-summary">
@@ -266,17 +359,6 @@ function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirement
               PAID BY: {paidBy === "company" ? "COMPANY ACCOUNT" : `PERSONAL${paidBy !== "PERSONAL" ? ` \u2014 ${paidBy}` : ""}`}
             </Badge>
           )}
-          {hasPaymentEvidence && (
-            <Badge
-              variant="outline"
-              className="bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 border-green-300 dark:border-green-700 cursor-pointer"
-              onClick={() => setShowEvidence((v) => !v)}
-              data-testid="badge-payment-evidence"
-            >
-              <Check className="w-3 h-3 mr-1" />PAYMENT EVIDENCE
-              <span className="ml-1 underline underline-offset-2">{showEvidence ? "Hide" : "View"}</span>
-            </Badge>
-          )}
         </div>
         {hasBill && (
           <div>
@@ -284,12 +366,34 @@ function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirement
             <AttachmentGallery moduleType="diesel_purchase" linkedRecordId={requirement.id} docType="bill" allowDelete={false} />
           </div>
         )}
-        {hasPaymentEvidence && showEvidence && (
-          <div data-testid="gallery-payment-evidence">
-            <p className="text-[12px] font-semibold text-muted-foreground uppercase mb-2">PAYMENT EVIDENCE</p>
-            <AttachmentGallery moduleType="diesel_purchase" linkedRecordId={requirement.id} docType="payment_evidence" allowDelete={false} />
+        <div className="rounded-md border p-3 space-y-2" data-testid="section-payment-status">
+          <p className="text-[12px] font-semibold text-muted-foreground uppercase">PAYMENT</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="outline"
+              className={paymentStatus === "paid"
+                ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 border-green-300 dark:border-green-700"
+                : "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border-amber-300 dark:border-amber-700"}
+              data-testid="badge-payment-status"
+            >
+              {paymentStatus === "paid" ? <Check className="w-3 h-3 mr-1" /> : null}
+              STATUS: {paymentStatus === "paid" ? "PAID" : "PENDING"}
+            </Badge>
+            {paymentStatus !== "paid" && canEditDiesel && (
+              <Button size="sm" variant="outline" onClick={() => setShowMarkPaid(true)} data-testid="button-mark-paid">
+                MARK AS PAID
+              </Button>
+            )}
           </div>
-        )}
+          {paymentStatus === "paid" && (
+            <div className="text-sm text-muted-foreground space-y-0.5">
+              {paymentMode && <p>MODE: {modeLabels[paymentMode] || paymentMode.toUpperCase()}{paidBy ? ` · PAID BY: ${paidBy === "company" ? "COMPANY ACCOUNT" : paidBy}` : ""}</p>}
+              {paidAt && <p data-testid="text-paid-at">PAID AT: {paidAt}</p>}
+              {paymentRecordedBy && <p data-testid="text-payment-recorded-by">RECORDED BY: {paymentRecordedBy}</p>}
+            </div>
+          )}
+        </div>
+        {showMarkPaid && <MarkAsPaidDialog requirement={requirement} open={showMarkPaid} onClose={() => setShowMarkPaid(false)} />}
       </CardContent>
     </Card>
   );
@@ -1713,23 +1817,6 @@ export default function DieselRequirements() {
                       linkedRecordId={selectedRequirement.id}
                       docType="bill"
                       emptyText="No bill uploaded yet."
-                    />
-                  </div>
-                  {/* 06M-E: optional Payment Evidence — separate from Bill/Invoice. */}
-                  <div className="space-y-2 rounded-md border p-3" data-testid="section-payment-evidence">
-                    <Label className="text-sm">PAYMENT EVIDENCE <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                    <AttachmentUploader
-                      moduleType="diesel_purchase"
-                      linkedRecordId={selectedRequirement.id}
-                      siteId={(selectedRequirement as any).siteId ?? null}
-                      docType="payment_evidence"
-                      label="Add Evidence (Camera / Gallery / File)"
-                    />
-                    <AttachmentGallery
-                      moduleType="diesel_purchase"
-                      linkedRecordId={selectedRequirement.id}
-                      docType="payment_evidence"
-                      emptyText="No payment evidence uploaded."
                     />
                   </div>
                   <div>

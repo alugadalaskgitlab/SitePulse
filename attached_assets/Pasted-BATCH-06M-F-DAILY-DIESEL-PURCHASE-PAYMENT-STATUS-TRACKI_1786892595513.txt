@@ -1,0 +1,310 @@
+BATCH 06M-F — DAILY DIESEL PURCHASE: PAYMENT STATUS TRACKING
++ VENDOR BILL: RECORD WHO MARKED IT PAID
+(Replaces the just-restored Payment Evidence UI; supersedes 06M-E)
+
+This batch does THREE things only:
+  1. Remove the Payment Evidence UI that 06M-E restored (again — this time
+     for good). Historical payment_evidence attachments stay in the
+     database untouched, exactly as when 06M-A first removed the UI.
+  2. Add an explicit Payment Status (Paid / Pending) to the Daily Diesel
+     Requirement purchase, following the Vendor Bill pattern as closely as
+     practical, so PM/Admin/Purchaser can see at a glance whether an HSD
+     bill has actually been settled.
+  3. Add a small, isolated fix to Vendor Bills: record WHO marked a bill
+     paid, not just when. This is the one narrow exception to "do not touch
+     Vendor Bills" below — see §7A.
+
+Do NOT build OCR / Smart Bill Read / duplicate-bill detection / merchant-QR
+extraction. That proposal was discussed conceptually and explicitly shelved
+— it is not part of this batch, and this batch must not create any
+groundwork for it (no bill-parsing fields, no "extracted values" staging
+area, nothing OCR-shaped).
+
+Expected schema change: a small number of additive nullable columns on
+diesel_requirements only (see §3). Investigate first and STOP before
+migration if more is required.
+
+--------------------------------------------------
+OBJECTIVE
+--------------------------------------------------
+Today, Daily Diesel Requirement purchases already capture Payment Mode and
+Paid By (Batch 06M), but nothing records WHETHER the bill has actually been
+paid. A purchase with Payment Mode filled in looks financially settled even
+if it was only ever intended/quoted, not actually paid.
+
+The intended model, exactly as specified:
+
+  Diesel Purchase recorded
+  Bill attached
+  Payment Status: Pending
+
+  Later, once Company/Admin pays:
+  Payment Status: Paid
+  Payment Mode: NEFT
+  Paid By: Company Account
+  Paid At: 16 Aug 2026 · 3:20 PM
+  Recorded By: Admin
+
+Payment Status is a NEW, EXPLICIT field — it must default to "pending" on
+every purchase and must NOT be inferred from Payment Mode / Paid By simply
+being filled in (those may already be filled in at purchase time — e.g. the
+purchaser knows it was paid by cash on the spot — without the transaction
+having gone through an explicit "mark as paid" step). Only an explicit
+action sets it to "paid".
+
+--------------------------------------------------
+1. REMOVE PAYMENT EVIDENCE UI (AGAIN)
+--------------------------------------------------
+Reverse exactly what 06M-E's "Restore Diesel Payment Evidence" instruction
+added:
+- Remove the PAYMENT EVIDENCE section, badge, gallery, and
+  Camera/Gallery/File upload controls from DieselRequirements.tsx.
+- Do NOT delete, migrate, or rewrite any existing payment_evidence
+  attachments in the database or file storage — same principle 06M-A used
+  the first time: stop surfacing the UI, never touch the underlying data.
+- Bill/Invoice attachment stays exactly as it is — that remains the purchase
+  evidence and is unaffected by this section.
+
+--------------------------------------------------
+2. CONFIRMED CURRENT ARCHITECTURE
+--------------------------------------------------
+Investigate and confirm before building:
+
+A. diesel_requirements already has: qtyPurchased, supplier, billNo, rate,
+   amount, purchasedAt (text timestamp), purchaseRemarks, paymentMode
+   (text: cash/credit/advance/upi/cheque/rtgs), paidBy (text: "company" or
+   payer name), approvedBy (text — the existing pattern for a quick-display
+   "who did this" field on this same table).
+B. PATCH /api/diesel-requirements/:id/purchase-update currently accepts
+   qtyPurchased/supplier/billNo/rate/amount/purchasedAt/purchaseRemarks/
+   paymentMode/paidBy and is reused by "Edit Purchase Details" (06M-A,
+   06M-C-HF) for both first-time purchase entry and later edits.
+C. Vendor Bills (shared/schema.ts vendorBills) already has an equivalent
+   pattern: paymentMode, paidBy, paidAt (text), and a dedicated
+   PATCH /api/vendor-bills/:id/payment-details endpoint that touches ONLY
+   payment fields — never status or other lifecycle timestamps — gated by
+   the same permission used for marking a bill paid. Follow this shape.
+D. Confirm whether a generic audit-log write (storage.logAudit) already
+   fires anywhere in the diesel purchase flow, so the payment-status action
+   can also write to it for the existing History UI, in addition to the
+   quick-display column in §3.
+E. `updateVendorBillStatus(id, status, actor)` in server/storage.ts: on
+   `status === "paid"`, currently sets `updates.paidAt = now` only. On
+   `status === "verified"` / `"approved"` it sets both a `*By` actor field
+   and a `*At` timestamp. The "paid" branch is the only one missing its
+   `*By` counterpart — this is the exact gap §7A closes.
+
+--------------------------------------------------
+3. SCHEMA
+--------------------------------------------------
+Add to diesel_requirements only:
+
+  paymentStatus: text, default "pending" (values: "pending" | "paid").
+  paidAt: text, nullable — same "yyyy-MM-dd HH:mm:ss" convention as the
+          existing purchasedAt/approvedAt columns on this table, set
+          server-side (never client-supplied) at the moment paymentStatus
+          transitions to "paid".
+  paymentRecordedBy: text, nullable — the user who recorded the payment
+          (same quick-display-column convention as the existing approvedBy
+          field on this table), set server-side from the authenticated
+          user, never client-supplied.
+
+Do NOT touch paymentMode or paidBy's existing columns/semantics — they stay
+exactly as they are, just now paired with an explicit status instead of
+being the only signal.
+
+If investigation shows a different minimum set is needed, STOP and report
+before migration. Use an idempotent additive startup migration, matching
+the existing ensureVendorBillPaymentColumns / ensureProgressLayerNoColumn
+pattern already used in this codebase.
+
+--------------------------------------------------
+4. MARK AS PAID — SERVER
+--------------------------------------------------
+Add a dedicated endpoint (do not overload purchase-update), e.g.:
+
+  PATCH /api/diesel-requirements/:id/payment-status
+
+- Accepts: paymentStatus ("paid" only for this action — see §6 for
+  reverting), paymentMode, paidBy.
+- Requires the requirement to be status === "purchased" with qtyPurchased
+  set (payment cannot be recorded before a purchase exists).
+- On transition to "paid": require paymentMode and paidBy to be present in
+  the same request (prompt for them in the UI if not already filled — do
+  not allow "Paid" with no payment mode recorded). Set paidAt and
+  paymentRecordedBy server-side.
+- Touches ONLY paymentStatus/paymentMode/paidBy/paidAt/paymentRecordedBy —
+  never qtyPurchased, supplier, billNo, rate, amount, purchasedAt, status,
+  or any other field.
+- Use the same permission model as the existing purchase-update endpoint
+  (assertEdit against "site_diesel", or whatever the existing Permissions
+  Panel already designates for this action) — do not invent a new role.
+- Also write to the generic audit log if that mechanism is already in use
+  elsewhere in this flow (§2D).
+
+--------------------------------------------------
+5. MARK AS PAID — UI
+--------------------------------------------------
+On the Diesel Purchase detail view, show Payment Status clearly, e.g.:
+
+  PAYMENT
+  Status: Pending
+  [Mark as Paid]
+
+  or, once paid:
+
+  PAYMENT
+  Status: Paid
+  Mode: NEFT · Paid By: Company Account
+  Paid At: 16 Aug 2026 · 3:20 PM
+  Recorded by: Admin
+
+- Reuse the existing Payment Mode / Paid By selects already built for
+  "Edit Purchase Details" (06M-A/06M-C-HF) rather than building new ones.
+- "Mark as Paid" should be its own explicit, deliberate action — not a
+  side-effect of editing other purchase fields — so a purchaser filling in
+  Payment Mode while just recording the purchase does NOT accidentally
+  flip Payment Status to Paid.
+- Investigate whether this fits better as an addition to the existing Edit
+  Purchase Details form (with Payment Status as its own control) or as a
+  small separate action/dialog — choose whichever requires the least new UI
+  and is least likely to be triggered by accident; report which you chose
+  and why.
+
+--------------------------------------------------
+6. REVERTING / EDITING AFTER PAID
+--------------------------------------------------
+Investigate current Vendor Bill behavior for editing payment details after
+a bill is already marked paid (payment-details endpoint stays open once
+status is "paid") and mirror it: allow Payment Mode/Paid By to be corrected
+after Payment Status is "paid" (e.g. wrong mode entered), through the same
+endpoint, without needing to un-mark and re-mark as paid.
+Explicit reversion from "paid" back to "pending" is out of scope for this
+batch unless it is trivial given what you find — if it requires new
+workflow/approval logic, STOP and report instead of building it.
+
+--------------------------------------------------
+7. VENDOR BILL — RECORD WHO MARKED IT PAID
+--------------------------------------------------
+7A. THE ONE NARROW EXCEPTION TO "DO NOT TOUCH VENDOR BILLS" (§8):
+
+Confirmed current gap: `updateVendorBillStatus()` in server/storage.ts sets
+`paidAt` when a bill's status transitions to "paid", but never records WHO
+performed that transition — unlike the "verified" and "approved" steps,
+which both set a `*By` actor name alongside their `*At` timestamp. There is
+no field capturing who clicked "Mark as Paid".
+
+Fix, additive only:
+
+- Add to vendor_bills: `paymentRecordedBy` (text, nullable) — same naming
+  and convention as the new diesel field in §3, and the same actor-name
+  convention already used by `verifiedBy`/`approvedBy` on this same table
+  (uppercase display name, server-set).
+- In `updateVendorBillStatus()`, when `status === "paid"`, also set
+  `paymentRecordedBy = actorUpper` (the same `actor` parameter already
+  used to set `paidAt` — no new parameter needed, no client input).
+- Do NOT touch the `draft → verified → approved → paid` transition rules,
+  permissions, or any other field on this path. Do NOT add a `paidByUserId`
+  column — `verifiedBy`/`approvedBy` don't have one either, so stay
+  consistent with the table's existing text-only actor convention.
+- Do NOT touch `paymentMode`/`paidBy` on vendor_bills or the existing
+  `/payment-details` endpoint — those already work and are out of scope.
+- Surface `paymentRecordedBy` next to the existing "Paid At" display
+  wherever Vendor Bills already shows payment info (read-only, same as
+  `verifiedBy`/`approvedBy` are shown elsewhere).
+
+That is the entire Vendor Bills change. Nothing else on vendor_bills moves.
+
+--------------------------------------------------
+8. WHAT NOT TO TOUCH
+--------------------------------------------------
+Do NOT modify:
+- Diesel stock arithmetic / the 06M-B plant-stock sufficiency guard / the
+  06M-C Receipt Pending / Received / Partly Received tracking. Payment
+  Status is a financial/administrative field only — it must have ZERO
+  effect on stock issue, stock guard, or receipt-linking logic.
+- Bill/Invoice attachment behavior.
+- Vendor Bills, EXCEPT for the single additive `paymentRecordedBy` field
+  and one-line `updateVendorBillStatus()` change described in §7A. Nothing
+  else on Vendor Bills — not the status transitions, not paymentMode/
+  paidBy, not the /payment-details endpoint, not the bill lifecycle, not
+  the UI beyond displaying the new field.
+- Diesel purchase quantity/supplier/rate/amount/purchasedAt fields or the
+  existing purchase-update endpoint's behavior for those fields.
+- Material Receipt.
+- Notification architecture (a payment-status-change notification is not
+  required for this batch; do not add one unless it is a trivial reuse of
+  an existing targeted-push call — do not build new routing).
+- Batch 06P (multi-layer/lift) or its one-line 06P-HF fix.
+- OCR / Smart Bill Read / duplicate-bill detection / merchant-QR upload —
+  explicitly shelved, do not build any part of it, do not add supporting
+  fields "for later".
+
+--------------------------------------------------
+9. TESTS
+--------------------------------------------------
+A. Payment Evidence UI (badge/gallery/upload) no longer appears anywhere in
+   DieselRequirements.tsx; historical payment_evidence attachments are
+   untouched in the database.
+B. New purchase defaults to paymentStatus "pending" — never inferred as
+   paid just because paymentMode/paidBy happen to be set.
+C. PATCH .../payment-status with paymentMode + paidBy on a purchased
+   requirement sets paymentStatus "paid", paidAt (server-set), and
+   paymentRecordedBy (server-set from the authenticated user).
+D. PATCH .../payment-status rejects marking paid without paymentMode or
+   paidBy.
+E. PATCH .../payment-status rejects when the requirement is not yet
+   status === "purchased".
+F. PATCH .../payment-status never modifies qtyPurchased, supplier, billNo,
+   rate, amount, purchasedAt, purchaseRemarks, or status.
+G. Editing Payment Mode/Paid By after paymentStatus is already "paid"
+   succeeds without needing to unmark/remark (per §6), and does not reset
+   paidAt/paymentRecordedBy.
+H. Diesel stock guard (06M-B) and Receipt Pending/Partly/Fully Received
+   (06M-C) behave identically regardless of paymentStatus — verify with a
+   scenario where paymentStatus is "pending" and stock issue/receipt still
+   works exactly as before.
+I. No OCR/bill-read/duplicate-check/merchant-QR code exists anywhere in the
+   diff.
+J. Only the additive columns in §3 (diesel) and §7A (vendor bill) were
+   added — no other schema change.
+K. Marking a vendor bill "paid" (PATCH .../status with status="paid") sets
+   `paymentRecordedBy` to the acting user's name, alongside the existing
+   `paidAt` — verify both are set together.
+L. Vendor bill status transitions (draft→verified→approved→paid),
+   permissions, and self-approval prevention all behave identically to
+   before — `paymentRecordedBy` is purely additive display data.
+M. Vendor bill `paymentMode`/`paidBy`/`/payment-details` endpoint behavior
+   is byte-for-byte unchanged.
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+10. REPORT BACK
+--------------------------------------------------
+Report:
+A. exact schema diff (both tables).
+B. confirmation Payment Evidence UI was removed and historical attachments
+   preserved untouched.
+C. exact new diesel endpoint and its validation rules.
+D. UI location chosen for diesel "Mark as Paid" and why.
+E. confirmation diesel payment-status editing after "paid" mirrors the
+   Vendor Bill pattern.
+F. confirmation of zero effect on 06M-B/06M-C stock and receipt logic.
+G. confirmation no OCR/Smart Bill Read code was added.
+H. exact one-line change in `updateVendorBillStatus()` for
+   `paymentRecordedBy`, and where it's now displayed in the UI.
+I. tests.
+
+Confirm:
+- Diesel Payment Status defaults to pending and is never auto-inferred.
+- Diesel paidAt/paymentRecordedBy are always server-set, never
+  client-supplied.
+- Vendor Bills changed ONLY by the addition of `paymentRecordedBy` — status
+  transitions, permissions, paymentMode/paidBy, and /payment-details are
+  all unchanged.
+- Material Receipt, 06M-B, 06M-C, 06P are all unchanged.
+- no OCR / duplicate-bill / merchant-QR / deferred-payment redesign.
+- no unrelated changes.
+
+DO NOT START ANOTHER BATCH.

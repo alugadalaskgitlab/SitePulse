@@ -8068,6 +8068,47 @@ export async function registerRoutes(
     }
   });
 
+  // 06M-F §4: dedicated payment-status action — deliberately separate from
+  // purchase-update so recording a purchase can never accidentally mark it
+  // paid. Touches ONLY payment fields; timestamp + recorder are server-set.
+  app.patch("/api/diesel-requirements/:id/payment-status", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_diesel")) return;
+      const id = Number(req.params.id);
+      const paymentSchema = z.object({
+        paymentStatus: z.literal("paid").optional(),
+        paymentMode: z.enum(["cash", "credit", "advance", "upi", "cheque", "rtgs"]).optional(),
+        paidBy: z.string().max(120).refine((v) => v.trim().length > 0, "Paid By cannot be blank").optional(),
+      });
+      const data = paymentSchema.parse(req.body);
+      if (data.paidBy !== undefined) data.paidBy = data.paidBy.trim();
+
+      const existing = await storage.getDieselRequirement(id);
+      if (!existing) return res.status(404).json({ message: "Diesel requirement not found" });
+      if (existing.status !== "purchased" || existing.qtyPurchased == null) {
+        return res.status(400).json({ message: "Payment can only be recorded after the purchase has been entered." });
+      }
+      // Marking paid requires mode + payer in the same request; a paid record
+      // must never exist without its payment mode recorded.
+      if (data.paymentStatus === "paid" && (existing as any).paymentStatus !== "paid") {
+        const mode = data.paymentMode ?? (existing as any).paymentMode;
+        const payer = data.paidBy ?? (existing as any).paidBy;
+        if (!mode || !payer) {
+          return res.status(400).json({ message: "Payment Mode and Paid By are required to mark as paid." });
+        }
+      }
+
+      const requirement = await storage.updateDieselPaymentStatus(id, data, currentUserName(req));
+      res.json(requirement);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error updating diesel payment status:", err);
+      res.status(500).json({ message: "Failed to update payment status" });
+    }
+  });
+
   app.put("/api/diesel-requirements/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);

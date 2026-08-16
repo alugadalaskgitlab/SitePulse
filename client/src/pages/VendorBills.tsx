@@ -1486,13 +1486,15 @@ export default function VendorBills() {
     approvedAt?: string | null;
     approvedBy?: string | null;
     paidAt?: string | null;
+    paymentRecordedBy?: string | null;
   }) => {
     const currentIdx = STATUS_ORDER.indexOf(currentStatus as any);
     const stepMeta: Record<string, { timestamp?: string | null; actor?: string | null }> = {
       draft: { timestamp: meta?.createdAt ? formatTimestamp(meta.createdAt) : null },
       verified: { timestamp: meta?.verifiedAt ? formatTimestamp(meta.verifiedAt) : null, actor: meta?.verifiedBy },
       approved: { timestamp: meta?.approvedAt ? formatTimestamp(meta.approvedAt) : null, actor: meta?.approvedBy },
-      paid: { timestamp: meta?.paidAt ? formatTimestamp(meta.paidAt) : null },
+      // 06M-F §7A: show who marked it paid, same as verified/approved actors.
+      paid: { timestamp: meta?.paidAt ? formatTimestamp(meta.paidAt) : null, actor: meta?.paymentRecordedBy },
     };
     return (
       <div className="flex items-start gap-1 flex-wrap" data-testid="status-steps">
@@ -2484,6 +2486,7 @@ export default function VendorBills() {
                 approvedAt: bill.approvedAt,
                 approvedBy: bill.approvedBy,
                 paidAt: bill.paidAt,
+                paymentRecordedBy: (bill as any).paymentRecordedBy,
               })}
             </div>
 

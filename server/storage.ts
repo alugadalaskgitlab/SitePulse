@@ -1273,6 +1273,7 @@ export interface IStorage {
   approveDieselRequirement(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string): Promise<DieselRequirementWithItems | undefined>;
   rejectDieselRequirement(id: number, reason: string, rejectedBy: string): Promise<DieselRequirementWithItems | undefined>;
   updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string }): Promise<DieselRequirementWithItems | undefined>;
+  updateDieselPaymentStatus(id: number, data: { paymentStatus?: "paid"; paymentMode?: string; paidBy?: string }, actor: string): Promise<DieselRequirementWithItems | undefined>;
   getDieselComparisonReport(dateFrom: string, dateTo: string): Promise<{ date: string; totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }[]>;
   updateDieselRequirement(id: number, data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems | undefined>;
   deleteDieselRequirement(id: number): Promise<boolean>;
@@ -12545,6 +12546,13 @@ export class DatabaseStorage implements IStorage {
   async ensureVendorBillPaymentColumns(): Promise<void> {
     await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS payment_mode text`));
     await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS paid_by text`));
+    // 06M-F §7A: who marked the bill paid (additive, nullable, never backfilled).
+    await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS payment_recorded_by text`));
+    // 06M-F §3: explicit diesel purchase payment status (default pending) +
+    // server-set paid timestamp and recorder. Additive, idempotent.
+    await db.execute(sql.raw(`ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS payment_status text DEFAULT 'pending'`));
+    await db.execute(sql.raw(`ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS paid_at text`));
+    await db.execute(sql.raw(`ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS payment_recorded_by text`));
   }
 
   // 06M-C: idempotent additive migration — nullable linkage from a Diesel
@@ -12605,6 +12613,9 @@ export class DatabaseStorage implements IStorage {
       updates.approvedAt = now;
     } else if (status === "paid") {
       updates.paidAt = now;
+      // 06M-F §7A: record WHO marked it paid, same actor convention as
+      // verifiedBy/approvedBy above. Purely additive display data.
+      updates.paymentRecordedBy = actorUpper;
     }
 
     await db.update(vendorBills)
@@ -13351,6 +13362,51 @@ export class DatabaseStorage implements IStorage {
     await db.update(dieselRequirements)
       .set(updates)
       .where(eq(dieselRequirements.id, id));
+
+    const result = await db.query.dieselRequirements.findFirst({
+      where: eq(dieselRequirements.id, id),
+      with: { items: true },
+    });
+    return result as DieselRequirementWithItems | undefined;
+  }
+
+  // 06M-F §4/§6: explicit payment-status action. Touches ONLY
+  // paymentStatus/paymentMode/paidBy/paidAt/paymentRecordedBy — never
+  // qtyPurchased/supplier/billNo/rate/amount/purchasedAt/status. paidAt and
+  // paymentRecordedBy are server-set exactly once (pending→paid transition);
+  // later mode/paidBy corrections (vendor-bill /payment-details pattern)
+  // never reset them.
+  async updateDieselPaymentStatus(
+    id: number,
+    data: { paymentStatus?: "paid"; paymentMode?: string; paidBy?: string },
+    actor: string,
+  ): Promise<DieselRequirementWithItems | undefined> {
+    const existing = await this.getDieselRequirement(id);
+    if (!existing) return undefined;
+
+    const corrections: any = {};
+    if (data.paymentMode !== undefined) corrections.paymentMode = data.paymentMode;
+    if (data.paidBy !== undefined) corrections.paidBy = data.paidBy.toUpperCase();
+    if (Object.keys(corrections).length > 0) {
+      await db.update(dieselRequirements).set(corrections).where(eq(dieselRequirements.id, id));
+    }
+
+    if (data.paymentStatus === "paid") {
+      // Atomic pending→paid: the WHERE predicate guarantees paidAt and
+      // paymentRecordedBy are written exactly once even under concurrent
+      // Mark-as-Paid requests — a second request matches zero rows and
+      // degrades to a correction-only call, never overwriting the winner.
+      await db.update(dieselRequirements)
+        .set({
+          paymentStatus: "paid",
+          paidAt: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+          paymentRecordedBy: actor.toUpperCase(),
+        } as any)
+        .where(and(
+          eq(dieselRequirements.id, id),
+          sql`${dieselRequirements.paymentStatus} IS DISTINCT FROM 'paid'`,
+        ));
+    }
 
     const result = await db.query.dieselRequirements.findFirst({
       where: eq(dieselRequirements.id, id),

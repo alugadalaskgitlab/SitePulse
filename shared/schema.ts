@@ -1930,6 +1930,11 @@ export const dieselRequirements = pgTable("diesel_requirements", {
   // paidBy mirrors PI semantics: "company" or the payer's name for personal.
   paymentMode: text("payment_mode"),
   paidBy: text("paid_by"),
+  // 06M-F: explicit payment status — NEVER inferred from paymentMode/paidBy
+  // being filled in. Only the dedicated mark-as-paid action sets "paid".
+  paymentStatus: text("payment_status").default("pending"), // "pending" | "paid"
+  paidAt: text("paid_at"),                       // server-set at pending→paid, same text convention as purchasedAt
+  paymentRecordedBy: text("payment_recorded_by"), // server-set from authenticated user (approvedBy convention)
   createdAt: timestamp("created_at").defaultNow(),
   siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
   raisedFrom: text("raised_from"),
@@ -2003,6 +2008,8 @@ export const vendorBills = pgTable("vendor_bills", {
   approvedBy: text("approved_by"),
   approvedAt: text("approved_at"),
   paidAt: text("paid_at"),
+  // 06M-F §7A: who clicked "Mark as Paid" — same text actor convention as verifiedBy/approvedBy.
+  paymentRecordedBy: text("payment_recorded_by"),
   paymentRemarks: text("payment_remarks"),
   // 06M-A: PI/diesel-style payment details — nullable, never backfilled.
   paymentMode: text("payment_mode"),
