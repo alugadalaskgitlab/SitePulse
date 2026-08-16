@@ -1,0 +1,245 @@
+INSTRUCTION 06M-C-HF — DAILY DIESEL RECEIPT: BYPASS PI/INDENT WARNING
+
+This is a narrow 06M-C workflow hotfix.
+
+--------------------------------------------------
+OBJECTIVE
+--------------------------------------------------
+A Material Receipt created from an approved/completed Daily Diesel Requirement
+must NOT show or require the generic Purchase Indent / PI approval warning.
+The Daily Diesel Requirement purchase is already the approved source document
+for this receipt.
+
+Expected schema change: NONE.
+
+--------------------------------------------------
+1. CONFIRMED CURRENT CAUSE
+--------------------------------------------------
+Current flow:
+
+DieselRequirements.tsx
+→ Record Material Receipt
+→ /plant/material-receipts
+   ?autoOpen=1
+   &dieselReqId=<id>
+   &materialId=<Diesel>
+   &qty=<pending qty>
+   &supplier=<supplier>
+
+PlantMaterialReceipts.tsx correctly stores:
+linkedDieselRequirementId
+
+BUT the generic Indent Ref block still runs:
+approvedPIs.length === 0
+→ displays:
+"No approved Purchase Indent for Diesel — save the receipt and regularise
+the indent later."
+
+This is incorrect for a receipt sourced from Daily Diesel Requirement.
+
+--------------------------------------------------
+2. DEFINE DIESEL-SOURCED RECEIPT MODE
+--------------------------------------------------
+When:
+linkedDieselRequirementId != null
+
+treat the receipt as:
+source = Daily Diesel Requirement Purchase
+not:
+source = Purchase Indent.
+
+Use this flag consistently in the form.
+
+--------------------------------------------------
+3. HIDE PI / INDENT WARNING
+--------------------------------------------------
+For a Diesel Requirement-linked receipt:
+
+do NOT show:
+- "No approved Purchase Indent..."
+- Indent not approved warning
+- Override checkbox
+- regularise-indent message
+
+The user should not be told to create/regularise a PI for this transaction.
+
+--------------------------------------------------
+4. INDENT REF FIELD
+--------------------------------------------------
+For a Diesel Requirement-linked receipt:
+
+preferred behavior:
+hide the generic Indent Ref / PI selector entirely.
+
+Instead show a read-only source/context line such as:
+SOURCE:
+Daily Diesel Requirement #<id>
+Purchased / Approved
+
+If existing Diesel Requirement number/reference exists, show that instead of
+raw ID.
+
+Do not fabricate a PI number.
+
+--------------------------------------------------
+5. SUBMIT VALIDATION
+--------------------------------------------------
+Current handleSubmit() performs PI validation via:
+selectedPI
+piIsLinkable
+indentOverride
+
+Skip that PI validation ONLY when:
+linkedDieselRequirementId != null
+
+Normal receipts must retain the existing PI validation exactly as today.
+
+NOTE — verified against current code: today, in isolation, this submit-time
+block does not actually fire for a diesel-linked receipt, because indentRef
+stays empty on the diesel deep-link and piIsLinkable defaults true when no
+indent is selected. This section is NOT dead work, though — it is the
+necessary safety net for Section 8. If Section 8's auto-select suppression is
+implemented, this gate is what keeps the submit path correct; if Section 8 is
+ever skipped or regresses, this is what stops a coincidentally auto-selected,
+non-approved indent from blocking a diesel receipt's save. Implement both
+Sections 5 and 8 together — do not treat either as optional on its own.
+
+--------------------------------------------------
+6. SERVER VALIDATION REMAINS AUTHORITATIVE
+--------------------------------------------------
+Do not trust the frontend link alone.
+
+Preserve the existing server validation that verifies:
+- linkedDieselRequirementId exists
+- requirement is a valid completed/purchased Diesel requirement
+- selected material is Diesel/HSD
+
+If that validation currently exists, do not weaken it.
+
+--------------------------------------------------
+7. RECEIPT SAVE
+--------------------------------------------------
+For Diesel Requirement-linked receipt, save:
+linkedDieselRequirementId
+exactly as 06M-C currently does.
+
+Do not create:
+- Purchase Indent
+- PI item link
+- selectedPendingPiItemId
+- indentRef
+
+unless the user independently arrived through a PI flow.
+
+--------------------------------------------------
+8. PI AUTO-SELECTION EFFECT
+--------------------------------------------------
+The existing auto-selection effect looks for:
+- pending Material Indents by materialId
+- approved/ordered PIs by material name
+
+For linked Diesel Requirement mode:
+do not auto-select a PI.
+Do not allow a coincidentally existing Diesel PI to replace the Diesel
+Requirement source context.
+
+VERIFIED — this is a real, reachable case, not theoretical: the existing
+auto-select effect runs off materialId alone (its pendingMaterialIndents query
+is enabled purely on `parsedMaterialId > 0 && dialogOpen`), with no awareness
+of linkedDieselRequirementId. If a pending Material Indent or a single active
+PI for Diesel happens to exist, this effect will silently set indentRef and
+selectedPendingPiItemId on a receipt the user opened purely through the Diesel
+Requirement flow — which is exactly the scenario Section 5's guard exists to
+catch. Gate this effect on `!linkedDieselRequirementId` (skip entirely, do not
+just suppress its visible effect) so it cannot fire at all for diesel-sourced
+receipts.
+
+--------------------------------------------------
+9. PI CLOSE-LOOP LOGIC
+--------------------------------------------------
+The existing receipt success path can call:
+/api/purchase-indents/items/:id/link-receipt
+when selectedPendingPiItemId exists.
+
+For Diesel Requirement-linked receipts:
+selectedPendingPiItemId must remain null and this PI close-loop must not run.
+The receipt is linked through linkedDieselRequirementId instead.
+
+(Already true today as a side effect of the diesel deep-link never setting
+selectedPendingPiItemId — Section 8's fix keeps it true by construction rather
+than by accident.)
+
+--------------------------------------------------
+10. DISPLAY AFTER SAVE
+--------------------------------------------------
+For linked Diesel receipts, the receipt detail/list should not show:
+"No approved indent linked — edit this receipt to regularise"
+
+That warning is also generic PI logic and is incorrect for this source.
+
+Instead, where practical show:
+Linked Daily Diesel Purchase
+or:
+Diesel Requirement #<reference>
+
+--------------------------------------------------
+11. NORMAL MATERIAL RECEIPTS — DO NOT CHANGE
+--------------------------------------------------
+For receipts without linkedDieselRequirementId:
+retain current behavior:
+- PI lookup
+- approved/ordered PI handling
+- no-approved-PI warning
+- indent override
+- PI item linking
+- regularise-indent warning
+
+Do not weaken procurement controls for ordinary Material Receipts.
+
+--------------------------------------------------
+12. TESTS
+--------------------------------------------------
+A. Diesel Requirement → Record Material Receipt:
+   no "No approved PI" warning appears.
+B. Diesel Requirement-linked receipt:
+   PI selector/override is hidden or inactive.
+C. Diesel-linked receipt saves successfully without indentRef.
+D. linkedDieselRequirementId is preserved.
+E. server still rejects invalid/non-purchased Diesel requirement link.
+F. server still rejects non-Diesel material against Diesel Requirement.
+G. no PI item link is created for Diesel Requirement receipt.
+H. ordinary Material Receipt with no PI still shows existing warning.
+I. ordinary PI-linked Material Receipt remains unchanged.
+J. receipt detail for Diesel-linked receipt does not say
+   "No approved indent linked."
+K. no schema change.
+L. auto-select effect does not set indentRef/selectedPendingPiItemId when a
+   pending Material Indent or active PI for Diesel coincidentally exists AND
+   the dialog was opened with linkedDieselRequirementId set.
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+13. REPORT BACK
+--------------------------------------------------
+Report:
+A. exact PI-warning condition changed.
+B. Diesel Requirement source indicator shown.
+C. PI auto-selection suppression — confirm test L scenario specifically
+   (coincidental matching PI/indent present at the same time as a diesel
+   deep-link) was covered, not just the no-PI-exists case.
+D. submit validation behavior.
+E. post-save receipt display behavior.
+F. confirmation normal PI Material Receipt flow unchanged.
+G. tests.
+
+Confirm:
+- no schema change
+- no Diesel stock arithmetic change
+- no PI workflow change
+- no Material Receipt redesign
+- no unrelated changes
+- Sections 5 and 8 were both implemented together, not just the visible
+  warning in Section 3.
+
+DO NOT START ANOTHER BATCH.

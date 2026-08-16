@@ -31,6 +31,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialReceipt } from "@shared/schema";
 import { UOM_OPTIONS } from "@shared/schema";
+import { decidePiAutoSelect, submitBlockedByPi, showPiIndentBlock, showRegulariseIndentNotice } from "@shared/dieselReceiptSource";
 
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
@@ -287,7 +288,15 @@ export default function PlantMaterialReceipts() {
         const mat = materials?.find((m) => m.id === parseInt(autoOpenParams.materialId, 10));
         if (mat?.defaultUom) setUom(mat.defaultUom);
       }
-      if (autoOpenParams.dieselReqId) setLinkedDieselRequirementId(autoOpenParams.dieselReqId);
+      if (autoOpenParams.dieselReqId) {
+        setLinkedDieselRequirementId(autoOpenParams.dieselReqId);
+        // 06M-C-HF: entering diesel mode clears any PI state that arrived via
+        // combined URL params or a restored draft — the Diesel Requirement is
+        // the source; no indent ref or PI-item link may ride along.
+        setIndentRef("");
+        setSelectedPendingPiItemId(null);
+        setIndentOverride(false);
+      }
       setDialogOpen(true);
       const url = new URL(window.location.href);
       url.searchParams.delete("autoOpen");
@@ -355,23 +364,25 @@ export default function PlantMaterialReceipts() {
     enabled: parsedMaterialId > 0 && dialogOpen,
   });
 
-  // Auto-select indent: prefer pending Material Indents (by materialId) over name-based matches
+  // Auto-select indent: prefer pending Material Indents (by materialId) over name-based matches.
+  // 06M-C-HF §8: never fires for a diesel-sourced receipt — a coincidental Diesel
+  // PI/indent must not replace the Diesel Requirement source context.
   useEffect(() => {
-    if (editingReceipt) return;
-    if (indentRef) return;
-    // Priority 1: pending Material Indent items matched by materialId
-    if (pendingMaterialIndents.length === 1) {
-      setIndentRef(pendingMaterialIndents[0].indentNo);
-      setSelectedPendingPiItemId(pendingMaterialIndents[0].itemId);
+    const decision = decidePiAutoSelect({
+      linkedDieselRequirementId,
+      editing: !!editingReceipt,
+      currentIndentRef: indentRef,
+      pendingIndents: pendingMaterialIndents,
+      activeIndents: allPurchaseIndents.filter(pi => pi.status === "approved" || pi.status === "ordered"),
+    });
+    if (decision.action === "skip") return;
+    if (decision.action === "select") {
+      setIndentRef(decision.indentNo);
+      setSelectedPendingPiItemId(decision.pendingItemId);
       return;
     }
     setSelectedPendingPiItemId(null);
-    // Priority 2: name-based approved/ordered indents
-    const active = allPurchaseIndents.filter(pi => pi.status === "approved" || pi.status === "ordered");
-    if (active.length === 1) {
-      setIndentRef(active[0].indentNo);
-    }
-  }, [allPurchaseIndents, pendingMaterialIndents, editingReceipt]);
+  }, [allPurchaseIndents, pendingMaterialIndents, editingReceipt, linkedDieselRequirementId]);
 
   const { data: nextReceiptNoData } = useQuery<{ number: string }>({
     queryKey: ["/api/plant-module/next-receipt-number", materialId],
@@ -387,7 +398,7 @@ export default function PlantMaterialReceipts() {
     },
     onSuccess: async (receipt: any) => {
       // If a pending Material Indent item was identified, close the PI loop
-      if (selectedPendingPiItemId && receipt?.id) {
+      if (selectedPendingPiItemId && receipt?.id && linkedDieselRequirementId == null) {
         try {
           await apiRequest("PATCH", `/api/purchase-indents/items/${selectedPendingPiItemId}/link-receipt`, { receiptId: receipt.id });
           queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
@@ -495,7 +506,13 @@ export default function PlantMaterialReceipts() {
     setTankNumber(receipt.tankNumber ? String(receipt.tankNumber) : "");
     setInvoiceNo((receipt as any).invoiceNo || "");
     setInvoiceDate((receipt as any).invoiceDate || "");
-    setIndentRef((receipt as any).indentRef || "");
+    // 06M-C-HF: restore the diesel source link so an existing diesel-linked
+    // receipt edits in diesel mode (PI block hidden, PI validation skipped)
+    // and an ordinary edit explicitly resets it.
+    const dieselLink = (receipt as any).linkedDieselRequirementId ?? null;
+    setLinkedDieselRequirementId(dieselLink);
+    setIndentRef(dieselLink != null ? "" : ((receipt as any).indentRef || ""));
+    setSelectedPendingPiItemId(null);
     setIndentComboSearch("");
     setIndentOverride(false);
     setDialogOpen(true);
@@ -508,9 +525,10 @@ export default function PlantMaterialReceipts() {
       }
       return;
     }
+    // 06M-C-HF §5: PI validation is skipped only for diesel-sourced receipts;
+    // ordinary receipts keep the existing rule exactly.
     const selectedPI = indentRef ? allPurchaseIndents.find(pi => pi.indentNo === indentRef) : null;
-    const piIsLinkable = !selectedPI || selectedPI.status === "approved" || selectedPI.status === "ordered";
-    if (!piIsLinkable && !indentOverride) {
+    if (submitBlockedByPi({ linkedDieselRequirementId, selectedPiStatus: selectedPI?.status ?? null, indentOverride })) {
       toast({ title: "Indent not approved", description: "Tick the override checkbox to proceed.", variant: "destructive" });
       return;
     }
@@ -540,7 +558,7 @@ export default function PlantMaterialReceipts() {
         challanNumber,
         invoiceNo: invoiceNo || null,
         invoiceDate: invoiceDate || null,
-        indentRef: indentRef || null,
+        indentRef: linkedDieselRequirementId != null ? null : (indentRef || null),
         tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
       };
       updateMutation.mutate({ id: editingReceipt.id, data: updateData });
@@ -559,7 +577,7 @@ export default function PlantMaterialReceipts() {
         challanNumber,
         invoiceNo: invoiceNo || null,
         invoiceDate: invoiceDate || null,
-        indentRef: indentRef || null,
+        indentRef: linkedDieselRequirementId != null ? null : (indentRef || null),
         tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
         // 06M-C: purchase↔receipt audit linkage (never inferred, only deep-linked)
         linkedDieselRequirementId: linkedDieselRequirementId ?? null,
@@ -1111,8 +1129,18 @@ export default function PlantMaterialReceipts() {
                 </div>
               )}
 
+              {/* 06M-C-HF §3/§4: diesel-sourced receipt — the Daily Diesel Requirement
+                  IS the approved source document; hide the entire PI/Indent block. */}
+              {!showPiIndentBlock(linkedDieselRequirementId) && (
+                <div className="rounded-md border border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20 px-3 py-2.5" data-testid="notice-diesel-source">
+                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">Source</p>
+                  <p className="text-sm text-emerald-800 dark:text-emerald-200 font-medium">Daily Diesel Requirement #{linkedDieselRequirementId}</p>
+                  <p className="text-sm text-emerald-700 dark:text-emerald-300">Purchased / Approved — no Purchase Indent needed for this receipt.</p>
+                </div>
+              )}
+
               {/* Indent Ref — searchable combobox + status card */}
-              {(() => {
+              {showPiIndentBlock(linkedDieselRequirementId) && (() => {
                 const approvedPIs = allPurchaseIndents.filter(pi => pi.status === "approved" || pi.status === "ordered");
                 const noPiForMaterial = !!materialId && approvedPIs.length === 0;
                 const selectedPI = indentRef ? allPurchaseIndents.find(pi => pi.indentNo === indentRef) : null;
@@ -1597,10 +1625,19 @@ export default function PlantMaterialReceipts() {
                                     className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2 max-w-2xl"
                                   />
                                 </div>
+                                {(receipt as any).linkedDieselRequirementId != null && (
+                                  <div className="mt-3 flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-700 px-3 py-2" data-testid={`notice-diesel-source-${receipt.id}`}>
+                                    <span className="text-sm text-emerald-700 dark:text-emerald-300">Linked Daily Diesel Purchase — Diesel Requirement #{(receipt as any).linkedDieselRequirementId}</span>
+                                  </div>
+                                )}
                                 {(() => {
                                   const indentRef = (receipt as any).indentRef;
                                   const indentStatus = indentRef ? indentStatusMap[indentRef] : undefined;
-                                  const needsNotice = !indentRef || (indentStatus && indentStatus !== "approved");
+                                  const needsNotice = showRegulariseIndentNotice({
+                                    linkedDieselRequirementId: (receipt as any).linkedDieselRequirementId,
+                                    indentRef,
+                                    indentStatus,
+                                  });
                                   if (!needsNotice) return null;
                                   return (
                                     <div className="mt-3 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 px-3 py-2" data-testid={`notice-pi-pending-${receipt.id}`}>

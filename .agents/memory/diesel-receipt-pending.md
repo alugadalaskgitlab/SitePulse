@@ -17,3 +17,6 @@ description: Purchased ≠ Received for Daily Diesel purchases; linked Material 
 - Pushes reuse sendPushToSection: purchase → `plant_materials` (receipt authority); partial/full receipt → `site_diesel` (added to PUSH_ACTIVE_SECTIONS; the push-sections-sync test enforces that set).
 - Client Record Receipt gating must match the server gate (`plant_materials` create), not `plant_stock`.
 - No historical auto-linking — old purchases just show Receipt Pending with zero linked records.
+
+## PI bypass (06M-C-HF)
+`shared/dieselReceiptSource.ts` is the single decision seam for diesel-sourced receipts (linkedDieselRequirementId != null): PI block/warning hidden, PI auto-select skipped entirely (even with a coincidental Diesel PI/indent), submit PI validation bypassed, regularise notice suppressed. Hard guards: payload forces indentRef null in diesel mode, PI close-loop PATCH gated on no diesel link, entering diesel mode (deep-link or edit) clears indentRef/selectedPendingPiItemId. **Why:** stale drafts, combined URL params, and edit-dialog restore could otherwise attach a PI to a diesel-sourced receipt (architect-caught).
