@@ -68,6 +68,12 @@ export type ReportEntry = {
   remarks?: string | null;
   /** Structure rows may override the item conversion factor. */
   rowConversionFactor?: number | null;
+  /**
+   * 06P: optional physical layer/lift number (progress rows only). Pure
+   * pass-through for display grouping — NEVER used in any credit/cumulative
+   * formula, and null is never coerced to 1.
+   */
+  layerNo?: number | null;
 };
 
 export type ComputedEntry = ReportEntry & {
@@ -218,6 +224,41 @@ export function computeItemEntries(entries: ReportEntry[], item: ReportBoqItem |
       overlaps: overlaps.get(`${e.kind}:${e.entryId}`) ?? [],
     };
   });
+}
+
+// ── Batch 06P: optional layer/lift breakdown (display grouping ONLY) ────────
+
+export type LayerBreakdownRow = {
+  /** null = entries with no layer recorded (never coerced to 1). */
+  layerNo: number | null;
+  /** Sum of BOQ-credit quantities — a split of the existing total, never a second quantity. */
+  qty: number;
+  entryCount: number;
+};
+
+/**
+ * Per-layer split of an item's BOQ-credit quantities. Returns [] unless at
+ * least TWO distinct non-null layerNo values were recorded — items that never
+ * use layers (or use only one) render exactly as before. When null-layer
+ * entries coexist with layered ones, they appear as a layerNo:null row so the
+ * breakdown always sums to the existing total. Pure display grouping — no
+ * credit/cumulative formula involved.
+ */
+export function layerBreakdown(computed: ComputedEntry[]): LayerBreakdownRow[] {
+  const m = new Map<number | null, { qty: number; entryCount: number }>();
+  for (const e of computed) {
+    if (e.kind !== "progress" || e.boqCreditQty == null) continue;
+    const key = e.layerNo ?? null;
+    const cur = m.get(key) ?? { qty: 0, entryCount: 0 };
+    cur.qty += e.boqCreditQty;
+    cur.entryCount += 1;
+    m.set(key, cur);
+  }
+  const distinctLayers = Array.from(m.keys()).filter((k): k is number => k != null);
+  if (distinctLayers.length < 2) return [];
+  return Array.from(m.entries())
+    .map(([layerNo, v]) => ({ layerNo, qty: v.qty, entryCount: v.entryCount }))
+    .sort((a, b) => (a.layerNo == null ? 1 : b.layerNo == null ? -1 : a.layerNo - b.layerNo));
 }
 
 /** RA abstract for one item over a From–To reporting period (§12). */

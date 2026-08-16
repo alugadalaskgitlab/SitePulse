@@ -100,6 +100,9 @@ interface GuidedEntry {
   // Guided correction item 6: the engineer deliberately replaced the
   // geometry-calculated quantity — geometry edits must not silently undo it.
   qtyOverridden: boolean;
+  // 06P: optional physical layer/lift number (1, 2, 3…). null = not a
+  // multi-layer entry — behaves exactly as pre-06P everywhere.
+  layerNo: number | null;
 }
 
 // Batch 04 save fidelity: Guided edits 4 fields but must round-trip every
@@ -137,6 +140,7 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 // BOQ item labels use the shared display-name helper (shared/boqItemName.ts)
 // so operational naming can't drift between Guided DPR, Detailed DPR and pickers.
 import { boqItemDisplayName } from "@shared/boqItemName";
+import { layerFieldLabel } from "@shared/layerDisplay";
 
 const newEntryKey = (): string =>
   (typeof crypto !== "undefined" && "randomUUID" in crypto)
@@ -238,6 +242,7 @@ export default function GuidedDpr() {
       setEntries((d.entries ?? []).map((e) => ({
         ...e,
         qtyOverridden: e.qtyOverridden ?? false,
+        layerNo: e.layerNo ?? null,
         entryKey: e.entryKey || newEntryKey(),
         noSiteWork: e.noSiteWork ?? false,
         noSiteWorkDescription: e.noSiteWorkDescription ?? "",
@@ -303,6 +308,7 @@ export default function GuidedDpr() {
         // Derived properly once BOQ items load (see derivation effect); this
         // is only the pre-derivation placeholder.
         qtyOverridden: p.quantitySource != null && p.quantitySource !== "" && p.quantitySource !== "calculated",
+        layerNo: p.layerNo != null ? Number(p.layerNo) : null,
       })));
     deriveNeededRef.current = true;
     // Batch 04: keep every non-edited equipment field for round-trip — a
@@ -466,6 +472,7 @@ export default function GuidedDpr() {
     chainageOverrideReason: e.chainageOverrideReason,
     label: e.activity,
     noSiteWork: e.noSiteWork,
+    layerNo: e.layerNo,
   }));
   const { priors: overlapPriors } = useChainageOverlapContext(
     entries.map((e) => e.boqItemId).filter((id): id is number => id != null),
@@ -562,6 +569,7 @@ export default function GuidedDpr() {
       chainageOverrideReason: "",
       executedBy: "",
       qtyOverridden: false,
+      layerNo: null,
     }]);
   };
 
@@ -590,6 +598,7 @@ export default function GuidedDpr() {
       chainageOverrideReason: "",
       executedBy: "",
       qtyOverridden: false,
+      layerNo: null,
     }]);
     if (step === 2) setStep(3);
   };
@@ -693,6 +702,7 @@ export default function GuidedDpr() {
       chainageOverrideReason: "",
       executedBy: "",
       qtyOverridden: false,
+      layerNo: null,
     })));
     // Yesterday copy is structure-only: seeds carry the 4 edited fields and an
     // empty passthrough (no readings/times are ever copied across days).
@@ -857,6 +867,7 @@ export default function GuidedDpr() {
         quantitySourceNote: e.quantitySourceNote.trim() || null,
         chainageOverrideReason: e.chainageOverrideReason.trim() || null,
         executedBy: e.executedBy || null,
+        layerNo: e.layerNo,
       };
     });
     const entryRemarks = entries.filter((e) => !e.noSiteWork && e.remark.trim()).map((e) => `${e.activity}: ${e.remark.trim()}`);
@@ -1454,6 +1465,21 @@ export default function GuidedDpr() {
                         <Input type="number" inputMode="decimal" value={e.thickness ?? ""} onChange={(ev) => updateGeometry(idx, { thickness: ev.target.value === "" ? null : Number(ev.target.value) })} data-testid={`input-thickness-${idx}`} />
                       </div>
                     )}
+                    <div>
+                      {/* 06P: optional layer/lift number — blank = exactly today's behaviour.
+                          "Lift" wording is a pure client-side display convention. */}
+                      <Label>{layerFieldLabel(e.activity)}</Label>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        step={1}
+                        min={1}
+                        placeholder="—"
+                        value={e.layerNo ?? ""}
+                        onChange={(ev) => updateEntry(idx, { layerNo: ev.target.value === "" ? null : Math.trunc(Number(ev.target.value)) })}
+                        data-testid={`input-layer-no-${idx}`}
+                      />
+                    </div>
                     <div>
                       <Label>Qty {e.uom ? `(${e.uom})` : ""}</Label>
                       <Input type="number" inputMode="decimal" value={e.quantity ?? ""} onChange={(ev) => updateQuantity(idx, ev.target.value === "" ? null : Number(ev.target.value))} data-testid={`input-qty-${idx}`} />

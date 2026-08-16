@@ -79,6 +79,8 @@ interface ProgressEntry {
   chainageOverrideReason: string;
   // 031 Part H: executor when the linked bar has an arrangement
   executedBy: string;
+  // 06P: optional physical layer/lift number; null = not multi-layer.
+  layerNo: number | null;
 }
 
 interface EquipmentEntry {
@@ -232,6 +234,7 @@ function formatTimeDuration(start: string, end: string): string | null {
 // Operational screens show the item's short name; the full imported description
 // stays on the BOQ / Item Review management screens.
 import { boqItemDisplayName } from "@shared/boqItemName";
+import { layerFieldLabel } from "@shared/layerDisplay";
 
 export default function SiteEntry() {
   const [, setLocation] = useLocation();
@@ -784,7 +787,7 @@ export default function SiteEntry() {
   }, [attachPersonnelToTarget, toast]);
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }
+    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
   ]);
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
@@ -798,6 +801,7 @@ export default function SiteEntry() {
     chainageOverrideReason: p.chainageOverrideReason,
     label: p.activity,
     noSiteWork: p.noSiteWork,
+    layerNo: p.layerNo,
   }));
   const { priors: overlapPriors } = useChainageOverlapContext(
     progress.map((p) => p.boqItemId).filter((id): id is number => id != null),
@@ -987,7 +991,7 @@ export default function SiteEntry() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour' | 'materials') => {
     if (section === 'progress') {
-      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }]);
+      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }]);
     } else if (section === 'labour') {
@@ -1059,6 +1063,7 @@ export default function SiteEntry() {
       uom: p.uom || "SQM", noSiteWork: false, noSiteWorkDescription: "",
       personnelIds: [], boqItemId: p.boqItemId, programmeBarId: p.programmeBarId,
       quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "",
+      layerNo: null,
     })));
     const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null };
     if (st.equipment.length > 0) setEquipment(st.equipment.map(e => ({ ...blankEq, ...e })) as any);
@@ -2198,6 +2203,24 @@ export default function SiteEntry() {
                       )}
                     </>);
                   })()}
+                  <div>
+                    {/* 06P: optional layer/lift number — blank = today's behaviour. */}
+                    <Label className="text-sm">{layerFieldLabel(entry.activity)}</Label>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      step={1}
+                      min={1}
+                      placeholder="—"
+                      value={entry.layerNo ?? ""}
+                      onChange={(e) => {
+                        const updated = [...progress];
+                        updated[idx].layerNo = e.target.value === "" ? null : Math.trunc(Number(e.target.value));
+                        setProgress(updated);
+                      }}
+                      data-testid={`input-progress-layer-no-${idx}`}
+                    />
+                  </div>
                   <div>
                     <Label className="text-sm flex items-center gap-1">
                       UOM

@@ -1601,6 +1601,7 @@ export async function registerRoutes(
       chainageOverrideReason: p?.chainageOverrideReason ?? null,
       label: p?.activity ?? null,
       noSiteWork: !!p?.noSiteWork,
+      layerNo: p?.layerNo != null && Number.isFinite(Number(p.layerNo)) ? Number(p.layerNo) : null,
     }));
     const itemIds = Array.from(new Set(rows.filter(isChainageGuardRow).map((r) => Number(r.boqItemId))));
     const priors = itemIds.length > 0 ? await storage.getSubmittedChainageEntries(itemIds, excludeDprId ?? null) : [];
@@ -17885,6 +17886,7 @@ export async function registerRoutes(
     await ensureDprBoqProjectColumn();
     await ensureBoqItemNameColumn();
     await ensureDprEntryKeyColumns();
+    await ensureProgressLayerNoColumn();
     await ensureBoqDprConversionFactor();
     seedDatabase();
     seedPlantMasterData();
@@ -18336,6 +18338,18 @@ async function ensureDprEntryKeyColumns() {
     console.log("progress_entries.entry_key / attachments.progress_entry_key ensured");
   } catch (err) {
     console.error("ensureDprEntryKeyColumns failed:", err);
+  }
+}
+
+// Batch 06P: idempotent startup DDL so per-customer deployments get the
+// optional layer/lift column without a manual schema push (publish-drop-trap:
+// also applied via direct ALTER to the current dev + prod databases).
+async function ensureProgressLayerNoColumn() {
+  try {
+    await db.execute(sql.raw(`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS layer_no integer`));
+    console.log("progress_entries.layer_no ensured");
+  } catch (err) {
+    console.error("ensureProgressLayerNoColumn failed:", err);
   }
 }
 

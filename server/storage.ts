@@ -2420,6 +2420,8 @@ export class DatabaseStorage implements IStorage {
             scopeOverrideReason: (p as any).scopeOverrideReason ?? null,
             scopeOverrideBy: (p as any).scopeOverrideBy ?? null,
             scopeOverrideAt: (p as any).scopeOverrideAt ?? null,
+            // 06P: preserve layer/lift number on clone (null stays null).
+            layerNo: (p as any).layerNo ?? null,
           }))
         ).returning();
         for (let i = 0; i < insertedProgress.length; i++) {
@@ -23640,6 +23642,7 @@ export class DatabaseStorage implements IStorage {
     side: string | null; fromKm: number | null; toKm: number | null;
     chainageFrom: string | null; chainageTo: string | null;
     quantity: number | null; uom: string | null; activity: string | null;
+    layerNo: number | null;
   }>> {
     if (boqItemIds.length === 0) return [];
     const conds = [
@@ -23667,6 +23670,7 @@ export class DatabaseStorage implements IStorage {
         quantity: progressEntries.quantity,
         uom: progressEntries.uom,
         activity: progressEntries.activity,
+        layerNo: progressEntries.layerNo,
       })
       .from(progressEntries)
       .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
@@ -23677,6 +23681,7 @@ export class DatabaseStorage implements IStorage {
       fromKm: r.fromKm != null ? Number(r.fromKm) : null,
       toKm: r.toKm != null ? Number(r.toKm) : null,
       quantity: r.quantity != null ? Number(r.quantity) : null,
+      layerNo: r.layerNo != null ? Number(r.layerNo) : null,
     }));
   }
 
@@ -23695,6 +23700,7 @@ export class DatabaseStorage implements IStorage {
     quantity: number | null; uom: string | null;
     quantitySource: string | null; quantitySourceNote: string | null;
     location: string | null; remarks: string | null; rowConversionFactor: number | null;
+    layerNo: number | null;
   }>> {
     const validDpr = and(
       eq(dprs.dprStatus, "submitted"),
@@ -23724,6 +23730,7 @@ export class DatabaseStorage implements IStorage {
         quantitySource: progressEntries.quantitySource,
         quantitySourceNote: progressEntries.quantitySourceNote,
         activity: progressEntries.activity,
+        layerNo: progressEntries.layerNo,
       })
       .from(progressEntries)
       .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
@@ -23779,6 +23786,7 @@ export class DatabaseStorage implements IStorage {
         location: null,
         remarks: r.quantitySourceNote ?? null,
         rowConversionFactor: null,
+        layerNo: r.layerNo != null ? Number(r.layerNo) : null,
       })),
       ...structureRows.map((r) => ({
         kind: "structure" as const,

@@ -34,6 +34,7 @@ import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
 import { type CandidateChainageRow } from "@shared/chainageOverlap";
 import { boqItemDisplayName } from "@shared/boqItemName";
+import { layerFieldLabel } from "@shared/layerDisplay";
 import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
 
 interface ProgressEntry {
@@ -58,6 +59,8 @@ interface ProgressEntry {
   quantitySourceNote: string;
   chainageOverrideReason: string;
   executedBy: string;
+  // 06P: optional physical layer/lift number; null = not multi-layer.
+  layerNo: number | null;
 }
 
 interface EquipmentEntry {
@@ -205,8 +208,9 @@ function mapDprToFormState(dpr: any) {
         quantitySourceNote: p.quantitySourceNote || "",
         chainageOverrideReason: p.chainageOverrideReason || "",
         executedBy: p.executedBy || "",
+        layerNo: p.layerNo != null ? Number(p.layerNo) : null,
       }))
-    : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }];
+    : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }];
 
   const equipment: EquipmentEntry[] = dpr.equipment?.length
     ? dpr.equipment.map((e: any) => ({
@@ -411,7 +415,7 @@ export default function SiteEdit() {
   });
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }
+    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
   ]);
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
@@ -426,6 +430,7 @@ export default function SiteEdit() {
     chainageOverrideReason: p.chainageOverrideReason,
     label: p.activity,
     noSiteWork: p.noSiteWork,
+    layerNo: p.layerNo,
   }));
   const { priors: overlapPriors } = useChainageOverlapContext(
     progress.map((p) => p.boqItemId).filter((bid): bid is number => bid != null),
@@ -703,7 +708,7 @@ export default function SiteEdit() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour') => {
     if (section === 'progress') {
-      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "" }]);
+      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }]);
     } else if (section === 'labour') {
@@ -1638,6 +1643,24 @@ export default function SiteEdit() {
                         setProgress(updated);
                       }}
                       data-testid={`input-thickness-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    {/* 06P: optional layer/lift number — blank = today's behaviour. */}
+                    <Label className="text-sm">{layerFieldLabel(entry.activity)}</Label>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      step={1}
+                      min={1}
+                      placeholder="—"
+                      value={entry.layerNo ?? ""}
+                      onChange={(e) => {
+                        const updated = [...progress];
+                        updated[idx].layerNo = e.target.value === "" ? null : Math.trunc(Number(e.target.value));
+                        setProgress(updated);
+                      }}
+                      data-testid={`input-layer-no-${idx}`}
                     />
                   </div>
                   <div>

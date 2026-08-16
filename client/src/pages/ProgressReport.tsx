@@ -26,7 +26,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   type ComputedEntry, type ReportBoqItem,
   computeItemAbstract, sortForDisplay, buildCoverageStrips, entryIntersectsRange,
+  layerBreakdown,
 } from "@shared/progressReport";
+import { layerDisplayName } from "@shared/layerDisplay";
 import { parseChainageKm, formatChainageKm } from "@shared/barSide";
 import {
   type ProgressReportState, parseReportState, progressReportUrl, dprLinkWithReturn,
@@ -223,8 +225,28 @@ function MeasurementSheet({ item, from, to, state, update }: { item: ReportItem;
   const strips = useMemo(() => buildCoverageStrips(item.entries), [item.entries]);
   const anyConverted = item.entries.some((e) => e.converted);
 
+  const layers = useMemo(() => layerBreakdown(item.entries), [item.entries]);
+
   return (
     <div className="space-y-3">
+      {/* 06P: optional layer/lift split — only when 2+ distinct layers were
+          recorded; a pure breakdown of the existing total, never a new column. */}
+      {layers.length > 0 && (
+        <details className="text-xs" data-testid={`layer-breakdown-${item.boqItem.id}`}>
+          <summary className="cursor-pointer font-semibold text-slate-700 select-none">Layer details</summary>
+          <div className="mt-1 space-y-0.5 pl-4">
+            {layers.map((l) => (
+              <div key={l.layerNo ?? "none"} className="flex gap-2" data-testid={`layer-row-${item.boqItem.id}-${l.layerNo ?? "none"}`}>
+                <span className="text-slate-600">
+                  {l.layerNo != null ? layerDisplayName(itemLabel(item.boqItem), l.layerNo) : "No layer recorded"}
+                </span>
+                <span className="font-medium">— {fmt(l.qty, 4)} {item.boqItem.unit}</span>
+                <span className="text-slate-400">({l.entryCount} {l.entryCount === 1 ? "entry" : "entries"})</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
       {strips.length > 0 && (
         <div className="space-y-1">
           <div className="text-xs font-semibold text-slate-700">DPR Chainage Coverage</div>

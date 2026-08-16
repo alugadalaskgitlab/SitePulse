@@ -88,6 +88,13 @@ export type CandidateChainageRow = {
   /** display label for readiness messages */
   label?: string | null;
   noSiteWork?: boolean | null;
+  /**
+   * 06P: optional physical layer/lift number. When BOTH rows of a candidate
+   * pair have a non-null layerNo and the values DIFFER, the pair is not an
+   * overlap. null is never treated as equal to or different from any layer —
+   * it simply falls back to the pre-06P rule.
+   */
+  layerNo?: number | null;
 };
 
 /** Prior recorded progress (a submitted DPR row, canonical valid filter). */
@@ -102,6 +109,8 @@ export type PriorChainageEntry = {
   toKm: number | null;
   quantity: number | null;
   uom: string | null;
+  /** 06P: optional layer/lift number of the prior entry (null = legacy/unset). */
+  layerNo?: number | null;
 };
 
 export type ChainageOverlapHit = {
@@ -128,6 +137,16 @@ export function isChainageGuardRow(row: CandidateChainageRow): boolean {
   if (row.noSiteWork) return false;
   if (row.boqItemId == null) return false;
   return normaliseKmRange(row.fromKm, row.toKm) != null;
+}
+
+/**
+ * 06P layer pre-check: a candidate pair is exempt from overlap comparison
+ * ONLY when both layer numbers are non-null integers AND differ. Any null
+ * (legacy rows, blank field) falls back to today's rule — null is never
+ * coerced to 1 and never compared against a specific layer.
+ */
+export function layersDistinct(a: number | null | undefined, b: number | null | undefined): boolean {
+  return a != null && b != null && Number.isFinite(Number(a)) && Number.isFinite(Number(b)) && Number(a) !== Number(b);
 }
 
 function exactSameRange(a: { from: number; to: number }, b: { from: number; to: number }): boolean {
@@ -165,6 +184,7 @@ export function findChainageOverlaps(
     for (let j = i + 1; j < guarded.length; j++) {
       const A = guarded[i], B = guarded[j];
       if (Number(A.row.boqItemId) !== Number(B.row.boqItemId)) continue;
+      if (layersDistinct(A.row.layerNo, B.row.layerNo)) continue; // 06P: different layers = valid separate work
       if (!sidesMayOverlap(A.row.side, B.row.side)) continue;
       const seg = overlapSegment(A.r.from, A.r.to, B.r.from, B.r.to);
       if (!seg) continue;
@@ -179,6 +199,7 @@ export function findChainageOverlaps(
   for (const { row, r } of guarded) {
     for (const p of priors) {
       if (Number(p.boqItemId) !== Number(row.boqItemId)) continue;
+      if (layersDistinct(row.layerNo, p.layerNo)) continue; // 06P: different layers = valid separate work
       const pr = normaliseKmRange(p.fromKm, p.toKm);
       if (!pr) continue;
       if (!sidesMayOverlap(row.side, p.side)) continue;

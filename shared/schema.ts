@@ -150,6 +150,11 @@ export const progressEntries = pgTable("progress_entries", {
   scopeOverrideReason: text("scope_override_reason"),
   scopeOverrideBy: integer("scope_override_by"),
   scopeOverrideAt: timestamp("scope_override_at"),
+  // ── Batch 06P: multi-layer / lift execution tracking ─────────────────────
+  // Optional physical layer/lift number (1, 2, 3…) at the same chainage.
+  // null = "not a multi-layer entry" — NEVER coerced to 1; null falls back to
+  // the pre-06P overlap rule. Display words like "Lift" are client-side only.
+  layerNo: integer("layer_no"),
 });
 
 // Structure DPR Items (for workType = "structure")

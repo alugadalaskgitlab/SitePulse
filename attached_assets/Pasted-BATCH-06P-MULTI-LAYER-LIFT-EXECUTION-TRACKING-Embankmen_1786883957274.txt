@@ -1,0 +1,279 @@
+BATCH 06P — MULTI-LAYER / LIFT EXECUTION TRACKING
+(Embankment / Subgrade / GSB / WMM / DBM — same chainage, multiple layers)
+
+This is a focused DPR-entry + overlap-guard + reporting batch. It does NOT
+touch planning, Auto-Sequence, Execution Arrangement, Material Receipt, or
+Contract BOQ Qty.
+
+--------------------------------------------------
+OBJECTIVE
+--------------------------------------------------
+Many road layers (Embankment, Subgrade, GSB, WMM, sometimes DBM) are built in
+more than one physical layer/lift at the SAME chainage. Today SitePulse
+identifies actual progress purely as:
+
+  BOQ item + chainage/side + quantity
+
+which cannot distinguish "first layer", "second layer", or a rework/overlay
+at the same stretch. This creates ambiguity in DPR entry, overlap detection,
+and Progress/RA visibility and measurement traceability. (The underlying
+quantity totals already calculate correctly today — this is a visibility and
+data-traceability gap, not a quantity/arithmetic bug.)
+
+Add ONE new execution dimension — layer/lift — so that:
+
+  Same BOQ item + same chainage + DIFFERENT layer  = valid separate work.
+  Same BOQ item + same chainage + SAME layer        = potential duplicate/
+                                                        overlap (unchanged
+                                                        from today's rule).
+
+This is an execution/reporting concept only. It does NOT create a new BOQ
+item, does NOT change Contract BOQ Qty, and does NOT partition or reserve
+quantity — all layers for an item still credit against the same single
+contract quantity, exactly as today.
+
+Expected schema change: ONE small additive nullable column on
+progress_entries only: layerNo (integer). Investigate first and STOP before
+migration if a different schema is required.
+
+--------------------------------------------------
+1. CONFIRMED CURRENT ARCHITECTURE
+--------------------------------------------------
+Verified directly against the current codebase:
+
+A. progress_entries (schema.ts) already stores, per row: activity,
+   chainageFrom/To (+ numeric chainageFromKm/chainageToKm), side, length,
+   width, thickness, quantity, uom, boqItemId, chainageOverrideReason. There
+   is no layer/lift field today.
+
+B. Guided DPR already exposes a live "Thickness (m)" input per activity row
+   (GuidedDpr.tsx), and each row's quantity is computed from its own
+   length/width/thickness. Each physical pass is ALREADY its own row with
+   its own thickness — do not add a second "layer thickness" field. layerNo
+   is the only new field needed.
+
+C. shared/chainageOverlap.ts is the single neutral overlap module reused by
+   Guided DPR, Detailed DPR (SiteEntry/SiteEdit), Progress Report, and the
+   server Final-Submit recheck. It compares rows by boqItemId + side +
+   chainage range only — it has no layer awareness, so a legitimate second
+   layer at the same chainage is flagged exactly like an accidental
+   duplicate entry today, requiring a typed chainageOverrideReason to pass
+   Final Submit. This is the concrete UX problem to fix.
+
+D. shared/progressReport.ts's cumulative/BOQ-credit math (entryBoqCredit,
+   the chronological running-cumulative loop) sums quantity × conversion
+   factor for every entry with NO chainage or layer deduplication. Multiple
+   layers at the same chainage already credit correctly and additively
+   today — this math does not need to change. Only the DISPLAY/GROUPING
+   needs a layer dimension.
+
+E. dpr_structure_items (structure rows: culverts, box structures, etc.) are
+   a different kind ("structure" vs "progress" in ReportEntry.kind) and are
+   NOT in scope for layer/lift — structures are typically single pours.
+   Leave dpr_structure_items untouched.
+
+F. Tomorrow's Plan (shared/plannedWork.ts) and Auto-Sequence/programme bars
+   work on a quantity basis, not a chainage-coverage basis, and are
+   explicitly OUT OF SCOPE for this batch (confirmed decision — see §9).
+
+--------------------------------------------------
+2. SCHEMA CHANGE
+--------------------------------------------------
+Add to progress_entries only:
+
+  layerNo: integer, nullable (no default — null means "not a multi-layer
+           entry", preserving 100% backward-compatible behavior for the
+           overwhelming majority of rows/items that never use this).
+
+That is the ONLY new column. Do NOT add a layer label/free-text field —
+plain integers only (1, 2, 3...). Free text invites spelling variation on a
+screen where the goal is less typing, not more. If a given activity benefits
+from a friendlier word than "Layer N" (e.g. "Lift" for Embankment), that is
+a client-side display convention keyed off the activity name — it is never
+stored. See §4.
+
+Do NOT add a "total layers required" or "layer thickness" field in this
+batch either — total-layers-required is a planning-side concept, explicitly
+deferred (§9); layer thickness is already the existing thickness column.
+
+If investigation shows layerNo alone is insufficient, STOP and report before
+any migration.
+
+--------------------------------------------------
+3. OVERLAP GUARD — LAYER AWARENESS
+--------------------------------------------------
+Update shared/chainageOverlap.ts:
+
+- Add layerNo to CandidateChainageRow and PriorChainageEntry.
+- In BOTH the same-DPR comparison loop and the prior-submitted-DPR
+  comparison loop: when comparing two rows for the same boqItemId, if BOTH
+  rows have a non-null layerNo AND those values differ, the pair is NOT an
+  overlap — skip it entirely (no hit recorded, no chainageOverrideReason
+  required).
+- When either row's layerNo is null (legacy entries, or an item where the
+  engineer didn't set a layer), or both rows have the SAME layerNo, keep
+  today's exact overlap behavior unchanged. Do not assume a null layerNo
+  means "Layer 1" — null must never be treated as equal to, or different
+  from, any specific layer number; it simply falls back to today's rule.
+- Do not change sidesMayOverlap, overlapSegment, exactSameRange, or the
+  Final-Submit readiness rule itself — only the layer pre-check gating
+  whether a candidate pair is compared at all.
+
+This is the core fix: today's false-positive "possible overlap" warning on
+a legitimate second layer goes away, while a genuine same-layer duplicate
+still gets caught exactly as before.
+
+--------------------------------------------------
+4. DPR ENTRY — GUIDED DPR
+--------------------------------------------------
+On each progress activity row (not structure rows), add ONE small optional
+control near the existing Thickness field:
+
+  Layer / Lift  [   ]
+
+- A number input (layerNo) — blank by default, integer only.
+- Leaving it blank must behave EXACTLY as today in every respect (overlap
+  guard, save payload, report grouping).
+- No second free-text field. If a friendlier word than "Layer N" is wanted
+  for a given activity (e.g. Embankment → "Lift"), that is a pure
+  client-side display label derived from the activity name at render time —
+  it must never be persisted as its own column or user-editable text.
+- Do not build BOQ-item classification to decide whether the field should
+  appear — show the same compact optional field for every progress row. A
+  smarter/conditional UI can be a later batch.
+- Convenience (nice-to-have, not required for this batch to land): when a
+  row's chainage/side/boqItemId matches a prior entry for the same item at
+  the same site, suggest the next layer number (last used + 1) rather than
+  leaving it blank. If this is not straightforward, skip it and report —
+  do not block the batch on it.
+
+--------------------------------------------------
+5. DPR ENTRY — DETAILED DPR (SiteEntry / SiteEdit)
+--------------------------------------------------
+Apply the same single layerNo field to the equivalent progress-entry rows in
+SiteEntry.tsx / SiteEdit.tsx, consistent with Guided DPR. Reuse the same
+shared overlap-guard change from §3 — do not create a second, divergent
+overlap check for the Detailed DPR forms.
+
+--------------------------------------------------
+6. PROGRESS REPORT / RA REPORT — LAYER BREAKDOWN
+--------------------------------------------------
+Add layerNo (pass-through only, no formula change) to ReportEntry /
+ComputedEntry in shared/progressReport.ts.
+
+In the Progress Report and RA Report views:
+- Default view is UNCHANGED — a single rolled-up total per BOQ item, exactly
+  as today. Items that never use layerNo must look identical to before. Do
+  NOT add a permanent new report column.
+- Add an optional expandable breakdown that, only for items where more than
+  one distinct layerNo has been recorded, shows the split. Example:
+
+    WMM — 970 / 1,000 Cum
+    ▸ Layer details
+      Layer 1 — 480 Cum
+      Layer 2 — 490 Cum
+
+  The contractual/progress quantity shown at the top remains the single
+  970 Cum total — layers are a breakdown of it, never a second quantity.
+- A friendlier per-activity word (e.g. "Lift" for Embankment) may be used in
+  this display, derived client-side from the activity name — never stored.
+- Do not change contractQty, previousQty, cumulativeQty, balanceQty, or
+  pctComplete formulas — layer is a grouping/display dimension only.
+- Investigate the current Progress Report / RA Report page structure first
+  to find the natural, least-cluttered place for this control (e.g. collapsed
+  row expansion vs. a toggle) rather than assuming a specific layout — report
+  what you find and what you chose before finishing.
+
+--------------------------------------------------
+7. NULL LAYERNO IS NOT LAYER 1
+--------------------------------------------------
+All existing progress_entries rows will have layerNo = null after migration.
+Two null-layerNo rows at the same chainage must continue to be flagged as a
+possible overlap exactly as today (§3) — do not treat "both null" as "both
+different" or silently exempt historical data from the existing guard, and
+never coerce a null layerNo to the value 1 anywhere (storage, comparison, or
+display).
+
+--------------------------------------------------
+8. NO BOQ ITEM CONFIGURATION IN THIS BATCH
+--------------------------------------------------
+Do not add any "this BOQ item requires N layers" flag or configuration to
+BOQ item setup, geometry setup, or anywhere else. The Layer/Lift field is a
+free, optional, per-entry value the engineer fills in when relevant — no
+per-item pre-configuration is required for v1. If this later proves
+insufficient, that is a separate, future batch.
+
+--------------------------------------------------
+9. WHAT NOT TO TOUCH
+--------------------------------------------------
+Do NOT modify:
+- Tomorrow's Plan / shared/plannedWork.ts (planning is quantity-based and
+  does not need a layer dimension — confirmed decision, not an oversight).
+- Auto-Sequence / programme bars / workProgramBars.
+- Execution Arrangement.
+- Material Receipt (layer must not be forced into material receipt linkage;
+  BOQ/reach is enough operationally).
+- Contract BOQ Qty / boq_items.boq_qty.
+- entryBoqCredit / the cumulative running-total formula.
+- dpr_structure_items (structures stay out of scope).
+- Diesel Requirement / Vendor Bills / Payment Mode / PI workflow (unrelated).
+- Notification architecture.
+- Any other module not explicitly named above.
+
+--------------------------------------------------
+10. TESTS
+--------------------------------------------------
+A. Two progress_entries at the same chainage/side/boqItem, different
+   layerNo → no overlap hit, no chainageOverrideReason required, Final
+   Submit succeeds.
+B. Two progress_entries at the same chainage/side/boqItem, same layerNo →
+   overlap hit exactly as today, chainageOverrideReason still required.
+C. Two progress_entries at the same chainage/side/boqItem, one or both
+   layerNo null → overlap hit exactly as today (legacy behavior preserved;
+   null is never treated as equal to or different from a specific layer).
+D. Different boqItemId or non-overlapping side/chainage → unaffected by
+   layerNo either way (existing rules still apply first).
+E. Leaving layerNo blank on a normal single-layer entry produces
+   byte-identical save payload and behavior to pre-batch.
+F. Cumulative/BOQ-credit totals for a multi-layer item equal the sum of all
+   valid entries regardless of layer — unchanged formula, verified with a
+   2-layer example.
+G. Progress Report / RA Report: item with one layer only renders identically
+   to today, with no permanent new column. Item with 2+ distinct layerNo
+   values shows correct per-layer breakdown that sums to the existing total.
+H. Guided DPR and Detailed DPR both save/restore layerNo correctly,
+   including on draft PATCH and edit.
+I. Only progress_entries changes; dpr_structure_items untouched.
+J. No schema change beyond the single additive nullable layerNo column —
+   confirm no layerLabel or any other new column was added.
+K. Full regression: existing chainage-overlap tests (Batch 06B) and
+   Progress Report tests all still pass unmodified.
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+11. REPORT BACK
+--------------------------------------------------
+Report:
+A. exact schema diff (must be the single layerNo column only).
+B. exact chainageOverlap.ts logic change (with the "both non-null and
+   different" condition spelled out, and confirmation null is never coerced
+   to a layer value).
+C. Guided DPR + Detailed DPR UI change, and whether the "suggest next layer
+   number" convenience was implemented or skipped.
+D. Progress Report / RA Report layout chosen for the layer breakdown, and
+   why.
+E. confirmation that a plain single-layer item is visually and behaviorally
+   unchanged everywhere, and that no permanent new report column was added.
+F. tests.
+
+Confirm:
+- only progress_entries schema changed, additively, with ONE new column
+  (layerNo — no layerLabel or other field).
+- Contract BOQ Qty and the credit/cumulative formula are unchanged.
+- Tomorrow's Plan, Auto-Sequence, Execution Arrangement, Material Receipt
+  are unchanged.
+- dpr_structure_items unaffected.
+- no unrelated changes.
+
+DO NOT START ANOTHER BATCH.
