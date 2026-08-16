@@ -23868,6 +23868,7 @@ export class DatabaseStorage implements IStorage {
         location: [r.structureType, r.structureName, r.itemOfWork].filter(Boolean).join(" — ") || null,
         remarks: r.remarks ?? null,
         rowConversionFactor: r.rowConversionFactor != null ? Number(r.rowConversionFactor) : null,
+        layerNo: null,
       })),
     ];
   }
