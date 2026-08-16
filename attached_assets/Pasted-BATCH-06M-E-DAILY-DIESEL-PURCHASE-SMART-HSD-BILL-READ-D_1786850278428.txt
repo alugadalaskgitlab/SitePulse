@@ -1,0 +1,1076 @@
+BATCH 06M-E — DAILY DIESEL PURCHASE
+SMART HSD BILL READ + DUPLICATE CHECK
++ OPTIONAL MERCHANT QR
++ DEFERRED PAYMENT RECORDING
+
+This is a focused enhancement to the existing Daily Diesel Requirement
+purchase process.
+
+OBJECTIVE
+
+Improve the existing Diesel Purchase form so that:
+
+1. Purchaser can upload/take a fuel bill photo.
+2. SitePulse reads the bill and extracts relevant purchase details.
+3. Extracted values can populate the purchase form after user confirmation.
+4. SitePulse checks for possible duplicate use of the same bill.
+5. Purchaser can optionally upload the fuel station's Merchant QR.
+6. Purchaser can either:
+   - record payment immediately, or
+   - leave payment as Pending for Company/Admin to pay later.
+7. PM/Admin/permitted user can later use a small Record Payment action.
+
+Do NOT redesign Diesel stock, Material Receipt, 06M-B/C/D, Vendor Bills,
+notifications or PI.
+
+Expected schema change:
+Investigate current Diesel payment fields first.
+Prefer existing fields where sufficient.
+If minimum extra payment fields are required, STOP and report before schema.
+
+--------------------------------------------------
+1. CONFIRMED CURRENT DIESEL PURCHASE FLOW
+--------------------------------------------------
+
+Current Daily Diesel Purchase already supports:
+
+- Purchased Qty
+- Supplier
+- Bill No.
+- Rate
+- Amount
+- Purchased At
+- Remarks
+- Bill/Invoice attachment
+- Payment Mode
+- Paid By
+- Edit Purchase Details for already-purchased records
+
+Bill/Invoice upload already uses the existing attachment infrastructure.
+
+Payment/QR evidence UI was previously removed.
+
+Preserve the current purchase workflow and restore only the useful QR/payment
+features described below.
+
+--------------------------------------------------
+2. SMART BILL READ — PRINCIPLE
+--------------------------------------------------
+
+The bill-reading feature must NOT depend on one fuel-company template.
+
+Do NOT write fixed-position parsing such as:
+
+"If Bharat Petroleum, Rate is line 12."
+
+Fuel-station slips from:
+
+- Bharat Petroleum
+- HPCL
+- IndianOil
+- Nayara
+- local fuel stations
+
+may have different layouts.
+
+The extraction must identify fields semantically from the document.
+
+Examples of equivalent labels:
+
+Bill / Receipt Number:
+- Receipt No
+- Bill No
+- Invoice No
+- Txn No
+- Receipt Number
+
+Quantity:
+- Volume(L)
+- Qty
+- Quantity
+- Litres
+- Ltr
+- Volume
+
+Rate:
+- Rate(Rs/L)
+- Rate/L
+- Price/Ltr
+- Unit Price
+
+Amount:
+- Amount
+- Total
+- Net Amount
+- Sale Amount
+
+Date:
+- Date
+- Txn Date
+- Sale Date
+
+Supplier:
+- Fuel Station
+- Dealer Name
+- Outlet Name
+- printed station heading/address
+
+--------------------------------------------------
+3. BILL FIELDS TO EXTRACT
+--------------------------------------------------
+
+From a typical fuel bill extract where available:
+
+- Supplier / Fuel Station
+- Product
+- Bill / Receipt Number
+- Bill Date
+- Bill Time
+- Quantity
+- UoM
+- Rate per litre
+- Amount
+
+Optional useful identifiers where detected:
+
+- FCC ID
+- Pump/FIP number
+- Nozzle number
+- transaction reference
+
+Do not require optional identifiers.
+
+Primary purchase fields are:
+
+Bill No
+Date
+Supplier
+Qty
+Rate
+Amount
+
+--------------------------------------------------
+4. PRODUCT VALIDATION
+--------------------------------------------------
+
+The parser should identify whether the bill appears to be for:
+
+Diesel / HSD
+
+Examples:
+- Diesel
+- HSD
+- High Speed Diesel
+
+If the detected product clearly appears to be Petrol or another product:
+
+do not auto-apply the values.
+
+Show a warning:
+
+"This bill appears to be for Petrol, not Diesel."
+
+Allow PM/Admin/permitted user to inspect/correct if the parser is uncertain.
+
+Do not silently accept an obviously non-Diesel bill.
+
+--------------------------------------------------
+5. BILL UPLOAD → READ BILL
+--------------------------------------------------
+
+After the Purchaser:
+
+- takes a photo,
+- selects from Gallery,
+- or uploads a File,
+
+show an action/state:
+
+READ BILL DETAILS
+
+or automatically begin extraction if that matches the existing upload UX.
+
+Do not save extracted values directly into the purchase record yet.
+
+Extraction produces a review result first.
+
+--------------------------------------------------
+6. EXTRACTION REVIEW
+--------------------------------------------------
+
+After reading the bill show something like:
+
+BILL DETAILS DETECTED
+
+Supplier:
+Sri Durga Bhavani F S
+
+Bill No:
+H1126
+
+Date:
+16 Aug 2026
+
+Time:
+08:02
+
+Product:
+Diesel
+
+Quantity:
+40.00 L
+
+Rate:
+₹104.61/L
+
+Amount:
+₹4,184.40
+
+[Use These Details]
+[Edit / Review]
+
+Purchaser must confirm before values are applied.
+
+Do not silently overwrite form values.
+
+--------------------------------------------------
+7. CONFIDENCE / UNCERTAIN VALUES
+--------------------------------------------------
+
+If extraction is uncertain for a field:
+
+show that field as needing confirmation.
+
+Example:
+
+Bill No:
+H1126
+Confidence: High
+
+Supplier:
+Sri Durga Bhavani F S
+Confidence: Medium
+
+Quantity:
+40.00 L
+Confidence: High
+
+Do not require numerical confidence percentages if the chosen extraction
+service does not provide them cleanly.
+
+A simple:
+
+Detected
+Needs Review
+Not Found
+
+state is acceptable.
+
+--------------------------------------------------
+8. APPLY TO PURCHASE FORM
+--------------------------------------------------
+
+When user taps:
+
+USE THESE DETAILS
+
+populate where confidently available:
+
+- Supplier
+- Bill No.
+- Purchased Qty
+- Rate
+- Amount
+- Purchase Date
+- Purchase Time
+
+Keep all fields editable.
+
+Do NOT overwrite a deliberately changed value without confirmation.
+
+If the form already contains different user-entered data, show the
+differences before replacing.
+
+--------------------------------------------------
+9. QTY × RATE VALIDATION
+--------------------------------------------------
+
+When Qty, Rate and Amount are available:
+
+calculate:
+
+Qty × Rate
+
+and compare against detected Amount.
+
+Allow small rounding tolerance.
+
+Example:
+
+40.00 × 104.61 = 4,184.40
+
+Show:
+
+✓ Bill amount matches Qty × Rate
+
+If mismatch:
+
+show:
+
+"Bill total does not exactly match Qty × Rate."
+
+Do not automatically reject because tax/rounding/other charges may exist.
+
+Treat as review warning.
+
+--------------------------------------------------
+10. REQUIREMENT COMPARISON
+--------------------------------------------------
+
+Compare detected/purchased Qty with the Daily Diesel Requirement Qty.
+
+Do NOT require equality.
+
+Example:
+
+Required:
+600 L
+
+Detected bill:
+620 L
+
+Show:
+
+Purchased quantity is 20 L above requirement.
+
+Informational only.
+
+Do not block purchase.
+
+--------------------------------------------------
+11. MULTIPLE BILLS AGAINST ONE REQUIREMENT
+--------------------------------------------------
+
+Do not assume one Daily Diesel Requirement can have only one fuel bill.
+
+If current purchase model already supports only one Bill No/purchase record,
+investigate before changing it.
+
+The desired behavior is:
+
+a requirement may be fulfilled through one or more purchase bills.
+
+Example:
+
+Required:
+600 L
+
+Bill 1:
+400 L
+
+Bill 2:
+200 L
+
+Total Purchased:
+600 L
+
+If the current Diesel Requirement persistence does NOT support multiple
+purchase transactions cleanly:
+
+STOP and report rather than forcing multiple bill data into one set of fields.
+
+Do not redesign this silently.
+
+--------------------------------------------------
+12. DUPLICATE BILL CHECK
+--------------------------------------------------
+
+Before allowing confirmed bill details to be saved, check whether the bill
+appears already used.
+
+Strong duplicate identity should use:
+
+- Supplier / Fuel Station
+- Bill / Receipt Number
+- Bill Date
+
+and reinforce with:
+
+- Quantity
+- Amount
+
+Do not depend only on Bill Number because receipt sequences may repeat across
+different stations.
+
+--------------------------------------------------
+13. EXACT DUPLICATE
+--------------------------------------------------
+
+If there is a strong/exact match:
+
+show:
+
+POSSIBLE DUPLICATE FUEL BILL
+
+Receipt:
+H1126
+
+Supplier:
+Sri Durga Bhavani F S
+
+Date:
+16 Aug 2026
+
+Qty:
+40 L
+
+Amount:
+₹4,184.40
+
+This receipt appears to already be linked to another Diesel Purchase.
+
+[View Existing]
+[Cancel]
+
+Prefer blocking an exact duplicate unless Admin/Owner explicitly overrides
+according to existing permission conventions.
+
+Do not silently allow duplicate bill use.
+
+--------------------------------------------------
+14. FUZZY DUPLICATE
+--------------------------------------------------
+
+Examples:
+
+- same supplier/date/amount but unreadable bill number;
+- same bill number/date but slightly different OCR supplier spelling.
+
+Show:
+
+Possible Duplicate — Review Required
+
+Do not automatically block unless match confidence is strong.
+
+Do not create a complicated fraud-scoring engine.
+
+--------------------------------------------------
+15. FILE / IMAGE FINGERPRINT
+--------------------------------------------------
+
+If the current attachment infrastructure can expose a stable hash/file
+fingerprint cheaply:
+
+also check whether the exact same image/file has already been uploaded for a
+Diesel Purchase.
+
+This is supplementary.
+
+Do not build a new document storage system just for hashing.
+
+If not readily available:
+report and skip.
+
+--------------------------------------------------
+16. OPTIONAL MERCHANT QR — RESTORE
+--------------------------------------------------
+
+Restore an OPTIONAL section on the Diesel Purchase form:
+
+MERCHANT QR
+
+Allow:
+- Camera
+- Gallery
+- File
+
+Purpose:
+
+The Purchaser can capture the fuel station's payment QR so the Company/Admin
+can use it later if payment is pending.
+
+This is NOT the same as Payment Evidence.
+
+Label it clearly:
+
+Merchant QR for Payment
+
+Do not call it:
+
+Payment Proof
+Payment Evidence
+
+unless a separate proof is actually uploaded.
+
+--------------------------------------------------
+17. QR STORAGE
+--------------------------------------------------
+
+Reuse the existing generic attachment infrastructure.
+
+Use:
+
+moduleType = diesel_purchase
+
+with a clearly separate docType such as:
+
+merchant_qr
+
+Keep Bill attachment as:
+
+bill / invoice
+
+Do not create another attachment table.
+
+--------------------------------------------------
+18. QR DISPLAY
+--------------------------------------------------
+
+On the Diesel Purchase detail show:
+
+Bill:
+✓ View Bill
+
+Merchant QR:
+✓ View QR
+
+or:
+
+Merchant QR:
+Not uploaded
+
+PM/Admin/permitted users should be able to open the QR image according to
+existing permissions.
+
+--------------------------------------------------
+19. PAYMENT STATUS
+--------------------------------------------------
+
+Explicitly distinguish payment state.
+
+Desired user-facing Payment Status:
+
+- Paid
+- Pending
+
+If existing payment semantics already have suitable values, reuse them.
+
+Do not create unnecessary states in this batch.
+
+If current Diesel schema has no Payment Status field:
+STOP and report the minimum schema requirement before implementing.
+
+Do not fake Pending using Payment Mode text.
+
+--------------------------------------------------
+20. IMMEDIATE PAYMENT BY PURCHASER / OTHER PERSON
+--------------------------------------------------
+
+If payment happens during purchase:
+
+Payment Status:
+Paid
+
+Then record existing:
+
+- Payment Mode
+- Paid By
+
+and where already supported:
+
+- payer name when Personal
+
+Examples:
+
+Paid
+UPI
+Paid By: Purchaser / Personal
+
+or:
+
+Paid
+Cash
+Paid By: Company Account
+
+Do not change the existing meaning of Payment Mode/Paid By.
+
+--------------------------------------------------
+21. COMPANY TO PAY LATER
+--------------------------------------------------
+
+If Purchaser records purchase but Company will settle later:
+
+Payment Status:
+Pending
+
+Purchaser does NOT have to falsely choose a payment mode.
+
+Show:
+
+PAYMENT PENDING
+
+Merchant QR:
+View QR, if uploaded
+
+Then PM/Admin/permitted user can later:
+
+RECORD PAYMENT
+
+--------------------------------------------------
+22. RECORD PAYMENT ACTION
+--------------------------------------------------
+
+For a Purchased Diesel record with:
+
+Payment Status = Pending
+
+show to PM/Admin/permitted payer:
+
+RECORD PAYMENT
+
+This must be a small payment action, not reopening/re-performing the purchase.
+
+--------------------------------------------------
+23. RECORD PAYMENT FORM
+--------------------------------------------------
+
+Record Payment should capture:
+
+- Payment Date
+- Payment Time
+- Payment Mode
+- Paid By
+- transaction/reference number — optional
+- remarks — optional
+
+Payment Mode should reuse the existing PI/Diesel options.
+
+Examples:
+- UPI
+- Cash
+- Cheque
+- RTGS / NEFT
+- Bank Transfer
+- Credit settlement
+- other existing canonical values
+
+Do not invent a second inconsistent option set.
+
+--------------------------------------------------
+24. PAID BY
+--------------------------------------------------
+
+Reuse the current PI/Diesel Paid By semantics.
+
+Examples:
+
+- Company Account
+- Personal
+
+If Personal:
+capture/show payer name where the current UI already supports it.
+
+Do not hard-code specific people's names.
+
+--------------------------------------------------
+25. PAYMENT COMPLETION
+--------------------------------------------------
+
+After Admin records payment:
+
+Payment Status:
+Paid
+
+Display:
+
+Paid:
+16 Aug 2026 · 2:35 PM
+
+Mode:
+NEFT
+
+Paid By:
+Company Account
+
+Reference:
+UTR...
+
+Recorded By:
+<user>
+
+Do not change:
+
+Purchase Qty
+Supplier
+Bill
+Material Receipt
+stock
+
+Payment is a separate fact.
+
+--------------------------------------------------
+26. PAYMENT AUDIT
+--------------------------------------------------
+
+Do not overwrite the Purchaser's original purchase audit fields.
+
+Keep distinct:
+
+Purchased By / Purchased At
+
+and:
+
+Payment Recorded By / Payment Recorded At
+
+If current schema cannot store that distinction:
+
+STOP and report the minimum additive fields required.
+
+Do not pretend the purchase timestamp is the payment timestamp.
+
+--------------------------------------------------
+27. PAYMENT PROOF — DO NOT RESTORE BY DEFAULT
+--------------------------------------------------
+
+Do NOT automatically restore the old Payment Evidence upload.
+
+This batch restores:
+
+Merchant QR
+
+for facilitating payment.
+
+Payment proof/screenshot remains out unless explicitly required later.
+
+If the app already has historical payment_evidence attachments:
+do not delete them.
+
+--------------------------------------------------
+28. ALREADY-PURCHASED DIESEL RECORDS
+--------------------------------------------------
+
+Existing purchased records must remain valid.
+
+If new Payment Status is introduced:
+
+do NOT guess historical Paid/Pending values.
+
+Preferred safe behavior:
+
+- existing records with clear existing Payment Mode/Paid By may be displayed
+  according to an explicit migration/backfill rule only if safely inferable;
+- otherwise show Payment Status not set / legacy and allow PM/Admin to update.
+
+Do not fabricate historical payment dates.
+
+--------------------------------------------------
+29. EDIT PURCHASE DETAILS
+--------------------------------------------------
+
+Preserve the current:
+
+Edit Purchase Details
+
+action for already-purchased Diesel requirements.
+
+Bill parsing should also be usable when editing if a new/replacement Bill is
+uploaded.
+
+Do not create a second purchase.
+
+--------------------------------------------------
+30. BILL REPLACEMENT SAFETY
+--------------------------------------------------
+
+If replacing an existing Bill attachment/details on a completed purchase:
+
+run the duplicate check again.
+
+Do not silently replace:
+
+Bill No
+Date
+Qty
+Rate
+Amount
+
+without user confirmation.
+
+Historical attachment handling follows current attachment semantics.
+
+--------------------------------------------------
+31. MATERIAL RECEIPT / STOCK — DO NOT TOUCH
+--------------------------------------------------
+
+Do NOT change:
+
+Purchased → Receipt Pending
+Partly Received
+Fully Received
+
+Do NOT change:
+
+linkedDieselRequirementId
+
+Do NOT change:
+
+Material Receipt stock-IN.
+
+Do NOT change:
+
+06M-B stock sufficiency guard.
+
+Do NOT change:
+
+06M-D receipt reversal behavior.
+
+Bill reading/payment does not affect stock.
+
+--------------------------------------------------
+32. DIRECT SITE PURCHASE — DO NOT TOUCH
+--------------------------------------------------
+
+Keep existing Direct Site Purchase behavior unchanged.
+
+This batch is only for the Daily Diesel Requirement Purchase workflow.
+
+--------------------------------------------------
+33. NOTIFICATIONS
+--------------------------------------------------
+
+Do NOT redesign notifications.
+
+If there is an existing notification when Diesel Purchase is completed,
+preserve it.
+
+If Payment Pending already has a natural existing notification seam, it may be
+used.
+
+Do not expand the global bell architecture in this batch.
+
+--------------------------------------------------
+34. PARSER IMPLEMENTATION — INVESTIGATE AVAILABLE CAPABILITY
+--------------------------------------------------
+
+Before implementing the smart reader, inspect what document/image extraction
+capability already exists in the project/runtime.
+
+Preferred:
+
+reuse an existing supported vision/document extraction service or AI integration
+already present in SitePulse/Replit.
+
+Do NOT implement fragile repeated OCR parsing if a reliable document/vision
+service is already available.
+
+Do NOT introduce a heavyweight new dependency blindly.
+
+Report:
+
+- extraction mechanism chosen
+- server/client boundary
+- expected cost/API dependency if any
+- fallback when parsing fails
+
+If a new paid external service/API key is required:
+STOP and report before wiring it.
+
+--------------------------------------------------
+35. PARSING FAILURE
+--------------------------------------------------
+
+If bill parsing fails:
+
+do not block the purchase process.
+
+Show:
+
+Could not reliably read this bill.
+Please enter the purchase details manually.
+
+The Bill attachment must remain saved/available.
+
+Manual purchase flow remains fully usable.
+
+--------------------------------------------------
+36. SECURITY / TRUST
+--------------------------------------------------
+
+Treat extracted text/values as untrusted input.
+
+Validate:
+
+- numeric Qty
+- numeric Rate
+- numeric Amount
+- valid date
+- reasonable string lengths
+
+Do not directly execute/store arbitrary parser output.
+
+Normal server validation remains authoritative.
+
+--------------------------------------------------
+37. SCHEMA STOP GATE
+--------------------------------------------------
+
+Investigate current Diesel Requirement/payment persistence.
+
+Potential minimum additional concepts may include:
+
+- paymentStatus
+- paymentDate/paymentAt
+- paymentReference
+- paymentRecordedBy
+- paymentRecordedAt
+
+Do NOT add these automatically.
+
+If current fields are insufficient for the clean deferred-payment flow:
+
+STOP and report:
+
+A. exact missing fields
+B. minimum additive nullable schema
+C. migration diff
+D. why existing fields cannot represent it safely
+
+Wait for approval before migration.
+
+Bill parsing and QR attachment work may proceed schema-free where possible,
+but do not implement a misleading deferred-payment flow without proper
+persistence.
+
+--------------------------------------------------
+38. WHAT NOT TO TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- Diesel stock arithmetic
+- Material Receipt
+- 06M-B
+- 06M-C
+- 06M-D
+- DPR Equipment Logs
+- Equipment Usage
+- Vendor Bills
+- PI workflow
+- Tomorrow Plan
+- Execution Arrangement
+- notification architecture
+- permissions architecture
+- Site Material Trips
+- Store GRN
+
+--------------------------------------------------
+39. TESTS
+--------------------------------------------------
+
+A. BPCL-style bill reads:
+   supplier
+   bill no
+   date/time
+   Diesel
+   qty
+   rate
+   amount.
+
+B. Different-layout fuel slip using equivalent labels also maps correctly.
+
+C. user reviews detected fields before apply.
+
+D. Use These Details populates purchase form.
+
+E. manual override remains possible.
+
+F. Qty × Rate validation works.
+
+G. product clearly detected as Petrol produces warning.
+
+H. exact duplicate bill is blocked/requires authorised override.
+
+I. fuzzy duplicate produces warning.
+
+J. coincidental same Bill No at different supplier does not false-block.
+
+K. Merchant QR Camera/Gallery/File works.
+
+L. Merchant QR is stored separately from Bill attachment.
+
+M. Payment Status Paid works.
+
+N. Payment Status Pending works.
+
+O. Pending purchase can later Record Payment.
+
+P. Record Payment preserves original purchase audit fields.
+
+Q. Payment Mode/Paid By persist.
+
+R. payment reference persists if implemented.
+
+S. no payment-proof upload is required.
+
+T. parsing failure falls back to manual entry.
+
+U. existing completed Diesel purchase remains editable.
+
+V. stock/receipt behavior unchanged.
+
+W. Direct Site Purchase unchanged.
+
+X. normal Diesel Bill upload still works if parser unavailable.
+
+Y. no schema without approval.
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+40. REPORT BACK
+--------------------------------------------------
+
+Report:
+
+A. bill parsing mechanism chosen.
+
+B. whether it is format-independent and how fields are normalized.
+
+C. exact fields extracted.
+
+D. confidence/review UX.
+
+E. duplicate-check key/rules.
+
+F. exact/fuzzy duplicate behavior.
+
+G. Merchant QR implementation.
+
+H. current Diesel Payment Status persistence capability.
+
+I. whether deferred payment required schema.
+
+J. proposed schema, if any.
+
+K. Record Payment UX.
+
+L. audit handling.
+
+M. parsing failure fallback.
+
+N. tests.
+
+Confirm:
+
+- no fixed BPCL-only template
+- no stock change
+- no Material Receipt change
+- no payment-proof requirement
+- no Vendor Bill change
+- no notification redesign
+- no unrelated workflow change
+
+If schema change or new paid external extraction service is required:
+STOP and wait for approval.
+
+DO NOT START ANOTHER BATCH.

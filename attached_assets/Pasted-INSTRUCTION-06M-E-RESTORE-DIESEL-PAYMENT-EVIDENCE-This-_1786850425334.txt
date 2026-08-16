@@ -1,0 +1,159 @@
+INSTRUCTION 06M-E — RESTORE DIESEL PAYMENT EVIDENCE
+
+This is a very small UI/attachment restoration only.
+
+OBJECTIVE
+
+Restore optional Payment Evidence upload for Daily Diesel Requirement purchases,
+without redesigning payment workflow.
+
+Keep existing:
+- Bill / Invoice attachment
+- Payment Mode
+- Paid By
+- Edit Purchase Details
+
+Restore:
+PAYMENT EVIDENCE
+
+Allow:
+- Camera
+- Gallery
+- File
+
+Use the existing generic attachment infrastructure.
+
+Preferred:
+moduleType = diesel_purchase
+docType = payment_evidence
+
+Do NOT create a new attachment table.
+
+--------------------------------------------------
+1. WHO CAN ADD / VIEW
+--------------------------------------------------
+
+Admin / PM / permitted users should be able to add/view Payment Evidence
+according to existing Diesel Purchase edit permissions.
+
+If Purchaser already has purchase-edit permission and current permission rules
+allow attachment upload, preserve that behavior.
+
+Do not hard-code roles if the permission panel already controls access.
+
+--------------------------------------------------
+2. PAYMENT EVIDENCE UI
+--------------------------------------------------
+
+On the Diesel Purchase detail / Edit Purchase Details screen show:
+
+PAYMENT EVIDENCE
+
+[Camera]
+[Gallery]
+[File]
+
+If evidence exists show:
+
+Payment Evidence ✓
+[View]
+
+Keep it visually separate from:
+
+BILL / INVOICE
+
+Do not confuse Bill with Payment Evidence.
+
+--------------------------------------------------
+3. OPTIONAL ONLY
+--------------------------------------------------
+
+Payment Evidence is optional.
+
+Do not block purchase or payment fields if no evidence is uploaded.
+
+Do not require evidence for:
+- Cash
+- Credit
+- Company Account
+- any other payment mode.
+
+--------------------------------------------------
+4. EXISTING HISTORICAL EVIDENCE
+--------------------------------------------------
+
+06M-A previously removed the Payment Evidence UI but did NOT delete historical
+payment_evidence attachments.
+
+If such historical attachments exist:
+surface them again automatically.
+
+Do not duplicate them.
+Do not migrate/rewrite them.
+
+--------------------------------------------------
+5. EXISTING PAYMENT FIELDS
+--------------------------------------------------
+
+Keep:
+- Payment Mode
+- Paid By
+
+exactly as currently implemented.
+
+Do not add:
+- Payment Status
+- Payment Date
+- Payment Reference
+- deferred-payment workflow
+
+in this batch.
+
+We will first observe the operational behavior.
+
+--------------------------------------------------
+6. NO OTHER CHANGES
+--------------------------------------------------
+
+Do NOT modify:
+- Diesel purchase quantity/rate/amount
+- Bill upload
+- Material Receipt
+- Receipt Pending / Partly Received / Fully Received
+- Diesel stock
+- 06M-B stock guard
+- 06M-C receipt linkage
+- 06M-D reversal logic
+- Vendor Bills
+- PI
+- notifications
+- permissions architecture
+
+Expected schema change: NONE.
+
+--------------------------------------------------
+7. TESTS
+--------------------------------------------------
+
+A. Bill attachment remains unchanged.
+B. Payment Evidence Camera works.
+C. Payment Evidence Gallery works.
+D. Payment Evidence File upload works.
+E. Uploaded evidence reopens correctly.
+F. Historical payment_evidence attachment becomes visible again.
+G. Payment Mode/Paid By remain unchanged.
+H. Purchase works without Payment Evidence.
+I. no stock/receipt behavior changes.
+J. no schema change.
+
+Run focused tests and full suite.
+
+REPORT BACK:
+- exact UI restored
+- moduleType/docType used
+- historical evidence behavior
+- permission behavior
+- tests
+- confirm no schema change
+
+DO NOT START ANOTHER BATCH.
