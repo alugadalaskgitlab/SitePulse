@@ -56,4 +56,5 @@
 - [Diesel Receipt Pending](diesel-receipt-pending.md) — diesel purchase never adds stock; linked Material Receipts drive derived Received/Pending; link validated + immutable; deep link must pass uom.
 - [Diesel Stock Guard](diesel-stock-guard.md) — plant-stock diesel deductions must use the guarded locked helper; routes need handleInsufficientPlantStock; edits validate net litres only.
 - [Multi-layer Lift](multi-layer-lift.md) — layerNo overlap exemption only when both non-null AND different; null never coerced; report breakdown display-only, sums to total.
+- [Equipment Opening Continuity](equipment-opening-continuity.md) — one cross-source resolver for prior closing readings; tie-breaks, linkage-first priority, manual/stale guards.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

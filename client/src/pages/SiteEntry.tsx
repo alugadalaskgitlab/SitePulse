@@ -54,6 +54,7 @@ import { setDprEntryMode, getDprEntryMode } from "@/lib/dprEntryMode";
 import { reconcileNewDprAutosaves } from "@/lib/dprAutosaveReconcile";
 import { calculateBomDemand, fmtQty, type BomInputItem, type BomInputBar, type BomDemand } from "@shared/planningEngine";
 import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity } from "@shared/dprPhotos";
+import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 
 interface ProgressEntry {
   // Batch 06C §22: stable client key so photos can link to this activity row
@@ -1185,7 +1186,8 @@ export default function SiteEntry() {
       if (record) {
         setEquipment(prev => {
           const updated = [...prev];
-          if (updated[rowIdx]) {
+          // 06Q stale guard: only apply if this row still shows this equipment.
+          if (updated[rowIdx] && updated[rowIdx].equipmentId === equipmentId) {
             updated[rowIdx] = {
               ...updated[rowIdx],
               openingReading: record.openingReading ?? updated[rowIdx].openingReading,
@@ -1194,7 +1196,27 @@ export default function SiteEntry() {
           }
           return updated;
         });
+        return;
       }
+      // 06Q: no same-day open Plant record — fall back to the canonical
+      // cross-source resolver (latest valid closing strictly before this
+      // DPR's date). Manual entries are never overwritten; a stale response
+      // for equipment A can never populate equipment B.
+      const latest = await fetchLatestPriorClosing(equipmentId, header.date);
+      if (latest.closingReading == null) return;
+      setEquipment(prev => {
+        const updated = [...prev];
+        const row = updated[rowIdx];
+        if (
+          row &&
+          row.equipmentId === equipmentId &&
+          row.plantUsageId == null &&
+          (row.openingReading === null || row.openingReading === undefined)
+        ) {
+          updated[rowIdx] = { ...row, openingReading: latest.closingReading };
+        }
+        return updated;
+      });
     } catch {
       // silently ignore — falls back to manual entry
     }

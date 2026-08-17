@@ -3446,6 +3446,26 @@ export async function registerRoutes(
     }
   });
 
+  // INSTRUCTION 06Q — canonical latest-prior-closing endpoint (opening-reading
+  // continuity). Strictly before `beforeDate` by default; `inclusive=1` means
+  // on-or-before (used by the Plant module so a second same-day entry
+  // continues from the day's earlier closing). Read-only; never creates or
+  // duplicates Equipment Usage records; diesel previous-balance is untouched.
+  app.get("/api/equipment/:equipmentId/latest-closing", requireAuth, async (req, res) => {
+    try {
+      const equipmentId = parseInt(req.params.equipmentId);
+      const beforeDate = req.query.beforeDate as string | undefined;
+      if (!equipmentId || !beforeDate || !/^\d{4}-\d{2}-\d{2}$/.test(beforeDate)) {
+        return res.status(400).json({ message: "equipmentId and beforeDate (YYYY-MM-DD) are required" });
+      }
+      const inclusive = req.query.inclusive === "1" || req.query.inclusive === "true";
+      const resolved = await storage.resolveLatestPriorClosing(equipmentId, beforeDate, { inclusive });
+      res.json(resolved ?? { closingReading: null, sourceDate: null, source: null });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to resolve latest closing reading" });
+    }
+  });
+
   app.post("/api/plant-module/equipment-usage", async (req, res) => {
     try {
       if (!assertCreate(req, res, "plant_equipment")) return;

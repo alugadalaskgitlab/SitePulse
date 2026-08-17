@@ -1,0 +1,177 @@
+INSTRUCTION 06Q — EQUIPMENT / MACHINERY OPENING READING CONTINUITY
+
+Use Claude's investigated 06Q as the base.
+
+The confirmed root cause, shared cross-source resolver, endpoint design,
+same-day Plant linkage priority, manual-override protection, stale-request
+protection, no-schema rule, and tests are APPROVED.
+
+Make the following TWO corrections/clarifications before implementation.
+
+Do not otherwise broaden the batch.
+
+--------------------------------------------------
+1. SHARED RESOLVER — DETERMINISTIC "LATEST PRIOR" ORDER
+--------------------------------------------------
+
+The proposed resolver is correct in using:
+
+    sourceDate < beforeDate
+
+and in considering BOTH:
+
+- equipment_usage
+- equipment_logs joined to dprs
+
+However:
+
+    ORDER BY date DESC LIMIT 1
+
+alone is NOT sufficient.
+
+The same equipment may have more than one valid usage/log on the same date.
+
+Example:
+
+17-Aug morning closing = 1284.7
+17-Aug evening closing = 1291.2
+
+18-Aug opening must resolve to 1291.2.
+
+Therefore, in EACH source query:
+
+A. order first by the applicable business date DESC;
+
+B. within the same date, order by the best EXISTING chronological field DESC.
+
+Investigate the existing columns and use, in priority:
+
+- an actual usage/log timestamp if one already exists and reliably represents
+  chronological entry/execution order;
+- otherwise createdAt / submittedAt where appropriate;
+- otherwise the row's existing primary-key id DESC as deterministic fallback.
+
+Do NOT add a new timestamp or schema column for this.
+
+The resolver must therefore return the LAST VALID closing before beforeDate,
+not merely an arbitrary row from the last date.
+
+When comparing the Plant candidate and Site-DPR candidate:
+
+- compare date first;
+- if both candidates are from the same date, use the same available
+  chronological/tie-break metadata to choose the later valid closing.
+
+If Site DPR rows are already mirrored into equipment_usage, investigate and
+avoid treating the mirrored duplicate as two separate historical events.
+No data migration or duplication is required.
+
+Report the exact tie-break chosen for each source.
+
+--------------------------------------------------
+2. SITEEDIT — NEWLY ADDED EQUIPMENT IS IN SCOPE
+--------------------------------------------------
+
+Existing DPR rows loaded into SiteEdit:
+
+    preserve their stored openingReading exactly.
+
+Do NOT run historical resolution merely because the edit page loads.
+
+However, if during SiteEdit the user:
+
+- adds a NEW equipment row; or
+- changes/selects equipment on a newly-created row,
+
+that row MUST use the same opening-reading continuity behavior as Guided DPR
+and SiteEntry:
+
+1. existing same-day open Plant Usage linkage first, where applicable;
+2. otherwise shared historical resolver using the DPR's own date;
+3. auto-populate latest prior valid Closing Reading;
+4. protect manual override;
+5. protect against stale async responses.
+
+This is required, not optional.
+
+If the user deliberately changes the equipment on an EXISTING historical row,
+do not silently overwrite the previously stored opening reading without an
+explicit user action/confirmation. Preserve historical-edit safety.
+
+--------------------------------------------------
+3. ALL OTHER APPROVED 06Q RULES REMAIN
+--------------------------------------------------
+
+Keep Claude's existing requirements unchanged:
+
+- one canonical cross-source resolver;
+- Equipment Master equipmentId is the identity;
+- strictly before the entry's date;
+- Friday → Monday carry-forward works;
+- null closing is skipped;
+- zero closing is valid;
+- same-day already-open Plant Usage takes priority;
+- Plant's diesel previousBalance logic is untouched;
+- Guided DPR wired;
+- Detailed SiteEntry wired;
+- Plant Equipment Usage wired;
+- SiteEdit newly-added rows wired as clarified above;
+- existing historical openings never recalculated on load;
+- manual correction is never overwritten;
+- stale equipment-A response cannot populate equipment-B;
+- meter-reading applicability follows existing equipment/log type behavior;
+- trip/shifting/non-meter records are not forced to carry a reading;
+- no duplicate Equipment Usage records;
+- no schema change;
+- no diesel/stock logic change;
+- no unrelated changes.
+
+--------------------------------------------------
+4. ADD / UPDATE TESTS
+--------------------------------------------------
+
+Keep all Claude 06Q tests and add:
+
+R. SAME-DATE MULTIPLE LOGS
+
+For the same equipment:
+
+17-Aug earlier closing = 1284.7
+17-Aug later closing   = 1291.2
+
+18-Aug new meter log:
+
+    Opening Reading = 1291.2
+
+Verify deterministic ordering in whichever source contains the rows.
+
+Also test same-date candidates across Plant and Site DPR if both sources can
+legitimately contain different events for the same equipment.
+
+S. SITEEDIT NEW ROW
+
+Open an existing DPR in SiteEdit.
+Add a NEW equipment row.
+Select equipment whose latest prior valid closing is 1291.2.
+
+The new row auto-populates:
+
+    Opening Reading = 1291.2
+
+while all pre-existing equipment rows retain their originally stored openings
+unchanged.
+
+--------------------------------------------------
+5. REPORT BACK ADDITIONS
+--------------------------------------------------
+
+In addition to Claude's existing report-back, explicitly report:
+
+- exact same-date tie-break used for equipment_usage;
+- exact same-date tie-break used for equipment_logs / DPR;
+- how a same-date candidate from each source is compared;
+- whether DPR Equipment Logs are mirrored into equipment_usage;
+- confirmation SiteEdit newly-added equipment rows are covered;
+- confirmation existing SiteEdit rows are never recalculated on load.
+
+DO NOT START ANOTHER BATCH.

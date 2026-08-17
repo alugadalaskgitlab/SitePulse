@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { DraftRestoredBanner } from "@/components/DraftRestoredBanner";
@@ -28,6 +28,7 @@ import autoTable from "jspdf-autotable";
 import type { EquipmentMasterType, EquipmentUsage, Site } from "@shared/schema";
 import { METER_TYPES } from "@shared/schema";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
+import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
@@ -48,6 +49,9 @@ export default function PlantEquipmentUsage() {
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [equipmentId, setEquipmentId] = useState<string>("");
   const [openingReading, setOpeningReading] = useState("");
+  // 06Q: monotonically increasing sequence for opening-reading prefetches —
+  // a stale async response (older sequence) is discarded.
+  const openingFetchSeqRef = useRef(0);
   const [closingReading, setClosingReading] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -432,23 +436,39 @@ export default function PlantEquipmentUsage() {
     
     if (value && !editingUsage) {
       setIsLoadingBalance(true);
+      // 06Q: stale-response guard — a slow response for equipment A must
+      // never populate a form that has since switched to equipment B.
+      const fetchSeq = ++openingFetchSeqRef.current;
       try {
+        // Diesel previous-balance logic is untouched (06Q rule).
         const res = await fetch(`/api/plant-module/equipment-usage/previous-balance/${value}`);
         if (res.ok) {
           const data = await res.json();
-          setPreviousDieselBalance(data.previousBalance);
-          setOpeningDiesel(String(data.previousBalance));
-          // Auto-populate opening reading from previous closing reading
-          if (data.previousClosingReading) {
-            setOpeningReading(String(data.previousClosingReading));
+          if (fetchSeq === openingFetchSeqRef.current) {
+            setPreviousDieselBalance(data.previousBalance);
+            setOpeningDiesel(String(data.previousBalance));
           }
-        } else {
+        } else if (fetchSeq === openingFetchSeqRef.current) {
           setPreviousDieselBalance(0);
           setOpeningDiesel("0");
         }
+        // 06Q: opening METER reading comes from the canonical cross-source
+        // resolver (plant usage + submitted DPR logs), on-or-before this
+        // entry's date so a second same-day entry continues from the day's
+        // earlier closing. Zero is a valid reading; manual edits win.
+        const latest = await fetchLatestPriorClosing(Number(value), date, { inclusive: true });
+        if (
+          fetchSeq === openingFetchSeqRef.current &&
+          latest.closingReading != null &&
+          !userModifiedOpening
+        ) {
+          setOpeningReading(String(latest.closingReading));
+        }
       } catch {
-        setPreviousDieselBalance(0);
-        setOpeningDiesel("0");
+        if (fetchSeq === openingFetchSeqRef.current) {
+          setPreviousDieselBalance(0);
+          setOpeningDiesel("0");
+        }
       }
       setIsLoadingBalance(false);
     }
@@ -1256,7 +1276,7 @@ export default function PlantEquipmentUsage() {
               <div className={`grid gap-4 ${sendToSite ? "grid-cols-1" : "grid-cols-2"}`}>
                 <div>
                   <Label>Opening {selectedEquipment?.meterType === "hour_meter" ? "Hrs" : "KM"}</Label>
-                  <Input type="number" step="0.1" value={openingReading} onChange={(e) => setOpeningReading(e.target.value)} placeholder="0.0" data-testid="input-opening-reading" />
+                  <Input type="number" step="0.1" value={openingReading} onChange={(e) => { setOpeningReading(e.target.value); setUserModifiedOpening(true); }} placeholder="0.0" data-testid="input-opening-reading" />
                 </div>
                 {!sendToSite && (
                 <div className="flex flex-col">

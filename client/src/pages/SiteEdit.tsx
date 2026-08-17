@@ -36,6 +36,7 @@ import { type CandidateChainageRow } from "@shared/chainageOverlap";
 import { boqItemDisplayName } from "@shared/boqItemName";
 import { layerFieldLabel } from "@shared/layerDisplay";
 import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
+import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 
 interface ProgressEntry {
   // Batch 06C §22: stable photo-link key (same semantics as Guided/New DPR).
@@ -83,6 +84,10 @@ interface EquipmentEntry {
   tripDistance: number | null;
   totalKm: number | null;
   waterQuantity: number | null;
+  // 06Q (client-only, stripped from the payload): true for rows added during
+  // this edit session — only those get opening-reading continuity. Rows
+  // loaded from the stored DPR NEVER have their opening recalculated on load.
+  isNew?: boolean;
 }
 
 interface LabourEntry {
@@ -234,7 +239,7 @@ function mapDprToFormState(dpr: any) {
         totalKm: e.totalKm ?? null,
         waterQuantity: e.waterQuantity ?? null,
       }))
-    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }];
+    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, isNew: true }];
 
   const labour: LabourEntry[] = dpr.labour?.length
     ? dpr.labour.map((l: any) => ({
@@ -710,7 +715,9 @@ export default function SiteEdit() {
     if (section === 'progress') {
       setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }]);
+      // 06Q: rows added during the edit session are flagged isNew — they get
+      // opening-reading continuity when equipment is selected.
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, isNew: true }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }]);
     }
@@ -806,11 +813,15 @@ export default function SiteEdit() {
         executedBy: p.executedBy || null,
       };
     }) : [],
-    equipment: equipment.filter(e => e.machine).map(eq => ({
-      ...eq,
-      totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
-        ? Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2 : eq.totalKm || null,
-    })),
+    equipment: equipment.filter(e => e.machine).map(eq => {
+      // 06Q: isNew is client-session state only — never sent to the server.
+      const { isNew: _isNew, ...rest } = eq;
+      return {
+        ...rest,
+        totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
+          ? Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2 : eq.totalKm || null,
+      };
+    }),
     labour: labour.filter(l => l.count > 0),
     materials: materials.filter(m => m.material).map(m => ({
       type: m.type, material: m.material, quantity: m.quantity, uom: m.uom,
@@ -1903,6 +1914,7 @@ export default function SiteEdit() {
                     const updated = [...equipment];
                     const selectedEquip = activeEquipment.find(e => e.id === Number(val));
                     if (selectedEquip) {
+                      const wasExistingWithReading = !entry.isNew && entry.openingReading != null && entry.equipmentId !== selectedEquip.id;
                       updated[idx].equipmentId = selectedEquip.id;
                       updated[idx].machine = selectedEquip.name;
                       updated[idx].vehicleNo = selectedEquip.registrationNumber || "";
@@ -1912,6 +1924,34 @@ export default function SiteEdit() {
                         updated[idx].tripDistance = null;
                         updated[idx].totalKm = null;
                       }
+                      setEquipment(updated);
+                      // 06Q: opening-reading continuity for rows added during
+                      // this edit session (isNew). Existing historical rows are
+                      // NEVER silently recalculated — changing equipment on an
+                      // existing row asks for explicit confirmation first.
+                      const runContinuity = entry.isNew
+                        ? true
+                        : wasExistingWithReading
+                          ? window.confirm("You changed the equipment on an existing entry. Replace its stored Opening Reading with this equipment's latest prior closing reading? Cancel keeps the stored value.")
+                          : false;
+                      if (runContinuity && header.date) {
+                        fetchLatestPriorClosing(selectedEquip.id, header.date).then((latest) => {
+                          if (latest.closingReading == null) return;
+                          setEquipment(prev => {
+                            const next = [...prev];
+                            const row = next[idx];
+                            // Stale guard: only apply if this row still shows
+                            // this equipment. New rows only fill a blank
+                            // opening (manual entry is never overwritten);
+                            // confirmed existing-row changes replace it.
+                            if (!row || row.equipmentId !== selectedEquip.id) return prev;
+                            if (row.isNew && row.openingReading != null) return prev;
+                            next[idx] = { ...row, openingReading: latest.closingReading };
+                            return next;
+                          });
+                        });
+                      }
+                      return;
                     }
                     setEquipment(updated);
                   }}

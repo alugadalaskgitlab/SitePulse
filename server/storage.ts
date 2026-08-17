@@ -354,6 +354,7 @@ import {
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
+import { pickLatestClosing, type ResolvedClosing } from "@shared/equipmentContinuity";
 import { normaliseUnit, computeRequirementStatus } from "@shared/planningEngine";
 import { convertSolidQty } from "@shared/uomConvert";
 import { canonMaterialName } from "@shared/materialMatch";
@@ -580,6 +581,8 @@ export interface IStorage {
   deleteTruckDispatch(id: number): Promise<boolean>;
   
   getEquipmentUsage(filters?: { equipmentId?: number; dateFrom?: string; dateTo?: string }): Promise<EquipmentUsage[]>;
+  // 06Q: canonical cross-source "latest prior valid closing" resolver.
+  resolveLatestPriorClosing(equipmentId: number, beforeDate: string, opts?: { inclusive?: boolean }): Promise<import("@shared/equipmentContinuity").ResolvedClosing | null>;
   createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage>;
   updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined>;
   deleteEquipmentUsage(id: number): Promise<boolean>;
@@ -4026,6 +4029,86 @@ export class DatabaseStorage implements IStorage {
 
   async createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {
     return this._createEquipmentUsageTxn(usage);
+  }
+
+  // ── INSTRUCTION 06Q — canonical cross-source opening-reading resolver ──
+  // Returns the latest valid closing reading for an equipment strictly
+  // before `beforeDate` (or on-or-before it when opts.inclusive — used by
+  // the Plant module, where a second same-day entry continues from the
+  // day's earlier closing and no plantUsageId linkage mechanism exists).
+  //
+  // Deterministic "latest prior" ordering (06Q §1):
+  //   equipment_usage : date DESC, created_at DESC NULLS LAST, id DESC
+  //   equipment_logs  : dprs.date DESC, equipment_logs.id DESC
+  //                     (no timestamp column on equipment_logs; serial id
+  //                      is the deterministic insert-order fallback)
+  // Cross-source comparison is the pure pickLatestClosing() in
+  // shared/equipmentContinuity.ts (date first; same-date mirrored pair via
+  // plantUsageId collapses to one event; otherwise meter monotonicity —
+  // higher closing wins; exact tie → plant_usage).
+  //
+  // Null closings are skipped (IS NOT NULL); zero is valid. DPR-side
+  // candidates only come from live, submitted DPRs (not deleted, not
+  // superseded, not drafts). No schema change; diesel previousBalance
+  // logic is untouched.
+  async resolveLatestPriorClosing(
+    equipmentId: number,
+    beforeDate: string,
+    opts?: { inclusive?: boolean },
+  ): Promise<ResolvedClosing | null> {
+    const usageDateCond = opts?.inclusive
+      ? lte(equipmentUsage.date, beforeDate)
+      : lt(equipmentUsage.date, beforeDate);
+    const dprDateCond = opts?.inclusive
+      ? lte(dprs.date, beforeDate)
+      : lt(dprs.date, beforeDate);
+
+    const [usageRows, logRows] = await Promise.all([
+      db
+        .select({
+          id: equipmentUsage.id,
+          date: equipmentUsage.date,
+          closingReading: equipmentUsage.closingReading,
+        })
+        .from(equipmentUsage)
+        .where(and(
+          eq(equipmentUsage.equipmentId, equipmentId),
+          usageDateCond,
+          isNotNull(equipmentUsage.closingReading),
+        ))
+        .orderBy(
+          desc(equipmentUsage.date),
+          sql`${equipmentUsage.createdAt} DESC NULLS LAST`,
+          desc(equipmentUsage.id),
+        )
+        .limit(1),
+      db
+        .select({
+          id: equipmentLogs.id,
+          date: dprs.date,
+          closingReading: equipmentLogs.closingReading,
+          plantUsageId: equipmentLogs.plantUsageId,
+        })
+        .from(equipmentLogs)
+        .innerJoin(dprs, eq(equipmentLogs.dprId, dprs.id))
+        .where(and(
+          eq(equipmentLogs.equipmentId, equipmentId),
+          dprDateCond,
+          isNotNull(equipmentLogs.closingReading),
+          eq(dprs.isDeleted, false),
+          eq(dprs.isSuperseded, false),
+          ne(dprs.dprStatus, "draft"),
+        ))
+        .orderBy(desc(dprs.date), desc(equipmentLogs.id))
+        .limit(1),
+    ]);
+
+    const u = usageRows[0];
+    const l = logRows[0];
+    return pickLatestClosing(
+      u ? { source: "plant_usage", date: u.date, closingReading: u.closingReading!, recordId: u.id } : null,
+      l ? { source: "dpr_log", date: l.date, closingReading: l.closingReading!, recordId: l.id, plantUsageId: l.plantUsageId } : null,
+    );
   }
 
   private async _createEquipmentUsageTxn(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {

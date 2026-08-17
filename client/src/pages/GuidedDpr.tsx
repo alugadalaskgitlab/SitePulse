@@ -54,6 +54,7 @@ import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
 import { type CandidateChainageRow } from "@shared/chainageOverlap";
 import { GUIDED_STEPS, clampGuidedStep, guidedStepBlocker, guidedEntryComplete, firstIncompleteGuidedStep, type GuidedStepId } from "@/lib/guidedWizard";
+import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -1732,8 +1733,40 @@ export default function GuidedDpr() {
                                 delete nextPt.tripDistance;
                                 delete nextPt.totalKm;
                               }
+                              // 06Q priority 1: same-day already-open Plant
+                              // Usage for this equipment (not linked on any
+                              // other row) — link it and carry its opening.
+                              const open = openUsages.find((u: any) =>
+                                u.equipmentId === sel.id &&
+                                !p.some((o, k) => k !== j && (o.passthrough as any)?.plantUsageId === u.id));
+                              if (open) {
+                                nextPt.plantUsageId = open.id;
+                                if (open.openingReading != null) nextPt.openingReading = open.openingReading;
+                              }
                               return { ...r, machine: sel.name, vehicleNo: sel.registrationNumber || "", passthrough: nextPt };
                             }));
+                            // 06Q priority 2: otherwise the canonical resolver —
+                            // latest valid closing strictly before this DPR's
+                            // date. Applied only if the row still shows this
+                            // equipment (stale guard), is unlinked, and the
+                            // opening is blank (manual entries are never
+                            // overwritten).
+                            const hasOpen = openUsages.some((u: any) => u.equipmentId === sel.id);
+                            if (!hasOpen && date) {
+                              fetchLatestPriorClosing(sel.id, date).then((latest) => {
+                                if (latest.closingReading == null) return;
+                                setEquipment((p) => p.map((r, j) => {
+                                  // Only the row this selection happened on —
+                                  // never other rows that share the machine.
+                                  if (j !== i) return r;
+                                  const pt = r.passthrough as Record<string, any>;
+                                  if (pt?.equipmentId !== sel.id) return r;
+                                  if (pt.plantUsageId != null) return r;
+                                  if (pt.openingReading !== undefined && pt.openingReading !== null && pt.openingReading !== "") return r;
+                                  return { ...r, passthrough: { ...pt, openingReading: latest.closingReading } };
+                                }));
+                              });
+                            }
                           }}
                         >
                           <SelectTrigger data-testid={`select-eq-machine-${i}`}>
