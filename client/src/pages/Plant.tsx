@@ -2643,7 +2643,8 @@ export function MaterialMaster() {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [defaultUom, setDefaultUom] = useState("Ton");
-  const [procurementRoute, setProcurementRoute] = useState("stores");
+  // 06S §1: no preselected route — the user must deliberately choose one.
+  const [procurementRoute, setProcurementRoute] = useState("");
   const [bulkDensity, setBulkDensity] = useState("");
   const [volumeUom, setVolumeUom] = useState("CFT");
   
@@ -2822,7 +2823,7 @@ export function MaterialMaster() {
     setName("");
     setCategory("");
     setDefaultUom("Ton");
-    setProcurementRoute("stores");
+    setProcurementRoute("");
     setBulkDensity("");
     setVolumeUom("CFT");
   };
@@ -2843,7 +2844,8 @@ export function MaterialMaster() {
     setName(material.name);
     setCategory(material.category || "");
     setDefaultUom(material.defaultUom || "Ton");
-    setProcurementRoute((material as any).procurementRoute || "stores");
+    // Unconfigured stays visibly unselected — never masquerades as Stores.
+    setProcurementRoute((material as any).procurementRoute || "");
     setBulkDensity((material as any).bulkDensity != null ? String((material as any).bulkDensity) : "");
     setVolumeUom((material as any).conversionFromUom || "CFT");
     setDialogOpen(true);
@@ -2855,6 +2857,11 @@ export function MaterialMaster() {
   };
 
   const handleSubmit = () => {
+    // 06S §1: procurement route is a deliberate choice — no silent Stores.
+    if (!procurementRoute) {
+      toast({ title: "Choose a procurement route", description: "Select whether this material goes through Stores or directly to Plant/Site receipt.", variant: "destructive" });
+      return;
+    }
     const bd = parseFloat(bulkDensity);
     const data = { 
       name, 

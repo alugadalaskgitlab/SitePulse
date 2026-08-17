@@ -1,0 +1,294 @@
+INSTRUCTION 06S — SITE MATERIAL TRIPS: PROCUREMENT MATCH + WORK-FRONT/YARD TRACKING
+
+This batch is larger than our recent small fixes — it is the design Sunil and
+Krishna converged on for how bulk road materials (GSB, WMM, aggregates
+40/20/10/6mm + Dust, Soil/Earth/Gravel) should behave end-to-end. It builds on
+06R (Execution Arrangement → DPR persistence) but does not hard-depend on it —
+land this independently.
+
+PERMANENT RULE (state this back to us in your own words in the report):
+GSB, WMM, aggregates, and Soil/Earth/Gravel are NEVER Stores inventory. They
+are procured against planned work (where HLC procures them), delivered to the
+site/work-front or a temporary yard, and consumed quickly in execution. They
+never create a Store GRN, Store stock, or a Store Issue. Diesel is explicitly
+OUT of this batch — it keeps its own Daily Diesel Requirement workflow
+untouched.
+
+--------------------------------------------------
+OBJECTIVE
+--------------------------------------------------
+Today, when an Engineer records a Site Material Trip from a DPR activity
+(ActivityReceiptStrip), SitePulse already resolves the applicable Execution
+Arrangement automatically. It does NOT look up whether there is an approved/
+ordered Purchase Indent for that material, does not show the vendor/order/
+balance, and does not distinguish whether a delivery was unloaded directly on
+the work stretch or at a temporary yard for later use. This batch closes
+those three gaps, using the SAME "resolve automatically, never force a new
+selector, never bypass approval" principle already established for Execution
+Arrangement.
+
+Three additions:
+1. Auto-match the applicable Purchase Indent/vendor/order for a Site Material
+   Trip from BOQ/programme context, when HLC is the one procuring.
+2. "Unloaded At: Work Stretch / Temporary Yard" on every trip.
+3. A small hardening so a material can never silently default into Stores
+   just because its procurement route wasn't explicitly configured.
+
+--------------------------------------------------
+1. HARDEN: STOP TREATING AN UNCONFIGURED ROUTE AS "STORES"
+--------------------------------------------------
+Confirmed today: `plant_materials.procurementRoute` defaults to `"stores"`
+in the schema, and `submitPurchaserAction()`'s auto-GRN trigger (server/
+storage.ts, ~line 10926) treats BOTH `dbRoute === "stores"` AND
+`dbRoute === null` as "create a Stores GRN." That means any material added
+to the Plant Material Master without an admin explicitly picking a route
+(the Select in client/src/pages/Plant.tsx, ~line 2982) silently becomes a
+Stores item the first time it's purchased through a Purchase Indent.
+
+Fix: change that condition so a null/unset route does NOT auto-create a
+Stores GRN. Instead, leave the item's `purchaseStatus` as today but skip
+GRN creation, and surface (existing toast/notification mechanism, no new
+UI) "Procurement route not configured for <material> — set it in Material
+Master before this can be received." This is a guard, not a redesign — do
+not change the explicit "stores" or "bulk_plant" behaviour for materials
+that already have a route configured.
+
+--------------------------------------------------
+2. NEW: PROCUREMENT MATCH RESOLVER (server)
+--------------------------------------------------
+Add a resolver, mirroring the shape of `resolveApplicableArrangements()`:
+
+  getApplicablePiForBoqItem(boqProjectId, boqItemId): Promise<{
+    indentId: number; indentNo: string; indentItemId: number;
+    vendor: string | null; orderedQty: number; receivedQty: number;
+    balanceQty: number;
+  } | { ambiguous: true; count: number } | null>
+
+Matching rule — use the EXISTING explicit chain, not fuzzy name matching:
+`material_requirements.sourceBoqItemId` → `purchaseIndents.requirementId`
+(set at PI creation when raised from a requirement/allocation, per the
+existing `createPurchaseIndent()` validation). Only consider indents whose
+status indicates approved/ordered/in-progress procurement (approved,
+purchasing, purchaser_actioned, awaiting_delivery, ordered,
+partially_received — reuse the same status vocabulary already in
+`derivePiStatus()`), and only items whose `procurementRoute` is `material`
+or `bulk_plant` (never `stores` — this must never surface a Stores-routed
+item as "the applicable PI" for a Site Material Trip).
+- Exactly one match → return it with vendor/ordered/received/balance
+  (received = sum of linked `site_material_trips` + relevant
+  `pi_item_transactions`, same accounting the PI screens already use).
+- More than one match → return `{ ambiguous: true, count }`. Never guess.
+- None → return null.
+
+--------------------------------------------------
+3. ACTIVITYRECEIPTSTRIP — SHOW AND ATTACH, NEVER BLOCK
+--------------------------------------------------
+In `client/src/components/ActivityReceiptStrip.tsx`, alongside the existing
+Execution Arrangement resolution:
+
+- If the resolved Execution Arrangement indicates the agency/client
+  supplies this material (arrangementType something other than an
+  HLC-procured type), do NOT call the PI resolver at all. Show
+  "Supply responsibility: Agency — no HLC PI required." This must exactly
+  mirror the existing daily-fulfilment-override precedence already in
+  place (§4 of the existing component) — Execution Arrangement / daily
+  override still governs supplier display exactly as today; this section
+  only adds the procurement side.
+- If HLC is responsible (arrangement says so, or no arrangement resolves at
+  all — treat "no arrangement" as HLC-responsible by default, matching
+  current behaviour where nothing else says otherwise) and §2's resolver
+  finds exactly one applicable PI: show a compact line — e.g. "Material
+  supply: XYZ Crushers · PI-024 · Ordered 2,000 MT · Received 1,250 MT ·
+  Balance 750 MT" — and when the Engineer records a receipt via
+  `RecordReceiptDialog`, automatically include `indentId`/`indentItemId`
+  in the POST to /api/site-material-trips (the schema/route already
+  accepts and validates this — no new endpoint).
+- If HLC is responsible and §2 returns `null` (no matching PI): show a
+  non-blocking warning — "No approved/ordered Purchase Indent found for
+  this HLC-supplied material." The Engineer can still record the physical
+  receipt with manual vendor entry exactly as today; this is a flagged gap
+  for the PM, never a block, and NEVER auto-creates a PI.
+- If §2 returns `{ ambiguous: true }`: show "Multiple approved Purchase
+  Indents match — link the correct one from the Purchase Indent screen."
+  Do not guess, do not attach any indentId automatically.
+- None of this changes the existing manual "PI-Linked Delivery" deep-link
+  path on the standalone Site Material Trips page — that stays exactly as
+  it is, for the PM-initiated direction.
+
+--------------------------------------------------
+4. DPR VISIBILITY
+--------------------------------------------------
+Where the DPR activity card already shows (or will show, once 06R lands)
+the Execution Arrangement line, add the same compact procurement line from
+§3 — "Material supply: XYZ Crushers · PI-024 · Received today: 320 MT /
+11 trips." If 06R has not landed yet in this codebase, add this as its own
+small read-only line on the activity card (Guided Step 3, Detailed DPR
+read parity) rather than depending on 06R's exact implementation — no new
+Engineer input either way.
+
+--------------------------------------------------
+5. SCHEMA — "UNLOADED AT"
+--------------------------------------------------
+Add to `site_material_trips` (additive, nullable, matches this project's
+established migration convention):
+
+  unloadedAt: text("unloaded_at")       -- "stretch" | "yard", nullable
+  yardLabel: text("yard_label")         -- free text when unloadedAt = "yard"
+
+Default: when omitted, treat as "stretch" (today's implicit behaviour,
+so nothing changes for existing rows or callers that don't send it — do
+NOT backfill existing rows).
+
+--------------------------------------------------
+6. SITE MATERIAL TRIP FORM — CLIENT
+--------------------------------------------------
+CENTRAL PRINCIPLE: the receipt records where the truck actually unloaded.
+DPR records what was consumed. We never rewrite the original receipt merely
+because the material was later moved or used.
+
+Add a simple choice to BOTH the embedded `RecordReceiptDialog`
+(ActivityReceiptStrip) and the standalone `SiteMaterialTrips.tsx` create
+form: "Unloaded At: Work Stretch / Temporary Yard." When "Work Stretch,"
+behave exactly as today (existing chainage/location field). When
+"Temporary Yard," show a simple text field for the yard label/location.
+
+The original Site Material Trip is a PHYSICAL RECEIPT FACT and is
+historically immutable as to where the truck was originally unloaded. If
+300 MT is delivered to Yard A on Monday and 120 MT is later moved from
+Yard A to the work stretch on Wednesday for execution, the ORIGINAL 300 MT
+receipt must continue to show Yard A permanently — it must NOT be edited to
+"Work Stretch," and no fake yard→stretch receipt or second/duplicate
+receipt may be created to represent the movement.
+
+Existing edit permissions on a trip's `unloadedAt`/`yardLabel` remain
+available ONLY for correcting a mistakenly entered value at/near the time
+of entry (e.g. the Engineer picked the wrong option by mistake) — this is
+correcting the receipt, never recording a later physical movement. Do not
+build a yard→stretch transfer/movement/issue ledger in this batch. If
+accurately tracking material physically moved from yard to stretch turns
+out to require one, REPORT that as a future enhancement rather than
+inventing it here.
+
+--------------------------------------------------
+7. RECONCILIATION — REPORT YARD AND STRETCH RECEIPTS, DO NOT ALLOCATE CONSUMPTION
+--------------------------------------------------
+In `getSiteMaterialReconciliation()` (server/storage.ts ~line 8773): this
+already computes delivered (from `site_material_trips`) minus consumed
+(from DPR progress × material norm) per site+material. Extend it to also
+report the delivered total split by original unloading destination:
+`deliveredAtStretch` and `deliveredAtYard`, using each trip's `unloadedAt`
+(rows without a value count as `deliveredAtStretch`, matching the default
+in §5) — alongside the existing `delivered`, `consumed`, and `lying`
+(remaining Site Material Stock) totals, which stay SITE-WIDE, not
+allocated between yard and stretch.
+
+Do NOT assume consumption draws from one bucket before the other ("stretch
+first, then yard" or any other order) — there is no movement record in
+this batch that would make that allocation real rather than guessed. Doing
+so would misrepresent where material physically still sits. Keep the two
+new numbers purely informational: how much arrived directly at the stretch
+vs. how much arrived at a yard, next to the existing received/consumed/
+lying totals. This remains read-only reporting — no blocking, no
+negative-balance guard, same as before.
+
+--------------------------------------------------
+8. WHAT NOT TO TOUCH
+--------------------------------------------------
+Do NOT modify:
+- Diesel / Daily Diesel Requirement workflow, plant-stock guard
+  (06M-B/C/D/F) — completely out of scope, not even read from.
+- Stores GRN mechanics for genuinely Stores-routed materials (Spares,
+  Lubricants, Consumables, Electricals, Tools, Others) — §1's fix only
+  changes behaviour for an UNCONFIGURED (null) route, never an explicitly
+  configured one.
+- Execution Arrangement resolution logic itself (06R / existing
+  `resolveApplicableArrangements`) — read-only reuse.
+- The manual "PI-Linked Delivery" deep-link flow on the standalone Site
+  Material Trips page — unchanged.
+- BOQ-credit / cumulative progress-quantity formulas.
+- `material_logs` — still pending Replit's investigation from 06R; do not
+  touch it here either.
+- Any hard-blocking behaviour anywhere in this batch — every new signal
+  here (PI match, ambiguity, missing-PI warning) is informational/
+  auto-fill only. The Engineer must always be able to save a physical
+  receipt even when nothing resolves.
+- No auto-creation of a Purchase Indent under any circumstance.
+
+--------------------------------------------------
+9. TESTS
+--------------------------------------------------
+A. Agency/client-supplied arrangement: no PI lookup runs, "no HLC PI
+   required" shown, no warning.
+B. HLC-responsible, exactly one matching approved/ordered PI: vendor/
+   order/balance shown, `indentId`/`indentItemId` attached to the created
+   trip automatically.
+C. HLC-responsible, no matching PI: non-blocking warning shown, receipt
+   still saves successfully with manual vendor entry, no indentId attached.
+D. HLC-responsible, multiple matching PIs: ambiguous message shown, no
+   indentId attached, receipt still saves.
+E. A Stores-routed PI item (procurementRoute = "stores") is NEVER returned
+   by the §2 resolver as an applicable match.
+F. §1: purchasing an item whose plant_materials.procurementRoute is null
+   no longer auto-creates a Stores GRN; a configured "stores" or
+   "bulk_plant" route behaves exactly as before.
+G. Standalone "PI-Linked Delivery" deep-link flow unchanged.
+H. New trip with no "Unloaded At" selection defaults to stretch behaviour,
+   identical to pre-batch trips.
+I. A 300 MT Temporary Yard receipt (e.g. "Yard A") remains recorded at
+   Yard A even after later DPR consumption reduces the site's overall Site
+   Material Stock — the receipt's `unloadedAt`/`yardLabel` are never
+   rewritten as a side effect of consumption or reconciliation.
+J. DPR consumption reduces the site-wide `consumed`/`lying` totals without
+   rewriting any receipt's original destination.
+K. No fake yard→stretch receipt, transfer record, or duplicate purchase is
+   ever created by this batch for representing physical movement.
+L. No automatic "stretch first, yard second" (or any other order)
+   consumption-allocation assumption is added anywhere — reconciliation
+   reports `deliveredAtStretch`/`deliveredAtYard` alongside the existing
+   site-wide `delivered`/`consumed`/`lying`, with no allocation between
+   them.
+M. Diesel/Daily Diesel Requirement, Vendor Bills, 06M-B/C/D/F, 06P, 06R
+   all behave identically — regression only.
+N. No schema change beyond `unloadedAt`/`yardLabel` on site_material_trips.
+O. No Purchase Indent is ever auto-created by any code path in this batch.
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+10. REPORT BACK
+--------------------------------------------------
+Report:
+A. confirmation of the permanent rule in your own words (GSB/WMM/
+   aggregates/soil never touch Stores).
+B. exact §1 hardening and its trigger condition.
+C. exact §2 resolver matching logic (requirement/allocation chain used).
+D. exact ActivityReceiptStrip changes (agency-skip, single-match, no-match
+   warning, ambiguous handling).
+E. exact DPR visibility addition and whether it reused 06R's line or added
+   its own.
+F. exact schema diff.
+G. exact client changes for "Unloaded At" in both entry points, and
+   confirmation that editing it after creation is scoped to correcting a
+   mistaken entry, not recording a later physical movement.
+H. exact reconciliation query change — confirm it reports
+   `deliveredAtStretch`/`deliveredAtYard` as informational totals only,
+   with NO allocation/ordering assumption applied to consumption.
+I. confirmation nothing in this batch ever blocks saving a receipt,
+   auto-creates a PI, or rewrites an existing receipt's original
+   destination.
+J. confirmation Diesel/Stores/06M/06P/06R are unaffected.
+K. tests.
+
+Confirm:
+- GSB/WMM/aggregates/soil never create Store stock, GRN, or Issue.
+- PI match is informational/auto-fill only, never blocking, never
+  auto-creating procurement.
+- Execution Arrangement continues to govern supplier/responsibility
+  exactly as today; this batch only adds the procurement layer beside it.
+- The receipt records where the truck actually unloaded, permanently.
+  DPR records what was consumed. The original receipt is never rewritten
+  because material was later moved or used, and no yard→stretch transfer
+  ledger or duplicate receipt was invented in this batch.
+- no unrelated changes.
+
+DO NOT START ANOTHER BATCH.

@@ -365,7 +365,9 @@ export const plantMaterials = pgTable("plant_materials", {
   bulkDensity: real("bulk_density"), // MT/m³ (T/Cum); user-entered; drives conversionFactor
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
-  procurementRoute: text("procurement_route").default("stores"), // 'stores' | 'bulk_plant'
+  // 06S §1: NO implicit default — null means "not configured yet" and must
+  // never silently behave as Stores. Users pick the route in Material Master.
+  procurementRoute: text("procurement_route"), // 'stores' | 'bulk_plant' | 'material' | null (unconfigured)
   // Instruction 019B §1 — typed alias column (physical column already exists via ALTER TABLE migration)
   aliases: text("aliases"),                                       // JSON array of approved alias strings
 });
@@ -781,6 +783,11 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   boqItemId: integer("boq_item_id"),
   programmeBarId: integer("programme_bar_id"),
   earthworkArrangementId: integer("earthwork_arrangement_id"),
+  // 06S — where the truck ACTUALLY unloaded. This is a permanent physical
+  // receipt fact: never rewritten because material was later moved/consumed.
+  // null = "stretch" (pre-06S implicit behaviour; existing rows NOT backfilled).
+  unloadedAt: text("unloaded_at"), // "stretch" | "yard"
+  yardLabel: text("yard_label"),   // free text when unloadedAt = "yard"
   createdAt: timestamp("created_at").defaultNow(),
   ...cancellationFields,
 }, (table) => ({

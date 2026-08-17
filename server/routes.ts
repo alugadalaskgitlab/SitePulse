@@ -530,6 +530,24 @@ export async function registerRoutes(
     }
   });
 
+  // 06S §2: procurement match for a Site Material Trip — informational/
+  // auto-fill only. Explicit requirement→PI chain; never fuzzy, never blocks,
+  // never creates anything.
+  app.get("/api/procurement/applicable-pi", requireAuth, async (req, res) => {
+    try {
+      const boqProjectId = Number(req.query.boqProjectId);
+      const boqItemId = Number(req.query.boqItemId);
+      if (!Number.isInteger(boqProjectId) || !Number.isInteger(boqItemId)) {
+        return res.status(400).json({ message: "boqProjectId and boqItemId are required" });
+      }
+      const match = await storage.getApplicablePiForBoqItem(boqProjectId, boqItemId);
+      res.json(match);
+    } catch (err) {
+      console.error("GET /api/procurement/applicable-pi:", err);
+      res.status(500).json({ message: "Failed to resolve applicable purchase indent" });
+    }
+  });
+
   // Batch 06E: app-level validation for the four nullable linkage IDs on a
   // site material trip (no DB FKs by design). Confirms each supplied ID
   // exists and is mutually compatible. Returns an error string or null.
@@ -7635,7 +7653,7 @@ export async function registerRoutes(
       }
       const paResult = await storage.submitPurchaserAction(indentId, items, actionBy, userId);
       const indent = await storage.getPurchaseIndent(indentId);
-      res.json({ indent, txnIdsByItemId: paResult.txnIdsByItemId, grnIdsByItemId: paResult.grnIdsByItemId });
+      res.json({ indent, txnIdsByItemId: paResult.txnIdsByItemId, grnIdsByItemId: paResult.grnIdsByItemId, routeWarnings: paResult.routeWarnings ?? [] });
     } catch (err) {
       console.error("POST /api/purchase-indents/:id/purchaser-action:", err);
       res.status(500).json({ message: String((err as Error).message) });

@@ -27,6 +27,7 @@ import {
   aggregateReceived,
   buildReceiptComparison,
   classifyReceiptMatch,
+  isHlcProcurementResponsible,
   receiptRelevanceForType,
   resolveApplicableArrangements,
   resolveRequiredToday,
@@ -156,6 +157,25 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
       ? dailyFulfilment.entry
       : null;
 
+  // ── 06S §3: procurement match — informational/auto-fill ONLY, never blocks.
+  // Agency/client-supplied (per Execution Arrangement or daily override): the
+  // PI resolver is not called at all. Otherwise (incl. "no arrangement" =
+  // HLC-responsible by default) resolve the applicable approved/ordered PI.
+  const hlcResponsible = isHlcProcurementResponsible(arrangement?.arrangementType, dailyOverride?.fulfilmentType ?? null);
+  const { data: piMatchRaw } = useQuery<any>({
+    queryKey: ["/api/procurement/applicable-pi", boqProjectId, boqItemId],
+    queryFn: async () => {
+      const res = await fetch(`/api/procurement/applicable-pi?boqProjectId=${boqProjectId}&boqItemId=${boqItemId}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: hlcResponsible && !!boqProjectId && !!boqItemId,
+    staleTime: 30_000,
+  });
+  const piMatch = hlcResponsible && piMatchRaw && !piMatchRaw.ambiguous && piMatchRaw.indentItemId != null ? piMatchRaw : null;
+  const piAmbiguous = hlcResponsible && !!piMatchRaw?.ambiguous;
+  const piNone = hlcResponsible && piMatchRaw === null;
+
   const ctx = {
     siteName,
     date,
@@ -278,6 +298,29 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
         </div>
       </div>
 
+      {/* 06S §3/§4: procurement line — read-only, renders in Guided AND
+          detailed read parity. Informational only; never blocks recording. */}
+      {!hlcResponsible ? (
+        <p className="text-xs text-muted-foreground" data-testid={`${testIdPrefix}-pi-agency`}>
+          Supply responsibility: Agency — no HLC PI required.
+        </p>
+      ) : piMatch ? (
+        <p className="text-xs" data-testid={`${testIdPrefix}-pi-match`}>
+          Material supply: {piMatch.vendor ?? "Vendor TBD"} · {piMatch.indentNo} · Ordered {piMatch.orderedQty} · Received {piMatch.receivedQty} · Balance {piMatch.balanceQty}
+          {received.tripCount > 0 && received.receivedQty != null && (
+            <> · Received today: {received.receivedQty} {received.receivedUom ?? ""} / {received.tripCount} trip{received.tripCount === 1 ? "" : "s"}</>
+          )}
+        </p>
+      ) : piAmbiguous ? (
+        <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`${testIdPrefix}-pi-ambiguous`}>
+          Multiple approved Purchase Indents match — link the correct one from the Purchase Indent screen.
+        </p>
+      ) : piNone ? (
+        <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`${testIdPrefix}-pi-none`}>
+          No approved/ordered Purchase Indent found for this HLC-supplied material.
+        </p>
+      ) : null}
+
       {comparison.comparable ? (
         <p className="text-xs text-muted-foreground" data-testid={`${testIdPrefix}-variance`}>
           {comparison.varianceToRequired != null && (
@@ -315,6 +358,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
           onOpenChange={setRecordOpen}
           props={props}
           arrangement={arrangement}
+          piMatch={piMatch}
           dailyOverride={dailyOverride}
           dailyMaterialName={dailyFulfilment?.materialName ?? null}
           received={received}
@@ -385,11 +429,13 @@ function ViewReceiptsDialog({ open, onOpenChange, trips, testIdPrefix }: { open:
   );
 }
 
-function RecordReceiptDialog({ open, onOpenChange, props, arrangement, dailyOverride, dailyMaterialName, received, uploadFile, toast, testIdPrefix }: {
+function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, dailyOverride, dailyMaterialName, received, uploadFile, toast, testIdPrefix }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   props: ActivityReceiptStripProps;
   arrangement: ArrangementRow | null;
+  /** 06S: single auto-matched PI (or null) — auto-attaches indentId/indentItemId. */
+  piMatch: { indentId: number; indentNo: string; indentItemId: number } | null;
   /** 06G: today's non-arrangement daily allocation (other_agency | hlc). */
   dailyOverride: { fulfilmentType?: string | null; agencyNameSnapshot?: string | null } | null;
   /** Material name from the matched daily-fulfilment requirement line —
@@ -409,6 +455,9 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, dailyOver
     receiptNumber: "",
     location: props.locationLabel ?? "",
     notes: "",
+    // 06S §6: where the truck actually unloaded — a permanent physical fact.
+    unloadedAt: "stretch" as "stretch" | "yard",
+    yardLabel: "",
   });
   const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
   const [sessionTrips, setSessionTrips] = useState(0);
@@ -455,6 +504,12 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, dailyOver
         boqItemId: props.boqItemId,
         programmeBarId: props.programmeBarId ?? undefined,
         earthworkArrangementId: arrangementIdForTrip,
+        // 06S §3: auto-attach the single matched PI — never on ambiguity/none.
+        indentId: piMatch?.indentId ?? undefined,
+        indentItemId: piMatch?.indentItemId ?? undefined,
+        // 06S §6: unloading destination (omitting = stretch; send explicitly).
+        unloadedAt: form.unloadedAt,
+        yardLabel: form.unloadedAt === "yard" ? form.yardLabel : undefined,
       });
       return res.json();
     },
@@ -547,9 +602,26 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, dailyOver
               <Input value={form.receiptNumber} onChange={(e) => setForm({ ...form, receiptNumber: e.target.value })} data-testid={`${testIdPrefix}-rr-challan`} />
             </div>
             <div>
-              <Label className="text-xs">Unloading location</Label>
-              <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} data-testid={`${testIdPrefix}-rr-location`} />
+              <Label className="text-xs">Unloaded at</Label>
+              <Select value={form.unloadedAt} onValueChange={(v) => setForm({ ...form, unloadedAt: v as "stretch" | "yard" })}>
+                <SelectTrigger data-testid={`${testIdPrefix}-rr-unloaded-at`}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="stretch">Work Stretch</SelectItem>
+                  <SelectItem value="yard">Temporary Yard</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+            {form.unloadedAt === "stretch" ? (
+              <div>
+                <Label className="text-xs">Unloading location</Label>
+                <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} data-testid={`${testIdPrefix}-rr-location`} />
+              </div>
+            ) : (
+              <div>
+                <Label className="text-xs">Yard label / location</Label>
+                <Input value={form.yardLabel} onChange={(e) => setForm({ ...form, yardLabel: e.target.value })} placeholder="e.g. Yard A near Ch. 12+400" data-testid={`${testIdPrefix}-rr-yard-label`} />
+              </div>
+            )}
           </div>
           <div>
             <Label className="text-xs">Notes</Label>

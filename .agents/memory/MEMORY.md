@@ -57,4 +57,5 @@
 - [Diesel Stock Guard](diesel-stock-guard.md) — plant-stock diesel deductions must use the guarded locked helper; routes need handleInsufficientPlantStock; edits validate net litres only.
 - [Multi-layer Lift](multi-layer-lift.md) — layerNo overlap exemption only when both non-null AND different; null never coerced; report breakdown display-only, sums to total.
 - [Equipment Opening Continuity](equipment-opening-continuity.md) — one cross-source resolver for prior closing readings; tie-breaks, linkage-first priority, manual/stale guards.
+- [Site Material Trips 06S](site-material-trips-06s.md) — explicit-stores-only GRN rule; PI-match resolver (never guess/create); unloadedAt stretch/yard is a permanent fact, split is informational.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

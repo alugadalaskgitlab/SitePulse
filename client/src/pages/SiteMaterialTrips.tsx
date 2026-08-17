@@ -74,6 +74,9 @@ export default function SiteMaterialTrips() {
     receiptNumber: "",
     enteredBy: "",
     notes: "",
+    // 06S §6: where the truck actually unloaded — permanent physical fact.
+    unloadedAt: "stretch",
+    yardLabel: "",
   });
 
   // Batch 06E-F: optional Work Context (project / work item / arrangement /
@@ -187,6 +190,8 @@ export default function SiteMaterialTrips() {
       const payload: Record<string, any> = {
         ...data,
         quantity: parseFloat(data.quantity) || 0,
+        // 06S: yard label only meaningful for yard receipts.
+        yardLabel: data.unloadedAt === "yard" ? data.yardLabel : undefined,
       };
       if (isPILinked) {
         payload.indentId = piParams.piIndentId;
@@ -252,6 +257,8 @@ export default function SiteMaterialTrips() {
           receiptNumber: "",
           enteredBy: newTrip.enteredBy,
           notes: "",
+          unloadedAt: "stretch",
+          yardLabel: "",
         });
         setWorkCtx(EMPTY_WORK_CONTEXT);
         setLastPrefill({ material: "", supplier: "" });
@@ -455,14 +462,36 @@ export default function SiteMaterialTrips() {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <Label className="text-sm">Location/Chainage</Label>
-                  <Input
-                    placeholder="e.g. 5.200"
-                    value={newTrip.location}
-                    onChange={(e) => setNewTrip({ ...newTrip, location: e.target.value.toUpperCase() })}
-                    data-testid="input-trip-location"
-                  />
+                  <Label className="text-sm">Unloaded At</Label>
+                  <Select value={newTrip.unloadedAt} onValueChange={(v) => setNewTrip({ ...newTrip, unloadedAt: v })}>
+                    <SelectTrigger data-testid="select-trip-unloaded-at"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="stretch">Work Stretch</SelectItem>
+                      <SelectItem value="yard">Temporary Yard</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+                {newTrip.unloadedAt === "stretch" ? (
+                  <div>
+                    <Label className="text-sm">Location/Chainage</Label>
+                    <Input
+                      placeholder="e.g. 5.200"
+                      value={newTrip.location}
+                      onChange={(e) => setNewTrip({ ...newTrip, location: e.target.value.toUpperCase() })}
+                      data-testid="input-trip-location"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <Label className="text-sm">Yard label / location</Label>
+                    <Input
+                      placeholder="e.g. YARD A NEAR CH. 12+400"
+                      value={newTrip.yardLabel}
+                      onChange={(e) => setNewTrip({ ...newTrip, yardLabel: e.target.value.toUpperCase() })}
+                      data-testid="input-trip-yard-label"
+                    />
+                  </div>
+                )}
                 <div>
                   <Label className="text-sm">Receipt/Challan No.</Label>
                   <Input

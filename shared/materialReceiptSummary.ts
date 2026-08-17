@@ -72,6 +72,39 @@ export function likelyBillingBasisForType(type: string | null | undefined): stri
   }
 }
 
+// ---------- 06S: supply responsibility (procurement layer) ----------
+
+/**
+ * Arrangement types where the AGENCY/CLIENT supplies the material — HLC does
+ * not procure, so no Purchase Indent lookup should run at all.
+ * Everything else (hlc_in_house, hlc_source_outsourced_execution,
+ * vendor_material_delivered, not_decided, or NO arrangement at all) is
+ * HLC-procurement-responsible by default, matching current behaviour where
+ * nothing else says otherwise.
+ */
+export const AGENCY_SUPPLIED_ARRANGEMENT_TYPES = [
+  "fully_outsourced_composite",
+  "client_supplied",
+  "reused_excavated",
+] as const;
+
+/**
+ * Is HLC responsible for PROCURING this material today?
+ * Daily fulfilment override precedence mirrors 06G §4 exactly:
+ * a daily "other_agency" override means agency supplies today (no PI lookup);
+ * a daily "hlc" override means HLC supplies today regardless of the standing
+ * arrangement. Informational only — never blocks a receipt.
+ */
+export function isHlcProcurementResponsible(
+  arrangementType: string | null | undefined,
+  dailyOverrideType?: string | null,
+): boolean {
+  if (dailyOverrideType === "other_agency") return false;
+  if (dailyOverrideType === "hlc") return true;
+  if (arrangementType && (AGENCY_SUPPLIED_ARRANGEMENT_TYPES as readonly string[]).includes(arrangementType)) return false;
+  return true;
+}
+
 // ---------- Arrangement resolution ----------
 
 /** Statuses in which an arrangement is operationally applicable to receipts. */

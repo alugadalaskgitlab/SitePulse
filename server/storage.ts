@@ -1213,7 +1213,8 @@ export interface IStorage {
 
   // PI Item Transactions (dual-route)
   getPiItemTransactions(indentId: number): Promise<PiItemTransaction[]>;
-  submitPurchaserAction(indentId: number, items: { itemId: number; purchaseActionType?: string; qty: number; orderedQty?: number; orderNo?: string; orderedByName?: string; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; billNo?: string; remarks?: string }[], actionBy: string, userId?: number): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number> }>;
+  submitPurchaserAction(indentId: number, items: { itemId: number; purchaseActionType?: string; qty: number; orderedQty?: number; orderNo?: string; orderedByName?: string; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; billNo?: string; remarks?: string }[], actionBy: string, userId?: number): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number>; routeWarnings: { itemId: number; message: string }[] }>;
+  getApplicablePiForBoqItem(boqProjectId: number, boqItemId: number): Promise<{ indentId: number; indentNo: string; indentItemId: number; vendor: string | null; orderedQty: number; receivedQty: number; balanceQty: number } | { ambiguous: true; count: number } | null>;
   recordDelivery(itemId: number, data: { deliveredQty: number; deliveryDate?: string; challanNo?: string; paymentMode?: string; paidBy?: string; remarks?: string }, actionBy: string, userId?: number): Promise<{ item: PurchaseIndentItem; grnId?: number }>;
   ensureOrderColumns(): Promise<void>;
   // Material Requirements
@@ -8855,7 +8856,8 @@ export class DatabaseStorage implements IStorage {
   // Settles everything in MT via convertSolidQty. Consumed uses the BOQ recipe norm.
   async getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[]; dateFrom?: string; dateTo?: string }): Promise<{
     site: string; material: string; matched: boolean; uom: string;
-    ordered: number; delivered: number; consumed: number; toSupply: number; lying: number;
+    ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number;
+    consumed: number; toSupply: number; lying: number;
     lastDeliveryDate: string | null;
   }[]> {
     const permitted = filters?.permittedSiteNames;
@@ -8873,12 +8875,12 @@ export class DatabaseStorage implements IStorage {
     const toMTsafe = (qty: number, uom: string | null | undefined, density: number | null) =>
       convertSolidQty(qty, uom, "MT", density);
 
-    type Row = { site: string; material: string; matched: boolean; ordered: number; delivered: number; consumed: number; lastDeliveryDate: string | null };
+    type Row = { site: string; material: string; matched: boolean; ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number; consumed: number; lastDeliveryDate: string | null };
     const map = new Map<string, Row>();
     const bucket = (site: string, materialName: string, matched: boolean): Row => {
       const k = `${site.toUpperCase().trim()}||${canonMaterialName(materialName)}`;
       let r = map.get(k);
-      if (!r) { r = { site, material: materialName, matched, ordered: 0, delivered: 0, consumed: 0, lastDeliveryDate: null }; map.set(k, r); }
+      if (!r) { r = { site, material: materialName, matched, ordered: 0, delivered: 0, deliveredAtStretch: 0, deliveredAtYard: 0, consumed: 0, lastDeliveryDate: null }; map.set(k, r); }
       return r;
     };
 
@@ -8896,6 +8898,12 @@ export class DatabaseStorage implements IStorage {
       if (mt == null) continue;
       const row = bucket(t.site, m?.name ?? t.material, !!m);
       row.delivered += mt;
+      // 06S §7: split delivered by ORIGINAL unloading destination — purely
+      // informational. rows without a value count as stretch (pre-06S default).
+      // NO consumption allocation between the buckets: there is no movement
+      // record, so any "stretch first" ordering would be a guess.
+      if ((t as any).unloadedAt === "yard") row.deliveredAtYard += mt;
+      else row.deliveredAtStretch += mt;
       // Track the most recent delivery date for this site+material bucket
       if (t.date && (!row.lastDeliveryDate || t.date > row.lastDeliveryDate)) {
         row.lastDeliveryDate = t.date;
@@ -8959,7 +8967,9 @@ export class DatabaseStorage implements IStorage {
     return Array.from(map.values())
       .map(r => ({
         site: r.site, material: r.material, matched: r.matched, uom: "MT",
-        ordered: round(r.ordered), delivered: round(r.delivered), consumed: round(r.consumed),
+        ordered: round(r.ordered), delivered: round(r.delivered),
+        deliveredAtStretch: round(r.deliveredAtStretch), deliveredAtYard: round(r.deliveredAtYard),
+        consumed: round(r.consumed),
         toSupply: round(Math.max(r.ordered - r.delivered, 0)),
         lying: round(r.delivered - r.consumed),
         lastDeliveryDate: r.lastDeliveryDate,
@@ -10855,7 +10865,7 @@ export class DatabaseStorage implements IStorage {
     items: { itemId: number; purchaseActionType?: string; qty: number; orderedQty?: number; orderNo?: string; orderedByName?: string; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; billNo?: string; remarks?: string; procurementRoute?: string }[],
     actionBy: string,
     userId?: number
-  ): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number> }> {
+  ): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number>; routeWarnings: { itemId: number; message: string }[] }> {
     const txnIdsByItemId: Record<number, number> = {};
     const grnIdsByItemId: Record<number, number> = {};
 
@@ -10999,6 +11009,8 @@ export class DatabaseStorage implements IStorage {
       ));
 
     // Auto-create draft GRNs for stores-route "already_purchased" items
+    // 06S §1: null-route items skip GRN creation and collect a warning instead.
+    const routeWarnings: { itemId: number; message: string }[] = [];
     if (userId) {
       for (const item of items) {
         const dbRoute = allItemDbMap.get(item.itemId)?.procurementRoute ?? null;
@@ -11007,7 +11019,20 @@ export class DatabaseStorage implements IStorage {
             : item.reasonCode === "not_available" ? "not_available"
             : "already_purchased");
         if (actionType !== "already_purchased") continue;
-        if (!((dbRoute === "stores" || dbRoute === null) && item.qty > 0)) continue;
+        // 06S §1 HARDENING: an UNCONFIGURED (null) procurement route must NOT
+        // silently default into Stores. Only an EXPLICIT "stores" route
+        // auto-creates a draft GRN. Null route: skip GRN creation, leave
+        // purchaseStatus exactly as already written above, and surface a
+        // warning for the client to toast. Explicit routes are unchanged.
+        if (dbRoute === null && item.qty > 0) {
+          const piItemForWarn = allItemDbMap.get(item.itemId);
+          routeWarnings.push({
+            itemId: item.itemId,
+            message: `Procurement route not configured for ${piItemForWarn?.description ?? `item ${item.itemId}`} — set it in Material Master before this can be received.`,
+          });
+          continue;
+        }
+        if (!(dbRoute === "stores" && item.qty > 0)) continue;
         const piItem = allItemDbMap.get(item.itemId);
         const grnItem = {
           itemId: item.itemId,
@@ -11054,7 +11079,7 @@ export class DatabaseStorage implements IStorage {
       throw new Error("RECONCILIATION_REQUIRED: purchaser action succeeded but requirement sync failed");
     }
 
-    return { txnIdsByItemId, grnIdsByItemId };
+    return { txnIdsByItemId, grnIdsByItemId, routeWarnings };
   }
 
   /** Compute PI-level status from current item states and return the string (does not write to DB). */
@@ -11463,8 +11488,82 @@ export class DatabaseStorage implements IStorage {
         ADD COLUMN IF NOT EXISTS boq_project_id integer,
         ADD COLUMN IF NOT EXISTS boq_item_id integer,
         ADD COLUMN IF NOT EXISTS programme_bar_id integer,
-        ADD COLUMN IF NOT EXISTS earthwork_arrangement_id integer
+        ADD COLUMN IF NOT EXISTS earthwork_arrangement_id integer,
+        ADD COLUMN IF NOT EXISTS unloaded_at text,
+        ADD COLUMN IF NOT EXISTS yard_label text
     `));
+    // 06S §1: plant_materials.procurement_route must have NO implicit default —
+    // null means "not configured", and unconfigured must never behave as Stores.
+    await db.execute(sql.raw(`
+      ALTER TABLE plant_materials ALTER COLUMN procurement_route DROP DEFAULT
+    `));
+  }
+
+  // ── 06S §2: PROCUREMENT MATCH RESOLVER ─────────────────────────────────────
+  // Mirrors resolveApplicableArrangements' "resolve automatically, never guess"
+  // shape for procurement. Uses ONLY the explicit chain
+  //   material_requirements.sourceBoqItemId → purchase_indents.requirementId
+  //   → purchase_indent_items.indentId
+  // — never fuzzy name matching. Informational/auto-fill only: callers must
+  // never block a receipt or auto-create a PI based on this result.
+  async getApplicablePiForBoqItem(boqProjectId: number, boqItemId: number): Promise<
+    { indentId: number; indentNo: string; indentItemId: number; vendor: string | null; orderedQty: number; receivedQty: number; balanceQty: number }
+    | { ambiguous: true; count: number }
+    | null
+  > {
+    // Approved/ordered/in-progress procurement only (derivePiStatus vocabulary).
+    const OPEN_PI_STATUSES = ["approved", "purchasing", "purchaser_actioned", "awaiting_delivery", "ordered", "partially_received"];
+    const rows = await db.select({
+      indentId: purchaseIndents.id,
+      indentNo: purchaseIndents.indentNo,
+      indentItemId: purchaseIndentItems.id,
+      vendor: purchaseIndentItems.vendor,
+      qty: purchaseIndentItems.qty,
+      approvedQty: purchaseIndentItems.approvedQty,
+      orderedQty: purchaseIndentItems.orderedQty,
+    })
+      .from(materialRequirements)
+      .innerJoin(purchaseIndents, eq(purchaseIndents.requirementId, materialRequirements.id))
+      .innerJoin(purchaseIndentItems, eq(purchaseIndentItems.indentId, purchaseIndents.id))
+      .where(and(
+        eq(materialRequirements.boqProjectId, boqProjectId),
+        eq(materialRequirements.sourceBoqItemId, boqItemId),
+        inArray(purchaseIndents.status, OPEN_PI_STATUSES),
+        // Never surface a Stores-routed (or unconfigured) item as the
+        // applicable PI for a Site Material Trip.
+        inArray(purchaseIndentItems.procurementRoute, ["material", "bulk_plant"]),
+      ));
+    if (rows.length === 0) return null;
+    if (rows.length > 1) return { ambiguous: true as const, count: rows.length };
+
+    const it = rows[0];
+    // Received = linked Site Material Trips (active, non-cancelled) plus
+    // bulk-receipt PI transactions — the same two flows the PI screens use
+    // for material-route receipts (Stores GRNs are deliberately excluded:
+    // material-route items never become Store stock).
+    const [tripSumRow] = await db.select({
+      total: sql<number>`COALESCE(SUM(${siteMaterialTrips.quantity}), 0)`,
+    }).from(siteMaterialTrips).where(and(
+      eq(siteMaterialTrips.indentItemId, it.indentItemId),
+      or(eq(siteMaterialTrips.isCancelled, false), isNull(siteMaterialTrips.isCancelled)),
+    ));
+    const [txnSumRow] = await db.select({
+      total: sql<number>`COALESCE(SUM(COALESCE(${piItemTransactions.acceptedQty}, ${piItemTransactions.qty})), 0)`,
+    }).from(piItemTransactions).where(and(
+      eq(piItemTransactions.indentItemId, it.indentItemId),
+      eq(piItemTransactions.transactionType, "bulk_receipt"),
+    ));
+    const orderedQty = Number(it.orderedQty ?? it.approvedQty ?? it.qty ?? 0);
+    const receivedQty = Number(tripSumRow?.total ?? 0) + Number(txnSumRow?.total ?? 0);
+    return {
+      indentId: it.indentId,
+      indentNo: it.indentNo,
+      indentItemId: it.indentItemId,
+      vendor: it.vendor ?? null,
+      orderedQty,
+      receivedQty,
+      balanceQty: Math.max(orderedQty - receivedQty, 0),
+    };
   }
 
   async migrateBulkPlantToMaterial(): Promise<number> {
@@ -11815,7 +11914,9 @@ export class DatabaseStorage implements IStorage {
 
     let grnId: number | undefined;
     // For stores-route items: create or update linked GRN
-    if (userId && (existingItem.procurementRoute === "stores" || existingItem.procurementRoute === null)) {
+    // 06S §1: GRN only for an EXPLICIT stores route. A null (unconfigured)
+    // route records the delivery transaction but never becomes Store stock.
+    if (userId && existingItem.procurementRoute === "stores") {
       if (existingItem.linkedGrnId) {
         // GRN already exists — update the line qty to the new running total
         grnId = existingItem.linkedGrnId;

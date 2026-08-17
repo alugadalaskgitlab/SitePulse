@@ -1298,7 +1298,7 @@ export default function PurchaseIndents() {
   const purchaserActionMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/purchaser-action`, data);
-      return res.json() as Promise<{ indent: any; txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number> }>;
+      return res.json() as Promise<{ indent: any; txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number>; routeWarnings?: { itemId: number; message: string }[] }>;
     },
     onSuccess: async (result) => {
       // Upload per-item invoice photos — tag to PI transaction AND draft GRN (Batch 17)
@@ -1336,6 +1336,10 @@ export default function PurchaseIndents() {
       setPurchaserActionOpen(false);
       setPurchaserActionData({});
       toast({ title: "Purchaser action recorded" });
+      // 06S §1: unconfigured-route items skipped auto-GRN — surface each warning.
+      for (const w of result?.routeWarnings ?? []) {
+        toast({ title: "Procurement route not configured", description: w.message, variant: "destructive" });
+      }
     },
     onError: (err: Error) => {
       toast({ title: "Failed to record purchaser action", description: err.message, variant: "destructive" });
