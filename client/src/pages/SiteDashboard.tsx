@@ -1220,6 +1220,12 @@ export default function SiteDashboard() {
                                 ) : (
                                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-semibold border bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Road</span>
                                 )}
+                                {dpr.dprStatus === "draft" && !dpr.isCancelled && !dpr.isDeleted && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-sm font-semibold border bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-700 whitespace-nowrap" data-testid={`badge-draft-${dpr.id}`}>
+                                    <Pencil className="w-3 h-3" />
+                                    Draft — not submitted
+                                  </span>
+                                )}
                                 {pendingClosingCount > 0 && (
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-sm font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap" data-testid={`badge-pending-closing-${dpr.id}`}>
                                     <Clock className="w-3 h-3" />

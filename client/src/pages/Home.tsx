@@ -9,7 +9,7 @@ import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
 import FieldHome from "@/pages/FieldHome";
 import { getWorkspaceMode, setWorkspaceMode, type WorkspaceMode } from "@/lib/workspaceMode";
-import { format } from "date-fns";
+import { format, parseISO, subDays } from "date-fns";
 
 
 export default function Home() {
@@ -77,6 +77,23 @@ function HomeDashboard({
       fetch(`/api/dprs?dateFrom=${todayStr}&dateTo=${todayStr}`)
         .then((r) => r.json()),
   });
+
+  // Pending drafts — ANY unsubmitted DPR (regardless of engineer) from the
+  // last 7 days across the user's permitted sites. The server already
+  // excludes superseded / cancelled / deleted rows and applies site
+  // permissions, so client-side we only need the draft-status filter.
+  const draftLookbackFromStr = format(subDays(new Date(), 7), "yyyy-MM-dd");
+  const canViewDprs = sectionVisible("site_dprs");
+  const { data: recentWindowDprs = [] } = useQuery<any[]>({
+    queryKey: ["/api/dprs", { dateFrom: draftLookbackFromStr, dateTo: todayStr }],
+    queryFn: () =>
+      fetch(`/api/dprs?dateFrom=${draftLookbackFromStr}&dateTo=${todayStr}`)
+        .then((r) => r.json()),
+    enabled: canViewDprs,
+  });
+  const pendingDraftDprs = (Array.isArray(recentWindowDprs) ? recentWindowDprs : [])
+    .filter((d: any) => d.dprStatus === "draft" && !d.isSuperseded)
+    .sort((a: any, b: any) => (a.date < b.date ? 1 : -1));
 
   const { data: allDprs = [] } = useQuery<any[]>({
     queryKey: ["/api/dprs/with-details"],
@@ -281,6 +298,45 @@ function HomeDashboard({
                   </div>
                 </a>
               </Link>
+            )}
+
+            {/* Pending draft DPRs — visible to anyone with site access, not
+                just the engineer named on the draft (that personal banner
+                lives on Field Home and is unchanged). */}
+            {canViewDprs && pendingDraftDprs.length > 0 && (
+              <div className="bg-white rounded-xl border border-rose-200 overflow-hidden" data-testid="panel-pending-drafts">
+                <div className="flex items-center gap-2 px-5 py-3.5 border-b border-rose-100 bg-rose-50/50">
+                  <AlertTriangle className="w-4 h-4 text-rose-500" />
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    Unfinished Draft DPR{pendingDraftDprs.length > 1 ? "s" : ""} ({pendingDraftDprs.length})
+                  </h3>
+                </div>
+                <div className="divide-y divide-slate-50">
+                  {pendingDraftDprs.slice(0, 5).map((d: any) => (
+                    <div key={d.id} className="flex items-center gap-3 px-5 py-3" data-testid={`pending-draft-${d.id}`}>
+                      <Clock className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800 truncate">
+                          {d.site} — {format(parseISO(d.date), "d MMM yyyy")}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {d.engineer || "—"} · saved as draft, not submitted
+                        </p>
+                      </div>
+                      <Link href={`/dpr/${d.id}`}>
+                        <a className="text-xs px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 font-medium flex-shrink-0 hover:bg-rose-100" data-testid={`link-pending-draft-${d.id}`}>
+                          Open
+                        </a>
+                      </Link>
+                    </div>
+                  ))}
+                  {pendingDraftDprs.length > 5 && (
+                    <p className="px-5 py-2.5 text-xs text-slate-400">
+                      + {pendingDraftDprs.length - 5} more — see reports list
+                    </p>
+                  )}
+                </div>
+              </div>
             )}
 
             {/* Site DPR Status */}

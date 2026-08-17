@@ -210,7 +210,14 @@ export default function DprDetails() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold font-display">Report Details</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold font-display">Report Details</h1>
+              {(dpr as any).dprStatus === "draft" ? (
+                <Badge variant="destructive" data-testid="badge-dpr-draft">Draft — not submitted</Badge>
+              ) : (
+                <Badge variant="secondary" data-testid="badge-dpr-submitted">Submitted</Badge>
+              )}
+            </div>
             {user?.fullName && (
               <p className="text-sm text-muted-foreground mt-1">
                 {isAdmin ? "Admin" : user.fullName}
