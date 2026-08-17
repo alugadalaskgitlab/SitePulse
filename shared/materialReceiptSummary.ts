@@ -364,6 +364,43 @@ export interface ReceiptMatchContext {
   programmeBarId?: number | null;
   earthworkArrangementId?: number | null;
   materialLabel?: string | null;
+  /**
+   * 06T §4: extra material names this activity could plausibly receive under
+   * (e.g. the arrangement's material label AND the BOQ item's display name).
+   * Used ONLY for the "suggested" tier — never for authoritative linking.
+   */
+  materialHints?: Array<string | null | undefined> | null;
+}
+
+// 06T §4: tolerant material-name comparison for the SUGGESTED tier only.
+// Real receipts say "Soil" while arrangements say "Soil / Earth" or BOQ items
+// say "Embankment - Borrow Earth" — exact string equality found nothing. A
+// small alias group + token overlap finds these without pulling in unrelated
+// materials (GSB, aggregate, cement… share no token with "soil").
+const MATERIAL_ALIAS: Record<string, string> = {
+  earth: "soil",
+  murrum: "soil",
+  moorum: "soil",
+  murum: "soil",
+};
+const MATERIAL_STOPWORDS = new Set([
+  "of", "for", "and", "the", "with", "in", "to", "material", "materials",
+  "supply", "supplying", "grade", "graded",
+]);
+function materialTokens(s: string): Set<string> {
+  const out = new Set<string>();
+  for (const raw of s.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (!raw || MATERIAL_STOPWORDS.has(raw)) continue;
+    out.add(MATERIAL_ALIAS[raw] ?? raw);
+  }
+  return out;
+}
+export function materialsLooselyMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const ta = materialTokens(a);
+  const tb = materialTokens(b);
+  for (const t of Array.from(ta)) if (tb.has(t)) return true;
+  return false;
 }
 
 export type ReceiptMatchStrength = "linked" | "suggested";
@@ -385,9 +422,16 @@ export function classifyReceiptMatch(trip: SuggestableTrip, ctx: ReceiptMatchCon
       trip.boqItemId === ctx.boqItemId &&
       (ctx.programmeBarId == null || trip.programmeBarId == null || trip.programmeBarId === ctx.programmeBarId));
   if (idLinked) return "linked";
-  const materialMatches =
-    ctx.materialLabel != null &&
-    trip.material.trim().toLowerCase() === ctx.materialLabel.trim().toLowerCase();
+  // 06T §4: suggestions consider the arrangement label AND caller-provided
+  // hints (BOQ item name), with tolerant matching — still confirmation-only,
+  // and only for trips nobody has claimed with IDs yet.
+  const candidates = [ctx.materialLabel, ...(ctx.materialHints ?? [])];
+  const materialMatches = candidates.some(
+    (label) =>
+      label != null &&
+      (trip.material.trim().toLowerCase() === label.trim().toLowerCase() ||
+        materialsLooselyMatch(trip.material, label)),
+  );
   if (materialMatches && trip.boqItemId == null && trip.earthworkArrangementId == null) return "suggested";
   return null;
 }

@@ -24,13 +24,14 @@ import { useDpr } from "@/hooks/use-dprs";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
-import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
+import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
+import { DprDayTripsPanel } from "@/components/DprDayTripsPanel";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
 import { type CandidateChainageRow } from "@shared/chainageOverlap";
 import { boqItemDisplayName } from "@shared/boqItemName";
@@ -56,6 +57,8 @@ interface ProgressEntry {
   boqItemId: number | null;
   // 030A: direct programme-bar linkage
   programmeBarId: number | null;
+  // 06T �3: resolved execution arrangement persisted as a historical fact
+  earthworkArrangementId: number | null;
   quantitySource: string;
   quantitySourceNote: string;
   chainageOverrideReason: string;
@@ -123,30 +126,6 @@ const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS"];
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
 
-// Helper to parse chainage like "0+500" or "1+250" into meters
-function parseChainageToMeters(chainage: string): number | null {
-  if (!chainage) return null;
-  const match = chainage.match(/^(\d+)\+(\d+)$/);
-  if (match) {
-    const km = parseInt(match[1], 10);
-    const m = parseInt(match[2], 10);
-    return km * 1000 + m;
-  }
-  // Decimal kilometres (e.g. "2.100" = 2.1 km = 2100 m)
-  const num = parseFloat(chainage);
-  return isNaN(num) ? null : num * 1000;
-}
-
-// Calculate length from chainage difference
-function calculateLengthFromChainage(from: string, to: string): number | null {
-  const fromMeters = parseChainageToMeters(from);
-  const toMeters = parseChainageToMeters(to);
-  if (fromMeters !== null && toMeters !== null) {
-    return Math.abs(toMeters - fromMeters);
-  }
-  return null;
-}
-
 function formatTimeDuration(start: string, end: string): string | null {
   if (!start || !end) return null;
   try {
@@ -199,7 +178,13 @@ function mapDprToFormState(dpr: any) {
         side: p.side || "",
         chainageFrom: p.chainageFrom || "",
         chainageTo: p.chainageTo || "",
-        length: p.length,
+        // 06T §1: a missing/zero stored Length is reconciled from chainage on
+        // load (shared module) — a stale stored value is never shown silently.
+        length: (() => {
+          const stored = p.length != null ? Number(p.length) : null;
+          if (stored != null && stored > 0) return stored;
+          return calculateLengthFromChainage(p.chainageFrom || "", p.chainageTo || "") ?? stored;
+        })(),
         width: p.width,
         thickness: p.thickness,
         quantity: p.quantity,
@@ -209,13 +194,14 @@ function mapDprToFormState(dpr: any) {
         personnelIds: p.personnelIds || [],
         boqItemId: p.boqItemId ?? null,
         programmeBarId: p.programmeBarId ?? null,
+        earthworkArrangementId: p.earthworkArrangementId ?? null,
         quantitySource: p.quantitySource || "",
         quantitySourceNote: p.quantitySourceNote || "",
         chainageOverrideReason: p.chainageOverrideReason || "",
         executedBy: p.executedBy || "",
         layerNo: p.layerNo != null ? Number(p.layerNo) : null,
       }))
-    : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }];
+    : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }];
 
   const equipment: EquipmentEntry[] = dpr.equipment?.length
     ? dpr.equipment.map((e: any) => ({
@@ -420,7 +406,7 @@ export default function SiteEdit() {
   });
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
+    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
   ]);
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
@@ -713,7 +699,7 @@ export default function SiteEdit() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour') => {
     if (section === 'progress') {
-      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
+      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
       // 06Q: rows added during the edit session are flagged isNew — they get
       // opening-reading continuity when equipment is selected.
@@ -1392,6 +1378,11 @@ export default function SiteEdit() {
                             updated[idx].boqItemId = parseInt(val);
                             updated[idx].activity = boqItem ? boqItemDisplayName(boqItem).toUpperCase() : "";
                           }
+                          // 06T §3: deliberate BOQ-item change — the old
+                          // arrangement and bar link no longer describe this
+                          // row's context; both re-resolve.
+                          updated[idx].earthworkArrangementId = null;
+                          updated[idx].programmeBarId = null;
                           setProgress(updated);
                         }}
                         data-testid={`select-boq-item-${idx}`}
@@ -1417,6 +1408,9 @@ export default function SiteEdit() {
                             const boqItem = siteBoqItems.find((i) => i.id === parseInt(val));
                             updated[idx].boqItemId = parseInt(val);
                             updated[idx].activity = boqItem ? boqItemDisplayName(boqItem).toUpperCase() : "";
+                            // 06T §3: BOQ context change — arrangement/bar re-resolve.
+                            updated[idx].earthworkArrangementId = null;
+                            updated[idx].programmeBarId = null;
                           }
                           setProgress(updated);
                         }}
@@ -1473,9 +1467,14 @@ export default function SiteEdit() {
                         boqItemId={entry.boqItemId}
                         dprDate={header.date}
                         value={entry.programmeBarId}
+                        sideLabel={entry.side || null}
+                        fromKm={parseChainageKm(entry.chainageFrom)}
+                        toKm={parseChainageKm(entry.chainageTo)}
                         testidPrefix={`progress-${idx}`}
                         onSelect={(bar) => {
                           const updated = [...progress];
+                          // 06T §3: bar context changed — arrangement re-resolves.
+                          updated[idx].earthworkArrangementId = null;
                           if (!bar) {
                             updated[idx].programmeBarId = null;
                             setProgress(updated);
@@ -1539,6 +1538,11 @@ export default function SiteEdit() {
                         executedQty={(() => { const q = entry.quantity ?? calculateQuantity(entry); const f = (siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.dprConversionFactor ?? 1; return q != null ? q * f : null; })()}
                         executedUom={(siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.unit ?? entry.uom ?? null}
                         readOnly
+                        persistedArrangementId={entry.earthworkArrangementId}
+                        onArrangementResolved={(id) => {
+                          setProgress((prev) => prev.map((p, i) => (i === idx ? { ...p, earthworkArrangementId: id } : p)));
+                        }}
+                        activityMaterialHint={entry.activity || null}
                         testIdPrefix={`detailed-receipt-${idx}`}
                       />
                     )}
@@ -1623,6 +1627,19 @@ export default function SiteEdit() {
                       }}
                       data-testid={`input-length-${idx}`}
                     />
+                    {(() => {
+                      // 06T §1: computed-vs-overridden visibility (same pattern
+                      // as quantity) — never silently show a stale Length.
+                      const calc = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
+                      if (calc != null && entry.length != null && entry.length > 0 && Math.abs(calc - entry.length) > 0.01) {
+                        return (
+                          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1" data-testid={`note-length-override-${idx}`}>
+                            Overridden — chainage gives {calc} m
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                   <div>
                     <Label className="text-sm">Width (m)</Label>
@@ -2439,6 +2456,11 @@ export default function SiteEdit() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* 06T §5: today's Site Material Trips — read-only, so engineers
+              never re-enter bulk deliveries that already exist as trips. */}
+          {header.site && header.date && (
+            <DprDayTripsPanel siteName={header.site} date={header.date} testIdPrefix="edit-materials" />
+          )}
           {materials.length === 0 ? (
             <p className="text-muted-foreground text-sm text-center py-4">No materials recorded.</p>
           ) : (

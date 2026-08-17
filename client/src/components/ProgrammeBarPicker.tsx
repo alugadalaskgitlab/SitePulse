@@ -109,6 +109,17 @@ export function ProgrammeBarPicker({
   // A deliberate unlink (user clicks the linked chip off) suppresses re-linking.
   const autoLinkedRef = useRef<string | null>(null);
   const [autoLinkedBarId, setAutoLinkedBarId] = useState<number | null>(null);
+  // 06T §2: a deliberate in-session pick (chip / "Change planned reach") is a
+  // manual override — reconciliation never silently undoes it. Links loaded
+  // from the DB or auto-matched ARE reconciled when chainage/side change.
+  const manualPickRef = useRef(false);
+  // 06T §2: user-facing reconciliation state — "relinked" shows the
+  // "Reach updated to match your entry" notice; "no_match" is the single
+  // "Outside planned reach" message after a stale link was cleared.
+  const [reconcile, setReconcile] = useState<{ kind: "relinked" | "no_match"; barId?: number } | null>(null);
+  const reconcileRef = useRef<string | null>(null);
+  // 06T §2: chips collapsed by default — "Programme context" disclosure.
+  const [chipsOpen, setChipsOpen] = useState(false);
   const sideKey = sideLabel ? normalizeDprSideKey(sideLabel) : null;
   useEffect(() => {
     if (!autoSelect || bars.length === 0 || value != null) return;
@@ -125,6 +136,36 @@ export function ProgrammeBarPicker({
     }
   }, [autoSelect, bars, value, boqItemId, dprDate, sideKey, fromKm, toKm]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 06T §2: re-reconciliation — when a bar is ALREADY linked but the entered
+  // chainage/side no longer fall inside it, re-run the matcher instead of
+  // leaving a stale checked chip beside an "outside planned reach" warning.
+  //  - exactly one compatible bar → re-link + "Reach updated" notice
+  //  - none / several → clear the stale link, show ONE clear message
+  useEffect(() => {
+    if (bars.length === 0 || value == null) return;
+    if (manualPickRef.current) return; // deliberate manual override stands
+    if (fromKm == null && toKm == null) return; // nothing entered yet
+    const linked = bars.find(b => b.id === value);
+    if (!linked) return;
+    if (isBarCompatible(linked as any, { sideKey, fromKm, toKm })) {
+      if (reconcile) setReconcile(null);
+      return;
+    }
+    const key = `${value}:${sideKey ?? ""}:${fromKm ?? ""}:${toKm ?? ""}:${bars.map(b => b.id).join(",")}`;
+    if (reconcileRef.current === key) return;
+    reconcileRef.current = key;
+    const match = autoMatchBar(bars as any, { dprDate, sideKey, fromKm, toKm });
+    if (match.kind === "auto" && match.bar.id !== value) {
+      setReconcile({ kind: "relinked", barId: match.bar.id });
+      setAutoLinkedBarId(null);
+      onSelect(match.bar as any as PickerBar);
+    } else if (match.kind !== "auto") {
+      setReconcile({ kind: "no_match" });
+      setAutoLinkedBarId(null);
+      onSelect(null);
+    }
+  }, [bars, value, sideKey, fromKm, toKm, dprDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (bars.length === 0) return null;
 
   const isActive = (b: PickerBar) =>
@@ -138,6 +179,37 @@ export function ProgrammeBarPicker({
 
   return (
     <div className="mt-1 space-y-1">
+      {/* 06T §2: the reach chips live inside a secondary "Programme context"
+          disclosure — the main card leads with what the engineer entered. */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-[10px] font-semibold text-muted-foreground">Programme context:</span>
+        {selected ? (
+          <span className="text-[11px]" data-testid={`${testidPrefix}-linked-summary`}>{barLabel(selected)}</span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground" data-testid={`${testidPrefix}-linked-summary`}>No planned reach linked</span>
+        )}
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-5 text-[10px] px-1.5 underline"
+          onClick={() => setChipsOpen(o => !o)}
+          data-testid={`${testidPrefix}-toggle-programme-context`}
+        >
+          {chipsOpen ? "Hide options" : "Change planned reach"}
+        </Button>
+      </div>
+      {reconcile?.kind === "relinked" && value === reconcile.barId && (
+        <p className="text-[10px] text-blue-700 dark:text-blue-300" data-testid={`${testidPrefix}-reconcile-relinked`}>
+          Reach updated to match your entry.
+        </p>
+      )}
+      {reconcile?.kind === "no_match" && value == null && (
+        <p className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-700" data-testid={`${testidPrefix}-reconcile-no-match`}>
+          <AlertTriangle className="w-3 h-3" /> Outside planned reach — review required
+        </p>
+      )}
+      {chipsOpen && (
       <div className="flex flex-wrap gap-1 items-center">
         {active.map(b => {
           const isSel = value === b.id;
@@ -151,7 +223,11 @@ export function ProgrammeBarPicker({
               title={isSel
                 ? "Linked to this programme bar — click to unlink"
                 : `Link to this bar${b.side ? ` (planned side: ${barSideLabel(b.side as any)})` : " (side unspecified)"}${b.plannedWidthM != null ? `, width ${b.plannedWidthM} m` : ""}. Prefills chainage — enter today's actual executed range; you never claim the whole bar.`}
-              onClick={() => onSelect(isSel ? null : b)}
+              onClick={() => {
+                manualPickRef.current = !isSel;
+                setReconcile(null);
+                onSelect(isSel ? null : b);
+              }}
               data-testid={`button-prefill-bar-${b.id}`}
             >
               {isSel ? "✓ " : ""}{barLabel(b)}
@@ -163,6 +239,8 @@ export function ProgrammeBarPicker({
             value={selected && !isActive(selected) ? String(selected.id) : undefined}
             onValueChange={val => {
               const b = bars.find(x => x.id === Number(val)) ?? null;
+              manualPickRef.current = b != null;
+              setReconcile(null);
               onSelect(b);
             }}
           >
@@ -179,6 +257,7 @@ export function ProgrammeBarPicker({
           </Select>
         )}
       </div>
+      )}
       {autoLinkedBarId != null && value === autoLinkedBarId && selected && (
         <p className="text-[10px] text-muted-foreground" data-testid={`${testidPrefix}-auto-linked-note`}>
           Linked automatically: {barLabel(selected)}

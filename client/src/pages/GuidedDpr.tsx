@@ -84,6 +84,8 @@ interface GuidedEntry {
   activity: string;
   boqItemId: number | null;
   programmeBarId: number | null;
+  // 06T �3: resolved execution arrangement persisted as a historical fact
+  earthworkArrangementId: number | null;
   side: string;
   chainageFrom: string;
   chainageTo: string;
@@ -293,6 +295,7 @@ export default function GuidedDpr() {
         activity: p.activity || "",
         boqItemId: p.boqItemId ?? null,
         programmeBarId: p.programmeBarId ?? null, // never stripped client-side
+        earthworkArrangementId: p.earthworkArrangementId ?? null,
         side: p.side || "",
         chainageFrom: p.chainageFrom || "",
         chainageTo: p.chainageTo || "",
@@ -556,6 +559,7 @@ export default function GuidedDpr() {
       activity: boqItemDisplayName(item) || `BOQ item ${bar.boqItemId}`,
       boqItemId: bar.boqItemId,
       programmeBarId: bar.id,
+      earthworkArrangementId: null,
       side: prefillSideFor(bar.side),
       chainageFrom: bar.chainageFrom != null ? fmtCh(bar.chainageFrom) : "",
       chainageTo: "",
@@ -585,6 +589,7 @@ export default function GuidedDpr() {
       activity: "",
       boqItemId: null,
       programmeBarId: null,
+      earthworkArrangementId: null,
       side: "",
       chainageFrom: "",
       chainageTo: "",
@@ -612,6 +617,9 @@ export default function GuidedDpr() {
       activity: boqItemDisplayName(item),
       uom: item.unit ?? "",
       programmeBarId: null,
+      // 06T §3: deliberate BOQ-item change — the persisted arrangement no
+      // longer describes this row's context, so it re-resolves.
+      earthworkArrangementId: null,
     } : e)));
 
   const updateEntry = (idx: number, patch: Partial<GuidedEntry>) =>
@@ -689,6 +697,9 @@ export default function GuidedDpr() {
       activity: p.activity,
       boqItemId: p.boqItemId,
       programmeBarId: p.programmeBarId,
+      // 06T §3: yesterday's arrangement is NOT copied — it re-resolves for
+      // today's context when the row is completed.
+      earthworkArrangementId: null,
       side: p.side,
       chainageFrom: "",           // measurements deliberately cleared
       chainageTo: "",
@@ -834,6 +845,7 @@ export default function GuidedDpr() {
           personnelIds: [] as number[],
           boqItemId: e.boqItemId,
           programmeBarId: e.programmeBarId,
+          earthworkArrangementId: null,
           chainageFromKm: null, chainageToKm: null,
           quantitySource: null, quantitySourceNote: null,
           chainageOverrideReason: null, executedBy: null,
@@ -850,7 +862,9 @@ export default function GuidedDpr() {
         side: e.side,
         chainageFrom: e.chainageFrom,
         chainageTo: e.chainageTo,
-        length: null,
+        // 06T §1: persist the chainage-derived length (Guided has no manual
+        // Length field) so downstream views never show a blank/zero Length.
+        length: calculateLengthFromChainage(e.chainageFrom, e.chainageTo),
         width: e.width,
         thickness: e.thickness,
         quantity: e.quantity,
@@ -860,6 +874,8 @@ export default function GuidedDpr() {
         personnelIds: [] as number[],
         boqItemId: e.boqItemId,
         programmeBarId: e.programmeBarId,
+        // 06T §3: resolved arrangement travels with the row as a historical fact.
+        earthworkArrangementId: e.earthworkArrangementId,
         chainageFromKm: fromKm,
         chainageToKm: toKm,
         // Source is real state: "calculated" only when geometry recomputation
@@ -881,7 +897,18 @@ export default function GuidedDpr() {
       structureItems: unmanagedSectionsRef.current.structureItems,
       // Batch 04: edited fields on top of the untouched passthrough — no more
       // hard-coded ""/null wiping of values entered in the Detailed editor.
-      equipment: equipment.filter((e) => e.machine).map((e) => buildGuidedEquipmentPayload(e)),
+      // 06T §6: the trace showed the only real loss point was this filter —
+      // a draft row without a machine name was silently dropped, then the
+      // draft PATCH's replace semantics deleted it from the DB. Drafts now
+      // keep any row with ANY content (machine may be "" — column accepts it);
+      // final submits still require a machine name.
+      equipment: equipment
+        .filter((e) =>
+          asDraft
+            ? e.machine || e.vehicleNo || e.operator || e.task || Object.values(e.passthrough ?? {}).some((v) => v != null && v !== "")
+            : e.machine,
+        )
+        .map((e) => buildGuidedEquipmentPayload(e)),
       // Batch 06C §12: real values round-trip — gender / work-item / structure
       // links are never wiped by a Guided save.
       labour: labour.filter((l) => l.category).map((l) => ({
@@ -1356,9 +1383,11 @@ export default function GuidedDpr() {
                 toKm={parseChainageKm(e.chainageTo)}
                 testidPrefix={`guided-${idx}`}
                 onSelect={(bar) => {
-                  if (!bar) { updateEntry(idx, { programmeBarId: null }); return; }
+                  // 06T §3: bar context changed — persisted arrangement re-resolves.
+                  if (!bar) { updateEntry(idx, { programmeBarId: null, earthworkArrangementId: null }); return; }
                   updateEntry(idx, {
                     programmeBarId: bar.id,
+                    earthworkArrangementId: null,
                     ...(bar.chainageFrom != null && !e.chainageFrom ? { chainageFrom: fmtCh(bar.chainageFrom) } : {}),
                     // Batch 1: the bar's PLANNED side never overwrites a chosen
                     // actual side; a blank side is prefilled only when the
@@ -1539,6 +1568,9 @@ export default function GuidedDpr() {
                   executedUom={item?.unit ?? e.uom ?? null}
                   locationLabel={loc || null}
                   barPlannedQty={linkedBar?.plannedQty ?? null}
+                  persistedArrangementId={e.earthworkArrangementId}
+                  onArrangementResolved={(id) => updateEntry(idx, { earthworkArrangementId: id })}
+                  activityMaterialHint={item ? boqItemDisplayName(item) : e.activity || null}
                   testIdPrefix={`guided-receipt-${idx}`}
                 />
               );

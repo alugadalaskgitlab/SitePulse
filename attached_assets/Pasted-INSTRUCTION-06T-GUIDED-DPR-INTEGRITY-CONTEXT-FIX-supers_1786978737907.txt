@@ -1,0 +1,320 @@
+INSTRUCTION 06T — GUIDED DPR INTEGRITY & CONTEXT FIX
+(supersedes the standalone 06R — the Execution Arrangement persistence work
+in 06R is folded into §3 below; do not implement 06R separately)
+
+STOP ADDING FEATURES TO DPR UNTIL THIS BATCH IS DONE. This batch fixes
+correctness and internal consistency of the Guided/Detailed DPR activity
+card. Priority order for this batch is:
+
+  Chainage → Length → Programme Reach → Execution Arrangement → Material Trips
+
+must become ONE consistent chain, each step silently derived from the one
+before it, never a set of independent widgets that can disagree with each
+other on screen.
+
+This batch is triggered by a real production report (16-Aug-2026,
+TAKKADPALLY-SIRUR site) showing, simultaneously, on the same DPR: Length
+stuck at 0 despite chainage present, a highlighted reach that does not
+match the entered chainage, a false "no Purchase Indent" warning on a
+cut/fill excavated-earth activity, a borrow-earth activity showing both
+"no execution arrangement" and "no approved indent" at once, and 24 real,
+already-recorded soil delivery trips for that date/site not appearing
+against the activities they should be linked to. None of the underlying
+data was lost — this is a context-resolution and display problem, not a
+data-loss problem (except §6, which is a separate, serious complaint that
+must be independently proven, not assumed fixed).
+
+--------------------------------------------------
+1. CHAINAGE IS THE SOURCE OF TRUTH — LENGTH MUST ALWAYS BE DERIVED, NEVER STALE
+--------------------------------------------------
+Confirmed root cause: SiteEntry.tsx (Detailed DPR create) correctly imports
+and uses ONE shared `calculateLengthFromChainage` (from the shared
+dprCalculations module) and recomputes Length live as chainage is typed.
+SiteEdit.tsx instead defines its OWN local, duplicate copy of
+`calculateLengthFromChainage` (lines ~127-148) and — critically — its
+Length input just displays whatever `entry.length` value was loaded from
+the database (`value={entry.length ?? ""}`) without ever recomputing it
+from the chainage already present when the screen opens. Length only
+updates if the Engineer manually retypes the From/To boxes. This is why a
+perfectly valid saved report opens up showing Length 0.
+
+Fix:
+- Delete SiteEdit.tsx's local duplicate `calculateLengthFromChainage`/
+  `parseChainageToMeters` functions. Import and use the same shared
+  dprCalculations module SiteEntry.tsx already uses — one calculation,
+  one implementation, everywhere.
+- On initial load of an existing DPR for edit, and any time chainage
+  changes thereafter, Length must be recalculated from the current
+  chainageFrom/chainageTo and reconciled against the stored value — never
+  silently displayed stale. If a manually-overridden Length was
+  deliberately saved different from the geometric calculation, follow the
+  same "computed vs overridden" pattern already used elsewhere in this
+  codebase for quantity override warnings (visible note, not silent
+  overwrite) — do not guess a new rule here.
+- Apply the same audit to Guided DPR and Detailed DPR create: confirm
+  Length is always freshly derived from chainage on every render path,
+  not just on keystroke.
+
+--------------------------------------------------
+2. PROGRAMME REACH MUST BE SILENT, BACKGROUND, AND ALWAYS RECONCILED — NOT A COMPETING CONTROL
+--------------------------------------------------
+Confirmed root cause: ProgrammeBarPicker.tsx auto-links a programme bar
+once (`autoLinkedRef`, only "while nothing is linked" — `value != null`
+skips re-attempting). Once a bar is linked, the highlighted/checked chip
+stays fixed to that bar id and is never re-validated against the
+chainage actually showing on the card. Separately, the "Outside planned
+reach — review required" warning IS correctly triggered when there's a
+mismatch — but the stale chip stays checked anyway, so the Engineer sees
+a checkmark and a contradiction warning at the same time, about the same
+thing.
+
+Design principle (per Krishna): the Engineer's actual From/To chainage IS
+the execution fact. Programme Reach is background bookkeeping — needed
+for planned-vs-actual tracking, programme progress, RA/report drill-down,
+and Execution Arrangement resolution — but it must be RESOLVED FROM the
+chainage, not held as an independent, manually-clickable choice that can
+silently drift out of sync with it.
+
+Fix:
+- Re-run bar matching (the existing `autoMatchBar` logic) every time
+  chainage or side changes on an entry that already has a linked bar, not
+  only while nothing is linked. If the newly-entered chainage no longer
+  matches the currently-linked bar:
+  - If exactly one other bar now matches, re-link automatically and show
+    a brief, clear "Reach updated to match your entry" notice — no silent
+    surprise, but no separate manual step either.
+  - If no bar matches, or more than one matches, clear the stale link
+    (do not leave an old checkmark showing) and surface ONE single,
+    clear message — reuse "Outside planned reach — review required" —
+    not a checked chip plus a contradiction.
+- Remove the four large Reach chip buttons from their current prominent
+  position on the main activity card. Collapse them into a secondary
+  "Programme context" disclosure (e.g. a small expandable row or a "Change
+  planned reach" link) that stays reachable for genuine manual override /
+  out-of-sequence work, but does not visually compete with the Engineer's
+  own chainage/length/qty fields as if it were an equally-weighted, separate
+  decision.
+- This must not change any balance/remaining-quantity arithmetic, BOQ
+  credit, or RA/report calculation — only when/how the bar link is
+  resolved and how prominently it is displayed.
+
+--------------------------------------------------
+3. EXECUTION ARRANGEMENT MUST RESOLVE FIRST AND RELIABLY — PERSIST IT ON THE DPR ROW (absorbs 06R)
+--------------------------------------------------
+Confirmed: the classification logic is already correct — `reused_excavated`
+is already listed in `AGENCY_SUPPLIED_ARRANGEMENT_TYPES` and
+`receiptRelevanceForType` already returns "none" for it (shared/
+materialReceiptSummary.ts). `isHlcProcurementResponsible()` already
+correctly returns false for agency-supplied/reused-excavated types WHEN
+an arrangement is actually resolved. The bug is upstream: for these two
+real activities, `arrangement` is coming back null/undefined at the point
+ActivityReceiptStrip runs — and the code's documented fallback for "no
+arrangement resolved" is to assume HLC is procurement-responsible and run
+a Purchase Indent lookup, which is correct behaviour ONLY when nothing has
+ever been configured, and wrong/misleading when it happens because the
+resolution itself is failing to find real data.
+
+Investigate and report which of these is actually happening for the two
+sample activities (Excavated Earth and Borrow Earth, same stretch,
+TAKKADPALLY-SIRUR, 16-Aug-2026), before proposing the fix, since the
+correct remedy differs:
+  (a) No Execution Arrangement was ever created/allocated for this
+      programme bar in Work Programme — a setup gap, not a code bug.
+  (b) An arrangement exists and is allocated, but the live lookup chain
+      (GET /api/dpr/programme-bars → bar.arrangement, matched by
+      boqProjectId/boqItemId/programmeBarId) is failing to find or attach
+      it to this specific activity row — a real resolution bug.
+
+Whichever is found, also implement the permanent fix (this is 06R's
+scope, now done here instead of separately):
+- Add `earthworkArrangementId` to the progress-row state in Guided DPR,
+  Detailed DPR create, and Detailed DPR edit. At the point the bar/
+  arrangement is resolved (§2's reconciled resolution, not a one-time
+  guess), persist `earthworkArrangementId` onto the row — the schema
+  column (`progress_entries.earthworkArrangementId`) already exists and
+  is currently never set by any DPR screen.
+- Once persisted, a saved row's arrangement is a historical fact: never
+  silently recomputed or overwritten on a later edit unless the Engineer
+  deliberately changes the row's BOQ item/programme-bar context (a real
+  work-context change, not just reopening the form). Preserve it through
+  `cloneDpr`'s version/clone path the same way `layerNo` (06P) already is.
+- Show the resolved arrangement plainly on the card for ALL types, not
+  only "part" mode (today only "part" mode surfaces anything, and even
+  then nothing is shown, only the existing `executedBy` requirement is
+  enforced — keep that requirement exactly as-is).
+- For `relevance: "none"` types (reused_excavated and any other type
+  `receiptRelevanceForType` marks "none"): show ONLY the execution line.
+  No Purchase Indent block, no "Received today" block, nothing about
+  material receipts at all — this activity type has none, by design.
+- For types that DO need a receipt (borrow earth, GSB, WMM, aggregates,
+  etc.): show the arrangement badge FIRST and correctly. Only if the
+  resolved arrangement/override genuinely makes HLC procurement-
+  responsible should the Purchase Indent lookup run. If arrangement truly
+  is unset for a bar that needs one, show ONE single clear message — e.g.
+  "No supply arrangement set up for this stretch — configure it in Work
+  Programme" — never a "no execution arrangement" badge and a separate
+  "no approved/ordered indent" warning shown together as if they were two
+  unrelated problems.
+- `material_logs` scope note: do not add schema to `material_logs` in
+  this batch — that remains a separate, deliberately-deferred investigate-
+  first item. Nothing in this section requires touching it.
+
+--------------------------------------------------
+4. MATERIAL TRIP MATCHING MUST FIND REAL, RELEVANT DELIVERIES RELIABLY
+--------------------------------------------------
+Confirmed: the 24 soil trips for TAKKADPALLY-SIRUR on 16-Aug-2026 are real,
+correctly recorded (10,500 CFT, all tagged "linked to work context" on the
+Materials Received screen) — they are not lost. The DPR activity card's
+"Received today" match requires same site + same date AND (matching
+`earthworkArrangementId`, OR matching `boqItemId` AND matching/null
+`programmeBarId`). Since `earthworkArrangementId` has never been set on
+any DPR row until this batch (§3), matching has been relying on
+boqItemId+programmeBarId alone — and given §2's stale/mismatched reach
+linking, a DPR row can easily be carrying the wrong or a blank
+programmeBarId, causing a real, relevant delivery to not match.
+
+Investigate and report, for this real case specifically: what
+boqItemId/programmeBarId/earthworkArrangementId values are actually
+stored on the 24 trip records, versus what the Excavated Earth and Borrow
+Earth activity rows in that DPR are carrying, and explain the exact
+mismatch found. Then fix the matching so genuinely-relevant deliveries
+(same site, date, material, and correctly-resolved reach/arrangement per
+§2/§3) are reliably found and counted — without loosening the match to
+the point of pulling in deliveries that are not actually relevant to that
+activity. Do not change anything about how a trip is created or how site
+material stock/reconciliation is computed — matching/display only.
+
+--------------------------------------------------
+5. DPR MATERIALS VIEW SHOULD SHOW LINKED SITE MATERIAL TRIPS, NOT ASK FOR RE-ENTRY
+--------------------------------------------------
+The Site Materials Received page (`site_material_trips`) and the DPR's own
+inline Materials step (`material_logs`) are separate ledgers. For bulk
+road materials (soil/earth/GSB/WMM/aggregates), the DPR's Materials view
+must display the linked Site Material Trips for that date/site directly —
+read-only, reusing the same matching from §4 — rather than showing empty
+and implying the Engineer must manually re-enter each of the 24 trucks a
+second time. No new ledger, no schema change, no change to `material_logs`
+itself — a display composition change only, pulling in the real trip
+records that already exist.
+
+--------------------------------------------------
+6. EQUIPMENT DRAFT DATA LOSS — PROVE IT END-TO-END, DO NOT ASSUME ALREADY FIXED
+--------------------------------------------------
+An existing autosave/draft-handling change is already in the repo, but a
+real field report says equipment entered and saved as a draft disappeared
+on reopen. Do not close this as resolved based on the code alone. Trace
+one real, reproduced case across all four checkpoints and report each:
+  1. Equipment entered on Guided DPR — exact client state at Save Draft.
+  2. The exact Save Draft API request payload sent.
+  3. What is actually stored in the database after that save.
+  4. The exact reopen/hydration API response, and what Guided DPR renders
+     from it.
+Identify exactly where (if anywhere) the equipment data is lost in that
+chain. If you cannot reproduce it from the repo alone, report precisely
+what you tried and what you need from us (exact site, date, time, and
+equipment) to reproduce it for real, rather than reporting this as fixed.
+
+--------------------------------------------------
+7. TARGET CARD SHAPE (reference — do not over-build beyond what's needed)
+--------------------------------------------------
+Excavated Earth (reused_excavated):
+  Embankment – Excavated Earth · RHS · Ch 2+800–2+850
+  Length 50 m · Width 5.0 m · Thickness 0.30 m · Qty 75 Cum
+  Execution: Cut/Fill – Reused Excavated Material
+  (nothing about PI, nothing about material received)
+
+Borrow Earth, agency-supplied:
+  Embankment – Borrow Earth · RHS · Ch 2+800–2+850
+  Execution Arrangement: Narasimhulu
+  Received today: 10,500 CFT · 24 trips  [View Receipts]
+
+Borrow Earth, HLC-procured:
+  Execution: HLC
+  Supply: Narasimhulu · PI-xxx
+  Received today: ...
+
+GSB/WMM, HLC-procured:
+  Execution: HLC
+  Supply: ABC Crusher · PI-024
+  Received today: 420 MT · 14 trips
+
+--------------------------------------------------
+8. WHAT NOT TO TOUCH
+--------------------------------------------------
+Do NOT modify:
+- BOQ Contract Qty, cumulative progress/credit formulas, RA/report
+  calculations — no change of any kind.
+- Stores, plant stock, or diesel logic — unrelated.
+- The underlying `site_material_trips` records themselves, or how a trip
+  is created — matching/display only (§4/§5).
+- `material_logs` schema — still investigate-first-and-stop per the prior
+  instruction; nothing here requires or authorizes adding to it.
+- Any schema beyond `progress_entries.earthworkArrangementId`, which
+  already exists and is only now being written to (§3).
+- Do not start any new DPR feature work until this batch is verified.
+
+--------------------------------------------------
+9. TESTS
+--------------------------------------------------
+A. Opening an existing DPR for edit with chainage already filled shows
+   the correct, freshly-calculated Length immediately — not 0, not stale.
+B. Changing chainage on an existing or new row recalculates Length live,
+   using the one shared calculation function (confirm SiteEdit.tsx no
+   longer has its own copy).
+C. A row whose linked bar no longer matches its chainage either
+   re-links automatically (single unambiguous match) or clearly shows
+   "outside planned reach" with the stale chip no longer shown as checked
+   — never both a checkmark and a contradiction warning together.
+D. Reach chips are no longer a large, prominent control on the main
+   activity card; reachable via a secondary disclosure.
+E. An activity resolving to a `reused_excavated` (or other relevance:
+   "none") arrangement shows only the execution line — no PI/receipt
+   block at all.
+F. An activity needing a receipt, with a correctly-resolving agency
+   arrangement, shows the arrangement first and no PI warning.
+G. An activity needing a receipt with genuinely no arrangement configured
+   shows exactly one clear message, not two contradictory ones.
+H. `earthworkArrangementId` persists on save for Guided and Detailed DPR,
+   is preserved (not recomputed) on edit reload, and is preserved through
+   clone/version the same way `layerNo` is.
+I. The real 16-Aug-2026 TAKKADPALLY-SIRUR case (or an equivalent
+   reproduction): the 24 soil trips are correctly found and shown as
+   "Received today" against the correct activity/activities.
+J. DPR Materials view shows the linked Site Material Trips for bulk road
+   materials on that date/site, read-only, no duplicate-entry prompt.
+K. Equipment draft round-trip: enter, save as draft, reopen — data is
+   present. Report the four-checkpoint trace regardless of pass/fail.
+L. No change in any BOQ credit, RA/report, Stores, or diesel calculation
+   anywhere (regression).
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+10. REPORT BACK
+--------------------------------------------------
+Report:
+A. Exact fix for SiteEdit.tsx's Length staleness and duplicate function.
+B. Exact reach re-reconciliation logic and where the chips moved to.
+C. For the two real sample activities: which root cause (a) or (b) from
+   §3 was found, with evidence, and the fix applied.
+D. For the real 24-trip case: what boqItemId/programmeBarId/
+   earthworkArrangementId values were actually on those trips vs. the DPR
+   rows, and what was fixed.
+E. DPR Materials view change — screenshot or description of the new
+   read-only linked-trips display.
+F. The full four-checkpoint equipment draft trace, with findings —
+   including if it could not be reproduced, and what's needed from us.
+G. Confirmation `progress_entries.earthworkArrangementId` is now
+   genuinely populated on new and re-resolved rows.
+H. Confirmation no BOQ/RA/Stores/diesel calculation changed anywhere.
+I. Focused and full test results.
+
+Confirm:
+- No new DPR feature work done beyond this integrity fix.
+- No schema change beyond the existing, already-declared
+  earthworkArrangementId column.
+- No change to material_logs.
+- No change to how site_material_trips are created or to site material
+  stock/reconciliation arithmetic.
+
+DO NOT START ANOTHER BATCH.

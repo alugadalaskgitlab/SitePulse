@@ -48,6 +48,7 @@ import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { History } from "lucide-react";
 import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPicker";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
+import { DprDayTripsPanel } from "@/components/DprDayTripsPanel";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
 import { type CandidateChainageRow } from "@shared/chainageOverlap";
 import { setDprEntryMode, getDprEntryMode } from "@/lib/dprEntryMode";
@@ -75,6 +76,8 @@ interface ProgressEntry {
   boqItemId: number | null;
   // 030A: direct programme-bar linkage
   programmeBarId: number | null;
+  // 06T �3: resolved execution arrangement persisted as a historical fact
+  earthworkArrangementId: number | null;
   quantitySource: string;
   quantitySourceNote: string;
   chainageOverrideReason: string;
@@ -788,7 +791,7 @@ export default function SiteEntry() {
   }, [attachPersonnelToTarget, toast]);
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
+    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
   ]);
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
@@ -992,7 +995,7 @@ export default function SiteEntry() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour' | 'materials') => {
     if (section === 'progress') {
-      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
+      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }]);
     } else if (section === 'labour') {
@@ -1063,6 +1066,7 @@ export default function SiteEntry() {
       length: null, width: null, thickness: null, quantity: null,
       uom: p.uom || "SQM", noSiteWork: false, noSiteWorkDescription: "",
       personnelIds: [], boqItemId: p.boqItemId, programmeBarId: p.programmeBarId,
+      earthworkArrangementId: null,
       quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "",
       layerNo: null,
     })));
@@ -1998,6 +2002,10 @@ export default function SiteEntry() {
                           const updated = [...progress];
                           updated[idx].boqItemId = id;
                           updated[idx].activity = it ? boqItemDisplayName(it).toUpperCase() : "";
+                          // 06T §3: deliberate item change — arrangement and
+                          // bar link re-resolve for the new context.
+                          updated[idx].earthworkArrangementId = null;
+                          updated[idx].programmeBarId = null;
                           setProgress(updated);
                         }}
                       />
@@ -2009,9 +2017,14 @@ export default function SiteEntry() {
                         dprDate={header.date}
                         value={entry.programmeBarId}
                         autoSelect
+                        sideLabel={entry.side || null}
+                        fromKm={parseChainageKm(entry.chainageFrom)}
+                        toKm={parseChainageKm(entry.chainageTo)}
                         testidPrefix={`progress-${idx}`}
                         onSelect={(bar) => {
                           const updated = [...progress];
+                          // 06T §3: bar context changed — arrangement re-resolves.
+                          updated[idx].earthworkArrangementId = null;
                           if (!bar) {
                             updated[idx].programmeBarId = null;
                             setProgress(updated);
@@ -2078,6 +2091,11 @@ export default function SiteEntry() {
                         executedQty={(() => { const q = entry.quantity ?? calculateQuantity(entry); const f = (siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.dprConversionFactor ?? 1; return q != null ? q * f : null; })()}
                         executedUom={(siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.unit ?? entry.uom ?? null}
                         readOnly
+                        persistedArrangementId={entry.earthworkArrangementId}
+                        onArrangementResolved={(id) => {
+                          setProgress((prev) => prev.map((p, i) => (i === idx ? { ...p, earthworkArrangementId: id } : p)));
+                        }}
+                        activityMaterialHint={entry.activity || null}
                         testIdPrefix={`detailed-receipt-${idx}`}
                       />
                     )}
@@ -3209,6 +3227,11 @@ export default function SiteEntry() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* 06T §5: today's Site Material Trips — read-only, so engineers
+              never re-enter bulk deliveries that already exist as trips. */}
+          {header.site && header.date && (
+            <DprDayTripsPanel siteName={header.site} date={header.date} testIdPrefix="detailed-materials" />
+          )}
           {materials.length === 0 ? (
             <p className="text-muted-foreground text-sm text-center py-4">No materials recorded. Click "Add" to record material consumed or issued against a work item. (Bulk deliveries by vehicle trip are still tracked separately in Materials Received.)</p>
           ) : (

@@ -58,4 +58,5 @@
 - [Multi-layer Lift](multi-layer-lift.md) — layerNo overlap exemption only when both non-null AND different; null never coerced; report breakdown display-only, sums to total.
 - [Equipment Opening Continuity](equipment-opening-continuity.md) — one cross-source resolver for prior closing readings; tie-breaks, linkage-first priority, manual/stale guards.
 - [Site Material Trips 06S](site-material-trips-06s.md) — explicit-stores-only GRN rule; PI-match resolver (never guess/create); unloadedAt stretch/yard is a permanent fact, split is informational.
+- [Guided DPR Integrity 06T](guided-dpr-integrity-06t.md) — arrangement id is a persisted historical fact; loose matching = suggested tier only; no-arrangement ≠ HLC responsible; draft equipment filter was the loss point.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.

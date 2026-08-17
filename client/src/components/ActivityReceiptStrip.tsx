@@ -76,6 +76,19 @@ export interface ActivityReceiptStripProps {
   bomRequirementQty?: number | null;
   /** Detailed DPR passes true: read-only display (View Receipts only). */
   readOnly?: boolean;
+  /**
+   * 06T §3: the arrangement id already persisted on this progress row — a
+   * historical fact that wins over live re-resolution once saved.
+   */
+  persistedArrangementId?: number | null;
+  /**
+   * 06T §3: called when a live resolution produces an arrangement id that the
+   * row hasn't persisted yet — the caller stores it on the progress row so it
+   * is saved with the DPR.
+   */
+  onArrangementResolved?: (arrangementId: number) => void;
+  /** 06T §4: activity/BOQ-item name — extra material hint for suggestions. */
+  activityMaterialHint?: string | null;
   testIdPrefix: string;
 }
 
@@ -146,11 +159,43 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     dailyFulfilment?.entry.fulfilmentType === "arrangement" && dailyFulfilment.entry.arrangementId != null
       ? arrangements.find((a) => a.id === dailyFulfilment.entry.arrangementId) ?? null
       : null;
+  // 06T §3: a persisted arrangement id on the progress row is a historical
+  // fact — it wins over live re-resolution (which only fills the gap the
+  // first time, or after the caller deliberately clears it on context change).
+  const persistedArrangement =
+    props.persistedArrangementId != null
+      ? arrangements.find((a) => a.id === props.persistedArrangementId) ?? null
+      : null;
   const arrangement =
+    persistedArrangement ??
     dailyArrangement ??
     resolution.prefill ??
     (selectedArrangementId != null ? resolution.applicable.find((a) => a.id === selectedArrangementId) ?? null : null);
+  // 06T §3: push a freshly resolved arrangement up to the caller exactly when
+  // the row has nothing persisted yet — so it is saved as part of the DPR.
+  const onArrangementResolved = props.onArrangementResolved;
+  useEffect(() => {
+    if (!onArrangementResolved) return;
+    if (props.persistedArrangementId != null) return;
+    if (arrangement?.id != null) onArrangementResolved(arrangement.id);
+  }, [arrangement?.id, props.persistedArrangementId, onArrangementResolved]);
   const relevance = receiptRelevanceForType(arrangement?.arrangementType);
+  // 06T §3: arrangements that cover this item but are stuck before approval —
+  // the message must say "awaiting approval", not "nothing set up".
+  const pendingApprovalArrangement = useMemo(
+    () =>
+      arrangement == null
+        ? arrangements.find(
+            (a) =>
+              a.boqProjectId === boqProjectId &&
+              !["approved", "mobilisation_pending", "in_progress"].includes(a.status) &&
+              !["cancelled", "closed", "completed", "rejected"].includes(a.status) &&
+              (a.boqItemId === boqItemId ||
+                (Array.isArray(a.boqItemAllocations) && a.boqItemAllocations.some((al) => Number(al?.boqItemId) === boqItemId))),
+          ) ?? null
+        : null,
+    [arrangement, arrangements, boqProjectId, boqItemId],
+  );
   // Non-arrangement daily overrides for TODAY's supplier display:
   const dailyOverride =
     dailyFulfilment?.entry.fulfilmentType === "other_agency" || dailyFulfilment?.entry.fulfilmentType === "hlc"
@@ -161,7 +206,13 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
   // Agency/client-supplied (per Execution Arrangement or daily override): the
   // PI resolver is not called at all. Otherwise (incl. "no arrangement" =
   // HLC-responsible by default) resolve the applicable approved/ordered PI.
-  const hlcResponsible = isHlcProcurementResponsible(arrangement?.arrangementType, dailyOverride?.fulfilmentType ?? null);
+  // 06T §3: the PI lookup runs only when a RESOLVED arrangement (or a daily
+  // override) genuinely makes HLC procurement-responsible. No arrangement at
+  // all is no longer treated as implicit HLC responsibility — that produced
+  // false "No approved PI" warnings beside "no arrangement" for agency work.
+  const hlcResponsible =
+    (arrangement != null || dailyOverride != null) &&
+    isHlcProcurementResponsible(arrangement?.arrangementType, dailyOverride?.fulfilmentType ?? null);
   const { data: piMatchRaw } = useQuery<any>({
     queryKey: ["/api/procurement/applicable-pi", boqProjectId, boqItemId],
     queryFn: async () => {
@@ -184,6 +235,8 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     programmeBarId: programmeBarId ?? null,
     earthworkArrangementId: arrangement?.id ?? null,
     materialLabel: arrangement?.materialLabel ?? null,
+    // 06T §4: BOQ item/activity name widens the SUGGESTED tier only.
+    materialHints: [props.activityMaterialHint],
   };
   const linkedTrips = useMemo(
     () => dayTrips.filter((t) => classifyReceiptMatch(t as unknown as SuggestableTrip, ctx) === "linked"),
@@ -218,14 +271,24 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     executedUom: props.executedUom ?? null,
   });
 
-  // 06G: only hide when receipt evidence is genuinely NOT applicable for the
-  // resolved arrangement type (e.g. reused excavated material) and nothing is
-  // linked. Having no arrangement is NOT a reason to hide — the Engineer
-  // still needs "Received today: 0" context before the first truck arrives.
-  if (relevance === "none" && linkedTrips.length === 0 && suggestedTrips.length === 0) return null;
-
   const fmt = (q: number | null | undefined, u?: string | null) =>
     q == null ? "—" : `${Number(q.toFixed ? q.toFixed(2) : q)} ${u ?? ""}`.trim();
+
+  // 06T §3/§7: a resolved arrangement whose type needs NO receipts (e.g.
+  // reused excavated material) shows ONLY the execution line — no Required/
+  // Received grid, no PI lookup, no receipt buttons. Unconditional: even if
+  // stray trips exist for the item, this arrangement type takes no receipts.
+  if (relevance === "none" && arrangement) {
+    return (
+      <p className="text-xs text-muted-foreground flex items-center gap-1.5" data-testid={`${testIdPrefix}-execution-only`}>
+        <Truck className="w-3.5 h-3.5" />
+        Execution: {arrangement.materialLabel || "—"}
+        {arrangement.arrangementType === "reused_excavated" ? " — reused excavated material (no external supply expected)" : ""}
+        {arrangement.agencyName ? ` · ${arrangement.agencyName}` : ""}
+      </p>
+    );
+  }
+  if (relevance === "none" && !arrangement && linkedTrips.length === 0 && suggestedTrips.length === 0) return null;
 
   return (
     <div className="rounded-md border bg-muted/30 p-3 space-y-2 text-sm" data-testid={`${testIdPrefix}-receipt-strip`}>
@@ -241,9 +304,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
             {arrangement.agencyName || "Arrangement"} · {arrangement.materialLabel}
             {dailyArrangement ? " · today's allocation" : ""}
           </Badge>
-        ) : (
-          <Badge variant="outline" data-testid={`${testIdPrefix}-no-arrangement-badge`}>HLC / Main Contractor — no execution arrangement</Badge>
-        )}
+        ) : null}
         {dailyOverride && arrangement && (
           <Badge variant="outline" className="text-[10px]" data-testid={`${testIdPrefix}-standing-context-badge`}>
             Standing: {arrangement.agencyName || "Arrangement"}
@@ -253,6 +314,21 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
           <Badge variant="outline">Client supplied — not an HLC payable</Badge>
         )}
       </div>
+
+      {/* 06T §3: ONE clear message when nothing resolves — never a "no
+          arrangement" badge AND a PI warning stacked on the same card. */}
+      {!arrangement && !dailyOverride && !resolution.requiresSelection && (
+        pendingApprovalArrangement ? (
+          <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`${testIdPrefix}-arrangement-pending-approval`}>
+            Supply arrangement {pendingApprovalArrangement.agencyName ? `(${pendingApprovalArrangement.agencyName}${pendingApprovalArrangement.materialLabel ? ` · ${pendingApprovalArrangement.materialLabel}` : ""}) ` : ""}
+            is awaiting approval — approve it in Work Programme to activate it here.
+          </p>
+        ) : (
+          <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`${testIdPrefix}-arrangement-unset`}>
+            No supply arrangement set up for this stretch — configure it in Work Programme.
+          </p>
+        )
+      )}
 
       {resolution.requiresSelection && dailyArrangement == null && !readOnly && (
         <div>
@@ -299,8 +375,10 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
       </div>
 
       {/* 06S §3/§4: procurement line — read-only, renders in Guided AND
-          detailed read parity. Informational only; never blocks recording. */}
-      {!hlcResponsible ? (
+          detailed read parity. Informational only; never blocks recording.
+          06T §3: with no resolved arrangement/override there is no PI lookup
+          and no responsibility line — the single message above covers it. */}
+      {!arrangement && !dailyOverride ? null : !hlcResponsible ? (
         <p className="text-xs text-muted-foreground" data-testid={`${testIdPrefix}-pi-agency`}>
           Supply responsibility: Agency — no HLC PI required.
         </p>
@@ -389,11 +467,37 @@ function SuggestionBlock({ trips, ctx, testIdPrefix }: { trips: SiteMaterialTrip
     },
     onError: (e: any) => toast({ title: "Could not link receipt", description: e?.message ?? "You may not have permission to edit receipts.", variant: "destructive" }),
   });
+  // 06T §4: bulk deliveries arrive dozens of trips a day — one click links
+  // them all instead of forcing a click per truck. Same PATCH, sequential.
+  const linkAllMutation = useMutation({
+    mutationFn: async () => {
+      for (const t of trips) {
+        await apiRequest("PATCH", `/api/site-material-trips/${t.id}`, {
+          boqProjectId: ctx.boqProjectId ?? undefined,
+          boqItemId: ctx.boqItemId ?? undefined,
+          programmeBarId: ctx.programmeBarId ?? undefined,
+          earthworkArrangementId: ctx.earthworkArrangementId ?? undefined,
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips", ctx.siteName, ctx.date] });
+      toast({ title: "Receipts linked", description: `${trips.length} receipts are now linked to this activity.` });
+    },
+    onError: (e: any) => toast({ title: "Could not link all receipts", description: e?.message ?? "Some receipts may not have been linked — check and retry.", variant: "destructive" }),
+  });
   return (
     <div className="rounded border border-dashed p-2 space-y-1" data-testid={`${testIdPrefix}-suggestions`}>
-      <p className="text-xs font-medium">
-        {trips.length} matching receipt{trips.length === 1 ? "" : "s"} already recorded today
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium">
+          {trips.length} matching receipt{trips.length === 1 ? "" : "s"} already recorded today
+        </p>
+        {trips.length > 1 && (
+          <Button variant="outline" size="sm" className="h-6 px-2 text-xs" disabled={linkAllMutation.isPending || linkMutation.isPending} onClick={() => linkAllMutation.mutate()} data-testid={`${testIdPrefix}-link-all-trips`}>
+            {linkAllMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Link all"}
+          </Button>
+        )}
+      </div>
       {trips.map((t) => (
         <div key={t.id} className="flex items-center justify-between gap-2 text-xs">
           <span>{t.time ?? ""} · {t.material} · {t.quantity} {t.uom}{t.vehicleNumber ? ` · ${t.vehicleNumber}` : ""}</span>
