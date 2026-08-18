@@ -28,6 +28,7 @@ import {
   buildReceiptComparison,
   classifyReceiptMatch,
   isHlcProcurementResponsible,
+  normaliseUom,
   receiptRelevanceForType,
   resolveApplicableArrangements,
   resolveRequiredToday,
@@ -52,6 +53,20 @@ interface ArrangementRow {
   uom?: string | null;
   agreedRate?: number | null;
   allocatedQty?: number | null;
+}
+
+// 06T-HF §3: plain operational label for the compact execution tag.
+const ARRANGEMENT_TYPE_LABELS: Record<string, string> = {
+  reused_excavated: "Reused Excavated Material",
+  hlc_source_self_execution: "HLC Sourced · Self Execution",
+  hlc_source_outsourced_execution: "HLC Sourced · Outsourced Execution",
+  agency_supplied_material: "Agency Supplied Material",
+  full_outsourced: "Fully Outsourced",
+  client_supplied: "Client Supplied",
+};
+function arrangementTypeLabel(type: string | null | undefined): string {
+  if (!type) return "Arrangement";
+  return ARRANGEMENT_TYPE_LABELS[type] ?? type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export interface ActivityReceiptStripProps {
@@ -188,8 +203,9 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
         ? arrangements.find(
             (a) =>
               a.boqProjectId === boqProjectId &&
-              !["approved", "mobilisation_pending", "in_progress"].includes(a.status) &&
-              !["cancelled", "closed", "completed", "rejected"].includes(a.status) &&
+              // 06T-HF §4: ONLY genuinely pre-approval states — never show
+              // "awaiting approval" for anything else.
+              ["draft", "submitted"].includes(a.status) &&
               (a.boqItemId === boqItemId ||
                 (Array.isArray(a.boqItemAllocations) && a.boqItemAllocations.some((al) => Number(al?.boqItemId) === boqItemId))),
           ) ?? null
@@ -264,6 +280,37 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     uom: arrangement?.uom ?? null,
   });
   const received = useMemo(() => aggregateReceived(linkedTrips), [linkedTrips]);
+
+  // 06T-HF §3: cumulative supplied against the arrangement (ALL days, not
+  // just today) — existing trips endpoint with the arrangement-id filter;
+  // display composition only, no new data model.
+  const arrangementIdForTotals = arrangement?.id ?? null;
+  const { data: arrangementTrips = [] } = useQuery<SiteMaterialTrip[]>({
+    queryKey: ["/api/site-material-trips", "by-arrangement", arrangementIdForTotals],
+    queryFn: async () => {
+      const res = await fetch(`/api/site-material-trips?earthworkArrangementId=${arrangementIdForTotals}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: arrangementIdForTotals != null,
+    staleTime: 30_000,
+  });
+  const suppliedTotal = useMemo(
+    () => aggregateReceived(arrangementTrips.filter((t) => !(t as any).isCancelled && !(t as any).isDeleted)),
+    [arrangementTrips],
+  );
+  // Balance only when the arrangement UOM and the supplied UOM genuinely
+  // compare — never invent a conversion (spec §3).
+  const arrangedQty = arrangement?.allocatedQty != null ? Number(arrangement.allocatedQty) : null;
+  const suppliedComparable =
+    suppliedTotal.tripCount === 0 ||
+    (!suppliedTotal.mixedUoms &&
+      suppliedTotal.receivedUom != null &&
+      arrangement?.uom != null &&
+      normaliseUom(suppliedTotal.receivedUom) === normaliseUom(arrangement.uom));
+  const balanceQty =
+    arrangedQty != null && suppliedComparable
+      ? arrangedQty - (suppliedTotal.receivedQty ?? 0)
+      : null;
   const comparison = buildReceiptComparison({
     ...required,
     received,
@@ -282,9 +329,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     return (
       <p className="text-xs text-muted-foreground flex items-center gap-1.5" data-testid={`${testIdPrefix}-execution-only`}>
         <Truck className="w-3.5 h-3.5" />
-        Execution: {arrangement.materialLabel || "—"}
-        {arrangement.arrangementType === "reused_excavated" ? " — reused excavated material (no external supply expected)" : ""}
-        {arrangement.agencyName ? ` · ${arrangement.agencyName}` : ""}
+        Execution: {arrangement.agencyName || "HLC"} · {arrangementTypeLabel(arrangement.arrangementType)}
       </p>
     );
   }
@@ -315,17 +360,35 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
         )}
       </div>
 
+      {/* 06T-HF §3: compact operational tag — Arranged / Supplied / Balance
+          from the resolved arrangement + cumulative linked-trip aggregation.
+          Balance only when the UOMs genuinely compare; never a conversion. */}
+      {arrangement && (
+        <p className="text-xs text-muted-foreground" data-testid={`${testIdPrefix}-arranged-tag`}>
+          Arranged: {arrangement.agencyName || "HLC"}{arrangedQty != null ? ` · ${fmt(arrangedQty, arrangement.uom)}` : ""}
+          {" — Supplied: "}
+          {suppliedTotal.tripCount === 0
+            ? fmt(0, arrangement.uom)
+            : suppliedTotal.mixedUoms
+              ? suppliedTotal.byUom.map((r) => `${r.qty} ${r.uom}`).join(" + ")
+              : fmt(suppliedTotal.receivedQty, suppliedTotal.receivedUom)}
+          {arrangedQty != null && (
+            <> · Balance: {balanceQty != null ? fmt(balanceQty, arrangement.uom) : "Not comparable"}</>
+          )}
+        </p>
+      )}
+
       {/* 06T §3: ONE clear message when nothing resolves — never a "no
           arrangement" badge AND a PI warning stacked on the same card. */}
       {!arrangement && !dailyOverride && !resolution.requiresSelection && (
         pendingApprovalArrangement ? (
           <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`${testIdPrefix}-arrangement-pending-approval`}>
-            Supply arrangement {pendingApprovalArrangement.agencyName ? `(${pendingApprovalArrangement.agencyName}${pendingApprovalArrangement.materialLabel ? ` · ${pendingApprovalArrangement.materialLabel}` : ""}) ` : ""}
-            is awaiting approval — approve it in Work Programme to activate it here.
+            An arrangement exists for this stretch{pendingApprovalArrangement.agencyName ? ` (${pendingApprovalArrangement.agencyName}${pendingApprovalArrangement.materialLabel ? ` · ${pendingApprovalArrangement.materialLabel}` : ""})` : ""} but is
+            {" "}{pendingApprovalArrangement.status === "draft" ? "still a draft" : "awaiting approval"}.
           </p>
         ) : (
-          <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`${testIdPrefix}-arrangement-unset`}>
-            No supply arrangement set up for this stretch — configure it in Work Programme.
+          <p className="text-xs text-muted-foreground" data-testid={`${testIdPrefix}-arrangement-unset`}>
+            Execution arrangement not linked to this activity.
           </p>
         )
       )}

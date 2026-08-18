@@ -1,0 +1,217 @@
+INSTRUCTION 06T-HF — DPR EXECUTION ARRANGEMENT RESOLUTION + PERSISTENCE + COMPACT STATUS
+
+This is a focused hotfix. Do not start any other work until this is verified.
+
+--------------------------------------------------
+CONFIRMED ROOT CAUSE
+--------------------------------------------------
+Real case: TAKKADPALLY-SIRUR, 16/17-Aug-2026. Two earthwork arrangements
+were created (Soil/Earth "Reused Excavated" and Earth/Borrow Soil
+"HLC Source Outsourced Execution" to Narasimhulu, 10,000 Cum across two
+reaches) and have since been APPROVED. The Guided/Detailed DPR still shows
+"no supply arrangement" / a PI warning for the matching activities.
+
+Two separate problems, confirmed directly against the code, both must be
+fixed together:
+
+1. RESOLUTION: ActivityReceiptStrip.tsx resolves the applicable arrangement
+   live, every time, via `resolveApplicableArrangements()` against the
+   arrangement's current status + BOQ-item linkage + bar allocations. It
+   only ever treats an arrangement as active when its status is exactly
+   `approved`, `mobilisation_pending`, or `in_progress` — confirmed
+   correct and must stay as-is. What is NOT yet confirmed is why live
+   resolution is still failing for these two arrangements now that they
+   are approved. Investigate and report, for these exact two arrangements:
+   whether each is linked to its BOQ item via a plain `boqItemId` or via
+   `boqItemAllocations`, whether `earthwork_arrangement_programme_allocations`
+   rows exist for them yet (the auto-allocate-on-approval step may have
+   failed silently — check server logs / re-run it and confirm), and
+   exactly which check inside `resolveApplicableArrangements` /
+   `arrangementCoversItem` is excluding them. Fix whatever is actually
+   found — do not guess and patch blind.
+
+2. PERSISTENCE — NOT YET BUILT, CONTRARY TO EARLIER REPORTS: an earlier
+   instruction asked for the resolved Execution Arrangement to be saved
+   permanently on each DPR progress row (`progress_entries.earthworkArrangementId`
+   — the column already exists in schema.ts and is not stripped by
+   `insertProgressSchema`). Checked directly: GuidedDpr.tsx, SiteEntry.tsx
+   and SiteEdit.tsx have ZERO references to `earthworkArrangementId`, and
+   ActivityReceiptStrip.tsx has no prop to accept one — it only ever
+   derives `arrangement` fresh, live, every render. This means the strip
+   is 100% dependent on live resolution succeeding every single time,
+   with no stable fallback — which is exactly the class of failure hit
+   here, and will keep recurring for other activities/days until this is
+   built. This hotfix must build it now, not defer it again.
+
+--------------------------------------------------
+1. PERSIST THE RESOLVED ARRANGEMENT ON THE DPR ROW
+--------------------------------------------------
+- Add `earthworkArrangementId: number | null` to the progress-row state in
+  GuidedDpr.tsx and SiteEntry.tsx (Detailed DPR create). At the point an
+  activity's applicable arrangement is resolved (live, via the existing
+  resolver), persist its id onto the row — only when the row does not
+  already have one set. Include it in the DPR create/draft/submit payload.
+  No new endpoint needed; the existing insert mapping already passes the
+  field through once the client sends it.
+- SiteEdit.tsx (Detailed DPR edit): load and keep a row's existing stored
+  `earthworkArrangementId` exactly as saved — never silently recompute or
+  overwrite it against current live state, even if the arrangement's
+  status, allocation, or the bar context has since changed. Only resolve
+  a value for a row that does not yet have one (a brand-new row added
+  during that edit session, or an older row saved before this fix
+  existed). If the Engineer deliberately changes a row's BOQ item /
+  programme-bar context during an edit, re-resolve for the new context —
+  that is a genuine change of what is being recorded, not an overwrite of
+  history.
+- Preserve `earthworkArrangementId` through the DPR clone/version/revision
+  path (`cloneDpr` in storage.ts) the same way it already preserves
+  `layerNo`.
+
+--------------------------------------------------
+2. ActivityReceiptStrip: USE THE STORED ID FIRST, LIVE RESOLUTION AS FALLBACK ONLY
+--------------------------------------------------
+- Add an optional prop, e.g. `storedArrangementId?: number | null`, to
+  ActivityReceiptStripProps. When SiteEdit (and Guided/Detailed once a row
+  has been saved once) has a stored value, pass it in.
+- When `storedArrangementId` is present: look up that specific arrangement
+  directly (by id) for display — do not run the live
+  `resolveApplicableArrangements()` matching logic for arrangement
+  selection at all in this case. This is what makes an already-submitted
+  report stable even if live resolution later breaks again for any
+  reason.
+- When no stored id is present (new row, or a row saved before this fix):
+  fall back to the existing live resolution exactly as today, and persist
+  the result per §1 once resolved.
+- This does not change how PI/procurement matching (06S) or receipt
+  matching (§4 below) work — those remain live/day-specific by design;
+  only the EXECUTION ARRANGEMENT identity itself becomes a stable,
+  saved fact once set.
+
+--------------------------------------------------
+3. COMPACT OPERATIONAL DISPLAY — NOT THE FULL ARRANGEMENT RECORD
+--------------------------------------------------
+Replace the current confusing pair of messages with one compact,
+context-appropriate line. Use the arrangement data already available
+(`allocatedQty`, agency/vendor name, and the existing received-trip
+aggregation) — no new data model needed.
+
+Reused excavated / cut-fill (relevance "none"):
+  Execution: HLC · Reused Excavated Material
+  (no PI warning, no receipt requirement, nothing else shown)
+
+Agency/vendor-supplied (borrow earth, GSB, WMM, etc.):
+  Arranged: Narasimhulu · 10,000 Cum
+  Supplied: 3,600 Cum · Balance: 6,400 Cum
+  (vendor/agency name and allocatedQty come from the resolved arrangement;
+  supplied/balance from the existing received-trip aggregation — only
+  compute Balance when the arrangement's UOM and the received UOM are
+  genuinely comparable; otherwise show "Not comparable", never invent a
+  conversion)
+
+No applicable arrangement resolves at all (nothing set up for this
+stretch, and none is stored on the row):
+  "Execution arrangement not linked to this activity."
+  (neutral — never suggest re-approving something that is not the actual
+  problem)
+
+--------------------------------------------------
+4. REMOVE MISLEADING "AWAITING APPROVAL" TEXT
+--------------------------------------------------
+- If the resolved (or stored) arrangement's status is already
+  `approved`/`mobilisation_pending`/`in_progress`, never show any
+  "awaiting approval" wording — show §3's compact tag instead.
+- Only show "awaiting approval" when the actual arrangement backing this
+  activity is genuinely still `draft`/`submitted` — and in that case, name
+  it plainly, e.g. "An arrangement exists for this stretch but is awaiting
+  approval," not a generic "no arrangement" message.
+- If nothing resolves at all, use §3's neutral "not linked" message —
+  never tell the user to approve something when no arrangement was found
+  in the first place.
+
+--------------------------------------------------
+5. RECEIPT LINKING — NO BEHAVIOUR CHANGE, VERIFY ONLY
+--------------------------------------------------
+Existing same-day Site Material Trips must continue to be classified as
+"linked" (stable context ids prove the match) or "suggested" (material/
+date/site indicate a likely match), with the existing "Link all"
+capability for multiple suggested trips. Do not require re-entry of trips
+in the DPR Materials Log. No changes to receipt/stock arithmetic anywhere.
+
+--------------------------------------------------
+6. WHAT NOT TO TOUCH
+--------------------------------------------------
+- No schema change beyond the existing, already-declared
+  `progress_entries.earthworkArrangementId` column (only now being
+  written to).
+- No BOQ/RA progress-credit formula changes.
+- No change to 06S's procurement-match (PI) resolver, Stores hardening,
+  or yard/stretch logic.
+- No change to Work Programme bar generation, auto-sequence, or the
+  arrangement→bar auto-allocation planner itself beyond fixing the actual
+  bug found under §"CONFIRMED ROOT CAUSE" item 1 — do not redesign it.
+- No change to `material_logs`.
+- Do not start the broader programme-revision or BOQ-page work (that is
+  planned separately as 06U) — this hotfix is DPR-only.
+
+--------------------------------------------------
+7. TESTS
+--------------------------------------------------
+A. The two real TAKKADPALLY-SIRUR arrangements (both approved): report
+   exactly why live resolution was failing, and confirm the fix makes
+   both resolve correctly for their activities.
+B. A new DPR row resolving to an approved arrangement (any status in the
+   operational set) gets `earthworkArrangementId` persisted on save, no
+   new selector shown to the Engineer.
+C. SiteEdit loads an existing row with a stored `earthworkArrangementId`:
+   the compact tag is built from that stored id directly, NOT from live
+   re-resolution — verify by changing the arrangement's live state after
+   the row was saved and confirming the already-saved row is unaffected.
+D. A row with no stored id (pre-fix / brand new) still resolves live and
+   then persists the result.
+E. SiteEdit: opening and saving unrelated edits on an existing row never
+   silently changes its stored arrangement id.
+F. Deliberately changing a row's BOQ item/programme-bar context during
+   edit re-resolves the arrangement for the new context.
+G. Submitted/approved/in-progress arrangement never shows "awaiting
+   approval" text.
+H. Genuinely draft/submitted (not yet approved) arrangement shows the
+   specific "exists but awaiting approval" message, naming the real
+   state.
+I. No applicable/stored arrangement at all shows the neutral "not linked"
+   message.
+J. Reused-excavated activity shows the execution-only line — no PI/
+   receipt prompts of any kind.
+K. Agency-supplied borrow earth shows the vendor/qty/supplied/balance tag
+   and no HLC PI warning.
+L. Balance is shown only when UOM is genuinely comparable; otherwise
+   "Not comparable" — never an invented conversion.
+M. Existing Link / Link all receipt actions still work, unchanged.
+N. `earthworkArrangementId` is preserved through `cloneDpr` the same way
+   `layerNo` already is.
+O. No BOQ/RA progress-credit formula changed anywhere (regression).
+P. No change to Site Material Trip receipt/stock arithmetic (regression).
+
+Run focused tests and the full suite.
+
+--------------------------------------------------
+8. REPORT BACK
+--------------------------------------------------
+A. Exact root cause found for the two real arrangements (linkage
+   mechanism used — boqItemId vs boqItemAllocations — and whether
+   `earthwork_arrangement_programme_allocations` rows existed).
+B. Exact resolution fix applied.
+C. Confirmation `earthworkArrangementId` is now genuinely persisted by
+   Guided DPR, Detailed DPR create, and preserved correctly by SiteEdit
+   and cloneDpr.
+D. Confirmation ActivityReceiptStrip now prefers a stored id over live
+   resolution, with the fallback behaviour intact for rows without one.
+E. Exact compact display implemented, with a real screenshot/description
+   for each of the three cases in §3.
+F. Confirmation of the corrected messaging in §4 (no more misleading
+   "awaiting approval").
+G. Receipt-linking regression check result.
+H. Confirmation nothing outside DPR (Work Programme, Stores, 06S,
+   material_logs) was touched.
+I. Focused and full test results.
+
+DO NOT START ANOTHER BATCH.
