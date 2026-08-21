@@ -1,0 +1,539 @@
+BATCH 06V — INCIDENTAL / NON-BOQ WORK
++ OVERLAP REVIEW CORRECTION FLOW
++ REPORT → DPR DEEP-LINK / RETURN NAVIGATION
+
+--------------------------------------------------
+REVISIONS FOLDED IN ON TOP OF THE ORIGINAL DRAFT (read this first)
+--------------------------------------------------
+Verified directly against a screen recording of the actual failure, not just
+the description. Five things added to the original draft, marked "(NEW)"
+at their section:
+1. §14 — the overlap reason must be a short PICK-LIST, not free text.
+2. §14 — "Both are valid" must default the SECOND (later) entry to
+   Incidental, not to full BOQ credit — the person must take a deliberate
+   extra step to credit both. Reduces the risk of paying the same chainage
+   twice.
+3. §11 — incidental work needs its OWN marker colour/pattern on the
+   chainage coverage bar — not green (payable progress), not orange
+   (needs review).
+4. §18 — the app must stop surfacing raw server errors. Confirmed on video:
+   saving produced a raw, user-facing dump —
+   `422: {"message":"DPR is not ready to submit","error":"DPR_NOT_READY",
+   "mandatory":[{"section":"activities","label":"EMBANKMENT - EXCAVATED
+   EARTH","message":"Possible chainage overlap requires a reason before
+   submission."}]}` — instead of a plain sentence pointing at the row.
+   The underlying rule (an overlap needs a reason before submit) is
+   correct and must stay; only the presentation is wrong.
+5. §18 — confirmed on video, not just suspected: on the same "No Site
+   Work — Clearing Vegitation After Rains" row, the Activity text
+   survived a reload but the Description text did not — it was back to
+   the empty placeholder a few seconds later. Trace THIS field
+   specifically, not just the row as a whole.
+
+PRIORITY ORDER WITHIN THIS ONE BATCH: build and verify §17/§18 (recompute
+on save, real error messages, proven persistence) before the newer UI in
+§13/§14/§15/§16. A polished Overlap Review screen sitting on top of an
+unproven save path is not an improvement.
+
+Everything below this point is the full batch, revised.
+
+--------------------------------------------------
+OBJECTIVE
+--------------------------------------------------
+Fix the ambiguity between:
+1. normal measurable BOQ work;
+2. actual site work that happened but should NOT earn BOQ/RA progress credit;
+3. genuinely no site work.
+
+Also improve the current overlap-warning workflow so that:
+- the exact conflicting DPR entries are visible;
+- the user can open/edit the exact activity row;
+- corrections can be made without losing chainage/location context;
+- returning from DPR Edit brings the user back to the same Progress Report state;
+- overlap status is recalculated after correction.
+
+Do NOT redesign BOQ quantities, RA formulas, Work Programme sequencing,
+Execution Arrangement, material receipts, equipment, or notifications.
+
+Expected schema change:
+Investigate existing progress_entries fields first.
+A minimal additive field may be required for incidental/non-BOQ state.
+STOP and report before migration if so.
+
+--------------------------------------------------
+1. CORE BUSINESS RULE
+--------------------------------------------------
+Every DPR progress/activity row must conceptually be one of:
+
+A. BOQ WORK
+Physical work was executed and is eligible to credit the linked BOQ item.
+Examples: Clearing & Grubbing, Excavation, Embankment, GSB, WMM, DBM, BC.
+Existing behavior.
+
+B. INCIDENTAL / NON-BOQ WORK
+Physical site work genuinely happened and must remain in the site record,
+including where it happened, but it must NOT add BOQ progress / RA credit.
+Examples:
+- clearing vegetation that regrew after rains;
+- cleaning already-cleared stretch;
+- rectification/rework not payable as additional BOQ quantity;
+- minor preparatory work outside measurable BOQ credit;
+- other genuine work the Engineer wants recorded without claiming progress.
+
+C. NO SITE WORK
+No physical execution took place.
+Examples: rain, site inaccessible, machinery breakdown, client stoppage,
+no labour, shutdown.
+
+These three concepts must never be conflated.
+
+--------------------------------------------------
+2. UI — INCIDENTAL / NON-BOQ WORK
+--------------------------------------------------
+Keep normal BOQ work as the DEFAULT. Do NOT introduce three large radio
+cards or clutter every row. Add one compact optional control on
+progress/activity rows:
+
+    [ ] Incidental / Non-BOQ Work
+
+Default: OFF.
+
+When OFF: existing BOQ behavior remains exactly as today.
+
+When ON: the row still represents ACTUAL SITE WORK. Therefore KEEP:
+- BOQ/activity name or activity description;
+- Side; From chainage; To chainage;
+- Length; Width; Thickness where meaningful; Layer/Lift where relevant;
+- Personnel; Equipment/context where existing;
+- Photos; Remarks/description.
+
+But: BOQ CREDIT = ZERO. The row must NOT contribute to current BOQ
+executed quantity, cumulative BOQ progress, balance quantity, percentage
+complete, or RA payable quantity. Do not delete its physical measurements.
+
+--------------------------------------------------
+3. INCIDENTAL LABEL / DISPLAY
+--------------------------------------------------
+When incidental is ON, show a clear compact tag:
+
+    Incidental Work · No BOQ Credit
+
+Example submitted DPR:
+    Clearing vegetation after rains
+    RHS · Ch. 2+900–3+050
+    Incidental Work · No BOQ Credit
+
+This must remain visible in Site Report / submitted DPR, DPR Edit, and
+DPR History/revision where applicable. Do not hide the activity just
+because it has zero BOQ credit.
+
+--------------------------------------------------
+4. INCIDENTAL DESCRIPTION
+--------------------------------------------------
+When Incidental / Non-BOQ Work is ON: require a short description/reason.
+Examples: "Vegetation regrowth after rains", "Cleaning before WMM laying",
+"Rework after edge damage".
+
+Do not use the existing "No Site Work reason" field for this. The user
+must be able to understand later WHAT work was actually done.
+
+--------------------------------------------------
+5. NO SITE WORK — CORRECT SEMANTICS
+--------------------------------------------------
+No Site Work must mean: NO PHYSICAL SITE EXECUTION.
+
+When No Site Work is ON:
+- do not treat the row as progress;
+- no BOQ credit; no incidental-work credit;
+- Side/From/To/Length/Width/Thickness/Layer are not required;
+- require a reason/remarks.
+Examples: Rain, Client stoppage, No machinery, Access blocked.
+
+Do NOT use No Site Work for "Clearing vegetation after rains" if clearing
+actually happened. If physical work happened, use BOQ Work or Incidental
+Work.
+
+--------------------------------------------------
+6. MUTUAL EXCLUSIVITY
+--------------------------------------------------
+A row cannot be both No Site Work = true and Incidental Work = true at
+the same time. If the user turns on Incidental Work, ensure No Site Work
+is OFF; if the user turns on No Site Work, ensure Incidental Work is OFF.
+
+Do not silently destroy entered physical measurements when toggling
+between states during editing. If values become temporarily hidden,
+preserve them in row state until save or explicit clear.
+
+--------------------------------------------------
+7. EXISTING SUBMITTED BOQ ROW → INCIDENTAL
+--------------------------------------------------
+If an already-saved/submitted BOQ progress row currently contributes BOQ
+credit, and the user edits it and changes it to Incidental / Non-BOQ
+Work, show an explicit confirmation:
+
+    This activity currently contributes <X UOM> to BOQ progress.
+    Marking it Incidental will remove that quantity from BOQ/RA progress
+    while keeping the physical work record and chainage.
+    [Cancel]  [Mark Incidental]
+
+Do not silently remove BOQ credit. After confirmation, save normally
+through the existing DPR edit/revision workflow.
+
+--------------------------------------------------
+8. INCIDENTAL → BOQ WORK
+--------------------------------------------------
+If an incidental row is later corrected back to normal BOQ work, run all
+normal BOQ validation again: BOQ item, chainage, quantity, conversion,
+overlap, layer/lift, readiness. Do not simply start crediting it without
+validation.
+
+--------------------------------------------------
+9. CREDIT / REPORT CALCULATION
+--------------------------------------------------
+Investigate the canonical BOQ-credit calculation in
+`shared/progressReport.ts`, `entryBoqCredit(...)`, and the cumulative
+loops. Do NOT create separate report arithmetic. The canonical credit
+function should return ZERO for an incidental row. Physical `quantity`
+may remain stored for operational/reference purposes.
+
+Example — incidental clearing: Length 150 m, Width 1.5 m, physical
+calculated qty 225 sqm. Stored physical qty may remain 225. But BOQ
+credited qty = 0. This preserves both what physically happened and what
+is contractually claimable.
+
+--------------------------------------------------
+10. RA REPORT
+--------------------------------------------------
+Incidental work must NOT increase Previous Qty, Current Qty, Cumulative
+Qty, RA payable quantity, or % Complete. But RA / supporting drill-down
+may show it separately, for transparency:
+
+    Incidental / Non-BOQ Work
+    Clearing vegetation after rains
+    RHS 2+900–3+050
+    No BOQ Credit
+
+Do not mix that quantity into the payable total.
+
+--------------------------------------------------
+11. PROGRESS REPORT (revised)
+--------------------------------------------------
+Default BOQ progress totals remain based only on credited BOQ work.
+Incidental work may appear in activity/detail/drill-down as:
+
+    Incidental Work · No BOQ Credit
+
+Do not show it as unfinished BOQ quantity or contract progress.
+
+(NEW) On the chainage coverage bar itself, an incidental-work stretch
+must render with its OWN distinct marker — not the green used for
+credited progress, and not the orange used for "needs review." Reusing
+either would make the bar misrepresent what actually happened at that
+chainage. A third, clearly-different treatment (e.g. a hatched/striped
+segment with its own legend entry, "Incidental — no BOQ credit") is
+sufficient; do not add a fourth state beyond what's needed to keep this
+distinguishable from the other two.
+
+--------------------------------------------------
+12. OVERLAP ENGINE — INCIDENTAL BEHAVIOR
+--------------------------------------------------
+The chainage overlap engine should distinguish:
+A. BOQ vs BOQ → existing overlap rules apply.
+B. BOQ vs Incidental → do NOT create a BOQ-credit duplicate warning
+   merely because the chainages overlap.
+C. Incidental vs Incidental → no BOQ overlap warning required.
+
+However, keep the records visible in physical/site-history detail.
+Layer/Lift behavior from 06P remains unchanged: same BOQ + same chainage
++ different explicit layer = valid separate work. Do not weaken genuine
+BOQ duplicate detection.
+
+--------------------------------------------------
+13. EXISTING OVERLAP REPORT — SHOW EXACT CONFLICT
+--------------------------------------------------
+The current Progress Report can flag "3 possible overlaps" but clicking
+it does not make the correction clear. Replace/improve this with an
+Overlap Review detail. For every overlap pair show: Activity/BOQ Item,
+DPR No., DPR Date, Side, From chainage, To chainage, Layer/Lift where
+applicable, Credited Qty, and the existing overlap override reason if any.
+
+Example:
+    DPR-249 · 30-May · Clearing & Grubbing · RHS · 2+600–3+100 · Qty 0.125 Ha
+    overlaps
+    DPR-266 · 08-Aug · Clearing & Grubbing · RHS · 2+900–3+050 · Qty 0.023 Ha
+
+Make the physical overlap segment visible: "Overlap: RHS · 2+900–3+050".
+
+--------------------------------------------------
+14. OVERLAP REVIEW ACTIONS (revised)
+--------------------------------------------------
+For each conflicting entry provide: View DPR, Edit Activity.
+
+"Edit Activity" must deep-link to the EXACT activity row (see §15). Do
+not open the user at the top of a long DPR and make them hunt for it.
+
+Also support the existing valid-overlap mechanism: "Both are valid".
+
+(NEW) The reason for "Both are valid" must be captured from a short,
+fixed pick-list, not free text — this feeds an audit trail and must stay
+queryable/consistent:
+    - Different layer/lift
+    - Vegetation regrowth / repeat clearing
+    - Re-measurement after approved correction
+    - Genuine separately payable repeated operation
+    - Other (free text — used only when none of the above genuinely fit)
+This REPLACES free-form `chainageOverrideReason` entry for this specific
+flow; the field itself does not change, only how it is captured here.
+
+(NEW) When "Both are valid" is confirmed, the SECOND (chronologically
+later) entry must default to Incidental / Non-BOQ Work, not to full BOQ
+credit — unless the user takes one additional, deliberate action ("Credit
+this as separately payable BOQ work") to keep it as full BOQ credit. The
+safe default must never be "both are fully paid" without an explicit,
+separate confirmation, since that is exactly the double-payment risk this
+batch exists to close.
+
+Do not automatically accept overlap merely because a reason exists.
+Preserve current Final Submit readiness semantics.
+
+--------------------------------------------------
+15. DEEP-LINK TO EXACT DPR ROW
+--------------------------------------------------
+Implement a stable navigation target for a specific progress entry.
+Prefer an existing progress-entry id if already available. Conceptually:
+
+    /site/report/:dprId/edit?progressEntryId=<id>&returnTo=<encoded-report-state>
+
+or equivalent existing routing convention. When Edit DPR opens: scroll
+the exact activity row into view, visually highlight it briefly, and
+optionally show "Opened from Progress Report overlap review". Do not
+introduce a second edit page.
+
+--------------------------------------------------
+16. RETURN TO REPORT
+--------------------------------------------------
+When a user enters DPR/Edit from Progress Report / Overlap Review, show
+"← Back to Progress Report". After Save / Cancel / Back, return to the
+SAME report context. Preserve where practical: project/site, from date,
+to date, selected BOQ item, measurement/chainage view, sorting, expanded
+overlap item, and relevant scroll/section anchor. Do not send the user
+back to generic Report Hub unless that is where they came from.
+
+--------------------------------------------------
+17. AFTER CORRECTION — RECOMPUTE
+--------------------------------------------------
+After a DPR correction saves successfully, invalidate/refetch the
+relevant Progress Report / overlap data. If a duplicate row was
+corrected, deleted/cancelled, changed to incidental, or given a valid
+different layer, the overlap warning count must update. Do not leave a
+stale "3 possible overlaps" until logout/reload — confirmed on video that
+today it does exactly that.
+
+--------------------------------------------------
+18. SAVE / RELOAD INTEGRITY (revised)
+--------------------------------------------------
+The video showed uncertainty about whether changing a row and saving
+actually persisted, and it showed something more specific: the server
+already enforces "an overlap needs a reason before submit," but reports
+it as a raw, user-facing error —
+
+    422: {"message":"DPR is not ready to submit","error":"DPR_NOT_READY",
+    "mandatory":[{"section":"activities","label":"EMBANKMENT - EXCAVATED
+    EARTH","message":"Possible chainage overlap requires a reason before
+    submission."}],"advisories":[]}
+
+(NEW) Fix the presentation, keep the rule: this validation must surface
+as a plain, specific message tied to the exact flagged row/field — e.g.
+"Embankment - Excavated Earth needs an overlap reason before this can be
+saved — see Overlap Review below" — with the page scrolling to or
+highlighting that row. Never show raw JSON or an error code to the user.
+This applies to every server-side DPR validation failure, not just this
+one, but this one is the confirmed, reproduced case.
+
+(NEW) Also confirmed on video, not just suspected: on a single row
+converted to No Site Work with Activity "Clearing Vegitation After
+Rains" and Description "Cleaning Vegitation After Rains", the Activity
+text survived a reload but the Description text was empty again a few
+seconds later. Trace this specific field through the full path, not just
+the row as a whole:
+
+    UI row state → Save Changes request payload → server
+    validation/storage → DB → reopen DPR → row hydration
+
+Verify specifically:
+A. Incidental flag persists.
+B. Incidental description persists.
+C. No Site Work persists.
+D. No Site Work reason persists.
+E. Side/chainage/measurements persist for incidental work.
+F. BOQ credit state reflects the saved flag after reload.
+G. (NEW) The No Site Work Description field specifically survives save
+   and reload — reproduce the exact video case first, then generalise.
+
+Do not accept a success toast alone as proof.
+
+--------------------------------------------------
+19. GUIDED DPR
+--------------------------------------------------
+Apply the same Incidental / Non-BOQ capability to Guided DPR progress
+rows. Keep it compact. Normal row: existing layout plus
+"[ ] Incidental / Non-BOQ Work". No large new panel.
+
+--------------------------------------------------
+20. DETAILED DPR CREATE / EDIT
+--------------------------------------------------
+Apply identical semantics to SiteEntry and SiteEdit. Reuse the same
+persisted field and validation. Do not create a Guided-only concept.
+
+--------------------------------------------------
+21. SUBMITTED DPR / SITE REPORT
+--------------------------------------------------
+In Activity Progress: normal BOQ work remains as today. Incidental work
+should remain visible but clearly marked: "Incidental / Non-BOQ · No BOQ
+Credit". Keep Side / From / To / dimensions visible. No Site Work
+entries should appear separately from Activity Progress if that matches
+the existing Site Report structure, with their reason. Do not make a No
+Site Work note look like executed measurable work.
+
+--------------------------------------------------
+22. SCHEMA INVESTIGATION / STOP GATE
+--------------------------------------------------
+Investigate whether progress_entries already has a suitable explicit
+field for this semantic. Do NOT misuse chainageOverrideReason, remarks,
+noSiteWork, executedBy, or quantity = 0 as the sole indicator.
+
+If no proper field exists, minimum expected additive schema is:
+    progress_entries.is_incidental boolean, nullable/default false
+or equivalent naming consistent with project conventions.
+
+If a separate incidentalReason field is truly required because existing
+remarks/activity description cannot safely represent it: STOP and report
+the minimum proposal first. Prefer reusing an existing general
+description/remarks field if semantics are clean.
+
+Before any schema migration: REPORT exact diff and wait for approval.
+
+--------------------------------------------------
+23. BACKWARD COMPATIBILITY
+--------------------------------------------------
+All existing rows must remain normal BOQ rows unless they already have
+No Site Work semantics. Do NOT infer historical incidental work from
+remarks such as "clearing after rains". Old data remains unchanged until
+deliberately edited.
+
+--------------------------------------------------
+24. EDIT REQUEST / REVISION SAFETY
+--------------------------------------------------
+Preserve the existing DPR revision/edit-request workflow. If submitted
+DPRs require an approved edit/revision before changing progress,
+Incidental conversion follows the same permission path. Do not create a
+bypass because this is "only a classification change" — the change can
+alter RA credit and therefore must remain auditable.
+
+--------------------------------------------------
+25. AUDIT / HISTORY
+--------------------------------------------------
+If existing DPR audit/history already records progress-entry changes,
+ensure changing BOQ Work → Incidental, Incidental → BOQ Work, and BOQ
+Work → No Site Work is visible in that history. Do not build a second
+audit system.
+
+--------------------------------------------------
+26. EDIT DPR CLUTTER — SMALL CLEANUP ONLY
+--------------------------------------------------
+While touching the row, reduce obvious correction-time noise WITHOUT
+redesigning the whole Guided/Detailed DPR. Keep primary visible fields:
+BOQ Activity, Side, From, To, Length, Width, Thickness, Layer/Lift, Qty,
+Incidental toggle. Arrangement/material/programme internals may remain,
+but if already supported by collapsible UI, keep them secondary. Do NOT
+redesign Execution Arrangement or procurement in this batch.
+
+--------------------------------------------------
+27. WHAT NOT TO TOUCH
+--------------------------------------------------
+Do NOT modify: Contract BOQ Qty; BOQ item schema; DPR→BOQ conversion
+formula except canonical zero-credit handling for incidental rows; Work
+Programme scheduling; Auto Sequence; Execution Arrangement business
+rules; Site Material Trips receipt arithmetic; Stores; Material Receipt;
+Diesel; Equipment logs; Vendor Bills; Tomorrow Plan; Notifications;
+Layer/Lift 06P behavior; 06T-HF arrangement persistence/resolution; any
+other unrelated module.
+
+--------------------------------------------------
+28. TESTS
+--------------------------------------------------
+A. Normal BOQ row: behavior and credit unchanged.
+B. New Incidental row: Side/From/To/measurements save; physical qty
+   saves; BOQ credit = 0.
+C. Existing credited BOQ row → Incidental: confirmation shown; after save
+   cumulative BOQ qty decreases by exactly that row's credited amount.
+D. Incidental → normal BOQ: normal readiness/overlap/conversion
+   validation applies again.
+E. No Site Work: no BOQ credit; reason required; not treated as
+   incidental physical work.
+F. Incidental and No Site Work cannot both be active.
+G. Incidental clearing at same chainage as prior BOQ clearing: no BOQ
+   duplicate/overlap flag solely due to incidental row.
+H. Two normal BOQ entries same chainage/same layer: existing overlap
+   warning remains.
+I. Same chainage/different explicit Layer: 06P behavior remains valid.
+J. Overlap Review shows exact DPR/date/side/from/to/overlap segment.
+K. Edit Activity deep-links to exact row and highlights it.
+L. Save correction returns to same Progress Report context.
+M. Overlap count refreshes after correction.
+N. Reopen DPR: incidental flag and all chainage/measurement fields
+   persist.
+O. Submitted Site Report: incidental work visible with "No BOQ Credit."
+P. RA: incidental physical quantity contributes zero payable progress.
+Q. Existing historical rows remain unchanged.
+R. Edit-request/revision workflow still applies.
+S. No schema change beyond the single approved minimal incidental field,
+   if one is required.
+T. (NEW) "Both are valid" with no further action leaves the second entry
+   as Incidental, not full BOQ credit; an explicit extra confirmation is
+   required to credit both as BOQ.
+U. (NEW) Overlap reason is captured from the fixed pick-list (plus
+   "Other" free text), not a bare free-text box.
+V. (NEW) Incidental-work chainage renders with its own distinct marker
+   on the coverage bar — never the same colour as credited progress or
+   as an unresolved overlap.
+W. (NEW) Reproduce the exact video case: convert a row to No Site Work
+   with an Activity and a Description, save, navigate away, reopen — both
+   fields are present, specifically including Description.
+X. (NEW) Trigger the exact overlap-at-submit validation and confirm the
+   user sees a plain sentence naming the row, never raw JSON/error code.
+
+Run focused tests and full suite.
+
+--------------------------------------------------
+29. REPORT BACK
+--------------------------------------------------
+Report:
+A. exact current meaning/storage behavior of No Site Work.
+B. exact schema decision for Incidental / Non-BOQ Work.
+C. Guided DPR implementation.
+D. Detailed DPR create/edit implementation.
+E. canonical BOQ-credit change.
+F. RA/Progress Report behavior, including the coverage-bar marker.
+G. overlap-engine change.
+H. exact Overlap Review UI, including the pick-list and the
+   default-to-Incidental behaviour on "Both are valid".
+I. exact DPR activity deep-link implementation.
+J. report-state return navigation implementation.
+K. save/reload verification, including the specific Description-field
+   case and the raw-error-message fix.
+L. focused and full test results.
+
+Confirm:
+- Incidental work keeps chainage/location/physical measurements.
+- Incidental work earns ZERO BOQ/RA credit.
+- No Site Work means genuinely no physical work.
+- genuine BOQ overlaps are still detected.
+- layer/lift rules remain unchanged.
+- overlap correction opens the exact DPR activity.
+- return navigation restores Progress Report context.
+- "Both are valid" never silently credits both entries as full BOQ work.
+- no raw server error text is ever shown to the user.
+- no unrelated changes.
+
+DO NOT START ANOTHER BATCH.
