@@ -31,6 +31,20 @@ import { validateOutcomeInput, resolveCarryTargetDate, buildCarryForwardPlan, bu
 import { syncArrangementBarAllocations } from "./arrangementAllocationSync";
 import { AUTO_SYNC_STATUSES } from "@shared/arrangementAutoAllocation";
 import {
+  classifyBarExecutionState,
+  deriveItemStatus,
+  isAutoSequenceManagedBar,
+  planScheduleRevision,
+  type BarEvidence,
+  type RevisionBar,
+} from "@shared/programmeRevision";
+import {
+  dateToMonthIndexCal,
+  finishDateInputToIdx,
+  monthIndexToDateCal,
+  displayFinishDateCal,
+} from "@shared/calendarAxis";
+import {
   isValidWorkCategory, isArrangementTypeAllowed, invalidComponentKeys,
   isValidBituminousItemType, getCategoryDescriptor,
 } from "@shared/executionArrangementCategories";
@@ -11343,6 +11357,12 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
       const id = parseInt(req.params.id);
+      if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "startDate")) {
+        return res.status(409).json({
+          error: "PROJECT_START_SETTING_REQUIRED",
+          message: "Change the programme start date through Program Settings so existing schedule dates and calendar indices stay aligned.",
+        });
+      }
       const updated = await storage.updateBoqProject(id, req.body);
       if (!updated) return res.status(404).json({ error: "BOQ project not found" });
       res.json(updated);
@@ -11481,38 +11501,10 @@ export async function registerRoutes(
 
   app.put("/api/boq/projects/:id/program-settings", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
 
-      // Read existing settings to detect project-start-date transition (null → date)
-      const existing = await storage.getBoqProgramSettings(projectId);
-      const previousStartDate = (existing as any)?.projectStartDate ?? null;
-      const newStartDate: string | null = req.body.projectStartDate ?? null;
-      const startDateFirstSet = !previousStartDate && newStartDate;
-
-      const settings = await storage.upsertBoqProgramSettings(projectId, req.body);
-
-      // Sync projectStartDate → boqProjects.startDate so monthLabel works everywhere
-      if (newStartDate != null) {
-        await storage.updateBoqProject(projectId, { startDate: newStartDate });
-      }
-
-      // Bulk backfill: when projectStartDate is set for the first time (or changed),
-      // derive and persist real calendar dates for all existing bars from their startMonth/endMonth.
-      if (newStartDate && (startDateFirstSet || (previousStartDate && previousStartDate !== newStartDate))) {
-        const bars = await storage.getWorkProgramBars(projectId);
-        // 027A: derive with the true calendar axis; persisted endDate is the
-        // INCLUSIVE displayed finish (boundary − 1 day, clamped to >= start).
-        const { formatDateForInput } = await import("../shared/planningEngine.js");
-        const { monthIndexToDateCal, displayFinishDateCal } = await import("../shared/calendarAxis.js");
-        let backfilled = 0;
-        for (const bar of bars) {
-          const startDate = formatDateForInput(monthIndexToDateCal(bar.startMonth, newStartDate));
-          const endDate = formatDateForInput(displayFinishDateCal(bar.endMonth, newStartDate, bar.startMonth));
-          await storage.updateWorkProgramBar(bar.id, { startDate, endDate, durationMode: bar.durationMode ?? "auto" });
-          backfilled++;
-        }
-        console.log(`[backfillBarDates] project ${projectId}: backfilled ${backfilled} bars with real dates from startDate ${newStartDate}`);
-      }
+      const settings = await storage.upsertBoqProgramSettingsWithCalendarRealignment(projectId, req.body);
 
       res.json(settings);
     } catch (err) {
@@ -12088,11 +12080,349 @@ export async function registerRoutes(
 
   app.get("/api/boq/projects/:id/programme", async (req, res) => {
     try {
-      const bars = await storage.getWorkProgramBars(parseInt(req.params.id));
-      res.json(bars);
+      const projectId = parseInt(req.params.id);
+      const bars = await storage.getWorkProgramBars(projectId);
+      const evidence = await storage.getWorkProgrammeExecutionEvidence(projectId, bars);
+      res.json(bars.map((bar) => {
+        const barEvidence = evidence.get(bar.id) ?? { reportedQty: 0, earliestProgressDate: null };
+        return {
+          ...bar,
+          reportedQty: barEvidence.reportedQty,
+          actualStartDate: barEvidence.earliestProgressDate,
+          executionState: classifyBarExecutionState(Number(bar.plannedQty ?? 0), barEvidence),
+        };
+      }));
     } catch (err) {
       console.error("GET /api/boq/projects/:id/programme:", err);
       res.status(500).json({ error: "Failed to fetch work programme" });
+    }
+  });
+
+  const toRevisionBar = (bar: any): RevisionBar => ({
+    id: Number(bar.id),
+    boqProjectId: Number(bar.boqProjectId),
+    boqItemId: Number(bar.boqItemId),
+    chainageFrom: bar.chainageFrom != null ? Number(bar.chainageFrom) : null,
+    chainageTo: bar.chainageTo != null ? Number(bar.chainageTo) : null,
+    startDate: String(bar.startDate),
+    endDate: String(bar.endDate),
+    plannedQty: Number(bar.plannedQty ?? 0),
+  });
+
+  const isoCalendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  }, "Enter a valid calendar date.");
+  const revisionBodySchema = z.object({
+    startDate: isoCalendarDate.optional(),
+    endDate: isoCalendarDate,
+    reason: z.string().trim().min(1, "A revision reason is required.").max(1000),
+    cascade: z.boolean().default(true),
+    previewToken: z.string().length(64).optional(),
+  });
+
+  async function buildScheduleRevisionPlan(barId: number, rawBody: unknown) {
+    const body = revisionBodySchema.parse(rawBody);
+    const sourceLookup = await storage.getWorkProgramBar(barId);
+    if (!sourceLookup) {
+      const error: any = new Error("Programme bar not found.");
+      error.code = "BAR_NOT_FOUND";
+      throw error;
+    }
+    const project = await storage.getBoqProject(sourceLookup.boqProjectId);
+    if (!project?.startDate) {
+      const error: any = new Error("The project start date is required before calendar schedule revisions can be saved.");
+      error.code = "PROJECT_START_REQUIRED";
+      throw error;
+    }
+    const barsFull = await storage.getWorkProgramBars(sourceLookup.boqProjectId);
+    // Use one project-wide snapshot for the source, candidates, token and
+    // expected transaction state. Never combine a later successor read with
+    // an earlier plan.
+    const sourceFull = barsFull.find((bar) => bar.id === barId);
+    if (!sourceFull) {
+      const error: any = new Error("Programme bar not found.");
+      error.code = "BAR_NOT_FOUND";
+      throw error;
+    }
+    if (!sourceFull.startDate || !sourceFull.endDate) {
+      const error: any = new Error("Set the project start date and commit this bar's calendar schedule before revising it.");
+      error.code = "CALENDAR_SCHEDULE_REQUIRED";
+      throw error;
+    }
+    const calendarBars = barsFull.filter((bar) => bar.startDate && bar.endDate);
+    const evidence = await storage.getWorkProgrammeExecutionEvidence(sourceFull.boqProjectId, barsFull);
+    const sourceBar = toRevisionBar(sourceFull);
+    const requestedStart = body.startDate ?? sourceBar.startDate;
+    const plan = planScheduleRevision({
+      sourceBar,
+      allProjectBars: calendarBars.map(toRevisionBar),
+      evidenceMap: evidence,
+      requestedStart,
+      requestedEnd: body.endDate,
+      cascade: body.cascade,
+    });
+    const sourceEvidence = evidence.get(barId) ?? { reportedQty: 0, earliestProgressDate: null };
+    const fullById = new Map(barsFull.map((bar) => [bar.id, bar]));
+    const expectedBars = barsFull
+      .map((bar) => ({
+        id: Number(bar.id),
+        boqItemId: Number(bar.boqItemId),
+        chainageFrom: bar.chainageFrom != null ? Number(bar.chainageFrom) : null,
+        chainageTo: bar.chainageTo != null ? Number(bar.chainageTo) : null,
+        startMonth: Number(bar.startMonth),
+        endMonth: Number(bar.endMonth),
+        startDate: bar.startDate ?? null,
+        endDate: bar.endDate ?? null,
+        plannedQty: Number(bar.plannedQty ?? 0),
+      }))
+      .sort((a, b) => a.id - b.id);
+    const expectedEvidence = barsFull
+      .map((bar) => {
+        const row = evidence.get(bar.id) ?? { reportedQty: 0, earliestProgressDate: null };
+        return {
+          id: bar.id,
+          reportedQty: Number(row.reportedQty ?? 0),
+          earliestProgressDate: row.earliestProgressDate ?? null,
+        };
+      })
+      .sort((a, b) => a.id - b.id);
+    const previewToken = crypto.createHash("sha256").update(JSON.stringify({
+      sourceBarId: barId,
+      projectStartDate: project.startDate,
+      requestedStart,
+      requestedEnd: body.endDate,
+      reason: body.reason,
+      cascade: body.cascade,
+      bars: expectedBars,
+      evidence: expectedEvidence,
+    })).digest("hex");
+    const describe = (bar: RevisionBar) => {
+      const full = fullById.get(bar.id);
+      return {
+        ...bar,
+        reachLabel: full?.reachLabel ?? null,
+        itemCode: full?.itemCode ?? null,
+        description: full?.description ?? null,
+        side: full?.side ?? null,
+      };
+    };
+    return {
+      body,
+      project,
+      sourceFull,
+      sourceEvidence,
+      evidence,
+      barsFull,
+      expectedBars,
+      expectedEvidence,
+      plan,
+      preview: {
+        previewToken,
+        source: {
+          before: describe(sourceBar),
+          after: describe(plan.revisedSource),
+          executionState: classifyBarExecutionState(sourceBar.plannedQty, sourceEvidence),
+          actualStartDate: sourceEvidence.earliestProgressDate,
+        },
+        deltaDays: plan.delta,
+        cascade: body.cascade,
+        shifted: plan.shifted.map((bar) => ({
+          before: describe(toRevisionBar(fullById.get(bar.id)!)),
+          after: describe(bar),
+        })),
+        notShifted: plan.notShifted.map(({ bar, reason }) => ({
+          bar: describe(bar),
+          executionState: classifyBarExecutionState(bar.plannedQty, evidence.get(bar.id)),
+          reason,
+        })),
+      },
+    };
+  }
+
+  const sendRevisionError = (res: any, err: any) => {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: "INVALID_REVISION", message: err.issues[0]?.message ?? "Invalid revision request." });
+    }
+    if (err?.code === "BAR_NOT_FOUND") return res.status(404).json({ error: err.code, message: err.message });
+    if (["CALENDAR_SCHEDULE_REQUIRED", "PROJECT_START_REQUIRED"].includes(err?.code)) {
+      return res.status(409).json({ error: err.code, message: err.message });
+    }
+    if (err?.code === "REVISION_STALE") return res.status(409).json({ error: err.code, message: err.message });
+    if (/completed bar/i.test(err?.message ?? "")) {
+      return res.status(409).json({ error: "BAR_COMPLETED", message: "Completed work cannot have its programme schedule revised." });
+    }
+    if (/start date/i.test(err?.message ?? "")) {
+      return res.status(400).json({ error: "INVALID_DATE_RANGE", message: err.message });
+    }
+    console.error("Work programme schedule revision:", err);
+    return res.status(500).json({ error: "REVISION_FAILED", message: "Failed to revise the programme schedule." });
+  };
+
+  app.post("/api/boq/programme/bars/:id/revision-preview", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const result = await buildScheduleRevisionPlan(parseInt(req.params.id), req.body);
+      // Preview is pure: no storage mutation occurs before this response.
+      res.json(result.preview);
+    } catch (err: any) {
+      return sendRevisionError(res, err);
+    }
+  });
+
+  app.post("/api/boq/programme/bars/:id/revise-schedule", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const barId = parseInt(req.params.id);
+      // Recompute immediately before the transaction; never trust a stale
+      // client-side preview or a client-provided successor list.
+      const {
+        body,
+        project,
+        sourceFull,
+        barsFull,
+        expectedBars,
+        expectedEvidence,
+        plan,
+        preview,
+      } = await buildScheduleRevisionPlan(barId, req.body);
+      if (!body.previewToken || body.previewToken !== preview.previewToken) {
+        const error: any = new Error("The programme changed after the preview. Review the updated cascade before confirming again.");
+        error.code = "REVISION_STALE";
+        throw error;
+      }
+      const projectStart = project.startDate!;
+      const sourceStartMonth = dateToMonthIndexCal(plan.revisedSource.startDate, projectStart);
+      const sourceEndMonth = finishDateInputToIdx(plan.revisedSource.endDate, projectStart);
+      if (!Number.isFinite(sourceStartMonth) || !Number.isFinite(sourceEndMonth)) {
+        return res.status(400).json({ error: "INVALID_DATE_RANGE", message: "The revised calendar dates are invalid." });
+      }
+
+      const revisionId = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
+      const authUser = (req as any).authUser;
+      const actorId = authUser?.id ?? null;
+      const actorName = currentUserName(req) ?? authUser?.username ?? null;
+      const sourceHistory = {
+        type: "schedule_revision",
+        revisionId,
+        barId,
+        originalStartDate: sourceFull.startDate,
+        originalEndDate: sourceFull.endDate,
+        revisedStartDate: plan.revisedSource.startDate,
+        revisedEndDate: plan.revisedSource.endDate,
+        delta: plan.delta,
+        reason: body.reason,
+        cascadeApplied: body.cascade,
+        actorId,
+        actorName,
+        createdAt,
+      };
+      const fullById = new Map(barsFull.map((bar) => [bar.id, bar]));
+      const shifted = plan.shifted.map((bar) => {
+        const current = fullById.get(bar.id)!;
+        return {
+          id: bar.id,
+          expectedStartDate: current.startDate!,
+          expectedEndDate: current.endDate!,
+          startDate: bar.startDate,
+          endDate: bar.endDate,
+          startMonth: dateToMonthIndexCal(bar.startDate, projectStart),
+          endMonth: finishDateInputToIdx(bar.endDate, projectStart),
+          historyEntry: {
+            type: "cascade_shift",
+            revisionId: crypto.randomUUID(),
+            sourceRevisionId: revisionId,
+            sourceBarId: barId,
+            barId: bar.id,
+            originalStartDate: current.startDate,
+            originalEndDate: current.endDate,
+            shiftedStartDate: bar.startDate,
+            shiftedEndDate: bar.endDate,
+            delta: plan.delta,
+            actorId,
+            actorName,
+            createdAt,
+          },
+        };
+      });
+      await storage.commitWorkProgrammeScheduleRevision({
+        projectId: sourceFull.boqProjectId,
+        expectedProjectStart: project.startDate!,
+        requestedStart: body.startDate ?? sourceFull.startDate!,
+        requestedEnd: body.endDate,
+        cascade: body.cascade,
+        expectedBars,
+        expectedEvidence,
+        source: {
+          id: barId,
+          expectedStartDate: sourceFull.startDate!,
+          expectedEndDate: sourceFull.endDate!,
+          startDate: plan.revisedSource.startDate,
+          endDate: plan.revisedSource.endDate,
+          startMonth: sourceStartMonth,
+          endMonth: sourceEndMonth,
+          historyEntry: sourceHistory,
+        },
+        shifted,
+      });
+      await storage.logAudit({
+        module: "work_programme",
+        transactionId: barId,
+        action: "schedule_revision",
+        userId: actorId,
+        userName: actorName ?? "unknown",
+        userRole: authUser?.isAdmin ? "admin" : (authUser?.role ?? null),
+        oldValues: { startDate: sourceFull.startDate, endDate: sourceFull.endDate },
+        newValues: {
+          startDate: plan.revisedSource.startDate,
+          endDate: plan.revisedSource.endDate,
+          cascade: body.cascade,
+          shiftedBarIds: plan.shifted.map((bar) => bar.id),
+          notShiftedBarIds: plan.notShifted.map(({ bar }) => bar.id),
+        },
+        reason: body.reason,
+      });
+      res.json({ success: true, revisionId, ...preview });
+    } catch (err: any) {
+      return sendRevisionError(res, err);
+    }
+  });
+
+  app.get("/api/boq/projects/:id/programme-status", async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const bars = await storage.getWorkProgramBars(projectId);
+      const evidence = await storage.getWorkProgrammeExecutionEvidence(projectId, bars);
+      const today = new Date().toISOString().slice(0, 10);
+      const barsByItem = new Map<number, any[]>();
+      for (const bar of bars) {
+        if (bar.scheduled === false || bar.planningMode === "not_plannable_without_input") continue;
+        const list = barsByItem.get(bar.boqItemId) ?? [];
+        list.push(bar);
+        barsByItem.set(bar.boqItemId, list);
+      }
+      const items = await storage.getBoqItems(projectId);
+      res.json(items.map((item) => {
+        const active = barsByItem.get(item.id) ?? [];
+        const dated = active.filter((bar) => bar.startDate && bar.endDate).map(toRevisionBar);
+        const status = active.length === 0
+          ? "not_programmed"
+          : dated.length === 0
+            ? "planned"
+            : deriveItemStatus(dated, evidence, today);
+        const relevant = active.find((bar) =>
+          classifyBarExecutionState(Number(bar.plannedQty ?? 0), evidence.get(bar.id)) !== "completed",
+        ) ?? active[0] ?? null;
+        return {
+          boqItemId: item.id,
+          status,
+          relevantBarId: relevant?.id ?? null,
+        };
+      }));
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/programme-status:", err);
+      res.status(500).json({ error: "Failed to derive programme status." });
     }
   });
 
@@ -12189,8 +12519,15 @@ export async function registerRoutes(
 
   app.patch("/api/boq/programme/bars/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "boq_projects")) return;
+      if (!assertEdit(req, res, "qto_boq")) return;
       const barId = parseInt(req.params.id);
+      const scheduleFields = ["startDate", "endDate", "startMonth", "endMonth", "durationMode", "isDurationOverride"];
+      if (scheduleFields.some((field) => Object.prototype.hasOwnProperty.call(req.body ?? {}, field))) {
+        return res.status(409).json({
+          error: "SCHEDULE_REVISION_REQUIRED",
+          message: "Schedule dates can only be changed through Revise Schedule so execution locks, reason, history and cascade are enforced.",
+        });
+      }
       // 030A invariant: a manual length override always carries a reason.
       if (req.body?.lengthOverrideM != null && !(req.body?.lengthOverrideReason ?? "").toString().trim()) {
         const existing = (await storage.getWorkProgramBar?.(barId)) ?? null;
@@ -16196,9 +16533,11 @@ export async function registerRoutes(
       // reference a bar via progress_entries.programmeBarId — those bars are also
       // reconciled in place or blocked, never silently deleted.
       const AUTO_MATCH = (b: any) =>
-        b.source === "auto-sequence"
-        || !b.source                                            // null = column not yet populated
-        || (b.source === "manual" && AUTO_LABEL_RE.test(b.reachLabel ?? ""));
+        isAutoSequenceManagedBar({
+          source: b.source,
+          revisionHistory: b.revisionHistory,
+          legacyAutoLabel: AUTO_LABEL_RE.test(b.reachLabel ?? ""),
+        });
       const regenAutoBars = (existingBars as any[]).filter(AUTO_MATCH);
       const regenAllocRows = await storage.getArrangementProgrammeAllocationsForProject(projectId);
       const allocsByBarId = new Map<number, any[]>();
@@ -16491,12 +16830,24 @@ export async function registerRoutes(
         // the automatic calculation never silently overwrites it (surfaced in
         // regenSummary.qtyConflicts instead).
         const keepQty = qtyConflictBarIds.has(p.barId);
+        const projectStartDate = (project as any)?.startDate ?? null;
+        const calendarSchedule = projectStartDate ? {
+          startDate: (() => {
+            const d = monthIndexToDateCal(nb.startMonth, projectStartDate);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          })(),
+          endDate: (() => {
+            const d = displayFinishDateCal(nb.endMonth, projectStartDate, nb.startMonth);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          })(),
+        } : {};
         await storage.updateWorkProgramBar(p.barId, {
           reachLabel: nb.reachLabel,
           chainageFrom: nb.chainageFrom,
           chainageTo: nb.chainageTo,
           startMonth: nb.startMonth,
           endMonth: nb.endMonth,
+          ...calendarSchedule,
           ...(keepQty ? {} : { plannedQty: nb.plannedQty, isQtyOverride: nb.isQtyOverride }),
           isDurationOverride: nb.isDurationOverride,
           source: "auto-sequence",
@@ -16997,6 +17348,23 @@ export async function registerRoutes(
       targetBars = targetBars.filter((b: any) => idSet.has(b.id));
     } else if (opts.scope !== "all") {
       targetBars = targetBars.filter((b: any) => b.scheduled === false || b.needsReview === true);
+    }
+    // Auto-sequencing is never allowed to overwrite a deliberate schedule
+    // revision or execution evidence. This applies even to the explicit
+    // scope="all" path; intentional changes to those bars must use Revise
+    // Schedule so reason/history/evidence locks are enforced.
+    if (targetBars.length) {
+      const evidence = await storage.getWorkProgrammeExecutionEvidence(projectId, allBars);
+      targetBars = targetBars.filter((b: any) => {
+        const hasScheduleRevision = Array.isArray(b.revisionHistory)
+          && b.revisionHistory.some((entry: any) => entry?.type === "schedule_revision");
+        const revisionProtected = b.source === "manual" || hasScheduleRevision;
+        const executionState = classifyBarExecutionState(
+          Number(b.plannedQty ?? 0),
+          evidence.get(b.id) ?? null,
+        );
+        return !revisionProtected && executionState === "not_started";
+      });
     }
     if (!targetBars.length) return { updated: 0, structures: 0, fronts: 0, needsReviewCount: 0 };
 

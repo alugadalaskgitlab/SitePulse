@@ -2836,6 +2836,12 @@ export const workProgramBars = pgTable("work_program_bars", {
   endMonth: real("end_month").notNull(),        // fractional
   startDate: date("start_date"),               // real calendar date (nullable; derived from startMonth + projectStartDate)
   endDate: date("end_date"),                   // real calendar date (nullable)
+  // 06W: first committed calendar schedule. These are immutable after capture
+  // and are display-only context; all reports continue to use start/end above.
+  baselineStartDate: date("baseline_start_date"),
+  baselineEndDate: date("baseline_end_date"),
+  // Append-only schedule_revision / cascade_shift records.
+  revisionHistory: jsonb("revision_history").notNull().default(sql`'[]'::jsonb`),
   durationMode: text("duration_mode").default("auto"), // 'auto' | 'fixed'
   plannedQty: real("planned_qty").notNull().default(0),
   isQtyOverride: boolean("is_qty_override").default(false),

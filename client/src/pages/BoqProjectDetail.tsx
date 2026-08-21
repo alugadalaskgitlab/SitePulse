@@ -253,12 +253,14 @@ function CategorySection({
   projectId,
   defaultCollapsed = false,
   onOpenRecipe,
+  programmeStatus,
 }: {
   name: string;
   items: BoqItemWithCategory[];
   projectId: number;
   defaultCollapsed?: boolean;
   onOpenRecipe: (item: BoqItemWithCategory) => void;
+  programmeStatus: Record<number, { status: string; relevantBarId?: number | null }>;
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [editItem, setEditItem] = useState<BoqItemWithCategory | null>(null);
@@ -385,7 +387,25 @@ function CategorySection({
                       {item.itemCode ?? "—"}
                     </td>
                     <td className="px-3 py-1.5 text-slate-700 max-w-[460px]" title={item.description}>
-                      <span className="block whitespace-normal leading-snug text-justify">{item.description}</span>
+                       <span className="block whitespace-normal leading-snug text-justify">{item.description}</span>
+                       {(() => {
+                         const status = programmeStatus[item.id]?.status ?? "not_programmed";
+                         const info: Record<string, { label: string; cls: string }> = {
+                           not_programmed: { label: "Not Programmed", cls: "bg-slate-100 text-slate-500 border-slate-200" },
+                           planned: { label: "Planned", cls: "bg-sky-50 text-sky-700 border-sky-200" },
+                           in_progress: { label: "In Progress", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+                           delayed: { label: "Delayed", cls: "bg-red-50 text-red-700 border-red-200" },
+                           completed: { label: "Completed", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                         };
+                         const s = info[status] ?? info.not_programmed;
+                         return (
+                           <Link href={`/work-program/${projectId}/programme?item=${item.id}`}
+                             className={`inline-flex mt-1 items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold leading-none ${s.cls}`}
+                             title={`Open programme for item ${item.itemCode ?? item.id}`}>
+                             {s.label}
+                           </Link>
+                         );
+                       })()}
                     </td>
                     <td className="px-3 py-1.5 text-right text-slate-500">{(item as any).canonicalUnit ?? item.unit}</td>
                     <td className="px-3 py-1.5 text-right font-medium text-slate-700">
@@ -1712,6 +1732,20 @@ export default function BoqProjectDetail() {
     enabled: !isNaN(projectId),
   });
 
+  const { data: programmeStatus = [] } = useQuery<Array<{ boqItemId: number; status: string; relevantBarId?: number | null }>>({
+    queryKey: ["/api/boq/projects", projectId, "programme-status"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${projectId}/programme-status`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load programme status");
+      return res.json();
+    },
+    enabled: !isNaN(projectId),
+  });
+  const programmeStatusMap = useMemo(
+    () => Object.fromEntries(programmeStatus.map(s => [s.boqItemId, s])),
+    [programmeStatus],
+  );
+
   // Deep-link: open the Layer Config dialog for ?recipeItem=<id> (from BOM "Configure" buttons)
   useEffect(() => {
     if (!items.length) return;
@@ -2120,6 +2154,7 @@ export default function BoqProjectDetail() {
                 projectId={projectId}
                 defaultCollapsed={false}
                 onOpenRecipe={setRecipeItem}
+                programmeStatus={programmeStatusMap}
               />
             ))}
 

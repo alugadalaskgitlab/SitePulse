@@ -7,7 +7,7 @@ import {
   Scissors, BookOpen, ChevronDown, ChevronUp, Info,
   GanttChartSquare, TableProperties, ArrowLeftRight, Settings2, Sparkles,
   Undo2, Redo2, Upload, MapPin, Building2, Handshake,
-  Pencil, MoreHorizontal, X,
+  Pencil, MoreHorizontal, X, History, LockKeyhole, ArrowUpDown,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -90,6 +90,200 @@ function fmt(n: number | null | undefined, d = 1) {
 }
 
 function getCatColor(idx: number) { return CAT_COLORS[idx % CAT_COLORS.length]; }
+
+function BaselineIndicator({ bar }: { bar: WorkProgramBarWithItem }) {
+  const b = bar as any;
+  const changed = b.baselineStartDate && b.baselineEndDate &&
+    (String(b.baselineStartDate).slice(0, 10) !== String(b.startDate ?? "").slice(0, 10) ||
+      String(b.baselineEndDate).slice(0, 10) !== String(b.endDate ?? "").slice(0, 10));
+  if (!changed) return null;
+  return <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-1 whitespace-nowrap"
+    title={`Baseline ${String(b.baselineStartDate).slice(0, 10)} → ${String(b.baselineEndDate).slice(0, 10)}; current ${String(b.startDate ?? "").slice(0, 10)} → ${String(b.endDate ?? "").slice(0, 10)}`}>
+    Baseline changed
+  </span>;
+}
+
+type RevisionPreview = {
+  previewToken: string;
+  source: { before: any; after: any; executionState: string; actualStartDate?: string | null };
+  deltaDays: number;
+  cascade: boolean;
+  shifted: Array<{ before: any; after: any }>;
+  notShifted: Array<{ bar: any; executionState: string; reason: string }>;
+};
+
+function ScheduleRevisionActions({
+  bar,
+  projectId,
+  variant = "inline",
+}: {
+  bar: WorkProgramBarWithItem;
+  projectId: number;
+  variant?: "inline" | "menu";
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [startDate, setStartDate] = useState(String((bar as any).startDate ?? "").slice(0, 10));
+  const [endDate, setEndDate] = useState(String((bar as any).endDate ?? "").slice(0, 10));
+  const [reason, setReason] = useState("");
+  const [cascade, setCascade] = useState(true);
+  const [preview, setPreview] = useState<RevisionPreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const state = String((bar as any).executionState ?? "not_started");
+  const history = ((bar as any).revisionHistory ?? []) as any[];
+  const locked = state === "completed";
+  const actualStartDate = String((bar as any).actualStartDate ?? (bar as any).startDate ?? "").slice(0, 10);
+
+  useEffect(() => {
+    setStartDate(state === "started"
+      ? actualStartDate
+      : String((bar as any).startDate ?? "").slice(0, 10));
+    setEndDate(String((bar as any).endDate ?? "").slice(0, 10));
+  }, [(bar as any).startDate, (bar as any).endDate, actualStartDate, state]);
+
+  function beginRevision() {
+    if (locked) return;
+    setStartDate(state === "started"
+      ? actualStartDate
+      : String((bar as any).startDate ?? "").slice(0, 10));
+    setEndDate(String((bar as any).endDate ?? "").slice(0, 10));
+    setReason("");
+    setCascade(true);
+    setPreview(null);
+    setOpen(true);
+  }
+
+  async function requestPreview() {
+    if (!reason.trim() || !endDate) {
+      toast({ title: "Reason and finish date are required", variant: "destructive" });
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await apiRequest("POST", `/api/boq/programme/bars/${bar.id}/revision-preview`, {
+        ...(state === "not_started" && startDate ? { startDate } : {}),
+        endDate, reason: reason.trim(), cascade,
+      });
+      setPreview(await res.json());
+    } catch (e) {
+      toast({ title: "Preview unavailable", description: e instanceof Error ? e.message : "Try again", variant: "destructive" });
+    } finally { setBusy(false); }
+  }
+  async function commit() {
+    if (!preview) return;
+    setBusy(true);
+    try {
+      await apiRequest("POST", `/api/boq/programme/bars/${bar.id}/revise-schedule`, {
+        ...(state === "not_started" && startDate ? { startDate } : {}),
+        endDate, reason: reason.trim(), cascade, previewToken: preview.previewToken,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      toast({ title: "Schedule revised", description: cascade ? "Successors were evaluated and updated atomically." : "No successor cascade was applied." });
+      setOpen(false); setPreview(null); setReason("");
+    } catch (e) {
+      toast({ title: "Schedule revision failed", description: e instanceof Error ? e.message : "No changes were committed", variant: "destructive" });
+    } finally { setBusy(false); }
+  }
+  const dateText = (v: any) => v ? String(v).slice(0, 10) : "—";
+  const triggers = variant === "menu" ? (
+    <>
+      <DropdownMenuItem
+        disabled={locked}
+        onSelect={beginRevision}
+        title={locked ? "Completed bars cannot be rescheduled" : "Revise this bar's calendar schedule"}
+        data-testid={`menu-revise-schedule-${bar.id}`}
+      >
+        {locked ? <LockKeyhole className="w-3.5 h-3.5 mr-2" /> : <ArrowUpDown className="w-3.5 h-3.5 mr-2" />}
+        Revise Schedule
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        disabled={history.length === 0}
+        onSelect={() => setHistoryOpen(true)}
+        title={history.length ? "View schedule revision history" : "No schedule revision history"}
+        data-testid={`menu-schedule-history-${bar.id}`}
+      >
+        <History className="w-3.5 h-3.5 mr-2" />
+        Schedule History{history.length ? ` (${history.length})` : ""}
+      </DropdownMenuItem>
+    </>
+  ) : (
+    <>
+      <button type="button" disabled={locked} onClick={beginRevision}
+        className={`inline-flex items-center gap-1 text-[10px] font-semibold rounded border px-1.5 py-0.5 ${locked ? "text-slate-400 border-slate-200 cursor-not-allowed" : "text-teal-700 border-teal-200 bg-teal-50 hover:bg-teal-100"}`}
+        title={locked ? "Completed bars cannot be rescheduled" : "Revise schedule"}>
+        {locked ? <LockKeyhole className="w-3 h-3" /> : <ArrowUpDown className="w-3 h-3" />} Revise
+      </button>
+      <button type="button" onClick={() => setHistoryOpen(true)} disabled={history.length === 0}
+        className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 border border-slate-200 rounded px-1.5 py-0.5 hover:bg-slate-100 disabled:opacity-40"
+        title={history.length ? "View schedule history" : "No schedule history"}>
+        <History className="w-3 h-3" /> History{history.length ? ` ${history.length}` : ""}
+      </button>
+    </>
+  );
+  return (
+    <>
+      {triggers}
+      <Dialog open={open} onOpenChange={v => { if (!v && !busy) { setOpen(false); setPreview(null); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><ArrowUpDown className="w-4 h-4 text-teal-700" />Revise schedule</DialogTitle></DialogHeader>
+          {!preview ? (
+            <div className="space-y-4">
+              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                {state === "started" ? "This bar has started. Actual start is locked; only the finish can move." : "Not started. You can revise both dates."}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                 <div>
+                   <Label>{state === "started" ? "ACTUAL START (LOCKED)" : "START DATE"}</Label>
+                   <Input type="date" value={startDate} disabled={state !== "not_started"} onChange={e => setStartDate(e.target.value)} />
+                 </div>
+                <div><Label>FINISH DATE <span className="text-red-500">*</span></Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
+              </div>
+              <div><Label>REASON <span className="text-red-500">*</span></Label><Input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. access handover delayed" /></div>
+              <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={cascade} onChange={e => setCascade(e.target.checked)} /> Cascade successor shifts</label>
+              <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={requestPreview} disabled={busy}>{busy ? "Checking…" : "Preview revision"}</Button></DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className={`rounded border px-3 py-2 text-sm font-semibold ${preview.deltaDays > 0 ? "border-amber-200 bg-amber-50 text-amber-800" : preview.deltaDays < 0 ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
+                {preview.deltaDays > 0 ? "+" : ""}{preview.deltaDays} day{Math.abs(preview.deltaDays) === 1 ? "" : "s"} source change
+              </div>
+              <div className="text-xs text-slate-600">Source: {dateText(preview.source.before?.startDate)} → {dateText(preview.source.after?.startDate)} · finish {dateText(preview.source.before?.endDate)} → {dateText(preview.source.after?.endDate)}</div>
+              <div className="max-h-48 overflow-y-auto space-y-1">
+                {preview.shifted.length > 0 && <p className="text-[11px] font-bold uppercase tracking-wide text-teal-700">Successors shifted ({preview.shifted.length})</p>}
+                {preview.shifted.map((x, i) => <div key={i} className="flex justify-between rounded bg-teal-50 px-2 py-1 text-xs text-teal-800"><span>{x.before?.reachLabel ?? x.before?.barId ?? "Successor"}</span><span>{dateText(x.before?.startDate)} → {dateText(x.after?.startDate)}</span></div>)}
+                {preview.notShifted.length > 0 && <p className="pt-2 text-[11px] font-bold uppercase tracking-wide text-amber-700">Not shifted ({preview.notShifted.length})</p>}
+                {preview.notShifted.map((x, i) => <div key={i} className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-900"><span className="font-semibold">{x.bar?.reachLabel ?? x.bar?.id ?? "Successor"}</span> — {x.reason}</div>)}
+                {!preview.shifted.length && !preview.notShifted.length && <p className="text-xs text-slate-500">No successor bars are affected.</p>}
+              </div>
+              <DialogFooter><Button variant="outline" onClick={() => setPreview(null)} disabled={busy}>Back</Button><Button onClick={commit} disabled={busy}>{busy ? "Committing…" : "Confirm & commit"}</Button></DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="max-w-lg"><DialogHeader><DialogTitle>Schedule history</DialogTitle></DialogHeader>
+          <div className="max-h-72 overflow-y-auto space-y-2">{history.slice().reverse().map((h, i) => {
+            const oldStart = h.originalStartDate ?? h.before?.startDate;
+            const oldEnd = h.originalEndDate ?? h.before?.endDate;
+            const newStart = h.revisedStartDate ?? h.shiftedStartDate ?? h.after?.startDate;
+            const newEnd = h.revisedEndDate ?? h.shiftedEndDate ?? h.after?.endDate;
+            return <div key={h.revisionId ?? i} className="border-l-2 border-teal-300 pl-3 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-semibold text-slate-800">{h.type === "cascade_shift" ? "Cascade shift" : "Schedule revision"}</span>
+                <span className="text-slate-400 whitespace-nowrap">{h.createdAt ? new Date(h.createdAt).toLocaleString() : "—"}</span>
+              </div>
+              <div className="text-slate-500">Before: {dateText(oldStart)} → {dateText(oldEnd)}</div>
+              <div className="text-slate-700">After: {dateText(newStart)} → {dateText(newEnd)}</div>
+              <div className="text-slate-600">{h.reason ?? (h.sourceBarId ? `Shifted by revision to bar ${h.sourceBarId}` : "No reason recorded")}</div>
+              <div className="text-slate-400">{h.actorName ?? "System"}{Number.isFinite(Number(h.delta)) ? ` · ${Number(h.delta) > 0 ? "+" : ""}${h.delta} days` : ""}</div>
+            </div>;
+          })}</div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 // ─── Coverage Badge ─────────────────────────────────────────────────────────────
 
@@ -497,15 +691,6 @@ function StretchRow({
       ? false
       : !!(autoQty != null && defaultRate != null && Math.abs(multNum - defaultRate) > 0.0001);
     const isDurationOverride = durationModeState === "fixed" || (autoDurationMonths == null && bar.isDurationOverride === true);
-    // Compute real calendar dates if project has a start date
-    const startDateVal = project.startDate
-      ? formatDateForInput(monthIndexToDate(smNum, project.startDate))
-      : null;
-    // Persisted endDate = INCLUSIVE displayed finish (boundary − 1 day, clamped
-    // to >= start) so consumers like SiteEntry (date <= endDate) match the UI.
-    const endDateVal = project.startDate
-      ? formatDateForInput(displayFinishDateCal(em, project.startDate, smNum))
-      : null;
     // 029A: execution priority (Batch 029 sequenceOrder) persists with the row save.
     const prioTrim = prio.trim();
     const prioNum = prioTrim === "" ? null : parseInt(prioTrim, 10);
@@ -513,17 +698,15 @@ function StretchRow({
       chainageFrom: validCh ? cfNum : bar.chainageFrom,
       chainageTo: validCh ? ctNum : bar.chainageTo,
       plannedQty: qty,
-      startMonth: smNum,
-      endMonth: em,
       isQtyOverride,
-      isDurationOverride,
-      durationMode: durationModeState,
+      // Schedule fields are deliberately absent. Calendar changes must pass
+      // through Revise Schedule so evidence locks, reason, history and cascade
+      // are enforced; quantity/geometry edits remain independent.
       sequenceOrder: prioNum != null && Number.isFinite(prioNum) && prioNum > 0 ? prioNum : null,
       // 030A: side + planned geometry. "" = Unspecified → null (never silently Full Width).
       ...(geomApp.side ? { side: sideVal || null } : {}),
       ...(geomApp.width ? { plannedWidthM: widthStr.trim() !== "" && Number.isFinite(parseFloat(widthStr)) && parseFloat(widthStr) > 0 ? parseFloat(widthStr) : null } : {}),
       ...(geomApp.thickness ? { plannedThicknessMm: thickStr.trim() !== "" && Number.isFinite(parseFloat(thickStr)) && parseFloat(thickStr) > 0 ? parseFloat(thickStr) : null } : {}),
-      ...(startDateVal != null ? { startDate: startDateVal, endDate: endDateVal } : {}),
     }, {
       // 029A §8: successful save returns the row to read mode.
       onSuccess: () => onCloseEdit(bar.id),
@@ -597,6 +780,22 @@ function StretchRow({
   const barWidth = !datesInvalid && project.startDate
     ? Math.max(4, monthIndexToAxisX(liveEnd, project.startDate, colW) - barLeft)
     : Math.max(4, (liveEnd - liveStart) * colW);
+  const baselineStartDate = String((bar as any).baselineStartDate ?? "").slice(0, 10);
+  const baselineEndDate = String((bar as any).baselineEndDate ?? "").slice(0, 10);
+  const currentStartDate = String((bar as any).startDate ?? "").slice(0, 10);
+  const currentEndDate = String((bar as any).endDate ?? "").slice(0, 10);
+  const baselineDiffers = !!project.startDate
+    && !!baselineStartDate
+    && !!baselineEndDate
+    && (baselineStartDate !== currentStartDate || baselineEndDate !== currentEndDate);
+  const baselineStartIdx = baselineDiffers ? dateToMonthIndex(baselineStartDate, project.startDate!) : NaN;
+  const baselineEndIdx = baselineDiffers ? finishDateInputToIdx(baselineEndDate, project.startDate!) : NaN;
+  const baselineLeft = Number.isFinite(baselineStartIdx)
+    ? Math.max(0, monthIndexToAxisX(baselineStartIdx, project.startDate!, colW))
+    : 0;
+  const baselineWidth = Number.isFinite(baselineStartIdx) && Number.isFinite(baselineEndIdx)
+    ? Math.max(4, monthIndexToAxisX(baselineEndIdx, project.startDate!, colW) - baselineLeft)
+    : 0;
   const durationMonths = liveEnd - liveStart;
   // Calendar duration (inclusive; stored end index = exclusive boundary — see calendarAxis.ts)
   const calDays = !datesInvalid && project.startDate
@@ -757,6 +956,7 @@ function StretchRow({
         {project.startDate ? (
           <input
             type="date"
+            disabled
             value={
               !isNaN(smNum) && project.startDate
                 ? formatDateForInput(monthIndexToDate(smNum, project.startDate))
@@ -775,7 +975,7 @@ function StretchRow({
               }
             }}
               className="w-[108px] text-xs border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200 ml-1"
-            title="Stretch start date"
+            title="Schedule dates are changed through Revise Schedule"
             data-testid={`input-date-${bar.id}`}
           />
         ) : (
@@ -783,10 +983,11 @@ function StretchRow({
             <span className="text-xs text-slate-400 flex-shrink-0 ml-1">M</span>
             <input
               type="number" min="0.1" max="120" step="0.1"
+              disabled
               value={startM}
               onChange={e => { dirty.current = true; setStartM(e.target.value); }}
                   className="w-[36px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
-              title="Start month (decimal OK, e.g. 1.5)"
+              title="Schedule dates are changed through Revise Schedule"
               data-testid={`input-sm-${bar.id}`}
             />
           </>
@@ -795,6 +996,7 @@ function StretchRow({
         {/* Mode toggle: auto ↔ fixed */}
         {project.startDate && (
           <button
+            disabled
             onClick={() => {
               // Part 0.2: don't act while dates are invalid (would seed fallbacks)
               if (startDateInvalid) return;
@@ -813,7 +1015,7 @@ function StretchRow({
                 ? "bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-900/30 dark:text-violet-300"
                 : "bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400"
             }`}
-            title={durationModeState === "fixed" ? "Fixed duration — click to switch to auto" : "Auto duration — click to lock end date"}
+            title="Schedule mode and dates are changed through Revise Schedule"
             data-testid={`button-dur-mode-${bar.id}`}
           >
             {durationModeState === "fixed" ? "FIX" : "AUTO"}
@@ -839,6 +1041,7 @@ function StretchRow({
             <span className="text-xs text-slate-400 flex-shrink-0 ml-0.5">→</span>
             <input
               type="date"
+              disabled
               value={
                 !isNaN(endMNum) && project.startDate
                   ? formatDateForInput(displayFinishDateCal(endMNum, project.startDate, smNum))
@@ -855,7 +1058,7 @@ function StretchRow({
                 }
               }}
                   className="w-[108px] text-xs border-b border-violet-400 bg-transparent text-center focus:outline-none focus:border-violet-600 dark:text-slate-200 ml-0.5"
-              title="Stretch end date (fixed duration)"
+              title="Schedule dates are changed through Revise Schedule"
               data-testid={`input-end-date-${bar.id}`}
             />
             {calDays != null && (
@@ -1052,6 +1255,7 @@ function StretchRow({
             ? `${formatDateForInput(monthIndexToDate(bar.startMonth, project.startDate))} → ${formatDateForInput(displayFinishDateCal(bar.endMonth, project.startDate, bar.startMonth))}`
             : `M${fmtQty(bar.startMonth, 1)} → M${fmtQty(bar.endMonth, 1)}`}
         </span>
+        <BaselineIndicator bar={bar} />
         <span className="text-[11px] text-slate-400 flex-shrink-0" title="Duration">
           {calDays != null ? `${calDays}d` : `${fmtQty(bar.endMonth - bar.startMonth, 1)} mo`}
         </span>
@@ -1148,6 +1352,7 @@ function StretchRow({
             <DropdownMenuItem onClick={() => onRequestEdit(bar.id)} data-testid={`menu-edit-${bar.id}`}>
               <Pencil className="w-3.5 h-3.5 mr-2" /> Edit
             </DropdownMenuItem>
+            <ScheduleRevisionActions bar={bar} projectId={projectId} variant="menu" />
             {isEarthworkBar && (
               <DropdownMenuItem onClick={() => setShowArrangements(true)} data-testid={`menu-arrangements-${bar.id}`}>
                 <Handshake className="w-3.5 h-3.5 mr-2" /> Arrangements
@@ -1211,6 +1416,16 @@ function StretchRow({
             style={{ left: i * colW, width: colW }}
           />
         ))}
+
+        {baselineDiffers && baselineWidth > 0 && (
+          <div
+            className="absolute rounded border border-dashed border-indigo-500 bg-indigo-100/70 dark:bg-indigo-900/30"
+            style={{ top: 36, left: baselineLeft, width: baselineWidth, height: 7 }}
+            title={`Baseline ${baselineStartDate} → ${baselineEndDate}`}
+            aria-label={`Baseline schedule ${baselineStartDate} to ${baselineEndDate}`}
+            data-testid={`bar-baseline-${bar.id}`}
+          />
+        )}
 
         {/* 027A §19: invalid dates → clear warning instead of a misleading bar */}
         {datesInvalid ? (
@@ -1323,6 +1538,21 @@ function StructureLocationRow({
   const barWidth  = project.startDate
     ? Math.max(4, monthIndexToAxisX(liveEnd, project.startDate, colW) - barLeft)
     : Math.max(4, (liveEnd - liveStart) * colW);
+  const baselineStartDate = String(b.baselineStartDate ?? "").slice(0, 10);
+  const baselineEndDate = String(b.baselineEndDate ?? "").slice(0, 10);
+  const baselineDiffers = !!project.startDate
+    && !!baselineStartDate
+    && !!baselineEndDate
+    && (baselineStartDate !== String(bar.startDate ?? "").slice(0, 10)
+      || baselineEndDate !== String(bar.endDate ?? "").slice(0, 10));
+  const baselineStartIdx = baselineDiffers ? dateToMonthIndex(baselineStartDate, project.startDate!) : NaN;
+  const baselineEndIdx = baselineDiffers ? finishDateInputToIdx(baselineEndDate, project.startDate!) : NaN;
+  const baselineLeft = Number.isFinite(baselineStartIdx)
+    ? Math.max(0, monthIndexToAxisX(baselineStartIdx, project.startDate!, colW))
+    : 0;
+  const baselineWidth = Number.isFinite(baselineStartIdx) && Number.isFinite(baselineEndIdx)
+    ? Math.max(4, monthIndexToAxisX(baselineEndIdx, project.startDate!, colW) - baselineLeft)
+    : 0;
 
   return (
     <div
@@ -1383,6 +1613,8 @@ function StructureLocationRow({
               {b.durationDays}d
             </span>
           )}
+          <ScheduleRevisionActions bar={bar} projectId={projectId} />
+          <BaselineIndicator bar={bar} />
           <button
             onClick={() => onDelete(bar.id)}
             className="p-0.5 rounded text-violet-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 ml-auto"
@@ -1406,6 +1638,15 @@ function StructureLocationRow({
             style={{ left: i * colW, width: colW }}
           />
         ))}
+        {baselineDiffers && baselineWidth > 0 && (
+          <div
+            className="absolute rounded border border-dashed border-indigo-500 bg-indigo-100/70 dark:bg-indigo-900/30"
+            style={{ top: 36, left: baselineLeft, width: baselineWidth, height: 7 }}
+            title={`Baseline ${baselineStartDate} → ${baselineEndDate}`}
+            aria-label={`Baseline schedule ${baselineStartDate} to ${baselineEndDate}`}
+            data-testid={`bar-baseline-${bar.id}`}
+          />
+        )}
         {slocDateIssue ? (
           <div
             className="absolute top-2 left-2 text-[11px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded px-1.5 py-0.5"
@@ -1866,6 +2107,7 @@ function InlineGanttTable({
   productivitySettings,
   onBeforeMutate,
   editorGuardRef,
+  deepLinkItemId,
 }: {
   project: BoqProject;
   items: BoqItemWithCategory[];
@@ -1876,6 +2118,7 @@ function InlineGanttTable({
   onBeforeMutate?: () => void;
   /** 029A review fix: lets the page ask "is a stretch editor dirty?" before leaving. */
   editorGuardRef?: React.MutableRefObject<(() => boolean) | null>;
+  deepLinkItemId?: number | null;
 }) {
   const { toast } = useToast();
   const totalMonths = project.totalMonths ?? 12;
@@ -1945,6 +2188,7 @@ function InlineGanttTable({
     });
   }, []);
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
+  const [deepLinkHighlight, setDeepLinkHighlight] = useState<number | null>(null);
 
   const barsByItemId = useMemo(() => {
     const m: Record<number, WorkProgramBarWithItem[]> = {};
@@ -1966,6 +2210,22 @@ function InlineGanttTable({
     }
     return m;
   }, [bars]);
+
+  useEffect(() => {
+    if (!deepLinkItemId || !items.some(i => i.id === deepLinkItemId)) return;
+    const item = items.find(i => i.id === deepLinkItemId);
+    if (!item) return;
+    const cat = item.workCategory
+      ? `wc:${item.workCategory}`
+      : item.categoryName
+        ? `cat:${item.categoryName}`
+        : "__uncategorised__";
+    setCollapsedCats(prev => ({ ...prev, [cat]: false }));
+    setDeepLinkHighlight(deepLinkItemId);
+    const timer = window.setTimeout(() => document.getElementById(`programme-item-${deepLinkItemId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+    const clear = window.setTimeout(() => setDeepLinkHighlight(null), 2600);
+    return () => { window.clearTimeout(timer); window.clearTimeout(clear); };
+  }, [deepLinkItemId, items]);
 
   const plannedByItemId = useMemo(() => {
     const m: Record<number, number> = {};
@@ -2042,15 +2302,12 @@ function InlineGanttTable({
       const mid = (cf + ct) / 2;
       const totalLen = ct - cf;
       const leftFraction = totalLen > 0 ? (mid - cf) / totalLen : 0.5;
-      const totalDur = bar.endMonth - bar.startMonth;
-      const leftEnd = +(bar.startMonth + totalDur * leftFraction).toFixed(2);
       const boqQty = items.find(it => it.id === bar.boqItemId)?.currentQty ?? bar.plannedQty * 2;
       const leftQty = +(bar.plannedQty * leftFraction).toFixed(4);
       const rightQty = +(bar.plannedQty * (1 - leftFraction)).toFixed(4);
 
       await apiRequest("PATCH", `/api/boq/programme/bars/${bar.id}`, {
         chainageFrom: cf, chainageTo: mid,
-        endMonth: leftEnd,
         plannedQty: leftQty,
         reachLabel: bar.reachLabel ? `${bar.reachLabel}A` : "A",
         isQtyOverride: false,
@@ -2058,7 +2315,9 @@ function InlineGanttTable({
       await apiRequest("POST", `/api/boq/projects/${projectId}/programme`, {
         boqItemId: bar.boqItemId,
         chainageFrom: mid, chainageTo: ct,
-        startMonth: leftEnd, endMonth: bar.endMonth,
+        // Chainage splitting preserves the current calendar window on both
+        // children; it is not an unaudited schedule revision.
+        startMonth: bar.startMonth, endMonth: bar.endMonth,
         plannedQty: rightQty,
         reachLabel: bar.reachLabel ? `${bar.reachLabel}B` : "B",
         isQtyOverride: false,
@@ -2253,7 +2512,8 @@ function InlineGanttTable({
                 const hasEquipment = (recipesMap.get(item.id) ?? []).length > 0;
 
                 return (
-                  <div key={item.id} className="border-b border-slate-200 dark:border-slate-700">
+                  <div id={`programme-item-${item.id}`} data-programme-item-id={item.id} key={item.id}
+                    className={`border-b border-slate-200 dark:border-slate-700 transition-colors ${deepLinkHighlight === item.id ? "bg-amber-100/70 ring-2 ring-inset ring-amber-400" : ""}`}>
                     {/* Item header row — minHeight only (not fixed) so long descriptions,
                         structure tags, and warning badges can wrap onto a 2nd line instead
                         of clipping/overlapping. Flexbox default align-items:stretch makes the
@@ -2807,6 +3067,9 @@ export default function WorkProgramme() {
   const { toast } = useToast();
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
+  const deepLinkItemId = typeof window !== "undefined"
+    ? Number(new URLSearchParams(window.location.search).get("item") || 0) || null
+    : null;
   // 029A Part E: remember the active tab per project so returning from
   // Earthwork Control / Settings lands the user where they left off.
   const [activeTab, setActiveTab] = useState(() => {
@@ -2827,6 +3090,11 @@ export default function WorkProgramme() {
   useEffect(() => {
     try { setActiveTab(sessionStorage.getItem(`wp-tab-${params.id}`) || "gantt"); } catch { /* ignore */ }
   }, [params.id]);
+  useEffect(() => {
+    if (!deepLinkItemId) return;
+    setActiveTab("gantt");
+    try { sessionStorage.setItem(`wp-tab-${params.id}`, "gantt"); } catch { /* ignore */ }
+  }, [deepLinkItemId, params.id]);
   const [strImportOpen, setStrImportOpen] = useState(false);
   // ── 030A: PM/Admin bulk side confirmation for null-side road bars ─────────
   const [bulkSideOpen, setBulkSideOpen] = useState(false);
@@ -4457,6 +4725,7 @@ export default function WorkProgramme() {
                 bars={bars}
                 recipesMap={recipesMap}
                 projectId={projectId}
+                deepLinkItemId={deepLinkItemId}
                 onBeforeMutate={pushSnapshot}
                 editorGuardRef={ganttEditorGuardRef}
                 productivitySettings={progSettings ? {

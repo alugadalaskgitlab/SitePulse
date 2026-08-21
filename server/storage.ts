@@ -101,6 +101,22 @@ import {
 import { resolveConversion, convertToBase, computeAdjustment, isNoChange, computeVarianceWarnings, toFiniteNumber, type VarianceWarning } from "@shared/stockReconciliation";
 import { resolvePermittedSiteIds } from "@shared/siteAccess";
 import { getBaseSiteName, siteMatchesPermitted } from "@shared/siteName";
+import {
+  dateToMonthIndexCal,
+  displayFinishDateCal,
+  finishDateInputToIdx,
+  monthIndexToDateCal,
+} from "@shared/calendarAxis";
+import { chainageRangesOverlap } from "@shared/arrangementAutoAllocation";
+import { isDprSideCompatible } from "@shared/barSide";
+import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
+import {
+  appendRevisionHistory,
+  captureInitialBaseline,
+  planScheduleRevision,
+  type BarEvidence,
+  type RevisionBar,
+} from "@shared/programmeRevision";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
@@ -1434,6 +1450,10 @@ export interface IStorage {
   ensureBoqProgramSettingsTables(): Promise<void>;
   getBoqProgramSettings(projectId: number): Promise<BoqProgramSettings | null>;
   upsertBoqProgramSettings(projectId: number, data: Partial<InsertBoqProgramSettings>): Promise<BoqProgramSettings>;
+  upsertBoqProgramSettingsWithCalendarRealignment(
+    projectId: number,
+    data: Partial<InsertBoqProgramSettings>,
+  ): Promise<BoqProgramSettings>;
   getBoqMixLinks(projectId: number): Promise<BoqMixTemplateLink[]>;
   createBoqMixLink(data: InsertBoqMixTemplateLink): Promise<BoqMixTemplateLink>;
   upsertBoqMixLink(projectId: number, data: { mixType: string; mixTemplateId?: number | null; mixTemplateName?: string | null }): Promise<BoqMixTemplateLink>;
@@ -23518,6 +23538,81 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
+  /**
+   * Save programme settings and, when the calendar origin changes, realign the
+   * programme axis without changing established dates. The project row is the
+   * shared lock used by both this operation and manual schedule revision.
+   */
+  async upsertBoqProgramSettingsWithCalendarRealignment(
+    projectId: number,
+    data: Partial<InsertBoqProgramSettings>,
+  ): Promise<BoqProgramSettings> {
+    return db.transaction(async (tx) => {
+      const [project] = await tx.select()
+        .from(boqProjects)
+        .where(eq(boqProjects.id, projectId))
+        .for("update");
+      if (!project) throw new Error("BOQ project not found.");
+
+      const [previousSettings] = await tx.select()
+        .from(boqProgramSettings)
+        .where(eq(boqProgramSettings.projectId, projectId));
+      const newStartDate = data.projectStartDate ?? null;
+      const shouldRealign = Boolean(
+        newStartDate
+        && (project.startDate !== newStartDate || previousSettings?.projectStartDate !== newStartDate),
+      );
+
+      let bars: WorkProgramBar[] = [];
+      if (shouldRealign) {
+        bars = await tx.select()
+          .from(workProgramBars)
+          .where(eq(workProgramBars.boqProjectId, projectId))
+          .orderBy(workProgramBars.id)
+          .for("update");
+      }
+
+      const [settings] = await tx.insert(boqProgramSettings)
+        .values({ ...data, projectId, updatedAt: new Date() } as any)
+        .onConflictDoUpdate({
+          target: boqProgramSettings.projectId,
+          set: { ...data, updatedAt: new Date() },
+        })
+        .returning();
+
+      if (shouldRealign && newStartDate) {
+        await tx.update(boqProjects)
+          .set({ startDate: newStartDate })
+          .where(eq(boqProjects.id, projectId));
+
+        const toIso = (date: Date) => [
+          date.getFullYear(),
+          String(date.getMonth() + 1).padStart(2, "0"),
+          String(date.getDate()).padStart(2, "0"),
+        ].join("-");
+        for (const bar of bars) {
+          const startDate = bar.startDate
+            ?? toIso(monthIndexToDateCal(bar.startMonth, newStartDate));
+          const endDate = bar.endDate
+            ?? toIso(displayFinishDateCal(bar.endMonth, newStartDate, bar.startMonth));
+          await tx.update(workProgramBars)
+            .set({
+              startDate,
+              endDate,
+              startMonth: dateToMonthIndexCal(startDate, newStartDate),
+              endMonth: finishDateInputToIdx(endDate, newStartDate),
+              durationMode: bar.durationMode ?? "auto",
+              baselineStartDate: captureInitialBaseline(bar.baselineStartDate, startDate),
+              baselineEndDate: captureInitialBaseline(bar.baselineEndDate, endDate),
+            })
+            .where(eq(workProgramBars.id, bar.id));
+        }
+      }
+
+      return settings;
+    }, { isolationLevel: "serializable" });
+  }
+
   async getBoqMixLinks(projectId: number): Promise<BoqMixTemplateLink[]> {
     return db
       .select()
@@ -23682,6 +23777,37 @@ export class DatabaseStorage implements IStorage {
 
   // --- Work Programme Bars ---
 
+  /**
+   * 06W: blocking startup guard for the revision columns. The checked-in SQL
+   * migration remains the deployment source of truth; this idempotent ensure
+   * keeps older development databases safe before programme routes register.
+   */
+  async ensureWorkProgrammeRevisionColumns(): Promise<void> {
+    await db.execute(sql`ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS baseline_start_date DATE NULL`);
+    await db.execute(sql`ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS baseline_end_date DATE NULL`);
+    await db.execute(sql`ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS revision_history JSONB NOT NULL DEFAULT '[]'::jsonb`);
+    await db.execute(sql`
+      UPDATE work_program_bars
+      SET baseline_start_date = start_date
+      WHERE baseline_start_date IS NULL AND start_date IS NOT NULL
+    `);
+    await db.execute(sql`
+      UPDATE work_program_bars
+      SET baseline_end_date = end_date
+      WHERE baseline_end_date IS NULL AND end_date IS NOT NULL
+    `);
+    await db.execute(sql`
+      UPDATE work_program_bars
+      SET revision_history = '[]'::jsonb
+      WHERE revision_history IS NULL OR jsonb_typeof(revision_history) <> 'array'
+    `);
+    await db.execute(sql`
+      ALTER TABLE work_program_bars
+        ALTER COLUMN revision_history SET DEFAULT '[]'::jsonb,
+        ALTER COLUMN revision_history SET NOT NULL
+    `);
+  }
+
   /** Instruction 029: single-bar fetch for server-side chainage-overlap validation on PATCH. */
   async getWorkProgramBar(id: number): Promise<WorkProgramBar | null> {
     const [row] = await db.select().from(workProgramBars).where(eq(workProgramBars.id, id));
@@ -23701,6 +23827,9 @@ export class DatabaseStorage implements IStorage {
         endMonth: workProgramBars.endMonth,
         startDate: workProgramBars.startDate,
         endDate: workProgramBars.endDate,
+        baselineStartDate: workProgramBars.baselineStartDate,
+        baselineEndDate: workProgramBars.baselineEndDate,
+        revisionHistory: workProgramBars.revisionHistory,
         durationMode: workProgramBars.durationMode,
         plannedQty: workProgramBars.plannedQty,
         isQtyOverride: workProgramBars.isQtyOverride,
@@ -23755,13 +23884,65 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertWorkProgramBar(data: InsertWorkProgramBar): Promise<WorkProgramBar> {
-    const [row] = await db.insert(workProgramBars).values(data).returning();
+    const project = await this.getBoqProject(data.boqProjectId);
+    const projectStart = project?.startDate ?? null;
+    let startDate = data.startDate ?? null;
+    let endDate = data.endDate ?? null;
+    if (projectStart) {
+      if (!startDate && Number.isFinite(Number(data.startMonth))) {
+        const d = monthIndexToDateCal(Number(data.startMonth), projectStart);
+        startDate = [
+          d.getFullYear(),
+          String(d.getMonth() + 1).padStart(2, "0"),
+          String(d.getDate()).padStart(2, "0"),
+        ].join("-");
+      }
+      if (!endDate && Number.isFinite(Number(data.endMonth))) {
+        const d = displayFinishDateCal(Number(data.endMonth), projectStart, Number(data.startMonth));
+        endDate = [
+          d.getFullYear(),
+          String(d.getMonth() + 1).padStart(2, "0"),
+          String(d.getDate()).padStart(2, "0"),
+        ].join("-");
+      }
+    }
+    const initial = {
+      ...data,
+      startDate,
+      endDate,
+      baselineStartDate: startDate,
+      baselineEndDate: endDate,
+      revisionHistory: [],
+    } as InsertWorkProgramBar;
+    const [row] = await db.insert(workProgramBars).values(initial).returning();
     return row;
   }
 
   async updateWorkProgramBar(id: number, data: Partial<InsertWorkProgramBar>): Promise<WorkProgramBar | null> {
-    const [row] = await db.update(workProgramBars).set(data).where(eq(workProgramBars.id, id)).returning();
-    return row ?? null;
+    return db.transaction(async (tx) => {
+      const [current] = await tx.select().from(workProgramBars).where(eq(workProgramBars.id, id)).limit(1);
+      if (!current) return null;
+      // Baselines and revision history are controlled only by the dedicated
+      // revision transaction below; generic PATCH callers cannot overwrite them.
+      const {
+        baselineStartDate: _ignoredBaselineStart,
+        baselineEndDate: _ignoredBaselineEnd,
+        revisionHistory: _ignoredHistory,
+        ...safeData
+      } = data as any;
+      const nextStartDate = safeData.startDate !== undefined ? safeData.startDate : current.startDate;
+      const nextEndDate = safeData.endDate !== undefined ? safeData.endDate : current.endDate;
+      const [row] = await tx.update(workProgramBars).set({
+        ...safeData,
+        ...(current.baselineStartDate == null && nextStartDate != null
+          ? { baselineStartDate: captureInitialBaseline(current.baselineStartDate, nextStartDate) }
+          : {}),
+        ...(current.baselineEndDate == null && nextEndDate != null
+          ? { baselineEndDate: captureInitialBaseline(current.baselineEndDate, nextEndDate) }
+          : {}),
+      }).where(eq(workProgramBars.id, id)).returning();
+      return row ?? null;
+    });
   }
 
   async deleteWorkProgramBar(id: number): Promise<void> {
@@ -23843,6 +24024,291 @@ export class DatabaseStorage implements IStorage {
     const map = new Map<number, number>();
     for (const r of rows) if (r.barId != null) map.set(r.barId, Number(r.total));
     return map;
+  }
+
+  /**
+   * 06W: execution evidence for schedule state. Direct programmeBarId links
+   * win. Legacy unlinked rows fall back to the existing BOQ-item + chainage +
+   * compatible-side convention. Only real, valid submitted quantity counts.
+   */
+  async getWorkProgrammeExecutionEvidence(
+    boqProjectId: number,
+    barsInput?: WorkProgramBarWithItem[],
+    executor: any = db,
+  ): Promise<Map<number, { reportedQty: number; earliestProgressDate: string | null }>> {
+    const bars = barsInput ?? await this.getWorkProgramBars(boqProjectId);
+    const result = new Map<number, { reportedQty: number; earliestProgressDate: string | null }>();
+    for (const bar of bars) result.set(bar.id, { reportedQty: 0, earliestProgressDate: null });
+    if (bars.length === 0) return result;
+
+    const itemIds = Array.from(new Set(bars.map((b) => b.boqItemId)));
+    const barIds = bars.map((bar) => bar.id);
+    const rows = await executor
+      .select({
+        programmeBarId: progressEntries.programmeBarId,
+        boqItemId: progressEntries.boqItemId,
+        quantity: progressEntries.quantity,
+        chainageFromKm: progressEntries.chainageFromKm,
+        chainageToKm: progressEntries.chainageToKm,
+        side: progressEntries.side,
+        dprDate: dprs.date,
+        conversionFactor: boqItems.dprConversionFactor,
+      })
+      .from(progressEntries)
+      .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+      .leftJoin(boqItems, eq(progressEntries.boqItemId, boqItems.id))
+      .where(and(
+        or(
+          inArray(progressEntries.boqItemId, itemIds),
+          inArray(progressEntries.programmeBarId, barIds),
+        ),
+        eq(dprs.dprStatus, "submitted"),
+        eq(dprs.isSuperseded, false),
+        eq(dprs.isCancelled, false),
+        eq(dprs.isDeleted, false),
+        eq(progressEntries.noSiteWork, false),
+        eq(progressEntries.isIncidental, false),
+        sql`(${progressEntries.linkReviewRequired} IS NULL OR ${progressEntries.linkReviewRequired} = false)`,
+        gt(progressEntries.quantity, 0),
+        sql`(${progressEntries.chainageReviewStatus} IS NULL OR ${progressEntries.chainageReviewStatus} <> 'review_required')`,
+      ));
+
+    const barById = new Map(bars.map((bar) => [bar.id, bar]));
+    const barsByItem = new Map<number, WorkProgramBarWithItem[]>();
+    for (const bar of bars) {
+      const list = barsByItem.get(bar.boqItemId) ?? [];
+      list.push(bar);
+      barsByItem.set(bar.boqItemId, list);
+    }
+
+    for (const row of rows) {
+      let matched: WorkProgramBarWithItem[] = [];
+      if (row.programmeBarId != null) {
+        const direct = barById.get(Number(row.programmeBarId));
+        if (direct) matched = [direct];
+      } else if (row.boqItemId != null) {
+        const from = row.chainageFromKm != null ? Number(row.chainageFromKm) : null;
+        const to = row.chainageToKm != null ? Number(row.chainageToKm) : null;
+        if (from != null && to != null) {
+          matched = (barsByItem.get(Number(row.boqItemId)) ?? []).filter((bar) =>
+            chainageRangesOverlap(
+              bar.chainageFrom, bar.chainageTo,
+              from, to,
+            ) && isDprSideCompatible(bar.side ?? null, normalizeDprSideKey(row.side)),
+          );
+        }
+      }
+      const creditedQty = Number(row.quantity ?? 0) * Number(row.conversionFactor ?? 1);
+      for (const bar of matched) {
+        const current = result.get(bar.id) ?? { reportedQty: 0, earliestProgressDate: null };
+        current.reportedQty += creditedQty;
+        if (!current.earliestProgressDate || row.dprDate < current.earliestProgressDate) {
+          current.earliestProgressDate = row.dprDate;
+        }
+        result.set(bar.id, current);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * 06W: atomically commit a confirmed source revision and every planned
+   * cascade shift. Row locks plus expected-date checks prevent a stale preview
+   * from overwriting a newer schedule.
+   */
+  async commitWorkProgrammeScheduleRevision(input: {
+    projectId: number;
+    expectedProjectStart: string;
+    requestedStart: string;
+    requestedEnd: string;
+    cascade: boolean;
+    expectedBars: Array<{
+      id: number;
+      boqItemId: number;
+      chainageFrom: number | null;
+      chainageTo: number | null;
+      startMonth: number;
+      endMonth: number;
+      startDate: string | null;
+      endDate: string | null;
+      plannedQty: number;
+    }>;
+    expectedEvidence: Array<{
+      id: number;
+      reportedQty: number;
+      earliestProgressDate: string | null;
+    }>;
+    source: {
+      id: number;
+      expectedStartDate: string;
+      expectedEndDate: string;
+      startDate: string;
+      endDate: string;
+      startMonth: number;
+      endMonth: number;
+      historyEntry: Record<string, unknown>;
+    };
+    shifted: Array<{
+      id: number;
+      expectedStartDate: string;
+      expectedEndDate: string;
+      startDate: string;
+      endDate: string;
+      startMonth: number;
+      endMonth: number;
+      historyEntry: Record<string, unknown>;
+    }>;
+  }): Promise<{ source: WorkProgramBar; shifted: WorkProgramBar[] }> {
+    const stale = (message = "The programme changed after the preview. Review the updated cascade before confirming again.") => {
+      const error: any = new Error(message);
+      error.code = "REVISION_STALE";
+      return error;
+    };
+    try {
+      return await db.transaction(async (tx) => {
+      // The project row is the shared lock with calendar-origin realignment.
+      // Lock it first in both flows so dates and month indices always use one
+      // stable axis.
+      const [lockedProject] = await tx.select()
+        .from(boqProjects)
+        .where(eq(boqProjects.id, input.projectId))
+        .for("update");
+      if (!lockedProject || lockedProject.startDate !== input.expectedProjectStart) {
+        throw stale("The project start date changed after the preview. Review the programme on the updated calendar before confirming again.");
+      }
+
+      // Lock the entire project schedule in deterministic order. Candidate
+      // selection is project-wide, so locking only the bars that the old plan
+      // happened to shift would leave phantom/missed-successor races.
+      const locked = await tx.select()
+        .from(workProgramBars)
+        .where(eq(workProgramBars.boqProjectId, input.projectId))
+        .orderBy(workProgramBars.id)
+        .for("update");
+      const byId = new Map(locked.map((bar) => [bar.id, bar]));
+
+      const snapshotBar = (bar: any) => ({
+        id: Number(bar.id),
+        boqItemId: Number(bar.boqItemId),
+        chainageFrom: bar.chainageFrom != null ? Number(bar.chainageFrom) : null,
+        chainageTo: bar.chainageTo != null ? Number(bar.chainageTo) : null,
+        startMonth: Number(bar.startMonth),
+        endMonth: Number(bar.endMonth),
+        startDate: bar.startDate ?? null,
+        endDate: bar.endDate ?? null,
+        plannedQty: Number(bar.plannedQty ?? 0),
+      });
+      const lockedSnapshot = locked.map(snapshotBar);
+      const expectedSnapshot = [...input.expectedBars]
+        .sort((a, b) => a.id - b.id)
+        .map(snapshotBar);
+      if (JSON.stringify(lockedSnapshot) !== JSON.stringify(expectedSnapshot)) {
+        throw stale();
+      }
+
+      // Re-read evidence after the schedule rows are locked. The serializable
+      // transaction gives this revision a clear ordering against concurrent
+      // DPR submissions; evidence already committed before this point is
+      // mandatory input to the recomputed plan.
+      const lockedEvidence = await this.getWorkProgrammeExecutionEvidence(
+        input.projectId,
+        locked as WorkProgramBarWithItem[],
+        tx,
+      );
+      const evidenceIds = locked.map((bar) => bar.id).sort((a, b) => a - b);
+      const expectedEvidence = new Map(input.expectedEvidence.map((row) => [row.id, row]));
+      for (const id of evidenceIds) {
+        const actual = lockedEvidence.get(id) ?? { reportedQty: 0, earliestProgressDate: null };
+        const expected = expectedEvidence.get(id) ?? { reportedQty: 0, earliestProgressDate: null };
+        if (
+          Math.abs(Number(actual.reportedQty) - Number(expected.reportedQty)) > 1e-8
+          || actual.earliestProgressDate !== expected.earliestProgressDate
+        ) {
+          throw stale("Work progress changed after the preview. Review the updated execution state before confirming again.");
+        }
+      }
+
+      const toRevisionBar = (bar: any): RevisionBar => ({
+        id: Number(bar.id),
+        boqProjectId: Number(bar.boqProjectId),
+        boqItemId: Number(bar.boqItemId),
+        chainageFrom: bar.chainageFrom != null ? Number(bar.chainageFrom) : null,
+        chainageTo: bar.chainageTo != null ? Number(bar.chainageTo) : null,
+        startDate: String(bar.startDate),
+        endDate: String(bar.endDate),
+        plannedQty: Number(bar.plannedQty ?? 0),
+      });
+      const sourceLocked = byId.get(input.source.id);
+      if (!sourceLocked?.startDate || !sourceLocked.endDate) throw stale();
+      const replanned = planScheduleRevision({
+        sourceBar: toRevisionBar(sourceLocked),
+        allProjectBars: locked
+          .filter((bar) => bar.startDate && bar.endDate)
+          .map(toRevisionBar),
+        evidenceMap: lockedEvidence as Map<number, BarEvidence>,
+        requestedStart: input.requestedStart,
+        requestedEnd: input.requestedEnd,
+        cascade: input.cascade,
+      });
+      const plannedShifted = [...input.shifted].sort((a, b) => a.id - b.id);
+      const recomputedShifted = [...replanned.shifted].sort((a, b) => a.id - b.id);
+      if (
+        replanned.revisedSource.startDate !== input.source.startDate
+        || replanned.revisedSource.endDate !== input.source.endDate
+        || plannedShifted.length !== recomputedShifted.length
+        || plannedShifted.some((bar, index) =>
+          bar.id !== recomputedShifted[index].id
+          || bar.startDate !== recomputedShifted[index].startDate
+          || bar.endDate !== recomputedShifted[index].endDate)
+      ) {
+        throw stale();
+      }
+
+      const assertCurrent = (planned: {
+        id: number;
+        expectedStartDate: string;
+        expectedEndDate: string;
+      }) => {
+        const current = byId.get(planned.id)!;
+        if (current.startDate !== planned.expectedStartDate || current.endDate !== planned.expectedEndDate) {
+          throw stale();
+        }
+        return current;
+      };
+
+      const sourceCurrent = assertCurrent(input.source);
+      const [source] = await tx.update(workProgramBars).set({
+        startDate: input.source.startDate,
+        endDate: input.source.endDate,
+        startMonth: dateToMonthIndexCal(input.source.startDate, lockedProject.startDate),
+        endMonth: finishDateInputToIdx(input.source.endDate, lockedProject.startDate),
+        source: "manual",
+        baselineStartDate: captureInitialBaseline(sourceCurrent.baselineStartDate, sourceCurrent.startDate),
+        baselineEndDate: captureInitialBaseline(sourceCurrent.baselineEndDate, sourceCurrent.endDate),
+        revisionHistory: appendRevisionHistory(sourceCurrent.revisionHistory, input.source.historyEntry),
+      }).where(eq(workProgramBars.id, input.source.id)).returning();
+
+      const shiftedRows: WorkProgramBar[] = [];
+      for (const planned of input.shifted) {
+        const current = assertCurrent(planned);
+        const [updated] = await tx.update(workProgramBars).set({
+          startDate: planned.startDate,
+          endDate: planned.endDate,
+          startMonth: dateToMonthIndexCal(planned.startDate, lockedProject.startDate),
+          endMonth: finishDateInputToIdx(planned.endDate, lockedProject.startDate),
+          baselineStartDate: captureInitialBaseline(current.baselineStartDate, current.startDate),
+          baselineEndDate: captureInitialBaseline(current.baselineEndDate, current.endDate),
+          revisionHistory: appendRevisionHistory(current.revisionHistory, planned.historyEntry),
+        }).where(eq(workProgramBars.id, planned.id)).returning();
+        shiftedRows.push(updated);
+      }
+
+      return { source, shifted: shiftedRows };
+      }, { isolationLevel: "serializable" });
+    } catch (error: any) {
+      if (error?.code === "40001") throw stale();
+      throw error;
+    }
   }
 
   // Batch 1 Part E: side + chainage of every counted progress entry per bar —
@@ -24112,7 +24578,7 @@ export class DatabaseStorage implements IStorage {
   }>): Promise<void> {
     await db.delete(workProgramBars).where(eq(workProgramBars.boqProjectId, boqProjectId));
     for (const b of bars) {
-      await db.insert(workProgramBars).values({ ...b, boqProjectId } as any);
+      await this.upsertWorkProgramBar({ ...b, boqProjectId } as any);
     }
   }
 
