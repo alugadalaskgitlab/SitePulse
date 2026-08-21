@@ -1,0 +1,402 @@
+INSTRUCTION 06W — WORK PROGRAMME MANUAL REVISION + AUTO-CASCADE + BOQ STATUS CHIP
+(Revised — two corrections folded in before sending, see note below)
+
+Do not start any other work until this is verified.
+
+--------------------------------------------------
+REVISION NOTE (read first)
+--------------------------------------------------
+Two corrections were made to the original draft of this batch before
+sending, both accepted in full:
+1. Successor protection (§3) must be based on ACTUAL EXECUTION EVIDENCE
+   (submitted progress against the bar), never on whether the bar's old
+   planned start date happens to be in the past. A date-based rule would
+   have broken the exact real-world case this batch exists to fix: once
+   Clearing & Grubbing slips, GSB's original planned start date passes
+   with GSB never having actually started — that must NOT freeze GSB in
+   place.
+2. Baseline (§1) must be captured the moment a bar's schedule is FIRST
+   committed (auto-sequence generation or manual placement) — not
+   deferred until someone eventually revises it. If Auto Sequence is
+   regenerated before any manual revision ever happens, waiting would
+   lose the true original programme.
+A related observation: the successor-selection rule in §3 finds every bar
+matching the rule in one pass — it is not restricted to only the
+immediately-next bar in a chain. That is left as-is; Replit should report
+back exactly what gets selected in a real multi-bar chain scenario (§10)
+rather than this instruction pre-designing multi-hop behaviour.
+
+--------------------------------------------------
+BACKGROUND / CONFIRMED CURRENT STATE (read before coding)
+--------------------------------------------------
+Real case that motivates this batch: TAKKADPALLY-SIRUR. Clearing & Grubbing
+and Scarifying could not be executed in their auto-sequenced duration for
+site reasons. The successor activities on the same stretch (Sub-base/GSB
+etc.) still show their original auto-sequenced dates, which no longer make
+sense once the activities ahead of them have slipped. Today there is no way
+for a PM/Admin to say "this activity actually finished on X" and have the
+programme adjust downstream — every revision has to be redone by hand, bar
+by bar, with no record of why.
+
+Confirmed directly against `shared/schema.ts` (`work_program_bars` table)
+and `shared/programmeSequencer.ts` before drafting this:
+- Each bar belongs to ONE `boqItemId` + a chainage stretch
+  (`chainageFrom`/`chainageTo`, `reachLabel`, `side`). A road stretch is
+  covered by a SEPARATE bar per BOQ item — e.g. Clearing & Grubbing,
+  Excavation, Sub-base, WMM each have their own bar over roughly the same
+  chainage. There is no bar that spans multiple BOQ items.
+- `startMonth`/`endMonth` (fractional month numbers) are the values the
+  auto-sequencer actually computes and chains together; `startDate`/
+  `endDate` are real calendar dates derived from them + the project start
+  date. Bars are ordered across BOQ items by an internal, computed
+  "track + stage" classification (`stageByWorkCategory()` in
+  programmeSequencer.ts — e.g. Site Clearance → Earthwork → Sub-base/Base
+  → Bituminous, and similarly for structures) that runs once at
+  auto-sequence generation time. This ordering is NOT stored anywhere as an
+  explicit "bar A must come after bar B" link on the bar row itself — it
+  only exists as an output (the computed start/end dates).
+- `source` ("manual" | "auto-sequence") already exists and is already used
+  for non-destructive reruns: when the auto-sequencer is re-run, it deletes
+  and regenerates only bars tagged `source = 'auto-sequence'`; bars tagged
+  `manual` are left untouched (confirmed in server/storage.ts, the
+  migration that backfills this tag). This is the exact mechanism to reuse
+  for protecting a manually revised bar from being silently overwritten by
+  a later auto-sequence rerun — do not invent a second flag for this.
+- `sequenceOrder` on this table is NOT a general cross-item ordering field
+  — the schema comment confirms it is specifically reused for
+  structure-import STAGE grouping within one `structureId` (e.g. PCC → RCC
+  foundation for one bridge). Do not repurpose it for road-stretch
+  successor logic; it means something else and is used elsewhere.
+- `isQtyOverride`/`isDurationOverride`/`manualQtyFraction`-style fields
+  already give the PM a way to hand-adjust QUANTITY split across stretches.
+  This batch is about DATES only — do not touch or duplicate the quantity
+  override mechanism.
+- Precedent for a revision audit trail already exists and works: the
+  `earthwork_arrangements` PATCH handler appends to a `revisionHistory`
+  jsonb array — `{type, previous, changes, reason, changedByUserId,
+  changedAt}` — on every operational edit. Reuse this exact shape for
+  programme bars; do not invent new plumbing.
+
+Because there is no stored predecessor/successor link, "successor" for
+this batch must be computed at revision time, not looked up from a stored
+field. See §3 below for the exact rule — it deliberately reuses the
+chainage-overlap helper (`chainageRangesOverlap`) already used by the
+arrangement-to-bar auto-allocation code, rather than reimplementing
+overlap math a second time.
+
+--------------------------------------------------
+1. WHAT COUNTS AS "ACTUALLY STARTED" / "COMPLETED" (shared definition)
+--------------------------------------------------
+This single definition is used both by §2 (editing the bar being revised)
+and §3 (deciding whether to move a successor). Always use actual execution
+evidence — never infer from calendar dates alone.
+  - NOT STARTED: no progress_entries row exists linked to this bar
+    (matched the same way DPR already links progress to a bar — via
+    `programmeBarId` or the existing boqItemId+chainage match used by
+    ActivityReceiptStrip/DPR) with a real recorded quantity. A
+    `noSiteWork`-only entry does not count as started.
+  - ACTUALLY STARTED: at least one such progress_entries row exists.
+    Its effective actual-start = the earliest linked entry's date.
+  - COMPLETED: cumulative recorded progress on the bar/item meets or
+    exceeds `plannedQty` — reuse whichever completeness check the app
+    already uses elsewhere for this (the same one §7's BOQ chip relies
+    on) rather than writing a second one.
+
+--------------------------------------------------
+2. SCHEMA — INVESTIGATE, PROPOSE, STOP FOR APPROVAL BEFORE WRITING ANY MIGRATION
+--------------------------------------------------
+Confirm the `work_program_bars` columns listed above still match what you
+find in the live schema, then propose the minimum additive columns needed.
+Our own expectation, for you to confirm or revise:
+  - `baselineStartDate` (date, nullable), `baselineEndDate` (date, nullable)
+    — the FIRST schedule ever committed for this bar (see §4 for exactly
+    when this is set — it is NOT deferred to first manual revision).
+  - `revisionHistory` (jsonb, default '[]') — same shape as the
+    `earthwork_arrangements` pattern described above.
+Do not add a new "locked" or "revised" boolean — reuse `source = 'manual'`
+for revision protection as described above.
+Report back the exact proposed columns (names, types, defaults) and WAIT
+for explicit sign-off before writing the migration — same stop-gate used
+for Batch 06V. Write the migration with defensive
+`ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS ...` statements for
+every new column (06V shipped without this ensure for its two new columns
+and it had to be caught and checked manually before publish — do not
+repeat that omission here).
+Also confirm: does a helper already exist that converts a calendar date to
+the fractional `startMonth`/`endMonth` value (the inverse of the existing
+"derived from startMonth + projectStartDate" conversion mentioned in the
+schema comment)? If yes, reuse it for §5 below. If no such inverse helper
+exists, report that back before writing one, since getting this wrong
+would desync the month-based and date-based views of the same bar.
+
+--------------------------------------------------
+3. "REVISE SCHEDULE" ACTION ON A WORK PROGRAMME BAR
+--------------------------------------------------
+Add a "Revise Schedule" action on a bar (Work Programme screen — PM/Admin
+only, same permission gate as other programme edits). Its available fields
+depend on the bar's own state per §1:
+  - NOT STARTED: Revised Start and Revised Finish may both be entered.
+  - ACTUALLY STARTED: Revised Start is locked to the bar's effective
+    actual-start date (per §1) and is not editable — do not let the PM
+    rewrite or move actual start history backward or forward. Only
+    Revised Finish (equivalently, remaining duration) is editable.
+  - COMPLETED: the action is disabled — show "Completed — schedule cannot
+    be revised" rather than a dialog.
+Reason (mandatory free text) and the "Re-sequence following activities"
+toggle (default ON) apply whenever any revision is allowed at all.
+
+On submit:
+  a. See §4 for baseline handling — a revision never touches baseline.
+  b. Recompute `startMonth`/`endMonth` from the entered/locked dates using
+     the inverse helper confirmed in §2 (do not hand-roll new date math).
+  c. Set `startDate`/`endDate` to the resulting values.
+  d. Set `source = 'manual'` on this bar (protects it from being deleted/
+     regenerated by a future auto-sequence rerun, per the existing
+     mechanism).
+  e. Append one entry to `revisionHistory`: `{type: "schedule_revision",
+     previous: {startDate, endDate}, changes: {startDate, endDate}, reason,
+     reSequenceRequested: <toggle value>, changedByUserId, changedAt}`.
+  f. If the toggle is ON, run the cascade in §5 and show the confirmation
+     summary in §6 before committing anything for the successor bars.
+
+--------------------------------------------------
+4. BASELINE MUST BE CAPTURED AT FIRST COMMIT, NOT AT FIRST REVISION
+--------------------------------------------------
+`baselineStartDate`/`baselineEndDate` mean the FIRST schedule ever
+committed for a bar — this must be true from the moment the bar exists,
+not from whenever someone first revises it.
+  - When a bar is first created (auto-sequence generation OR manual
+    placement) and receives its initial `startDate`/`endDate`, set
+    `baselineStartDate`/`baselineEndDate` to those same values in that
+    same write. Set once.
+  - Never overwrite baseline afterward — not on auto-sequence rerun, not
+    on a manual schedule revision (§3), not on a cascade shift (§5).
+  - One-time backfill for bars that already exist in the database when
+    this feature ships: if `baselineStartDate`/`baselineEndDate` are null,
+    initialise them once from that bar's CURRENT `startDate`/`endDate` at
+    migration/startup time, since the true original schedule for bars
+    created before this feature existed cannot be safely reconstructed —
+    do not invent or guess an earlier date. After this one-time
+    initialisation, baseline is immutable for that bar exactly like any
+    other bar.
+This makes Baseline consistently mean "the original committed programme"
+and Current consistently mean "the latest working programme," so reports
+can honestly say "original baseline vs current revised schedule" for
+every bar, not just ones that happened to be revised after this feature
+shipped.
+
+--------------------------------------------------
+5. SUCCESSOR RULE (CHAINAGE + EVIDENCE-BASED PROTECTION)
+--------------------------------------------------
+Successors of the revised bar = other bars in the SAME `boqProjectId`
+whose chainage range overlaps the revised bar's chainage range (reuse
+`chainageRangesOverlap`, do not reimplement), AND whose current
+`startDate` was already on/after the revised bar's ORIGINAL `endDate`
+(i.e., the auto-sequencer had already scheduled them to begin once this
+bar finished). Exclude the revised bar itself. This correctly reaches
+across DIFFERENT BOQ items on the same stretch — e.g. Clearing & Grubbing
+delaying Excavation delaying Sub-base — without needing to touch or
+duplicate the internal track/stage classification in
+programmeSequencer.ts.
+
+Note: this rule is evaluated in one pass and may match more than one bar
+down a chain (e.g. if C's planned start is already after A's original
+end, C can match directly as a "successor of A," not only B). This
+instruction does not attempt to restrict that to a strict single link —
+report back in §10 exactly what gets selected for a real multi-bar chain
+so we can decide together whether any refinement is actually needed,
+rather than guessing now.
+
+For each candidate successor bar, classify it per §1:
+  - NOT STARTED: shiftable. Shift both `startDate` and `endDate` by
+    `delta` days (= new revised `endDate` − original `endDate` of the
+    bar being revised; may be negative), duration unchanged, and
+    recompute `startMonth`/`endMonth` via the inverse helper. Add it to
+    the "shifted" list.
+  - ACTUALLY STARTED or COMPLETED (evidence-based, per §1 — never because
+    its old planned start date merely happens to be in the past): do not
+    move it. Add it to the "not shifted" list with the real reason
+    ("already started" / "completed").
+Do not touch `plannedQty` or any override flags on successor bars — this
+is a date shift only.
+
+--------------------------------------------------
+6. CONFIRMATION BEFORE COMMITTING THE CASCADE
+--------------------------------------------------
+Before saving anything to successor bars, show the PM an explicit summary:
+"This will shift N activities: [reach/BOQ item label, old dates → new
+dates, for each]. M activities already started/completed and will NOT be
+moved: [reach/BOQ item label + reason, for each]." Require an explicit
+Confirm before applying. This mirrors the explicit-choice principle from
+Batch 06V — SitePulse must never silently reschedule work across the
+programme without the PM seeing exactly what will move. If the toggle in
+§3 was OFF, skip this entirely — only the revised bar's own schedule
+changes.
+Each successor bar that IS shifted also gets its own `revisionHistory`
+entry: `{type: "cascade_shift", previous: {startDate, endDate}, changes:
+{startDate, endDate}, reason: "cascaded from revision of <source bar
+label>", changedByUserId, changedAt}` — so a successor's history shows WHY
+it moved, not just that it moved.
+
+--------------------------------------------------
+7. BASELINE VS CURRENT DISPLAY (WORK PROGRAMME SCREEN)
+--------------------------------------------------
+Show baseline and current schedule side by side for any bar whose current
+dates differ from baseline — e.g. a compact "Baseline: 12–18 Aug ·
+Current: 16–22 Aug (+4d)" style label or a faint baseline outline behind
+the current bar; exact visual is your call, but both dates and the
+day-delta must be visible without opening a detail view. Bars still equal
+to baseline show only the single schedule as today, no visual change. A
+bar's full `revisionHistory` should be viewable on demand (e.g. a small
+"History" link/icon) — do not require opening a separate screen for
+anything beyond that detail.
+
+--------------------------------------------------
+8. PLANNED-VS-ACTUAL / PROGRESS REPORT COMPARISON BASE
+--------------------------------------------------
+Reports and Plan-vs-Actual views that compare progress against the
+programme must compare against the CURRENT schedule (post-revision), not
+the original baseline — the current schedule is what the team is actually
+working to now. Where a report already shows variance/delay, it may
+additionally reference the baseline for context (e.g. "4 days behind
+original baseline, on track against revised schedule") but current must
+remain the primary comparison. Reuse whatever Planned-vs-Actual
+computation already exists — this batch changes the SOURCE dates it reads
+(current, unchanged in field name), not the comparison logic itself.
+
+--------------------------------------------------
+9. BOQ PAGE — COMPACT PROGRAMME-STATUS CHIP ONLY
+--------------------------------------------------
+On the BOQ item row, add one compact status chip: Not Programmed / Planned
+/ In Progress / Delayed / Completed. Derive it, do not store it (avoid a
+redundant field that can drift from the real bar/progress data):
+  - Not Programmed: no bar exists for this item (or only a
+    `not_plannable_without_input` placeholder).
+  - Completed: per §1's completed definition.
+  - Delayed: not completed, and today is past the CURRENT `endDate` of at
+    least one of the item's bars.
+  - In Progress: not completed, not delayed, and per §1 at least one bar
+    is ACTUALLY STARTED, or today falls within the current start/end
+    window.
+  - Planned: not completed, not delayed, NOT STARTED per §1, and today is
+    before the current start date.
+Clicking the chip navigates to the item's bars on the Work Programme
+screen. No schedule-editing capability on the BOQ page itself — that
+stays exclusively on Work Programme. This is the only BOQ-page change in
+this batch; the separate header-line display issue on
+BoqProjectDetail.tsx (garbled multi-field project header) is NOT part of
+this batch — flag back to us separately whether that project header text
+itself contains embedded line breaks in the stored data, but do not fix
+it here.
+
+--------------------------------------------------
+10. WHAT NOT TO TOUCH
+--------------------------------------------------
+- No change to `programmeSequencer.ts`'s track/stage classification,
+  auto-sequence generation algorithm, or quantity-splitting
+  (`isQtyOverride`/`manualQtyFraction`) logic — this batch only adds a
+  manual date-revision path alongside it.
+- No change to `sequenceOrder`/`stage` as used by the Structure Schedule
+  Import feature (029B/Task #1240) — different, existing, unrelated use of
+  those same column names on the same table. Structures may use the
+  revision feature too (they are bars on the same table), but their
+  existing stage-grouping fields are not to be modified.
+- No change to Execution Arrangement auto-allocation
+  (`arrangementAllocationSync.ts`, `arrangementAutoAllocation.ts`) or its
+  `AUTO_SYNC_STATUSES` trigger conditions.
+- No change to DPR/progress-entry code, Guided or Detailed DPR, or the
+  06T/06T-HF/06V behaviour already verified and shipped.
+- No BOQ page changes beyond the one status chip in §9.
+- No quantity revision of any kind — dates only.
+
+--------------------------------------------------
+11. TESTS
+--------------------------------------------------
+A. Reviving the TAKKADPALLY-SIRUR case directly: revise Clearing &
+   Grubbing's finish date later; confirm Scarifying/next-stage bars on the
+   same stretch (different BOQ items) are correctly identified as
+   successors and shift by the same delta.
+B. A successor bar with submitted progress against it is correctly
+   protected (not moved) and appears in the "not shifted" list with the
+   real reason.
+C. Baseline is captured on first-ever commit (auto-sequence generation OR
+   manual placement), not deferred to first revision; a later revision of
+   the same bar does not change the stored baseline.
+E. `source` flips to `manual` on a revised bar; a subsequent auto-sequence
+   rerun does not delete or regenerate it, while unrevised
+   `auto-sequence` bars in the same rerun are still correctly
+   regenerated.
+F. `startMonth`/`endMonth` correctly recomputed from entered dates via the
+   inverse helper — no drift between the date-based and month-based views
+   of the same bar afterward.
+G. Toggle OFF: only the revised bar changes; zero successor bars touched,
+   zero cascade revisionHistory entries created.
+H. Confirmation summary lists the correct shifted and not-shifted bars,
+   with correct old→new dates, before anything is committed; cancelling
+   at that point saves nothing.
+I. `revisionHistory` entries (both `schedule_revision` and
+   `cascade_shift` types) contain the full required shape and are
+   append-only — never overwritten.
+J. Negative delta (finish pulled earlier) shifts successors earlier by
+   the same amount, respecting the same evidence-based protection rules.
+K. BOQ status chip returns the correct one of the five states across:
+   no bar, future-dated bar, in-window with progress, past-end-date with
+   incomplete progress, and fully completed.
+L. Planned-vs-Actual/report views read the CURRENT schedule after a
+   revision, not the stale baseline.
+M. No change to quantity fields (`plannedQty`, `isQtyOverride`) on any
+   bar touched by this feature (regression).
+N. No change to Execution Arrangement auto-allocation behaviour
+   (regression — approving/changing an arrangement still auto-allocates
+   exactly as before).
+O. No change to structure-import stage/sequenceOrder behaviour
+   (regression).
+P. Past planned start but NOT actually started (no linked progress):
+   successor remains shiftable — this is the exact Takkadpally-Sirur
+   GSB scenario and must pass.
+Q. Past planned start WITH submitted progress: successor is protected and
+   listed as not shifted, with "already started" as the reason.
+R. First programme creation (auto-sequence generation, and separately
+   manual placement) stores baseline dates immediately, in the same write
+   as the initial schedule — not on a later revision.
+S. An auto-sequence rerun and a manual schedule revision both leave an
+   existing baseline untouched.
+T. An existing pre-feature bar with null baseline receives exactly one
+   safe initialisation from its current schedule at migration/startup,
+   and is immutable after that.
+U. Revising a bar classified ACTUALLY STARTED locks Revised Start to its
+   effective actual-start date and only accepts a changed Revised Finish;
+   a COMPLETED bar's Revise Schedule action is disabled entirely.
+
+Run focused tests and the full suite.
+
+--------------------------------------------------
+12. REPORT BACK
+--------------------------------------------------
+A. Exact schema columns added, with the `ADD COLUMN IF NOT EXISTS`
+   migration text shown in full.
+B. Confirmation of the date↔month inverse helper used (existing, reused —
+   or newly written and why).
+C. Confirmation the successor rule is chainage-overlap + original-date
+   based (not a stored link), reusing `chainageRangesOverlap`, and exactly
+   what bars it selects in a real multi-bar chain test case (per the note
+   in §5 — do not silently narrow or widen this without telling us).
+D. Confirmation `source = 'manual'` is the sole protection mechanism used
+   (no new locked/revised flag added).
+E. Confirmation baseline is captured at first commit (not first revision)
+   for both auto-sequence generation and manual placement, plus how the
+   one-time historical backfill was implemented.
+F. Confirmation the NOT STARTED / ACTUALLY STARTED / COMPLETED
+   classification in §1 is evidence-based (linked progress), not
+   calendar-date based, and is the same logic used by §3, §5, and §9.
+G. Screenshots/description of: the Revise Schedule dialog (including the
+   locked-start case for an actually-started bar), the confirmation
+   summary (shifted vs not-shifted), and the Baseline vs Current display
+   on the Work Programme screen.
+H. Screenshot/description of the BOQ status chip in at least two of the
+   five states.
+I. Confirmation nothing in §10 (What Not To Touch) was touched.
+J. Focused and full test results, and a tsc error-signature diff against
+   the last verified build.
+
+DO NOT START ANOTHER BATCH.
