@@ -19,6 +19,7 @@ const routesSrc = read("server/routes.ts");
 const stripSrc = read("client/src/components/ActivityReceiptStrip.tsx");
 const standaloneSrc = read("client/src/pages/SiteMaterialTrips.tsx");
 const schemaSrc = read("shared/schema.ts");
+const procurementRouteMigration = read("migrations/0018_plant_materials_procurement_route_no_default.sql");
 
 describe("06S supply responsibility helper (Test A groundwork)", () => {
   it("agency-supplied arrangement types skip the PI lookup entirely", () => {
@@ -58,8 +59,10 @@ describe("06S §1 hardening — unconfigured route never defaults into Stores (T
   it("no silent Stores default anywhere: schema has no default, form forces a choice, recordDelivery needs explicit stores", () => {
     // schema: null = unconfigured, never defaulted to 'stores'
     expect(schemaSrc).not.toContain(`procurementRoute: text("procurement_route").default("stores")`);
-    // live DBs: column default dropped at startup
-    expect(storageSrc).toContain("ALTER TABLE plant_materials ALTER COLUMN procurement_route DROP DEFAULT");
+    // DB source of truth: versioned migration drops the legacy default.
+    expect(procurementRouteMigration).toContain("ALTER COLUMN procurement_route DROP DEFAULT");
+    // Runtime startup is not the schema authority and must not mask DB drift.
+    expect(storageSrc).not.toContain("ALTER TABLE plant_materials ALTER COLUMN procurement_route DROP DEFAULT");
     // Material Master form: no preselected route; submit blocked until chosen
     const plantSrc = read("client/src/pages/Plant.tsx");
     expect(plantSrc).toContain(`useState("")`);

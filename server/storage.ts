@@ -11517,11 +11517,6 @@ export class DatabaseStorage implements IStorage {
         ADD COLUMN IF NOT EXISTS unloaded_at text,
         ADD COLUMN IF NOT EXISTS yard_label text
     `));
-    // 06S §1: plant_materials.procurement_route must have NO implicit default —
-    // null means "not configured", and unconfigured must never behave as Stores.
-    await db.execute(sql.raw(`
-      ALTER TABLE plant_materials ALTER COLUMN procurement_route DROP DEFAULT
-    `));
   }
 
   // ── 06S §2: PROCUREMENT MATCH RESOLVER ─────────────────────────────────────

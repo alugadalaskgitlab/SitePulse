@@ -53,3 +53,6 @@ Replit Publishing diffs the **Replit-managed dev DB (heliumdb via workspace DATA
 ## Publish migration drift trap (Aug 2026)
 - Replit publishing diffs the built-in dev DB (DATABASE_URL) against production — but the dev server runs on sitelog_dev, so runtime startup `ensure*` ALTERs never reach DATABASE_URL. Result: publish proposed DROP COLUMN for prod columns "missing" in dev (nearly deleted earthwork_arrangements.scope_segment_ids data).
 - **How to apply:** whenever a startup script adds a column, mirror it into DATABASE_URL too (or before publishing, apply the missing ADD COLUMNs there). Never approve a publish migration containing DROP without checking this drift first.
+- Drift checks must compare column defaults and nullability as well as column presence. A runtime `DROP DEFAULT` can make sitelog_dev look correct while DATABASE_URL still carries a legacy default that Publish tries to restore in production.
+- **Why:** Publish once proposed restoring an obsolete Stores default even though the Drizzle schema and production were correct; only the Publish-facing development database was stale.
+- **How to apply:** keep default changes in the versioned schema/migrations, align DATABASE_URL to that source of truth, and remove runtime-only DDL that masks the mismatch.
