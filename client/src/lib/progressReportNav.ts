@@ -5,6 +5,10 @@
  * drilling into a DPR and coming back (via the DPR page's `returnTo`) restores
  * the exact report context. Pure functions — unit-tested in
  * tests/progressReportNav.test.ts.
+ *
+ * Batch 06V additions:
+ *  - overlapAnchor: preserved in URL to reopen Overlap Review panel on Back
+ *  - editActivityLink: deep-link to SiteEdit with progressEntryId + returnTo
  */
 
 export type ProgressReportTab = "item" | "chainage" | "date";
@@ -24,6 +28,12 @@ export interface ProgressReportState {
   chFrom: string;
   chTo: string;
   chSide: string;
+  /**
+   * 06V: When non-empty, scrolls the Overlap Review panel open and anchors to
+   * the specific pair key "<entryId>:<withEntryId>". "open" = panel open
+   * (no specific anchor). Empty = no anchor, panel closed.
+   */
+  overlapAnchor: string;
 }
 
 export const DEFAULT_STATE: ProgressReportState = {
@@ -38,6 +48,7 @@ export const DEFAULT_STATE: ProgressReportState = {
   chFrom: "",
   chTo: "",
   chSide: "",
+  overlapAnchor: "",
 };
 
 const TABS: ReadonlySet<string> = new Set(["item", "chainage", "date"]);
@@ -63,6 +74,7 @@ export function parseReportState(search: string): ProgressReportState {
     chFrom: pick("chFrom"),
     chTo: pick("chTo"),
     chSide: pick("chSide"),
+    overlapAnchor: pick("overlapAnchor"),
   };
 }
 
@@ -70,7 +82,8 @@ export function parseReportState(search: string): ProgressReportState {
 export function buildReportSearch(state: ProgressReportState): string {
   const sp = new URLSearchParams();
   (Object.keys(DEFAULT_STATE) as Array<keyof ProgressReportState>).forEach((k) => {
-    if (state[k] && state[k] !== DEFAULT_STATE[k]) sp.set(k, state[k]);
+    const v = state[k];
+    if (v && v !== DEFAULT_STATE[k]) sp.set(k, v);
   });
   const s = sp.toString();
   return s ? `?${s}` : "";
@@ -87,6 +100,27 @@ export function progressReportUrl(state: ProgressReportState): string {
  */
 export function dprLinkWithReturn(dprId: number, state: ProgressReportState): string {
   return `/site/report/${dprId}?returnTo=${encodeURIComponent(progressReportUrl(state))}`;
+}
+
+/**
+ * 06V: Deep-link to /site/edit/:dprId with progressEntryId and returnTo.
+ * Opens the SiteEdit page and pre-scrolls/highlights the given progress entry.
+ * returnTo encodes the FULL current report URL so Back restores the exact
+ * report context including the expanded overlap anchor.
+ */
+export function editActivityLink(dprId: number, entryId: number, state: ProgressReportState): string {
+  const returnTo = encodeURIComponent(progressReportUrl(state));
+  return `/site/edit/${dprId}?progressEntryId=${entryId}&returnTo=${returnTo}`;
+}
+
+/** Any non-empty anchor opens the review; "open" has no pair-specific target. */
+export function isOverlapReviewOpen(anchor: string): boolean {
+  return anchor.trim() !== "";
+}
+
+/** Return the safe DOM id for a persisted numeric pair key, else no target. */
+export function overlapReviewTargetId(anchor: string): string | null {
+  return /^\d+:\d+$/.test(anchor) ? `overlap-pair-${anchor}` : null;
 }
 
 /**

@@ -377,6 +377,17 @@ export default function SiteReport() {
                     <TableRow key={i} data-testid={`row-progress-${i}`}>
                       <TableCell className="font-medium max-w-[320px]">
                         <div title={item.activity}>{shortItemName(item.activity) || item.activity}</div>
+                        {/* Batch 06V: incidental badge — shown in the activity cell */}
+                        {item.isIncidental && (
+                          <div className="mt-1">
+                            <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">
+                              Incidental / Non-BOQ · No BOQ Credit
+                            </Badge>
+                            {item.incidentalDescription && (
+                              <div className="text-xs text-muted-foreground mt-0.5">{item.incidentalDescription}</div>
+                            )}
+                          </div>
+                        )}
                         {personnelNames && (
                           <div className="text-sm text-muted-foreground mt-1">Personnel: {personnelNames}</div>
                         )}

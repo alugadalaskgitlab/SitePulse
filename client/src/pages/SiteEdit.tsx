@@ -14,7 +14,7 @@ import { deriveDprUom, computeDprQty } from "@/lib/dprUom";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -38,8 +38,12 @@ import { boqItemDisplayName } from "@shared/boqItemName";
 import { layerFieldLabel } from "@shared/layerDisplay";
 import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
+import { parseDprError } from "@/lib/dprErrors";
+import { resolveReturnTo } from "@/lib/progressReportNav";
 
 interface ProgressEntry {
+  /** Client-only database id for exact-row report deep links; stripped on save. */
+  persistedId?: number;
   // Batch 06C §22: stable photo-link key (same semantics as Guided/New DPR).
   entryKey: string;
   activity: string;
@@ -65,6 +69,9 @@ interface ProgressEntry {
   executedBy: string;
   // 06P: optional physical layer/lift number; null = not multi-layer.
   layerNo: number | null;
+  // Batch 06V: Incidental / Non-BOQ — recorded but earns no BOQ credit.
+  isIncidental: boolean;
+  incidentalDescription: string;
 }
 
 interface EquipmentEntry {
@@ -174,6 +181,7 @@ function mapDprToFormState(dpr: any) {
         // Batch 06C §22: keep the row's entryKey through edits — photos are
         // linked to it, and progress rows are wholesale-replaced on save.
         entryKey: p.entryKey || newEntryKey(),
+        persistedId: p.id != null ? Number(p.id) : undefined,
         activity: p.activity || "",
         side: p.side || "",
         chainageFrom: p.chainageFrom || "",
@@ -200,8 +208,10 @@ function mapDprToFormState(dpr: any) {
         chainageOverrideReason: p.chainageOverrideReason || "",
         executedBy: p.executedBy || "",
         layerNo: p.layerNo != null ? Number(p.layerNo) : null,
+        isIncidental: !!p.isIncidental,
+        incidentalDescription: p.incidentalDescription || "",
       }))
-    : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }];
+    : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }];
 
   const equipment: EquipmentEntry[] = dpr.equipment?.length
     ? dpr.equipment.map((e: any) => ({
@@ -273,6 +283,14 @@ export default function SiteEdit() {
   const id = parseInt(params?.id || "0");
   const backToReport = appendOrigin(`/site/report/${id}`);
   const DRAFT_KEY = `dpr_draft_${id}`;
+  const _searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const _returnTo = _searchParams.get("returnTo");
+  const _validatedReturnTo = resolveReturnTo(
+    typeof window !== "undefined" ? window.location.search : "",
+    backToReport,
+  );
+  const editBackHref = _returnTo ? _validatedReturnTo : backToReport;
+  const _progressEntryId = _searchParams.get("progressEntryId");
 
   const isCompleteMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('complete');
 
@@ -406,7 +424,7 @@ export default function SiteEdit() {
   });
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
+    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }
   ]);
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
@@ -421,6 +439,7 @@ export default function SiteEdit() {
     chainageOverrideReason: p.chainageOverrideReason,
     label: p.activity,
     noSiteWork: p.noSiteWork,
+    isIncidental: p.isIncidental,
     layerNo: p.layerNo,
   }));
   const { priors: overlapPriors } = useChainageOverlapContext(
@@ -464,7 +483,14 @@ export default function SiteEdit() {
         // Only restore the draft if it actually differs from the server state
         if (JSON.stringify(draft) !== serverJson) {
           setHeader(draft.header || serverState.header);
-          if (draft.progress?.length) setProgress(draft.progress);
+          if (draft.progress?.length) setProgress(
+            (draft.progress as any[]).map((p: any) => ({
+              ...p,
+              noSiteWorkDescription: p.noSiteWorkDescription ?? "",
+              isIncidental: p.isIncidental ?? false,
+              incidentalDescription: p.incidentalDescription ?? "",
+            })),
+          );
           if (draft.equipment?.length) setEquipment(draft.equipment);
           if (draft.labour?.length) setLabour(draft.labour);
           setMaterials(draft.materials || []);
@@ -508,6 +534,44 @@ export default function SiteEdit() {
     }
     sessionStorage.setItem(DRAFT_KEY, draftJson);
   }, [header, workType, structureItems, progress, equipment, labour, materials, sitePurchases]);
+
+  // Batch 06V: ?progressEntryId= deep-link — scroll to and briefly highlight
+  // the named row after the form is loaded (identified by DB id or entryKey).
+  const [highlightedEntry, setHighlightedEntry] = useState<string | null>(null);
+  const [incidentalConfirm, setIncidentalConfirm] = useState<{ idx: number; qty: number | null; uom: string } | null>(null);
+  const overlapIntentAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!_progressEntryId || !formInitializedRef.current) return;
+    // Find by entryKey first, then fall back to a DB id match (stored as entryKey)
+    const idx = progress.findIndex(
+      (p) => p.entryKey === _progressEntryId || String(p.persistedId ?? "") === _progressEntryId,
+    );
+    if (idx < 0) return;
+    const key = progress[idx].entryKey;
+    setHighlightedEntry(key);
+    setTimeout(() => {
+      const el = document.querySelector(`[data-entry-key="${key}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 300);
+    const timer = setTimeout(() => setHighlightedEntry(null), 3000);
+    if (!overlapIntentAppliedRef.current) {
+      overlapIntentAppliedRef.current = true;
+      const incidentalIntent = _searchParams.get("isIncidental") === "1";
+      const reasonIntent = _searchParams.get("reason");
+      if (incidentalIntent && !progress[idx].isIncidental) {
+        setIncidentalConfirm({
+          idx,
+          qty: progress[idx].quantity ?? calculateQuantity(progress[idx]),
+          uom: progress[idx].uom,
+        });
+      } else if (reasonIntent) {
+        setProgress((prev) => prev.map((p, i) => i === idx ? { ...p, chainageOverrideReason: reasonIntent } : p));
+        toast({ title: "Overlap reason added", description: "Review the activity, then save the DPR to record it." });
+      }
+    }
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [_progressEntryId, formInitializedRef.current, progress.length]);
 
   // Batch 06C §22: per-activity photos while editing — existing attached
   // photos count toward the 3-per-activity cap; newly staged files are
@@ -622,11 +686,9 @@ export default function SiteEdit() {
     onError: (error: any) => {
       const shortage = parseInsufficientPlantStock(error);
       if (shortage) { setDieselShortage(shortage); return; }
-      toast({
-        title: "Error",
-        description: error.message || "Failed to save changes",
-        variant: "destructive",
-      });
+      // Batch 06V: normalised DPR error
+      const dprErr = parseDprError(error);
+      toast({ title: dprErr.title, description: dprErr.lines.join("\n") || undefined, variant: "destructive" });
     },
   });
 
@@ -699,7 +761,7 @@ export default function SiteEdit() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour') => {
     if (section === 'progress') {
-      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
+      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }]);
     } else if (section === 'equipment') {
       // 06Q: rows added during the edit session are flagged isNew — they get
       // opening-reading continuity when equipment is selected.
@@ -785,9 +847,21 @@ export default function SiteEdit() {
     workType,
     structureItems: workType === "structure" ? structureItems.filter(s => s.itemOfWork) : [],
     progress: workType === "road" ? progress.filter(p => p.activity).map(p => {
+      const { persistedId: _persistedId, ...persisted } = p;
+      if (p.noSiteWork) {
+        return {
+          ...persisted,
+          side: "", chainageFrom: "", chainageTo: "",
+          length: null, width: null, thickness: null, quantity: null,
+          chainageFromKm: null, chainageToKm: null,
+          quantitySource: null, quantitySourceNote: null,
+          chainageOverrideReason: null, executedBy: null,
+          isIncidental: false, incidentalDescription: null,
+        };
+      }
       const effectiveLength = getEffectiveLength(p);
       return {
-        ...p,
+        ...persisted,
         length: effectiveLength,
         quantity: p.quantity ?? calculateQuantity(p),
         // 030A: numeric chainage (Km) alongside the display text
@@ -797,6 +871,9 @@ export default function SiteEdit() {
         quantitySourceNote: p.quantitySourceNote?.trim() || null,
         chainageOverrideReason: p.chainageOverrideReason || null,
         executedBy: p.executedBy || null,
+        // Batch 06V: incidental fields
+        isIncidental: p.isIncidental,
+        incidentalDescription: p.isIncidental ? (p.incidentalDescription?.trim() || null) : null,
       };
     }) : [],
     equipment: equipment.filter(e => e.machine).map(eq => {
@@ -851,14 +928,17 @@ export default function SiteEdit() {
       // (returnTo when provided, otherwise Field Home), same expectation as
       // the Guided wizard. Navigation happens only after the server save.
       {
-        const returnToParam = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("returnTo");
-        setLocation(returnToParam ?? appendOrigin("/"));
+        setLocation(resolveReturnTo(
+          typeof window !== "undefined" ? window.location.search : "",
+          appendOrigin("/"),
+        ));
       }
     },
     onError: (error: any) => {
       const shortage = parseInsufficientPlantStock(error);
       if (shortage) { setDieselShortage(shortage); return; }
-      toast({ title: "Error", description: error.message || "Failed to save draft", variant: "destructive" });
+      const dprErr = parseDprError(error);
+      toast({ title: dprErr.title, description: dprErr.lines.join("\n") || undefined, variant: "destructive" });
     },
   });
 
@@ -882,13 +962,16 @@ export default function SiteEdit() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ predicate: (q) => { const key = q.queryKey; return Array.isArray(key) && key[0] === "/api/boq/projects" && key[2] === "plan-vs-actual"; } });
       toast({ title: "DPR Submitted", description: "Your daily progress report has been submitted successfully." });
-      const returnToParam = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("returnTo");
-      setLocation(returnToParam ?? appendOrigin(`/site/report/${data.id}`));
+      setLocation(resolveReturnTo(
+        typeof window !== "undefined" ? window.location.search : "",
+        appendOrigin(`/site/report/${data.id}`),
+      ));
     },
     onError: (error: any) => {
       const shortage = parseInsufficientPlantStock(error);
       if (shortage) { setDieselShortage(shortage); return; }
-      toast({ title: "Error", description: error.message || "Failed to submit DPR", variant: "destructive" });
+      const dprErr = parseDprError(error);
+      toast({ title: dprErr.title, description: dprErr.lines.join("\n") || undefined, variant: "destructive" });
     },
   });
 
@@ -986,9 +1069,7 @@ export default function SiteEdit() {
     );
   }
 
-  const _searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
-  const _returnTo = _searchParams.get("returnTo");
-  const draftBackHref = _returnTo ?? appendOrigin("/");
+  const draftBackHref = _returnTo ? _validatedReturnTo : appendOrigin("/");
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300">
@@ -1001,12 +1082,23 @@ export default function SiteEdit() {
       )}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => setLocation(isDraftMode ? draftBackHref : backToReport)} data-testid="button-back">
+          <Button variant="ghost" size="icon" onClick={() => setLocation(isDraftMode ? draftBackHref : editBackHref)} data-testid="button-back">
             <ChevronLeft className="w-5 h-5" />
           </Button>
           <div>
             <h1 className="text-2xl font-bold font-display">{isDraftMode ? "Complete DPR" : "Edit Report"}</h1>
             <p className="text-muted-foreground text-sm">{isDraftMode ? "Add closing details and submit when ready" : "Modify and save your changes"}</p>
+            {/* Batch 06V: "Back to Progress Report" link when returnTo is set
+                from a SiteReport deep-link (e.g. /site/report/123) */}
+            {_returnTo && (
+              <a
+                href={_validatedReturnTo}
+                className="text-xs text-primary underline-offset-2 hover:underline"
+                data-testid="link-back-to-report"
+              >
+                ← Back to Progress Report
+              </a>
+            )}
           </div>
         </div>
         {isDraftMode ? (
@@ -1284,7 +1376,12 @@ export default function SiteEdit() {
             })
           ) : null}
           {workType === "road" && progress.map((entry, idx) => (
-            <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-3">
+            <div
+              key={idx}
+              className={`p-4 border rounded-lg bg-muted/30 space-y-3 transition-all duration-500${highlightedEntry === entry.entryKey ? " ring-2 ring-primary ring-offset-2" : ""}`}
+              data-entry-key={entry.entryKey}
+              data-testid={`progress-row-${idx}`}
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
@@ -1296,21 +1393,34 @@ export default function SiteEdit() {
                         updated[idx].noSiteWork = checked === true;
                         if (checked) {
                           updated[idx].activity = updated[idx].activity || "NO SITE WORK";
-                          updated[idx].side = "";
-                          updated[idx].chainageFrom = "";
-                          updated[idx].chainageTo = "";
-                          updated[idx].length = null;
-                          updated[idx].width = null;
-                          updated[idx].thickness = null;
-                          updated[idx].quantity = null;
-                        } else {
-                          updated[idx].noSiteWorkDescription = "";
+                          // Mutually exclusive with isIncidental
+                          updated[idx].isIncidental = false;
                         }
                         setProgress(updated);
                       }}
                       data-testid={`checkbox-no-site-work-${idx}`}
                     />
                     <Label htmlFor={`no-site-work-${idx}`} className="text-sm cursor-pointer">No Site Work</Label>
+                  </div>
+                  {/* Batch 06V: Incidental / Non-BOQ (compact, mutually exclusive) */}
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id={`incidental-${idx}`}
+                      checked={entry.isIncidental}
+                      onCheckedChange={(checked) => {
+                        const willCheck = checked === true;
+                        const creditedQty = entry.quantity ?? calculateQuantity(entry);
+                        if (willCheck && !entry.isIncidental && creditedQty != null && creditedQty > 0) {
+                          setIncidentalConfirm({ idx, qty: creditedQty, uom: entry.uom });
+                        } else {
+                          setProgress((prev) => prev.map((p, i) => i === idx
+                            ? { ...p, isIncidental: willCheck, noSiteWork: willCheck ? false : p.noSiteWork }
+                            : p));
+                        }
+                      }}
+                      data-testid={`checkbox-incidental-${idx}`}
+                    />
+                    <Label htmlFor={`incidental-${idx}`} className="text-sm cursor-pointer">Incidental / Non-BOQ</Label>
                   </div>
                 </div>
                 <Button 
@@ -1357,6 +1467,28 @@ export default function SiteEdit() {
                   </div>
                 </div>
               ) : (
+                <>
+                {entry.isIncidental && (
+                  <div className="space-y-2">
+                    <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">
+                      Incidental / Non-BOQ · No BOQ Credit
+                    </Badge>
+                    <div>
+                      <Label className="text-sm">Description <span className="text-destructive">*</span></Label>
+                      <Textarea
+                        placeholder="Describe this incidental / Non-BOQ work…"
+                        value={entry.incidentalDescription}
+                        onChange={(e) => {
+                          const updated = [...progress];
+                          updated[idx].incidentalDescription = e.target.value;
+                          setProgress(updated);
+                        }}
+                        rows={2}
+                        data-testid={`input-incidental-description-${idx}`}
+                      />
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   <div className="col-span-2">
                     {/* When site has a BOQ project:
@@ -1780,6 +1912,7 @@ export default function SiteEdit() {
                     ) : null}
                   </div>
                 </div>
+                </>
               )}
 
               <div className="flex items-center gap-2 flex-wrap">
@@ -2573,7 +2706,7 @@ export default function SiteEdit() {
       </Card>
 
       <div className="flex justify-end gap-4 pt-4">
-        <Button variant="outline" onClick={() => setLocation(backToReport)} data-testid="button-cancel">
+        <Button variant="outline" onClick={() => setLocation(editBackHref)} data-testid="button-cancel">
           Cancel
         </Button>
         <Button onClick={handleSave} disabled={updateMutation.isPending} className="gap-2" data-testid="button-save-bottom">
@@ -2644,6 +2777,34 @@ export default function SiteEdit() {
         onSubmitAnyway={() => submitDraftMutation.mutate(buildPayload())}
         onSaveDraft={handleDraftSave}
       />
+
+      <Dialog open={incidentalConfirm != null} onOpenChange={(open) => { if (!open) setIncidentalConfirm(null); }}>
+        <DialogContent data-testid="dialog-incidental-confirm">
+          <DialogHeader>
+            <DialogTitle>Mark this activity as Incidental?</DialogTitle>
+            <DialogDescription>
+              This activity currently contributes {incidentalConfirm?.qty ?? 0} {incidentalConfirm?.uom ?? ""} to BOQ progress.
+              Marking it Incidental removes that quantity from BOQ/RA progress while keeping the physical work record and chainage.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIncidentalConfirm(null)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!incidentalConfirm) return;
+                const idx = incidentalConfirm.idx;
+                setProgress((prev) => prev.map((p, i) => i === idx
+                  ? { ...p, isIncidental: true, noSiteWork: false }
+                  : p));
+                setIncidentalConfirm(null);
+              }}
+              data-testid="button-confirm-mark-incidental"
+            >
+              Mark Incidental
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

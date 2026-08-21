@@ -20,7 +20,7 @@ import { useLocation, useSearch } from "wouter";
 import { Link } from "wouter";
 import {
   ChevronDown, ChevronUp, Plus, Trash2, Loader2, Check, Camera, X,
-  ChevronLeft, CalendarDays, History, LayoutList, Info,
+  ChevronLeft, CalendarDays, History, LayoutList, Info, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { parseDprError } from "@/lib/dprErrors";
 import { InsufficientDieselDialog, parseInsufficientPlantStock, type InsufficientPlantStockPayload } from "@/components/InsufficientDieselDialog";
 import { useUpload } from "@/hooks/use-upload";
 import { format, subDays } from "date-fns";
@@ -40,7 +41,7 @@ import type { Site, Personnel, DprWithDetails } from "@shared/schema";
 import { barSideLabel, parseChainageKm, QUANTITY_SOURCE_LABELS, allowedDprSides, dprSideOptionsForBar, isDprSideCompatible, isBarSide } from "@shared/barSide";
 import { chainageOutsideBar, suggestGuidedBars, emptySuggestionsReason, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage } from "@shared/dprGeometry";
-import { requiredDims, applyGeometryChange, applyQuantityEdit, overrideMismatch, deriveOverridden } from "@/lib/guidedEntryGeometry";
+import { requiredDims, applyGeometryChange, applyQuantityEdit, overrideMismatch, deriveOverridden, computedQty } from "@/lib/guidedEntryGeometry";
 import { ProgrammeBarPicker, BarLinkFeedback, type PickerBar } from "@/components/ProgrammeBarPicker";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
@@ -106,6 +107,9 @@ interface GuidedEntry {
   // 06P: optional physical layer/lift number (1, 2, 3…). null = not a
   // multi-layer entry — behaves exactly as pre-06P everywhere.
   layerNo: number | null;
+  // Batch 06V: Incidental / Non-BOQ work
+  isIncidental: boolean;
+  incidentalDescription: string;
 }
 
 // Batch 04 save fidelity: Guided edits 4 fields but must round-trip every
@@ -249,6 +253,8 @@ export default function GuidedDpr() {
         entryKey: e.entryKey || newEntryKey(),
         noSiteWork: e.noSiteWork ?? false,
         noSiteWorkDescription: e.noSiteWorkDescription ?? "",
+        isIncidental: e.isIncidental ?? false,
+        incidentalDescription: e.incidentalDescription ?? "",
       })));
       // Normal restore keeps the stored step; a deliberate Complete entry
       // computes its own step from the server draft's readiness instead.
@@ -313,6 +319,8 @@ export default function GuidedDpr() {
         // is only the pre-derivation placeholder.
         qtyOverridden: p.quantitySource != null && p.quantitySource !== "" && p.quantitySource !== "calculated",
         layerNo: p.layerNo != null ? Number(p.layerNo) : null,
+        isIncidental: !!p.isIncidental,
+        incidentalDescription: p.incidentalDescription || "",
       })));
     deriveNeededRef.current = true;
     // Batch 04: keep every non-edited equipment field for round-trip — a
@@ -476,6 +484,7 @@ export default function GuidedDpr() {
     chainageOverrideReason: e.chainageOverrideReason,
     label: e.activity,
     noSiteWork: e.noSiteWork,
+    isIncidental: e.isIncidental,
     layerNo: e.layerNo,
   }));
   const { priors: overlapPriors } = useChainageOverlapContext(
@@ -575,6 +584,8 @@ export default function GuidedDpr() {
       executedBy: "",
       qtyOverridden: false,
       layerNo: null,
+      isIncidental: false,
+      incidentalDescription: "",
     }]);
   };
 
@@ -605,6 +616,8 @@ export default function GuidedDpr() {
       executedBy: "",
       qtyOverridden: false,
       layerNo: null,
+      isIncidental: false,
+      incidentalDescription: "",
     }]);
     if (step === 2) setStep(3);
   };
@@ -667,22 +680,30 @@ export default function GuidedDpr() {
     if (key) setEntryPhotos((prev) => { const { [key]: _gone, ...rest } = prev; return rest; });
   };
 
-  // Task #1409: ticking No Site Work clears geometry/quantity (same semantics
-  // as the Detailed DPR) so a suspension/rework note can never carry stale
-  // billable measurements; unticking clears the description.
+  // Batch 06V: state toggles are mutually exclusive, but physical values stay
+  // in local state while hidden. The no-work payload branch strips them on save.
   const setNoSiteWork = (idx: number, checked: boolean) =>
     setEntries((prev) => prev.map((e, i) => {
       if (i !== idx) return e;
       if (checked) {
         return {
           ...e, noSiteWork: true,
-          side: "", chainageFrom: "", chainageTo: "",
-          width: null, thickness: null, quantity: null,
-          quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "",
-          qtyOverridden: false,
+          isIncidental: false, incidentalDescription: "",
         };
       }
-      return { ...e, noSiteWork: false, noSiteWorkDescription: "" };
+      return { ...e, noSiteWork: false };
+    }));
+
+  // Batch 06V: toggle Incidental / Non-BOQ. Mutually exclusive with noSiteWork.
+  const [incidentalConfirm, setIncidentalConfirm] = useState<{
+    idx: number; qty: number | null; uom: string;
+  } | null>(null);
+
+  const setIncidental = (idx: number, checked: boolean) =>
+    setEntries((prev) => prev.map((e, i) => {
+      if (i !== idx) return e;
+      if (checked) return { ...e, isIncidental: true, noSiteWork: false };
+      return { ...e, isIncidental: false };
     }));
 
   // ── Same as yesterday (structure-only copy, always previewed) ─────────────
@@ -715,6 +736,8 @@ export default function GuidedDpr() {
       executedBy: "",
       qtyOverridden: false,
       layerNo: null,
+      isIncidental: false,
+      incidentalDescription: "",
     })));
     // Yesterday copy is structure-only: seeds carry the 4 edited fields and an
     // empty passthrough (no readings/times are ever copied across days).
@@ -842,6 +865,8 @@ export default function GuidedDpr() {
           uom: e.uom || null,
           noSiteWork: true,
           noSiteWorkDescription: e.noSiteWorkDescription,
+          isIncidental: false,
+          incidentalDescription: null,
           personnelIds: [] as number[],
           boqItemId: e.boqItemId,
           programmeBarId: e.programmeBarId,
@@ -871,6 +896,8 @@ export default function GuidedDpr() {
         uom: e.uom,
         noSiteWork: false,
         noSiteWorkDescription: "",
+        isIncidental: e.isIncidental,
+        incidentalDescription: e.isIncidental ? (e.incidentalDescription.trim() || null) : null,
         personnelIds: [] as number[],
         boqItemId: e.boqItemId,
         programmeBarId: e.programmeBarId,
@@ -980,14 +1007,20 @@ export default function GuidedDpr() {
     onError: (err: any) => {
       const shortage = parseInsufficientPlantStock(err);
       if (shortage) { setDieselShortage(shortage); return; }
-      // Server-side readiness backstop (DPR_NOT_READY) — show the same panel
-      // instead of a generic failure toast.
-      const msg = String(err?.message ?? "");
-      if (msg.includes("DPR_NOT_READY") || msg.includes("not ready to submit")) {
-        toast({ title: "DPR is not ready to submit", description: "The server found incomplete mandatory records. Complete them or save as draft.", variant: "destructive" });
-        return;
+      // Batch 06V: normalised DPR error — plain message, never raw JSON/code.
+      const dprErr = parseDprError(err);
+      toast({ title: dprErr.title, description: dprErr.lines.join("\n") || undefined, variant: "destructive" });
+      if (dprErr.highlightActivity) {
+        const idx = entries.findIndex((e) => e.activity === dprErr.highlightActivity);
+        if (idx >= 0) {
+          const el = document.querySelector(`[data-testid="card-entry-${idx}"]`);
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            el.classList.add("ring-2", "ring-destructive", "ring-offset-2");
+            setTimeout(() => el.classList.remove("ring-2", "ring-destructive", "ring-offset-2"), 3000);
+          }
+        }
       }
-      toast({ title: "Error", description: "Failed to save report. Please try again.", variant: "destructive" });
     },
   });
 
@@ -1015,6 +1048,11 @@ export default function GuidedDpr() {
           return false;
         }
         continue;
+      }
+      // Batch 06V: incidental rows need a description
+      if (e.isIncidental && !e.incidentalDescription.trim()) {
+        toast({ title: "Description required", description: `"${e.activity || "Incidental activity"}": enter a description for this Incidental / Non-BOQ item.`, variant: "destructive" });
+        return false;
       }
       const fromKm = parseChainageKm(e.chainageFrom);
       const toKm = parseChainageKm(e.chainageTo);
@@ -1305,17 +1343,35 @@ export default function GuidedDpr() {
                 <Trash2 className="w-4 h-4 text-muted-foreground" />
               </Button>
             </div>
-            {/* Task #1409: per-activity No Site Work toggle (rain/suspension/
-                non-billable rework). Same semantics as the Detailed DPR:
-                clears measurements, excluded from BOQ progress & overlap. */}
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id={`guided-no-work-${idx}`}
-                checked={e.noSiteWork}
-                onCheckedChange={(checked) => setNoSiteWork(idx, checked === true)}
-                data-testid={`checkbox-no-site-work-${idx}`}
-              />
-              <Label htmlFor={`guided-no-work-${idx}`} className="text-sm cursor-pointer">No site work (rain / suspension / non-billable rework)</Label>
+            {/* Task #1409 + Batch 06V: per-activity status toggles (mutually exclusive). */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id={`guided-no-work-${idx}`}
+                  checked={e.noSiteWork}
+                  onCheckedChange={(checked) => setNoSiteWork(idx, checked === true)}
+                  data-testid={`checkbox-no-site-work-${idx}`}
+                />
+                <Label htmlFor={`guided-no-work-${idx}`} className="text-xs cursor-pointer">No site work</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id={`guided-incidental-${idx}`}
+                  checked={e.isIncidental}
+                  onCheckedChange={(checked) => {
+                    const willCheck = checked === true;
+                    const item = e.boqItemId != null ? itemById.get(e.boqItemId) : null;
+                    const creditedQty = e.quantity ?? computedQty(e, item);
+                    if (willCheck && creditedQty != null && creditedQty > 0 && !e.isIncidental) {
+                      setIncidentalConfirm({ idx, qty: creditedQty, uom: e.uom });
+                    } else {
+                      setIncidental(idx, willCheck);
+                    }
+                  }}
+                  data-testid={`checkbox-incidental-${idx}`}
+                />
+                <Label htmlFor={`guided-incidental-${idx}`} className="text-xs cursor-pointer">Incidental / Non-BOQ</Label>
+              </div>
             </div>
             {e.noSiteWork && (
               <div className="space-y-2" data-testid={`no-work-block-${idx}`}>
@@ -1343,6 +1399,26 @@ export default function GuidedDpr() {
                 <p className="text-xs text-muted-foreground">
                   This row is recorded on the daily report but never counts toward BOQ quantities or billing.
                 </p>
+              </div>
+            )}
+            {e.isIncidental && !e.noSiteWork && (
+              <div className="space-y-1.5" data-testid={`incidental-block-${idx}`}>
+                <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">
+                  Incidental / Non-BOQ · No BOQ Credit
+                </Badge>
+                <div>
+                  <Label className="text-xs">Description <span className="text-destructive">*</span></Label>
+                  <Textarea
+                    placeholder="Describe this incidental / Non-BOQ work…"
+                    value={e.incidentalDescription}
+                    onChange={(ev) => updateEntry(idx, { incidentalDescription: ev.target.value })}
+                    rows={2}
+                    data-testid={`input-incidental-description-${idx}`}
+                  />
+                  {e.incidentalDescription.trim() === "" && (
+                    <p className="text-xs text-destructive mt-0.5">Required before submitting.</p>
+                  )}
+                </div>
               </div>
             )}
             {!e.noSiteWork && (<>
@@ -2131,6 +2207,7 @@ export default function GuidedDpr() {
                       {e.noSiteWork
                         ? `No site work${e.noSiteWorkDescription ? ` — ${e.noSiteWorkDescription}` : ""}`
                         : [
+                            e.isIncidental ? "Incidental / Non-BOQ · No BOQ Credit" : null,
                             e.side || null,
                             e.chainageFrom && e.chainageTo ? `Ch ${e.chainageFrom}–${e.chainageTo}` : "No chainage",
                             e.quantity != null ? `${e.quantity} ${e.uom || ""}`.trim() : "No quantity",
@@ -2246,6 +2323,38 @@ export default function GuidedDpr() {
         onSubmitAnyway={() => saveMutation.mutate(false)}
         onSaveDraft={() => { if (validateHeader()) saveMutation.mutate(true); }}
       />
+
+      {/* Batch 06V: confirm changing a credited row to incidental */}
+      <Dialog open={incidentalConfirm != null} onOpenChange={(v) => { if (!v) setIncidentalConfirm(null); }}>
+        <DialogContent data-testid="dialog-incidental-confirm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Change to Incidental / Non-BOQ?
+            </DialogTitle>
+            <DialogDescription>
+              This row currently has a credited quantity of{" "}
+              <strong>{incidentalConfirm?.qty} {incidentalConfirm?.uom}</strong>.
+              Marking it Incidental / Non-BOQ means it will <strong>no longer count toward BOQ credit</strong>,
+              but the measurements are kept on record.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIncidentalConfirm(null)} data-testid="button-incidental-confirm-cancel">
+              Keep as credited
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (incidentalConfirm != null) { setIncidental(incidentalConfirm.idx, true); setIncidentalConfirm(null); }
+              }}
+              data-testid="button-incidental-confirm-ok"
+            >
+              Yes, mark as incidental
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Yesterday preview dialog */}
       <Dialog open={showYesterdayPreview} onOpenChange={setShowYesterdayPreview}>

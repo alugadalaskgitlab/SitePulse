@@ -95,6 +95,12 @@ export type CandidateChainageRow = {
    * it simply falls back to the pre-06P rule.
    */
   layerNo?: number | null;
+  /**
+   * 06V: incidental rows are excluded from the chainage overlap guard entirely.
+   * They may physically span the same chainage as normal work — that is
+   * intentional. isChainageGuardRow returns false when this is true.
+   */
+  isIncidental?: boolean | null;
 };
 
 /** Prior recorded progress (a submitted DPR row, canonical valid filter). */
@@ -111,6 +117,8 @@ export type PriorChainageEntry = {
   uom: string | null;
   /** 06P: optional layer/lift number of the prior entry (null = legacy/unset). */
   layerNo?: number | null;
+  /** 06V: incidental prior entries are excluded from the overlap guard. */
+  isIncidental?: boolean | null;
 };
 
 export type ChainageOverlapHit = {
@@ -135,6 +143,7 @@ export type ChainageOverlapHit = {
 /** True when the row participates in the overlap guard at all (§3 scope). */
 export function isChainageGuardRow(row: CandidateChainageRow): boolean {
   if (row.noSiteWork) return false;
+  if (row.isIncidental) return false; // 06V: incidental rows are out of scope
   if (row.boqItemId == null) return false;
   return normaliseKmRange(row.fromKm, row.toKm) != null;
 }
@@ -198,6 +207,7 @@ export function findChainageOverlaps(
   // B — prior submitted DPR progress.
   for (const { row, r } of guarded) {
     for (const p of priors) {
+      if (p.isIncidental) continue; // 06V: incidental prior entries excluded from overlap guard
       if (Number(p.boqItemId) !== Number(row.boqItemId)) continue;
       if (layersDistinct(row.layerNo, p.layerNo)) continue; // 06P: different layers = valid separate work
       const pr = normaliseKmRange(p.fromKm, p.toKm);

@@ -2094,7 +2094,7 @@ export class DatabaseStorage implements IStorage {
       if (dprData.progress?.length) {
         const progressWithPersonnel = dprData.progress.map(p => {
           const { personnelIds, ...progressData } = p as any;
-          return { progressData: { ...progressData, dprId, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription }, personnelIds: personnelIds || [] };
+          return { progressData: { ...progressData, dprId, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription, incidentalDescription: progressData.incidentalDescription?.toUpperCase() || progressData.incidentalDescription }, personnelIds: personnelIds || [] };
         });
         const insertedProgress = await tx.insert(progressEntries).values(
           progressWithPersonnel.map(p => p.progressData)
@@ -2212,7 +2212,7 @@ export class DatabaseStorage implements IStorage {
       if (dprData.progress?.length) {
         const progressWithPersonnel = dprData.progress.map(p => {
           const { personnelIds, ...progressData } = p as any;
-          return { progressData: { ...progressData, dprId: id, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription }, personnelIds: personnelIds || [] };
+          return { progressData: { ...progressData, dprId: id, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription, incidentalDescription: progressData.incidentalDescription?.toUpperCase() || progressData.incidentalDescription }, personnelIds: personnelIds || [] };
         });
         const insertedProgress = await tx.insert(progressEntries).values(progressWithPersonnel.map(p => p.progressData)).returning();
         for (let i = 0; i < insertedProgress.length; i++) {
@@ -2280,7 +2280,7 @@ export class DatabaseStorage implements IStorage {
       if (dprData.progress?.length) {
         const progressWithPersonnel = dprData.progress.map(p => {
           const { personnelIds, ...progressData } = p as any;
-          return { progressData: { ...progressData, dprId: id, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription }, personnelIds: personnelIds || [] };
+          return { progressData: { ...progressData, dprId: id, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription, incidentalDescription: progressData.incidentalDescription?.toUpperCase() || progressData.incidentalDescription }, personnelIds: personnelIds || [] };
         });
         const insertedProgress = await tx.insert(progressEntries).values(
           progressWithPersonnel.map(p => p.progressData)
@@ -2427,6 +2427,9 @@ export class DatabaseStorage implements IStorage {
             scopeOverrideAt: (p as any).scopeOverrideAt ?? null,
             // 06P: preserve layer/lift number on clone (null stays null).
             layerNo: (p as any).layerNo ?? null,
+            // 06V: preserve incidental flag + description on clone.
+            isIncidental: (p as any).isIncidental ?? false,
+            incidentalDescription: (p as any).incidentalDescription != null ? ((p as any).incidentalDescription as string).toUpperCase() : null,
           }))
         ).returning();
         for (let i = 0; i < insertedProgress.length; i++) {
@@ -2593,7 +2596,9 @@ export class DatabaseStorage implements IStorage {
           dprData.progress.map(p => ({ 
             ...p, 
             dprId,
-            activity: p.activity?.toUpperCase() || p.activity,
+            activity: (p as any).activity?.toUpperCase() || (p as any).activity,
+            noSiteWorkDescription: (p as any).noSiteWorkDescription?.toUpperCase() || (p as any).noSiteWorkDescription,
+            incidentalDescription: (p as any).incidentalDescription?.toUpperCase() || (p as any).incidentalDescription,
           }))
         );
       }
@@ -23827,6 +23832,8 @@ export class DatabaseStorage implements IStorage {
         eq(dprs.dprStatus, "submitted"),
         eq(dprs.isSuperseded, false),
         eq(dprs.isCancelled, false),
+        eq(progressEntries.noSiteWork, false),
+        eq(progressEntries.isIncidental, false),
         // Instruction 031 Part G: "Outside planned reach — review required"
         // rows are preserved but excluded from the bar's completed quantity
         // until reviewed/approved.
@@ -23858,6 +23865,8 @@ export class DatabaseStorage implements IStorage {
         eq(dprs.dprStatus, "submitted"),
         eq(dprs.isSuperseded, false),
         eq(dprs.isCancelled, false),
+        eq(progressEntries.noSiteWork, false),
+        eq(progressEntries.isIncidental, false),
         sql`(${progressEntries.chainageReviewStatus} IS NULL OR ${progressEntries.chainageReviewStatus} <> 'review_required')`,
       ));
     for (const r of rows) {
@@ -23883,6 +23892,7 @@ export class DatabaseStorage implements IStorage {
     chainageFrom: string | null; chainageTo: string | null;
     quantity: number | null; uom: string | null; activity: string | null;
     layerNo: number | null;
+    isIncidental: boolean;
   }>> {
     if (boqItemIds.length === 0) return [];
     const conds = [
@@ -23911,6 +23921,7 @@ export class DatabaseStorage implements IStorage {
         uom: progressEntries.uom,
         activity: progressEntries.activity,
         layerNo: progressEntries.layerNo,
+        isIncidental: progressEntries.isIncidental,
       })
       .from(progressEntries)
       .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
@@ -23922,6 +23933,7 @@ export class DatabaseStorage implements IStorage {
       toKm: r.toKm != null ? Number(r.toKm) : null,
       quantity: r.quantity != null ? Number(r.quantity) : null,
       layerNo: r.layerNo != null ? Number(r.layerNo) : null,
+      isIncidental: r.isIncidental ?? false,
     }));
   }
 
@@ -23941,6 +23953,9 @@ export class DatabaseStorage implements IStorage {
     quantitySource: string | null; quantitySourceNote: string | null;
     location: string | null; remarks: string | null; rowConversionFactor: number | null;
     layerNo: number | null;
+    noSiteWork: boolean; noSiteWorkDescription: string | null;
+    isIncidental: boolean; incidentalDescription: string | null;
+    activity: string | null; chainageOverrideReason: string | null;
   }>> {
     const validDpr = and(
       eq(dprs.dprStatus, "submitted"),
@@ -23971,6 +23986,11 @@ export class DatabaseStorage implements IStorage {
         quantitySourceNote: progressEntries.quantitySourceNote,
         activity: progressEntries.activity,
         layerNo: progressEntries.layerNo,
+        noSiteWork: progressEntries.noSiteWork,
+        noSiteWorkDescription: progressEntries.noSiteWorkDescription,
+        isIncidental: progressEntries.isIncidental,
+        incidentalDescription: progressEntries.incidentalDescription,
+        chainageOverrideReason: progressEntries.chainageOverrideReason,
       })
       .from(progressEntries)
       .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
@@ -24027,6 +24047,12 @@ export class DatabaseStorage implements IStorage {
         remarks: r.quantitySourceNote ?? null,
         rowConversionFactor: null,
         layerNo: r.layerNo != null ? Number(r.layerNo) : null,
+        noSiteWork: r.noSiteWork ?? false,
+        noSiteWorkDescription: r.noSiteWorkDescription ?? null,
+        isIncidental: r.isIncidental ?? false,
+        incidentalDescription: r.incidentalDescription ?? null,
+        activity: r.activity ?? null,
+        chainageOverrideReason: r.chainageOverrideReason ?? null,
       })),
       ...structureRows.map((r) => ({
         kind: "structure" as const,
@@ -24053,6 +24079,12 @@ export class DatabaseStorage implements IStorage {
         remarks: r.remarks ?? null,
         rowConversionFactor: r.rowConversionFactor != null ? Number(r.rowConversionFactor) : null,
         layerNo: null,
+        noSiteWork: false,
+        noSiteWorkDescription: null,
+        isIncidental: false,
+        incidentalDescription: null,
+        activity: null,
+        chainageOverrideReason: null,
       })),
     ];
   }
@@ -24163,6 +24195,8 @@ export class DatabaseStorage implements IStorage {
         JOIN boq_items bi ON bi.id = pe.boq_item_id
         WHERE pe.boq_item_id = ANY(ARRAY[${sql.raw(itemIds.join(","))}]::int[])
           AND (dprs.is_superseded = false OR dprs.is_superseded IS NULL)
+          AND pe.no_site_work = false
+          AND pe.is_incidental = false
           ${dateFilter}
         GROUP BY pe.boq_item_id
       `);
@@ -25393,13 +25427,14 @@ export class DatabaseStorage implements IStorage {
       uom: progressEntries.uom,
       programmeBarId: progressEntries.programmeBarId,
       noSiteWork: progressEntries.noSiteWork,
+      isIncidental: progressEntries.isIncidental,
     })
       .from(progressEntries)
       .where(and(
         inArray(progressEntries.dprId, dayDprs.map(d => d.id)),
         eq(progressEntries.boqItemId, args.boqItemId),
       ));
-    let billable = rows.filter(r => !r.noSiteWork && r.quantity != null && Number(r.quantity) > 0);
+    let billable = rows.filter(r => !r.noSiteWork && !r.isIncidental && r.quantity != null && Number(r.quantity) > 0);
     if (args.programmeBarId != null) {
       const barRows = billable.filter(r => r.programmeBarId === args.programmeBarId);
       if (barRows.length > 0) billable = barRows;

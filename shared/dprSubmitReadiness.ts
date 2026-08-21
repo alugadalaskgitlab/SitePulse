@@ -38,6 +38,9 @@ type ProgressRowLike = {
   activity?: string | null;
   boqItemId?: number | null;
   noSiteWork?: boolean | null;
+  noSiteWorkDescription?: string | null;
+  isIncidental?: boolean | null;
+  incidentalDescription?: string | null;
   chainageFrom?: string | null;
   chainageTo?: string | null;
   quantity?: number | null;
@@ -105,10 +108,23 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
 
   // A — selected/added activities must carry an outcome.
   for (const p of input.progress ?? []) {
-    if (p?.noSiteWork) continue;
+    if (p?.noSiteWork) {
+      const label = (p.activity || "No Site Work").toString().trim();
+      if (!hasText(p.noSiteWorkDescription)) {
+        mandatory.push({ section: "activities", label, message: "reason required for No Site Work" });
+      }
+      continue;
+    }
     const selected = hasText(p?.activity) || p?.boqItemId != null;
     if (!selected) continue; // blank placeholder row — ignore
     const label = (p.activity || `BOQ item ${p.boqItemId}`).toString().trim();
+    if (p.isIncidental && !hasText(p.incidentalDescription)) {
+      mandatory.push({
+        section: "activities",
+        label,
+        message: "description required for Incidental / Non-BOQ Work",
+      });
+    }
     if (!pos(p.quantity)) {
       mandatory.push({
         section: "activities",

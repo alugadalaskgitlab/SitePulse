@@ -3,11 +3,16 @@
  * Covers spec tests: D (DPR link carries return context), E (Back resolves to
  * /reports/progress), F/G/H (filters, tab, item/view/sort preserved),
  * I/J (other entry contexts keep their original destination).
+ *
+ * Batch 06V additions:
+ *  - overlapAnchor round-trips through URL
+ *  - editActivityLink carries progressEntryId + returnTo with overlapAnchor
  */
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_STATE, parseReportState, buildReportSearch, progressReportUrl,
-  dprLinkWithReturn, resolveReturnTo, type ProgressReportState,
+  dprLinkWithReturn, resolveReturnTo, editActivityLink,
+  isOverlapReviewOpen, overlapReviewTargetId, type ProgressReportState,
 } from "../client/src/lib/progressReportNav";
 
 const state = (p: Partial<ProgressReportState> = {}): ProgressReportState => ({ ...DEFAULT_STATE, ...p });
@@ -87,5 +92,85 @@ describe("Back from DPR resolves the originating context (E, I, J)", () => {
     expect(resolveReturnTo("?returnTo=%2F%5Cevil.example", "/site/dashboard")).toBe("/site/dashboard"); // "/\evil.example"
     expect(resolveReturnTo("?returnTo=%2F%5C%2Fevil.example", "/site/dashboard")).toBe("/site/dashboard"); // "/\/evil.example"
     expect(resolveReturnTo("?returnTo=%2Fjavascript%3Aalert(1)", "/site/dashboard")).toBe("/site/dashboard"); // "/javascript:alert(1)"
+  });
+});
+
+// ── Batch 06V: overlapAnchor + editActivityLink ───────────────────────────────
+
+describe("overlapAnchor round-trips through URL (06V)", () => {
+  it("overlapAnchor defaults to empty string", () => {
+    expect(DEFAULT_STATE.overlapAnchor).toBe("");
+    expect(buildReportSearch(DEFAULT_STATE)).toBe("");
+  });
+
+  it("non-empty overlapAnchor is serialised into the URL", () => {
+    const s = state({ projectId: "2", item: "31", overlapAnchor: "open" });
+    const url = progressReportUrl(s);
+    expect(url).toContain("overlapAnchor=open");
+    expect(parseReportState(url.split("?")[1] ?? "").overlapAnchor).toBe("open");
+  });
+
+  it("overlapAnchor pair key round-trips without corruption", () => {
+    const s = state({ projectId: "2", item: "31", overlapAnchor: "101:202" });
+    const parsed = parseReportState(buildReportSearch(s));
+    expect(parsed.overlapAnchor).toBe("101:202");
+  });
+
+  it("clearing overlapAnchor to '' drops it from the URL", () => {
+    const s = state({ projectId: "2", item: "31", overlapAnchor: "" });
+    expect(buildReportSearch(s)).not.toContain("overlapAnchor");
+  });
+});
+
+describe("editActivityLink — deep-link to SiteEdit (06V)", () => {
+  it("builds /site/edit/:dprId?progressEntryId=...&returnTo=...", () => {
+    const s = state({ projectId: "2", tab: "item", item: "31", overlapAnchor: "open" });
+    const link = editActivityLink(42, 101, s);
+    expect(link.startsWith("/site/edit/42?")).toBe(true);
+    expect(link).toContain("progressEntryId=101");
+    expect(link).toContain("returnTo=");
+  });
+
+  it("returnTo in editActivityLink encodes full current report URL including overlapAnchor", () => {
+    const s = state({ projectId: "2", tab: "item", item: "31", overlapAnchor: "open" });
+    const link = editActivityLink(42, 101, s);
+    const rtRaw = new URLSearchParams(link.split("?")[1]).get("returnTo");
+    expect(rtRaw).toBeTruthy();
+    const rt = decodeURIComponent(rtRaw!);
+    expect(rt.startsWith("/reports/progress")).toBe(true);
+    expect(rt).toContain("overlapAnchor=open");
+    expect(rt).toContain("item=31");
+  });
+
+  it("returnTo in editActivityLink is a valid in-app path (resolveReturnTo accepts it)", () => {
+    const s = state({ projectId: "2", item: "31", overlapAnchor: "open" });
+    const link = editActivityLink(42, 101, s);
+    const search = "?" + link.split("?")[1];
+    const resolved = resolveReturnTo(search, "/site/dashboard");
+    expect(resolved.startsWith("/reports/progress")).toBe(true);
+  });
+});
+
+describe("overlap review return anchors (06V)", () => {
+  it("opens for both the generic anchor and an exact pair key", () => {
+    expect(isOverlapReviewOpen("open")).toBe(true);
+    expect(isOverlapReviewOpen("101:202")).toBe(true);
+    expect(isOverlapReviewOpen("")).toBe(false);
+  });
+
+  it("targets only a safe numeric pair id and otherwise falls back to the panel", () => {
+    expect(overlapReviewTargetId("101:202")).toBe("overlap-pair-101:202");
+    expect(overlapReviewTargetId("open")).toBeNull();
+    expect(overlapReviewTargetId("../../evil")).toBeNull();
+  });
+
+  it("the exact pair survives SiteEdit returnTo round-trip and remains open", () => {
+    const s = state({ projectId: "2", item: "31", overlapAnchor: "101:202" });
+    const link = editActivityLink(42, 101, s);
+    const returned = resolveReturnTo(`?${link.split("?")[1]}`, "/site/dashboard");
+    const restored = parseReportState(returned.split("?")[1] ?? "");
+    expect(restored.overlapAnchor).toBe("101:202");
+    expect(isOverlapReviewOpen(restored.overlapAnchor)).toBe(true);
+    expect(overlapReviewTargetId(restored.overlapAnchor)).toBe("overlap-pair-101:202");
   });
 });

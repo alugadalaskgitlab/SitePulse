@@ -12,11 +12,16 @@
  *   overwritten here.
  * - Referenced prior DPRs open READ-ONLY in a modal (DprPreviewDialog) over
  *   the live form: the form stays mounted, closing returns to it untouched.
+ *
+ * Batch 06V: reason is now a fixed pick-list so engineers can't leave a
+ * cryptic free-text note. "Other" falls back to a free-text input.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertTriangle } from "lucide-react";
 import { formatChainageKm } from "@shared/barSide";
@@ -28,6 +33,90 @@ import {
   type PriorChainageEntry,
 } from "@shared/chainageOverlap";
 import { DprPreviewDialog } from "@/components/DprPreviewDialog";
+import {
+  OVERLAP_REASON_OPTIONS, OTHER_VALUE, classifyReason, buildReason,
+} from "@/lib/overlapReason";
+
+// Re-export so existing callers that import from this module still work.
+export { OVERLAP_REASON_OPTIONS, classifyReason, buildReason };
+
+// ── Reason dialog ─────────────────────────────────────────────────────────────
+
+function OverlapReasonDialog({
+  open, onOpenChange, initialReason, onSave, testidPrefix,
+}: {
+  open: boolean; onOpenChange: (v: boolean) => void;
+  initialReason: string; onSave: (reason: string) => void; testidPrefix: string;
+}) {
+  const { pick: initPick, elaboration: initElab } = classifyReason(initialReason);
+  const [pick, setPick] = useState(initPick);
+  const [elaboration, setElaboration] = useState(initElab);
+
+  // Re-sync whenever the dialog opens (in case the parent updated the reason)
+  useEffect(() => {
+    if (open) {
+      const { pick: p, elaboration: e } = classifyReason(initialReason);
+      setPick(p);
+      setElaboration(e);
+    }
+  }, [open, initialReason]);
+
+  const result = buildReason(pick, elaboration);
+  const canSave = result.trim() !== "";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-testid={`${testidPrefix}-overlap-reason-modal`}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+            Reason for repeated chainage
+          </DialogTitle>
+          <DialogDescription>
+            Part of this chainage already has recorded progress. Repeated work is allowed —
+            another layer, another lift, rework, correction — but Final Submit needs the reason on record.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-sm mb-1.5 block">Reason</Label>
+            <Select value={pick} onValueChange={(v) => { setPick(v); if (v !== OTHER_VALUE) setElaboration(""); }}>
+              <SelectTrigger data-testid={`${testidPrefix}-select-overlap-reason`}>
+                <SelectValue placeholder="Select a reason…" />
+              </SelectTrigger>
+              <SelectContent>
+                {OVERLAP_REASON_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {pick === OTHER_VALUE && (
+            <div>
+              <Label className="text-sm mb-1.5 block">Describe the reason</Label>
+              <Input
+                value={elaboration}
+                onChange={(e) => setElaboration(e.target.value)}
+                placeholder='e.g. "Second WMM layer", "Embankment lift 3", "Rework after rain damage"'
+                data-testid={`${testidPrefix}-input-overlap-reason`}
+              />
+            </div>
+          )}
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid={`${testidPrefix}-button-overlap-cancel`}>Cancel</Button>
+          <Button
+            disabled={!canSave}
+            onClick={() => { onSave(result); onOpenChange(false); }}
+            data-testid={`${testidPrefix}-button-overlap-save`}
+          >
+            Save reason
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 /** Fetch prior valid submitted chainage progress for the given BOQ items. */
 export function useChainageOverlapContext(boqItemIds: number[], excludeDprId?: number | null) {
@@ -58,48 +147,6 @@ export function useChainageOverlapHits(
     JSON.stringify(rows.filter(isChainageGuardRow).map((r) => [r.rowKey, r.boqItemId, r.side ?? null, r.fromKm, r.toKm])),
     priors,
   ]);
-}
-
-function OverlapReasonDialog({
-  open, onOpenChange, initialReason, onSave, testidPrefix,
-}: {
-  open: boolean; onOpenChange: (v: boolean) => void;
-  initialReason: string; onSave: (reason: string) => void; testidPrefix: string;
-}) {
-  const [reason, setReason] = useState(initialReason);
-  // re-sync when reopened
-  const [wasOpen, setWasOpen] = useState(false);
-  if (open && !wasOpen) { setWasOpen(true); setReason(initialReason); }
-  if (!open && wasOpen) setWasOpen(false);
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid={`${testidPrefix}-overlap-reason-modal`}>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-amber-500" />
-            Reason for repeated chainage
-          </DialogTitle>
-          <DialogDescription>
-            Part of this chainage already has recorded progress. Repeated work is allowed —
-            another layer, another lift, rework, correction — but Final Submit needs the reason on record.
-          </DialogDescription>
-        </DialogHeader>
-        <Textarea
-          rows={2}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder='e.g. "Second WMM layer", "Embankment lift 3", "Rework after rain damage"'
-          data-testid={`${testidPrefix}-input-overlap-reason`}
-        />
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid={`${testidPrefix}-button-overlap-cancel`}>Cancel</Button>
-          <Button disabled={!reason.trim()} onClick={() => { onSave(reason.trim()); onOpenChange(false); }} data-testid={`${testidPrefix}-button-overlap-save`}>
-            Save reason
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 /**

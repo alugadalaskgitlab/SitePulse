@@ -173,6 +173,31 @@ describe("Batch 04 — submit readiness (K–V)", () => {
     expect(r2.mandatory.some((m) => /chainage is incomplete/i.test(m.message))).toBe(true);
   });
 
+  it("06V — incidental work requires its own description and still requires physical quantity", () => {
+    const bad = evaluateDprSubmitReadiness({
+      progress: [{ activity: "DRAIN CLEANING", isIncidental: true, incidentalDescription: "", quantity: null }],
+    });
+    expect(bad.mandatory.some((m) => /description required for incidental/i.test(m.message))).toBe(true);
+    expect(bad.mandatory.some((m) => /quantity missing/i.test(m.message))).toBe(true);
+
+    const good = evaluateDprSubmitReadiness({
+      progress: [{ activity: "DRAIN CLEANING", isIncidental: true, incidentalDescription: "FLOOD RESPONSE", quantity: 12 }],
+    });
+    expect(good.ready).toBe(true);
+  });
+
+  it("06V — No Site Work requires a reason but never requires physical quantity", () => {
+    const bad = evaluateDprSubmitReadiness({
+      progress: [{ activity: "EMBANKMENT", noSiteWork: true, noSiteWorkDescription: "", quantity: 100 }],
+    });
+    expect(bad.mandatory.some((m) => /reason required for no site work/i.test(m.message))).toBe(true);
+
+    const good = evaluateDprSubmitReadiness({
+      progress: [{ activity: "EMBANKMENT", noSiteWork: true, noSiteWorkDescription: "ACCESS BLOCKED", quantity: 100 }],
+    });
+    expect(good.ready).toBe(true);
+  });
+
   it("P — multiple incomplete sections produce ONE consolidated result", () => {
     const r = evaluateDprSubmitReadiness({
       progress: [{ activity: "EMBANKMENT", quantity: null }],

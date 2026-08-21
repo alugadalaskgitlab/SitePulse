@@ -174,6 +174,17 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                     <TableRow key={i}>
                       <TableCell className="font-medium">
                         <div>{item.activity}</div>
+                        {/* Batch 06V: incidental badge */}
+                        {item.isIncidental && (
+                          <div className="mt-1">
+                            <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">
+                              Incidental / Non-BOQ · No BOQ Credit
+                            </Badge>
+                            {item.incidentalDescription && (
+                              <div className="text-xs text-muted-foreground mt-0.5">{item.incidentalDescription}</div>
+                            )}
+                          </div>
+                        )}
                         {personnelNames && (
                           <div className="text-sm text-muted-foreground mt-1">Personnel: {personnelNames}</div>
                         )}

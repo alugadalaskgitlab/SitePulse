@@ -10,6 +10,7 @@ import {
   computeItemEntries, computeItemAbstract, sortForDisplay,
   detectOverlaps, buildCoverageStrips, entryIntersectsRange,
   entryReviewFlag, sidesMayOverlap, normaliseReportSide,
+  buildOverlapPairs,
 } from "../shared/progressReport";
 
 const wmm: ReportBoqItem = {
@@ -230,5 +231,128 @@ describe("Chainage-wise range query (§16 — tests AA, AB)", () => {
     expect(entryIntersectsRange(a, 1.0, 2.0, "RHS")).toBe(false);
     expect(entryIntersectsRange(a, 1.0, 2.0, "LHS")).toBe(true);
     expect(entryIntersectsRange(entry({ side: "Full Width", chainageFromKm: 1, chainageToKm: 2 }), 1, 2, "RHS")).toBe(true);
+  });
+});
+
+// ── Batch 06V: Incidental progress tracking ───────────────────────────────────
+
+describe("Incidental entries — no BOQ credit (06V)", () => {
+  it("isIncidental=true → entryBoqCredit returns 0 (not null)", () => {
+    const e = entry({ isIncidental: true, quantity: 150 });
+    expect(entryBoqCredit(e, wmm)).toBe(0);
+  });
+
+  it("isIncidental=false → normal BOQ credit", () => {
+    const e = entry({ isIncidental: false, quantity: 150 });
+    expect(entryBoqCredit(e, wmm)).toBe(150);
+  });
+
+  it("isIncidental entry with quantity null → explicit zero BOQ credit", () => {
+    const e = entry({ isIncidental: true, quantity: null });
+    expect(entryBoqCredit(e, wmm)).toBe(0);
+  });
+
+  it("incidental entries do NOT accumulate into running cumulative", () => {
+    const normal = entry({ dprDate: "2026-08-01", quantity: 100, dprId: 1, chainageFromKm: 1.0, chainageToKm: 1.5, side: "LHS" });
+    const incidental = entry({ dprDate: "2026-08-02", quantity: 50, dprId: 2, chainageFromKm: 1.0, chainageToKm: 1.5, side: "LHS", isIncidental: true });
+    const computed = computeItemEntries([normal, incidental], wmm);
+    const inc = computed.find((e) => e.isIncidental)!;
+    const norm = computed.find((e) => !e.isIncidental)!;
+    expect(norm.runningCumulative).toBe(100);
+    expect(inc.runningCumulative).toBe(100); // incidental adds 0
+    expect(inc.boqCreditQty).toBe(0);
+    expect(norm.boqCreditQty).toBe(100);
+  });
+
+  it("incidental entries are excluded from overlap detection", () => {
+    const normal = entry({ side: "LHS", chainageFromKm: 2.0, chainageToKm: 3.0, dprId: 10, isIncidental: false });
+    const incidental = entry({ side: "LHS", chainageFromKm: 2.5, chainageToKm: 3.5, dprId: 11, isIncidental: true });
+    const overlaps = detectOverlaps([normal, incidental]);
+    expect(overlaps.size).toBe(0); // incidental excluded → no overlap detected
+  });
+
+  it("two normal entries with same chainage → overlap detected (control test)", () => {
+    const a = entry({ side: "LHS", chainageFromKm: 2.0, chainageToKm: 3.0, dprId: 10 });
+    const b = entry({ side: "LHS", chainageFromKm: 2.5, chainageToKm: 3.5, dprId: 11 });
+    expect(detectOverlaps([a, b]).size).toBe(2);
+  });
+});
+
+describe("Incidental coverage strips (06V)", () => {
+  it("incidental entry produces 'incidental' state in coverage strip", () => {
+    const strips = buildCoverageStrips([
+      entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 2.0, isIncidental: true }),
+    ]);
+    const lhs = strips.find((s) => s.label === "LHS");
+    expect(lhs).toBeDefined();
+    expect(lhs!.segments[0].state).toBe("incidental");
+  });
+
+  it("normal entry wins over incidental in the same range (recorded, not incidental)", () => {
+    const normal = entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 2.0, isIncidental: false });
+    const incidental = entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 2.0, isIncidental: true });
+    const strips = buildCoverageStrips([normal, incidental]);
+    const lhs = strips.find((s) => s.label === "LHS")!;
+    // The entire range should be "recorded" (normal wins) — no "incidental" segment
+    expect(lhs.segments.every((s) => s.state !== "incidental")).toBe(true);
+    expect(lhs.segments.some((s) => s.state === "recorded")).toBe(true);
+  });
+
+  it("incidental in a separate sub-range → shows incidental segment outside normal", () => {
+    const normal = entry({ side: "RHS", chainageFromKm: 1.0, chainageToKm: 2.0, isIncidental: false });
+    const incidental = entry({ side: "RHS", chainageFromKm: 2.5, chainageToKm: 3.0, isIncidental: true });
+    const strips = buildCoverageStrips([normal, incidental]);
+    const rhs = strips.find((s) => s.label === "RHS")!;
+    const states = rhs.segments.map((s) => s.state);
+    expect(states).toContain("recorded");
+    expect(states).toContain("incidental");
+    expect(states).not.toContain("overlap");
+  });
+
+  it("incidental never produces 'overlap' state (does not contribute to depth)", () => {
+    const a = entry({ side: "RHS", chainageFromKm: 1.0, chainageToKm: 2.0, isIncidental: true });
+    const b = entry({ side: "RHS", chainageFromKm: 1.5, chainageToKm: 2.5, isIncidental: true });
+    const strips = buildCoverageStrips([a, b]);
+    const rhs = strips.find((s) => s.label === "RHS")!;
+    expect(rhs.segments.every((s) => s.state !== "overlap")).toBe(true);
+  });
+});
+
+describe("buildOverlapPairs (06V)", () => {
+  it("returns one pair for two overlapping entries", () => {
+    const a = entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 2.0, dprId: 10 });
+    const b = entry({ side: "LHS", chainageFromKm: 1.5, chainageToKm: 2.5, dprId: 11 });
+    const computed = computeItemEntries([a, b], wmm);
+    const pairs = buildOverlapPairs(computed);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].segFromKm).toBeCloseTo(1.5, 5);
+    expect(pairs[0].segToKm).toBeCloseTo(2.0, 5);
+  });
+
+  it("de-duplicates — each physical pair appears exactly once", () => {
+    const a = entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 3.0, dprId: 10 });
+    const b = entry({ side: "LHS", chainageFromKm: 2.0, chainageToKm: 4.0, dprId: 11 });
+    const c = entry({ side: "LHS", chainageFromKm: 2.5, chainageToKm: 3.5, dprId: 12 });
+    const computed = computeItemEntries([a, b, c], wmm);
+    const pairs = buildOverlapPairs(computed);
+    // a-b, a-c, b-c = 3 pairs
+    expect(pairs).toHaveLength(3);
+    // No duplicates: each pair key appears once
+    const keys = pairs.map((p) => `${p.a.entryId}:${p.b.entryId}`);
+    expect(new Set(keys).size).toBe(3);
+  });
+
+  it("returns [] when no overlaps", () => {
+    const a = entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 2.0 });
+    const b = entry({ side: "LHS", chainageFromKm: 2.5, chainageToKm: 3.0 });
+    const computed = computeItemEntries([a, b], wmm);
+    expect(buildOverlapPairs(computed)).toHaveLength(0);
+  });
+
+  it("incidental entry does not appear as a pair member (excluded from detection)", () => {
+    const normal = entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 2.0, dprId: 10 });
+    const incidental = entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 2.0, dprId: 11, isIncidental: true });
+    const computed = computeItemEntries([normal, incidental], wmm);
+    expect(buildOverlapPairs(computed)).toHaveLength(0);
   });
 });

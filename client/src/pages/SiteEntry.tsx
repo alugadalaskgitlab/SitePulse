@@ -29,6 +29,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { parseDprError } from "@/lib/dprErrors";
 import { InsufficientDieselDialog, parseInsufficientPlantStock, type InsufficientPlantStockPayload } from "@/components/InsufficientDieselDialog";
 import { useUpload } from "@/hooks/use-upload";
 import { format, subDays } from "date-fns";
@@ -72,6 +73,8 @@ interface ProgressEntry {
   uom: string;
   noSiteWork: boolean;
   noSiteWorkDescription: string;
+  isIncidental: boolean;
+  incidentalDescription: string;
   personnelIds: number[];
   boqItemId: number | null;
   // 030A: direct programme-bar linkage
@@ -256,6 +259,7 @@ export default function SiteEntry() {
   const [overBalanceWarnings, setOverBalanceWarnings] = useState<string[] | null>(null);
   // Batch 04: consolidated submit-readiness panel (one dialog, not N toasts).
   const [readiness, setReadiness] = useState<DprReadinessResult | null>(null);
+  const [incidentalConfirm, setIncidentalConfirm] = useState<{ idx: number; qty: number; uom: string } | null>(null);
 
   // ── Guided mobile mode (Phase 1 UX facelift) ──────────────────────────
   // Engineers on mobile land on a simplified one-step-at-a-time flow by
@@ -791,7 +795,7 @@ export default function SiteEntry() {
   }, [attachPersonnelToTarget, toast]);
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
+    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
   ]);
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
@@ -805,6 +809,7 @@ export default function SiteEntry() {
     chainageOverrideReason: p.chainageOverrideReason,
     label: p.activity,
     noSiteWork: p.noSiteWork,
+    isIncidental: p.isIncidental,
     layerNo: p.layerNo,
   }));
   const { priors: overlapPriors } = useChainageOverlapContext(
@@ -995,7 +1000,7 @@ export default function SiteEntry() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour' | 'materials') => {
     if (section === 'progress') {
-      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
+      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }]);
     } else if (section === 'labour') {
@@ -1069,6 +1074,9 @@ export default function SiteEntry() {
       earthworkArrangementId: null,
       quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "",
       layerNo: null,
+      // Batch 06V: yesterday copies default to non-incidental
+      isIncidental: false,
+      incidentalDescription: "",
     })));
     const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null };
     if (st.equipment.length > 0) setEquipment(st.equipment.map(e => ({ ...blankEq, ...e })) as any);
@@ -1082,6 +1090,17 @@ export default function SiteEntry() {
     mutationFn: async () => {
       const progressWithCalc = progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
+        if (p.noSiteWork) {
+          return {
+            ...p,
+            side: "", chainageFrom: "", chainageTo: "",
+            length: null, width: null, thickness: null, quantity: null,
+            chainageFromKm: null, chainageToKm: null,
+            quantitySource: null, quantitySourceNote: null,
+            chainageOverrideReason: null, executedBy: null,
+            isIncidental: false, incidentalDescription: null,
+          };
+        }
         return {
           ...p,
           length: effectiveLength,
@@ -1156,11 +1175,9 @@ export default function SiteEntry() {
     onError: (err: any) => {
       const shortage = parseInsufficientPlantStock(err);
       if (shortage) { setDieselShortage(shortage); return; }
-      toast({
-        title: "Error",
-        description: "Failed to save report. Please try again.",
-        variant: "destructive",
-      });
+      // Batch 06V: normalised DPR error — plain message, never raw JSON/code.
+      const dprErr = parseDprError(err);
+      toast({ title: dprErr.title, description: dprErr.lines.join("\n") || undefined, variant: "destructive" });
     },
   });
 
@@ -1332,11 +1349,8 @@ export default function SiteEntry() {
     onError: (err: any) => {
       const shortage = parseInsufficientPlantStock(err);
       if (shortage) { setDieselShortage(shortage); return; }
-      toast({
-        title: "Error",
-        description: "Failed to save draft. Please try again.",
-        variant: "destructive",
-      });
+      const dprErr = parseDprError(err);
+      toast({ title: dprErr.title, description: dprErr.lines.join("\n") || undefined, variant: "destructive" });
     },
   });
 
@@ -1924,21 +1938,34 @@ export default function SiteEntry() {
                         updated[idx].noSiteWork = checked === true;
                         if (checked) {
                           updated[idx].activity = updated[idx].activity || "NO SITE WORK";
-                          updated[idx].side = "";
-                          updated[idx].chainageFrom = "";
-                          updated[idx].chainageTo = "";
-                          updated[idx].length = null;
-                          updated[idx].width = null;
-                          updated[idx].thickness = null;
-                          updated[idx].quantity = null;
-                        } else {
-                          updated[idx].noSiteWorkDescription = "";
+                          // Mutually exclusive with isIncidental
+                          updated[idx].isIncidental = false;
                         }
                         setProgress(updated);
                       }}
                       data-testid={`checkbox-no-site-work-${idx}`}
                     />
                     <Label htmlFor={`no-site-work-${idx}`} className="text-sm cursor-pointer">No Site Work</Label>
+                  </div>
+                  {/* Batch 06V: Incidental / Non-BOQ (compact, mutually exclusive with No Site Work) */}
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id={`incidental-${idx}`}
+                      checked={entry.isIncidental}
+                      onCheckedChange={(checked) => {
+                        const willCheck = checked === true;
+                        const creditedQty = entry.quantity ?? calculateQuantity(entry);
+                        if (willCheck && !entry.isIncidental && creditedQty != null && creditedQty > 0) {
+                          setIncidentalConfirm({ idx, qty: creditedQty, uom: entry.uom });
+                        } else {
+                          setProgress((prev) => prev.map((p, i) => i === idx
+                            ? { ...p, isIncidental: willCheck, noSiteWork: willCheck ? false : p.noSiteWork }
+                            : p));
+                        }
+                      }}
+                      data-testid={`checkbox-incidental-${idx}`}
+                    />
+                    <Label htmlFor={`incidental-${idx}`} className="text-sm cursor-pointer">Incidental / Non-BOQ</Label>
                   </div>
                 </div>
                 <Button 
@@ -1985,6 +2012,28 @@ export default function SiteEntry() {
                   </div>
                 </div>
               ) : (
+                <>
+                {entry.isIncidental && (
+                  <div className="space-y-2">
+                    <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">
+                      Incidental / Non-BOQ · No BOQ Credit
+                    </Badge>
+                    <div>
+                      <Label className="text-sm">Description <span className="text-destructive">*</span></Label>
+                      <Textarea
+                        placeholder="Describe this incidental / Non-BOQ work…"
+                        value={entry.incidentalDescription}
+                        onChange={(e) => {
+                          const updated = [...progress];
+                          updated[idx].incidentalDescription = e.target.value;
+                          setProgress(updated);
+                        }}
+                        rows={2}
+                        data-testid={`input-incidental-description-${idx}`}
+                      />
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
                   <div className="col-span-2">
                     {/* When site has a BOQ project, Activity becomes a BOQ item selector.
@@ -2396,6 +2445,7 @@ export default function SiteEntry() {
                     })()}
                   </div>
                 </div>
+                </>
               )}
 
 
@@ -3661,6 +3711,34 @@ export default function SiteEntry() {
       </Dialog>
 
       {readinessDialog}
+
+      <Dialog open={incidentalConfirm != null} onOpenChange={(open) => { if (!open) setIncidentalConfirm(null); }}>
+        <DialogContent data-testid="dialog-incidental-confirm">
+          <DialogHeader>
+            <DialogTitle>Mark this activity as Incidental?</DialogTitle>
+            <DialogDescription>
+              This activity currently contributes {incidentalConfirm?.qty ?? 0} {incidentalConfirm?.uom ?? ""} to BOQ progress.
+              Marking it Incidental removes that quantity from BOQ/RA progress while keeping the physical work record and chainage.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIncidentalConfirm(null)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!incidentalConfirm) return;
+                const idx = incidentalConfirm.idx;
+                setProgress((prev) => prev.map((p, i) => i === idx
+                  ? { ...p, isIncidental: true, noSiteWork: false }
+                  : p));
+                setIncidentalConfirm(null);
+              }}
+              data-testid="button-confirm-mark-incidental"
+            >
+              Mark Incidental
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {overBalanceDialog}
     </div>
   );

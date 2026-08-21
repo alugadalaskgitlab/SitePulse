@@ -60,3 +60,4 @@
 - [Site Material Trips 06S](site-material-trips-06s.md) — explicit-stores-only GRN rule; PI-match resolver (never guess/create); unloadedAt stretch/yard is a permanent fact, split is informational.
 - [Guided DPR Integrity 06T](guided-dpr-integrity-06t.md) — arrangement id is a persisted historical fact; loose matching = suggested tier only; no-arrangement ≠ HLC responsible; draft equipment filter was the loss point.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.
+- [Incidental and No Site Work](incidental-non-boq.md) — Incidental retains physical history but earns zero credit; No Site Work is non-physical and remains a distinct classification.

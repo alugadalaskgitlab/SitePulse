@@ -1619,6 +1619,7 @@ export async function registerRoutes(
       chainageOverrideReason: p?.chainageOverrideReason ?? null,
       label: p?.activity ?? null,
       noSiteWork: !!p?.noSiteWork,
+      isIncidental: !!p?.isIncidental,
       layerNo: p?.layerNo != null && Number.isFinite(Number(p.layerNo)) ? Number(p.layerNo) : null,
     }));
     const itemIds = Array.from(new Set(rows.filter(isChainageGuardRow).map((r) => Number(r.boqItemId))));
@@ -12720,7 +12721,7 @@ export async function registerRoutes(
         ["Sl.", "BOQ Item", "UoM", "Contract Qty", "Previous", "This Period", "Cumulative", "Balance", "% Complete", "DPR Count"],
       ];
       const detailRows: any[][] = [
-        ["Date", "Item", "Side", "From", "To", "L", "W", "T", "Measured Qty", "Measured UoM", "BOQ Qty", "BOQ UoM", "Running Cumulative", "DPR No.", "Prepared By", "Remarks", "Possible Overlap"],
+        ["Date", "Item", "Side", "From", "To", "L", "W", "T", "Measured Qty", "Measured UoM", "BOQ Qty", "BOQ UoM", "Running Cumulative", "DPR No.", "Prepared By", "Remarks", "Possible Overlap", "Incidental (no BOQ credit)"],
       ];
       let sl = 0;
       for (const it of report.items) {
@@ -12758,6 +12759,7 @@ export async function registerRoutes(
             e.engineer ?? "",
             [e.location, e.remarks, e.reviewFlag].filter(Boolean).join(" | "),
             e.overlaps.length ? e.overlaps.map((o) => `DPR-${o.withDprId}`).join(", ") : "",
+            (e as any).isIncidental ? `Yes${(e as any).incidentalDescription ? ` — ${(e as any).incidentalDescription}` : ""}` : "",
           ]);
         }
       }
@@ -12765,7 +12767,7 @@ export async function registerRoutes(
       const ws1 = xlsx.utils.aoa_to_sheet(summaryRows);
       ws1["!cols"] = [{ wch: 5 }, { wch: 45 }, { wch: 8 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
       const ws2 = xlsx.utils.aoa_to_sheet(detailRows);
-      ws2["!cols"] = [{ wch: 11 }, { wch: 40 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 7 }, { wch: 7 }, { wch: 7 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 30 }, { wch: 16 }];
+      ws2["!cols"] = [{ wch: 11 }, { wch: 40 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 7 }, { wch: 7 }, { wch: 7 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 30 }, { wch: 16 }, { wch: 24 }];
       xlsx.utils.book_append_sheet(wb, ws1, "Summary");
       xlsx.utils.book_append_sheet(wb, ws2, "Measurement Details");
       const buf = xlsx.write(wb, { type: "buffer", bookType: "xlsx" });

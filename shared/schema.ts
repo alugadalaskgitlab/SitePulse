@@ -155,6 +155,13 @@ export const progressEntries = pgTable("progress_entries", {
   // null = "not a multi-layer entry" — NEVER coerced to 1; null falls back to
   // the pre-06P overlap rule. Display words like "Lift" are client-side only.
   layerNo: integer("layer_no"),
+  // ── Batch 06V: incidental progress tracking ──────────────────────────────
+  // Incidental work reported here does NOT earn BOQ credit (entryBoqCredit
+  // returns numeric 0). Physical quantity is preserved for site records but
+  // excluded from cumulatives, overlap guard, and coverage strips' recorded
+  // depth. Coverage strips show incidental spans in a third state: "incidental".
+  isIncidental: boolean("is_incidental").notNull().default(false),
+  incidentalDescription: text("incidental_description"),
 });
 
 // Structure DPR Items (for workType = "structure")

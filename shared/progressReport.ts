@@ -14,6 +14,15 @@
  *
  * CRITICAL (§9): running cumulative is computed CHRONOLOGICALLY and attached
  * to rows BEFORE any display sort. Display sorting never recomputes it.
+ *
+ * Batch 06V additions:
+ *  - isIncidental / incidentalDescription on ReportEntry
+ *  - activity / chainageOverrideReason pass-through for Overlap Review display
+ *  - entryBoqCredit returns 0 (not null) for incidental entries
+ *  - detectOverlaps excludes incidental entries
+ *  - buildCoverageStrips: incidental entries produce "incidental" state (third
+ *    treatment, never green/orange); normal recorded segments always win
+ *  - OverlapPair type + buildOverlapPairs helper for the Overlap Review panel
  */
 
 import { resolveDprConversionFactor, geometryQtyForRow, quantitiesMatch, resolveBoqUomProfile } from "./dprGeometry";
@@ -74,6 +83,29 @@ export type ReportEntry = {
    * formula, and null is never coerced to 1.
    */
   layerNo?: number | null;
+  /** No physical execution happened; retained for the DPR history only. */
+  noSiteWork?: boolean | null;
+  noSiteWorkDescription?: string | null;
+  /**
+   * 06V: when true this row is incidental work — physical quantity is
+   * preserved for site records but earns ZERO BOQ credit. Excluded from
+   * overlap guard and from normal recorded/overlap coverage depth.
+   * Coverage strips show incidental spans as a third state "incidental".
+   */
+  isIncidental?: boolean | null;
+  /** 06V: free-text reason stored with the incidental flag. */
+  incidentalDescription?: string | null;
+  /**
+   * 06V: Activity label (e.g. "BC LAYING"). Pass-through from the DB for
+   * Overlap Review display — never used in any quantity formula.
+   */
+  activity?: string | null;
+  /**
+   * 06V: Existing chainage-override reason stored on this row, if any
+   * (set via SiteEdit when the overlap was accepted). Shown in Overlap Review
+   * so reviewers know an entry is already annotated.
+   */
+  chainageOverrideReason?: string | null;
 };
 
 export type ComputedEntry = ReportEntry & {
@@ -95,6 +127,20 @@ export type OverlapNote = {
   side: string | null;
   fromKm: number;
   toKm: number;
+};
+
+/**
+ * 06V: A de-duplicated pair for the Overlap Review panel.
+ * Each pair appears exactly once (A has the lower entryId).
+ */
+export type OverlapPair = {
+  /** Side A entry (lower entryId). */
+  a: ComputedEntry;
+  /** Side B entry (higher entryId). */
+  b: ComputedEntry;
+  /** The exact overlap segment (km). */
+  segFromKm: number;
+  segToKm: number;
 };
 
 export type ItemAbstract = {
@@ -121,6 +167,8 @@ export function entryConversionFactor(entry: ReportEntry, item: ReportBoqItem | 
 }
 
 export function entryBoqCredit(entry: ReportEntry, item: ReportBoqItem | undefined): number | null {
+  // Classification wins over any stale physical values on a legacy row.
+  if (entry.isIncidental || entry.noSiteWork) return 0;
   if (entry.quantity == null || !Number.isFinite(Number(entry.quantity))) return null;
   return Number(entry.quantity) * entryConversionFactor(entry, item);
 }
@@ -150,6 +198,7 @@ const MANUAL_SOURCES = new Set(["measured", "survey", "weighment_mt", "other"]);
  *    (pre-Batch-04 rows) → review
  */
 export function entryReviewFlag(entry: ReportEntry, item: ReportBoqItem | undefined): string | null {
+  if (entry.noSiteWork) return null;
   if (entry.quantity == null) return "Review quantity — no quantity recorded";
   if (entry.kind === "structure") return null; // manual by definition
   if (entry.quantitySource && MANUAL_SOURCES.has(entry.quantitySource)) return null;
@@ -176,10 +225,13 @@ function kmRange(e: ReportEntry): { from: number; to: number } | null {
  * Detect possible overlaps among entries of ONE BOQ item. Touching/adjacent
  * ranges do not warn. Returns a map entry-key → advisory notes.
  * O(n log n + k) sweep; never mutates entries or quantities.
+ *
+ * 06V: incidental entries are excluded from overlap detection entirely.
  */
 export function detectOverlaps(entries: ReportEntry[]): Map<string, OverlapNote[]> {
   const out = new Map<string, OverlapNote[]>();
   const ranged = entries
+    .filter((e) => !e.isIncidental && !e.noSiteWork)
     .map((e) => ({ e, r: kmRange(e) }))
     .filter((x): x is { e: ReportEntry; r: { from: number; to: number } } => x.r !== null && x.r.to - x.r.from > KM_EPS)
     .sort((a, b) => a.r.from - b.r.from);
@@ -199,6 +251,40 @@ export function detectOverlaps(entries: ReportEntry[]): Map<string, OverlapNote[
     }
   }
   return out;
+}
+
+/**
+ * 06V: Build de-duplicated overlap pairs from computed entries of ONE item.
+ * Each physical pair (A, B) appears exactly once (A has the lower entryId).
+ * Uses the overlap notes already on each ComputedEntry — always consistent.
+ * Returns [] when there are no overlaps.
+ */
+export function buildOverlapPairs(computed: ComputedEntry[]): OverlapPair[] {
+  const pairs: OverlapPair[] = [];
+  const seen = new Set<string>();
+  const byKey = new Map<string, ComputedEntry>(
+    computed.map((e) => [`${e.kind}:${e.entryId}`, e]),
+  );
+  for (const e of computed) {
+    for (const note of e.overlaps) {
+      // Try both "progress" and "structure" key variants for the other entry
+      const withKey = byKey.has(`progress:${note.withEntryId}`)
+        ? `progress:${note.withEntryId}`
+        : `structure:${note.withEntryId}`;
+      // De-duplicate: emit the pair only once, with smaller entryId first.
+      const [aKey, bKey] = e.entryId < note.withEntryId
+        ? [`${e.kind}:${e.entryId}`, withKey]
+        : [withKey, `${e.kind}:${e.entryId}`];
+      const pairKey = `${aKey}::${bKey}`;
+      if (seen.has(pairKey)) continue;
+      seen.add(pairKey);
+      const aEntry = byKey.get(aKey);
+      const bEntry = byKey.get(bKey);
+      if (!aEntry || !bEntry) continue;
+      pairs.push({ a: aEntry, b: bEntry, segFromKm: note.fromKm, segToKm: note.toKm });
+    }
+  }
+  return pairs;
 }
 
 // ── Per-item computation (§8–§12) ───────────────────────────────────────────
@@ -321,7 +407,14 @@ export function sortForDisplay(computed: ComputedEntry[], sort: MeasurementSort)
 
 // ── Coverage strip (§13) — "DPR recorded here", NOT "complete" ──────────────
 
-export type CoverageSegment = { fromKm: number; toKm: number; state: "recorded" | "overlap" };
+/**
+ * 06V: Three possible states:
+ *  "recorded"   — normal work, in-scope, at least one non-incidental entry
+ *  "overlap"    — ≥2 non-incidental entries at this chainage (advisory)
+ *  "incidental" — only incidental entries here; no BOQ credit accrues
+ *                 (never green or orange — distinct hatched treatment)
+ */
+export type CoverageSegment = { fromKm: number; toKm: number; state: "recorded" | "overlap" | "incidental" };
 export type CoverageStrip = {
   /** normalised corridor label, e.g. "LHS", "RHS", "Both / Full Width", "Median" */
   label: string;
@@ -339,53 +432,121 @@ const CORRIDOR_LABELS: Record<string, string> = {
  * Build per-corridor coverage strips from one item's entries. Segments with
  * ≥2 recorded layers become "overlap" (advisory). Gaps carry no segment.
  * Entries with both_sides/full_width contribute to LHS and RHS strips too.
+ *
+ * 06V: incidental entries are tracked separately. Their physical span is shown
+ * as a third state "incidental" in the strip, but does NOT count toward normal
+ * recorded/overlap depth. Where a normal recorded span and an incidental span
+ * coincide, the recorded state wins (the incidental segment is only emitted for
+ * sub-ranges not covered by any normal entry).
  */
 export function buildCoverageStrips(entries: ReportEntry[]): CoverageStrip[] {
-  const ranged = entries
-    .map((e) => ({ side: normaliseReportSide(e.side), r: kmRange(e) }))
-    .filter((x): x is { side: string | null; r: { from: number; to: number } } => x.r !== null && x.r.to - x.r.from > KM_EPS);
-  if (ranged.length === 0) return [];
-  const groups = new Map<string, Array<{ from: number; to: number }>>();
-  const push = (g: string, r: { from: number; to: number }) => {
-    (groups.get(g) ?? groups.set(g, []).get(g)!).push(r);
+  const normalEntries = entries.filter((e) => !e.isIncidental && !e.noSiteWork);
+  const incidentalEntries = entries.filter((e) => !!e.isIncidental && !e.noSiteWork);
+
+  // Helper: range mapper for one set of entries
+  const toRanged = (es: ReportEntry[]) =>
+    es
+      .map((e) => ({ side: normaliseReportSide(e.side), r: kmRange(e) }))
+      .filter((x): x is { side: string | null; r: { from: number; to: number } } => x.r !== null && x.r.to - x.r.from > KM_EPS);
+
+  const normalRanged = toRanged(normalEntries);
+  const incidentalRanged = toRanged(incidentalEntries);
+  const allRanged = [...normalRanged, ...incidentalRanged];
+
+  if (allRanged.length === 0) return [];
+
+  // Group normal and incidental ranges by corridor separately
+  type GroupMap = Map<string, Array<{ from: number; to: number }>>;
+  const normalGroups: GroupMap = new Map();
+  const incidentalGroups: GroupMap = new Map();
+
+  const pushTo = (map: GroupMap, g: string, r: { from: number; to: number }) => {
+    (map.get(g) ?? map.set(g, []).get(g)!).push(r);
   };
-  for (const { side, r } of ranged) {
+
+  for (const { side, r } of normalRanged) {
     const s = side ?? "full_width";
-    if (s === "both_sides" || s === "full_width") { push("lhs", r); push("rhs", r); }
-    else push(s, r);
+    if (s === "both_sides" || s === "full_width") { pushTo(normalGroups, "lhs", r); pushTo(normalGroups, "rhs", r); }
+    else pushTo(normalGroups, s, r);
   }
-  const extentFrom = Math.min(...ranged.map((x) => x.r.from));
-  const extentTo = Math.max(...ranged.map((x) => x.r.to));
+  for (const { side, r } of incidentalRanged) {
+    const s = side ?? "full_width";
+    if (s === "both_sides" || s === "full_width") { pushTo(incidentalGroups, "lhs", r); pushTo(incidentalGroups, "rhs", r); }
+    else pushTo(incidentalGroups, s, r);
+  }
+
+  // All corridor keys (union of normal and incidental)
+  const allGroupKeys = new Set([
+    ...Array.from(normalGroups.keys()),
+    ...Array.from(incidentalGroups.keys()),
+  ]);
+
+  const extentFrom = Math.min(...allRanged.map((x) => x.r.from));
+  const extentTo = Math.max(...allRanged.map((x) => x.r.to));
   const strips: CoverageStrip[] = [];
   const order = ["lhs", "rhs", "median"];
-  const keys = Array.from(groups.keys()).sort((a, b) => {
+  const keys = Array.from(allGroupKeys).sort((a, b) => {
     const ia = order.indexOf(a); const ib = order.indexOf(b);
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
   });
-  for (const g of keys) {
-    const ranges = groups.get(g)!;
-    // Sweep: coverage count over boundaries
+
+  /** Sweep a set of ranges to produce boundary-event list. */
+  const sweepPts = (ranges: Array<{ from: number; to: number }>): Array<{ x: number; d: number }> => {
     const pts: Array<{ x: number; d: number }> = [];
     for (const r of ranges) { pts.push({ x: r.from, d: 1 }); pts.push({ x: r.to, d: -1 }); }
     pts.sort((a, b) => a.x - b.x || b.d - a.d);
+    return pts;
+  };
+
+  for (const g of keys) {
+    const normalRanges = normalGroups.get(g) ?? [];
+    const incRanges = incidentalGroups.get(g) ?? [];
+
+    const normalPts = sweepPts(normalRanges);
+    const incPts = sweepPts(incRanges);
+
+    // Collect all boundary X values from both sweeps
+    const allX = Array.from(new Set([...normalPts.map((p) => p.x), ...incPts.map((p) => p.x)])).sort((a, b) => a - b);
+    if (allX.length === 0) continue;
+
+    let normalDepth = 0;
+    let incDepth = 0;
+    let ni = 0; // index into normalPts
+    let ii = 0; // index into incPts
+
     const segments: CoverageSegment[] = [];
-    let depth = 0; let prevX = pts[0].x;
-    for (const p of pts) {
-      if (p.x - prevX > KM_EPS && depth > 0) {
-        const state: CoverageSegment["state"] = depth >= 2 ? "overlap" : "recorded";
+
+    for (let xi = 0; xi < allX.length - 1; xi++) {
+      const x = allX[xi];
+      const xNext = allX[xi + 1];
+
+      // Apply all events at x to get depths for interval [x, xNext]
+      while (ni < normalPts.length && normalPts[ni].x <= x) { normalDepth += normalPts[ni].d; ni++; }
+      while (ii < incPts.length && incPts[ii].x <= x) { incDepth += incPts[ii].d; ii++; }
+
+      if (xNext - x <= KM_EPS) continue;
+
+      let state: CoverageSegment["state"] | null = null;
+      if (normalDepth >= 2) state = "overlap";
+      else if (normalDepth === 1) state = "recorded";
+      else if (incDepth > 0) state = "incidental";
+      // else: gap — no segment
+
+      if (state != null) {
         const last = segments[segments.length - 1];
-        if (last && last.state === state && Math.abs(last.toKm - prevX) <= KM_EPS) last.toKm = p.x;
-        else segments.push({ fromKm: prevX, toKm: p.x, state });
+        if (last && last.state === state && Math.abs(last.toKm - x) <= KM_EPS) last.toKm = xNext;
+        else segments.push({ fromKm: x, toKm: xNext, state });
       }
-      depth += p.d;
-      prevX = p.x;
     }
-    strips.push({
-      label: CORRIDOR_LABELS[g] ?? g.toUpperCase(),
-      extentFromKm: extentFrom,
-      extentToKm: extentTo,
-      segments,
-    });
+
+    if (segments.length > 0) {
+      strips.push({
+        label: CORRIDOR_LABELS[g] ?? g.toUpperCase(),
+        extentFromKm: extentFrom,
+        extentToKm: extentTo,
+        segments,
+      });
+    }
   }
   return strips;
 }
