@@ -55,6 +55,12 @@ import {
 import { format } from "date-fns";
 import { shortItemName } from "@/lib/itemName";
 import { roadDprHref } from "@/lib/dprEntryMode";
+import {
+  buildActivityFilterOptions,
+  dprMatchesActivityFilter,
+  activityFilterLabel,
+  type ActivityFilterOption,
+} from "@/lib/activityFilter";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -194,10 +200,10 @@ export default function SiteDashboard() {
       // Engineer filter
       if (filters.engineer && dpr.engineer !== filters.engineer) return false;
       
-      // Activity filter
+      // Activity filter — BOQ-linked rows match by boqItemId; legacy rows
+      // match by normalised text (trimmed, collapsed whitespace, lower-case).
       if (filters.activity) {
-        const hasActivity = dpr.progress?.some((p: any) => p.activity === filters.activity);
-        if (!hasActivity) return false;
+        if (!dprMatchesActivityFilter(dpr, filters.activity)) return false;
       }
       
       // Equipment filter
@@ -264,15 +270,9 @@ export default function SiteDashboard() {
     return Array.from(engineers).sort();
   }, [dprsWithDetails]);
 
-  const uniqueActivities = useMemo(() => {
+  const uniqueActivities = useMemo((): ActivityFilterOption[] => {
     if (!dprsWithDetails) return [];
-    const activities = new Set<string>();
-    dprsWithDetails.forEach((dpr: any) => {
-      dpr.progress?.forEach((p: any) => {
-        if (p.activity) activities.add(p.activity);
-      });
-    });
-    return Array.from(activities).sort();
+    return buildActivityFilterOptions(dprsWithDetails);
   }, [dprsWithDetails]);
 
   const uniqueEquipmentList = useMemo(() => {
@@ -522,7 +522,7 @@ export default function SiteDashboard() {
     if (filters.site) filterLines.push(`Site: ${filters.site}`);
     if (filters.engineer) filterLines.push(`Engineer: ${filters.engineer}`);
     if (filters.workType) filterLines.push(`Work Type: ${filters.workType === "structure" ? "Structure" : "Road"}`);
-    if (filters.activity) filterLines.push(`Activity: ${filters.activity}`);
+    if (filters.activity) filterLines.push(`Activity: ${activityFilterLabel(filters.activity, uniqueActivities)}`);
     if (filters.equipment) filterLines.push(`Equipment: ${filters.equipment}`);
     if (filters.hasDiesel) filterLines.push(`With Diesel Usage`);
     if (filterLines.length > 0) {
@@ -751,7 +751,7 @@ export default function SiteDashboard() {
     if (filters.site) filtersText.push(`Site: ${filters.site}`);
     if (filters.engineer) filtersText.push(`Engineer: ${filters.engineer}`);
     if (filters.workType) filtersText.push(`Work Type: ${filters.workType === "structure" ? "Structure" : "Road"}`);
-    if (filters.activity) filtersText.push(`Activity: ${filters.activity}`);
+    if (filters.activity) filtersText.push(`Activity: ${activityFilterLabel(filters.activity, uniqueActivities)}`);
     if (filters.equipment) filtersText.push(`Equipment: ${filters.equipment}`);
     if (filters.hasDiesel) filtersText.push(`With Diesel Usage`);
 
@@ -1049,9 +1049,9 @@ export default function SiteDashboard() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Activities</SelectItem>
-                      {uniqueActivities.map((activity) => (
-                        <SelectItem key={activity} value={activity} className="max-w-[420px]" title={activity}>
-                          <span className="block truncate">{shortItemName(activity) || activity}</span>
+                      {uniqueActivities.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value} className="max-w-[420px]" title={opt.label}>
+                          <span className="block truncate">{shortItemName(opt.label) || opt.label}</span>
                         </SelectItem>
                       ))}
                     </SelectContent>

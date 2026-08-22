@@ -103,6 +103,17 @@ export type CandidateChainageRow = {
   isIncidental?: boolean | null;
 };
 
+export type ChainageComparableRow = Pick<
+  CandidateChainageRow,
+  "boqItemId" | "side" | "fromKm" | "toKm" | "noSiteWork" | "layerNo" | "isIncidental"
+>;
+
+export type ChainagePairOverlap = {
+  kind: "exact" | "partial";
+  segmentFromKm: number;
+  segmentToKm: number;
+};
+
 /** Prior recorded progress (a submitted DPR row, canonical valid filter). */
 export type PriorChainageEntry = {
   entryId: number;
@@ -141,7 +152,7 @@ export type ChainageOverlapHit = {
 };
 
 /** True when the row participates in the overlap guard at all (§3 scope). */
-export function isChainageGuardRow(row: CandidateChainageRow): boolean {
+export function isChainageGuardRow(row: ChainageComparableRow): boolean {
   if (row.noSiteWork) return false;
   if (row.isIncidental) return false; // 06V: incidental rows are out of scope
   if (row.boqItemId == null) return false;
@@ -170,6 +181,88 @@ function hitKind(
 }
 
 /**
+ * The canonical pair comparator used by DPR entry, server submit/version
+ * validation, Progress Report badges/review, and coverage strips.
+ */
+export function compareChainageRows(
+  a: ChainageComparableRow,
+  b: ChainageComparableRow,
+): ChainagePairOverlap | null {
+  if (!isChainageGuardRow(a) || !isChainageGuardRow(b)) return null;
+  if (Number(a.boqItemId) !== Number(b.boqItemId)) return null;
+  if (layersDistinct(a.layerNo, b.layerNo)) return null;
+  if (!sidesMayOverlap(a.side, b.side)) return null;
+  const ar = normaliseKmRange(a.fromKm, a.toKm);
+  const br = normaliseKmRange(b.fromKm, b.toKm);
+  if (!ar || !br) return null;
+  const segment = overlapSegment(ar.from, ar.to, br.from, br.to);
+  if (!segment) return null;
+  return {
+    kind: hitKind(ar, a.side, br, b.side),
+    segmentFromKm: segment.from,
+    segmentToKm: segment.to,
+  };
+}
+
+const sameNullableNumber = (
+  a: number | null | undefined,
+  b: number | null | undefined,
+): boolean => {
+  if (a == null || b == null) return a == null && b == null;
+  return Number.isFinite(Number(a)) &&
+    Number.isFinite(Number(b)) &&
+    Math.abs(Number(a) - Number(b)) <= KM_EPS;
+};
+
+/**
+ * Compare only facts that can change whether a progress row participates in
+ * the chainage-overlap guard. Quantity, remarks, equipment and other DPR facts
+ * deliberately do not affect this identity.
+ */
+export function chainageClaimUnchanged(
+  current: ChainageComparableRow,
+  persisted: ChainageComparableRow,
+): boolean {
+  const currentRange = normaliseKmRange(current.fromKm, current.toKm);
+  const persistedRange = normaliseKmRange(persisted.fromKm, persisted.toKm);
+  const rangesEqual =
+    currentRange == null || persistedRange == null
+      ? currentRange == null && persistedRange == null
+      : sameNullableNumber(currentRange.from, persistedRange.from) &&
+        sameNullableNumber(currentRange.to, persistedRange.to);
+  const currentLayer = current.layerNo == null ? null : Number(current.layerNo);
+  const persistedLayer = persisted.layerNo == null ? null : Number(persisted.layerNo);
+  return Number(current.boqItemId) === Number(persisted.boqItemId) &&
+    normaliseReportSide(current.side) === normaliseReportSide(persisted.side) &&
+    rangesEqual &&
+    sameNullableNumber(currentLayer, persistedLayer) &&
+    !!current.noSiteWork === !!persisted.noSiteWork &&
+    !!current.isIncidental === !!persisted.isIncidental;
+}
+
+/**
+ * Multiset match for submitted-version edits. It handles legacy rows without a
+ * stable entry key while ensuring an added duplicate claim is still treated as
+ * new once the persisted matching count is exhausted.
+ */
+export function unchangedChainageRowKeys(
+  current: CandidateChainageRow[],
+  persisted: ChainageComparableRow[],
+): Set<string | number> {
+  const used = new Set<number>();
+  const unchanged = new Set<string | number>();
+  for (const row of current) {
+    const matchIndex = persisted.findIndex(
+      (prior, index) => !used.has(index) && chainageClaimUnchanged(row, prior),
+    );
+    if (matchIndex < 0) continue;
+    used.add(matchIndex);
+    unchanged.add(row.rowKey);
+  }
+  return unchanged;
+}
+
+/**
  * Compute overlap hits for every candidate row:
  *  - against the OTHER rows of the same payload (same-DPR / same session);
  *  - against prior submitted entries (caller supplies the canonical
@@ -192,13 +285,9 @@ export function findChainageOverlaps(
   for (let i = 0; i < guarded.length; i++) {
     for (let j = i + 1; j < guarded.length; j++) {
       const A = guarded[i], B = guarded[j];
-      if (Number(A.row.boqItemId) !== Number(B.row.boqItemId)) continue;
-      if (layersDistinct(A.row.layerNo, B.row.layerNo)) continue; // 06P: different layers = valid separate work
-      if (!sidesMayOverlap(A.row.side, B.row.side)) continue;
-      const seg = overlapSegment(A.r.from, A.r.to, B.r.from, B.r.to);
-      if (!seg) continue;
-      const kind = hitKind(A.r, A.row.side, B.r, B.row.side);
-      const base = { kind, source: "same_dpr" as const, segmentFromKm: seg.from, segmentToKm: seg.to, withDprId: null, withDprDate: null, withEntryId: null, withQuantity: null, withUom: null };
+      const pair = compareChainageRows(A.row, B.row);
+      if (!pair) continue;
+      const base = { kind: pair.kind, source: "same_dpr" as const, segmentFromKm: pair.segmentFromKm, segmentToKm: pair.segmentToKm, withDprId: null, withDprDate: null, withEntryId: null, withQuantity: null, withUom: null };
       add(A.row.rowKey, { ...base, withRowKey: B.row.rowKey, withSide: B.row.side ?? null, withFromKm: B.r.from, withToKm: B.r.to });
       add(B.row.rowKey, { ...base, withRowKey: A.row.rowKey, withSide: A.row.side ?? null, withFromKm: A.r.from, withToKm: A.r.to });
     }
@@ -207,19 +296,15 @@ export function findChainageOverlaps(
   // B — prior submitted DPR progress.
   for (const { row, r } of guarded) {
     for (const p of priors) {
-      if (p.isIncidental) continue; // 06V: incidental prior entries excluded from overlap guard
-      if (Number(p.boqItemId) !== Number(row.boqItemId)) continue;
-      if (layersDistinct(row.layerNo, p.layerNo)) continue; // 06P: different layers = valid separate work
       const pr = normaliseKmRange(p.fromKm, p.toKm);
       if (!pr) continue;
-      if (!sidesMayOverlap(row.side, p.side)) continue;
-      const seg = overlapSegment(r.from, r.to, pr.from, pr.to);
-      if (!seg) continue;
+      const pair = compareChainageRows(row, p);
+      if (!pair) continue;
       add(row.rowKey, {
-        kind: hitKind(r, row.side, pr, p.side),
+        kind: pair.kind,
         source: "prior_dpr",
-        segmentFromKm: seg.from,
-        segmentToKm: seg.to,
+        segmentFromKm: pair.segmentFromKm,
+        segmentToKm: pair.segmentToKm,
         withDprId: p.dprId,
         withDprDate: p.dprDate ?? null,
         withEntryId: p.entryId,
@@ -252,10 +337,12 @@ const hasReason = (v: unknown): boolean => typeof v === "string" && v.trim() !==
 export function chainageOverlapReadinessIssues(
   rows: CandidateChainageRow[],
   priors: PriorChainageEntry[],
+  options?: { exemptRowKeys?: ReadonlySet<string | number> },
 ): ChainageOverlapIssue[] {
   const hits = findChainageOverlaps(rows, priors);
   const issues: ChainageOverlapIssue[] = [];
   for (const row of rows) {
+    if (options?.exemptRowKeys?.has(row.rowKey)) continue;
     const rowHits = hits.get(row.rowKey);
     if (!rowHits || rowHits.length === 0) continue;
     if (hasReason(row.chainageOverrideReason)) continue;

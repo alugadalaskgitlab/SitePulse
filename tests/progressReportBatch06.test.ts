@@ -156,6 +156,13 @@ describe("Possible overlap (§14 — tests T, U, V, W, X)", () => {
     expect(sidesMayOverlap("LHS", "lhs")).toBe(true);
     expect(sidesMayOverlap(null, "RHS")).toBe(true); // unknown side is conservative
   });
+  it("different explicit lifts do not create report badges or review pairs", () => {
+    const a = entry({ side: "LHS", chainageFromKm: 2, chainageToKm: 3, layerNo: 1 });
+    const b = entry({ side: "LHS", chainageFromKm: 2.2, chainageToKm: 2.8, layerNo: 2 });
+    const computed = computeItemEntries([a, b], wmm);
+    expect(detectOverlaps([a, b]).size).toBe(0);
+    expect(buildOverlapPairs(computed)).toEqual([]);
+  });
 });
 
 describe("Coverage strips (§13 — tests Y, Z)", () => {
@@ -182,6 +189,13 @@ describe("Coverage strips (§13 — tests Y, Z)", () => {
     expect(rhs.segments.map((s) => s.state)).toEqual(["recorded", "overlap", "recorded"]);
     // No segment state is ever "complete"
     expect(rhs.segments.every((s) => s.state === "recorded" || s.state === "overlap")).toBe(true);
+  });
+  it("different explicit lifts remain recorded rather than orange overlap", () => {
+    const strips = buildCoverageStrips([
+      entry({ side: "RHS", chainageFromKm: 1, chainageToKm: 2, layerNo: 1 }),
+      entry({ side: "RHS", chainageFromKm: 1.5, chainageToKm: 2.5, layerNo: 2 }),
+    ]);
+    expect(strips[0].segments.every((segment) => segment.state === "recorded")).toBe(true);
   });
   it("Full Width entries contribute to both LHS and RHS strips", () => {
     const strips = buildCoverageStrips([entry({ side: "Full Width", chainageFromKm: 0, chainageToKm: 1 })]);
@@ -354,5 +368,16 @@ describe("buildOverlapPairs (06V)", () => {
     const incidental = entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 2.0, dprId: 11, isIncidental: true });
     const computed = computeItemEntries([normal, incidental], wmm);
     expect(buildOverlapPairs(computed)).toHaveLength(0);
+  });
+});
+
+describe("Progress Report quantity presentation source lock (06X-HF2)", () => {
+  it("all report views render normal BOQ credit in the BOQ unit and incidental rows show no credit", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("client/src/pages/ProgressReport.tsx", "utf8");
+    expect((source.match(/e\.boqCreditQty != null/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(source).not.toContain("e.converted && e.boqCreditQty");
+    expect(source).toContain("no BOQ credit");
+    expect(source).toContain("Contract Qty");
   });
 });

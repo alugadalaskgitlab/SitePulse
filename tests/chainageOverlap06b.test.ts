@@ -11,9 +11,11 @@ import {
   sidesMayOverlap,
   normaliseKmRange,
   overlapSegment,
+  compareChainageRows,
   isChainageGuardRow,
   findChainageOverlaps,
   chainageOverlapReadinessIssues,
+  unchangedChainageRowKeys,
   type CandidateChainageRow,
   type PriorChainageEntry,
 } from "../shared/chainageOverlap";
@@ -60,6 +62,16 @@ describe("interval semantics (§20)", () => {
     expect(overlapSegment(2.1, 2.1, 2.0, 2.2)).toBeNull();
     expect(normaliseKmRange(null, 2)).toBeNull();
     expect(normaliseKmRange(NaN, 2)).toBeNull();
+  });
+});
+
+describe("canonical pair comparator (06X-HF2)", () => {
+  it("applies item, side, strict-intersection and explicit-layer rules together", () => {
+    expect(compareChainageRows(row({ rowKey: 1 }), row({ rowKey: 2, boqItemId: 2 }))).toBeNull();
+    expect(compareChainageRows(row({ rowKey: 1, side: "LHS" }), row({ rowKey: 2, side: "RHS" }))).toBeNull();
+    expect(compareChainageRows(row({ rowKey: 1, toKm: 2.1 }), row({ rowKey: 2, fromKm: 2.1 }))).toBeNull();
+    expect(compareChainageRows(row({ rowKey: 1, layerNo: 1 }), row({ rowKey: 2, layerNo: 2 }))).toBeNull();
+    expect(compareChainageRows(row({ rowKey: 1, layerNo: null }), row({ rowKey: 2, layerNo: 2 }))).not.toBeNull();
   });
 });
 
@@ -156,6 +168,51 @@ describe("Final-Submit readiness rule (§9)", () => {
       [prior({ fromKm: 2.05, toKm: 2.1 })],
     );
     expect(issues).toHaveLength(2); // one per row, not per hit
+  });
+});
+
+describe("submitted-version unchanged history exemption (06X-HF2)", () => {
+  it("exempts an unchanged persisted claim from a newly discovered prior overlap", () => {
+    const current = [row({ rowKey: "unchanged", fromKm: 2.15, toKm: 2.18 })];
+    const exempt = unchangedChainageRowKeys(current, [row({ rowKey: "old", fromKm: 2.15, toKm: 2.18 })]);
+    expect(exempt).toEqual(new Set(["unchanged"]));
+    expect(chainageOverlapReadinessIssues(current, [prior({})], { exemptRowKeys: exempt })).toEqual([]);
+  });
+
+  it("new or overlap-relevant changed claims are never exempt", () => {
+    const current = [
+      row({ rowKey: "changed-range", boqItemId: 1, fromKm: 2.14, toKm: 2.18 }),
+      row({ rowKey: "changed-side", boqItemId: 2, side: "LHS" }),
+      row({ rowKey: "changed-layer", boqItemId: 3, layerNo: 2 }),
+      row({ rowKey: "new", boqItemId: 4 }),
+    ];
+    const persisted = [
+      row({ rowKey: 1, boqItemId: 1, fromKm: 2.15, toKm: 2.18 }),
+      row({ rowKey: 2, boqItemId: 2, side: "RHS" }),
+      row({ rowKey: 3, boqItemId: 3, layerNo: 1 }),
+    ];
+    expect(unchangedChainageRowKeys(current, persisted).size).toBe(0);
+  });
+
+  it("uses multiset matching so an added duplicate remains new", () => {
+    const current = [row({ rowKey: "existing" }), row({ rowKey: "duplicate" })];
+    const exempt = unchangedChainageRowKeys(current, [row({ rowKey: "persisted" })]);
+    expect(exempt.size).toBe(1);
+    expect(exempt.has("existing")).toBe(true);
+    expect(exempt.has("duplicate")).toBe(false);
+    const issues = chainageOverlapReadinessIssues(current, [], { exemptRowKeys: exempt });
+    expect(issues.map((issue) => issue.rowKey)).toEqual(["duplicate"]);
+  });
+
+  it("the version route supplies original progress to the shared exemption", async () => {
+    const fs = await import("node:fs/promises");
+    const routes = await fs.readFile("server/routes.ts", "utf8");
+    const versionSlice = routes.slice(
+      routes.indexOf('app.post("/api/dprs/:id/version"'),
+      routes.indexOf("// Clone DPR", routes.indexOf('app.post("/api/dprs/:id/version"')),
+    );
+    expect(routes).toContain("unchangedChainageRowKeys");
+    expect(versionSlice).toContain("versionOriginal.progress");
   });
 });
 

@@ -1,5 +1,9 @@
 // Batch 06E — material receipt ↔ arrangement ↔ DPR linkage seam tests.
 import { describe, it, expect } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ActivityReceiptStrip } from "../client/src/components/ActivityReceiptStrip";
 import {
   resolveApplicableArrangements,
   resolveRequiredToday,
@@ -7,6 +11,9 @@ import {
   buildReceiptComparison,
   classifyReceiptMatch,
   receiptRelevanceForType,
+  arrangementScopeLabel,
+  resolveReusedExcavationSourceContexts,
+  reusedExcavationConfigurationIssue,
   APPLICABLE_ARRANGEMENT_STATUSES,
   COMPARISON_BASES_DIFFER,
   type ApplicableArrangementInput,
@@ -92,6 +99,136 @@ describe("06E arrangement resolution (spec §5/E)", () => {
     expect(receiptRelevanceForType("client_supplied")).toBe("context");
     expect(receiptRelevanceForType("vendor_material_delivered")).toBe("primary");
     expect(receiptRelevanceForType("fully_outsourced_composite")).toBe("evidence");
+  });
+});
+
+describe("06X-HF2 reused-excavated context", () => {
+  const renderStrip = (arrangements: ApplicableArrangementInput[], persistedArrangementId?: number | null) => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    client.setQueryData(["earthwork-arrangements-item", 10, 100], arrangements);
+    client.setQueryData(["arrangement-programme-allocations", 10], []);
+    client.setQueryData(["/api/site-material-trips", "NH-44", "2026-08-11"], []);
+    client.setQueryData(["/api/sites"], []);
+    return renderToStaticMarkup(
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(ActivityReceiptStrip, {
+          siteName: "NH-44",
+          date: "2026-08-11",
+          boqProjectId: 10,
+          boqItemId: 100,
+          persistedArrangementId,
+          activityMaterialHint: "Roadway excavation",
+          testIdPrefix: "hf2",
+        }),
+      ),
+    );
+  };
+
+  it("valid fill arrangement resolves on the fill item and exposes its explicit source relation", () => {
+    const reuse = arr({
+      arrangementType: "reused_excavated",
+      boqItemId: 200,
+      sourceExcavationBoqItemId: 100,
+      sourceExcavationBoqItemLabel: "Roadway excavation",
+      destinationBoqItemLabels: ["Embankment - excavated earth"],
+      reachLabel: "Km 2 to Km 4",
+    });
+    expect(resolveApplicableArrangements([reuse], { boqProjectId: 10, boqItemId: 200 }).prefill?.id).toBe(1);
+    expect(resolveReusedExcavationSourceContexts([reuse], 100)).toEqual([reuse]);
+    expect(arrangementScopeLabel(reuse)).toBe("Km 2 to Km 4");
+  });
+
+  it("source rows receive context only and never resolve the fill arrangement as their own", () => {
+    const reuse = arr({
+      arrangementType: "reused_excavated",
+      boqItemId: 200,
+      sourceExcavationBoqItemId: 100,
+    });
+    expect(resolveApplicableArrangements([reuse], { boqProjectId: 10, boqItemId: 100 }).none).toBe(true);
+    expect(resolveReusedExcavationSourceContexts([reuse], 100)).toHaveLength(1);
+  });
+
+  it("self-linked source/fill is reported invalid and never prefills", () => {
+    const invalid = arr({
+      arrangementType: "reused_excavated",
+      boqItemId: 100,
+      sourceExcavationBoqItemId: 100,
+    });
+    expect(reusedExcavationConfigurationIssue(invalid)).toMatch(/cannot be the same BOQ item/);
+    expect(resolveApplicableArrangements([invalid], { boqProjectId: 10, boqItemId: 100 }).none).toBe(true);
+  });
+
+  it("source-less reused excavation remains visible as invalid but cannot prefill or suppress receipts", () => {
+    const invalid = arr({
+      arrangementType: "reused_excavated",
+      boqItemId: 200,
+      sourceExcavationBoqItemId: null,
+    });
+    expect(reusedExcavationConfigurationIssue(invalid)).toMatch(/must be configured/);
+    expect(resolveApplicableArrangements([invalid], { boqProjectId: 10, boqItemId: 200 }).none).toBe(true);
+  });
+
+  it("self-linked legacy reuse renders the normal receipt workflow plus a warning", () => {
+    const invalid = arr({
+      arrangementType: "reused_excavated",
+      boqItemId: 100,
+      sourceExcavationBoqItemId: 100,
+    });
+    const html = renderStrip([invalid], invalid.id);
+    expect(html).toContain('data-testid="hf2-receipt-strip"');
+    expect(html).toContain('data-testid="hf2-reuse-configuration-warning"');
+    expect(html).not.toContain('data-testid="hf2-source-reuse-context"');
+    expect(html).not.toContain('data-testid="hf2-execution-only"');
+  });
+
+  it("source-less legacy reuse renders the normal receipt workflow plus a warning", () => {
+    const invalid = arr({
+      arrangementType: "reused_excavated",
+      boqItemId: 100,
+      sourceExcavationBoqItemId: null,
+    });
+    const html = renderStrip([invalid], invalid.id);
+    expect(html).toContain('data-testid="hf2-receipt-strip"');
+    expect(html).toContain('data-testid="hf2-reuse-configuration-warning"');
+    expect(html).not.toContain('data-testid="hf2-execution-only"');
+  });
+
+  it("the receipt strip keeps source-side context read-only", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("client/src/components/ActivityReceiptStrip.tsx", "utf8");
+    expect(source).toContain("resolveReusedExcavationSourceContexts");
+    expect(source).toContain("validSourceReuseContexts");
+    expect(source).toContain("resolution.applicable.some");
+    expect(source).toContain("source-reuse-context");
+    expect(source).toContain("fill-reuse-context");
+    expect(source).toContain("reuse-configuration-warning");
+    expect(source).toContain("persistedArrangementCandidate");
+    expect(source).toContain("reusedExcavationConfigurationIssue(persistedArrangementCandidate) == null");
+  });
+
+  it("legacy invalid persisted reuse cannot drive execution-only/no-receipt semantics", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("client/src/components/ActivityReceiptStrip.tsx", "utf8");
+    const persistedStart = source.indexOf("const persistedArrangementCandidate");
+    const arrangementStart = source.indexOf("const arrangement =", persistedStart);
+    const persistedBlock = source.slice(persistedStart, arrangementStart);
+    expect(persistedBlock).toContain("reusedExcavationConfigurationIssue");
+    expect(persistedBlock).toContain("? persistedArrangementCandidate");
+    expect(source).toContain("invalidReuseArrangement");
+    expect(source).toContain("reuse-configuration-warning");
+  });
+
+  it("create and PATCH routes both enforce the shared explicit-source invariant", async () => {
+    const fs = await import("node:fs/promises");
+    const routes = await fs.readFile("server/routes.ts", "utf8");
+    expect(routes).toContain("async function validateReusedExcavationSource");
+    expect((routes.match(/validateReusedExcavationSource\(/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(routes).toContain("INVALID_REUSED_EXCAVATION_SOURCE");
+    expect(routes).toContain("eq(boqItems.boqProjectId, projectId)");
   });
 });
 

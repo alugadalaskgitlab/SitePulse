@@ -26,7 +26,7 @@
  */
 
 import { resolveDprConversionFactor, geometryQtyForRow, quantitiesMatch, resolveBoqUomProfile } from "./dprGeometry";
-import { KM_EPS, normaliseReportSide, sidesMayOverlap } from "./chainageOverlap";
+import { KM_EPS, compareChainageRows, normaliseReportSide, sidesMayOverlap } from "./chainageOverlap";
 
 // Batch 06B: the generic side/interval semantics now live in the neutral
 // shared/chainageOverlap.ts module (used by DPR entry + server submit too).
@@ -231,21 +231,19 @@ function kmRange(e: ReportEntry): { from: number; to: number } | null {
 export function detectOverlaps(entries: ReportEntry[]): Map<string, OverlapNote[]> {
   const out = new Map<string, OverlapNote[]>();
   const ranged = entries
-    .filter((e) => !e.isIncidental && !e.noSiteWork)
     .map((e) => ({ e, r: kmRange(e) }))
-    .filter((x): x is { e: ReportEntry; r: { from: number; to: number } } => x.r !== null && x.r.to - x.r.from > KM_EPS)
-    .sort((a, b) => a.r.from - b.r.from);
+    .filter((x): x is { e: ReportEntry; r: { from: number; to: number } } => x.r !== null && x.r.to - x.r.from > KM_EPS);
   const key = (e: ReportEntry) => `${e.kind}:${e.entryId}`;
   for (let i = 0; i < ranged.length; i++) {
     for (let j = i + 1; j < ranged.length; j++) {
       const A = ranged[i], B = ranged[j];
-      if (B.r.from >= A.r.to - KM_EPS) break; // sorted — no further intersections
-      if (!sidesMayOverlap(A.e.side, B.e.side)) continue;
-      const from = Math.max(A.r.from, B.r.from);
-      const to = Math.min(A.r.to, B.r.to);
-      if (to - from <= KM_EPS) continue; // adjacent, not overlapping
-      const noteA: OverlapNote = { withDprId: B.e.dprId, withEntryId: B.e.entryId, side: B.e.side ?? null, fromKm: from, toKm: to };
-      const noteB: OverlapNote = { withDprId: A.e.dprId, withEntryId: A.e.entryId, side: A.e.side ?? null, fromKm: from, toKm: to };
+      const pair = compareChainageRows(
+        { boqItemId: A.e.boqItemId, side: A.e.side, fromKm: A.r.from, toKm: A.r.to, layerNo: A.e.layerNo, noSiteWork: A.e.noSiteWork, isIncidental: A.e.isIncidental },
+        { boqItemId: B.e.boqItemId, side: B.e.side, fromKm: B.r.from, toKm: B.r.to, layerNo: B.e.layerNo, noSiteWork: B.e.noSiteWork, isIncidental: B.e.isIncidental },
+      );
+      if (!pair) continue;
+      const noteA: OverlapNote = { withDprId: B.e.dprId, withEntryId: B.e.entryId, side: B.e.side ?? null, fromKm: pair.segmentFromKm, toKm: pair.segmentToKm };
+      const noteB: OverlapNote = { withDprId: A.e.dprId, withEntryId: A.e.entryId, side: A.e.side ?? null, fromKm: pair.segmentFromKm, toKm: pair.segmentToKm };
       (out.get(key(A.e)) ?? out.set(key(A.e), []).get(key(A.e))!).push(noteA);
       (out.get(key(B.e)) ?? out.set(key(B.e), []).get(key(B.e))!).push(noteB);
     }
@@ -446,8 +444,8 @@ export function buildCoverageStrips(entries: ReportEntry[]): CoverageStrip[] {
   // Helper: range mapper for one set of entries
   const toRanged = (es: ReportEntry[]) =>
     es
-      .map((e) => ({ side: normaliseReportSide(e.side), r: kmRange(e) }))
-      .filter((x): x is { side: string | null; r: { from: number; to: number } } => x.r !== null && x.r.to - x.r.from > KM_EPS);
+      .map((e) => ({ e, side: normaliseReportSide(e.side), r: kmRange(e) }))
+      .filter((x): x is { e: ReportEntry; side: string | null; r: { from: number; to: number } } => x.r !== null && x.r.to - x.r.from > KM_EPS);
 
   const normalRanged = toRanged(normalEntries);
   const incidentalRanged = toRanged(incidentalEntries);
@@ -459,6 +457,7 @@ export function buildCoverageStrips(entries: ReportEntry[]): CoverageStrip[] {
   type GroupMap = Map<string, Array<{ from: number; to: number }>>;
   const normalGroups: GroupMap = new Map();
   const incidentalGroups: GroupMap = new Map();
+  const overlapGroups: GroupMap = new Map();
 
   const pushTo = (map: GroupMap, g: string, r: { from: number; to: number }) => {
     (map.get(g) ?? map.set(g, []).get(g)!).push(r);
@@ -473,6 +472,24 @@ export function buildCoverageStrips(entries: ReportEntry[]): CoverageStrip[] {
     const s = side ?? "full_width";
     if (s === "both_sides" || s === "full_width") { pushTo(incidentalGroups, "lhs", r); pushTo(incidentalGroups, "rhs", r); }
     else pushTo(incidentalGroups, s, r);
+  }
+  const corridors = (side: string | null): string[] => {
+    const s = side ?? "full_width";
+    return s === "both_sides" || s === "full_width" ? ["lhs", "rhs"] : [s];
+  };
+  for (let i = 0; i < normalRanged.length; i++) {
+    for (let j = i + 1; j < normalRanged.length; j++) {
+      const A = normalRanged[i], B = normalRanged[j];
+      const pair = compareChainageRows(
+        { boqItemId: A.e.boqItemId, side: A.e.side, fromKm: A.r.from, toKm: A.r.to, layerNo: A.e.layerNo },
+        { boqItemId: B.e.boqItemId, side: B.e.side, fromKm: B.r.from, toKm: B.r.to, layerNo: B.e.layerNo },
+      );
+      if (!pair) continue;
+      const commonCorridors = corridors(A.side).filter((g) => corridors(B.side).includes(g));
+      for (const g of commonCorridors) {
+        pushTo(overlapGroups, g, { from: pair.segmentFromKm, to: pair.segmentToKm });
+      }
+    }
   }
 
   // All corridor keys (union of normal and incidental)
@@ -501,18 +518,22 @@ export function buildCoverageStrips(entries: ReportEntry[]): CoverageStrip[] {
   for (const g of keys) {
     const normalRanges = normalGroups.get(g) ?? [];
     const incRanges = incidentalGroups.get(g) ?? [];
+    const overlapRanges = overlapGroups.get(g) ?? [];
 
     const normalPts = sweepPts(normalRanges);
     const incPts = sweepPts(incRanges);
+    const overlapPts = sweepPts(overlapRanges);
 
     // Collect all boundary X values from both sweeps
-    const allX = Array.from(new Set([...normalPts.map((p) => p.x), ...incPts.map((p) => p.x)])).sort((a, b) => a - b);
+    const allX = Array.from(new Set([...normalPts.map((p) => p.x), ...incPts.map((p) => p.x), ...overlapPts.map((p) => p.x)])).sort((a, b) => a - b);
     if (allX.length === 0) continue;
 
     let normalDepth = 0;
     let incDepth = 0;
+    let overlapDepth = 0;
     let ni = 0; // index into normalPts
     let ii = 0; // index into incPts
+    let oi = 0; // index into overlapPts
 
     const segments: CoverageSegment[] = [];
 
@@ -523,12 +544,13 @@ export function buildCoverageStrips(entries: ReportEntry[]): CoverageStrip[] {
       // Apply all events at x to get depths for interval [x, xNext]
       while (ni < normalPts.length && normalPts[ni].x <= x) { normalDepth += normalPts[ni].d; ni++; }
       while (ii < incPts.length && incPts[ii].x <= x) { incDepth += incPts[ii].d; ii++; }
+      while (oi < overlapPts.length && overlapPts[oi].x <= x) { overlapDepth += overlapPts[oi].d; oi++; }
 
       if (xNext - x <= KM_EPS) continue;
 
       let state: CoverageSegment["state"] | null = null;
-      if (normalDepth >= 2) state = "overlap";
-      else if (normalDepth === 1) state = "recorded";
+      if (overlapDepth > 0) state = "overlap";
+      else if (normalDepth > 0) state = "recorded";
       else if (incDepth > 0) state = "incidental";
       // else: gap — no segment
 

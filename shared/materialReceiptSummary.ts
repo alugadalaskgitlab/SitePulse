@@ -123,6 +123,12 @@ export interface ApplicableArrangementInput {
   boqItemAllocations?: Array<{ boqItemId?: number | null }> | null;
   agencyName?: string | null;
   materialLabel?: string | null;
+  sourceExcavationBoqItemId?: number | null;
+  sourceExcavationBoqItemLabel?: string | null;
+  destinationBoqItemLabels?: string[] | null;
+  reachLabel?: string | null;
+  chainageFrom?: number | null;
+  chainageTo?: number | null;
 }
 
 export interface ArrangementBarAllocation {
@@ -143,11 +149,57 @@ export interface ArrangementResolution<T extends ApplicableArrangementInput> {
   none: boolean;
 }
 
+export function arrangementCoveredBoqItemIds(a: ApplicableArrangementInput): number[] {
+  if (a.boqItemId != null) return [Number(a.boqItemId)];
+  const allocs = Array.isArray(a.boqItemAllocations) ? a.boqItemAllocations : [];
+  return Array.from(new Set(
+    allocs
+      .map((al) => Number(al?.boqItemId))
+      .filter((id) => Number.isFinite(id)),
+  ));
+}
+
 function arrangementCoversItem(a: ApplicableArrangementInput, boqItemId: number): boolean {
   if (a.boqItemId != null) return a.boqItemId === boqItemId;
   const allocs = Array.isArray(a.boqItemAllocations) ? a.boqItemAllocations : [];
   if (allocs.length === 0) return false; // multi-item arrangement with no allocations: don't guess
   return allocs.some((al) => Number(al?.boqItemId) === boqItemId);
+}
+
+/**
+ * Explicitly invalid cut-to-fill configuration. Never infer a different fill
+ * item or silently persist this arrangement onto the source row.
+ */
+export function reusedExcavationConfigurationIssue(
+  arrangement: ApplicableArrangementInput,
+): string | null {
+  if (arrangement.arrangementType !== "reused_excavated") return null;
+  if (arrangement.sourceExcavationBoqItemId == null) {
+    return "A source excavation BOQ item must be configured for reused excavated material.";
+  }
+  return arrangementCoveredBoqItemIds(arrangement).includes(Number(arrangement.sourceExcavationBoqItemId))
+    ? "Source excavation and destination fill cannot be the same BOQ item."
+    : null;
+}
+
+export function arrangementScopeLabel(arrangement: ApplicableArrangementInput): string {
+  const reach = arrangement.reachLabel?.trim();
+  if (reach) return reach;
+  if (arrangement.chainageFrom != null && arrangement.chainageTo != null) {
+    return `Ch. ${Number(arrangement.chainageFrom)}–${Number(arrangement.chainageTo)}`;
+  }
+  return "whole configured fill scope";
+}
+
+export function resolveReusedExcavationSourceContexts<T extends ApplicableArrangementInput>(
+  arrangements: T[],
+  sourceBoqItemId: number,
+): T[] {
+  return arrangements.filter(
+    (arrangement) =>
+      arrangement.arrangementType === "reused_excavated" &&
+      Number(arrangement.sourceExcavationBoqItemId) === Number(sourceBoqItemId),
+  );
 }
 
 /**
@@ -164,6 +216,7 @@ export function resolveApplicableArrangements<T extends ApplicableArrangementInp
     (a) =>
       a.boqProjectId === ctx.boqProjectId &&
       (APPLICABLE_ARRANGEMENT_STATUSES as readonly string[]).includes(a.status) &&
+      reusedExcavationConfigurationIssue(a) == null &&
       arrangementCoversItem(a, ctx.boqItemId),
   );
   if (ctx.programmeBarId != null && barAllocations && barAllocations.length > 0) {

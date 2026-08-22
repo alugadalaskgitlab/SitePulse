@@ -30,6 +30,22 @@ import { METER_TYPES } from "@shared/schema";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 
+// 06X-HF2: extract the server's `message` field from apiRequest errors.
+// apiRequest throws "STATUS: {json}" — parse the JSON and return the
+// message string so client toasts show the server's actionable wording
+// instead of a generic fallback. If parsing fails, return null.
+function parseServerMessage(err: unknown): string | null {
+  const raw = String((err as any)?.message ?? "");
+  const jsonStart = raw.indexOf("{");
+  if (jsonStart === -1) return null;
+  try {
+    const body = JSON.parse(raw.slice(jsonStart));
+    return typeof body?.message === "string" ? body.message : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
   const { sectionCan, isAdmin, user } = useAuth();
@@ -276,8 +292,13 @@ export default function PlantEquipmentUsage() {
       resetNewEquipmentForm();
       toast({ title: "Equipment added successfully" });
     },
-    onError: () => {
-      toast({ title: "Failed to add equipment", variant: "destructive" });
+    onError: (err: Error) => {
+      const serverMsg = parseServerMessage(err);
+      toast({
+        title: "Failed to add equipment",
+        description: serverMsg ?? undefined,
+        variant: "destructive",
+      });
     },
   });
 
@@ -304,7 +325,11 @@ export default function PlantEquipmentUsage() {
     onError: (err: Error) => {
       const shortage = parseInsufficientPlantStock(err);
       if (shortage) { setDieselShortage(shortage); return; }
-      toast({ title: "Failed to record equipment usage. Please try again.", variant: "destructive" });
+      const serverMsg = parseServerMessage(err);
+      toast({
+        title: serverMsg ?? "Failed to record equipment usage. Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -328,7 +353,11 @@ export default function PlantEquipmentUsage() {
           variant: "destructive",
         });
       } else {
-        toast({ title: "Failed to update equipment usage. Please try again.", variant: "destructive" });
+        const serverMsg = parseServerMessage(err);
+        toast({
+          title: serverMsg ?? "Failed to update equipment usage. Please try again.",
+          variant: "destructive",
+        });
       }
     },
   });

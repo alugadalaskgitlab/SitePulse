@@ -385,6 +385,311 @@ describe("06X diesel handling in sendToSite branch", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// 06X-HF2: parseServerMessage — client surfaces safe server validation messages
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors the parseServerMessage helper added to PlantEquipmentUsage.tsx.
+ * apiRequest throws "STATUS: {json}" — we parse the JSON and return the
+ * server's message string, or null if parsing fails.
+ */
+function parseServerMessage(err: unknown): string | null {
+  const raw = String((err as any)?.message ?? "");
+  const jsonStart = raw.indexOf("{");
+  if (jsonStart === -1) return null;
+  try {
+    const body = JSON.parse(raw.slice(jsonStart));
+    return typeof body?.message === "string" ? body.message : null;
+  } catch {
+    return null;
+  }
+}
+
+describe("06X-HF2 parseServerMessage — extracts server validation message", () => {
+  it("returns the server message from a 400 JSON error", () => {
+    const err = new Error('400: {"message":"Destination site must be one active registered Site — refresh the site list and select it again"}');
+    expect(parseServerMessage(err)).toBe(
+      "Destination site must be one active registered Site — refresh the site list and select it again",
+    );
+  });
+
+  it("returns the server message from a 403 JSON error", () => {
+    const err = new Error('403: {"message":"You do not have access to dispatch equipment to this site"}');
+    expect(parseServerMessage(err)).toBe(
+      "You do not have access to dispatch equipment to this site",
+    );
+  });
+
+  it("returns the server message from a 409 JSON error", () => {
+    const err = new Error('409: {"message":"Destination site cannot be cleared from a dispatched equipment record"}');
+    expect(parseServerMessage(err)).toBe(
+      "Destination site cannot be cleared from a dispatched equipment record",
+    );
+  });
+
+  it("returns null when the error has no JSON body", () => {
+    const err = new Error("500: Internal Server Error");
+    expect(parseServerMessage(err)).toBeNull();
+  });
+
+  it("returns null when the JSON body has no message field", () => {
+    const err = new Error('400: {"code":"VALIDATION_FAILED"}');
+    expect(parseServerMessage(err)).toBeNull();
+  });
+
+  it("returns null when the message field is not a string", () => {
+    const err = new Error('400: {"message":42}');
+    expect(parseServerMessage(err)).toBeNull();
+  });
+
+  it("returns null for a plain non-JSON error string", () => {
+    const err = new Error("Network request failed");
+    expect(parseServerMessage(err)).toBeNull();
+  });
+
+  it("handles non-Error thrown values gracefully", () => {
+    expect(parseServerMessage(null)).toBeNull();
+    expect(parseServerMessage(undefined)).toBeNull();
+    expect(parseServerMessage("raw string")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 06X-HF2: GuidedDpr / SiteEntry open-usage discovery error surface logic
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors the open-usage discovery error-handling pattern added to
+ * GuidedDpr.tsx queryFn and SiteEntry.tsx fetchOpenPlantRecord.
+ * These are pure logic tests — no DOM or fetch needed.
+ */
+
+interface OpenUsageDiscoveryResult {
+  records: any[];
+  toastFired: boolean;
+  toastTitle?: string;
+  toastDescription?: string;
+  consoleWarn?: string;
+}
+
+async function simulateOpenUsageDiscovery(opts: {
+  siteName: string;
+  fetchStatus: number;
+  fetchBody?: Record<string, unknown>;
+  fetchThrows?: boolean;
+}): Promise<OpenUsageDiscoveryResult> {
+  const { siteName, fetchStatus, fetchBody, fetchThrows } = opts;
+
+  let toastFired = false;
+  let toastTitle: string | undefined;
+  let toastDescription: string | undefined;
+  let consoleWarn: string | undefined;
+
+  const toast = (args: { title: string; description?: string; variant?: string }) => {
+    toastFired = true;
+    toastTitle = args.title;
+    toastDescription = args.description;
+  };
+  const warnSpy = (msg: string) => { consoleWarn = msg; };
+
+  // Mirrors the queryFn added in GuidedDpr.tsx
+  async function queryFn(): Promise<any[]> {
+    if (!siteName) {
+      warnSpy("GuidedDpr: open-usage discovery skipped — no site context");
+      return [];
+    }
+    if (fetchThrows) {
+      warnSpy("GuidedDpr: open-usage discovery network error:");
+      toast({
+        title: "Equipment linkage unavailable",
+        description: "Could not check dispatched equipment. You can continue with manual equipment entry.",
+        variant: "destructive",
+      });
+      return [];
+    }
+    if (fetchStatus !== 200) {
+      const serverMsg = fetchBody?.message as string ?? "";
+      warnSpy(`GuidedDpr: open-usage discovery failed (${fetchStatus}): ${serverMsg}`);
+      toast({
+        title: "Equipment linkage unavailable",
+        description: serverMsg || (
+          fetchStatus === 403
+            ? "You do not have access to this site's dispatched equipment."
+            : "Could not check dispatched equipment. You can continue with manual equipment entry."
+        ),
+        variant: "destructive",
+      });
+      return [];
+    }
+    return [{ id: 1, equipmentId: 5, openingReading: 1500, destinationSite: siteName }];
+  }
+
+  const records = await queryFn();
+  return { records, toastFired, toastTitle, toastDescription, consoleWarn };
+}
+
+describe("06X-HF2 GuidedDpr open-usage discovery — explicit error surface", () => {
+  it("returns empty and warns (no toast) when siteName is empty", async () => {
+    const r = await simulateOpenUsageDiscovery({ siteName: "", fetchStatus: 200 });
+    expect(r.records).toHaveLength(0);
+    expect(r.toastFired).toBe(false);
+    expect(r.consoleWarn).toContain("no site context");
+  });
+
+  it("returns records when fetch succeeds with a site", async () => {
+    const r = await simulateOpenUsageDiscovery({ siteName: "Site Alpha", fetchStatus: 200 });
+    expect(r.records).toHaveLength(1);
+    expect(r.toastFired).toBe(false);
+  });
+
+  it("shows actionable toast and returns empty on 403", async () => {
+    const r = await simulateOpenUsageDiscovery({
+      siteName: "Site Alpha",
+      fetchStatus: 403,
+      fetchBody: { message: "You do not have access to this site" },
+    });
+    expect(r.records).toHaveLength(0);
+    expect(r.toastFired).toBe(true);
+    expect(r.toastTitle).toBe("Equipment linkage unavailable");
+    expect(r.toastDescription).toBe("You do not have access to this site");
+  });
+
+  it("falls back to default description on 403 with empty message", async () => {
+    const r = await simulateOpenUsageDiscovery({
+      siteName: "Site Alpha",
+      fetchStatus: 403,
+      fetchBody: { message: "" },
+    });
+    expect(r.toastFired).toBe(true);
+    expect(r.toastDescription).toContain("do not have access");
+  });
+
+  it("surfaces the safe server message on 400", async () => {
+    const r = await simulateOpenUsageDiscovery({
+      siteName: "Site Alpha",
+      fetchStatus: 400,
+      fetchBody: { message: "site is required" },
+    });
+    expect(r.records).toHaveLength(0);
+    expect(r.toastFired).toBe(true);
+    expect(r.toastDescription).toBe("site is required");
+    expect(r.consoleWarn).toContain("400");
+    expect(r.consoleWarn).toContain("site is required");
+  });
+
+  it("surfaces a 500 server error while preserving manual-entry continuity", async () => {
+    const r = await simulateOpenUsageDiscovery({
+      siteName: "Site Alpha",
+      fetchStatus: 500,
+      fetchBody: { message: "Failed to fetch open equipment records" },
+    });
+    expect(r.records).toHaveLength(0);
+    expect(r.toastFired).toBe(true);
+    expect(r.toastDescription).toBe("Failed to fetch open equipment records");
+    expect(r.consoleWarn).toContain("500");
+  });
+
+  it("surfaces network failure while preserving manual-entry continuity", async () => {
+    const r = await simulateOpenUsageDiscovery({
+      siteName: "Site Alpha",
+      fetchStatus: 0,
+      fetchThrows: true,
+    });
+    expect(r.records).toEqual([]);
+    expect(r.toastFired).toBe(true);
+    expect(r.toastDescription).toContain("manual equipment entry");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 06X-HF2: SiteEntry fetchOpenPlantRecord — missing site context
+// ---------------------------------------------------------------------------
+
+describe("06X-HF2 SiteEntry fetchOpenPlantRecord — missing site context guard", () => {
+  it("returns early and logs a warn when header.site is empty", () => {
+    let warned = false;
+    let warnMsg = "";
+    const warnSpy = (msg: string) => { warned = true; warnMsg = msg; };
+
+    // Mirrors the guard added to fetchOpenPlantRecord in SiteEntry.tsx
+    function guard(site: string): boolean {
+      if (!site) {
+        warnSpy("SiteEntry: open-usage discovery skipped — no site context (header.site is empty)");
+        return false;
+      }
+      return true;
+    }
+
+    expect(guard("")).toBe(false);
+    expect(warned).toBe(true);
+    expect(warnMsg).toContain("no site context");
+  });
+
+  it("proceeds when header.site is set", () => {
+    function guard(site: string): boolean {
+      if (!site) return false;
+      return true;
+    }
+    expect(guard("Site Alpha")).toBe(true);
+  });
+
+  it("builds site param with encodeURIComponent when site contains spaces", () => {
+    const site = "Site Alpha Bypass KM 12";
+    const siteParam = `&site=${encodeURIComponent(site)}`;
+    expect(siteParam).toContain("Site%20Alpha%20Bypass%20KM%2012");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 06X-HF2: source guard — verify parseServerMessage and error-surface changes
+//           are present in the actual source files.
+// ---------------------------------------------------------------------------
+
+describe("06X-HF2 source guard — client source implements HF2 error surfacing", () => {
+  it("PlantEquipmentUsage.tsx has parseServerMessage helper and uses it in mutations", async () => {
+    const src = await readFile("client/src/pages/PlantEquipmentUsage.tsx", "utf8");
+    expect(src).toContain("function parseServerMessage(err: unknown)");
+    expect(src).toContain("body?.message === \"string\"");
+    // createMutation uses it
+    const createStart = src.indexOf("const createMutation = useMutation");
+    const createEnd = src.indexOf("const updateMutation", createStart);
+    const createBlock = src.slice(createStart, createEnd);
+    expect(createBlock).toContain("parseServerMessage(err)");
+    // updateMutation uses it
+    const updateStart = src.indexOf("const updateMutation = useMutation");
+    const updateEnd = src.indexOf("const deleteMutation", updateStart);
+    const updateBlock = src.slice(updateStart, updateEnd);
+    expect(updateBlock).toContain("parseServerMessage(err)");
+  });
+
+  it("GuidedDpr.tsx open-usage queryFn surfaces every discovery failure", async () => {
+    const src = await readFile("client/src/pages/GuidedDpr.tsx", "utf8");
+    const queryStart = src.indexOf('queryKey: ["/api/plant-module/equipment-usage/open-today"');
+    const queryEnd = src.indexOf("const { data: equipmentMasterList", queryStart);
+    const block = src.slice(queryStart, queryEnd);
+    expect(block).toContain("Equipment linkage unavailable");
+    expect(block).toContain("console.warn");
+    expect(block).toContain("no site context");
+    expect(block).toContain("res.status === 403");
+    expect(block).toContain("manual equipment entry");
+  });
+
+  it("SiteEntry.tsx fetchOpenPlantRecord surfaces missing site context and discovery failures", async () => {
+    const src = await readFile("client/src/pages/SiteEntry.tsx", "utf8");
+    const fnStart = src.indexOf("const fetchOpenPlantRecord = async");
+    const fnEnd = src.indexOf("// Returns true when all", fnStart);
+    const block = src.slice(fnStart, fnEnd);
+    expect(block).toContain("no site context");
+    expect(block).toContain("Equipment linkage unavailable");
+    expect(block).toContain("res.status === 403");
+    expect(block).toContain("console.warn");
+    expect(block).toContain("manual equipment entry");
+    // The siteParam must always be set (no conditional — site is always passed)
+    expect(block).not.toContain('? `&site=${encodeURIComponent(header.site)}` : ""');
+  });
+});
+
 describe("06X server destination integrity and error logging", () => {
   it("canonicalizes destinationSite against one active Site and enforces site access on create and update", async () => {
     const source = await readFile("server/routes.ts", "utf8");

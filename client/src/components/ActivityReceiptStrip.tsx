@@ -30,6 +30,10 @@ import {
   isHlcProcurementResponsible,
   normaliseUom,
   receiptRelevanceForType,
+  arrangementCoveredBoqItemIds,
+  arrangementScopeLabel,
+  resolveReusedExcavationSourceContexts,
+  reusedExcavationConfigurationIssue,
   resolveApplicableArrangements,
   resolveRequiredToday,
   COMPARISON_BASES_DIFFER,
@@ -53,6 +57,12 @@ interface ArrangementRow {
   uom?: string | null;
   agreedRate?: number | null;
   allocatedQty?: number | null;
+  sourceExcavationBoqItemId?: number | null;
+  sourceExcavationBoqItemLabel?: string | null;
+  destinationBoqItemLabels?: string[] | null;
+  reachLabel?: string | null;
+  chainageFrom?: number | null;
+  chainageTo?: number | null;
 }
 
 // 06T-HF §3: plain operational label for the compact execution tag.
@@ -166,20 +176,52 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     () => resolveApplicableArrangements(arrangements, { boqProjectId, boqItemId, programmeBarId }, allocations),
     [arrangements, boqProjectId, boqItemId, programmeBarId, allocations],
   );
+  const sourceReuseContexts = useMemo(
+    () => resolveReusedExcavationSourceContexts(arrangements, boqItemId),
+    [arrangements, boqItemId],
+  );
+  const validSourceReuseContexts = useMemo(
+    () => sourceReuseContexts.filter((candidate) => reusedExcavationConfigurationIssue(candidate) == null),
+    [sourceReuseContexts],
+  );
+  const invalidReuseArrangement = useMemo(
+    () => arrangements.find(
+      (candidate) =>
+        reusedExcavationConfigurationIssue(candidate) != null &&
+        arrangementCoveredBoqItemIds(candidate).includes(boqItemId),
+    ) ?? null,
+    [arrangements, boqItemId],
+  );
   // Operational resolution priority (06G §3):
   //  1. today's daily fulfilment naming a specific arrangement;
   //  2. exact-bar/single standing arrangement prefill;
   //  3. Engineer's controlled selection when several genuinely apply.
-  const dailyArrangement =
+  const dailyArrangementCandidate =
     dailyFulfilment?.entry.fulfilmentType === "arrangement" && dailyFulfilment.entry.arrangementId != null
       ? arrangements.find((a) => a.id === dailyFulfilment.entry.arrangementId) ?? null
+      : null;
+  // Source-side reuse context is read-only. Expanding this endpoint to include
+  // source-linked arrangements must never let a daily fulfilment persist the
+  // destination fill arrangement onto the source excavation row.
+  const dailyArrangement =
+    dailyArrangementCandidate != null &&
+    resolution.applicable.some((candidate) => candidate.id === dailyArrangementCandidate.id)
+      ? dailyArrangementCandidate
       : null;
   // 06T §3: a persisted arrangement id on the progress row is a historical
   // fact — it wins over live re-resolution (which only fills the gap the
   // first time, or after the caller deliberately clears it on context change).
-  const persistedArrangement =
+  const persistedArrangementCandidate =
     props.persistedArrangementId != null
       ? arrangements.find((a) => a.id === props.persistedArrangementId) ?? null
+      : null;
+  // Preserve the stored ID as historical DPR data, but an invalid legacy reuse
+  // configuration must not drive "no receipt" semantics. The generic strip
+  // below reports the configuration warning without rewriting the row.
+  const persistedArrangement =
+    persistedArrangementCandidate != null &&
+    reusedExcavationConfigurationIssue(persistedArrangementCandidate) == null
+      ? persistedArrangementCandidate
       : null;
   const arrangement =
     persistedArrangement ??
@@ -321,16 +363,55 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
   const fmt = (q: number | null | undefined, u?: string | null) =>
     q == null ? "—" : `${Number(q.toFixed ? q.toFixed(2) : q)} ${u ?? ""}`.trim();
 
+  // 06X-HF2: a source excavation row gets read-only cut-to-fill context from
+  // the explicitly configured source link. It never receives/persists the fill
+  // arrangement as its own commercial arrangement.
+  if (
+    !arrangement &&
+    validSourceReuseContexts.length > 0 &&
+    invalidReuseArrangement == null &&
+    linkedTrips.length === 0 &&
+    suggestedTrips.length === 0
+  ) {
+    return (
+      <div className="rounded-md border bg-muted/30 p-3 space-y-1 text-xs" data-testid={`${testIdPrefix}-source-reuse-context`}>
+        {validSourceReuseContexts.map((context) => {
+          const destinations = context.destinationBoqItemLabels?.filter(Boolean).join(", ") || context.materialLabel || "configured fill item";
+          const operational = ["approved", "mobilisation_pending", "in_progress"].includes(context.status);
+          return (
+            <p key={context.id} className={operational ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400"}>
+              Cut-to-fill reuse: excavated material supplies {destinations} · {arrangementScopeLabel(context)}
+              {!operational ? ` · ${context.status === "submitted" ? "awaiting approval" : context.status}` : ""}
+            </p>
+          );
+        })}
+      </div>
+    );
+  }
+
   // 06T §3/§7: a resolved arrangement whose type needs NO receipts (e.g.
   // reused excavated material) shows ONLY the execution line — no Required/
   // Received grid, no PI lookup, no receipt buttons. Unconditional: even if
   // stray trips exist for the item, this arrangement type takes no receipts.
   if (relevance === "none" && arrangement) {
+    const configurationIssue = reusedExcavationConfigurationIssue(arrangement);
     return (
-      <p className="text-xs text-muted-foreground flex items-center gap-1.5" data-testid={`${testIdPrefix}-execution-only`}>
-        <Truck className="w-3.5 h-3.5" />
-        Execution: {arrangement.agencyName || "HLC"} · {arrangementTypeLabel(arrangement.arrangementType)}
-      </p>
+      <div className="space-y-1 text-xs text-muted-foreground" data-testid={`${testIdPrefix}-execution-only`}>
+        {configurationIssue && (
+          <p className="text-amber-700 dark:text-amber-400" data-testid={`${testIdPrefix}-reuse-configuration-warning`}>
+            Reuse arrangement #{arrangement.id}: {configurationIssue} Status: {arrangement.status}.
+          </p>
+        )}
+        <p className="flex items-center gap-1.5">
+          <Truck className="w-3.5 h-3.5" />
+          Execution: {arrangement.agencyName || "HLC"} · {arrangementTypeLabel(arrangement.arrangementType)}
+        </p>
+        {arrangement.arrangementType === "reused_excavated" && arrangement.sourceExcavationBoqItemId != null && (
+          <p data-testid={`${testIdPrefix}-fill-reuse-context`}>
+            Reuse: fill uses excavated material from {arrangement.sourceExcavationBoqItemLabel || `BOQ item #${arrangement.sourceExcavationBoqItemId}`} · {arrangementScopeLabel(arrangement)}
+          </p>
+        )}
+      </div>
     );
   }
   if (relevance === "none" && !arrangement && linkedTrips.length === 0 && suggestedTrips.length === 0) return null;
@@ -381,7 +462,11 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
       {/* 06T §3: ONE clear message when nothing resolves — never a "no
           arrangement" badge AND a PI warning stacked on the same card. */}
       {!arrangement && !dailyOverride && !resolution.requiresSelection && (
-        pendingApprovalArrangement ? (
+        invalidReuseArrangement ? (
+          <p className="text-xs text-amber-700 dark:text-amber-400" data-testid={`${testIdPrefix}-reuse-configuration-warning`}>
+            Reuse arrangement #{invalidReuseArrangement.id}: {reusedExcavationConfigurationIssue(invalidReuseArrangement)} Status: {invalidReuseArrangement.status}.
+          </p>
+        ) : pendingApprovalArrangement ? (
           <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`${testIdPrefix}-arrangement-pending-approval`}>
             An arrangement exists for this stretch{pendingApprovalArrangement.agencyName ? ` (${pendingApprovalArrangement.agencyName}${pendingApprovalArrangement.materialLabel ? ` · ${pendingApprovalArrangement.materialLabel}` : ""})` : ""} but is
             {" "}{pendingApprovalArrangement.status === "draft" ? "still a draft" : "awaiting approval"}.

@@ -22,7 +22,7 @@ import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc 
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { siteMatchesPermitted } from "@shared/siteName";
 import { computeItemEntries, computeItemAbstract } from "@shared/progressReport";
-import { shortItemName as sharedShortItemName } from "@shared/boqItemName";
+import { boqItemDisplayName, shortItemName as sharedShortItemName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
 import { computeDieselReceiptState } from "@shared/dieselReceiptStatus";
@@ -65,7 +65,8 @@ import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSides
 import { checkProgrammeLinkRow, deriveChainageReviewStatus, barSideCoverage, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { checkQuantitySourceRow, resolveQuantitySource } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessIssue } from "@shared/dprSubmitReadiness";
-import { chainageOverlapReadinessIssues, isChainageGuardRow, type CandidateChainageRow } from "@shared/chainageOverlap";
+import { chainageOverlapReadinessIssues, isChainageGuardRow, unchangedChainageRowKeys, type CandidateChainageRow } from "@shared/chainageOverlap";
+import { reusedExcavationConfigurationIssue } from "@shared/materialReceiptSummary";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import {
   registerAuthRoutes,
@@ -452,12 +453,35 @@ export async function registerRoutes(
         // suffix in `site` and must stay visible to site-restricted users.
         dprs = dprs.filter((d) => siteMatchesPermitted(d.site, permittedSiteNames));
       }
+      const boqItemIds = Array.from(new Set(
+        dprs.flatMap((dpr) =>
+          (Array.isArray(dpr.progress) ? dpr.progress : [])
+            .map((entry) => entry.boqItemId)
+            .filter((id): id is number => id != null),
+        ),
+      ));
+      const linkedBoqItems = boqItemIds.length > 0
+        ? await db.select({
+            id: boqItems.id,
+            displayName: boqItems.displayName,
+            itemName: boqItems.itemName,
+            description: boqItems.description,
+          }).from(boqItems).where(drizzleInArray(boqItems.id, boqItemIds))
+        : [];
+      const boqItemById = new Map(linkedBoqItems.map((item) => [item.id, item]));
+      const response = dprs.map((dpr) => ({
+        ...dpr,
+        progress: dpr.progress.map((entry) => ({
+          ...entry,
+          boqItem: entry.boqItemId != null ? boqItemById.get(entry.boqItemId) ?? null : null,
+        })),
+      }));
       const dur = Date.now() - t0;
       if (dur > 200 || process.env.NODE_ENV !== "production") {
         const range = dateFrom ? ` [${dateFrom}→${dateTo ?? "∞"}]` : " [all]";
         console.log(`[perf] GET /api/dprs/with-details${range} → ${dprs.length} DPRs in ${dur}ms`);
       }
-      res.json(dprs);
+      res.json(response);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch DPRs with details" });
     }
@@ -1622,23 +1646,34 @@ export async function registerRoutes(
    * out of scope (structures/manual locations). Drafts never call this.
    * Returns Batch 04-shaped mandatory readiness issues.
    */
-  async function evaluateChainageOverlapIssues(input: any, excludeDprId?: number | null): Promise<DprReadinessIssue[]> {
-    const progress: any[] = Array.isArray(input?.progress) ? input.progress : [];
-    const rows: CandidateChainageRow[] = progress.map((p, i) => ({
-      rowKey: i,
-      boqItemId: p?.boqItemId != null ? Number(p.boqItemId) : null,
-      side: p?.side ?? null,
-      fromKm: p?.chainageFromKm != null ? Number(p.chainageFromKm) : parseChainageKm(p?.chainageFrom),
-      toKm: p?.chainageToKm != null ? Number(p.chainageToKm) : parseChainageKm(p?.chainageTo),
-      chainageOverrideReason: p?.chainageOverrideReason ?? null,
-      label: p?.activity ?? null,
-      noSiteWork: !!p?.noSiteWork,
-      isIncidental: !!p?.isIncidental,
-      layerNo: p?.layerNo != null && Number.isFinite(Number(p.layerNo)) ? Number(p.layerNo) : null,
-    }));
+  async function evaluateChainageOverlapIssues(
+    input: any,
+    excludeDprId?: number | null,
+    persistedProgress?: any[] | null,
+  ): Promise<DprReadinessIssue[]> {
+    const toCandidateChainageRows = (source: any): CandidateChainageRow[] => {
+      const progress: any[] = Array.isArray(source?.progress) ? source.progress : [];
+      return progress.map((p, i) => ({
+        rowKey: i,
+        boqItemId: p?.boqItemId != null ? Number(p.boqItemId) : null,
+        side: p?.side ?? null,
+        fromKm: p?.chainageFromKm != null ? Number(p.chainageFromKm) : parseChainageKm(p?.chainageFrom),
+        toKm: p?.chainageToKm != null ? Number(p.chainageToKm) : parseChainageKm(p?.chainageTo),
+        chainageOverrideReason: p?.chainageOverrideReason ?? null,
+        label: p?.activity ?? null,
+        noSiteWork: !!p?.noSiteWork,
+        isIncidental: !!p?.isIncidental,
+        layerNo: p?.layerNo != null && Number.isFinite(Number(p.layerNo)) ? Number(p.layerNo) : null,
+      }));
+    };
+    const rows = toCandidateChainageRows(input);
     const itemIds = Array.from(new Set(rows.filter(isChainageGuardRow).map((r) => Number(r.boqItemId))));
     const priors = itemIds.length > 0 ? await storage.getSubmittedChainageEntries(itemIds, excludeDprId ?? null) : [];
-    return chainageOverlapReadinessIssues(rows, priors).map(({ section, label, message, rowKey }) => ({ section, label, message, rowKey }));
+    const exemptRowKeys = Array.isArray(persistedProgress)
+      ? unchangedChainageRowKeys(rows, toCandidateChainageRows({ progress: persistedProgress }))
+      : undefined;
+    return chainageOverlapReadinessIssues(rows, priors, { exemptRowKeys })
+      .map(({ section, label, message, rowKey }) => ({ section, label, message, rowKey }));
   }
 
   // ── 06X: PATCH /api/progress-entries/:id/overlap-resolution ─────────────────
@@ -2183,7 +2218,11 @@ export async function registerRoutes(
       // same chainage-overlap recheck as create/submit, or the guard could be
       // bypassed by editing. The original is excluded (it gets superseded).
       {
-        const overlapIssues = await evaluateChainageOverlapIssues(input.data, originalId);
+        const overlapIssues = await evaluateChainageOverlapIssues(
+          input.data,
+          originalId,
+          Array.isArray(versionOriginal.progress) ? versionOriginal.progress : [],
+        );
         if (overlapIssues.length > 0) {
           return res.status(422).json({
             message: "DPR is not ready to submit",
@@ -14809,7 +14848,37 @@ export async function registerRoutes(
       const projectId = parseInt(req.params.id);
       const boqItemId = parseInt(req.params.itemId);
       const rows = await storage.getEarthworkArrangementsForItem(projectId, boqItemId);
-      res.json(rows);
+      const itemIds = Array.from(new Set(rows.flatMap((row) => [
+        row.boqItemId,
+        row.sourceExcavationBoqItemId,
+        ...(Array.isArray(row.boqItemAllocations)
+          ? (row.boqItemAllocations as Array<{ boqItemId?: number | null }>).map((allocation) => allocation?.boqItemId ?? null)
+          : []),
+      ]).filter((id): id is number => id != null)));
+      const itemRows = await Promise.all(itemIds.map((id) => storage.getBoqItem(id)));
+      const itemLabels = new Map(
+        itemRows
+          .filter((item): item is NonNullable<typeof item> => item != null)
+          .map((item) => [item.id, boqItemDisplayName(item)]),
+      );
+      res.json(rows.map((row) => {
+        const destinationIds = row.boqItemId != null
+          ? [row.boqItemId]
+          : Array.isArray(row.boqItemAllocations)
+            ? (row.boqItemAllocations as Array<{ boqItemId?: number | null }>)
+                .map((allocation) => allocation?.boqItemId)
+                .filter((id): id is number => id != null)
+            : [];
+        return {
+          ...row,
+          sourceExcavationBoqItemLabel: row.sourceExcavationBoqItemId != null
+            ? itemLabels.get(row.sourceExcavationBoqItemId) ?? null
+            : null,
+          destinationBoqItemLabels: destinationIds
+            .map((id) => itemLabels.get(id))
+            .filter((label): label is string => !!label),
+        };
+      }));
     } catch (err) {
       console.error("GET /api/boq/projects/:id/earthwork-arrangements/item/:itemId:", err);
       res.status(500).json({ error: "Failed to fetch earthwork arrangements" });
@@ -14852,6 +14921,64 @@ export async function registerRoutes(
       }
     }
     return { ok: true, ids };
+  }
+
+  async function validateReusedExcavationSource(
+    projectId: number,
+    arrangementType: unknown,
+    sourceRaw: unknown,
+    destinationBoqItemIds: number[],
+  ): Promise<
+    { ok: true; sourceId: number | null } |
+    { ok: false; status: number; body: { error: string; message: string } }
+  > {
+    const sourceId = sourceRaw == null || sourceRaw === "" ? null : Number(sourceRaw);
+    if (arrangementType !== "reused_excavated") {
+      return { ok: true, sourceId: sourceId != null && Number.isFinite(sourceId) ? sourceId : null };
+    }
+    if (sourceId != null && (!Number.isInteger(sourceId) || sourceId <= 0)) {
+      return {
+        ok: false,
+        status: 400,
+        body: {
+          error: "INVALID_REUSED_EXCAVATION_SOURCE",
+          message: "sourceExcavationBoqItemId must be a positive BOQ item ID.",
+        },
+      };
+    }
+    const uniqueDestinations = Array.from(new Set(destinationBoqItemIds.map(Number).filter(Number.isFinite)));
+    const issue = reusedExcavationConfigurationIssue({
+      id: 0,
+      status: "draft",
+      arrangementType: "reused_excavated",
+      boqProjectId: projectId,
+      boqItemId: uniqueDestinations.length === 1 ? uniqueDestinations[0] : null,
+      boqItemAllocations: uniqueDestinations.length > 1
+        ? uniqueDestinations.map((boqItemId) => ({ boqItemId }))
+        : null,
+      sourceExcavationBoqItemId: sourceId,
+    });
+    if (issue) {
+      return {
+        ok: false,
+        status: 400,
+        body: { error: "INVALID_REUSED_EXCAVATION_SOURCE", message: issue },
+      };
+    }
+    const [sourceItem] = await db.select({ id: boqItems.id })
+      .from(boqItems)
+      .where(and(eq(boqItems.id, sourceId!), eq(boqItems.boqProjectId, projectId)));
+    if (!sourceItem) {
+      return {
+        ok: false,
+        status: 400,
+        body: {
+          error: "INVALID_REUSED_EXCAVATION_SOURCE",
+          message: "The source excavation BOQ item must belong to this BOQ project.",
+        },
+      };
+    }
+    return { ok: true, sourceId };
   }
 
   app.post("/api/boq/projects/:id/earthwork-arrangements", async (req, res) => {
@@ -15101,6 +15228,15 @@ export async function registerRoutes(
       const primaryBoqItemId = effectiveAllocations.length === 1
         ? effectiveAllocations[0].boqItemId
         : (effectiveAllocations.length > 1 ? null : singleBoqItemId);
+      const reuseSourceCheck = await validateReusedExcavationSource(
+        projectId,
+        arrangementType ?? "not_decided",
+        body.sourceExcavationBoqItemId,
+        effectiveAllocations.map((allocation) => allocation.boqItemId),
+      );
+      if (!reuseSourceCheck.ok) {
+        return res.status(reuseSourceCheck.status).json(reuseSourceCheck.body);
+      }
 
       // Determine final status from saveIntent
       const finalStatus = saveIntent === "submit" ? "submitted" : "draft";
@@ -15141,7 +15277,7 @@ export async function registerRoutes(
         inclusions: body.inclusions?.trim() || null,
         exclusions: body.exclusions?.trim() || null,
         notes: body.notes?.trim() || null,
-        sourceExcavationBoqItemId: body.sourceExcavationBoqItemId != null ? Number(body.sourceExcavationBoqItemId) : null,
+        sourceExcavationBoqItemId: reuseSourceCheck.sourceId,
         preparedByUserId: user?.id ?? null,
       });
 
@@ -15333,12 +15469,38 @@ export async function registerRoutes(
       }
 
       // Numeric coercion
-      for (const f of ["allocatedQty","agreedRate","avgLeadKm","plannedDailyOutput","chainageFrom","chainageTo","numExcavators","numTippers","tipperCapacityCum","workingHoursPerShift"]) {
+      for (const f of ["allocatedQty","agreedRate","avgLeadKm","plannedDailyOutput","chainageFrom","chainageTo","numExcavators","numTippers","tipperCapacityCum","workingHoursPerShift","sourceExcavationBoqItemId"]) {
         if (f in patch && patch[f] != null) patch[f] = Number(patch[f]);
       }
 
       const current = await storage.getEarthworkArrangementById(id);
       if (!current) return res.status(404).json({ error: "Arrangement not found" });
+      const nextArrangementType = patch.arrangementType ?? current.arrangementType;
+      const nextSourceId = "sourceExcavationBoqItemId" in patch
+        ? patch.sourceExcavationBoqItemId
+        : current.sourceExcavationBoqItemId;
+      const nextAllocations = "boqItemAllocations" in patch
+        ? patch.boqItemAllocations
+        : current.boqItemAllocations;
+      const destinationBoqItemIds = current.boqItemId != null
+        ? [current.boqItemId]
+        : Array.isArray(nextAllocations)
+          ? (nextAllocations as Array<{ boqItemId?: number | null }>)
+              .map((allocation) => Number(allocation?.boqItemId))
+              .filter(Number.isFinite)
+          : [];
+      const reuseSourceCheck = await validateReusedExcavationSource(
+        current.boqProjectId,
+        nextArrangementType,
+        nextSourceId,
+        destinationBoqItemIds,
+      );
+      if (!reuseSourceCheck.ok) {
+        return res.status(reuseSourceCheck.status).json(reuseSourceCheck.body);
+      }
+      if (nextArrangementType === "reused_excavated") {
+        patch.sourceExcavationBoqItemId = reuseSourceCheck.sourceId;
+      }
 
       // ── Instruction 031 B3: validate + normalise Scope linkage on edit ────
       if ("scopeSegmentIds" in patch) {

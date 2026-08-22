@@ -374,8 +374,47 @@ export default function GuidedDpr() {
   const { data: openUsages = [] } = useQuery<OpenUsageLike[]>({
     queryKey: ["/api/plant-module/equipment-usage/open-today", date, siteName],
     queryFn: async () => {
-      const res = await fetch(`/api/plant-module/equipment-usage/open-today?date=${encodeURIComponent(date)}&site=${encodeURIComponent(siteName)}`, { credentials: "include" });
-      if (!res.ok) return [];
+      // 06X-HF2: site context is required — the server will return 400 without
+      // it. The enabled guard below prevents this call when siteName is empty,
+      // but surface a clear message if somehow called without site context.
+      if (!siteName) {
+        console.warn("GuidedDpr: open-usage discovery skipped — no site context");
+        return [];
+      }
+      let res: Response;
+      try {
+        res = await fetch(
+          `/api/plant-module/equipment-usage/open-today?date=${encodeURIComponent(date)}&site=${encodeURIComponent(siteName)}`,
+          { credentials: "include" },
+        );
+      } catch (error) {
+        console.warn("GuidedDpr: open-usage discovery network error:", error);
+        toast({
+          title: "Equipment linkage unavailable",
+          description: "Could not check dispatched equipment. You can continue with manual equipment entry.",
+          variant: "destructive",
+        });
+        return [];
+      }
+      if (!res.ok) {
+        // 06X-HF2: surface actionable errors rather than silently returning
+        // empty. 400 = missing/invalid site param; 403 = no site access.
+        // These are non-fatal for the DPR — we return [] but log a warning
+        // and show a toast so the user knows equipment linkage is unavailable.
+        let serverMsg = "";
+        try { serverMsg = (await res.json()).message ?? ""; } catch { /* ignore */ }
+        console.warn(`GuidedDpr: open-usage discovery failed (${res.status}): ${serverMsg}`);
+        toast({
+          title: "Equipment linkage unavailable",
+          description: serverMsg || (
+            res.status === 403
+              ? "You do not have access to this site's dispatched equipment."
+              : "Could not check dispatched equipment. You can continue with manual equipment entry."
+          ),
+          variant: "destructive",
+        });
+        return [];
+      }
       return res.json();
     },
     enabled: !!date && !!siteName,

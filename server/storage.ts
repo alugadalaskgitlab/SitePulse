@@ -26545,7 +26545,8 @@ export class DatabaseStorage implements IStorage {
     return rows.filter((a) =>
       a.boqItemId === boqItemId ||
       (a.boqItemId == null && Array.isArray(a.boqItemAllocations) &&
-        (a.boqItemAllocations as Array<{ boqItemId?: number }>).some((al) => al?.boqItemId === boqItemId))
+        (a.boqItemAllocations as Array<{ boqItemId?: number }>).some((al) => al?.boqItemId === boqItemId)) ||
+      a.sourceExcavationBoqItemId === boqItemId
     );
   }
 

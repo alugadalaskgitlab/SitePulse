@@ -1202,13 +1202,46 @@ export default function SiteEntry() {
   // to the current site (same as GuidedDpr's useQuery-based fetch).
   const fetchOpenPlantRecord = async (equipmentId: number, rowIdx: number) => {
     if (!header.date || !equipmentId) return;
+    // Continuity fallback still guards `row.equipmentId === equipmentId` and
+    // `row.openingReading === null` before applying an asynchronous response;
+    // it calls `fetchLatestPriorClosing(equipmentId, header.date)` only after
+    // the same-day open-record branch returns.
+    // 06X-HF2: surface missing site context explicitly rather than silently
+    // omitting the site param (the server requires it and returns 400 without it).
+    if (!header.site) {
+      console.warn("SiteEntry: open-usage discovery skipped — no site context (header.site is empty)");
+      toast({
+        title: "Select a site first",
+        description: "A site is required before dispatched equipment can be linked.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
-      const siteParam = header.site ? `&site=${encodeURIComponent(header.site)}` : "";
+      const siteParam = `&site=${encodeURIComponent(header.site)}`;
       const res = await fetch(
         `/api/plant-module/equipment-usage/open-today?date=${encodeURIComponent(header.date)}&equipmentIds=${equipmentId}${siteParam}`,
         { credentials: "include" },
       );
-      if (!res.ok) return;
+      if (!res.ok) {
+        // 06X-HF2: surface actionable errors instead of silently ignoring.
+        // 403 = user lacks access to this site; 400 = bad request (should not
+        // happen here since site is always passed); 500 = server error.
+        // All are non-fatal — fall back to manual entry.
+        let serverMsg = "";
+        try { serverMsg = (await res.json()).message ?? ""; } catch { /* ignore */ }
+        console.warn(`SiteEntry: open-usage discovery failed (${res.status}): ${serverMsg}`);
+        toast({
+          title: "Equipment linkage unavailable",
+          description: serverMsg || (
+            res.status === 403
+              ? "You do not have access to this site's dispatched equipment."
+              : "Could not check dispatched equipment. You can continue with manual equipment entry."
+          ),
+          variant: "destructive",
+        });
+        return;
+      }
       const records: any[] = await res.json();
       const record = records[0] ?? null;
       setOpenPlantMap(prev => ({ ...prev, [equipmentId]: record }));
@@ -1246,8 +1279,13 @@ export default function SiteEntry() {
         }
         return updated;
       });
-    } catch {
-      // silently ignore — falls back to manual entry
+    } catch (e) {
+      console.warn("SiteEntry: open-usage discovery network error:", e);
+      toast({
+        title: "Equipment linkage unavailable",
+        description: "Could not check dispatched equipment. You can continue with manual equipment entry.",
+        variant: "destructive",
+      });
     }
   };
 

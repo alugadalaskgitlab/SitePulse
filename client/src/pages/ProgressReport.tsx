@@ -342,7 +342,7 @@ function MeasurementSheet({ item, from, to, state, update }: { item: ReportItem;
             <tr className="[&>th]:px-2 [&>th]:py-1.5 [&>th]:text-left [&>th]:font-semibold">
               <th>Sl.</th><th>Date</th><th>Side</th><th>From</th><th>To</th>
               <th className="text-right">L</th><th className="text-right">W</th><th className="text-right">T</th>
-              {anyConverted ? <><th className="text-right">Measured Qty</th><th className="text-right">BOQ Qty</th></> : <th className="text-right">Qty</th>}
+              {anyConverted ? <><th className="text-right">Measured Qty</th><th className="text-right">BOQ Qty</th></> : <th className="text-right">BOQ Qty</th>}
               <th className="text-right">Running Cum.</th><th>DPR</th><th>Prepared By</th><th>Remarks</th>
             </tr>
           </thead>
@@ -378,9 +378,9 @@ function MeasurementSheet({ item, from, to, state, update }: { item: ReportItem;
                   ) : (
                     <td className="px-2 py-1.5 text-right">
                       {isIncidental ? (
-                        <span className="not-italic">{e.quantity != null ? `${fmt(e.quantity)} ${e.uom ?? item.boqItem.unit}` : "—"}</span>
+                        <span className="text-purple-700 font-semibold not-italic" title="Incidental — no BOQ credit">—</span>
                       ) : (
-                        e.quantity != null ? `${fmt(e.quantity)} ${e.uom ?? item.boqItem.unit}` : "—"
+                        e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.boqItem.unit}` : "—"
                       )}
                     </td>
                   )}
@@ -1045,7 +1045,7 @@ function ChainageWise({ items, state, update }: { items: ReportItem[] } & Nav) {
         <Card><CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-xs text-slate-900">
             <thead className="bg-slate-50 text-slate-700"><tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:font-semibold">
-              <th>Date</th><th>BOQ Item</th><th>Side</th><th>From</th><th>To</th><th className="text-right">Qty</th><th className="text-right">BOQ Qty</th><th>DPR</th><th>Remarks</th>
+              <th>Date</th><th>BOQ Item</th><th>Side</th><th>From</th><th>To</th><th className="text-right">Measured Qty</th><th className="text-right">BOQ Qty</th><th>DPR</th><th>Remarks</th>
             </tr></thead>
             <tbody>
               {rows.map(({ e, item }) => (
@@ -1058,8 +1058,8 @@ function ChainageWise({ items, state, update }: { items: ReportItem[] } & Nav) {
                   <td className="px-2 py-1.5 text-right">{e.quantity != null ? `${fmt(e.quantity)} ${e.uom ?? ""}` : "—"}</td>
                   <td className="px-2 py-1.5 text-right not-italic">
                     {e.isIncidental
-                      ? <span className="text-purple-700 text-[10px]">incidental</span>
-                      : (e.converted && e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.unit}` : "")}
+                      ? <span className="text-purple-700 text-[10px]">no BOQ credit</span>
+                      : (e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.unit}` : "—")}
                   </td>
                   <td className="px-2 py-1.5 not-italic"><Link href={dprLinkWithReturn(e.dprId, state)} className="text-blue-600 hover:underline">DPR-{e.dprId}</Link></td>
                   <td className="px-2 py-1.5 max-w-xs text-slate-500">{e.remarks ?? ""}</td>
@@ -1106,7 +1106,7 @@ function DateWise({ items, from, to, state }: { items: ReportItem[]; from: strin
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-slate-900">
               <thead className="text-slate-700"><tr className="[&>th]:px-2 [&>th]:py-1.5 [&>th]:text-left [&>th]:font-semibold">
-                <th>BOQ Item</th><th>Side</th><th>From–To / Location</th><th className="text-right">Qty</th><th className="text-right">BOQ Qty</th><th>DPR</th><th>Prepared By</th><th>Remarks</th>
+                <th>BOQ Item</th><th>Side</th><th>From–To / Location</th><th className="text-right">Measured Qty</th><th className="text-right">BOQ Qty</th><th>DPR</th><th>Prepared By</th><th>Remarks</th>
               </tr></thead>
               <tbody>
                 {rows.map(({ e, item }) => (
@@ -1117,8 +1117,8 @@ function DateWise({ items, from, to, state }: { items: ReportItem[]; from: strin
                     <td className="px-2 py-1.5 text-right">{e.quantity != null ? `${fmt(e.quantity)} ${e.uom ?? ""}` : "—"}</td>
                     <td className="px-2 py-1.5 text-right not-italic">
                       {e.isIncidental
-                        ? <span className="text-purple-700 text-[10px]">incidental</span>
-                        : (e.converted && e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.unit}` : "")}
+                        ? <span className="text-purple-700 text-[10px]">no BOQ credit</span>
+                        : (e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.unit}` : "—")}
                     </td>
                     <td className="px-2 py-1.5 not-italic"><Link href={dprLinkWithReturn(e.dprId, state)} className="text-blue-600 hover:underline">DPR-{e.dprId}</Link></td>
                     <td className="px-2 py-1.5 text-slate-500">{e.engineer ?? "—"}</td>
