@@ -1,0 +1,457 @@
+INSTRUCTION 06X-HF2 — DPR SAVE / OVERLAP / CUT-FILL / EQUIPMENT / REPORT / FILTER CONSISTENCY
+
+OBJECTIVE
+
+Resolve the current production DPR workflow defects as ONE focused reliability
+batch.
+
+The issues are related because they all affect the ability to record, edit,
+find, validate and report the same DPR facts consistently.
+
+DO NOT START REDESIGNING OTHER MODULES.
+
+============================================================
+1. DPR ACTIVITY FILTER — SCARIFYING / HISTORICAL DPRS MISSING
+============================================================
+
+REPRODUCED CONCERN
+
+Existing DPRs contain work such as Scarifying Existing BT, but the Site DPR
+Activity filter does not reliably show/find them.
+
+CURRENT CODE ISSUE TO CONFIRM
+
+SiteDashboard currently builds uniqueActivities from raw:
+
+  dpr.progress[].activity
+
+and filters by exact text equality:
+
+  p.activity === filters.activity
+
+This is fragile because the same BOQ activity may exist historically with:
+- different case;
+- old free-text name;
+- full imported BOQ description;
+- newer short BOQ display name.
+
+FIX
+
+For BOQ-linked progress rows:
+
+- activity filtering must use boqItemId as the canonical identity;
+- filter options should show the canonical current short BOQ item name;
+- all DPRs with that same boqItemId must match regardless of stored activity
+  text.
+
+For legacy progress rows with boqItemId = null:
+
+- retain a normalized text fallback;
+- compare trimmed/case-insensitive normalized activity text;
+- do not lose old free-text DPRs.
+
+Do NOT rewrite historical activity descriptions merely to make filtering work.
+
+Verify specifically the known Scarifying Existing BT DPRs:
+- identify the DPR ids/dates;
+- identify whether they have boqItemId;
+- prove they appear when the Scarifying activity filter is selected.
+
+Also verify Site/date/Engineer filters do not accidentally suppress them.
+
+GUIDED DPR NOTE
+
+Do not confuse the Site Dashboard Activity filter with Guided DPR
+"Today's likely activities".
+
+Today's likely activities remains programme/date based:
+- programme bars covering selected date;
+- minus already reported bar ids.
+
+But "+ Add Activity" must always allow selection from the project's BOQ items,
+including Scarifying, even if it is not planned for that date.
+
+============================================================
+2. ONE CANONICAL CHAINAGE OVERLAP RULE EVERYWHERE
+============================================================
+
+Use ONE shared overlap semantic for:
+
+- new DPR final submit;
+- draft -> final submit;
+- submitted DPR edit/version;
+- Guided DPR advisory;
+- Detailed DPR advisory;
+- Progress Report badge;
+- Progress Report Overlap Review.
+
+Rules:
+
+- same BOQ item;
+- actual intersecting chainage only;
+- endpoint touching is NOT overlap;
+- side aware:
+    LHS vs RHS = no overlap;
+    Both Sides / Full Width may overlap applicable sides;
+    unknown remains conservative;
+- layer/lift aware:
+    if BOTH entries have explicit non-null layerNo and differ = no overlap;
+    null retains legacy conservative behavior;
+- No Site Work excluded;
+- Incidental / Non-BOQ excluded.
+
+Do not maintain a second slightly different implementation in progressReport.ts.
+
+Prefer a shared pair comparator/helper so DPR and Reports cannot drift again.
+
+============================================================
+3. EXISTING DPR EDIT MUST NOT BE BLOCKED BY UNCHANGED HISTORY
+============================================================
+
+Current production symptom:
+
+User opens an existing submitted DPR to correct equipment/remarks/etc.,
+then Save/Submit is blocked by an old possible overlap in an unchanged
+progress activity.
+
+Required behavior:
+
+When editing an existing submitted DPR:
+
+- compare persisted progress rows against the edited payload;
+- if BOQ item, From, To, Side, Layer/Lift, Incidental status and overlap/credit
+  classification did NOT change, do NOT create a new mandatory overlap blocker
+  merely because equipment/labour/remarks/photos changed;
+
+- new progress rows must receive normal overlap validation;
+- changed overlap-relevant fields must receive normal overlap validation.
+
+Do NOT weaken validation of new/changed progress claims.
+
+If a real blocking activity remains:
+- identify exact activity;
+- side;
+- from/to;
+- layer;
+- other DPR/entry;
+- overlap segment;
+- scroll/highlight the exact row.
+
+============================================================
+4. DRAFT DPR -> FINAL SUBMIT
+============================================================
+
+Draft saving remains lenient.
+
+But Final Submit from a saved draft must use the SAME canonical overlap rules
+as all other submit paths.
+
+Verify specifically:
+- valid LHS vs RHS does not block;
+- different explicit lifts do not block;
+- incidental rows do not block;
+- real same-side/same-layer overlap does block and identifies exact row.
+
+No separate draft-only overlap implementation.
+
+============================================================
+5. REPORT OVERLAP REVIEW — DIRECT RESOLUTION
+============================================================
+
+Keep the agreed direct workflow in:
+
+Reports -> Progress Report -> Overlap Review
+
+For Entry A / Entry B allow:
+
+A. Mark selected entry as:
+   Incidental / Non-BOQ
+   -> zero BOQ/RA credit
+
+B. Keep selected entry payable:
+   Separately Payable
+   -> structured reason required
+
+This action must update the SAME underlying progress entry used by DPR.
+Do not create a second overlap-resolution record that can drift from DPR.
+
+Do NOT send the user to the full DPR merely to tick Incidental or record the
+payable reason.
+
+Keep "Open DPR" only for actual measurement/chainage/layer correction or
+additional context.
+
+After direct resolution:
+- refetch Progress Report;
+- refetch RA/progress aggregates;
+- resolved incidental entries disappear from unresolved overlap review;
+- they remain visible in normal measurement/history views as Incidental /
+  Non-BOQ, zero BOQ credit.
+
+============================================================
+6. PROGRESS REPORT BOQ QTY DISPLAY
+============================================================
+
+Current Chainage-wise / Date-wise UI only displays BOQ Qty under some
+conversion cases.
+
+Fix presentation so every normal payable progress entry shows credited BOQ
+quantity in the BOQ item's actual UoM.
+
+Examples:
+
+Measured 312.5 CUM; BOQ UoM CUM
+-> BOQ Qty 312.5 CUM
+
+Measured 1250 SQM; BOQ UoM Ha with factor
+-> BOQ Qty 0.125 Ha
+
+Incidental
+-> "Incidental / no BOQ credit"
+
+Do not change quantity mathematics unless investigation proves a calculation
+bug.
+
+Item-wise Contract Qty must always come from immutable boq_items.boq_qty.
+
+============================================================
+7. CUT/FILL — REUSED EXCAVATED EARTH ARRANGEMENT
+============================================================
+
+Current schema already supports:
+
+- arrangementType = reused_excavated
+- sourceExcavationBoqItemId
+
+Do NOT invent another cut/fill model.
+
+Investigate the real TAKKADPALLY-SIRUR arrangement.
+
+FILL SIDE
+
+For Embankment - Excavated Earth or other fill BOQ item covered by an
+approved/in-progress reused_excavated arrangement:
+
+- resolve the arrangement by BOQ item + applicable scope;
+- persist earthworkArrangementId on the DPR progress row;
+- show compact context:
+    Execution: HLC / applicable agency
+    Reused Excavated Material
+- no PI requirement;
+- no external material receipt requirement.
+
+SOURCE CUT SIDE
+
+For the Roadway Excavation BOQ item referenced through
+sourceExcavationBoqItemId:
+
+do not show misleading:
+  "Execution arrangement not linked to this activity"
+
+Instead show source/reuse context, e.g.:
+
+  Reuse link:
+  Excavated material feeds Embankment - Excavated Earth
+  under approved Reused Excavated Material arrangement.
+
+Important:
+this is a source relationship only.
+Do NOT falsely assign the fill arrangement as the excavation BOQ item's own
+commercial execution arrangement unless it separately covers that item.
+
+Respect reach/scope where the arrangement contains usable scope data.
+
+============================================================
+8. EQUIPMENT USAGE — EDIT/SEND TO SITE SAVE FAILURE
+============================================================
+
+Reproduce the actual production case.
+
+Current required model:
+
+Plant Equipment Usage
+-> opening reading/time
+-> Send to Site
+-> choose ACTIVE REGISTERED SITE
+-> open equipment_usage
+-> only that exact site's DPR discovers it
+-> same plantUsageId/opening reading carried into DPR
+-> engineer closes usage in DPR
+-> DPR final submission closes SAME equipment_usage record.
+
+Fix all remaining defects:
+
+A. Destination Site must be Site Master dropdown, never free text for new
+   records.
+
+B. Existing/legacy free-text destinations must be editable:
+   - require user to select the current registered Site if legacy value does
+     not uniquely resolve;
+   - save by PUT to the SAME equipment_usage id;
+   - do not POST a duplicate;
+   - canonicalize destination on successful edit.
+
+C. Confirm editingUsage always updates the existing usage rather than falling
+   through to create.
+
+D. Site ownership:
+   dispatched equipment belongs operationally to destinationSite, not origin
+   plant/siteName.
+
+E. Guided and Detailed DPR must both enforce the same destination-site scope.
+
+F. Site B must never see Site A's open dispatch.
+
+G. Surface actual server validation message instead of generic
+   "Failed to record equipment usage / Please try again."
+
+============================================================
+9. EQUIPMENT CONTINUITY
+============================================================
+
+Verify the same dispatched equipment flow also carries:
+
+- opening reading from Plant Equipment Usage into the site DPR;
+- if only opening exists, DPR can enter closing;
+- same plantUsageId persists;
+- final submission closes that record;
+- no duplicate usage entry created.
+
+Do not alter the previously designed prior-closing continuity behavior.
+
+============================================================
+10. DPR ACTIVITY / PROGRAMME FILTER PARITY
+============================================================
+
+Audit all places where activities are identified or filtered.
+
+Canonical rule:
+
+BOQ-linked activity identity = boqItemId.
+
+Display label = shared boqItemDisplayName / short item name.
+
+Historical free-text activity = fallback only.
+
+Do not use display text as the primary relational identity when boqItemId
+exists.
+
+Check:
+- Site Dashboard DPR Activity filter;
+- DPR history/results;
+- Guided Add Activity;
+- Detailed Activity picker;
+- Progress Report filtering/grouping if applicable;
+- exports where filters are applied.
+
+Do not change the actual historical activity field merely for display/filter
+parity.
+
+============================================================
+11. TEST LOCKS
+============================================================
+
+A. Scarifying historical DPR with boqItemId appears under Scarifying filter.
+
+B. Same BOQ item with old/full/upper-case activity text still matches by
+   boqItemId.
+
+C. Legacy row with null boqItemId matches normalized text fallback.
+
+D. LHS 2.400-2.900 vs RHS 2.500-2.800 -> no overlap.
+
+E. LHS 2.400-2.900 vs LHS 2.900-3.100 -> no overlap.
+
+F. LHS 2.400-2.900 vs LHS 2.800-3.100 same lift -> overlap
+   2.800-2.900.
+
+G. Same chainage, Lift 1 vs Lift 2 -> no overlap.
+
+H. One lift null vs Lift 2 -> legacy possible overlap.
+
+I. Incidental vs normal -> no overlap blocker.
+
+J. Existing submitted DPR edited only for equipment -> unchanged historical
+   overlap does not newly block save.
+
+K. Changed progress chainage creating real overlap -> blocked + exact row
+   highlighted.
+
+L. Draft -> Final uses identical canonical overlap semantics.
+
+M. Progress Report unresolved overlaps == server canonical overlap result for
+   same stored entries.
+
+N. Same-UoM CUM entry shows BOQ Qty.
+
+O. Converted SQM -> Ha entry shows BOQ Qty.
+
+P. Incidental shows zero BOQ credit.
+
+Q. Approved reused-excavated arrangement resolves on fill DPR.
+
+R. Source excavation row shows cut->fill reuse context without falsely
+   becoming the fill arrangement.
+
+S. Legacy equipment dispatch can be corrected to registered Site and saves
+   SAME equipment_usage id.
+
+T. New equipment dispatch appears only in selected destination site's DPR.
+
+U. Site DPR closes same plantUsageId.
+
+V. Full test suite.
+
+============================================================
+SCHEMA SAFETY
+============================================================
+
+This should primarily be a logic/query/UI consistency batch.
+
+Do NOT add/drop/rename/change-nullability/change-default of schema columns
+unless investigation proves it is unavoidable.
+
+IF ANY SCHEMA CHANGE IS REQUIRED:
+STOP BEFORE APPLYING IT AND REPORT WHY.
+
+No destructive migration.
+
+============================================================
+NON-GOALS
+============================================================
+
+Do NOT redesign:
+- DPR layout;
+- Work Programme;
+- BOQ contractual quantity;
+- Layer/Lift model;
+- Equipment Master;
+- Stores;
+- Site Material Trip architecture;
+- Execution Arrangement commercial model.
+
+Do NOT add fuzzy automatic site matching.
+Do NOT rewrite historical DPR data without explicit need.
+Do NOT weaken genuine overlap protection.
+
+============================================================
+REPORT BACK
+============================================================
+
+Report separately:
+
+1. exact root cause of missing Scarifying DPR filter results;
+2. DPR ids/dates used to reproduce;
+3. exact cause of overlap mismatch;
+4. canonical helper/path after correction;
+5. draft/final-submit result;
+6. existing-DPR edit result;
+7. Cut/Fill arrangement linkage result;
+8. Equipment Usage save root cause;
+9. confirmation same equipment_usage id survives;
+10. BOQ Qty display fix;
+11. files changed;
+12. focused tests + full tests;
+13. schema status.
+
+DO NOT START ANOTHER BATCH.
