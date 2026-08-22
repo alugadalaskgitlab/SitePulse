@@ -1638,8 +1638,182 @@ export async function registerRoutes(
     }));
     const itemIds = Array.from(new Set(rows.filter(isChainageGuardRow).map((r) => Number(r.boqItemId))));
     const priors = itemIds.length > 0 ? await storage.getSubmittedChainageEntries(itemIds, excludeDprId ?? null) : [];
-    return chainageOverlapReadinessIssues(rows, priors).map(({ section, label, message }) => ({ section, label, message }));
+    return chainageOverlapReadinessIssues(rows, priors).map(({ section, label, message, rowKey }) => ({ section, label, message, rowKey }));
   }
+
+  // ── 06X: PATCH /api/progress-entries/:id/overlap-resolution ─────────────────
+  // Narrow classification-only patch for a single progress entry.
+  //
+  // Accepts EXACTLY ONE of two strictly-typed shapes (no extra fields):
+  //   Shape A — incidental:       { isIncidental: true, incidentalDescription: "<non-empty>" }
+  //   Shape B — override reason:  { chainageOverrideReason: "<non-empty>" }
+  //
+  // The two shapes are mutually exclusive — sending both keys, neither key,
+  // or any unsupported field is a 400 error. Applying one resolution clears
+  // the opposite classification so a row can never remain both Incidental and
+  // Separately Payable.
+  //
+  // Guards (same semantics as DPR edit/version routes):
+  //   - assertEdit(site_dprs) — edit permission required
+  //   - site-access via getPermittedSiteNames
+  //   - parent DPR must not be cancelled, deleted, or superseded
+  //   - draft DPRs: classification patch is allowed (overlap review happens
+  //     before final submit, which is when the gate fires)
+  //
+  // No whole-DPR readiness gate; no overlap gate. Those run on final submit.
+  // Audit-logs with action "overlap_resolution".
+  app.patch("/api/progress-entries/:id/overlap-resolution", requireAuth, async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_dprs")) return;
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ message: "Invalid progress entry id" });
+      }
+
+      // ── Strict payload validation ──────────────────────────────────────────
+      // Exactly one of the two shapes must be present; no extra keys from the
+      // other shape are tolerated (e.g. sending chainageOverrideReason along
+      // with isIncidental:true is rejected as ambiguous).
+      const body = req.body ?? {};
+      if (typeof body !== "object" || Array.isArray(body)) {
+        return res.status(400).json({ message: "Payload must be a JSON object" });
+      }
+      const bodyKeys = Object.keys(body);
+      const hasOverrideReason =
+        typeof body.chainageOverrideReason === "string" &&
+        body.chainageOverrideReason.trim() !== "";
+      const hasOverrideKey =
+        Object.prototype.hasOwnProperty.call(body, "chainageOverrideReason");
+      const hasIncidentalKey =
+        Object.prototype.hasOwnProperty.call(body, "isIncidental");
+      if (hasIncidentalKey && hasOverrideKey) {
+        return res.status(400).json({
+          message: "Payload must be exactly one shape — either { isIncidental: true, incidentalDescription } or { chainageOverrideReason } — not both",
+        });
+      }
+      if (!hasIncidentalKey && !hasOverrideKey) {
+        return res.status(400).json({
+          message: "Provide exactly one of: { isIncidental: true, incidentalDescription: '<non-empty>' } or { chainageOverrideReason: '<non-empty>' }",
+        });
+      }
+
+      // Shape A: incidental — isIncidental must be true (not false/missing).
+      if (hasIncidentalKey) {
+        if (body.isIncidental !== true) {
+          return res.status(400).json({
+            message: "isIncidental must be true in the incidental shape",
+          });
+        }
+        const desc =
+          typeof body.incidentalDescription === "string"
+            ? body.incidentalDescription.trim()
+            : "";
+        if (!desc) {
+          return res.status(400).json({
+            message: "incidentalDescription is required and must be non-empty when isIncidental is true",
+          });
+        }
+        const allowedKeys = new Set(["isIncidental", "incidentalDescription"]);
+        if (bodyKeys.length !== 2 || bodyKeys.some((key) => !allowedKeys.has(key))) {
+          return res.status(400).json({
+            message: "Incidental payload must contain exactly isIncidental and incidentalDescription",
+          });
+        }
+      }
+
+      // Shape B: override reason — must be a non-blank string.
+      if (hasOverrideKey) {
+        if (!hasOverrideReason) {
+          return res.status(400).json({
+            message: "chainageOverrideReason must be a non-empty string",
+          });
+        }
+        if (bodyKeys.length !== 1 || bodyKeys[0] !== "chainageOverrideReason") {
+          return res.status(400).json({
+            message: "Separately Payable payload must contain exactly chainageOverrideReason",
+          });
+        }
+      }
+
+      // ── Load entry + parent DPR header ────────────────────────────────────
+      const found = await storage.getProgressEntryWithDpr(id);
+      if (!found) {
+        return res.status(404).json({ message: "Progress entry not found" });
+      }
+      const { entry, dprSite, dprIsCancelled, dprIsDeleted, dprIsSuperseded } = found;
+
+      // ── DPR editability guard (matches DPR edit/version route semantics) ──
+      if (dprIsDeleted) {
+        return res.status(409).json({ message: "The parent DPR has been deleted and cannot be modified" });
+      }
+      if (dprIsCancelled) {
+        return res.status(409).json({ message: "The parent DPR is cancelled and cannot be modified" });
+      }
+      if (dprIsSuperseded) {
+        return res.status(409).json({ message: "The parent DPR has been superseded by a newer version and cannot be modified" });
+      }
+
+      // ── Site-access authorization ──────────────────────────────────────────
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      if (
+        permittedSiteNames !== null &&
+        !siteMatchesPermitted(dprSite, permittedSiteNames)
+      ) {
+        return res.status(403).json({ message: "Access denied for this site" });
+      }
+
+      // ── Build strictly-shaped resolution input ─────────────────────────────
+      type ClassificationFields =
+        | { isIncidental: true; incidentalDescription: string }
+        | { chainageOverrideReason: string };
+      const classificationFields: ClassificationFields = hasIncidentalKey
+        ? { isIncidental: true, incidentalDescription: (body.incidentalDescription as string).trim() }
+        : { chainageOverrideReason: (body.chainageOverrideReason as string).trim() };
+
+      // ── Snapshot old values for audit trail ───────────────────────────────
+      const oldValues = {
+        isIncidental: entry.isIncidental ?? false,
+        incidentalDescription: entry.incidentalDescription ?? null,
+        chainageOverrideReason: entry.chainageOverrideReason ?? null,
+      };
+
+      const updated = await storage.updateProgressEntryClassification(id, classificationFields);
+      if (!updated) {
+        return res.status(404).json({ message: "Progress entry not found" });
+      }
+      const newValues = {
+        isIncidental: updated.isIncidental ?? false,
+        incidentalDescription: updated.incidentalDescription ?? null,
+        chainageOverrideReason: updated.chainageOverrideReason ?? null,
+      };
+
+      // ── Audit log ─────────────────────────────────────────────────────────
+      const actor = currentUserName(req);
+      const actorId = req.authUser?.id ?? null;
+      const actorRole = req.authUser
+        ? (req.authUser.isOwner ? "owner" : req.authUser.isAdmin ? "admin" : "manager")
+        : null;
+      const reason = hasIncidentalKey
+        ? `Marked incidental: ${(classificationFields as { isIncidental: true; incidentalDescription: string }).incidentalDescription}`
+        : `Overlap override reason: ${(classificationFields as { chainageOverrideReason: string }).chainageOverrideReason}`;
+      await storage.logAudit({
+        module: "progress_entries",
+        transactionId: id,
+        action: "overlap_resolution",
+        userId: actorId,
+        userName: actor,
+        userRole: actorRole,
+        oldValues,
+        newValues,
+        reason,
+      });
+
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/progress-entries/:id/overlap-resolution:", err);
+      res.status(500).json({ message: "Failed to update progress entry classification" });
+    }
+  });
 
   // Batch 06B — prior submitted chainage progress for the entry-screen
   // overlap warning. READ-ONLY. Same canonical filter as the server recheck,
@@ -3354,7 +3528,7 @@ export async function registerRoutes(
     try {
       const dpr = await storage.getDpr(dprId);
       dprSite = normaliseSiteLabel((dpr as any)?.site);
-      const open = dpr?.date ? await (storage as any).getOpenEquipmentUsageForDate(dpr.date) : [];
+      const open = dpr?.date ? await storage.getOpenEquipmentUsageForDate(dpr.date) : [];
       openById = new Map(open.map((u: any) => [u.id, u]));
     } catch (e) {
       console.error("Batch05 closePlantUsage: could not load open usage for validation:", e);
@@ -3368,9 +3542,16 @@ export async function registerRoutes(
         console.warn(`Batch05 closePlantUsage: skipping equipment_usage #${puid} — not an open record for this DPR's date`);
         continue;
       }
-      const usageSite = normaliseSiteLabel(usage.siteName);
+      // 06X: prefer destinationSite (canonical dispatch-target field) so that
+      // equipment dispatched from a plant to this site is correctly matched.
+      // Legacy fallback: if destinationSite is null (records created before
+      // the field existed), fall back to siteName so already-linked historical
+      // records continue to close. New records from the Guided/Detailed DPR
+      // flow always carry a destinationSite, so the fallback is purely for
+      // historical data continuity and does not widen the security perimeter.
+      const usageSite = normaliseSiteLabel((usage as any).destinationSite ?? (usage as any).siteName);
       if (usageSite && dprSite && usageSite !== dprSite) {
-        console.warn(`Batch05 closePlantUsage: skipping equipment_usage #${puid} — site mismatch (${usage.siteName} vs DPR site)`);
+        console.warn(`Batch05 closePlantUsage: skipping equipment_usage #${puid} — site mismatch (destinationSite/siteName="${(usage as any).destinationSite ?? (usage as any).siteName}" vs DPR site="${dprSite}")`);
         continue;
       }
       try {
@@ -3419,35 +3600,48 @@ export async function registerRoutes(
   });
 
   // Batch 6: open plant records for a given date + equipmentIds — used by SiteEntry to detect P&M-dispatched equipment
+  // 06X: site param is required in both branches (no cross-site disclosure);
+  //      permission guard runs in both branches; results filtered by
+  //      destinationSite (normalised) so only records dispatched to the
+  //      requesting site are returned.
   app.get("/api/plant-module/equipment-usage/open-today", requireAuth, async (req, res) => {
     try {
       const date = req.query.date as string;
       if (!date) return res.status(400).json({ message: "date is required" });
+      const site = req.query.site as string | undefined;
+      if (!site || !normaliseSiteLabel(site)) {
+        return res.status(400).json({ message: "site is required" });
+      }
+      // Site-access authorization in both branches: a user may only discover
+      // open usage for a site they are permitted to see.
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      if (permittedSiteNames !== null && !siteMatchesPermitted(site, permittedSiteNames)) {
+        return res.status(403).json({ message: "You do not have access to this site" });
+      }
+      const wanted = normaliseSiteLabel(site);
       const ids = req.query.equipmentIds;
-      // Batch 05: omitted equipmentIds = open usage discovery for Guided DPR.
-      // Discovery is SITE-SCOPED: a `site` param is required and only usage
-      // rows recorded for that site are returned (no cross-site disclosure).
-      // The existing per-equipment lookup (Detailed DPR) is unchanged.
       if (ids === undefined) {
-        const site = req.query.site as string | undefined;
-        if (!site || !normaliseSiteLabel(site)) {
-          return res.status(400).json({ message: "site is required when equipmentIds is omitted" });
-        }
-        // Site-access authorization: same helper as the DPR routes — a user
-        // may only discover open usage for a site they are permitted to see.
-        const permittedSiteNames = await getPermittedSiteNames(req);
-        if (permittedSiteNames !== null && !siteMatchesPermitted(site, permittedSiteNames)) {
-          return res.status(403).json({ message: "You do not have access to this site" });
-        }
-        const all = await (storage as any).getOpenEquipmentUsageForDate(date);
-        const wanted = normaliseSiteLabel(site);
-        return res.json(all.filter((u: any) => normaliseSiteLabel(u.siteName) === wanted));
+        // Batch 05: omitted equipmentIds = open usage discovery for Guided DPR.
+        // Discovery is SITE-SCOPED: filter strictly on destinationSite
+        // (the authoritative dispatch-target field). Records without a
+        // destinationSite were opened for plant-internal use and are not
+        // surfaced here — the site field that counts is where the equipment
+        // was sent, not where it lives.
+        const all = await storage.getOpenEquipmentUsageForDate(date);
+        return res.json(
+          all.filter((u) => normaliseSiteLabel((u as any).destinationSite) === wanted),
+        );
       }
       const equipmentIds: number[] = Array.isArray(ids)
         ? (ids as string[]).map(Number).filter(Boolean)
         : [Number(ids)].filter(Boolean);
-      const records = await (storage as any).getOpenEquipmentUsageForDate(date, equipmentIds);
-      res.json(records);
+      const records = await storage.getOpenEquipmentUsageForDate(date, equipmentIds);
+      // Filter strictly on destinationSite — this is the ownership field
+      // for dispatched equipment. Records with no destinationSite (plant-
+      // internal entries) are not returned to a DPR site context.
+      res.json(
+        records.filter((u) => normaliseSiteLabel((u as any).destinationSite) === wanted),
+      );
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch open equipment records" });
     }
@@ -3499,16 +3693,111 @@ export async function registerRoutes(
     }
   });
 
+  // 06X: destinationSite is a Site-master identity, not arbitrary text.
+  // Canonicalise casing on both create and update and enforce the same
+  // destination-site access boundary used by DPR equipment discovery.
+  async function canonicaliseEquipmentDestinationSite(
+    req: any,
+    res: any,
+    rawBody: any,
+    existingUsage?: { destinationSite?: string | null },
+  ): Promise<Record<string, any> | undefined> {
+    const body = { ...(rawBody ?? {}) };
+    const hasIncomingDestination = Object.prototype.hasOwnProperty.call(body, "destinationSite");
+    const existingDestination = normaliseSiteLabel(existingUsage?.destinationSite);
+    const incomingDestinationIsBlank =
+      hasIncomingDestination &&
+      (body.destinationSite == null || String(body.destinationSite).trim() === "");
+
+    // A dispatched record remains owned by its destination site throughout
+    // its lifecycle. Omitting destinationSite on PUT therefore authorizes and
+    // canonicalizes the persisted value; explicitly clearing it is rejected.
+    if (existingDestination && incomingDestinationIsBlank) {
+      res.status(400).json({
+        message: "Destination site cannot be cleared from a dispatched equipment record",
+      });
+      return undefined;
+    }
+
+    const effectiveDestination = hasIncomingDestination
+      ? body.destinationSite
+      : existingUsage?.destinationSite;
+    if (effectiveDestination == null || String(effectiveDestination).trim() === "") {
+      // Explicit plant-internal path: records that never had a destination
+      // remain plant-owned and are intentionally undiscoverable from DPRs.
+      if (hasIncomingDestination) body.destinationSite = null;
+      return body;
+    }
+
+    const siteRows = await storage.getSites();
+    const permittedSiteNames = await getPermittedSiteNames(req);
+
+    // Reassignment must not let a user "take" a dispatch from a site they
+    // cannot access by supplying a new permitted destination. Authorize the
+    // persisted owner first, then the effective destination.
+    if (existingDestination) {
+      const existingMatches = siteRows.filter(
+        (site) => site.isActive === 1 && normaliseSiteLabel(site.name) === existingDestination,
+      );
+      if (existingMatches.length !== 1) {
+        res.status(400).json({
+          message: "Existing destination site is no longer one active registered Site",
+        });
+        return undefined;
+      }
+      if (
+        permittedSiteNames !== null &&
+        !siteMatchesPermitted(existingMatches[0].name, permittedSiteNames)
+      ) {
+        res.status(403).json({ message: "You do not have access to update this dispatched equipment record" });
+        return undefined;
+      }
+    }
+
+    const requested = normaliseSiteLabel(effectiveDestination);
+    const activeMatches = siteRows.filter(
+      (site) => site.isActive === 1 && normaliseSiteLabel(site.name) === requested,
+    );
+    if (activeMatches.length !== 1) {
+      res.status(400).json({
+        message: "Destination site must be one active registered Site — refresh the site list and select it again",
+      });
+      return undefined;
+    }
+
+    const canonicalSite = activeMatches[0].name;
+    if (
+      permittedSiteNames !== null &&
+      !siteMatchesPermitted(canonicalSite, permittedSiteNames)
+    ) {
+      res.status(403).json({ message: "You do not have access to dispatch equipment to this site" });
+      return undefined;
+    }
+
+    body.destinationSite = canonicalSite;
+    return body;
+  }
+
   app.post("/api/plant-module/equipment-usage", async (req, res) => {
     try {
       if (!assertCreate(req, res, "plant_equipment")) return;
-      const usage = await storage.createEquipmentUsage(req.body);
-      const eqName = req.body.equipmentName || `Equipment #${req.body.equipmentId}`;
-      sendPushToSection("plant_equipment", "Equipment Entry", `${eqName} - Opening: ${req.body.openingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
+      const input = await canonicaliseEquipmentDestinationSite(req, res, req.body);
+      if (!input) return;
+      const usage = await storage.createEquipmentUsage(input);
+      const eqName = input.equipmentName || `Equipment #${input.equipmentId}`;
+      sendPushToSection("plant_equipment", "Equipment Entry", `${eqName} - Opening: ${input.openingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
       res.status(201).json(usage);
     } catch (err) {
+      console.error("POST /api/plant-module/equipment-usage:", err);
       if (handleInsufficientPlantStock(err, res)) return;
-      res.status(500).json({ message: "Failed to create equipment usage" });
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Validation failed", field: err.errors[0]?.path?.join(".") });
+      }
+      const msg = (err as any)?.message ?? "";
+      if (msg.includes("equipment") && msg.toLowerCase().includes("not found")) {
+        return res.status(400).json({ message: "Equipment not found — verify the equipment selection and try again" });
+      }
+      res.status(500).json({ message: "Failed to create equipment usage — check opening reading and date, then retry" });
     }
   });
 
@@ -3516,16 +3805,28 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       if (!assertEdit(req, res, "plant_equipment")) return;
-      const updated = await storage.updateEquipmentUsage(id, req.body);
-      if (!updated) {
+      const existing = await storage.getEquipmentUsageById(id);
+      if (!existing) {
         return res.status(404).json({ message: "Equipment usage not found" });
       }
-      const eqName = req.body.equipmentName || `Equipment #${req.body.equipmentId || id}`;
-      sendPushToSection("plant_equipment", "Equipment Updated", `${eqName} - Closing: ${req.body.closingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
+      const input = await canonicaliseEquipmentDestinationSite(req, res, req.body, existing);
+      if (!input) return;
+      const updated = await storage.updateEquipmentUsage(id, input);
+      if (!updated) return res.status(404).json({ message: "Equipment usage not found" });
+      const eqName = input.equipmentName || `Equipment #${input.equipmentId || id}`;
+      sendPushToSection("plant_equipment", "Equipment Updated", `${eqName} - Closing: ${input.closingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
       res.json(updated);
     } catch (err) {
+      console.error("PUT /api/plant-module/equipment-usage/:id:", err);
       if (handleInsufficientPlantStock(err, res)) return;
-      res.status(500).json({ message: "Failed to update equipment usage" });
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Validation failed", field: err.errors[0]?.path?.join(".") });
+      }
+      const msg = (err as any)?.message ?? "";
+      if (msg.includes("closing") || msg.includes("reading")) {
+        return res.status(400).json({ message: "Invalid closing reading — ensure it is greater than the opening reading and retry" });
+      }
+      res.status(500).json({ message: "Failed to update equipment usage — check the entry values and retry" });
     }
   });
 

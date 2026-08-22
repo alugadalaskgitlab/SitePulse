@@ -535,7 +535,32 @@ export interface IStorage {
   cloneDpr(id: number, editedBy: string, clientTimestamp?: string): Promise<Dpr | undefined>;
   createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string): Promise<Dpr>;
   deleteDpr(id: number): Promise<boolean>;
-  
+  /**
+   * 06X: Load a single progress entry together with its parent DPR header
+   * fields needed for site-access and editability guards:
+   * site, dprStatus, isCancelled, isDeleted, isSuperseded.
+   */
+  getProgressEntryWithDpr(id: number): Promise<{
+    entry: import("@shared/schema").ProgressEntry;
+    dprId: number;
+    dprSite: string;
+    dprStatus: string;
+    dprIsCancelled: boolean;
+    dprIsDeleted: boolean;
+    dprIsSuperseded: boolean;
+  } | undefined>;
+  /**
+   * 06X: Narrow patch — update ONLY the overlap/incidental classification
+   * fields of a single progress entry. Never touches quantity, chainage, or
+   * any other field. The two resolution states are mutually exclusive:
+   * choosing one clears the other. Returns the updated row or undefined when
+   * not found.
+   */
+  updateProgressEntryClassification(
+    id: number,
+    fields: { isIncidental: true; incidentalDescription: string } | { chainageOverrideReason: string },
+  ): Promise<import("@shared/schema").ProgressEntry | undefined>;
+
   // Plant Reports
   getPlantReports(): Promise<PlantReport[]>;
   getPlantReport(id: number): Promise<PlantReportWithDetails | undefined>;
@@ -597,6 +622,7 @@ export interface IStorage {
   deleteTruckDispatch(id: number): Promise<boolean>;
   
   getEquipmentUsage(filters?: { equipmentId?: number; dateFrom?: string; dateTo?: string }): Promise<EquipmentUsage[]>;
+  getEquipmentUsageById(id: number): Promise<EquipmentUsage | undefined>;
   // 06Q: canonical cross-source "latest prior valid closing" resolver.
   resolveLatestPriorClosing(equipmentId: number, beforeDate: string, opts?: { inclusive?: boolean }): Promise<import("@shared/equipmentContinuity").ResolvedClosing | null>;
   createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage>;
@@ -2892,6 +2918,77 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  // 06X: load a progress entry together with the minimum DPR header fields
+  // needed for site-access and editability guards.
+  async getProgressEntryWithDpr(id: number): Promise<{
+    entry: import("@shared/schema").ProgressEntry;
+    dprId: number;
+    dprSite: string;
+    dprStatus: string;
+    dprIsCancelled: boolean;
+    dprIsDeleted: boolean;
+    dprIsSuperseded: boolean;
+  } | undefined> {
+    const rows = await db
+      .select({
+        entry: progressEntries,
+        dprId: dprs.id,
+        dprSite: dprs.site,
+        dprStatus: dprs.dprStatus,
+        dprIsCancelled: dprs.isCancelled,
+        dprIsDeleted: dprs.isDeleted,
+        dprIsSuperseded: dprs.isSuperseded,
+      })
+      .from(progressEntries)
+      .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+      .where(eq(progressEntries.id, id))
+      .limit(1);
+    if (!rows.length) return undefined;
+    const r = rows[0];
+    return {
+      entry: r.entry,
+      dprId: r.dprId,
+      dprSite: r.dprSite,
+      dprStatus: r.dprStatus ?? "submitted",
+      dprIsCancelled: r.dprIsCancelled ?? false,
+      dprIsDeleted: r.dprIsDeleted ?? false,
+      dprIsSuperseded: r.dprIsSuperseded ?? false,
+    };
+  }
+
+  // 06X: narrow classification-only patch for a single progress entry.
+  // Accepts EXACTLY one of two strictly-typed shapes:
+  //   incidental branch:    { isIncidental: true, incidentalDescription: string (non-empty) }
+  //   override-reason branch: { chainageOverrideReason: string (non-empty) }
+  // The two classifications are mutually exclusive: choosing Incidental
+  // clears the payable override, while choosing Separately Payable clears the
+  // incidental flag and description.
+  async updateProgressEntryClassification(
+    id: number,
+    fields: { isIncidental: true; incidentalDescription: string } | { chainageOverrideReason: string },
+  ): Promise<import("@shared/schema").ProgressEntry | undefined> {
+    let set: Partial<import("@shared/schema").ProgressEntry>;
+    if ("isIncidental" in fields) {
+      set = {
+        isIncidental: true,
+        incidentalDescription: fields.incidentalDescription,
+        chainageOverrideReason: null,
+      };
+    } else {
+      set = {
+        isIncidental: false,
+        incidentalDescription: null,
+        chainageOverrideReason: fields.chainageOverrideReason,
+      };
+    }
+    const [updated] = await db
+      .update(progressEntries)
+      .set(set as any)
+      .where(eq(progressEntries.id, id))
+      .returning();
+    return updated;
+  }
+
   private async collectVersionChainAncestors(tx: any, targetId: number): Promise<number[]> {
     const allVersionLinks = await tx.select().from(dprVersions);
     const chainIds = new Set<number>([targetId]);
@@ -4051,6 +4148,15 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(equipmentUsage)
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(equipmentUsage.date));
+  }
+
+  async getEquipmentUsageById(id: number): Promise<EquipmentUsage | undefined> {
+    const [row] = await db
+      .select()
+      .from(equipmentUsage)
+      .where(eq(equipmentUsage.id, id))
+      .limit(1);
+    return row;
   }
 
   async createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {

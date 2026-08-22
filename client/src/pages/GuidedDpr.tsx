@@ -49,15 +49,16 @@ import { reconcileNewDprAutosaves } from "@/lib/dprAutosaveReconcile";
 import { unlinkedOpenUsages, usageToGuidedRow, duplicateUsageAdvisory, type OpenUsageLike } from "@shared/dprPlantLink";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { splitGuidedEquipmentRow, buildGuidedEquipmentPayload, newGuidedEquipmentRow, computeTotalDiesel, computeTripTotalKm, isWaterTankerName, type GuidedEquipmentRow } from "@shared/guidedEquipment";
-import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
+import { evaluateDprSubmitReadiness, type DprReadinessIssue, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
 import { type CandidateChainageRow } from "@shared/chainageOverlap";
-import { GUIDED_STEPS, clampGuidedStep, guidedStepBlocker, guidedEntryComplete, firstIncompleteGuidedStep, type GuidedStepId } from "@/lib/guidedWizard";
+import { GUIDED_STEPS, READINESS_SECTION_TO_GUIDED_STEP, clampGuidedStep, guidedStepBlocker, guidedEntryComplete, firstIncompleteGuidedStep, type GuidedStepId } from "@/lib/guidedWizard";
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
 import { Checkbox } from "@/components/ui/checkbox";
+import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
@@ -213,6 +214,10 @@ export default function GuidedDpr() {
   // Instruction 031 Part A: once a draft is saved, later saves UPDATE the same
   // record (PATCH) and submit promotes it — never a duplicate row.
   const [draftId, setDraftId] = useState<number | null>(null);
+  // Instruction 06X: when a DPR_NOT_READY error names a row on a different
+  // wizard step, we store the highlight target here, navigate to the step,
+  // then scroll/highlight on the next render (via useEffect).
+  const pendingHighlightRef = useRef<import("@/lib/dprNotReadyHighlight").DprNotReadyRowTarget | null>(null);
   // Batch 04: sections the Guided UI doesn't manage (materials / site
   // purchases / structure items) loaded with a server draft — passed back
   // verbatim on save so the child-row replacement can't delete them.
@@ -674,6 +679,34 @@ export default function GuidedDpr() {
       qtyOverridden: deriveOverridden(e, e.boqItemId != null ? itemById.get(e.boqItemId) : null),
     })));
   }, [boqItems, entries, itemById]);
+
+  // Instruction 06X: after a step navigation triggered by a DPR_NOT_READY
+  // error, execute the deferred scroll+highlight on the next paint.
+  useEffect(() => {
+    const target = pendingHighlightRef.current;
+    if (!target) return;
+    pendingHighlightRef.current = null;
+    // Defer until the DOM has rendered the new step's rows.
+    const id = setTimeout(() => scrollAndHighlightRow(target), 100);
+    return () => clearTimeout(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  const jumpToReadinessIssue = (issue: DprReadinessIssue) => {
+    const rowIndex = issue.rowIndex
+      ?? (typeof issue.rowKey === "number" && Number.isFinite(issue.rowKey) ? issue.rowKey : null);
+    if (rowIndex == null) return;
+    const target = { section: issue.section, rowIndex, rowKey: issue.rowKey ?? null };
+    const targetStep = READINESS_SECTION_TO_GUIDED_STEP[issue.section] ?? 7;
+    setReadiness(null);
+    if (targetStep !== step) {
+      pendingHighlightRef.current = target;
+      setStep(targetStep);
+    } else {
+      setTimeout(() => scrollAndHighlightRow(target), 100);
+    }
+  };
+
   const removeEntry = (idx: number) => {
     const key = entries[idx]?.entryKey;
     setEntries((prev) => prev.filter((_, i) => i !== idx));
@@ -1010,14 +1043,36 @@ export default function GuidedDpr() {
       // Batch 06V: normalised DPR error — plain message, never raw JSON/code.
       const dprErr = parseDprError(err);
       toast({ title: dprErr.title, description: dprErr.lines.join("\n") || undefined, variant: "destructive" });
-      if (dprErr.highlightActivity) {
+      // Instruction 06X: prefer rowIndex/rowKey from DPR_NOT_READY; fall back
+      // to highlightActivity for activity-section rows.
+      const target = extractNotReadyRowTarget(err);
+      if (target) {
+        // Map the error's section to the wizard step that owns those rows.
+        const targetStep = READINESS_SECTION_TO_GUIDED_STEP[target.section] ?? null;
+        if (targetStep !== null && targetStep !== step) {
+          // Navigate first; the useEffect on `step` will scroll after render.
+          pendingHighlightRef.current = target;
+          setStep(targetStep as GuidedStepId);
+        } else {
+          // Already on the correct step — scroll immediately.
+          scrollAndHighlightRow(target);
+        }
+      } else if (dprErr.highlightActivity) {
+        // Legacy: locate by activity name when rowIndex absent.
+        // Activities live on step 2 (Activities) or 3 (Details).
         const idx = entries.findIndex((e) => e.activity === dprErr.highlightActivity);
         if (idx >= 0) {
-          const el = document.querySelector(`[data-testid="card-entry-${idx}"]`);
-          if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "center" });
-            el.classList.add("ring-2", "ring-destructive", "ring-offset-2");
-            setTimeout(() => el.classList.remove("ring-2", "ring-destructive", "ring-offset-2"), 3000);
+          const activityStep: GuidedStepId = 2;
+          if (step !== activityStep) {
+            pendingHighlightRef.current = { section: "activities", rowIndex: idx, rowKey: null };
+            setStep(activityStep);
+          } else {
+            const el = document.querySelector(`[data-testid="card-entry-${idx}"]`);
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+              el.classList.add("ring-2", "ring-destructive", "ring-offset-2");
+              setTimeout(() => el.classList.remove("ring-2", "ring-destructive", "ring-offset-2"), 3000);
+            }
           }
         }
       }
@@ -1325,7 +1380,7 @@ export default function GuidedDpr() {
             ?? null
           : null;
         return (
-        <Card key={idx} className="mb-3" data-testid={`card-entry-${idx}`}>
+        <Card key={idx} className="mb-3 transition-all duration-500" data-testid={`card-entry-${idx}`} data-dpr-row-key={dprRowKey("activities", idx)}>
           <CardContent className="pt-4 space-y-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -1817,7 +1872,7 @@ export default function GuidedDpr() {
                   const isWaterTanker = isWaterTankerName(eq.machine);
                   const isDirectPurchase = (pt.dieselSource ?? "plant_stock") === "direct_purchase";
                   return (
-                    <div key={i} className="mb-3 p-3 border rounded-lg bg-muted/20 space-y-2">
+                    <div key={i} className="mb-3 p-3 border rounded-lg bg-muted/20 space-y-2 transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", i)} data-testid={"equipment-row-" + String(i)}>
                       {/* A. Identity */}
                       <div className="grid grid-cols-[1fr_auto] gap-2">
                         {/* Batch 06C §8: machine comes from the Equipment & Fleet
@@ -2135,7 +2190,7 @@ export default function GuidedDpr() {
               <div>
                 <Label className="mb-1 block font-semibold">Labour</Label>
                 {labour.map((l, i) => (
-                  <div key={i} className="mb-3 space-y-1.5">
+                  <div key={i} className="mb-3 space-y-1.5 transition-all duration-500" data-dpr-row-key={dprRowKey("labour", i)} data-testid={"labour-row-" + String(i)}>
                     <div className="grid grid-cols-[1fr_90px_70px_auto] gap-2">
                       <Select value={l.category} onValueChange={(v) => setLabour((p) => p.map((r, j) => j === i ? { ...r, category: v } : r))}>
                         <SelectTrigger data-testid={`select-labour-cat-${i}`}><SelectValue placeholder="Category" /></SelectTrigger>
@@ -2232,6 +2287,43 @@ export default function GuidedDpr() {
               {equipment.filter((e) => e.machine).length === 0 ? "No equipment recorded" : equipment.filter((e) => e.machine).map((e) => e.machine).join(" · ")}
             </p>
           </div>
+          {unmanagedSectionsRef.current.materials.length > 0 && (
+            <div>
+              <p className="font-semibold mb-1">Materials from Detailed DPR</p>
+              <p className="text-xs text-muted-foreground mb-2">
+                Guided DPR preserves these rows, but material corrections are made in Detailed DPR.
+              </p>
+              <div className="space-y-1.5">
+                {unmanagedSectionsRef.current.materials.map((material: any, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between gap-3 border rounded-md px-3 py-2 transition-all duration-500"
+                    data-dpr-row-key={dprRowKey("materials", idx)}
+                    data-testid={`materials-row-${idx}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{material.material || `Material row ${idx + 1}`}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {material.quantity != null ? material.quantity : "No quantity"} {material.uom || ""}
+                      </p>
+                    </div>
+                    {draftId != null && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => setLocation(`/site/edit/${draftId}?rowSection=materials&rowIndex=${idx}`)}
+                        data-testid={`button-edit-guided-material-${idx}`}
+                      >
+                        Edit in Detailed DPR
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <p className="font-semibold mb-0.5">Photos</p>
             <p className="text-muted-foreground" data-testid="review-photos">
@@ -2322,6 +2414,7 @@ export default function GuidedDpr() {
         onClose={() => setReadiness(null)}
         onSubmitAnyway={() => saveMutation.mutate(false)}
         onSaveDraft={() => { if (validateHeader()) saveMutation.mutate(true); }}
+        onMandatoryIssue={jumpToReadinessIssue}
       />
 
       {/* Batch 06V: confirm changing a credited row to incidental */}

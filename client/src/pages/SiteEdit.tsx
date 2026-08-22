@@ -40,6 +40,7 @@ import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAtta
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { parseDprError } from "@/lib/dprErrors";
 import { resolveReturnTo } from "@/lib/progressReportNav";
+import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 
 interface ProgressEntry {
   /** Client-only database id for exact-row report deep links; stripped on save. */
@@ -291,6 +292,9 @@ export default function SiteEdit() {
   );
   const editBackHref = _returnTo ? _validatedReturnTo : backToReport;
   const _progressEntryId = _searchParams.get("progressEntryId");
+  const _rowSection = _searchParams.get("rowSection");
+  const _rowIndexRaw = _searchParams.get("rowIndex");
+  const _rowIndex = _rowIndexRaw == null ? Number.NaN : Number(_rowIndexRaw);
 
   const isCompleteMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('complete');
 
@@ -573,6 +577,22 @@ export default function SiteEdit() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [_progressEntryId, formInitializedRef.current, progress.length]);
 
+  // 06X: generic row deep-link used when Guided DPR exposes a preserved
+  // material row that must be corrected in the Detailed editor.
+  useEffect(() => {
+    if (!formInitializedRef.current) return;
+    if (!["activities", "equipment", "labour", "materials"].includes(_rowSection ?? "")) return;
+    if (!Number.isInteger(_rowIndex) || _rowIndex < 0) return;
+    const timer = setTimeout(() => {
+      scrollAndHighlightRow({
+        section: _rowSection!,
+        rowIndex: _rowIndex,
+        rowKey: null,
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [_rowSection, _rowIndex, progress.length, equipment.length, labour.length, materials.length]);
+
   // Batch 06C §22: per-activity photos while editing — existing attached
   // photos count toward the 3-per-activity cap; newly staged files are
   // uploaded (with progressEntryKey) against whichever DPR id the save
@@ -689,6 +709,9 @@ export default function SiteEdit() {
       // Batch 06V: normalised DPR error
       const dprErr = parseDprError(error);
       toast({ title: dprErr.title, description: dprErr.lines.join("\n") || undefined, variant: "destructive" });
+      // Instruction 06X: scroll+highlight the exact row from DPR_NOT_READY.
+      const target = extractNotReadyRowTarget(error);
+      scrollAndHighlightRow(target);
     },
   });
 
@@ -939,6 +962,9 @@ export default function SiteEdit() {
       if (shortage) { setDieselShortage(shortage); return; }
       const dprErr = parseDprError(error);
       toast({ title: dprErr.title, description: dprErr.lines.join("\n") || undefined, variant: "destructive" });
+      // Instruction 06X: scroll+highlight the exact row from DPR_NOT_READY.
+      const target = extractNotReadyRowTarget(error);
+      scrollAndHighlightRow(target);
     },
   });
 
@@ -972,6 +998,9 @@ export default function SiteEdit() {
       if (shortage) { setDieselShortage(shortage); return; }
       const dprErr = parseDprError(error);
       toast({ title: dprErr.title, description: dprErr.lines.join("\n") || undefined, variant: "destructive" });
+      // Instruction 06X: scroll+highlight the exact row from DPR_NOT_READY.
+      const target = extractNotReadyRowTarget(error);
+      scrollAndHighlightRow(target);
     },
   });
 
@@ -1381,6 +1410,7 @@ export default function SiteEdit() {
               className={`p-4 border rounded-lg bg-muted/30 space-y-3 transition-all duration-500${highlightedEntry === entry.entryKey ? " ring-2 ring-primary ring-offset-2" : ""}`}
               data-entry-key={entry.entryKey}
               data-testid={`progress-row-${idx}`}
+              data-dpr-row-key={dprRowKey("activities", idx)}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -2044,7 +2074,7 @@ export default function SiteEdit() {
             const isWaterTanker = (entry.machine || '').toUpperCase().includes('WATER') || (entry.machine || '').toUpperCase().includes('TANKER');
 
             return (
-            <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
+            <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)} data-testid={"equipment-row-" + idx}>
               <Button
                 size="icon"
                 variant="ghost"
@@ -2482,7 +2512,7 @@ export default function SiteEdit() {
         </CardHeader>
         <CardContent className="space-y-4">
           {labour.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 border rounded-lg bg-muted/30">
+            <div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 border rounded-lg bg-muted/30 transition-all duration-500" data-dpr-row-key={dprRowKey("labour", idx)} data-testid={"labour-row-" + idx}>
               <div>
                 <Label className="text-sm">Category</Label>
                 <Select
@@ -2598,7 +2628,7 @@ export default function SiteEdit() {
             <p className="text-muted-foreground text-sm text-center py-4">No materials recorded.</p>
           ) : (
             materials.map((m, idx) => (
-              <div key={idx} className="grid grid-cols-1 md:grid-cols-8 gap-3 items-end p-4 bg-muted/30 rounded-lg relative" data-testid={`material-row-${idx}`}>
+              <div key={idx} className="grid grid-cols-1 md:grid-cols-8 gap-3 items-end p-4 bg-muted/30 rounded-lg relative transition-all duration-500" data-dpr-row-key={dprRowKey("materials", idx)} data-testid={`material-row-${idx}`}>
                 <Button size="icon" variant="ghost" className="absolute right-0 top-0 text-muted-foreground hover:text-destructive" onClick={() => removeMaterial(idx)} data-testid={`button-remove-material-${idx}`}>
                   <Trash2 className="w-4 h-4" />
                 </Button>

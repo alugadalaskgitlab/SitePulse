@@ -10,7 +10,7 @@
 import { AlertTriangle, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import type { DprReadinessResult } from "@shared/dprSubmitReadiness";
+import type { DprReadinessIssue, DprReadinessResult } from "@shared/dprSubmitReadiness";
 
 const SECTION_LABELS: Record<string, string> = {
   activities: "Activities",
@@ -24,6 +24,7 @@ export function DprReadinessDialog({
   onClose,
   onSubmitAnyway,
   onSaveDraft,
+  onMandatoryIssue,
 }: {
   readiness: DprReadinessResult | null;
   onClose: () => void;
@@ -31,6 +32,8 @@ export function DprReadinessDialog({
   onSubmitAnyway: () => void;
   /** optional Save Draft shortcut (drafts are always allowed) */
   onSaveDraft?: () => void;
+  /** optional exact-row jump for mandatory issues */
+  onMandatoryIssue?: (issue: DprReadinessIssue) => void;
 }) {
   const hasMandatory = (readiness?.mandatory.length ?? 0) > 0;
   return (
@@ -53,9 +56,23 @@ export function DprReadinessDialog({
               <p className="font-semibold text-destructive mb-1">Must be completed</p>
               <ul className="space-y-1" data-testid="list-readiness-mandatory">
                 {readiness!.mandatory.map((m, i) => (
-                  <li key={i} className="flex gap-2">
-                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-destructive" />
-                    <span><span className="font-medium">{SECTION_LABELS[m.section] ?? m.section} · {m.label}</span> — {m.message}</span>
+                  <li key={i}>
+                    <button
+                      type="button"
+                      className={`w-full flex gap-2 text-left rounded px-1 py-0.5 ${onMandatoryIssue && (m.rowIndex != null || m.rowKey != null) ? "hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" : "cursor-default"}`}
+                      onClick={() => {
+                        if (onMandatoryIssue && (m.rowIndex != null || m.rowKey != null)) onMandatoryIssue(m);
+                      }}
+                      data-testid={`button-readiness-issue-${m.section}-${i}`}
+                    >
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-destructive" />
+                      <span>
+                        <span className="font-medium">{SECTION_LABELS[m.section] ?? m.section} · {m.label}</span> — {m.message}
+                        {onMandatoryIssue && (m.rowIndex != null || m.rowKey != null) && (
+                          <span className="ml-1 text-xs font-medium text-primary">Jump to row</span>
+                        )}
+                      </span>
+                    </button>
                   </li>
                 ))}
               </ul>

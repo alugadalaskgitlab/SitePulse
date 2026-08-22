@@ -26,6 +26,20 @@ export type DprReadinessIssue = {
   /** short row label, e.g. the activity or machine name */
   label: string;
   message: string;
+  /**
+   * 06X: zero-based index of the row within its section array (activities,
+   * equipment, labour, or materials). Populated by evaluateDprSubmitReadiness
+   * for every mandatory issue so the client can highlight the exact row.
+   * Optional — absent on issues produced outside this function (e.g. chainage
+   * overlap issues from chainageOverlapReadinessIssues).
+   */
+  rowIndex?: number;
+  /**
+   * Stable row reference emitted by validators that already own their own row
+   * identity (currently the chainage-overlap guard). Numeric keys can be used
+   * as a rowIndex fallback by DPR forms.
+   */
+  rowKey?: string | number;
 };
 
 export type DprReadinessResult = {
@@ -107,11 +121,12 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
   const advisories: DprReadinessIssue[] = [];
 
   // A — selected/added activities must carry an outcome.
-  for (const p of input.progress ?? []) {
+  for (let i = 0; i < (input.progress ?? []).length; i++) {
+    const p = (input.progress ?? [])[i];
     if (p?.noSiteWork) {
       const label = (p.activity || "No Site Work").toString().trim();
       if (!hasText(p.noSiteWorkDescription)) {
-        mandatory.push({ section: "activities", label, message: "reason required for No Site Work" });
+        mandatory.push({ section: "activities", label, message: "reason required for No Site Work", rowIndex: i });
       }
       continue;
     }
@@ -123,6 +138,7 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
         section: "activities",
         label,
         message: "description required for Incidental / Non-BOQ Work",
+        rowIndex: i,
       });
     }
     if (!pos(p.quantity)) {
@@ -130,6 +146,7 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
         section: "activities",
         label,
         message: "quantity missing — enter the measured quantity (or remove the activity if no work was done)",
+        rowIndex: i,
       });
     }
     // Half-filled chainage is unambiguous incompleteness; both blank is left
@@ -137,29 +154,30 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
     const hasFrom = hasText(p.chainageFrom);
     const hasTo = hasText(p.chainageTo);
     if (hasFrom !== hasTo) {
-      mandatory.push({ section: "activities", label, message: "chainage is incomplete — enter both From and To" });
+      mandatory.push({ section: "activities", label, message: "chainage is incomplete — enter both From and To", rowIndex: i });
     }
   }
 
   // B — equipment closure.
-  for (const e of input.equipment ?? []) {
+  for (let i = 0; i < (input.equipment ?? []).length; i++) {
+    const e = (input.equipment ?? [])[i];
     if (!hasText(e?.machine)) continue; // blank placeholder row
     const label = (e.machine as string).trim();
     const usage = equipmentHasUsage(e);
     if (e.openingReading != null && e.closingReading == null) {
-      mandatory.push({ section: "equipment", label, message: "closing meter reading required" });
+      mandatory.push({ section: "equipment", label, message: "closing meter reading required", rowIndex: i });
     } else if (e.closingReading != null && e.openingReading == null) {
-      mandatory.push({ section: "equipment", label, message: "opening meter reading missing" });
+      mandatory.push({ section: "equipment", label, message: "opening meter reading missing", rowIndex: i });
     }
     if (hasText(e.startTime) && !hasText(e.endTime)) {
-      mandatory.push({ section: "equipment", label, message: "end time required" });
+      mandatory.push({ section: "equipment", label, message: "end time required", rowIndex: i });
     } else if (hasText(e.endTime) && !hasText(e.startTime)) {
-      mandatory.push({ section: "equipment", label, message: "start time missing" });
+      mandatory.push({ section: "equipment", label, message: "start time missing", rowIndex: i });
     }
     // Water tankers legitimately record only a delivered water quantity —
     // never force the trip pair on them (false-positive guard).
     if (e.entryType === "trip_based" && !pos(e.waterQuantity) && (pos(e.numberOfTrips) !== pos(e.tripDistance))) {
-      mandatory.push({ section: "equipment", label, message: "trip entry incomplete — enter both number of trips and trip distance" });
+      mandatory.push({ section: "equipment", label, message: "trip entry incomplete — enter both number of trips and trip distance", rowIndex: i });
     }
     if (!usage) {
       // No explicit "Not used" outcome exists yet — advisory only (Batch 04
@@ -173,23 +191,25 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
   }
 
   // C — labour rows must not masquerade as completed records.
-  for (const l of input.labour ?? []) {
+  for (let i = 0; i < (input.labour ?? []).length; i++) {
+    const l = (input.labour ?? [])[i];
     const touched = hasText(l?.category) || pos(l?.count) || hasText(l?.task) || hasText(l?.contractor);
     if (!touched) continue; // blank placeholder row
     const label = hasText(l.category) ? (l.category as string).trim() : "Labour row";
     if (!hasText(l.category)) {
-      mandatory.push({ section: "labour", label, message: "labour category missing" });
+      mandatory.push({ section: "labour", label, message: "labour category missing", rowIndex: i });
     }
     if (!pos(l.count)) {
-      mandatory.push({ section: "labour", label, message: "labour count must be a positive number" });
+      mandatory.push({ section: "labour", label, message: "labour count must be a positive number", rowIndex: i });
     }
   }
 
   // D — material rows.
-  for (const m of input.materials ?? []) {
+  for (let i = 0; i < (input.materials ?? []).length; i++) {
+    const m = (input.materials ?? [])[i];
     if (!hasText(m?.material)) continue; // blank placeholder row
     const label = (m.material as string).trim();
-    if (!pos(m.quantity)) mandatory.push({ section: "materials", label, message: "material quantity missing" });
+    if (!pos(m.quantity)) mandatory.push({ section: "materials", label, message: "material quantity missing", rowIndex: i });
     // UOM is not reliably enforced by existing material conventions —
     // missing UOM stays ADVISORY (false-positive guard).
     if (!hasText(m.uom)) advisories.push({ section: "materials", label, message: `${label}: UOM not specified — consider adding it` });

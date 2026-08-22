@@ -420,6 +420,10 @@ export default function PlantEquipmentUsage() {
     setShiftTo((entry as any).shiftTo || "");
     setTransportEquipmentId((entry as any).transportEquipmentId ? String((entry as any).transportEquipmentId) : "");
     setTransportDistance((entry as any).transportDistance ? String((entry as any).transportDistance) : "");
+    // 06X: hydrate sendToSite / destinationSite when editing an open/dispatched record
+    const isSentToSite = (entry as any).status === "open";
+    setSendToSite(isSentToSite);
+    setDestinationSite(isSentToSite ? ((entry as any).destinationSite || "") : "");
     setDialogOpen(true);
   };
 
@@ -486,6 +490,10 @@ export default function PlantEquipmentUsage() {
         toast({ title: "Please fill in equipment and opening meter reading before dispatching", variant: "destructive" });
         return;
       }
+      if (!destinationSite) {
+        toast({ title: "Please select a destination site before dispatching", variant: "destructive" });
+        return;
+      }
       const effectiveDieselSource = dieselIncluded ? "contractor" : dieselSource;
       const data = {
         date,
@@ -505,9 +513,13 @@ export default function PlantEquipmentUsage() {
         openedByUserId: user?.id ?? null,
         openedByUserName: user?.fullName ?? null,
         openedAt: new Date().toISOString(),
-        destinationSite: destinationSite ? destinationSite.toUpperCase() : null,
+        destinationSite: destinationSite || null,
       };
-      createMutation.mutate(data as any);
+      if (editingUsage) {
+        updateMutation.mutate({ id: editingUsage.id, data });
+      } else {
+        createMutation.mutate(data as any);
+      }
       return;
     }
 
@@ -1261,13 +1273,20 @@ export default function PlantEquipmentUsage() {
               </div>
               {sendToSite && (
                 <div>
-                  <Label>Destination Site</Label>
-                  <Input
-                    value={destinationSite}
-                    onChange={(e) => setDestinationSite(e.target.value.toUpperCase())}
-                    placeholder="e.g. BYPASS KM 12"
-                    data-testid="input-destination-site"
-                  />
+                  <Label>Destination Site <span className="text-destructive">*</span></Label>
+                  <Select value={destinationSite} onValueChange={setDestinationSite}>
+                    <SelectTrigger data-testid="select-destination-site">
+                      <SelectValue placeholder="Select destination site" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sitesList?.filter(s => s.isActive === 1).map((site) => (
+                        <SelectItem key={site.id} value={site.name}>{site.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!destinationSite && (
+                    <p className="text-xs text-destructive mt-1">Destination site is required when sending to site</p>
+                  )}
                 </div>
               )}
 

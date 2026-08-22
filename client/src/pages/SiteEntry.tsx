@@ -57,6 +57,7 @@ import { reconcileNewDprAutosaves } from "@/lib/dprAutosaveReconcile";
 import { calculateBomDemand, fmtQty, type BomInputItem, type BomInputBar, type BomDemand } from "@shared/planningEngine";
 import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity } from "@shared/dprPhotos";
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
+import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 
 interface ProgressEntry {
   // Batch 06C §22: stable client key so photos can link to this activity row
@@ -1178,6 +1179,9 @@ export default function SiteEntry() {
       // Batch 06V: normalised DPR error — plain message, never raw JSON/code.
       const dprErr = parseDprError(err);
       toast({ title: dprErr.title, description: dprErr.lines.join("\n") || undefined, variant: "destructive" });
+      // Instruction 06X: scroll+highlight the exact row from DPR_NOT_READY.
+      const target = extractNotReadyRowTarget(err);
+      scrollAndHighlightRow(target);
     },
   });
 
@@ -1194,11 +1198,15 @@ export default function SiteEntry() {
   };
 
   // Batch 6: fetch open plant equipment_usage record for a given equipment on today's date
+  // 06X: must pass header.site and credentials so the server can scope results
+  // to the current site (same as GuidedDpr's useQuery-based fetch).
   const fetchOpenPlantRecord = async (equipmentId: number, rowIdx: number) => {
     if (!header.date || !equipmentId) return;
     try {
+      const siteParam = header.site ? `&site=${encodeURIComponent(header.site)}` : "";
       const res = await fetch(
-        `/api/plant-module/equipment-usage/open-today?date=${header.date}&equipmentIds=${equipmentId}`
+        `/api/plant-module/equipment-usage/open-today?date=${encodeURIComponent(header.date)}&equipmentIds=${equipmentId}${siteParam}`,
+        { credentials: "include" },
       );
       if (!res.ok) return;
       const records: any[] = await res.json();
@@ -1351,6 +1359,9 @@ export default function SiteEntry() {
       if (shortage) { setDieselShortage(shortage); return; }
       const dprErr = parseDprError(err);
       toast({ title: dprErr.title, description: dprErr.lines.join("\n") || undefined, variant: "destructive" });
+      // Instruction 06X: scroll+highlight the exact row from DPR_NOT_READY.
+      const target = extractNotReadyRowTarget(err);
+      scrollAndHighlightRow(target);
     },
   });
 
@@ -1926,7 +1937,7 @@ export default function SiteEntry() {
             })
           ) : (
           progress.map((entry, idx) => (
-            <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-3">
+            <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-3 transition-all duration-500" data-dpr-row-key={dprRowKey("activities", idx)} data-testid={`progress-row-${idx}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
@@ -2577,7 +2588,7 @@ export default function SiteEntry() {
             const isWaterTanker = (entry.machine || '').toUpperCase().includes('WATER') || (entry.machine || '').toUpperCase().includes('TANKER');
             
             return (
-              <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
+              <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)} data-testid={"equipment-row-" + idx}>
                 <Button 
                   size="icon" 
                   variant="ghost" 
@@ -3096,7 +3107,7 @@ export default function SiteEntry() {
         </CardHeader>
         <CardContent className="space-y-4">
           {labour.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 border rounded-lg bg-muted/30">
+            <div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 border rounded-lg bg-muted/30 transition-all duration-500" data-dpr-row-key={dprRowKey("labour", idx)} data-testid={"labour-row-" + idx}>
               <div>
                 <Label className="text-sm">Category</Label>
                 <Select
@@ -3286,7 +3297,7 @@ export default function SiteEntry() {
             <p className="text-muted-foreground text-sm text-center py-4">No materials recorded. Click "Add" to record material consumed or issued against a work item. (Bulk deliveries by vehicle trip are still tracked separately in Materials Received.)</p>
           ) : (
             materials.map((m, idx) => (
-              <div key={idx} className="p-4 bg-muted/30 rounded-lg relative space-y-3">
+              <div key={idx} className="p-4 bg-muted/30 rounded-lg relative space-y-3 transition-all duration-500" data-dpr-row-key={dprRowKey("materials", idx)} data-testid={"materials-row-" + idx}>
                 <Button
                   size="icon"
                   variant="ghost"

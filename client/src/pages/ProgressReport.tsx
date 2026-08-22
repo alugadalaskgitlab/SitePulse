@@ -17,9 +17,15 @@
  *  - Overlap Review panel: every pair with full context, deep-links to DPR/edit
  *  - "Both are valid" two-step dialog with Incidental / Separately Payable paths
  *  - Legacy-layer warning when layer differs only because one is null
+ *
+ * Instruction 06X additions:
+ *  - Incidental / Separately Payable confirm calls
+ *    PATCH /api/progress-entries/:entryId/overlap-resolution directly — no
+ *    full-DPR fetch or version POST, no DPR_NOT_READY gate.
+ *  - On success: invalidates progress/RA queries, shows toast, stays on report.
  */
 import { Fragment, useMemo, useRef, useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
 import { ChevronRight as Crumb } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,8 +37,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { Download, ChevronDown, ChevronRight, AlertTriangle, Layers } from "lucide-react";
+import { Download, ChevronDown, ChevronRight, AlertTriangle, Layers, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import { buildReason, OTHER_VALUE } from "@/lib/overlapReason";
 import {
   type ComputedEntry, type ReportBoqItem, type OverlapPair,
   computeItemAbstract, sortForDisplay, buildCoverageStrips, entryIntersectsRange,
@@ -41,7 +49,7 @@ import {
 import { layerDisplayName } from "@shared/layerDisplay";
 import { parseChainageKm, formatChainageKm } from "@shared/barSide";
 import {
-  type ProgressReportState, parseReportState, progressReportUrl, dprLinkWithReturn, editActivityLink,
+  type ProgressReportState, parseReportState, progressReportUrl, dprLinkWithReturn,
   isOverlapReviewOpen, overlapReviewTargetId,
 } from "@/lib/progressReportNav";
 
@@ -545,6 +553,36 @@ function EntryMiniCard({ entry, item, state, side }: { entry: ComputedEntry; ite
 
 type BothValidStep = "choice" | "incidental" | "payable" | null;
 
+/**
+ * Instruction 06X: apply a classification-only PATCH to a single progress
+ * entry via the narrow endpoint.  No full-DPR fetch, no version POST.
+ * The endpoint does not run DPR readiness or overlap gates.
+ */
+async function patchOverlapResolution(
+  entryId: number,
+  payload: { isIncidental: true; incidentalDescription: string } | { chainageOverrideReason: string },
+): Promise<void> {
+  // apiRequest throws on non-OK via throwIfResNotOk
+  await apiRequest("PATCH", `/api/progress-entries/${entryId}/overlap-resolution`, payload);
+}
+
+/**
+ * Deterministic fallback description used when the entry has no existing
+ * incidental description.
+ */
+const INCIDENTAL_FALLBACK_DESC = "Classified as incidental during overlap review";
+
+/**
+ * Invalidate all progress-report and DPR queries after a successful
+ * overlap resolution so the report data refreshes automatically.
+ */
+function invalidateProgressQueries(queryClient: ReturnType<typeof useQueryClient>): void {
+  queryClient.invalidateQueries({ predicate: (q) => {
+    const key = String(q.queryKey[0] ?? "");
+    return key.startsWith("/api/reports/progress") || key.startsWith("/api/dprs");
+  }});
+}
+
 function OverlapPairRow({
   pair, item, state, update,
 }: {
@@ -566,14 +604,6 @@ function OverlapPairRow({
   const handleChoicePayable = () => {
     if (legacyLayer) return; // should not happen — guarded in JSX
     setDialogStep("payable");
-  };
-
-  /** Navigate to SiteEdit for an entry's DPR, passing the entryId and return URL. */
-  const navigateToEdit = (entry: ComputedEntry, intent: "isIncidental=1" | `reason=${string}`, setLoc: (path: string) => void) => {
-    // Encode the current report URL (with overlap anchor) so SiteEdit can return us here.
-    const stateWithAnchor: ProgressReportState = { ...state, overlapAnchor: `${pairKey}` };
-    const link = editActivityLink(entry.dprId, entry.entryId, stateWithAnchor);
-    setLoc(`${link}&${intent}`);
   };
 
   return (
@@ -678,7 +708,7 @@ function OverlapPairRow({
               state={state}
               pairKey={pairKey}
               onBack={() => setDialogStep("choice")}
-              onConfirm={(entry, setLoc) => { setDialogStep(null); navigateToEdit(entry, "isIncidental=1", setLoc); }}
+              onDone={() => setDialogStep(null)}
             />
           )}
 
@@ -693,11 +723,7 @@ function OverlapPairRow({
               payableOther={payableOther}
               setPayableOther={setPayableOther}
               onBack={() => setDialogStep("choice")}
-              onConfirm={(entry, setLoc) => {
-                const reason = payableReason === "other" ? payableOther.trim() : payableReason;
-                setDialogStep(null);
-                navigateToEdit(entry, `reason=${encodeURIComponent(reason)}`, setLoc);
-              }}
+              onDone={() => setDialogStep(null)}
             />
           )}
         </DialogContent>
@@ -707,22 +733,49 @@ function OverlapPairRow({
 }
 
 function _IncidentalStep({
-  pair, item, state, pairKey, onBack, onConfirm,
+  pair, item, state, pairKey, onBack, onDone,
 }: {
   pair: OverlapPair;
   item: ReportItem;
   state: ProgressReportState;
   pairKey: string;
   onBack: () => void;
-  onConfirm: (entry: ComputedEntry, setLoc: (path: string) => void) => void;
+  /** Called after a successful save to close the dialog and stay on report. */
+  onDone: () => void;
 }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const suggested: "a" | "b" =
     pair.a.dprDate > pair.b.dprDate || (pair.a.dprDate === pair.b.dprDate && pair.a.dprId > pair.b.dprId)
       ? "a" : "b";
   const [selected, setSelected] = useState<"a" | "b">(suggested);
-  const [, setLocation] = useLocation();
 
   const selectedEntry = selected === "a" ? pair.a : pair.b;
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      // Reuse existing description when non-blank; otherwise use a deterministic fallback.
+      const desc =
+        typeof (selectedEntry as any).incidentalDescription === "string" &&
+        (selectedEntry as any).incidentalDescription.trim()
+          ? (selectedEntry as any).incidentalDescription.trim()
+          : INCIDENTAL_FALLBACK_DESC;
+      return patchOverlapResolution(selectedEntry.entryId, {
+        isIncidental: true,
+        incidentalDescription: desc,
+      });
+    },
+    onSuccess: () => {
+      invalidateProgressQueries(queryClient);
+      toast({ title: "Marked as incidental", description: `Entry in DPR-${selectedEntry.dprId} updated — report will refresh.` });
+      onDone();
+    },
+    onError: (error: unknown) => {
+      const msg = error instanceof Error ? error.message : "Unexpected error";
+      toast({ title: "Could not save", description: msg, variant: "destructive" });
+      // dialog stays open
+    },
+  });
 
   return (
     <>
@@ -730,7 +783,7 @@ function _IncidentalStep({
         <DialogTitle>Mark as Incidental — which entry?</DialogTitle>
         <DialogDescription>
           Select which entry should be marked as incidental (no BOQ credit). The suggestion is
-          pre-selected below but you must confirm before navigating.
+          pre-selected below but you must confirm before saving.
         </DialogDescription>
       </DialogHeader>
       <div className="grid grid-cols-2 gap-2 my-2">
@@ -744,6 +797,7 @@ function _IncidentalStep({
             <button
               key={side}
               type="button"
+              disabled={mutation.isPending}
               className={`rounded border p-2.5 text-left text-xs transition-colors ${isSelected ? "border-purple-500 bg-purple-50 ring-2 ring-purple-300" : "border-slate-200 hover:border-purple-300"}`}
               onClick={() => setSelected(side)}
               data-testid={`incidental-choose-${side}-${pairKey}`}
@@ -760,17 +814,18 @@ function _IncidentalStep({
         })}
       </div>
       <div className="text-xs text-slate-600 rounded bg-slate-50 border px-3 py-2">
-        <strong>Navigating to:</strong> DPR-{selectedEntry.dprId} · Entry {selectedEntry.entryId} — the edit page will pre-fill
-        the Incidental intent. You will need to confirm and save on that page.
+        <strong>Saving:</strong> DPR-{selectedEntry.dprId} · Entry {selectedEntry.entryId} — the entry will be saved as
+        incidental and the report will refresh automatically.
       </div>
       <DialogFooter className="gap-2">
-        <Button variant="outline" onClick={onBack}>← Back</Button>
+        <Button variant="outline" onClick={onBack} disabled={mutation.isPending}>← Back</Button>
         <Button
           className="bg-purple-600 hover:bg-purple-700 text-white"
-          onClick={() => onConfirm(selectedEntry, setLocation)}
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate()}
           data-testid={`confirm-incidental-${pairKey}`}
         >
-          Go to Edit Page
+          {mutation.isPending ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Saving…</> : "Confirm — Mark Incidental"}
         </Button>
       </DialogFooter>
     </>
@@ -778,7 +833,7 @@ function _IncidentalStep({
 }
 
 function _PayableStep({
-  pair, item, state, pairKey, payableReason, setPayableReason, payableOther, setPayableOther, onBack, onConfirm,
+  pair, item, state, pairKey, payableReason, setPayableReason, payableOther, setPayableOther, onBack, onDone,
 }: {
   pair: OverlapPair;
   item: ReportItem;
@@ -789,21 +844,45 @@ function _PayableStep({
   payableOther: string;
   setPayableOther: (v: string) => void;
   onBack: () => void;
-  onConfirm: (entry: ComputedEntry, setLoc: (path: string) => void) => void;
+  /** Called after a successful save to close the dialog and stay on report. */
+  onDone: () => void;
 }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<"a" | "b">("b");
-  const [, setLocation] = useLocation();
 
   const canConfirm = payableReason !== "other" || payableOther.trim().length > 0;
   const selectedEntry = selected === "a" ? pair.a : pair.b;
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      // PAYABLE_REASONS uses lowercase "other"; buildReason uses OTHER_VALUE ("Other").
+      // Normalise so free-text elaboration is correctly selected.
+      const normalisedPick = payableReason === "other" ? OTHER_VALUE : payableReason;
+      const reason = buildReason(normalisedPick, payableOther);
+      return patchOverlapResolution(selectedEntry.entryId, {
+        chainageOverrideReason: reason,
+      });
+    },
+    onSuccess: () => {
+      invalidateProgressQueries(queryClient);
+      toast({ title: "Reason recorded", description: `Entry in DPR-${selectedEntry.dprId} updated — report will refresh.` });
+      onDone();
+    },
+    onError: (error: unknown) => {
+      const msg = error instanceof Error ? error.message : "Unexpected error";
+      toast({ title: "Could not save", description: msg, variant: "destructive" });
+      // dialog stays open
+    },
+  });
 
   return (
     <>
       <DialogHeader>
         <DialogTitle>Separately Payable — provide a reason</DialogTitle>
         <DialogDescription>
-          Select the entry to annotate and provide a structured reason. This will navigate to
-          SiteEdit — nothing is saved here.
+          Select the entry to annotate and provide a structured reason. The reason is saved
+          directly — the report will refresh automatically.
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3 my-1">
@@ -816,6 +895,7 @@ function _PayableStep({
                 <button
                   key={side}
                   type="button"
+                  disabled={mutation.isPending}
                   className={`rounded border p-2 text-left text-xs transition-colors ${selected === side ? "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-300" : "border-slate-200 hover:border-emerald-300"}`}
                   onClick={() => setSelected(side)}
                   data-testid={`payable-choose-${side}-${pairKey}`}
@@ -830,7 +910,7 @@ function _PayableStep({
         </div>
         <div>
           <div className="text-xs font-medium text-slate-700 mb-1">Reason</div>
-          <Select value={payableReason} onValueChange={(v) => setPayableReason(v as PayableReasonKey)}>
+          <Select value={payableReason} onValueChange={(v) => setPayableReason(v as PayableReasonKey)} disabled={mutation.isPending}>
             <SelectTrigger data-testid="payable-reason-select"><SelectValue /></SelectTrigger>
             <SelectContent>
               {PAYABLE_REASONS.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
@@ -842,19 +922,20 @@ function _PayableStep({
               placeholder="Describe the reason…"
               value={payableOther}
               onChange={(e) => setPayableOther(e.target.value)}
+              disabled={mutation.isPending}
               data-testid="payable-other-input"
             />
           )}
         </div>
       </div>
       <DialogFooter className="gap-2">
-        <Button variant="outline" onClick={onBack}>← Back</Button>
+        <Button variant="outline" onClick={onBack} disabled={mutation.isPending}>← Back</Button>
         <Button
-          disabled={!canConfirm}
-          onClick={() => onConfirm(selectedEntry, setLocation)}
+          disabled={!canConfirm || mutation.isPending}
+          onClick={() => mutation.mutate()}
           data-testid={`confirm-payable-${pairKey}`}
         >
-          Go to Edit Page
+          {mutation.isPending ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Saving…</> : "Confirm — Record Reason"}
         </Button>
       </DialogFooter>
     </>
@@ -890,7 +971,7 @@ function OverlapReview({
           <p className="text-xs text-slate-600">
             Each pair below has chainage ranges that intersect. Review both entries and decide whether
             they are incidental, separately payable, or require correction.
-            <strong className="ml-1">No changes are saved from this panel</strong> — use the action buttons to navigate to the edit page.
+            <strong className="ml-1">A classification is saved only after you confirm it</strong>; DPR links remain available for any correction work.
           </p>
           {pairs.map((pair) => (
             <OverlapPairRow
