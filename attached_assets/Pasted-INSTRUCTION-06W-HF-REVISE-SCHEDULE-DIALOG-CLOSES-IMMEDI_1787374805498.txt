@@ -1,0 +1,103 @@
+INSTRUCTION 06W-HF — REVISE SCHEDULE DIALOG CLOSES IMMEDIATELY
+
+This is a focused UI wiring hotfix only.
+
+ROOT CAUSE TO CONFIRM
+
+In WorkProgramme.tsx, normal road/stretch bars render:
+
+  <ScheduleRevisionActions ... variant="menu" />
+
+inside:
+
+  <DropdownMenuContent>
+
+ScheduleRevisionActions owns its own React state and its own <Dialog>.
+
+When "Revise Schedule" is selected:
+
+1. beginRevision() sets open=true.
+2. Radix DropdownMenu closes after the item selection.
+3. DropdownMenuContent unmounts.
+4. ScheduleRevisionActions unmounts with it.
+5. Its Dialog disappears immediately.
+
+This matches the reproduced behavior:
+the Revise Schedule screen flashes briefly and vanishes.
+
+FIX
+
+Do NOT keep the revision Dialog/state inside content that unmounts when the
+dropdown closes.
+
+Refactor so:
+
+- the dropdown item remains:
+    Revise Schedule
+
+- but the schedule-revision state/Dialog stays mounted outside
+  DropdownMenuContent for that programme row.
+
+Preferred shape:
+
+- StretchRow owns or renders one persistent ScheduleRevisionActions/Dialog
+  instance outside the DropdownMenuContent; and
+- the menu item only triggers/open that persistent dialog.
+
+Or another clean equivalent using controlled state.
+
+Do NOT use preventDefault hacks merely to keep the dropdown open.
+
+The dropdown should close normally.
+The Revise Schedule dialog should then remain open.
+
+Preserve all existing 06W behavior exactly:
+- not-started vs started protection;
+- revised dates;
+- mandatory reason;
+- Cascade successor shifts default ON;
+- Preview revision;
+- shifted/not-shifted summary;
+- Confirm & commit;
+- Schedule History;
+- baseline/current display;
+- API endpoints;
+- programme revision calculations.
+
+Also check "Schedule History" from the same menu, because it is currently
+owned by the same component and may suffer the same unmount problem.
+Fix both triggers if so.
+
+TESTS
+
+A. Normal road bar → menu → Revise Schedule:
+   dropdown closes and revision dialog remains open.
+
+B. User can enter dates/reason and click Preview revision.
+
+C. Preview appears and remains open.
+
+D. Back / Confirm & commit work.
+
+E. Cancel closes normally.
+
+F. Schedule History from the row menu also remains open after dropdown closes.
+
+G. Inline ScheduleRevisionActions used by structure/location rows remains
+   unchanged and working.
+
+H. No server/schema/programme calculation changes.
+
+Run focused tests and full suite.
+
+REPORT BACK
+
+Confirm:
+- exact root cause;
+- exact component ownership/rendering change;
+- Revise Schedule menu flow tested;
+- Schedule History menu flow tested;
+- no programme logic or schema change;
+- tests.
+
+DO NOT START ANOTHER BATCH.

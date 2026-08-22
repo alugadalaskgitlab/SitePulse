@@ -112,14 +112,22 @@ type RevisionPreview = {
   notShifted: Array<{ bar: any; executionState: string; reason: string }>;
 };
 
-function ScheduleRevisionActions({
+type ScheduleRevisionAction = "revise" | "history";
+
+export function ScheduleRevisionActions({
   bar,
   projectId,
   variant = "inline",
+  requestedAction,
+  onRequestedActionHandled,
 }: {
   bar: WorkProgramBarWithItem;
   projectId: number;
-  variant?: "inline" | "menu";
+  /** Inline controls are used by structure/location rows; dialog-only is the persistent road-row owner. */
+  variant?: "inline" | "dialog-only";
+  /** A road-row menu can request an action without owning this component's dialogs. */
+  requestedAction?: ScheduleRevisionAction | null;
+  onRequestedActionHandled?: () => void;
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -154,6 +162,19 @@ function ScheduleRevisionActions({
     setOpen(true);
   }
 
+  // Normal road-row menu content is intentionally transient: Radix unmounts
+  // it as soon as an item is selected. This persistent owner receives the
+  // request after the menu closes, leaving the dialog mounted and visible.
+  useEffect(() => {
+    if (!requestedAction) return;
+    if (requestedAction === "revise") beginRevision();
+    else setHistoryOpen(true);
+    onRequestedActionHandled?.();
+    // The action is a one-shot parent signal; using it as the dependency keeps
+    // a new callback identity from replaying the same request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedAction]);
+
   async function requestPreview() {
     if (!reason.trim() || !endDate) {
       toast({ title: "Reason and finish date are required", variant: "destructive" });
@@ -186,28 +207,7 @@ function ScheduleRevisionActions({
     } finally { setBusy(false); }
   }
   const dateText = (v: any) => v ? String(v).slice(0, 10) : "—";
-  const triggers = variant === "menu" ? (
-    <>
-      <DropdownMenuItem
-        disabled={locked}
-        onSelect={beginRevision}
-        title={locked ? "Completed bars cannot be rescheduled" : "Revise this bar's calendar schedule"}
-        data-testid={`menu-revise-schedule-${bar.id}`}
-      >
-        {locked ? <LockKeyhole className="w-3.5 h-3.5 mr-2" /> : <ArrowUpDown className="w-3.5 h-3.5 mr-2" />}
-        Revise Schedule
-      </DropdownMenuItem>
-      <DropdownMenuItem
-        disabled={history.length === 0}
-        onSelect={() => setHistoryOpen(true)}
-        title={history.length ? "View schedule revision history" : "No schedule revision history"}
-        data-testid={`menu-schedule-history-${bar.id}`}
-      >
-        <History className="w-3.5 h-3.5 mr-2" />
-        Schedule History{history.length ? ` (${history.length})` : ""}
-      </DropdownMenuItem>
-    </>
-  ) : (
+  const triggers = variant === "inline" ? (
     <>
       <button type="button" disabled={locked} onClick={beginRevision}
         className={`inline-flex items-center gap-1 text-[10px] font-semibold rounded border px-1.5 py-0.5 ${locked ? "text-slate-400 border-slate-200 cursor-not-allowed" : "text-teal-700 border-teal-200 bg-teal-50 hover:bg-teal-100"}`}
@@ -220,12 +220,12 @@ function ScheduleRevisionActions({
         <History className="w-3 h-3" /> History{history.length ? ` ${history.length}` : ""}
       </button>
     </>
-  );
+  ) : null;
   return (
     <>
       {triggers}
       <Dialog open={open} onOpenChange={v => { if (!v && !busy) { setOpen(false); setPreview(null); } }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg" data-testid={`dialog-revise-schedule-${bar.id}`}>
           <DialogHeader><DialogTitle className="flex items-center gap-2"><ArrowUpDown className="w-4 h-4 text-teal-700" />Revise schedule</DialogTitle></DialogHeader>
           {!preview ? (
             <div className="space-y-4">
@@ -235,12 +235,12 @@ function ScheduleRevisionActions({
               <div className="grid grid-cols-2 gap-3">
                  <div>
                    <Label>{state === "started" ? "ACTUAL START (LOCKED)" : "START DATE"}</Label>
-                   <Input type="date" value={startDate} disabled={state !== "not_started"} onChange={e => setStartDate(e.target.value)} />
+                   <Input type="date" value={startDate} disabled={state !== "not_started"} onChange={e => setStartDate(e.target.value)} data-testid={`input-revision-start-${bar.id}`} />
                  </div>
-                <div><Label>FINISH DATE <span className="text-red-500">*</span></Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
+                <div><Label>FINISH DATE <span className="text-red-500">*</span></Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} data-testid={`input-revision-finish-${bar.id}`} /></div>
               </div>
-              <div><Label>REASON <span className="text-red-500">*</span></Label><Input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. access handover delayed" /></div>
-              <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={cascade} onChange={e => setCascade(e.target.checked)} /> Cascade successor shifts</label>
+              <div><Label>REASON <span className="text-red-500">*</span></Label><Input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. access handover delayed" data-testid={`input-revision-reason-${bar.id}`} /></div>
+              <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={cascade} onChange={e => setCascade(e.target.checked)} data-testid={`checkbox-revision-cascade-${bar.id}`} /> Cascade successor shifts</label>
               <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={requestPreview} disabled={busy}>{busy ? "Checking…" : "Preview revision"}</Button></DialogFooter>
             </div>
           ) : (
@@ -262,7 +262,7 @@ function ScheduleRevisionActions({
         </DialogContent>
       </Dialog>
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
-        <DialogContent className="max-w-lg"><DialogHeader><DialogTitle>Schedule history</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-lg" data-testid={`dialog-schedule-history-${bar.id}`}><DialogHeader><DialogTitle>Schedule history</DialogTitle></DialogHeader>
           <div className="max-h-72 overflow-y-auto space-y-2">{history.slice().reverse().map((h, i) => {
             const oldStart = h.originalStartDate ?? h.before?.startDate;
             const oldEnd = h.originalEndDate ?? h.before?.endDate;
@@ -281,6 +281,42 @@ function ScheduleRevisionActions({
           })}</div>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+/** Stateless road-row menu triggers. The persistent dialog owner lives beside
+ * the DropdownMenu, never inside DropdownMenuContent. */
+function ScheduleRevisionMenuItems({
+  bar,
+  onRequestAction,
+}: {
+  bar: WorkProgramBarWithItem;
+  onRequestAction: (action: ScheduleRevisionAction) => void;
+}) {
+  const state = String((bar as any).executionState ?? "not_started");
+  const history = ((bar as any).revisionHistory ?? []) as any[];
+  const locked = state === "completed";
+  return (
+    <>
+      <DropdownMenuItem
+        disabled={locked}
+        onSelect={() => onRequestAction("revise")}
+        title={locked ? "Completed bars cannot be rescheduled" : "Revise this bar's calendar schedule"}
+        data-testid={`menu-revise-schedule-${bar.id}`}
+      >
+        {locked ? <LockKeyhole className="w-3.5 h-3.5 mr-2" /> : <ArrowUpDown className="w-3.5 h-3.5 mr-2" />}
+        Revise Schedule
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        disabled={history.length === 0}
+        onSelect={() => onRequestAction("history")}
+        title={history.length ? "View schedule revision history" : "No schedule revision history"}
+        data-testid={`menu-schedule-history-${bar.id}`}
+      >
+        <History className="w-3.5 h-3.5 mr-2" />
+        Schedule History{history.length ? ` (${history.length})` : ""}
+      </DropdownMenuItem>
     </>
   );
 }
@@ -402,6 +438,8 @@ function StretchRow({
 }: StretchRowProps) {
   const { toast } = useToast();
   const dirty = useRef(false);
+  // The action request is owned by the row, which survives the menu closing.
+  const [scheduleRevisionAction, setScheduleRevisionAction] = useState<ScheduleRevisionAction | null>(null);
 
   const roadLen = project.roadLengthKm ?? 0;
   const boqQty = item.currentQty;
@@ -1352,7 +1390,7 @@ function StretchRow({
             <DropdownMenuItem onClick={() => onRequestEdit(bar.id)} data-testid={`menu-edit-${bar.id}`}>
               <Pencil className="w-3.5 h-3.5 mr-2" /> Edit
             </DropdownMenuItem>
-            <ScheduleRevisionActions bar={bar} projectId={projectId} variant="menu" />
+            <ScheduleRevisionMenuItems bar={bar} onRequestAction={setScheduleRevisionAction} />
             {isEarthworkBar && (
               <DropdownMenuItem onClick={() => setShowArrangements(true)} data-testid={`menu-arrangements-${bar.id}`}>
                 <Handshake className="w-3.5 h-3.5 mr-2" /> Arrangements
@@ -1400,6 +1438,13 @@ function StretchRow({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <ScheduleRevisionActions
+          bar={bar}
+          projectId={projectId}
+          variant="dialog-only"
+          requestedAction={scheduleRevisionAction}
+          onRequestedActionHandled={() => setScheduleRevisionAction(null)}
+        />
         </>)}
       </div>
 
