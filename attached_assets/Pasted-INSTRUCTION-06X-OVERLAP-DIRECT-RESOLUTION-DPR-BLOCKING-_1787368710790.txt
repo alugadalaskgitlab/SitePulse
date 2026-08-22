@@ -1,0 +1,277 @@
+INSTRUCTION 06X — OVERLAP DIRECT RESOLUTION + DPR BLOCKING-ROW JUMP + EQUIPMENT SEND-TO-SITE FIX
+
+Do not start any other work until this is verified. Do not start Notifications
+or any other batch before this one.
+
+--------------------------------------------------
+BACKGROUND (read before coding — grounds every part below in the real code)
+--------------------------------------------------
+Four real, confirmed problems, all hit in live use after 06V/06W:
+
+1. Resolving a chainage overlap ("Both are valid" in Progress Report) forces
+   navigation into the full DPR edit screen just to tick one classification.
+   Worse: saving that DPR can be blocked by a COMPLETELY DIFFERENT, unrelated
+   row elsewhere in the same DPR that also has an unresolved overlap — the
+   error names that row but the screen never takes you to it, so the block
+   looks like a bug in the row you were actually editing.
+
+2. Editing an Equipment Usage entry that was sent to a site does not update
+   the existing record — it silently attempts to create a new one, which is
+   almost certainly why edits fail with a generic "Failed to record
+   equipment usage" toast.
+
+3. "Destination Site" on Send to Site is free text, not tied to the
+   registered Sites master.
+
+4. Because of (3) and a related server gap, a dispatched machine does not
+   reliably show up in the correct site's DPR — Guided DPR checks the wrong
+   field, and Detailed DPR checks no site at all.
+
+Confirmed directly against the code before drafting this:
+- `client/src/pages/ProgressReport.tsx` ALREADY contains the full "Both are
+  valid" decision UI: a two-step dialog (Mark as Incidental / Separately
+  Payable, with the existing legacy-layer guard disabling Separately Payable
+  when a layer number is missing) that already builds the exact classification
+  and reason. Today, on confirm, it calls `navigateToEdit(...)` which sends
+  the user to SiteEdit with `?isIncidental=1` or `?reason=...` in the URL —
+  nothing is saved until the user finds the row again and saves the whole
+  DPR. **Do not rebuild this dialog.** The only change needed is what happens
+  on confirm.
+- `shared/chainageOverlap.ts`'s `chainageOverlapReadinessIssues()` already
+  computes a `rowKey` for every overlap issue it returns. That `rowKey` is
+  DISCARDED in `server/routes.ts`'s `evaluateChainageOverlapIssues()` (the
+  final `.map(({ section, label, message }) => ({ section, label, message
+  }))` drops it before the issue reaches the client). This is the exact,
+  narrow reason the client can't jump to the blocking row today — the data
+  already exists server-side, it's just thrown away one step before the
+  response.
+- `shared/dprSubmitReadiness.ts`'s `DprReadinessIssue` type (the general
+  completeness gate — activities/equipment/labour/materials) has no row
+  reference at all today, only `section`/`label`/`message`.
+- `SiteEdit.tsx` (~line 538-574) ALREADY has a working scroll-to-and-highlight
+  mechanism for `?progressEntryId=` deep-links (built in 06V). **Reuse this
+  exact mechanism** for jumping to a blocking row — do not build a second
+  one.
+- `client/src/pages/PlantEquipmentUsage.tsx`'s `handleSubmit()`: the
+  "shifting" branch and the normal branch both correctly check
+  `if (editingUsage) { updateMutation.mutate(...) } else { createMutation
+  .mutate(...) }`. The `sendToSite && entryType !== "shifting"` branch is
+  missing this check entirely — it always calls `createMutation.mutate(data)`,
+  even when editing an existing record. This is the confirmed root cause of
+  the save failure reported.
+- `shared/schema.ts`'s `equipmentUsage` table already has both `siteName`
+  (working plant/location) and `destinationSite` (where dispatched, set only
+  when `status = 'open'`) as separate free-text columns — no site-ID column
+  exists on this table. No schema change is required for this batch.
+- `GET /api/plant-module/equipment-usage/open-today` (server/routes.ts
+  ~line 3422): the no-`equipmentIds` branch (Guided DPR's automatic open-
+  equipment discovery) filters by `normaliseSiteLabel(u.siteName)` — the
+  WRONG field; it should be `destinationSite` for dispatched (open) records.
+  The `equipmentIds` branch (Detailed DPR's per-equipment lookup) applies NO
+  site filter and NO permission check at all, unlike the other branch.
+
+--------------------------------------------------
+PART A — RESOLVE THE OVERLAP DIRECTLY FROM PROGRESS REPORT
+--------------------------------------------------
+1. New endpoint, narrowly scoped to ONE `progress_entries` row — e.g.
+   `PATCH /api/progress-entries/:id/overlap-resolution`. Accepts exactly one
+   of:
+     - `{ isIncidental: true, incidentalDescription: string }` (description
+       mandatory, same rule as everywhere else incidental is set)
+     - `{ chainageOverrideReason: string }` (non-empty; reuse the existing
+       `client/src/lib/overlapReason.ts` pick-list / `buildReason()` on the
+       client so the stored string matches the same canonical values used
+       elsewhere)
+   Permission-gated the same way DPR edits already are. Validate ONLY the
+   field(s) being changed on this one row — do **not** run
+   `evaluateDprSubmitReadiness` or `evaluateChainageOverlapIssues` for the
+   whole parent DPR. This is the entire point of the fix: an unrelated row
+   elsewhere in the same DPR must never block this save.
+   Audit via the existing `storage.logAudit()` pattern (same shape already
+   used elsewhere, e.g. the 06W schedule-revision endpoint): module,
+   the progress entry id, action `"overlap_resolution"`, old/new
+   classification, reason, actor, timestamp.
+2. In `ProgressReport.tsx`, change ONLY the two `onConfirm` handlers
+   (`_IncidentalStep`'s and `_PayableStep`'s) to call this new endpoint
+   directly instead of `navigateToEdit(...)`. Everything else in the dialog
+   — the choice step, the legacy-layer guard, the reason pick-list — stays
+   exactly as it is.
+3. On success: invalidate/refetch whatever query keys currently back the
+   Progress Report and RA Report views for this item, so the resolved pair
+   disappears from Overlap Review and the measurement table/coverage strip
+   update immediately, with no full page reload and no navigation away from
+   the report.
+4. The existing "View DPR-{id}" links stay exactly as they are today — that
+   remains the correct path when the actual chainage/quantity/layer data
+   itself needs correction, not just a classification decision.
+5. Do not remove the `?isIncidental=1` / `?reason=...` query-param handling
+   in SiteEdit — leave it in place (harmless, unused by this new path, and
+   removing it is not necessary for this fix).
+
+--------------------------------------------------
+PART B — JUMP TO THE BLOCKING ROW ON SUBMIT FAILURE
+--------------------------------------------------
+1. In `server/routes.ts`'s `evaluateChainageOverlapIssues()`, stop dropping
+   `rowKey` — include it in every returned issue.
+2. Add an optional row reference to `DprReadinessIssue`
+   (`shared/dprSubmitReadiness.ts`) — e.g. `rowIndex?: number` — and populate
+   it at each existing mandatory-issue push site (activities, equipment,
+   labour, materials). This is a mechanical addition alongside each existing
+   push; do not change any of the completeness rules themselves.
+3. In GuidedDpr.tsx, SiteEntry.tsx, and SiteEdit.tsx: when a `DPR_NOT_READY`
+   response comes back, use the row reference on each mandatory issue to
+   scroll to and briefly highlight that exact row — reuse the exact
+   scroll/highlight mechanism SiteEdit already has for `?progressEntryId=`
+   deep-links (~line 538-574), applied to whichever section the issue
+   belongs to (activities/equipment/labour/materials each have their own row
+   containers). The toast keeps naming the activity as it does today, but
+   the screen must also take the user there — do not rely on the toast text
+   alone.
+4. If an issue somehow has no row reference (should not happen after #1/#2,
+   but stay defensive), fall back to today's toast-only behaviour — never
+   throw or block the error display.
+
+--------------------------------------------------
+PART C — EQUIPMENT USAGE EDIT MUST UPDATE, NOT DUPLICATE
+--------------------------------------------------
+1. In `PlantEquipmentUsage.tsx`'s `handleSubmit()`, the
+   `if (sendToSite && entryType !== "shifting")` branch: add the same
+   `if (editingUsage) { updateMutation.mutate({ id: editingUsage.id, data })
+   } else { createMutation.mutate(data) }` check already used by the other
+   branches in this function. This is the confirmed root cause of the
+   reported save failure — fix this branch only, do not touch the branches
+   that already have the check.
+2. In both the create and update route handlers
+   (`POST`/`PUT /api/plant-module/equipment-usage`), log the real caught
+   error server-side (`console.error`) before responding — today it is
+   silently swallowed, which is why the true cause of any failure (this one
+   included) is invisible even in server logs. Keep the client-facing
+   message safe/generic, but where the error is a recognisable validation
+   problem, return a message specific enough to act on instead of the
+   generic "Please try again."
+
+--------------------------------------------------
+PART D — DESTINATION SITE BECOMES A REGISTERED-SITE DROPDOWN
+--------------------------------------------------
+1. Replace the free-text `Input` for Destination Site (~line 1264) with a
+   `Select` populated from `/api/sites` (already fetched elsewhere on this
+   page — reuse that data, do not add a second fetch), active sites only.
+   Required whenever "Send to Site" is on.
+2. Store the exact site name as it exists in the Sites master — do not
+   uppercase or otherwise transform it (the current free-text field forces
+   `.toUpperCase()`; a controlled dropdown must not risk mismatching the
+   master's actual stored casing).
+3. No schema change — `destinationSite` is already a plain text column.
+
+--------------------------------------------------
+PART E — DISPATCHED EQUIPMENT MUST BE SCOPED TO ITS ACTUAL DESTINATION SITE
+--------------------------------------------------
+1. `GET /api/plant-module/equipment-usage/open-today`, no-`equipmentIds`
+   branch (Guided DPR's automatic discovery, ~line 3444): change the filter
+   from `normaliseSiteLabel(u.siteName)` to `normaliseSiteLabel(u.destinationSite)`
+   — an open/dispatched record belongs to the site it was sent to, not the
+   site it originated from.
+2. Same endpoint, `equipmentIds` branch (Detailed DPR's per-equipment
+   lookup, ~line 3446-3450): today this has no site parameter and no
+   permission check at all. Add a required `site` parameter here too, filter
+   out any record whose `destinationSite` doesn't match (via
+   `normaliseSiteLabel`, same helper already used in the other branch), and
+   apply the same `getPermittedSiteNames`/`siteMatchesPermitted` access
+   check the discovery branch already has. A machine sent to Site A must
+   never be discoverable, linkable, or closeable from Site B's DPR.
+3. Detailed DPR's client call to this endpoint must now pass its own site,
+   matching how Guided DPR already does.
+4. Do not change the closing mechanism itself (`closedByDprId`,
+   `closedByUserId`, `closedAt`, the `plantUsageId` link between
+   `equipment_logs` and `equipment_usage`) — only which records are
+   discoverable/offered to which DPR. The Engineer still enters the closing
+   reading in DPR and Final Submit still closes that exact same
+   `equipment_usage` row, not a duplicate.
+
+--------------------------------------------------
+WHAT NOT TO TOUCH
+--------------------------------------------------
+- No change to the "Both are valid" dialog's UI, copy, legacy-layer guard,
+  or reason pick-list — Part A only changes what happens on confirm.
+- No change to `entryBoqCredit()`, RA report exclusion logic, or any other
+  06V calculation rule — Part A only adds a narrower way to set the same
+  fields those rules already read.
+- No change to the general DPR submit-readiness RULES themselves (what
+  counts as mandatory vs advisory) — Part B only adds a row reference to the
+  existing issues, it does not change which issues are raised.
+- No change to diesel stock/ledger logic, `_adjustStockBalance`, or the
+  direct-purchase diesel fields — Part C only fixes the edit/create
+  branching and error logging.
+- No change to the equipment-usage → DPR closing mechanism itself
+  (`plantUsageId`, `closedByDprId`) — Part E only fixes site scoping of
+  discovery.
+- No new schema anywhere in this batch.
+
+--------------------------------------------------
+TESTS
+--------------------------------------------------
+A. Resolving an overlap as Incidental from Progress Report updates the
+   correct `progress_entries` row, requires a description, and the pair
+   disappears from Overlap Review immediately without navigating away.
+B. Resolving an overlap as Separately Payable stores the structured reason
+   (via the same pick-list) on the correct row(s) and refreshes the same
+   way.
+C. Resolving an overlap this way succeeds even when a DIFFERENT, unrelated
+   row in the same parent DPR still has its own unresolved issue — this is
+   the exact real-world case that motivated this batch and must pass.
+D. The legacy-layer guard still disables Separately Payable exactly as
+   before.
+E. "View DPR-{id}" still opens the full DPR unchanged.
+F. A DPR blocked at Final Submit by an overlap issue on a row other than
+   the one currently in view scrolls to and highlights that exact row.
+G. Same, for a general completeness issue (e.g. missing closing reading on
+   an equipment row) — scrolls to and highlights that row too.
+H. Editing an existing "sent to site" Equipment Usage entry updates the
+   same record (same id, no duplicate row created) and succeeds.
+I. Creating a brand-new "sent to site" entry still creates correctly
+   (regression).
+J. A forced server-side failure during equipment-usage create/update is now
+   visible in server logs (regression/diagnostic check only).
+K. Destination Site is a required dropdown of active registered sites when
+   Send to Site is on; the stored value exactly matches the master's name
+   (no case transformation).
+L. A machine dispatched to Site A appears as open/dispatched equipment only
+   in Site A's Guided DPR discovery, not Site B's.
+M. Detailed DPR's per-equipment lookup also refuses/omits a record whose
+   destination site does not match the requesting DPR's site, and enforces
+   the same site-access permission check as the discovery branch.
+N. The same equipment/date/destination-site open record is offered
+   automatically to the correct site's Engineer, carries the plant-entered
+   opening reading, and Final Submit closes that same record (no duplicate)
+   — regression check on the existing close flow.
+O. No change to `entryBoqCredit()`, RA exclusion, or diesel stock/ledger
+   arithmetic anywhere (regression).
+
+Run focused tests and the full suite.
+
+--------------------------------------------------
+REPORT BACK
+--------------------------------------------------
+A. Exact new endpoint added for Part A, its validation scope, and
+   confirmation it does NOT invoke the whole-DPR readiness/overlap gate.
+B. Confirmation the "Both are valid" dialog UI itself was not rebuilt —
+   only the confirm handlers changed.
+C. Confirmation `rowKey`/`rowIndex` now survives from
+   `chainageOverlapReadinessIssues`/`evaluateDprSubmitReadiness` through to
+   the client for every mandatory issue type, and screenshot/description of
+   the scroll-to-blocking-row behaviour for both an overlap issue and a
+   general completeness issue.
+D. Confirmation of the exact one-branch fix in `PlantEquipmentUsage.tsx`
+   and that the other branches were not touched.
+E. Confirmation server-side errors are now logged for equipment-usage
+   create/update.
+F. Screenshot of the Destination Site dropdown and confirmation of the
+   exact stored value vs. the master's name.
+G. Confirmation of the exact site-scoping fix in both branches of
+   `/api/plant-module/equipment-usage/open-today`, and that the closing
+   mechanism itself was not changed.
+H. Confirmation nothing in "What Not To Touch" was touched.
+I. Focused and full test results, and a tsc error-signature diff against
+   the last verified build.
+
+DO NOT START ANOTHER BATCH.
