@@ -1,0 +1,100 @@
+OBJECTIVE
+
+Fix only the remaining Equipment Usage edit blocker for legacy records whose
+old Destination Site was stored as free text before the registered-site
+dropdown was introduced.
+
+CURRENT BUG
+
+When editing an existing equipment_usage record with Send to Site enabled,
+the server validates the OLD persisted destinationSite before allowing the
+new user-selected registered Destination Site to replace it.
+
+If the old legacy value does not exactly resolve to one current active Site
+Master record, the update fails even though the user has explicitly selected
+a valid registered site.
+
+REQUIRED FIX
+
+For PUT/update of an existing Equipment Usage record:
+
+1. Preserve all normal authorization and validation.
+
+2. If Send to Site is enabled and the request contains a newly selected
+   Destination Site:
+
+   - validate the NEW requested destination against active Site Master;
+   - if it resolves exactly to one registered site, allow the update;
+   - save that canonical registered site value to the SAME equipment_usage
+     record/id.
+
+3. Do NOT require the OLD legacy destinationSite to resolve before allowing
+   this explicit correction.
+
+4. Do NOT fuzzy-match or auto-guess the legacy destination.
+
+5. If no valid replacement destination is supplied and the persisted legacy
+   destination cannot be resolved uniquely, return a clear validation error
+   asking the user to select a registered Destination Site.
+
+6. Editing must remain PUT/update of the existing record.
+   Never create a second equipment_usage record.
+
+VERIFY END-TO-END
+
+Plant Equipment Usage
+→ opening reading/time
+→ Send to Site
+→ choose registered Site
+→ SAME equipment_usage id remains open
+→ only that destination Site's DPR discovers it
+→ opening reading carries into DPR
+→ Engineer enters closing reading
+→ final DPR submission closes the SAME plantUsageId.
+
+TESTS
+
+A. Legacy destination "THAKKADPALLY" + user selects valid registered
+   "Takkadpally-sirur" → PUT succeeds and same id is preserved.
+
+B. Legacy invalid destination + no replacement selected → clear validation
+   error.
+
+C. New valid dispatch works normally.
+
+D. Site A dispatch does not appear in Site B DPR.
+
+E. No duplicate equipment_usage is created.
+
+F. Full test suite.
+
+SCHEMA
+
+No schema change expected.
+
+If any schema change is required, STOP and report before applying it.
+
+NON-GOALS
+
+Do not change:
+- Equipment Master
+- DPR equipment architecture
+- opening/closing continuity
+- Site Master
+- overlap logic
+- Layer/Lift
+- Progress Report
+- Cut/Fill
+- Work Programme
+
+REPORT BACK
+
+Confirm:
+- exact old validation causing the failure;
+- exact new validation order;
+- same equipment_usage id preserved;
+- focused/full test results;
+- files changed;
+- no schema change.
+
+DO NOT START ANOTHER BATCH.

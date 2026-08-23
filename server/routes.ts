@@ -3849,23 +3849,37 @@ export async function registerRoutes(
     // Reassignment must not let a user "take" a dispatch from a site they
     // cannot access by supplying a new permitted destination. Authorize the
     // persisted owner first, then the effective destination.
+    //
+    // Legacy exception: records created before the registered-site dropdown
+    // stored destinationSite as free text (e.g. "THAKKADPALLY"). Such values
+    // cannot resolve to a Site Master row, which used to block ALL edits.
+    // When the request explicitly supplies a NEW destination, the correction
+    // is allowed — the new value is still validated against active Site
+    // Master and permission-checked below. We never fuzzy-match or auto-fix
+    // the legacy value; without an explicit replacement it stays an error.
     if (existingDestination) {
       const existingMatches = siteRows.filter(
         (site) => site.isActive === 1 && normaliseSiteLabel(site.name) === existingDestination,
       );
-      if (existingMatches.length !== 1) {
+      const hasExplicitReplacement = hasIncomingDestination && !incomingDestinationIsBlank;
+      if (existingMatches.length === 1) {
+        if (
+          permittedSiteNames !== null &&
+          !siteMatchesPermitted(existingMatches[0].name, permittedSiteNames)
+        ) {
+          res.status(403).json({ message: "You do not have access to update this dispatched equipment record" });
+          return undefined;
+        }
+      } else if (!hasExplicitReplacement) {
         res.status(400).json({
-          message: "Existing destination site is no longer one active registered Site",
+          message:
+            "The saved destination site is not a registered Site. " +
+            "Select a registered Destination Site from the list and save again.",
         });
         return undefined;
       }
-      if (
-        permittedSiteNames !== null &&
-        !siteMatchesPermitted(existingMatches[0].name, permittedSiteNames)
-      ) {
-        res.status(403).json({ message: "You do not have access to update this dispatched equipment record" });
-        return undefined;
-      }
+      // else: unresolvable legacy destination + explicit new selection —
+      // proceed; the requested destination is validated and authorized below.
     }
 
     const requested = normaliseSiteLabel(effectiveDestination);
