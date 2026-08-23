@@ -46,6 +46,10 @@ export type ReportBoqItem = {
   dprConversionFactor?: number | null;
   dprMeasurementMethod?: string | null;
   sortOrder?: number | null;
+  /** Read-only inputs for the shared DPR layer-capability rule. */
+  workCategory?: string | null;
+  categoryName?: string | null;
+  layerConfig?: { layerType?: string | null; mixType?: string | null } | null;
 };
 
 export type ReportEntry = {

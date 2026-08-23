@@ -21,7 +21,7 @@ import {
   type PriorChainageEntry,
 } from "../shared/chainageOverlap";
 import { computeItemEntries, layerBreakdown, type ReportEntry } from "../shared/progressReport";
-import { layerWord, layerFieldLabel, layerDisplayName } from "../shared/layerDisplay";
+import { layerWord, layerFieldLabel, layerDisplayName, isLayerCapableItem, showLayerField } from "../shared/layerDisplay";
 import { progressEntries, dprStructureItems } from "../shared/schema";
 import { getTableColumns } from "drizzle-orm";
 import { readFileSync } from "fs";
@@ -184,6 +184,80 @@ describe("06P §4 — display words are client-side only", () => {
     expect(layerFieldLabel("GSB")).toBe("Layer / Lift");
     expect(layerDisplayName("WMM", 2)).toBe("Layer 2");
     expect(layerDisplayName("Embankment", 1)).toBe("Lift 1");
+  });
+});
+
+describe("Task #1419 — shared layer-capability predicate", () => {
+  it("layerConfig.layerType is authoritative: earthwork/granular/bituminous are capable", () => {
+    expect(isLayerCapableItem({ description: "X", unit: "Cum", layerConfig: { layerType: "earthwork" } })).toBe(true);
+    expect(isLayerCapableItem({ description: "X", unit: "Cum", layerConfig: { layerType: "granular" } })).toBe(true);
+    expect(isLayerCapableItem({ description: "X", unit: "Cum", layerConfig: { layerType: "bituminous" } })).toBe(true);
+  });
+  it("single-application layerConfig types are NOT capable (spray_coat / concrete / none)", () => {
+    expect(isLayerCapableItem({ description: "Prime coat", unit: "Sqm", layerConfig: { layerType: "spray_coat" } })).toBe(false);
+    expect(isLayerCapableItem({ description: "Prime coat", unit: "Sqm", workCategory: "BITUMINOUS", layerConfig: { layerType: "spray_coat" } })).toBe(false);
+    expect(isLayerCapableItem({ description: "PCC M15", unit: "Cum", layerConfig: { layerType: "concrete" } })).toBe(false);
+    expect(isLayerCapableItem({ description: "Misc", unit: "Nos", layerConfig: { layerType: "none" } })).toBe(false);
+  });
+  it("named families are capable via whole-word description (GSB, WMM, embankment, subgrade)", () => {
+    expect(isLayerCapableItem({ description: "Construction of embankment with approved material", unit: "Cum" })).toBe(true);
+    expect(isLayerCapableItem({ description: "Preparation of subgrade", unit: "Cum" })).toBe(true);
+    expect(isLayerCapableItem({ description: "Granular Sub-Base (GSB) Grading-II", unit: "Cum" })).toBe(true);
+    expect(isLayerCapableItem({ description: "Wet Mix Macadam (WMM)", unit: "Cum" })).toBe(true);
+    expect(isLayerCapableItem({ description: "Provision of GSB", unit: "Cum" })).toBe(true);
+    expect(isLayerCapableItem({ description: "WMM base course", unit: "Cum" })).toBe(true);
+  });
+  it("explicit workCategory metadata is respected", () => {
+    expect(isLayerCapableItem({ description: "anything", unit: "Cum", workCategory: "EARTHWORK" })).toBe(true);
+    expect(isLayerCapableItem({ description: "anything", unit: "Cum", workCategory: "SUBBASE_BASE" })).toBe(true);
+    expect(isLayerCapableItem({ description: "anything", unit: "Cum", workCategory: "BITUMINOUS" })).toBe(false);
+  });
+  it("conservative: unknown / non-layered items are NOT capable, and nullish is safe", () => {
+    expect(isLayerCapableItem(null)).toBe(false);
+    expect(isLayerCapableItem(undefined)).toBe(false);
+    expect(isLayerCapableItem({ description: "Reinforcement steel HYSD", unit: "MT" })).toBe(false);
+    expect(isLayerCapableItem({ description: "RCC M25 for pier", unit: "Cum" })).toBe(false);
+    expect(isLayerCapableItem({ description: "Excavation in soil", unit: "Cum" })).toBe(false);
+    expect(isLayerCapableItem({ description: "Road marking paint", unit: "Sqm" })).toBe(false);
+    // no fuzzy single-word matches: "mix", "coat", "base" alone must not qualify
+    expect(isLayerCapableItem({ description: "Concrete mix supply", unit: "Cum" })).toBe(false);
+    expect(isLayerCapableItem({ description: "Seal coat over surface", unit: "Sqm" })).toBe(false);
+  });
+});
+
+describe("Task #1419 — showLayerField: capable OR existing value, never mandatory", () => {
+  const capable = { description: "Wet Mix Macadam", unit: "Cum" };
+  const plain = { description: "Road marking paint", unit: "Sqm" };
+  it("shows when the item is layer-capable (no saved value needed)", () => {
+    expect(showLayerField(capable, null)).toBe(true);
+  });
+  it("hides for non-layered items with no saved value (field not forced)", () => {
+    expect(showLayerField(plain, null)).toBe(false);
+    expect(showLayerField(null, null)).toBe(false);
+    expect(showLayerField(plain, undefined)).toBe(false);
+  });
+  it("existing saved layerNo stays visible even when metadata is incomplete/unknown", () => {
+    expect(showLayerField(plain, 2)).toBe(true);
+    expect(showLayerField(null, 1)).toBe(true);
+    expect(showLayerField(undefined, 3)).toBe(true);
+  });
+});
+
+describe("Task #1419 — both live screens use the shared predicate", () => {
+  const guided = readFileSync("client/src/pages/GuidedDpr.tsx", "utf8");
+  const siteEntry = readFileSync("client/src/pages/SiteEntry.tsx", "utf8");
+  it("GuidedDpr imports and gates the layer field with showLayerField", () => {
+    expect(guided).toMatch(/import\s*\{[^}]*showLayerField[^}]*\}\s*from\s*["']@shared\/layerDisplay["']/);
+    expect(guided).toMatch(/showLayerField\(item, e\.layerNo\)/);
+  });
+  it("SiteEntry imports and gates the layer field with showLayerField", () => {
+    expect(siteEntry).toMatch(/import\s*\{[^}]*showLayerField[^}]*\}\s*from\s*["']@shared\/layerDisplay["']/);
+    expect(siteEntry).toMatch(/showLayerField\(\s*[\s\S]*?entry\.layerNo,\s*\)/);
+  });
+  it("neither screen makes the layer field mandatory (still optional, null allowed)", () => {
+    // The input keeps the null-clearing onChange (=== \"\" ? null) in both screens.
+    expect(guided).toMatch(/layerNo: ev\.target\.value === "" \? null/);
+    expect(siteEntry).toMatch(/layerNo = e\.target\.value === "" \? null/);
   });
 });
 

@@ -221,17 +221,36 @@ describe("G: overlap-resolution PATCH endpoint contract", () => {
     expect(payload.chainageOverrideReason.trim().length).toBeGreaterThan(0);
   });
 
-  it("both branches are mutually exclusive at the type level", () => {
-    // An incidental payload must NOT include chainageOverrideReason and vice-versa.
+  it("layer-correction payload satisfies server contract (Task #1419)", () => {
+    // Server validates: layerNo is a positive integer, layer-only shape.
+    const entryId = 789;
+    const url = `/api/progress-entries/${entryId}/overlap-resolution`;
+    const payload = { layerNo: 2 };
+    expect(url).toBe("/api/progress-entries/789/overlap-resolution");
+    expect(Number.isInteger(payload.layerNo)).toBe(true);
+    expect(payload.layerNo).toBeGreaterThan(0);
+    // Layer shape carries no classification keys.
+    expect("isIncidental" in payload).toBe(false);
+    expect("chainageOverrideReason" in payload).toBe(false);
+  });
+
+  it("all three branches are mutually exclusive at the type level", () => {
+    // Each payload must NOT include the other shapes' keys.
     type IncidentalPayload = { isIncidental: true; incidentalDescription: string };
     type PayablePayload = { chainageOverrideReason: string };
-    // The union type should not allow both fields simultaneously.
+    type LayerPayload = { layerNo: number };
     const incidental: IncidentalPayload = { isIncidental: true, incidentalDescription: "reason" };
     const payable: PayablePayload = { chainageOverrideReason: "reason" };
+    const layer: LayerPayload = { layerNo: 2 };
     expect("isIncidental" in incidental).toBe(true);
     expect("isIncidental" in payable).toBe(false);
     expect("chainageOverrideReason" in incidental).toBe(false);
     expect("chainageOverrideReason" in payable).toBe(true);
+    expect("layerNo" in layer).toBe(true);
+    expect("layerNo" in incidental).toBe(false);
+    expect("layerNo" in payable).toBe(false);
+    expect("isIncidental" in layer).toBe(false);
+    expect("chainageOverrideReason" in layer).toBe(false);
   });
 
   it("SiteEntry open-today URL includes site parameter (regression guard)", () => {
@@ -253,6 +272,13 @@ describe("G: overlap-resolution PATCH endpoint contract", () => {
     expect(source).toContain("View DPR-{pair.a.dprId}");
     expect(source).toContain("View DPR-{pair.b.dprId}");
     expect(source).toContain("if (legacyLayer) return");
+    // Task #1419: direct layer correction reuses the SAME narrow endpoint helper.
+    expect(source).toContain("patchOverlapResolution(entry.entryId, { layerNo: parsed })");
+    // Missing-layer explanatory copy (exact wording).
+    expect(source).toContain("Possible overlap — layer/lift not recorded for one or both entries.");
+    // Correction only for progress entries (variable name is 'e' in the iterator) + refetch on success.
+    expect(source).toContain('e.kind !== "progress"');
+    expect(source).toContain("invalidateProgressQueries(queryClient)");
   });
 
   it("all DPR forms expose section-aware row targets, including Guided material remediation", async () => {

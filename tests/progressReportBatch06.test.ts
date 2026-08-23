@@ -12,6 +12,7 @@ import {
   entryReviewFlag, sidesMayOverlap, normaliseReportSide,
   buildOverlapPairs,
 } from "../shared/progressReport";
+import { showLayerField } from "../shared/layerDisplay";
 
 const wmm: ReportBoqItem = {
   id: 1, description: "WMM", unit: "Cum", boqQty: 5000,
@@ -21,6 +22,32 @@ const clearing: ReportBoqItem = {
   id: 2, description: "Clearing & Grubbing", unit: "Ha", boqQty: 12,
   dprConversionFactor: 0.0001, dprMeasurementMethod: "SQM_LW",
 };
+
+describe("Task #1419 — report carries layer-capability metadata", () => {
+  it("metadata-only configured items can expose layer correction in Overlap Review", () => {
+    const configured: ReportBoqItem = {
+      id: 3,
+      description: "Pavement course",
+      unit: "MT",
+      boqQty: 1000,
+      workCategory: "BITUMINOUS",
+      layerConfig: { layerType: "bituminous", mixType: "DBM" },
+    };
+    expect(showLayerField(configured, null)).toBe(true);
+  });
+
+  it("the report response includes every shared capability input", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const routes = await readFile("server/routes.ts", "utf8");
+    const assembly = routes.slice(
+      routes.indexOf("async function assembleProgressReport"),
+      routes.indexOf('app.get("/api/reports/progress"'),
+    );
+    expect(assembly).toContain("workCategory:");
+    expect(assembly).toContain("categoryName:");
+    expect(assembly).toContain("layerConfig:");
+  });
+});
 
 let nextId = 1;
 function entry(over: Partial<ReportEntry>): ReportEntry {
@@ -368,6 +395,84 @@ describe("buildOverlapPairs (06V)", () => {
     const incidental = entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 2.0, dprId: 11, isIncidental: true });
     const computed = computeItemEntries([normal, incidental], wmm);
     expect(buildOverlapPairs(computed)).toHaveLength(0);
+  });
+});
+
+// ── Task #1419: layer correction makes an overlap disappear canonically ───────
+
+describe("Task #1419 — direct layer correction and canonical overlap recomputation", () => {
+  it("overlap present while both layers null (conservative), gone once distinct explicit layers", () => {
+    // Same side + intersecting chainage + both layers null → conservative overlap.
+    const a0 = entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 2.0, dprId: 10, layerNo: null });
+    const b0 = entry({ side: "LHS", chainageFromKm: 1.5, chainageToKm: 2.5, dprId: 11, layerNo: null });
+    const before = buildOverlapPairs(computeItemEntries([a0, b0], wmm));
+    expect(before).toHaveLength(1);
+
+    // Simulate the direct correction: set both entries to DISTINCT explicit
+    // layers (as the PATCH endpoint would). Canonical recomputation exempts
+    // distinct explicit non-null layers → overlap disappears.
+    const a1 = { ...a0, layerNo: 1 };
+    const b1 = { ...b0, layerNo: 2 };
+    expect(detectOverlaps([a1, b1]).size).toBe(0);
+    expect(buildOverlapPairs(computeItemEntries([a1, b1], wmm))).toHaveLength(0);
+  });
+
+  it("correcting only ONE entry (other still null) keeps the overlap (null stays conservative)", () => {
+    const a = entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 2.0, dprId: 10, layerNo: 2 });
+    const b = entry({ side: "LHS", chainageFromKm: 1.5, chainageToKm: 2.5, dprId: 11, layerNo: null });
+    // One layer null → falls back to conservative rule → overlap remains.
+    expect(detectOverlaps([a, b]).size).toBe(2);
+    expect(buildOverlapPairs(computeItemEntries([a, b], wmm))).toHaveLength(1);
+  });
+
+  it("setting both entries to the SAME explicit layer keeps the overlap", () => {
+    const a = entry({ side: "LHS", chainageFromKm: 1.0, chainageToKm: 2.0, dprId: 10, layerNo: 3 });
+    const b = entry({ side: "LHS", chainageFromKm: 1.5, chainageToKm: 2.5, dprId: 11, layerNo: 3 });
+    expect(buildOverlapPairs(computeItemEntries([a, b], wmm))).toHaveLength(1);
+  });
+});
+
+// ── Task #1419: Overlap Review layer display + correction UI (source guards) ──
+
+describe("Task #1419 — Overlap Review layer display and correction controls (UI source)", () => {
+  it("EntryMiniCard always shows activity, side, chainage range and layer status", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("client/src/pages/ProgressReport.tsx", "utf8");
+    // Activity always shown (falls back to "—", not gated behind &&).
+    expect(source).toContain('Activity:</span> {(entry as any).activity || "—"}');
+    // Layer shows "Layer not recorded" when null.
+    expect(source).toContain("Layer not recorded");
+    // Uses the canonical layerDisplayName for a recorded layer.
+    expect(source).toContain("layerDisplayName((entry as any).activity, entry.layerNo)");
+  });
+
+  it("shows the exact missing-layer explanatory copy when either layer is null", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("client/src/pages/ProgressReport.tsx", "utf8");
+    expect(source).toContain("Possible overlap — layer/lift not recorded for one or both entries.");
+    expect(source).toContain("pair.a.layerNo == null || pair.b.layerNo == null");
+  });
+
+  it("layer correction control patches via the narrow endpoint with { layerNo } and only for progress entries", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("client/src/pages/ProgressReport.tsx", "utf8");
+    // Third payload shape wired through the same narrow endpoint helper.
+    expect(source).toContain("patchOverlapResolution(entry.entryId, { layerNo: parsed })");
+    // Only progress entries can be patched (variable name 'e' in the map).
+    expect(source).toContain('e.kind !== "progress"');
+    // Positive-integer client-side validation (no clearing to null).
+    expect(source).toContain("Number.isInteger(parsed) && parsed > 0");
+    // Refetch/invalidate + stay on report after success.
+    expect(source).toContain("invalidateProgressQueries(queryClient)");
+  });
+
+  it("layer correction control is gated by showLayerField (capability boundary matches DPR forms)", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("client/src/pages/ProgressReport.tsx", "utf8");
+    // showLayerField imported from @shared/layerDisplay — no duplicated classifier.
+    expect(source).toMatch(/import\s*\{[^}]*showLayerField[^}]*\}\s*from\s*["']@shared\/layerDisplay["']/);
+    // The gate is used for the correction control rendering.
+    expect(source).toContain("showLayerField(item.boqItem, e.layerNo)");
   });
 });
 

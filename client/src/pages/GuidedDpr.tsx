@@ -148,7 +148,7 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 // BOQ item labels use the shared display-name helper (shared/boqItemName.ts)
 // so operational naming can't drift between Guided DPR, Detailed DPR and pickers.
 import { boqItemDisplayName } from "@shared/boqItemName";
-import { layerFieldLabel } from "@shared/layerDisplay";
+import { layerFieldLabel, showLayerField } from "@shared/layerDisplay";
 
 const newEntryKey = (): string =>
   (typeof crypto !== "undefined" && "randomUUID" in crypto)
@@ -1665,6 +1665,12 @@ export default function GuidedDpr() {
                         <Input type="number" inputMode="decimal" value={e.thickness ?? ""} onChange={(ev) => updateGeometry(idx, { thickness: ev.target.value === "" ? null : Number(ev.target.value) })} data-testid={`input-thickness-${idx}`} />
                       </div>
                     )}
+                    {/* Task #1419: the optional layer/lift field only appears for
+                        layer-capable BOQ items (earthwork/embankment, subgrade,
+                        GSB, WMM, or items configured for multi-lift work) — or
+                        when a layerNo is already saved on this row, so existing
+                        values stay visible/editable. It is never mandatory. */}
+                    {showLayerField(item, e.layerNo) && (
                     <div>
                       {/* 06P: optional layer/lift number — blank = exactly today's behaviour.
                           "Lift" wording is a pure client-side display convention. */}
@@ -1680,6 +1686,7 @@ export default function GuidedDpr() {
                         data-testid={`input-layer-no-${idx}`}
                       />
                     </div>
+                    )}
                     <div>
                       <Label>Qty {e.uom ? `(${e.uom})` : ""}</Label>
                       <Input type="number" inputMode="decimal" value={e.quantity ?? ""} onChange={(ev) => updateQuantity(idx, ev.target.value === "" ? null : Number(ev.target.value))} data-testid={`input-qty-${idx}`} />

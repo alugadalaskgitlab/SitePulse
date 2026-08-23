@@ -349,11 +349,15 @@ describe("H: overlap-resolution payload — strict one-shape validation", () => 
       Object.prototype.hasOwnProperty.call(body, "isIncidental");
     const hasOverrideKey =
       Object.prototype.hasOwnProperty.call(body, "chainageOverrideReason");
+    const hasLayerKey =
+      Object.prototype.hasOwnProperty.call(body, "layerNo");
 
-    // Both keys present → cross-contamination → reject
-    if (hasIncidentalKey && hasOverrideKey) return "mutually exclusive";
-    // Neither key → reject
-    if (!hasIncidentalKey && !hasOverrideKey) return "neither provided";
+    const shapeCount =
+      (hasIncidentalKey ? 1 : 0) + (hasOverrideKey ? 1 : 0) + (hasLayerKey ? 1 : 0);
+    // More than one shape → cross-contamination → reject
+    if (shapeCount > 1) return "mutually exclusive";
+    // No shape → reject
+    if (shapeCount === 0) return "neither provided";
 
     // Shape A: isIncidental must be true and incidentalDescription non-empty
     if (hasIncidentalKey) {
@@ -376,6 +380,13 @@ describe("H: overlap-resolution payload — strict one-shape validation", () => 
       if (bodyKeys.length !== 1 || bodyKeys[0] !== "chainageOverrideReason") return "unexpected payable fields";
     }
 
+    // Shape C: layerNo must be a positive integer (never cleared to null)
+    if (hasLayerKey) {
+      const raw = body.layerNo;
+      if (typeof raw !== "number" || !Number.isInteger(raw) || raw <= 0) return "layerNo must be a positive integer";
+      if (bodyKeys.length !== 1 || bodyKeys[0] !== "layerNo") return "unexpected layer fields";
+    }
+
     return null; // valid
   }
 
@@ -394,6 +405,30 @@ describe("H: overlap-resolution payload — strict one-shape validation", () => 
         chainageOverrideReason: "Vegetation regrowth / repeat clearing",
       }),
     ).toBeNull();
+  });
+
+  it("Shape C — valid positive-integer layerNo payload passes", () => {
+    expect(validateOverlapResolutionPayload({ layerNo: 2 })).toBeNull();
+    expect(validateOverlapResolutionPayload({ layerNo: 1 })).toBeNull();
+  });
+
+  it("Shape C — invalid layerNo values are rejected", () => {
+    // zero, negative, non-integer, non-number, null → all invalid
+    expect(validateOverlapResolutionPayload({ layerNo: 0 })).toBe("layerNo must be a positive integer");
+    expect(validateOverlapResolutionPayload({ layerNo: -3 })).toBe("layerNo must be a positive integer");
+    expect(validateOverlapResolutionPayload({ layerNo: 1.5 })).toBe("layerNo must be a positive integer");
+    expect(validateOverlapResolutionPayload({ layerNo: "2" })).toBe("layerNo must be a positive integer");
+    // null is not allowed — the direct correction flow never clears to null
+    expect(validateOverlapResolutionPayload({ layerNo: null })).toBe("layerNo must be a positive integer");
+  });
+
+  it("Shape C — rejects extra fields alongside layerNo", () => {
+    expect(validateOverlapResolutionPayload({ layerNo: 2, quantity: 5 })).toBe("unexpected layer fields");
+  });
+
+  it("layerNo combined with another shape → mutually exclusive", () => {
+    expect(validateOverlapResolutionPayload({ layerNo: 2, isIncidental: true, incidentalDescription: "x" })).toBe("mutually exclusive");
+    expect(validateOverlapResolutionPayload({ layerNo: 2, chainageOverrideReason: "x" })).toBe("mutually exclusive");
   });
 
   it("both isIncidental and chainageOverrideReason present → mutually exclusive", () => {
@@ -471,8 +506,8 @@ describe("H-source: route source implements strict cross-contamination check", (
     );
     // Must use hasOwnProperty (or Object.prototype.hasOwnProperty) for strict key check
     expect(routeSlice).toContain("hasOwnProperty");
-    // Must check both keys for cross-contamination
-    expect(routeSlice).toContain("hasIncidentalKey && hasOverrideKey");
+    // Must reject any combination of shapes (three-shape mutual exclusion).
+    expect(routeSlice).toContain("shapeCount");
     // Must use typed storage methods (no 'storage as any')
     expect(routeSlice).toContain("storage.getProgressEntryWithDpr");
     expect(routeSlice).toContain("storage.updateProgressEntryClassification");
@@ -485,6 +520,39 @@ describe("H-source: route source implements strict cross-contamination check", (
     expect(routeSlice).toContain("bodyKeys.length !== 1");
   });
 
+  it("route implements Shape C layer correction guarded and layer-only", async () => {
+    const fs = await import("node:fs/promises");
+    const routes = await fs.readFile("server/routes.ts", "utf8");
+    const routeSlice = routes.slice(
+      routes.indexOf("app.patch(\"/api/progress-entries/:id/overlap-resolution\""),
+      routes.indexOf("// Batch 06B — prior submitted chainage progress"),
+    );
+    // Third shape key + positive-integer validation.
+    expect(routeSlice).toContain("hasLayerKey");
+    expect(routeSlice).toContain("layerNo must be a positive integer");
+    // Uses a dedicated typed storage method that updates only layer_no.
+    expect(routeSlice).toContain("storage.updateProgressEntryLayer");
+    // Layer branch runs AFTER the same auth/site/parent-state guards.
+    const layerBranchIdx = routeSlice.indexOf("if (hasLayerKey) {\n        const newLayer");
+    const siteGuardIdx = routeSlice.indexOf("Access denied for this site");
+    const dprGuardIdx = routeSlice.indexOf("dprIsSuperseded");
+    expect(layerBranchIdx).toBeGreaterThan(siteGuardIdx);
+    expect(layerBranchIdx).toBeGreaterThan(dprGuardIdx);
+    // Capability boundary — reuses shared isLayerCapableItem, no duplicated classifier.
+    expect(routeSlice).toContain("isLayerCapableItem");
+    expect(routeSlice).toContain("storage.getBoqItem");
+    // Both exemption branches present: capable item OR existing layer.
+    expect(routeSlice).toContain("itemIsCapable");
+    expect(routeSlice).toContain("hasExistingLayer");
+  });
+
+  it("routes.ts imports isLayerCapableItem from @shared/layerDisplay (no duplicated predicate)", async () => {
+    const fs = await import("node:fs/promises");
+    const routes = await fs.readFile("server/routes.ts", "utf8");
+    // Must import from the canonical shared location.
+    expect(routes).toMatch(/import\s*\{[^}]*isLayerCapableItem[^}]*\}\s*from\s*["']@shared\/layerDisplay["']/);
+  });
+
   it("storage canonicalizes transitions so classifications cannot contradict", async () => {
     const fs = await import("node:fs/promises");
     const storage = await fs.readFile("server/storage.ts", "utf8");
@@ -494,6 +562,19 @@ describe("H-source: route source implements strict cross-contamination check", (
     expect(method).toContain("chainageOverrideReason: null");
     expect(method).toContain("isIncidental: false");
     expect(method).toContain("incidentalDescription: null");
+  });
+
+  it("storage updateProgressEntryLayer updates ONLY layer_no and returns the row", async () => {
+    const fs = await import("node:fs/promises");
+    const storage = await fs.readFile("server/storage.ts", "utf8");
+    const methodStart = storage.indexOf("async updateProgressEntryLayer(");
+    expect(methodStart).toBeGreaterThan(-1);
+    const method = storage.slice(methodStart, methodStart + 600);
+    // Only layer_no is set — no classification fields touched here.
+    expect(method).toContain(".set({ layerNo }");
+    expect(method).not.toContain("isIncidental");
+    expect(method).not.toContain("chainageOverrideReason");
+    expect(method).toContain(".returning()");
   });
 });
 

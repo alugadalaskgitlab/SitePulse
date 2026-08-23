@@ -22,6 +22,7 @@ import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc 
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { siteMatchesPermitted } from "@shared/siteName";
 import { computeItemEntries, computeItemAbstract } from "@shared/progressReport";
+import { isLayerCapableItem } from "@shared/layerDisplay";
 import { boqItemDisplayName, shortItemName as sharedShortItemName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
@@ -1721,14 +1722,18 @@ export async function registerRoutes(
         Object.prototype.hasOwnProperty.call(body, "chainageOverrideReason");
       const hasIncidentalKey =
         Object.prototype.hasOwnProperty.call(body, "isIncidental");
-      if (hasIncidentalKey && hasOverrideKey) {
+      const hasLayerKey =
+        Object.prototype.hasOwnProperty.call(body, "layerNo");
+      const shapeCount =
+        (hasIncidentalKey ? 1 : 0) + (hasOverrideKey ? 1 : 0) + (hasLayerKey ? 1 : 0);
+      if (shapeCount > 1) {
         return res.status(400).json({
-          message: "Payload must be exactly one shape — either { isIncidental: true, incidentalDescription } or { chainageOverrideReason } — not both",
+          message: "Payload must be exactly one shape — one of { isIncidental: true, incidentalDescription }, { chainageOverrideReason }, or { layerNo } — not more than one",
         });
       }
-      if (!hasIncidentalKey && !hasOverrideKey) {
+      if (shapeCount === 0) {
         return res.status(400).json({
-          message: "Provide exactly one of: { isIncidental: true, incidentalDescription: '<non-empty>' } or { chainageOverrideReason: '<non-empty>' }",
+          message: "Provide exactly one of: { isIncidental: true, incidentalDescription: '<non-empty>' }, { chainageOverrideReason: '<non-empty>' }, or { layerNo: <positive integer> }",
         });
       }
 
@@ -1770,6 +1775,26 @@ export async function registerRoutes(
         }
       }
 
+      // Shape C: layer correction — layerNo must be a positive integer. This
+      // direct historical-correction flow never clears the layer to null.
+      if (hasLayerKey) {
+        const rawLayer = body.layerNo;
+        if (
+          typeof rawLayer !== "number" ||
+          !Number.isInteger(rawLayer) ||
+          rawLayer <= 0
+        ) {
+          return res.status(400).json({
+            message: "layerNo must be a positive integer",
+          });
+        }
+        if (bodyKeys.length !== 1 || bodyKeys[0] !== "layerNo") {
+          return res.status(400).json({
+            message: "Layer correction payload must contain exactly layerNo",
+          });
+        }
+      }
+
       // ── Load entry + parent DPR header ────────────────────────────────────
       const found = await storage.getProgressEntryWithDpr(id);
       if (!found) {
@@ -1797,7 +1822,62 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied for this site" });
       }
 
-      // ── Build strictly-shaped resolution input ─────────────────────────────
+      // ── Audit actor (shared across all shapes) ─────────────────────────────
+      const actor = currentUserName(req);
+      const actorId = req.authUser?.id ?? null;
+      const actorRole = req.authUser
+        ? (req.authUser.isOwner ? "owner" : req.authUser.isAdmin ? "admin" : "manager")
+        : null;
+
+      // ── Shape C: direct layer correction (layer_no only) ───────────────────
+      // Only progress_entries.layer_no is updated; no classification is touched
+      // and no layer is inferred. Canonical overlap recomputation then decides
+      // whether the pair remains an overlap.
+      if (hasLayerKey) {
+        const newLayer = body.layerNo as number;
+        const oldLayer = entry.layerNo ?? null;
+
+        // ── Capability boundary (same as DPR forms) ──────────────────────────
+        // Allow correction when:
+        //   (a) the BOQ item is layer-capable per isLayerCapableItem, OR
+        //   (b) the entry already has a non-null layerNo (historical correction
+        //       stays permitted even when BOQ metadata is incomplete).
+        // Reject when neither applies — a row with no BOQ item AND null layer
+        // cannot be reliably assigned a layer number here.
+        const boqItemForLayer = entry.boqItemId != null
+          ? await storage.getBoqItem(entry.boqItemId)
+          : null;
+        const itemIsCapable = isLayerCapableItem(boqItemForLayer as any);
+        const hasExistingLayer = oldLayer != null;
+        if (!itemIsCapable && !hasExistingLayer) {
+          return res.status(422).json({
+            message:
+              "This progress entry belongs to a BOQ item that is not layer-capable, " +
+              "and no layer number has been previously recorded. " +
+              "Layer correction is only available for layer-capable items (e.g. WMM, GSB, embankment) " +
+              "or entries that already carry a layer number.",
+          });
+        }
+
+        const updatedEntry = await storage.updateProgressEntryLayer(id, newLayer);
+        if (!updatedEntry) {
+          return res.status(404).json({ message: "Progress entry not found" });
+        }
+        await storage.logAudit({
+          module: "progress_entries",
+          transactionId: id,
+          action: "overlap_resolution",
+          userId: actorId,
+          userName: actor,
+          userRole: actorRole,
+          oldValues: { layerNo: oldLayer },
+          newValues: { layerNo: updatedEntry.layerNo ?? null },
+          reason: `Layer correction: ${oldLayer ?? "not recorded"} → ${newLayer}`,
+        });
+        return res.json(updatedEntry);
+      }
+
+      // ── Build strictly-shaped resolution input (Shapes A/B) ────────────────
       type ClassificationFields =
         | { isIncidental: true; incidentalDescription: string }
         | { chainageOverrideReason: string };
@@ -1823,11 +1903,6 @@ export async function registerRoutes(
       };
 
       // ── Audit log ─────────────────────────────────────────────────────────
-      const actor = currentUserName(req);
-      const actorId = req.authUser?.id ?? null;
-      const actorRole = req.authUser
-        ? (req.authUser.isOwner ? "owner" : req.authUser.isAdmin ? "admin" : "manager")
-        : null;
       const reason = hasIncidentalKey
         ? `Marked incidental: ${(classificationFields as { isIncidental: true; incidentalDescription: string }).incidentalDescription}`
         : `Overlap override reason: ${(classificationFields as { chainageOverrideReason: string }).chainageOverrideReason}`;
@@ -13343,6 +13418,11 @@ export async function registerRoutes(
           dprConversionFactor: (item as any).dprConversionFactor ?? null,
           dprMeasurementMethod: (item as any).dprMeasurementMethod ?? null,
           sortOrder: (item as any).sortOrder ?? null,
+          // Task #1419: read-only inputs for the same layer-capability rule
+          // used by DPR entry and the server correction guard.
+          workCategory: (item as any).workCategory ?? null,
+          categoryName: (item as any).categoryName ?? null,
+          layerConfig: (item as any).layerConfig ?? null,
         },
         entries: computeItemEntries(list, item as any),
       });

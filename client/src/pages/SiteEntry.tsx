@@ -242,7 +242,7 @@ function formatTimeDuration(start: string, end: string): string | null {
 // Operational screens show the item's short name; the full imported description
 // stays on the BOQ / Item Review management screens.
 import { boqItemDisplayName } from "@shared/boqItemName";
-import { layerFieldLabel } from "@shared/layerDisplay";
+import { layerFieldLabel, showLayerField } from "@shared/layerDisplay";
 
 export default function SiteEntry() {
   const [, setLocation] = useLocation();
@@ -2341,6 +2341,15 @@ export default function SiteEntry() {
                       )}
                     </>);
                   })()}
+                  {/* Task #1419: the optional layer/lift field only appears for
+                      layer-capable BOQ items (earthwork/embankment, subgrade,
+                      GSB, WMM, or items configured for multi-lift work) — or
+                      when a layerNo is already saved on this row, so existing
+                      values stay visible/editable. It is never mandatory. */}
+                  {showLayerField(
+                    entry.boqItemId != null ? siteBoqItems.find(i => i.id === entry.boqItemId) : null,
+                    entry.layerNo,
+                  ) && (
                   <div>
                     {/* 06P: optional layer/lift number — blank = today's behaviour. */}
                     <Label className="text-sm">{layerFieldLabel(entry.activity)}</Label>
@@ -2359,6 +2368,7 @@ export default function SiteEntry() {
                       data-testid={`input-progress-layer-no-${idx}`}
                     />
                   </div>
+                  )}
                   <div>
                     <Label className="text-sm flex items-center gap-1">
                       UOM

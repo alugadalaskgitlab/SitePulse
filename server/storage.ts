@@ -560,6 +560,16 @@ export interface IStorage {
     id: number,
     fields: { isIncidental: true; incidentalDescription: string } | { chainageOverrideReason: string },
   ): Promise<import("@shared/schema").ProgressEntry | undefined>;
+  /**
+   * Task #1419: Narrow patch — update ONLY progress_entries.layer_no to a
+   * positive integer (direct historical correction). Never touches
+   * classification and never clears the layer to null. Returns the updated
+   * row or undefined when not found.
+   */
+  updateProgressEntryLayer(
+    id: number,
+    layerNo: number,
+  ): Promise<import("@shared/schema").ProgressEntry | undefined>;
 
   // Plant Reports
   getPlantReports(): Promise<PlantReport[]>;
@@ -2984,6 +2994,23 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db
       .update(progressEntries)
       .set(set as any)
+      .where(eq(progressEntries.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Task #1419: direct historical correction of the physical layer/lift
+  // number. Updates ONLY progress_entries.layer_no to a positive integer and
+  // returns the updated entry. It never touches classification and never
+  // clears the layer to null — canonical overlap semantics are recomputed
+  // from the corrected layer downstream.
+  async updateProgressEntryLayer(
+    id: number,
+    layerNo: number,
+  ): Promise<import("@shared/schema").ProgressEntry | undefined> {
+    const [updated] = await db
+      .update(progressEntries)
+      .set({ layerNo } as any)
       .where(eq(progressEntries.id, id))
       .returning();
     return updated;

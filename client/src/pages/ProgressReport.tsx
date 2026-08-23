@@ -46,7 +46,7 @@ import {
   computeItemAbstract, sortForDisplay, buildCoverageStrips, entryIntersectsRange,
   layerBreakdown, buildOverlapPairs,
 } from "@shared/progressReport";
-import { layerDisplayName } from "@shared/layerDisplay";
+import { layerDisplayName, showLayerField } from "@shared/layerDisplay";
 import { parseChainageKm, formatChainageKm } from "@shared/barSide";
 import {
   type ProgressReportState, parseReportState, progressReportUrl, dprLinkWithReturn,
@@ -526,10 +526,15 @@ function EntryMiniCard({ entry, item, state, side }: { entry: ComputedEntry; ite
     <div className={`rounded border p-2.5 text-xs space-y-0.5 ${side === "A" ? "border-blue-200 bg-blue-50" : "border-violet-200 bg-violet-50"}`}>
       <div className="font-semibold text-slate-800">{side === "A" ? "Entry A" : "Entry B"}</div>
       <div><span className="text-slate-500">DPR:</span> <Link href={dprLinkWithReturn(entry.dprId, state)} className="text-blue-600 hover:underline">DPR-{entry.dprId}</Link> · {entry.dprDate}</div>
-      {(entry as any).activity && <div><span className="text-slate-500">Activity:</span> {(entry as any).activity}</div>}
+      <div><span className="text-slate-500">Activity:</span> {(entry as any).activity || "—"}</div>
       <div><span className="text-slate-500">BOQ item:</span> {itemLabel(item.boqItem)}</div>
       <div><span className="text-slate-500">Side:</span> {entry.side ?? "—"} · <span className="text-slate-500">From:</span> {entry.chainageFrom ?? "—"} · <span className="text-slate-500">To:</span> {entry.chainageTo ?? "—"}</div>
-      {entry.layerNo != null && <div><span className="text-slate-500">Layer:</span> {layerDisplayName(itemLabel(item.boqItem), entry.layerNo)}</div>}
+      <div data-testid={`entry-layer-${side}-${entry.entryId}`}>
+        <span className="text-slate-500">Layer:</span>{" "}
+        {entry.layerNo != null
+          ? layerDisplayName((entry as any).activity, entry.layerNo)
+          : <span className="text-amber-700">Layer not recorded</span>}
+      </div>
       <div>
         <span className="text-slate-500">Credited qty:</span>{" "}
         {entry.isIncidental
@@ -560,7 +565,10 @@ type BothValidStep = "choice" | "incidental" | "payable" | null;
  */
 async function patchOverlapResolution(
   entryId: number,
-  payload: { isIncidental: true; incidentalDescription: string } | { chainageOverrideReason: string },
+  payload:
+    | { isIncidental: true; incidentalDescription: string }
+    | { chainageOverrideReason: string }
+    | { layerNo: number },
 ): Promise<void> {
   // apiRequest throws on non-OK via throwIfResNotOk
   await apiRequest("PATCH", `/api/progress-entries/${entryId}/overlap-resolution`, payload);
@@ -597,6 +605,11 @@ function OverlapPairRow({
 
   const legacyLayer = isLegacyLayerOnlyDiff(pair.a, pair.b);
   const pairKey = `${pair.a.entryId}:${pair.b.entryId}`;
+  // Task #1419: the exact copy is shown whenever either entry has no layer
+  // recorded (null), since that is the conservative case that keeps the
+  // overlap. Distinct explicit non-null layers would already have been
+  // exempted by the canonical semantics and no pair would appear at all.
+  const missingLayer = pair.a.layerNo == null || pair.b.layerNo == null;
 
   const handleBothValidClick = () => setDialogStep("choice");
 
@@ -628,6 +641,38 @@ function OverlapPairRow({
         <EntryMiniCard entry={pair.a} item={item} state={state} side="A" />
         <EntryMiniCard entry={pair.b} item={item} state={state} side="B" />
       </div>
+
+      {missingLayer && (
+        <p
+          className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5"
+          data-testid={`missing-layer-copy-${pairKey}`}
+        >
+          Possible overlap — layer/lift not recorded for one or both entries.
+        </p>
+      )}
+
+      {/* Task #1419: direct historical layer correction. Only progress entries
+          (kind === "progress") that pass showLayerField can be patched via the
+          narrow endpoint. Setting a distinct explicit layer on both entries makes
+          the overlap disappear on the next canonical recomputation.
+          showLayerField returns true when the item is layer-capable OR when an
+          existing layerNo is already saved — matching exactly the DPR-forms gate. */}
+      <div className="grid grid-cols-2 gap-2">
+        {(["a", "b"] as const).map((s) => {
+          const e = s === "a" ? pair.a : pair.b;
+          if (e.kind !== "progress") return <div key={s} />;
+          if (!showLayerField(item.boqItem, e.layerNo)) return <div key={s} />;
+          return (
+            <_LayerCorrection
+              key={s}
+              entry={e}
+              pairKey={pairKey}
+              side={s === "a" ? "A" : "B"}
+            />
+          );
+        })}
+      </div>
+
       <div className="flex gap-2 pt-1">
         <button
           type="button"
@@ -728,6 +773,72 @@ function OverlapPairRow({
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * Task #1419: inline direct-correction control to set/correct the physical
+ * layer/lift number of a single progress entry via the narrow PATCH endpoint
+ * (Shape C). Only a positive integer is accepted; clearing to null is not
+ * offered. On success the report/DPR queries are invalidated so the corrected
+ * layer flows through the canonical overlap recomputation and the overlap
+ * disappears immediately when the two entries become distinct explicit layers.
+ */
+function _LayerCorrection({
+  entry, pairKey, side,
+}: {
+  entry: ComputedEntry;
+  pairKey: string;
+  side: "A" | "B";
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState<string>(entry.layerNo != null ? String(entry.layerNo) : "");
+
+  const parsed = Number(value);
+  const isValid = value.trim() !== "" && Number.isInteger(parsed) && parsed > 0;
+
+  const mutation = useMutation({
+    mutationFn: () => patchOverlapResolution(entry.entryId, { layerNo: parsed }),
+    onSuccess: () => {
+      invalidateProgressQueries(queryClient);
+      toast({ title: "Layer updated", description: `Entry in DPR-${entry.dprId} set to layer ${parsed} — report will refresh.` });
+    },
+    onError: (error: unknown) => {
+      const msg = error instanceof Error ? error.message : "Unexpected error";
+      toast({ title: "Could not update layer", description: msg, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="rounded border border-slate-200 bg-white px-2.5 py-2 text-xs space-y-1">
+      <div className="text-slate-500">
+        Correct layer for Entry {side} {entry.layerNo == null ? "(not recorded)" : `(currently ${entry.layerNo})`}
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Input
+          type="number"
+          min={1}
+          step={1}
+          className="h-7 w-20 text-xs"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={mutation.isPending}
+          placeholder="e.g. 2"
+          data-testid={`layer-correction-input-${side}-${pairKey}`}
+        />
+        <Button
+          type="button"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          disabled={!isValid || mutation.isPending}
+          onClick={() => mutation.mutate()}
+          data-testid={`layer-correction-save-${side}-${pairKey}`}
+        >
+          {mutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Set layer"}
+        </Button>
+      </div>
     </div>
   );
 }
