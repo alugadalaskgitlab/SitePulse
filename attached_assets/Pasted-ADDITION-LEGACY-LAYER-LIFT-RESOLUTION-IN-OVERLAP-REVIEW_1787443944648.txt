@@ -1,0 +1,101 @@
+ADDITION — LEGACY LAYER/LIFT RESOLUTION IN OVERLAP REVIEW
+
+Investigate the current production overlap cases and report how many involve
+progress rows where layerNo is null.
+
+Do NOT weaken the existing canonical rule:
+
+- both explicit layers different -> no overlap;
+- same explicit layer -> normal overlap check;
+- either layer null -> conservative possible overlap.
+
+Instead improve the workflow.
+
+1. DPR ACTIVITY ENTRY
+
+For layer-capable BOQ activities such as:
+- earthwork / embankment;
+- subgrade;
+- GSB;
+- WMM;
+- other configured multi-lift activities;
+
+make Layer/Lift clearly visible in Guided/Detailed DPR activity rows.
+
+Existing nullable integer layerNo remains the only data field.
+Do NOT add another layer schema.
+
+Do not force a layer on activities where layer is not applicable.
+
+2. OVERLAP REVIEW
+
+For every Entry A / Entry B display:
+
+- activity;
+- side;
+- from/to chainage;
+- Layer/Lift:
+    Layer 1 / Layer 2 / etc.
+    OR "Layer not recorded".
+
+If a possible overlap exists because one or both entries have null layerNo,
+make that reason explicit:
+
+  Possible overlap — layer/lift not recorded for one or both entries.
+
+3. DIRECT LAYER CORRECTION
+
+From Overlap Review allow an authorized reviewer to set/correct layerNo on the
+specific underlying progress entry without opening the whole DPR.
+
+Examples:
+- Set Entry A -> Layer 1
+- Set Entry B -> Layer 2
+
+Use the SAME progress_entries.layer_no field used by DPR.
+
+After save:
+- rerun canonical overlap detection;
+- if both entries now have different explicit layers, remove the overlap;
+- immediately refresh Progress Report / Overlap Review.
+
+Do not classify the entry as Incidental merely because its layer was missing.
+
+4. HISTORICAL SAFETY
+
+Never auto-assign Layer 1 to old null rows.
+
+Null means:
+  layer/lift was not recorded.
+
+Do not infer a layer from date, sequence, quantity or chainage.
+
+Reviewer/user must explicitly select it where historical knowledge is
+available.
+
+5. EXISTING DPR EDIT
+
+If an old submitted DPR is opened for equipment/remarks/etc. and its progress
+rows are unchanged, a legacy null-layer overlap must not newly block that
+non-progress edit.
+
+If the user changes chainage/side/layer/BOQ credit, normal canonical overlap
+validation applies.
+
+6. TESTS
+
+A. Same BOQ + same chainage + Layer 1 vs Layer 2 -> no overlap.
+
+B. Same BOQ + same chainage + both Layer 1 -> overlap.
+
+C. Same BOQ + one null layer -> possible overlap and UI says
+   "Layer not recorded".
+
+D. Reviewer sets null rows to Layer 1 and Layer 2 from Overlap Review ->
+   overlap disappears without opening DPR.
+
+E. No automatic null -> Layer 1 migration.
+
+F. Non-layered activities are not forced to enter a layer.
+
+G. No schema change.
