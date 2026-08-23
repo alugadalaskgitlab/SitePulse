@@ -207,6 +207,20 @@ export function ScheduleRevisionActions({
     } finally { setBusy(false); }
   }
   const dateText = (v: any) => v ? String(v).slice(0, 10) : "—";
+  // ── 06W-HF3: successor row identity in the preview (display-only) ──
+  // Reuses the exact conventions already in this dialog: boqItemDisplayName/
+  // shortItemName for the activity, barSideLabel for the side, and the
+  // codebase's "[itemCode] name" prefix pattern. Never prints a raw bar id
+  // or "null" — segments are omitted when their fields are absent.
+  const successorLabel = (row: any) => {
+    const short = boqItemDisplayName(row) || shortItemName(row?.description ?? "");
+    const activity = [row?.itemCode ? `[${row.itemCode}]` : null, short || null]
+      .filter(Boolean).join(" ") || "Programme bar";
+    const ch = row?.chainageFrom != null && row?.chainageTo != null
+      ? `Ch ${row.chainageFrom} → ${row.chainageTo}` : null;
+    const segs = [row?.reachLabel || null, ch, row?.side ? barSideLabel(row.side) : null].filter(Boolean);
+    return segs.length ? `${activity} — ${segs.join(" · ")}` : activity;
+  };
   // ── Read-only "Revising" context (reference only — nothing here is editable) ──
   const fmtDmy = (v: any) => {
     const s = v ? String(v).slice(0, 10) : "";
@@ -300,9 +314,18 @@ export function ScheduleRevisionActions({
               <div className="text-xs text-slate-600">Source: {dateText(preview.source.before?.startDate)} → {dateText(preview.source.after?.startDate)} · finish {dateText(preview.source.before?.endDate)} → {dateText(preview.source.after?.endDate)}</div>
               <div className="max-h-48 overflow-y-auto space-y-1">
                 {preview.shifted.length > 0 && <p className="text-[11px] font-bold uppercase tracking-wide text-teal-700">Successors shifted ({preview.shifted.length})</p>}
-                {preview.shifted.map((x, i) => <div key={i} className="flex justify-between rounded bg-teal-50 px-2 py-1 text-xs text-teal-800"><span>{x.before?.reachLabel ?? x.before?.barId ?? "Successor"}</span><span>{dateText(x.before?.startDate)} → {dateText(x.after?.startDate)}</span></div>)}
+                {preview.shifted.map((x, i) => (
+                  <div key={i} className="rounded bg-teal-50 px-2 py-1 text-xs text-teal-800" data-testid={`revision-shifted-row-${i}`}>
+                    <div className="font-semibold">{successorLabel(x.before)}</div>
+                    <div>{dateText(x.before?.startDate)} → {dateText(x.after?.startDate)}</div>
+                  </div>
+                ))}
                 {preview.notShifted.length > 0 && <p className="pt-2 text-[11px] font-bold uppercase tracking-wide text-amber-700">Not shifted ({preview.notShifted.length})</p>}
-                {preview.notShifted.map((x, i) => <div key={i} className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-900"><span className="font-semibold">{x.bar?.reachLabel ?? x.bar?.id ?? "Successor"}</span> — {x.reason}</div>)}
+                {preview.notShifted.map((x, i) => (
+                  <div key={i} className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-900" data-testid={`revision-notshifted-row-${i}`}>
+                    <span className="font-semibold">{successorLabel(x.bar)}</span> — {x.reason}
+                  </div>
+                ))}
                 {!preview.shifted.length && !preview.notShifted.length && <p className="text-xs text-slate-500">No successor bars are affected.</p>}
               </div>
               <DialogFooter><Button variant="outline" onClick={() => setPreview(null)} disabled={busy}>Back</Button><Button onClick={commit} disabled={busy}>{busy ? "Committing…" : "Confirm & commit"}</Button></DialogFooter>

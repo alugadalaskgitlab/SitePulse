@@ -4,6 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { useState } from "react";
 import { ScheduleRevisionActions } from "@/pages/WorkProgramme";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { shortItemName } from "@shared/boqItemName";
+import { barSideLabel } from "@shared/barSide";
 
 vi.mock("@/lib/queryClient", () => ({
   apiRequest: vi.fn(),
@@ -252,5 +254,101 @@ describe("revision context header", () => {
     await screen.findByTestId("dialog-revise-schedule-77");
     const context = screen.getByTestId("revision-context-77").textContent ?? "";
     expect(context).not.toContain("Actual start:");
+  });
+});
+
+// ── 06W-HF3: successor row identity in the revision preview ──
+const GSB_DESC = "Construction of granular sub-base by providing well graded material, spreading in uniform layers";
+const IDENTITY_PREVIEW = {
+  previewToken: "preview-token",
+  source: {
+    before: { barId: 77, itemCode: "2.01", description: "Clearing and grubbing road land including uprooting rank vegetation", reachLabel: "Reach 1", startDate: "2026-08-01", endDate: "2026-08-10" },
+    after: { barId: 77, itemCode: "2.01", description: "Clearing and grubbing road land including uprooting rank vegetation", reachLabel: "Reach 1", startDate: "2026-08-03", endDate: "2026-08-12" },
+    executionState: "not_started",
+  },
+  deltaDays: 2,
+  cascade: true,
+  shifted: [
+    {
+      before: { barId: 88, itemCode: "4.01", description: GSB_DESC, reachLabel: "Reach 2", chainageFrom: 1.2, chainageTo: 2.4, side: "lhs", startDate: "2026-08-10", endDate: "2026-08-20" },
+      after: { barId: 88, itemCode: "4.01", description: GSB_DESC, reachLabel: "Reach 2", chainageFrom: 1.2, chainageTo: 2.4, side: "lhs", startDate: "2026-08-12", endDate: "2026-08-22" },
+    },
+    {
+      before: { barId: 89, itemCode: null, description: null, reachLabel: null, chainageFrom: null, chainageTo: null, side: null, startDate: "2026-08-15", endDate: "2026-08-18" },
+      after: { barId: 89, itemCode: null, description: null, reachLabel: null, chainageFrom: null, chainageTo: null, side: null, startDate: "2026-08-17", endDate: "2026-08-20" },
+    },
+  ],
+  notShifted: [
+    {
+      bar: { id: 90, barId: 90, itemCode: "3.01", description: "Excavation for structures in ordinary soil", reachLabel: "Reach 3", chainageFrom: 3.0, chainageTo: 4.1, side: null, startDate: "2026-09-01", endDate: "2026-09-10" },
+      executionState: "started",
+      reason: "This bar has started; its schedule was not shifted.",
+    },
+  ],
+};
+
+async function openIdentityPreview() {
+  vi.mocked(apiRequest).mockResolvedValueOnce({ json: async () => IDENTITY_PREVIEW } as any);
+  render(<ScheduleRevisionActions bar={BAR} projectId={5} />);
+  fireEvent.click(screen.getByText("Revise"));
+  await screen.findByTestId("dialog-revise-schedule-77");
+  enterRevisionInputs();
+  fireEvent.click(screen.getByText("Preview revision"));
+  await screen.findByText("Confirm & commit");
+}
+
+describe("06W-HF3 successor row identity in preview", () => {
+  it("A: a successor with a different BOQ item shows its OWN activity name, not the source's", async () => {
+    await openIdentityPreview();
+    const row = screen.getByTestId("revision-shifted-row-0").textContent ?? "";
+    expect(row).toContain("[4.01]");
+    expect(row).toContain(shortItemName(GSB_DESC));
+    expect(row).not.toMatch(/Clearing and grubbing/i);
+    expect(row).toContain("Reach 2");
+    expect(row).toContain("Ch 1.2 → 2.4");
+    // Existing before → after date rendering preserved.
+    expect(row).toContain("2026-08-10 → 2026-08-12");
+  });
+
+  it("B: a successor with reachLabel null renders without a stray null or a bare numeric id", async () => {
+    await openIdentityPreview();
+    const row = screen.getByTestId("revision-shifted-row-1").textContent ?? "";
+    expect(row).toContain("Programme bar");
+    expect(row).not.toContain("null");
+    expect(row).not.toMatch(/\b89\b/);
+    expect(row).toContain("2026-08-15 → 2026-08-17");
+  });
+
+  it("C: a successor with null chainage omits the chainage segment cleanly", async () => {
+    await openIdentityPreview();
+    const row = screen.getByTestId("revision-shifted-row-1").textContent ?? "";
+    expect(row).not.toContain("Ch ");
+    expect(row).not.toContain("—"); // no dangling separator when all segments absent
+  });
+
+  it("D: side renders via the shared side-label formatter, matching the Revising panel", async () => {
+    await openIdentityPreview();
+    const row = screen.getByTestId("revision-shifted-row-0").textContent ?? "";
+    expect(row).toContain(barSideLabel("lhs"));
+    expect(row).toContain("· LHS");
+  });
+
+  it("E: not-shifted rows keep their reason text unchanged and gain identity", async () => {
+    await openIdentityPreview();
+    const row = screen.getByTestId("revision-notshifted-row-0").textContent ?? "";
+    expect(row).toContain("[3.01]");
+    expect(row).toContain("Reach 3");
+    expect(row).toContain("This bar has started; its schedule was not shifted.");
+  });
+
+  it("F: the shifted/notShifted arrays are rendered as-is — same membership and order, display only", async () => {
+    await openIdentityPreview();
+    expect(screen.getByText("Successors shifted (2)")).toBeTruthy();
+    expect(screen.getByText("Not shifted (1)")).toBeTruthy();
+    expect(screen.getByTestId("revision-shifted-row-0")).toBeTruthy();
+    expect(screen.getByTestId("revision-shifted-row-1")).toBeTruthy();
+    expect(screen.queryByTestId("revision-shifted-row-2")).toBeNull();
+    expect(screen.getByTestId("revision-notshifted-row-0")).toBeTruthy();
+    expect(screen.queryByTestId("revision-notshifted-row-1")).toBeNull();
   });
 });

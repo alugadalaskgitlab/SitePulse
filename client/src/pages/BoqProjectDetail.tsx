@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams, Link } from "wouter";
 import {
@@ -42,6 +42,65 @@ const MAPPING_STATUS: Record<string, { icon: React.ReactNode; cls: string; label
   needs_review: { icon: <Clock className="w-3 h-3" />,        cls: "bg-amber-50 text-amber-700 border-amber-200",   label: "Needs Review" },
   unmapped:     { icon: <Link2Off className="w-3 h-3" />,     cls: "bg-slate-100 text-slate-500 border-slate-200",  label: "Unmapped" },
 };
+
+// 06W-HF3: collapse any whitespace runs (incl. embedded line breaks from
+// pasted/imported text) to single spaces at display time only — the stored
+// value is never modified.
+const oneLine = (v: unknown) => String(v ?? "").replace(/\s+/g, " ").trim();
+
+// 06W-HF3: Project header extracted for testability. Layout fix: the action
+// block was `flex-shrink-0` with no wrap (~10 buttons ≈ wider than a laptop
+// content area), which starved the `flex-1 min-w-0` title column to ~0px —
+// the title ellipsed to one character and the summary line wrapped one word
+// per line. The action block now wraps and may shrink; the title column keeps
+// a readable minimum width; the outer row wraps only when genuinely too narrow.
+export function ProjectHeader({ project, activeRevision, children }: {
+  project: {
+    name: string;
+    status: string;
+    contractNo?: string | null;
+    client?: string | null;
+    contractor?: string | null;
+    roadLengthKm?: number | string | null;
+    startDate?: string | null;
+  };
+  activeRevision?: { label: string } | null;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-start gap-3" data-testid="project-header">
+      <div className="flex-1 min-w-[min(280px,100%)]" data-testid="project-header-titleblock">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-xl font-bold text-slate-800 truncate" data-testid="text-project-title">{project.name}</h1>
+          <Badge variant="outline"
+            className={`text-sm flex-shrink-0 ${PROJ_STATUS[project.status] ?? PROJ_STATUS.draft}`}>
+            {project.status.toUpperCase()}
+          </Badge>
+          {activeRevision && (
+            <Badge variant="outline" className="text-sm flex-shrink-0 bg-purple-50 text-purple-700 border-purple-200">
+              {activeRevision.label}
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-3 mt-0.5 text-sm text-muted-foreground flex-wrap" data-testid="text-project-summary">
+          {project.contractNo && <span>Contract: {oneLine(project.contractNo)}</span>}
+          {project.client && <span>· {oneLine(project.client)}</span>}
+          {project.contractor && <span>· {oneLine(project.contractor)}</span>}
+          {project.roadLengthKm != null && <span>· {project.roadLengthKm} km</span>}
+          {project.startDate && <span>· Start: {project.startDate}</span>}
+        </div>
+      </div>
+      {/* flex-[3_1_0%] + min-w floor: the hypothetical main size is 420px (not
+          the ~1100px max-content of all buttons), so this block stays BESIDE
+          the title on desktop/laptop lines and wraps its buttons internally;
+          it only drops below the title when the row is narrower than
+          280px (title min) + 420px (actions min), i.e. true mobile widths. */}
+      <div className="flex-[3_1_0%] min-w-[min(420px,100%)] flex flex-wrap items-center justify-end gap-2" data-testid="project-header-actions">
+        {children}
+      </div>
+    </div>
+  );
+}
 
 function fmt(n: number | null | undefined) {
   if (n == null) return "—";
@@ -1866,29 +1925,7 @@ export default function BoqProjectDetail() {
       </nav>
 
       {/* Project header */}
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-bold text-slate-800 truncate">{project.name}</h1>
-            <Badge variant="outline"
-              className={`text-sm flex-shrink-0 ${PROJ_STATUS[project.status] ?? PROJ_STATUS.draft}`}>
-              {project.status.toUpperCase()}
-            </Badge>
-            {activeRevision && (
-              <Badge variant="outline" className="text-sm flex-shrink-0 bg-purple-50 text-purple-700 border-purple-200">
-                {activeRevision.label}
-              </Badge>
-            )}
-          </div>
-          <div className="flex items-center gap-3 mt-0.5 text-sm text-muted-foreground flex-wrap">
-            {project.contractNo && <span>Contract: {project.contractNo}</span>}
-            {project.client && <span>· {project.client}</span>}
-            {project.contractor && <span>· {project.contractor}</span>}
-            {project.roadLengthKm != null && <span>· {project.roadLengthKm} km</span>}
-            {project.startDate && <span>· Start: {project.startDate}</span>}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+      <ProjectHeader project={project} activeRevision={activeRevision}>
           <Link href={`/work-program/${projectId}/settings`}>
             <a>
               <Button
@@ -2029,8 +2066,7 @@ export default function BoqProjectDetail() {
             <Upload className="w-3.5 h-3.5 mr-1.5" />
             Import BOQ
           </Button>
-        </div>
-      </div>
+      </ProjectHeader>
 
       {/* Exclusion warning banner */}
       {!dismissedExclusionBanner && (() => {

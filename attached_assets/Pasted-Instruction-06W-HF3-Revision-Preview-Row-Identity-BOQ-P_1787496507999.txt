@@ -1,0 +1,229 @@
+Instruction 06W-HF3 — Revision Preview Row Identity + BOQ Project Header Display
+
+PART A — REVISION PREVIEW: IDENTIFY SHIFTED/NOT-SHIFTED BARS
+
+OBJECTIVE
+
+The Schedule Revision preview currently shows successor bars anonymously —
+only a reach label (or a raw bar id if reachLabel is null) and the date
+change. The reviewer cannot tell WHAT is moving. Fix the preview display
+only. Do not change cascade selection logic in this batch.
+
+CURRENT STATE (confirmed)
+
+server/routes.ts, buildScheduleRevisionPlan(), the local `describe()` helper
+already attaches reachLabel, itemCode, description, and side to every bar in
+preview.source.before/after, preview.shifted[].before/after, and
+preview.notShifted[].bar. chainageFrom, chainageTo, startDate, endDate and
+plannedQty are already present on the underlying RevisionBar shape those
+objects spread.
+
+client/src/pages/WorkProgramme.tsx currently renders only
+`x.before?.reachLabel ?? x.before?.barId ?? "Successor"` plus the date
+change for shifted rows, and `x.bar?.reachLabel ?? x.bar?.id ?? "Successor"`
+plus the reason for not-shifted rows. It is not reading the itemCode /
+description / chainageFrom / chainageTo / side fields that are already being
+sent.
+
+So: this is a client rendering gap, not a missing-data gap. Do not add new
+server fields or a new query. Confirm this during investigation before
+writing code — if you find a field genuinely missing, report it and stop
+rather than guessing a replacement value.
+
+REQUIRED FIX
+
+For each row in the "Successors shifted" and "Not shifted" lists in the
+revision preview dialog, display:
+
+  <Activity name> — <Reach/Stretch label> · Ch <from> → <to>[ · <Side>]
+  <old start> → <old end>  ==>  <new start> → <new end>   (shifted rows)
+  <reason>                                                 (not-shifted rows)
+
+Activity name: itemCode + short description (reuse the same
+short/truncation convention already used elsewhere in this dialog — do not
+invent a new one). Fall back to "Programme bar" only if both itemCode and
+description are null.
+
+Reach/Stretch: reachLabel. Omit cleanly if null (do not print "null" or a
+raw bar id in its place — omit that segment).
+
+Chainage: chainageFrom → chainageTo. Omit the chainage segment entirely if
+either is null.
+
+Side: append only when side is non-null; use the same side-label formatting
+already used in the "Revising:" context panel added in 06W-HF2 (do not
+introduce a second side-label formatter).
+
+Dates: keep the existing before → after date rendering for shifted rows.
+
+Reason: keep the existing reason text for not-shifted rows, unchanged.
+
+Group by reach/stretch only if trivial; a flat list in current order is
+acceptable if grouping adds complexity. Do not reorder or re-filter the
+shifted/notShifted arrays — display only.
+
+NON-GOALS (Part A)
+
+Do not change:
+- planScheduleRevision() or any cascade selection/successor logic;
+- chainageRangesOverlap() or the successor-candidate filter;
+- the CALENDAR_SCHEDULE_REQUIRED guard;
+- baseline, revision history, or commit behaviour;
+- the "Revising:" context panel added in 06W-HF2;
+- Equipment Usage, Layer/Lift, overlap, or any other module.
+
+TESTS (Part A)
+
+A. Preview a revision whose cascade includes at least one successor with a
+   different BOQ item than the source bar (e.g. source is Clearing &
+   Grubbing, a successor is Subgrade or GSB) — the successor's own activity
+   name is shown, not the source's.
+
+B. A successor with reachLabel null renders without a stray "null" or a
+   bare numeric id where the reach segment would be.
+
+C. A successor with chainageFrom/chainageTo null omits the chainage segment
+   cleanly.
+
+D. Side renders using the existing side-label formatter, matching the
+   "Revising:" panel's formatting.
+
+E. Not-shifted rows still show their reason text unchanged.
+
+F. No change to which bars appear in shifted vs notShifted (same
+   preview.shifted/notShifted arrays as before — only how each row renders
+   changed).
+
+SCHEMA (Part A)
+
+No schema change expected — no server or database change of any kind is
+expected in this part. If you find you need one, STOP and report before
+proceeding.
+
+
+PART B — BOQ PROJECT HEADER DISPLAY (INVESTIGATE FIRST)
+
+OBJECTIVE
+
+On the BOQ project detail page (Work Program & BOQ → a specific project,
+e.g. the Takkadpally-sirur project), the header area above the BOQ Items
+table is rendering broken. Reproduced and screenshotted in production.
+
+SYMPTOMS OBSERVED
+
+1. The project title shows as a truncated single character/initial (e.g.
+   "T.") instead of the full project name, even though the breadcrumb just
+   above it correctly shows the full name.
+
+2. The row of action buttons (Settings, Scope, Geometry, Work Programme,
+   BOM & Demand, Resource Review, Item Review, Re-map All, Import BOQ)
+   appears stacked on its own row below the title instead of beside it.
+
+3. The contract/client/contractor/road-length/start-date summary line is
+   not rendering as a single compact wrapped line. Instead it is broken
+   into one short fragment per line — effectively one or two words per
+   line — running down the page for roughly 15-20 lines before the BOQ
+   Items table starts. The "·" separators between fields appear to render
+   as a lone "." on its own line rather than inline between fields.
+
+INVESTIGATE FIRST
+
+client/src/pages/BoqProjectDetail.tsx (around the "Project header" comment,
+roughly lines 1868-1890 in the current repo) contains a header
+implementation that looks structurally correct for the INTENDED layout —
+title + status badges on one row, contract/client/contractor/km/start-date
+as single-line flex-wrap spans joined by "·", action buttons beside the
+title, all inside one `flex items-start gap-3` container.
+
+That does not match what is reproduced in the screenshot. Before writing
+any fix:
+
+- Confirm whether this is genuinely the component/route rendering the
+  screenshotted page, or whether there is a second/older header
+  implementation, a duplicate route, or a conditional branch (e.g. loading
+  skeleton, narrow-viewport branch, a different component reused from
+  elsewhere) actually producing this output.
+- If it is this component: determine why the intended single flex row is
+  not applying — e.g. a missing/broken CSS class, a parent container
+  losing its flex context, or content overflow forcing collapse.
+- Separately check whether the underlying data itself (project.contractNo,
+  project.client, project.contractor, or a related field) contains
+  embedded literal line breaks (e.g. from a pasted/imported contract
+  description where each word landed on its own line in the source
+  document). If so, confirm whether any wrapper here or upstream uses
+  `whitespace-pre-line`/`pre-wrap` (which would preserve those embedded
+  breaks as visible line breaks) instead of normal whitespace collapsing.
+- Confirm why project.name renders as a single truncated character instead
+  of the full name — check whether the wrong field/property is being read,
+  or whether a CSS truncation (width: 0, overflow issue) is cutting it to
+  one character rather than truncating with an ellipsis as intended.
+
+Report exact root cause(s) found before applying a fix.
+
+REQUIRED FIX
+
+Once root cause is confirmed:
+
+- The project title must display the full project name (truncating with
+  an ellipsis only if genuinely too long for the available width — not
+  cut to one character).
+- The action button row must render beside the title/header block as
+  originally structured, not dropped to its own separate row.
+- The contract/client/contractor/road-length/start-date line must render
+  as a single compact, wrapped-as-needed line (or a small number of
+  natural wrapped lines at narrow widths) — not one fragment per line.
+  If the fix is on the data side (stripping/normalising embedded line
+  breaks at display time), do this at the presentation layer only; do not
+  silently rewrite the stored field value in the database as a side
+  effect of this fix.
+- Do not change what information is shown, only how it renders. Do not add
+  or remove fields from this header.
+
+Do NOT touch:
+- BOQ Items table, category groupings, or amounts;
+- Revisions panel logic or its badges;
+- Work Programme, DPR, Equipment, Overlap, Layer/Lift, or any other module.
+
+TESTS (Part B)
+
+G. Project with a long name renders fully (wrapped or ellipsis-truncated
+   cleanly), not cut to one character.
+
+H. Project with a contract/client/contractor value containing embedded
+   line breaks (simulate the reported case) renders as a normal wrapped
+   line, not one fragment per line.
+
+I. Action buttons render beside the header on typical desktop widths.
+
+J. A project with short/simple field values (no embedded breaks) is
+   unaffected — still renders as before.
+
+SCHEMA (Part B)
+
+No schema change expected. If investigation shows the underlying stored
+data itself needs cleanup (not just display), STOP and report specifics —
+do not silently modify stored contract/client/contractor data.
+
+
+REPORT BACK (both parts)
+
+Confirm for Part A:
+- that no server-side change was needed (or exactly what was missing, if
+  anything, and why);
+- one real example: paste the rendered text of a shifted row and a
+  not-shifted row from a test fixture or the test output.
+
+Confirm for Part B:
+- exact root cause found (component/route, CSS vs data);
+- whether the underlying data contains embedded line breaks, and for
+  which project(s)/fields;
+- the fix applied.
+
+For both: files changed, tests added/passing, full test suite result.
+
+SCHEMA: no changes expected anywhere in this batch. If either part turns
+out to need one, STOP and report before applying it.
+
+DO NOT START ANOTHER BATCH. Do not touch cascade selection logic — that
+remains a separate, evidence-based decision after Part A's preview is
+reviewed live.

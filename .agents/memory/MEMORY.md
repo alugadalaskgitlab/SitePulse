@@ -62,3 +62,4 @@
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.
 - [Incidental and No Site Work](incidental-non-boq.md) — Incidental retains physical history but earns zero credit; No Site Work is non-physical and remains a distinct classification.
 - [Programme Calendar Backfill](programme-calendar-backfill.md) — legacy NULL-date bars healed by shared deriveMissingBarCalendarDates + startup backfill; per-column COALESCE; pg date cols need to_char in scripts.
+- [Flex Header Layout](flex-header-layout.md) — flex-wrap breaks lines on max-content; bounded basis floors keep blocks side-by-side; verify layout via static HTML in client/public + port-5000 screenshot.
