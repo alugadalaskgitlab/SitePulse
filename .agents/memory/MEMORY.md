@@ -61,3 +61,4 @@
 - [Guided DPR Integrity 06T](guided-dpr-integrity-06t.md) — arrangement id is a persisted historical fact; loose matching = suggested tier only; no-arrangement ≠ HLC responsible; draft equipment filter was the loss point.
 - [Arrangement Bar Phasing](arrangement-bar-phasing.md) — 026: bar-linked exclusion via monthFraction; FOR UPDATE tx on allocations; revision guard (pendingRevision); bar linking exempt from revision.
 - [Incidental and No Site Work](incidental-non-boq.md) — Incidental retains physical history but earns zero credit; No Site Work is non-physical and remains a distinct classification.
+- [Programme Calendar Backfill](programme-calendar-backfill.md) — legacy NULL-date bars healed by shared deriveMissingBarCalendarDates + startup backfill; per-column COALESCE; pg date cols need to_char in scripts.

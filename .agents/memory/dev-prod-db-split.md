@@ -46,6 +46,9 @@ Some `app_settings`-gated migrations correctly skip. A few data-condition migrat
 
 This is expected and correct. The second boot will show all of these as 0.
 
+## Live production DATA is NOT heliumdb (observed Aug 2026)
+The deployed app's runtime database is the Replit-managed production DB, reachable read-only via the production-environment SQL query path — its contents differ from workspace `$DATABASE_URL` (heliumdb): different bar ids, different project rows. heliumdb is only the Publish-facing schema-diff source. **How to apply:** to inspect or verify live prod data, query environment=production (read-only); to fix prod data, ship an idempotent startup backfill and have the user publish — never assume a psql write to heliumdb touched production.
+
 ## Publish diff source (critical — Aug 2026 incident)
 Replit Publishing diffs the **Replit-managed dev DB (heliumdb via workspace DATABASE_URL)** against production — NOT schema.ts and NOT sitelog_dev. Because all schema work goes to sitelog_dev, heliumdb silently drifts and Publish then generates destructive DROP COLUMN/TABLE statements against populated prod tables.
 **Rule:** after any schema change to sitelog_dev, apply the same additive DDL to heliumdb ($DATABASE_URL) before the user publishes. To repair drift: diff information_schema columns of both DBs, then pg_dump -s missing tables from sitelog_dev into heliumdb + generated ADD COLUMN IF NOT EXISTS statements (never drizzle-kit push blindly — review first). Aug 2026 repair: 13 tables + 73 columns; scripts kept in .agents/outputs/schema-audit/.

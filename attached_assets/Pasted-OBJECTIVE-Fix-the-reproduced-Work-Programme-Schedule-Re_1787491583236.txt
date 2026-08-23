@@ -1,0 +1,169 @@
+OBJECTIVE
+
+Fix the reproduced Work Programme Schedule Revision failure:
+
+409 CALENDAR_SCHEDULE_REQUIRED
+"Set the project start date and commit this bar's calendar schedule before
+revising it."
+
+The selected programme bar visibly has a schedule in the Gantt, but its
+persisted work_program_bars.start_date / end_date are apparently null.
+
+Do not remove the revision safety guard.
+Fix the legacy calendar-date persistence/backfill instead.
+
+INVESTIGATE FIRST
+
+Use the exact TAKKADPALLY-SIRUR Clearing & Grubbing bar reproduced in
+production.
+
+Report:
+
+- bar id;
+- boq item;
+- reach / chainage;
+- start_month / end_month;
+- stored start_date;
+- stored end_date;
+- project.start_date;
+- whether the bar predates the calendar-date persistence change.
+
+Confirm why the UI can display the bar while revision-preview sees null
+startDate/endDate.
+
+REQUIRED FIX
+
+1. LEGACY PROGRAMME BAR CALENDAR BACKFILL
+
+For existing non-placeholder work_program_bars where:
+
+- project.start_date exists;
+- start_date and/or end_date is null;
+- valid existing programme month/index data is available;
+
+derive the missing calendar dates using the SAME canonical calendar-axis
+functions already used by Work Programme.
+
+Do not invent a second conversion formula.
+
+The derived dates must represent the schedule that the user already sees in
+the Gantt.
+
+Do NOT alter:
+- planned quantity;
+- reach;
+- BOQ item;
+- side;
+- sequence;
+- execution arrangement;
+- baseline;
+- revision history.
+
+This is normalization of the already-existing programme schedule, not a new
+programme revision.
+
+2. SAFETY / AUTHORITY
+
+Do not overwrite non-null start_date/end_date.
+
+Do not derive dates if the source month/index values are invalid or the
+project has no valid start date.
+
+If a bar cannot be safely resolved, leave it unchanged and report it.
+
+Prefer a safe idempotent normalization path so existing older projects become
+revision-capable without manual recreation of every programme bar.
+
+If this requires a DB data update/backfill, it must be additive/data-safe.
+No DROP/rename/nullability/default changes.
+
+STOP and report before any schema change.
+
+3. REVISION PREVIEW
+
+After normalization, the existing guard remains:
+
+if source bar genuinely has no committed calendar schedule,
+CALENDAR_SCHEDULE_REQUIRED is still correct.
+
+Do not weaken this.
+
+Verify the reproduced C&G bar now reaches the normal revision preview.
+
+4. REVISION PANEL CONTEXT
+
+Add a compact read-only "Revising" section at the top of the revision dialog.
+
+Show:
+
+- BOQ item / short activity name;
+- reach/stretch label;
+- From -> To chainage;
+- side where applicable;
+- planned quantity + BOQ UoM;
+- current programme Start -> Finish;
+- current duration;
+- execution state.
+
+Example:
+
+Revising: Clearing & Grubbing
+Reach 3 · Ch 2.5 -> 3.8 · Both Sides
+Qty: 1.3 Ha
+Current: 26/05/2026 -> 31/05/2026 · 6 days
+Status: In Progress
+
+For a started activity:
+- Actual Start remains locked;
+- show actual start separately if different from programme start.
+
+After revised dates are entered, show:
+- Revised duration;
+- +/- change in days versus current schedule.
+
+These fields are reference only.
+Do NOT make reach, quantity or side editable in this dialog.
+
+5. CASCADE REGRESSION
+
+After fixing the source bar, verify:
+
+- Preview revision succeeds;
+- successor candidates use the stored pre-revision end date;
+- started/completed successors remain protected;
+- unstarted overlapping successors shift by the correct calendar-day delta;
+- Confirm & Commit records revision history;
+- baseline is preserved.
+
+TESTS
+
+A. Legacy bar with valid month indexes but null calendar dates is safely
+   normalized.
+
+B. Existing non-null calendar dates are never overwritten.
+
+C. Invalid/unresolvable legacy bar is not guessed.
+
+D. Reproduced C&G bar Preview revision succeeds.
+
+E. Started C&G locks actual start and allows finish revision.
+
+F. Revision context shows correct item/reach/chainage/qty/UoM/duration.
+
+G. Cascade preview/commit remains unchanged.
+
+H. Full test suite.
+
+REPORT BACK
+
+Confirm:
+- exact root cause;
+- exact C&G bar state before fix;
+- normalization method;
+- whether any existing rows were backfilled;
+- whether any schema change occurred;
+- revision-preview result;
+- files changed;
+- tests.
+
+DO NOT START ANOTHER BATCH.

@@ -207,6 +207,43 @@ export function ScheduleRevisionActions({
     } finally { setBusy(false); }
   }
   const dateText = (v: any) => v ? String(v).slice(0, 10) : "—";
+  // ── Read-only "Revising" context (reference only — nothing here is editable) ──
+  const fmtDmy = (v: any) => {
+    const s = v ? String(v).slice(0, 10) : "";
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.split("-").reverse().join("/") : "—";
+  };
+  const inclusiveDays = (a: any, b: any) => {
+    const sa = a ? String(a).slice(0, 10) : "";
+    const sb = b ? String(b).slice(0, 10) : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(sa) || !/^\d{4}-\d{2}-\d{2}$/.test(sb)) return null;
+    const ms = Date.parse(`${sb}T00:00:00Z`) - Date.parse(`${sa}T00:00:00Z`);
+    return Math.round(ms / 86400000) + 1;
+  };
+  const STATE_LABELS: Record<string, string> = { not_started: "Not Started", started: "In Progress", completed: "Completed" };
+  const b = bar as any;
+  const itemLabel = boqItemDisplayName(b) || shortItemName(b.description ?? "") || "Programme bar";
+  const chainageText = b.chainageFrom != null && b.chainageTo != null
+    ? `Ch ${b.chainageFrom} → ${b.chainageTo}` : null;
+  const contextLine2 = [b.reachLabel, chainageText, b.side ? barSideLabel(b.side) : null]
+    .filter(Boolean).join(" · ");
+  const currentDays = inclusiveDays(b.startDate, b.endDate);
+  const programmeStart = String(b.startDate ?? "").slice(0, 10);
+  const actualDiffers = state === "started" && actualStartDate && actualStartDate !== programmeStart;
+  // Revised duration is measured from the effective revised start: the locked
+  // actual start for started bars, otherwise the editable start input.
+  const revisedStart = state === "started" ? actualStartDate : startDate;
+  const revisedDays = inclusiveDays(revisedStart, endDate);
+  const durationDelta = revisedDays != null && currentDays != null ? revisedDays - currentDays : null;
+  const revisionContext = (
+    <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 space-y-0.5" data-testid={`revision-context-${bar.id}`}>
+      <div className="text-sm font-semibold text-slate-800">Revising: {itemLabel}</div>
+      {contextLine2 && <div>{contextLine2}</div>}
+      <div>Qty: {fmtQty(Number(b.plannedQty ?? 0))}{b.unit ? ` ${b.unit}` : ""}</div>
+      <div>Current: {fmtDmy(b.startDate)} → {fmtDmy(b.endDate)}{currentDays != null ? ` · ${currentDays} day${currentDays === 1 ? "" : "s"}` : ""}</div>
+      {actualDiffers && <div>Actual start: {fmtDmy(actualStartDate)} (locked)</div>}
+      <div>Status: {STATE_LABELS[state] ?? state}</div>
+    </div>
+  );
   const triggers = variant === "inline" ? (
     <>
       <button type="button" disabled={locked} onClick={beginRevision}
@@ -227,6 +264,7 @@ export function ScheduleRevisionActions({
       <Dialog open={open} onOpenChange={v => { if (!v && !busy) { setOpen(false); setPreview(null); } }}>
         <DialogContent className="max-w-lg" data-testid={`dialog-revise-schedule-${bar.id}`}>
           <DialogHeader><DialogTitle className="flex items-center gap-2"><ArrowUpDown className="w-4 h-4 text-teal-700" />Revise schedule</DialogTitle></DialogHeader>
+          {revisionContext}
           {!preview ? (
             <div className="space-y-4">
               <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -239,6 +277,17 @@ export function ScheduleRevisionActions({
                  </div>
                 <div><Label>FINISH DATE <span className="text-red-500">*</span></Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} data-testid={`input-revision-finish-${bar.id}`} /></div>
               </div>
+              {revisedDays != null && (
+                <div className="text-xs text-slate-600" data-testid={`revision-duration-${bar.id}`}>
+                  Revised duration: {revisedDays} day{revisedDays === 1 ? "" : "s"}
+                  {durationDelta != null && durationDelta !== 0 && (
+                    <span className={durationDelta > 0 ? "text-amber-700 font-semibold" : "text-emerald-700 font-semibold"}>
+                      {" "}({durationDelta > 0 ? "+" : ""}{durationDelta} day{Math.abs(durationDelta) === 1 ? "" : "s"} vs current)
+                    </span>
+                  )}
+                  {durationDelta === 0 && <span> (no change vs current)</span>}
+                </div>
+              )}
               <div><Label>REASON <span className="text-red-500">*</span></Label><Input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. access handover delayed" data-testid={`input-revision-reason-${bar.id}`} /></div>
               <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={cascade} onChange={e => setCascade(e.target.checked)} data-testid={`checkbox-revision-cascade-${bar.id}`} /> Cascade successor shifts</label>
               <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={requestPreview} disabled={busy}>{busy ? "Checking…" : "Preview revision"}</Button></DialogFooter>

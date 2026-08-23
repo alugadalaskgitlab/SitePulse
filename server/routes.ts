@@ -19059,6 +19059,23 @@ async function seedDatabase() {
   }
 
   try {
+    // Legacy programme bars saved before calendar-date persistence have NULL
+    // start_date/end_date although the Gantt displays them from month indexes;
+    // the schedule-revision guard (CALENDAR_SCHEDULE_REQUIRED) rejects those.
+    // Fill the missing dates with the canonical calendar-axis conversion.
+    const calendarResult = await storage.backfillWorkProgramBarCalendarDates();
+    const calendarSkipped = calendarResult?.skipped ?? [];
+    if ((calendarResult?.updated ?? 0) > 0 || calendarSkipped.length > 0) {
+      console.log(`Startup: Work programme calendar-date backfill — filled: ${calendarResult.updated}, left unchanged: ${calendarSkipped.length}`);
+      for (const skip of calendarSkipped) {
+        console.log(`Startup: calendar-date backfill left bar ${skip.id} unchanged — ${skip.reason}`);
+      }
+    }
+  } catch (err) {
+    console.error("Startup: Failed to backfill work programme calendar dates:", err);
+  }
+
+  try {
     const orphanResult = await storage.migrateOrphanStockToHLC();
     if (orphanResult.ledgerFixed > 0 || orphanResult.balancesMerged > 0) {
       console.log(`Startup: Migrated orphan stock to HLC - ${orphanResult.ledgerFixed} ledger entries fixed, ${orphanResult.balancesMerged} balances merged, ${orphanResult.errors} errors`);

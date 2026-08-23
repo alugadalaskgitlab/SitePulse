@@ -113,6 +113,7 @@ import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import {
   appendRevisionHistory,
   captureInitialBaseline,
+  deriveMissingBarCalendarDates,
   planScheduleRevision,
   type BarEvidence,
   type RevisionBar,
@@ -23739,6 +23740,58 @@ export class DatabaseStorage implements IStorage {
 
       return settings;
     }, { isolationLevel: "serializable" });
+  }
+
+  /**
+   * Startup normalisation for legacy programme bars saved before calendar-date
+   * persistence: fill NULL start_date/end_date from the bar's month indexes
+   * using the canonical calendar-axis converters (the exact schedule the Gantt
+   * already displays). Never overwrites a non-null date, never touches
+   * quantity/reach/side/sequence/baseline/revision history, and reports —
+   * instead of guessing — any bar that cannot be safely resolved. Idempotent:
+   * a second run finds no NULL-date bars.
+   */
+  async backfillWorkProgramBarCalendarDates(): Promise<{
+    updated: number;
+    skipped: Array<{ id: number; reason: string }>;
+  }> {
+    const rows = await db.select({
+        id: workProgramBars.id,
+        startMonth: workProgramBars.startMonth,
+        endMonth: workProgramBars.endMonth,
+        startDate: workProgramBars.startDate,
+        endDate: workProgramBars.endDate,
+        projectStartDate: boqProjects.startDate,
+      })
+      .from(workProgramBars)
+      .innerJoin(boqProjects, eq(workProgramBars.boqProjectId, boqProjects.id))
+      .where(or(isNull(workProgramBars.startDate), isNull(workProgramBars.endDate)))
+      .orderBy(workProgramBars.id);
+
+    let updated = 0;
+    const skipped: Array<{ id: number; reason: string }> = [];
+    for (const row of rows) {
+      const result = deriveMissingBarCalendarDates(row, row.projectStartDate);
+      if (result.action === "skip") {
+        skipped.push({ id: row.id, reason: result.reason });
+        continue;
+      }
+      // Only the two date columns move; months, quantity, baseline and
+      // revision history stay exactly as they are. COALESCE keeps each column
+      // independently NULL-preserving even if a concurrent write committed one
+      // of the dates between our read and this update.
+      await db.update(workProgramBars)
+        .set({
+          startDate: sql`COALESCE(${workProgramBars.startDate}, ${result.startDate})`,
+          endDate: sql`COALESCE(${workProgramBars.endDate}, ${result.endDate})`,
+        })
+        .where(and(
+          eq(workProgramBars.id, row.id),
+          or(isNull(workProgramBars.startDate), isNull(workProgramBars.endDate)),
+        ));
+      updated++;
+    }
+    return { updated, skipped };
   }
 
   async getBoqMixLinks(projectId: number): Promise<BoqMixTemplateLink[]> {

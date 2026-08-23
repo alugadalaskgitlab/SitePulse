@@ -11,6 +11,81 @@
  */
 
 import { chainageRangesOverlap } from "./arrangementAutoAllocation";
+import { monthIndexToDateCal, displayFinishDateCal, toYmd, ymdIsValid, daysBetween } from "./calendarAxis";
+
+// ─── Legacy calendar-date normalisation ──────────────────────────────────────
+
+export type BarCalendarNormalisation =
+  | { action: "skip"; reason: string }
+  | { action: "fill"; startDate: string; endDate: string };
+
+const toIsoDate = (d: Date): string => [
+  d.getFullYear(),
+  String(d.getMonth() + 1).padStart(2, "0"),
+  String(d.getDate()).padStart(2, "0"),
+].join("-");
+
+/** Strict Gregorian check: "2026-02-31" must fail, not silently roll over. */
+const isRealYmd = (x: { y: number; m: number; d: number }): boolean => {
+  if (!ymdIsValid(x)) return false;
+  const dt = new Date(Date.UTC(x.y, x.m - 1, x.d));
+  return dt.getUTCFullYear() === x.y && dt.getUTCMonth() === x.m - 1 && dt.getUTCDate() === x.d;
+};
+
+/**
+ * Derive the missing persisted calendar dates for a legacy programme bar from
+ * its month indexes, using the SAME canonical calendar-axis conversion the
+ * Gantt already displays (monthIndexToDateCal / displayFinishDateCal). Pure
+ * normalisation of the schedule the user already sees — never a reschedule.
+ *
+ * Safety contract:
+ *  - never overwrites a non-null startDate/endDate (partial fills keep the
+ *    existing value and only derive the missing one);
+ *  - refuses (skip + reason) when the project start date is missing/invalid,
+ *    the month indexes are non-finite/invalid, or the derived range would be
+ *    inverted — an unresolvable bar is reported, never guessed.
+ */
+export function deriveMissingBarCalendarDates(
+  bar: {
+    startMonth: number | null | undefined;
+    endMonth: number | null | undefined;
+    startDate: string | null | undefined;
+    endDate: string | null | undefined;
+  },
+  projectStartDate: string | null | undefined,
+): BarCalendarNormalisation {
+  const hasStart = Boolean(bar.startDate);
+  const hasEnd = Boolean(bar.endDate);
+  if (hasStart && hasEnd) {
+    return { action: "skip", reason: "already has committed calendar dates" };
+  }
+  if (!projectStartDate || !isRealYmd(toYmd(projectStartDate))) {
+    return { action: "skip", reason: "project has no valid start date" };
+  }
+  const startMonth = Number(bar.startMonth);
+  const endMonth = Number(bar.endMonth);
+  if (!Number.isFinite(startMonth) || startMonth <= 0) {
+    return { action: "skip", reason: `invalid start month index (${bar.startMonth})` };
+  }
+  if (!Number.isFinite(endMonth) || endMonth < startMonth) {
+    return { action: "skip", reason: `invalid end month index (${bar.endMonth})` };
+  }
+  const startDate = bar.startDate
+    ?? toIsoDate(monthIndexToDateCal(startMonth, projectStartDate));
+  const endDate = bar.endDate
+    ?? toIsoDate(displayFinishDateCal(endMonth, projectStartDate, startMonth));
+  const s = toYmd(startDate);
+  const e = toYmd(endDate);
+  if (!isRealYmd(s) || !isRealYmd(e)) {
+    return { action: "skip", reason: "derived date is invalid" };
+  }
+  // A partially-persisted bar can disagree with its month indexes; an
+  // inverted range must be resolved by a human, not guessed.
+  if (daysBetween(s, e) < 0) {
+    return { action: "skip", reason: `derived range is inverted (${startDate} → ${endDate})` };
+  }
+  return { action: "fill", startDate, endDate };
+}
 
 // ─── Bar Execution State ──────────────────────────────────────────────────────
 
