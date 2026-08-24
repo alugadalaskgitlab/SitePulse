@@ -590,9 +590,17 @@ export const equipmentUsage = pgTable("equipment_usage", {
   closedByUserName: text("closed_by_user_name"),
   closedAt: timestamp("closed_at"),
   destinationSite: text("destination_site"), // where equipment is sent when status='open'
+  // 06Y: a movement creates a new, linked pending usage at its destination.
+  // Null destinationType is retained for pre-06Y records.
+  destinationType: text("destination_type"), // site | hmp | rmc
+  sourceUsageId: integer("source_usage_id"), // immutable closed predecessor
 }, (table) => ({
   dateIdx: index("equipment_usage_date_idx").on(table.date),
   sourceHeatingSessionIdx: index("equipment_usage_source_heating_session_idx").on(table.sourceHeatingSessionId),
+  // PostgreSQL permits many nulls; a source can have exactly one successor.
+  sourceUsageSuccessorUq: uniqueIndex("equipment_usage_source_usage_successor_uq")
+    .on(table.sourceUsageId)
+    .where(sql`${table.sourceUsageId} IS NOT NULL`),
 }));
 
 // Generator Diesel Tracking

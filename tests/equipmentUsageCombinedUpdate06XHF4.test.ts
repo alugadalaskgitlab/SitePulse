@@ -21,6 +21,7 @@ const fx = vi.hoisted(() => {
     timestampWriteValues: [] as unknown[],
     encodedTimestampValues: [] as string[],
     encodeOpenedAt: null as null | ((value: unknown) => string),
+    successorExists: false,
   };
 
   const rowsFor = (table: any) => {
@@ -41,10 +42,14 @@ const fx = vi.hoisted(() => {
   };
 
   const tx = {
-    select: vi.fn(() => ({
+    select: vi.fn((projection?: Record<string, unknown>) => ({
       from: (table: any) => ({
         where: () => ({
-          limit: async () => rowsFor(table),
+          limit: async () => (
+            state.tableKinds.get(table) === "equipmentUsage" && projection?.id
+              ? (state.successorExists ? [{ id: 999 }] : [])
+              : rowsFor(table)
+          ),
         }),
       }),
     })),
@@ -173,6 +178,7 @@ beforeEach(() => {
   fx.state.adjustmentDeltas = [];
   fx.state.timestampWriteValues = [];
   fx.state.encodedTimestampValues = [];
+  fx.state.successorExists = false;
 
   storage._adjustStockBalance = vi.fn(
     async (

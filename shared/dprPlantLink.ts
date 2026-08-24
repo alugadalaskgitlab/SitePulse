@@ -39,7 +39,30 @@ export type OpenUsageLike = {
   operator?: string | null;
   task?: string | null;
   siteName?: string | null;
+  /** Optional Site → Site successor context returned by open-today. */
+  handoffFromSite?: string | null;
+  handoffAt?: string | null;
+  inheritedOpeningReading?: number | null;
 };
+
+/**
+ * A successor usage is still an ordinary open usage (and is linked by its
+ * exact usage id).  Keep its optional handoff facts display-only: they help
+ * the engineer understand why an opening was inherited without inventing a
+ * second DPR or movement client-side.
+ */
+export function openUsageHandoffContext(usage: OpenUsageLike): string | null {
+  const from = usage.handoffFromSite?.trim();
+  const at = usage.handoffAt?.trim();
+  const inherited = usage.inheritedOpeningReading;
+  if (!from && !at && inherited == null) return null;
+  const parts = [
+    from ? `Handoff from ${from}` : "Inherited handoff",
+    at ? at : null,
+    inherited != null ? `Opening ${inherited}` : null,
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
 
 export type EquipmentRowLike = {
   machine?: string;

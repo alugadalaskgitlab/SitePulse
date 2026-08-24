@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { storage, StockShortageError, InsufficientPlantStockError } from "./storage";
+import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError } from "./storage";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -68,6 +68,7 @@ import { checkQuantitySourceRow, resolveQuantitySource } from "@shared/dprGeomet
 import { evaluateDprSubmitReadiness, type DprReadinessIssue } from "@shared/dprSubmitReadiness";
 import { chainageOverlapReadinessIssues, isChainageGuardRow, unchangedChainageRowKeys, type CandidateChainageRow } from "@shared/chainageOverlap";
 import { reusedExcavationConfigurationIssue } from "@shared/materialReceiptSummary";
+import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import {
   registerAuthRoutes,
@@ -1984,6 +1985,13 @@ export async function registerRoutes(
     }
     return false;
   };
+  const handleEquipmentLifecycleConflict = (err: unknown, res: any): boolean => {
+    if (err instanceof EquipmentIncomingConflictError) {
+      res.status(409).json({ code: err.code, message: err.message });
+      return true;
+    }
+    return false;
+  };
 
   app.post(api.dprs.create.path, async (req, res) => {
     try {
@@ -2014,12 +2022,15 @@ export async function registerRoutes(
           });
         }
       }
-      const dpr = await storage.createDpr(input, input.clientTimestamp);
+      const dpr = await storage.createDpr(input, input.clientTimestamp, {
+        userId: req.authUser?.id ?? null,
+        userName: req.authUser ? currentUserName(req) : input.engineer,
+        closedAt: new Date(),
+      });
       const isDraft = (input as any).dprStatus === "draft";
       if (!isDraft) {
         await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${input.engineer || 'Engineer'} submitted DPR for ${input.site} (${input.date})`, isRead: 0 });
         sendPushToSection("site_dprs", "New DPR Submitted", `${input.engineer || 'Engineer'} - ${input.site} - ${input.date}`, "/site-reports").catch(() => {});
-        await closePlantUsageLinkedToEquipment((input as any).equipment, dpr.id, req);
       }
       res.status(201).json(dpr);
     } catch (err) {
@@ -2030,6 +2041,7 @@ export async function registerRoutes(
         });
       }
       if (handleInsufficientPlantStock(err, res)) return;
+      if (handleEquipmentLifecycleConflict(err, res)) return;
       res.status(500).json({ message: "Failed to create DPR" });
     }
   });
@@ -2099,15 +2111,19 @@ export async function registerRoutes(
         }
       }
       const clientTimestamp = (req.body as any).clientTimestamp;
-      const submitted = await storage.submitDraftDpr(id, input, clientTimestamp);
+      const submitted = await storage.submitDraftDpr(id, input, clientTimestamp, {
+        userId: req.authUser?.id ?? null,
+        userName: req.authUser ? currentUserName(req) : input.engineer,
+        closedAt: new Date(),
+      });
       if (!submitted) return res.status(404).json({ message: "DPR not found or not a draft" });
       await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${submitted.engineer || 'Engineer'} submitted DPR for ${submitted.site} (${submitted.date})`, isRead: 0 });
       sendPushToSection("site_dprs", "New DPR Submitted", `${submitted.engineer || 'Engineer'} - ${submitted.site} - ${submitted.date}`, "/site-reports").catch(() => {});
-      await closePlantUsageLinkedToEquipment((input as any).equipment, submitted.id, req);
       res.json(submitted);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
       if (handleInsufficientPlantStock(err, res)) return;
+      if (handleEquipmentLifecycleConflict(err, res)) return;
       res.status(500).json({ message: "Failed to submit DPR" });
     }
   });
@@ -2254,6 +2270,28 @@ export async function registerRoutes(
     clientTimestamp: z.string().optional(),
   });
 
+  async function movedEquipmentVersionConflict(
+    originalEquipment: any[],
+    editedEquipment: any[],
+  ): Promise<number | null> {
+    const linkedOriginals = originalEquipment.filter((row) => Number(row?.plantUsageId) > 0);
+    if (linkedOriginals.length === 0) return null;
+    const ids = Array.from(new Set(linkedOriginals.map((row) => Number(row.plantUsageId))));
+    const lifecycleRows = await storage.getEquipmentUsageLifecycle(ids);
+    const movedIds = new Set(
+      lifecycleRows
+        .filter((row: any) => row?.successorId != null)
+        .map((row: any) => Number(row.id)),
+    );
+    for (const original of linkedOriginals) {
+      const usageId = Number(original.plantUsageId);
+      if (!movedIds.has(usageId)) continue;
+      const edited = editedEquipment.find((row) => Number(row?.plantUsageId) === usageId);
+      if (materializedEquipmentLogChanged(original, edited)) return usageId;
+    }
+    return null;
+  }
+
   app.post("/api/dprs/:id/version", async (req, res) => {
     try {
       const originalId = Number(req.params.id);
@@ -2277,6 +2315,17 @@ export async function registerRoutes(
       }
 
       const input = versionSchema.parse(req.body);
+      const movedUsageConflict = await movedEquipmentVersionConflict(
+        Array.isArray(versionOriginal.equipment) ? versionOriginal.equipment : [],
+        Array.isArray((input.data as any).equipment) ? (input.data as any).equipment : [],
+      );
+      if (movedUsageConflict != null) {
+        return res.status(409).json({
+          message: "This equipment segment has already moved onward and is immutable. Keep it unchanged in this DPR version.",
+          error: "MOVED_EQUIPMENT_SEGMENT_IMMUTABLE",
+          equipmentUsageId: movedUsageConflict,
+        });
+      }
       // 030A Part F: programme-bar link validation applies to edits too.
       const linkError = await validateProgressProgrammeLinks(input.data);
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
@@ -2312,11 +2361,18 @@ export async function registerRoutes(
           });
         }
       }
-      const newVersion = await storage.createVersionDpr(originalId, input.data, editedBy, input.clientTimestamp);
-      // 06X-HF6: Edit Report creates a new submitted DPR version. Close any
-      // open equipment_usage row linked by plantUsageId through the same
-      // guarded helper used by fresh and draft Final Submit.
-      await closePlantUsageLinkedToEquipment((input.data as any).equipment, newVersion.id, req);
+      const newVersion = await storage.createVersionDpr(
+        originalId,
+        input.data,
+        editedBy,
+        input.clientTimestamp,
+        {
+          userId: req.authUser?.id ?? null,
+          userName: req.authUser ? currentUserName(req) : input.data.engineer,
+          closedAt: new Date(),
+          allowMovedSourceReuse: true,
+        },
+      );
 
       const actor = currentUserName(req);
       await storage.createNotification({
@@ -2336,6 +2392,7 @@ export async function registerRoutes(
         });
       }
       if (handleInsufficientPlantStock(err, res)) return;
+      if (handleEquipmentLifecycleConflict(err, res)) return;
       res.status(500).json({ message: "Failed to create version" });
     }
   });
@@ -3633,68 +3690,6 @@ export async function registerRoutes(
     return String(s ?? "").replace(/ [–-] (Edited by|Copy by) .+$/, "").trim().toLowerCase();
   }
 
-  // Batch 6: helper — closes open plant equipment_usage records that were linked by a DPR submission
-  async function closePlantUsageLinkedToEquipment(
-    equipment: any[] | undefined,
-    dprId: number,
-    req: any,
-  ): Promise<void> {
-    if (!equipment?.length) return;
-    const now = new Date();
-    const closedByUserId = (req as any).authUser?.id ?? null;
-    const closedByUserName = (req as any).authUser ? currentUserName(req) : null;
-    // Batch 05 guard: a DPR may only close usage records that are still OPEN
-    // on the SAME date and (when the usage names a site) the SAME site as the
-    // DPR — a client cannot close an arbitrary plantUsageId.
-    let openById = new Map<number, any>();
-    let dprSite = "";
-    try {
-      const dpr = await storage.getDpr(dprId);
-      dprSite = normaliseSiteLabel((dpr as any)?.site);
-      const open = dpr?.date ? await storage.getOpenEquipmentUsageForDate(dpr.date) : [];
-      openById = new Map(open.map((u: any) => [u.id, u]));
-    } catch (e) {
-      console.error("Batch05 closePlantUsage: could not load open usage for validation:", e);
-      return; // fail closed — never close unvalidated records
-    }
-    for (const entry of equipment) {
-      const puid = (entry as any).plantUsageId;
-      if (!puid) continue;
-      const usage = openById.get(Number(puid));
-      if (!usage) {
-        console.warn(`Batch05 closePlantUsage: skipping equipment_usage #${puid} — not an open record for this DPR's date`);
-        continue;
-      }
-      // 06X: prefer destinationSite (canonical dispatch-target field) so that
-      // equipment dispatched from a plant to this site is correctly matched.
-      // Legacy fallback: if destinationSite is null (records created before
-      // the field existed), fall back to siteName so already-linked historical
-      // records continue to close. New records from the Guided/Detailed DPR
-      // flow always carry a destinationSite, so the fallback is purely for
-      // historical data continuity and does not widen the security perimeter.
-      const usageSite = normaliseSiteLabel((usage as any).destinationSite ?? (usage as any).siteName);
-      if (usageSite && dprSite && usageSite !== dprSite) {
-        console.warn(`Batch05 closePlantUsage: skipping equipment_usage #${puid} — site mismatch (destinationSite/siteName="${(usage as any).destinationSite ?? (usage as any).siteName}" vs DPR site="${dprSite}")`);
-        continue;
-      }
-      try {
-        await storage.updateEquipmentUsage(Number(puid), {
-          closingReading: entry.closingReading ?? undefined,
-          endTime: entry.endTime || undefined,
-          operator: entry.operator || undefined,
-          task: entry.task || undefined,
-          status: "closed" as any,
-          closedByDprId: dprId as any,
-          closedByUserId: closedByUserId as any,
-          closedByUserName: closedByUserName as any,
-          closedAt: now as any,
-        } as any);
-      } catch (e) {
-        console.error(`Batch6 closePlantUsage: failed to close equipment_usage #${puid}:`, e);
-      }
-    }
-  }
-
   // EquipmentHub uses this shorter /plant/ prefix alias
   app.get("/api/plant/equipment-usage", async (req, res) => {
     try {
@@ -3752,7 +3747,10 @@ export async function registerRoutes(
         // was sent, not where it lives.
         const all = await storage.getOpenEquipmentUsageForDate(date);
         return res.json(
-          all.filter((u) => normaliseSiteLabel((u as any).destinationSite) === wanted),
+          all.filter((u) =>
+            ((u as any).destinationType == null || (u as any).destinationType === "site") &&
+            normaliseSiteLabel((u as any).destinationSite) === wanted,
+          ),
         );
       }
       const equipmentIds: number[] = Array.isArray(ids)
@@ -3763,7 +3761,10 @@ export async function registerRoutes(
       // for dispatched equipment. Records with no destinationSite (plant-
       // internal entries) are not returned to a DPR site context.
       res.json(
-        records.filter((u) => normaliseSiteLabel((u as any).destinationSite) === wanted),
+        records.filter((u) =>
+          ((u as any).destinationType == null || (u as any).destinationType === "site") &&
+          normaliseSiteLabel((u as any).destinationSite) === wanted,
+        ),
       );
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch open equipment records" });
@@ -3915,12 +3916,164 @@ export async function registerRoutes(
     return body;
   }
 
+  /** 06Y movement destinations are identities, never user-entered locations. */
+  async function canonicaliseMovementDestination(
+    req: any, res: any, body: any,
+  ): Promise<{ destinationType: "site" | "hmp" | "rmc"; destinationLabel: string } | undefined> {
+    const destinationType = String(body?.destinationType ?? "").trim().toLowerCase();
+    if (destinationType === "hmp" || destinationType === "rmc") {
+      // Closed vocabulary: labels are intentionally not free text.
+      return {
+        destinationType,
+        destinationLabel: destinationType === "hmp" ? "HMP PLANT" : "RMC PLANT",
+      };
+    }
+    if (destinationType !== "site") {
+      res.status(400).json({ message: "destinationType must be site, hmp, or rmc" });
+      return undefined;
+    }
+    const wanted = normaliseSiteLabel(body?.destinationSite);
+    const matches = (await storage.getSites()).filter(
+      (site: any) => site.isActive === 1 && normaliseSiteLabel(site.name) === wanted,
+    );
+    if (matches.length !== 1) {
+      res.status(400).json({ message: "Destination site must be one active registered Site" });
+      return undefined;
+    }
+    const permitted = await getPermittedSiteNames(req);
+    if (permitted !== null && !siteMatchesPermitted(matches[0].name, permitted)) {
+      res.status(403).json({ message: "You do not have access to this destination site" });
+      return undefined;
+    }
+    return { destinationType: "site", destinationLabel: matches[0].name };
+  }
+
+  // 06Y: close-and-create transfer. The closed source is never repurposed.
+  app.post("/api/equipment-usage/:id/move", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_dprs")) return;
+      const sourceId = Number(req.params.id);
+      if (!Number.isInteger(sourceId) || sourceId <= 0) return res.status(400).json({ message: "Valid source usage id is required" });
+      const source = await storage.getEquipmentUsageById(sourceId);
+      if (!source) return res.status(404).json({ message: "Source equipment usage not found" });
+      if ((source as any).destinationType !== "site") {
+        return res.status(409).json({ message: "Only a completed Site equipment segment can be sent onward here" });
+      }
+      // A site-originated source is protected by its persisted site owner.
+      const sourceSite = (source as any).destinationType === "site" || (source as any).destinationType == null
+        ? ((source as any).destinationSite ?? (source as any).siteName) : null;
+      const permitted = await getPermittedSiteNames(req);
+      if (sourceSite && permitted !== null && !siteMatchesPermitted(sourceSite, permitted)) {
+        return res.status(403).json({ message: "You do not have access to move equipment from this source site" });
+      }
+      const destination = await canonicaliseMovementDestination(req, res, req.body);
+      if (!destination) return;
+      const date = String(req.body?.successorDate ?? req.body?.date ?? "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ message: "Movement date (YYYY-MM-DD) is required" });
+      const successor = await storage.createEquipmentUsageSuccessor(sourceId, {
+        date,
+        ...destination,
+        shiftFrom: req.body?.shiftFrom ?? sourceSite ?? null,
+        shiftTo: req.body?.shiftTo ?? destination.destinationLabel,
+        openedByUserId: req.authUser?.id ?? null,
+        openedByUserName: req.authUser ? currentUserName(req) : null,
+        openedAt: new Date(),
+      });
+      res.status(201).json(successor);
+    } catch (err: any) {
+      const message = err?.message ?? "Failed to move equipment";
+      const status = /closed|closing|date|successor|immutable/i.test(message) ? 409 : 500;
+      res.status(status).json({ message });
+    }
+  });
+
+  app.get("/api/equipment-usage/lifecycle", requireAuth, async (req, res) => {
+    try {
+      if (!assertView(req, res, "site_dprs")) return;
+      const ids = String(req.query.ids ?? "")
+        .split(",")
+        .map(Number)
+        .filter((id) => Number.isInteger(id) && id > 0)
+        .slice(0, 100);
+      if (ids.length === 0) return res.json([]);
+      const sourceRows = await Promise.all(ids.map((id) => storage.getEquipmentUsageById(id)));
+      if (sourceRows.some((row) => !row)) {
+        return res.status(404).json({ message: "Equipment usage not found" });
+      }
+      const permitted = await getPermittedSiteNames(req);
+      if (
+        permitted !== null &&
+        sourceRows.some((row: any) => {
+          const sourceSite = row?.destinationType === "site"
+            ? (row.destinationSite ?? row.siteName)
+            : null;
+          return sourceSite && !siteMatchesPermitted(sourceSite, permitted);
+        })
+      ) {
+        return res.status(403).json({ message: "You do not have access to this equipment lifecycle" });
+      }
+      res.json(await storage.getEquipmentUsageLifecycle(ids));
+    } catch (_) {
+      res.status(500).json({ message: "Failed to fetch equipment lifecycle" });
+    }
+  });
+
+  app.get("/api/plant-module/equipment-usage/incoming", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_equipment")) return;
+      const destinationType = String(req.query.destinationType ?? "").toLowerCase();
+      if (destinationType !== "hmp" && destinationType !== "rmc") {
+        return res.status(400).json({ message: "destinationType must be hmp or rmc" });
+      }
+      res.json(await storage.getOpenIncomingEquipmentUsage(destinationType));
+    } catch (_) {
+      res.status(500).json({ message: "Failed to fetch incoming equipment" });
+    }
+  });
+
+  // Completes the same incoming row; it intentionally delegates diesel and
+  // meter accounting to the existing update transaction.
+  app.post("/api/plant-module/equipment-usage/:id/complete-incoming", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_equipment")) return;
+      const id = Number(req.params.id);
+      const completion = req.body ?? {};
+      const updated = await storage.completeIncomingEquipmentUsage(id, {
+        entryType: completion.entryType ?? "time_meter",
+        closingReading: completion.closingReading,
+        startTime: completion.startTime,
+        endTime: completion.endTime,
+        openingDiesel: completion.openingDiesel,
+        dieselIssued: completion.dieselIssued,
+        dieselIncluded: completion.dieselIncluded,
+        dieselSource: completion.dieselSource,
+        fuelStation: completion.fuelStation,
+        billNumber: completion.billNumber,
+        amountPaid: completion.amountPaid,
+        dieselBalanceInTank: completion.dieselBalanceInTank,
+        dieselBalanceConfirmed: completion.dieselBalanceConfirmed,
+        operator: completion.operator,
+        task: completion.task,
+        remarks: completion.remarks,
+        closedByUserId: req.authUser?.id ?? null,
+        closedByUserName: req.authUser ? currentUserName(req) : null,
+        closedAt: new Date(),
+      } as any);
+      res.json(updated);
+    } catch (err: any) {
+      if (err instanceof EquipmentIncomingConflictError) {
+        return res.status(409).json({ code: err.code, message: err.message });
+      }
+      res.status(400).json({ message: err?.message ?? "Failed to complete incoming equipment" });
+    }
+  });
+
   app.post("/api/plant-module/equipment-usage", async (req, res) => {
     try {
       if (!assertCreate(req, res, "plant_equipment")) return;
       const input = await canonicaliseEquipmentDestinationSite(req, res, req.body);
       if (!input) return;
-      const usage = await storage.createEquipmentUsage(input);
+      const usage = await storage.createEquipmentUsage(input as any);
       const eqName = input.equipmentName || `Equipment #${input.equipmentId}`;
       sendPushToSection("plant_equipment", "Equipment Entry", `${eqName} - Opening: ${input.openingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
       res.status(201).json(usage);

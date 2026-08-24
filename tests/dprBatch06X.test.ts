@@ -739,22 +739,19 @@ describe("J: closePlantUsage destinationSite primary + documented legacy fallbac
   });
 });
 
-// ── J-source: verify route source uses destinationSite ?? siteName (documented) ─
+// ── J-source: atomic storage finalizer preserves destination fallback ─────────
 
-describe("J-source: closePlantUsage route source uses destinationSite with legacy fallback", () => {
-  it("closePlantUsage uses destinationSite ?? siteName with documented fallback comment", async () => {
+describe("J-source: atomic DPR finalizer uses destinationSite with legacy fallback", () => {
+  it("finalizer validates destinationSite before legacy siteName", async () => {
     const fs = await import("node:fs/promises");
-    const routes = await fs.readFile("server/routes.ts", "utf8");
-    const fnSlice = routes.slice(
-      routes.indexOf("async function closePlantUsageLinkedToEquipment"),
-      routes.indexOf("// EquipmentHub uses this shorter /plant/ prefix alias"),
+    const storage = await fs.readFile("server/storage.ts", "utf8");
+    const fnSlice = storage.slice(
+      storage.indexOf("private async finalizeDprEquipmentUsageTx"),
+      storage.indexOf("async materializeFinalizedDprEquipmentUsage"),
     );
-    // Uses destinationSite
-    expect(fnSlice).toContain("destinationSite");
-    // Has the legacy fallback
-    expect(fnSlice).toMatch(/destinationSite.*\?\?.*siteName|destinationSite.*\?\?.*\.siteName/);
-    // Has a comment documenting the legacy nature
-    expect(fnSlice.toLowerCase()).toContain("legacy");
+    expect(fnSlice).toMatch(/usage\.destinationSite \|\| usage\.shiftTo \|\| usage\.siteName/);
+    expect(fnSlice).toContain("Linked equipment destination does not match the DPR site");
+    expect(storage).toContain("finalizeDprEquipmentUsageTx(tx, newDpr, insertedEquipLogs, audit)");
   });
 });
 

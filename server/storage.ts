@@ -102,6 +102,12 @@ import { resolveConversion, convertToBase, computeAdjustment, isNoChange, comput
 import { resolvePermittedSiteIds } from "@shared/siteAccess";
 import { getBaseSiteName, siteMatchesPermitted } from "@shared/siteName";
 import {
+  buildMovementSuccessor,
+  materializedEquipmentLogChanged,
+  type EquipmentDestinationType,
+  type MovementRequest,
+} from "@shared/equipmentMovement";
+import {
   dateToMonthIndexCal,
   displayFinishDateCal,
   finishDateInputToIdx,
@@ -514,6 +520,13 @@ function isLdoOrDieselMaterial(name: string): boolean {
   return n === "LDO" || n === "DIESEL";
 }
 
+export type DprEquipmentClosureAudit = {
+  userId?: number | null;
+  userName?: string | null;
+  closedAt?: Date;
+  allowMovedSourceReuse?: boolean;
+};
+
 export interface IStorage {
   // Owner/Admin transaction controls & audit trail
   logAudit(entry: InsertAuditLog): Promise<AuditLog>;
@@ -530,12 +543,12 @@ export interface IStorage {
   getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<Dpr[]>;
   getDprsWithDetails(opts?: { dateFrom?: string; dateTo?: string }): Promise<DprWithDetails[]>;
   getDpr(id: number): Promise<DprWithDetails | undefined>;
-  createDpr(dpr: CreateDprRequest, clientTimestamp?: string): Promise<Dpr>;
+  createDpr(dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit): Promise<Dpr>;
   updateDraftDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
-  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string): Promise<Dpr | undefined>;
+  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit): Promise<Dpr | undefined>;
   updateDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
   cloneDpr(id: number, editedBy: string, clientTimestamp?: string): Promise<Dpr | undefined>;
-  createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string): Promise<Dpr>;
+  createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string, audit?: DprEquipmentClosureAudit): Promise<Dpr>;
   deleteDpr(id: number): Promise<boolean>;
   /**
    * 06X: Load a single progress entry together with its parent DPR header
@@ -641,6 +654,11 @@ export interface IStorage {
   updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined>;
   deleteEquipmentUsage(id: number): Promise<boolean>;
   getOpenEquipmentUsageForDate(date: string, equipmentIds?: number[]): Promise<EquipmentUsage[]>;
+  getOpenIncomingEquipmentUsage(destinationType: "hmp" | "rmc"): Promise<EquipmentUsage[]>;
+  getEquipmentUsageLifecycle(ids: number[]): Promise<any[]>;
+  completeIncomingEquipmentUsage(id: number, completion: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage>;
+  createEquipmentUsageSuccessor(sourceUsageId: number, movement: Omit<MovementRequest, "destinationLabel"> & { destinationLabel: string }): Promise<EquipmentUsage>;
+  materializeFinalizedDprEquipmentUsage(dprId: number): Promise<void>;
   ensureEquipmentUsageAuditColumns(): Promise<void>;
   
   getGeneratorLogs(filters?: { dateFrom?: string; dateTo?: string }): Promise<GeneratorLog[]>;
@@ -1794,6 +1812,14 @@ export class InsufficientPlantStockError extends Error {
   }
 }
 
+export class EquipmentIncomingConflictError extends Error {
+  readonly code = "EQUIPMENT_INCOMING_CONFLICT" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "EquipmentIncomingConflictError";
+  }
+}
+
 export type EquipmentUsageDieselLedgerType = "equipment_usage" | "direct_purchase" | null;
 
 export interface EquipmentUsageDieselTransition {
@@ -2161,7 +2187,11 @@ export class DatabaseStorage implements IStorage {
     return dpr;
   }
 
-  async createDpr(dprData: CreateDprRequest, clientTimestamp?: string): Promise<Dpr> {
+  async createDpr(
+    dprData: CreateDprRequest,
+    clientTimestamp?: string,
+    audit?: DprEquipmentClosureAudit,
+  ): Promise<Dpr> {
     // Transaction to insert DPR and all related nested data
     // Use client-provided timestamp for accurate local time, fall back to server time
     const dprStatusVal: string = (dprData as any).dprStatus ?? "submitted";
@@ -2183,6 +2213,7 @@ export class DatabaseStorage implements IStorage {
       }).returning();
 
       const dprId = newDpr.id;
+      let insertedEquipLogs: any[] = [];
 
       // 2. Insert Progress Entries with uppercase text fields
       if (dprData.progress?.length) {
@@ -2205,7 +2236,7 @@ export class DatabaseStorage implements IStorage {
 
       // 3. Insert Equipment Logs with uppercase text fields
       if (dprData.equipment?.length) {
-        const insertedEquipLogs = await tx.insert(equipmentLogs).values(
+        insertedEquipLogs = await tx.insert(equipmentLogs).values(
           dprData.equipment.map(e => ({ 
             ...e, 
             dprId,
@@ -2259,6 +2290,10 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
+      if (dprStatusVal !== "draft") {
+        await this.finalizeDprEquipmentUsageTx(tx, newDpr, insertedEquipLogs, audit);
+      }
+
       return newDpr;
     });
   }
@@ -2269,14 +2304,29 @@ export class DatabaseStorage implements IStorage {
     return await this._replaceDprChildRecords(id, dprData, {});
   }
 
-  async submitDraftDpr(id: number, dprData: CreateDprRequest, clientTimestamp?: string): Promise<Dpr | undefined> {
+  async submitDraftDpr(
+    id: number,
+    dprData: CreateDprRequest,
+    clientTimestamp?: string,
+    audit?: DprEquipmentClosureAudit,
+  ): Promise<Dpr | undefined> {
     const existing = await this.getDpr(id);
     if (!existing || (existing as any).dprStatus !== "draft") return undefined;
     const submittedAt = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
-    return await this._replaceDprChildRecords(id, dprData, { dprStatus: "submitted", submittedAt, lockStatus: "locked" });
+    return await this._replaceDprChildRecords(
+      id,
+      dprData,
+      { dprStatus: "submitted", submittedAt, lockStatus: "locked" },
+      audit,
+    );
   }
 
-  private async _replaceDprChildRecords(id: number, dprData: CreateDprRequest, headerOverrides: Record<string, any>): Promise<Dpr | undefined> {
+  private async _replaceDprChildRecords(
+    id: number,
+    dprData: CreateDprRequest,
+    headerOverrides: Record<string, any>,
+    audit?: DprEquipmentClosureAudit,
+  ): Promise<Dpr | undefined> {
     return await db.transaction(async (tx) => {
       const [updated] = await tx.update(dprs)
         .set({
@@ -2316,8 +2366,9 @@ export class DatabaseStorage implements IStorage {
           }
         }
       }
+      let insertedEquipLogs: any[] = [];
       if (dprData.equipment?.length) {
-        const insertedEquipLogs = await tx.insert(equipmentLogs).values(
+        insertedEquipLogs = await tx.insert(equipmentLogs).values(
           dprData.equipment.map(e => ({ ...e, dprId: id, machine: e.machine?.toUpperCase() || e.machine, operator: e.operator?.toUpperCase() || e.operator, task: e.task?.toUpperCase() || e.task }))
         ).returning();
         await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
@@ -2333,6 +2384,9 @@ export class DatabaseStorage implements IStorage {
       }
       if (dprData.structureItems?.length) {
         await tx.insert(dprStructureItems).values(dprData.structureItems.map(s => ({ ...s, dprId: id })));
+      }
+      if (headerOverrides.dprStatus === "submitted") {
+        await this.finalizeDprEquipmentUsageTx(tx, updated, insertedEquipLogs, audit);
       }
       return updated;
     });
@@ -2563,6 +2617,8 @@ export class DatabaseStorage implements IStorage {
             numberOfTrips: (e as any).numberOfTrips ?? null,
             tripDistance: (e as any).tripDistance ?? null,
             totalKm: (e as any).totalKm ?? null,
+            // Preserve the dispatch linkage across clone/version chains.
+            plantUsageId: (e as any).plantUsageId ?? null,
           }))
         ).returning();
 
@@ -2651,7 +2707,13 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string): Promise<Dpr> {
+  async createVersionDpr(
+    originalId: number,
+    dprData: CreateDprRequest,
+    editedBy: string,
+    clientTimestamp?: string,
+    audit?: DprEquipmentClosureAudit,
+  ): Promise<Dpr> {
     // Use client-provided timestamp for accurate local time, fall back to server time
     const dateTime = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
     const roleName = editedBy === "manager" ? "Manager" : editedBy === "admin" ? "Admin" : "Engineer";
@@ -2676,6 +2738,7 @@ export class DatabaseStorage implements IStorage {
       }).returning();
 
       const dprId = newDpr.id;
+      let insertedEquipLogs: any[] = [];
 
       // Insert structure items (for workType = "structure")
       if (dprData.structureItems?.length) {
@@ -2699,7 +2762,7 @@ export class DatabaseStorage implements IStorage {
 
       // Insert edited equipment logs with uppercase text fields
       if (dprData.equipment?.length) {
-        const insertedEquipLogs = await tx.insert(equipmentLogs).values(
+        insertedEquipLogs = await tx.insert(equipmentLogs).values(
           dprData.equipment.map(e => ({ 
             ...e, 
             dprId,
@@ -2809,6 +2872,8 @@ export class DatabaseStorage implements IStorage {
       await tx.update(attachments)
         .set({ linkedRecordId: newDpr.id })
         .where(and(eq(attachments.moduleType, "dpr_progress"), eq(attachments.linkedRecordId, originalId)));
+
+      await this.finalizeDprEquipmentUsageTx(tx, newDpr, insertedEquipLogs, audit);
 
       return newDpr;
     });
@@ -4486,6 +4551,290 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(equipmentUsage).where(and(...conds));
   }
 
+  /** Pending movements arriving at a plant module (never exposes Site rows). */
+  async getOpenIncomingEquipmentUsage(destinationType: "hmp" | "rmc"): Promise<EquipmentUsage[]> {
+    return db.select().from(equipmentUsage).where(and(
+      eq((equipmentUsage as any).status, "open"),
+      eq((equipmentUsage as any).destinationType, destinationType),
+    )).orderBy(desc(equipmentUsage.date), desc(equipmentUsage.id));
+  }
+
+  /**
+   * Read model keyed by the DPR-linked usage id. When that usage has moved,
+   * expose its successor state under the source id so callers cannot offer a
+   * second onward movement from the same historical segment.
+   */
+  async getEquipmentUsageLifecycle(ids: number[]): Promise<any[]> {
+    const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isInteger(id) && id > 0)));
+    if (uniqueIds.length === 0) return [];
+    const [sources, successors] = await Promise.all([
+      db.select().from(equipmentUsage).where(inArray(equipmentUsage.id, uniqueIds)),
+      db.select().from(equipmentUsage).where(inArray((equipmentUsage as any).sourceUsageId, uniqueIds)),
+    ]);
+    const successorBySource = new Map(
+      successors.map((row: any) => [Number(row.sourceUsageId), row]),
+    );
+    return sources.map((source: any) => {
+      const successor = successorBySource.get(source.id);
+      if (!successor) return source;
+      return {
+        ...successor,
+        id: source.id,
+        sourceStatus: source.status,
+        successorId: successor.id,
+      };
+    });
+  }
+
+  async completeIncomingEquipmentUsage(
+    id: number,
+    completion: Partial<InsertEquipmentUsage>,
+  ): Promise<EquipmentUsage> {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM equipment_usage WHERE id = ${id} FOR UPDATE`);
+      const [existing] = await tx.select().from(equipmentUsage)
+        .where(eq(equipmentUsage.id, id))
+        .limit(1);
+      if (!existing) throw new EquipmentIncomingConflictError("Incoming equipment usage not found");
+
+      const isIncomingPlant = ["hmp", "rmc"].includes(String(existing.destinationType));
+      if (existing.status !== "open" || !isIncomingPlant) {
+        const comparableKeys = [
+          "entryType", "closingReading", "startTime", "endTime",
+          "openingDiesel", "dieselIssued", "dieselIncluded", "dieselSource",
+          "fuelStation", "billNumber", "amountPaid", "dieselBalanceInTank",
+          "dieselBalanceConfirmed", "operator", "task", "remarks",
+        ] as const;
+        const sameRetry = existing.status === "closed"
+          && isIncomingPlant
+          && comparableKeys.every((key) => {
+            const incoming = (completion as any)[key];
+            if (incoming === undefined) return true;
+            const stored = (existing as any)[key];
+            if (["openingDiesel", "dieselIssued"].includes(key)) {
+              return Number(incoming ?? 0) === Number(stored ?? 0);
+            }
+            if (key === "remarks") {
+              return String(stored ?? "").trim().toUpperCase()
+                === String(incoming ?? "").trim().toUpperCase();
+            }
+            if (incoming == null || incoming === "") return stored == null || stored === "";
+            if (typeof incoming === "number") return Number(stored) === incoming;
+            return String(stored ?? "") === String(incoming);
+          });
+        if (sameRetry) return existing;
+        throw new EquipmentIncomingConflictError(
+          "Incoming equipment has already been completed or is not a Plant destination",
+        );
+      }
+
+      const updated = await this._updateEquipmentUsageTxn(id, {
+        ...completion,
+        status: "closed",
+      }, tx);
+      if (!updated) throw new EquipmentIncomingConflictError("Incoming equipment usage not found");
+      return updated;
+    });
+  }
+
+  /**
+   * Creates the one permitted successor of a closed usage.  The source row is
+   * locked before examining its state: retries return the existing successor,
+   * while a different concurrent request is rejected by the unique index.
+   */
+  async createEquipmentUsageSuccessor(
+    sourceUsageId: number,
+    movement: Omit<MovementRequest, "destinationLabel"> & { destinationLabel: string },
+  ): Promise<EquipmentUsage> {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM equipment_usage WHERE id = ${sourceUsageId} FOR UPDATE`);
+      const [source] = await tx.select().from(equipmentUsage)
+        .where(eq(equipmentUsage.id, sourceUsageId)).limit(1);
+      if (!source) throw new Error("Source equipment usage not found");
+
+      const [existing] = await tx.select().from(equipmentUsage)
+        .where(eq((equipmentUsage as any).sourceUsageId, sourceUsageId)).limit(1);
+      if (existing) {
+        // Same request is safe to retry. Differing target facts are a conflict,
+        // never an opportunity to mutate the already-created successor.
+        if (
+          existing.destinationType === movement.destinationType &&
+          existing.destinationSite === movement.destinationLabel &&
+          existing.date === movement.date
+        ) return existing;
+        throw new Error("A different successor already exists for this equipment usage");
+      }
+
+      const successor = buildMovementSuccessor(source as any, movement);
+      // Deliberately bypass _createEquipmentUsageTxn: that routine correctly
+      // issues diesel for ordinary records. A movement has no diesel effect.
+      const [created] = await tx.insert(equipmentUsage).values(successor as any).returning();
+      return created;
+    });
+  }
+
+  private async finalizeDprEquipmentUsageTx(
+    tx: any,
+    dpr: any,
+    logs: any[],
+    audit?: DprEquipmentClosureAudit,
+  ): Promise<void> {
+    if (!dpr || dpr.dprStatus === "draft") return;
+    const dprId = dpr.id;
+    const siteName = getBaseSiteName(dpr.site);
+    const closedAt = audit?.closedAt ?? new Date();
+    const closedByUserName = audit?.userName ?? dpr.engineer;
+    const linkedLogs = logs
+      .filter((log) => Number(log.plantUsageId) > 0)
+      .sort((a, b) => Number(a.plantUsageId) - Number(b.plantUsageId));
+
+    for (const log of linkedLogs) {
+      const usageId = Number(log.plantUsageId);
+      await tx.execute(sql`SELECT id FROM equipment_usage WHERE id = ${usageId} FOR UPDATE`);
+      const [usage] = await tx.select().from(equipmentUsage)
+        .where(eq(equipmentUsage.id, usageId))
+        .limit(1);
+      if (!usage) throw new EquipmentIncomingConflictError("Linked equipment usage not found");
+
+      const [successor] = await tx.select({ id: equipmentUsage.id }).from(equipmentUsage)
+        .where(eq((equipmentUsage as any).sourceUsageId, usageId))
+        .limit(1);
+      const isMovementSuccessor = (usage as any).sourceUsageId != null;
+      const isMaterializedSite = usage.dprId != null
+        && usage.destinationType === "site"
+        && usage.plantName === "SITE";
+      const ownsDprFacts = isMovementSuccessor || isMaterializedSite;
+
+      if (usage.status === "open") {
+        if (usage.date !== dpr.date) {
+          throw new EquipmentIncomingConflictError(
+            "Linked equipment usage date does not match the DPR date",
+          );
+        }
+        const destination = String(
+          usage.destinationSite || usage.shiftTo || usage.siteName || "",
+        ).trim();
+        if (
+          destination
+          && getBaseSiteName(destination).trim().toUpperCase()
+            !== siteName.trim().toUpperCase()
+        ) {
+          throw new EquipmentIncomingConflictError(
+            "Linked equipment destination does not match the DPR site",
+          );
+        }
+      }
+
+      if (successor) {
+        if (audit?.allowMovedSourceReuse && usage.dprId != null) {
+          const [originalLog] = await tx.select().from(equipmentLogs).where(and(
+            eq(equipmentLogs.dprId, usage.dprId),
+            eq(equipmentLogs.plantUsageId, usageId),
+          )).limit(1);
+          if (originalLog && !materializedEquipmentLogChanged(originalLog as any, log)) {
+            continue;
+          }
+        }
+        throw new EquipmentIncomingConflictError(
+          "Linked equipment segment has already moved onward and cannot be changed",
+        );
+      }
+      if (usage.status !== "open" && !ownsDprFacts) continue;
+
+      const closure = {
+        closingReading: log.closingReading ?? undefined,
+        startTime: log.startTime || undefined,
+        endTime: log.endTime || undefined,
+        operator: log.operator || undefined,
+        task: log.task || undefined,
+        status: "closed",
+        closedByDprId: dprId,
+        closedByUserId: audit?.userId ?? null,
+        closedByUserName,
+        closedAt,
+      } as any;
+      const ownedFacts = ownsDprFacts ? {
+        date: dpr.date,
+        equipmentId: log.equipmentId ?? usage.equipmentId,
+        entryType: log.entryType || "time_meter",
+        openingReading: log.openingReading ?? usage.openingReading ?? undefined,
+        dprId,
+        siteName,
+        plantName: "SITE",
+        destinationType: "site",
+        destinationSite: siteName,
+        dieselIssued: log.diesel ?? 0,
+        dieselSource: log.dieselSource || "plant_stock",
+        dieselIncluded: log.dieselSource === "contractor",
+        fuelStation: log.fuelStation || undefined,
+        billNumber: log.billNumber || undefined,
+        amountPaid: log.amountPaid ?? undefined,
+        numberOfTrips: log.numberOfTrips ?? undefined,
+        tripDistance: log.tripDistance ?? undefined,
+      } : {};
+      await this._updateEquipmentUsageTxn(usageId, { ...closure, ...ownedFacts }, tx);
+    }
+
+    for (const log of logs.filter((row) => row.plantUsageId == null && row.equipmentId != null)) {
+      const [usage] = await tx.insert(equipmentUsage).values({
+        date: dpr.date,
+        equipmentId: log.equipmentId,
+        entryType: log.entryType ?? "time_meter",
+        openingReading: log.openingReading,
+        closingReading: log.closingReading,
+        startTime: log.startTime,
+        endTime: log.endTime,
+        operator: log.operator,
+        task: log.task,
+        dprId,
+        siteName,
+        plantName: "SITE",
+        destinationType: "site",
+        destinationSite: siteName,
+        status: "closed",
+        closedByDprId: dprId,
+        closedByUserId: audit?.userId ?? null,
+        closedByUserName,
+        closedAt,
+        dieselIssued: log.diesel ?? 0,
+        dieselSource: log.dieselSource ?? "plant_stock",
+        dieselIncluded: log.dieselSource === "contractor",
+        fuelStation: log.fuelStation,
+        billNumber: log.billNumber,
+        amountPaid: log.amountPaid,
+        numberOfTrips: log.numberOfTrips,
+        tripDistance: log.tripDistance,
+        totalKm: log.totalKm,
+        hoursOrKmRun: log.hoursWorked,
+        expectedDiesel: log.expectedDiesel,
+        variance: Number(log.diesel ?? 0) - Number(log.expectedDiesel ?? 0),
+      } as any).returning();
+      await tx.update(equipmentLogs).set({ plantUsageId: usage.id }).where(eq(equipmentLogs.id, log.id));
+      const oldReference = -log.id;
+      await tx.update(stockLedger).set({
+        referenceId: usage.id,
+        transactionType: sql`CASE WHEN ${stockLedger.transactionType} = 'dpr_equipment_usage' THEN 'equipment_usage' ELSE ${stockLedger.transactionType} END`,
+      }).where(and(
+        eq(stockLedger.referenceId, oldReference),
+        or(eq(stockLedger.transactionType, "dpr_equipment_usage"), eq(stockLedger.transactionType, "direct_purchase")),
+      ));
+    }
+  }
+
+  /**
+   * Repair/maintenance entrypoint. Normal submit/version flows call the same
+   * helper inside their own transaction so DPR + lifecycle + ledger are atomic.
+   */
+  async materializeFinalizedDprEquipmentUsage(dprId: number): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM dprs WHERE id = ${dprId} FOR UPDATE`);
+      const [dpr] = await tx.select().from(dprs).where(eq(dprs.id, dprId)).limit(1);
+      if (!dpr || dpr.dprStatus === "draft") return;
+      const logs = await tx.select().from(equipmentLogs).where(eq(equipmentLogs.dprId, dprId));
+      await this.finalizeDprEquipmentUsageTx(tx, dpr, logs);
+    });
+  }
+
   async ensureEquipmentUsageAuditColumns(): Promise<void> {
     const stmts = [
       "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'closed'",
@@ -4497,6 +4846,10 @@ export class DatabaseStorage implements IStorage {
       "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS closed_by_user_name text",
       "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS closed_at timestamp",
       "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS destination_site text",
+      "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS destination_type text",
+      "ALTER TABLE equipment_usage ADD COLUMN IF NOT EXISTS source_usage_id integer",
+      "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'equipment_usage_destination_type_check') THEN ALTER TABLE equipment_usage ADD CONSTRAINT equipment_usage_destination_type_check CHECK (destination_type IS NULL OR destination_type IN ('site', 'hmp', 'rmc')); END IF; END $$",
+      "CREATE UNIQUE INDEX IF NOT EXISTS equipment_usage_source_usage_successor_uq ON equipment_usage (source_usage_id) WHERE source_usage_id IS NOT NULL",
       "ALTER TABLE equipment_logs ADD COLUMN IF NOT EXISTS plant_usage_id integer",
     ];
     for (const stmt of stmts) {
@@ -4505,8 +4858,12 @@ export class DatabaseStorage implements IStorage {
     console.log("ensureEquipmentUsageAuditColumns: all audit columns verified/added");
   }
 
-  private async _updateEquipmentUsageTxn(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined> {
-    return db.transaction(async (tx) => {
+  private async _updateEquipmentUsageTxn(
+    id: number,
+    usage: Partial<InsertEquipmentUsage>,
+    existingTx?: any,
+  ): Promise<EquipmentUsage | undefined> {
+    const execute = async (tx: any) => {
       const normalisedUsage = {
         ...usage,
         ...(usage.openedAt !== undefined && {
@@ -4519,6 +4876,11 @@ export class DatabaseStorage implements IStorage {
 
       const [existing] = await tx.select().from(equipmentUsage).where(eq(equipmentUsage.id, id)).limit(1);
       if (!existing) return undefined;
+      // Once a movement exists the predecessor is historical evidence. Do not
+      // allow ordinary PUT paths to alter its continuity or diesel facts.
+      const [successor] = await tx.select({ id: equipmentUsage.id }).from(equipmentUsage)
+        .where(eq((equipmentUsage as any).sourceUsageId, id)).limit(1);
+      if (successor) throw new Error("A moved source equipment usage is immutable");
 
       const equipmentId = usage.equipmentId ?? existing.equipmentId;
       const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, equipmentId)).limit(1);
@@ -4712,7 +5074,8 @@ export class DatabaseStorage implements IStorage {
       }
       
       return result;
-    });
+    };
+    return existingTx ? execute(existingTx) : db.transaction(execute);
   }
 
   async deleteEquipmentUsage(id: number): Promise<boolean> {
@@ -4720,6 +5083,9 @@ export class DatabaseStorage implements IStorage {
       // Get the existing record
       const [existing] = await tx.select().from(equipmentUsage).where(eq(equipmentUsage.id, id)).limit(1);
       if (!existing) return false;
+      const [successor] = await tx.select({ id: equipmentUsage.id }).from(equipmentUsage)
+        .where(eq((equipmentUsage as any).sourceUsageId, id)).limit(1);
+      if (successor) throw new Error("A moved source equipment usage is immutable");
       
       const dieselIssued = existing.dieselIssued || 0;
       const dieselIncluded = (existing as any).dieselIncluded === true;

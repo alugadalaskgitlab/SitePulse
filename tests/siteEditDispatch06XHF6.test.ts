@@ -329,7 +329,7 @@ describe("06X-HF6 version-route closure", () => {
     updateEquipmentUsageSpy.mockResolvedValue({ ...OPEN_USAGE, status: "closed", closedByDprId: 400 });
   });
 
-  it("B: completing from Edit Report closes the original usage id without creating a duplicate", async () => {
+  it("B: passes linked equipment and closure audit into the atomic version transaction", async () => {
     const response = await request(app)
       .post("/api/dprs/266/version")
       .send({
@@ -368,14 +368,20 @@ describe("06X-HF6 version-route closure", () => {
 
     expect(response.status).toBe(201);
     expect(createVersionDprSpy).toHaveBeenCalledTimes(1);
-    expect(updateEquipmentUsageSpy).toHaveBeenCalledTimes(1);
-    expect(updateEquipmentUsageSpy).toHaveBeenCalledWith(161, expect.objectContaining({
-      closingReading: 2521.6,
-      endTime: "17:00",
-      status: "closed",
-      closedByDprId: 400,
-      closedByUserId: 42,
-    }));
+    expect(createVersionDprSpy).toHaveBeenCalledWith(
+      266,
+      expect.objectContaining({
+        equipment: [expect.objectContaining({
+          plantUsageId: 161,
+          closingReading: 2521.6,
+          endTime: "17:00",
+        })],
+      }),
+      "manager",
+      "2026-08-24 19:30:00",
+      expect.objectContaining({ userId: 42 }),
+    );
+    expect(updateEquipmentUsageSpy).not.toHaveBeenCalled();
     expect(createEquipmentUsageSpy).not.toHaveBeenCalled();
   });
 });

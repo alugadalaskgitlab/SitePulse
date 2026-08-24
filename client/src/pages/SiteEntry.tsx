@@ -58,6 +58,7 @@ import { calculateBomDemand, fmtQty, type BomInputItem, type BomInputBar, type B
 import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity } from "@shared/dprPhotos";
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
+import { openUsageHandoffContext, type OpenUsageLike } from "@shared/dprPlantLink";
 
 interface ProgressEntry {
   // Batch 06C §22: stable client key so photos can link to this activity row
@@ -1246,10 +1247,17 @@ export default function SiteEntry() {
       const record = records[0] ?? null;
       setOpenPlantMap(prev => ({ ...prev, [equipmentId]: record }));
       if (record) {
+        // A repeated selection must not attach the same usage to two rows.
+        // In that case this row is still unlinked, so fall through to the
+        // inclusive canonical suggestion below.
+        const alreadyLinkedElsewhere = equipment.some((row, idx) => idx !== rowIdx && row.plantUsageId === record.id);
         setEquipment(prev => {
           const updated = [...prev];
           // 06Q stale guard: only apply if this row still shows this equipment.
-          if (updated[rowIdx] && updated[rowIdx].equipmentId === equipmentId) {
+          // A successor/dispatch usage has one exact plantUsageId: never put it
+          // on a second DPR row just because selection was repeated.
+          const linkedElsewhere = updated.some((row, idx) => idx !== rowIdx && row.plantUsageId === record.id);
+          if (updated[rowIdx] && updated[rowIdx].equipmentId === equipmentId && !linkedElsewhere) {
             updated[rowIdx] = {
               ...updated[rowIdx],
               openingReading: record.openingReading ?? updated[rowIdx].openingReading,
@@ -1258,13 +1266,12 @@ export default function SiteEntry() {
           }
           return updated;
         });
-        return;
+        if (!alreadyLinkedElsewhere) return;
       }
       // 06Q: no same-day open Plant record — fall back to the canonical
-      // cross-source resolver (latest valid closing strictly before this
-      // DPR's date). Manual entries are never overwritten; a stale response
+      // cross-source resolver (including same-day prior segments). Manual entries are never overwritten; a stale response
       // for equipment A can never populate equipment B.
-      const latest = await fetchLatestPriorClosing(equipmentId, header.date);
+      const latest = await fetchLatestPriorClosing(equipmentId, header.date, { inclusive: true });
       if (latest.closingReading == null) return;
       setEquipment(prev => {
         const updated = [...prev];
@@ -2634,6 +2641,10 @@ export default function SiteEntry() {
             const isDailyOrMonthly = entry.entryType === "daily" || entry.entryType === "monthly";
             const calculatedTotalKm = computeTripTotalKm(entry.numberOfTrips, entry.tripDistance);
             const isWaterTanker = (entry.machine || '').toUpperCase().includes('WATER') || (entry.machine || '').toUpperCase().includes('TANKER');
+            const linkedUsage = openPlantMap[entry.equipmentId ?? -1] as OpenUsageLike | undefined;
+            const handoffContext = entry.plantUsageId != null && linkedUsage
+              ? openUsageHandoffContext(linkedUsage)
+              : null;
             
             return (
               <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)} data-testid={"equipment-row-" + idx}>
@@ -2757,6 +2768,9 @@ export default function SiteEntry() {
                     />
                   </div>
                 </div>
+                {handoffContext && (
+                  <p className="text-xs text-blue-700 dark:text-blue-300" data-testid={`text-equipment-handoff-${idx}`}>{handoffContext}</p>
+                )}
 
                 {siteBoqItems.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

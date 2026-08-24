@@ -216,7 +216,7 @@ describe("06Q client wiring (source pins)", () => {
   it("Guided DPR: open-usage link priority, resolver fallback guarded by equipmentId + blank opening", () => {
     const s = read("client/src/pages/GuidedDpr.tsx");
     expect(s).toContain("nextPt.plantUsageId = open.id");
-    expect(s).toContain("fetchLatestPriorClosing(sel.id, date)");
+    expect(s).toContain("fetchLatestPriorClosing(sel.id, date, { inclusive: true })");
     expect(s).toContain("pt?.equipmentId !== sel.id");
     expect(s).toContain("pt.plantUsageId != null");
   });
@@ -238,7 +238,7 @@ describe("06Q Test S — SiteEdit (source pins)", () => {
 
   it("rows added in the edit session are flagged isNew and get continuity on equipment select", () => {
     expect(s).toMatch(/setEquipment\(\[\.\.\.equipment[\s\S]{0,600}isNew: true/);
-    expect(s).toContain("fetchLatestPriorClosing(selectedEquip.id, header.date)");
+    expect(s).toContain("fetchLatestPriorClosing(selectedEquip.id, header.date, { inclusive: true })");
     // new rows only fill a blank opening — manual entry never overwritten
     expect(s).toContain("row.isNew && row.openingReading != null");
   });

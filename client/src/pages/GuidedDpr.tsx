@@ -46,7 +46,7 @@ import { ProgrammeBarPicker, BarLinkFeedback, type PickerBar } from "@/component
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { reconcileNewDprAutosaves } from "@/lib/dprAutosaveReconcile";
-import { unlinkedOpenUsages, usageToGuidedRow, duplicateUsageAdvisory, type OpenUsageLike } from "@shared/dprPlantLink";
+import { unlinkedOpenUsages, usageToGuidedRow, duplicateUsageAdvisory, openUsageHandoffContext, type OpenUsageLike } from "@shared/dprPlantLink";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { splitGuidedEquipmentRow, buildGuidedEquipmentPayload, newGuidedEquipmentRow, computeTotalDiesel, computeTripTotalKm, isWaterTankerName, type GuidedEquipmentRow } from "@shared/guidedEquipment";
 import { evaluateDprSubmitReadiness, type DprReadinessIssue, type DprReadinessResult } from "@shared/dprSubmitReadiness";
@@ -1890,7 +1890,13 @@ export default function GuidedDpr() {
                           {u.siteName ? ` · ${u.siteName}` : ""}
                         </span>
                         <Button size="sm" variant="outline" className="shrink-0"
-                          onClick={() => setEquipment((p) => [...p, usageToGuidedRow(u, equipmentNameOf(u.equipmentId) ?? "")])}
+                          onClick={() => setEquipment((p) => (
+                            // The panel can briefly render stale query data after
+                            // a double click. Link an open usage at most once.
+                            p.some((row) => (row.passthrough as any)?.plantUsageId === u.id)
+                              ? p
+                              : [...p, usageToGuidedRow(u, equipmentNameOf(u.equipmentId) ?? "")]
+                          ))}
                           data-testid={`button-use-usage-${u.id}`}>
                           Use in this DPR
                         </Button>
@@ -1960,9 +1966,15 @@ export default function GuidedDpr() {
                             // equipment (stale guard), is unlinked, and the
                             // opening is blank (manual entries are never
                             // overwritten).
-                            const hasOpen = openUsages.some((u: any) => u.equipmentId === sel.id);
+                            // If this machine's open usage is already linked on
+                            // another row, this new row remains unlinked and is
+                            // eligible for canonical continuity (not a duplicate
+                            // link to that usage).
+                            const hasOpen = !!open;
                             if (!hasOpen && date) {
-                              fetchLatestPriorClosing(sel.id, date).then((latest) => {
+                              // Inclusive continuity is deliberate: a same-day
+                              // prior Site/Plant segment is the correct opening.
+                              fetchLatestPriorClosing(sel.id, date, { inclusive: true }).then((latest) => {
                                 if (latest.closingReading == null) return;
                                 setEquipment((p) => p.map((r, j) => {
                                   // Only the row this selection happened on —
@@ -1996,6 +2008,11 @@ export default function GuidedDpr() {
                       {eq.vehicleNo && (
                         <p className="text-xs text-muted-foreground" data-testid={`text-eq-reg-${i}`}>Reg: {eq.vehicleNo}</p>
                       )}
+                      {linked && (() => {
+                        const usage = openUsages.find((u) => u.id === pt.plantUsageId);
+                        const handoff = usage && openUsageHandoffContext(usage);
+                        return handoff ? <p className="text-xs text-blue-700 dark:text-blue-300">{handoff}</p> : null;
+                      })()}
                       {/* Deployment / Usage Type — hired equipment only, same
                           stored entryType values as Detailed */}
                       {showEntryType && (

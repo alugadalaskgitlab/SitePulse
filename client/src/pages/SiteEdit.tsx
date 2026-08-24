@@ -46,6 +46,7 @@ import {
   resolveOpenUsageRowMatch,
   unlinkedOpenUsages,
   usageToDprEquipmentRow,
+  openUsageHandoffContext,
   type OpenUsageLike,
 } from "@shared/dprPlantLink";
 
@@ -2277,7 +2278,9 @@ export default function SiteEdit() {
                           ? window.confirm("You changed the equipment on an existing entry. Replace its stored Opening Reading with this equipment's latest prior closing reading? Cancel keeps the stored value.")
                           : false;
                       if (runContinuity && header.date) {
-                        fetchLatestPriorClosing(selectedEquip.id, header.date).then((latest) => {
+                        // Inclusive continuity carries a prior same-day segment
+                        // into a newly selected, unlinked master row.
+                        fetchLatestPriorClosing(selectedEquip.id, header.date, { inclusive: true }).then((latest) => {
                           if (latest.closingReading == null) return;
                           setEquipment(prev => {
                             const next = [...prev];
@@ -2286,7 +2289,7 @@ export default function SiteEdit() {
                             // this equipment. New rows only fill a blank
                             // opening (manual entry is never overwritten);
                             // confirmed existing-row changes replace it.
-                            if (!row || row.equipmentId !== selectedEquip.id) return prev;
+                            if (!row || row.equipmentId !== selectedEquip.id || row.plantUsageId != null) return prev;
                             if (row.isNew && row.openingReading != null) return prev;
                             next[idx] = { ...row, openingReading: latest.closingReading };
                             return next;
@@ -2323,6 +2326,11 @@ export default function SiteEdit() {
                     Linked dispatch #{entry.plantUsageId}
                   </Badge>
                 )}
+                {entry.plantUsageId != null && (() => {
+                  const usage = openUsages.find((u) => u.id === entry.plantUsageId);
+                  const handoff = usage && openUsageHandoffContext(usage);
+                  return handoff ? <p className="mt-1 text-xs text-blue-700 dark:text-blue-300">{handoff}</p> : null;
+                })()}
                 {(() => {
                   const selectedEquipForType = activeEquipment.find(e => e.id === entry.equipmentId);
                   if (!selectedEquipForType || selectedEquipForType.ownership !== "hired") return null;

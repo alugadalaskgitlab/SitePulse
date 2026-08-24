@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
@@ -9,6 +9,8 @@ import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
 import { ReportHeader } from "@/components/ReportHeader";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -18,8 +20,14 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { DprPhotoGroups } from "@/components/DprPhotoGroups";
-import type { Personnel } from "@shared/schema";
+import type { Personnel, Site } from "@shared/schema";
 import { shortItemName } from "@/lib/itemName";
+import {
+  lifecycleByUsageId,
+  lifecycleLabel,
+  linkedUsageId,
+  type EquipmentDestinationType,
+} from "@/lib/equipmentLifecycle";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -32,6 +40,9 @@ export default function SiteReport() {
   const canDelete = !!user?.isAdmin;
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
+  });
+  const { data: sites = [] } = useQuery<Site[]>({
+    queryKey: ["/api/sites"],
   });
 
   const getPersonnelNames = (ids: number[] | undefined) => {
@@ -51,6 +62,78 @@ export default function SiteReport() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [movingUsageId, setMovingUsageId] = useState<number | null>(null);
+  const [moveDestination, setMoveDestination] = useState("");
+  const [successorDate, setSuccessorDate] = useState(format(new Date(), "yyyy-MM-dd"));
+
+  const linkedUsageIds = useMemo(
+    () => Array.from(new Set(
+      (dpr?.equipment ?? [])
+        .map((row: any) => linkedUsageId(row))
+        .filter((value): value is number => value != null),
+    )),
+    [dpr?.equipment],
+  );
+  const { data: lifecyclePayload } = useQuery<unknown>({
+    queryKey: ["/api/equipment-usage/lifecycle", linkedUsageIds.join(",")],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/equipment-usage/lifecycle?ids=${encodeURIComponent(linkedUsageIds.join(","))}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("Lifecycle is unavailable");
+      return res.json();
+    },
+    enabled: linkedUsageIds.length > 0,
+  });
+  const lifecycle = useMemo(() => lifecycleByUsageId(lifecyclePayload), [lifecyclePayload]);
+
+  const moveMutation = useMutation({
+    mutationFn: async ({
+      usageId,
+      destinationType,
+      destinationSite,
+    }: {
+      usageId: number;
+      destinationType: EquipmentDestinationType;
+      destinationSite?: string;
+    }) => {
+      const response = await apiRequest("POST", `/api/equipment-usage/${usageId}/move`, {
+        destinationType,
+        ...(destinationSite ? { destinationSite } : {}),
+        successorDate,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/equipment-usage/lifecycle"] });
+      setMovingUsageId(null);
+      setMoveDestination("");
+      toast({
+        title: "Equipment sent onward",
+        description: "The completed source segment remains unchanged.",
+      });
+    },
+    onError: (error: Error) => toast({
+      title: "Could not move equipment",
+      description: error.message,
+      variant: "destructive",
+    }),
+  });
+
+  const submitMove = () => {
+    if (movingUsageId == null || !moveDestination) return;
+    const destinationType: EquipmentDestinationType = moveDestination === "__hmp__"
+      ? "hmp"
+      : moveDestination === "__rmc__"
+        ? "rmc"
+        : "site";
+    moveMutation.mutate({
+      usageId: movingUsageId,
+      destinationType,
+      destinationSite: destinationType === "site" ? moveDestination : undefined,
+    });
+  };
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -431,6 +514,7 @@ export default function SiteReport() {
                     <TableHead className="text-right">Hours</TableHead>
                     <TableHead className="text-right">Diesel (L)</TableHead>
                     <TableHead>Diesel Source</TableHead>
+                    <TableHead className="print:hidden">Lifecycle</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -471,6 +555,13 @@ export default function SiteReport() {
                     const dieselSourceLabel = item.dieselSource === 'direct_purchase' ? 'Direct Purchase'
                       : item.dieselSource === 'contractor' ? 'Contractor'
                       : item.dieselSource === 'plant_stock' ? 'Plant Stock' : '-';
+                    const usageId = linkedUsageId(item);
+                    const usageLifecycle = usageId != null ? lifecycle.get(usageId) : undefined;
+                    const lifecycleText = lifecycleLabel(usageLifecycle);
+                    const canMove = canEdit
+                      && usageId != null
+                      && usageLifecycle?.status === "closed"
+                      && usageLifecycle.successorId == null;
                     
                     return (
                       <TableRow key={i} data-testid={`row-equipment-${i}`}>
@@ -505,6 +596,80 @@ export default function SiteReport() {
                               {item.billNumber && <span> | Bill: {item.billNumber}</span>}
                               {item.amountPaid && <span> | Rs. {item.amountPaid}</span>}
                             </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="print:hidden">
+                          {lifecycleText ? (
+                            <div className="space-y-2">
+                              <Badge
+                                variant={usageLifecycle?.status === "open" ? "secondary" : "outline"}
+                                data-testid={`badge-equipment-lifecycle-${i}`}
+                              >
+                                {lifecycleText}
+                              </Badge>
+                              {canMove && (
+                                movingUsageId === usageId ? (
+                                  <div className="space-y-2 min-w-52">
+                                    <Select value={moveDestination} onValueChange={setMoveDestination}>
+                                      <SelectTrigger data-testid={`select-move-destination-${i}`}>
+                                        <SelectValue placeholder="Send to…" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__hmp__">HMP Plant</SelectItem>
+                                        <SelectItem value="__rmc__">RMC Plant</SelectItem>
+                                        {sites
+                                          .filter((site) => site.isActive === 1)
+                                          .map((site) => (
+                                            <SelectItem key={site.id} value={site.name}>
+                                              {site.name}
+                                            </SelectItem>
+                                          ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <Input
+                                      type="date"
+                                      value={successorDate}
+                                      onChange={(event) => setSuccessorDate(event.target.value)}
+                                      data-testid={`input-successor-date-${i}`}
+                                    />
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        onClick={submitMove}
+                                        disabled={!moveDestination || moveMutation.isPending}
+                                        data-testid={`button-confirm-move-${i}`}
+                                      >
+                                        {moveMutation.isPending ? "Sending…" : "Send"}
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => {
+                                          setMovingUsageId(null);
+                                          setMoveDestination("");
+                                        }}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setMovingUsageId(usageId);
+                                      setSuccessorDate(dpr.date);
+                                    }}
+                                    data-testid={`button-move-equipment-${i}`}
+                                  >
+                                    Send onward
+                                  </Button>
+                                )
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
                       </TableRow>

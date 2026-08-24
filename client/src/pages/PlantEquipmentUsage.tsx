@@ -29,6 +29,7 @@ import type { EquipmentMasterType, EquipmentUsage, Site } from "@shared/schema";
 import { METER_TYPES } from "@shared/schema";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
+import { plantDestinationType } from "@/lib/equipmentLifecycle";
 
 // 06X-HF2: extract the server's `message` field from apiRequest errors.
 // apiRequest throws "STATUS: {json}" — parse the JSON and return the
@@ -98,6 +99,8 @@ export default function PlantEquipmentUsage() {
   // Batch 6: "Send to Site" mode — create an open record for the site engineer to close
   const [sendToSite, setSendToSite] = useState(false);
   const [destinationSite, setDestinationSite] = useState("");
+  // A received Site → Plant row is completed in-place, never recreated.
+  const [receivingUsage, setReceivingUsage] = useState<EquipmentUsage | null>(null);
   
   const [newEquipmentDialogOpen, setNewEquipmentDialogOpen] = useState(false);
   const [newEquipmentName, setNewEquipmentName] = useState("");
@@ -250,6 +253,17 @@ export default function PlantEquipmentUsage() {
 
   // If plant context is set and override not active, filter the API call to plant + shared equipment
   const effectivePlantFilter = contextPlantName && !showAllPlantEquipment ? contextPlantName : undefined;
+  const incomingDestinationType = plantDestinationType(contextPlantName);
+
+  const { data: incomingUsage = [], isLoading: isLoadingIncoming } = useQuery<EquipmentUsage[]>({
+    queryKey: ["/api/plant-module/equipment-usage/incoming", incomingDestinationType],
+    queryFn: async () => {
+      const res = await fetch(`/api/plant-module/equipment-usage/incoming?destinationType=${incomingDestinationType}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load incoming equipment");
+      return res.json();
+    },
+    enabled: incomingDestinationType != null,
+  });
 
   const { data: equipment } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment", "all", effectivePlantFilter ?? "all"],
@@ -362,6 +376,23 @@ export default function PlantEquipmentUsage() {
     },
   });
 
+  const completeIncomingMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      apiRequest("POST", `/api/plant-module/equipment-usage/${id}/complete-incoming`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage/incoming"] });
+      setDialogOpen(false);
+      resetForm();
+      toast({ title: "Incoming equipment usage completed" });
+    },
+    onError: (err: Error) => {
+      const shortage = parseInsufficientPlantStock(err);
+      if (shortage) { setDieselShortage(shortage); return; }
+      toast({ title: parseServerMessage(err) ?? "Failed to complete incoming equipment usage.", variant: "destructive" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
       apiRequest("DELETE", `/api/plant-module/equipment-usage/${id}`),
@@ -406,6 +437,33 @@ export default function PlantEquipmentUsage() {
     setTransportDistance("");
     setSendToSite(false);
     setDestinationSite("");
+    setReceivingUsage(null);
+  };
+
+  const adoptIncomingUsage = (entry: EquipmentUsage) => {
+    setReceivingUsage(entry);
+    setEditingUsage(null);
+    setDate(entry.date);
+    setEquipmentId(String(entry.equipmentId));
+    setOpeningReading(entry.openingReading != null ? String(entry.openingReading) : "");
+    setClosingReading("");
+    setEntryType("time_meter");
+    setTripBasedEntry(false);
+    setNumberOfTrips("");
+    setTripDistance("");
+    setStartTime((entry as any).startTime || "");
+    setEndTime("");
+    setOpeningDiesel((entry as any).openingDiesel != null ? String((entry as any).openingDiesel) : "0");
+    setDieselIssued("");
+    setDieselIncluded((entry as any).dieselIncluded === true);
+    setDieselSource((entry as any).dieselSource ?? "plant_stock");
+    setWorkingPlant(incomingDestinationType === "rmc" ? "RMC PLANT" : "HMP PLANT");
+    setSiteName("");
+    setRemarks((entry.remarks ?? "").toUpperCase());
+    setUserModifiedOpening(true);
+    setSendToSite(false);
+    setDestinationSite("");
+    setDialogOpen(true);
   };
 
   const openEditDialog = (entry: EquipmentUsage) => {
@@ -513,6 +571,31 @@ export default function PlantEquipmentUsage() {
   };
 
   const handleSubmit = () => {
+    if (receivingUsage) {
+      if (!equipmentId || !openingReading || !closingReading) {
+        toast({ title: "Enter the Plant closing meter reading to complete this incoming entry", variant: "destructive" });
+        return;
+      }
+      const effectiveDieselSource = dieselIncluded ? "contractor" : dieselSource;
+      completeIncomingMutation.mutate({
+        id: receivingUsage.id,
+        data: {
+          date, equipmentId: parseInt(equipmentId), entryType,
+          openingReading: parseFloat(openingReading), closingReading: parseFloat(closingReading),
+          startTime: startTime || null, endTime: endTime || null,
+          openingDiesel: effectiveDieselSource === "contractor" ? null : (openingDiesel ? parseFloat(openingDiesel) : 0),
+          dieselIssued: effectiveDieselSource === "contractor" ? null : (dieselIssued ? parseFloat(dieselIssued) : 0),
+          dieselIncluded, dieselSource: effectiveDieselSource,
+          fuelStation: effectiveDieselSource === "direct_purchase" ? fuelStation.toUpperCase() : null,
+          billNumber: effectiveDieselSource === "direct_purchase" ? billNumber.toUpperCase() : null,
+          amountPaid: effectiveDieselSource === "direct_purchase" && amountPaid ? parseFloat(amountPaid) : null,
+          dieselBalanceInTank: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? parseFloat(dieselBalanceInTank) : null,
+          dieselBalanceConfirmed: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? dieselBalanceConfirmed : false,
+          remarks: remarks.toUpperCase(),
+        },
+      });
+      return;
+    }
     // Batch 6: "Send to Site" mode — open record, site engineer will close it
     if (sendToSite && entryType !== "shifting") {
       if (!equipmentId || !openingReading) {
@@ -684,6 +767,15 @@ export default function PlantEquipmentUsage() {
   const tripTotalKm = numberOfTrips && tripDistance ? parseInt(numberOfTrips) * parseFloat(tripDistance) * 2 : 0;
   const runtime = liveUsage.runtime;
   const expectedDiesel = liveUsage.expectedDiesel ?? 0;
+  const isSaveDisabled = createMutation.isPending ||
+    updateMutation.isPending ||
+    completeIncomingMutation.isPending ||
+    !equipmentId ||
+    (receivingUsage
+      ? !closingReading
+      : entryType === "shifting"
+        ? (!shiftFrom || !shiftTo || !transportEquipmentId)
+        : (!openingReading && (!startTime || !endTime) && !((entryType === "trip_based" || tripBasedEntry) && numberOfTrips && tripDistance)));
 
   const filteredUsage = usage?.filter(u => {
     if (filterDateFrom && u.date < filterDateFrom) return false;
@@ -1069,8 +1161,8 @@ export default function PlantEquipmentUsage() {
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3">
-                {editingUsage ? "Edit Equipment Usage" : "Record Equipment Usage"}
-                {!editingUsage && <AutoSaveIndicator lastSavedAt={draftLastSavedAt} />}
+                {receivingUsage ? "Complete Incoming Equipment" : editingUsage ? "Edit Equipment Usage" : "Record Equipment Usage"}
+                {!editingUsage && !receivingUsage && <AutoSaveIndicator lastSavedAt={draftLastSavedAt} />}
               </DialogTitle>
             </DialogHeader>
             <DraftRestoredBanner
@@ -1087,7 +1179,7 @@ export default function PlantEquipmentUsage() {
 
               <div>
                 <Label>Working Plant / Location</Label>
-                <Select value={workingPlant} onValueChange={setWorkingPlant}>
+                <Select value={workingPlant} onValueChange={setWorkingPlant} disabled={!!receivingUsage}>
                   <SelectTrigger data-testid="select-working-plant">
                     <SelectValue placeholder="Select working location" />
                   </SelectTrigger>
@@ -1121,7 +1213,8 @@ export default function PlantEquipmentUsage() {
                     </button>
                   )}
                 </div>
-                <Select 
+                <Select
+                  disabled={!!receivingUsage}
                   value={equipmentId} 
                   onValueChange={(value) => {
                     if (value === "__add_new__") {
@@ -1284,7 +1377,7 @@ export default function PlantEquipmentUsage() {
               {entryType !== "shifting" && (
               <>
               {/* Batch 6: Send to Site toggle */}
-              <div className="flex items-center justify-between border rounded-md p-3 bg-muted/30">
+              {!receivingUsage && <div className="flex items-center justify-between border rounded-md p-3 bg-muted/30">
                 <div>
                   <p className="text-sm font-medium">Send to Site</p>
                   <p className="text-xs text-muted-foreground">Equipment will be dispatched — site engineer closes the entry in DPR</p>
@@ -1299,7 +1392,7 @@ export default function PlantEquipmentUsage() {
                 >
                   <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${sendToSite ? "translate-x-5" : "translate-x-0"}`} />
                 </button>
-              </div>
+              </div>}
               {sendToSite && (
                 <div>
                   <Label>Destination Site <span className="text-destructive">*</span></Label>
@@ -1324,7 +1417,7 @@ export default function PlantEquipmentUsage() {
               <div className={`grid gap-4 ${sendToSite ? "grid-cols-1" : "grid-cols-2"}`}>
                 <div>
                   <Label>Opening {selectedEquipment?.meterType === "hour_meter" ? "Hrs" : "KM"}</Label>
-                  <Input type="number" step="0.1" value={openingReading} onChange={(e) => { setOpeningReading(e.target.value); setUserModifiedOpening(true); }} placeholder="0.0" data-testid="input-opening-reading" />
+                  <Input type="number" step="0.1" value={openingReading} onChange={(e) => { setOpeningReading(e.target.value); setUserModifiedOpening(true); }} placeholder="0.0" disabled={!!receivingUsage} data-testid="input-opening-reading" />
                 </div>
                 {!sendToSite && (
                 <div className="flex flex-col">
@@ -1577,12 +1670,12 @@ export default function PlantEquipmentUsage() {
               <Button 
                 onClick={handleSubmit} 
                 className="w-full" 
-                disabled={createMutation.isPending || updateMutation.isPending || !equipmentId || (entryType === "shifting" ? (!shiftFrom || !shiftTo || !transportEquipmentId) : (!openingReading && (!startTime || !endTime) && !((entryType === "trip_based" || tripBasedEntry) && numberOfTrips && tripDistance)))} 
+                disabled={isSaveDisabled}
                 data-testid="button-save-usage"
               >
-                {(createMutation.isPending || updateMutation.isPending) ? (
+                {(createMutation.isPending || updateMutation.isPending || completeIncomingMutation.isPending) ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
-                ) : entryType === "shifting" ? (
+                ) : receivingUsage ? "Complete Incoming Entry" : entryType === "shifting" ? (
                   editingUsage ? "Update Entry" : "Save Entry"
                 ) : editingUsage ? (
                   editingUsage.openingReading != null && editingUsage.closingReading == null && closingReading ? "Complete Entry" : "Update Entry"
@@ -1594,6 +1687,36 @@ export default function PlantEquipmentUsage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {incomingDestinationType && (
+        <Card data-testid="card-incoming-equipment">
+          <CardHeader className="py-4">
+            <CardTitle className="text-base">Incoming Site → {incomingDestinationType.toUpperCase()} Equipment</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {isLoadingIncoming ? (
+              <p className="text-sm text-muted-foreground">Loading incoming equipment…</p>
+            ) : incomingUsage.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No pending incoming equipment for this plant.</p>
+            ) : (
+              <div className="space-y-2">
+                {incomingUsage.map((entry) => {
+                  const equip = equipment?.find((e) => e.id === entry.equipmentId);
+                  return (
+                    <div key={entry.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3" data-testid={`incoming-usage-${entry.id}`}>
+                      <div className="text-sm">
+                        <p className="font-medium">{equip?.name ?? (entry as any).equipmentName ?? `Equipment #${entry.equipmentId}`}</p>
+                        <p className="text-muted-foreground">From {(entry as any).shiftFrom ?? (entry as any).sourceSite ?? "Site"} · opening {entry.openingReading ?? "—"} · {entry.date}</p>
+                      </div>
+                      {canEdit && <Button size="sm" onClick={() => adoptIncomingUsage(entry)} data-testid={`button-adopt-incoming-${entry.id}`}>Adopt & complete</Button>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">

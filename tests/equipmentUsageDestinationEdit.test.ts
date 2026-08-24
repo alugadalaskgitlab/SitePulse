@@ -47,6 +47,7 @@ const fx = {
 const calls = {
   updates: [] as Array<{ id: number; input: Record<string, any> }>,
   creates: [] as Array<Record<string, any>>,
+  successors: [] as Array<{ sourceId: number; movement: Record<string, any> }>,
 };
 
 // ---------------------------------------------------------------------------
@@ -132,6 +133,34 @@ vi.mock("../server/storage", () => {
     return { id: 9001, ...input };
   });
   methods.getOpenEquipmentUsageForDate = vi.fn(async () => fx.openUsage);
+  methods.getOpenIncomingEquipmentUsage = vi.fn(async (destinationType: string) =>
+    fx.openUsage.filter((row) => row.status === "open" && row.destinationType === destinationType),
+  );
+  methods.getEquipmentUsageLifecycle = vi.fn(async (ids: number[]) =>
+    (fx.existing && ids.includes(Number(fx.existing.id))) ? [fx.existing] : [],
+  );
+  methods.createEquipmentUsageSuccessor = vi.fn(async (sourceId: number, movement: Record<string, any>) => {
+    calls.successors.push({ sourceId, movement });
+    if (!fx.existing || fx.existing.status !== "closed" || fx.existing.closingReading == null) {
+      throw new Error("Source equipment usage must be closed with a closing reading");
+    }
+    return {
+      id: 901,
+      equipmentId: fx.existing.equipmentId,
+      openingReading: fx.existing.closingReading,
+      closingReading: null,
+      status: "open",
+      sourceUsageId: sourceId,
+      ...movement,
+      destinationSite: movement.destinationLabel,
+    };
+  });
+  methods.completeIncomingEquipmentUsage = vi.fn(async (id: number, input: Record<string, any>) => {
+    if (!fx.existing || fx.existing.id !== id || fx.existing.status !== "open") {
+      throw new Error("Incoming equipment has already been completed");
+    }
+    return methods.updateEquipmentUsage(id, { ...input, status: "closed" });
+  });
 
   return {
     StockShortageError: class StockShortageError extends Error {},
@@ -159,6 +188,7 @@ beforeAll(async () => {
 beforeEach(() => {
   calls.updates = [];
   calls.creates = [];
+  calls.successors = [];
 
   fx.canEdit = true;
   fx.canCreate = true;
@@ -509,5 +539,104 @@ describe("security: normal authorization preserved", () => {
     expect(res.status).toBe(200);
     expect(calls.updates).toHaveLength(1);
     expect(calls.updates[0].input.destinationSite).toBeUndefined();
+  });
+});
+
+describe("06Y: genuine Site equipment movement and receiving", () => {
+  beforeEach(() => {
+    fx.existing = {
+      id: 301,
+      equipmentId: 42,
+      date: "2026-08-23",
+      openingReading: 100,
+      closingReading: 120,
+      status: "closed",
+      destinationType: "site",
+      destinationSite: "Takkadpally-sirur",
+      siteName: "Takkadpally-sirur",
+    };
+  });
+
+  it("creates a new HMP successor using the approved plant vocabulary and successor date", async () => {
+    const res = await agent
+      .post("/api/equipment-usage/301/move")
+      .send({ destinationType: "hmp", successorDate: "2026-08-23" });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      id: 901,
+      sourceUsageId: 301,
+      openingReading: 120,
+      closingReading: null,
+      destinationSite: "HMP PLANT",
+      destinationType: "hmp",
+      status: "open",
+    });
+    expect(calls.successors).toEqual([
+      {
+        sourceId: 301,
+        movement: expect.objectContaining({
+          date: "2026-08-23",
+          destinationType: "hmp",
+          destinationLabel: "HMP PLANT",
+        }),
+      },
+    ]);
+    expect(calls.updates).toHaveLength(0);
+    expect(calls.creates).toHaveLength(0);
+  });
+
+  it("does not expose Plant-completed rows through the Site onward endpoint", async () => {
+    fx.existing!.destinationType = "hmp";
+    fx.existing!.destinationSite = "HMP PLANT";
+
+    const res = await agent
+      .post("/api/equipment-usage/301/move")
+      .send({ destinationType: "site", destinationSite: "Site B", successorDate: "2026-08-23" });
+
+    expect(res.status).toBe(409);
+    expect(calls.successors).toHaveLength(0);
+  });
+
+  it("completes the same incoming HMP row without allowing identity or inherited opening rewrites", async () => {
+    fx.existing = {
+      ...fx.existing!,
+      status: "open",
+      destinationType: "hmp",
+      destinationSite: "HMP PLANT",
+      sourceUsageId: 300,
+      openingReading: 120,
+      closingReading: null,
+    };
+
+    const res = await agent
+      .post("/api/plant-module/equipment-usage/301/complete-incoming")
+      .send({
+        equipmentId: 999,
+        openingReading: 0,
+        destinationSite: "Other",
+        closingReading: 130,
+        entryType: "time_meter",
+        dieselIssued: 5,
+        dieselSource: "plant_stock",
+      });
+
+    expect(res.status).toBe(200);
+    expect(calls.updates).toHaveLength(1);
+    expect(calls.updates[0].id).toBe(301);
+    expect(calls.updates[0].input).toMatchObject({
+      closingReading: 130,
+      dieselIssued: 5,
+      status: "closed",
+    });
+    expect(calls.updates[0].input).not.toHaveProperty("equipmentId");
+    expect(calls.updates[0].input).not.toHaveProperty("openingReading");
+    expect(calls.updates[0].input).not.toHaveProperty("destinationSite");
+  });
+
+  it("returns lifecycle state for explicitly linked usage ids", async () => {
+    const res = await agent.get("/api/equipment-usage/lifecycle?ids=301");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([expect.objectContaining({ id: 301, status: "closed" })]);
   });
 });
