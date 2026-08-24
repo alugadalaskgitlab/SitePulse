@@ -1793,6 +1793,42 @@ export class InsufficientPlantStockError extends Error {
   }
 }
 
+export type EquipmentUsageDieselLedgerType = "equipment_usage" | "direct_purchase" | null;
+
+export interface EquipmentUsageDieselTransition {
+  stockBalanceDelta: number;
+  ledgerType: EquipmentUsageDieselLedgerType;
+}
+
+/**
+ * Plan one equipment-usage diesel source transition as a single net stock
+ * balance adjustment. Positive restores stock; negative deducts stock.
+ */
+export function planEquipmentUsageDieselTransition(input: {
+  oldDieselIssued: number;
+  newDieselIssued: number;
+  oldDieselIncluded: boolean;
+  newDieselIncluded: boolean;
+  oldDieselSource: string;
+  newDieselSource: string;
+}): EquipmentUsageDieselTransition {
+  const oldAffectsStock = !input.oldDieselIncluded && input.oldDieselSource === "plant_stock";
+  const newAffectsStock = !input.newDieselIncluded && input.newDieselSource === "plant_stock";
+  const oldStockQuantity = oldAffectsStock ? input.oldDieselIssued : 0;
+  const newStockQuantity = newAffectsStock ? input.newDieselIssued : 0;
+
+  let ledgerType: EquipmentUsageDieselLedgerType = null;
+  if (input.newDieselIssued > 0 && !input.newDieselIncluded) {
+    if (input.newDieselSource === "plant_stock") ledgerType = "equipment_usage";
+    if (input.newDieselSource === "direct_purchase") ledgerType = "direct_purchase";
+  }
+
+  return {
+    stockBalanceDelta: oldStockQuantity - newStockQuantity,
+    ledgerType,
+  };
+}
+
 /**
  * Safely extract the rows array from a raw db.execute() result.
  *
@@ -4570,17 +4606,14 @@ export class DatabaseStorage implements IStorage {
       const newDieselIncluded = usage.dieselIncluded !== undefined ? usage.dieselIncluded === true : oldDieselIncluded;
       const oldDieselSource = (existing as any).dieselSource || 'plant_stock';
       const newDieselSource = usage.dieselSource !== undefined ? usage.dieselSource : oldDieselSource;
-      
-      // Stock is only affected when dieselSource is plant_stock (not contractor or direct_purchase)
-      const oldAffectsStock = !oldDieselIncluded && oldDieselSource === 'plant_stock';
-      const newAffectsStock = !newDieselIncluded && newDieselSource === 'plant_stock';
-      
-      // Need to update ledger if dieselIssued changes OR if date/equipment changes
-      const dieselDiff = newDieselIssued - oldDieselIssued;
-      const dateChanged = usage.date !== undefined && usage.date !== existing.date;
-      const equipmentChanged = usage.equipmentId !== undefined && usage.equipmentId !== existing.equipmentId;
-      const dieselSourceChanged = newDieselSource !== oldDieselSource;
-      const dieselIncludedChanged = usage.dieselIncluded !== undefined && usage.dieselIncluded !== oldDieselIncluded;
+      const dieselTransition = planEquipmentUsageDieselTransition({
+        oldDieselIssued,
+        newDieselIssued,
+        oldDieselIncluded,
+        newDieselIncluded,
+        oldDieselSource,
+        newDieselSource,
+      });
       
       // Find diesel material and HLC party for all operations
       const [dieselMaterial] = await tx.select().from(plantMaterials)
@@ -4600,28 +4633,23 @@ export class DatabaseStorage implements IStorage {
       );
       
       if (dieselMaterial) {
-        // Handle stock balance restoration/deduction based on source changes
-        // If old source affected stock but new doesn't, restore the old amount
-        if (oldAffectsStock && !newAffectsStock && oldDieselIssued > 0) {
-          await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, oldDieselIssued, null);
-        }
-        
-        // If new source affects stock but old didn't, deduct the new amount
-        if (!oldAffectsStock && newAffectsStock && newDieselIssued > 0) {
-          await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, -newDieselIssued, dieselMaterial.defaultUom || 'Liters',
-            { material: dieselMaterial.name || 'Diesel', source: 'plant_stock' }); // 06M-B guard
-        }
-        
-        // If both old and new affect stock, handle the difference.
-        // 06M-B: only the NET additional litres are validated (dieselDiff > 0);
-        // a reduction (dieselDiff < 0) restores stock and can never be blocked.
-        if (oldAffectsStock && newAffectsStock && dieselDiff !== 0) {
-          await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, -dieselDiff, dieselMaterial.defaultUom || 'Liters',
-            { material: dieselMaterial.name || 'Diesel', source: 'plant_stock' });
+        // One source change produces exactly one net balance adjustment.
+        // Negative deltas are guarded deductions; positive deltas are restores.
+        if (dieselTransition.stockBalanceDelta !== 0) {
+          await this._adjustStockBalance(
+            tx,
+            dieselMaterial.id,
+            hlcPartyId,
+            dieselTransition.stockBalanceDelta,
+            dieselMaterial.defaultUom || 'Liters',
+            dieselTransition.stockBalanceDelta < 0
+              ? { material: dieselMaterial.name || 'Diesel', source: 'plant_stock' }
+              : undefined,
+          );
         }
         
         // Create new ledger entry based on current source
-        if (newDieselIssued > 0 && !newDieselIncluded && newDieselSource !== 'contractor') {
+        if (dieselTransition.ledgerType) {
           const usageDate = usage.date ?? existing.date;
           const [currentBalance] = await tx.select().from(stockBalances)
             .where(and(
@@ -4630,7 +4658,7 @@ export class DatabaseStorage implements IStorage {
             ))
             .limit(1);
           
-          if (newDieselSource === 'plant_stock') {
+          if (dieselTransition.ledgerType === 'equipment_usage') {
             await tx.insert(stockLedger).values({
               date: usageDate,
               partyId: hlcPartyId,
@@ -4642,7 +4670,7 @@ export class DatabaseStorage implements IStorage {
               uom: dieselMaterial.defaultUom || 'Liters',
               notes: `Diesel issued to ${equipment?.name || 'Equipment'}`,
             });
-          } else if (newDieselSource === 'direct_purchase') {
+          } else {
             const siteName = usage.siteName ?? ((existing as any).siteName || 'Site');
             const fuelStation = usage.fuelStation ?? ((existing as any).fuelStation || 'Fuel Station');
             const billNumber = usage.billNumber ?? ((existing as any).billNumber || '');

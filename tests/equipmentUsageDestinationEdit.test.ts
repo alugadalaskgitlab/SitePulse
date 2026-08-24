@@ -176,6 +176,9 @@ beforeEach(() => {
     equipmentName: "JCB-3DX",
     date: "2026-08-23",
     openingReading: 1200,
+    dieselIssued: 20,
+    dieselIncluded: false,
+    dieselSource: "direct_purchase",
     destinationSite: "THAKKADPALLY",
     status: "open",
   };
@@ -333,6 +336,43 @@ describe("E: PUT never creates a second equipment_usage", () => {
     expect(res.status).toBe(404);
     expect(calls.creates).toHaveLength(0);
     expect(calls.updates).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 06X-HF4. Destination and diesel source change together on one PUT
+// ---------------------------------------------------------------------------
+
+describe("06X-HF4: combined destination-site and diesel-source update", () => {
+  it("returns 200, keeps the same id, and saves both changes without creating a duplicate", async () => {
+    const res = await agent
+      .put("/api/plant-module/equipment-usage/301")
+      .send({
+        destinationSite: "Site B",
+        dieselSource: "plant_stock",
+        dieselIncluded: false,
+        dieselIssued: 20,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.status).not.toBe(500);
+    expect(res.body).toMatchObject({
+      id: 301,
+      destinationSite: "Site B",
+      dieselSource: "plant_stock",
+      dieselIssued: 20,
+    });
+    expect(calls.updates).toEqual([
+      {
+        id: 301,
+        input: expect.objectContaining({
+          destinationSite: "Site B",
+          dieselSource: "plant_stock",
+          dieselIssued: 20,
+        }),
+      },
+    ]);
+    expect(calls.creates).toHaveLength(0);
   });
 });
 
