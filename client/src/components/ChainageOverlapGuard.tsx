@@ -26,7 +26,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { AlertTriangle } from "lucide-react";
 import { formatChainageKm } from "@shared/barSide";
 import {
-  findChainageOverlaps,
+  findActionableChainageOverlaps,
   isChainageGuardRow,
   type CandidateChainageRow,
   type ChainageOverlapHit,
@@ -141,11 +141,20 @@ export function useChainageOverlapContext(boqItemIds: number[], excludeDprId?: n
 export function useChainageOverlapHits(
   rows: CandidateChainageRow[],
   priors: PriorChainageEntry[],
+  exemptRowKeys?: ReadonlySet<string | number>,
 ): Map<string | number, ChainageOverlapHit[]> {
-  return useMemo(() => findChainageOverlaps(rows, priors), [
-    // cheap stable dependency: serialize the guard-relevant fields only
-    JSON.stringify(rows.filter(isChainageGuardRow).map((r) => [r.rowKey, r.boqItemId, r.side ?? null, r.fromKm, r.toKm])),
+  const exemptKey = JSON.stringify(Array.from(exemptRowKeys ?? []).map(String).sort());
+  return useMemo(() => findActionableChainageOverlaps(
+    rows,
     priors,
+    { exemptRowKeys },
+  ), [
+    // cheap stable dependency: serialize the guard-relevant fields only
+    JSON.stringify(rows.filter(isChainageGuardRow).map((r) => [
+      r.rowKey, r.boqItemId, r.side ?? null, r.fromKm, r.toKm, r.layerNo ?? null,
+    ])),
+    priors,
+    exemptKey,
   ]);
 }
 

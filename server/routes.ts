@@ -1449,6 +1449,46 @@ export async function registerRoutes(
     }
   });
 
+  // 06X-HF5 Part 2 — prior submitted chainage progress for the entry-screen
+  // overlap warning. This literal route MUST stay above /api/dprs/:id so
+  // Express does not treat "chainage-overlap-context" as a DPR id.
+  // READ-ONLY. Same canonical filter as the server recheck, so client warning
+  // and server enforcement always agree.
+  app.get("/api/dprs/chainage-overlap-context", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "site_dprs")) return;
+      const itemIds = String(req.query.boqItemIds ?? "")
+        .split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n > 0);
+      const excludeDprId = req.query.excludeDprId != null && String(req.query.excludeDprId).trim() !== ""
+        ? Number(req.query.excludeDprId) : null;
+      if (itemIds.length === 0) return res.json({ entries: [] });
+      if (itemIds.length > 200) return res.status(400).json({ message: "Too many BOQ items" });
+      // Site-access security: restricted users may only read progress for
+      // projects whose site is permitted (same rule as the Progress Report).
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      if (permittedSiteNames !== null) {
+        const items = await Promise.all(itemIds.map((id) => storage.getBoqItem(id)));
+        const projectIds = new Set<number>();
+        for (const item of items as any[]) {
+          if (item?.boqProjectId != null) projectIds.add(Number(item.boqProjectId));
+        }
+        const sites = await storage.getSites();
+        const projects = await Promise.all(Array.from(projectIds).map((pid) => storage.getBoqProject(pid)));
+        for (const project of projects) {
+          const projectSite = project?.siteId != null ? sites.find((s) => s.id === project.siteId)?.name ?? null : null;
+          if (projectSite == null || !siteMatchesPermitted(projectSite, permittedSiteNames)) {
+            return res.status(403).json({ message: "Access denied for this site" });
+          }
+        }
+      }
+      const entries = await storage.getSubmittedChainageEntries(itemIds, excludeDprId);
+      res.json({ entries });
+    } catch (err) {
+      console.error("GET /api/dprs/chainage-overlap-context:", err);
+      res.status(500).json({ message: "Failed to load overlap context" });
+    }
+  });
+
   // Get single DPR details
   app.get(api.dprs.get.path, async (req, res) => {
     // Batch 06B: require DPR view permission — this endpoint returns full DPR
@@ -1925,43 +1965,8 @@ export async function registerRoutes(
     }
   });
 
-  // Batch 06B — prior submitted chainage progress for the entry-screen
-  // overlap warning. READ-ONLY. Same canonical filter as the server recheck,
-  // so client warning and server enforcement always agree.
-  app.get("/api/dprs/chainage-overlap-context", async (req, res) => {
-    try {
-      if (!assertCreate(req, res, "site_dprs")) return;
-      const itemIds = String(req.query.boqItemIds ?? "")
-        .split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n > 0);
-      const excludeDprId = req.query.excludeDprId != null && String(req.query.excludeDprId).trim() !== ""
-        ? Number(req.query.excludeDprId) : null;
-      if (itemIds.length === 0) return res.json({ entries: [] });
-      if (itemIds.length > 200) return res.status(400).json({ message: "Too many BOQ items" });
-      // Site-access security: restricted users may only read progress for
-      // projects whose site is permitted (same rule as the Progress Report).
-      const permittedSiteNames = await getPermittedSiteNames(req);
-      if (permittedSiteNames !== null) {
-        const items = await Promise.all(itemIds.map((id) => storage.getBoqItem(id)));
-        const projectIds = new Set<number>();
-        for (const item of items as any[]) {
-          if (item?.boqProjectId != null) projectIds.add(Number(item.boqProjectId));
-        }
-        const sites = await storage.getSites();
-        const projects = await Promise.all(Array.from(projectIds).map((pid) => storage.getBoqProject(pid)));
-        for (const project of projects) {
-          const projectSite = project?.siteId != null ? sites.find((s) => s.id === project.siteId)?.name ?? null : null;
-          if (projectSite == null || !siteMatchesPermitted(projectSite, permittedSiteNames)) {
-            return res.status(403).json({ message: "Access denied for this site" });
-          }
-        }
-      }
-      const entries = await storage.getSubmittedChainageEntries(itemIds, excludeDprId);
-      res.json({ entries });
-    } catch (err) {
-      console.error("GET /api/dprs/chainage-overlap-context:", err);
-      res.status(500).json({ message: "Failed to load overlap context" });
-    }
-  });
+  // Batch 06B — prior submitted chainage progress route is registered above
+  // /api/dprs/:id; keep this marker as the overlap-resolution section boundary.
 
   // Create new DPR (draft or submitted)
   // 06M-B: shared 409 mapping for the diesel plant-stock sufficiency guard.

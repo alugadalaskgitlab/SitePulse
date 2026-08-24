@@ -33,7 +33,7 @@ import { ProgrammeBarPicker, BarLinkFeedback } from "@/components/ProgrammeBarPi
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { DprDayTripsPanel } from "@/components/DprDayTripsPanel";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
-import { type CandidateChainageRow } from "@shared/chainageOverlap";
+import { unchangedChainageRowKeys, type CandidateChainageRow } from "@shared/chainageOverlap";
 import { boqItemDisplayName } from "@shared/boqItemName";
 import { layerFieldLabel } from "@shared/layerDisplay";
 import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
@@ -450,7 +450,25 @@ export default function SiteEdit() {
     progress.map((p) => p.boqItemId).filter((bid): bid is number => bid != null),
     id,
   );
-  const overlapHits = useChainageOverlapHits(overlapCandidateRows, overlapPriors);
+  // Submitted-version edits use the same persisted-claim exemption as the
+  // server: equipment, remarks and quantity-only edits must not revive an old
+  // chainage warning. A changed/new claim still receives the warning.
+  const persistedOverlapRows: CandidateChainageRow[] = Array.isArray(dpr?.progress)
+    ? dpr.progress.map((p: any, i: number) => ({
+        rowKey: p.id ?? `persisted-${i}`,
+        boqItemId: p.boqItemId != null ? Number(p.boqItemId) : null,
+        side: p.side ?? null,
+        fromKm: p.chainageFromKm != null ? Number(p.chainageFromKm) : parseChainageKm(p.chainageFrom),
+        toKm: p.chainageToKm != null ? Number(p.chainageToKm) : parseChainageKm(p.chainageTo),
+        chainageOverrideReason: p.chainageOverrideReason ?? null,
+        label: p.activity ?? null,
+        noSiteWork: !!p.noSiteWork,
+        isIncidental: !!p.isIncidental,
+        layerNo: p.layerNo != null && Number.isFinite(Number(p.layerNo)) ? Number(p.layerNo) : null,
+      }))
+    : [];
+  const unchangedOverlapRowKeys = unchangedChainageRowKeys(overlapCandidateRows, persistedOverlapRows);
+  const overlapHits = useChainageOverlapHits(overlapCandidateRows, overlapPriors, unchangedOverlapRowKeys);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
     { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }

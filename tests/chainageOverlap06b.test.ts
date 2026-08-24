@@ -14,6 +14,7 @@ import {
   compareChainageRows,
   isChainageGuardRow,
   findChainageOverlaps,
+  findActionableChainageOverlaps,
   chainageOverlapReadinessIssues,
   unchangedChainageRowKeys,
   type CandidateChainageRow,
@@ -213,6 +214,83 @@ describe("submitted-version unchanged history exemption (06X-HF2)", () => {
     );
     expect(routes).toContain("unchangedChainageRowKeys");
     expect(versionSlice).toContain("versionOriginal.progress");
+  });
+});
+
+describe("submitted DPR edit overlap parity (06X-HF5 Part 2)", () => {
+  const clearingPrior = prior({
+    entryId: 290,
+    dprId: 249,
+    dprDate: "2026-05-30",
+    boqItemId: 1,
+    side: "RHS",
+    fromKm: 2.6,
+    toKm: 3.1,
+  });
+  const embankmentPrior = prior({
+    entryId: 295,
+    dprId: 253,
+    dprDate: "2026-06-06",
+    boqItemId: 4,
+    side: "RHS",
+    fromKm: 2.4,
+    toKm: 2.7,
+  });
+
+  it("A: unchanged submitted claims stay exempt in both UI hits and server readiness", () => {
+    const current = [
+      row({ rowKey: "clearing", boqItemId: 1, side: "RHS", fromKm: 2.9, toKm: 3.05 }),
+      row({ rowKey: "embankment", boqItemId: 4, side: "RHS", fromKm: 2.57, toKm: 2.66 }),
+    ];
+    const persisted = [
+      row({ rowKey: 315, boqItemId: 1, side: "RHS", fromKm: 2.9, toKm: 3.05 }),
+      row({ rowKey: 314, boqItemId: 4, side: "RHS", fromKm: 2.57, toKm: 2.66 }),
+    ];
+    const exemptRowKeys = unchangedChainageRowKeys(current, persisted);
+
+    expect(findActionableChainageOverlaps(
+      current,
+      [clearingPrior, embankmentPrior],
+      { exemptRowKeys },
+    ).size).toBe(0);
+    expect(chainageOverlapReadinessIssues(
+      current,
+      [clearingPrior, embankmentPrior],
+      { exemptRowKeys },
+    )).toEqual([]);
+  });
+
+  it("B: a changed overlapping claim shows a hit and requires a reason until one is supplied", () => {
+    const changed = [
+      row({ rowKey: "clearing", boqItemId: 1, side: "RHS", fromKm: 2.85, toKm: 3.05 }),
+    ];
+    const persisted = [
+      row({ rowKey: 315, boqItemId: 1, side: "RHS", fromKm: 2.9, toKm: 3.05 }),
+    ];
+    const exemptRowKeys = unchangedChainageRowKeys(changed, persisted);
+
+    expect(exemptRowKeys.size).toBe(0);
+    expect(findActionableChainageOverlaps(changed, [clearingPrior], { exemptRowKeys }).get("clearing"))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ withDprId: 249, withEntryId: 290 })]));
+    expect(chainageOverlapReadinessIssues(changed, [clearingPrior], { exemptRowKeys })).toHaveLength(1);
+
+    const withReason = [{ ...changed[0], chainageOverrideReason: "Correction after survey" }];
+    expect(chainageOverlapReadinessIssues(withReason, [clearingPrior], { exemptRowKeys })).toEqual([]);
+  });
+
+  it("C: a non-overlapping change remains unaffected", () => {
+    const changed = [
+      row({ rowKey: "clearing", boqItemId: 1, side: "RHS", fromKm: 3.1, toKm: 3.2 }),
+    ];
+    expect(findActionableChainageOverlaps(changed, [clearingPrior]).size).toBe(0);
+    expect(chainageOverlapReadinessIssues(changed, [clearingPrior])).toEqual([]);
+  });
+
+  it("registers the literal overlap-context route before the generic DPR id route", async () => {
+    const fs = await import("node:fs/promises");
+    const routes = await fs.readFile("server/routes.ts", "utf8");
+    expect(routes.indexOf('app.get("/api/dprs/chainage-overlap-context"'))
+      .toBeLessThan(routes.indexOf("app.get(api.dprs.get.path"));
   });
 });
 

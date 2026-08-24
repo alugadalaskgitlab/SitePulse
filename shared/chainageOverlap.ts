@@ -320,6 +320,20 @@ export function findChainageOverlaps(
   return out;
 }
 
+/**
+ * Client-facing overlap hits after applying the same unchanged-history
+ * exemption used by submitted-version validation on the server.
+ */
+export function findActionableChainageOverlaps(
+  rows: CandidateChainageRow[],
+  priors: PriorChainageEntry[],
+  options?: { exemptRowKeys?: ReadonlySet<string | number> },
+): Map<string | number, ChainageOverlapHit[]> {
+  const hits = findChainageOverlaps(rows, priors);
+  for (const rowKey of options?.exemptRowKeys ?? []) hits.delete(rowKey);
+  return hits;
+}
+
 export type ChainageOverlapIssue = {
   section: "activities";
   label: string;
