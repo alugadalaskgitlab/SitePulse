@@ -42,6 +42,8 @@ import { parseDprError } from "@/lib/dprErrors";
 import { resolveReturnTo } from "@/lib/progressReportNav";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import {
+  adoptOpenUsageIntoDprRow,
+  resolveOpenUsageRowMatch,
   unlinkedOpenUsages,
   usageToDprEquipmentRow,
   type OpenUsageLike,
@@ -517,14 +519,41 @@ export default function SiteEdit() {
     enabled: !!header.date && !!header.site,
   });
   const unlinkedDispatchedUsages = unlinkedOpenUsages(openUsages, equipment);
+  const masterForUsage = (usage: OpenUsageLike) =>
+    equipmentMaster?.find((item) => item.id === usage.equipmentId);
+
+  // 06X-HF6 follow-up: old DPRs may already contain the dispatched machine.
+  // Adopt unique canonical matches in place; never add a second row. If more
+  // than one row matches, leave the dispatch pending for an explicit review.
+  useEffect(() => {
+    if (!openUsages.length) return;
+    setEquipment((current) => {
+      let next = current;
+      for (const usage of openUsages) {
+        const master = masterForUsage(usage);
+        const match = resolveOpenUsageRowMatch(usage, next, master);
+        if (match.kind !== "adopt") continue;
+        if (next === current) next = [...current];
+        next[match.rowIndex] = adoptOpenUsageIntoDprRow(next[match.rowIndex], usage, master);
+      }
+      return next;
+    });
+  }, [openUsages, equipmentMaster]);
+
   const useDispatchedUsage = (usage: OpenUsageLike) => {
-    const master = equipmentMaster?.find((item) => item.id === usage.equipmentId);
+    const master = masterForUsage(usage);
     const linkedRow: EquipmentEntry = {
       ...usageToDprEquipmentRow(usage, master),
       isNew: true,
     };
     setEquipment((current) => {
-      if (current.some((row) => Number(row.plantUsageId) === usage.id)) return current;
+      const match = resolveOpenUsageRowMatch(usage, current, master);
+      if (match.kind === "already_linked" || match.kind === "ambiguous") return current;
+      if (match.kind === "adopt") {
+        const next = [...current];
+        next[match.rowIndex] = adoptOpenUsageIntoDprRow(next[match.rowIndex], usage, master);
+        return next;
+      }
       if (current.length === 1 && !current[0].machine) return [linkedRow];
       return [...current, linkedRow];
     });
@@ -2151,10 +2180,15 @@ export default function SiteEdit() {
                 </p>
               </div>
               {unlinkedDispatchedUsages.map((usage) => {
-                const master = equipmentMaster?.find((item) => item.id === usage.equipmentId);
+                const master = masterForUsage(usage);
+                const match = resolveOpenUsageRowMatch(usage, equipment, master);
+                const isAmbiguous = match.kind === "ambiguous";
                 const dieselIssued = usage.diesel ?? usage.dieselIssued;
                 return (
-                  <div key={usage.id} className="flex flex-col gap-2 rounded-md border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div
+                    key={usage.id}
+                    className={`flex flex-col gap-2 rounded-md border bg-background p-3 sm:flex-row sm:items-center sm:justify-between ${isAmbiguous ? "border-amber-300" : ""}`}
+                  >
                     <div className="text-sm">
                       <p className="font-medium">
                         {master?.name || `Equipment #${usage.equipmentId}`}
@@ -2171,14 +2205,20 @@ export default function SiteEdit() {
                           ? `HIRED: ${master.vendorName || "VENDOR"}`
                           : "HLC OWN"}
                       </p>
+                      {isAmbiguous && (
+                        <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300" data-testid={`dispatch-ambiguity-${usage.id}`}>
+                          Multiple unlinked DPR rows match this dispatch. Resolve the duplicate rows before linking; no row was selected automatically.
+                        </p>
+                      )}
                     </div>
                     <Button
                       type="button"
                       size="sm"
+                      disabled={isAmbiguous}
                       onClick={() => useDispatchedUsage(usage)}
                       data-testid={`button-use-dispatch-${usage.id}`}
                     >
-                      Use in this report
+                      {isAmbiguous ? "Review duplicate rows" : "Use in this report"}
                     </Button>
                   </div>
                 );

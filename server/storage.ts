@@ -372,6 +372,7 @@ import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc,
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { pickLatestClosing, type ResolvedClosing } from "@shared/equipmentContinuity";
+import { shouldCreateDprEquipmentDieselLedger } from "@shared/dprPlantLink";
 import { normaliseUnit, computeRequirementStatus } from "@shared/planningEngine";
 import { convertSolidQty } from "@shared/uomConvert";
 import { canonMaterialName } from "@shared/materialMatch";
@@ -2822,9 +2823,7 @@ export class DatabaseStorage implements IStorage {
     const DPR_DIESEL_CUTOFF_DATE = '2026-02-01';
     if (dprDate < DPR_DIESEL_CUTOFF_DATE) return;
 
-    const dieselLogs = insertedEquipLogs.filter(
-      e => e.diesel && e.diesel > 0 && (e.dieselSource === 'direct_purchase' || e.dieselSource === 'plant_stock')
-    );
+    const dieselLogs = insertedEquipLogs.filter(shouldCreateDprEquipmentDieselLedger);
     if (dieselLogs.length === 0) return;
 
     const [dieselMaterial] = await tx.select().from(plantMaterials)

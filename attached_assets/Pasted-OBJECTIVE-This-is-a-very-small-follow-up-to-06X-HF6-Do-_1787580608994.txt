@@ -1,0 +1,179 @@
+OBJECTIVE
+
+This is a very small follow-up to 06X-HF6.
+
+Do not redesign HF6.
+
+The purpose is only to cover one production edge case:
+
+An equipment row may already exist inside an old DPR before the Plant
+dispatch is created.
+
+In that situation, SiteEdit must not ignore the pending dispatch merely
+because the machine is already present in the DPR, and it must not create
+a duplicate equipment row.
+
+
+INVESTIGATE FIRST
+
+After HF6 is complete, inspect the implemented SiteEdit discovery/matching
+logic.
+
+Specifically verify what happens when:
+
+- an existing DPR already contains equipment TS08JG4572;
+- that DPR equipment row has no plantUsageId;
+- a separate OPEN equipment_usage record for TS08JG4572 is later
+  dispatched to the same DPR site/date.
+
+If HF6 already handles this correctly, make NO code change and just report
+that it is covered.
+
+
+REQUIRED BEHAVIOUR
+
+For every open dispatch returned for the DPR site/date:
+
+
+CASE 1 — no matching equipment row exists in the DPR
+
+Keep HF6 behaviour:
+offer/add the dispatched equipment normally.
+
+
+CASE 2 — matching equipment already exists in the DPR but is NOT linked
+to the dispatch
+
+Do NOT skip the dispatch.
+
+Do NOT create another equipment row.
+
+Instead, adopt/link the pending dispatch into the existing DPR equipment
+row.
+
+Populate from the original equipment_usage record, where available:
+
+- plantUsageId
+- opening reading
+- start/opening time
+- diesel source
+- diesel issued quantity
+- owner/hire context
+- other dispatch-side fields already mapped by the canonical
+  GuidedDpr/SiteEntry flow
+
+Preserve the existing DPR row itself.
+
+Do not overwrite valid manually entered DPR-side completion information
+unless the canonical existing flow already requires it.
+
+
+CASE 3 — DPR row is already linked to that exact plantUsageId
+
+Do nothing.
+
+Never attach the same dispatch twice.
+
+
+MATCHING SAFETY
+
+Prefer canonical equipment identity/id used by the existing DPR and
+equipment_usage models.
+
+Do not rely only on equipment display name.
+
+Registration number may be used only according to existing canonical
+equipment matching conventions.
+
+If multiple DPR rows ambiguously match one pending dispatch:
+
+STOP automatic adoption for that dispatch and surface/report the ambiguity.
+Do not guess.
+
+
+CLOSE-ON-SUBMIT
+
+After adoption, completing the DPR must continue to close the ORIGINAL
+equipment_usage record through the existing HF6/canonical close mechanism.
+
+Same equipment_usage id.
+
+No duplicate equipment_usage row.
+
+
+DIESEL SAFETY
+
+Adopting an existing DPR equipment row must not:
+
+- create another diesel issue;
+- create another diesel purchase;
+- create another stock transaction;
+- duplicate consumption.
+
+This is linkage/hydration only.
+
+
+TEST — PRODUCTION-SHAPED CASE
+
+Use the equivalent of:
+
+Site: TAKKADPALLY-SIRUR
+Date: 08 Aug 2026
+Equipment: SOIL COMPACTOR / TS08JG4572
+
+Sequence:
+
+1. DPR already exists and already contains the Soil Compactor.
+2. DPR equipment row has no plantUsageId.
+3. Original equipment_usage is later changed to an open dispatch to that
+   site/date.
+4. Open the DPR through Edit Report.
+
+Expected:
+
+- only ONE Soil Compactor row remains in the DPR;
+- that existing row becomes linked to the open dispatch;
+- opening reading/time/diesel information is populated from the dispatch;
+- plantUsageId is the original equipment_usage id;
+- closing the usage from the DPR closes that same original row.
+
+
+NON-GOALS
+
+Do not touch:
+
+- Site-originated equipment usage;
+- Site → Site movement;
+- Site → Plant movement;
+- Instruction 06Y;
+- overlap permissions;
+- overlap calculations;
+- Cut/Fill;
+- Work Programme;
+- schema.
+
+
+SCHEMA
+
+No schema change expected.
+
+If a schema change appears necessary, STOP and report before changing it.
+
+
+REPORT BACK
+
+Confirm:
+
+1. Whether HF6 already covered this case.
+2. If not, exact code changed.
+3. How existing unlinked DPR equipment rows are matched to a pending
+   dispatch.
+4. Confirmation that no duplicate DPR equipment row is created.
+5. Confirmation that the original equipment_usage id is preserved.
+6. Diesel duplication test result.
+7. Full test result.
+8. No schema change.
+
+
+DO NOT START 06Y.
+DO NOT START ANOTHER BATCH.

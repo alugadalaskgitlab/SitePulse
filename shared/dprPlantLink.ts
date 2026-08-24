@@ -41,19 +41,39 @@ export type OpenUsageLike = {
   siteName?: string | null;
 };
 
-type RowLike = {
+export type EquipmentRowLike = {
   machine?: string;
+  vehicleNo?: string;
+  equipmentId?: unknown;
   plantUsageId?: unknown;
   passthrough?: Record<string, unknown>;
 };
+
+type RowLike = EquipmentRowLike;
+
+function validPositiveId(value: unknown): number | null {
+  const id = Number(value);
+  return value != null && Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function rowUsageId(row: RowLike): number | null {
+  return validPositiveId(row?.plantUsageId ?? row?.passthrough?.["plantUsageId"]);
+}
+
+function rowEquipmentId(row: RowLike): number | null {
+  return validPositiveId(row?.equipmentId ?? row?.passthrough?.["equipmentId"]);
+}
+
+function normaliseRegistration(value: unknown): string {
+  return String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
 
 /** plantUsageIds already linked into the given equipment rows */
 export function linkedUsageIds(rows: RowLike[]): Set<number> {
   const ids = new Set<number>();
   for (const r of rows ?? []) {
-    const v = r?.plantUsageId ?? r?.passthrough?.["plantUsageId"];
-    const n = Number(v);
-    if (v != null && Number.isInteger(n) && n > 0) ids.add(n);
+    const id = rowUsageId(r);
+    if (id != null) ids.add(id);
   }
   return ids;
 }
@@ -135,6 +155,122 @@ export function usageToDprEquipmentRow(
     totalKm: pt.totalKm != null ? Number(pt.totalKm) : null,
     waterQuantity: null,
   };
+}
+
+export type OpenUsageRowMatch =
+  | { kind: "already_linked"; rowIndex: number }
+  | { kind: "adopt"; rowIndex: number; matchedBy: "equipment_id" | "registration" }
+  | { kind: "ambiguous"; rowIndexes: number[]; matchedBy: "equipment_id" | "registration" }
+  | { kind: "add" };
+
+/**
+ * Resolve a pending dispatch against DPR equipment rows without fuzzy names.
+ * Canonical equipmentId wins. Registration is only a fallback for legacy rows
+ * that do not carry an equipmentId; conflicting IDs are never overridden.
+ */
+export function resolveOpenUsageRowMatch(
+  usage: OpenUsageLike,
+  rows: EquipmentRowLike[],
+  equipment?: { registrationNumber?: string | null },
+): OpenUsageRowMatch {
+  const alreadyLinkedIndex = (rows ?? []).findIndex((row) => rowUsageId(row) === usage.id);
+  if (alreadyLinkedIndex >= 0) return { kind: "already_linked", rowIndex: alreadyLinkedIndex };
+
+  const available = (rows ?? [])
+    .map((row, rowIndex) => ({ row, rowIndex }))
+    .filter(({ row }) => rowUsageId(row) == null);
+  const idMatches = available
+    .filter(({ row }) => rowEquipmentId(row) === usage.equipmentId)
+    .map(({ rowIndex }) => rowIndex);
+  if (idMatches.length === 1) {
+    return { kind: "adopt", rowIndex: idMatches[0], matchedBy: "equipment_id" };
+  }
+  if (idMatches.length > 1) {
+    return { kind: "ambiguous", rowIndexes: idMatches, matchedBy: "equipment_id" };
+  }
+
+  const registration = normaliseRegistration(equipment?.registrationNumber);
+  if (!registration) return { kind: "add" };
+  const registrationMatches = available
+    .filter(({ row }) => rowEquipmentId(row) == null)
+    .filter(({ row }) => normaliseRegistration(row.vehicleNo) === registration)
+    .map(({ rowIndex }) => rowIndex);
+  if (registrationMatches.length === 1) {
+    return { kind: "adopt", rowIndex: registrationMatches[0], matchedBy: "registration" };
+  }
+  if (registrationMatches.length > 1) {
+    return { kind: "ambiguous", rowIndexes: registrationMatches, matchedBy: "registration" };
+  }
+  return { kind: "add" };
+}
+
+function hasText(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Link dispatch facts into one existing DPR row. Opening-side dispatch facts
+ * are authoritative when present. Existing DPR-side completion facts (closing
+ * reading/time, task/operator, trips and water) are preserved.
+ */
+export function adoptOpenUsageIntoDprRow<T extends EquipmentRowLike>(
+  existing: T,
+  usage: OpenUsageLike,
+  equipment?: { name?: string | null; registrationNumber?: string | null },
+): T & DprEquipmentUsageRow {
+  const dispatch = usageToDprEquipmentRow(usage, equipment);
+  const usageDiesel = usage.diesel ?? usage.dieselIssued;
+  const hasDispatchSource = hasText(usage.dieselSource) || usage.dieselIncluded === true;
+  return {
+    ...dispatch,
+    ...existing,
+    machine: hasText(existing.machine) ? String(existing.machine) : dispatch.machine,
+    vehicleNo: hasText(existing.vehicleNo) ? String(existing.vehicleNo) : dispatch.vehicleNo,
+    operator: hasText((existing as any).operator) ? String((existing as any).operator) : dispatch.operator,
+    task: hasText((existing as any).task) ? String((existing as any).task) : dispatch.task,
+    entryType: hasText(usage.entryType)
+      ? dispatch.entryType
+      : (hasText((existing as any).entryType) ? String((existing as any).entryType) : dispatch.entryType),
+    startTime: hasText(usage.startTime)
+      ? dispatch.startTime
+      : (hasText((existing as any).startTime) ? String((existing as any).startTime) : ""),
+    endTime: hasText((existing as any).endTime)
+      ? String((existing as any).endTime)
+      : dispatch.endTime,
+    openingReading: usage.openingReading != null
+      ? dispatch.openingReading
+      : ((existing as any).openingReading ?? null),
+    closingReading: (existing as any).closingReading ?? dispatch.closingReading,
+    diesel: usageDiesel != null ? dispatch.diesel : ((existing as any).diesel ?? null),
+    equipmentId: usage.equipmentId,
+    plantUsageId: usage.id,
+    dieselSource: hasDispatchSource
+      ? dispatch.dieselSource
+      : (hasText((existing as any).dieselSource) ? String((existing as any).dieselSource) : dispatch.dieselSource),
+    fuelStation: hasText(usage.fuelStation)
+      ? dispatch.fuelStation
+      : (hasText((existing as any).fuelStation) ? String((existing as any).fuelStation) : ""),
+    billNumber: hasText(usage.billNumber)
+      ? dispatch.billNumber
+      : (hasText((existing as any).billNumber) ? String((existing as any).billNumber) : ""),
+    amountPaid: usage.amountPaid != null ? dispatch.amountPaid : ((existing as any).amountPaid ?? null),
+    numberOfTrips: (existing as any).numberOfTrips ?? dispatch.numberOfTrips,
+    tripDistance: (existing as any).tripDistance ?? dispatch.tripDistance,
+    totalKm: (existing as any).totalKm ?? dispatch.totalKm,
+    waterQuantity: (existing as any).waterQuantity ?? dispatch.waterQuantity,
+  };
+}
+
+/** Linked dispatches already own their diesel issue/purchase ledger effects. */
+export function shouldCreateDprEquipmentDieselLedger(row: {
+  diesel?: number | null;
+  dieselSource?: string | null;
+  plantUsageId?: unknown;
+}): boolean {
+  const source = row.dieselSource;
+  return rowUsageId(row) == null
+    && Number(row.diesel ?? 0) > 0
+    && (source === "direct_purchase" || source === "plant_stock");
 }
 
 /**

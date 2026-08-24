@@ -4,7 +4,10 @@ import express from "express";
 import { createServer } from "http";
 import request from "supertest";
 import {
+  adoptOpenUsageIntoDprRow,
   linkedUsageIds,
+  resolveOpenUsageRowMatch,
+  shouldCreateDprEquipmentDieselLedger,
   unlinkedOpenUsages,
   usageToDprEquipmentRow,
   usageToGuidedRow,
@@ -174,12 +177,114 @@ describe("06X-HF6 SiteEdit dispatch discovery", () => {
     expect(unlinkedOpenUsages([], [editRow])).toEqual([]);
   });
 
+  it("adopts a later dispatch into the one production-shaped existing row without duplicating it", () => {
+    const existingRows = [{
+      machine: "SOIL COMPACTOR",
+      vehicleNo: "TS08JG4572",
+      equipmentId: 47,
+      plantUsageId: null,
+      operator: "MANUAL OPERATOR",
+      task: "COMPACTION",
+      entryType: "time_meter",
+      startTime: "",
+      endTime: "17:00",
+      openingReading: 2500,
+      closingReading: 2521.6,
+      diesel: null,
+      dieselSource: "plant_stock",
+      fuelStation: "",
+      billNumber: "",
+      amountPaid: null,
+      numberOfTrips: null,
+      tripDistance: null,
+      totalKm: null,
+      waterQuantity: null,
+    }];
+    const master = { name: "SOIL COMPACTOR", registrationNumber: "TS08JG4572" };
+    expect(resolveOpenUsageRowMatch(OPEN_USAGE, existingRows, master)).toEqual({
+      kind: "adopt",
+      rowIndex: 0,
+      matchedBy: "equipment_id",
+    });
+
+    const adopted = adoptOpenUsageIntoDprRow(existingRows[0], OPEN_USAGE, master);
+    const finalRows = [adopted];
+    expect(finalRows).toHaveLength(1);
+    expect(adopted).toMatchObject({
+      equipmentId: 47,
+      plantUsageId: 161,
+      openingReading: 2515.4,
+      startTime: "08:10",
+      diesel: 20,
+      dieselSource: "direct_purchase",
+      operator: "MANUAL OPERATOR",
+      task: "COMPACTION",
+      endTime: "17:00",
+      closingReading: 2521.6,
+    });
+    expect(resolveOpenUsageRowMatch(OPEN_USAGE, finalRows, master).kind).toBe("already_linked");
+  });
+
+  it("uses registration only for an id-less legacy row and never fuzzy-matches a display name", () => {
+    const master = { name: "SOIL COMPACTOR", registrationNumber: "TS08JG4572" };
+    expect(resolveOpenUsageRowMatch(OPEN_USAGE, [{
+      machine: "OLD LABEL",
+      vehicleNo: "TS 08 JG 4572",
+      equipmentId: null,
+      plantUsageId: null,
+    }], master)).toMatchObject({ kind: "adopt", rowIndex: 0, matchedBy: "registration" });
+    expect(resolveOpenUsageRowMatch(OPEN_USAGE, [{
+      machine: "SOIL COMPACTOR",
+      vehicleNo: "",
+      equipmentId: null,
+      plantUsageId: null,
+    }], master)).toEqual({ kind: "add" });
+    expect(resolveOpenUsageRowMatch(OPEN_USAGE, [{
+      machine: "SOIL COMPACTOR",
+      vehicleNo: "TS08JG4572",
+      equipmentId: 99,
+      plantUsageId: null,
+    }], master)).toEqual({ kind: "add" });
+  });
+
+  it("stops adoption on ambiguous canonical matches", () => {
+    const rows = [
+      { machine: "SOIL COMPACTOR", equipmentId: 47, plantUsageId: null },
+      { machine: "SOIL COMPACTOR", equipmentId: 47, plantUsageId: null },
+    ];
+    expect(resolveOpenUsageRowMatch(OPEN_USAGE, rows)).toEqual({
+      kind: "ambiguous",
+      rowIndexes: [0, 1],
+      matchedBy: "equipment_id",
+    });
+  });
+
+  it("does not create a second diesel issue or purchase for a linked dispatch", () => {
+    expect(shouldCreateDprEquipmentDieselLedger({
+      diesel: 20,
+      dieselSource: "plant_stock",
+      plantUsageId: 161,
+    })).toBe(false);
+    expect(shouldCreateDprEquipmentDieselLedger({
+      diesel: 20,
+      dieselSource: "direct_purchase",
+      plantUsageId: 161,
+    })).toBe(false);
+    expect(shouldCreateDprEquipmentDieselLedger({
+      diesel: 20,
+      dieselSource: "plant_stock",
+      plantUsageId: null,
+    })).toBe(true);
+  });
+
   it("SiteEdit uses the shared endpoint/helper and preserves plantUsageId in form state", async () => {
     const fs = await import("node:fs/promises");
     const source = await fs.readFile("client/src/pages/SiteEdit.tsx", "utf8");
     expect(source).toContain("/api/plant-module/equipment-usage/open-today");
     expect(source).toContain("usageToDprEquipmentRow");
     expect(source).toContain("unlinkedOpenUsages(openUsages, equipment)");
+    expect(source).toContain("resolveOpenUsageRowMatch");
+    expect(source).toContain("adoptOpenUsageIntoDprRow");
     expect(source).toContain("plantUsageId: e.plantUsageId ?? null");
     expect(source).toContain("Use in this report");
   });
