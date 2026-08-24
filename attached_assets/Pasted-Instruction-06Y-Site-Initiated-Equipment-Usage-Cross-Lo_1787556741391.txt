@@ -1,0 +1,217 @@
+Instruction 06Y — Site-Initiated Equipment Usage + Cross-Location Movement
+
+DEPENDENCY — READ FIRST
+
+This batch assumes INSTRUCTION 06X-HF4 (Equipment Usage update 500 error on
+an entry whose destination-site and diesel-source are both changed at once)
+is already fixed and confirmed. This batch adds more ways to change
+destination-site and diesel-source together on the same save path. If
+06X-HF4 is not yet fixed and confirmed, STOP and report — do not start this
+batch on top of an unresolved crash in the same code path.
+
+BACKGROUND / WHY
+
+Today, only Plant (Equipment & Fleet > Equipment Usage) can create an
+equipment usage record. A Site's DPR can only discover and close a record
+that Plant already opened and dispatched to it (GET
+/api/plant-module/equipment-usage/open-today, then closes via the DPR).
+
+This creates three real gaps, all confirmed directly against production
+behaviour:
+
+1. A machine that works entirely at a site, start to finish, with no
+   plant leg at all, has no way to be entered from the site side. Someone
+   has to log it in Plant's Equipment Usage instead, mislabelling where
+   the work actually happened (this is exactly how the 08-Aug Soil
+   Compactor entry ended up wrong).
+2. A machine already working at a site that needs to move on — back to
+   Plant, or to a different site/reach — has no way to be sent onward by
+   the site. Only Plant can currently open the next leg.
+3. Simply clearing a closing reading on an existing Plant-side entry does
+   NOT make it appear in any site's DPR. Confirmed directly: the DPR
+   discovery query only ever looks for status = "open" AND a matching
+   destinationSite. A record edited to clear its closing reading without
+   also using Send to Site keeps its prior status/destinationSite
+   untouched, so it silently stays invisible to every DPR — this was
+   reproduced live and is not a misunderstanding.
+
+OBJECTIVE
+
+1. Let a Site's DPR record equipment usage directly — a machine working at
+   that site, opened and (if already finished) closed on the spot, without
+   requiring Plant to have created anything first.
+2. Generalise "Send to Site" into a symmetric "Send" available to whoever
+   currently holds an equipment usage record — Plant (as today) or a Site
+   — targeting any other registered destination: another Site, or back to
+   Plant.
+3. Make sure whichever party receives a send actually sees it waiting to
+   be completed — a Site's DPR (as today, for Plant→Site), and now also
+   Plant's own Equipment Usage screen (for Site→Plant), and a receiving
+   Site's DPR (for Site→Site).
+
+DO NOT REDESIGN THE DATA MODEL. One equipment_usage row still represents
+one continuous stay in one location, opened by whoever is there, closed by
+whoever it was sent to (or by the same party if never sent on). Moving
+equipment to a new location is always a NEW row continuing from the prior
+row's closing reading — never edit the identity of a closed historical row.
+
+PART A — SITE-INITIATED EQUIPMENT USAGE
+
+In the Site DPR's equipment section (wherever it currently discovers and
+closes open dispatches — both the Guided DPR and Detailed DPR equipment
+flows), add the ability to record a NEW equipment usage entry for that
+site directly:
+
+- Equipment picker (same Equipment Master list used on the Plant page,
+  filtered to what's relevant/permitted for this site if such filtering
+  already exists elsewhere — do not invent a new permission model).
+- Opening reading (or start time, matching the existing opening-entry
+  rules already used on the Plant page — hour-meter vs km, trip-based,
+  etc. Reuse computeEquipmentUsage / the existing shared calculation
+  logic already used by both Plant and DPR — do not duplicate it).
+- Optionally, closing reading/time in the same action if the work is
+  already finished (covers Sunil's exact correction case: enter both
+  opening and closing at once, from the DPR, for work that happened
+  entirely that day at that site).
+- Diesel source: reuse the exact same options and logic already on the
+  Plant Equipment Usage page (plant stock / direct site purchase /
+  contractor / included) — do not build a second diesel model. If diesel
+  is drawn from plant stock, the same stock-ledger adjustment logic Plant
+  already uses must run identically.
+- The resulting equipment_usage row's working location is this
+  registered Site (not free text) — openedByUserId/openedByUserName/
+  openedAt reflect the DPR user, date is the DPR's date.
+- If entered as already-closed (both readings given), it behaves exactly
+  like a normal closed Plant entry does today — no dispatch involved,
+  simply attributed to this site instead of Plant.
+- If entered as opening-only (see Part B), it becomes a live entry this
+  site currently holds.
+
+PART B — SEND TO ANOTHER SITE OR BACK TO PLANT
+
+Wherever a party currently holds an open (not-yet-closed) or just-closed
+equipment usage entry — Plant, or now a Site per Part A — give them the
+option to send it onward instead of leaving it closed/idle:
+
+- Destination: any active registered Site (existing Sites master, same
+  list Plant's Destination Site dropdown already uses), OR back to Plant.
+  For "back to Plant", reuse the existing Working Plant/Location
+  vocabulary already in the codebase ("HMP PLANT" / "RMC PLANT") rather
+  than inventing a new destination type — a site should be able to pick
+  which plant/yard the equipment is returning to, the same two options
+  Plant itself already offers.
+- Sending sets the record to the same "open, awaiting completion by
+  destination" state Send to Site already uses today (status = open,
+  destinationSite = the chosen target) — reuse this mechanism exactly,
+  do not build a parallel one.
+- The sender picks a destination only from what they're actually
+  permitted to see/dispatch to — reuse the existing permission check
+  already used for Plant's Send to Site (siteMatchesPermitted /
+  getPermittedSiteNames), applied symmetrically when the sender is a
+  Site.
+
+PART C — DISCOVERY BOTH WAYS
+
+Confirm and, if needed, extend equipment discovery so it works correctly
+in every direction:
+
+- Site→Site: a site's DPR discovery (GET .../equipment-usage/open-today)
+  must find records dispatched to it from another Site, exactly as it
+  already finds ones dispatched from Plant. Confirm the existing query
+  (status=open + destinationSite match + date match) already covers this
+  with no change, since destinationSite doesn't currently care about the
+  sender's identity — report if this is already true rather than
+  assuming.
+- Site→Plant: Plant's own Equipment Usage screen currently shows only
+  entries Plant itself created. Add a clearly-separated "Awaiting
+  completion at Plant" section (mirroring how a site's DPR shows entries
+  awaiting it) listing open entries whose destination is "HMP PLANT" or
+  "RMC PLANT", so Plant can see and close them the same way a site closes
+  an incoming dispatch today.
+- In all directions, closing an incoming entry must behave exactly like
+  today's DPR-closes-a-dispatch flow: same equipment_usage id preserved,
+  closedByUserId/closedByDprId/closedAt set appropriately (closedByDprId
+  only when closed from within a DPR; Plant closing its own incoming
+  entry is not a DPR action and should not fabricate one).
+
+PART D — REGRESSION CHECK (NOT A REWRITE)
+
+Confirm the existing opening-reading auto-populate (previous closing
+reading becomes the next entry's opening reading, via
+GET /api/equipment/:equipmentId/latest-closing /
+storage.resolveLatestPriorClosing, cross-source across both
+equipment_usage and submitted DPR equipment_logs) still works correctly:
+
+- For a new entry created on the Plant page (existing behaviour — must
+  be unchanged).
+- For a new entry created from a Site's DPR under Part A (new — must
+  also auto-populate correctly from the same resolver, not a second
+  implementation).
+
+If you find this is already broken independent of this batch, report the
+exact reproduction and root cause — do not fix it speculatively as part of
+this batch without reporting first, since Sunil has not yet been able to
+give an exact reproduction case himself.
+
+NON-GOALS
+
+Do not touch:
+- 06X-HF3 (legacy destination-site save fix) or 06X-HF4 (the crash fix)
+  themselves — build on top of them, don't re-open them;
+- Layer/Lift, Overlap Review, Progress Report, Cut/Fill, Work Programme;
+- the diesel stock ledger calculation logic itself (reuse as-is);
+- DPR draft/submit readiness gating — creating or sending equipment from
+  within a DPR should follow the same lenient-in-draft, strict-on-final-
+  submit pattern already used elsewhere in the DPR; do not introduce a
+  new gate.
+
+TESTS
+
+A. A site's DPR records a machine that worked entirely at that site
+   (opening + closing entered together) — it saves as a normal closed
+   entry attributed to that site, no dispatch involved.
+
+B. A site's DPR records a machine still working (opening only) — it
+   behaves like an open entry owned by that site.
+
+C. A site sends a currently-held machine onward to another registered
+   site — the receiving site's DPR discovers it exactly as it would a
+   Plant-originated dispatch.
+
+D. A site sends a currently-held machine back to Plant — it appears in
+   Plant's new "awaiting completion" list and Plant can close it, same
+   id preserved.
+
+E. Plant still sends to a site exactly as it does today (no regression).
+
+F. Sending is blocked/rejected if the destination isn't one the sender is
+   permitted to reach — reusing the existing permission check.
+
+G. Opening-reading auto-populate confirmed working for both a Plant-
+   created and a Site-created new entry.
+
+H. No duplicate equipment_usage rows created anywhere in this flow — one
+   row per leg, always.
+
+I. Full test suite.
+
+SCHEMA
+
+Reuse the existing equipment_usage columns (status, destinationSite,
+siteName, openedBy*/closedBy* audit columns) — this should not need a
+schema change. If you find a genuine gap that truly requires one, STOP
+and report the exact gap and proposed column before applying it — do not
+add speculatively.
+
+REPORT BACK
+
+Confirm:
+- exactly how "Plant" is represented as a destination and why (reused
+  vocabulary vs anything new);
+- how Site→Site and Site→Plant discovery were confirmed/extended;
+- opening-reading auto-populate regression check result (both paths);
+- files changed;
+- full test suite result;
+- no schema change (or the exact gap, if one was genuinely required).
+
+DO NOT START ANOTHER BATCH.
