@@ -1,0 +1,441 @@
+Instruction 06X-HF5 — Equipment Usage Update Crash: Root Cause Found, Apply This Exact Fix
+
+CONTEXT
+
+06X-HF4's fix (planEquipmentUsageDieselTransition / single net stock delta)
+did NOT resolve the reported crash. Sunil reproduced the exact same failure
+twice more after that fix shipped, on the exact same entry (Soil Compactor
+TS08JG4572, 08 Aug 2026), doing the exact same edit (Send to Site ON,
+destination TAKKADPALLY-SIRUR, Direct Site Purchase diesel details). Both
+attempts returned the same generic 500: "Failed to update equipment usage —
+check the entry values and retry".
+
+The real root cause has now been found and independently reproduced outside
+your app, with a verbatim error message and stack trace. Do not investigate
+further — apply the fix below directly, then prove it with the test
+specified.
+
+ROOT CAUSE (verified, reproducible in isolation)
+
+client/src/pages/PlantEquipmentUsage.tsx, in the "Send to Site" branch of
+handleSubmit() (around line 544), sets:
+
+  openedAt: new Date().toISOString(),
+
+This travels to the server as JSON, so by the time it reaches
+server/routes.ts and server/storage.ts, req.body.openedAt is a plain
+STRING (e.g. "2026-08-24T10:41:10.670Z") — JSON has no Date type, this is
+unavoidable and correct on the client side.
+
+The problem is server-side: server/storage.ts's _updateEquipmentUsageTxn
+(~line 4587) and _createEquipmentUsageTxn (~line 4387) both do:
+
+  await tx.update(equipmentUsage).set({ ...usage, ... })   // update
+  await tx.insert(equipmentUsage).values({ ...usage, ... }) // create
+
+usage.openedAt (a string) is passed straight through to Drizzle untouched.
+shared/schema.ts defines:
+
+  openedAt: timestamp("opened_at"),
+
+This is Drizzle's default DATE-mode timestamp column, whose driver-value
+encoder is (verified directly in node_modules/drizzle-orm/pg-core/columns/
+timestamp.ts):
+
+  mapToDriverValue = (value: Date): string => value.toISOString();
+
+It assumes `value` is already a Date object and calls `.toISOString()` on
+it. A string has no such method, so this throws:
+
+  TypeError: value.toISOString is not a function
+
+This is a genuine unhandled exception — not a ZodError, not an
+insufficient-stock error, and its message contains neither "closing" nor
+"reading" — so it falls straight through to the generic 500 in the PUT
+route's catch block (server/routes.ts ~line 3957) and the equivalent POST
+catch block (~line 3928). This matches the reported symptom exactly.
+
+This is NOT specific to the diesel-source change 06X-HF4 targeted. It
+fires any time openedAt (or any other client-supplied date/timestamp
+value) reaches a Drizzle date-mode timestamp column as a string. Today,
+openedAt is the only such field sent by the client, and it is only sent
+when Send to Site is turned on — which is exactly the action in every one
+of Sunil's reproductions.
+
+VERIFICATION ALREADY DONE (do not repeat — use as given)
+
+Ran this directly against your actual shared/schema.ts column definition,
+with the exact string shape the client actually sends:
+
+  const col = equipmentUsage.openedAt;
+  const parsed = JSON.parse(JSON.stringify({ openedAt: new Date().toISOString() })).openedAt;
+  col.mapToDriverValue(parsed);
+  // → TypeError: value.toISOString is not a function
+  //   at PgTimestamp.mapToDriverValue (drizzle-orm/pg-core/columns/timestamp.ts)
+
+REQUIRED FIX
+
+In server/storage.ts, normalise any client-supplied date/timestamp fields
+to real Date objects before they reach Drizzle's .set()/.values() calls.
+Minimum scope — fix both _updateEquipmentUsageTxn and
+_createEquipmentUsageTxn:
+
+  const normalisedUsage = {
+    ...usage,
+    ...(usage.openedAt !== undefined && {
+      openedAt: usage.openedAt ? new Date(usage.openedAt as any) : null,
+    }),
+    ...(usage.closedAt !== undefined && {
+      closedAt: usage.closedAt ? new Date(usage.closedAt as any) : null,
+    }),
+  };
+
+  // then spread ...normalisedUsage instead of ...usage in both the
+  // .set({ ...normalisedUsage, ... }) and .values({ ...normalisedUsage, ... })
+  // calls.
+
+Search the whole file for every place equipmentUsage rows are written
+(insert or update) and confirm none of them spread a raw client `usage`
+object containing openedAt/closedAt without this normalisation — do not
+fix only the one call site and miss a duplicate.
+
+Also check whether any OTHER route in server/routes.ts ever sends
+openedAt/closedAt (or any other timestamp-mode column) as part of a
+request body reaching a Drizzle write — grep for "timestamp(" in
+shared/schema.ts to get the full list of date-mode timestamp columns
+(openedAt, closedAt, unlockedAt, createdAt, and any others), then grep
+each column's write paths for the same unguarded-string risk. Report what
+you find even if you conclude no other path is affected — do not assume.
+
+DO NOT invent a broader refactor (no generic "deep-normalise all Date
+fields" utility, no ORM-wide interceptor) — fix exactly the columns and
+call sites identified above. Keep this narrow.
+
+TESTS
+
+A. The exact reproduced scenario: PUT to update an existing, already-
+   closed equipment_usage row (openingReading and closingReading both
+   already set, status "closed", no prior destinationSite) with a body
+   that includes `destinationSite`, `status: "open"`, `openedAt: <ISO
+   string>`, `closingReading: null`, and diesel fields — must now return
+   200, not 500. This is a REAL regression test: it must actually invoke
+   the real Drizzle column encoding (do not fully mock storage/db for
+   this one — either use a real test database/transaction, or at minimum
+   directly assert that the value passed to the openedAt column is a
+   Date instance, not a string, before it reaches Drizzle). The
+   06X-HF4 test file's approach of mocking db.transaction entirely would
+   NOT have caught this bug — do not repeat that mistake for this test.
+
+B. A fresh new entry created via Send to Site (POST) — must succeed as
+   before (no regression), and openedAt must persist as a valid
+   timestamp.
+
+C. A normal edit that does NOT touch Send to Site (no openedAt in the
+   body) — must succeed exactly as before.
+
+D. Full test suite.
+
+SCHEMA
+
+No schema change. This is purely a JS-value-type bug at the write path.
+
+REPORT BACK
+
+Confirm:
+- the exact fix applied (files + line ranges);
+- test A actually exercises real Drizzle date encoding, not a full db
+  mock — describe how;
+- result of grepping for other timestamp columns/write paths, and
+  whether any other fix was needed;
+- full test suite result;
+- no schema change.
+
+DO NOT START INSTRUCTION 06Y. Report back here first so Sunil can
+independently retry the exact real scenario in the live app before 06Y
+begins.
+
+================================================================================
+
+PART 2 — Edited DPR Cannot Be Saved: "Possible chainage overlap requires a
+reason before submission" with no way to give one (Investigate First)
+
+This is a SEPARATE bug from Part 1 (different module — DPR editing, not
+equipment usage). Fix Part 1 first, confirm it, then move to this. Do not
+mix the two fixes in the same commit/change if avoidable — report on each
+independently.
+
+REPRODUCED SCENARIO
+
+Site TAKKADPALLY-SIRUR, DPR dated 08 Aug 2026, Engineer Dinesh Singh —
+Foreman, opened via "Edit Report" (an already-submitted DPR being
+reopened for correction, not a fresh draft). Clicking "Save Changes"
+returns:
+
+  "DPR is not ready to submit
+   EMBANKMENT - EXCAVATED EARTH — Possible chainage overlap requires a
+   reason before submission.
+   CLEARING AND GRUBBING — Possible chainage overlap requires a reason
+   before submission."
+
+Neither of the two flagged rows shows the overlap warning box or a "Give
+reason" control anywhere in the form — confirmed directly from a full
+screenshot of both rows (Material receipt panel, Length/Width/Thickness,
+Qty, Personnel, Photos all visible; no amber/orange overlap warning
+present). The user has no way to satisfy this requirement in the UI, so
+the DPR cannot be saved at all.
+
+CONFIRMED IN CODE (starting point — do not re-derive)
+
+The message text and gating rule live in
+shared/chainageOverlap.ts::chainageOverlapReadinessIssues() (~line 337):
+a row is flagged mandatory when it has an overlap hit AND no
+chainageOverrideReason. This is shared by client and server.
+
+server/routes.ts has THREE call sites of the wrapper
+evaluateChainageOverlapIssues(input, excludeDprId, persistedProgress)
+(defined ~line 1650), with DIFFERENT signatures:
+
+  ~line 2001  POST /api/dprs (create, non-draft):
+              evaluateChainageOverlapIssues(input, null)
+              — no persistedProgress (correct: nothing existed before).
+
+  ~line 2085  POST /api/dprs/:id/submit (submit an existing DRAFT):
+              evaluateChainageOverlapIssues(input, id)
+              — excludeDprId correct, but NO persistedProgress passed.
+
+  ~line 2296  the "versioning" path (editing an ALREADY-SUBMITTED DPR,
+              creates a new version that supersedes the original):
+              evaluateChainageOverlapIssues(input.data, originalId,
+                versionOriginal.progress)
+              — the ONLY call site that passes persistedProgress, which
+              feeds unchangedChainageRowKeys() to exempt rows that are
+              unchanged from the last submitted version from re-triggering
+              this check.
+
+Client-side, SiteEdit.tsx's live warning (ChainageOverlapWarning, driven by
+useChainageOverlapContext + useChainageOverlapHits in
+client/src/components/ChainageOverlapGuard.tsx) has NO equivalent
+persistedProgress/exemption concept at all — it always does a fresh
+same-DPR + prior-DPR check with no "already-approved, unchanged" carve-out.
+
+INVESTIGATE (in this order — report findings before fixing)
+
+1. Confirm which of the three server endpoints "Edit Report" → "Save
+   Changes" in client/src/pages/SiteEdit.tsx actually calls for an
+   ALREADY-SUBMITTED DPR being reopened (find the mutation function and
+   its request URL/method). Report the exact endpoint.
+
+2. If it calls the plain /submit endpoint (~line 2085) or the create
+   endpoint instead of the versioning endpoint (~line 2296) for an
+   already-submitted DPR, that is very likely the root cause: this path
+   has no persistedProgress, so it cannot exempt rows that were already
+   fine before this edit, and re-flags them from scratch against prior
+   submitted progress that was already accounted for when this DPR was
+   originally approved.
+
+3. If it DOES correctly call the versioning endpoint, then determine
+   instead whether EMBANKMENT - EXCAVATED EARTH and CLEARING AND GRUBBING
+   are genuinely NEW or CHANGED rows in this edit session (not present,
+   or present with different chainage/qty, in the DPR's previously
+   persisted version) — in which case a fresh overlap check firing is
+   arguably correct, and the actual bug is narrower: the client's overlap
+   warning/"Give reason" UI is failing to detect and surface the same
+   overlap the server detects, even though both read the same
+   storage.getSubmittedChainageEntries() data with the same excludeDprId.
+   In that case, compare exactly what boqItemIds/rows each side evaluates
+   (client: SiteEdit.tsx ~line 437-453; server: evaluateChainageOverlapIssues
+   ~line 1655-1672) and report the precise discrepancy — do not guess.
+
+4. Either way, identify the ACTUAL two prior conflicting entries (which
+   DPR, which date, which BOQ item/chainage) that are causing these two
+   rows to be flagged, using storage.getSubmittedChainageEntries for the
+   relevant BOQ item ids and this excludeDprId. Report what they are.
+
+REQUIRED FIX
+
+Only after root cause is confirmed and reported:
+
+- If the wrong endpoint is being called: fix SiteEdit.tsx to call the
+  correct versioning/edit endpoint (~line 2296 path) for already-submitted
+  DPRs so persistedProgress-based exemption applies, matching the same
+  behaviour Guided DPR/Detailed entry already get elsewhere.
+- If the client is failing to detect a genuine, correctly-flagged overlap:
+  fix the client-side detection so the SAME overlap the server sees is
+  shown, with a working "Give reason" control, on both flagged rows —
+  the user must always have a way to resolve what the server will
+  ultimately require, never be blocked with no path forward.
+- Do not remove or weaken the underlying overlap-reason requirement itself
+  (Batch 06B) — it exists to catch genuine double-counted progress. Fix
+  the mismatch, not the rule.
+
+NON-GOALS
+
+Do not touch:
+- Part 1 (equipment usage) — already scoped above, keep separate;
+- the Reuse-Arrangement/"Source excavation and destination fill cannot be
+  the same BOQ item" issue visible on the ROADWAY EXCAVATION row in the
+  same screenshot — that is a KNOWN, SEPARATE, already-deferred issue
+  (Cut/Fill execution arrangement linkage) with its own dedicated future
+  batch. Do not fix or touch it here even though it's visible in the same
+  screenshot;
+- the chainage-overlap rule's underlying logic in shared/chainageOverlap.ts
+  itself, unless the investigation proves the bug is actually there rather
+  than in which data/exemption gets passed to it.
+
+TESTS
+
+A. Reopen an already-submitted DPR via "Edit Report", make no changes to
+   two rows that overlap a legitimately-already-accounted-for prior entry,
+   click Save Changes — must succeed without requiring a new reason for
+   those unchanged rows.
+
+B. Reopen an already-submitted DPR, genuinely change or add a row whose
+   chainage newly overlaps another submitted DPR's progress — the warning
+   and "Give reason" control must appear on that row in the UI, and typing
+   a reason must allow Save Changes to succeed.
+
+C. Create a brand-new DPR (not an edit) with a genuine overlap — existing
+   behaviour must be unchanged (warning shows, reason required).
+
+D. Full test suite.
+
+SCHEMA
+
+No schema change expected.
+
+REPORT BACK
+
+Confirm:
+- which endpoint SiteEdit.tsx actually calls, and whether that was the
+  root cause;
+- the exact two prior conflicting entries found for Sunil's real DPR;
+- fix applied;
+- tests;
+- files changed;
+- no schema change.
+
+DO NOT START INSTRUCTION 06Y. Report on Part 1 and Part 2 separately.
+
+================================================================================
+
+PART 3 — Overlap Review Classification Has No Authority Check (Permission Gap)
+
+BACKGROUND
+
+While blocked by Part 2's bug, a Foreman-level user (Dinesh Singh) used the
+Overlap Review flow to mark two rows on his own DPR (EMBANKMENT - EXCAVATED
+EARTH and CLEARING AND GRUBBING, DPR: Takkadpally-Sirur, 08 Aug 2026) as
+"Incidental / Non-BOQ", which let the DPR save by exempting those rows from
+the overlap-reason requirement — but this ALSO removes BOQ credit for that
+work entirely (confirmed: "Done" stays 0 against the planned quantity even
+with qty entered). This is a real, unwanted side effect for genuine billable
+work, and Sunil has confirmed a Foreman should never have had the authority
+to make this classification call in the first place — it should require the
+same kind of review authority as approving an override reason, not ordinary
+DPR-editing rights.
+
+CONFIRMED IN CODE
+
+PATCH /api/progress-entries/:id/overlap-resolution (server/routes.ts ~line
+1701) — which handles ALL THREE Overlap Review actions (marking a row
+Incidental, providing a chainageOverrideReason, and layer correction) — is
+gated only by:
+
+  if (!assertEdit(req, res, "site_dprs")) return;
+
+This is the exact SAME permission check used for ordinary DPR field entry
+(readings, quantities, personnel, etc.) — there is no separate, distinct
+authority check for Overlap Review classification specifically. Any user
+with edit rights on their own DPR can reclassify a row as Incidental
+(losing BOQ credit) or supply an override reason, with no higher-authority
+review step, even though this is meant to be a review/approval action
+distinct from routine field data entry.
+
+shared/permissions.ts already implements a granular, per-section,
+individually-grantable permission model (see the "site_dprs" section and
+surrounding structure) — reuse this existing pattern, do not invent a
+parallel role/hierarchy system. There is no "Foreman" role construct in
+the permission system today — role titles like "FOREMAN" are free-text
+labels only, not access-control tiers — so the fix must be a new,
+separately-grantable permission, not a hardcoded title check.
+
+REQUIRED FIX
+
+1. Add a new, distinct permission (e.g. "site_dprs_overlap_review" or
+   similar, matching the existing naming convention in
+   shared/permissions.ts) that specifically gates the Overlap Review
+   actions (isIncidental, chainageOverrideReason, layerNo) on PATCH
+   /api/progress-entries/:id/overlap-resolution. Ordinary DPR field entry
+   (readings, quantities, etc.) must be unaffected — this permission gates
+   ONLY the overlap-resolution endpoint's three actions.
+2. This new permission must default to OFF for all existing users — it
+   must be explicitly granted per-user by an Admin, the same way other
+   granular permissions in this app already work. Do not auto-grant it to
+   any existing role/title.
+3. On the client, hide or disable the "Give reason" / "Mark Incidental"
+   controls in ChainageOverlapGuard.tsx (and wherever else Overlap Review
+   actions are exposed) for a user who lacks this permission, and show a
+   clear message (e.g. "Overlap review requires engineer/manager
+   approval — ask your site engineer to review this row") rather than a
+   raw permission-denied error.
+4. Confirm the User Management / permissions screen lets Sunil grant this
+   permission per-user, consistent with how other section permissions are
+   already managed there.
+
+DATA AUDIT (report only — do not silently modify other records)
+
+Query the database for ALL progress entries currently marked
+isIncidental=true with a description matching or resembling "overlap
+review" (or check the audit/who-set-it field if one exists), and report:
+which DPRs, which users, which dates. This tells Sunil whether this
+happened only on the one DPR he noticed, or elsewhere too. Do NOT revert
+any of these automatically — report the list only, Sunil will decide
+case by case once Part 2 is fixed and these rows can be saved properly
+with a real override reason instead.
+
+NON-GOALS
+
+Do not touch:
+- Parts 1 and 2 above — keep this a separate, additional part;
+- the underlying Overlap Review logic itself (chainageOverlapReadinessIssues,
+  the Incidental/Separately Payable/Layer-correction shapes) — only add an
+  authority gate in front of it, do not change what the actions do;
+- any other existing permission definitions.
+
+TESTS
+
+A. A user WITHOUT the new permission attempts PATCH .../overlap-resolution
+   with any of the three shapes — rejected (403), with a clear message.
+
+B. A user WITH the new permission explicitly granted — same request
+   succeeds exactly as it does today.
+
+C. A user WITHOUT the new permission does not see (or sees disabled)
+   the Give-Reason/Mark-Incidental controls in the DPR edit UI.
+
+D. Ordinary DPR field edits (readings, quantities, personnel, materials)
+   are completely unaffected for a user without this new permission.
+
+E. Full test suite.
+
+SCHEMA
+
+A new permission key in the existing permissions model is expected — this
+follows the SAME pattern already used for every other granular permission
+in shared/permissions.ts, so it should not require a structural schema
+change (same columns/JSON structure already used to store per-user
+permissions today). If it turns out to need one, STOP and report the exact
+gap before applying it.
+
+REPORT BACK
+
+Confirm:
+- new permission key added and its default (off);
+- exactly which endpoint(s)/UI controls it gates;
+- data audit results (list of affected DPRs/rows, if any, beyond the one
+  already known);
+- tests;
+- files changed;
+- no unexpected schema change (or the exact gap, if genuinely required).
+
+DO NOT START INSTRUCTION 06Y. Report on Parts 1, 2, and 3 separately.
