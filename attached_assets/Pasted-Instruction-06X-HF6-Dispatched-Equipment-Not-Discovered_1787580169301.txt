@@ -1,0 +1,104 @@
+Instruction 06X-HF6 — Dispatched Equipment Not Discovered When Editing an
+Already-Existing DPR (Send this now, do not defer to 06Y)
+
+PRIORITY
+
+Send this on its own, now — do not bundle with Part 3 (permission gate) or
+wait for 06Y. This closes the loop on the equipment dispatch fix Sunil has
+been testing for several days: the crash is fixed (06X-HF5), but the
+dispatched machine's details still never reach the DPR that's supposed to
+complete it, because of the specific gap below.
+
+REPRODUCED SCENARIO
+
+Site TAKKADPALLY-SIRUR already had a submitted DPR for 08 Aug 2026 before
+the Soil Compactor (TS08JG4572) was dispatched to it. Opening that
+existing DPR via "Edit Report" (client/src/pages/SiteEdit.tsx) shows the
+compactor in the Equipment Log by name/owner, but Opening Reading, Start
+Time, and Diesel Source/Issued are all blank — none of the dispatch
+details came across.
+
+CONFIRMED IN CODE
+
+GuidedDpr.tsx and SiteEntry.tsx both discover dispatched equipment via:
+
+  GET /api/plant-module/equipment-usage/open-today?date=<date>&site=<site>
+
+and pre-fill opening reading/time/diesel from the result, linking via
+plantUsageId so Final Submit can close the original equipment_usage row
+(see GuidedDpr.tsx ~line 369-420, "Batch 05: Equipment & Fleet linkage").
+
+client/src/pages/SiteEdit.tsx — the screen used to edit a DPR that already
+exists — has NO equivalent call anywhere in the file. This is confirmed by
+grep: SiteEdit.tsx never references "open-today" or the discovery query at
+all. That is the entire root cause. It is not a data problem and not
+something wrong with the dispatch itself — the screen simply never asks.
+
+REQUIRED FIX
+
+Add the SAME discovery mechanism already used by GuidedDpr.tsx/
+SiteEntry.tsx to SiteEdit.tsx — reuse the existing query, the existing
+plantUsageId linkage, and the existing close-on-submit logic. Do not build
+a second/parallel discovery mechanism.
+
+1. On load, SiteEdit.tsx must call the same
+   GET /api/plant-module/equipment-usage/open-today?date=<dpr date>&site=<dpr site>
+   query GuidedDpr.tsx already uses.
+2. Any open dispatch returned that is not already represented by a row in
+   this DPR's Equipment Log must be offered the same way GuidedDpr.tsx
+   offers it — pre-filled opening reading, start time, diesel source and
+   issued quantity, machine, and hire info — ready for the user to enter
+   the closing reading/time and complete it.
+3. Saving/submitting this edit must close the original equipment_usage
+   row via the SAME mechanism already used elsewhere (closePlantUsage /
+   equivalent), preserving its id, setting closedByUserId/closedByDprId/
+   closedAt correctly — never creating a second, duplicate equipment_usage
+   row for the same dispatch.
+4. If the DPR is later re-edited again after this dispatch was already
+   closed through it, the now-closed record must not be re-offered as an
+   open dispatch a second time.
+
+NON-GOALS
+
+Do not touch:
+- 06X-HF5 (already fixed, confirmed) or Part 2/3 of the prior batch;
+- letting a Site ORIGINATE its own equipment usage, or send equipment
+  onward to another site/back to Plant — those remain 06Y and are
+  unaffected by this fix;
+- the chainage-overlap logic, Cut/Fill, Work Programme, or any other
+  module.
+
+TESTS
+
+A. A DPR that already existed before a dispatch was created for its site/
+   date — reopening it via Edit Report now shows the dispatched machine
+   with opening reading/time/diesel pre-filled, exactly as it would if the
+   DPR had been created fresh with the dispatch already pending.
+
+B. Completing it from Edit Report (entering closing reading and saving)
+   closes the original equipment_usage row — same id, not a new row.
+
+C. A DPR created fresh via Guided/Detailed entry with a pending dispatch
+   still works exactly as before (no regression to the existing path).
+
+D. Re-opening the DPR again after the dispatch was already closed through
+   it does not re-offer it as pending a second time.
+
+E. Full test suite.
+
+SCHEMA
+
+No schema change expected — this reuses existing columns and the existing
+discovery/close mechanism.
+
+REPORT BACK
+
+Confirm:
+- the discovery query is genuinely reused (not reimplemented);
+- test A actually reproduces an equipment_usage row dispatched to a site
+  whose DPR already existed beforehand (not a fresh DPR);
+- files changed;
+- full test suite result;
+- no schema change.
+
+DO NOT START 06Y OR PART 3 AS PART OF THIS. This is a single, narrow fix.

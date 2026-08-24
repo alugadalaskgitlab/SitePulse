@@ -2313,6 +2313,10 @@ export async function registerRoutes(
         }
       }
       const newVersion = await storage.createVersionDpr(originalId, input.data, editedBy, input.clientTimestamp);
+      // 06X-HF6: Edit Report creates a new submitted DPR version. Close any
+      // open equipment_usage row linked by plantUsageId through the same
+      // guarded helper used by fresh and draft Final Submit.
+      await closePlantUsageLinkedToEquipment((input.data as any).equipment, newVersion.id, req);
 
       const actor = currentUserName(req);
       await storage.createNotification({

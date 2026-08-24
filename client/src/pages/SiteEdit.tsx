@@ -41,6 +41,11 @@ import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { parseDprError } from "@/lib/dprErrors";
 import { resolveReturnTo } from "@/lib/progressReportNav";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
+import {
+  unlinkedOpenUsages,
+  usageToDprEquipmentRow,
+  type OpenUsageLike,
+} from "@shared/dprPlantLink";
 
 interface ProgressEntry {
   /** Client-only database id for exact-row report deep links; stripped on save. */
@@ -87,6 +92,7 @@ interface EquipmentEntry {
   closingReading: number | null;
   diesel: number | null;
   equipmentId: number | null;
+  plantUsageId: number | null;
   dieselSource: string;
   fuelStation: string;
   billNumber: string;
@@ -227,6 +233,7 @@ function mapDprToFormState(dpr: any) {
         closingReading: e.closingReading ?? null,
         diesel: e.diesel,
         equipmentId: e.equipmentId ?? null,
+        plantUsageId: e.plantUsageId ?? null,
         dieselSource: e.dieselSource ?? "plant_stock",
         fuelStation: e.fuelStation ?? "",
         billNumber: e.billNumber ?? "",
@@ -236,7 +243,7 @@ function mapDprToFormState(dpr: any) {
         totalKm: e.totalKm ?? null,
         waterQuantity: e.waterQuantity ?? null,
       }))
-    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, isNew: true }];
+    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, isNew: true }];
 
   const labour: LabourEntry[] = dpr.labour?.length
     ? dpr.labour.map((l: any) => ({
@@ -471,8 +478,57 @@ export default function SiteEdit() {
   const overlapHits = useChainageOverlapHits(overlapCandidateRows, overlapPriors, unchangedOverlapRowKeys);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }
   ]);
+  // 06X-HF6: submitted DPRs can pre-date a later dispatch to the same
+  // site/date. Reuse the Guided/Detailed open-today discovery contract.
+  const { data: openUsages = [] } = useQuery<OpenUsageLike[]>({
+    queryKey: ["/api/plant-module/equipment-usage/open-today", header.date, header.site],
+    queryFn: async () => {
+      if (!header.site) return [];
+      let res: Response;
+      try {
+        res = await fetch(
+          `/api/plant-module/equipment-usage/open-today?date=${encodeURIComponent(header.date)}&site=${encodeURIComponent(header.site)}`,
+          { credentials: "include" },
+        );
+      } catch (error) {
+        console.warn("SiteEdit: open-usage discovery network error:", error);
+        toast({
+          title: "Equipment linkage unavailable",
+          description: "Could not check dispatched equipment. You can continue with manual equipment entry.",
+          variant: "destructive",
+        });
+        return [];
+      }
+      if (!res.ok) {
+        let serverMsg = "";
+        try { serverMsg = (await res.json()).message ?? ""; } catch { /* ignore */ }
+        console.warn(`SiteEdit: open-usage discovery failed (${res.status}): ${serverMsg}`);
+        toast({
+          title: "Equipment linkage unavailable",
+          description: serverMsg || "Could not check dispatched equipment. You can continue with manual equipment entry.",
+          variant: "destructive",
+        });
+        return [];
+      }
+      return res.json();
+    },
+    enabled: !!header.date && !!header.site,
+  });
+  const unlinkedDispatchedUsages = unlinkedOpenUsages(openUsages, equipment);
+  const useDispatchedUsage = (usage: OpenUsageLike) => {
+    const master = equipmentMaster?.find((item) => item.id === usage.equipmentId);
+    const linkedRow: EquipmentEntry = {
+      ...usageToDprEquipmentRow(usage, master),
+      isNew: true,
+    };
+    setEquipment((current) => {
+      if (current.some((row) => Number(row.plantUsageId) === usage.id)) return current;
+      if (current.length === 1 && !current[0].machine) return [linkedRow];
+      return [...current, linkedRow];
+    });
+  };
 
   const [labour, setLabour] = useState<LabourEntry[]>([
     { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }
@@ -806,7 +862,7 @@ export default function SiteEdit() {
     } else if (section === 'equipment') {
       // 06Q: rows added during the edit session are flagged isNew — they get
       // opening-reading continuity when equipment is selected.
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, isNew: true }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, isNew: true }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }]);
     }
@@ -2083,6 +2139,52 @@ export default function SiteEdit() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          {unlinkedDispatchedUsages.length > 0 && (
+            <div
+              className="rounded-lg border border-blue-200 bg-blue-50/70 p-3 space-y-2 dark:border-blue-800 dark:bg-blue-950/20"
+              data-testid="site-edit-open-dispatches"
+            >
+              <div>
+                <p className="font-medium text-blue-900 dark:text-blue-200">Dispatched equipment ready to complete</p>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  These open Equipment &amp; Fleet records match this report's site and date.
+                </p>
+              </div>
+              {unlinkedDispatchedUsages.map((usage) => {
+                const master = equipmentMaster?.find((item) => item.id === usage.equipmentId);
+                const dieselIssued = usage.diesel ?? usage.dieselIssued;
+                return (
+                  <div key={usage.id} className="flex flex-col gap-2 rounded-md border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-sm">
+                      <p className="font-medium">
+                        {master?.name || `Equipment #${usage.equipmentId}`}
+                        {master?.registrationNumber ? ` (${master.registrationNumber})` : ""}
+                      </p>
+                      <p className="text-muted-foreground">
+                        Opening {usage.openingReading ?? "—"}
+                        {usage.startTime ? ` · Start ${usage.startTime}` : ""}
+                        {dieselIssued != null ? ` · Diesel ${dieselIssued} L` : ""}
+                        {usage.dieselSource ? ` · ${usage.dieselSource.replace(/_/g, " ")}` : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {master?.ownership === "hired"
+                          ? `HIRED: ${master.vendorName || "VENDOR"}`
+                          : "HLC OWN"}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => useDispatchedUsage(usage)}
+                      data-testid={`button-use-dispatch-${usage.id}`}
+                    >
+                      Use in this report
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {equipment.map((entry, idx) => {
             const workingHours = getWorkingHours(entry);
             const isTimeMeter = !entry.entryType || entry.entryType === "time_meter" || entry.entryType === "hourly";
@@ -2108,11 +2210,13 @@ export default function SiteEdit() {
                 <Label className="text-sm">Equipment</Label>
                 <Select
                   value={entry.equipmentId ? String(entry.equipmentId) : ""}
+                  disabled={entry.plantUsageId != null}
                   onValueChange={(val) => {
                     const updated = [...equipment];
                     const selectedEquip = activeEquipment.find(e => e.id === Number(val));
                     if (selectedEquip) {
                       const wasExistingWithReading = !entry.isNew && entry.openingReading != null && entry.equipmentId !== selectedEquip.id;
+                      if (entry.equipmentId !== selectedEquip.id) updated[idx].plantUsageId = null;
                       updated[idx].equipmentId = selectedEquip.id;
                       updated[idx].machine = selectedEquip.name;
                       updated[idx].vehicleNo = selectedEquip.registrationNumber || "";
@@ -2174,6 +2278,11 @@ export default function SiteEdit() {
                   const ownerLabel = selEquip.ownership === "hired" ? `HIRED: ${selEquip.vendorName || "VENDOR"}` : "HLC OWN";
                   return <p className="text-sm text-muted-foreground mt-0.5" data-testid={`text-equipment-owner-${idx}`}>{ownerLabel}</p>;
                 })()}
+                {entry.plantUsageId != null && (
+                  <Badge variant="outline" className="mt-1 bg-blue-50 text-blue-700 border-blue-200">
+                    Linked dispatch #{entry.plantUsageId}
+                  </Badge>
+                )}
                 {(() => {
                   const selectedEquipForType = activeEquipment.find(e => e.id === entry.equipmentId);
                   if (!selectedEquipForType || selectedEquipForType.ownership !== "hired") return null;
@@ -2255,6 +2364,7 @@ export default function SiteEdit() {
                       <Input
                         type="time"
                         value={entry.startTime}
+                        disabled={entry.plantUsageId != null}
                         onChange={(e) => {
                           const updated = [...equipment];
                           updated[idx].startTime = e.target.value;
@@ -2289,6 +2399,7 @@ export default function SiteEdit() {
                         step="0.1"
                         placeholder="Meter"
                         value={entry.openingReading ?? ""}
+                        disabled={entry.plantUsageId != null}
                         onChange={(e) => {
                           const updated = [...equipment];
                           updated[idx].openingReading = e.target.value ? parseFloat(e.target.value) : null;
@@ -2325,6 +2436,7 @@ export default function SiteEdit() {
                         step="0.1"
                         placeholder="0"
                         value={entry.diesel ?? ""}
+                        disabled={entry.plantUsageId != null}
                         onChange={(e) => {
                           const updated = [...equipment];
                           updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
@@ -2389,6 +2501,7 @@ export default function SiteEdit() {
                         step="0.1"
                         placeholder="0"
                         value={entry.diesel ?? ""}
+                        disabled={entry.plantUsageId != null}
                         onChange={(e) => {
                           const updated = [...equipment];
                           updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
@@ -2444,6 +2557,7 @@ export default function SiteEdit() {
                   <Label className="text-sm">Diesel Source</Label>
                   <Select
                     value={entry.dieselSource ?? "plant_stock"}
+                    disabled={entry.plantUsageId != null}
                     onValueChange={(value) => {
                       const updated = [...equipment];
                       updated[idx].dieselSource = value;
