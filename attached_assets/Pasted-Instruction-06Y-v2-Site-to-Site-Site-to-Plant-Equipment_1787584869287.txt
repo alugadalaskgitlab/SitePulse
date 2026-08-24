@@ -1,0 +1,333 @@
+Instruction 06Y (v2) — Site-to-Site / Site-to-Plant Equipment Movement
+
+OBJECTIVE
+
+Complete the equipment-location workflow so equipment usage can originate
+at a Site, continue across Site → Site / Site → Plant movements, and preserve
+correct meter/time continuity between separate physical working segments.
+This extends the existing Plant → Site dispatch mechanism.
+
+IMPORTANT MODEL RULE
+
+One equipment_usage row represents ONE physical usage/working segment at
+ONE location.
+
+If equipment works at a location and is then moved elsewhere:
+- close the working segment at the current location;
+- preserve that completed row permanently;
+- create a NEW next segment/handoff for the destination;
+- the new segment's suggested opening reading must come from the previous
+  valid closing reading.
+
+NEVER reopen or rewrite a completed working segment merely to represent
+GENUINE movement to another location going forward.
+
+CLARIFICATION — DO NOT CHANGE THE 06X-HF5/HF6 CORRECTION MECHANISM
+
+06X-HF5/HF6 (already shipped and confirmed working in production) fixed a
+DIFFERENT, narrower case: correcting a historical entry that was originally
+mis-recorded (e.g. saved as free-text "Other/Site Work" instead of a proper
+registered destination) by reopening that SAME row and redirecting it to
+the correct destination. That is a data-correction action on an existing
+row, not a new physical movement, and it must keep working exactly as it
+does today.
+
+The "never reopen a completed segment" rule in this instruction applies
+ONLY to genuine NEW movements built by this batch (Part B onward: a
+machine that actually finished real work at one location and is now
+physically being sent to another) — those must always create a new row.
+Do not touch, deprecate, or "fix" the existing reopen-for-correction path
+while building this. If it is unclear whether a specific existing code
+path is the correction mechanism or something this batch should change,
+STOP and ask rather than guessing.
+
+INVESTIGATE FIRST
+
+Before changing code, verify that the following are already working after
+06X-HF5 / HF6 / HF6A (independently confirmed true as of this writing —
+treat as a starting baseline, but re-verify quickly rather than assuming):
+1. Plant → Site Send to Site creates/discovers the pending Site dispatch.
+2. Existing DPR Edit Report can discover and adopt that dispatch.
+3. Existing unlinked DPR equipment row is linked rather than duplicated.
+4. Completing the DPR closes the original dispatched equipment_usage row.
+5. Same equipment_usage id is preserved for that dispatched Site segment.
+6. Opening reading/time/diesel information reaches the DPR.
+7. No duplicate diesel/stock movement occurs.
+If any of those are not actually present, STOP and report. Do not build on
+top of an incomplete base.
+
+PART A — SITE CAN ORIGINATE EQUIPMENT USAGE
+
+In Guided DPR and Detailed/Site DPR entry, allow the Site user to add
+equipment even when there is no Plant-dispatched open usage.
+
+This is required for equipment that:
+- stayed overnight at the Site;
+- started the day at the Site;
+- arrived outside a Plant-originated dispatch;
+- is already physically held by that Site.
+
+Use the existing Equipment Master picker.
+
+For a new Site-originated usage:
+- equipmentId
+- machine
+- registration/vehicle number
+- owner/hire information
+- operator
+- task
+- opening reading
+- start time
+- closing reading
+- end time
+- diesel source/details
+- existing equipment calculations
+must use the same canonical equipment models already used elsewhere.
+Do not invent a second equipment master or second diesel model.
+
+OPENING READING CONTINUITY
+
+For a new Site-originated segment, suggest the opening reading from the
+canonical latest previous valid closing reading for that equipment.
+
+Rules:
+- previous day is valid;
+- gaps of several days are valid;
+- Plant → Site continuity is valid;
+- Site → Site continuity is valid;
+- Site → Plant continuity is valid;
+- 0 is a valid reading;
+- null is not a valid closing reading;
+- same-day previous completed segment must be considered;
+- latest valid prior segment wins deterministically.
+
+Do not overwrite a user's deliberate manual correction after they edit the
+suggested opening reading.
+
+Reuse the existing canonical resolver (resolveLatestPriorClosing /
+pickLatestClosing) where possible. Do not create another competing
+continuity algorithm.
+
+PART B — EQUIPMENT CAN BE SENT ONWARD FROM A SITE
+
+After completing the Site's actual usage segment, allow the authorised user
+to mark that the equipment is being sent to:
+- another active registered Site;
+- HMP / Plant;
+- RMC Plant, where applicable in the existing location vocabulary.
+
+Example:
+Site A usage:
+  opening 2518.2
+  closing 2522.6
+  08:00–13:00
+
+That Site A row remains CLOSED.
+
+If sent to Site B, create the next/open destination segment with:
+  opening reading suggested = 2522.6
+  destination = Site B
+  status/open-state compatible with the existing pending-dispatch model
+
+Do NOT change the Site A completed row back to open.
+
+PART C — SITE → SITE RECEIVING
+
+A Site DPR must discover equipment dispatched to its site/date using the
+same canonical pending-dispatch mechanism.
+
+The receiving Site must be able to:
+- adopt the pending segment;
+- see machine/registration/owner;
+- see inherited opening reading;
+- see start/handoff context where applicable;
+- enter its own operator/task;
+- enter closing reading/time;
+- enter the diesel information applicable to the receiving Site segment;
+- close the pending segment through the canonical close mechanism.
+
+Do not create a duplicate segment when adopting it.
+
+PART D — SITE → PLANT RECEIVING
+
+Plant Equipment Usage must surface equipment sent from a Site back to Plant.
+
+Provide a compact pending state such as:
+  Awaiting completion at Plant
+
+When Plant begins/records the next actual Plant usage:
+- adopt the incoming open segment;
+- preserve its inherited opening reading;
+- complete it using the same equipment usage model.
+
+Do not create a duplicate for the same pending handoff.
+
+PART E — MULTIPLE SAME-DAY LEGS ARE VALID
+
+The system must support:
+Plant → Site A → Site B → Plant
+on the same date.
+
+Example:
+Plant:
+  2515.4 → 2518.2
+Site A:
+  2518.2 → 2522.6
+Site B:
+  2522.6 → 2525.1
+Plant:
+  2525.1 → 2526.0
+
+These are separate physical segments.
+
+Reporting/history must preserve all four rather than collapsing them into
+one record.
+
+PART F — NO-WORK DISPATCH
+
+Keep compatibility with the existing Plant → Site case where equipment is
+at Plant but does NOT actually work at Plant before being sent to Site.
+
+Do not force the user to manufacture a fake Plant usage segment merely to
+dispatch it.
+
+The existing Send to Site flow may continue for this case, provided the
+resulting record is semantically the destination Site's pending usage
+segment and does not falsely record Plant work.
+
+PART G — STATUS VISIBILITY OUTSIDE EDIT MODE (small, add if low-effort)
+
+Confirmed directly: a dispatched/pending equipment segment currently only
+shows its "Open — awaiting completion" state while a DPR is in Edit mode
+(the panel added by 06X-HF6). The read-only View/Summary screen for the
+same DPR shows no such indicator at all — a pending dispatch looks
+identical to a normal completed row there. If low-effort given the work
+already done for Parts A-F, show the same open/pending status (and, once
+closed, who closed it and when) in the read-only view too. If this turns
+out to be non-trivial, report it separately rather than expanding scope
+here — it is not blocking.
+
+DESTINATION SAFETY
+
+Destinations must come from canonical active registered locations.
+Do not introduce unrestricted free-text destination for new movements.
+Legacy destination compatibility may remain according to the existing
+canonicalisation rules.
+
+DIESEL RULES
+
+Keep the existing diesel model.
+Required ≠ Purchased ≠ Received ≠ Consumed.
+Direct Site Purchase remains separate from Plant Stock.
+Movement itself must never:
+- issue diesel automatically;
+- create a diesel purchase;
+- duplicate stock consumption;
+- reverse/reapply an already completed location's diesel merely because
+  equipment moved.
+
+DPR EDITING
+
+All new Site-originated and incoming-equipment behaviour must work in:
+- Guided DPR;
+- Detailed Site DPR entry;
+- SiteEdit / Edit Report where applicable.
+
+Do not fix only new-DPR entry and leave existing-DPR editing inconsistent.
+
+PERMISSIONS
+
+Use the existing equipment/site DPR permission framework.
+Investigate which existing create/edit permissions are appropriate before
+adding anything.
+Do not grant movement/origination implicitly based on job-title labels.
+If a genuinely new permission is required, STOP and report the proposed
+permission before introducing schema/configuration changes.
+
+SCHEMA STOP GATE
+
+First attempt to reuse the current equipment_usage fields:
+- equipment identity
+- date
+- readings
+- times
+- status
+- destinationSite
+- site/location fields
+- plantUsageId linkage
+- shift/movement fields where genuinely relevant
+
+Do not add schema merely for convenience.
+If the existing schema cannot unambiguously represent the required
+current-location/pending-destination workflow, STOP and report the exact
+gap before generating a migration.
+No destructive migration.
+
+TESTS
+
+1. Site-only overnight equipment:
+   previous Site closing → next-day Site opening continuity.
+2. Plant works, then Site:
+   Plant completed row remains closed;
+   NEW Site segment starts from Plant closing.
+3. Plant no-work dispatch → Site:
+   existing Send to Site behaviour still works.
+4. Site A works → Site B:
+   Site A remains closed;
+   Site B receives new pending segment;
+   opening = Site A closing.
+5. Site works → Plant:
+   Plant sees incoming equipment and completes next Plant segment.
+6. Plant → Site A → Site B → Plant on same day:
+   all physical segments retained separately;
+   exact reading continuity between each.
+7. Reopening DPR after an incoming segment was already completed:
+   it is not offered again.
+8. Existing DPR Edit Report:
+   incoming dispatch adoption still works after 06Y.
+9. No duplicate equipment_usage row for adoption of a pending segment.
+10. Diesel/stock ledger:
+    no duplicate or movement-triggered stock transaction.
+11. Existing opening-reading resolver regression tests.
+12. The 06X-HF5/HF6 reopen-for-correction path (editing an old
+    mis-recorded closed entry to redirect its destination) still works
+    exactly as before — unchanged by this batch.
+13. Full test suite.
+
+NON-GOALS
+
+Do not touch:
+- Layer/Lift;
+- Overlap Review;
+- overlap permission control;
+- Progress Report logic unrelated to equipment;
+- Cut/Fill;
+- Work Programme;
+- Site Material Trips;
+- Stores;
+- Tomorrow Plan;
+- the 06X-HF5/HF6 correction mechanism itself (see CLARIFICATION above).
+
+REPORT BACK
+
+Report:
+1. Existing architecture reused.
+2. Files changed.
+3. Whether schema was required.
+4. Exact row lifecycle for:
+   Plant → Site,
+   Site → Site,
+   Site → Plant.
+5. Confirmation completed source-location segments are never reopened
+   for a genuine new movement (and confirmation the HF5/HF6 correction
+   path was left untouched).
+6. How opening-reading continuity is resolved.
+7. How pending destination segments are prevented from duplicating.
+8. Diesel/stock regression result.
+9. Whether Part G (view-mode status visibility) was included, and if not,
+   why.
+10. Focused test results.
+11. Full suite result.
+
+DO NOT START ANOTHER BATCH.
+STOP AND REPORT BACK.
