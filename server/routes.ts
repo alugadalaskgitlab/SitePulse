@@ -3946,6 +3946,10 @@ export async function registerRoutes(
       res.json(updated);
     } catch (err) {
       console.error("PUT /api/plant-module/equipment-usage/:id:", err);
+      console.error("[equipment-usage-update-diagnostic]", {
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
       if (handleInsufficientPlantStock(err, res)) return;
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0]?.message ?? "Validation failed", field: err.errors[0]?.path?.join(".") });
