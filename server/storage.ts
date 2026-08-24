@@ -4309,6 +4309,16 @@ export class DatabaseStorage implements IStorage {
 
   private async _createEquipmentUsageTxn(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {
     return db.transaction(async (tx) => {
+      const normalisedUsage = {
+        ...usage,
+        ...(usage.openedAt !== undefined && {
+          openedAt: usage.openedAt ? new Date(usage.openedAt as any) : null,
+        }),
+        ...(usage.closedAt !== undefined && {
+          closedAt: usage.closedAt ? new Date(usage.closedAt as any) : null,
+        }),
+      };
+
       // Get equipment to calculate expected diesel
       const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, usage.equipmentId)).limit(1);
       
@@ -4385,7 +4395,7 @@ export class DatabaseStorage implements IStorage {
       }
       
       const [result] = await tx.insert(equipmentUsage).values({
-        ...usage,
+        ...normalisedUsage,
         hoursOrKmRun,
         numberOfTrips: numberOfTrips || null,
         tripDistance: tripDistance || null,
@@ -4498,6 +4508,16 @@ export class DatabaseStorage implements IStorage {
 
   private async _updateEquipmentUsageTxn(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined> {
     return db.transaction(async (tx) => {
+      const normalisedUsage = {
+        ...usage,
+        ...(usage.openedAt !== undefined && {
+          openedAt: usage.openedAt ? new Date(usage.openedAt as any) : null,
+        }),
+        ...(usage.closedAt !== undefined && {
+          closedAt: usage.closedAt ? new Date(usage.closedAt as any) : null,
+        }),
+      };
+
       const [existing] = await tx.select().from(equipmentUsage).where(eq(equipmentUsage.id, id)).limit(1);
       if (!existing) return undefined;
 
@@ -4586,7 +4606,7 @@ export class DatabaseStorage implements IStorage {
       
       const [result] = await tx.update(equipmentUsage)
         .set({
-          ...usage,
+          ...normalisedUsage,
           hoursOrKmRun,
           numberOfTrips: numberOfTrips || null,
           tripDistance: tripDistance2 || null,

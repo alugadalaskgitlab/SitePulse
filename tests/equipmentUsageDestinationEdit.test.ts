@@ -124,7 +124,8 @@ vi.mock("../server/storage", () => {
   methods.updateEquipmentUsage = vi.fn(async (id: number, input: Record<string, any>) => {
     calls.updates.push({ id, input });
     if (!fx.existing) return undefined;
-    return { ...fx.existing, ...input, id };
+    fx.existing = { ...fx.existing, ...input, id };
+    return fx.existing;
   });
   methods.createEquipmentUsage = vi.fn(async (input: Record<string, any>) => {
     calls.creates.push(input);
@@ -373,6 +374,61 @@ describe("06X-HF4: combined destination-site and diesel-source update", () => {
       },
     ]);
     expect(calls.creates).toHaveLength(0);
+  });
+});
+
+describe("06X-HF5: reopen a completed historical entry as a site dispatch", () => {
+  it("returns 200 and persists the same row as open with cleared closing fields and canonical destination", async () => {
+    fx.existing = {
+      ...fx.existing!,
+      id: 301,
+      date: "2026-08-08",
+      equipmentName: "SOIL COMPACTOR (TS08JG4572)",
+      openingReading: 2515.4,
+      closingReading: 2518.2,
+      endTime: "17:30",
+      destinationSite: null,
+      status: "closed",
+    };
+
+    const openedAt = "2026-08-24T10:41:10.670Z";
+    const res = await agent
+      .put("/api/plant-module/equipment-usage/301")
+      .send({
+        destinationSite: "takkadpally-SIRUR",
+        status: "open",
+        openedAt,
+        closingReading: null,
+        endTime: null,
+        dieselSource: "direct_purchase",
+        dieselIncluded: false,
+        siteName: "THAKKADPALLY",
+        fuelStation: "BPCL",
+        billNumber: "HO431",
+        amountPaid: 2092.2,
+        openingDiesel: 0,
+        dieselIssued: 20,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.status).not.toBe(500);
+    expect(calls.creates).toHaveLength(0);
+    expect(calls.updates).toHaveLength(1);
+    expect(calls.updates[0].id).toBe(301);
+    expect(fx.existing).toMatchObject({
+      id: 301,
+      closingReading: null,
+      endTime: null,
+      status: "open",
+      destinationSite: "Takkadpally-sirur",
+    });
+    expect(res.body).toMatchObject({
+      id: 301,
+      closingReading: null,
+      endTime: null,
+      status: "open",
+      destinationSite: "Takkadpally-sirur",
+    });
   });
 });
 

@@ -18,6 +18,9 @@ const fx = vi.hoisted(() => {
     ledger: [] as Array<Record<string, any>>,
     tableKinds: new Map<any, string>(),
     adjustmentDeltas: [] as number[],
+    timestampWriteValues: [] as unknown[],
+    encodedTimestampValues: [] as string[],
+    encodeOpenedAt: null as null | ((value: unknown) => string),
   };
 
   const rowsFor = (table: any) => {
@@ -50,6 +53,10 @@ const fx = vi.hoisted(() => {
         where: () => ({
           returning: async () => {
             if (state.tableKinds.get(table) !== "equipmentUsage") return [];
+            if (Object.prototype.hasOwnProperty.call(values, "openedAt") && values.openedAt != null) {
+              state.timestampWriteValues.push(values.openedAt);
+              state.encodedTimestampValues.push(state.encodeOpenedAt!(values.openedAt));
+            }
             state.existing = { ...state.existing, ...values, id: state.existing.id };
             return [state.existing];
           },
@@ -62,11 +69,19 @@ const fx = vi.hoisted(() => {
       },
     })),
     insert: vi.fn((table: any) => ({
-      values: async (values: Record<string, any>) => {
+      values: (values: Record<string, any>) => {
+        if (state.tableKinds.get(table) === "equipmentUsage") {
+          if (Object.prototype.hasOwnProperty.call(values, "openedAt") && values.openedAt != null) {
+            state.timestampWriteValues.push(values.openedAt);
+            state.encodedTimestampValues.push(state.encodeOpenedAt!(values.openedAt));
+          }
+          state.existing = { id: 302, ...values };
+          return { returning: async () => [state.existing] };
+        }
         if (state.tableKinds.get(table) === "stockLedger") {
           state.ledger.push({ id: 8000 + state.ledger.length, ...values });
         }
-        return [];
+        return Promise.resolve([]);
       },
     })),
   };
@@ -78,6 +93,8 @@ const fx = vi.hoisted(() => {
         stockBalance: state.stockBalance,
         ledger: state.ledger.map((row) => ({ ...row })),
         adjustmentDeltas: [...state.adjustmentDeltas],
+        timestampWriteValues: [...state.timestampWriteValues],
+        encodedTimestampValues: [...state.encodedTimestampValues],
       };
       try {
         return await callback(tx);
@@ -86,6 +103,8 @@ const fx = vi.hoisted(() => {
         state.stockBalance = snapshot.stockBalance;
         state.ledger = snapshot.ledger;
         state.adjustmentDeltas = snapshot.adjustmentDeltas;
+        state.timestampWriteValues = snapshot.timestampWriteValues;
+        state.encodedTimestampValues = snapshot.encodedTimestampValues;
         throw error;
       }
     }),
@@ -114,6 +133,8 @@ beforeAll(async () => {
   fx.state.tableKinds.set(parties, "parties");
   fx.state.tableKinds.set(stockBalances, "stockBalances");
   fx.state.tableKinds.set(stockLedger, "stockLedger");
+  fx.state.encodeOpenedAt = (value: unknown) =>
+    equipmentUsage.openedAt.mapToDriverValue(value as Date);
 });
 
 beforeEach(() => {
@@ -150,6 +171,8 @@ beforeEach(() => {
     },
   ];
   fx.state.adjustmentDeltas = [];
+  fx.state.timestampWriteValues = [];
+  fx.state.encodedTimestampValues = [];
 
   storage._adjustStockBalance = vi.fn(
     async (
@@ -288,5 +311,95 @@ describe("06X-HF4 diesel transition plan", () => {
       stockBalanceDelta: -15,
       ledgerType: "equipment_usage",
     });
+  });
+});
+
+describe("06X-HF5 equipment-usage timestamp normalization", () => {
+  it("A: reopens the same completed row as an open dispatch and passes a Date through the real Drizzle encoder", async () => {
+    fx.state.existing = {
+      ...fx.state.existing,
+      id: 301,
+      date: "2026-08-08",
+      equipmentId: 42,
+      openingReading: 2515.4,
+      closingReading: 2518.2,
+      endTime: "17:30",
+      destinationSite: null,
+      status: "closed",
+    };
+    const openedAt = "2026-08-24T10:41:10.670Z";
+
+    const updated = await storage.updateEquipmentUsage(301, {
+      destinationSite: "Takkadpally-sirur",
+      status: "open",
+      openedAt,
+      closingReading: null,
+      endTime: null,
+      dieselSource: "direct_purchase",
+      dieselIncluded: false,
+      siteName: "THAKKADPALLY",
+      fuelStation: "BPCL",
+      billNumber: "HO431",
+      amountPaid: 2092.2,
+      openingDiesel: 0,
+      dieselIssued: 20,
+    } as any);
+
+    expect(fx.state.timestampWriteValues).toHaveLength(1);
+    expect(fx.state.timestampWriteValues[0]).toBeInstanceOf(Date);
+    expect(fx.state.encodedTimestampValues).toEqual([openedAt]);
+    expect(updated).toMatchObject({
+      id: 301,
+      closingReading: null,
+      endTime: null,
+      status: "open",
+      destinationSite: "Takkadpally-sirur",
+    });
+    expect(fx.state.existing).toMatchObject({
+      id: 301,
+      closingReading: null,
+      endTime: null,
+      status: "open",
+      destinationSite: "Takkadpally-sirur",
+    });
+  });
+
+  it("B: creates a fresh Send-to-Site row with openedAt persisted as a valid timestamp", async () => {
+    const openedAt = "2026-08-24T11:00:00.000Z";
+
+    const created = await storage.createEquipmentUsage({
+      date: "2026-08-24",
+      equipmentId: 42,
+      entryType: "time_meter",
+      openingReading: 2600,
+      closingReading: null,
+      endTime: null,
+      dieselIssued: 0,
+      status: "open",
+      destinationSite: "Takkadpally-sirur",
+      openedAt,
+    } as any);
+
+    expect(created.id).toBe(302);
+    expect(created.openedAt).toBeInstanceOf(Date);
+    expect(fx.state.timestampWriteValues).toHaveLength(1);
+    expect(fx.state.timestampWriteValues[0]).toBeInstanceOf(Date);
+    expect(fx.state.encodedTimestampValues).toEqual([openedAt]);
+  });
+
+  it("C: leaves openedAt absent on a normal edit that does not touch Send to Site", async () => {
+    const updated = await storage.updateEquipmentUsage(301, {
+      operator: "RAMESH",
+      remarks: "normal edit",
+    });
+
+    expect(updated).toMatchObject({
+      id: 301,
+      operator: "RAMESH",
+      remarks: "NORMAL EDIT",
+    });
+    expect(fx.state.timestampWriteValues).toEqual([]);
+    expect(fx.state.encodedTimestampValues).toEqual([]);
+    expect(Object.prototype.hasOwnProperty.call(fx.state.existing, "openedAt")).toBe(false);
   });
 });
