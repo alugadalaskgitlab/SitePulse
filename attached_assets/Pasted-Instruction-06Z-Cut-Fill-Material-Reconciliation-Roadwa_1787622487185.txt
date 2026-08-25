@@ -1,0 +1,346 @@
+Instruction 06Z — Cut/Fill Material Reconciliation (Roadway Excavation → Embankment with Excavated Material)
+
+OBJECTIVE
+
+Today, an Embankment-with-Cut-Material arrangement can only show a generic
+"Soil / Earth" description with no working link to the specific Roadway
+Excavation BOQ item it is meant to reuse material from. The Engineer has no
+way to see how much excavated material is actually available, and the
+Execution Arrangement screen currently has no control to set the source
+link at all — the DB field (sourceExcavationBoqItemId) can only end up
+populated by something outside today's UI.
+
+Build a material-reconciliation layer so that:
+- Roadway Excavation and Embankment-with-Excavated-Material remain two
+  completely separate BOQ progress items (see MODEL RULE 1).
+- SitePulse automatically tracks how much reusable excavated material is
+  available and how much has been consumed, driven off actual DPR entries —
+  not off a manually re-visited arrangement (see MODEL RULE 2).
+- The known linkage bug (screenshot: "Source excavation and destination
+  fill cannot be the same BOQ item") is root-caused and fixed, not
+  suppressed.
+
+MODEL RULE 1 — BOQ CREDIT NEVER MOVES BETWEEN ITEMS
+
+Roadway Excavation earns progress only against the Roadway Excavation BOQ
+item. Embankment with Excavated Material earns progress only against the
+Embankment BOQ item. The relationship between them is a MATERIAL
+source/consumption link only. Never let this batch move, copy, or infer BOQ
+quantity credit from one item to the other. Each item's percent-complete,
+Done/Balance, and billing math must be computed exactly as today, from its
+own progressEntries rows only.
+
+MODEL RULE 2 — EXECUTION ARRANGEMENT IS A PLANNED SETTING, NOT A DAILY STEP
+
+Execution Arrangement stays what it already is: the upfront record of how an
+item is intended to be executed (already-shipped statuses/workflow — do not
+redesign this screen's lifecycle, approvals, or component-responsibility
+table). For an arrangement of type "reused_excavated", it should be
+configured ONCE (source BOQ item) and never revisited by the Engineer during
+daily DPR entry. All day-to-day material accounting — available balance,
+consumption, remaining balance — is computed automatically from DPR entries,
+never by editing the arrangement.
+
+INVESTIGATE FIRST
+
+Confirm these before writing new code (all independently verified true as
+of this writing on the current build — re-verify quickly, do not assume):
+1. shared/schema.ts progressEntries already has boqItemId, quantity,
+   chainageFromKm/chainageToKm, and (via its parent dpr) a date — i.e. the
+   raw "what was executed, where, when" facts already exist for both the
+   excavation and the embankment DPR rows.
+2. shared/workTypeRecipes.ts classifyWorkType() already distinguishes
+   "roadway_excavation" (cutting) from "earthwork" (embankment/fill/borrow)
+   purely from the BOQ item's description/unit. This is real, tuned
+   MoRTH-clause matching already used elsewhere — reuse it, do not write a
+   second classifier.
+3. server/routes.ts validateReusedExcavationSource() (~line 15186) and
+   shared/materialReceiptSummary.ts reusedExcavationConfigurationIssue()
+   already correctly reject a source BOQ item equal to its own destination.
+   That rule is CORRECT — do not weaken or remove it.
+4. client/src/components/EarthworkArrangementDialog.tsx buildBody() never
+   sends sourceExcavationBoqItemId in either create or edit payloads today.
+   There is currently no UI control anywhere that lets a user set this
+   field to a real value.
+5. Despite #4, some existing arrangements already have a non-null
+   sourceExcavationBoqItemId (evidence: an arrangement whose Notes field
+   reads "CUT-TO-FILL: EMBANKMENT BUILT FROM ROADWAY CUTTING (QUICK
+   ACTION)" — no such Quick Action exists anywhere in the current
+   codebase; this is very likely a leftover from data predating the
+   current validation, or from a removed feature). Confirm by querying for
+   any earthwork_arrangements row where source_excavation_boq_item_id
+   equals its own boq_item_id (or is present in its own
+   boq_item_allocations) — these rows are self-referencing and currently
+   BLOCK EVERY PATCH to that arrangement, including ones that touch
+   nothing related to cut/fill (dates, quantity, scope reaches), because
+   PATCH /api/earthwork-arrangements/:id (~line 15695) unconditionally
+   re-validates the stored source on every edit, using the *current*
+   stored value whenever the request doesn't explicitly send
+   sourceExcavationBoqItemId. Confirm this reproduces the screenshot
+   exactly: editing scope/dates on such a record fails with "Source
+   excavation and destination fill cannot be the same BOQ item" even
+   though the edit never touched the source field.
+If any of the above is not actually true on the current build, STOP and
+report before proceeding.
+
+PART A — ROOT-CAUSE FIX: SELF-REFERENCING SOURCE LINK
+
+1. One-time repair: identify every earthwork_arrangements row where
+   source_excavation_boq_item_id currently equals its own boqItemId or
+   appears in its own boqItemAllocations. For each, clear
+   source_excavation_boq_item_id to null (do not guess a replacement —
+   Part B gives the Engineer/PM a real way to set it correctly going
+   forward). Log what was cleared (arrangement id, project, previous
+   value) so it is auditable, not silently dropped.
+2. Going forward, PATCH /api/earthwork-arrangements/:id must never let an
+   edit to unrelated fields (dates, quantity, scope, status, etc.) fail
+   because of a stale/self-referencing source value that the request
+   itself did not touch. Only re-validate the source relationship when the
+   request is actually changing sourceExcavationBoqItemId,
+   boqItemAllocations, boqItemId-affecting fields, or arrangementType. If
+   an existing stored source is found to be invalid at edit time and the
+   edit isn't touching it, either (a) allow the unrelated edit through and
+   surface a non-blocking warning, or (b) auto-clear the stale link as
+   part of the save and report it — do not hard-block the whole request.
+   Pick whichever is simpler given the current save-and-challenge flow in
+   this file; report which you chose.
+
+PART B — SETTING THE SOURCE, ONCE, WITHOUT GUESSING
+
+Give the Execution Arrangement dialog (only for arrangementType =
+"reused_excavated") a real control to choose the source Roadway Excavation
+BOQ item:
+- Populate the list using classifyWorkType() (INVESTIGATE FIRST #2) against
+  the project's own BOQ items — offer only items classified
+  "roadway_excavation" in the same project as candidates.
+- If the project has exactly one such item, pre-select it (still shown,
+  still changeable — never hidden).
+- If there are multiple candidates, require an explicit choice — never
+  guess. Sort candidates by chainage proximity to the destination item's
+  configured scope (same/overlapping range first, then nearest) using the
+  chainage fields already present on the arrangement, not a new adjacency
+  engine.
+- Chainage proximity is a SUGGESTION ORDERING ONLY, never a fact SitePulse
+  asserts. The system cannot know from chainage alone that soil dug at one
+  point actually went to another — haul routes, access, and material
+  quality decide that in the field, not distance. The same rule applies
+  again in Part C's per-DPR source suggestion: rank candidates by
+  plausibility, but the Engineer always confirms the actual source used.
+  Where there is genuinely only one plausible candidate, a one-click/
+  default-accept confirmation is fine — do not add friction for the simple
+  case — but it must still be a confirmation, not a silent pick.
+- Keep the existing validateReusedExcavationSource / self-reference check
+  exactly as-is on save.
+
+PART C — THE MATERIAL LEDGER (NEW)
+
+New concept, computed from DPR data, never manually entered as a running
+total.
+
+0. ACTIVATION POINT — DO NOT MANUFACTURE HISTORICAL BALANCE. This is the
+   most important rule in this batch. Excavation DPR rows recorded BEFORE
+   this feature goes live must NOT automatically become "available" cut
+   material. Some of that historical excavation may already have been used,
+   disposed of, or was never tracked as reusable — auto-crediting all of it
+   as available would manufacture soil that may not exist. Concretely:
+   - Only excavation progress rows dated on/after each project's
+     reconciliation activation point automatically enter the live,
+     auto-computed balance.
+   - For material dug before that point, the ledger starts at zero unless a
+     PM/Admin explicitly enters and confirms a one-time opening reusable
+     balance for that source item (a deliberate, reviewable number they
+     type in — never inferred from summing old rows). Provide a simple
+     screen/field for this; do not make it a blocking prerequisite for the
+     rest of the feature to work — projects with no historical carryover
+     should just start at zero with no extra step.
+   - Historical excavation rows may still be shown for reference (e.g. "500
+     Cum excavated on 2 Aug, before reconciliation tracking — not counted
+     in available balance"), but must never silently feed the balance.
+   - Record the activation point per project (or per source BOQ item, if
+     that proves simpler — report which) so this is explicit and auditable,
+     not inferred from "whenever this code shipped."
+
+1. Excavation side — "material outcome" on a DPR progress row for a BOQ
+   item classified "roadway_excavation":
+   - Default: fully reusable (reusableQty = quantity), for rows dated on/
+     after activation (see #0 — this default does NOT apply retroactively
+     to historical rows). This must not add any extra step for the common
+     case — the Engineer records the excavation exactly as today unless
+     they choose to say otherwise.
+   - Optional, only surfaced when at least one "reused_excavated"
+     Embankment arrangement in the project could plausibly draw from this
+     item (keep it out of the way otherwise): let the Engineer mark the
+     row Reusable / Unsuitable-disposal / Partly reusable. If partly
+     reusable, capture the reusable quantity directly (e.g. "Excavated 500,
+     Reusable 400, Unsuitable 100").
+   - Add whatever additive, nullable column(s) shared/schema.ts needs on
+     progressEntries to store this (e.g. materialOutcome,
+     reusableQty). No destructive migration.
+
+2. Consumption link — when a DPR progress row is entered for a BOQ item
+   that is the destination of a "reused_excavated" arrangement:
+   - Compute available balance = sum of reusableQty from that arrangement's
+     configured source BOQ item's progress rows dated on/before this DPR's
+     date AND on/after the activation point (#0) — plus any confirmed
+     opening balance — MINUS whatever has already been recorded as
+     consumed against those same source rows elsewhere. Same/overlapping
+     chainage first, then nearest by chainage distance, per Part B's
+     ordering — as a suggestion only (see Part B's chainage note); the
+     Engineer confirms the actual source, one click where there is only
+     one plausible candidate.
+   - Show the Engineer: available balance, the fill quantity they just
+     entered, and let them accept (default, where only one source is
+     plausible) or reduce the amount drawn from cut material. Never allow
+     consuming more than the available balance shown at entry time — and
+     see the server-side re-check below, because the figure shown while
+     typing is provisional, not a lock.
+   - SHORTFALL — NO SILENT MIXING. If the fill quantity exceeds the
+     available cut-material balance, show the gap explicitly (e.g.
+     "Required 700, Cut material available 500, Uncovered 200"). Do not
+     silently fill the uncovered portion from a generic/borrow source
+     under the SAME "reused excavated material" BOQ item — that item
+     contractually means material from roadway excavation. Either (a) cap
+     what's recorded as cut-material-sourced fill at the available amount
+     and leave the remainder unresolved for the Engineer to address, or
+     (b) if the project's BOQ/arrangement configuration already has an
+     explicitly separate, approved BOQ item or source for the shortfall
+     (e.g. a distinct "borrow earth" item), let the Engineer record the
+     remainder against THAT item through its own normal DPR entry — never
+     invent an implicit blend inside the reused-excavated item itself.
+   - Persist the link (which source row(s), how much consumed from each —
+     one fill row may legitimately draw from more than one excavation row,
+     e.g. 250 from one date/chainage and 150 from another) using whatever
+     minimum additive schema is confirmed under SCHEMA STOP GATE below.
+     This is a record of material movement, not a second BOQ progress
+     entry, and must never touch either item's progress/percent-complete
+     math (Model Rule 1).
+   - SERVER-SIDE ATOMIC REVALIDATION ON SAVE/SUBMIT (mandatory — the UI
+     balance is provisional and must not be trusted as the final check).
+     Two Engineers can independently open two different DPRs against the
+     same source excavation and each see the same "available" figure
+     before either saves. On save/submit of a DPR containing a cut-material
+     consumption, the server must, inside one transaction, lock the
+     relevant source row(s) (reuse the row-locking pattern already used
+     for equipment usage in 06Y — SELECT ... FOR UPDATE — for this
+     project's consumption records), recompute the true remaining balance
+     against everything already committed, and reject or clamp the request
+     if it would exceed what is actually still available. On rejection,
+     return a plain, specific message the DPR screen can show as-is, e.g.
+     "Only 100 Cum of this excavated material is still available — another
+     report has already used 400 Cum of it." Never surface a raw
+     validation/JSON error to the Engineer for this case.
+
+3. Same-DPR order independence: the balance check must include excavation
+   rows already added earlier in the SAME, not-yet-submitted DPR form (the
+   client already holds the day's rows in memory) — not only rows already
+   saved to the server. If the Engineer enters the embankment line before
+   the excavation line, show "no balance recorded yet / add today's
+   excavation or select another source" rather than an error, and
+   recalculate automatically the moment the excavation line is added later
+   in the same form. Entry order must never block or corrupt the DPR. This
+   client-side convenience does not replace the server-side atomic
+   revalidation above — both are required.
+
+4. Do this in both Guided DPR and Detailed/Site DPR entry (GuidedDpr.tsx,
+   SiteEntry.tsx, SiteEdit.tsx) — do not implement it in only one entry
+   mode and leave the other inconsistent.
+
+SCHEMA STOP GATE
+
+Part C requires new persistence — that is expected, but the exact design is
+NOT pre-approved. Investigate the minimum additive schema needed, report
+it, and STOP before applying any migration — wait for confirmation before
+generating it. For the consumption side specifically, a small dedicated
+linkage table (one row per source-usage-to-fill link: fill progress entry
+id, source progress entry id, qty consumed) is preferred over packing an
+array/JSON blob into a DPR progress row, because one fill row can
+legitimately draw from more than one excavation row and a proper table
+preserves that history cleanly and makes the server-side revalidation in
+Part C.2 straightforward to lock and query. Propose this shape in the
+report, but do not treat it as final — report it and stop, the same as any
+other schema addition. Whatever is finally used: keep every addition
+nullable/additive, follow the existing ALTER TABLE ... ADD COLUMN IF NOT
+EXISTS startup-guard pattern already used elsewhere in this codebase (see
+the 06Y equipment migration for the pattern), and do not drop or repurpose
+any existing column.
+
+NON-GOALS
+
+Do not touch:
+- BOQ progress/percent-complete calculation for either item (Model Rule 1).
+- Execution Arrangement's approval lifecycle, statuses, component
+  responsibility table, or any bituminous arrangement type.
+- shared/quantityResolver.ts or the contract-quantity/eligible-scope
+  resolvers — this batch is about actual DPR material movement, not
+  contract quantity.
+- Equipment usage / movement (06Y) — unrelated, already shipped.
+- Anything for arrangementType other than "reused_excavated".
+
+TESTS
+
+1. Single-source case: excavation recorded, embankment recorded same or
+   later date, balance offered and consumed correctly; both BOQ items'
+   progress remain independently correct.
+2. Same-day entry, excavation-first: balance available immediately within
+   the same DPR.
+3. Same-day entry, embankment-first: shows pending/no-balance, then
+   recalculates automatically once excavation is added in the same form —
+   without a save/reload round-trip.
+4. Partial availability / shortfall: embankment quantity exceeds available
+   balance — "Required / Available / Uncovered" shown, and confirm the
+   uncovered portion is never silently absorbed into the reused-excavated
+   BOQ item from an unrecorded source.
+5. Partly-reusable excavation: only the reusable portion enters the
+   balance; unsuitable/disposed portion never does.
+6. Multiple candidate source items: Engineer must explicitly choose;
+   nothing is silently auto-picked when more than one plausible source
+   exists, even though the suggestion ranks them.
+7. Self-referencing legacy arrangement: reproduce the exact screenshot
+   scenario before the fix (edit fails on an unrelated field change),
+   confirm the repair clears it, and confirm an unrelated edit on any
+   other arrangement is never blocked by a stale source value it isn't
+   touching.
+8. BOQ credit isolation: confirm no code path in this batch writes to or
+   reads from the "other" BOQ item's progress as a side effect of the
+   material link.
+9. Historical data safety: an excavation row dated before the activation
+   point must NOT appear in the available balance unless a PM/Admin
+   explicitly entered and confirmed an opening balance; confirm a project
+   with only pre-activation excavation and no opening balance shows zero
+   available, not the historical total.
+10. Concurrent consumption: simulate two DPRs both attempting to consume
+    from the same source balance where only one can fully succeed — confirm
+    the server-side atomic check (with row locking) prevents total
+    committed consumption from exceeding what's actually available, and
+    that the rejected/clamped request gets a plain-language message, not a
+    raw error.
+11. Full existing test suite — no regression, including all Execution
+    Arrangement, quantityResolver, and 06Y equipment tests.
+
+REPORT BACK
+
+Report:
+1. What caused the self-referencing source values, if determinable (data
+   history vs. a code path), and how many existing arrangements were
+   repaired.
+2. Proposed minimum additive schema (fields/table) — reported for
+   confirmation, migration not yet applied unless/until confirmed.
+3. Where the "material outcome" control appears and its default behavior
+   for the common (fully reusable) case, and confirmation it only applies
+   to post-activation rows.
+4. How the activation point / opening balance mechanism was implemented,
+   and what a project with no configured opening balance shows.
+5. How same-DPR, entry-order independence was implemented on the client,
+   AND how the server-side atomic revalidation on save/submit was
+   implemented (locking mechanism, and the exact user-facing message on
+   conflict).
+6. Confirmation BOQ progress crediting for both items was not touched.
+7. Confirmation Execution Arrangement's existing lifecycle/statuses were
+   not changed, only the new source-selection control was added, and that
+   chainage-based suggestions are never auto-applied without confirmation.
+8. Confirmation a shortfall under the reused-excavated BOQ item is never
+   silently filled from an unrecorded source.
+9. Test results (focused + full suite).
+
+DO NOT START ANOTHER BATCH.
+STOP AND REPORT BACK.
