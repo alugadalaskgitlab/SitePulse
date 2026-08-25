@@ -8,7 +8,7 @@
  * self-execution, never a required setup.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -33,6 +33,8 @@ import {
 } from "@shared/autoSequenceScope";
 import { resolveEligibleScope, coverageForStretch } from "@shared/projectScope";
 import { resolveArrangementApplicableQty } from "@shared/arrangementApplicableQty";
+import { classifyWorkType } from "@shared/workTypeRecipes";
+import { rankCutFillSources, preselectedSourceId, type ChainageCandidate } from "@/lib/cutFillLedger";
 import {
   type WorkCategoryKey,
   BITUMINOUS_ARRANGEMENT_TYPE_LABELS,
@@ -630,6 +632,9 @@ export function EarthworkArrangementDialog({
   const [arrangementType, setArrangementType] = useState<ArrangementType>(
     (editArrangement?.arrangementType as ArrangementType) ?? "not_decided"
   );
+  const [sourceExcavationBoqItemId, setSourceExcavationBoqItemId] = useState<number | null>(
+    (editArrangement as any)?.sourceExcavationBoqItemId != null ? Number((editArrangement as any).sourceExcavationBoqItemId) : null
+  );
   const [agencyName, setAgencyName] = useState(editArrangement?.agencyName ?? "");
   const [reachLabel, setReachLabel] = useState(editArrangement?.reachLabel ?? "");
 
@@ -661,6 +666,25 @@ export function EarthworkArrangementDialog({
     enabled: open && projectId > 0,
     staleTime: 30_000,
   });
+  const { data: projectBoqItems = [] } = useQuery<any[]>({
+    queryKey: ["/api/boq/projects", projectId, "items", "cut-fill"],
+    queryFn: async () => {
+      const response = await fetch(`/api/boq/projects/${projectId}/items`, { credentials: "include" });
+      return response.ok ? response.json() : [];
+    },
+    enabled: open && projectId > 0 && arrangementType === "reused_excavated",
+  });
+  const cutFillCandidates = useMemo(() => {
+    const candidates = projectBoqItems
+      .filter(item => classifyWorkType(String(item.description ?? item.itemName ?? ""), String(item.unit ?? "")) === "roadway_excavation")
+      .map(item => ({ id: Number(item.id), description: String(item.description ?? item.itemName ?? ""), unit: String(item.unit ?? "CUM"), chainageFrom: item.chainageFrom ?? item.chainage_from, chainageTo: item.chainageTo ?? item.chainage_to })) as ChainageCandidate[];
+    return rankCutFillSources(candidates, Number((editArrangement as any)?.chainageFrom), Number((editArrangement as any)?.chainageTo));
+  }, [projectBoqItems, editArrangement]);
+  useEffect(() => {
+    if (arrangementType === "reused_excavated" && sourceExcavationBoqItemId == null && cutFillCandidates.length === 1) {
+      setSourceExcavationBoqItemId(preselectedSourceId(cutFillCandidates));
+    }
+  }, [arrangementType, cutFillCandidates, sourceExcavationBoqItemId]);
   const reaches = confirmedWorkingReaches(scopeSegments);
   const constraints = scopeConstraints(scopeSegments);
   const [allocatedQty, setAllocatedQty] = useState(
@@ -769,6 +793,7 @@ export function EarthworkArrangementDialog({
   // Apply template when arrangement type changes
   function handleTypeChange(t: ArrangementType) {
     setArrangementType(t);
+    if (t !== "reused_excavated") setSourceExcavationBoqItemId(null);
     setComponents(defaultComponentsFor(t));
   }
 
@@ -785,7 +810,8 @@ export function EarthworkArrangementDialog({
   // Validation — outsourced types come from the category descriptor (028)
   const categoryDescriptor = getCategoryDescriptor(category);
   const needsAgencyName = categoryDescriptor.outsourcedTypes.has(arrangementType as string);
-  const canDraft = allocQtyNum > 0 && arrangementType !== "not_decided";
+  const sourceRequired = arrangementType === "reused_excavated";
+  const canDraft = allocQtyNum > 0 && arrangementType !== "not_decided" && (!sourceRequired || sourceExcavationBoqItemId != null);
   const canSubmit = canDraft && (!needsAgencyName || agencyName.trim().length > 0);
 
   /**
@@ -841,6 +867,7 @@ export function EarthworkArrangementDialog({
       plannedDailyOutput: dailyOutputNum > 0 ? dailyOutputNum : null,
       notes: notes.trim() || null,
       components,
+      sourceExcavationBoqItemId: sourceRequired ? sourceExcavationBoqItemId : null,
       // PATCH (edit) uses `status` directly; POST uses `saveIntent`.
       // Instruction 027 §17: never send status when editing an operational
       // arrangement — that would silently demote approved/in-progress records.
@@ -855,7 +882,7 @@ export function EarthworkArrangementDialog({
       return { ...base, boqItemId: null, boqItemAllocations: allocs };
     }
     // Single-source
-    return { ...base, boqItemId };
+    return { ...base, boqItemId, sourceExcavationBoqItemId: sourceRequired ? sourceExcavationBoqItemId : null };
   };
 
   /**
@@ -976,6 +1003,18 @@ export function EarthworkArrangementDialog({
               </SelectContent>
             </Select>
           </div>
+          {arrangementType === "reused_excavated" && (
+            <div className="space-y-1 rounded border border-blue-200 bg-blue-50/60 p-2" data-testid="cut-fill-source-selector">
+              <Label className="text-xs font-semibold text-blue-900">Source roadway excavation BOQ item <span className="text-red-600">*</span></Label>
+              <Select value={sourceExcavationBoqItemId == null ? "" : String(sourceExcavationBoqItemId)} onValueChange={value => setSourceExcavationBoqItemId(Number(value))}>
+                <SelectTrigger className="h-8 text-[12px] bg-white"><SelectValue placeholder={cutFillCandidates.length ? "Select source item" : "No roadway excavation items found"} /></SelectTrigger>
+                <SelectContent>{cutFillCandidates.map(item => <SelectItem key={item.id} value={String(item.id)} className="text-[12px]">{item.description}</SelectItem>)}</SelectContent>
+              </Select>
+              <p className="text-[10px] text-blue-800">Proximity only ranks this list; it does not prove that material moved. Confirm the source explicitly.</p>
+              {cutFillCandidates.length === 1 && sourceExcavationBoqItemId === cutFillCandidates[0].id && <p className="text-[10px] text-emerald-700">One candidate preselected — review or change before saving.</p>}
+              {sourceRequired && sourceExcavationBoqItemId == null && <p className="text-[11px] text-red-600">Choose a source before saving this reused-material arrangement.</p>}
+            </div>
+          )}
 
           {/* Agency / Vendor (shown unless not_decided / client_supplied / hlc_in_house / reused_excavated) */}
           {!["hlc_in_house", "reused_excavated", "not_decided"].includes(arrangementType) && (

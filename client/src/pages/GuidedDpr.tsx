@@ -59,6 +59,9 @@ import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
 import { Checkbox } from "@/components/ui/checkbox";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
+import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
+import { classifyWorkType } from "@shared/workTypeRecipes";
+import { flattenCutFillConsumptions, hydrateCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
@@ -111,6 +114,9 @@ interface GuidedEntry {
   // Batch 06V: Incidental / Non-BOQ work
   isIncidental: boolean;
   incidentalDescription: string;
+  materialOutcome?: string | null;
+  reusableQty?: number | null;
+  allocations?: Array<{ sourceEntryKey?: string | null; openingBalanceId?: number | null; quantity: number }>;
 }
 
 // Batch 04 save fidelity: Guided edits 4 fields but must round-trip every
@@ -260,6 +266,9 @@ export default function GuidedDpr() {
         noSiteWorkDescription: e.noSiteWorkDescription ?? "",
         isIncidental: e.isIncidental ?? false,
         incidentalDescription: e.incidentalDescription ?? "",
+         materialOutcome: e.materialOutcome ?? null,
+         reusableQty: e.reusableQty != null ? Number(e.reusableQty) : null,
+         allocations: e.allocations ?? [],
       })));
       // Normal restore keeps the stored step; a deliberate Complete entry
       // computes its own step from the server draft's readiness instead.
@@ -298,7 +307,7 @@ export default function GuidedDpr() {
     setRemarks(urlDraftDpr.remarks ?? "");
     // Task #1409: no-work rows are first-class in Guided now — hydrate them
     // instead of silently dropping them from the draft.
-    setEntries((urlDraftDpr.progress ?? [])
+     setEntries(hydrateCutFillConsumptions((urlDraftDpr.progress ?? [])
       .map((p: any): GuidedEntry => ({
         entryKey: p.entryKey || newEntryKey(),
         noSiteWork: !!p.noSiteWork,
@@ -326,7 +335,10 @@ export default function GuidedDpr() {
         layerNo: p.layerNo != null ? Number(p.layerNo) : null,
         isIncidental: !!p.isIncidental,
         incidentalDescription: p.incidentalDescription || "",
-      })));
+         materialOutcome: p.materialOutcome ?? null,
+         reusableQty: p.reusableQty != null ? Number(p.reusableQty) : null,
+         allocations: [],
+      })), urlDraftDpr.cutFillConsumptions));
     deriveNeededRef.current = true;
     // Batch 04: keep every non-edited equipment field for round-trip — a
     // Guided save must never wipe readings/times/fuel entered elsewhere.
@@ -507,6 +519,16 @@ export default function GuidedDpr() {
     queryFn: async () => {
       const res = await fetch(`/api/boq/projects/${boqProjectId}/items`, { credentials: "include" });
       return res.ok ? res.json() : [];
+    },
+    enabled: !!boqProjectId,
+  });
+  const { data: cutFillArrangements = [] } = useQuery<any[]>({
+    queryKey: ["/api/boq/projects", boqProjectId, "earthwork-arrangements"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${boqProjectId}/earthwork-arrangements`, { credentials: "include" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data.arrangements ?? []);
     },
     enabled: !!boqProjectId,
   });
@@ -984,6 +1006,8 @@ export default function GuidedDpr() {
         chainageOverrideReason: e.chainageOverrideReason.trim() || null,
         executedBy: e.executedBy || null,
         layerNo: e.layerNo,
+        materialOutcome: e.materialOutcome || null,
+        reusableQty: e.materialOutcome == null ? null : e.reusableQty,
       };
     });
     const entryRemarks = entries.filter((e) => !e.noSiteWork && e.remark.trim()).map((e) => `${e.activity}: ${e.remark.trim()}`);
@@ -993,6 +1017,7 @@ export default function GuidedDpr() {
       boqProjectId: boqProjectId ?? undefined,
       ...(asDraft ? { dprStatus: "draft" } : {}),
       progress,
+      cutFillConsumptions: flattenCutFillConsumptions(entries),
       structureItems: unmanagedSectionsRef.current.structureItems,
       // Batch 04: edited fields on top of the untouched passthrough — no more
       // hard-coded ""/null wiping of values entered in the Detailed editor.
@@ -1207,6 +1232,11 @@ export default function GuidedDpr() {
           }
         }
       }
+    }
+    const cutFillIssues = validateCutFillForm(entries as any, boqItems, cutFillArrangements, [], true);
+    if (cutFillIssues.length > 0) {
+      toast({ title: "Cut / fill reconciliation needed", description: cutFillIssues[0], variant: "destructive" });
+      return false;
     }
     return true;
   };
@@ -1516,6 +1546,14 @@ export default function GuidedDpr() {
               </div>
             )}
             {!e.noSiteWork && (<>
+            {e.boqItemId != null && classifyWorkType(String(itemById.get(e.boqItemId)?.description ?? ""), String(itemById.get(e.boqItemId)?.unit ?? "")) === "roadway_excavation" && (
+              <CutFillOutcomeControls quantity={e.quantity} outcome={e.materialOutcome ?? null} reusableQty={e.reusableQty ?? null}
+                onOutcomeChange={(materialOutcome, reusableQty) => updateEntry(idx, { materialOutcome, reusableQty })} />
+            )}
+            <CutFillOutcomeControls fillMode projectId={boqProjectId} arrangementId={e.earthworkArrangementId}
+              quantity={e.quantity} outcome={null} reusableQty={null} allocations={e.allocations as any}
+              currentEntryKey={e.entryKey} formRows={entries as any} boqItems={boqItems}
+              onOutcomeChange={() => undefined} onAllocationsChange={allocations => updateEntry(idx, { allocations: allocations as any })} />
             {/* Batch 06C §7: rows created via "+ Add Row" pick their BOQ item
                 right here — programme-suggested rows keep their item fixed
                 (the bar defines it), so the selector shows only for unlinked
@@ -2475,7 +2513,7 @@ export default function GuidedDpr() {
       <DprReadinessDialog
         readiness={readiness}
         onClose={() => setReadiness(null)}
-        onSubmitAnyway={() => saveMutation.mutate(false)}
+        onSubmitAnyway={() => { if (validateForSubmit()) saveMutation.mutate(false); }}
         onSaveDraft={() => { if (validateHeader()) saveMutation.mutate(true); }}
         onMandatoryIssue={jumpToReadinessIssue}
       />

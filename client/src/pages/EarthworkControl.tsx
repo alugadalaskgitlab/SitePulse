@@ -6,7 +6,7 @@
  * classification actions, and links to the arrangement dialog.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -17,10 +17,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import { ArrangementStatusBadge } from "@/components/EarthworkArrangementDialog";
 import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
 import type { EarthworkArrangementSummary } from "@shared/planningEngine";
 import { invalidateArrangementQueries } from "@/lib/arrangementCache";
+import { classifyWorkType } from "@shared/workTypeRecipes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -101,6 +103,36 @@ export default function EarthworkControl() {
   const projectId = parseInt(params.id ?? "0", 10);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canManageReconciliation = !!user?.isAdmin || ["admin", "pm", "project_manager", "manager"].includes(String((user as any)?.role ?? "").toLowerCase());
+  const [activationDate, setActivationDate] = useState("");
+  const [openingQty, setOpeningQty] = useState<Record<number, string>>({});
+  const [openingRemarks, setOpeningRemarks] = useState<Record<number, string>>({});
+  const { data: reconciliation, isLoading: reconciliationLoading } = useQuery<any>({
+    queryKey: ["/api/boq/projects", projectId, "cut-fill-reconciliation"],
+    queryFn: async () => {
+      const response = await fetch(`/api/boq/projects/${projectId}/cut-fill-reconciliation`, { credentials: "include" });
+      if (!response.ok) throw new Error("reconciliation_load_failed");
+      return response.json();
+    },
+    enabled: projectId > 0,
+  });
+  useEffect(() => {
+    if (!reconciliation) return;
+    setActivationDate(reconciliation.activationDate ?? "");
+    setOpeningQty(Object.fromEntries((reconciliation.openingBalances ?? []).map((b: any) => [Number(b.sourceExcavationBoqItemId), String(b.quantity ?? "")])));
+    setOpeningRemarks(Object.fromEntries((reconciliation.openingBalances ?? []).map((b: any) => [Number(b.sourceExcavationBoqItemId), b.remarks ?? ""])));
+  }, [reconciliation]);
+  const reconciliationMutation = useMutation({
+    mutationFn: async (input: { url: string; body: unknown }) => {
+      const response = await fetch(input.url, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input.body) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message ?? body.error ?? `Error ${response.status}`);
+      return body;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "cut-fill-reconciliation"] }); toast({ title: "Reconciliation settings saved" }); },
+    onError: (error: Error) => toast({ title: "Could not save reconciliation settings", description: error.message, variant: "destructive" }),
+  });
 
   const { data, isLoading, error } = useQuery<{ rows: EarthworkRow[] }>({
     queryKey: ["shortage-check", projectId],
@@ -128,6 +160,17 @@ export default function EarthworkControl() {
     return s + active.reduce((sum, a) => sum + (a.completedQty ?? 0), 0);
   }, 0);
   const totalUnallocated = Math.max(0, totalQty - totalAllocated);
+  const { data: reconciliationItems = [] } = useQuery<any[]>({
+    queryKey: ["/api/boq/projects", projectId, "items", "reconciliation"],
+    queryFn: async () => {
+      const response = await fetch(`/api/boq/projects/${projectId}/items`, { credentials: "include" });
+      return response.ok ? response.json() : [];
+    },
+    enabled: projectId > 0,
+  });
+  const excavationItems = reconciliationItems.filter(item => {
+    return classifyWorkType(String(item.description ?? item.itemName ?? ""), String(item.unit ?? "")) === "roadway_excavation";
+  });
 
   const handleSaved = () => {
     // Instruction 026 A2: refresh all demand-affected queries, not just shortage rows
@@ -167,6 +210,39 @@ export default function EarthworkControl() {
           Manage earthwork execution arrangements and material classifications
         </p>
       </div>
+      <Card className="border-blue-200 bg-blue-50/40">
+        <div className="p-3 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-[13px] font-semibold text-slate-800">Cut / fill reconciliation</h2>
+              <p className="text-[11px] text-slate-600 mt-0.5">Pre-activation excavation contributes zero unless represented by a confirmed opening balance. BOQ progress is unchanged.</p>
+            </div>
+            <Badge variant="outline" className={reconciliation?.activationDate ? "border-emerald-300 text-emerald-700 bg-emerald-50" : "border-amber-300 text-amber-700 bg-amber-50"}>
+              {reconciliation?.activationDate ? `Active · ${reconciliation.activationDate}` : "Not active"}
+            </Badge>
+          </div>
+          <div className="flex items-end gap-2 flex-wrap">
+            <div className="space-y-1"><label className="text-[10px] font-semibold text-slate-600">Activation date</label>
+              <input type="date" className="h-8 rounded border border-slate-300 bg-white px-2 text-[12px]" value={activationDate} disabled={!canManageReconciliation} onChange={e => setActivationDate(e.target.value)} /></div>
+            {canManageReconciliation && <Button size="sm" className="h-8 text-[11px]" disabled={reconciliationMutation.isPending} onClick={() => reconciliationMutation.mutate({ url: `/api/boq/projects/${projectId}/cut-fill-reconciliation/activation`, body: { activationDate: activationDate || null } })}>Save activation</Button>}
+            {!canManageReconciliation && <span className="text-[10px] text-slate-500 pb-2">Read-only: PM/Admin confirmation required</span>}
+          </div>
+          {reconciliationLoading ? <div className="h-8 rounded bg-blue-100 animate-pulse" /> : excavationItems.length === 0 ? <p className="text-[11px] text-slate-500">No roadway-excavation BOQ items found.</p> : (
+            <div className="divide-y divide-blue-200 rounded border border-blue-200 bg-white">
+              {excavationItems.map(item => {
+                const id = Number(item.id);
+                const balance = (reconciliation?.openingBalances ?? []).find((b: any) => Number(b.sourceExcavationBoqItemId) === id);
+                return <div key={id} className="grid grid-cols-[1fr_110px_1fr_auto] gap-2 items-center p-2">
+                  <div><p className="text-[11px] font-medium text-slate-800">{item.description ?? item.itemName}</p><p className="text-[10px] text-slate-500">Confirmed opening balance: {balance?.quantity ?? 0} {item.unit ?? "CUM"}</p></div>
+                  <input type="number" min="0" className="h-8 rounded border border-slate-300 px-2 text-[11px] font-mono" placeholder="Quantity" value={openingQty[id] ?? ""} disabled={!canManageReconciliation} onChange={e => setOpeningQty(v => ({ ...v, [id]: e.target.value }))} />
+                  <input className="h-8 rounded border border-slate-300 px-2 text-[11px]" placeholder="Optional remarks" value={openingRemarks[id] ?? ""} disabled={!canManageReconciliation} onChange={e => setOpeningRemarks(v => ({ ...v, [id]: e.target.value }))} />
+                  {canManageReconciliation && <Button variant="outline" size="sm" className="h-8 text-[11px] border-blue-300 text-blue-700" onClick={() => reconciliationMutation.mutate({ url: `/api/boq/projects/${projectId}/cut-fill-opening-balances/${id}`, body: { quantity: Number(openingQty[id] ?? 0), remarks: openingRemarks[id] || null } })}>Confirm</Button>}
+                </div>;
+              })}
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Summary bar */}
       {!isLoading && earthworkRows.length > 0 && (

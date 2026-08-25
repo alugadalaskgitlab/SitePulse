@@ -97,6 +97,8 @@ import {
   stockReconciliationItems,
   type StockReconciliationSession,
   type StockReconciliationItem,
+  cutFillOpeningBalances,
+  cutFillConsumptions,
 } from "@shared/schema";
 import { resolveConversion, convertToBase, computeAdjustment, isNoChange, computeVarianceWarnings, toFiniteNumber, type VarianceWarning } from "@shared/stockReconciliation";
 import { resolvePermittedSiteIds } from "@shared/siteAccess";
@@ -107,6 +109,8 @@ import {
   type EquipmentDestinationType,
   type MovementRequest,
 } from "@shared/equipmentMovement";
+import { insufficientCutFillMessage, cutFillCapacityExceeded } from "@shared/cutFillReconciliation";
+import { classifyWorkType } from "@shared/workTypeRecipes";
 import {
   dateToMonthIndexCal,
   displayFinishDateCal,
@@ -1606,6 +1610,39 @@ export interface IStorage {
   }>>;
 }
 
+/** Raised only after the transaction has recomputed the authoritative ledger. */
+export class CutFillInsufficientAvailabilityError extends Error {
+  readonly code = "CUT_FILL_INSUFFICIENT_AVAILABILITY";
+  constructor(
+    public readonly availableQty: number,
+    public readonly alreadyUsedQty: number,
+  ) {
+    super(insufficientCutFillMessage(availableQty, alreadyUsedQty));
+  }
+}
+
+export class CutFillValidationError extends Error {
+  readonly code = "CUT_FILL_RECONCILIATION_INVALID";
+}
+
+/** Stable-key remap plan used before replacing/superseding source progress. */
+export function planCutFillSourceRemap(
+  oldRows: Array<{ id: number; entryKey: string | null }>,
+  newRows: Array<{ id: number; entryKey: string | null }>,
+  externalLinks: Array<{ id: number; sourceProgressEntryId: number | null }>,
+): { remaps: Array<{ consumptionId: number; sourceProgressEntryId: number }>; missingKeys: string[] } {
+  const oldById = new Map(oldRows.map(x => [x.id, x.entryKey]));
+  const newByKey = new Map(newRows.filter(x => x.entryKey).map(x => [String(x.entryKey), x.id]));
+  const remaps: Array<{ consumptionId: number; sourceProgressEntryId: number }> = [], missingKeys: string[] = [];
+  for (const link of externalLinks) {
+    const key = link.sourceProgressEntryId == null ? undefined : oldById.get(link.sourceProgressEntryId);
+    const next = key == null ? undefined : newByKey.get(key);
+    if (next == null) missingKeys.push(key ?? String(link.sourceProgressEntryId));
+    else remaps.push({ consumptionId: link.id, sourceProgressEntryId: next });
+  }
+  return { remaps, missingKeys: Array.from(new Set(missingKeys)) };
+}
+
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
 // reconciliation. Diffs are computed in litres; null when one of the two
 // sources for that pair is missing. `anyMismatch` is true when at least one
@@ -2184,7 +2221,209 @@ export class DatabaseStorage implements IStorage {
         structureItems: true,
       }
     });
-    return dpr;
+    if (!dpr) return undefined;
+    const fillIds = (dpr.progress ?? []).map(p => p.id);
+    const links = fillIds.length ? await db.select({
+      fillEntryKey: progressEntries.entryKey,
+      sourceEntryKey: sql<string | null>`source.entry_key`,
+      openingBalanceId: cutFillConsumptions.openingBalanceId,
+      quantity: cutFillConsumptions.quantity,
+    }).from(cutFillConsumptions)
+      .innerJoin(progressEntries, eq(progressEntries.id, cutFillConsumptions.fillProgressEntryId))
+      .leftJoin(sql`progress_entries source`, sql`source.id = ${cutFillConsumptions.sourceProgressEntryId}`)
+      .where(inArray(cutFillConsumptions.fillProgressEntryId, fillIds)) : [];
+    return { ...dpr, cutFillConsumptions: links } as DprWithDetails;
+  }
+
+  /**
+   * Resolve the request's stable keys after progress rows have been inserted,
+   * then validate and write the normalised ledger.  Availability is queried
+   * under deterministic row locks; drafts are stored but deliberately skip the
+   * global availability gate because they do not participate in it.
+   */
+  private async persistCutFillConsumptionsTx(
+    tx: any, dpr: any, insertedProgress: any[], request: any, excludeDprIds: number[] = [],
+  ): Promise<void> {
+    const lines: any[] = Array.isArray(request?.cutFillConsumptions) ? request.cutFillConsumptions : [];
+    const byKey = new Map(insertedProgress.filter(p => p.entryKey).map(p => [String(p.entryKey), p]));
+    if (dpr.dprStatus !== "draft") {
+      const arrangementIds = Array.from(new Set(
+        insertedProgress.map(row => Number(row.earthworkArrangementId)).filter(Number.isFinite),
+      ));
+      const arrangements = arrangementIds.length
+        ? await tx.select().from(earthworkArrangements).where(inArray(earthworkArrangements.id, arrangementIds))
+        : [];
+      const arrangementById = new Map(arrangements.map((row: any) => [Number(row.id), row]));
+      const allocatedByFill = new Map<string, number>();
+      for (const line of lines) {
+        const key = String(line.fillEntryKey);
+        allocatedByFill.set(key, (allocatedByFill.get(key) ?? 0) + Number(line.quantity ?? 0));
+      }
+      for (const fill of insertedProgress) {
+        const arrangement = arrangementById.get(Number(fill.earthworkArrangementId));
+        if (arrangement?.arrangementType !== "reused_excavated" || arrangement.sourceExcavationBoqItemId == null) continue;
+        const required = Number(fill.quantity ?? 0);
+        const allocated = allocatedByFill.get(String(fill.entryKey)) ?? 0;
+        if (!Number.isFinite(required) || required <= 0 || Math.abs(required - allocated) > 0.0001) {
+          throw new CutFillValidationError(
+            `Reused excavation allocations for "${fill.activity ?? "fill activity"}" must equal the reported quantity of ${Number.isFinite(required) ? required : 0} Cum.`,
+          );
+        }
+      }
+    }
+    if (lines.length === 0) return;
+    const fillIds: number[] = [];
+    const sourceKeys = Array.from(new Set(lines.map(x => x.sourceEntryKey).filter(Boolean).map(String))).sort();
+    const priorSourceKeys = sourceKeys.filter(key => !byKey.has(key));
+    const openingIds = Array.from(new Set(lines.map(x => Number(x.openingBalanceId)).filter(Number.isFinite))).sort((a, b) => a - b);
+    const priorSourceKeySql = sql.join(priorSourceKeys.map(key => sql`${key}`), sql`, `);
+    const openingIdSql = sql.join(openingIds.map(id => sql`${id}`), sql`, `);
+    // Lock candidate source rows in stable order. A source may be current-DPR
+    // (already inserted) or a previously submitted source.
+    if (priorSourceKeys.length) {
+      await tx.execute(sql`SELECT id FROM progress_entries WHERE entry_key IN (${priorSourceKeySql}) ORDER BY id FOR UPDATE`);
+    }
+    if (openingIds.length) {
+      await tx.execute(sql`SELECT id FROM cut_fill_opening_balances WHERE id IN (${openingIdSql}) ORDER BY id FOR UPDATE`);
+    }
+    const existingSources = priorSourceKeys.length
+      ? (await tx.execute(sql`
+          SELECT p.id, p.entry_key, p.reusable_qty, p.boq_item_id, b.description AS boq_description, b.unit AS boq_unit, d.id AS dpr_id,
+                 d.dpr_status, d.is_superseded, d.is_deleted, d.is_cancelled, d.date,
+                 d.boq_project_id
+          FROM progress_entries p JOIN dprs d ON d.id = p.dpr_id LEFT JOIN boq_items b ON b.id = p.boq_item_id
+           WHERE p.entry_key IN (${priorSourceKeySql})
+             AND d.dpr_status = 'submitted'
+             AND COALESCE(d.is_superseded,false)=false
+             AND COALESCE(d.is_deleted,false)=false
+             AND COALESCE(d.is_cancelled,false)=false
+           ORDER BY p.id
+        `)).rows as any[]
+      : [];
+    const sourceByKey = new Map(existingSources.map(x => [String(x.entry_key), x]));
+    // The rows inserted in this transaction are authoritative for their stable
+    // keys. This is essential during versioning, where the superseded and new
+    // DPR deliberately share entryKey values.
+    for (const [key, row] of Array.from(byKey.entries())) sourceByKey.set(key, {
+      id: row.id, entry_key: key, reusable_qty: row.reusableQty,
+      boq_item_id: row.boqItemId, dpr_id: dpr.id, dpr_status: dpr.dprStatus,
+      is_superseded: dpr.isSuperseded, is_deleted: dpr.isDeleted, is_cancelled: dpr.isCancelled,
+      date: dpr.date, boq_project_id: dpr.boqProjectId,
+    });
+    const openings = openingIds.length
+      ? (await tx.execute(sql`SELECT * FROM cut_fill_opening_balances WHERE id IN (${openingIdSql}) ORDER BY id`)).rows as any[]
+      : [];
+    const openingById = new Map(openings.map(x => [Number(x.id), x]));
+    const activationRows = dpr.boqProjectId == null ? [] : (await tx.execute(sql`
+      SELECT cut_fill_reconciliation_activated_on FROM boq_projects WHERE id = ${dpr.boqProjectId}
+    `)).rows as any[];
+    const activationDate = activationRows[0]?.cut_fill_reconciliation_activated_on ?? null;
+    const requestedBySource = new Map<string, number>();
+    const resolved: Array<{ fillId: number; sourceId?: number; openingId?: number; qty: number }> = [];
+    for (const line of lines) {
+      const fill = byKey.get(String(line.fillEntryKey));
+      if (!fill) throw new Error(`Cut/fill consumption references unknown fill entryKey '${line.fillEntryKey}'.`);
+      fillIds.push(fill.id);
+      const qty = Number(line.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error("Cut/fill consumption quantity must be positive.");
+      if (line.sourceEntryKey) {
+        const source = sourceByKey.get(String(line.sourceEntryKey));
+        if (!source || Number(source.boq_project_id) !== Number(dpr.boqProjectId)) throw new Error("Cut/fill consumption source entry does not belong to this project.");
+        if (dpr.dprStatus !== "draft" && (source.dpr_status !== "submitted" || source.is_superseded || source.is_deleted || source.is_cancelled)) {
+          throw new Error("Cut/fill consumption source must be an active submitted excavation row.");
+        }
+        if (source.boq_description != null && classifyWorkType(source.boq_description, source.boq_unit ?? "") !== "roadway_excavation") {
+          throw new Error("Cut/fill consumption source must be a roadway excavation progress row.");
+        }
+        const arrangementId = fill.earthworkArrangementId;
+        {
+          const arr = (await tx.select().from(earthworkArrangements).where(eq(earthworkArrangements.id, Number(arrangementId))))[0] as any;
+          if (!arr || arr.arrangementType !== "reused_excavated" || Number(arr.sourceExcavationBoqItemId) !== Number(source.boq_item_id)) {
+            throw new Error("Cut/fill fill row must use a reused-excavated arrangement matching the selected source BOQ item.");
+          }
+        }
+        const key = `p:${source.id}`; requestedBySource.set(key, (requestedBySource.get(key) ?? 0) + qty);
+        resolved.push({ fillId: fill.id, sourceId: Number(source.id), qty });
+      } else {
+        const opening = openingById.get(Number(line.openingBalanceId));
+        if (!opening || Number(opening.boq_project_id) !== Number(dpr.boqProjectId)) throw new Error("Cut/fill opening balance does not belong to this project.");
+        const arr = (await tx.select().from(earthworkArrangements)
+          .where(eq(earthworkArrangements.id, Number(fill.earthworkArrangementId))))[0] as any;
+        if (!arr || arr.arrangementType !== "reused_excavated" || Number(arr.sourceExcavationBoqItemId) !== Number(opening.source_excavation_boq_item_id)) {
+          throw new Error("Cut/fill fill row must use a reused-excavated arrangement matching the selected opening source BOQ item.");
+        }
+        const key = `o:${opening.id}`; requestedBySource.set(key, (requestedBySource.get(key) ?? 0) + qty);
+        resolved.push({ fillId: fill.id, openingId: Number(opening.id), qty });
+      }
+    }
+    // Draft links are intentionally saved without consuming global availability.
+    if (dpr.dprStatus !== "draft") {
+      const excluded = Array.from(new Set([...excludeDprIds, Number(dpr.id)])).filter(Number.isFinite);
+      const excludedSql = sql.join(excluded.map(id => sql`${id}`), sql`, `);
+      for (const [key, wanted] of Array.from(requestedBySource.entries())) {
+        const [kind, rawId] = key.split(":"); const id = Number(rawId);
+        const source = kind === "p" ? Array.from(sourceByKey.values()).find(x => Number(x.id) === id) : null;
+        const produced = kind === "p"
+          ? (activationDate != null && String(source?.date ?? "") >= String(activationDate) ? Number(source?.reusable_qty ?? 0) : 0)
+          : Number(openingById.get(id)?.quantity ?? 0);
+        const consumptionWhere = kind === "p"
+          ? sql`c.source_progress_entry_id = ${id}` : sql`c.opening_balance_id = ${id}`;
+        const usedRow = (await tx.execute(sql`
+          SELECT COALESCE(SUM(c.quantity), 0) AS used
+          FROM cut_fill_consumptions c
+          JOIN progress_entries f ON f.id = c.fill_progress_entry_id
+          JOIN dprs fd ON fd.id = f.dpr_id
+          WHERE ${consumptionWhere}
+            AND fd.dpr_status = 'submitted' AND COALESCE(fd.is_superseded, false) = false
+            AND COALESCE(fd.is_deleted, false) = false AND COALESCE(fd.is_cancelled, false) = false
+            ${excluded.length ? sql`AND fd.id NOT IN (${excludedSql})` : sql``}
+        `)).rows[0] as any;
+        const used = Number(usedRow?.used ?? 0);
+        const available = Math.max(0, produced - used);
+        if (wanted > available + 0.0001) throw new CutFillInsufficientAvailabilityError(available, used);
+      }
+    }
+    await tx.insert(cutFillConsumptions).values(resolved.map(r => ({
+      fillProgressEntryId: r.fillId, sourceProgressEntryId: r.sourceId ?? null,
+      openingBalanceId: r.openingId ?? null, quantity: r.qty,
+    })));
+  }
+
+  private async remapDprSourceLinksTx(tx: any, oldRows: any[], newRows: any[]): Promise<void> {
+    const ids = oldRows.map(x => x.id);
+    if (!ids.length) return;
+    const links = await tx.select().from(cutFillConsumptions)
+      .where(inArray(cutFillConsumptions.sourceProgressEntryId, ids));
+    const remap = planCutFillSourceRemap(oldRows, newRows, links);
+    if (remap.missingKeys.length) throw new CutFillInsufficientAvailabilityError(0, links.reduce((s, x) => s + Number(x.quantity), 0));
+    for (const item of remap.remaps) {
+      await tx.update(cutFillConsumptions).set({ sourceProgressEntryId: item.sourceProgressEntryId })
+        .where(eq(cutFillConsumptions.id, item.consumptionId));
+    }
+  }
+
+  private async validateCutFillSourceCapacitiesTx(tx: any, sourceIds: number[], excludeFillDprIds: number[] = []): Promise<void> {
+    const ids = Array.from(new Set(sourceIds.map(Number).filter(Number.isFinite))).sort((a, b) => a - b);
+    if (!ids.length) return;
+    const idsSql = sql.join(ids.map(id => sql`${id}`), sql`, `);
+    const excludes = Array.from(new Set(excludeFillDprIds.map(Number).filter(Number.isFinite)));
+    const excludesSql = sql.join(excludes.map(id => sql`${id}`), sql`, `);
+    const rows = (await tx.execute(sql`
+      SELECT p.id, p.reusable_qty, d.date, bp.cut_fill_reconciliation_activated_on,
+        COALESCE((SELECT SUM(c.quantity) FROM cut_fill_consumptions c
+          JOIN progress_entries fp ON fp.id=c.fill_progress_entry_id JOIN dprs fd ON fd.id=fp.dpr_id
+          WHERE c.source_progress_entry_id=p.id AND fd.dpr_status='submitted'
+            AND COALESCE(fd.is_superseded,false)=false AND COALESCE(fd.is_deleted,false)=false AND COALESCE(fd.is_cancelled,false)=false
+            ${excludes.length ? sql`AND fd.id NOT IN (${excludesSql})` : sql``}),0) AS used
+      FROM progress_entries p JOIN dprs d ON d.id=p.dpr_id JOIN boq_projects bp ON bp.id=d.boq_project_id
+      WHERE p.id IN (${idsSql}) ORDER BY p.id FOR UPDATE
+    `)).rows as any[];
+    for (const row of rows) {
+      const produced = row.cut_fill_reconciliation_activated_on != null && String(row.date) >= String(row.cut_fill_reconciliation_activated_on)
+        ? Number(row.reusable_qty ?? 0) : 0;
+      const capacity = cutFillCapacityExceeded(produced, row.used);
+      if (capacity.exceeded) throw new CutFillInsufficientAvailabilityError(capacity.availableQty, capacity.usedQty);
+    }
   }
 
   async createDpr(
@@ -2214,6 +2453,7 @@ export class DatabaseStorage implements IStorage {
 
       const dprId = newDpr.id;
       let insertedEquipLogs: any[] = [];
+      let insertedProgress: any[] = [];
 
       // 2. Insert Progress Entries with uppercase text fields
       if (dprData.progress?.length) {
@@ -2221,7 +2461,7 @@ export class DatabaseStorage implements IStorage {
           const { personnelIds, ...progressData } = p as any;
           return { progressData: { ...progressData, dprId, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription, incidentalDescription: progressData.incidentalDescription?.toUpperCase() || progressData.incidentalDescription }, personnelIds: personnelIds || [] };
         });
-        const insertedProgress = await tx.insert(progressEntries).values(
+        insertedProgress = await tx.insert(progressEntries).values(
           progressWithPersonnel.map(p => p.progressData)
         ).returning();
         for (let i = 0; i < insertedProgress.length; i++) {
@@ -2233,6 +2473,7 @@ export class DatabaseStorage implements IStorage {
           }
         }
       }
+      await this.persistCutFillConsumptionsTx(tx, newDpr, insertedProgress, dprData);
 
       // 3. Insert Equipment Logs with uppercase text fields
       if (dprData.equipment?.length) {
@@ -2342,9 +2583,18 @@ export class DatabaseStorage implements IStorage {
         .returning();
 
       await this.cleanupDprEquipmentDieselLedger(tx, id);
-      const oldProgressIds = (await tx.select({ id: progressEntries.id }).from(progressEntries).where(eq(progressEntries.dprId, id))).map(p => p.id);
+      const oldProgressRows = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey }).from(progressEntries).where(eq(progressEntries.dprId, id));
+      const oldProgressIds = oldProgressRows.map(p => p.id);
+      const externalSourceLinks = oldProgressIds.length ? await tx.select().from(cutFillConsumptions)
+        .where(and(inArray(cutFillConsumptions.sourceProgressEntryId, oldProgressIds), sql`${cutFillConsumptions.fillProgressEntryId} NOT IN (SELECT id FROM progress_entries WHERE dpr_id = ${id})`)) : [];
       if (oldProgressIds.length > 0) {
         await tx.delete(activityPersonnel).where(inArray(activityPersonnel.progressEntryId, oldProgressIds));
+        // Delete consuming links first; source links elsewhere are safely
+        // cascaded by the FK when their source row is replaced.
+        await tx.delete(cutFillConsumptions).where(inArray(cutFillConsumptions.fillProgressEntryId, oldProgressIds));
+        // Prevent FK cascade from silently destroying other DPRs' history.
+        if (externalSourceLinks.length) await tx.delete(cutFillConsumptions)
+          .where(inArray(cutFillConsumptions.id, externalSourceLinks.map(x => x.id)));
       }
       await tx.delete(progressEntries).where(eq(progressEntries.dprId, id));
       await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
@@ -2365,6 +2615,14 @@ export class DatabaseStorage implements IStorage {
             await tx.insert(activityPersonnel).values(pIds.map((personnelId: number) => ({ progressEntryId: insertedProgress[i].id, personnelId })));
           }
         }
+        const remap = planCutFillSourceRemap(oldProgressRows, insertedProgress, externalSourceLinks);
+        if (remap.missingKeys.length) throw new CutFillInsufficientAvailabilityError(0, externalSourceLinks.reduce((s, x) => s + Number(x.quantity), 0));
+        if (remap.remaps.length) await tx.insert(cutFillConsumptions).values(remap.remaps.map(item => {
+          const old = externalSourceLinks.find(x => x.id === item.consumptionId)!;
+          return { fillProgressEntryId: old.fillProgressEntryId, sourceProgressEntryId: item.sourceProgressEntryId, openingBalanceId: null, quantity: old.quantity };
+        }));
+        await this.validateCutFillSourceCapacitiesTx(tx, remap.remaps.map(x => x.sourceProgressEntryId), [id]);
+        await this.persistCutFillConsumptionsTx(tx, updated, insertedProgress, dprData, [id]);
       }
       let insertedEquipLogs: any[] = [];
       if (dprData.equipment?.length) {
@@ -2412,9 +2670,15 @@ export class DatabaseStorage implements IStorage {
       await this.cleanupDprEquipmentDieselLedger(tx, id);
 
       // Clean up old activity personnel before deleting progress entries
-      const oldProgressIds = (await tx.select({ id: progressEntries.id }).from(progressEntries).where(eq(progressEntries.dprId, id))).map(p => p.id);
+      const oldProgressRows = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey }).from(progressEntries).where(eq(progressEntries.dprId, id));
+      const oldProgressIds = oldProgressRows.map(p => p.id);
+      const externalSourceLinks = oldProgressIds.length ? await tx.select().from(cutFillConsumptions)
+        .where(and(inArray(cutFillConsumptions.sourceProgressEntryId, oldProgressIds), sql`${cutFillConsumptions.fillProgressEntryId} NOT IN (SELECT id FROM progress_entries WHERE dpr_id = ${id})`)) : [];
       if (oldProgressIds.length > 0) {
         await tx.delete(activityPersonnel).where(inArray(activityPersonnel.progressEntryId, oldProgressIds));
+        await tx.delete(cutFillConsumptions).where(inArray(cutFillConsumptions.fillProgressEntryId, oldProgressIds));
+        if (externalSourceLinks.length) await tx.delete(cutFillConsumptions)
+          .where(inArray(cutFillConsumptions.id, externalSourceLinks.map(x => x.id)));
       }
 
       // Delete old entries and insert new ones
@@ -2441,6 +2705,14 @@ export class DatabaseStorage implements IStorage {
             );
           }
         }
+        const remap = planCutFillSourceRemap(oldProgressRows, insertedProgress, externalSourceLinks);
+        if (remap.missingKeys.length) throw new CutFillInsufficientAvailabilityError(0, externalSourceLinks.reduce((s, x) => s + Number(x.quantity), 0));
+        if (remap.remaps.length) await tx.insert(cutFillConsumptions).values(remap.remaps.map(item => {
+          const old = externalSourceLinks.find(x => x.id === item.consumptionId)!;
+          return { fillProgressEntryId: old.fillProgressEntryId, sourceProgressEntryId: item.sourceProgressEntryId, openingBalanceId: null, quantity: old.quantity };
+        }));
+        await this.validateCutFillSourceCapacitiesTx(tx, remap.remaps.map(x => x.sourceProgressEntryId), [id]);
+        await this.persistCutFillConsumptionsTx(tx, updated, insertedProgress, dprData, [id]);
       }
 
       if (dprData.equipment?.length) {
@@ -2508,6 +2780,8 @@ export class DatabaseStorage implements IStorage {
         role: editedBy,
         submittedAt: dateTime,
         workType: (original as any).workType ?? "road",
+        boqProjectId: (original as any).boqProjectId ?? null,
+        remarks: (original as any).remarks ?? null,
       }).returning();
 
       const dprId = newDpr.id;
@@ -2578,6 +2852,8 @@ export class DatabaseStorage implements IStorage {
             // 06V: preserve incidental flag + description on clone.
             isIncidental: (p as any).isIncidental ?? false,
             incidentalDescription: (p as any).incidentalDescription != null ? ((p as any).incidentalDescription as string).toUpperCase() : null,
+            materialOutcome: (p as any).materialOutcome ?? null,
+            reusableQty: (p as any).reusableQty ?? null,
           }))
         ).returning();
         for (let i = 0; i < insertedProgress.length; i++) {
@@ -2589,6 +2865,18 @@ export class DatabaseStorage implements IStorage {
             );
           }
         }
+        const oldToNew = new Map(original.progress.map((p, i) => [p.id, insertedProgress[i]?.id]));
+        const oldLinks = oldProgressIds.length
+          ? await tx.select().from(cutFillConsumptions).where(inArray(cutFillConsumptions.fillProgressEntryId, oldProgressIds))
+          : [];
+        if (oldLinks.length) await tx.insert(cutFillConsumptions).values(oldLinks.map(link => ({
+          fillProgressEntryId: oldToNew.get(link.fillProgressEntryId)!,
+          sourceProgressEntryId: link.sourceProgressEntryId == null ? null : (oldToNew.get(link.sourceProgressEntryId) ?? link.sourceProgressEntryId),
+          openingBalanceId: link.openingBalanceId,
+          quantity: link.quantity,
+        })));
+        await this.remapDprSourceLinksTx(tx, original.progress, insertedProgress);
+        await this.validateCutFillSourceCapacitiesTx(tx, insertedProgress.map(x => x.id), [id]);
       }
 
       // Copy equipment logs with uppercase
@@ -2735,21 +3023,26 @@ export class DatabaseStorage implements IStorage {
         role: editedBy,
         submittedAt: dateTime,
         workType: dprData.workType ?? "road",
+        boqProjectId: (dprData as any).boqProjectId ?? null,
+        remarks: (dprData as any).remarks ?? null,
       }).returning();
 
       const dprId = newDpr.id;
       let insertedEquipLogs: any[] = [];
+      let insertedProgress: any[] = [];
+      const originalProgressForRemap = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey })
+        .from(progressEntries).where(eq(progressEntries.dprId, originalId));
 
       // Insert structure items (for workType = "structure")
       if (dprData.structureItems?.length) {
         await tx.insert(dprStructureItems).values(
           dprData.structureItems.map(s => ({ ...s, dprId }))
-        );
+        ).returning();
       }
 
       // Insert edited progress entries with uppercase text fields
       if (dprData.progress?.length) {
-        await tx.insert(progressEntries).values(
+        insertedProgress = await tx.insert(progressEntries).values(
           dprData.progress.map(p => ({ 
             ...p, 
             dprId,
@@ -2757,8 +3050,11 @@ export class DatabaseStorage implements IStorage {
             noSiteWorkDescription: (p as any).noSiteWorkDescription?.toUpperCase() || (p as any).noSiteWorkDescription,
             incidentalDescription: (p as any).incidentalDescription?.toUpperCase() || (p as any).incidentalDescription,
           }))
-        );
+        ).returning();
       }
+      await this.remapDprSourceLinksTx(tx, originalProgressForRemap, insertedProgress);
+      await this.validateCutFillSourceCapacitiesTx(tx, insertedProgress.map(x => x.id), [originalId]);
+      await this.persistCutFillConsumptionsTx(tx, newDpr, insertedProgress, dprData, [originalId]);
 
       // Insert edited equipment logs with uppercase text fields
       if (dprData.equipment?.length) {
@@ -3010,6 +3306,21 @@ export class DatabaseStorage implements IStorage {
 
       for (const dprId of allVersionIds) {
         await this.cleanupDprEquipmentDieselLedger(tx, dprId);
+        const progressIds = (await tx.select({ id: progressEntries.id }).from(progressEntries)
+          .where(eq(progressEntries.dprId, dprId))).map(x => x.id);
+        if (progressIds.length) {
+          const external = await tx.execute(sql`
+            SELECT c.id FROM cut_fill_consumptions c
+            JOIN progress_entries fp ON fp.id = c.fill_progress_entry_id
+            JOIN dprs fd ON fd.id = fp.dpr_id
+            WHERE c.source_progress_entry_id IN (${sql.join(progressIds.map(x => sql`${x}`), sql`, `)})
+              AND fd.id NOT IN (${sql.join(allVersionIds.map(x => sql`${x}`), sql`, `)})
+              AND fd.dpr_status = 'submitted' AND COALESCE(fd.is_superseded,false)=false
+              AND COALESCE(fd.is_deleted,false)=false AND COALESCE(fd.is_cancelled,false)=false
+          `);
+          if ((external.rows as any[]).length) throw new CutFillInsufficientAvailabilityError(0, (external.rows as any[]).length);
+          await tx.delete(cutFillConsumptions).where(inArray(cutFillConsumptions.fillProgressEntryId, progressIds));
+        }
         await tx.delete(progressEntries).where(eq(progressEntries.dprId, dprId));
         await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, dprId));
         await tx.delete(labourLogs).where(eq(labourLogs.dprId, dprId));
@@ -23416,6 +23727,7 @@ export class DatabaseStorage implements IStorage {
         totalMonths: boqProjects.totalMonths,
         status: boqProjects.status,
         createdBy: boqProjects.createdBy,
+        cutFillReconciliationActivatedOn: boqProjects.cutFillReconciliationActivatedOn,
         createdAt: boqProjects.createdAt,
         siteName: sites.name,
       })
@@ -26956,6 +27268,43 @@ export class DatabaseStorage implements IStorage {
 
     // 3. progress_entries — link to arrangement
     await db.execute(sql`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS earthwork_arrangement_id INTEGER`);
+    // Cut/fill reconciliation is additive and deliberately independent from
+    // BOQ credit/progress calculations.
+    await db.execute(sql`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS material_outcome TEXT`);
+    await db.execute(sql`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS reusable_qty REAL`);
+    await db.execute(sql`ALTER TABLE boq_projects ADD COLUMN IF NOT EXISTS cut_fill_reconciliation_activated_on DATE`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS cut_fill_opening_balances (
+        id SERIAL PRIMARY KEY,
+        boq_project_id INTEGER NOT NULL,
+        source_excavation_boq_item_id INTEGER NOT NULL,
+        quantity REAL NOT NULL CHECK (quantity >= 0),
+        uom TEXT NOT NULL DEFAULT 'CUM',
+        remarks TEXT,
+        confirmed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        confirmed_by_user_id INTEGER,
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        CONSTRAINT cut_fill_opening_balance_project_source_uq
+          UNIQUE (boq_project_id, source_excavation_boq_item_id)
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS cut_fill_consumptions (
+        id SERIAL PRIMARY KEY,
+        fill_progress_entry_id INTEGER NOT NULL REFERENCES progress_entries(id) ON DELETE CASCADE,
+        source_progress_entry_id INTEGER REFERENCES progress_entries(id) ON DELETE CASCADE,
+        opening_balance_id INTEGER REFERENCES cut_fill_opening_balances(id) ON DELETE RESTRICT,
+        quantity REAL NOT NULL CHECK (quantity > 0),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        CONSTRAINT cut_fill_consumption_one_source_ck CHECK (
+          (source_progress_entry_id IS NOT NULL)::int +
+          (opening_balance_id IS NOT NULL)::int = 1
+        )
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS cut_fill_consumptions_fill_idx ON cut_fill_consumptions (fill_progress_entry_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS cut_fill_consumptions_source_idx ON cut_fill_consumptions (source_progress_entry_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS cut_fill_consumptions_opening_idx ON cut_fill_consumptions (opening_balance_id)`);
 
     // 4. boq_items — bulk material classification for gravel/moorum
     await db.execute(sql`ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS bulk_material_classification TEXT`);
@@ -27021,6 +27370,34 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql`ALTER TABLE earthwork_arrangement_programme_allocations ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual'`);
     // Instruction 031 B3: authoritative Scope linkage (additive-only, legacy-safe)
     await db.execute(sql`ALTER TABLE earthwork_arrangements ADD COLUMN IF NOT EXISTS scope_segment_ids jsonb`);
+  }
+
+  /**
+   * Repairs a legacy self-reference only.  It intentionally does not try to
+   * infer a replacement source: a planner must choose that explicitly.
+   */
+  async repairLegacyCutFillArrangementSources(): Promise<number> {
+    const invalid = await db.execute(sql`
+      SELECT id, boq_project_id, source_excavation_boq_item_id
+      FROM earthwork_arrangements
+      WHERE source_excavation_boq_item_id IS NOT NULL
+        AND (
+          boq_item_id = source_excavation_boq_item_id
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(COALESCE(boq_item_allocations, '[]'::jsonb)) allocation
+            WHERE NULLIF(allocation->>'boqItemId', '')::integer = source_excavation_boq_item_id
+          )
+        )
+    `);
+    const rows = invalid.rows as Array<{ id: number; boq_project_id: number; source_excavation_boq_item_id: number }>;
+    for (const row of rows) {
+      await db.update(earthworkArrangements)
+        .set({ sourceExcavationBoqItemId: null, updatedAt: new Date() })
+        .where(eq(earthworkArrangements.id, row.id));
+      console.warn(`Cut/fill startup repair cleared invalid arrangement source: arrangement=${row.id} project=${row.boq_project_id} previousSource=${row.source_excavation_boq_item_id}`);
+    }
+    return rows.length;
   }
 
   async getEarthworkArrangements(boqProjectId: number): Promise<EarthworkArrangement[]> {

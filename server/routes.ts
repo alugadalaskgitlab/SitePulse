@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError } from "./storage";
+import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, CutFillInsufficientAvailabilityError, CutFillValidationError } from "./storage";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -60,7 +60,7 @@ import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupSessionFromCookie, loadUserPermissionsMatrix } from "./auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
-import { insertAttachmentSchema, attachmentModuleTypes } from "@shared/schema";
+import { insertAttachmentSchema, attachmentModuleTypes, boqProjects as boqProjectsTable, dprs as dprsTable, progressEntries as progressEntriesTable } from "@shared/schema";
 import { MAX_ACTIVITY_PHOTOS } from "@shared/dprPhotos";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
 import { checkProgrammeLinkRow, deriveChainageReviewStatus, barSideCoverage, normalizeDprSideKey } from "@shared/dprProgrammeLink";
@@ -68,6 +68,7 @@ import { checkQuantitySourceRow, resolveQuantitySource } from "@shared/dprGeomet
 import { evaluateDprSubmitReadiness, type DprReadinessIssue } from "@shared/dprSubmitReadiness";
 import { chainageOverlapReadinessIssues, isChainageGuardRow, unchangedChainageRowKeys, type CandidateChainageRow } from "@shared/chainageOverlap";
 import { reusedExcavationConfigurationIssue } from "@shared/materialReceiptSummary";
+import { validateExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
 import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import {
@@ -1598,6 +1599,33 @@ export async function registerRoutes(
     return null;
   }
 
+  /** Outcome validation is intentionally separate from quantity/BOQ validation:
+   * reusable material never changes the credited progress quantity. */
+  async function validateProgressMaterialOutcomes(input: any, opts: { draft?: boolean } = {}): Promise<string | null> {
+    const progress: any[] = Array.isArray(input?.progress) ? input.progress : [];
+    for (const p of progress) {
+      if (p?.noSiteWork) continue;
+      const item = p?.boqItemId != null ? await storage.getBoqItem(Number(p.boqItemId)) : null;
+      const isRoadwayExcavation = !!item
+        && classifyWorkType((item as any).description ?? "", (item as any).unit ?? "") === "roadway_excavation";
+      if (p?.materialOutcome != null || p?.reusableQty != null) {
+        if (!isRoadwayExcavation) {
+          return `Progress entry "${p?.activity ?? ""}": material outcome may only be recorded against roadway excavation.`;
+        }
+      }
+      // Drafts preserve partial in-progress outcome controls. Strict tuple
+      // validation happens only when the DPR is submitted or versioned.
+      if (opts.draft) continue;
+      if (!isRoadwayExcavation) continue;
+      if (p?.materialOutcome == null) {
+        return `Progress entry "${p?.activity ?? ""}": record whether the excavated material is fully reusable, partly reusable, or unsuitable.`;
+      }
+      const issue = validateExcavationMaterialOutcome(p?.quantity, p?.materialOutcome, p?.reusableQty);
+      if (issue) return `Progress entry "${p?.activity ?? ""}": ${issue}`;
+    }
+    return null;
+  }
+
   /**
    * Instruction 032 Part N — lightweight scope validation for DPR progress rows.
    * Uses the shared eligible-scope service; adds NO new DPR steps. Rules:
@@ -2003,6 +2031,8 @@ export async function registerRoutes(
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input, { draft: (input as any).dprStatus === "draft" });
       if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
+      const materialOutcomeError = await validateProgressMaterialOutcomes(input, { draft: (input as any).dprStatus === "draft" });
+      if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, error: "MATERIAL_OUTCOME_INVALID" });
       const scopeError = await validateProgressScope(input, req, { draft: (input as any).dprStatus === "draft" });
       if (scopeError) return res.status(422).json({ message: scopeError.error, error: scopeError.code });
       // Batch 04: shared submit-readiness gate. Drafts stay lenient; Final
@@ -2041,6 +2071,8 @@ export async function registerRoutes(
         });
       }
       if (handleInsufficientPlantStock(err, res)) return;
+      if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message, availableQty: err.availableQty, alreadyUsedQty: err.alreadyUsedQty });
+      if (err instanceof CutFillValidationError) return res.status(422).json({ code: err.code, message: err.message });
       if (handleEquipmentLifecycleConflict(err, res)) return;
       res.status(500).json({ message: "Failed to create DPR" });
     }
@@ -2063,6 +2095,8 @@ export async function registerRoutes(
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input, { draft: true });
       if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
+      const materialOutcomeError = await validateProgressMaterialOutcomes(input, { draft: true });
+      if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, error: "MATERIAL_OUTCOME_INVALID" });
       const scopeError = await validateProgressScope(input, req, { draft: true });
       if (scopeError) return res.status(422).json({ message: scopeError.error, error: scopeError.code });
       const updated = await storage.updateDraftDpr(id, input);
@@ -2071,6 +2105,8 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
       if (handleInsufficientPlantStock(err, res)) return;
+      if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message, availableQty: err.availableQty, alreadyUsedQty: err.alreadyUsedQty });
+      if (err instanceof CutFillValidationError) return res.status(422).json({ code: err.code, message: err.message });
       res.status(500).json({ message: "Failed to update draft DPR" });
     }
   });
@@ -2092,6 +2128,8 @@ export async function registerRoutes(
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input);
       if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
+      const materialOutcomeError = await validateProgressMaterialOutcomes(input);
+      if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, error: "MATERIAL_OUTCOME_INVALID" });
       const scopeError = await validateProgressScope(input, req, {});
       if (scopeError) return res.status(422).json({ message: scopeError.error, error: scopeError.code });
       // Batch 04: same shared submit-readiness gate as non-draft create.
@@ -2123,6 +2161,8 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
       if (handleInsufficientPlantStock(err, res)) return;
+      if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message, availableQty: err.availableQty, alreadyUsedQty: err.alreadyUsedQty });
+      if (err instanceof CutFillValidationError) return res.status(422).json({ code: err.code, message: err.message });
       if (handleEquipmentLifecycleConflict(err, res)) return;
       res.status(500).json({ message: "Failed to submit DPR" });
     }
@@ -2331,6 +2371,8 @@ export async function registerRoutes(
       if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input.data);
       if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
+      const materialOutcomeError = await validateProgressMaterialOutcomes(input.data);
+      if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, error: "MATERIAL_OUTCOME_INVALID" });
       const editedBy = input.editedBy || "engineer";
 
       if (editedBy === "engineer") {
@@ -2392,6 +2434,8 @@ export async function registerRoutes(
         });
       }
       if (handleInsufficientPlantStock(err, res)) return;
+      if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message, availableQty: err.availableQty, alreadyUsedQty: err.alreadyUsedQty });
+      if (err instanceof CutFillValidationError) return res.status(422).json({ code: err.code, message: err.message });
       if (handleEquipmentLifecycleConflict(err, res)) return;
       res.status(500).json({ message: "Failed to create version" });
     }
@@ -15194,7 +15238,8 @@ export async function registerRoutes(
   > {
     const sourceId = sourceRaw == null || sourceRaw === "" ? null : Number(sourceRaw);
     if (arrangementType !== "reused_excavated") {
-      return { ok: true, sourceId: sourceId != null && Number.isFinite(sourceId) ? sourceId : null };
+      // Never leave a legacy cut source attached after changing away from reuse.
+      return { ok: true, sourceId: null };
     }
     if (sourceId != null && (!Number.isInteger(sourceId) || sourceId <= 0)) {
       return {
@@ -15225,7 +15270,11 @@ export async function registerRoutes(
         body: { error: "INVALID_REUSED_EXCAVATION_SOURCE", message: issue },
       };
     }
-    const [sourceItem] = await db.select({ id: boqItems.id })
+    const [sourceItem] = await db.select({
+      id: boqItems.id,
+      description: boqItems.description,
+      unit: boqItems.unit,
+    })
       .from(boqItems)
       .where(and(eq(boqItems.id, sourceId!), eq(boqItems.boqProjectId, projectId)));
     if (!sourceItem) {
@@ -15238,8 +15287,101 @@ export async function registerRoutes(
         },
       };
     }
+    if (classifyWorkType(sourceItem.description ?? "", sourceItem.unit ?? "") !== "roadway_excavation") {
+      return {
+        ok: false,
+        status: 400,
+        body: {
+          error: "INVALID_REUSED_EXCAVATION_SOURCE",
+          message: "The source BOQ item must be classified as roadway excavation.",
+        },
+      };
+    }
     return { ok: true, sourceId };
   }
+
+  async function assertCutFillProjectAccess(req: any, res: any, projectId: number, write = false): Promise<boolean> {
+    if (!assertAuthed(req, res) || !(write ? assertEdit(req, res, "qto_boq") : assertView(req, res, "qto_boq"))) return false;
+    const [project] = await db.select({ id: boqProjectsTable.id, siteId: boqProjectsTable.siteId })
+      .from(boqProjectsTable).where(eq(boqProjectsTable.id, projectId));
+    if (!project) { res.status(404).json({ message: "BOQ project not found" }); return false; }
+    const permitted = await getPermittedSiteNames(req);
+    if (permitted !== null && project.siteId != null) {
+      const site = (await storage.getSites()).find((x: any) => Number(x.id) === Number(project.siteId));
+      if (!site || !siteMatchesPermitted((site as any).name, permitted)) {
+        res.status(403).json({ message: "Access denied for this site" }); return false;
+      }
+    }
+    if (write && !req.authUser?.isAdmin && !["manager", "pm", "project_manager"].includes(String(req.authUser?.role ?? "").toLowerCase())) {
+      res.status(403).json({ message: "Only a Project Manager or Admin can change cut/fill reconciliation settings." }); return false;
+    }
+    return true;
+  }
+
+  app.get("/api/boq/projects/:id/cut-fill-reconciliation", async (req, res) => {
+    const projectId = Number(req.params.id);
+    if (!await assertCutFillProjectAccess(req, res, projectId)) return;
+    const [project] = await db.select({ activationDate: boqProjectsTable.cutFillReconciliationActivatedOn })
+      .from(boqProjectsTable).where(eq(boqProjectsTable.id, projectId));
+    const openings = await db.execute(sql`SELECT * FROM cut_fill_opening_balances WHERE boq_project_id = ${projectId} ORDER BY source_excavation_boq_item_id`);
+    res.json({ activationDate: project?.activationDate ?? null, openingBalances: (openings.rows as any[]).map(x => ({
+      id: x.id, boqProjectId: x.boq_project_id, sourceExcavationBoqItemId: x.source_excavation_boq_item_id,
+      quantity: Number(x.quantity), uom: x.uom, remarks: x.remarks, confirmedAt: x.confirmed_at,
+      confirmedByUserId: x.confirmed_by_user_id,
+    })) });
+  });
+
+  app.put("/api/boq/projects/:id/cut-fill-reconciliation/activation", async (req, res) => {
+    const projectId = Number(req.params.id);
+    if (!await assertCutFillProjectAccess(req, res, projectId, true)) return;
+    const activationDate = req.body?.activationDate;
+    if (activationDate != null && (typeof activationDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(activationDate))) {
+      return res.status(400).json({ message: "activationDate must be YYYY-MM-DD or null." });
+    }
+    await db.update(boqProjectsTable).set({ cutFillReconciliationActivatedOn: activationDate ?? null })
+      .where(eq(boqProjectsTable.id, projectId));
+    await (storage as any).logAudit({ module: "cut_fill_reconciliation", transactionId: projectId, action: "activation_updated", userId: req.authUser?.id, userName: currentUserName(req), newValues: { activationDate: activationDate ?? null } });
+    res.json({ activationDate: activationDate ?? null });
+  });
+
+  app.put("/api/boq/projects/:id/cut-fill-opening-balances/:sourceBoqItemId", async (req, res) => {
+    const projectId = Number(req.params.id), sourceBoqItemId = Number(req.params.sourceBoqItemId), quantity = Number(req.body?.quantity);
+    if (!await assertCutFillProjectAccess(req, res, projectId, true)) return;
+    if (!Number.isInteger(sourceBoqItemId) || sourceBoqItemId <= 0 || !Number.isFinite(quantity) || quantity < 0) {
+      return res.status(400).json({ message: "A source BOQ item and non-negative quantity are required." });
+    }
+    const [sourceItem] = await db.select({ description: boqItems.description, unit: boqItems.unit })
+      .from(boqItems).where(and(eq(boqItems.id, sourceBoqItemId), eq(boqItems.boqProjectId, projectId)));
+    if (!sourceItem || classifyWorkType(sourceItem.description ?? "", sourceItem.unit ?? "") !== "roadway_excavation") {
+      return res.status(400).json({ message: "Opening balance source must be a roadway excavation BOQ item in this project." });
+    }
+    const result = await db.execute(sql`
+      INSERT INTO cut_fill_opening_balances (boq_project_id, source_excavation_boq_item_id, quantity, uom, remarks, confirmed_by_user_id, updated_at)
+      VALUES (${projectId}, ${sourceBoqItemId}, ${quantity}, 'CUM', ${typeof req.body?.remarks === "string" ? req.body.remarks.trim() : null}, ${req.authUser?.id ?? null}, NOW())
+      ON CONFLICT (boq_project_id, source_excavation_boq_item_id)
+      DO UPDATE SET quantity = EXCLUDED.quantity, remarks = EXCLUDED.remarks, confirmed_by_user_id = EXCLUDED.confirmed_by_user_id, confirmed_at = NOW(), updated_at = NOW()
+      RETURNING *
+    `);
+    await (storage as any).logAudit({ module: "cut_fill_opening_balance", transactionId: sourceBoqItemId, action: "upsert", userId: req.authUser?.id, userName: currentUserName(req), newValues: result.rows[0] });
+    res.json(result.rows[0]);
+  });
+
+  app.get("/api/boq/projects/:id/cut-fill-sources", async (req, res) => {
+    const projectId = Number(req.params.id);
+    if (!await assertCutFillProjectAccess(req, res, projectId)) return;
+    const rows = await db.execute(sql`
+      SELECT p.id, p.entry_key AS "entryKey", p.boq_item_id AS "boqItemId", p.activity, p.uom,
+        b.description AS "sourceItemDescription", p.reusable_qty AS "reusableQty", d.date,
+        COALESCE((SELECT SUM(c.quantity) FROM cut_fill_consumptions c JOIN progress_entries fp ON fp.id = c.fill_progress_entry_id JOIN dprs fd ON fd.id = fp.dpr_id
+          WHERE c.source_progress_entry_id = p.id AND fd.dpr_status = 'submitted' AND COALESCE(fd.is_superseded,false)=false AND COALESCE(fd.is_deleted,false)=false AND COALESCE(fd.is_cancelled,false)=false),0) AS "consumedQty"
+      FROM progress_entries p JOIN dprs d ON d.id = p.dpr_id JOIN boq_items b ON b.id = p.boq_item_id JOIN boq_projects bp ON bp.id = d.boq_project_id
+      WHERE d.boq_project_id = ${projectId} AND d.dpr_status = 'submitted' AND COALESCE(d.is_superseded,false)=false AND COALESCE(d.is_deleted,false)=false AND COALESCE(d.is_cancelled,false)=false
+        AND bp.cut_fill_reconciliation_activated_on IS NOT NULL AND d.date >= bp.cut_fill_reconciliation_activated_on
+        AND p.material_outcome IS NOT NULL
+      ORDER BY d.date, p.id
+    `);
+    res.json({ sources: (rows.rows as any[]).map(r => ({ ...r, availableQty: Math.max(0, Number(r.reusableQty ?? 0) - Number(r.consumedQty ?? 0)) })) });
+  });
 
   app.post("/api/boq/projects/:id/earthwork-arrangements", async (req, res) => {
     try {
@@ -15742,23 +15884,20 @@ export async function registerRoutes(
       const nextAllocations = "boqItemAllocations" in patch
         ? patch.boqItemAllocations
         : current.boqItemAllocations;
-      const destinationBoqItemIds = current.boqItemId != null
-        ? [current.boqItemId]
-        : Array.isArray(nextAllocations)
+      const destinationBoqItemIds = "boqItemAllocations" in patch
+        ? (Array.isArray(nextAllocations)
           ? (nextAllocations as Array<{ boqItemId?: number | null }>)
               .map((allocation) => Number(allocation?.boqItemId))
               .filter(Number.isFinite)
-          : [];
-      const reuseSourceCheck = await validateReusedExcavationSource(
-        current.boqProjectId,
-        nextArrangementType,
-        nextSourceId,
-        destinationBoqItemIds,
-      );
-      if (!reuseSourceCheck.ok) {
-        return res.status(reuseSourceCheck.status).json(reuseSourceCheck.body);
-      }
-      if (nextArrangementType === "reused_excavated") {
+          : [])
+        : current.boqItemId != null ? [current.boqItemId] : Array.isArray(nextAllocations)
+          ? (nextAllocations as any[]).map(x => Number(x?.boqItemId)).filter(Number.isFinite) : [];
+      const relationshipChanged = "arrangementType" in patch || "sourceExcavationBoqItemId" in patch || "boqItemAllocations" in patch;
+      if (relationshipChanged) {
+        const reuseSourceCheck = await validateReusedExcavationSource(
+          current.boqProjectId, nextArrangementType, nextSourceId, destinationBoqItemIds,
+        );
+        if (!reuseSourceCheck.ok) return res.status(reuseSourceCheck.status).json(reuseSourceCheck.body);
         patch.sourceExcavationBoqItemId = reuseSourceCheck.sourceId;
       }
 

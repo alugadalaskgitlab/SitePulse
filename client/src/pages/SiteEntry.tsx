@@ -59,6 +59,9 @@ import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity } from "@shared
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import { openUsageHandoffContext, type OpenUsageLike } from "@shared/dprPlantLink";
+import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
+import { classifyWorkType } from "@shared/workTypeRecipes";
+import { flattenCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
 
 interface ProgressEntry {
   // Batch 06C §22: stable client key so photos can link to this activity row
@@ -90,6 +93,9 @@ interface ProgressEntry {
   executedBy: string;
   // 06P: optional physical layer/lift number; null = not multi-layer.
   layerNo: number | null;
+  materialOutcome?: string | null;
+  reusableQty?: number | null;
+  allocations?: Array<{ sourceEntryKey?: string | null; openingBalanceId?: number | null; quantity: number }>;
 }
 
 interface EquipmentEntry {
@@ -456,6 +462,16 @@ export default function SiteEntry() {
     queryFn: async () => {
       const res = await fetch(`/api/boq/projects/${siteBoqProjectId}/items`, { credentials: "include" });
       return res.ok ? res.json() : [];
+    },
+    enabled: !!siteBoqProjectId,
+  });
+  const { data: cutFillArrangements = [] } = useQuery<any[]>({
+    queryKey: ["/api/boq/projects", siteBoqProjectId, "earthwork-arrangements"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${siteBoqProjectId}/earthwork-arrangements`, { credentials: "include" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data.arrangements ?? []);
     },
     enabled: !!siteBoqProjectId,
   });
@@ -1137,6 +1153,7 @@ export default function SiteEntry() {
         workType,
         boqProjectId: header.boqProjectId ?? undefined,
         progress: workType === "structure" ? [] : progressWithCalc,
+        cutFillConsumptions: flattenCutFillConsumptions(progress),
         structureItems: workType === "structure"
           ? structureItems.filter(s => s.structureType && s.itemOfWork).map(s => ({
               ...s,
@@ -1345,6 +1362,7 @@ export default function SiteEntry() {
         boqProjectId: header.boqProjectId ?? undefined,
         dprStatus: "draft",
         progress: workType === "structure" ? [] : progressWithCalc,
+        cutFillConsumptions: flattenCutFillConsumptions(progress),
         structureItems: workType === "structure"
           ? structureItems.filter(s => s.structureType && s.itemOfWork).map(s => ({
               ...s, structureId: s.programmeStructureId ?? null,
@@ -1511,6 +1529,11 @@ export default function SiteEntry() {
         }
       }
     }
+    const cutFillIssues = validateCutFillForm(progress as any, siteBoqItems, cutFillArrangements, [], true);
+    if (cutFillIssues.length > 0) {
+      toast({ title: "Cut / fill reconciliation needed", description: cutFillIssues[0], variant: "destructive" });
+      return;
+    }
     // Batch 04: one consolidated readiness check before Final Submit.
     // Mandatory issues block; advisories only ask for confirmation.
     const r = evaluateDprSubmitReadiness({
@@ -1529,6 +1552,11 @@ export default function SiteEntry() {
 
   // Over-balance confirmation runs AFTER readiness (both are confirm steps).
   const continueSubmitAfterReadiness = () => {
+    const cutFillIssues = validateCutFillForm(progress as any, siteBoqItems, cutFillArrangements, [], true);
+    if (cutFillIssues.length > 0) {
+      toast({ title: "Cut / fill reconciliation needed", description: cutFillIssues[0], variant: "destructive" });
+      return;
+    }
     const warnings = getOverBalanceWarnings();
     if (warnings.length > 0) {
       setOverBalanceWarnings(warnings);
@@ -2069,6 +2097,14 @@ export default function SiteEntry() {
                 </div>
               ) : (
                 <>
+                {entry.boqItemId != null && classifyWorkType(String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? ""), String(siteBoqItems.find(i => i.id === entry.boqItemId)?.unit ?? "")) === "roadway_excavation" && (
+                  <CutFillOutcomeControls quantity={entry.quantity} outcome={entry.materialOutcome ?? null} reusableQty={entry.reusableQty ?? null}
+                    onOutcomeChange={(materialOutcome, reusableQty) => { const updated = [...progress]; updated[idx] = { ...updated[idx], materialOutcome, reusableQty }; setProgress(updated); }} />
+                )}
+                <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={entry.earthworkArrangementId}
+                  quantity={entry.quantity} outcome={null} reusableQty={null} allocations={entry.allocations as any}
+                  currentEntryKey={entry.entryKey} formRows={progress as any} boqItems={siteBoqItems}
+                  onOutcomeChange={() => undefined} onAllocationsChange={allocations => { const updated = [...progress]; updated[idx] = { ...updated[idx], allocations: allocations as any }; setProgress(updated); }} />
                 {entry.isIncidental && (
                   <div className="space-y-2">
                     <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">

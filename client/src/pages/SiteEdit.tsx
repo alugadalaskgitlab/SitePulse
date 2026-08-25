@@ -49,6 +49,9 @@ import {
   openUsageHandoffContext,
   type OpenUsageLike,
 } from "@shared/dprPlantLink";
+import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
+import { classifyWorkType } from "@shared/workTypeRecipes";
+import { flattenCutFillConsumptions, hydrateCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
 
 interface ProgressEntry {
   /** Client-only database id for exact-row report deep links; stripped on save. */
@@ -81,6 +84,9 @@ interface ProgressEntry {
   // Batch 06V: Incidental / Non-BOQ — recorded but earns no BOQ credit.
   isIncidental: boolean;
   incidentalDescription: string;
+  materialOutcome?: string | null;
+  reusableQty?: number | null;
+  allocations?: Array<{ sourceEntryKey?: string | null; openingBalanceId?: number | null; quantity: number }>;
 }
 
 interface EquipmentEntry {
@@ -220,8 +226,11 @@ function mapDprToFormState(dpr: any) {
         layerNo: p.layerNo != null ? Number(p.layerNo) : null,
         isIncidental: !!p.isIncidental,
         incidentalDescription: p.incidentalDescription || "",
+        materialOutcome: p.materialOutcome ?? null,
+        reusableQty: p.reusableQty != null ? Number(p.reusableQty) : null,
+        allocations: [],
       }))
-    : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }];
+     : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "", materialOutcome: null, reusableQty: null, allocations: [] }];
 
   const equipment: EquipmentEntry[] = dpr.equipment?.length
     ? dpr.equipment.map((e: any) => ({
@@ -282,7 +291,7 @@ function mapDprToFormState(dpr: any) {
       }))
     : [];
 
-  return { header, workType, structureItems, progress, equipment, labour, materials, sitePurchases };
+  return { header, workType, structureItems, progress: hydrateCutFillConsumptions(progress, dpr.cutFillConsumptions), equipment, labour, materials, sitePurchases };
 }
 
 export default function SiteEdit() {
@@ -412,6 +421,16 @@ export default function SiteEdit() {
   // Items of that BOQ project
   const { data: siteBoqItems = [] } = useQuery<Array<{ id: number; description: string; itemCode: string | null; unit: string }>>({
     queryKey: ["/api/boq/projects", siteBoqProjectId, "items"],
+    enabled: !!siteBoqProjectId,
+  });
+  const { data: cutFillArrangements = [] } = useQuery<any[]>({
+    queryKey: ["/api/boq/projects", siteBoqProjectId, "earthwork-arrangements"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${siteBoqProjectId}/earthwork-arrangements`, { credentials: "include" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data.arrangements ?? []);
+    },
     enabled: !!siteBoqProjectId,
   });
 
@@ -974,7 +993,7 @@ export default function SiteEdit() {
     workType,
     structureItems: workType === "structure" ? structureItems.filter(s => s.itemOfWork) : [],
     progress: workType === "road" ? progress.filter(p => p.activity).map(p => {
-      const { persistedId: _persistedId, ...persisted } = p;
+      const { persistedId: _persistedId, allocations: _allocations, ...persisted } = p;
       if (p.noSiteWork) {
         return {
           ...persisted,
@@ -1001,8 +1020,11 @@ export default function SiteEdit() {
         // Batch 06V: incidental fields
         isIncidental: p.isIncidental,
         incidentalDescription: p.isIncidental ? (p.incidentalDescription?.trim() || null) : null,
+        materialOutcome: p.materialOutcome || null,
+        reusableQty: p.materialOutcome == null ? null : p.reusableQty,
       };
     }) : [],
+    cutFillConsumptions: flattenCutFillConsumptions(progress),
     equipment: equipment.filter(e => e.machine).map(eq => {
       // 06Q: isNew is client-session state only — never sent to the server.
       const { isNew: _isNew, ...rest } = eq;
@@ -1116,6 +1138,13 @@ export default function SiteEdit() {
     draftSaveMutation.mutate(buildPayload());
   };
 
+  const validateCutFillForFinal = () => {
+    const issues = validateCutFillForm(progress as any, siteBoqItems, cutFillArrangements, [], true);
+    if (issues.length === 0) return true;
+    toast({ title: "Cut / fill reconciliation needed", description: issues[0], variant: "destructive" });
+    return false;
+  };
+
   const handleSubmitDraft = () => {
     if (!header.date || !header.site || !header.engineer) {
       toast({ title: "Missing Fields", description: "Please fill in date, site name, and engineer name.", variant: "destructive" });
@@ -1131,6 +1160,7 @@ export default function SiteEdit() {
         return;
       }
     }
+    if (!validateCutFillForFinal()) return;
     // Batch 04: same shared readiness rule as Guided/Detailed/server.
     const payload = buildPayload();
     const r = evaluateDprSubmitReadiness(payload as any);
@@ -1151,6 +1181,7 @@ export default function SiteEdit() {
       return;
     }
 
+    if (!validateCutFillForFinal()) return;
     updateMutation.mutate(buildPayload());
   };
 
@@ -1602,6 +1633,15 @@ export default function SiteEdit() {
                 </div>
               ) : (
                 <>
+                {entry.boqItemId != null && classifyWorkType(String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? ""), String(siteBoqItems.find(i => i.id === entry.boqItemId)?.unit ?? "")) === "roadway_excavation" && (
+                  <CutFillOutcomeControls quantity={entry.quantity} outcome={entry.materialOutcome ?? null} reusableQty={entry.reusableQty ?? null}
+                    onOutcomeChange={(materialOutcome, reusableQty) => { const updated = [...progress]; updated[idx] = { ...updated[idx], materialOutcome, reusableQty }; setProgress(updated); }} />
+                )}
+                <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={entry.earthworkArrangementId}
+                  quantity={entry.quantity} outcome={null} reusableQty={null} allocations={entry.allocations as any}
+                  currentEntryKey={entry.entryKey} formRows={progress as any} boqItems={siteBoqItems}
+                  editOriginalConsumptions={(dpr as any)?.dprStatus === "submitted" ? ((dpr as any)?.cutFillConsumptions ?? []) : []}
+                  onOutcomeChange={() => undefined} onAllocationsChange={allocations => { const updated = [...progress]; updated[idx] = { ...updated[idx], allocations: allocations as any }; setProgress(updated); }} />
                 {entry.isIncidental && (
                   <div className="space-y-2">
                     <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">
@@ -2984,7 +3024,7 @@ export default function SiteEdit() {
       <DprReadinessDialog
         readiness={readiness}
         onClose={() => setReadiness(null)}
-        onSubmitAnyway={() => submitDraftMutation.mutate(buildPayload())}
+        onSubmitAnyway={() => { if (validateCutFillForFinal()) submitDraftMutation.mutate(buildPayload()); }}
         onSaveDraft={handleDraftSave}
       />
 

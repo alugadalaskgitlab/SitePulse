@@ -162,6 +162,10 @@ export const progressEntries = pgTable("progress_entries", {
   // depth. Coverage strips show incidental spans in a third state: "incidental".
   isIncidental: boolean("is_incidental").notNull().default(false),
   incidentalDescription: text("incidental_description"),
+  // Cut/fill material reconciliation. These are physical-material facts and
+  // intentionally never alter the progress row's BOQ-credited quantity.
+  materialOutcome: text("material_outcome"), // fully_reusable | partly_reusable | unsuitable
+  reusableQty: real("reusable_qty"),
 });
 
 // Structure DPR Items (for workType = "structure")
@@ -898,6 +902,14 @@ export const createDprRequestSchema = insertDprSchema.extend({
   materials: z.array(insertMaterialSchema).optional(),
   sitePurchases: z.array(insertSitePurchaseSchema).optional(),
   structureItems: z.array(insertDprStructureItemSchema).optional(),
+  // Stable entry keys are used rather than serial progress IDs because draft
+  // replacement and versioning recreate progress rows.
+  cutFillConsumptions: z.array(z.object({
+    fillEntryKey: z.string().min(1),
+    sourceEntryKey: z.string().min(1).nullable().optional(),
+    openingBalanceId: z.number().int().positive().nullable().optional(),
+    quantity: z.number().finite().positive(),
+  })).optional(),
   clientTimestamp: z.string().optional(),
 });
 
@@ -910,6 +922,12 @@ export type DprWithDetails = Dpr & {
   materials: MaterialLog[];
   sitePurchases: SitePurchase[];
   structureItems: DprStructureItem[];
+  cutFillConsumptions?: Array<{
+    fillEntryKey: string;
+    sourceEntryKey: string | null;
+    openingBalanceId: number | null;
+    quantity: number;
+  }>;
 };
 
 // Composite Request Type for Creating a Plant Report
@@ -2669,8 +2687,44 @@ export const boqProjects = pgTable("boq_projects", {
   corridorConfirmed: integer("corridor_confirmed").default(0), // 0 = provisional, 1 = confirmed
   corridorRemarks: text("corridor_remarks"),
   chainageDisplayFormat: text("chainage_display_format"), // e.g. "km+m" | "decimal"
+  // Automatic excavation availability starts at this project-controlled date.
+  // Null keeps reconciliation inactive until explicitly enabled.
+  cutFillReconciliationActivatedOn: date("cut_fill_reconciliation_activated_on"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ── Cut/fill material reconciliation ─────────────────────────────────────────
+// Kept normalised so one fill row may consume many excavation rows (and/or an
+// opening balance), while preserving a durable audit trail.
+export const cutFillOpeningBalances = pgTable("cut_fill_opening_balances", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull(),
+  sourceExcavationBoqItemId: integer("source_excavation_boq_item_id").notNull(),
+  quantity: real("quantity").notNull(),
+  uom: text("uom").notNull().default("CUM"),
+  remarks: text("remarks"),
+  confirmedAt: timestamp("confirmed_at").notNull().defaultNow(),
+  confirmedByUserId: integer("confirmed_by_user_id"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  oneConfirmedSource: uniqueIndex("cut_fill_opening_balance_project_source_uq")
+    .on(table.boqProjectId, table.sourceExcavationBoqItemId),
+}));
+
+export const cutFillConsumptions = pgTable("cut_fill_consumptions", {
+  id: serial("id").primaryKey(),
+  // The consuming progress row; source is exactly one of sourceProgressEntryId
+  // and openingBalanceId, enforced by startup DDL CHECK constraint.
+  fillProgressEntryId: integer("fill_progress_entry_id").notNull(),
+  sourceProgressEntryId: integer("source_progress_entry_id"),
+  openingBalanceId: integer("opening_balance_id"),
+  quantity: real("quantity").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  fillIdx: index("cut_fill_consumptions_fill_idx").on(table.fillProgressEntryId),
+  sourceIdx: index("cut_fill_consumptions_source_idx").on(table.sourceProgressEntryId),
+  openingIdx: index("cut_fill_consumptions_opening_idx").on(table.openingBalanceId),
+}));
 
 // ── Instruction 032 Parts B–F: scope segments ────────────────────────────────
 // Independent records (NOT embedded in Auto Sequence stretch rows). A segment

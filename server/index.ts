@@ -114,6 +114,7 @@ app.use((req, res, next) => {
     (async () => {
       try {
         await (storage as any).ensureEarthworkTables();
+        await (storage as any).repairLegacyCutFillArrangementSources();
         // Verify every column the INSERT uses actually exists
         const colResult = await db.execute(sql`
           SELECT column_name FROM information_schema.columns

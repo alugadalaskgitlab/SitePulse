@@ -199,9 +199,9 @@ describe("Batch 02 — J/K/L: dialog visibility wiring (source-level assertions)
     expect(dialog).toContain("sourceApplicable[src.id]");
   });
 
-  it("over-applicable entry is a UI-only warning — save/submit gating is unchanged", () => {
+  it("over-applicable entry stays UI-only while reused material still requires a source", () => {
     expect(dialog).toContain("warning-over-applicable");
-    expect(dialog).toMatch(/const canDraft = allocQtyNum > 0 && arrangementType !== "not_decided";/);
+    expect(dialog).toMatch(/const canDraft = allocQtyNum > 0 && arrangementType !== "not_decided" && \(!sourceRequired \|\| sourceExcavationBoqItemId != null\);/);
   });
 });
 
