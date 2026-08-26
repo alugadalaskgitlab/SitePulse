@@ -19,3 +19,17 @@ constructing embankment, retain road-context excavation variants such as
 "excavation in road way", and test both the destination description and a
 genuine source description together. Source selectors must independently
 exclude their own destination IDs.
+
+## Legacy arrangement destination repair
+
+An old reused-excavated arrangement attached to the excavation BOQ item cannot
+be corrected merely by exposing that same item in the source dropdown: the
+server must continue rejecting source=destination.
+
+**Why:** Historical misclassification can leave the arrangement's destination
+identity wrong even after its invalid source is cleared.
+
+**How to apply:** Relink without recreation only when canonical classification,
+contract cut-to-fill wording, equal quantity, absence of a competing active
+arrangement, and uniqueness all identify one fill destination. Preserve every
+other field and never guess when zero or multiple destinations qualify.

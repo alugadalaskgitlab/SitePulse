@@ -383,7 +383,7 @@ import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { pickLatestClosing, type ResolvedClosing } from "@shared/equipmentContinuity";
 import { shouldCreateDprEquipmentDieselLedger } from "@shared/dprPlantLink";
-import { normaliseUnit, computeRequirementStatus } from "@shared/planningEngine";
+import { normaliseUnit, computeRequirementStatus, isContractCutToFillDescription } from "@shared/planningEngine";
 import { convertSolidQty } from "@shared/uomConvert";
 import { canonMaterialName } from "@shared/materialMatch";
 import { suggestWorkCategory, suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
@@ -1654,6 +1654,43 @@ export function shouldClearLegacyCutFillArrangementSource(input: {
     || input.sourceProjectId == null
     || Number(input.sourceProjectId) !== Number(input.arrangementProjectId)
     || classifyWorkType(input.sourceDescription ?? "", input.sourceUnit ?? "") !== "roadway_excavation";
+}
+
+export function planLegacyReusedExcavatedDestinationRelink(
+  arrangement: {
+    projectId: number;
+    arrangementType: string;
+    sourceExcavationBoqItemId: number | null;
+    destinationBoqItemId: number;
+    destinationDescription: string | null;
+    destinationUnit: string | null;
+    allocatedQty: number;
+  },
+  candidates: Array<{
+    id: number;
+    projectId: number;
+    description: string | null;
+    unit: string | null;
+    currentQty: number;
+    hasActiveArrangement: boolean;
+  }>,
+): number | null {
+  if (
+    arrangement.arrangementType !== "reused_excavated"
+    || arrangement.sourceExcavationBoqItemId != null
+    || classifyWorkType(arrangement.destinationDescription ?? "", arrangement.destinationUnit ?? "") !== "roadway_excavation"
+  ) return null;
+
+  const matches = candidates.filter(candidate =>
+    Number(candidate.projectId) === Number(arrangement.projectId)
+    && Number(candidate.id) !== Number(arrangement.destinationBoqItemId)
+    && !candidate.hasActiveArrangement
+    && classifyWorkType(candidate.description ?? "", candidate.unit ?? "") === "earthwork"
+    && isContractCutToFillDescription(candidate.description)
+    && Number.isFinite(Number(candidate.currentQty))
+    && Math.abs(Number(candidate.currentQty) - Number(arrangement.allocatedQty)) <= 0.0001
+  );
+  return matches.length === 1 ? Number(matches[0].id) : null;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -27430,7 +27467,97 @@ export class DatabaseStorage implements IStorage {
         .where(eq(earthworkArrangements.id, row.id));
       console.warn(`Cut/fill startup repair cleared invalid arrangement source: arrangement=${row.id} project=${row.boq_project_id} previousSource=${row.source_excavation_boq_item_id}`);
     }
-    return rows.length;
+
+    const legacyDestinationRows = await db.execute(sql`
+      SELECT arrangement.id AS arrangement_id,
+             arrangement.boq_project_id,
+             arrangement.boq_item_id AS destination_boq_item_id,
+             arrangement.arrangement_type,
+             arrangement.source_excavation_boq_item_id,
+             arrangement.allocated_qty,
+             destination.description AS destination_description,
+             destination.unit AS destination_unit,
+             candidate.id AS candidate_id,
+             candidate.boq_project_id AS candidate_project_id,
+             candidate.description AS candidate_description,
+             candidate.unit AS candidate_unit,
+             candidate.current_qty AS candidate_current_qty,
+             EXISTS (
+               SELECT 1
+               FROM earthwork_arrangements competing
+               WHERE competing.id <> arrangement.id
+                 AND competing.boq_project_id = arrangement.boq_project_id
+                 AND competing.status NOT IN ('cancelled', 'rejected')
+                 AND (
+                   competing.boq_item_id = candidate.id
+                   OR (
+                     competing.boq_item_allocations IS NOT NULL
+                     AND competing.boq_item_allocations @> jsonb_build_array(jsonb_build_object('boqItemId', candidate.id))
+                   )
+                 )
+             ) AS has_active_arrangement
+      FROM earthwork_arrangements arrangement
+      JOIN boq_items destination ON destination.id = arrangement.boq_item_id
+      JOIN boq_items candidate ON candidate.boq_project_id = arrangement.boq_project_id
+      WHERE arrangement.arrangement_type = 'reused_excavated'
+        AND arrangement.source_excavation_boq_item_id IS NULL
+        AND arrangement.boq_item_id IS NOT NULL
+    `);
+    type LegacyDestinationRow = {
+      arrangement_id: number;
+      boq_project_id: number;
+      destination_boq_item_id: number;
+      arrangement_type: string;
+      source_excavation_boq_item_id: number | null;
+      allocated_qty: number;
+      destination_description: string | null;
+      destination_unit: string | null;
+      candidate_id: number;
+      candidate_project_id: number;
+      candidate_description: string | null;
+      candidate_unit: string | null;
+      candidate_current_qty: number;
+      has_active_arrangement: boolean;
+    };
+    const grouped = new Map<number, LegacyDestinationRow[]>();
+    for (const row of legacyDestinationRows.rows as LegacyDestinationRow[]) {
+      grouped.set(row.arrangement_id, [...(grouped.get(row.arrangement_id) ?? []), row]);
+    }
+    let relinked = 0;
+    for (const candidateRows of grouped.values()) {
+      const first = candidateRows[0];
+      const targetId = planLegacyReusedExcavatedDestinationRelink({
+        projectId: first.boq_project_id,
+        arrangementType: first.arrangement_type,
+        sourceExcavationBoqItemId: first.source_excavation_boq_item_id,
+        destinationBoqItemId: first.destination_boq_item_id,
+        destinationDescription: first.destination_description,
+        destinationUnit: first.destination_unit,
+        allocatedQty: Number(first.allocated_qty),
+      }, candidateRows.map(row => ({
+        id: row.candidate_id,
+        projectId: row.candidate_project_id,
+        description: row.candidate_description,
+        unit: row.candidate_unit,
+        currentQty: Number(row.candidate_current_qty),
+        hasActiveArrangement: row.has_active_arrangement,
+      })));
+      if (targetId == null) continue;
+      const updated = await db.update(earthworkArrangements)
+        .set({ boqItemId: targetId, updatedAt: new Date() })
+        .where(and(
+          eq(earthworkArrangements.id, first.arrangement_id),
+          eq(earthworkArrangements.arrangementType, "reused_excavated"),
+          eq(earthworkArrangements.boqItemId, first.destination_boq_item_id),
+          isNull(earthworkArrangements.sourceExcavationBoqItemId),
+        ))
+        .returning({ id: earthworkArrangements.id });
+      if (updated.length === 1) {
+        relinked += 1;
+        console.warn(`Cut/fill startup repair relinked legacy arrangement destination: arrangement=${first.arrangement_id} project=${first.boq_project_id} previousDestination=${first.destination_boq_item_id} destination=${targetId}`);
+      }
+    }
+    return rows.length + relinked;
   }
 
   async getEarthworkArrangements(boqProjectId: number): Promise<EarthworkArrangement[]> {

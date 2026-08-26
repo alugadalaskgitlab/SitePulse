@@ -22,7 +22,7 @@ import { ArrangementStatusBadge } from "@/components/EarthworkArrangementDialog"
 import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
 import type { EarthworkArrangementSummary } from "@shared/planningEngine";
 import { invalidateArrangementQueries } from "@/lib/arrangementCache";
-import { classifyWorkType } from "@shared/workTypeRecipes";
+import { roadwayExcavationCandidates } from "@/lib/cutFillLedger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -168,9 +168,12 @@ export default function EarthworkControl() {
     },
     enabled: projectId > 0,
   });
-  const excavationItems = reconciliationItems.filter(item => {
-    return classifyWorkType(String(item.description ?? item.itemName ?? ""), String(item.unit ?? "")) === "roadway_excavation";
-  });
+  const excavationItems = roadwayExcavationCandidates(reconciliationItems.map(item => ({
+    ...item,
+    id: Number(item.id),
+    description: String(item.description ?? item.itemName ?? ""),
+    unit: String(item.unit ?? ""),
+  })));
 
   const handleSaved = () => {
     // Instruction 026 A2: refresh all demand-affected queries, not just shortage rows

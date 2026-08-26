@@ -6,6 +6,7 @@ import {
   cutFillCapacityExceeded,
 } from "../shared/cutFillReconciliation";
 import {
+  planLegacyReusedExcavatedDestinationRelink,
   planCutFillSourceRemap,
   shouldClearLegacyCutFillArrangementSource,
 } from "../server/storage";
@@ -90,6 +91,63 @@ describe("legacy arrangement source repair", () => {
       sourceUnit: "CUM",
       isDestinationReference: false,
     })).toBe(false);
+  });
+});
+
+describe("legacy reused-excavated destination repair", () => {
+  const arrangement = {
+    projectId: 1,
+    arrangementType: "reused_excavated",
+    sourceExcavationBoqItemId: null,
+    destinationBoqItemId: 3,
+    destinationDescription: "Earthwork excavation  in road way  soils upto SDR by mechanical means",
+    destinationUnit: "Cum",
+    allocatedQty: 2280,
+  };
+  const productionCandidates = [
+    {
+      id: 3,
+      projectId: 1,
+      description: arrangement.destinationDescription,
+      unit: "Cum",
+      currentQty: 2280,
+      hasActiveArrangement: true,
+    },
+    {
+      id: 4,
+      projectId: 1,
+      description: "Forming embankment with excavated earth obtained from roadway excavation for Embankment by mechanical means upto SDR",
+      unit: "Cum",
+      currentQty: 2280,
+      hasActiveArrangement: false,
+    },
+    {
+      id: 5,
+      projectId: 1,
+      description: "Construction of Embankment with material obtained from borrowed useful earth",
+      unit: "Cum",
+      currentQty: 10185.14,
+      hasActiveArrangement: true,
+    },
+  ];
+
+  it("relinks the production-shaped legacy row to the unique matching cut-to-fill embankment", () => {
+    expect(planLegacyReusedExcavatedDestinationRelink(arrangement, productionCandidates)).toBe(4);
+  });
+
+  it("does not guess when more than one eligible destination matches", () => {
+    expect(planLegacyReusedExcavatedDestinationRelink(arrangement, [
+      ...productionCandidates,
+      { ...productionCandidates[1], id: 44 },
+    ])).toBeNull();
+  });
+
+  it("does not alter a correctly classified fill destination", () => {
+    expect(planLegacyReusedExcavatedDestinationRelink({
+      ...arrangement,
+      destinationBoqItemId: 4,
+      destinationDescription: productionCandidates[1].description,
+    }, productionCandidates)).toBeNull();
   });
 });
 
