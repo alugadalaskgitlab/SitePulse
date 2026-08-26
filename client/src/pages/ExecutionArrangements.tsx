@@ -8,14 +8,14 @@
  */
 import { useMemo, useState } from "react";
 import { useParams, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Loader2, Plus } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { executionArrangementCategoryForItem, bituminousItemTypeOf } from "@shared/planningEngine";
 import { boqItemDisplayName } from "@shared/boqItemName";
@@ -30,6 +30,12 @@ import { BarArrangementPanel } from "@/components/BarArrangementPanel";
 import { useProjectArrangements, type ProjectArrangement } from "@/components/ExecutionStateBadge";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateArrangementQueries } from "@/lib/arrangementCache";
+import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/hooks/use-toast";
+import {
+  approveExecutionArrangement,
+  canShowExecutionArrangementApprove,
+} from "@/lib/executionArrangementApproval";
 
 interface ProgrammeBar {
   id: number;
@@ -82,6 +88,9 @@ export default function ExecutionArrangements() {
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id ?? "0", 10);
   const queryClient = useQueryClient();
+  const { sectionCan } = useAuth();
+  const { toast } = useToast();
+  const canEditArrangements = sectionCan("qto_boq", "edit");
 
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -96,6 +105,16 @@ export default function ExecutionArrangements() {
   const [createItemId, setCreateItemId] = useState<number | null>(null);
 
   const { arrangements, allocations } = useProjectArrangements(projectId, projectId > 0);
+  const approvalMutation = useMutation({
+    mutationFn: approveExecutionArrangement,
+    onSuccess: async () => {
+      await invalidateArrangementQueries(queryClient, projectId);
+      toast({ title: "Arrangement approved" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Approval failed", description: err.message, variant: "destructive" });
+    },
+  });
   const { data: bars = [], isLoading: barsLoading } = useQuery<ProgrammeBar[]>({
     queryKey: ["/api/boq/projects", projectId, "programme"],
     queryFn: () => fetch(`/api/boq/projects/${projectId}/programme`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
@@ -429,9 +448,26 @@ export default function ExecutionArrangements() {
                 </div>
 
                 <div className="flex gap-2 pt-1">
-                  <Button size="sm" className="h-7 text-[11px]" onClick={() => { setDetailTargetId(null); setEditTarget(a); }} data-testid="button-edit-arrangement">
-                    Edit arrangement
-                  </Button>
+                  {canEditArrangements && (
+                    <Button size="sm" className="h-7 text-[11px]" onClick={() => { setDetailTargetId(null); setEditTarget(a); }} data-testid="button-edit-arrangement">
+                      Edit arrangement
+                    </Button>
+                  )}
+                  {canShowExecutionArrangementApprove(a.status, canEditArrangements) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[11px] text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                      disabled={approvalMutation.isPending}
+                      onClick={() => approvalMutation.mutate(a.id)}
+                      data-testid="button-approve-arrangement"
+                    >
+                      {approvalMutation.isPending
+                        ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        : <Check className="w-3 h-3 mr-1" />}
+                      Approve
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => setDetailTargetId(null)}>Close</Button>
                 </div>
               </div>

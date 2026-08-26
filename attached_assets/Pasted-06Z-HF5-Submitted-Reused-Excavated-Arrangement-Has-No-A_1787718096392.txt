@@ -1,0 +1,80 @@
+06Z-HF5 — Submitted Reused-Excavated Arrangement Has No Approve Action
+
+CURRENT LIVE BEHAVIOUR
+
+The corrected Reuse of Excavated Material arrangement has been submitted.
+
+In Work Programme → Execution Arrangements:
+- row status shows Submitted;
+- opening the arrangement shows the submitted detail popup;
+- available actions are only Edit arrangement and Close;
+- there is no Approve action.
+
+The user is therefore unable to complete the normal Submitted → Approved
+workflow.
+
+INVESTIGATE FIRST
+
+Trace the approval action/permission logic for Execution Arrangements.
+
+Compare this submitted reused-excavated arrangement with other arrangement
+types that can be approved.
+
+Report:
+
+1. Which permission is required to approve an Execution Arrangement.
+2. Whether the currently logged-in user has that permission.
+3. Whether the approval button is intentionally hidden by permission logic
+   or is missing specifically for reused_excavated arrangements.
+4. Whether the backend approval endpoint supports this arrangement type.
+
+REQUIRED FIX
+
+If the user has the proper approval permission:
+- show the normal Approve action for a Submitted reused_excavated
+  arrangement;
+- use the same canonical approval endpoint/workflow as other Execution
+  Arrangements;
+- do not create a separate approval mechanism.
+
+If the user does NOT have approval permission:
+- do not bypass permissions;
+- report which role/user with existing permission should approve it and
+  where that user sees the action.
+
+Do not auto-approve the arrangement.
+
+Do not change:
+- source BOQ linkage;
+- quantity/scope;
+- Cut/Fill reconciliation;
+- arrangement status rules;
+- approval permissions globally;
+- any other module.
+
+TEST
+
+A. Submitted reused_excavated arrangement appears with Approve action for
+   an authorised approver.
+
+B. Clicking Approve changes status to Approved through the existing
+   canonical workflow.
+
+C. Unauthorised user does not see/cannot call approval.
+
+D. Other arrangement types remain unchanged.
+
+SCHEMA
+
+No schema change expected.
+
+REPORT BACK
+
+- root cause;
+- required approval permission;
+- whether current user has it;
+- files changed;
+- test result;
+- no schema change.
+
+STOP AFTER THIS FIX.
