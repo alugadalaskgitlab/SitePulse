@@ -1,0 +1,177 @@
+OBJECTIVE
+
+Fix the remaining inconsistency between:
+
+1. Earthwork Classification & Cut/Fill
+2. Execution Arrangement → Reuse of Excavated Material
+
+CURRENT LIVE BEHAVIOUR
+
+Earthwork Classification & Cut/Fill correctly identifies and shows the
+actual Roadway Excavation BOQ item:
+
+"Earthwork excavation in roadway soils upto SDR by mechanical means..."
+(or the exact production description)
+
+and Cut/Fill reconciliation is Active from 25/05/2026.
+
+However, when editing the corresponding Embankment-with-Excavated-Material
+Execution Arrangement:
+
+Arrangement Type:
+Reuse of Excavated Material
+
+the field:
+
+Source roadway excavation BOQ item
+
+still shows:
+
+"No roadway excavation items found"
+
+These two screens are therefore resolving the same source BOQ items
+differently.
+
+INVESTIGATE FIRST
+
+Compare the exact source-item list construction used by:
+
+- EarthworkControl / Earthwork Classification & Cut/Fill
+- EarthworkArrangementDialog
+
+For the TAKKADPALLY-SIRUR project, report:
+
+1. the exact Roadway Excavation boqItemId;
+2. exact description and unit;
+3. classifyWorkType() result;
+4. why EarthworkControl includes it;
+5. why EarthworkArrangementDialog excludes it.
+
+Do not change the classifier again unless this investigation proves the
+classifier itself is still wrong.
+
+HF2/HF3 classifier protections must remain:
+- genuine roadway excavation → roadway_excavation;
+- embankment mentioning roadway excavation → earthwork.
+
+
+REQUIRED FIX
+
+Make EarthworkArrangementDialog use the SAME canonical eligible
+Roadway-Excavation source set as EarthworkControl.
+
+Prefer extracting/reusing one shared helper/resolver if the two screens
+currently duplicate candidate-building logic.
+
+Do not create another independent regex/filter.
+
+For a reused_excavated arrangement:
+
+- genuine Roadway Excavation BOQ item(s) for the same project must appear;
+- the destination Embankment BOQ item must never appear;
+- if exactly one genuine source exists, it may be preselected;
+- if multiple genuine source BOQ items exist, require explicit selection.
+
+Do not use chainage proximity as proof that material actually moved.
+Proximity may only affect ordering/suggestion where already supported.
+
+
+EXISTING SUBMITTED ARRANGEMENT
+
+The current Embankment-with-Excavated-Material arrangement was previously
+submitted with an invalid self-reference.
+
+Use the existing 06Z startup repair / normal edit-revision workflow.
+
+Do not delete or recreate the arrangement.
+
+Do not change:
+- arrangement quantity;
+- chainage/reaches;
+- dates;
+- responsibilities;
+- status/approval history.
+
+Only allow the authorised user to set the correct
+sourceExcavationBoqItemId once the genuine source appears in the dropdown.
+
+
+CUT/FILL ACTIVATION
+
+Do not change the current Cut/Fill activation date or opening-balance logic.
+
+The current activation date 25/05/2026 remains as entered.
+
+Do not auto-create an opening balance.
+
+
+TEST
+
+A. Open Earthwork Classification & Cut/Fill.
+
+Expected:
+genuine Roadway Excavation item is shown as the source/material-producing
+item.
+
+B. Open the Embankment reused-excavated Execution Arrangement.
+
+Expected:
+the SAME Roadway Excavation BOQ item appears in:
+"Source roadway excavation BOQ item".
+
+C. Destination Embankment item is absent from that source list.
+
+D. Select the genuine source and save/submit.
+
+Expected:
+no "source excavation and destination fill cannot be the same BOQ item"
+error.
+
+E. Reopen arrangement.
+
+Expected:
+correct source remains persisted.
+
+F. Full existing 06Z tests and full suite pass.
+
+
+SCHEMA
+
+No schema change expected.
+
+If any schema change appears necessary:
+STOP and report before applying it.
+
+
+NON-GOALS
+
+Do not touch:
+- Cut/Fill ledger arithmetic;
+- material outcome/reusable quantity;
+- BOQ progress;
+- opening balances;
+- activation-date logic;
+- equipment;
+- arrangement cancellation/successor workflow;
+- vendor bills;
+- any unrelated module.
+
+
+REPORT BACK
+
+Report:
+
+1. Exact difference between EarthworkControl and EarthworkArrangementDialog
+   candidate resolution.
+2. Root cause.
+3. Fix applied.
+4. Exact real Roadway Excavation BOQ item now shown in the source dropdown.
+5. Confirmation destination Embankment item is excluded.
+6. Confirmation existing submitted arrangement can be corrected without
+   recreation.
+7. Files changed.
+8. Focused tests and full-suite result.
+9. No schema change.
+
+DO NOT START ANOTHER FEATURE.
+STOP AND REPORT BACK.
