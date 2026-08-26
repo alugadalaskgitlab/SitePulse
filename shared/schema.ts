@@ -1,4 +1,4 @@
-import { pgTable, text, serial, real, integer, timestamp, date, boolean, index, jsonb, uniqueIndex, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, real, integer, timestamp, date, boolean, index, jsonb, uniqueIndex, numeric, check, foreignKey, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -605,6 +605,10 @@ export const equipmentUsage = pgTable("equipment_usage", {
   sourceUsageSuccessorUq: uniqueIndex("equipment_usage_source_usage_successor_uq")
     .on(table.sourceUsageId)
     .where(sql`${table.sourceUsageId} IS NOT NULL`),
+  destinationTypeCheck: check(
+    "equipment_usage_destination_type_check",
+    sql`${table.destinationType} IS NULL OR ${table.destinationType} IN ('site', 'hmp', 'rmc')`,
+  ),
 }));
 
 // Generator Diesel Tracking
@@ -2707,14 +2711,18 @@ export const cutFillOpeningBalances = pgTable("cut_fill_opening_balances", {
   confirmedByUserId: integer("confirmed_by_user_id"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
-  oneConfirmedSource: uniqueIndex("cut_fill_opening_balance_project_source_uq")
+  oneConfirmedSource: unique("cut_fill_opening_balance_project_source_uq")
     .on(table.boqProjectId, table.sourceExcavationBoqItemId),
+  quantityCheck: check(
+    "cut_fill_opening_balances_quantity_check",
+    sql`${table.quantity} >= 0`,
+  ),
 }));
 
 export const cutFillConsumptions = pgTable("cut_fill_consumptions", {
   id: serial("id").primaryKey(),
   // The consuming progress row; source is exactly one of sourceProgressEntryId
-  // and openingBalanceId, enforced by startup DDL CHECK constraint.
+  // and openingBalanceId.
   fillProgressEntryId: integer("fill_progress_entry_id").notNull(),
   sourceProgressEntryId: integer("source_progress_entry_id"),
   openingBalanceId: integer("opening_balance_id"),
@@ -2724,6 +2732,29 @@ export const cutFillConsumptions = pgTable("cut_fill_consumptions", {
   fillIdx: index("cut_fill_consumptions_fill_idx").on(table.fillProgressEntryId),
   sourceIdx: index("cut_fill_consumptions_source_idx").on(table.sourceProgressEntryId),
   openingIdx: index("cut_fill_consumptions_opening_idx").on(table.openingBalanceId),
+  fillProgressEntryFk: foreignKey({
+    name: "cut_fill_consumptions_fill_progress_entry_id_fkey",
+    columns: [table.fillProgressEntryId],
+    foreignColumns: [progressEntries.id],
+  }).onDelete("cascade"),
+  sourceProgressEntryFk: foreignKey({
+    name: "cut_fill_consumptions_source_progress_entry_id_fkey",
+    columns: [table.sourceProgressEntryId],
+    foreignColumns: [progressEntries.id],
+  }).onDelete("cascade"),
+  openingBalanceFk: foreignKey({
+    name: "cut_fill_consumptions_opening_balance_id_fkey",
+    columns: [table.openingBalanceId],
+    foreignColumns: [cutFillOpeningBalances.id],
+  }).onDelete("restrict"),
+  quantityCheck: check(
+    "cut_fill_consumptions_quantity_check",
+    sql`${table.quantity} > 0`,
+  ),
+  oneSourceCheck: check(
+    "cut_fill_consumption_one_source_ck",
+    sql`(${table.sourceProgressEntryId} IS NOT NULL)::int + (${table.openingBalanceId} IS NOT NULL)::int = 1`,
+  ),
 }));
 
 // ── Instruction 032 Parts B–F: scope segments ────────────────────────────────

@@ -1,0 +1,83 @@
+Instruction 06Z-HF1 — Stop Destructive Publish Migration / Reconcile Migration Snapshot
+
+DO NOT APPROVE OR APPLY THE CURRENT GENERATED PRODUCTION MIGRATION.
+
+The Replit Publishing screen is currently proposing destructive drops:
+
+- equipment_usage.destination_type
+- equipment_usage.source_usage_id
+- boq_projects.cut_fill_reconciliation_activated_on
+- progress_entries.material_outcome
+- progress_entries.reusable_qty
+- cut_fill_consumptions table
+- cut_fill_opening_balances table
+- equipment_usage_destination_type_check
+- equipment_usage_source_usage_successor_uq
+
+These are live structures required by 06Y equipment movement and 06Z
+Cut/Fill Material Reconciliation, both already shipped and verified
+working. The Publish warning itself confirms real data is already present
+(105 equipment_usage rows, 314 progress_entries rows). Do not run this
+migration.
+
+CORRECTION TO STARTING ASSUMPTION — CHECK THIS FIRST
+
+Confirmed independently before writing this: shared/schema.ts ALREADY
+correctly declares every one of these columns, tables, and constraints as
+proper Drizzle definitions (pgTable / text / real / date / uniqueIndex) —
+this is not a case of the application's own schema file failing to declare
+them. Do not "fix" this by adding declarations that already exist.
+
+The mismatch is almost certainly between shared/schema.ts (correct, already
+matches the live database) and a SEPARATE migration snapshot/journal that
+Replit's own publish/database-provisioning tooling uses to decide what
+migration to generate (e.g. a drizzle-kit migrations folder + _journal.json
+that was never regenerated when 06Y/06Z were built, because those batches
+applied their DDL directly via idempotent startup ALTER TABLE ... ADD
+COLUMN IF NOT EXISTS / CREATE TABLE IF NOT EXISTS statements rather than
+through a `drizzle-kit generate` step). That snapshot is stale, thinks the
+database should look like it did before 06Y/06Z, and is generating a
+migration to "correct" the live database back to that stale state —
+which means deleting real data in the process.
+
+INVESTIGATE FIRST. DO NOT RUN THE MIGRATION.
+
+1. Identify exactly what source of truth the Publish/Database step diffs
+   against to generate its migration (live schema.ts? a stored drizzle
+   migrations folder/snapshot? something else?).
+2. Confirm the live production database already has these columns/tables
+   (the warning screen's row counts already suggest yes) and that
+   shared/schema.ts already matches that live state correctly.
+3. If the mismatch is a stale migration snapshot/journal, bring it back in
+   sync with the CURRENT live database and CURRENT shared/schema.ts, so
+   future migration generation treats the existing structures as the
+   correct baseline — not something to remove.
+4. Do not create duplicate columns/tables if they already exist.
+5. Preserve all existing production data.
+6. Keep the existing constraints/indexes (including the equipment movement
+   uniqueness index and destination_type check) unless investigation
+   proves a specific one is genuinely obsolete — never remove one merely
+   to make a schema diff pass cleanly.
+7. After reconciling, regenerate the Publish migration preview and confirm
+   it is now empty/no-op for these structures.
+
+EXPECTED RESULT
+
+The Publish screen must no longer propose dropping any of the listed
+columns/tables/constraints. If it generates anything at all for them, it
+must be additive/no-op, never destructive.
+
+REPORT BACK BEFORE PUBLISHING AGAIN
+
+- Exact root cause (which source of truth was stale and why).
+- What was reconciled/regenerated, and where.
+- Confirmation shared/schema.ts required no new declarations (or exactly
+  what, if anything, was actually missing).
+- Confirmation no production data was altered during this investigation.
+- The regenerated migration/diff, shown before any Publish attempt.
+- Explicit confirmation none of the listed columns/tables/constraints are
+  being dropped.
+
+DO NOT START ANOTHER FEATURE.
+DO NOT APPLY THE CURRENT DESTRUCTIVE MIGRATION.
+STOP AND REPORT BACK.
