@@ -1,0 +1,121 @@
+OBJECTIVE
+
+Fix the remaining 06Z source-selection issue.
+
+HF2 successfully stopped the Embankment-with-Excavated-Material BOQ item
+from being misclassified as roadway excavation.
+
+However, production now shows:
+
+Source roadway excavation BOQ item
+"No roadway excavation items found"
+
+So the genuine Roadway Excavation BOQ item for this project is not being
+classified as roadway_excavation and therefore is absent from the source
+candidate list.
+
+
+INVESTIGATE FIRST
+
+Use the REAL BOQ data for the TAKKADPALLY-SIRUR project.
+
+Identify every BOQ item that is actually roadway cutting/excavation work and
+report:
+
+- boqItemId
+- exact BOQ description
+- unit
+- current classifyWorkType() result
+
+Do not rely only on illustrative test strings.
+
+Then determine exactly why the genuine excavation item does not match the
+current roadway_excavation rule.
+
+
+REQUIRED FIX
+
+Extend the canonical classifyWorkType() roadway_excavation recognition only
+as much as needed to cover the genuine production wording.
+
+The classifier must continue to distinguish:
+
+A. actual roadway/cutting excavation BOQ work
+→ roadway_excavation
+
+B. embankment/fill items that merely mention "roadway excavation" as the
+material source
+→ earthwork
+
+Do not remove the HF2 embankment exclusion.
+
+Do not hardcode a BOQ item id or project-specific item.
+
+
+REAL-DATA REGRESSION TEST
+
+Add a regression test using the exact production Roadway Excavation BOQ
+description and unit.
+
+Expected:
+roadway_excavation
+
+Also retain the HF2 tests proving:
+
+"Forming embankment with excavated earth obtained from roadway excavation..."
+→ earthwork
+
+and genuine generic roadway excavation examples
+→ roadway_excavation.
+
+
+SOURCE SELECTOR
+
+After classifier correction, verify in the actual project:
+
+- Source roadway excavation BOQ item lists the genuine excavation item.
+- The Embankment-with-Excavated-Material destination item does not appear.
+- If exactly one genuine excavation source exists, it may preselect it.
+- If multiple genuine excavation source items exist, require explicit
+  selection.
+
+
+CUT/FILL SCREEN
+
+Verify the Cut/Fill reconciliation/opening-balance screen uses the same
+correct genuine Roadway Excavation BOQ item as the material-producing source.
+
+
+DO NOT CHANGE
+
+- 06Z ledger arithmetic
+- activation date
+- opening balance rules
+- BOQ progress
+- consumption linkage
+- Execution Arrangement lifecycle
+- equipment
+- vendor arrangement cancellation
+
+
+SCHEMA
+
+No schema change expected.
+
+If schema change appears necessary, STOP and report.
+
+
+REPORT BACK
+
+1. Exact real production Roadway Excavation BOQ description/unit.
+2. Why it failed the current classifier.
+3. Exact classifier change.
+4. Confirmation the source selector now shows the genuine item.
+5. Confirmation embankment item remains excluded.
+6. Regression tests.
+7. Files changed.
+8. Full test result.
+9. No schema change.
+
+DO NOT START ANOTHER FEATURE.
+STOP AND REPORT BACK.

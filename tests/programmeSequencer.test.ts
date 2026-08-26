@@ -79,8 +79,8 @@ describe("classifyWorkType — earthwork (embankment/fill, not cutting)", () => 
 
   it("preserves the real project's genuine roadway-excavation source classification", () => {
     expect(classifyWorkType(
-      "Earthwork excavation in road way soils upto SDR by mechanical means including trimming bottom and side slopes in accordance with requirements of lines, grades and cross sections etc., complete including for finished item of work for trench cutting as per MoRT&H specification 301(5th Revision)",
-      CUM,
+      "Earthwork excavation  in road way  soils upto SDR  by mechanical means  including trimming bottom and side slopes in accordance with requirements of lines, grades and cross sections etc.,  complete  including  for finished item of work for trench cutting as per MoRT&H specification 301(5th Revision)  and as directed by the Engineer-in-Charge",
+      "Cum",
     )).toBe("roadway_excavation");
   });
 

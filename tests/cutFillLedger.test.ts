@@ -11,8 +11,16 @@ import {
 describe("project cut/fill ledger", () => {
   it("offers only genuine roadway excavation sources and excludes every destination item", () => {
     const candidates = roadwayExcavationCandidates([
-      { id: 3, description: "Earthwork excavation in road way soils upto SDR by mechanical means", unit: "CUM" },
-      { id: 4, description: "Forming embankment with excavated earth obtained from roadway excavation", unit: "CUM" },
+      {
+        id: 3,
+        description: "Earthwork excavation  in road way  soils upto SDR  by mechanical means  including trimming bottom and side slopes in accordance with requirements of lines, grades and cross sections etc.,  complete  including  for finished item of work for trench cutting as per MoRT&H specification 301(5th Revision)  and as directed by the Engineer-in-Charge",
+        unit: "Cum",
+      },
+      {
+        id: 4,
+        description: "Forming embankment with excavated earth obtained from roadway excavation for Embankment  by mechanical means upto SDR including pre-watering of soil, removal of top soil, excavation of soils, depositing the soils on the embankment, spreading soil, breaking clods, sectioning, grading and consolidation with 8 to 10 Tonnes Vibratory Road Roller @ OMC to meet requirement of table 300-2 of MoRT&H,  including  all hire and operational charges of T&P  and  complete for finished item of work as per MoRT&H specification 305 (5th revision).",
+        unit: "Cum",
+      },
       { id: 8, description: "Roadway Excavation in Ordinary Soil", unit: "CUM" },
     ], [4, 8]);
     expect(candidates.map(item => item.id)).toEqual([3]);
