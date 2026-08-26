@@ -4,10 +4,20 @@ import {
   flattenCutFillConsumptions,
   hydrateCutFillConsumptions,
   projectFormLedger,
+  roadwayExcavationCandidates,
   validateCutFillForm,
 } from "../client/src/lib/cutFillLedger";
 
 describe("project cut/fill ledger", () => {
+  it("offers only genuine roadway excavation sources and excludes every destination item", () => {
+    const candidates = roadwayExcavationCandidates([
+      { id: 3, description: "Earthwork excavation in road way soils upto SDR by mechanical means", unit: "CUM" },
+      { id: 4, description: "Forming embankment with excavated earth obtained from roadway excavation", unit: "CUM" },
+      { id: 8, description: "Roadway Excavation in Ordinary Soil", unit: "CUM" },
+    ], [4, 8]);
+    expect(candidates.map(item => item.id)).toEqual([3]);
+  });
+
   it("is invariant to fill row order and reports competition", () => {
     const source = [{ key: "same_dpr:cut", availableQty: 10 }];
     const rows = [

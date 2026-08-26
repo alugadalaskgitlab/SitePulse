@@ -64,6 +64,26 @@ describe("classifyWorkType — roadway_excavation", () => {
 describe("classifyWorkType — earthwork (embankment/fill, not cutting)", () => {
   const CUM = "CUM";
 
+  it("classifies the production-shaped embankment item as earthwork when roadway excavation is only its material source", () => {
+    expect(classifyWorkType(
+      "Forming embankment with excavated earth obtained from roadway excavation for Embankment by mechanical means upto SDR including pre-watering of soil, removal of top soil, excavation of soils, depositing the soils on the embankment, spreading soil, breaking clods, sectioning, grading and consolidation with 8 to 10 Tonnes Vibratory Road Roller @ OMC",
+      CUM,
+    )).toBe("earthwork");
+  });
+
+  it("classifies a short embankment source-reference description as earthwork", () => {
+    expect(
+      classifyWorkType("Embankment with excavated earth obtained from roadway excavation", CUM),
+    ).toBe("earthwork");
+  });
+
+  it("preserves the real project's genuine roadway-excavation source classification", () => {
+    expect(classifyWorkType(
+      "Earthwork excavation in road way soils upto SDR by mechanical means including trimming bottom and side slopes in accordance with requirements of lines, grades and cross sections etc., complete including for finished item of work for trench cutting as per MoRT&H specification 301(5th Revision)",
+      CUM,
+    )).toBe("roadway_excavation");
+  });
+
   it("classifies 'Embankment with Cut Material' as earthwork", () => {
     expect(classifyWorkType("Embankment with Cut Material", CUM)).toBe("earthwork");
   });

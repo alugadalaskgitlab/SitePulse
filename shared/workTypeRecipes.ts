@@ -434,8 +434,9 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
   // formation cutting, cutting in ordinary/hard/soft soil or rock.
   // Does NOT catch embankment / fill / borrow items (those fall through to earthwork).
   if (
-    /roadway\s*excavat|\bexcavat\w*\s+in\s+(cutting|rock|ordinary|hard|soft|soil|earth)|hill\s*(cutting|excavat\w*)|rock\s*cutting|formation\s*(excavat\w*|cut(?!.*fill))|cutting\s+in\s+(ordinary|hard|soft|rock|soil|earth)|ordinary\s+(soil|earth)\s*excavat/i.test(d) &&
-    /^(CUM|CUB|M3|CU\.?M)$/i.test(u)
+    /road[\s-]*way\s*excavat|\bexcavat\w*\s+in\s+road[\s-]*way|\bexcavat\w*\s+in\s+(cutting|rock|ordinary|hard|soft|soil|earth)|hill\s*(cutting|excavat\w*)|rock\s*cutting|formation\s*(excavat\w*|cut(?!.*fill))|cutting\s+in\s+(ordinary|hard|soft|rock|soil|earth)|ordinary\s+(soil|earth)\s*excavat/i.test(d) &&
+    /^(CUM|CUB|M3|CU\.?M)$/i.test(u) &&
+    !/(?:forming|construction\s+of|constructing)\s+(?:an?\s+)?embankment\b|\bembankment\s+with\b/i.test(d)
   ) return "roadway_excavation";
 
   // ── Road earthwork / embankment (MoRTH Cl. 305) — fill, borrow, subgrade, shoulders ──

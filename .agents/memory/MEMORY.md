@@ -65,3 +65,4 @@
 - [Programme Calendar Backfill](programme-calendar-backfill.md) — legacy NULL-date bars healed by shared deriveMissingBarCalendarDates + startup backfill; per-column COALESCE; pg date cols need to_char in scripts.
 - [Flex Header Layout](flex-header-layout.md) — flex-wrap breaks lines on max-content; bounded basis floors keep blocks side-by-side; verify layout via static HTML in client/public + port-5000 screenshot.
 - [Cut/fill version identity](cut-fill-version-identity.md) — stable DPR keys repeat across versions; current transaction rows must win source resolution over superseded rows.
+- [Work-type source phrases](work-type-source-phrases.md) — classify the principal work, not material-source phrases; preserve genuine road excavation that mentions embankment context.

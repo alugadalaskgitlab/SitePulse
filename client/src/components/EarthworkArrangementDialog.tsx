@@ -33,8 +33,7 @@ import {
 } from "@shared/autoSequenceScope";
 import { resolveEligibleScope, coverageForStretch } from "@shared/projectScope";
 import { resolveArrangementApplicableQty } from "@shared/arrangementApplicableQty";
-import { classifyWorkType } from "@shared/workTypeRecipes";
-import { rankCutFillSources, preselectedSourceId, type ChainageCandidate } from "@/lib/cutFillLedger";
+import { rankCutFillSources, roadwayExcavationCandidates, preselectedSourceId, type ChainageCandidate } from "@/lib/cutFillLedger";
 import {
   type WorkCategoryKey,
   BITUMINOUS_ARRANGEMENT_TYPE_LABELS,
@@ -675,11 +674,24 @@ export function EarthworkArrangementDialog({
     enabled: open && projectId > 0 && arrangementType === "reused_excavated",
   });
   const cutFillCandidates = useMemo(() => {
-    const candidates = projectBoqItems
-      .filter(item => classifyWorkType(String(item.description ?? item.itemName ?? ""), String(item.unit ?? "")) === "roadway_excavation")
-      .map(item => ({ id: Number(item.id), description: String(item.description ?? item.itemName ?? ""), unit: String(item.unit ?? "CUM"), chainageFrom: item.chainageFrom ?? item.chainage_from, chainageTo: item.chainageTo ?? item.chainage_to })) as ChainageCandidate[];
+    const destinationIds = [
+      boqItemId,
+      (editArrangement as any)?.boqItemId,
+      ...((editArrangement as any)?.boqItemAllocations ?? []).map((allocation: any) => allocation?.boqItemId),
+      ...(sourceBoqItems ?? []).map(item => item.id),
+    ];
+    const candidates = roadwayExcavationCandidates(
+      projectBoqItems.map(item => ({
+        id: Number(item.id),
+        description: String(item.description ?? item.itemName ?? ""),
+        unit: String(item.unit ?? "CUM"),
+        chainageFrom: item.chainageFrom ?? item.chainage_from,
+        chainageTo: item.chainageTo ?? item.chainage_to,
+      })) as ChainageCandidate[],
+      destinationIds,
+    );
     return rankCutFillSources(candidates, Number((editArrangement as any)?.chainageFrom), Number((editArrangement as any)?.chainageTo));
-  }, [projectBoqItems, editArrangement]);
+  }, [projectBoqItems, editArrangement, boqItemId, sourceBoqItems]);
   useEffect(() => {
     if (arrangementType === "reused_excavated" && sourceExcavationBoqItemId == null && cutFillCandidates.length === 1) {
       setSourceExcavationBoqItemId(preselectedSourceId(cutFillCandidates));

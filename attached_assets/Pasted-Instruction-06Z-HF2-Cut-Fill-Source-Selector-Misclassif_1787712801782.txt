@@ -1,0 +1,211 @@
+Instruction 06Z-HF2 — Cut/Fill Source Selector Misclassifies Embankment as Roadway Excavation
+
+OBJECTIVE
+
+Fix the confirmed 06Z Cut/Fill source-selection bug before doing any other
+work.
+
+CURRENT PRODUCTION FAILURE
+
+In Execution Arrangement:
+
+Arrangement Type:
+Reuse of Excavated Material
+
+the field:
+
+Source roadway excavation BOQ item
+
+shows/preselects the BOQ item:
+
+"Forming embankment with excavated earth obtained from roadway excavation..."
+
+That is the DESTINATION EMBANKMENT BOQ item, not the source excavation BOQ
+item.
+
+The user has already submitted this arrangement with that incorrect
+self-source selected.
+
+ROOT CAUSE — INDEPENDENTLY CONFIRMED BY READING THE ACTUAL REGEX
+
+shared/workTypeRecipes.ts classifyWorkType(), in order:
+1. A "roadway_excavation" rule (~line 436) matching /roadway\s*excavat|.../
+   against CUM-unit items.
+2. AFTER that, an "earthwork" rule (~line 442) matching
+   /embankment|earth\s*work|earthwork|.../ against CUM-unit items.
+
+Because rule 1 runs first and only checks for the substring "roadway
+excavat", any embankment item whose description mentions its material
+source as "...obtained from roadway excavation" matches rule 1 and returns
+"roadway_excavation" before rule 2 (which would correctly classify it as
+"earthwork") ever runs — even though the description's own opening words
+("Forming embankment with...") make the item's real nature unambiguous.
+
+NOTE FOR THE FIX: the structure-excavation rule immediately above rule 1
+(~line 424-429, "excavation_structure") already handles exactly this shape
+of problem — it excludes any description containing "embankment" via
+`&& !/\bembankment\b/i.test(d)`. Apply the same style of guard to the
+roadway_excavation rule rather than introducing a new mechanism: exclude
+descriptions containing "embankment" (or otherwise built around forming/
+constructing embankment) from matching roadway_excavation, so they fall
+through to the earthwork rule instead. Prefer this precedented, minimal,
+narrowly-scoped change over reordering the rule blocks — reordering risks
+changing classification for other descriptions that legitimately match
+both patterns.
+
+This is contextual misclassification. The classifier must distinguish:
+A. the BOQ item is itself Roadway Excavation / Cutting
+versus
+B. an Embankment BOQ description merely REFERENCES roadway excavation as
+   the SOURCE of the material.
+
+Do not fix this only inside the dropdown with a hardcoded item exclusion.
+Fix the canonical classifier/context rule so all consumers get the correct
+classification — both the source dropdown (EarthworkArrangementDialog) and
+the Cut/Fill opening-balance screen (EarthworkControl) already call the
+same classifyWorkType() to build their item lists, so a correct classifier
+fix should resolve both without touching either UI file. Confirm this in
+your report rather than assume separate UI fixes are needed.
+
+REQUIRED FIX
+
+1. CLASSIFIER
+
+In classifyWorkType(), an item that is clearly an embankment/fill item must
+NOT classify as roadway_excavation merely because its description contains
+phrases such as:
+- excavated earth obtained from roadway excavation
+- material obtained from roadway excavation
+- excavated material from cutting
+- soil obtained from excavation
+
+If the BOQ item's principal work is clearly:
+- embankment
+- forming embankment
+- construction of embankment
+- filling / formation fill
+
+classify it as earthwork, even where the material-source wording mentions
+roadway excavation.
+
+Preserve genuine Roadway Excavation items as roadway_excavation. Do not
+broadly move all "excavation" descriptions to earthwork.
+
+2. ADD EXACT REGRESSION TESTS
+
+Use a production-shaped long description equivalent to:
+"Forming embankment with excavated earth obtained from roadway excavation
+for Embankment by mechanical means..."
+Expected: earthwork
+
+Also test:
+"Embankment with excavated earth obtained from roadway excavation"
+Expected: earthwork
+
+And genuine source items:
+"Roadway Excavation in Ordinary Soil" → roadway_excavation
+"Excavation in Cutting" → roadway_excavation
+(Verify any additional real production BOQ descriptions from this project
+that should classify as roadway_excavation still do — check against actual
+project data, not only illustrative examples.)
+
+Existing classifier tests must continue to pass.
+
+3. SOURCE SELECTOR SAFETY
+
+After classifier correction, verify EarthworkArrangementDialog source
+candidate list. For a reused_excavated arrangement:
+- destination Embankment BOQ item must NEVER appear as a source candidate;
+- genuine Roadway Excavation BOQ item(s) must appear;
+- if exactly one genuine source exists, it may be preselected as today;
+- if multiple genuine sources exist, user chooses explicitly.
+Keep the existing server self-reference validation.
+
+4. ALREADY-SUBMITTED BAD ARRANGEMENT
+
+The production arrangement was already submitted while its source selector
+contained the destination Embankment item itself — i.e. its stored
+sourceExcavationBoqItemId currently equals its own boqItemId.
+
+Do NOT delete the arrangement. Do NOT change its allocated quantity,
+reaches, dates, status, responsibilities, or approval history.
+
+CHECK FIRST: 06Z already includes repairLegacyCutFillArrangementSources(),
+which runs at startup and clears (sets to null) any arrangement whose
+sourceExcavationBoqItemId equals its own boqItemId or appears in its own
+boqItemAllocations — this is exactly the state this arrangement is in.
+Confirm whether this already correctly clears it on the next deploy/restart
+before building any separate repair mechanism. If it does, no new code is
+needed for this point — just confirm it in the report and let the
+authorised user select the correct genuine Roadway Excavation source
+afterward through the normal edit flow. Only build something additional if
+investigation shows the existing repair does not cover this case.
+
+Never guess a replacement BOQ item automatically in production.
+
+5. CUT/FILL RECONCILIATION SCREEN
+
+Verify that the Cut/Fill screen clearly distinguishes:
+SOURCE: Roadway Excavation BOQ item → reusable excavated material produced
+DESTINATION: Embankment with Excavated Material BOQ item → cut material consumed
+
+Per the note above, this screen already filters by classifyWorkType() ===
+"roadway_excavation", so it should automatically show the correct item list
+once the classifier is fixed. Confirm this rather than assume a separate
+labelling fix is required; only change EarthworkControl.tsx if the
+classifier fix alone does not resolve it.
+
+6. DO NOT CHANGE 06Z MATERIAL-LEDGER RULES
+
+Do not modify:
+- independent BOQ progress credit;
+- cut-fill consumption arithmetic;
+- activation-date rule;
+- opening-balance historical safety;
+- server-side double-consumption protection;
+- same-DPR reconciliation;
+- material outcome/reusable quantity semantics.
+
+SCHEMA
+
+No schema change expected. If any schema change appears necessary, STOP and
+report first.
+
+TEST THE REAL FLOW
+
+A. Open reused-excavated Embankment arrangement.
+   Expected: Source dropdown contains genuine Roadway Excavation item.
+   Destination Embankment item does NOT appear.
+B. Save genuine source.
+   Expected: No "source excavation and destination fill cannot be the same
+   BOQ item" error.
+C. Roadway Excavation DPR entered after activation.
+   Expected: reusable excavation contributes to available cut material.
+D. Embankment-with-Excavated-Material DPR.
+   Expected: available source material is drawn from the genuine Roadway
+   Excavation BOQ item, not from the Embankment item itself.
+E. BOQ progress remains independent for both items.
+F. Full test suite.
+
+REPORT BACK
+
+Report:
+1. Exact classifier root cause confirmed.
+2. Exact classifier rule changed (confirm whether the embankment-exclusion
+   guard style, matching the existing excavation_structure precedent, was
+   used).
+3. Regression tests added.
+4. Which genuine Roadway Excavation BOQ item is now offered for the real
+   project.
+5. Whether the existing repairLegacyCutFillArrangementSources() startup
+   repair already corrected the submitted arrangement, or what additional
+   repair was needed and why.
+6. Whether the Cut/Fill opening-balance screen needed any change at all, or
+   was already correct once the classifier was fixed.
+7. Files changed.
+8. Focused + full test results.
+9. No schema change.
+
+DO NOT START ARRANGEMENT-CANCELLATION WORK.
+DO NOT START ANOTHER FEATURE.
+STOP AND REPORT BACK.

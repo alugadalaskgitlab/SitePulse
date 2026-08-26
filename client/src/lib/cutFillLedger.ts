@@ -29,8 +29,15 @@ export function rankCutFillSources<T extends ChainageCandidate>(
     .map(({ candidate }) => candidate);
 }
 
-export function roadwayExcavationCandidates<T extends ChainageCandidate>(items: T[]) {
-  return items.filter(item => classifyWorkType(item.description, item.unit) === "roadway_excavation");
+export function roadwayExcavationCandidates<T extends ChainageCandidate>(
+  items: T[],
+  destinationBoqItemIds: Array<number | null | undefined> = [],
+) {
+  const destinations = new Set(destinationBoqItemIds.map(Number).filter(Number.isFinite));
+  return items.filter(item =>
+    !destinations.has(Number(item.id))
+    && classifyWorkType(item.description, item.unit) === "roadway_excavation"
+  );
 }
 
 export function preselectedSourceId<T extends ChainageCandidate>(candidates: T[]): number | null {

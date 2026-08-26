@@ -5,7 +5,10 @@ import {
   validateExcavationMaterialOutcome,
   cutFillCapacityExceeded,
 } from "../shared/cutFillReconciliation";
-import { planCutFillSourceRemap } from "../server/storage";
+import {
+  planCutFillSourceRemap,
+  shouldClearLegacyCutFillArrangementSource,
+} from "../server/storage";
 import { readFileSync } from "fs";
 
 describe("cut/fill outcome validation", () => {
@@ -55,6 +58,38 @@ describe("storage source-link lifecycle regression", () => {
     expect(storage).toContain("const priorSourceKeys = sourceKeys.filter(key => !byKey.has(key))");
     expect(storage).toMatch(/for \(const \[key, row\] of Array\.from\(byKey\.entries\(\)\)\) sourceByKey\.set\(key,/);
     expect(storage).toContain("AND COALESCE(d.is_superseded,false)=false");
+  });
+});
+
+describe("legacy arrangement source repair", () => {
+  it("clears a destination item stored as its own source", () => {
+    expect(shouldClearLegacyCutFillArrangementSource({
+      arrangementProjectId: 1,
+      sourceProjectId: 1,
+      sourceDescription: "Roadway Excavation in Ordinary Soil",
+      sourceUnit: "CUM",
+      isDestinationReference: true,
+    })).toBe(true);
+  });
+
+  it("clears the production-shaped embankment item stored as a source", () => {
+    expect(shouldClearLegacyCutFillArrangementSource({
+      arrangementProjectId: 1,
+      sourceProjectId: 1,
+      sourceDescription: "Forming embankment with excavated earth obtained from roadway excavation for Embankment by mechanical means",
+      sourceUnit: "CUM",
+      isDestinationReference: false,
+    })).toBe(true);
+  });
+
+  it("preserves a genuine roadway-excavation source from the same project", () => {
+    expect(shouldClearLegacyCutFillArrangementSource({
+      arrangementProjectId: 1,
+      sourceProjectId: 1,
+      sourceDescription: "Earthwork excavation in road way soils upto SDR by mechanical means",
+      sourceUnit: "CUM",
+      isDestinationReference: false,
+    })).toBe(false);
   });
 });
 

@@ -1643,6 +1643,19 @@ export function planCutFillSourceRemap(
   return { remaps, missingKeys: Array.from(new Set(missingKeys)) };
 }
 
+export function shouldClearLegacyCutFillArrangementSource(input: {
+  arrangementProjectId: number;
+  sourceProjectId: number | null;
+  sourceDescription: string | null;
+  sourceUnit: string | null;
+  isDestinationReference: boolean;
+}): boolean {
+  return input.isDestinationReference
+    || input.sourceProjectId == null
+    || Number(input.sourceProjectId) !== Number(input.arrangementProjectId)
+    || classifyWorkType(input.sourceDescription ?? "", input.sourceUnit ?? "") !== "roadway_excavation";
+}
+
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
 // reconciliation. Diffs are computed in litres; null when one of the two
 // sources for that pair is missing. `anyMismatch` is true when at least one
@@ -27373,24 +27386,44 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
-   * Repairs a legacy self-reference only.  It intentionally does not try to
-   * infer a replacement source: a planner must choose that explicitly.
+   * Clears invalid legacy cut/fill sources without inferring a replacement.
+   * A planner must choose a valid roadway-excavation source explicitly.
    */
   async repairLegacyCutFillArrangementSources(): Promise<number> {
-    const invalid = await db.execute(sql`
-      SELECT id, boq_project_id, source_excavation_boq_item_id
-      FROM earthwork_arrangements
-      WHERE source_excavation_boq_item_id IS NOT NULL
-        AND (
-          boq_item_id = source_excavation_boq_item_id
-          OR EXISTS (
-            SELECT 1
-            FROM jsonb_array_elements(COALESCE(boq_item_allocations, '[]'::jsonb)) allocation
-            WHERE NULLIF(allocation->>'boqItemId', '')::integer = source_excavation_boq_item_id
-          )
-        )
+    const candidates = await db.execute(sql`
+      SELECT arrangement.id,
+             arrangement.boq_project_id,
+             arrangement.source_excavation_boq_item_id,
+             source_item.boq_project_id AS source_project_id,
+             source_item.description AS source_description,
+             source_item.unit AS source_unit,
+             (
+               arrangement.boq_item_id = arrangement.source_excavation_boq_item_id
+               OR EXISTS (
+                 SELECT 1
+                 FROM jsonb_array_elements(COALESCE(arrangement.boq_item_allocations, '[]'::jsonb)) allocation
+                 WHERE NULLIF(allocation->>'boqItemId', '')::integer = arrangement.source_excavation_boq_item_id
+               )
+             ) AS is_destination_reference
+      FROM earthwork_arrangements arrangement
+      LEFT JOIN boq_items source_item ON source_item.id = arrangement.source_excavation_boq_item_id
+      WHERE arrangement.source_excavation_boq_item_id IS NOT NULL
     `);
-    const rows = invalid.rows as Array<{ id: number; boq_project_id: number; source_excavation_boq_item_id: number }>;
+    const rows = (candidates.rows as Array<{
+      id: number;
+      boq_project_id: number;
+      source_excavation_boq_item_id: number;
+      source_project_id: number | null;
+      source_description: string | null;
+      source_unit: string | null;
+      is_destination_reference: boolean;
+    }>).filter((row) => shouldClearLegacyCutFillArrangementSource({
+      arrangementProjectId: row.boq_project_id,
+      sourceProjectId: row.source_project_id,
+      sourceDescription: row.source_description,
+      sourceUnit: row.source_unit,
+      isDestinationReference: row.is_destination_reference,
+    }));
     for (const row of rows) {
       await db.update(earthworkArrangements)
         .set({ sourceExcavationBoqItemId: null, updatedAt: new Date() })
