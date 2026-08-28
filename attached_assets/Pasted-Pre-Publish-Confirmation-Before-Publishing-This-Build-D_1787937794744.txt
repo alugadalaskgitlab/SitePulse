@@ -1,0 +1,52 @@
+Pre-Publish Confirmation — Before Publishing This Build
+
+DO NOT PUBLISH YET. Answer this first, then show the Publish migration
+preview before actually confirming Publish.
+
+CONTEXT
+
+Per .agents/memory/dev-prod-db-split.md (already in this repo): Publish
+diffs the DATABASE_URL-connected database (heliumdb) against production —
+not sitelog_dev, not shared/schema.ts directly. Anything created only via
+the dev server (sitelog_dev) does not reach heliumdb, and does not reach
+production, unless it is explicitly mirrored to heliumdb first. This has
+already caused two near-miss destructive-migration incidents on this
+project.
+
+Today's build (07B — Hired Equipment Billing) added:
+- New columns on equipment_master: hire_billing_basis, hire_rate,
+  hire_start_date, hire_end_date, hire_diesel_responsibility,
+  hire_operator_responsibility, hire_agreement_remarks,
+  hire_breakdown_deduction_enabled, hire_monthly_divisor_type,
+  hire_monthly_divisor.
+- Two new tables: hire_statements, hire_statement_exceptions.
+
+Additionally, the attachment_links table (added in the previous diesel-
+lifecycle build) was flagged before as not confirmed present in heliumdb.
+
+The most recent .agents/outputs/schema-audit/heliumdb_repair_*.sql files in
+this repo do NOT include attachment_links, hire_statements,
+hire_statement_exceptions, or any of the new hire_* columns on
+equipment_master — so as of this build, these have not yet been confirmed
+mirrored into heliumdb.
+
+REQUIRED BEFORE PUBLISH
+
+1. Confirm whether heliumdb ($DATABASE_URL) currently has: the
+   attachment_links table, the hire_statements table, the
+   hire_statement_exceptions table, and the ten new hire_* columns on
+   equipment_master.
+2. If any are missing from heliumdb, apply the same additive DDL there now
+   (matching shared/schema.ts exactly — same column names, types, defaults,
+   constraint names), the same way the prior repair round did for the other
+   13 tables/73 columns.
+3. Regenerate the Publish migration preview and paste it back before this
+   gets approved.
+4. Confirm explicitly: the preview contains ONLY additive statements
+   (CREATE TABLE, ADD COLUMN, ADD CONSTRAINT) for these items, and zero
+   DROP TABLE / DROP COLUMN / DROP CONSTRAINT anywhere in the whole preview.
+5. If anything in the preview proposes dropping or altering a column/table
+   that is not part of this specific list, STOP and report it before
+   Publish — do not approve it as "probably fine."
+
+Only after this is confirmed clean should Publish actually be run.
