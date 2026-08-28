@@ -1,0 +1,472 @@
+Instruction 07B — Hired Equipment Terms + Simple Hire Billing
+
+OBJECTIVE
+
+Add a simple hire-commercial layer to the EXISTING Equipment Master and use
+existing Equipment Usage / DPR records to prepare vendor hire bills.
+
+This must support hired equipment on:
+- Monthly basis
+- Daily basis
+- Hourly basis
+- Trip basis
+
+Do NOT create a second Equipment Master.
+Do NOT create separate daily attendance entry for billing.
+
+
+CORE PRINCIPLE
+
+Equipment operational entry remains exactly where it is today: Equipment
+Usage, Plant usage, Site DPR, equipment movement. The Engineer/operator
+records equipment ONCE. Hire billing reads those existing operational
+records. No duplicate field entry merely for billing.
+
+
+GROUND TRUTH FROM THE CURRENT CODE — READ BEFORE BUILDING
+
+Investigation of the current app found several things already in place that
+change how this should be built. Use these, do not rebuild them:
+
+1. equipment_master already has `ownership` ("owned" | "hired") and a free
+   text `vendorName` field. There is no separate "Hired Equipment" table to
+   create — this batch adds a Hire Details section to the SAME record when
+   ownership = "hired", and should decide whether the new Hire Details
+   "Vendor" field reuses/renames this existing vendorName column rather
+   than adding a second, parallel vendor-name field on the same record.
+   Report which approach was taken.
+
+2. There is no relational Vendor Master with IDs anywhere in this app.
+   Every vendor-facing feature (Vendor Bills included) stores the vendor as
+   a free-text name, with a separate `vendor_aliases` table only for
+   reconciling spelling variants of the same name. "Reuse existing Vendor
+   Master" therefore means: store the hire vendor the same way — free text,
+   consistent with vendor_aliases — NOT a new relational vendor-id table.
+   Do not invent a vendor-id master for this batch.
+
+3. equipment_usage already has a manual `hireAmount` field ("Hire charge
+   for this entry — hourly/daily/monthly hire entries"), and the existing
+   Plant Equipment Usage entry screen already lets a user manually type a
+   hire amount per entry (entryType hourly/daily/monthly/trip_based), which
+   is then summed for display elsewhere (HmpHub). This is the exact manual,
+   tedious process this batch is meant to replace with an automatic
+   statement.
+
+   DECIDED (do not leave this open): for any equipment that has Hire
+   Details configured, the per-entry hireAmount field on Equipment Usage
+   must stop being manually entered going forward — either hide the input
+   for that equipment, or keep it visible only as calculated/informational,
+   never as a second manually-typed number. The Hire Statement is the one
+   commercial source of truth for hire amount once Hire Details exist. For
+   equipment with no Hire Details configured, or for historical records
+   entered before Hire Details existed, leave the existing hireAmount value
+   exactly as-is — do not backfill or overwrite history.
+
+4. There is already a structured Equipment Maintenance & Breakdown Logs
+   table (equipment_maintenance_logs), with eventType "breakdown" |
+   "service" | "pm", a date, downtimeHours, and status "open" | "resolved"
+   per equipment. This is a real, already-recorded source of vendor-caused
+   unavailability. USE THIS as the primary, pre-populated source for the
+   Hire Statement's Exceptions list (Part 8) for breakdown days, instead of
+   asking the reviewer to remember and re-type breakdown dates that may
+   already be logged elsewhere in the app. This is a genuine simplification
+   over a blank manual-entry exceptions screen — keep the manual add/edit
+   available only for anything this log does not capture.
+
+5. Hourly and trip data both already live on the SAME equipment_usage row
+   (hoursOrKmRun for hours, numberOfTrips for trips) — there is no separate,
+   loosely-linked trip-entry table to worry about for this workflow. The
+   "STOP and report" gate in the original Trip-basis section is not needed
+   for this reason specifically; investigation already shows a reliable,
+   single-table link. Still confirm this holds for every hired-equipment
+   type in practice before finalizing Part 7.
+
+6. vendor_bill_items already has exactly the shape needed to receive one
+   Hire Statement's output as a line item without schema change:
+   equipmentId, qty, unit, rate, amount, source (free text, already used to
+   distinguish manual vs auto-sourced lines). Part 10 should populate a
+   vendor_bill_items row this way (e.g. source = "hire_statement"), not a
+   new bill-line mechanism.
+
+
+PART 1 — HIRE DETAILS IN EXISTING EQUIPMENT MASTER
+
+When Equipment ownership = "hired" (existing field), show a compact
+section:
+
+HIRE DETAILS
+
+Fields:
+- Vendor (reuse/extend existing vendorName field — see Ground Truth #1)
+- Hire Basis: Monthly / Daily / Hourly / Trip
+- Hire Rate
+- Hire Start Date
+- Hire End Date / Open-ended
+- Diesel Responsibility: HLC / Vendor
+- Operator Responsibility: HLC / Vendor
+- Remarks / Agreement Reference
+
+For MONTHLY hire also allow:
+- Deduction for vendor breakdown/unavailability: Yes / No
+- Monthly deduction divisor: Calendar days in month / 30 days / Custom
+  (default Calendar days in month — see Part 4 for how this is used)
+
+Do not add complicated contract screens.
+
+For DAILY hire: Rate = ₹ / day
+For HOURLY hire: Rate = ₹ / hour
+For TRIP hire: Rate = ₹ / trip
+
+Existing Equipment Master records must remain valid unchanged.
+
+
+PART 2 — EXISTING EQUIPMENT IS THE BILLING SOURCE
+
+The Hire Statement must use existing Equipment Usage / DPR data. Do NOT
+create separate equipment attendance, a separate usage sheet, duplicate
+hour entry, or duplicate trip entry.
+
+Use existing canonical records for: date, equipment, site/location,
+opening/closing meter, start/end time, hoursOrKmRun where already derived,
+numberOfTrips where recorded, breakdown/unavailable information from
+equipment_maintenance_logs (see Ground Truth #4), and movement/location
+history.
+
+If a required billing fact is not reliably available from existing
+records, STOP and report rather than inventing it.
+
+
+PART 3 — MONTHLY HIRE BILLING
+
+For Monthly basis equipment, at the end of a selected billing period,
+generate a simple MONTHLY HIRE STATEMENT showing: Equipment, Registration,
+Vendor, Billing Month, Monthly Rate, Hire active from/to, Days in billing
+period, Days machine had recorded activity (informational only), Vendor
+breakdown/unavailable days (from equipment_maintenance_logs), HLC idle/
+no-work days (informational only, never deducted), Suggested deduction,
+Gross Hire, Deduction, Net Suggested Hire.
+
+IMPORTANT RULE
+
+Do NOT deduct merely because the equipment did not work. Non-deductible by
+default: HLC had no work, site not ready, rain/client stoppage, equipment
+remained available to HLC, machine moved between HLC locations. Only
+vendor-caused unavailability/breakdown (sourced from equipment_maintenance_
+logs, eventType = "breakdown") is a suggested deduction, and only where
+Hire Details says deductions apply. PM/Admin must confirm the final
+deduction before bill creation.
+
+
+PART 4 — PART-DAY BREAKDOWN
+
+Keep this simple. Pre-populate suggested exception days directly from
+equipment_maintenance_logs breakdown entries in the billing period (see
+Ground Truth #4). Show the logged downtimeHours as reference information
+only — do NOT try to auto-classify Full Day vs Half Day from it.
+
+CORRECTED: there is no reliable, general "full working day = N hours"
+setting anywhere in this app to compare downtimeHours against. The closest
+things found (shift_hours / working_hours_per_shift) belong to Work
+Programme planning and Execution Arrangement productivity estimates — a
+different purpose, scoped to scheduling, not equipment billing — and
+repurposing them here would quietly borrow a number meant for something
+else. Do not invent a new "standard working hours" setting for this batch
+either. Instead: the reviewer sees the date and the logged downtime hours,
+and simply picks Full day unavailable / Half day unavailable / No
+deduction for that date. Also allow adding a day the log does not capture.
+
+Do NOT build minute-by-minute contractual billing.
+
+Suggested deduction:
+Full day: daily deduction rate × 1
+Half day: daily deduction rate × 0.5
+
+MONTHLY DEDUCTION DIVISOR (must be explicit, not assumed — corrected)
+
+"Billing-period days" is ambiguous — it can silently mean 28, 29, 30, or 31
+depending on the month, and different hire agreements use different
+conventions. Do not hardcode one. Add a Hire Details field:
+
+Monthly deduction divisor: Calendar days in month / 30 days / Custom
+(numeric).
+
+Default = Calendar days in month, but editable per equipment's Hire
+Details. daily deduction rate = monthly hire rate ÷ this divisor. Show the
+divisor actually used on the Hire Statement so it is never a hidden
+assumption.
+
+The user can adjust the suggested deduction before approval, with remarks.
+
+
+PART 5 — DAILY HIRE
+
+Suggested bill quantity = eligible hired days in selected period × Daily
+Rate. A day with actual recorded usage counts as a hired day. Do not
+double-count multiple Equipment Usage segments for the same equipment on
+the same date as multiple hire days. If vendor-unavailable/breakdown means
+the day is not payable, allow PM/Admin to exclude that date with reason
+(pre-suggested from equipment_maintenance_logs where applicable).
+
+DAILY PART-DAY RULE (added — commercial reality, keep simple)
+
+Some daily-hire agreements pay a reduced amount for a partial day (e.g.
+machine arrives at 2 PM on the first day, or the agreed terms say "up to
+half day = half rate"). Do not build an hourly-conversion formula for this.
+Add only:
+
+Daily billing rule per date: Full Day / Half Day. Default Full Day for
+every hired day. The reviewer may change any specific date to Half Day
+with a reason. Half Day bills at Daily Rate × 0.5 for that date; Full Day
+bills at Daily Rate.
+
+
+PART 6 — HOURLY HIRE
+
+Use the canonical hoursOrKmRun already recorded on equipment_usage (start
+time → end time, or meter-derived, whichever the existing entry used).
+Suggested quantity = total payable hours × Hourly Rate. Do not derive
+hours from meter readings unless the existing model explicitly defines
+that meter as an hour meter. If start/end data is incomplete, show the day
+as "Needs review" rather than guessing.
+
+
+PART 7 — TRIP BASIS
+
+Use the existing numberOfTrips already recorded directly on the equipment's
+own equipment_usage rows (see Ground Truth #5) — this is the same table as
+hours/days, not a separate trip system. Suggested quantity = verified
+payable trips × Trip Rate. Do not infer trips from start/end times or
+meter movement. Confirm during implementation that this holds for every
+hired-equipment workflow in practice (e.g. water tankers, tippers); if any
+specific workflow turns out not to have a reliable trip count on
+equipment_usage, report that gap for that workflow specifically rather than
+guessing trips for it.
+
+
+PART 8 — BREAKDOWN / AVAILABILITY REVIEW
+
+Add one compact review section: EXCEPTIONS / DEDUCTIONS. Pre-populate this
+from equipment_maintenance_logs breakdown entries for the equipment and
+period (Ground Truth #4), plus incomplete-hours days (Part 6) and
+manually-excluded trips/days (Parts 5/7). Only show dates that need
+attention — the reviewer should NOT review every normal day individually.
+
+For each exception: Date, Reason, Suggested deduction, Final deduction,
+Remarks.
+
+
+PART 9 — HIRE STATEMENT STATUS (simplified — Review only when needed)
+
+Draft → Approved → Billed, with Reviewed only inserted into the flow when
+there is at least one exception/deduction to check:
+
+- No exceptions in the period (e.g. a monthly machine with a clean month):
+  Draft → Approve → Create Vendor Bill directly. Approving simply confirms
+  the system-suggested amount is correct as-is.
+- One or more exceptions/deductions present: Draft → Reviewed (PM/Admin has
+  gone through each exception and confirmed/adjusted its deduction) →
+  Approved (final hire amount confirmed) → Billed.
+
+Do not make the user click through a separate "Reviewed" step when there is
+nothing to review. Do not create an elaborate approval chain unless an
+existing Vendor Bill approval workflow can be reused.
+
+
+PART 10 — CREATE VENDOR BILL (corrected — keep the bill line clean)
+
+Do NOT expand vendor_bill_items to duplicate everything the Hire Statement
+already holds. The Hire Statement remains the detailed commercial record:
+period, gross, deductions/exceptions, calculation basis, agreement
+reference, approval. The Vendor Bill only needs a clean accounting line,
+using vendor_bill_items' existing fields as-is (Ground Truth #6) — no
+schema change to that table:
+
+- description: "Equipment Hire – [Equipment] – [Period]"
+- equipmentId: the hired equipment
+- qty / unit / rate: as applicable to the hire basis (1 month, days, hours,
+  trips)
+- amount: the Approved net taxable hire amount from the Hire Statement
+- source: "hire_statement"
+
+Traceability back to the full Hire Statement is carried the other way —
+the Hire Statement record itself stores linkedVendorBillId (already in the
+proposed schema below), so the detailed calculation is always one click
+away from the Vendor Bill without needing to also carry it on the bill
+line. Then continue through the EXISTING Vendor Bill workflow. Do NOT
+create a second payable/bill system.
+
+
+PART 11 — VENDOR BILL SAFETY
+
+One Hire Statement must not create multiple live Vendor Bills accidentally.
+If already billed, show the linked bill. Any cancellation/revision must
+follow the existing Vendor Bill correction workflow.
+
+
+PART 12 — DIESEL
+
+Diesel is NOT part of hire calculation unless explicitly required later.
+Hire Details only stores Diesel Responsibility = HLC / Vendor, informational
+for now. Note the existing per-entry `dieselIncluded` boolean already on
+equipment_usage ("diesel provided by contractor") — report whether the new
+master-level Diesel Responsibility should pre-fill/default this existing
+per-entry field going forward, so the two do not silently diverge. Do not
+deduct diesel automatically, add diesel to hire bill automatically, alter
+diesel stock, or duplicate diesel accounting. Future recoveries can be a
+separate enhancement if needed.
+
+
+PART 13 — EQUIPMENT MOVEMENT
+
+Moving hired equipment between Plant / Site A / Site B / back to Plant does
+not create another hire contract or another vendor liability. The same
+equipment/vendor hire continues. Movement/history may appear in the Hire
+Statement for reference only.
+
+
+PART 14 — SIMPLE UI
+
+In Equipment Hub add HIRED EQUIPMENT / HIRE BILLING, opening to a simple
+register: Equipment | Vendor | Basis | Rate | Current Period | Status |
+Suggested Amount. Actions: View Statement, Review, Create Vendor Bill. Do
+not build dashboards/charts in this batch.
+
+
+PART 15 — EXISTING DATA
+
+Existing owned equipment: unchanged. Existing hired equipment already in
+Equipment Master: allow the user to edit the existing machine and add Hire
+Details — do not recreate equipment records. Past Equipment Usage/DPR data
+may be used for billing only from the chosen Hire Start Date / billing
+activation date. Do not automatically generate historical vendor
+liabilities before the user chooses a billing period.
+
+
+PART 16 — TESTS
+
+A. Existing hired excavator: set Monthly basis ₹3,00,000/month. Generate
+   one month's statement.
+B. Monthly machine available all month but works only 18 days because HLC
+   had no work on other days. Expected: no automatic deduction for the idle
+   HLC days.
+C. Monthly machine has a logged vendor breakdown of 1 full day + 1 half day
+   in equipment_maintenance_logs for the period. Expected: Exceptions list
+   is pre-populated with both days (downtime hours shown for reference,
+   not auto-classified); reviewer confirms Full/Half; suggested deduction
+   = 1.5 daily deduction days, computed using the divisor configured in
+   Hire Details (test with Calendar days in month, 30 days, and Custom).
+C2. Monthly Hire Statement status: a clean month with zero exceptions goes
+   Draft → Approve → Create Vendor Bill with no separate Reviewed step. A
+   month with at least one exception requires Reviewed before Approved.
+D. Daily hire: same machine has multiple usage segments on one date.
+   Expected: one payable hire day, not multiple days.
+D2. Daily hire part-day: a date marked Half Day bills at Daily Rate × 0.5;
+   an untouched date still bills Full Day at Daily Rate.
+E. Hourly hire: correct start/end usage totals. Incomplete time → Needs
+   Review, no guessed hours.
+F. Trip hire: quantity comes from numberOfTrips already on equipment_usage;
+   no guessed trips.
+G. Equipment moves Site A → Site B. Expected: same hire continues; no
+   duplicate hire liability.
+H. Approved Hire Statement → Create Vendor Bill. Expected: vendor/rate/
+   period/amount populate a vendor_bill_items row on the existing Vendor
+   Bill.
+I. Prevent duplicate bill creation.
+J. Existing owned equipment unaffected.
+K. Confirm the existing manual equipment_usage.hireAmount field is hidden/
+   made informational-only once Hire Details exist for that equipment
+   (Ground Truth #3, decided above); confirm historical entries for
+   equipment without Hire Details are untouched.
+L. Vendor Bill line for a hire statement carries only description/
+   equipmentId/qty/unit/rate/amount/source — no schema change to
+   vendor_bill_items; full detail remains on the Hire Statement, reachable
+   via its own linkedVendorBillId.
+M. Full test suite.
+
+
+SCHEMA STOP GATE
+
+Investigate existing Equipment Master and Vendor Bill schema first (see
+Ground Truth #1, #2, #6 above — much of this is already reusable). Prefer a
+small additive Hire Details model tied to the existing equipmentId. If
+existing fields can cleanly hold these terms, reuse them.
+
+Likely conceptual persistence required:
+
+Equipment Hire Terms:
+- equipmentId
+- vendorName (text, matching existing convention — not a vendor id)
+- hireBasis
+- hireRate
+- hireStartDate
+- hireEndDate
+- dieselResponsibility
+- operatorResponsibility
+- breakdownDeductionEnabled
+- monthlyDeductionDivisor ("calendar_days" | "30" | custom numeric)
+
+Hire Statement:
+- equipmentId
+- vendorName
+- billingFrom
+- billingTo
+- basis
+- calculatedQty
+- grossAmount
+- deductionAmount
+- approvedAmount
+- status
+- linkedVendorBillId
+
+Exception details may be JSONB if simple/auditable, or a small child table
+if existing project conventions favour that — but note most exception rows
+should be DERIVED at read time from equipment_maintenance_logs (Ground
+Truth #4), not re-stored, except for the reviewer's final confirmed
+deduction/remarks per exception, which does need to persist.
+
+If new schema is required beyond this, report the minimum additive
+proposal BEFORE migration. No destructive migration.
+
+
+NON-GOALS
+
+Do not touch: existing Equipment Usage entry workflow; DPR equipment entry;
+equipment movement; Diesel calculations; maintenance workflow; general
+Vendor Bill approval rules; subcontract work billing; material vendor
+bills; equipment purchase/asset depreciation; payroll; unrelated modules.
+
+
+REPORT BACK
+
+Report:
+1. Existing Equipment Master fields reused (confirm vendorName decision).
+2. Confirmation no new vendor-id master was created (free text preserved).
+3. What was decided about the existing manual equipment_usage.hireAmount
+   field once Hire Details exist for that equipment.
+4. Minimum new schema proposed, if any.
+5. How Monthly/Daily/Hourly/Trip billing is derived.
+6. How breakdown full-day/half-day deductions are pre-populated from
+   equipment_maintenance_logs, and how manual additions work alongside it.
+7. Confirmation HLC idle days are not automatically deducted.
+8. How duplicate daily usage rows are collapsed for Daily billing.
+9. Hourly calculation source.
+10. Trip calculation source (confirm it is the equipment_usage.numberOfTrips
+    field for every hired workflow tested).
+11. How Vendor Bill is created/linked (confirm vendor_bill_items reuse and
+    that no new columns were added to it).
+12. What was decided for Diesel Responsibility vs. the existing per-entry
+    dieselIncluded field.
+13. Confirmation the manual equipment_usage.hireAmount field is hidden/
+    informational for equipment with configured Hire Details, and
+    untouched for equipment without.
+14. Confirmation Full Day/Half Day breakdown classification is a plain
+    reviewer choice (with downtime hours shown for reference only), not
+    auto-guessed from any working-hours setting.
+15. Confirmation Reviewed is skipped when a Hire Statement has zero
+    exceptions.
+16. Files changed.
+17. Focused tests.
+18. Full test-suite result.
+
+STOP BEFORE MIGRATION IF NEW SCHEMA BEYOND THE ABOVE IS REQUIRED.
+DO NOT START ANOTHER FEATURE.
