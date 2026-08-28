@@ -1,0 +1,499 @@
+OBJECTIVE
+
+Close the Daily Diesel Requirement lifecycle end-to-end and remove the
+current inconsistencies between Procurement and Stores.
+
+Do not redesign Diesel Requirement logic itself.
+
+The required operational flow is:
+
+Daily Diesel Requirement
+→ Raised
+→ Approved
+→ Purchase Recorded
+→ Supporting purchase document linked
+→ Stores Receipt Recorded
+→ Stock updated
+→ Receipt/documentation closed
+
+The same linked Diesel Requirement must remain traceable throughout.
+
+
+PART 1 — DIESEL-LINKED MATERIAL RECEIPTS MUST NOT SHOW PI PENDING
+
+CURRENT ISSUE
+
+Material Receipts created from Daily Diesel Requirements correctly contain
+linkedDieselRequirementId and show:
+
+"Linked Daily Diesel Purchase — Diesel Requirement #..."
+
+However the receipt row still shows:
+
+PI Pending
+
+and some expanded/final-submitted rows show:
+
+"No approved indent linked — edit this receipt to regularise"
+
+This is wrong.
+
+A Daily Diesel Requirement is the procurement authority for this flow.
+A separate Purchase Indent is not required.
+
+REQUIRED FIX
+
+Where linkedDieselRequirementId is present:
+
+- suppress PI Pending;
+- suppress "No approved indent linked";
+- suppress any regularise-PI warning;
+- do not require indentRef for receipt completion.
+
+Reuse the existing canonical diesel-source logic/helper if already present.
+
+Ordinary non-Diesel receipts must keep normal PI rules unchanged.
+
+
+PART 2 — REUSE PURCHASE DOCUMENT; DO NOT REQUIRE DUPLICATE UPLOAD
+
+CURRENT ISSUE
+
+The Diesel Purchase step already allows/records the bill/invoice image.
+
+When the user later records Stores Receipt from that purchase, the receipt
+form still says:
+
+Attachments
+"No attachments yet"
+
+and later the receipt row shows:
+
+Pending Document
+
+even though the supporting purchase bill may already have been uploaded
+earlier in the linked Diesel Purchase.
+
+BUSINESS RULE
+
+A qualifying bill/invoice/challan/receipt image should be stored once and
+linked/reused across the Diesel Purchase and its Stores Receipt.
+
+Do NOT duplicate the physical file merely to make it appear under the receipt.
+
+REQUIRED BEHAVIOUR
+
+When opening Record Receipt from a purchased Daily Diesel Requirement:
+
+1. Carry/link the existing purchase document attachment(s) into the receipt
+   context by reference.
+
+2. Show clearly:
+
+   Purchase document linked ✓
+
+   and allow the user to view it.
+
+3. A qualifying linked purchase document must satisfy the receipt's
+   supporting-document requirement.
+
+4. Pending Document should appear only when neither:
+
+   - a qualifying purchase-side linked document; nor
+   - a qualifying receipt-side document
+
+   exists.
+
+5. If the purchase was recorded without a qualifying document, show a clear
+   message in the receipt form:
+
+   "Supporting bill/challan/receipt document pending."
+
+   Then allow upload there.
+
+6. If a separate delivery challan exists at receipt time, Stores may attach
+   it additionally, but this is not a mandatory duplicate of an already
+   valid purchase bill.
+
+7. Do not copy/store the same binary file twice merely for linkage.
+
+INVESTIGATE FIRST
+
+Confirm how attachments are currently stored and whether one attachment can
+already be referenced from multiple linked transactions.
+
+Prefer reference/link reuse.
+
+If the current attachment schema cannot safely support this without a new
+relationship, STOP and report the minimum additive proposal before migration.
+
+
+PART 3 — DOCUMENT STATUS MUST BE CLEAR AND CONSISTENT
+
+Current form fields such as:
+
+- Challan / DN No.
+- Invoice No.
+- Invoice Date
+
+are metadata only.
+
+They are not themselves proof that an actual supporting document image/file
+exists.
+
+Keep this distinction, but make it obvious.
+
+UI should not make Attachments look optional and later surprise the user
+with Pending Document.
+
+Where supporting document is required, show:
+
+"Supporting document required for closure"
+
+or equivalent clear wording.
+
+Receipt row statuses should be:
+
+- Pending Document only when no qualifying linked/receipt document exists;
+- Ready to Final Submit / equivalent when document requirement is satisfied
+  but receipt not yet closed;
+- Final Submitted when closed.
+
+Do not auto-Final-Submit merely because a document exists.
+
+
+PART 4 — RECEIPT EDIT ACTIONS MUST BE CONSISTENT
+
+CURRENT ISSUE
+
+Material Receipt rows currently show inconsistent controls:
+
+- some show a large orange Edit button;
+- some show only a pencil/edit icon;
+- some appear to have overlapping edit-style actions.
+
+INVESTIGATE FIRST
+
+Report exactly what each current Edit/pencil icon does and what conditions
+make each appear.
+
+REQUIRED MODEL
+
+Use one consistent action model:
+
+A. Receipt not Final Submitted
+→ one clear Edit action.
+
+B. Receipt Final Submitted
+→ ordinary edit is locked.
+→ use the existing authorised correction/revision/edit-request mechanism,
+  if one already exists.
+
+Do not show two different controls for the same operation.
+
+Do not create a new parallel correction workflow.
+
+
+PART 5 — ADD DAILY DIESEL REQUIREMENTS VIEW TO STORES & INVENTORY
+
+CURRENT GAP
+
+Stores has no clear operational view of the Daily Diesel Requirement
+lifecycle.
+
+Stores staff should not need to move through Procurement screens to know:
+
+- what was raised;
+- what was approved;
+- what was purchased;
+- what is awaiting receipt;
+- what was partly received;
+- what was fully received;
+- what receipt/stock entry belongs to which Diesel Requirement.
+
+REQUIRED UI
+
+Add a tile/card under Stores & Inventory:
+
+DAILY DIESEL REQUIREMENTS
+
+or:
+
+DIESEL PURCHASES & RECEIPTS
+
+Use whichever label best matches current naming conventions.
+
+This must NOT be a new Diesel Requirement database/module.
+
+It is a Stores-facing view over the existing linked Diesel Requirement,
+purchase and Material Receipt data.
+
+
+PART 6 — STORES DIESEL REGISTER
+
+Opening the tile should show a simple lifecycle register.
+
+Suggested columns:
+
+- Requirement No.
+- Requirement Date
+- Site / Plant / Location
+- Required Qty
+- Approved Qty
+- Purchased Qty
+- Supplier
+- Bill / Invoice No.
+- Purchase Document
+- Received Qty
+- Balance to Receive
+- Receipt No.
+- Stock Status
+- Document Status
+- Overall Status
+
+Statuses should derive from real data, for example:
+
+Raised
+Approved
+Purchased
+Partly Received
+Received
+Closed
+
+Do not store duplicate lifecycle status if it can be safely derived.
+
+
+PART 7 — STORES ACTIONS
+
+Stores view should primarily be read/receive/trace.
+
+Procurement ownership remains unchanged.
+
+From a Purchased / Partly Received Diesel Requirement, Stores should be able
+to:
+
+- open details;
+- view linked purchase document;
+- Record Receipt;
+- see prior receipt(s);
+- see remaining quantity.
+
+Do not allow Stores to change Requirement approval or Purchase approval
+unless their existing permissions already allow it.
+
+
+PART 8 — PARTIAL RECEIPTS
+
+Do not assume purchased quantity is always received in one receipt.
+
+If:
+
+Purchased = 1,000 L
+Received = 600 L
+
+show:
+
+Partly Received
+Balance to Receive = 400 L
+
+Allow subsequent receipt(s) against the same Diesel Requirement/purchase.
+
+Do not duplicate stock.
+
+Final lifecycle closure should occur only when the appropriate purchased
+quantity has been fully received or otherwise explicitly closed using
+existing business rules.
+
+
+PART 9 — STOCK / ACCOUNTING SAFETY
+
+Do not change the existing rule that physical Material Receipt updates stock
+according to the current canonical receipt logic.
+
+This batch must not:
+
+- post diesel stock twice;
+- create another GRN for the same receipt;
+- create a PI automatically;
+- create another purchase;
+- duplicate purchase document files;
+- duplicate ledger entries.
+
+Daily Diesel Requirement → Material Receipt remains its own authorised
+receipt path.
+
+Do not force a normal PI/GRN merely to clear statuses.
+
+
+PART 10 — HISTORICAL ROWS
+
+All display/status fixes must also work for existing linked Diesel receipts.
+
+Example:
+
+A historical receipt with linkedDieselRequirementId and Final Submitted
+must stop showing PI Pending immediately from derived logic.
+
+Do not require data backfill merely to remove the false badge if linkage is
+already present.
+
+If existing purchase attachments can be linked retrospectively to their
+receipt safely, do so through the same relationship logic.
+
+Do not invent attachment associations where no reliable linkage exists.
+
+
+PART 11 — PERMISSIONS
+
+Reuse existing permissions for:
+
+- Diesel Requirement view;
+- Purchase view;
+- Material Receipt create/edit;
+- Stores receive;
+- attachment view.
+
+Do not grant approval or purchasing authority merely because a user has
+Stores access.
+
+If a new read-only Stores permission is genuinely required for the lifecycle
+register, STOP and report the proposed permission before adding it.
+
+
+PART 12 — TESTS
+
+TEST A — Diesel Requirement with purchase document
+
+1. Requirement raised/approved.
+2. Purchase recorded.
+3. Bill/invoice image uploaded.
+4. Open Record Receipt from Stores.
+
+Expected:
+- purchase document visible/linked;
+- no duplicate upload required;
+- no PI Pending;
+- receipt may be recorded normally.
+
+
+TEST B — Purchase without document
+
+Expected:
+- Record Receipt clearly shows supporting document pending;
+- user may upload at receipt stage;
+- status clears once qualifying document exists.
+
+
+TEST C — Historical linked Diesel receipt
+
+linkedDieselRequirementId present.
+
+Expected:
+- no PI Pending;
+- no regularise-indent warning.
+
+
+TEST D — Ordinary non-Diesel receipt without approved PI
+
+Expected:
+- PI Pending remains exactly as today.
+
+
+TEST E — Partial receipt
+
+Purchased 1,000 L.
+Receipt 600 L.
+
+Expected:
+- Stores register shows Partly Received;
+- Balance to Receive = 400 L;
+- stock only increases by 600 L.
+
+Second receipt 400 L.
+
+Expected:
+- Received/Closed as appropriate;
+- total stock increase = 1,000 L;
+- no duplicate stock posting.
+
+
+TEST F — Attachment reuse
+
+Purchase bill attachment linked to receipt.
+
+Expected:
+- one physical file;
+- visible from both purchase and receipt context;
+- no duplicate file storage.
+
+
+TEST G — Edit-action consistency
+
+Not-final receipt:
+- one Edit action.
+
+Final-submitted receipt:
+- no ordinary duplicate edit;
+- existing authorised correction flow only.
+
+
+TEST H — Stores Diesel Register
+
+Verify rows correctly derive Raised/Approved/Purchased/Partly Received/
+Received/Closed states from existing data.
+
+
+TEST I — Full test suite.
+
+
+SCHEMA STOP GATE
+
+First investigate whether existing attachment/linkage schema can support
+reusing the same purchase attachment reference from Material Receipt.
+
+No schema change is pre-approved.
+
+If a minimum additive link/table is required:
+STOP and report the exact proposed schema before applying migration.
+
+Do not apply destructive migration.
+
+
+NON-GOALS
+
+Do not touch:
+
+- Equipment diesel consumption calculations;
+- Equipment Usage;
+- LDO/HMP consumption logic;
+- Site diesel issue calculations;
+- general Purchase Indent workflow;
+- general GRN workflow;
+- Cut/Fill;
+- Execution Arrangements;
+- Vendor Bills;
+- payment accounting;
+- unrelated Stores modules.
+
+
+REPORT BACK
+
+Report:
+
+1. Why Diesel-linked receipts showed PI Pending.
+2. Exact canonical rule used to suppress it.
+3. What currently triggers Pending Document.
+4. How purchase document reuse/linkage was implemented.
+5. Confirmation no duplicate attachment file is stored.
+6. Stores Daily Diesel Requirements tile/register implementation.
+7. Lifecycle status derivation rules.
+8. Partial-receipt handling.
+9. Exact meaning of current Edit button/pencil controls and final simplified
+   behaviour.
+10. Files changed.
+11. Schema impact, if any.
+12. Focused test results.
+13. Full test-suite result.
+
+DO NOT START ANOTHER FEATURE.
+STOP AND REPORT BACK.
