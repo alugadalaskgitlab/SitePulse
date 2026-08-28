@@ -112,6 +112,7 @@ const PurchaseIndents    = lazy(() => import("@/pages/PurchaseIndents"));
 const DieselRequirements = lazy(() => import("@/pages/DieselRequirements"));
 const VendorBills        = lazy(() => import("@/pages/VendorBills"));
 const RateCards          = lazy(() => import("@/pages/RateCards"));
+const EquipmentHireBilling = lazy(() => import("@/pages/EquipmentHireBilling"));
 
 // Admin pages
 const AdminSettings    = lazy(() => import("@/pages/AdminSettings"));
@@ -331,6 +332,7 @@ function AuthedShell() {
           <Route path="/plant/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
           <Route path="/finance/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
           <Route path="/plant/rate-cards" component={gatedEither(RateCards, "rate_cards", "admin_settings")} />
+          <Route path="/equipment/hire-billing" component={gated(EquipmentHireBilling, "plant_equipment")} />
           <Route path="/plant/data-sync" component={gatedEither(DataSync, "data_sync", "admin_settings")} />
           <Route path="/plant/:id" component={gatedEither(PlantDetails, "site_management", "admin_settings")} />
 

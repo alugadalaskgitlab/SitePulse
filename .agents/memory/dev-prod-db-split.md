@@ -59,3 +59,4 @@ Replit Publishing diffs the **Replit-managed dev DB (heliumdb via workspace DATA
 - Drift checks must compare column defaults and nullability as well as column presence. A runtime `DROP DEFAULT` can make sitelog_dev look correct while DATABASE_URL still carries a legacy default that Publish tries to restore in production.
 - **Why:** Publish once proposed restoring an obsolete Stores default even though the Drizzle schema and production were correct; only the Publish-facing development database was stale.
 - **How to apply:** keep default changes in the versioned schema/migrations, align DATABASE_URL to that source of truth, and remove runtime-only DDL that masks the mismatch.
+- A development-environment database callback can update the Publish-facing `DATABASE_URL` database rather than the custom `DEV_DATABASE_URL` used by the running app. For additive schema work, verify both connections explicitly and confirm the restarted app logs no missing-column errors.

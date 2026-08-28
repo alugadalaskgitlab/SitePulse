@@ -4041,6 +4041,16 @@ export function EquipmentMasterSection() {
   const [registrationNumber, setRegistrationNumber] = useState("");
   const [ownership, setOwnership] = useState("owned");
   const [vendorName, setVendorName] = useState("");
+  const [hireBasis, setHireBasis] = useState("");
+  const [hireRate, setHireRate] = useState("");
+  const [hireStartDate, setHireStartDate] = useState("");
+  const [hireEndDate, setHireEndDate] = useState("");
+  const [hireDieselResponsibility, setHireDieselResponsibility] = useState("hlc");
+  const [hireOperatorResponsibility, setHireOperatorResponsibility] = useState("hlc");
+  const [hireRemarks, setHireRemarks] = useState("");
+  const [hireDeductionEnabled, setHireDeductionEnabled] = useState(false);
+  const [monthlyDivisorType, setMonthlyDivisorType] = useState("calendar");
+  const [monthlyDivisorCustom, setMonthlyDivisorCustom] = useState("");
   const [meterType, setMeterType] = useState("hour_meter");
   const [consumptionNorm, setConsumptionNorm] = useState("");
   const [plantNameField, setPlantNameField] = useState(""); // form: assigned plant
@@ -4159,6 +4169,16 @@ export function EquipmentMasterSection() {
     setRegistrationNumber("");
     setOwnership("owned");
     setVendorName("");
+    setHireBasis("");
+    setHireRate("");
+    setHireStartDate("");
+    setHireEndDate("");
+    setHireDieselResponsibility("hlc");
+    setHireOperatorResponsibility("hlc");
+    setHireRemarks("");
+    setHireDeductionEnabled(false);
+    setMonthlyDivisorType("calendar");
+    setMonthlyDivisorCustom("");
     setMeterType("hour_meter");
     setConsumptionNorm("");
     setPlantNameField("");
@@ -4173,6 +4193,16 @@ export function EquipmentMasterSection() {
     setRegistrationNumber((equip as any).registrationNumber || "");
     setOwnership((equip as any).ownership || "owned");
     setVendorName((equip as any).vendorName || "");
+    setHireBasis((equip as any).hireBillingBasis || "");
+    setHireRate((equip as any).hireRate != null ? String((equip as any).hireRate) : "");
+    setHireStartDate((equip as any).hireStartDate || "");
+    setHireEndDate((equip as any).hireEndDate || "");
+    setHireDieselResponsibility((equip as any).hireDieselResponsibility || "hlc");
+    setHireOperatorResponsibility((equip as any).hireOperatorResponsibility || "hlc");
+    setHireRemarks((equip as any).hireAgreementRemarks || "");
+    setHireDeductionEnabled((equip as any).hireBreakdownDeductionEnabled === true);
+    setMonthlyDivisorType((equip as any).hireMonthlyDivisorType || "calendar");
+    setMonthlyDivisorCustom((equip as any).hireMonthlyDivisor != null ? String((equip as any).hireMonthlyDivisor) : "");
     setMeterType(equip.meterType);
     setConsumptionNorm(equip.consumptionNorm?.toString() || "");
     setPlantNameField((equip as any).plantName || "");
@@ -4190,6 +4220,25 @@ export function EquipmentMasterSection() {
   };
 
   const handleSubmit = () => {
+    if (ownership === "hired") {
+      const hasHireTerms = Boolean(hireBasis || hireRate || hireStartDate || hireEndDate || hireRemarks || hireDeductionEnabled);
+      if (hasHireTerms && (!vendorName.trim() || !hireBasis || !hireRate || !hireStartDate)) {
+        toast({ title: "Vendor, hire basis, rate, and start date are required when adding hire terms", variant: "destructive" });
+        return;
+      }
+      if (hasHireTerms && (!Number.isFinite(Number(hireRate)) || Number(hireRate) <= 0)) {
+        toast({ title: "Hire rate must be greater than zero", variant: "destructive" });
+        return;
+      }
+      if (hireEndDate && hireEndDate < hireStartDate) {
+        toast({ title: "Hire end date cannot be before the start date", variant: "destructive" });
+        return;
+      }
+      if (hireBasis === "monthly" && monthlyDivisorType === "custom" && (!Number.isFinite(Number(monthlyDivisorCustom)) || Number(monthlyDivisorCustom) <= 0)) {
+        toast({ title: "Enter a custom monthly divisor greater than zero", variant: "destructive" });
+        return;
+      }
+    }
     const stdOutputsArr = CANONICAL_UNITS
       .filter(u => standardOutputsMap[u] && parseFloat(standardOutputsMap[u]) > 0)
       .map(u => ({ unit: u, outputPerHr: parseFloat(standardOutputsMap[u]) }));
@@ -4198,6 +4247,16 @@ export function EquipmentMasterSection() {
       registrationNumber: registrationNumber || undefined,
       ownership,
       vendorName: ownership === "hired" ? vendorName || undefined : undefined,
+      hireBillingBasis: ownership === "hired" ? hireBasis : null,
+      hireRate: ownership === "hired" ? parseFloat(hireRate) : null,
+      hireStartDate: ownership === "hired" ? hireStartDate : null,
+      hireEndDate: ownership === "hired" ? hireEndDate || null : null,
+      hireDieselResponsibility: ownership === "hired" ? hireDieselResponsibility : null,
+      hireOperatorResponsibility: ownership === "hired" ? hireOperatorResponsibility : null,
+      hireAgreementRemarks: ownership === "hired" ? hireRemarks || null : null,
+      hireBreakdownDeductionEnabled: ownership === "hired" ? hireDeductionEnabled : false,
+      hireMonthlyDivisorType: ownership === "hired" && hireBasis === "monthly" ? monthlyDivisorType : null,
+      hireMonthlyDivisor: ownership === "hired" && hireBasis === "monthly" && monthlyDivisorType === "custom" ? parseFloat(monthlyDivisorCustom) : null,
       meterType,
       consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined,
       plantName: plantNameField || null,
@@ -4286,15 +4345,23 @@ export function EquipmentMasterSection() {
                 </Select>
               </div>
               {ownership === "hired" && (
-                <div>
-                  <Label htmlFor="vendor-name">Vendor / Contractor Name</Label>
-                  <Input
-                    id="vendor-name"
-                    value={vendorName}
-                    onChange={(e) => setVendorName(e.target.value.toUpperCase())}
-                    placeholder="e.g., ABC CONTRACTORS"
-                    data-testid="input-vendor-name"
-                  />
+                <div className="rounded-md border border-amber-200 bg-amber-50/50 p-3 space-y-3">
+                  <p className="text-sm font-medium text-amber-800">Hire Terms</p>
+                  <div>
+                    <Label htmlFor="vendor-name">Vendor / Contractor Name</Label>
+                    <Input id="vendor-name" value={vendorName} onChange={(e) => setVendorName(e.target.value.toUpperCase())} placeholder="e.g., ABC CONTRACTORS" data-testid="input-vendor-name" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Hire Basis</Label><Select value={hireBasis} onValueChange={setHireBasis}><SelectTrigger data-testid="select-hire-basis"><SelectValue placeholder="Select basis" /></SelectTrigger><SelectContent><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="daily">Daily</SelectItem><SelectItem value="hourly">Hourly</SelectItem><SelectItem value="trip">Trip</SelectItem></SelectContent></Select></div>
+                    <div><Label>Hire Rate (₹)</Label><Input type="number" min="0" step="0.01" value={hireRate} onChange={e => setHireRate(e.target.value)} data-testid="input-hire-rate" /></div>
+                    <div><Label>Hire Start Date</Label><Input type="date" value={hireStartDate} onChange={e => setHireStartDate(e.target.value)} data-testid="input-hire-start-date" /></div>
+                    <div><Label>Hire End Date <span className="text-muted-foreground">(open-ended if blank)</span></Label><Input type="date" value={hireEndDate} onChange={e => setHireEndDate(e.target.value)} data-testid="input-hire-end-date" /></div>
+                    <div><Label>Diesel Responsibility</Label><Select value={hireDieselResponsibility} onValueChange={setHireDieselResponsibility}><SelectTrigger data-testid="select-hire-diesel-responsibility"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hlc">HLC</SelectItem><SelectItem value="vendor">Vendor</SelectItem></SelectContent></Select></div>
+                    <div><Label>Operator Responsibility</Label><Select value={hireOperatorResponsibility} onValueChange={setHireOperatorResponsibility}><SelectTrigger data-testid="select-hire-operator-responsibility"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hlc">HLC</SelectItem><SelectItem value="vendor">Vendor</SelectItem></SelectContent></Select></div>
+                  </div>
+                  {hireBasis === "monthly" && <div className="grid grid-cols-2 gap-3"><div><Label>Monthly Divisor</Label><Select value={monthlyDivisorType} onValueChange={setMonthlyDivisorType}><SelectTrigger data-testid="select-monthly-divisor"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="calendar">Calendar days</SelectItem><SelectItem value="30">30 days</SelectItem><SelectItem value="custom">Custom</SelectItem></SelectContent></Select></div>{monthlyDivisorType === "custom" && <div><Label>Custom Divisor (days)</Label><Input type="number" min="1" step="1" value={monthlyDivisorCustom} onChange={e => setMonthlyDivisorCustom(e.target.value)} data-testid="input-monthly-divisor-custom" /></div>}</div>}
+                  <div className="flex items-center gap-2"><Checkbox id="hire-deduction-enabled" checked={hireDeductionEnabled} onCheckedChange={checked => setHireDeductionEnabled(checked === true)} data-testid="checkbox-hire-deduction-enabled" /><Label htmlFor="hire-deduction-enabled" className="text-sm">Allow vendor breakdown deductions</Label></div>
+                  <div><Label>Hire Remarks</Label><Textarea value={hireRemarks} onChange={e => setHireRemarks(e.target.value)} placeholder="Agreement notes (optional)" data-testid="input-hire-remarks" /></div>
                 </div>
               )}
               <div>

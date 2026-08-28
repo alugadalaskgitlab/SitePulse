@@ -21,6 +21,7 @@ import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { siteMatchesPermitted } from "@shared/siteName";
+import { calculateHireBilling, planHireRegisterRows, type HireExceptionDecisionInput } from "@shared/hireBilling";
 import { computeItemEntries, computeItemAbstract } from "@shared/progressReport";
 import { isLayerCapableItem } from "@shared/layerDisplay";
 import { boqItemDisplayName, shortItemName as sharedShortItemName } from "@shared/boqItemName";
@@ -78,6 +79,7 @@ import {
   assertView,
   assertAuthed,
   assertCreate,
+  assertCreateEither,
   assertApprove,
   assertDeleteOrCancel,
   currentUserName,
@@ -3010,6 +3012,221 @@ export async function registerRoutes(
   });
 
   // Equipment Master
+  // Hired equipment billing.  The calculator remains the sole source of
+  // amounts; persistence contains only a snapshot and reviewer decisions.
+  const hireDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
+  const hirePeriodFields = z.object({ billingFrom: hireDate, billingTo: hireDate });
+  const hirePeriod = hirePeriodFields.refine(v => v.billingFrom <= v.billingTo, { message: "billingFrom must be on or before billingTo" });
+  const hireCreate = hirePeriodFields.extend({ equipmentId: z.number().int().positive() }).refine(v => v.billingFrom <= v.billingTo, { message: "billingFrom must be on or before billingTo" });
+  const hireRevisionBody = z.object({ expectedRevision: z.number().int().nonnegative() });
+  const hireExceptionsBody = hireRevisionBody.extend({ exceptions: z.array(z.object({
+    id: z.number().int().positive().optional(), date: hireDate.optional().default(""),
+    reason: z.string().max(1000).optional(), source: z.enum(["usage", "maintenance", "manual"]).optional(),
+    sourceId: z.number().int().positive().optional(), exceptionType: z.string().max(60).optional(),
+    downtimeHours: z.number().finite().min(0).optional(), decision: z.enum(["full_day", "half_day", "none", "manual"]).optional(),
+    finalDeduction: z.number().finite().min(0).optional(), manualDeductionAmount: z.number().finite().min(0).optional(),
+    remarks: z.string().max(2000).optional(),
+  })) });
+  const hireTermsFor = (equipment: any) => {
+    const validBasis = ["monthly", "daily", "hourly", "trip"];
+    if (equipment.ownership !== "hired" || !equipment.vendorName?.trim() || !equipment.hireStartDate || !validBasis.includes(equipment.hireBillingBasis) ||
+      !Number.isFinite(equipment.hireRate) || equipment.hireRate <= 0 ||
+      (equipment.hireStartDate && equipment.hireEndDate && equipment.hireStartDate > equipment.hireEndDate) ||
+      (equipment.hireBillingBasis === "monthly" && !["calendar", "30", "custom"].includes(equipment.hireMonthlyDivisorType || "30")) ||
+      (equipment.hireMonthlyDivisorType === "custom" && !(equipment.hireMonthlyDivisor > 0))) {
+      throw Object.assign(new Error("Equipment does not have valid configured hire terms"), { code: "BAD_REQUEST" });
+    }
+    return { billingBasis: equipment.hireBillingBasis, rate: equipment.hireRate, hireStartDate: equipment.hireStartDate,
+      hireEndDate: equipment.hireEndDate, monthlyDivisorType: equipment.hireMonthlyDivisorType || "30",
+      monthlyDivisor: equipment.hireMonthlyDivisor, breakdownDeductionEnabled: !!equipment.hireBreakdownDeductionEnabled };
+  };
+  const hireCalculation = async (statement: any, decisions: HireExceptionDecisionInput[] = []) => {
+    const usage = await storage.getEquipmentUsage({ equipmentId: statement.equipmentId, dateFrom: statement.periodFrom, dateTo: statement.periodTo });
+    const maintenance = await storage.getMaintenanceLogs({ equipmentId: statement.equipmentId, dateFrom: statement.periodFrom, dateTo: statement.periodTo });
+    const terms = { billingBasis: statement.billingBasis, rate: statement.rate, hireStartDate: statement.hireStartDate,
+      hireEndDate: statement.hireEndDate, monthlyDivisorType: statement.monthlyDivisorType as any, monthlyDivisor: statement.monthlyDivisor,
+      breakdownDeductionEnabled: !!statement.calculationSnapshot?.terms?.breakdownDeductionEnabled };
+    return Object.assign(calculateHireBilling({
+      terms, periodFrom: statement.periodFrom, periodTo: statement.periodTo, usage, maintenance, exceptionDecisions: decisions,
+    }), { terms });
+  };
+  const hireResponse = async (statement: any, equipment?: any) => {
+    const persisted = await storage.getHireStatementExceptions(statement.id);
+    const decisions: HireExceptionDecisionInput[] = persisted.map(e => ({ sourceType: e.sourceType as any, sourceId: e.sourceId,
+      exceptionType: e.exceptionType, date: e.exceptionDate || undefined, decision: e.decision as any,
+      manualDeductionAmount: e.manualDeductionAmount, remarks: e.remarks }));
+    const calculated: any = ["approved", "billed"].includes(statement.status) && statement.calculationSnapshot
+      ? statement.calculationSnapshot : await hireCalculation(statement, decisions);
+    const calcExceptions = (calculated.exceptions || []).map((e: any) => ({
+      id: persisted.find(p => p.sourceType === e.sourceType && p.sourceId === (e.sourceId ?? null) && p.exceptionType === e.exceptionType && (p.exceptionDate || "") === (e.date || ""))?.id,
+      date: e.date || "", reason: e.description, downtimeHours: e.downtimeHours, decision: e.decision,
+      finalDeduction: e.deductionAmount, remarks: e.description, source: e.sourceType, sourceId: e.sourceId, exceptionType: e.exceptionType,
+    }));
+    return { id: statement.id, revision: statement.revision, equipmentId: statement.equipmentId, equipmentName: equipment?.name, vendorName: statement.vendorName,
+      basis: statement.billingBasis, rate: statement.rate, billingFrom: statement.periodFrom, billingTo: statement.periodTo, status: statement.status,
+      calculatedQty: calculated.quantity, gross: calculated.grossAmount, deduction: calculated.deductionAmount, approvedAmount: calculated.netAmount,
+      activityDays: calculated.payableDays?.length, divisor: statement.monthlyDivisor || (statement.monthlyDivisorType === "calendar" ? undefined : 30),
+      usageSummary: { payableDays: calculated.payableDays, billablePeriodFrom: calculated.billablePeriodFrom, billablePeriodTo: calculated.billablePeriodTo },
+      exceptions: calcExceptions, linkedVendorBillId: statement.vendorBillId, equipment };
+  };
+  app.get("/api/equipment-hire/statements", async (req, res) => {
+    try {
+       if (!assertView(req, res, "plant_equipment")) return;
+      const period = hirePeriod.parse(req.query);
+      const equipment = await storage.getEquipmentMaster(true);
+      const existing = await storage.getHireStatements();
+      const configured = equipment.filter((e: any) => { try { hireTermsFor(e); return true; } catch { return false; } });
+      const register = planHireRegisterRows(existing, configured, period.billingFrom, period.billingTo);
+      // Persisted history is listed from its immutable statement terms even if
+      // the Equipment Master agreement has since changed or been deactivated.
+      const persistedRows = await Promise.all(register.persistedStatements.map(statement =>
+        hireResponse(statement, equipment.find(e => e.id === statement.equipmentId))
+      ));
+      const transientRows = await Promise.all(register.transientEquipment.map(async e => {
+        const terms = hireTermsFor(e);
+        const transient = { id: -e.id, equipmentId: e.id, vendorName: e.vendorName, periodFrom: period.billingFrom, periodTo: period.billingTo, status: "draft", ...terms,
+          monthlyDivisorType: terms.monthlyDivisorType, monthlyDivisor: terms.monthlyDivisor };
+        const calc = await hireCalculation(transient);
+        return { id: transient.id, revision: 0, equipmentId: e.id, equipmentName: e.name, vendorName: e.vendorName, basis: terms.billingBasis, rate: terms.rate,
+          billingFrom: period.billingFrom, billingTo: period.billingTo, status: "draft", calculatedQty: calc.quantity, gross: calc.grossAmount, deduction: calc.deductionAmount, approvedAmount: calc.netAmount, activityDays: calc.payableDays.length };
+      }));
+      res.json([...persistedRows, ...transientRows]);
+    } catch (err: any) { res.status(err instanceof z.ZodError || err?.code === "BAD_REQUEST" ? 400 : 500).json({ message: err?.message || "Failed to fetch hire statements" }); }
+  });
+  app.post("/api/equipment-hire/statements", async (req, res) => {
+    try {
+       if (!assertEdit(req, res, "plant_equipment")) return;
+      const input = hireCreate.parse(req.body), equipment = (await storage.getEquipmentMaster(true)).find(e => e.id === input.equipmentId);
+      if (!equipment) return res.status(404).json({ message: "Equipment not found" });
+      const terms = hireTermsFor(equipment);
+      if ((terms.hireStartDate && input.billingTo < terms.hireStartDate) || (terms.hireEndDate && input.billingFrom > terms.hireEndDate)) return res.status(409).json({ message: "Billing period does not overlap hire dates" });
+       const equipmentStatements = (await storage.getHireStatements()).filter(s => s.equipmentId === input.equipmentId);
+       const old = equipmentStatements.find(s => s.periodFrom === input.billingFrom && s.periodTo === input.billingTo);
+      if (old) return res.json(await hireResponse(old, equipment));
+       if (equipmentStatements.some(s => s.periodFrom <= input.billingTo && s.periodTo >= input.billingFrom)) {
+         return res.status(409).json({ message: "This equipment already has an overlapping hire statement" });
+       }
+      const snapshotInput = {
+        id: 0,
+        equipmentId: equipment.id,
+        billingBasis: terms.billingBasis,
+        rate: terms.rate,
+        monthlyDivisorType: terms.monthlyDivisorType,
+        monthlyDivisor: terms.monthlyDivisor,
+        hireStartDate: terms.hireStartDate,
+        hireEndDate: terms.hireEndDate,
+        periodFrom: input.billingFrom,
+        periodTo: input.billingTo,
+        calculationSnapshot: { terms: { breakdownDeductionEnabled: terms.breakdownDeductionEnabled } },
+      };
+      const calc = await hireCalculation(snapshotInput);
+      const result = await storage.createHireStatement({
+        equipmentId: equipment.id,
+        vendorName: equipment.vendorName!,
+        billingBasis: terms.billingBasis,
+        rate: terms.rate,
+        monthlyDivisorType: terms.monthlyDivisorType,
+        monthlyDivisor: terms.monthlyDivisor,
+        hireStartDate: terms.hireStartDate,
+        hireEndDate: terms.hireEndDate,
+        dieselResponsibility: equipment.hireDieselResponsibility,
+        operatorResponsibility: equipment.hireOperatorResponsibility,
+        agreementRemarks: equipment.hireAgreementRemarks,
+        periodFrom: input.billingFrom,
+        periodTo: input.billingTo,
+        quantity: calc.quantity,
+        grossAmount: calc.grossAmount,
+        deductionAmount: calc.deductionAmount,
+        netAmount: calc.netAmount,
+        status: "draft",
+        calculationSnapshot: calc,
+      });
+      res.status(result.created ? 201 : 200).json(await hireResponse(result.statement, equipment));
+     } catch (err: any) { res.status(err?.code === "CONFLICT" ? 409 : err instanceof z.ZodError || err?.code === "BAD_REQUEST" ? 400 : 500).json({ message: err?.message || "Failed to create hire statement" }); }
+  });
+  app.get("/api/equipment-hire/statements/:id", async (req, res) => {
+    try {
+       if (!assertView(req, res, "plant_equipment")) return;
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const statement = await storage.getHireStatement(id);
+      if (!statement) return res.status(404).json({ message: "Hire statement not found" });
+      const equipment = (await storage.getEquipmentMaster(true)).find(e => e.id === statement.equipmentId);
+      res.json(await hireResponse(statement, equipment));
+    } catch (err: any) { res.status(err instanceof z.ZodError ? 400 : 500).json({ message: err?.message || "Failed to fetch hire statement" }); }
+  });
+  app.patch("/api/equipment-hire/statements/:id/exceptions", async (req, res) => {
+    try {
+       if (!assertEdit(req, res, "plant_equipment")) return;
+      const id = z.coerce.number().int().positive().parse(req.params.id), body = hireExceptionsBody.parse(req.body);
+      const statement = await storage.getHireStatement(id);
+      if (!statement) return res.status(404).json({ message: "Hire statement not found" });
+      if (!["draft", "reviewed"].includes(statement.status)) return res.status(409).json({ message: "Approved or billed statement calculations are immutable" });
+       const decisions: HireExceptionDecisionInput[] = body.exceptions.map(e => ({ sourceType: e.source || "manual", sourceId: e.sourceId,
+        exceptionType: e.exceptionType || (e.source === "manual" ? "manual" : undefined), date: e.date || undefined,
+        decision: e.decision, manualDeductionAmount: e.manualDeductionAmount ?? e.finalDeduction, remarks: e.remarks || e.reason }));
+      const calc = await hireCalculation(statement, decisions);
+      // Persist only decisions (derived facts remain sourced from operational rows).
+      const derived = new Map(calc.exceptions.map((e: any) => [`${e.sourceType}:${e.sourceId ?? ""}:${e.exceptionType}:${e.date ?? ""}`, e]));
+      const rows = decisions.map(d => {
+        const fact: any = derived.get(`${d.sourceType}:${d.sourceId ?? ""}:${d.exceptionType || "manual"}:${d.date || ""}`);
+        return { sourceType: d.sourceType, sourceId: d.sourceId ?? null, exceptionType: d.exceptionType || "manual", exceptionDate: d.date || null,
+          description: fact?.description || d.remarks || "Manual hire billing exception.", downtimeHours: fact?.downtimeHours ?? null,
+          decision: d.decision, manualDeductionAmount: d.manualDeductionAmount ?? null, remarks: d.remarks ?? null,
+           resolvedBy: d.decision ? currentUserName(req) : null, resolvedAt: d.decision ? new Date() : null };
+      });
+       const saved = await storage.replaceHireStatementExceptions(id, body.expectedRevision, rows, {
+         status: statement.status === "reviewed" ? "draft" : statement.status,
+         reviewedBy: statement.status === "reviewed" ? null : statement.reviewedBy,
+         reviewedAt: statement.status === "reviewed" ? null : statement.reviewedAt,
+         quantity: calc.quantity, grossAmount: calc.grossAmount, deductionAmount: calc.deductionAmount, netAmount: calc.netAmount, calculationSnapshot: calc,
+       });
+       res.json(await hireResponse(saved.statement));
+     } catch (err: any) { res.status(err?.code === "NOT_FOUND" ? 404 : err?.code === "CONFLICT" ? 409 : err instanceof z.ZodError || err?.code === "BAD_REQUEST" ? 400 : 500).json({ message: err?.message || "Failed to save exceptions" }); }
+  });
+  app.post("/api/equipment-hire/statements/:id/review", async (req, res) => {
+    try {
+       if (!assertEdit(req, res, "plant_equipment")) return;
+      const expected = hireRevisionBody.parse(req.body);
+      const id = z.coerce.number().int().positive().parse(req.params.id), statement = await storage.getHireStatement(id);
+      if (!statement) return res.status(404).json({ message: "Hire statement not found" });
+      if (statement.status !== "draft") return res.status(409).json({ message: "Only draft statements can be reviewed" });
+      const persisted = await storage.getHireStatementExceptions(id);
+      const calc = await hireCalculation(statement, persisted.map(e => ({ sourceType: e.sourceType as any, sourceId: e.sourceId, exceptionType: e.exceptionType, date: e.exceptionDate || undefined, decision: e.decision as any, manualDeductionAmount: e.manualDeductionAmount, remarks: e.remarks })));
+       if (!calc.exceptions.length) return res.status(409).json({ message: "Clean statements do not require a review step and can be approved directly" });
+      const unresolved = calc.exceptions.some((e: any) => !e.decision);
+      if (unresolved) return res.status(409).json({ message: "Resolve every exception before review" });
+       const updated = await storage.transitionHireStatement(id, expected.expectedRevision, ["draft"], { status: "reviewed", reviewedBy: currentUserName(req), reviewedAt: new Date(), quantity: calc.quantity, grossAmount: calc.grossAmount, deductionAmount: calc.deductionAmount, netAmount: calc.netAmount, calculationSnapshot: calc });
+      res.json(await hireResponse(updated!));
+     } catch (err: any) { res.status(err?.code === "CONFLICT" ? 409 : err instanceof z.ZodError || err?.code === "BAD_REQUEST" ? 400 : 500).json({ message: err?.message || "Failed to review hire statement" }); }
+  });
+  app.post("/api/equipment-hire/statements/:id/approve", async (req, res) => {
+    try {
+      if (!assertApprove(req, res, "vendor_bills_approve")) return;
+      const expected = hireRevisionBody.parse(req.body);
+      const id = z.coerce.number().int().positive().parse(req.params.id), statement = await storage.getHireStatement(id);
+      if (!statement) return res.status(404).json({ message: "Hire statement not found" });
+      if (statement.status !== "draft" && statement.status !== "reviewed") return res.status(409).json({ message: "Statement cannot be approved in its current status" });
+      const persisted = await storage.getHireStatementExceptions(id);
+      const calc = await hireCalculation(statement, persisted.map(e => ({ sourceType: e.sourceType as any, sourceId: e.sourceId, exceptionType: e.exceptionType, date: e.exceptionDate || undefined, decision: e.decision as any, manualDeductionAmount: e.manualDeductionAmount, remarks: e.remarks })));
+      if (calc.exceptions.length && statement.status !== "reviewed") return res.status(409).json({ message: "Statements with exceptions must be reviewed before approval" });
+      if (calc.exceptions.some((e: any) => !e.decision)) return res.status(409).json({ message: "Resolve every exception before approval" });
+       const updated = await storage.transitionHireStatement(id, expected.expectedRevision, statement.status === "reviewed" ? ["reviewed"] : ["draft"], { status: "approved", approvedBy: currentUserName(req), approvedAt: new Date(), quantity: calc.quantity, grossAmount: calc.grossAmount, deductionAmount: calc.deductionAmount, netAmount: calc.netAmount, calculationSnapshot: calc });
+      res.json(await hireResponse(updated!));
+     } catch (err: any) { res.status(err?.code === "CONFLICT" ? 409 : err instanceof z.ZodError || err?.code === "BAD_REQUEST" ? 400 : 500).json({ message: err?.message || "Failed to approve hire statement" }); }
+  });
+  app.post("/api/equipment-hire/statements/:id/create-vendor-bill", async (req, res) => {
+    try {
+      // Both current granular raisers and legacy vendor_bills editors may create.
+       if (!assertView(req, res, "plant_equipment")) return;
+       if (!assertCreateEither(req, res, "vendor_bills_raise", "vendor_bills")) return;
+      const id = z.coerce.number().int().positive().parse(req.params.id), statement = await storage.getHireStatement(id);
+      if (!statement) return res.status(404).json({ message: "Hire statement not found" });
+      const result = await storage.createHireStatementVendorBill(id, { billDate: statement.periodTo, billType: "equipment", vendorName: statement.vendorName,
+        periodFrom: statement.periodFrom, periodTo: statement.periodTo, status: "draft", totalAmount: statement.netAmount,
+        notes: `Hire statement #${statement.id}`, items: [{ date: statement.periodTo, category: "equipment", description: `HIRE - EQUIPMENT #${statement.equipmentId}`, qty: statement.quantity, unit: statement.billingBasis, rate: statement.rate, amount: statement.netAmount, source: "hire_statement", equipmentId: statement.equipmentId }] });
+      res.json({ ...await hireResponse(result.statement), vendorBill: result.bill });
+    } catch (err: any) { res.status(err?.code === "NOT_FOUND" ? 404 : err?.code === "CONFLICT" ? 409 : err instanceof z.ZodError ? 400 : 500).json({ message: err?.message || "Failed to create vendor bill" }); }
+  });
   app.get("/api/plant-module/equipment", async (req, res) => {
     try {
       const includeInactive = req.query.includeInactive === "true";

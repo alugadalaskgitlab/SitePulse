@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Activity, AlertTriangle, Fuel, Zap, ShoppingCart, ClipboardList, CalendarCheck,
+  Activity, AlertTriangle, Fuel, Zap, ShoppingCart, ClipboardList, CalendarCheck, ReceiptText,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -126,6 +126,15 @@ export default function EquipmentHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
+               href="/equipment/hire-billing"
+               icon={ReceiptText}
+               title="Hire Billing Register"
+               description="Review hired-equipment periods, downtime deductions & vendor bills"
+               accent="orange"
+               iconBg="bg-orange-100"
+               enabled={canSeeEquip}
+             />
+             <HubActionTile
               href={`/plant/equipment-usage?returnTo=${HUB}&context=equipment`}
               icon={Activity}
               title="Equipment Usage Log"

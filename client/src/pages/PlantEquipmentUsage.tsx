@@ -518,6 +518,22 @@ export default function PlantEquipmentUsage() {
     setEquipmentId(value);
     setUserModifiedOpening(false);
     const selectedEquip = activeEquipment.find(e => e.id === Number(value));
+    const hireTermsConfigured = selectedEquip != null &&
+      (selectedEquip as any).ownership === "hired" &&
+      ["monthly", "daily", "hourly", "trip"].includes((selectedEquip as any).hireBillingBasis) &&
+      Number((selectedEquip as any).hireRate) > 0 &&
+      Boolean((selectedEquip as any).hireStartDate);
+    // Terms affect defaults only for a newly created usage. Loaded usage
+    // records retain the diesel responsibility recorded at the time.
+    if (!editingUsage && hireTermsConfigured) {
+      if ((selectedEquip as any).hireDieselResponsibility === "vendor") {
+        setDieselIncluded(true);
+        setDieselSource("contractor");
+      } else if ((selectedEquip as any).hireDieselResponsibility === "hlc") {
+        setDieselIncluded(false);
+        setDieselSource("plant_stock");
+      }
+    }
     if (selectedEquip && (selectedEquip as any).ownership !== "hired" && entryType !== "shifting") {
       setEntryType("time_meter");
       setTripBasedEntry(false);
@@ -662,7 +678,9 @@ export default function PlantEquipmentUsage() {
         fuelStation: null,
         billNumber: null,
         amountPaid: null,
-        hireAmount: hireAmount ? parseFloat(hireAmount) : null,
+        // Configured terms are calculated by the statement workflow. Keep a
+        // loaded historical amount intact when editing, rather than replacing it.
+        hireAmount: hasConfiguredHireTerms ? ((editingUsage as any)?.hireAmount ?? null) : (hireAmount ? parseFloat(hireAmount) : null),
         siteName: workingPlant === "OTHER" ? (siteName.toUpperCase() || null) : workingPlant,
         dieselBalanceInTank: null,
         dieselBalanceConfirmed: false,
@@ -706,7 +724,11 @@ export default function PlantEquipmentUsage() {
       fuelStation: effectiveDieselSource === "direct_purchase" ? fuelStation.toUpperCase() : null,
       billNumber: effectiveDieselSource === "direct_purchase" ? billNumber.toUpperCase() : null,
       amountPaid: effectiveDieselSource === "direct_purchase" && amountPaid ? parseFloat(amountPaid) : null,
-      hireAmount: ["hourly", "daily", "monthly", "trip_based"].includes(entryType) && hireAmount ? parseFloat(hireAmount) : null,
+      // Configured terms are calculated by the statement workflow. Keep a
+      // loaded historical amount intact when editing, rather than replacing it.
+      hireAmount: hasConfiguredHireTerms
+        ? ((editingUsage as any)?.hireAmount ?? null)
+        : (["hourly", "daily", "monthly", "trip_based"].includes(entryType) && hireAmount ? parseFloat(hireAmount) : null),
       siteName: workingPlant === "OTHER" ? (siteName.toUpperCase() || null) : workingPlant,
       dieselBalanceInTank: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? parseFloat(dieselBalanceInTank) : null,
       dieselBalanceConfirmed: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? dieselBalanceConfirmed : false,
@@ -749,6 +771,11 @@ export default function PlantEquipmentUsage() {
   };
 
   const selectedEquipment = equipment?.find(e => e.id === parseInt(equipmentId));
+  const hasConfiguredHireTerms = selectedEquipment != null &&
+    (selectedEquipment as any).ownership === "hired" &&
+    ["monthly", "daily", "hourly", "trip"].includes((selectedEquipment as any).hireBillingBasis) &&
+    Number((selectedEquipment as any).hireRate) > 0 &&
+    Boolean((selectedEquipment as any).hireStartDate);
 
   // Shared usage/diesel calculation logic (also used by the Site DPR equipment log)
   const liveUsage = computeEquipmentUsage(selectedEquipment, {
@@ -1645,20 +1672,29 @@ export default function PlantEquipmentUsage() {
               {["hourly", "daily", "monthly", "trip_based"].includes(entryType) && (
                 <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-800 space-y-2">
                   <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Hire Charge</p>
-                  <div>
-                    <Label className="text-sm">Hire Amount (₹)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={hireAmount}
-                      onChange={(e) => setHireAmount(e.target.value)}
-                      placeholder="Total hire charge for this entry"
-                      data-testid="input-hire-amount"
-                    />
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {entryType === "hourly" ? "Hourly hire charge for the hours worked" : entryType === "daily" ? "Daily hire rate for this equipment" : entryType === "monthly" ? "Monthly hire charge (prorated if partial)" : "Hire charge for trips performed"}
-                    </p>
-                  </div>
+                  {hasConfiguredHireTerms ? (
+                    <div className="text-sm text-muted-foreground" data-testid="text-hire-calculated-by-statement">
+                      Hire is calculated by the hire statement using this equipment's configured terms.
+                      {editingUsage && (editingUsage as any).hireAmount != null && (
+                        <span className="block mt-1">Historical manual amount: ₹{Number((editingUsage as any).hireAmount).toFixed(2)} (preserved)</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <Label className="text-sm">Hire Amount (₹)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={hireAmount}
+                        onChange={(e) => setHireAmount(e.target.value)}
+                        placeholder="Total hire charge for this entry"
+                        data-testid="input-hire-amount"
+                      />
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {entryType === "hourly" ? "Hourly hire charge for the hours worked" : entryType === "daily" ? "Daily hire rate for this equipment" : entryType === "monthly" ? "Monthly hire charge (prorated if partial)" : "Hire charge for trips performed"}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

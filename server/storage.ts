@@ -228,12 +228,18 @@ import {
   CONSUMPTION_TOLERANCE_PERCENT,
   vendorBills,
   vendorBillItems,
+  hireStatements,
+  hireStatementExceptions,
   type VendorBill,
   type VendorBillItem,
   type VendorBillWithItems,
   type CreateVendorBillRequest,
   type InsertVendorBill,
   type InsertVendorBillItem,
+  type HireStatement,
+  type HireStatementException,
+  type InsertHireStatement,
+  type InsertHireStatementException,
   vendorAliases,
   mixEstimates,
   type MixEstimate,
@@ -1378,6 +1384,15 @@ export interface IStorage {
   getDieselRequirementReceipts(requirementIds: number[]): Promise<MaterialReceipt[]>;
   deleteVendorBill(id: number): Promise<boolean>;
   getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<Partial<InsertVendorBillItem>[]>;
+  // Hired equipment billing
+  getHireStatements(): Promise<HireStatement[]>;
+  getHireStatement(id: number): Promise<HireStatement | undefined>;
+  getHireStatementExceptions(statementId: number): Promise<HireStatementException[]>;
+  createHireStatement(data: InsertHireStatement): Promise<{ statement: HireStatement; created: boolean }>;
+  updateHireStatement(id: number, data: Partial<InsertHireStatement>): Promise<HireStatement | undefined>;
+  replaceHireStatementExceptions(statementId: number, expectedRevision: number, rows: Omit<InsertHireStatementException, "statementId">[], statementPatch: Partial<InsertHireStatement>): Promise<{ statement: HireStatement; exceptions: HireStatementException[] }>;
+  transitionHireStatement(id: number, expectedRevision: number, allowedStatuses: string[], data: Partial<InsertHireStatement>): Promise<HireStatement | undefined>;
+  createHireStatementVendorBill(statementId: number, bill: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }): Promise<{ statement: HireStatement; bill: VendorBillWithItems }>;
   getVendorNames(): Promise<string[]>;
   getVendorAliases(): Promise<VendorAlias[]>;
   addVendorAlias(canonicalName: string, alias: string): Promise<VendorAlias>;
@@ -13742,6 +13757,107 @@ export class DatabaseStorage implements IStorage {
       }
 
       return { ...bill, items };
+    });
+  }
+
+  async getHireStatements(): Promise<HireStatement[]> {
+    return db.select().from(hireStatements).orderBy(desc(hireStatements.id));
+  }
+
+  async getHireStatement(id: number): Promise<HireStatement | undefined> {
+    const [statement] = await db.select().from(hireStatements).where(eq(hireStatements.id, id));
+    return statement;
+  }
+
+  async getHireStatementExceptions(statementId: number): Promise<HireStatementException[]> {
+    return db.select().from(hireStatementExceptions)
+      .where(eq(hireStatementExceptions.statementId, statementId))
+      .orderBy(asc(hireStatementExceptions.id));
+  }
+
+  async createHireStatement(data: InsertHireStatement): Promise<{ statement: HireStatement; created: boolean }> {
+    return db.transaction(async (tx) => {
+      // A per-equipment advisory lock serializes different but overlapping
+      // periods as well as exact duplicates across server instances.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(1426, ${data.equipmentId})`);
+      const [overlap] = await tx.select().from(hireStatements).where(and(
+        eq(hireStatements.equipmentId, data.equipmentId),
+        lte(hireStatements.periodFrom, data.periodTo),
+        gte(hireStatements.periodTo, data.periodFrom),
+      )).limit(1);
+      if (overlap) {
+        if (overlap.periodFrom === data.periodFrom && overlap.periodTo === data.periodTo) return { statement: overlap, created: false };
+        throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
+      }
+      const [statement] = await tx.insert(hireStatements).values(data).returning();
+      return { statement, created: true };
+    });
+  }
+
+  async updateHireStatement(id: number, data: Partial<InsertHireStatement>): Promise<HireStatement | undefined> {
+    const [statement] = await db.update(hireStatements).set(data).where(eq(hireStatements.id, id)).returning();
+    return statement;
+  }
+
+  async replaceHireStatementExceptions(statementId: number, expectedRevision: number, rows: Omit<InsertHireStatementException, "statementId">[], statementPatch: Partial<InsertHireStatement>): Promise<{ statement: HireStatement; exceptions: HireStatementException[] }> {
+    return db.transaction(async (tx) => {
+      const [current] = await tx.select().from(hireStatements)
+        .where(eq(hireStatements.id, statementId)).limit(1).for("update");
+      if (!current) throw Object.assign(new Error("Statement not found"), { code: "NOT_FOUND" });
+      if (!["draft", "reviewed"].includes(current.status) || current.revision !== expectedRevision) {
+        throw Object.assign(new Error("Statement changed while you were reviewing it. Refresh and try again."), { code: "CONFLICT" });
+      }
+      await tx.delete(hireStatementExceptions).where(eq(hireStatementExceptions.statementId, statementId));
+      const exceptions = rows.length
+        ? await tx.insert(hireStatementExceptions).values(rows.map(row => ({ ...row, statementId }))).returning()
+        : [];
+      const [statement] = await tx.update(hireStatements)
+        .set({ ...statementPatch, revision: current.revision + 1 })
+        .where(eq(hireStatements.id, statementId)).returning();
+      return { statement, exceptions };
+    });
+  }
+
+  async transitionHireStatement(id: number, expectedRevision: number, allowedStatuses: string[], data: Partial<InsertHireStatement>): Promise<HireStatement | undefined> {
+    return db.transaction(async (tx) => {
+      const [current] = await tx.select().from(hireStatements)
+        .where(eq(hireStatements.id, id)).limit(1).for("update");
+      if (!current) return undefined;
+      if (!allowedStatuses.includes(current.status) || current.revision !== expectedRevision) {
+        throw Object.assign(new Error("Statement changed while this action was being completed. Refresh and try again."), { code: "CONFLICT" });
+      }
+      const [updated] = await tx.update(hireStatements)
+        .set({ ...data, revision: current.revision + 1 })
+        .where(eq(hireStatements.id, id)).returning();
+      return updated;
+    });
+  }
+
+  async createHireStatementVendorBill(statementId: number, data: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }): Promise<{ statement: HireStatement; bill: VendorBillWithItems }> {
+    return db.transaction(async (tx) => {
+      // Lock makes the linked-bill check and creation indivisible even when two
+      // reviewers submit the action concurrently.
+      const [statement] = await tx.select().from(hireStatements)
+        .where(eq(hireStatements.id, statementId))
+        .limit(1)
+        .for("update");
+      if (!statement) throw Object.assign(new Error("Statement not found"), { code: "NOT_FOUND" });
+      if (statement.vendorBillId) {
+        const [bill] = await tx.select().from(vendorBills).where(eq(vendorBills.id, statement.vendorBillId));
+        const items = bill ? await tx.select().from(vendorBillItems).where(eq(vendorBillItems.billId, bill.id)) : [];
+        if (!bill) throw new Error("Linked vendor bill not found");
+        return { statement, bill: { ...bill, items } };
+      }
+      if (statement.status !== "approved") throw Object.assign(new Error("Only approved statements can create a vendor bill"), { code: "CONFLICT" });
+      const billNo = await this.generateVendorBillNo();
+      const [bill] = await tx.insert(vendorBills).values({
+        billDate: data.billDate, billNo, billType: data.billType.toUpperCase(), vendorName: data.vendorName.toUpperCase(),
+        periodFrom: data.periodFrom, periodTo: data.periodTo, status: data.status || "draft", notes: data.notes, totalAmount: data.totalAmount,
+      }).returning();
+      const items = await tx.insert(vendorBillItems).values(data.items.map(item => ({ ...item, billId: bill.id }))).returning();
+      const [updated] = await tx.update(hireStatements).set({ vendorBillId: bill.id, status: "billed", billedAt: new Date() })
+        .where(eq(hireStatements.id, statementId)).returning();
+      return { statement: updated, bill: { ...bill, items } };
     });
   }
 

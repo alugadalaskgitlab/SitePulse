@@ -441,6 +441,18 @@ export const equipmentMaster = pgTable("equipment_master", {
   equipmentType: text("equipment_type").default("Equipment"), // Deprecated - kept for backward compatibility
   ownership: text("ownership").default("owned"), // "owned" or "hired"
   vendorName: text("vendor_name"), // Vendor/contractor name for hired equipment
+  // Hire commercial terms.  These deliberately remain nullable so owned and
+  // historical equipment records continue to be valid without a migration.
+  hireBillingBasis: text("hire_billing_basis"), // monthly | daily | hourly | trip
+  hireRate: real("hire_rate"),
+  hireStartDate: date("hire_start_date"),
+  hireEndDate: date("hire_end_date"),
+  hireDieselResponsibility: text("hire_diesel_responsibility"), // hlc | vendor
+  hireOperatorResponsibility: text("hire_operator_responsibility"), // hlc | vendor
+  hireAgreementRemarks: text("hire_agreement_remarks"),
+  hireBreakdownDeductionEnabled: boolean("hire_breakdown_deduction_enabled"),
+  hireMonthlyDivisorType: text("hire_monthly_divisor_type"), // calendar | 30 | custom
+  hireMonthlyDivisor: real("hire_monthly_divisor"), // required when type is custom
   meterType: text("meter_type").notNull(), // hour_meter, odometer
   consumptionNorm: real("consumption_norm"), // Liters/hour OR liters/km
   plantName: text("plant_name"), // nullable; references plant_settings.plant_name; null = shared/unassigned
@@ -2092,20 +2104,113 @@ export const vendorBillItems = pgTable("vendor_bill_items", {
   transporter: text("transporter"),
 });
 
+// Auditable billing headers for hired equipment.  Contract fields are copied
+// here at creation time; Equipment Master remains the source only for a new
+// statement, never for an approved historical statement.
+export const hireStatements = pgTable("hire_statements", {
+  id: serial("id").primaryKey(),
+  equipmentId: integer("equipment_id").notNull(),
+  vendorName: text("vendor_name").notNull(),
+  billingBasis: text("billing_basis").notNull(), // monthly | daily | hourly | trip
+  rate: real("rate").notNull(),
+  monthlyDivisorType: text("monthly_divisor_type"), // calendar | 30 | custom
+  monthlyDivisor: real("monthly_divisor"),
+  hireStartDate: date("hire_start_date"),
+  hireEndDate: date("hire_end_date"),
+  dieselResponsibility: text("diesel_responsibility"),
+  operatorResponsibility: text("operator_responsibility"),
+  agreementRemarks: text("agreement_remarks"),
+  periodFrom: date("period_from").notNull(),
+  periodTo: date("period_to").notNull(),
+  quantity: real("quantity").notNull().default(0),
+  grossAmount: real("gross_amount").notNull().default(0),
+  deductionAmount: real("deduction_amount").notNull().default(0),
+  netAmount: real("net_amount").notNull().default(0),
+  status: text("status").notNull().default("draft"), // draft | reviewed | approved | billed
+  revision: integer("revision").notNull().default(0),
+  vendorBillId: integer("vendor_bill_id"),
+  calculationSnapshot: jsonb("calculation_snapshot"),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+  approvedBy: text("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  billedAt: timestamp("billed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  equipmentIdx: index("hire_statements_equipment_idx").on(table.equipmentId),
+  periodIdx: index("hire_statements_period_idx").on(table.periodFrom, table.periodTo),
+  equipmentPeriodUq: uniqueIndex("hire_statements_equipment_period_uq").on(table.equipmentId, table.periodFrom, table.periodTo),
+  vendorBillIdx: index("hire_statements_vendor_bill_idx").on(table.vendorBillId),
+  equipmentFk: foreignKey({
+    columns: [table.equipmentId],
+    foreignColumns: [equipmentMaster.id],
+    name: "hire_statements_equipment_id_equipment_master_id_fk",
+  }),
+  vendorBillFk: foreignKey({
+    columns: [table.vendorBillId],
+    foreignColumns: [vendorBills.id],
+    name: "hire_statements_vendor_bill_id_vendor_bills_id_fk",
+  }),
+}));
+
+// A compact, persisted review decision for an operational fact.  sourceId is
+// intentionally polymorphic (equipment usage, maintenance log, or manual).
+export const hireStatementExceptions = pgTable("hire_statement_exceptions", {
+  id: serial("id").primaryKey(),
+  statementId: integer("statement_id").notNull(),
+  sourceType: text("source_type").notNull(), // usage | maintenance | manual
+  sourceId: integer("source_id"),
+  exceptionType: text("exception_type").notNull(),
+  exceptionDate: date("exception_date"),
+  description: text("description").notNull(),
+  downtimeHours: real("downtime_hours"), // informational only
+  decision: text("decision"), // full_day | half_day | none | manual
+  manualDeductionAmount: real("manual_deduction_amount"),
+  remarks: text("remarks"),
+  resolvedBy: text("resolved_by"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  statementIdx: index("hire_statement_exceptions_statement_idx").on(table.statementId),
+  sourceIdx: index("hire_statement_exceptions_source_idx").on(table.sourceType, table.sourceId),
+  statementFk: foreignKey({
+    columns: [table.statementId],
+    foreignColumns: [hireStatements.id],
+    name: "hire_statement_exceptions_statement_id_hire_statements_id_fk",
+  }),
+}));
+
 export const vendorBillsRelations = relations(vendorBills, ({ many }) => ({
   items: many(vendorBillItems),
+  hireStatements: many(hireStatements),
 }));
 
 export const vendorBillItemsRelations = relations(vendorBillItems, ({ one }) => ({
   bill: one(vendorBills, { fields: [vendorBillItems.billId], references: [vendorBills.id] }),
 }));
 
+export const hireStatementsRelations = relations(hireStatements, ({ one, many }) => ({
+  equipment: one(equipmentMaster, { fields: [hireStatements.equipmentId], references: [equipmentMaster.id] }),
+  vendorBill: one(vendorBills, { fields: [hireStatements.vendorBillId], references: [vendorBills.id] }),
+  exceptions: many(hireStatementExceptions),
+}));
+
+export const hireStatementExceptionsRelations = relations(hireStatementExceptions, ({ one }) => ({
+  statement: one(hireStatements, { fields: [hireStatementExceptions.statementId], references: [hireStatements.id] }),
+}));
+
 export const insertVendorBillSchema = createInsertSchema(vendorBills).omit({ id: true, createdAt: true });
 export const insertVendorBillItemSchema = createInsertSchema(vendorBillItems).omit({ id: true });
+export const insertHireStatementSchema = createInsertSchema(hireStatements).omit({ id: true, createdAt: true });
+export const insertHireStatementExceptionSchema = createInsertSchema(hireStatementExceptions).omit({ id: true, createdAt: true });
 export type VendorBill = typeof vendorBills.$inferSelect;
 export type VendorBillItem = typeof vendorBillItems.$inferSelect;
 export type InsertVendorBill = z.infer<typeof insertVendorBillSchema>;
 export type InsertVendorBillItem = z.infer<typeof insertVendorBillItemSchema>;
+export type HireStatement = typeof hireStatements.$inferSelect;
+export type HireStatementException = typeof hireStatementExceptions.$inferSelect;
+export type InsertHireStatement = z.infer<typeof insertHireStatementSchema>;
+export type InsertHireStatementException = z.infer<typeof insertHireStatementExceptionSchema>;
 
 export type VendorBillWithItems = VendorBill & {
   items: VendorBillItem[];
