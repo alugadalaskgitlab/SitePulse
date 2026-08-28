@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownToLine, ArrowUpFromLine, ClipboardList,
-  Package, Layers, BarChart3, ArrowLeftRight, Settings, CalendarCheck, ShoppingCart, AlertTriangle, Inbox,
+  Package, Layers, BarChart3, ArrowLeftRight, Settings, CalendarCheck, ShoppingCart, AlertTriangle, Inbox, Fuel,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { HubShell } from "@/components/HubShell";
@@ -34,6 +34,7 @@ export default function StoresHub() {
   const canBulk = sectionVisible("plant_materials");
   const canIrn = sectionVisible("irn_view") || sectionVisible("irn_raise");
   const canPi = sectionVisible("purchase_indents_view") || sectionVisible("site_procurement");
+  const canDieselRegister = sectionVisible("diesel_req_view") || sectionVisible("site_diesel") || canStores;
 
   const { data: stock = [] } = useQuery<any[]>({
     queryKey: ["/api/stores/stock-summary"],
@@ -118,6 +119,16 @@ export default function StoresHub() {
             Store Items
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <HubActionTile
+              href={`/stores/diesel-register?returnTo=${HUB}`}
+              icon={Fuel}
+              title="Diesel Purchase Register"
+              description="Track diesel requirements, purchases, linked receipts and remaining quantity"
+              accent="amber"
+              iconBg="bg-amber-100"
+              enabled={canDieselRegister}
+              data-testid="tile-diesel-purchase-register"
+            />
             <HubActionTile
               href={`/stores/grns?returnTo=${HUB}`}
               icon={ArrowDownToLine}

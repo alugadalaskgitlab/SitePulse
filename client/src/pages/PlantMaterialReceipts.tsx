@@ -31,7 +31,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialReceipt } from "@shared/schema";
 import { UOM_OPTIONS } from "@shared/schema";
-import { decidePiAutoSelect, submitBlockedByPi, showPiIndentBlock, showRegulariseIndentNotice } from "@shared/dieselReceiptSource";
+import { decidePiAutoSelect, submitBlockedByPi, showPiIndentBlock, showPiPendingBadge, showRegulariseIndentNotice, receiptClosureStatus } from "@shared/dieselReceiptSource";
 
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
@@ -180,6 +180,10 @@ export default function PlantMaterialReceipts() {
   // 06M-C: when opened from a Daily Diesel Purchase, this links the new
   // receipt back to that purchase (audit / Purchased-vs-Received tracking).
   const [linkedDieselRequirementId, setLinkedDieselRequirementId] = useState<number | null>(null);
+  // For a Final Submitted receipt, retain the authorization that opened this
+  // edit session. Direct editors are represented by 0; request-flow editors
+  // provide their approved request id via EditPermissionButton.
+  const [editPermissionRequestId, setEditPermissionRequestId] = useState<number | null>(null);
 
   interface ReceiptFormData {
     date: string;
@@ -232,6 +236,11 @@ export default function PlantMaterialReceipts() {
   const { data: receipts, isLoading } = useQuery<MaterialReceipt[]>({
     queryKey: ["/api/plant-module/material-receipts"],
   });
+
+  // Purchase evidence belongs to the Daily Diesel Purchase, not this receipt.
+  // Use the common attachments API so the linked source document remains
+  // viewable without copying or re-uploading it onto the GRN.
+  const dieselPurchaseAttachmentId = linkedDieselRequirementId ?? (editingReceipt as any)?.linkedDieselRequirementId ?? null;
 
   // Fetch all purchase indents to resolve indentRef → status in the list view
   const { data: allIndents = [] } = useQuery<{ id: number; indentNo: string; status: string }[]>({
@@ -489,6 +498,7 @@ export default function PlantMaterialReceipts() {
     setSelectedPendingPiItemId(null);
     setIndentLockedFromPi(false);
     setLinkedDieselRequirementId(null);
+    setEditPermissionRequestId(null);
   };
 
   const openEditDialog = (receipt: MaterialReceipt) => {
@@ -560,6 +570,9 @@ export default function PlantMaterialReceipts() {
         invoiceDate: invoiceDate || null,
         indentRef: linkedDieselRequirementId != null ? null : (indentRef || null),
         tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
+        ...((editingReceipt as any).documentStatus === "submitted" && editPermissionRequestId !== null
+          ? { editPermissionRequestId }
+          : {}),
       };
       updateMutation.mutate({ id: editingReceipt.id, data: updateData });
     } else {
@@ -586,7 +599,8 @@ export default function PlantMaterialReceipts() {
     }
   };
 
-  const handleEditClick = (receipt: MaterialReceipt) => {
+  const handleEditClick = (receipt: MaterialReceipt, permissionRequestId: number | null = null) => {
+    setEditPermissionRequestId(permissionRequestId);
     openEditDialog(receipt);
   };
 
@@ -942,9 +956,9 @@ export default function PlantMaterialReceipts() {
               </div>
 
               <div>
-                <Label>Material</Label>
-                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); setTankNumber(""); setIndentRef(""); setIndentComboSearch(""); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(m.defaultUom || "Ton"); }}>
-                  <SelectTrigger data-testid="select-material">
+                <Label>Material{linkedDieselRequirementId != null && <span className="text-muted-foreground text-sm"> (canonical Diesel source)</span>}</Label>
+                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); setTankNumber(""); setIndentRef(""); setIndentComboSearch(""); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(m.defaultUom || "Ton"); }} disabled={linkedDieselRequirementId != null}>
+                  <SelectTrigger data-testid="select-material" aria-describedby={linkedDieselRequirementId != null ? "diesel-canonical-source" : undefined}>
                     <SelectValue placeholder="Select material" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1008,9 +1022,9 @@ export default function PlantMaterialReceipts() {
                   <Input type="number" step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0.00" data-testid="input-quantity" />
                 </div>
                 <div>
-                  <Label>UOM</Label>
-                  <Select value={uom} onValueChange={setUom}>
-                    <SelectTrigger data-testid="select-uom">
+                  <Label>UOM{linkedDieselRequirementId != null && <span className="text-muted-foreground text-sm"> (canonical Liters)</span>}</Label>
+                  <Select value={uom} onValueChange={setUom} disabled={linkedDieselRequirementId != null}>
+                    <SelectTrigger data-testid="select-uom" aria-describedby={linkedDieselRequirementId != null ? "diesel-canonical-source" : undefined}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1066,7 +1080,7 @@ export default function PlantMaterialReceipts() {
 
               {editingReceipt ? (
                 <div className="space-y-1.5">
-                  <Label>Attachments <span className="text-muted-foreground text-sm">(challan, invoice, photos)</span></Label>
+                  <Label>Attachments <span className="text-muted-foreground text-sm">(supporting document required for closure)</span></Label>
                   <AttachmentUploader
                     moduleType="material_receipt"
                     linkedRecordId={editingReceipt.id}
@@ -1077,7 +1091,7 @@ export default function PlantMaterialReceipts() {
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  <Label>Attachments <span className="text-muted-foreground text-sm">(challan, invoice, photos)</span></Label>
+                  <Label>Attachments <span className="text-muted-foreground text-sm">(supporting document required for closure)</span></Label>
                   <input
                     ref={receiptCameraInputRef}
                     type="file"
@@ -1135,7 +1149,19 @@ export default function PlantMaterialReceipts() {
                 <div className="rounded-md border border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20 px-3 py-2.5" data-testid="notice-diesel-source">
                   <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">Source</p>
                   <p className="text-sm text-emerald-800 dark:text-emerald-200 font-medium">Daily Diesel Requirement #{linkedDieselRequirementId}</p>
-                  <p className="text-sm text-emerald-700 dark:text-emerald-300">Purchased / Approved — no Purchase Indent needed for this receipt.</p>
+                  <p id="diesel-canonical-source" className="text-sm text-emerald-700 dark:text-emerald-300">Canonical Diesel / Liters source — material and UOM are locked. Purchased / Approved — no Purchase Indent needed for this receipt.</p>
+                  {dieselPurchaseAttachmentId != null && (
+                    <div className="mt-2 border-t border-emerald-200 dark:border-emerald-800 pt-2">
+                      <p className="text-xs font-medium text-emerald-800 dark:text-emerald-200 mb-1">Purchase document linked ✓</p>
+                      <AttachmentGallery
+                        moduleType="diesel_purchase"
+                        linkedRecordId={dieselPurchaseAttachmentId}
+                        allowDelete={false}
+                        emptyText="No purchase document has been attached to this Daily Diesel Purchase."
+                        className="grid grid-cols-3 gap-2 max-w-sm"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1467,20 +1493,23 @@ export default function PlantMaterialReceipts() {
                                 <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
                                 {receipt.vehicleNumber && <span className="text-sm text-muted-foreground">{receipt.vehicleNumber}</span>}
                                 {receipt.supplier && <span className="text-sm text-muted-foreground">{receipt.supplier}</span>}
-                                {(!(receipt as any).indentRef || indentStatusMap[(receipt as any).indentRef] !== "approved") && (
+                                 {showPiPendingBadge({
+                                   linkedDieselRequirementId: (receipt as any).linkedDieselRequirementId,
+                                   indentRef: (receipt as any).indentRef,
+                                   indentStatus: indentStatusMap[(receipt as any).indentRef],
+                                 }) && (
                                   <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-amber-400 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20" data-testid={`badge-pi-pending-${receipt.id}`}>PI Pending</Badge>
                                 )}
                                 {(() => {
-                                  const status = (receipt as any).documentStatus;
-                                  const hasRequiredDoc = (receipt as any).hasRequiredDoc;
-                                  if (status === "submitted") {
+                                   const closureStatus = receiptClosureStatus((receipt as any).documentStatus, (receipt as any).hasRequiredDoc);
+                                   if (closureStatus === "Final Submitted") {
                                     return (
                                       <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-emerald-400 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 gap-1" data-testid={`badge-doc-status-${receipt.id}`}>
                                         <Lock className="w-3 h-3" /> Final Submitted
                                       </Badge>
                                     );
                                   }
-                                  if (!hasRequiredDoc) {
+                                   if (closureStatus === "Pending Document") {
                                     return (
                                       <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-red-400 text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 gap-1" data-testid={`badge-doc-status-${receipt.id}`}>
                                         <FileWarning className="w-3 h-3" /> Pending Document
@@ -1489,7 +1518,7 @@ export default function PlantMaterialReceipts() {
                                   }
                                   return (
                                     <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-sky-400 text-sky-700 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/20" data-testid={`badge-doc-status-${receipt.id}`}>
-                                      Draft
+                                       Ready to Final Submit
                                     </Badge>
                                   );
                                 })()}
@@ -1505,7 +1534,7 @@ export default function PlantMaterialReceipts() {
                                     onClick={() => finalSubmitMutation.mutate(receipt.id)}
                                     disabled={finalSubmitMutation.isPending || !(receipt as any).hasRequiredDoc}
                                     data-testid={`button-final-submit-receipt-${receipt.id}`}
-                                    title={(receipt as any).hasRequiredDoc ? "Final Submit" : "Upload a challan/DC/invoice/receipt photo first"}
+                                       title={(receipt as any).hasRequiredDoc ? "Final Submit" : "Upload a bill/challan/DC/invoice/receipt document first"}
                                   >
                                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                                   </Button>
@@ -1514,11 +1543,12 @@ export default function PlantMaterialReceipts() {
                                   <EditPermissionButton
                                     recordType="material_receipt"
                                     recordId={receipt.id}
-                                    onEditGranted={() => handleEditClick(receipt)}
+                                    onEditGranted={(requestId) => handleEditClick(receipt, requestId)}
+                                     deferConsumeUntilSave
                                     size="sm"
                                   />
                                 )}
-                                {(canEdit || isOwnerOrAdmin) && ((receipt as any).documentStatus !== "submitted" || isOwnerOrAdmin) && (
+                                {(canEdit || isOwnerOrAdmin) && (receipt as any).documentStatus !== "submitted" && (
                                   <>
                                     {/* 06M-D: a cancelled receipt is terminal — no edit or re-cancel;
                                         its stock was already reversed. Delete stays (admin-gated). */}
@@ -1625,9 +1655,21 @@ export default function PlantMaterialReceipts() {
                                     className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2 max-w-2xl"
                                   />
                                 </div>
+                                 {(() => {
+                                   const closureStatus = receiptClosureStatus((receipt as any).documentStatus, (receipt as any).hasRequiredDoc);
+                                   if (closureStatus !== "Pending Document") return null;
+                                   return (
+                                     <div className="mt-3 flex items-start gap-2 rounded-md border border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-700 px-3 py-2" data-testid={`notice-document-required-${receipt.id}`}>
+                                       <FileWarning className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                                       <span className="text-sm text-red-700 dark:text-red-300">Supporting bill/challan/receipt document pending. Add it using Edit before final submission.</span>
+                                     </div>
+                                   );
+                                 })()}
                                 {(receipt as any).linkedDieselRequirementId != null && (
                                   <div className="mt-3 flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-700 px-3 py-2" data-testid={`notice-diesel-source-${receipt.id}`}>
-                                    <span className="text-sm text-emerald-700 dark:text-emerald-300">Linked Daily Diesel Purchase — Diesel Requirement #{(receipt as any).linkedDieselRequirementId}</span>
+                                    <div className="flex-1">
+                                       <span className="text-sm text-emerald-700 dark:text-emerald-300">Purchase document linked ✓ from Daily Diesel Requirement #{(receipt as any).linkedDieselRequirementId}. It appears once under Attachments above.</span>
+                                    </div>
                                   </div>
                                 )}
                                 {(() => {
@@ -1642,14 +1684,7 @@ export default function PlantMaterialReceipts() {
                                   return (
                                     <div className="mt-3 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 px-3 py-2" data-testid={`notice-pi-pending-${receipt.id}`}>
                                       <svg className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" /></svg>
-                                      <span className="text-sm text-amber-700 dark:text-amber-300 flex-1">No approved indent linked — edit this receipt to regularise</span>
-                                      <button
-                                        onClick={() => handleEditClick(receipt)}
-                                        className="text-sm font-medium text-amber-700 dark:text-amber-300 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100 shrink-0"
-                                        data-testid={`button-notice-edit-receipt-${receipt.id}`}
-                                      >
-                                        Edit receipt
-                                      </button>
+                                      <span className="text-sm text-amber-700 dark:text-amber-300 flex-1">No approved indent linked — regularise this receipt through its Edit action.</span>
                                     </div>
                                   );
                                 })()}

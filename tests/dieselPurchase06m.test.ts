@@ -15,7 +15,7 @@ import express from "express";
 import { createServer } from "http";
 import request from "supertest";
 
-const fx: { role: string; attachments: any[] } = { role: "admin", attachments: [] };
+const fx: { role: string; attachments: any[]; permissions: any } = { role: "admin", attachments: [], permissions: {} };
 
 vi.mock("../server/push", () => ({
   sendPushToAll: vi.fn().mockResolvedValue(undefined),
@@ -30,7 +30,7 @@ vi.mock("../server/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../server/auth")>();
   const inject = (req: any, _res: any, next: any) => {
     req.authUser = { id: 9, username: "test-purchaser", isAdmin: fx.role === "admin", isActive: true };
-    req.authPermissions = {};
+    req.authPermissions = fx.permissions;
     req.session = { role: fx.role, username: "test-purchaser", userId: 9 };
     next();
   };
@@ -54,6 +54,7 @@ vi.mock("../server/storage", () => {
     return att;
   });
   methods.getAttachments = vi.fn(async () => fx.attachments);
+  methods.getAttachmentCounts = vi.fn(async (_moduleType: string, _ids: number[], docTypes?: string[]) => ({ docTypes }));
   return { storage: storageProxy };
 });
 
@@ -117,6 +118,46 @@ describe("06M diesel purchase-update payment details", () => {
 });
 
 describe("06M diesel purchase attachments", () => {
+  it("allows Stores viewers to read the register data and diesel evidence", async () => {
+    fx.role = "manager";
+    fx.permissions = { stores_inventory: { view: true } };
+    const [requirements, attachments, counts] = await Promise.all([
+      request(app).get("/api/diesel-requirements"),
+      request(app).get("/api/attachments?moduleType=diesel_purchase&linkedRecordId=42"),
+      request(app).get("/api/attachments/counts?moduleType=diesel_purchase&ids=42"),
+    ]);
+    expect(requirements.status).toBe(200);
+    expect(attachments.status).toBe(200);
+    expect(counts.status).toBe(200);
+    fx.role = "admin";
+    fx.permissions = {};
+  });
+
+  it("denies register and diesel evidence reads without diesel or Stores view authority", async () => {
+    fx.role = "manager";
+    fx.permissions = {};
+    const [requirements, attachments, counts] = await Promise.all([
+      request(app).get("/api/diesel-requirements"),
+      request(app).get("/api/attachments?moduleType=diesel_purchase&linkedRecordId=42"),
+      request(app).get("/api/attachments/counts?moduleType=diesel_purchase&ids=42"),
+    ]);
+    expect(requirements.status).toBe(403);
+    expect(attachments.status).toBe(403);
+    expect(counts.status).toBe(403);
+    fx.role = "admin";
+  });
+
+  it("passes an optional validated docTypes filter to attachment counts", async () => {
+    const res = await request(app).get("/api/attachments/counts?moduleType=diesel_purchase&ids=42&docTypes=bill,invoice");
+    expect(res.status).toBe(200);
+    expect(storage.getAttachmentCounts).toHaveBeenLastCalledWith("diesel_purchase", [42], ["bill", "invoice"]);
+  });
+
+  it("rejects malformed attachment-count docTypes filters", async () => {
+    const res = await request(app).get("/api/attachments/counts?moduleType=diesel_purchase&ids=42&docTypes=bill,<script>");
+    expect(res.status).toBe(400);
+  });
+
   it("B/C: POST accepts diesel_purchase moduleType with bill and payment_evidence docTypes", async () => {
     for (const docType of ["bill", "payment_evidence"]) {
       const res = await request(app).post("/api/attachments").send({
@@ -130,6 +171,23 @@ describe("06M diesel purchase attachments", () => {
       });
       expect(res.status).toBeLessThan(300);
     }
+  });
+
+  it("denies diesel-purchase attachment mutations to stores-inventory viewers", async () => {
+    fx.role = "manager";
+    fx.permissions = { stores_inventory: { view: true } };
+    const res = await request(app).post("/api/attachments").send({
+      moduleType: "diesel_purchase",
+      linkedRecordId: 42,
+      fileName: "bill.jpg",
+      objectPath: "/objects/uploads/x.jpg",
+      mimeType: "image/jpeg",
+      fileSize: 1000,
+      docType: "bill",
+    });
+    expect(res.status).toBe(403);
+    fx.role = "admin";
+    fx.permissions = {};
   });
 
   it("D/F: GET returns persisted diesel_purchase attachments for viewing", async () => {

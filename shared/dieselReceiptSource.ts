@@ -82,3 +82,26 @@ export function showRegulariseIndentNotice(args: {
   if (isDieselSourcedReceipt(args.linkedDieselRequirementId)) return false;
   return !args.indentRef || (args.indentStatus != null && args.indentStatus !== "approved");
 }
+
+/**
+ * The compact PI Pending badge is the list-row counterpart of the regularise
+ * notice. Keep this source decision here as well so a diesel purchase never
+ * leaks generic PI state into a receipt row.
+ */
+export function showPiPendingBadge(args: {
+  linkedDieselRequirementId: number | null | undefined;
+  indentRef: string | null | undefined;
+  indentStatus: string | undefined;
+}): boolean {
+  if (isDieselSourcedReceipt(args.linkedDieselRequirementId)) return false;
+  return !args.indentRef || args.indentStatus !== "approved";
+}
+
+/** Labels for the explicit, user-driven supporting-document closure workflow. */
+export function receiptClosureStatus(
+  documentStatus: string | null | undefined,
+  hasRequiredDoc: boolean | null | undefined,
+): "Pending Document" | "Ready to Final Submit" | "Final Submitted" {
+  if (documentStatus === "submitted") return "Final Submitted";
+  return hasRequiredDoc ? "Ready to Final Submit" : "Pending Document";
+}

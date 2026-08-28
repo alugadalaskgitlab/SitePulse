@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, CutFillInsufficientAvailabilityError, CutFillValidationError } from "./storage";
+import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError } from "./storage";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -179,6 +179,23 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  function assertDieselOrStoresView(req: any, res: any): boolean {
+    if (!req.authUser) {
+      res.status(401).json({ error: "not_authenticated" });
+      return false;
+    }
+    const canView = !!(
+      req.authUser.isAdmin ||
+      req.authUser.isOwner ||
+      req.authPermissions?.site_diesel?.view ||
+      req.authPermissions?.stores_inventory?.view
+    );
+    if (!canView) {
+      res.status(403).json({ error: "forbidden", action: "view" });
+      return false;
+    }
+    return true;
+  }
 
   async function getCompanyConfig() {
     const companyName = process.env.COMPANY_NAME
@@ -1012,6 +1029,7 @@ export async function registerRoutes(
       if (!moduleType || !Number.isFinite(linkedRecordId)) {
         return res.status(400).json({ message: "moduleType and linkedRecordId are required" });
       }
+      if (moduleType === "diesel_purchase" && !assertDieselOrStoresView(req, res)) return;
       const list = await storage.getAttachments(moduleType, linkedRecordId);
       res.json(list);
     } catch (err) {
@@ -1024,10 +1042,19 @@ export async function registerRoutes(
       const moduleType = String(req.query.moduleType || "");
       const idsParam = String(req.query.ids || "");
       const ids = idsParam.split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n));
+      let docTypes: string[] | undefined;
+      if (req.query.docTypes !== undefined) {
+        docTypes = String(req.query.docTypes).split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+        if (docTypes.length === 0 || docTypes.length > 20 ||
+          docTypes.some((docType) => !/^[a-z][a-z0-9_-]{0,63}$/.test(docType))) {
+          return res.status(400).json({ message: "docTypes must be a comma-separated list of document type keys" });
+        }
+      }
       if (!moduleType || ids.length === 0) {
         return res.status(400).json({ message: "moduleType and ids are required" });
       }
-      const counts = await storage.getAttachmentCounts(moduleType, ids);
+      if (moduleType === "diesel_purchase" && !assertDieselOrStoresView(req, res)) return;
+      const counts = await storage.getAttachmentCounts(moduleType, ids, docTypes);
       res.json(counts);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch attachment counts" });
@@ -1041,6 +1068,9 @@ export async function registerRoutes(
       if (!(attachmentModuleTypes as readonly string[]).includes(parsed.moduleType)) {
         return res.status(400).json({ message: `Invalid moduleType. Must be one of: ${attachmentModuleTypes.join(", ")}` });
       }
+      // Diesel purchase evidence changes the purchase record's audit trail.
+      // Stores inventory visibility is intentionally not sufficient to mutate it.
+      if (parsed.moduleType === "diesel_purchase" && !assertEdit(req, res, "site_diesel")) return;
       if (!parsed.objectPath.startsWith("/objects/")) {
         return res.status(400).json({ message: "objectPath must reference an uploaded object" });
       }
@@ -1073,10 +1103,18 @@ export async function registerRoutes(
   app.delete("/api/attachments/:id", async (req, res) => {
     try {
       if (!req.authUser) return res.status(401).json({ message: "not_authenticated" });
-      const deleted = await storage.deleteAttachment(Number(req.params.id));
+      const id = Number(req.params.id);
+      const attachment = await storage.getAttachment(id);
+      if (!attachment) return res.status(404).json({ message: "Attachment not found" });
+      // Match the diesel purchase-update authority for removing its evidence.
+      if (attachment.moduleType === "diesel_purchase" && !assertEdit(req, res, "site_diesel")) return;
+      const deleted = await storage.deleteAttachment(id);
       if (!deleted) return res.status(404).json({ message: "Attachment not found" });
       res.status(204).send();
     } catch (err) {
+      if (err instanceof AttachmentReferenceError) {
+        return res.status(409).json({ message: err.message, code: "ATTACHMENT_REFERENCED" });
+      }
       res.status(500).json({ message: "Failed to delete attachment" });
     }
   });
@@ -3037,6 +3075,16 @@ export async function registerRoutes(
   });
 
   // Material Receipts
+  // Linked diesel receipts must always point to this one stock material. Keeping
+  // the lookup shared between create and correction paths prevents historical
+  // links from being changed to another similarly named material.
+  async function getCanonicalDieselMaterial() {
+    const materials = await storage.getAllPlantMaterials();
+    return ["DIESEL", "HSD"].map((name) =>
+      materials.find((m) => m.isActive !== 0 && m.name.trim().toUpperCase() === name),
+    ).find(Boolean);
+  }
+
   app.get("/api/plant-module/material-receipts", async (req, res) => {
     try {
       const filters = {
@@ -3068,13 +3116,50 @@ export async function registerRoutes(
         if (!linkedReq || linkedReq.status !== "purchased" || !(linkedReq as any).qtyPurchased) {
           return res.status(400).json({ message: "Linked diesel requirement not found or not a completed purchase" });
         }
-        const mat = (await storage.getAllPlantMaterials()).find((m) => m.id === input.materialId);
-        const matName = (mat?.name || "").toUpperCase().trim();
-        if (matName !== "DIESEL" && matName !== "HSD") {
-          return res.status(400).json({ message: "Only Diesel receipts can be linked to a diesel purchase" });
+        // The link has one canonical stock material, rather than accepting any
+        // material whose name happens to look like diesel. Prefer DIESEL over
+        // HSD where both masters are active.
+        const canonicalDiesel = await getCanonicalDieselMaterial();
+        if (!canonicalDiesel) {
+          return res.status(400).json({
+            code: "CANONICAL_DIESEL_MATERIAL_NOT_CONFIGURED",
+            message: "Linked diesel receipts require an active canonical DIESEL or HSD plant material",
+          });
         }
+        if (input.materialId !== canonicalDiesel.id) {
+          return res.status(400).json({
+            code: "LINKED_DIESEL_MATERIAL_MISMATCH",
+            message: "Only Diesel receipts using the canonical diesel material can be linked to a diesel purchase",
+          });
+        }
+        if (input.uom.trim().toLowerCase() !== "liters") {
+          return res.status(400).json({
+            code: "LINKED_DIESEL_UOM_INVALID",
+            message: "Linked diesel receipts must use UOM Liters",
+          });
+        }
+        // Persist one spelling so the stock ledger cannot split diesel balances
+        // by user-entered casing.
+        input.uom = "Liters";
       }
       const receipt = await storage.createMaterialReceipt(input);
+      // A linked diesel receipt reuses qualifying purchase evidence rather than
+      // duplicating files.  This is deliberately after successful receipt/stock
+      // creation; a failed receipt can never acquire links.
+      if ((receipt as any).linkedDieselRequirementId) {
+        try {
+          await storage.linkDieselPurchaseEvidenceToMaterialReceipt(
+            (receipt as any).linkedDieselRequirementId,
+            receipt.id,
+            req.authUser!.id,
+          );
+        } catch (err) {
+          // Receipt and stock creation have already committed. Do not report a
+          // failed optional link as a failed receipt (and invite retry/duplicate
+          // stock); historical read fallback still exposes the evidence.
+          console.error("Failed to link diesel purchase evidence to receipt:", err);
+        }
+      }
       
       await storage.createNotification({
         type: "info",
@@ -3112,20 +3197,51 @@ export async function registerRoutes(
 
   app.put("/api/plant-module/material-receipts/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "plant_materials")) return;
+      if (!req.authUser) return res.status(401).json({ message: "not_authenticated" });
       const id = Number(req.params.id);
       const existing = await storage.getMaterialReceipt(id);
       if (!existing) return res.status(404).json({ message: "Receipt not found" });
-      const isOwnerOrAdmin = !!(req.authUser!.isOwner || req.authUser!.isAdmin);
-      if (existing.documentStatus === "submitted" && !isOwnerOrAdmin) {
-        return res.status(403).json({ message: "This receipt has been Final Submitted and is locked. Contact an admin/owner to make changes." });
+      const { editPermissionRequestId, ...body } = req.body ?? {};
+      const directEditor = !!(
+        req.authUser!.isOwner ||
+        req.authUser!.isAdmin ||
+        req.authPermissions?.plant_materials?.edit
+      );
+      let approvedRequestId: number | null = null;
+      if (existing.documentStatus === "submitted") {
+        if (directEditor) {
+          // A zero is intentional: it makes the direct-edit path explicit and
+          // prevents a stale approved request from being silently ignored.
+          if (editPermissionRequestId !== 0) {
+            return res.status(400).json({
+              code: "EDIT_PERMISSION_REQUEST_ID_REQUIRED",
+              message: "Direct editors must send editPermissionRequestId=0 when correcting a submitted receipt",
+            });
+          }
+        } else {
+          if (!Number.isInteger(editPermissionRequestId) || editPermissionRequestId <= 0) {
+            return res.status(403).json({
+              code: "APPROVED_EDIT_PERMISSION_REQUIRED",
+              message: "An active approved edit permission is required to correct this submitted receipt",
+            });
+          }
+          const activePermission = await storage.checkActiveEditPermission(req.authUser!.id, "material_receipt", id);
+          if (!activePermission || activePermission.id !== editPermissionRequestId) {
+            return res.status(403).json({
+              code: "APPROVED_EDIT_PERMISSION_REQUIRED",
+              message: "The supplied edit permission is not active for this material receipt",
+            });
+          }
+          approvedRequestId = activePermission.id;
+        }
+      } else if (!assertEdit(req, res, "plant_materials")) {
+        return;
       }
       // 06M-D: a cancelled receipt is terminal — its stock was already reversed.
       // Editing it would re-apply stock on a record whose net effect must stay zero.
       if (existing.isCancelled) {
         return res.status(409).json({ code: "RECEIPT_ALREADY_CANCELLED", message: "This receipt is cancelled and cannot be edited. Its stock effect was already reversed. Create a new receipt instead." });
       }
-      const body = { ...req.body };
       if (typeof body.isPlantCommon === 'boolean') {
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
       }
@@ -3133,8 +3249,41 @@ export async function registerRoutes(
       // 06M-C: purchase↔receipt linkage is immutable through the normal edit
       // path — it can only be set at creation via the deep-linked flow.
       delete (input as any).linkedDieselRequirementId;
+      // A receipt already linked to a diesel purchase remains constrained during
+      // correction. Validate effective values so a partial update cannot leave
+      // an invalid historical material/UOM in place; supplying both canonical
+      // values is the supported way to repair such a historical row.
+      if (existing.linkedDieselRequirementId != null) {
+        const canonicalDiesel = await getCanonicalDieselMaterial();
+        if (!canonicalDiesel) {
+          return res.status(400).json({
+            code: "CANONICAL_DIESEL_MATERIAL_NOT_CONFIGURED",
+            message: "Linked diesel receipts require an active canonical DIESEL or HSD plant material",
+          });
+        }
+        const effectiveMaterialId = input.materialId ?? existing.materialId;
+        const effectiveUom = input.uom ?? existing.uom;
+        if (effectiveMaterialId !== canonicalDiesel.id) {
+          return res.status(400).json({
+            code: "LINKED_DIESEL_MATERIAL_MISMATCH",
+            message: "Only Diesel receipts using the canonical diesel material can be linked to a diesel purchase",
+          });
+        }
+        if (effectiveUom.trim().toLowerCase() !== "liters") {
+          return res.status(400).json({
+            code: "LINKED_DIESEL_UOM_INVALID",
+            message: "Linked diesel receipts must use UOM Liters",
+          });
+        }
+        if (input.uom !== undefined) input.uom = "Liters";
+      }
       const updated = await storage.updateMaterialReceipt(id, input);
       if (!updated) return res.status(404).json({ message: "Receipt not found" });
+      // Consumption is deliberately after the receipt update succeeds. A failed
+      // validation/storage update must leave the approved correction available.
+      if (approvedRequestId !== null) {
+        await storage.consumeEditPermission(approvedRequestId);
+      }
       await storage.logAudit({
         module: "material_receipts",
         transactionId: id,
@@ -3167,10 +3316,10 @@ export async function registerRoutes(
       const isOwnerOrAdmin = !!(req.authUser!.isOwner || req.authUser!.isAdmin);
       if (!isOwnerOrAdmin) {
         const docs = await storage.getAttachments("material_receipt", id);
-        const requiredTypes = ["challan", "dc", "invoice", "receipt"];
+        const requiredTypes = ["bill", "challan", "dc", "invoice", "receipt"];
         const hasRequiredDoc = docs.some(d => requiredTypes.includes((d as any).docType));
         if (!hasRequiredDoc) {
-          return res.status(400).json({ message: "Please upload the challan, DC, invoice or receipt photo before Final Submit." });
+          return res.status(400).json({ message: "Please upload the bill, challan, DC, invoice or receipt photo before Final Submit." });
         }
       }
       const updated = await storage.finalSubmitMaterialReceipt(id, req.authUser!.id);
@@ -8520,6 +8669,7 @@ export async function registerRoutes(
 
   app.get("/api/diesel-requirements", async (req, res) => {
     try {
+      if (!assertDieselOrStoresView(req, res)) return;
       const filters = {
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
@@ -8535,6 +8685,7 @@ export async function registerRoutes(
 
   app.get("/api/diesel-requirements/summary", async (req, res) => {
     try {
+      if (!assertDieselOrStoresView(req, res)) return;
       const all = await storage.getDieselRequirements();
       const summary = {
         total: all.length,
@@ -8551,6 +8702,7 @@ export async function registerRoutes(
 
   app.get("/api/diesel-requirements/comparison", async (req, res) => {
     try {
+      if (!assertDieselOrStoresView(req, res)) return;
       const dateFrom = req.query.dateFrom as string | undefined;
       const dateTo = req.query.dateTo as string | undefined;
       if (!dateFrom || !dateTo) {
@@ -8577,6 +8729,7 @@ export async function registerRoutes(
 
   app.get("/api/diesel-requirements/recent-items", async (req, res) => {
     try {
+      if (!assertDieselOrStoresView(req, res)) return;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
       const ids = await storage.getRecentDieselItemIds(limit);
       res.json(ids);
@@ -8591,7 +8744,10 @@ export async function registerRoutes(
   // list screen uses this to badge Receipt Pending / Partly / Fully Received.
   app.get("/api/diesel-requirements/receipt-status", async (req, res) => {
     try {
-      if (!assertView(req, res, "site_diesel")) return;
+      // This is a read-only register.  Stores users may reconcile deliveries,
+      // while diesel users retain their existing visibility; neither grant
+      // implies create/edit/approval rights on the other module.
+      if (!assertDieselOrStoresView(req, res)) return;
       const ids = String(req.query.ids || "")
         .split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n > 0);
       if (ids.length === 0) return res.json({});
@@ -8632,6 +8788,7 @@ export async function registerRoutes(
 
   app.get("/api/diesel-requirements/:id", async (req, res) => {
     try {
+      if (!assertDieselOrStoresView(req, res)) return;
       const id = Number(req.params.id);
       const requirement = await storage.getDieselRequirement(id);
       if (!requirement) {

@@ -134,7 +134,12 @@ export function AttachmentGrid({
                 )}
               </div>
             )}
-            {allowDelete && (
+            {att.isLinked && (
+              <span className="absolute top-1 left-1 rounded bg-emerald-700/90 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                Linked
+              </span>
+            )}
+            {allowDelete && !att.isLinked && (
               <button
                 type="button"
                 className="absolute top-1 right-1 bg-background/90 rounded-full p-1 opacity-80 hover:opacity-100"

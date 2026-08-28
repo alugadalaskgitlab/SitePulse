@@ -35,8 +35,8 @@ vi.mock("../server/push", () => ({
 vi.mock("../server/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../server/auth")>();
   const inject = (req: any, _res: any, next: any) => {
-    req.authUser = { id: 9, username: "test-user", isAdmin: true, isActive: true };
-    req.authPermissions = {};
+    req.authUser = { id: 9, username: "test-user", isAdmin: fx.auth.isAdmin, isActive: true };
+    req.authPermissions = fx.auth.permissions;
     req.session = { role: "admin", username: "test-user", userId: 9 };
     next();
   };
@@ -47,10 +47,17 @@ const fx: {
   requirement: any;
   linkedReceipts: any[];
   adjustCalls: any[];
+  receipt: any;
+  auth: { isAdmin: boolean; permissions: any };
 } = {
   requirement: { id: 77, status: "purchased", qtyPurchased: 600, supplier: "ABC FUELS", items: [] },
   linkedReceipts: [],
   adjustCalls: [],
+  receipt: {
+    id: 501, materialId: 12, quantity: 100, uom: "Liters", date: "2026-08-15",
+    documentStatus: "draft", linkedDieselRequirementId: 77,
+  },
+  auth: { isAdmin: true, permissions: {} },
 };
 
 vi.mock("../server/storage", async (importOriginal) => {
@@ -72,10 +79,7 @@ vi.mock("../server/storage", async (importOriginal) => {
     { id: 12, name: "DIESEL", defaultUom: "Liters" },
     { id: 30, name: "20MM AGGREGATE", defaultUom: "Ton" },
   ]);
-  methods.getMaterialReceipt = vi.fn(async (id: number) => ({
-    id, materialId: 12, quantity: 100, uom: "Liters", date: "2026-08-15",
-    documentStatus: "draft", linkedDieselRequirementId: 77,
-  }));
+  methods.getMaterialReceipt = vi.fn(async (id: number) => fx.receipt ? { ...fx.receipt, id } : undefined);
   methods.updateMaterialReceipt = vi.fn(async (id: number, input: any) => ({ id, ...input }));
   methods.logAudit = vi.fn(async () => ({}));
   return { ...actual, storage: storageProxy };
@@ -199,6 +203,27 @@ describe("06M-C purchase completion", () => {
 });
 
 describe("06M-C linked material receipt", () => {
+  it("links qualifying diesel purchase evidence to the newly created receipt", async () => {
+    const { storage } = await import("../server/storage");
+    await request(app).post("/api/plant-module/material-receipts").send({
+      date: "2026-08-15", materialId: 12, quantity: 100, uom: "Liters",
+      partyId: null, isPlantCommon: 1, linkedDieselRequirementId: 77,
+    });
+    expect((storage as any).linkDieselPurchaseEvidenceToMaterialReceipt)
+      .toHaveBeenCalledWith(77, 501, 9);
+  });
+
+  it("keeps a successfully created receipt successful when optional evidence linking fails", async () => {
+    const { storage } = await import("../server/storage");
+    (storage as any).linkDieselPurchaseEvidenceToMaterialReceipt.mockRejectedValueOnce(new Error("link unavailable"));
+    const res = await request(app).post("/api/plant-module/material-receipts").send({
+      date: "2026-08-15", materialId: 12, quantity: 100, uom: "Liters",
+      partyId: null, isPlantCommon: 1, linkedDieselRequirementId: 77,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe(501);
+  });
+
   it("D/T/22: creating a LINKED receipt notifies partial progress with derived figures (stock-IN via existing receipt path)", async () => {
     pushCalls.length = 0;
     fx.linkedReceipts = [R(1, 400)];
@@ -240,7 +265,17 @@ describe("06M-C linked material receipt", () => {
       partyId: null, isPlantCommon: 1, linkedDieselRequirementId: 77,
     });
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe("LINKED_DIESEL_MATERIAL_MISMATCH");
     expect(res.body.message).toContain("Only Diesel receipts");
+  });
+
+  it("rejects linked diesel receipts with a non-Liters UOM", async () => {
+    const res = await request(app).post("/api/plant-module/material-receipts").send({
+      date: "2026-08-15", materialId: 12, quantity: 100, uom: "L",
+      partyId: null, isPlantCommon: 1, linkedDieselRequirementId: 77,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("LINKED_DIESEL_UOM_INVALID");
   });
 
   it("14/immutability: normal receipt edit can never change or strip the purchase link", async () => {
@@ -252,6 +287,69 @@ describe("06M-C linked material receipt", () => {
     const passed = (storage as any).updateMaterialReceipt.mock.calls.at(-1)[1];
     expect("linkedDieselRequirementId" in passed).toBe(false);
     expect(passed.quantity).toBe(570);
+  });
+
+  it("requires and consumes the matching approved request for a non-direct submitted correction", async () => {
+    const { storage } = await import("../server/storage");
+    fx.auth = { isAdmin: false, permissions: {} };
+    fx.receipt = { ...fx.receipt, documentStatus: "submitted" };
+    (storage as any).checkActiveEditPermission.mockResolvedValueOnce({
+      id: 88, requestedBy: 9, recordType: "material_receipt", recordId: 501, status: "approved",
+    });
+    const res = await request(app).put("/api/plant-module/material-receipts/501").send({
+      quantity: 570, editPermissionRequestId: 88,
+    });
+    expect(res.status).toBe(200);
+    expect((storage as any).consumeEditPermission).toHaveBeenLastCalledWith(88);
+    expect((storage as any).updateMaterialReceipt.mock.calls.at(-1)[1].editPermissionRequestId).toBeUndefined();
+    fx.auth = { isAdmin: true, permissions: {} };
+    fx.receipt = { ...fx.receipt, documentStatus: "draft" };
+  });
+
+  it("rejects a submitted correction without its approved request", async () => {
+    fx.auth = { isAdmin: false, permissions: {} };
+    fx.receipt = { ...fx.receipt, documentStatus: "submitted" };
+    const res = await request(app).put("/api/plant-module/material-receipts/501").send({ quantity: 570 });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("APPROVED_EDIT_PERMISSION_REQUIRED");
+    fx.auth = { isAdmin: true, permissions: {} };
+    fx.receipt = { ...fx.receipt, documentStatus: "draft" };
+  });
+
+  it("rejects a direct submitted correction that changes a linked receipt material", async () => {
+    const { storage } = await import("../server/storage");
+    fx.auth = { isAdmin: true, permissions: {} };
+    fx.receipt = { ...fx.receipt, documentStatus: "submitted", linkedDieselRequirementId: 77 };
+    const updateCalls = (storage as any).updateMaterialReceipt.mock.calls.length;
+    const consumeCalls = (storage as any).consumeEditPermission.mock.calls.length;
+    const res = await request(app).put("/api/plant-module/material-receipts/501").send({
+      materialId: 30, editPermissionRequestId: 0,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("LINKED_DIESEL_MATERIAL_MISMATCH");
+    expect((storage as any).updateMaterialReceipt.mock.calls).toHaveLength(updateCalls);
+    expect((storage as any).consumeEditPermission.mock.calls).toHaveLength(consumeCalls);
+    fx.receipt = { ...fx.receipt, documentStatus: "draft" };
+  });
+
+  it("rejects an approved-request correction that changes a linked receipt UOM", async () => {
+    const { storage } = await import("../server/storage");
+    fx.auth = { isAdmin: false, permissions: {} };
+    fx.receipt = { ...fx.receipt, documentStatus: "submitted", linkedDieselRequirementId: 77 };
+    (storage as any).checkActiveEditPermission.mockResolvedValueOnce({
+      id: 89, requestedBy: 9, recordType: "material_receipt", recordId: 501, status: "approved",
+    });
+    const updateCalls = (storage as any).updateMaterialReceipt.mock.calls.length;
+    const consumeCalls = (storage as any).consumeEditPermission.mock.calls.length;
+    const res = await request(app).put("/api/plant-module/material-receipts/501").send({
+      uom: "L", editPermissionRequestId: 89,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("LINKED_DIESEL_UOM_INVALID");
+    expect((storage as any).updateMaterialReceipt.mock.calls).toHaveLength(updateCalls);
+    expect((storage as any).consumeEditPermission.mock.calls).toHaveLength(consumeCalls);
+    fx.auth = { isAdmin: true, permissions: {} };
+    fx.receipt = { ...fx.receipt, documentStatus: "draft" };
   });
 
   it("L/P: an UNLINKED Diesel receipt (Direct Site Purchase world untouched) triggers no diesel-purchase push", async () => {

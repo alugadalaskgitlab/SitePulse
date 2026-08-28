@@ -3480,12 +3480,37 @@ export const attachments = pgTable("attachments", {
   uploadedAt: timestamp("uploaded_at").defaultNow(),
 });
 
+// Additive evidence links let one uploaded document satisfy the evidence
+// requirement for another transaction without copying the object or attachment.
+// The target is deliberately generic, matching attachments' module/record model.
+export const attachmentLinks = pgTable("attachment_links", {
+  id: serial("id").primaryKey(),
+  attachmentId: integer("attachment_id").notNull().references(() => attachments.id, { onDelete: "cascade" }),
+  targetModuleType: text("target_module_type").notNull(),
+  targetLinkedRecordId: integer("target_linked_record_id").notNull(),
+  linkedBy: integer("linked_by").references(() => users.id, { onDelete: "set null" }),
+  linkedAt: timestamp("linked_at").notNull().defaultNow(),
+}, (table) => ({
+  attachmentTargetUnique: uniqueIndex("attachment_links_attachment_target_unique")
+    .on(table.attachmentId, table.targetModuleType, table.targetLinkedRecordId),
+  targetLookupIdx: index("attachment_links_target_lookup_idx")
+    .on(table.targetModuleType, table.targetLinkedRecordId),
+}));
+
 export const insertAttachmentSchema = createInsertSchema(attachments).omit({
   id: true,
   uploadedAt: true,
 });
-export type Attachment = typeof attachments.$inferSelect & { uploadedByName?: string | null };
+export type Attachment = typeof attachments.$inferSelect & {
+  uploadedByName?: string | null;
+  // Read-model metadata only: referenced evidence is never owned by the
+  // displayed target record and must be unlinked, not deleted, from that view.
+  isLinked?: boolean;
+  referenceModuleType?: string | null;
+  referenceLinkedRecordId?: number | null;
+};
 export type InsertAttachment = z.infer<typeof insertAttachmentSchema>;
+export type AttachmentLink = typeof attachmentLinks.$inferSelect;
 
 // ============================================
 // EDIT PERMISSION REQUEST SYSTEM

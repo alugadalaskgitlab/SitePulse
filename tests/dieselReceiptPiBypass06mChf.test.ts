@@ -8,7 +8,9 @@ import {
   decidePiAutoSelect,
   submitBlockedByPi,
   showPiIndentBlock,
+  showPiPendingBadge,
   showRegulariseIndentNotice,
+  receiptClosureStatus,
 } from "../shared/dieselReceiptSource";
 
 describe("06M-C-HF source-mode flag", () => {
@@ -124,6 +126,35 @@ describe("§7/§9 hard guards in PlantMaterialReceipts.tsx (source-level)", () =
   });
 });
 
+describe("Task #1424 diesel source and final-edit authorization UI guards", () => {
+  const fs = require("fs");
+  const src = fs.readFileSync("client/src/pages/PlantMaterialReceipts.tsx", "utf8");
+
+  it("locks Material and UOM while identifying their canonical Diesel/Liters source", () => {
+    expect(src).toContain('disabled={linkedDieselRequirementId != null}');
+    expect(src).toContain("Canonical Diesel / Liters source — material and UOM are locked.");
+  });
+
+  it("passes the granted request id only on Final Submitted receipt updates and clears it on reset", () => {
+    expect(src).toContain("onEditGranted={(requestId) => handleEditClick(receipt, requestId)}");
+    expect(src).toContain("deferConsumeUntilSave");
+    expect(src).toContain('...((editingReceipt as any).documentStatus === "submitted" && editPermissionRequestId !== null');
+    expect(src).toContain("? { editPermissionRequestId }");
+    expect(src).toContain("setEditPermissionRequestId(null);");
+  });
+});
+
+describe("submitted receipt approval consumption contract", () => {
+  const fs = require("fs");
+  const buttonSrc = fs.readFileSync("client/src/components/EditPermissionButton.tsx", "utf8");
+
+  it("can defer approval consumption until the record save succeeds", () => {
+    expect(buttonSrc).toContain("deferConsumeUntilSave?: boolean");
+    expect(buttonSrc).toContain("if (!deferConsumeUntilSave) consumePermission(activeRequest.id)");
+    expect(buttonSrc).toContain("onEditGranted?.(activeRequest.id)");
+  });
+});
+
 describe("§10 post-save regularise notice", () => {
   it("diesel-linked receipt with no indentRef → notice suppressed", () => {
     expect(showRegulariseIndentNotice({ linkedDieselRequirementId: 42, indentRef: null, indentStatus: undefined })).toBe(false);
@@ -134,5 +165,18 @@ describe("§10 post-save regularise notice", () => {
   it("ordinary receipt with non-approved indent → notice shows; approved → hidden (unchanged)", () => {
     expect(showRegulariseIndentNotice({ linkedDieselRequirementId: null, indentRef: "PI-1", indentStatus: "pending" })).toBe(true);
     expect(showRegulariseIndentNotice({ linkedDieselRequirementId: null, indentRef: "PI-1", indentStatus: "approved" })).toBe(false);
+  });
+});
+
+describe("receipt row source and closure helpers", () => {
+  it("suppresses the compact PI Pending badge for diesel-linked receipts", () => {
+    expect(showPiPendingBadge({ linkedDieselRequirementId: 42, indentRef: null, indentStatus: undefined })).toBe(false);
+    expect(showPiPendingBadge({ linkedDieselRequirementId: null, indentRef: null, indentStatus: undefined })).toBe(true);
+  });
+
+  it("labels document workflow rows without auto-submitting them", () => {
+    expect(receiptClosureStatus("draft", false)).toBe("Pending Document");
+    expect(receiptClosureStatus("draft", true)).toBe("Ready to Final Submit");
+    expect(receiptClosureStatus("submitted", false)).toBe("Final Submitted");
   });
 });

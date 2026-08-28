@@ -26,6 +26,8 @@ interface EditPermissionButtonProps {
   className?: string;
   size?: "default" | "sm" | "lg" | "icon";
   variant?: "default" | "outline" | "ghost" | "secondary" | "destructive" | "link";
+  /** Let the record update endpoint consume the approval after a successful save. */
+  deferConsumeUntilSave?: boolean;
 }
 
 export function EditPermissionButton({
@@ -36,6 +38,7 @@ export function EditPermissionButton({
   label = "Edit",
   className,
   size = "sm",
+  deferConsumeUntilSave = false,
 }: EditPermissionButtonProps) {
   const { isAdmin, isOwner, sectionCan } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -127,7 +130,7 @@ export function EditPermissionButton({
         className={`bg-green-600 hover:bg-green-700 text-white ${className ?? ""}`}
         onClick={() => {
           if (canEditDirect) return;
-          consumePermission(activeRequest.id);
+          if (!deferConsumeUntilSave) consumePermission(activeRequest.id);
           onConsumed?.();
           onEditGranted?.(activeRequest.id);
         }}

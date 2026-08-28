@@ -53,7 +53,7 @@
 - [Diesel Purchase Evidence](diesel-purchase-evidence.md) — diesel_purchase attachments + PI paymentMode/paidBy (PI has no payment-status); purchased diesel never enters stock (chain broken, unfixed).
 - [Planned Work multi-activity](planned-work-multi-activity.md) — shared/plannedWork.ts is the only dual-shape seam; activities[0] always mirrored top-level; legacy text chainage never through parseFloat.
 - [Material Receipt Reversal](material-receipt-reversal.md) — cancel/delete reverse stock once via guarded tx; cancelled receipts are terminal (no edit); sufficiency block, compensating ledger row.
-- [Diesel Receipt Pending](diesel-receipt-pending.md) — diesel purchase never adds stock; linked Material Receipts drive derived Received/Pending; link validated + immutable; deep link must pass uom.
+- [Diesel Receipt Pending](diesel-receipt-pending.md) — purchase never adds stock; linked receipts derive status, reuse evidence by reference, and stay canonical Diesel/Liters.
 - [Diesel Stock Guard](diesel-stock-guard.md) — plant-stock diesel deductions must use the guarded locked helper; routes need handleInsufficientPlantStock; edits validate net litres only.
 - [Multi-layer Lift](multi-layer-lift.md) — layerNo overlap exemption only when both non-null AND different; null never coerced; report breakdown display-only, sums to total.
 - [Equipment Opening Continuity](equipment-opening-continuity.md) — one cross-source resolver for prior closing readings; tie-breaks, linkage-first priority, manual/stale guards.
@@ -67,3 +67,4 @@
 - [Cut/fill version identity](cut-fill-version-identity.md) — stable DPR keys repeat across versions; current transaction rows must win source resolution over superseded rows.
 - [Work-type source phrases](work-type-source-phrases.md) — classify the principal work, not material-source phrases; preserve genuine road excavation that mentions embankment context.
 - [Arrangement approval UI](arrangement-approval-ui.md) — ordinary arrangement approval uses qto_boq.edit; register detail actions must mirror the canonical PATCH lifecycle.
+- [Startup ledger backfill race](startup-ledger-backfill-race.md) — rapid workflow restarts can collide in a legacy stock-ledger backfill even while the app serves; verify a settled restart before diagnosing new work.

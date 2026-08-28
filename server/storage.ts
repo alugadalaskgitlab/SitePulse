@@ -221,6 +221,7 @@ import {
   type InsertPersonnel,
   type ActivityPersonnel,
   attachments,
+  attachmentLinks,
   type Attachment,
   type InsertAttachment,
   DEFAULT_LDO_NORM,
@@ -1259,7 +1260,11 @@ export interface IStorage {
   // module attachments (DPR photos, receipt/challan photos, equipment
   // breakdown/maintenance evidence, etc). Never add per-module upload tables.
   createAttachment(data: InsertAttachment): Promise<Attachment>;
+  /** Lightweight direct attachment lookup used by mutation authorization. */
+  getAttachment(id: number): Promise<Attachment | undefined>;
   getAttachments(moduleType: string, linkedRecordId: number): Promise<Attachment[]>;
+  getAttachmentCounts(moduleType: string, linkedRecordIds: number[], docTypes?: string[]): Promise<Record<number, number>>;
+  linkDieselPurchaseEvidenceToMaterialReceipt(dieselRequirementId: number, materialReceiptId: number, linkedBy: number): Promise<number>;
   deleteAttachment(id: number): Promise<boolean>;
   hasPersonnelUsageHistory(id: number): Promise<boolean>;
 
@@ -2026,6 +2031,13 @@ function execDmlRowCount(result: unknown, context = "db.execute DML"): number {
   throw new Error(
     `${context}: expected a DML result with a .rowCount field but received: ${JSON.stringify(result)?.slice(0, 200)}`
   );
+}
+
+export class AttachmentReferenceError extends Error {
+  constructor() {
+    super("Referenced evidence cannot be deleted from a target record. Remove the reference instead.");
+    this.name = "AttachmentReferenceError";
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4056,12 +4068,42 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(materialReceipts.date));
 
     if (rows.length === 0) return rows;
-    const requiredDocTypes = ["challan", "dc", "invoice", "receipt"];
-    const docRows = await db.select({ linkedRecordId: attachments.linkedRecordId, docType: attachments.docType })
+    const requiredDocTypes = ["bill", "challan", "dc", "invoice", "receipt"];
+    const receiptIds = rows.map(r => r.id);
+    const directDocRows = await db.select({ linkedRecordId: attachments.linkedRecordId, docType: attachments.docType })
       .from(attachments)
-      .where(and(eq(attachments.moduleType, "material_receipt"), inArray(attachments.linkedRecordId, rows.map(r => r.id))));
+      .where(and(eq(attachments.moduleType, "material_receipt"), inArray(attachments.linkedRecordId, receiptIds)));
+    const linkedDocRows = await db.select({ linkedRecordId: attachmentLinks.targetLinkedRecordId, docType: attachments.docType })
+      .from(attachmentLinks)
+      .innerJoin(attachments, eq(attachmentLinks.attachmentId, attachments.id))
+      .where(and(eq(attachmentLinks.targetModuleType, "material_receipt"), inArray(attachmentLinks.targetLinkedRecordId, receiptIds)));
+    // Historical linked diesel receipts predate attachment_links. Their
+    // requirement ID is the durable relation, so resolve qualifying purchase
+    // evidence at read time without creating a link or copying the object.
+    const receiptIdsByRequirement = new Map<number, number[]>();
+    for (const receipt of rows) {
+      const requirementId = (receipt as any).linkedDieselRequirementId as number | null;
+      if (requirementId != null) {
+        const ids = receiptIdsByRequirement.get(requirementId) ?? [];
+        ids.push(receipt.id);
+        receiptIdsByRequirement.set(requirementId, ids);
+      }
+    }
+    const fallbackEvidence = receiptIdsByRequirement.size === 0 ? [] : await db
+      .select({ linkedRecordId: attachments.linkedRecordId, docType: attachments.docType })
+      .from(attachments)
+      .where(and(
+        eq(attachments.moduleType, "diesel_purchase"),
+        inArray(attachments.linkedRecordId, Array.from(receiptIdsByRequirement.keys())),
+        inArray(attachments.docType, ["bill", "challan", "dc", "invoice", "receipt"]),
+      ));
+    const fallbackDocRows = fallbackEvidence.flatMap((evidence) =>
+      (receiptIdsByRequirement.get(evidence.linkedRecordId) ?? []).map((linkedRecordId) => ({
+        linkedRecordId, docType: evidence.docType,
+      })));
     const idsWithRequiredDoc = new Set(
-      docRows.filter(d => d.docType && requiredDocTypes.includes(d.docType)).map(d => d.linkedRecordId)
+      [...directDocRows, ...linkedDocRows, ...fallbackDocRows]
+        .filter(d => d.docType && requiredDocTypes.includes(d.docType)).map(d => d.linkedRecordId)
     );
     return rows.map(r => ({ ...r, hasRequiredDoc: idsWithRequiredDoc.has(r.id) })) as any;
   }
@@ -11098,8 +11140,13 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  async getAttachment(id: number): Promise<Attachment | undefined> {
+    const [attachment] = await db.select().from(attachments).where(eq(attachments.id, id)).limit(1);
+    return attachment;
+  }
+
   async getAttachments(moduleType: string, linkedRecordId: number): Promise<Attachment[]> {
-    const rows = await db
+    const directRows = await db
       .select({
         attachment: attachments,
         uploadedByName: users.fullName,
@@ -11108,29 +11155,141 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(users, eq(attachments.uploadedBy, users.id))
       .where(and(eq(attachments.moduleType, moduleType), eq(attachments.linkedRecordId, linkedRecordId)))
       .orderBy(desc(attachments.uploadedAt));
-    return rows.map((r) => ({ ...r.attachment, uploadedByName: r.uploadedByName ?? null })) as any;
+    const linkedRows = await db
+      .select({
+        attachment: attachments,
+        uploadedByName: users.fullName,
+      })
+      .from(attachmentLinks)
+      .innerJoin(attachments, eq(attachmentLinks.attachmentId, attachments.id))
+      .leftJoin(users, eq(attachments.uploadedBy, users.id))
+      .where(and(eq(attachmentLinks.targetModuleType, moduleType), eq(attachmentLinks.targetLinkedRecordId, linkedRecordId)))
+      .orderBy(desc(attachments.uploadedAt));
+    const fallbackRows = moduleType !== "material_receipt" ? [] : await db
+      .select({
+        attachment: attachments,
+        uploadedByName: users.fullName,
+      })
+      .from(materialReceipts)
+      .innerJoin(attachments, and(
+        eq(attachments.moduleType, "diesel_purchase"),
+        eq(attachments.linkedRecordId, materialReceipts.linkedDieselRequirementId),
+      ))
+      .leftJoin(users, eq(attachments.uploadedBy, users.id))
+      .where(and(
+        eq(materialReceipts.id, linkedRecordId),
+        inArray(attachments.docType, ["bill", "challan", "dc", "invoice", "receipt"]),
+      ))
+      .orderBy(desc(attachments.uploadedAt));
+    // Direct ownership wins. Junction and historical fallback rows are marked
+    // as references so consumers never treat purchase evidence as receipt-owned.
+    const unique = new Map<number, Attachment>();
+    for (const row of directRows) {
+      unique.set(row.attachment.id, { ...row.attachment, uploadedByName: row.uploadedByName ?? null, isLinked: false } as any);
+    }
+    for (const row of [...linkedRows, ...fallbackRows]) {
+      if (!unique.has(row.attachment.id)) {
+        unique.set(row.attachment.id, {
+          ...row.attachment,
+          uploadedByName: row.uploadedByName ?? null,
+          isLinked: true,
+          referenceModuleType: row.attachment.moduleType,
+          referenceLinkedRecordId: row.attachment.linkedRecordId,
+        } as any);
+      }
+    }
+    return Array.from(unique.values()).sort((a, b) =>
+      new Date(b.uploadedAt ?? 0).getTime() - new Date(a.uploadedAt ?? 0).getTime());
   }
 
   async deleteAttachment(id: number): Promise<boolean> {
+    const [attachment] = await db.select({
+      id: attachments.id,
+      moduleType: attachments.moduleType,
+      linkedRecordId: attachments.linkedRecordId,
+    }).from(attachments).where(eq(attachments.id, id)).limit(1);
+    if (!attachment) return false;
+    const [junctionReference] = await db.select({ id: attachmentLinks.id })
+      .from(attachmentLinks).where(eq(attachmentLinks.attachmentId, id)).limit(1);
+    const [historicalDieselReference] = attachment.moduleType === "diesel_purchase"
+      ? await db.select({ id: materialReceipts.id })
+        .from(materialReceipts)
+        .where(eq(materialReceipts.linkedDieselRequirementId, attachment.linkedRecordId))
+        .limit(1)
+      : [];
+    if (junctionReference || historicalDieselReference) {
+      throw new AttachmentReferenceError();
+    }
     const result = await db.delete(attachments).where(eq(attachments.id, id)).returning();
     return result.length > 0;
   }
 
-  async getAttachmentCounts(moduleType: string, linkedRecordIds: number[]): Promise<Record<number, number>> {
+  async getAttachmentCounts(moduleType: string, linkedRecordIds: number[], docTypes?: string[]): Promise<Record<number, number>> {
     if (linkedRecordIds.length === 0) return {};
-    const rows = await db
+    const docTypeCondition = docTypes?.length ? inArray(attachments.docType, docTypes) : undefined;
+    const directRows = await db
       .select({
         linkedRecordId: attachments.linkedRecordId,
-        count: sql<number>`count(*)::int`,
+        attachmentId: attachments.id,
       })
       .from(attachments)
-      .where(and(eq(attachments.moduleType, moduleType), inArray(attachments.linkedRecordId, linkedRecordIds)))
-      .groupBy(attachments.linkedRecordId);
+      .where(and(eq(attachments.moduleType, moduleType), inArray(attachments.linkedRecordId, linkedRecordIds), docTypeCondition));
+    const linkedRows = await db
+      .select({ linkedRecordId: attachmentLinks.targetLinkedRecordId, attachmentId: attachments.id })
+      .from(attachmentLinks)
+      .innerJoin(attachments, eq(attachmentLinks.attachmentId, attachments.id))
+      .where(and(
+        eq(attachmentLinks.targetModuleType, moduleType),
+        inArray(attachmentLinks.targetLinkedRecordId, linkedRecordIds),
+        docTypeCondition,
+      ));
+    const fallbackRows = moduleType !== "material_receipt" ? [] : await db
+      .select({
+        linkedRecordId: materialReceipts.id,
+        attachmentId: attachments.id,
+      })
+      .from(materialReceipts)
+      .innerJoin(attachments, and(
+        eq(attachments.moduleType, "diesel_purchase"),
+        eq(attachments.linkedRecordId, materialReceipts.linkedDieselRequirementId),
+      ))
+      .where(and(
+        inArray(materialReceipts.id, linkedRecordIds),
+        inArray(attachments.docType, ["bill", "challan", "dc", "invoice", "receipt"]),
+        docTypeCondition,
+      ));
     const result: Record<number, number> = {};
-    for (const row of rows) {
-      result[row.linkedRecordId] = row.count;
+    const attachmentIdsByTarget = new Map<number, Set<number>>();
+    for (const row of [...directRows, ...linkedRows, ...fallbackRows]) {
+      const ids = attachmentIdsByTarget.get(row.linkedRecordId) ?? new Set<number>();
+      ids.add(row.attachmentId);
+      attachmentIdsByTarget.set(row.linkedRecordId, ids);
+    }
+    for (const [id, attachmentIds] of Array.from(attachmentIdsByTarget.entries())) {
+      result[id] = attachmentIds.size;
     }
     return result;
+  }
+
+  async linkDieselPurchaseEvidenceToMaterialReceipt(dieselRequirementId: number, materialReceiptId: number, linkedBy: number): Promise<number> {
+    const qualifyingDocTypes = ["bill", "invoice", "challan", "receipt", "dc"];
+    return db.transaction(async (tx) => {
+      const evidence = await tx.select({ id: attachments.id })
+        .from(attachments)
+        .where(and(
+          eq(attachments.moduleType, "diesel_purchase"),
+          eq(attachments.linkedRecordId, dieselRequirementId),
+          inArray(attachments.docType, qualifyingDocTypes),
+        ));
+      if (evidence.length === 0) return 0;
+      const inserted = await tx.insert(attachmentLinks).values(evidence.map(({ id }) => ({
+        attachmentId: id,
+        targetModuleType: "material_receipt",
+        targetLinkedRecordId: materialReceiptId,
+        linkedBy,
+      }))).onConflictDoNothing().returning({ id: attachmentLinks.id });
+      return inserted.length;
+    });
   }
 
   async updatePersonnel(id: number, data: Partial<InsertPersonnel>): Promise<Personnel | undefined> {

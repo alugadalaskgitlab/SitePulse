@@ -105,6 +105,7 @@ const StoresGrn               = lazy(() => import("@/pages/StoresGrn"));
 const StoresIssue             = lazy(() => import("@/pages/StoresIssue"));
 const StoresLedger            = lazy(() => import("@/pages/StoresLedger"));
 const PendingPlantReceipts    = lazy(() => import("@/pages/PendingPlantReceipts"));
+const StoresDieselRegister    = lazy(() => import("@/pages/StoresDieselRegister"));
 
 // Finance / procurement pages
 const PurchaseIndents    = lazy(() => import("@/pages/PurchaseIndents"));
@@ -363,6 +364,7 @@ function AuthedShell() {
           <Route path="/stores/issues/new" component={gated(() => <StoresIssue isNew />, "stores_inventory")} />
           <Route path="/stores/issues/:id" component={gated((p: any) => <StoresIssue detailId={parseInt(p.id)} />, "stores_inventory")} />
           <Route path="/stores/ledger/:itemId" component={gated(StoresLedger, "stores_inventory")} />
+           <Route path="/stores/diesel-register" component={gatedEither(StoresDieselRegister, "diesel_req_view", "site_diesel", "stores_inventory")} />
 
           {/* Admin pages */}
           <Route path="/admin/site-backfill" component={gatedEither(SiteBackfill, "site_management", "admin_settings")} />
