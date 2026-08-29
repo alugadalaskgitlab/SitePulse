@@ -2102,7 +2102,18 @@ export const vendorBillItems = pgTable("vendor_bill_items", {
   siteName: text("site_name"),
   suppliedTo: text("supplied_to"),
   transporter: text("transporter"),
-});
+  // Nullable: ordinary/manual bill lines deliberately have no hire statement.
+  hireStatementId: integer("hire_statement_id"),
+}, (table) => ({
+  // This is intentionally an explicit deferred FK rather than `.references`:
+  // hireStatements is declared below this table.
+  hireStatementFk: foreignKey({
+    columns: [table.hireStatementId],
+    foreignColumns: [hireStatements.id],
+    name: "vendor_bill_items_hire_statement_id_hire_statements_id_fk",
+  }),
+  hireStatementUq: uniqueIndex("vendor_bill_items_hire_statement_uq").on(table.hireStatementId),
+}));
 
 // Auditable billing headers for hired equipment.  Contract fields are copied
 // here at creation time; Equipment Master remains the source only for a new
@@ -2187,12 +2198,14 @@ export const vendorBillsRelations = relations(vendorBills, ({ many }) => ({
 
 export const vendorBillItemsRelations = relations(vendorBillItems, ({ one }) => ({
   bill: one(vendorBills, { fields: [vendorBillItems.billId], references: [vendorBills.id] }),
+  hireStatement: one(hireStatements, { fields: [vendorBillItems.hireStatementId], references: [hireStatements.id] }),
 }));
 
 export const hireStatementsRelations = relations(hireStatements, ({ one, many }) => ({
   equipment: one(equipmentMaster, { fields: [hireStatements.equipmentId], references: [equipmentMaster.id] }),
   vendorBill: one(vendorBills, { fields: [hireStatements.vendorBillId], references: [vendorBills.id] }),
   exceptions: many(hireStatementExceptions),
+  vendorBillItem: one(vendorBillItems),
 }));
 
 export const hireStatementExceptionsRelations = relations(hireStatementExceptions, ({ one }) => ({
@@ -2214,10 +2227,52 @@ export type InsertHireStatementException = z.infer<typeof insertHireStatementExc
 
 export type VendorBillWithItems = VendorBill & {
   items: VendorBillItem[];
+  /** Additive detail payload; absent on legacy serialized records. */
+  hireStatements?: (HireStatement & { exceptions: HireStatementException[] })[];
 };
+
+const hireGroupDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
+export const hireGroupRequestSchema = z.object({
+  hireStatementId: z.number().int().positive().optional(),
+  equipmentId: z.number().int().positive(),
+  periodFrom: hireGroupDate,
+  periodTo: hireGroupDate,
+  basis: z.enum(["monthly", "daily", "trip"]),
+  rate: z.number().finite().nonnegative(),
+  dailyDecisions: z.array(z.object({
+    date: hireGroupDate,
+    decision: z.enum(["full_day", "half_day", "exclude"]),
+    reason: z.string().max(2000).nullable().optional(),
+  })).optional(),
+  tripDecisions: z.array(z.object({
+    source: z.enum(["dpr_log", "plant_usage"]),
+    sourceId: z.number().int().positive(),
+    selected: z.boolean().optional(),
+    correctedTrips: z.number().finite().nonnegative().optional(),
+    remarks: z.string().max(2000).nullable().optional(),
+  })).optional(),
+  exceptionDecisions: z.array(z.object({
+    sourceType: z.enum(["usage", "maintenance", "manual"]),
+    sourceId: z.number().int().positive().nullable().optional(),
+    exceptionType: z.string().max(60).optional(),
+    date: hireGroupDate.optional(),
+    decision: z.enum(["full_day", "half_day", "none", "manual"]).optional(),
+    manualDeductionAmount: z.number().finite().nonnegative().nullable().optional(),
+    remarks: z.string().max(2000).nullable().optional(),
+  })).optional(),
+  quantityOverride: z.number().finite().nonnegative().optional(),
+  grossAmountOverride: z.number().finite().nonnegative().optional(),
+  dieselNormOverride: z.number().finite().nonnegative().nullable().optional(),
+  dieselNormBasisOverride: z.string().max(60).nullable().optional(),
+  dieselRecoveryDecision: z.enum(["accept", "edit", "ignore"]).optional(),
+  dieselRecoveryFinalAmount: z.number().finite().nonnegative().nullable().optional(),
+  dieselRecoveryRemarks: z.string().max(2000).nullable().optional(),
+}).refine(value => value.periodFrom <= value.periodTo, { message: "periodFrom must be on or before periodTo" });
+export type HireGroupRequest = z.infer<typeof hireGroupRequestSchema>;
 
 export const createVendorBillRequestSchema = insertVendorBillSchema.extend({
   items: z.array(insertVendorBillItemSchema.omit({ billId: true })),
+  hireGroups: z.array(hireGroupRequestSchema).optional(),
 });
 export type CreateVendorBillRequest = z.infer<typeof createVendorBillRequestSchema>;
 

@@ -47,7 +47,7 @@ export interface HireExceptionDecisionInput {
 
 export interface HireDailyDecision {
   date: string;
-  decision: "full_day" | "half_day";
+  decision: "full_day" | "half_day" | "exclude";
   reason?: string | null;
 }
 
@@ -80,7 +80,7 @@ export interface HireBillingResult {
   billablePeriodFrom?: string;
   billablePeriodTo?: string;
   quantity: number;
-  payableDays: readonly { date: string; fraction: 1 | 0.5; reason?: string }[];
+  payableDays: readonly { date: string; fraction: 1 | 0.5 | 0; reason?: string }[];
   grossAmount: number;
   deductionAmount: number;
   netAmount: number;
@@ -188,7 +188,7 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
     });
     return false;
   });
-  let payableDays: { date: string; fraction: 1 | 0.5; reason?: string }[] = [];
+  let payableDays: { date: string; fraction: 1 | 0.5 | 0; reason?: string }[] = [];
   let quantity = 0;
   let grossAmount = 0;
 
@@ -200,7 +200,7 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
     const decisions = new Map((input.dailyDecisions ?? []).map(value => [value.date, value]));
     payableDays = Array.from(new Set(usage.map(row => row.date.slice(0, 10)))).sort().map(date => {
       const decision = decisions.get(date);
-      return { date, fraction: decision?.decision === "half_day" ? 0.5 : 1, reason: decision?.reason ?? undefined };
+      return { date, fraction: decision?.decision === "exclude" ? 0 : decision?.decision === "half_day" ? 0.5 : 1, reason: decision?.reason ?? undefined };
     });
     quantity = payableDays.reduce((total, day) => total + day.fraction, 0);
     grossAmount = money(quantity * terms.rate);
@@ -265,5 +265,147 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
     quantity, payableDays, grossAmount, deductionAmount, netAmount: money(Math.max(0, grossAmount - deductionAmount)),
     exceptions, requiresReview: exceptions.length > 0,
     workflow: exceptions.length ? ["draft", "reviewed", "approved", "billed"] : ["draft", "approved", "billed"],
+  };
+}
+
+/** A stable, source-qualified activity contract for Vendor Bill hire groups. */
+export type HireActivitySource = "dpr_log" | "plant_usage" | "equipment_default";
+export interface HireActivity {
+  source: HireActivitySource;
+  sourceId: number;
+  equipmentId: number;
+  businessDate: string;
+  entryType?: string | null;
+  status?: string | null;
+  numberOfTrips?: number | null;
+  hoursOrKmRun?: number | null;
+  /** A DPR row is a mirror only when this explicit link is present. */
+  plantUsageId?: number | null;
+  actualDiesel?: number | null;
+  expectedDiesel?: number | null;
+  consumptionNorm?: number | null;
+  normBasis?: string | null;
+  task?: string | null;
+  site?: string | null;
+}
+export interface HireTripDecision {
+  source: HireActivitySource;
+  sourceId: number;
+  selected?: boolean;
+  correctedTrips?: number;
+  remarks?: string | null;
+}
+export interface HireDieselRecoveryDecision {
+  decision?: "accept" | "edit" | "ignore";
+  /** Required for accept/edit; recovery is never implicitly posted. */
+  finalAmount?: number | null;
+  remarks?: string | null;
+}
+export interface HireGroupCalculationInput {
+  terms: HireTerms;
+  periodFrom: string;
+  periodTo: string;
+  activities: readonly HireActivity[];
+  maintenance?: readonly HireMaintenance[];
+  dailyDecisions?: readonly HireDailyDecision[];
+  exceptionDecisions?: readonly HireExceptionDecisionInput[];
+  tripDecisions?: readonly HireTripDecision[];
+  quantityOverride?: number;
+  grossAmountOverride?: number;
+  dieselNormOverride?: number | null;
+  dieselNormBasisOverride?: string | null;
+  dieselRecovery?: HireDieselRecoveryDecision;
+}
+export interface HireGroupCalculationResult extends HireBillingResult {
+  activityIds: readonly string[];
+  diesel: {
+    actualDiesel: number;
+    expectedDiesel: number;
+    consumptionNorm?: number;
+    normBasis?: string;
+    suggestedExcess: number;
+    recoveryDecision?: "accept" | "edit" | "ignore";
+    finalRecoveryAmount: number;
+    remarks?: string | null;
+  };
+  calculatedQuantity: number;
+  calculatedGrossAmount: number;
+  netAmount: number;
+}
+
+/** Returns the review decisions still required before a linked bill can advance. */
+export function getHireReviewGaps(snapshot: Partial<HireGroupCalculationResult> | null | undefined): string[] {
+  if (!snapshot) return ["calculation snapshot"];
+  const gaps = (snapshot.exceptions ?? [])
+    .filter(exception => !exception.decision)
+    .map(exception => `${exception.exceptionType} on ${exception.date || "unknown date"}`);
+  if ((snapshot.diesel?.suggestedExcess ?? 0) > 0 && !snapshot.diesel?.recoveryDecision) {
+    gaps.push("HSD recovery disposition");
+  }
+  return gaps;
+}
+
+export const hireActivityIdentity = (activity: Pick<HireActivity, "source" | "sourceId">) =>
+  `${activity.source}:${activity.sourceId}`;
+
+/**
+ * Canonically de-duplicates only an explicitly mirrored DPR/plant usage pair.
+ * Same-date independent records are retained for trip billing; daily billing
+ * collapses dates in calculateHireBilling.
+ */
+export function normalizeHireActivities(activities: readonly HireActivity[]): HireActivity[] {
+  const selectedPlantIds = new Set(activities.filter(a => a.source === "plant_usage").map(a => a.sourceId));
+  const seen = new Set<string>();
+  return activities.filter(activity => {
+    if (activity.source === "dpr_log" && activity.plantUsageId && selectedPlantIds.has(activity.plantUsageId)) return false;
+    const key = hireActivityIdentity(activity);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => a.businessDate.localeCompare(b.businessDate) || hireActivityIdentity(a).localeCompare(hireActivityIdentity(b)));
+}
+
+/** Calculates a bill-group snapshot using the existing statement calculator. */
+export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupCalculationResult {
+  const activities = normalizeHireActivities(input.activities).filter(a =>
+    (a.source === "dpr_log" || a.source === "plant_usage") &&
+    a.businessDate >= input.periodFrom && a.businessDate <= input.periodTo
+  );
+  const decisionMap = new Map((input.tripDecisions ?? []).map(d => [`${d.source}:${d.sourceId}`, d]));
+  const usage: HireUsage[] = activities.map(activity => {
+    const decision = decisionMap.get(hireActivityIdentity(activity));
+    // No inferred trips: only selected positive stored/corrected values reach
+    // the shared trip calculator.
+    const trips = decision?.selected === false ? 0
+      : decision?.correctedTrips !== undefined ? decision.correctedTrips
+      : activity.numberOfTrips;
+    return { id: activity.sourceId, date: activity.businessDate, entryType: activity.entryType,
+      status: activity.status, hoursOrKmRun: activity.hoursOrKmRun, numberOfTrips: trips };
+  });
+  const calculated = calculateHireBilling({ terms: input.terms, periodFrom: input.periodFrom, periodTo: input.periodTo,
+    usage, maintenance: input.maintenance, dailyDecisions: input.dailyDecisions, exceptionDecisions: input.exceptionDecisions });
+  const quantity = input.quantityOverride !== undefined ? input.quantityOverride : calculated.quantity;
+  const grossAmount = input.grossAmountOverride !== undefined ? input.grossAmountOverride
+    : input.quantityOverride !== undefined ? money(quantity * input.terms.rate) : calculated.grossAmount;
+  const deductionAmount = money(Math.min(grossAmount, calculated.deductionAmount));
+  const actualDiesel = money(activities.reduce((sum, a) => sum + (a.actualDiesel ?? 0), 0));
+  const expectedDiesel = money(activities.reduce((sum, a) => sum + (a.expectedDiesel ?? 0), 0));
+  const suggestedExcess = money(Math.max(0, actualDiesel - expectedDiesel));
+  const recovery = input.dieselRecovery;
+  if ((recovery?.decision === "accept" || recovery?.decision === "edit") &&
+      (!Number.isFinite(recovery.finalAmount) || (recovery.finalAmount ?? 0) < 0)) {
+    throw new Error("An explicit non-negative diesel recovery amount is required.");
+  }
+  const finalRecoveryAmount = recovery?.decision === "accept" || recovery?.decision === "edit"
+    ? money(recovery.finalAmount!) : 0;
+  return {
+    ...calculated, quantity, grossAmount, deductionAmount,
+    calculatedQuantity: calculated.quantity, calculatedGrossAmount: calculated.grossAmount,
+    netAmount: money(Math.max(0, grossAmount - deductionAmount - finalRecoveryAmount)),
+    activityIds: activities.map(hireActivityIdentity),
+    diesel: { actualDiesel, expectedDiesel,
+      consumptionNorm: input.dieselNormOverride ?? activities.find(a => a.consumptionNorm != null)?.consumptionNorm ?? undefined,
+      normBasis: input.dieselNormBasisOverride ?? activities.find(a => a.normBasis)?.normBasis ?? undefined,
+      suggestedExcess, recoveryDecision: recovery?.decision, finalRecoveryAmount, remarks: recovery?.remarks ?? undefined },
   };
 }

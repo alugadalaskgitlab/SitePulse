@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Activity, AlertTriangle, Fuel, Zap, ShoppingCart, ClipboardList, CalendarCheck, ReceiptText,
+  Activity, AlertTriangle, Fuel, Zap, ShoppingCart, ClipboardList, CalendarCheck,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -113,7 +113,7 @@ export default function EquipmentHub() {
           />
           <KpiCard
             label="Fleet Status"
-            value={breakdownCount === 0 ? "OK" : "⚠"}
+            value={breakdownCount === 0 ? "OK" : "ATTN"}
             sub={breakdownCount === 0 ? "No open issues" : `${breakdownCount} open`}
             warn={breakdownCount > 0}
           />
@@ -125,15 +125,6 @@ export default function EquipmentHub() {
             Operations & Actions
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <HubActionTile
-               href="/equipment/hire-billing"
-               icon={ReceiptText}
-               title="Hire Billing Register"
-               description="Review hired-equipment periods, downtime deductions & vendor bills"
-               accent="orange"
-               iconBg="bg-orange-100"
-               enabled={canSeeEquip}
-             />
              <HubActionTile
               href={`/plant/equipment-usage?returnTo=${HUB}&context=equipment`}
               icon={Activity}

@@ -9608,6 +9608,22 @@ export async function registerRoutes(
     }
   });
 
+  // Rich, source-qualified audit feed used only by the hire-group composer.
+  // Legacy auto-items intentionally remains its existing per-row contract.
+  app.get("/api/vendor-bills/hire-activities", async (req, res) => {
+    try {
+      if (!assertView(req, res, "vendor_bills")) return;
+      const query = z.object({
+        vendorName: z.string().min(1),
+        periodFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        periodTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      }).refine(value => value.periodFrom <= value.periodTo, { message: "periodFrom must be on or before periodTo" }).parse(req.query);
+      res.json(await storage.getVendorBillHireActivities(query.vendorName, query.periodFrom, query.periodTo));
+    } catch (err: any) {
+      res.status(err instanceof z.ZodError ? 400 : 500).json({ message: err?.message || "Failed to fetch hire activities" });
+    }
+  });
+
   app.get("/api/vendor-bills/previous-rates", async (req, res) => {
     try {
       const vendorName = req.query.vendorName as string;
@@ -9656,7 +9672,7 @@ export async function registerRoutes(
 
   app.post("/api/vendor-bills", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "vendor_bills")) return;
+      if (!assertCreateEither(req, res, "vendor_bills_raise", "vendor_bills")) return;
       const input = createVendorBillRequestSchema.parse(req.body);
       const bill = await storage.createVendorBill(input);
       sendPushToSection("vendor_bills_approve", "New Vendor Bill", `${bill.billNo} - ${bill.vendorName}`, "/plant/vendor-bills").catch(() => {});
@@ -9665,6 +9681,8 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
+      if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
+      if ((err as any)?.code === "BAD_REQUEST") return res.status(400).json({ message: (err as any).message });
       console.error("Error creating vendor bill:", err);
       res.status(500).json({ message: "Failed to create vendor bill" });
     }
@@ -9699,6 +9717,8 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
+      if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
+      if ((err as any)?.code === "BAD_REQUEST") return res.status(400).json({ message: (err as any).message });
       console.error("Error updating vendor bill:", err);
       res.status(500).json({ message: "Failed to update vendor bill" });
     }
@@ -9776,6 +9796,7 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
+      if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
       console.error("Error updating vendor bill status:", err);
       res.status(500).json({ message: "Failed to update vendor bill status" });
     }
@@ -10152,6 +10173,7 @@ export async function registerRoutes(
       }
       res.json({ success: true });
     } catch (err: any) {
+      if (err?.code === "CONFLICT") return res.status(409).json({ message: err.message });
       console.error("Error deleting vendor bill:", err);
       res.status(500).json({ message: err?.message || "Failed to delete vendor bill" });
     }

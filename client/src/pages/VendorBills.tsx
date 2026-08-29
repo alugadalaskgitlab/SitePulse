@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, BarChart2 } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, BarChart2, Calculator, AlertTriangle } from "lucide-react";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -19,6 +19,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
+import { calculateHireGroup, normalizeHireActivities, type HireActivity } from "@shared/hireBilling";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -61,6 +62,16 @@ interface LineItem {
   suppliedTo?: string | null;
   transporter?: string | null;
 }
+
+type HireDecision = { date: string; decision: "full_day" | "half_day" | "exclude"; reason?: string };
+type HireGroup = {
+  id: string; hireStatementId?: number; equipmentId: number; periodFrom: string; periodTo: string;
+  basis: "monthly" | "daily" | "trip"; rate: number; quantityOverride?: number;
+  grossAmountOverride?: number; dailyDecisions: HireDecision[];
+  tripDecisions: { source: "dpr_log" | "plant_usage"; sourceId: number; selected?: boolean; correctedTrips?: number; remarks?: string }[];
+  exceptionDecisions: any[]; dieselNormOverride?: number; dieselNormBasisOverride?: string;
+  dieselRecoveryDecision?: "accept" | "edit" | "ignore"; dieselRecoveryFinalAmount?: number; dieselRecoveryRemarks?: string;
+};
 
 const BILL_TYPES = [
   { value: "equipment", label: "EQUIPMENT HIRE" },
@@ -417,6 +428,7 @@ export default function VendorBills() {
   const [gstRateLabour, setGstRateLabour] = useState<number>(0);
   const [tdsRate, setTdsRate] = useState<number>(0);
   const [labourFilter, setLabourFilter] = useState<"all" | "site" | "plant">("all");
+  const [hireGroups, setHireGroups] = useState<HireGroup[]>([]);
 
 
   useEffect(() => {
@@ -536,6 +548,28 @@ export default function VendorBills() {
     enabled: !!autoItemsUrl,
   });
 
+  const hireActivitiesUrl = vendorName && periodFrom && periodTo
+    ? `/api/vendor-bills/hire-activities?vendorName=${encodeURIComponent(vendorName)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}`
+    : "";
+  const { data: hireActivityRows = [], isFetching: hireActivitiesLoading } = useQuery<any[]>({
+    queryKey: ["/api/vendor-bills/hire-activities", vendorName, periodFrom, periodTo],
+    queryFn: () => fetch(hireActivitiesUrl).then(r => r.ok ? r.json() : []),
+    enabled: (billType === "equipment" || billType === "all") && !!hireActivitiesUrl,
+  });
+  const hireEquipment = useMemo(() => {
+    const byId = new Map<number, any>();
+    hireActivityRows.filter((row: any) => row.source === "equipment_default").forEach((row: any) => {
+      byId.set(Number(row.equipmentId), { id: Number(row.equipmentId), ...(row.equipment || {}) });
+    });
+    return Array.from(byId.values());
+  }, [hireActivityRows]);
+  const normalizedHireActivities = useMemo(
+    () => normalizeHireActivities(hireActivityRows.filter((row: any) =>
+      row.source === "dpr_log" || row.source === "plant_usage"
+    ) as HireActivity[]),
+    [hireActivityRows],
+  );
+
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/vendor-bills", data),
     onSuccess: () => {
@@ -602,6 +636,7 @@ export default function VendorBills() {
     setPeriodTo("");
     setNotes("");
     setLineItems(isAdmin ? [defaultManualItem] : []);
+    setHireGroups([]);
     setAdjustmentLabel("");
     setAdjustmentAmount(0);
     setGstRateEquipment(0);
@@ -643,7 +678,7 @@ export default function VendorBills() {
     setPeriodTo(bill.periodTo || "");
     setNotes(bill.notes || "");
     setLineItems(
-      bill.items.map(item => ({
+      bill.items.filter(item => !item.hireStatementId && !["hire_statement", "hire_group"].includes((item.source || "").toLowerCase())).map(item => ({
         date: item.date || "",
         category: item.category || "other",
         description: item.description,
@@ -659,6 +694,16 @@ export default function VendorBills() {
         transporter: item.transporter ?? null,
       }))
     );
+    const persisted = ((bill as any).hireStatements || []).map((s: any, index: number): HireGroup => {
+      const snap = s.calculationSnapshot || {};
+      return { id: `loaded-${s.id || index}`, hireStatementId: s.id ? Number(s.id) : undefined, equipmentId: Number(s.equipmentId), periodFrom: s.periodFrom || bill.periodFrom || "", periodTo: s.periodTo || bill.periodTo || "",
+        basis: (s.billingBasis || snap.terms?.billingBasis || "daily") as HireGroup["basis"], rate: Number(s.rate ?? snap.terms?.rate ?? 0),
+        quantityOverride: snap.quantityOverride, grossAmountOverride: snap.grossAmountOverride, dailyDecisions: snap.dailyDecisions || [],
+        tripDecisions: snap.tripDecisions || [], exceptionDecisions: snap.exceptionDecisions || [],
+        dieselNormOverride: snap.dieselNormOverride, dieselNormBasisOverride: snap.dieselNormBasisOverride,
+        dieselRecoveryDecision: snap.dieselRecoveryDecision, dieselRecoveryFinalAmount: snap.dieselRecoveryFinalAmount, dieselRecoveryRemarks: snap.dieselRecoveryRemarks };
+    });
+    setHireGroups(persisted);
     setAdjustmentLabel((bill as any).adjustmentLabel || "");
     setAdjustmentAmount((bill as any).adjustmentAmount || 0);
     setGstRateEquipment((bill as any).gstRateEquipment || 0);
@@ -767,7 +812,7 @@ export default function VendorBills() {
             for (const d of dups) {
               mapped[d.index] = { ...mapped[d.index], billedIn: { billNo: d.billNo, billStatus: d.billStatus } };
             }
-            toast({ title: `⚠ ${dups.length} item(s) already billed in other bills`, variant: "destructive" });
+            toast({ title: `${dups.length} item(s) already billed in other bills`, variant: "destructive" });
           }
         }
       } catch (_e) {
@@ -804,6 +849,52 @@ export default function VendorBills() {
     ]);
   };
 
+  const addHireGroup = () => {
+    if (!periodFrom || !periodTo) {
+      toast({ title: "SET THE BILL PERIOD BEFORE ADDING A HIRE GROUP", variant: "destructive" }); return;
+    }
+    const shiftDate = (date: string, days: number) => {
+      const value = new Date(`${date}T00:00:00Z`);
+      value.setUTCDate(value.getUTCDate() + days);
+      return value.toISOString().slice(0, 10);
+    };
+    let available: { eq: any; from: string; to: string } | undefined;
+    for (const eq of hireEquipment) {
+      let cursor = periodFrom;
+      const occupied = hireGroups.filter(group => group.equipmentId === Number(eq.id))
+        .sort((a, b) => a.periodFrom.localeCompare(b.periodFrom));
+      for (const group of occupied) {
+        if (cursor < group.periodFrom) {
+          available = { eq, from: cursor, to: shiftDate(group.periodFrom, -1) };
+          break;
+        }
+        if (cursor <= group.periodTo) cursor = shiftDate(group.periodTo, 1);
+      }
+      if (!available && cursor <= periodTo) available = { eq, from: cursor, to: periodTo };
+      if (available) break;
+    }
+    if (!available) {
+      toast({ title: "NO HIRED EQUIPMENT FOUND FOR THIS VENDOR", variant: "destructive" }); return;
+    }
+    const { eq, from, to } = available;
+    const basis = ["monthly", "daily", "trip"].includes(eq.hireBillingBasis) ? eq.hireBillingBasis : "daily";
+    setHireGroups(prev => [...prev, { id: `hire-${Date.now()}`, equipmentId: Number(eq.id), periodFrom: from, periodTo: to, basis,
+      rate: Number(eq.hireRate) || 0, dailyDecisions: [], tripDecisions: [], exceptionDecisions: [] }]);
+  };
+  const patchHireGroup = (id: string, patch: Partial<HireGroup>) =>
+    setHireGroups(prev => {
+      const current = prev.find(g => g.id === id);
+      if (!current) return prev;
+      const next = { ...current, ...patch };
+      if (next.periodFrom && next.periodTo && next.periodFrom <= next.periodTo &&
+          prev.some(g => g.id !== id && g.equipmentId === next.equipmentId && next.periodFrom <= g.periodTo && next.periodTo >= g.periodFrom)) {
+        toast({ title: "HIRE GROUP OVERLAPS ANOTHER GROUP FOR THIS EQUIPMENT", variant: "destructive" });
+        return prev;
+      }
+      return prev.map(g => g.id === id ? next : g);
+    });
+  const removeHireGroup = (id: string) => setHireGroups(prev => prev.filter(g => g.id !== id));
+
   const removeLineItem = (index: number) => {
     setLineItems(prev => prev.filter((_, i) => i !== index));
   };
@@ -814,6 +905,41 @@ export default function VendorBills() {
     }
     return (item.qty || 0) * (item.rate || 0);
   };
+
+  const hireEquipmentFor = (id: number) => hireEquipment.find((e: any) => Number(e.id) === id);
+  const activityForGroup = (group: HireGroup) => normalizedHireActivities.filter((a: any) =>
+    Number(a.equipmentId) === group.equipmentId && a.businessDate >= group.periodFrom && a.businessDate <= group.periodTo
+  );
+  const maintenanceForGroup = (group: HireGroup) => hireActivityRows.filter((a: any) =>
+    a.source === "maintenance" && Number(a.equipmentId) === group.equipmentId && a.businessDate >= group.periodFrom && a.businessDate <= group.periodTo
+  );
+  const hireResult = (group: HireGroup) => {
+    const eq = hireEquipmentFor(group.equipmentId) || {};
+    return calculateHireGroup({
+      terms: { billingBasis: group.basis, rate: Number(group.rate) || 0, monthlyDivisorType: eq.hireMonthlyDivisorType || "30", monthlyDivisor: eq.hireMonthlyDivisor, breakdownDeductionEnabled: true },
+      periodFrom: group.periodFrom, periodTo: group.periodTo, activities: activityForGroup(group),
+      maintenance: maintenanceForGroup(group).map((m: any) => ({ id: m.sourceId, date: m.businessDate, eventType: m.eventType, description: m.description, downtimeHours: m.downtimeHours })),
+      dailyDecisions: group.dailyDecisions, tripDecisions: group.tripDecisions,
+      exceptionDecisions: group.exceptionDecisions, quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,
+      dieselNormOverride: group.dieselNormOverride, dieselNormBasisOverride: group.dieselNormBasisOverride,
+      dieselRecovery: group.dieselRecoveryDecision ? { decision: group.dieselRecoveryDecision, finalAmount: group.dieselRecoveryFinalAmount || 0, remarks: group.dieselRecoveryRemarks } : undefined,
+    });
+  };
+  const hireCalculated = useMemo(() => hireGroups.map(group => {
+    try { return { group, result: hireResult(group) }; } catch { return { group, result: null }; }
+  }), [hireGroups, hireActivityRows, hireEquipment]);
+
+  useEffect(() => {
+    const generated = hireCalculated.filter(x => x.result).map(({ group, result }) => {
+      const eq = hireEquipmentFor(group.equipmentId);
+      const unit = group.basis === "monthly" ? "MONTHS" : group.basis === "daily" ? "DAYS" : "TRIPS";
+      return { date: group.periodFrom, category: "equipment", equipmentId: group.equipmentId,
+        description: `${eq?.name || "EQUIPMENT"} · ${formatDate(group.periodFrom)}–${formatDate(group.periodTo)} · ${group.basis.toUpperCase()} HIRE`,
+        qty: result!.quantity, unit, rate: result!.netAmount / (result!.quantity || 1), amount: result!.netAmount,
+        source: "hire_group", leadDistance: null, siteName: null, suppliedTo: null, transporter: null } as LineItem;
+    });
+    setLineItems(prev => [...prev.filter(i => !["hire_group", "hire_statement"].includes(i.source)), ...generated]);
+  }, [hireCalculated.length, hireCalculated.map(x => `${x.group.id}:${x.result?.netAmount}:${x.result?.quantity}`).join("|")]);
 
   const updateLineItem = (index: number, field: keyof LineItem, value: any) => {
     setLineItems(prev => {
@@ -891,7 +1017,7 @@ export default function VendorBills() {
 
   const uniqueRateGroups = useMemo(() => {
     const groups: Record<string, { equipmentId: number | null; groupName: string; entryType: string; category: string; unit: string; count: number }> = {};
-    lineItems.forEach(item => {
+    lineItems.filter(item => !["hire_group", "hire_statement"].includes(item.source)).forEach(item => {
       if (item.category === "transport") {
         const canonical = canonicalTransportName(item.description);
         const unit = (item.unit || "TRIP").toUpperCase();
@@ -1089,7 +1215,29 @@ export default function VendorBills() {
       toast({ title: "Please add at least one line item", variant: "destructive" });
       return;
     }
+    if (hireGroups.some(group => !group.periodFrom || !group.periodTo || group.periodFrom > group.periodTo)) {
+      toast({ title: "Correct the invalid hire group date range", variant: "destructive" });
+      return;
+    }
+    if (hireCalculated.some(({ result }) => !result)) {
+      toast({ title: "Complete every hire group review before saving", variant: "destructive" });
+      return;
+    }
+    for (let i = 0; i < hireGroups.length; i++) {
+      const group = hireGroups[i];
+      if (hireGroups.some((other, j) => j !== i && other.equipmentId === group.equipmentId &&
+          group.periodFrom <= other.periodTo && group.periodTo >= other.periodFrom)) {
+        toast({ title: "Hire groups for the same equipment cannot overlap", variant: "destructive" });
+        return;
+      }
+      if ((group.dieselRecoveryDecision === "accept" || group.dieselRecoveryDecision === "edit") &&
+          (group.dieselRecoveryFinalAmount === undefined || group.dieselRecoveryFinalAmount < 0)) {
+        toast({ title: "Enter the final HSD recovery amount for every accepted or edited recovery", variant: "destructive" });
+        return;
+      }
+    }
 
+    const includeHireGroups = (billType === "equipment" || billType === "all") && !!periodFrom && !!periodTo;
     const data = {
       billDate,
       billNo: billNo || `AUTO-${Date.now()}`,
@@ -1107,6 +1255,15 @@ export default function VendorBills() {
       gstRateTransport: gstRateTransport || null,
       gstRateLabour: gstRateLabour || null,
       tdsRate: tdsRate || null,
+      ...(includeHireGroups ? { hireGroups: hireCalculated.map(({ group, result }) => ({
+        hireStatementId: group.hireStatementId, equipmentId: group.equipmentId, periodFrom: group.periodFrom, periodTo: group.periodTo, basis: group.basis,
+        rate: group.rate, dailyDecisions: group.dailyDecisions, tripDecisions: group.tripDecisions,
+        exceptionDecisions: group.exceptionDecisions, quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,
+        dieselNormOverride: group.dieselNormOverride, dieselNormBasisOverride: group.dieselNormBasisOverride,
+        dieselRecoveryDecision: group.dieselRecoveryDecision, dieselRecoveryFinalAmount: group.dieselRecoveryFinalAmount,
+        dieselRecoveryRemarks: group.dieselRecoveryRemarks, calculatedQuantity: result!.calculatedQuantity,
+        calculatedGrossAmount: result!.calculatedGrossAmount, netAmount: result!.netAmount,
+      })) } : {}),
       items: lineItems.filter(i => i.description).map(item => ({
         date: item.date || null,
         category: item.category || null,
@@ -1125,7 +1282,7 @@ export default function VendorBills() {
     };
 
     const rateCardItems: any[] = [];
-    lineItems.filter(i => i.description && i.rate > 0).forEach(item => {
+    lineItems.filter(i => i.description && i.rate > 0 && !["hire_group", "hire_statement"].includes(i.source)).forEach(item => {
       let itemKey = "";
       if (item.category === "transport") {
         const canonical = canonicalTransportName(item.description);
@@ -1752,6 +1909,103 @@ export default function VendorBills() {
           </Card>
         )}
 
+        {(billType === "equipment" || billType === "all") && (
+          <Card className="border-orange-200 dark:border-orange-800">
+            <CardHeader className="py-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-sm uppercase tracking-wider flex items-center gap-2"><Calculator className="w-4 h-4 text-orange-600" /> Equipment Hire Calculation</CardTitle>
+              <Button variant="outline" size="sm" onClick={addHireGroup} disabled={!vendorName || !periodFrom || !periodTo || hireActivitiesLoading}>
+                <Plus className="w-3 h-3 mr-1" /> ADD GROUP
+              </Button>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-3">
+              {hireActivitiesLoading && <div className="text-xs text-muted-foreground border rounded p-3">LOADING HIRE ACTIVITY REVIEW…</div>}
+              {!hireActivitiesLoading && vendorName && periodFrom && periodTo && !hireActivityRows.length && <div className="text-xs text-muted-foreground border rounded p-3">NO LINKED ACTIVITY FOUND. MONTHLY GROUPS MAY STILL BE ADDED.</div>}
+              {hireGroups.map((group, index) => {
+                const eq = hireEquipmentFor(group.equipmentId);
+                const result = hireCalculated[index]?.result;
+                const acts = activityForGroup(group);
+                const maintenance = maintenanceForGroup(group);
+                const dates = Array.from(new Set(acts.map((a: any) => a.businessDate))).sort();
+                const operationalExceptions = result?.exceptions.filter(exception => exception.sourceType === "usage") || [];
+                return (
+                  <div key={group.id} className="rounded-md border bg-muted/20 p-3 space-y-3" data-testid={`hire-group-${index}`}>
+                    <div className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-end">
+                      <div className="sm:col-span-2"><Label className="text-[11px] uppercase">Equipment</Label>
+                        <Select value={String(group.equipmentId)} onValueChange={v => {
+                          const next = Number(v); const nextEq = hireEquipmentFor(next);
+                          patchHireGroup(group.id, { equipmentId: next, rate: Number(nextEq?.hireRate) || 0, dailyDecisions: [], tripDecisions: [] });
+                        }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
+                          {hireEquipment.map((e: any) => <SelectItem key={e.id} value={String(e.id)}>{String(e.name).toUpperCase()}</SelectItem>)}
+                        </SelectContent></Select>
+                      </div>
+                      <div><Label className="text-[11px] uppercase">From</Label><Input type="date" min={periodFrom} max={periodTo} value={group.periodFrom} onChange={e => patchHireGroup(group.id, { periodFrom: e.target.value })} /></div>
+                      <div><Label className="text-[11px] uppercase">To</Label><Input type="date" min={periodFrom} max={periodTo} value={group.periodTo} onChange={e => patchHireGroup(group.id, { periodTo: e.target.value })} /></div>
+                      <div><Label className="text-[11px] uppercase">Basis</Label><Select value={group.basis} onValueChange={v => patchHireGroup(group.id, { basis: v as HireGroup["basis"], quantityOverride: undefined, grossAmountOverride: undefined })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="monthly">MONTH</SelectItem><SelectItem value="daily">DAY</SelectItem><SelectItem value="trip">TRIP</SelectItem></SelectContent></Select></div>
+                      <div><Label className="text-[11px] uppercase">Rate (₹)</Label><Input type="number" value={group.rate} onChange={e => patchHireGroup(group.id, { rate: Number(e.target.value) })} /></div>
+                    </div>
+                    {group.periodFrom > group.periodTo && <p className="text-xs text-red-600">INVALID RANGE: FROM DATE MUST PRECEDE TO DATE.</p>}
+                    {(group.basis === "daily" && dates.length > 0) && <div className="border-t pt-2"><p className="text-[11px] uppercase font-semibold mb-1">Payable dates — same-date activity collapsed</p><div className="flex flex-wrap gap-1">{dates.map(date => {
+                      const decision = group.dailyDecisions.find(d => d.date === date)?.decision || "full_day";
+                      return <Button key={date} type="button" variant={decision === "exclude" ? "outline" : "secondary"} size="sm" className="h-7 text-[11px]" onClick={() => {
+                        const next = group.dailyDecisions.filter(d => d.date !== date);
+                        const value = decision === "full_day" ? "half_day" : decision === "half_day" ? "exclude" : "full_day";
+                        patchHireGroup(group.id, { dailyDecisions: [...next, { date, decision: value }] });
+                      }}>{formatDate(date)} · {decision.replace("_", " ").toUpperCase()}</Button>;
+                    })}</div></div>}
+                    {group.basis === "trip" && acts.length > 0 && <div className="border-t pt-2 space-y-1"><p className="text-[11px] uppercase font-semibold">Trip review — include, exclude, or correct stored trips</p>{acts.map((a: any) => {
+                      const d = group.tripDecisions.find(x => x.source === a.source && x.sourceId === a.sourceId); const selected = d?.selected !== false;
+                      const without = group.tripDecisions.filter(x => !(x.source === a.source && x.sourceId === a.sourceId));
+                      return <div key={`${a.source}-${a.sourceId}`} className="grid grid-cols-[auto_1fr_7rem] items-center gap-2 text-xs">
+                        <Button type="button" size="sm" variant={selected ? "secondary" : "outline"} className="h-7 px-2" onClick={() => {
+                          const nextSelected = !selected;
+                          const withoutException = group.exceptionDecisions.filter((decision: any) => !(decision.sourceType === "usage" && decision.sourceId === a.sourceId && decision.exceptionType === "invalid_trips" && decision.date === a.businessDate));
+                          patchHireGroup(group.id, {
+                            tripDecisions: [...without, { ...d, source: a.source, sourceId: a.sourceId, selected: nextSelected }],
+                            exceptionDecisions: nextSelected ? withoutException : [...withoutException, { sourceType: "usage", sourceId: a.sourceId, exceptionType: "invalid_trips", date: a.businessDate, decision: "none", remarks: "EXCLUDED FROM TRIP GROUP" }],
+                          });
+                        }}>{selected ? "INCLUDE" : "EXCLUDE"}</Button>
+                        <span>{formatDate(a.businessDate)} · {a.source.toUpperCase()} · {a.entryType === "trip_based" ? `STORED ${a.numberOfTrips ?? "MISSING"} TRIPS` : "NON-TRIP ACTIVITY"}</span>
+                        <Input type="number" min="0" step="1" className="h-7" disabled={a.entryType !== "trip_based"} placeholder="CORRECT" value={d?.correctedTrips ?? ""} onChange={e => patchHireGroup(group.id, { tripDecisions: [...without, { ...d, source: a.source, sourceId: a.sourceId, selected, correctedTrips: e.target.value === "" ? undefined : Number(e.target.value) }] })} />
+                      </div>;
+                    })}</div>}
+                    {group.basis !== "trip" && maintenance.length > 0 && <div className="border-t pt-2 space-y-2"><p className="text-[11px] uppercase font-semibold flex items-center gap-1"><AlertTriangle className="w-3 h-3 text-amber-600" /> Breakdown / Unavailability Review</p>{maintenance.map((m: any) => {
+                      const current = group.exceptionDecisions.find((d: any) => d.sourceType === "maintenance" && d.sourceId === m.sourceId);
+                      const without = group.exceptionDecisions.filter((d: any) => !(d.sourceType === "maintenance" && d.sourceId === m.sourceId));
+                      const base = { sourceType: "maintenance", sourceId: m.sourceId, exceptionType: "breakdown", date: m.businessDate };
+                      return <div key={m.sourceId} className="grid grid-cols-1 sm:grid-cols-[1fr_10rem_9rem_1fr] gap-2 items-end">
+                        <div className="text-xs"><strong>{formatDate(m.businessDate)} · {m.description || "BREAKDOWN"}</strong><span className="block text-muted-foreground">{m.downtimeHours ?? 0} HRS RECORDED</span></div>
+                        <div><Label className="text-[10px] uppercase">Treatment</Label><Select value={current?.decision || ""} onValueChange={value => patchHireGroup(group.id, { exceptionDecisions: [...without, { ...base, ...current, decision: value }] })}><SelectTrigger className="h-8"><SelectValue placeholder="CHOOSE" /></SelectTrigger><SelectContent><SelectItem value="none">NO DEDUCTION</SelectItem><SelectItem value="half_day">HALF DAY</SelectItem><SelectItem value="full_day">FULL DAY</SelectItem><SelectItem value="manual">MANUAL ₹</SelectItem></SelectContent></Select></div>
+                        <div><Label className="text-[10px] uppercase">Manual ₹</Label><Input type="number" min="0" className="h-8" disabled={current?.decision !== "manual"} value={current?.manualDeductionAmount ?? ""} onChange={e => patchHireGroup(group.id, { exceptionDecisions: [...without, { ...base, ...current, decision: "manual", manualDeductionAmount: e.target.value === "" ? undefined : Number(e.target.value) }] })} /></div>
+                        <div><Label className="text-[10px] uppercase">Review remarks</Label><Input className="h-8" value={current?.remarks || ""} onChange={e => patchHireGroup(group.id, { exceptionDecisions: [...without, { ...base, ...current, decision: current?.decision || "none", remarks: e.target.value.toUpperCase() }] })} /></div>
+                      </div>;
+                    })}</div>}
+                    {operationalExceptions.length > 0 && <div className="border-t pt-2 space-y-1"><p className="text-[11px] uppercase font-semibold">Operational exceptions — acknowledge before verification</p>{operationalExceptions.map((exception, exceptionIndex) => {
+                      const acknowledged = group.exceptionDecisions.some((decision: any) => decision.sourceType === "usage" && decision.sourceId === exception.sourceId && decision.exceptionType === exception.exceptionType && decision.date === exception.date);
+                      const without = group.exceptionDecisions.filter((decision: any) => !(decision.sourceType === "usage" && decision.sourceId === exception.sourceId && decision.exceptionType === exception.exceptionType && decision.date === exception.date));
+                      return <div key={`${exception.sourceId}-${exception.exceptionType}-${exception.date}-${exceptionIndex}`} className="flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs"><span>{formatDate(exception.date)} · {exception.description}</span><Button type="button" size="sm" variant={acknowledged ? "secondary" : "outline"} className="h-7" onClick={() => patchHireGroup(group.id, { exceptionDecisions: acknowledged ? without : [...without, { sourceType: "usage", sourceId: exception.sourceId, exceptionType: exception.exceptionType, date: exception.date, decision: "none", remarks: "REVIEWED IN VENDOR BILL" }] })}>{acknowledged ? "ACKNOWLEDGED" : "ACKNOWLEDGE"}</Button></div>;
+                    })}</div>}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t pt-2">
+                      <div><Label className="text-[11px] uppercase">Qty Override</Label><Input type="number" placeholder={result ? result.quantity.toFixed(2) : "AUTO"} value={group.quantityOverride ?? ""} onChange={e => patchHireGroup(group.id, { quantityOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div>
+                      <div><Label className="text-[11px] uppercase">Gross Override (₹)</Label><Input type="number" placeholder={result ? formatCurrency(result.grossAmount) : "AUTO"} value={group.grossAmountOverride ?? ""} onChange={e => patchHireGroup(group.id, { grossAmountOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div>
+                      <div><Label className="text-[11px] uppercase">Bill Norm</Label><Input type="number" placeholder={result?.diesel.consumptionNorm?.toString() || "NOT RECORDED"} value={group.dieselNormOverride ?? ""} onChange={e => patchHireGroup(group.id, { dieselNormOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div>
+                      <div><Label className="text-[11px] uppercase">Norm Basis</Label><Input placeholder={result?.diesel.normBasis || "L/HOUR OR KM/L"} value={group.dieselNormBasisOverride || ""} onChange={e => patchHireGroup(group.id, { dieselNormBasisOverride: e.target.value.toUpperCase() })} /></div>
+                    </div>
+                    {result && result.diesel.suggestedExcess > 0 && <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                      <div><Label className="text-[11px] uppercase">HSD Recovery ({result.diesel.suggestedExcess.toFixed(2)} L excess)</Label><Select value={group.dieselRecoveryDecision || ""} onValueChange={v => patchHireGroup(group.id, { dieselRecoveryDecision: v as HireGroup["dieselRecoveryDecision"] })}><SelectTrigger><SelectValue placeholder="CHOOSE" /></SelectTrigger><SelectContent><SelectItem value="accept">ACCEPT AGREED AMOUNT</SelectItem><SelectItem value="edit">EDIT FINAL AMOUNT</SelectItem><SelectItem value="ignore">IGNORE</SelectItem></SelectContent></Select></div>
+                      <div><Label className="text-[11px] uppercase">Final Recovery (₹)</Label><Input type="number" min="0" placeholder="ENTER AGREED ₹ AMOUNT" disabled={group.dieselRecoveryDecision === "ignore"} value={group.dieselRecoveryFinalAmount ?? ""} onChange={e => patchHireGroup(group.id, { dieselRecoveryFinalAmount: e.target.value === "" ? undefined : Number(e.target.value) })} /></div>
+                      <div><Label className="text-[11px] uppercase">Recovery Remarks</Label><Input value={group.dieselRecoveryRemarks || ""} onChange={e => patchHireGroup(group.id, { dieselRecoveryRemarks: e.target.value.toUpperCase() })} /></div>
+                    </div>}
+                    {group.basis === "monthly" && (group.periodFrom.slice(8, 10) !== "01" || new Date(`${group.periodTo}T00:00:00`).getDate() !== new Date(new Date(`${group.periodTo}T00:00:00`).getFullYear(), new Date(`${group.periodTo}T00:00:00`).getMonth() + 1, 0).getDate()) && <p className="text-xs text-amber-700">PARTIAL MONTH: REVIEW THE DIVISOR-BASED SUGGESTION AND CONFIRM WITH A QTY OR GROSS OVERRIDE IF THE AGREEMENT DIFFERS.</p>}
+                    {result && <div className="border-t pt-2 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs"><div><span className="text-muted-foreground uppercase">Suggested Qty</span><strong className="block">{result.quantity.toFixed(2)} {group.basis === "monthly" ? "MONTHS" : group.basis === "daily" ? "DAYS" : "TRIPS"}</strong></div><div><span className="text-muted-foreground uppercase">Gross</span><strong className="block">₹{formatCurrency(result.grossAmount)}</strong></div><div><span className="text-muted-foreground uppercase">HSD Actual / Expected</span><strong className="block">{result.diesel.actualDiesel.toFixed(2)} / {result.diesel.expectedDiesel.toFixed(2)} L</strong></div><div><span className="text-muted-foreground uppercase">HSD Excess / Final Recovery</span><strong className="block">{result.diesel.suggestedExcess.toFixed(2)} L / ₹{formatCurrency(result.diesel.finalRecoveryAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Net Hire</span><strong className="block text-orange-700">₹{formatCurrency(result.netAmount)}</strong></div></div>}
+                    <div className="flex justify-end"><Button type="button" variant="ghost" size="sm" onClick={() => removeHireGroup(group.id)}><Trash2 className="w-3 h-3 mr-1" /> REMOVE</Button></div>
+                  </div>
+                );
+              })}
+              {!hireGroups.length && <p className="text-xs text-muted-foreground">ADD A GROUP TO AGGREGATE MONTH, DAY OR TRIP HIRE INTO THE BILL.</p>}
+            </CardContent>
+          </Card>
+        )}
+
         {vendorName && periodFrom && periodTo && billType !== "other" && (
           <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20">
             <CardContent className="py-3 flex items-start gap-3">
@@ -1827,7 +2081,7 @@ export default function VendorBills() {
                 <tr key={idx} className="border-b">
                   <td className="px-2 py-1.5 text-muted-foreground text-sm">{idx + 1}</td>
                   <td className="px-2 py-1.5">
-                    {item.source === "auto" ? (
+                    {["auto", "hire_group", "hire_statement"].includes(item.source) ? (
                       <span className="text-sm font-mono" data-testid={`text-item-date-${idx}`}>{formatDate(item.date)}</span>
                     ) : (
                       <Input
@@ -1840,7 +2094,7 @@ export default function VendorBills() {
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-center">
-                    {item.source === "auto" ? (
+                    {["auto", "hire_group", "hire_statement"].includes(item.source) ? (
                       <Badge
                         variant="outline"
                         className={`text-[12px] ${getCategoryBadgeClass(item.category)} no-default-hover-elevate no-default-active-elevate`}
@@ -1864,7 +2118,7 @@ export default function VendorBills() {
                     )}
                   </td>
                   <td className="px-2 py-1.5">
-                    {item.source === "auto" ? (
+                    {["auto", "hire_group", "hire_statement"].includes(item.source) ? (
                       <div className="space-y-1">
                         <span className="text-sm" data-testid={`text-item-desc-${idx}`}>{item.description}</span>
                         <div className="flex items-center gap-1 flex-wrap">
@@ -1917,6 +2171,7 @@ export default function VendorBills() {
                           type="number"
                           step="0.01"
                           value={item.qty || ""}
+                          disabled={["hire_group", "hire_statement"].includes(item.source)}
                           onChange={e => updateLineItem(idx, "qty", parseFloat(e.target.value) || 0)}
                           className="text-sm h-8 bg-muted/50 text-muted-foreground"
                           onWheel={e => (e.target as HTMLInputElement).blur()}
@@ -1929,6 +2184,7 @@ export default function VendorBills() {
                         type="number"
                         step="0.01"
                         value={item.qty || ""}
+                        disabled={["hire_group", "hire_statement"].includes(item.source)}
                         onChange={e => updateLineItem(idx, "qty", parseFloat(e.target.value) || 0)}
                         className="text-sm h-8"
                         onWheel={e => (e.target as HTMLInputElement).blur()}
@@ -1937,7 +2193,7 @@ export default function VendorBills() {
                     )}
                   </td>
                   <td className="px-2 py-1.5">
-                    <Select value={item.unit} onValueChange={v => updateLineItem(idx, "unit", v)}>
+                    <Select value={item.unit} onValueChange={v => updateLineItem(idx, "unit", v)} disabled={["hire_group", "hire_statement"].includes(item.source)}>
                       <SelectTrigger className="h-8 text-sm" data-testid={`select-item-unit-${idx}`}>
                         <SelectValue />
                       </SelectTrigger>
@@ -1977,6 +2233,7 @@ export default function VendorBills() {
                         type="number"
                         step="0.01"
                         value={item.rate || ""}
+                        disabled={["hire_group", "hire_statement"].includes(item.source)}
                         onChange={e => updateLineItem(idx, "rate", parseFloat(e.target.value) || 0)}
                         className="text-sm h-8"
                         onWheel={e => (e.target as HTMLInputElement).blur()}
@@ -2000,7 +2257,7 @@ export default function VendorBills() {
                     <span className="text-sm" data-testid={`text-item-amount-${idx}`}>{formatCurrency(item.amount)}</span>
                   </td>
                   <td className="px-2 py-1.5">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeLineItem(idx)} data-testid={`button-remove-item-${idx}`}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled={["hire_group", "hire_statement"].includes(item.source)} onClick={() => removeLineItem(idx)} data-testid={`button-remove-item-${idx}`}>
                       <Trash2 className="w-3.5 h-3.5 text-destructive" />
                     </Button>
                   </td>
@@ -2421,7 +2678,7 @@ export default function VendorBills() {
             <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
               <Printer className="w-4 h-4 mr-1" /> PRINT
             </Button>
-            {canEdit && (
+            {canEdit && (!bill.hireStatements?.length || (bill.status === "draft" && bill.hireStatements.every((statement: any) => statement.status === "draft"))) && (
               <Button
                 variant="default"
                 size="sm"
@@ -2433,6 +2690,23 @@ export default function VendorBills() {
             )}
           </div>
         </div>
+
+        {Array.isArray((bill as any).hireStatements) && (bill as any).hireStatements.length > 0 && (
+          <Card className="border-orange-200 dark:border-orange-800">
+            <CardHeader className="py-3"><CardTitle className="text-sm uppercase tracking-wider">EQUIPMENT HIRE CALCULATION SNAPSHOT</CardTitle></CardHeader>
+            <CardContent className="pt-0 space-y-2">{(bill as any).hireStatements.map((s: any, i: number) => {
+              const snap = s.calculationSnapshot || {};
+              const diesel = snap.diesel || {};
+              return <div key={s.id || i} className="border rounded p-3 text-xs grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <strong>{formatDate(s.periodFrom)}–{formatDate(s.periodTo)}</strong><strong>{String(s.billingBasis || snap.terms?.billingBasis || "HIRE").toUpperCase()} · {String(s.status || "draft").toUpperCase()}</strong>
+                <span>QTY {s.quantity ?? snap.quantity ?? "—"} · RATE ₹{formatCurrency(s.rate ?? snap.terms?.rate)}</span><strong className="text-orange-700">NET ₹{formatCurrency(s.netAmount ?? snap.netAmount)}</strong>
+                <span>GROSS ₹{formatCurrency(s.grossAmount ?? snap.grossAmount)}</span><span>DEDUCTION ₹{formatCurrency(s.deductionAmount ?? snap.deductionAmount)}</span>
+                <span>HSD {Number(diesel.actualDiesel || 0).toFixed(2)} / {Number(diesel.expectedDiesel || 0).toFixed(2)} L</span><span>FINAL RECOVERY ₹{formatCurrency(diesel.finalRecoveryAmount || 0)}</span>
+                {Array.isArray(s.exceptions) && s.exceptions.length > 0 && <span className="col-span-2 sm:col-span-4 text-muted-foreground">{s.exceptions.length} REVIEWED BREAKDOWN / EXCEPTION DECISION{s.exceptions.length === 1 ? "" : "S"}</span>}
+              </div>;
+            })}</CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardContent className="py-4 space-y-4">

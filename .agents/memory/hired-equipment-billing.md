@@ -28,3 +28,15 @@ Approved statements snapshot both terms and calculations and must not be recompu
 **Why:** Historical vendor liabilities must remain reproducible.
 
 **How to apply:** Serialize overlapping creation per equipment with a database advisory lock, reject overlaps, use client-supplied revisions plus row locks for mutable lifecycle actions, and create at most one linked Vendor Bill under a statement row lock.
+
+Integrated Vendor Bills may contain adjacent non-overlapping Month, Day, and Trip groups, each with its own frozen basis and rate. Equipment Master values are defaults only.
+
+**Why:** One commercial bill may span a contract-basis change, and later master edits must not rewrite historical liability.
+
+**How to apply:** Recalculate only draft groups from server-loaded operational facts. Before verification, require explicit treatment for every generated exception and any positive HSD-recovery suggestion.
+
+Vendor Bill edit, lifecycle transition, and deletion paths must all lock the bill row first and linked hire-statement rows second, then re-read and validate state.
+
+**Why:** A preflight check outside the transaction allows concurrent edit/verify/delete requests to overwrite a frozen snapshot or remove a newly approved liability.
+
+**How to apply:** Keep one lock order across all linked-hire mutations; omission of hire groups must never bypass reconciliation for a bill that already has linked statements.

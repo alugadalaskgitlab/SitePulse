@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateHireBilling, planHireRegisterRows } from "../shared/hireBilling";
+import { calculateHireBilling, calculateHireGroup, getHireReviewGaps, normalizeHireActivities, planHireRegisterRows } from "../shared/hireBilling";
 
 describe("hire billing calculator", () => {
   it("constrains monthly billing to hire dates and prorates partial calendar months", () => {
@@ -28,6 +28,11 @@ describe("hire billing calculator", () => {
   it("allows an explicit daily half-day decision with a reason", () => {
     const result = calculateHireBilling({ terms: { billingBasis: "daily", rate: 1000 }, periodFrom: "2025-04-01", periodTo: "2025-04-01", usage: [{ date: "2025-04-01" }], dailyDecisions: [{ date: "2025-04-01", decision: "half_day", reason: "released at noon" }] });
     expect(result).toMatchObject({ quantity: 0.5, grossAmount: 500, payableDays: [{ date: "2025-04-01", fraction: 0.5, reason: "released at noon" }] });
+  });
+
+  it("allows excluding an otherwise suggested daily activity", () => {
+    const result = calculateHireBilling({ terms: { billingBasis: "daily", rate: 1000 }, periodFrom: "2025-04-01", periodTo: "2025-04-01", usage: [{ date: "2025-04-01" }], dailyDecisions: [{ date: "2025-04-01", decision: "exclude" }] });
+    expect(result).toMatchObject({ quantity: 0, grossAmount: 0, payableDays: [{ date: "2025-04-01", fraction: 0 }] });
   });
 
   it("only totals positive reliable hourly values and emits exceptions rather than guessing", () => {
@@ -95,6 +100,101 @@ describe("hire billing calculator", () => {
 
   it("allows clean statements to skip reviewed", () => {
     expect(calculateHireBilling({ terms: { billingBasis: "daily", rate: 1 }, periodFrom: "2025-01-01", periodTo: "2025-01-01" }).workflow).toEqual(["draft", "approved", "billed"]);
+  });
+});
+
+describe("normalized vendor-bill hire groups", () => {
+  it("collapses daily dates across sources but drops DPR only for an explicit mirrored plant usage", () => {
+    const rows = normalizeHireActivities([
+      { source: "dpr_log", sourceId: 1, equipmentId: 9, businessDate: "2025-04-01", plantUsageId: 8 },
+      { source: "plant_usage", sourceId: 8, equipmentId: 9, businessDate: "2025-04-01" },
+      { source: "dpr_log", sourceId: 2, equipmentId: 9, businessDate: "2025-04-02" },
+      { source: "plant_usage", sourceId: 9, equipmentId: 9, businessDate: "2025-04-02" },
+    ]);
+    expect(rows.map(row => `${row.source}:${row.sourceId}`)).toEqual(["plant_usage:8", "dpr_log:2", "plant_usage:9"]);
+    const daily = calculateHireGroup({ terms: { billingBasis: "daily", rate: 100 }, periodFrom: "2025-04-01", periodTo: "2025-04-02", activities: rows });
+    expect(daily.quantity).toBe(2);
+  });
+
+  it("uses only stored/corrected positive trips and records an explicit ignored diesel recovery", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "trip", rate: 10 }, periodFrom: "2025-04-01", periodTo: "2025-04-01",
+      activities: [{ source: "dpr_log", sourceId: 1, equipmentId: 2, businessDate: "2025-04-01", entryType: "trip_based", numberOfTrips: 3, actualDiesel: 20, expectedDiesel: 15 }],
+      dieselRecovery: { decision: "ignore", remarks: "approved variance" },
+    });
+    expect(result).toMatchObject({ quantity: 3, grossAmount: 30, netAmount: 30, diesel: { suggestedExcess: 5, finalRecoveryAmount: 0, recoveryDecision: "ignore" } });
+  });
+
+  it("keeps unlinked same-date trip rows separate while removing only the explicit DPR mirror", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "trip", rate: 100 },
+      periodFrom: "2025-04-01",
+      periodTo: "2025-04-01",
+      activities: [
+        { source: "plant_usage", sourceId: 20, equipmentId: 2, businessDate: "2025-04-01", entryType: "trip_based", numberOfTrips: 3 },
+        { source: "dpr_log", sourceId: 10, equipmentId: 2, businessDate: "2025-04-01", entryType: "trip_based", numberOfTrips: 3, plantUsageId: 20 },
+        { source: "dpr_log", sourceId: 11, equipmentId: 2, businessDate: "2025-04-01", entryType: "trip_based", numberOfTrips: 2 },
+      ],
+      tripDecisions: [
+        { source: "plant_usage", sourceId: 20, correctedTrips: 4 },
+        { source: "dpr_log", sourceId: 11, selected: false },
+      ],
+    });
+    expect(result).toMatchObject({ quantity: 4, grossAmount: 400, activityIds: ["dpr_log:11", "plant_usage:20"] });
+  });
+
+  it("deducts only a reviewed monetary HSD recovery and never treats excess litres as currency", () => {
+    const input = {
+      terms: { billingBasis: "daily" as const, rate: 1000 },
+      periodFrom: "2025-04-01",
+      periodTo: "2025-04-01",
+      activities: [{ source: "plant_usage" as const, sourceId: 20, equipmentId: 2, businessDate: "2025-04-01", actualDiesel: 20, expectedDiesel: 15 }],
+    };
+    expect(calculateHireGroup({ ...input, dieselRecovery: { decision: "accept", finalAmount: 300 } }))
+      .toMatchObject({ grossAmount: 1000, netAmount: 700, diesel: { suggestedExcess: 5, finalRecoveryAmount: 300 } });
+    expect(() => calculateHireGroup({ ...input, dieselRecovery: { decision: "accept" } }))
+      .toThrow("explicit non-negative diesel recovery amount");
+  });
+
+  it("blocks lifecycle review until every exception and excess-HSD disposition is explicit", () => {
+    const pending = calculateHireGroup({
+      terms: { billingBasis: "daily", rate: 1000 },
+      periodFrom: "2025-04-01",
+      periodTo: "2025-04-01",
+      activities: [{ source: "plant_usage", sourceId: 20, equipmentId: 2, businessDate: "2025-04-01", status: "open", actualDiesel: 20, expectedDiesel: 15 }],
+    });
+    expect(getHireReviewGaps(pending)).toEqual([
+      "open_usage on 2025-04-01",
+      "HSD recovery disposition",
+    ]);
+
+    const reviewed = calculateHireGroup({
+      terms: { billingBasis: "daily", rate: 1000 },
+      periodFrom: "2025-04-01",
+      periodTo: "2025-04-01",
+      activities: [{ source: "plant_usage", sourceId: 20, equipmentId: 2, businessDate: "2025-04-01", status: "open", actualDiesel: 20, expectedDiesel: 15 }],
+      exceptionDecisions: [{ sourceType: "usage", sourceId: 20, exceptionType: "open_usage", date: "2025-04-01", decision: "none" }],
+      dieselRecovery: { decision: "ignore" },
+    });
+    expect(getHireReviewGaps(reviewed)).toEqual([]);
+  });
+
+  it("does not turn a zero-activity equipment metadata row into billable activity", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "monthly", rate: 30_000 }, periodFrom: "2025-04-01", periodTo: "2025-04-30",
+      activities: [{ source: "equipment_default", sourceId: 2, equipmentId: 2, businessDate: "2025-04-01" }],
+    });
+    expect(result).toMatchObject({ quantity: 1, grossAmount: 30_000, activityIds: [] });
+  });
+
+  it("honors an explicit breakdown decision in a bill group even if the master default is disabled", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "monthly", rate: 30_000, breakdownDeductionEnabled: true },
+      periodFrom: "2025-04-01", periodTo: "2025-04-30", activities: [],
+      maintenance: [{ id: 7, date: "2025-04-10", eventType: "breakdown" }],
+      exceptionDecisions: [{ sourceType: "maintenance", sourceId: 7, exceptionType: "breakdown", date: "2025-04-10", decision: "full_day" }],
+    });
+    expect(result).toMatchObject({ deductionAmount: 1000, netAmount: 29_000 });
   });
 });
 

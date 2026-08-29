@@ -34,6 +34,9 @@ describe("07B hired equipment billing lifecycle wiring", () => {
     expect(routes).toContain('source: "hire_statement"');
     expect(routes).toContain('assertCreateEither(req, res, "vendor_bills_raise", "vendor_bills")');
     expect(routes).toContain('assertView(req, res, "plant_equipment")');
+    expect(storage).toContain('vendorBillId: bill.id,');
+    expect(storage).toContain('status: "draft",');
+    expect(storage).toContain("revision: statement.revision + 1");
   });
 
   it("allows linked bill creation through granular or legacy vendor-bill create permission", () => {

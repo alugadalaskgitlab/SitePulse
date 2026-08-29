@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { calculateHireGroup, getHireReviewGaps, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import {
   auditLogs,
   type AuditLog,
@@ -1384,6 +1385,7 @@ export interface IStorage {
   getDieselRequirementReceipts(requirementIds: number[]): Promise<MaterialReceipt[]>;
   deleteVendorBill(id: number): Promise<boolean>;
   getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<Partial<InsertVendorBillItem>[]>;
+  getVendorBillHireActivities(vendorName: string, periodFrom: string, periodTo: string): Promise<any[]>;
   // Hired equipment billing
   getHireStatements(): Promise<HireStatement[]>;
   getHireStatement(id: number): Promise<HireStatement | undefined>;
@@ -13674,7 +13676,7 @@ export class DatabaseStorage implements IStorage {
 
     const bills = await db.query.vendorBills.findMany({
       where: conditions.length > 0 ? and(...conditions) : undefined,
-      with: { items: true },
+      with: { items: true, hireStatements: { with: { exceptions: true } } },
       orderBy: desc(vendorBills.billDate),
     });
     return bills as VendorBillWithItems[];
@@ -13683,7 +13685,7 @@ export class DatabaseStorage implements IStorage {
   async getVendorBill(id: number): Promise<VendorBillWithItems | undefined> {
     const bill = await db.query.vendorBills.findFirst({
       where: eq(vendorBills.id, id),
-      with: { items: true },
+      with: { items: true, hireStatements: { with: { exceptions: true } } },
     });
     return bill as VendorBillWithItems | undefined;
   }
@@ -13703,6 +13705,118 @@ export class DatabaseStorage implements IStorage {
       if (!isNaN(lastNum)) nextNum = lastNum + 1;
     }
     return `HLC/VB/${year}/${String(nextNum).padStart(4, '0')}`;
+  }
+
+  /**
+   * Rebuilds only the explicitly supplied hire groups.  It is deliberately
+   * called inside the bill transaction: operational facts are reloaded by the
+   * server and client amounts are never trusted.
+   */
+  private async reconcileVendorBillHireGroups(tx: any, bill: VendorBill, data: CreateVendorBillRequest): Promise<VendorBillItem[]> {
+    if (data.hireGroups === undefined) return [];
+    if (bill.status !== "draft") throw Object.assign(new Error("Hire groups can only be recalculated on a draft bill"), { code: "CONFLICT" });
+    const groups = data.hireGroups;
+    if (!bill.periodFrom || !bill.periodTo) throw Object.assign(new Error("Hire groups require a bill period"), { code: "BAD_REQUEST" });
+    for (const group of groups) {
+      if (group.periodFrom < bill.periodFrom || group.periodTo > bill.periodTo) {
+        throw Object.assign(new Error("Every hire group period must fall within the bill period"), { code: "BAD_REQUEST" });
+      }
+    }
+    // Guard overlaps in the submitted set before taking database locks.
+    for (let i = 0; i < groups.length; i++) for (let j = i + 1; j < groups.length; j++) {
+      if (groups[i].equipmentId === groups[j].equipmentId && groups[i].periodFrom <= groups[j].periodTo && groups[i].periodTo >= groups[j].periodFrom) {
+        throw Object.assign(new Error("Hire groups for the same equipment cannot overlap"), { code: "CONFLICT" });
+      }
+    }
+    const canonical = await this.getVendorBillHireActivities(bill.vendorName, bill.periodFrom, bill.periodTo, tx);
+    const desiredStatementIds = new Set<number>();
+    const generated: VendorBillItem[] = [];
+    for (const group of groups) {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(1426, ${group.equipmentId})`);
+      const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, group.equipmentId)).limit(1);
+      if (!equipment || equipment.ownership !== "hired") throw Object.assign(new Error("Hire group equipment must be hired equipment"), { code: "BAD_REQUEST" });
+      if (!canonical.some(row => row.source === "equipment_default" && row.equipmentId === group.equipmentId)) {
+        throw Object.assign(new Error("Hire group equipment does not belong to the selected vendor"), { code: "BAD_REQUEST" });
+      }
+      const existingById = group.hireStatementId
+        ? (await tx.select().from(hireStatements).where(eq(hireStatements.id, group.hireStatementId)).limit(1))[0]
+        : undefined;
+      if (existingById && existingById.vendorBillId !== bill.id) throw Object.assign(new Error("A hire group cannot claim another bill's statement"), { code: "CONFLICT" });
+      if (existingById && existingById.equipmentId !== group.equipmentId) throw Object.assign(new Error("hireStatementId belongs to a different equipment"), { code: "BAD_REQUEST" });
+      let statement = existingById;
+      if (!statement) {
+        statement = (await tx.select().from(hireStatements).where(and(eq(hireStatements.equipmentId, group.equipmentId),
+          eq(hireStatements.periodFrom, group.periodFrom), eq(hireStatements.periodTo, group.periodTo))).limit(1))[0];
+        if (statement && statement.vendorBillId !== bill.id) throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
+      }
+      if (statement && statement.status !== "draft") throw Object.assign(new Error("Approved or billed statement calculations are immutable"), { code: "CONFLICT" });
+      const [overlap] = await tx.select({ id: hireStatements.id }).from(hireStatements).where(and(
+        eq(hireStatements.equipmentId, group.equipmentId), lte(hireStatements.periodFrom, group.periodTo),
+        gte(hireStatements.periodTo, group.periodFrom),
+        ...(statement ? [sql`${hireStatements.id} <> ${statement.id}`] : []),
+      )).limit(1);
+      if (overlap) throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
+      const terms = { billingBasis: group.basis, rate: group.rate, hireStartDate: equipment.hireStartDate, hireEndDate: equipment.hireEndDate,
+        monthlyDivisorType: equipment.hireMonthlyDivisorType as any || "30", monthlyDivisor: equipment.hireMonthlyDivisor,
+        // An explicit group breakdown decision is the vendor-bill workflow's
+        // authorization; do not suppress it merely because a master default
+        // was blank/false.
+        breakdownDeductionEnabled: (group.exceptionDecisions ?? []).some(d => d.sourceType === "maintenance" && d.decision && d.decision !== "none") || !!equipment.hireBreakdownDeductionEnabled };
+      const decisions = (group.exceptionDecisions ?? []).map(d => ({ sourceType: d.sourceType, sourceId: d.sourceId ?? undefined,
+        exceptionType: d.exceptionType, date: d.date, decision: d.decision, manualDeductionAmount: d.manualDeductionAmount ?? undefined, remarks: d.remarks })) as HireExceptionDecisionInput[];
+      const activities = canonical.filter(row => row.source !== "maintenance" && row.equipmentId === group.equipmentId);
+      const maintenance: HireMaintenance[] = canonical.filter(row => row.source === "maintenance" && row.equipmentId === group.equipmentId)
+        .map(row => ({ id: row.sourceId, date: row.businessDate, eventType: row.eventType, description: row.description, downtimeHours: row.downtimeHours }));
+      const calc = calculateHireGroup({ terms, periodFrom: group.periodFrom, periodTo: group.periodTo, activities, maintenance,
+        dailyDecisions: group.dailyDecisions, tripDecisions: group.tripDecisions, exceptionDecisions: decisions,
+        quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,
+        dieselNormOverride: group.dieselNormOverride, dieselNormBasisOverride: group.dieselNormBasisOverride,
+        dieselRecovery: { decision: group.dieselRecoveryDecision, finalAmount: group.dieselRecoveryFinalAmount, remarks: group.dieselRecoveryRemarks } });
+      const patch: any = { equipmentId: group.equipmentId, vendorName: bill.vendorName, billingBasis: group.basis, rate: group.rate,
+        monthlyDivisorType: terms.monthlyDivisorType, monthlyDivisor: terms.monthlyDivisor, hireStartDate: terms.hireStartDate,
+        hireEndDate: terms.hireEndDate, dieselResponsibility: equipment.hireDieselResponsibility, operatorResponsibility: equipment.hireOperatorResponsibility,
+        agreementRemarks: equipment.hireAgreementRemarks, periodFrom: group.periodFrom, periodTo: group.periodTo, quantity: calc.quantity,
+        grossAmount: calc.grossAmount, deductionAmount: calc.deductionAmount + calc.diesel.finalRecoveryAmount, netAmount: calc.netAmount,
+        status: "draft", vendorBillId: bill.id, calculationSnapshot: {
+          terms,
+          ...calc,
+          dailyDecisions: group.dailyDecisions ?? [],
+          tripDecisions: group.tripDecisions ?? [],
+          exceptionDecisions: group.exceptionDecisions ?? [],
+          quantityOverride: group.quantityOverride,
+          grossAmountOverride: group.grossAmountOverride,
+          dieselNormOverride: group.dieselNormOverride,
+          dieselNormBasisOverride: group.dieselNormBasisOverride,
+          dieselRecoveryDecision: group.dieselRecoveryDecision,
+          dieselRecoveryFinalAmount: group.dieselRecoveryFinalAmount,
+          dieselRecoveryRemarks: group.dieselRecoveryRemarks,
+        } };
+      if (statement) {
+        await tx.delete(hireStatementExceptions).where(eq(hireStatementExceptions.statementId, statement.id));
+        [statement] = await tx.update(hireStatements).set({ ...patch, revision: statement.revision + 1 }).where(eq(hireStatements.id, statement.id)).returning();
+      } else [statement] = await tx.insert(hireStatements).values(patch).returning();
+      desiredStatementIds.add(statement.id);
+      if (decisions.length) await tx.insert(hireStatementExceptions).values(decisions.map(d => ({
+        statementId: statement!.id, sourceType: d.sourceType, sourceId: d.sourceId ?? null, exceptionType: d.exceptionType || "manual",
+        exceptionDate: d.date || null, description: d.remarks || "Hire billing decision.", decision: d.decision || null,
+        manualDeductionAmount: d.manualDeductionAmount ?? null, remarks: d.remarks ?? null,
+      })));
+      const unit = group.basis === "monthly" ? "MONTHS" : group.basis === "daily" ? "DAYS" : "TRIPS";
+      const [item] = await tx.insert(vendorBillItems).values({ billId: bill.id, hireStatementId: statement.id,
+        date: group.periodTo, category: "equipment", description: `HIRE - ${equipment.name} (${group.periodFrom} TO ${group.periodTo})`,
+        qty: calc.quantity, unit, rate: group.rate, amount: calc.netAmount, source: "hire_statement", equipmentId: group.equipmentId }).returning();
+      generated.push(item);
+    }
+    const previous = await tx.select({ id: hireStatements.id, status: hireStatements.status }).from(hireStatements).where(eq(hireStatements.vendorBillId, bill.id));
+    const removed: { id: number; status: string }[] = previous.filter((row: { id: number }) => !desiredStatementIds.has(row.id));
+    if (removed.length) {
+      if (removed.some((row: { id: number; status: string }) => row.status !== "draft")) throw Object.assign(new Error("Approved or billed hire statements cannot be removed"), { code: "CONFLICT" });
+      const removedIds = removed.map((row: { id: number; status: string }) => row.id);
+      await tx.delete(vendorBillItems).where(inArray(vendorBillItems.hireStatementId, removedIds));
+      await tx.delete(hireStatementExceptions).where(inArray(hireStatementExceptions.statementId, removedIds));
+      await tx.delete(hireStatements).where(inArray(hireStatements.id, removedIds));
+    }
+    return generated;
   }
 
   async createVendorBill(data: CreateVendorBillRequest): Promise<VendorBillWithItems> {
@@ -13736,8 +13850,12 @@ export class DatabaseStorage implements IStorage {
 
       let items: VendorBillItem[] = [];
       if (data.items?.length) {
-        items = await tx.insert(vendorBillItems).values(
-          data.items.map(item => ({
+        const ordinaryItems = data.items.filter(item =>
+          data.hireGroups === undefined ||
+          !["hire_statement", "hire_group"].includes((item.source || "").toLowerCase())
+        );
+        if (ordinaryItems.length) items = await tx.insert(vendorBillItems).values(
+          ordinaryItems.map(item => ({
             billId: bill.id,
             date: item.date ?? null,
             category: item.category ?? null,
@@ -13752,10 +13870,17 @@ export class DatabaseStorage implements IStorage {
             siteName: (item as any).siteName?.toUpperCase() || null,
             suppliedTo: item.suppliedTo ?? null,
             transporter: item.transporter ?? null,
+            hireStatementId: null,
           }))
         ).returning();
       }
-
+      const hireItems = await this.reconcileVendorBillHireGroups(tx, bill, data);
+      items.push(...hireItems);
+      if (data.hireGroups !== undefined) {
+        const totalAmount = Math.round((items.reduce((sum, item) => sum + (item.amount || 0), 0) + Number.EPSILON) * 100) / 100;
+        const [corrected] = await tx.update(vendorBills).set({ totalAmount }).where(eq(vendorBills.id, bill.id)).returning();
+        return { ...corrected, items };
+      }
       return { ...bill, items };
     });
   }
@@ -13852,20 +13977,40 @@ export class DatabaseStorage implements IStorage {
       const billNo = await this.generateVendorBillNo();
       const [bill] = await tx.insert(vendorBills).values({
         billDate: data.billDate, billNo, billType: data.billType.toUpperCase(), vendorName: data.vendorName.toUpperCase(),
-        periodFrom: data.periodFrom, periodTo: data.periodTo, status: data.status || "draft", notes: data.notes, totalAmount: data.totalAmount,
+        periodFrom: data.periodFrom, periodTo: data.periodTo, status: "draft", notes: data.notes, totalAmount: data.totalAmount,
       }).returning();
-      const items = await tx.insert(vendorBillItems).values(data.items.map(item => ({ ...item, billId: bill.id }))).returning();
-      const [updated] = await tx.update(hireStatements).set({ vendorBillId: bill.id, status: "billed", billedAt: new Date() })
+      const items = await tx.insert(vendorBillItems).values(data.items.map(item => ({
+        ...item, billId: bill.id, hireStatementId: item.equipmentId === statement.equipmentId ? statement.id : null,
+      }))).returning();
+      // The linked Vendor Bill is still a draft, so the statement enters the
+      // same draft → reviewed → approved → billed lifecycle as integrated groups.
+      const [updated] = await tx.update(hireStatements).set({
+        vendorBillId: bill.id,
+        status: "draft",
+        reviewedBy: null,
+        reviewedAt: null,
+        approvedBy: null,
+        approvedAt: null,
+        billedAt: null,
+        revision: statement.revision + 1,
+      })
         .where(eq(hireStatements.id, statementId)).returning();
       return { statement: updated, bill: { ...bill, items } };
     });
   }
 
   async updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined> {
-    const existing = await this.getVendorBill(id);
-    if (!existing) return undefined;
-
     return await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
+      if (!existing) return undefined;
+      const linkedStatements: HireStatement[] = await tx.select().from(hireStatements)
+        .where(eq(hireStatements.vendorBillId, id)).for("update");
+      if (linkedStatements.length > 0 && data.hireGroups === undefined) {
+        throw Object.assign(new Error("Edits to a bill with linked hire statements must include its hire groups"), { code: "CONFLICT" });
+      }
+      if (data.hireGroups !== undefined && existing.status !== "draft") {
+        throw Object.assign(new Error("Hire groups on verified, approved, or paid bills are frozen"), { code: "CONFLICT" });
+      }
       const setData: any = {
           billDate: data.billDate,
           billType: data.billType.toUpperCase(),
@@ -13900,12 +14045,21 @@ export class DatabaseStorage implements IStorage {
         .where(eq(vendorBills.id, id))
         .returning();
 
-      await tx.delete(vendorBillItems).where(eq(vendorBillItems.billId, id));
+      // A normal legacy edit replaces only its manually supplied lines.  It
+      // must not silently remove frozen/integrated hire lines when the caller
+      // did not submit the optional hireGroups section.
+      await tx.delete(vendorBillItems).where(data.hireGroups === undefined
+        ? and(eq(vendorBillItems.billId, id), isNull(vendorBillItems.hireStatementId))
+        : eq(vendorBillItems.billId, id));
 
       let items: VendorBillItem[] = [];
       if (data.items?.length) {
-        items = await tx.insert(vendorBillItems).values(
-          data.items.map(item => ({
+        const ordinaryItems = data.items.filter(item =>
+          data.hireGroups === undefined ||
+          !["hire_statement", "hire_group"].includes((item.source || "").toLowerCase())
+        );
+        if (ordinaryItems.length) items = await tx.insert(vendorBillItems).values(
+          ordinaryItems.map(item => ({
             billId: id,
             date: item.date ?? null,
             category: item.category ?? null,
@@ -13920,10 +14074,17 @@ export class DatabaseStorage implements IStorage {
             siteName: (item as any).siteName?.toUpperCase() || null,
             suppliedTo: item.suppliedTo ?? null,
             transporter: item.transporter ?? null,
+            hireStatementId: null,
           }))
         ).returning();
       }
-
+      const hireItems = await this.reconcileVendorBillHireGroups(tx, updated, data);
+      items.push(...hireItems);
+      if (data.hireGroups !== undefined) {
+        const totalAmount = Math.round((items.reduce((sum, item) => sum + (item.amount || 0), 0) + Number.EPSILON) * 100) / 100;
+        const [corrected] = await tx.update(vendorBills).set({ totalAmount }).where(eq(vendorBills.id, id)).returning();
+        return { ...corrected, items };
+      }
       return { ...updated, items };
     });
   }
@@ -13974,54 +14135,134 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateVendorBillStatus(id: number, status: string, actor: string): Promise<VendorBillWithItems | undefined> {
-    const existing = await this.getVendorBill(id);
-    if (!existing) return undefined;
+    const changed = await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
+      if (!existing) return false;
+      const linkedStatements: HireStatement[] = await tx.select().from(hireStatements)
+        .where(eq(hireStatements.vendorBillId, id)).for("update");
+      const validTransitions: Record<string, string[]> = {
+        draft: ["verified"],
+        verified: ["approved"],
+        approved: ["paid"],
+      };
+      const allowed = validTransitions[existing.status];
+      if (!allowed || !allowed.includes(status)) {
+        throw Object.assign(new Error(`Invalid status transition from "${existing.status}" to "${status}"`), { code: "CONFLICT" });
+      }
+      if (status === "verified" && linkedStatements.length) {
+        // Preserve terminal legacy statements created before the integrated
+        // lifecycle; they were already commercially reviewed under 07B.
+        const gaps = linkedStatements.filter(statement => statement.status !== "billed").flatMap(statement =>
+          getHireReviewGaps(statement.calculationSnapshot as any).map(gap => `${statement.periodFrom}–${statement.periodTo}: ${gap}`)
+        );
+        if (gaps.length) {
+          throw Object.assign(new Error(`Complete the hire review before verification: ${gaps.join("; ")}`), { code: "CONFLICT" });
+        }
+      }
 
-    const validTransitions: Record<string, string[]> = {
-      draft: ["verified"],
-      verified: ["approved"],
-      approved: ["paid"],
-    };
-
-    const allowed = validTransitions[existing.status];
-    if (!allowed || !allowed.includes(status)) {
-      throw new Error(`Invalid status transition from "${existing.status}" to "${status}"`);
-    }
-
-    const updates: Partial<VendorBill> = { status };
-    const now = format(new Date(), "yyyy-MM-dd HH:mm:ss");
-    const actorUpper = actor.toUpperCase();
-
-    if (status === "verified") {
-      updates.verifiedBy = actorUpper;
-      updates.verifiedAt = now;
-    } else if (status === "approved") {
-      updates.approvedBy = actorUpper;
-      updates.approvedAt = now;
-    } else if (status === "paid") {
-      updates.paidAt = now;
-      // 06M-F §7A: record WHO marked it paid, same actor convention as
-      // verifiedBy/approvedBy above. Purely additive display data.
-      updates.paymentRecordedBy = actorUpper;
-    }
-
-    await db.update(vendorBills)
-      .set(updates)
-      .where(eq(vendorBills.id, id));
-
+      const updates: Partial<VendorBill> = { status };
+      const now = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+      const actorUpper = actor.toUpperCase();
+      if (status === "verified") {
+        updates.verifiedBy = actorUpper;
+        updates.verifiedAt = now;
+      } else if (status === "approved") {
+        updates.approvedBy = actorUpper;
+        updates.approvedAt = now;
+      } else if (status === "paid") {
+        updates.paidAt = now;
+        // 06M-F §7A: record WHO marked it paid, same actor convention as
+        // verifiedBy/approvedBy above. Purely additive display data.
+        updates.paymentRecordedBy = actorUpper;
+      }
+      await tx.update(vendorBills).set(updates).where(eq(vendorBills.id, id));
+      // Integrated and legacy 07B-linked statements follow the existing bill
+      // lifecycle. Their approved/billed snapshots are not recalculated here.
+      const statementStatus = status === "verified" ? "reviewed" : status === "approved" ? "approved" : status === "paid" ? "billed" : "draft";
+      await tx.update(hireStatements)
+        .set({ status: statementStatus, revision: sql`${hireStatements.revision} + 1`, ...(status === "verified" ? { reviewedBy: actorUpper, reviewedAt: new Date() } :
+          status === "approved" ? { approvedBy: actorUpper, approvedAt: new Date() } :
+          status === "paid" ? { billedAt: new Date() } : {}) })
+        .where(and(eq(hireStatements.vendorBillId, id), ne(hireStatements.status, "billed")));
+      return true;
+    });
+    if (!changed) return undefined;
     return await this.getVendorBill(id);
   }
 
   async deleteVendorBill(id: number): Promise<boolean> {
-    const existing = await this.getVendorBill(id);
-    if (!existing) return false;
-
-    await db.transaction(async (tx) => {
+    return await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
+      if (!existing) return false;
+      const statements = await tx.select({ id: hireStatements.id, status: hireStatements.status })
+        .from(hireStatements).where(eq(hireStatements.vendorBillId, id)).for("update");
+      if (existing.status !== "draft" && statements.length) {
+        throw Object.assign(new Error("A verified, approved, or paid hire bill cannot be deleted"), { code: "CONFLICT" });
+      }
+      if (statements.some(s => s.status !== "draft")) throw Object.assign(new Error("A bill with reviewed, approved, or billed hire statements cannot be deleted"), { code: "CONFLICT" });
+      if (statements.length) await tx.delete(hireStatementExceptions).where(inArray(hireStatementExceptions.statementId, statements.map(s => s.id)));
       await tx.delete(vendorBillItems).where(eq(vendorBillItems.billId, id));
+      if (statements.length) await tx.delete(hireStatements).where(eq(hireStatements.vendorBillId, id));
       await tx.delete(vendorBills).where(eq(vendorBills.id, id));
+      return true;
     });
+  }
 
-    return true;
+  async getVendorBillHireActivities(vendorName: string, periodFrom: string, periodTo: string, executor: any = db): Promise<any[]> {
+    const vendorVariants = await this.resolveVendorAliases(vendorName);
+    const vendorMatch = vendorVariants.length === 1
+      ? sql`UPPER(TRIM(${equipmentMaster.vendorName})) = ${vendorVariants[0]}`
+      : sql`UPPER(TRIM(${equipmentMaster.vendorName})) IN (${sql.join(vendorVariants.map(v => sql`${v}`), sql`, `)})`;
+    const equipment: EquipmentMasterType[] = await executor.select().from(equipmentMaster).where(and(
+      eq(equipmentMaster.ownership, "hired"), vendorMatch,
+    ));
+    if (!equipment.length) return [];
+    const ids = equipment.map(row => row.id);
+    const defaults = new Map<number, {
+      name: string; vendorName: string | null; hireBillingBasis: string | null;
+      hireRate: number | null; hireMonthlyDivisorType: string | null;
+      hireMonthlyDivisor: number | null; consumptionNorm: number | null;
+    }>(equipment.map(row => [row.id, {
+      name: row.name, vendorName: row.vendorName, hireBillingBasis: row.hireBillingBasis,
+      hireRate: row.hireRate, hireMonthlyDivisorType: row.hireMonthlyDivisorType,
+      hireMonthlyDivisor: row.hireMonthlyDivisor, consumptionNorm: row.consumptionNorm,
+    }]));
+    const dprRows: any[] = await executor.select({
+      id: equipmentLogs.id, equipmentId: equipmentLogs.equipmentId, date: dprs.date,
+      entryType: equipmentLogs.entryType, numberOfTrips: equipmentLogs.numberOfTrips,
+      hoursOrKmRun: equipmentLogs.hoursWorked, status: dprs.dprStatus, plantUsageId: equipmentLogs.plantUsageId,
+      actualDiesel: equipmentLogs.diesel, expectedDiesel: equipmentLogs.expectedDiesel,
+      dieselNorm: equipmentLogs.dieselNorm, task: equipmentLogs.task, site: dprs.site,
+    }).from(equipmentLogs).innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId)).where(and(
+      inArray(equipmentLogs.equipmentId, ids), gte(dprs.date, periodFrom), lte(dprs.date, periodTo), eq(dprs.isSuperseded, false),
+    ));
+    const usageRows: EquipmentUsage[] = await executor.select().from(equipmentUsage).where(and(
+      inArray(equipmentUsage.equipmentId, ids), gte(equipmentUsage.date, periodFrom), lte(equipmentUsage.date, periodTo),
+    ));
+    const maintenance: EquipmentMaintenanceLog[] = await executor.select().from(equipmentMaintenanceLogs).where(and(
+      inArray(equipmentMaintenanceLogs.equipmentId, ids), gte(equipmentMaintenanceLogs.date, periodFrom),
+      lte(equipmentMaintenanceLogs.date, periodTo), eq(equipmentMaintenanceLogs.isCancelled, false), eq(equipmentMaintenanceLogs.isDeleted, false),
+    ));
+    const isoDate = (date: any) => typeof date === "string" ? date.slice(0, 10) : date.toISOString().slice(0, 10);
+    return [
+      // Metadata-only rows make zero-activity monthly equipment discoverable.
+      // calculateHireGroup explicitly ignores this source.
+      ...equipment.map((row: EquipmentMasterType) => ({ source: "equipment_default", sourceId: row.id, equipmentId: row.id,
+        businessDate: periodFrom, equipment: defaults.get(row.id) })),
+      ...dprRows.map((row: any) => ({ source: "dpr_log", sourceId: row.id, equipmentId: row.equipmentId,
+        businessDate: isoDate(row.date), entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
+        hoursOrKmRun: row.hoursOrKmRun, plantUsageId: row.plantUsageId, actualDiesel: row.actualDiesel,
+        expectedDiesel: row.expectedDiesel, consumptionNorm: row.dieselNorm ?? defaults.get(row.equipmentId!)?.consumptionNorm,
+        normBasis: "L/hour", task: row.task, site: row.site, equipment: defaults.get(row.equipmentId!) })),
+      ...usageRows.map((row: EquipmentUsage) => ({ source: "plant_usage", sourceId: row.id, equipmentId: row.equipmentId,
+        businessDate: isoDate(row.date), entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
+        hoursOrKmRun: row.hoursOrKmRun, actualDiesel: row.dieselIssued, expectedDiesel: row.expectedDiesel,
+        consumptionNorm: defaults.get(row.equipmentId)?.consumptionNorm, normBasis: "L/hour",
+        task: row.task, site: row.siteName, equipment: defaults.get(row.equipmentId) })),
+      ...maintenance.map((row: EquipmentMaintenanceLog) => ({ source: "maintenance", sourceId: row.id, equipmentId: row.equipmentId,
+        businessDate: isoDate(row.date), eventType: row.eventType, description: row.description,
+        downtimeHours: row.downtimeHours, equipment: defaults.get(row.equipmentId) })),
+    ];
   }
 
   async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<Partial<InsertVendorBillItem>[]> {
