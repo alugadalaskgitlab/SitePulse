@@ -1,0 +1,409 @@
+Instruction 07C — Vendor Bill Integration for Monthly / Daily / Trip Equipment Hire
+
+OBJECTIVE
+
+Integrate hired-equipment billing directly into the EXISTING Vendor Bills
+workflow. Do NOT create another billing workflow and do NOT require the
+user to first prepare a separate Hire Statement from Equipment Hub.
+
+The existing Vendor Bill flow already works on:
+Vendor → Bill Type → Date Range → pull underlying activities → review →
+prepare bill.
+
+Equipment Hire must follow the SAME pattern.
+
+This batch covers ONLY:
+1. Monthly Hire
+2. Daily Hire
+3. Trip Basis Hire
+4. Vendor-caused breakdown/unavailability deductions
+5. Diesel-efficiency review / suggested recovery where HSD is supplied by
+   HLC
+
+Do NOT work on Material Trip changes in this batch.
+Do NOT add Hourly Hire UI in this batch.
+
+
+GROUND TRUTH FROM THE CURRENT CODE — READ BEFORE BUILDING
+
+Investigation of the current app found the following. Use these, do not
+rebuild them, and resolve the one real gap called out in #1 before
+assuming coverage:
+
+1. THERE ARE TWO SEPARATE EQUIPMENT-ACTIVITY SOURCES IN THIS APP TODAY —
+   this is the single most important fact for this batch:
+   - The EXISTING Vendor Bill auto-pull mechanism
+     (GET /api/vendor-bills/auto-items → storage.getVendorBillAutoItems)
+     already does almost exactly what this instruction asks for: given
+     Vendor + Bill Type + Date Range, it matches the vendor's hired
+     equipment_master rows, then reads equipment_logs joined to dprs (the
+     equipment entries recorded inside Site DPRs) for that period, and
+     builds one vendor_bill_items row per log entry, already labelled by
+     entryType (HOURLY HIRE / DAILY HIRE / TRIP BASED / MONTHLY HIRE /
+     MOBILIZATION), with quantity already derived per entryType (trip
+     count, meter diff, or time-based hours) exactly the way this
+     instruction wants.
+   - Separately, the 07B Hire Billing calculator (calculateHireBilling in
+     shared/hireBilling.ts, driven by storage.getEquipmentUsage) reads a
+     DIFFERENT table — equipment_usage (the Plant module's equipment
+     entries) — not equipment_logs/dprs.
+   These are two different recording paths for equipment activity (site
+   DPR vs. plant module) and today only one of them (equipment_logs/dprs)
+   is wired into Vendor Bills' auto-pull. INVESTIGATE FIRST: for the hired
+   equipment this batch needs to bill (tippers, excavators, etc.), confirm
+   which of the two tables — or both — actually carries the real activity
+   for that equipment in practice, and make sure the new Equipment Hire
+   Calculation section can see activity recorded either way without
+   double-counting a day/trip that happens to appear in both. Do not
+   silently build against only one source and assume it is complete.
+
+2. The existing auto-items mechanism produces ONE LINE PER LOG ROW (per
+   day, per entry), not an aggregated summary line per period/basis. The
+   UI this instruction asks for (e.g. one row "72 Trips" for 1–15 Aug, one
+   row "14 Days" for 16–31 Aug) requires a NEW grouping/aggregation layer
+   on top of that day-level detail — it does not replace it. Keep the
+   day-level rows available as the audit trail behind each aggregated
+   line (this is exactly what Part 2's "group" concept below is for). Do
+   not change the existing per-row auto-items behaviour for non-hire bill
+   types.
+
+3. The existing hire_statements table (07B) already has an application-
+   level overlap guard for the OLD one-basis-per-period-per-equipment
+   model (POST /api/equipment-hire/statements rejects a new statement
+   whose period overlaps an existing one for the same equipment, but
+   allows adjacent non-overlapping periods). This guard already supports
+   exactly the split-period pattern this batch needs (e.g. 1–15 Aug Trip
+   + 16–31 Aug Daily as two separate, non-overlapping records for the same
+   equipment) — reuse this overlap-check logic for the new per-line
+   records rather than re-deriving it.
+
+4. Diesel expected-vs-actual variance is ALREADY a computed, existing
+   concept in this app — not new math. equipment_master.consumptionNorm
+   (liters/hour or liters/km) already drives an auto-calculated
+   expectedDiesel field on both equipment_logs and equipment_usage rows
+   ("hoursWorked/hoursOrKmRun × norm"), with a variance field already
+   computed elsewhere in the app (e.g. LDO mismatch reporting) using the
+   same pattern. Part 7/8 below is a presentation and review layer on top
+   of numbers the app already calculates — reuse the existing
+   expectedDiesel/variance/consumptionNorm computation, do not invent new
+   diesel-efficiency formulas.
+
+5. shared/hireBilling.ts (calculateHireBilling), the hire_statements /
+   hire_statement_exceptions tables, and their exception-decision model
+   (full_day / half_day / none / manual) from 07B are the reusable
+   calculation engine for this batch — see Part 11.
+
+
+CORE PRINCIPLE
+
+The actual COMMERCIAL BILLING BASIS belongs to the Vendor Bill being
+prepared for that period. Do NOT depend on a single current Hire Basis in
+Equipment Master to calculate historical bills.
+
+Example: a tipper may be 01-Aug to 15-Aug → ₹X/trip, then 16-Aug onward →
+₹Y/day, HSD supplied by HLC. The August Vendor Bill must be able to
+contain BOTH arrangements without changing old equipment records or
+affecting past bills.
+
+Once a Vendor Bill is approved, its quantity, unit, rate, deductions and
+calculation must remain historically frozen.
+
+
+PART 1 — USE THE EXISTING VENDOR BILL FLOW
+
+Investigate the current Vendor Bill drafting workflow first (see Ground
+Truth #1 — much of "pull activities for this vendor/period" already
+exists). When user selects Vendor, Bill Type = Equipment Hire / appropriate
+existing equipment bill type, Date From, Date To, continue using the
+EXISTING activity-extraction mechanism (getVendorBillAutoItems), extended
+per Ground Truth #1 to also cover equipment_usage activity where that is
+where the real records live for a given piece of equipment.
+
+Pull that vendor's relevant underlying activity records from the existing
+sources already used by Vendor Bills, including where applicable: DPR
+equipment activity (equipment_logs/dprs), Equipment Usage
+(equipment_usage), existing trip/transport activity already available to
+Vendor Bills, Equipment Maintenance / Breakdown logs
+(equipment_maintenance_logs), and existing HSD/diesel issue records
+(expectedDiesel/dieselIssued/variance already on both source tables).
+
+Do NOT create duplicate equipment attendance, trip entry, diesel entry or
+activity entry merely for billing.
+
+
+PART 2 — BILLING GROUPS / LINES
+
+After activities are extracted (day-level, per Ground Truth #2), allow the
+drafting user to prepare one or more Equipment Hire bill lines/groups by
+selecting a date sub-range and letting the system aggregate the underlying
+day-level activity into one summary line. Each group must allow:
+- Equipment
+- From Date
+- To Date
+- Billing Unit: Month / Day / Trip
+- Quantity
+- Rate
+- Amount
+
+The user may therefore split one bill period. Example:
+TIPPER 01, 01-Aug to 15-Aug, Unit: Trip, Qty: 72, Rate: ₹___/trip
+16-Aug to 31-Aug, Unit: Day, Qty: 14, Rate: ₹___/day
+Both belong to the SAME Vendor Bill.
+
+Do not force the Equipment Master Hire Basis onto all dates. (Equipment
+Master's hire_* fields from 07B may still be used as a default suggestion
+when starting a new group, but the drafting user can change basis/rate per
+group without altering Equipment Master.)
+
+
+PART 3 — MONTHLY HIRE
+
+For a Month-basis line: suggested quantity = appropriate month/period
+quantity. For a full monthly period normally show Qty = 1 Month, Rate =
+Monthly Hire Rate, Gross = Qty × Rate. For a part month, DO NOT silently
+invent a prorata rule — allow the drafting user to confirm/edit Qty or the
+Gross monthly hire amount directly. If an existing agreed divisor
+(equipment's hireMonthlyDivisorType/hireMonthlyDivisor from 07B) is
+reliably available, it may be suggested, but the drafting user remains in
+control.
+
+IMPORTANT: Do NOT deduct simply because the machine did not work. Examples
+that are NOT automatically deductible: HLC had no work, site was not
+ready, rain/client stoppage, machine was standing but available, movement
+between HLC sites/projects. Only vendor-caused breakdown/unavailability or
+another deduction explicitly accepted by the drafting user should reduce
+Monthly Hire.
+
+
+PART 4 — BREAKDOWN / UNAVAILABILITY
+
+For Month or Day billing, read existing equipment_maintenance_logs for
+breakdown/unavailability information within the selected bill period (same
+source and pattern as 07B). Show only relevant exception dates, not every
+normal date. Suggested presentation: Date | Equipment | Breakdown/Reason |
+Downtime | Suggested Treatment | Final Treatment | Remarks. Final
+Treatment: Full Day Deduction / Half Day Deduction / No Deduction / Manual
+Amount.
+
+Do NOT guess a Full/Half Day merely from downtime hours — confirmed again
+in this app: there is no reliable, general "full working day = N hours"
+setting suitable for billing (the closest fields belong to Work Programme
+planning and Execution Arrangement productivity estimates, a different
+purpose). Show downtime hours as information and let the drafting user
+decide, exactly as built in 07B.
+
+For Monthly Hire, suggested deduction may use: monthly rate ÷ divisor ×
+deduction days, where deduction days = 1.0 Full Day or 0.5 Half Day. The
+user must be able to edit the deduction before saving the bill.
+
+
+PART 5 — DAILY HIRE
+
+For a Day-basis group, use the extracted operational activities to
+suggest unique payable dates. IMPORTANT: multiple activity/usage entries
+for the SAME equipment on the SAME date must NOT become multiple hire
+days (e.g. 3 usage segments on 18-Aug = 1 suggested hire day) — this
+applies across BOTH activity sources per Ground Truth #1 if an equipment's
+activity is split across equipment_logs and equipment_usage. Show the
+selected dates in a simple review. Each date may be Full Day = 1, Half Day
+= 0.5, or Exclude = 0. Suggested Qty = total accepted day-equivalents,
+adjustable by the drafting user. Do not require a separate attendance
+screen.
+
+
+PART 6 — TRIP BASIS
+
+For Trip-basis billing, use the reliable trip quantity already recorded in
+the underlying operational activity — equipment_logs.numberOfTrips (DPR
+path) or equipment_usage.numberOfTrips (Plant module path), whichever is
+where this equipment's real trips are recorded (see Ground Truth #1). Do
+NOT infer trips from hours, meter movement, dates, or start/end times.
+Show extracted trip activity date-wise so the drafting user can verify it.
+Suggested Qty = total selected payable trips. User may exclude/correct an
+activity row before finalising the bill, with remarks where the existing
+Vendor Bill workflow supports this.
+
+
+PART 7 — DIESEL / HSD PERFORMANCE
+
+Where HSD/Diesel is in HLC scope for the selected hire line/period, show a
+compact HSD PERFORMANCE / SUGGESTED RECOVERY section, built from the
+ALREADY-EXISTING expectedDiesel/variance/consumptionNorm computation
+(Ground Truth #4) — do not derive a new formula. Show, wherever the
+existing data reliably supports it: Equipment, Period, Actual HSD issued,
+relevant activity (km / operating hours / trips), diesel efficiency norm,
+norm basis (km/L, L/hour, L/trip), expected/norm consumption, excess
+consumption, suggested recovery quantity, suggested recovery amount if
+diesel rate is reliably available.
+
+IMPORTANT: the system must SUGGEST a recovery only. Drafting user must be
+able to Accept / Edit / Ignore with remarks. Do NOT automatically post a
+diesel recovery without review. Do NOT alter diesel stock in this
+workflow. Do NOT duplicate diesel issue/accounting records.
+
+
+PART 8 — DIESEL NORM
+
+equipment_master.consumptionNorm already exists and is already used
+elsewhere in the app this same way (Ground Truth #4) — use it as the
+DEFAULT suggestion. The Vendor Bill drafting user must be able to
+edit/override the norm used for THIS BILL / BILL LINE. The final norm used
+must be saved with the bill calculation snapshot so future changes to
+Equipment Master do NOT alter historical approved bills. Do NOT build a
+complicated effective-dated hire-contract master in this batch.
+
+
+PART 9 — COMMERCIAL TERMS ARE BILL-SPECIFIC
+
+For each Equipment Hire bill line, persist the commercial values actually
+used: Equipment, From Date, To Date, Billing Unit, Quantity, Rate, Gross
+Amount, Breakdown/unavailability deduction, Diesel recovery/deduction (if
+any), other authorised adjustment if the existing Vendor Bill workflow
+supports it, Net Amount, diesel norm/basis actually used (if applicable).
+These values belong to the BILL calculation snapshot — reuse the
+hire_statements.calculationSnapshot / hire_statement_exceptions structures
+from 07B as the underlying persistence for each line/group rather than
+inventing a new snapshot mechanism (see Part 11). Later edits to Equipment
+Master must NOT recalculate an already-approved historical Vendor Bill.
+
+
+PART 10 — EXISTING / PREVIOUSLY ENTERED VENDOR BILLS
+
+Existing Vendor Bills may already exist for monthly hired equipment. Do
+NOT require the user to recreate those bills in a separate Hire Billing
+module. Investigate the existing Vendor Bill edit/correction behaviour and
+its actual status lifecycle (schema shows vendor_bills.status defaulting
+to "draft" with separate verifiedBy/approvedBy/paidAt fields — confirm the
+exact terminal/locked state and correction path rather than assuming
+names). When an existing editable Vendor Bill is opened, allow the
+Equipment Hire calculation/review section to be used for its existing
+vendor/date period, pull the applicable historical activities, and allow
+Month/Day/Trip lines and deductions to be reviewed. For an already
+approved/locked bill: DO NOT silently overwrite it — reuse the existing
+Vendor Bill correction/edit workflow and preserve the existing
+audit/approval behaviour. Report exactly how approved bills can safely be
+corrected.
+
+
+PART 11 — EXISTING 07B HIRE BILLING SCREEN
+
+There is currently a separate Equipment Hub → Hire Billing UI from
+Instruction 07B, backed by shared/hireBilling.ts (calculateHireBilling)
+and the hire_statements / hire_statement_exceptions tables. The normal
+user should NOT need to use two billing systems.
+
+After Vendor Bill integration is working:
+- reuse calculateHireBilling and the hire_statements/hire_statement_
+  exceptions tables as the underlying calculation/persistence for each
+  Vendor Bill hire line/group (per Part 9) — do not create duplicate
+  calculation logic;
+- reuse the existing hire_statements overlap-prevention pattern (Ground
+  Truth #3) for the new split-period, multi-line-per-equipment case;
+- hide/remove the separate Hire Billing TILE/shortcut from normal user
+  navigation once the Vendor Bill flow covers the same ground;
+- do NOT destructively delete its tables or data in this batch.
+
+Do NOT create duplicate calculations. Vendor Bills become the user-facing
+hire billing workflow.
+
+
+PART 12 — UI SIMPLICITY
+
+Keep the Vendor Bill screen consistent with its present design. When Bill
+Type relates to Equipment Hire, show one compact section: EQUIPMENT HIRE
+CALCULATION, e.g.:
+
+Equipment: Tipper 01
+01–15 Aug — Basis: Trip — Qty: 72 Trips — Rate: ₹___ — Amount: ₹___
+16–31 Aug — Basis: Day — Qty: 14 Days — Rate: ₹___ — Amount: ₹___
+Breakdown / Unavailability Deduction: ₹___
+HSD Performance: Actual ___ L, Norm ___, Suggested Recovery ₹___, Final
+Recovery ₹___
+NET EQUIPMENT HIRE: ₹___
+
+Avoid dashboards, additional registers and complicated contract screens.
+
+
+PART 13 — DO NOT TOUCH
+
+Do NOT change in this batch: Material Trip entry/form; vehicle/equipment
+linking in Material Trip; Material Trip PDF/image/share feature; DPR entry
+workflow; Equipment Usage operational entry; Plant Usage entry; Equipment
+Movement; Maintenance entry workflow; diesel stock calculations; normal
+material Vendor Bills; subcontractor billing; labour billing; payroll;
+equipment depreciation/assets; unrelated Vendor Bill approval rules;
+Hourly Hire workflow/UI. Material Trip will be handled separately after
+this batch.
+
+
+PART 14 — TESTS
+
+A. Monthly excavator: monthly hire ₹3,00,000, machine works only 18 days
+   because HLC had no work. Expected: Gross hire remains ₹3,00,000 before
+   valid deductions.
+B. Monthly excavator with vendor breakdown: 1 Full Day + 1 Half Day.
+   Expected: suggested 1.5-day deduction; drafting user can edit/waive it.
+C. Daily hired machine: multiple usage records on same date (test with
+   records split across equipment_logs and equipment_usage if that
+   combination is real for any hired equipment). Expected: one Full Day,
+   not multiple days.
+D. Daily Half Day: reviewer changes one payable date to Half Day. Expected:
+   Qty reduced by 0.5.
+E. Trip-based tipper: trips taken from whichever source (equipment_logs or
+   equipment_usage) reliably carries this equipment's trips. Expected: no
+   guessed trips.
+F. Mixed commercial basis in same bill: Tipper 01–15 Aug = Trip, 16–31 Aug
+   = Day. Expected: both lines appear in same Vendor Bill correctly.
+G. HSD in HLC scope: recorded HSD + activity + norm available. Expected:
+   HSD performance and suggested recovery shown, matching the existing
+   expectedDiesel/variance computation.
+H. Diesel recovery overridden: drafting user edits/waives suggested
+   recovery. Expected: final user decision saved.
+I. Equipment Master later changed. Expected: previously approved Vendor
+   Bill quantities/rates/norms remain unchanged.
+J. Existing approved historical Vendor Bill. Expected: no silent
+   overwrite; existing correction workflow is respected.
+K. Existing normal material/subcontract Vendor Bills remain unchanged —
+   confirm the existing per-row getVendorBillAutoItems behaviour for
+   non-hire bill types is untouched.
+L. Full build/type-check/test suite.
+
+
+SCHEMA / MIGRATION SAFETY
+
+Investigate and reuse the existing Vendor Bill schema and the 07B hire
+tables/helpers first (Ground Truth #1, #3, #5). Prefer minimum additive
+changes — most likely just a link from a vendor_bill_item (or a small new
+join row) to its originating hire_statements record per group/line, so
+each Vendor Bill hire line can point at its own frozen calculation
+snapshot. Do NOT create another parallel Vendor Bill system. If schema
+additions are needed beyond this, report the proposed minimum schema
+BEFORE applying any migration. NO destructive migration. NO DROP TABLE.
+NO DROP COLUMN. NO destructive rename.
+
+
+REPORT BACK
+
+1. Existing Vendor Bill workflow reused (confirm getVendorBillAutoItems
+   extension approach).
+2. How Month / Day / Trip groups are created from day-level activity.
+3. How mixed Trip → Daily billing in one period works.
+4. How Monthly Hire avoids deducting HLC idle days.
+5. How breakdown deductions are suggested and edited.
+6. How duplicate daily usage is collapsed, INCLUDING across both
+   equipment_logs and equipment_usage where an equipment has activity in
+   both.
+7. Exact trip quantity source(s) confirmed per workflow.
+8. How HSD consumption and efficiency are derived (confirm reuse of
+   existing expectedDiesel/variance/consumptionNorm, no new formula).
+9. Where diesel norm comes from and how bill-level override is saved.
+10. How existing historical Vendor Bills are edited/corrected (exact
+    status lifecycle confirmed).
+11. What happened to the separate 07B Hire Billing tile, and confirmation
+    calculateHireBilling/hire_statements are reused, not duplicated.
+12. Schema changes, if any.
+13. Files changed.
+14. Focused test results.
+15. Full build/type-check/test result.
+
+STOP after this batch. DO NOT START MATERIAL TRIP OR ANY OTHER FEATURE.
