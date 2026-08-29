@@ -47,11 +47,13 @@ Raw activity-derived Vendor Bill auto-lines must not coexist with a hire group f
 
 **How to apply:** Match narrowly on auto source, equipment identity, and inclusive group period on both client and server; never infer that an unflagged manual line is hire activity.
 
-HSD recovery is priced day-wise from Daily Diesel Requirement purchases: same-day first, otherwise the latest prior purchase day, with quantity-weighted averaging when that day has multiple purchases. Never use a future purchase or fabricate a missing rate.
+HSD recovery uses period-net excess: max(0, total actual minus total expected). Daily signed variance remains audit evidence, so under-consumption offsets over-consumption within the same Hire Group.
 
-**Why:** Daily Diesel Requirement is the only purchase source with both quantity and rate. Equipment activity lacks a dependable site FK, so current pricing scope must be company-wide rather than inferred from free-text site/plant labels.
+**Why:** Refuelling and tank measurement timing can shift apparent consumption between dates; summing positive daily variances overstates recovery.
 
-**How to apply:** Use the requirement's typed purchase date for ordering, not free-form purchasedAt text. Freeze each used rate date, contributing purchases, weighted rate, and suggested/final recovery in the bill snapshot; no-rate cases require explicit manual edit or ignore.
+**How to apply:** Resolve a same-day/latest-prior rate for every actual-HSD date, never a future rate. Weight resolved rates by actual litres; partial gaps do not invalidate priced dates. Freeze daily evidence, rate sources, decisions, and results.
+
+Daily Diesel Requirement is the only purchase source with both quantity and rate. Equipment activity lacks a dependable site FK, so pricing scope remains company-wide rather than inferred from free-text labels.
 
 Monthly equipment activity is evidence only and must never become a standalone ordinary Vendor Bill auto-line.
 

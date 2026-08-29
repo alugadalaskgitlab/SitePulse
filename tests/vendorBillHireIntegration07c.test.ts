@@ -57,7 +57,7 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain('if ((entryType || "").toLowerCase() === "monthly") return false');
     expect(storage).toContain('if (entryTypeFilter === "daily_hourly") return ["daily", "hourly", "time_meter"].includes(et)');
     expect(storage).toContain('if (entryTypeFilter === "trip_based") return et === "trip_based"');
-    expect(client).toContain("VIEW {activityDays.length} ACTIVITY RECORDS");
+    expect(client).toContain("EQUIPMENT HIRE WORKING SHEET · {activityDays.length} DATES");
   });
 
   it("loads authoritative diesel purchase evidence and freezes calculated recovery", () => {

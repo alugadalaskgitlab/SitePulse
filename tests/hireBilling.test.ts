@@ -154,7 +154,7 @@ describe("normalized vendor-bill hire groups", () => {
     expect(result).toMatchObject({ quantity: 4, grossAmount: 400, activityIds: ["dpr_log:11", "plant_usage:20"] });
   });
 
-  it("accepts only the auto-priced HSD suggestion and keeps manual edits explicit", () => {
+  it("accepts only the period-net auto-priced HSD suggestion and keeps manual edits explicit", () => {
     const input = {
       terms: { billingBasis: "daily" as const, rate: 1000 },
       periodFrom: "2025-04-01",
@@ -170,12 +170,14 @@ describe("normalized vendor-bill hire groups", () => {
       .toThrow("explicit non-negative diesel recovery amount");
   });
 
-  it("prices excess HSD from a same-day purchase", () => {
+  it("prices period-net excess HSD from a same-day purchase", () => {
     const pricing = calculateHireDieselPricing(
       [{ source: "plant_usage", sourceId: 1, equipmentId: 2, businessDate: "2025-04-01", actualDiesel: 20, expectedDiesel: 15 }],
       [{ id: 10, date: "2025-04-01", rate: 92.4, qtyPurchased: 200 }],
     );
     expect(pricing).toMatchObject({
+      actualDiesel: 20,
+      expectedDiesel: 15,
       suggestedExcess: 5,
       applicableRate: 92.4,
       suggestedRecoveryAmount: 462,
@@ -184,7 +186,7 @@ describe("normalized vendor-bill hire groups", () => {
     });
   });
 
-  it("uses a quantity-weighted average across same-day diesel purchases", () => {
+  it("uses a quantity-weighted same-day purchase rate for period-net recovery", () => {
     const pricing = calculateHireDieselPricing(
       [{ source: "plant_usage", sourceId: 1, equipmentId: 2, businessDate: "2025-04-02", actualDiesel: 30, expectedDiesel: 20 }],
       [
@@ -192,10 +194,83 @@ describe("normalized vendor-bill hire groups", () => {
         { id: 11, date: "2025-04-02", rate: 100, qtyPurchased: 300 },
       ],
     );
-    expect(pricing).toMatchObject({ applicableRate: 97.5, suggestedRecoveryAmount: 975 });
+    expect(pricing).toMatchObject({
+      actualDiesel: 30,
+      expectedDiesel: 20,
+      suggestedExcess: 10,
+      applicableRate: 97.5,
+      suggestedRecoveryAmount: 975,
+    });
   });
 
-  it("falls back to the latest prior purchase and never uses a future purchase", () => {
+  it("uses period-net diesel excess so low-consumption days offset high-consumption days", () => {
+    const pricing = calculateHireDieselPricing(
+      [
+        { source: "plant_usage", sourceId: 1, equipmentId: 2, businessDate: "2025-04-01", actualDiesel: 25.25, expectedDiesel: 14.12 },
+        { source: "plant_usage", sourceId: 2, equipmentId: 2, businessDate: "2025-04-02", actualDiesel: 15.87, expectedDiesel: 15.88 },
+      ],
+      [{ id: 10, date: "2025-04-01", rate: 90, qtyPurchased: 100 }],
+    );
+    expect(pricing).toMatchObject({
+      actualDiesel: 41.12,
+      expectedDiesel: 30,
+      suggestedExcess: 11.12,
+      suggestedRecoveryAmount: 1000.8,
+    });
+    expect(pricing.dailyPricing.map(day => day.variance)).toEqual([11.13, -0.01]);
+  });
+
+  it("fully offsets opposite daily variances and keeps both signed audit values", () => {
+    const pricing = calculateHireDieselPricing(
+      [
+        { source: "dpr_log", sourceId: 1, equipmentId: 2, businessDate: "2025-04-01", actualDiesel: 6, expectedDiesel: 4 },
+        { source: "plant_usage", sourceId: 2, equipmentId: 2, businessDate: "2025-04-02", actualDiesel: 2, expectedDiesel: 4 },
+      ],
+      [{ id: 10, date: "2025-04-01", rate: 90, qtyPurchased: 100 }],
+    );
+    expect(pricing).toMatchObject({ actualDiesel: 8, expectedDiesel: 8, suggestedExcess: 0, suggestedRecoveryAmount: 0 });
+    expect(pricing.dailyPricing.map(day => day.variance)).toEqual([2, -2]);
+  });
+
+  it("weights the period HSD rate by every priced day's actual litres, not daily excess", () => {
+    const pricing = calculateHireDieselPricing(
+      [
+        { source: "plant_usage", sourceId: 1, equipmentId: 2, businessDate: "2025-04-01", actualDiesel: 10, expectedDiesel: 4 },
+        { source: "plant_usage", sourceId: 2, equipmentId: 2, businessDate: "2025-04-02", actualDiesel: 30, expectedDiesel: 35 },
+      ],
+      [
+        { id: 10, date: "2025-04-01", rate: 90, qtyPurchased: 100 },
+        { id: 11, date: "2025-04-02", rate: 100, qtyPurchased: 100 },
+        { id: 12, date: "2025-04-03", rate: 1, qtyPurchased: 10_000 },
+      ],
+    );
+    expect(pricing).toMatchObject({
+      actualDiesel: 40,
+      expectedDiesel: 39,
+      suggestedExcess: 1,
+      applicableRate: 97.5,
+      suggestedRecoveryAmount: 97.5,
+    });
+  });
+
+  it("uses priced actual days when rate coverage is partial and reports every gap", () => {
+    const pricing = calculateHireDieselPricing(
+      [
+        { source: "plant_usage", sourceId: 1, equipmentId: 2, businessDate: "2025-04-01", actualDiesel: 5, expectedDiesel: 2 },
+        { source: "plant_usage", sourceId: 2, equipmentId: 2, businessDate: "2025-04-02", actualDiesel: 15, expectedDiesel: 8 },
+      ],
+      [{ id: 10, date: "2025-04-02", rate: 80, qtyPurchased: 100 }],
+    );
+    expect(pricing).toMatchObject({
+      suggestedExcess: 10,
+      applicableRate: 80,
+      rateUnavailable: false,
+      suggestedRecoveryAmount: 800,
+      unpricedActualDates: ["2025-04-01"],
+    });
+  });
+
+  it("prices period-net recovery from the latest prior purchase and never a future purchase", () => {
     const pricing = calculateHireDieselPricing(
       [{ source: "plant_usage", sourceId: 1, equipmentId: 2, businessDate: "2025-04-05", actualDiesel: 18, expectedDiesel: 10 }],
       [
@@ -205,13 +280,16 @@ describe("normalized vendor-bill hire groups", () => {
       ],
     );
     expect(pricing).toMatchObject({
+      actualDiesel: 18,
+      expectedDiesel: 10,
+      suggestedExcess: 8,
       applicableRate: 90,
       suggestedRecoveryAmount: 720,
       dailyPricing: [{ rateDate: "2025-04-03", purchaseSources: [{ id: 10 }] }],
     });
   });
 
-  it("reports rate unavailable without fabricating a recovery and permits a manual edit", () => {
+  it("reports a period rate unavailable without fabricating recovery and permits a manual edit", () => {
     const input = {
       terms: { billingBasis: "daily" as const, rate: 1000 },
       periodFrom: "2025-04-01",
@@ -237,7 +315,7 @@ describe("normalized vendor-bill hire groups", () => {
       [{ id: 3, date: "2025-07-22", eventType: "breakdown", downtimeHours: 2.5, description: "HOSE FAILURE" }],
     );
     expect(days).toEqual([
-      expect.objectContaining({ date: "2025-07-19", activity: "worked", hours: 8.5, actualDiesel: 24 }),
+      expect.objectContaining({ date: "2025-07-19", activity: "worked", hours: 8.5, actualDiesel: 24, dieselVariance: 24 }),
       expect.objectContaining({ date: "2025-07-20", activity: "worked", hours: 7, trips: 3, actualDiesel: 21, movementReferences: ["TO YARD"] }),
       expect.objectContaining({ date: "2025-07-21", activity: "no_activity", activityCount: 0 }),
       expect.objectContaining({ date: "2025-07-22", activity: "breakdown", downtimeHours: 2.5, maintenanceDescriptions: ["HOSE FAILURE"] }),
@@ -246,7 +324,123 @@ describe("normalized vendor-bill hire groups", () => {
     expect(monthly.deductionAmount).toBe(0);
   });
 
-  it("keeps a saved recovery snapshot unchanged when a later purchase appears", () => {
+  it("freezes all 13 calendar dates and reliable measurement fields into a monthly snapshot", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "monthly", rate: 30_000 },
+      periodFrom: "2025-07-19",
+      periodTo: "2025-07-31",
+      activities: [{
+        source: "plant_usage", sourceId: 1, equipmentId: 2, equipmentName: "TRACTOR DOZER",
+        businessDate: "2025-07-19", site: "ROAD SITE", task: "EARTHWORK",
+        hoursOrKmRun: 8, openingReading: 100, closingReading: 108, actualDiesel: 24, expectedDiesel: 20,
+      }],
+    });
+    expect(result.workingSheet).toHaveLength(13);
+    expect(result.workingSheet[0]).toMatchObject({
+      date: "2025-07-19", equipmentNames: ["TRACTOR DOZER"], siteLocations: ["ROAD SITE"],
+      activityDescriptions: ["EARTHWORK"], openingReadings: [100], closingReadings: [108], dieselVariance: 4,
+    });
+    expect(result.workingSheet.slice(1).every(day => day.activity === "no_activity")).toBe(true);
+    expect(result).toMatchObject({ grossAmount: 13_000, deductionAmount: 0 });
+  });
+
+  it("suppresses only an explicit mirror while retaining real unlinked same-day activity in one visible day", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "daily", rate: 1000 },
+      periodFrom: "2025-04-01",
+      periodTo: "2025-04-01",
+      activities: [
+        { source: "dpr_log", sourceId: 1, equipmentId: 2, businessDate: "2025-04-01", plantUsageId: 10, hoursOrKmRun: 5, actualDiesel: 5, expectedDiesel: 4 },
+        { source: "plant_usage", sourceId: 10, equipmentId: 2, businessDate: "2025-04-01", hoursOrKmRun: 5, actualDiesel: 5, expectedDiesel: 4 },
+        { source: "dpr_log", sourceId: 2, equipmentId: 2, businessDate: "2025-04-01", hoursOrKmRun: 3, actualDiesel: 3, expectedDiesel: 2 },
+      ],
+    });
+    expect(result.quantity).toBe(1);
+    expect(result.activityIds).toEqual(["dpr_log:2", "plant_usage:10"]);
+    expect(result.workingSheet).toEqual([
+      expect.objectContaining({ date: "2025-04-01", activityCount: 2, hours: 8, actualDiesel: 8, expectedDiesel: 6 }),
+    ]);
+  });
+
+  it("keeps open operational evidence visible but excludes it from daily and trip payable totals", () => {
+    const openDaily = calculateHireGroup({
+      terms: { billingBasis: "daily", rate: 1000 },
+      periodFrom: "2025-04-01",
+      periodTo: "2025-04-01",
+      activities: [{
+        source: "plant_usage", sourceId: 1, equipmentId: 2, businessDate: "2025-04-01",
+        status: "open", entryType: "daily", hoursOrKmRun: 8,
+      }],
+    });
+    expect(openDaily).toMatchObject({
+      quantity: 0,
+      decisions: { daily: [] },
+      workingSheet: [{ date: "2025-04-01", activityCount: 1, billableActivityCount: 0, openActivityCount: 1 }],
+    });
+
+    const openTrip = calculateHireGroup({
+      terms: { billingBasis: "trip", rate: 100 },
+      periodFrom: "2025-04-01",
+      periodTo: "2025-04-01",
+      activities: [{
+        source: "plant_usage", sourceId: 2, equipmentId: 2, businessDate: "2025-04-01",
+        status: "open", entryType: "trip_based", numberOfTrips: 5,
+      }],
+    });
+    expect(openTrip.quantity).toBe(0);
+  });
+
+  it("uses hire-agreement bounds for quantity, diesel, evidence rows, and the frozen measurement period", () => {
+    const result = calculateHireGroup({
+      terms: {
+        billingBasis: "daily",
+        rate: 1000,
+        hireStartDate: "2025-04-02",
+        hireEndDate: "2025-04-03",
+      },
+      periodFrom: "2025-04-01",
+      periodTo: "2025-04-04",
+      activities: [
+        { source: "plant_usage", sourceId: 1, equipmentId: 2, businessDate: "2025-04-01", actualDiesel: 10 },
+        { source: "plant_usage", sourceId: 2, equipmentId: 2, businessDate: "2025-04-02", actualDiesel: 5 },
+        { source: "plant_usage", sourceId: 3, equipmentId: 2, businessDate: "2025-04-04", actualDiesel: 10 },
+      ],
+    });
+    expect(result).toMatchObject({
+      quantity: 1,
+      measurementPeriodFrom: "2025-04-02",
+      measurementPeriodTo: "2025-04-03",
+      activityIds: ["plant_usage:2"],
+      diesel: { actualDiesel: 5 },
+    });
+    expect(result.workingSheet.map(day => day.date)).toEqual(["2025-04-02", "2025-04-03"]);
+  });
+
+  it("freezes date, recorded trips, and accepted trips for approved-history audit", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "trip", rate: 100 },
+      periodFrom: "2025-04-01",
+      periodTo: "2025-04-01",
+      activities: [{
+        source: "plant_usage", sourceId: 10, equipmentId: 2, businessDate: "2025-04-01",
+        entryType: "trip_based", numberOfTrips: 3,
+      }],
+      tripDecisions: [{ source: "plant_usage", sourceId: 10, correctedTrips: 4, remarks: "VERIFIED" }],
+    });
+    expect(result.quantity).toBe(4);
+    expect(result.decisions.trip).toEqual([{
+      source: "plant_usage",
+      sourceId: 10,
+      businessDate: "2025-04-01",
+      selected: true,
+      correctedTrips: 4,
+      remarks: "VERIFIED",
+      recordedTrips: 3,
+      acceptedTrips: 4,
+    }]);
+  });
+
+  it("keeps a saved period-net recovery snapshot unchanged when a later purchase appears", () => {
     const input = {
       terms: { billingBasis: "daily" as const, rate: 1000 },
       periodFrom: "2025-04-01",

@@ -1,0 +1,592 @@
+Instruction 07C-HF3 — Period-Net HSD Recovery + Equipment Hire Working/Measurement Sheet
+
+OBJECTIVE
+
+Do NOT rebuild 07C / 07C-HF1 / 07C-HF2.
+This is a focused follow-up to:
+1. Correct HSD recovery from day-wise positive-only excess to PERIOD-NET excess.
+2. Make the underlying pulled equipment activity a clear WORKING / MEASUREMENT SHEET for the Vendor Bill.
+3. Confirm the reduced ordinary "Pull Items" count is intentional and does not hide any activity required for billing.
+
+Do NOT start another feature.
+
+
+GROUND TRUTH FROM THE CURRENT CODE — READ BEFORE STARTING
+
+- shared/hireBilling.ts calculateHireDieselPricing() currently computes,
+  for each day, excessLitres = max(0, dailyActual - dailyExpected), and
+  the period suggestedExcess is the SUM of only the positive per-day
+  values. This is exactly the bug being corrected in Part 1 below.
+  applicableRate/purchaseSources are currently only looked up for days
+  where excessLitres > 0 — that lookup condition must change per Part 3
+  below, since a period-net excess is not tied to any specific day(s).
+
+- buildHireActivityDays() already loops every calendar date from
+  periodFrom to periodTo inclusive (`for (cursor = periodFrom; cursor <=
+  periodTo; cursor += 1 day)`) and already fills no-activity dates with a
+  "no_activity" row. Part 6/Part 7's "cover every calendar date" is
+  ALREADY TRUE today — this batch only needs to add columns/fields to
+  what each day already returns (opening/closing meter, per-day
+  Actual/Expected/Variance, breakdown/reviewer/remarks), not build the
+  date-looping itself.
+
+- calculateHireBilling()'s Daily-basis branch already collapses multiple
+  activity rows on the same equipment/date into ONE payable day before
+  computing quantity ("Segments entered on the same operational date are
+  one payable day" — `Array.from(new Set(usage.map(row =>
+  row.date.slice(0,10))))`). Part 10's "must still collapse to one date
+  row" is already true for the PAYABLE QUANTITY. What is NOT yet
+  guaranteed is that the Working Sheet's VISIBLE row for that date also
+  merges the underlying dpr_log/plant_usage records into a single display
+  row rather than showing them twice — confirm/fix the display layer only.
+
+- normalizeHireActivities() only removes a dpr_log row as a duplicate of
+  a plant_usage row when they are EXPLICITLY linked via plantUsageId.
+  Two independent records (no plantUsageId link) that happen to share the
+  same equipment and date are NOT deduplicated today and will both be
+  summed into that day's hours/diesel/trips. INVESTIGATE FIRST: confirm
+  whether DPR equipment-log entry and Plant equipment-usage entry are
+  meant to be mutually exclusive per equipment/date in normal operation,
+  or whether a genuine same-day entry in both is possible. Report what
+  you find — do not assume either way. If genuine same-day entries in
+  both sources are possible and are NOT the same physical event, they
+  must both be shown (that is real activity, not a duplicate); only an
+  explicitly-linked mirror should be suppressed, exactly as the code does
+  today. Do not change this de-dup rule without confirming it first.
+
+- The six diesel-pricing tests added in 07C-HF2 (same-day purchase,
+  quantity-weighted same-day average, latest-prior fallback, rate
+  unavailable, snapshot immutability, accept-only-when-priced) were
+  written against the OLD day-wise-sum-of-positive-excess behavior. Part 1
+  intentionally changes that behavior. Update these tests' expected
+  numbers to match period-net semantics — they should still exist and
+  pass, but checking the corrected math, not the old one. This is expected
+  and is not a regression.
+
+
+PART 1 — CORRECT HSD RECOVERY TO PERIOD-NET BASIS
+
+CURRENT ISSUE
+
+The present HSD pricing logic sums only each day's positive excess:
+daily excess = max(0, actual - expected)
+and ignores days where actual diesel is below expected.
+This can overstate vendor recovery.
+
+For equipment hire billing, diesel consumption must be reviewed over the selected Hire Group / billing period.
+This is especially important because daily figures can vary due to:
+- operating load and site conditions;
+- idling;
+- timing of refuelling;
+- opening/closing fuel balance;
+- practical tank-level measurement differences;
+- diesel issued on one day but effectively consumed across more than one operating day.
+
+Therefore a low-consumption day must be allowed to offset a high-consumption day within the SAME hire billing period.
+
+REQUIRED CALCULATION
+
+For each Hire Group:
+
+TOTAL ACTUAL HSD
+= sum of reliable actual HSD issued/consumed records for the group period
+
+TOTAL EXPECTED HSD
+= sum of expected diesel generated from the existing consumption norm and valid operational activity
+
+NET EXCESS HSD
+= max(0, Total Actual HSD - Total Expected HSD)
+
+Suggested recovery must be based on NET EXCESS HSD.
+Do NOT calculate the final bill recovery by summing only positive daily excess values.
+
+EXAMPLE
+
+Total Actual HSD = 41.12 L
+Total Expected HSD = 30.00 L
+Correct Net Excess = 11.12 L
+NOT 22.25 L merely because individual over-consumption days total 22.25 L while under-consumption days were ignored.
+
+
+PART 2 — KEEP DAY-WISE VARIANCE FOR AUDIT
+
+The day-wise Working/Measurement Sheet must still show each day's diesel position.
+For every applicable date show:
+- Actual HSD
+- Expected HSD
+- Daily Variance = Actual - Expected
+
+Daily Variance may therefore be:
++ve = actual above expected
+-ve = actual below expected
+0 = equal
+
+DO NOT clamp negative daily variance to zero in the visible working sheet.
+The day-wise figures are for audit/explanation.
+The VENDOR RECOVERY calculation is based on the NET PERIOD variance described in Part 1.
+
+
+PART 3 — APPLICABLE HSD RATE FOR PERIOD-NET EXCESS
+
+HF2 already established the historical rate lookup:
+- same-day diesel purchase rate where available;
+- otherwise latest valid rate BEFORE that date;
+- never use a future purchase rate;
+- multiple purchases on the same applicable date use quantity-weighted average;
+- no valid rate -> "Rate unavailable".
+
+Retain that historical-rate discipline.
+
+EXACT WEIGHTING METHOD (tightened — implement precisely this way, do not improvise)
+
+Because Net Excess is now a single period figure with no specific day(s)
+attached to it, the rate lookup can no longer be triggered only on days
+where that day's own excess was positive. Instead:
+
+1. For every date in the Hire Group period that has actual diesel > 0
+   (regardless of whether that specific day was over or under its own
+   expected figure), resolve that day's applicable historical rate using
+   the same same-day-or-latest-prior rule (never a future purchase; same
+   day multiple purchases use quantity-weighted average, exactly as
+   today's per-day logic already does).
+2. Compute the period's Applicable Weighted HSD Rate as the
+   quantity-weighted average of those per-day rates, weighted by each
+   day's ACTUAL diesel litres (not by excess litres, since excess is no
+   longer a per-day concept):
+   weighted rate = sum(day.actualDiesel x day.resolvedRate over days with
+   a resolved rate) / sum(day.actualDiesel over those same days)
+3. If NO day in the period with actual diesel > 0 has a resolvable rate,
+   the whole period's rate is "Rate unavailable."
+4. If only SOME days have a resolvable rate, use only those days'
+   actualDiesel/rate pairs in the weighted average (do not fail the whole
+   period for a partial gap), but report in your response which dates, if
+   any, lacked a resolvable rate.
+
+Show clearly:
+Actual HSD: ___ L
+Expected HSD: ___ L
+Net Excess: ___ L
+Applicable Weighted HSD Rate: Rs ___ / L
+Suggested Recovery: Rs ___
+
+Suggested Recovery
+= Net Excess HSD x Applicable Weighted HSD Rate
+
+If there is only one applicable historical rate for the period, naturally use that rate.
+If no reliable valid historical rate can be established, show:
+Rate unavailable
+and allow authorised user to enter a manual recovery rate/amount.
+Do not guess.
+
+
+PART 4 — RECOVERY DECISION
+
+Keep the existing HSD Recovery choices, but they must now act on the corrected period-net suggested amount.
+
+Options:
+- Accept Suggested
+- Edit / Manual
+- Ignore / No Recovery
+
+Accept Suggested:
+uses the calculated period-net Suggested Recovery.
+
+Edit / Manual:
+allows authorised drafting user to enter a different agreed recovery amount.
+
+Ignore / No Recovery:
+Final Recovery = 0.
+
+Recovery Remarks should be available for manual/waived recovery and may remain optional for straight acceptance unless existing validation requires otherwise.
+
+Never auto-post recovery without user review.
+Do NOT alter diesel stock or diesel accounting through this Vendor Bill calculation.
+
+
+PART 5 — EQUIPMENT HIRE WORKING / MEASUREMENT SHEET
+
+The underlying activity for the selected Hire Group must be presented as a proper:
+
+EQUIPMENT HIRE WORKING / MEASUREMENT SHEET
+
+This is the supporting measurement sheet for preparation, verification and later audit of the Vendor Bill.
+It must NOT appear as a second set of payable Vendor Bill line items.
+
+OPENING THE WORKING SHEET
+
+For every Equipment Hire Group show a clear action such as:
+VIEW WORKING SHEET — N DAYS / N ACTIVITY RECORDS
+or
+VIEW N ACTIVITY RECORDS
+
+If retaining the current label, add a heading inside the expanded panel:
+EQUIPMENT HIRE WORKING / MEASUREMENT SHEET
+
+
+PART 6 — COVER THE ENTIRE SELECTED PERIOD
+
+For MONTHLY and DAILY hire, the Working Sheet must represent EVERY CALENDAR DATE in the Hire Group's From-To period.
+Do not show only dates where a DPR or equipment_usage row exists.
+
+Example:
+Hire Group: 19-Jul-2026 to 31-Jul-2026
+Working Sheet must contain 13 date rows: 19 Jul ... 31 Jul
+even if some dates have no recorded equipment activity.
+
+(Per Ground Truth above, the date-looping already exists — confirm it
+still behaves this way once the new columns are added, do not rebuild it.)
+
+
+PART 7 — DAY-WISE DETAILS
+
+For each date, combine the reliable existing sources already used by 07C:
+- equipment_logs / DPR equipment activity
+- equipment_usage / Plant equipment activity
+- equipment_maintenance_logs
+- existing HSD/diesel information
+- movement/location history where already available
+
+Do not duplicate the same underlying event if it exists in more than one source (see Ground Truth note on normalizeHireActivities — investigate before assuming this is already fully covered for unlinked same-date pairs).
+
+Suggested Working Sheet columns:
+Date
+Equipment
+Site / Location
+Activity Status
+Hours / Trips
+Opening Meter
+Closing Meter
+Actual HSD
+Expected HSD
+Daily Variance
+Breakdown / Exception
+Reviewer Decision
+Remarks
+
+Only show fields where reliable existing data exists.
+Do not invent missing meter/hour/location information.
+
+
+PART 8 — STATUS RULES
+
+Use conservative status derivation.
+
+1. WORKED
+If a valid DPR/equipment_usage activity record exists for the date:
+Status = Worked
+Show available: hours, trips, meter data, HSD, expected HSD.
+
+2. VENDOR BREAKDOWN
+If equipment_maintenance_logs contains eventType = "breakdown" for the equipment/date:
+Status / Exception = Vendor Breakdown
+Show: downtimeHours if available, description, existing Full Day / Half Day / No Deduction / Manual decision control.
+
+3. NO ACTIVITY
+If no valid operational activity and no breakdown record exists:
+Status = No Activity
+This is INFORMATIONAL ONLY.
+DO NOT automatically label it: HLC No Work / Vendor Idle / Vendor Unavailable, unless there is a reliable recorded reason.
+DO NOT automatically deduct it.
+
+4. MOVEMENT
+If a movement/location record exists: show movement/location information for reference.
+Movement does not itself create a deduction.
+
+
+PART 9 — MONTHLY HIRE BILLING RULE
+
+For Monthly Hire:
+The Working Sheet is supporting evidence only.
+DO NOT derive the gross monthly hire from the number of Worked days.
+
+Example: machine hired for the selected period but works only on 7 of 13 days because HLC had no work.
+Gross Hire remains based on the agreed monthly/part-month commercial calculation.
+Only confirmed vendor-caused breakdown/unavailability or another authorised deduction reduces the hire.
+
+(Ground Truth: this is already how calculateHireGroup/monthlyGross works today — this Part is a confirmation, not new work. Do not change monthlyGross.)
+
+
+PART 10 — DAILY HIRE WORKING SHEET
+
+For Daily Hire, the same Working Sheet is also the measurement basis for payable days.
+Each date should allow:
+- Full Day = 1
+- Half Day = 0.5
+- Exclude = 0
+
+Multiple activity rows on the SAME equipment/date must still collapse to one date row.
+(Ground Truth: the payable-quantity calculation already collapses same-date rows in calculateHireBilling. Confirm the Working Sheet's visible date row also merges the underlying records for display — do not show the same date twice.)
+
+Suggested Daily quantity = sum of accepted date-equivalents.
+The detailed underlying rows may be expandable if needed for audit, but must not create duplicate payable days.
+
+
+PART 11 — TRIP HIRE WORKING SHEET
+
+For Trip Hire, show trip activity date-wise.
+
+Suggested columns:
+Date
+Site / Route / Location if available
+Recorded Trips
+Included Trips
+Adjustment
+Remarks
+
+Trip quantity must come only from reliable recorded trip data:
+- equipment_logs.numberOfTrips
+or
+- equipment_usage.numberOfTrips
+according to the actual source for that equipment.
+Do NOT infer trips from hours, meter movement or dates.
+
+Suggested Trip Qty = total accepted verified trips.
+
+
+PART 12 — BREAKDOWN / DEDUCTION REVIEW INSIDE THE WORKING SHEET
+
+Where a Vendor Breakdown exists, retain the existing reviewer choices:
+- Full Day Deduction
+- Half Day Deduction
+- No Deduction
+- Manual Amount
+
+The user should be able to review these from the Working Sheet itself.
+Do not require a separate second screen to understand the bill.
+The summary Equipment Hire Calculation should reflect the decisions made in this Working Sheet.
+
+
+PART 13 — WORKING SHEET TOTALS / RECONCILIATION
+
+At the bottom of the Working Sheet show relevant totals depending on basis.
+
+For Monthly:
+Period Days: ___
+Worked Days: ___
+Breakdown Days: ___
+No Activity Days: ___
+Total Recorded Hours: ___
+Total Actual HSD: ___
+Total Expected HSD: ___
+Net HSD Variance: ___
+Do NOT use No Activity Days as an automatic deduction.
+
+For Daily:
+Full Days: ___
+Half Days: ___
+Excluded Days: ___
+Payable Qty: ___ days
+Actual / Expected HSD totals as applicable
+
+For Trip:
+Recorded Trips: ___
+Excluded/Adjusted Trips: ___
+Payable Trips: ___
+Actual / Expected HSD totals where applicable
+
+
+PART 14 — BILL SUMMARY MUST RECONCILE TO WORKING SHEET
+
+The Equipment Hire Calculation summary must derive its visible figures from the SAME data/decisions shown in the Working Sheet.
+
+For example:
+Gross Hire
+Breakdown Deduction
+Net HSD Excess
+Suggested HSD Recovery
+Final HSD Recovery
+Net Hire
+
+must reconcile exactly with the Working Sheet totals and reviewer decisions.
+No hidden alternative calculation should produce a different number.
+
+
+PART 15 — PULL ITEMS — CONFIRM AND CLARIFY ITS ROLE
+
+07C-HF2 intentionally removed entryType = "monthly" equipment activity rows from ordinary payable auto-items.
+This was correct because each monthly equipment activity day must NOT become a separate payable "Monthly Hire" bill line.
+
+Therefore:
+PULL N ITEMS
+must represent only OTHER ordinary payable auto-items not already represented through an Equipment Hire Group / excluded monthly-hire raw activity.
+Do NOT restore monthly activity rows into ordinary payable Pull Items.
+
+
+PART 16 — CONFIRM "PULL 2 ITEMS" EXAMPLE
+
+Investigate the observed bill where:
+- Monthly Tractor Dozer has 13 activity dates under its Hire Group
+- Ordinary banner now says PULL 2 ITEMS
+
+Confirm concretely:
+1. Which 13/other rows were excluded.
+2. Their equipment name(s).
+3. Dates.
+4. entryType.
+5. Why they were excluded.
+6. Exactly what the remaining 2 Pull Items are.
+
+If the excluded rows are exactly the monthly-hire raw rows and those same days are visible in the Tractor Dozer Working Sheet, then the reduced count is correct.
+If Daily/Trip or unrelated equipment rows were also incorrectly removed, fix that.
+
+
+PART 17 — MONTHLY EQUIPMENT MUST NEVER BECOME INVISIBLE
+
+Because monthly raw activity is excluded from ordinary Pull Items, ensure the user can still discover and bill the monthly equipment.
+
+When preparing an Equipment Hire Vendor Bill for a vendor/date period:
+- the equipment must appear as available for ADD GROUP if it has relevant activity / hired ownership / vendor association according to the existing logic;
+- once added, its complete period Working Sheet must become available.
+
+There must not be a scenario where monthly equipment:
+- disappears from Pull Items
+AND
+- cannot be discovered through Add Group / Hire Calculation.
+
+If such a gap exists, fix it.
+
+
+PART 18 — UI CLARITY
+
+Make the distinction obvious to the drafting user.
+
+For example:
+Blue ordinary auto-items banner: "2 OTHER BILLABLE ACTIVITIES AVAILABLE"
+Equipment Hire Group: "VIEW WORKING SHEET — 13 DAYS"
+
+Avoid making the user think the 13 monthly equipment records have disappeared.
+Do not add another dashboard or tile.
+
+
+PART 19 — APPROVED BILL HISTORY
+
+The complete Working/Measurement Sheet data needed to explain the approved bill must remain historically reproducible from the existing frozen Hire Statement / calculationSnapshot structure.
+
+Freeze at minimum:
+- commercial basis
+- quantity
+- rate
+- period
+- breakdown decisions
+- diesel norm used
+- Actual / Expected HSD totals used
+- Net Excess HSD
+- HSD rate used (including which date(s)/purchases it was weighted from)
+- Suggested Recovery
+- Final Recovery
+
+If individual day decisions/values are already persisted in the existing snapshot/exception structures, reuse them.
+Do not create another parallel audit model unless absolutely necessary.
+Later master/activity edits must not silently change an approved Vendor Bill's commercial calculation.
+
+
+PART 20 — DO NOT TOUCH
+
+Do NOT change:
+- 07C-HF1 overlap/double-billing protection
+- Material Trip
+- DPR operational entry
+- Equipment Usage operational entry
+- Equipment Movement workflow
+- Maintenance entry workflow
+- diesel stock/accounting
+- normal Material Vendor Bills
+- Subcontractor Bills
+- Labour Bills
+- Hourly Hire UI
+- unrelated Vendor Bill approval workflow
+
+
+TESTS
+
+A. PERIOD-NET DIESEL
+Actual = 41.12 L, Expected = 30.00 L. Expected Net Excess = 11.12 L.
+The system must NOT return 22.25 L by summing positive daily excess only.
+
+B. DAILY OFFSET
+Day 1: Actual 6 L, Expected 4 L (variance +2 L)
+Day 2: Actual 2 L, Expected 4 L (variance -2 L)
+Period: Actual 8 L, Expected 8 L. Expected Net Excess = 0 L. Suggested Recovery = Rs 0.
+
+C. DAILY WORKING SHEET
+Day-wise table displays both +ve and -ve diesel variance correctly, unclamped.
+
+D. WEIGHTED HSD RATE
+Where multiple valid historical HSD purchase rates apply within the bill period, confirm the Hire Group's applicable weighted rate is derived from every day with actual diesel > 0 (not just days with positive daily excess), weighted by that day's actual diesel litres, using only same-day/prior rates and excluding future purchase rates. Confirm against the exact method in Part 3.
+
+E. NO RATE
+No valid rate for any day with actual diesel in the period -> Rate unavailable and manual recovery remains possible.
+
+E2. PARTIAL RATE COVERAGE
+Some days with actual diesel have a resolvable rate and some do not -> the weighted rate uses only the days that do, and the gap is reported.
+
+F. COMPLETE MONTHLY PERIOD
+Monthly group 19-Jul to 31-Jul produces 13 calendar-date rows in the Working Sheet, including dates with no activity.
+
+G. NO-ACTIVITY DAY
+No DPR/usage and no breakdown: Status = No Activity. No automatic deduction.
+
+H. BREAKDOWN
+Maintenance breakdown appears on correct date with downtime/details and reviewer deduction choices.
+
+I. DUPLICATE SAME-DAY ACTIVITY
+DPR + equipment_usage activity for the same equipment/date does not create duplicate payable Daily days or duplicate diesel/activity totals when they are an explicitly linked mirror. Report findings on the unlinked-same-date scenario per the Ground Truth investigation note, and add a test reflecting whatever behavior is confirmed correct (report before assuming).
+
+J. MONTHLY BILL
+Machine works only part of the period because of no recorded activity on some days. Gross monthly/part-month hire is NOT reduced merely because of those days.
+
+K. DAILY BILL
+Full/Half/Exclude decisions reconcile to final payable day quantity.
+
+L. TRIP BILL
+Verified recorded trips reconcile to Trip bill quantity; no inferred trips.
+
+M. WORKING SHEET RECONCILIATION
+Working Sheet totals exactly reconcile to Actual HSD, Expected HSD, Net Excess, Suggested Recovery, Final Recovery, breakdown deduction, and Net Hire shown in the Hire Calculation summary.
+
+N. PULL ITEMS
+Confirm the observed reduced Pull Items count is caused only by intentional exclusion of monthly-hire raw rows. Daily/Trip/unrelated payable auto-items remain available.
+
+O. MONTHLY DISCOVERABILITY
+Monthly equipment excluded from raw Pull Items is still discoverable through Add Group and its full Working Sheet is accessible.
+
+P. HF1 PROTECTION
+Raw auto-items overlapping a Hire Group can still never create duplicate billing.
+
+Q. Existing 07C / HF1 / HF2 tests continue to pass — EXCEPT the six HF2 diesel-pricing tests, which must be updated to assert period-net expected values (see Ground Truth note) rather than left checking the old day-wise-sum behavior.
+
+R. Full test suite.
+
+
+SCHEMA
+
+No new schema is expected.
+Reuse:
+- hire_statements.calculationSnapshot
+- hire_statement_exceptions
+- existing Vendor Bill hire-group persistence
+- existing dieselRequirements pricing data
+- existing activity sources
+
+If a genuinely necessary additive schema change is found, STOP and report the minimum proposal before migration.
+No destructive migration. No DROP TABLE. No DROP COLUMN. No destructive rename.
+
+
+REPORT BACK
+
+1. Exact corrected period-net HSD calculation.
+2. Exact weighted HSD rate calculation (confirm it matches Part 3's method precisely).
+3. Working/Measurement Sheet fields and data sources.
+4. How every calendar date is generated for Monthly/Daily periods.
+5. Findings on duplicate activity across equipment_logs/equipment_usage for unlinked same-date pairs (Ground Truth investigation), and how it is handled.
+6. How breakdown decisions feed the bill summary.
+7. Concrete explanation of the observed PULL 2 ITEMS example.
+8. Confirmation Monthly equipment remains discoverable through Add Group.
+9. How the approved bill Working Sheet/calculation remains historically frozen.
+10. Confirmation the six pre-existing HF2 diesel tests were updated (not left asserting old behavior) and why.
+11. Files changed.
+12. Focused tests A-R.
+13. Full test suite result.
+
+DO NOT START ANOTHER FEATURE.
+STOP AND REPORT BACK.
