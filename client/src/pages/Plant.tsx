@@ -4307,7 +4307,7 @@ export function EquipmentMasterSection() {
               </Button>
             </DialogTrigger>
           )}
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingEquipment ? "Edit Equipment" : "Add Equipment"}</DialogTitle>
             </DialogHeader>
