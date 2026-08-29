@@ -13765,12 +13765,16 @@ export class DatabaseStorage implements IStorage {
       const decisions = (group.exceptionDecisions ?? []).map(d => ({ sourceType: d.sourceType, sourceId: d.sourceId ?? undefined,
         exceptionType: d.exceptionType, date: d.date, decision: d.decision, manualDeductionAmount: d.manualDeductionAmount ?? undefined, remarks: d.remarks })) as HireExceptionDecisionInput[];
       const activities = canonical.filter(row => row.source !== "maintenance" && row.equipmentId === group.equipmentId);
+      const dieselPurchases = canonical.filter(row => row.source === "diesel_rate").map(row => ({
+        id: row.sourceId, date: row.date, rate: row.rate, qtyPurchased: row.qtyPurchased, purchasedAt: row.purchasedAt,
+      }));
       const maintenance: HireMaintenance[] = canonical.filter(row => row.source === "maintenance" && row.equipmentId === group.equipmentId)
         .map(row => ({ id: row.sourceId, date: row.businessDate, eventType: row.eventType, description: row.description, downtimeHours: row.downtimeHours }));
       const calc = calculateHireGroup({ terms, periodFrom: group.periodFrom, periodTo: group.periodTo, activities, maintenance,
         dailyDecisions: group.dailyDecisions, tripDecisions: group.tripDecisions, exceptionDecisions: decisions,
         quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,
         dieselNormOverride: group.dieselNormOverride, dieselNormBasisOverride: group.dieselNormBasisOverride,
+        dieselPurchases,
         dieselRecovery: { decision: group.dieselRecoveryDecision, finalAmount: group.dieselRecoveryFinalAmount, remarks: group.dieselRecoveryRemarks } });
       const patch: any = { equipmentId: group.equipmentId, vendorName: bill.vendorName, billingBasis: group.basis, rate: group.rate,
         monthlyDivisorType: terms.monthlyDivisorType, monthlyDivisor: terms.monthlyDivisor, hireStartDate: terms.hireStartDate,
@@ -13788,7 +13792,7 @@ export class DatabaseStorage implements IStorage {
           dieselNormOverride: group.dieselNormOverride,
           dieselNormBasisOverride: group.dieselNormBasisOverride,
           dieselRecoveryDecision: group.dieselRecoveryDecision,
-          dieselRecoveryFinalAmount: group.dieselRecoveryFinalAmount,
+          dieselRecoveryFinalAmount: calc.diesel.finalRecoveryAmount,
           dieselRecoveryRemarks: group.dieselRecoveryRemarks,
         } };
       if (statement) {
@@ -14251,6 +14255,21 @@ export class DatabaseStorage implements IStorage {
       inArray(equipmentMaintenanceLogs.equipmentId, ids), gte(equipmentMaintenanceLogs.date, periodFrom),
       lte(equipmentMaintenanceLogs.date, periodTo), eq(equipmentMaintenanceLogs.isCancelled, false), eq(equipmentMaintenanceLogs.isDeleted, false),
     ));
+    // Activity rows cannot be mapped to a reliable site FK, so pricing uses
+    // company-wide purchase history. The typed date is authoritative;
+    // purchasedAt remains frozen audit text and is never used for ordering.
+    const dieselPurchaseRates: any[] = await executor.select({
+      id: dieselRequirements.id,
+      date: dieselRequirements.date,
+      rate: dieselRequirements.rate,
+      qtyPurchased: dieselRequirements.qtyPurchased,
+      purchasedAt: dieselRequirements.purchasedAt,
+    }).from(dieselRequirements).where(and(
+      eq(dieselRequirements.status, "purchased"),
+      lte(dieselRequirements.date, periodTo),
+      sql`${dieselRequirements.rate} IS NOT NULL AND ${dieselRequirements.rate} > 0`,
+      sql`${dieselRequirements.qtyPurchased} IS NOT NULL AND ${dieselRequirements.qtyPurchased} > 0`,
+    ));
     const isoDate = (date: any) => typeof date === "string" ? date.slice(0, 10) : date.toISOString().slice(0, 10);
     return [
       // Metadata-only rows make zero-activity monthly equipment discoverable.
@@ -14266,10 +14285,14 @@ export class DatabaseStorage implements IStorage {
         businessDate: isoDate(row.date), entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
         hoursOrKmRun: row.hoursOrKmRun, actualDiesel: row.dieselIssued, expectedDiesel: row.expectedDiesel,
         consumptionNorm: defaults.get(row.equipmentId)?.consumptionNorm, normBasis: "L/hour",
-        task: row.task, site: row.siteName, equipment: defaults.get(row.equipmentId) })),
+        task: row.task, site: row.siteName,
+        movementReference: [row.shiftFrom && `FROM ${row.shiftFrom}`, row.shiftTo && `TO ${row.shiftTo}`, row.destinationSite && `DESTINATION ${row.destinationSite}`].filter(Boolean).join(" · ") || null,
+        equipment: defaults.get(row.equipmentId) })),
       ...maintenance.map((row: EquipmentMaintenanceLog) => ({ source: "maintenance", sourceId: row.id, equipmentId: row.equipmentId,
         businessDate: isoDate(row.date), eventType: row.eventType, description: row.description,
         downtimeHours: row.downtimeHours, equipment: defaults.get(row.equipmentId) })),
+      ...dieselPurchaseRates.map(row => ({ source: "diesel_rate", sourceId: row.id, businessDate: isoDate(row.date),
+        date: isoDate(row.date), rate: Number(row.rate), qtyPurchased: Number(row.qtyPurchased), purchasedAt: row.purchasedAt })),
     ];
   }
 
@@ -14343,6 +14366,8 @@ export class DatabaseStorage implements IStorage {
     };
 
     const matchesEntryTypeFilter = (entryType: string | null) => {
+      // A raw daily log is evidence, never a standalone monthly charge.
+      if ((entryType || "").toLowerCase() === "monthly") return false;
       if (!entryTypeFilter || entryTypeFilter === "all") return true;
       const et = (entryType || "time_meter").toLowerCase();
       if (et === "shifting") return entryTypeFilter === "shifting" || entryTypeFilter === "all";

@@ -287,6 +287,7 @@ export interface HireActivity {
   normBasis?: string | null;
   task?: string | null;
   site?: string | null;
+  movementReference?: string | null;
 }
 export interface HireTripDecision {
   source: HireActivitySource;
@@ -301,6 +302,41 @@ export interface HireDieselRecoveryDecision {
   finalAmount?: number | null;
   remarks?: string | null;
 }
+export interface HireDieselPurchasePrice {
+  id: number;
+  date: string;
+  rate: number;
+  qtyPurchased: number;
+  purchasedAt?: string | null;
+}
+export interface HireDailyDieselPricing {
+  date: string;
+  actualDiesel: number;
+  expectedDiesel: number;
+  excessLitres: number;
+  applicableRate?: number;
+  rateDate?: string;
+  suggestedRecovery?: number;
+  purchaseSources: readonly {
+    id: number;
+    date: string;
+    rate: number;
+    qtyPurchased: number;
+    purchasedAt?: string | null;
+  }[];
+}
+export interface HireActivityDay {
+  date: string;
+  activity: "worked" | "no_activity" | "breakdown";
+  hours: number;
+  trips: number;
+  actualDiesel: number;
+  expectedDiesel: number;
+  downtimeHours: number;
+  activityCount: number;
+  maintenanceDescriptions: readonly string[];
+  movementReferences: readonly string[];
+}
 export interface HireGroupCalculationInput {
   terms: HireTerms;
   periodFrom: string;
@@ -314,6 +350,7 @@ export interface HireGroupCalculationInput {
   grossAmountOverride?: number;
   dieselNormOverride?: number | null;
   dieselNormBasisOverride?: string | null;
+  dieselPurchases?: readonly HireDieselPurchasePrice[];
   dieselRecovery?: HireDieselRecoveryDecision;
 }
 export interface HireGroupCalculationResult extends HireBillingResult {
@@ -324,6 +361,10 @@ export interface HireGroupCalculationResult extends HireBillingResult {
     consumptionNorm?: number;
     normBasis?: string;
     suggestedExcess: number;
+    applicableRate?: number;
+    rateUnavailable: boolean;
+    suggestedRecoveryAmount?: number;
+    dailyPricing: readonly HireDailyDieselPricing[];
     recoveryDecision?: "accept" | "edit" | "ignore";
     finalRecoveryAmount: number;
     remarks?: string | null;
@@ -390,6 +431,119 @@ export function normalizeHireActivities(activities: readonly HireActivity[]): Hi
   }).sort((a, b) => a.businessDate.localeCompare(b.businessDate) || hireActivityIdentity(a).localeCompare(hireActivityIdentity(b)));
 }
 
+/** Day-wise evidence projection. No-activity rows are informational, never deductions. */
+export function buildHireActivityDays(
+  periodFrom: string,
+  periodTo: string,
+  activities: readonly HireActivity[],
+  maintenance: readonly HireMaintenance[] = [],
+): HireActivityDay[] {
+  if (!isValidDate(periodFrom) || !isValidDate(periodTo) || dateAtUtc(periodFrom) > dateAtUtc(periodTo)) return [];
+  const normalized = normalizeHireActivities(activities).filter(activity =>
+    (activity.source === "dpr_log" || activity.source === "plant_usage") &&
+    activity.businessDate >= periodFrom && activity.businessDate <= periodTo
+  );
+  const days: HireActivityDay[] = [];
+  for (let cursor = dateAtUtc(periodFrom); cursor <= dateAtUtc(periodTo); cursor += DAY_MS) {
+    const date = iso(cursor);
+    const dayActivities = normalized.filter(activity => activity.businessDate === date);
+    const breakdowns = maintenance.filter(row =>
+      row.date.slice(0, 10) === date && (row.eventType || "").toLowerCase() === "breakdown"
+    );
+    days.push({
+      date,
+      activity: breakdowns.length ? "breakdown" : dayActivities.length ? "worked" : "no_activity",
+      hours: money(dayActivities.reduce((sum, row) => sum + (Number(row.hoursOrKmRun) || 0), 0)),
+      trips: money(dayActivities.reduce((sum, row) => sum + (Number(row.numberOfTrips) || 0), 0)),
+      actualDiesel: money(dayActivities.reduce((sum, row) => sum + (Number(row.actualDiesel) || 0), 0)),
+      expectedDiesel: money(dayActivities.reduce((sum, row) => sum + (Number(row.expectedDiesel) || 0), 0)),
+      downtimeHours: money(breakdowns.reduce((sum, row) => sum + (Number(row.downtimeHours) || 0), 0)),
+      activityCount: dayActivities.length,
+      maintenanceDescriptions: breakdowns.map(row => row.description || "BREAKDOWN"),
+      movementReferences: Array.from(new Set(dayActivities.map(row => row.movementReference).filter((value): value is string => !!value))),
+    });
+  }
+  return days;
+}
+
+/** Prices positive daily excess only from same-day or latest-prior purchases. */
+export function calculateHireDieselPricing(
+  activities: readonly HireActivity[],
+  purchases: readonly HireDieselPurchasePrice[] = [],
+  periodFrom?: string,
+  periodTo?: string,
+): {
+  actualDiesel: number;
+  expectedDiesel: number;
+  suggestedExcess: number;
+  applicableRate?: number;
+  rateUnavailable: boolean;
+  suggestedRecoveryAmount?: number;
+  dailyPricing: HireDailyDieselPricing[];
+} {
+  const activityRows = normalizeHireActivities(activities).filter(activity =>
+    (activity.source === "dpr_log" || activity.source === "plant_usage") &&
+    (!periodFrom || activity.businessDate >= periodFrom) &&
+    (!periodTo || activity.businessDate <= periodTo)
+  );
+  const byActivityDate = new Map<string, HireActivity[]>();
+  for (const activity of activityRows) {
+    const rows = byActivityDate.get(activity.businessDate) ?? [];
+    rows.push(activity);
+    byActivityDate.set(activity.businessDate, rows);
+  }
+  const validPurchases = purchases.filter(purchase =>
+    isValidDate(purchase.date) &&
+    Number.isFinite(purchase.rate) && purchase.rate > 0 &&
+    Number.isFinite(purchase.qtyPurchased) && purchase.qtyPurchased > 0
+  );
+  const purchaseDates = Array.from(new Set(validPurchases.map(purchase => purchase.date.slice(0, 10)))).sort();
+  const dailyPricing = Array.from(byActivityDate.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([date, rows]) => {
+    const actualDiesel = money(rows.reduce((sum, row) => sum + (Number(row.actualDiesel) || 0), 0));
+    const expectedDiesel = money(rows.reduce((sum, row) => sum + (Number(row.expectedDiesel) || 0), 0));
+    const excessLitres = money(Math.max(0, actualDiesel - expectedDiesel));
+    const rateDate = purchaseDates.filter(purchaseDate => purchaseDate <= date).at(-1);
+    const purchaseSources = rateDate
+      ? validPurchases.filter(purchase => purchase.date.slice(0, 10) === rateDate).map(purchase => ({
+          id: purchase.id,
+          date: purchase.date.slice(0, 10),
+          rate: purchase.rate,
+          qtyPurchased: purchase.qtyPurchased,
+          purchasedAt: purchase.purchasedAt ?? undefined,
+        }))
+      : [];
+    const totalQty = purchaseSources.reduce((sum, purchase) => sum + purchase.qtyPurchased, 0);
+    const applicableRate = excessLitres > 0 && totalQty > 0
+      ? Math.round((purchaseSources.reduce((sum, purchase) => sum + purchase.rate * purchase.qtyPurchased, 0) / totalQty) * 10_000) / 10_000
+      : undefined;
+    return {
+      date,
+      actualDiesel,
+      expectedDiesel,
+      excessLitres,
+      applicableRate,
+      rateDate: applicableRate !== undefined ? rateDate : undefined,
+      suggestedRecovery: applicableRate !== undefined ? money(excessLitres * applicableRate) : undefined,
+      purchaseSources: applicableRate !== undefined ? purchaseSources : [],
+    };
+  });
+  const actualDiesel = money(dailyPricing.reduce((sum, day) => sum + day.actualDiesel, 0));
+  const expectedDiesel = money(dailyPricing.reduce((sum, day) => sum + day.expectedDiesel, 0));
+  const suggestedExcess = money(dailyPricing.reduce((sum, day) => sum + day.excessLitres, 0));
+  const excessDays = dailyPricing.filter(day => day.excessLitres > 0);
+  const rateUnavailable = excessDays.some(day => day.applicableRate === undefined);
+  const rates = Array.from(new Set(excessDays.map(day => day.applicableRate).filter((rate): rate is number => rate !== undefined)));
+  return {
+    actualDiesel,
+    expectedDiesel,
+    suggestedExcess,
+    applicableRate: !rateUnavailable && rates.length === 1 ? rates[0] : undefined,
+    rateUnavailable,
+    suggestedRecoveryAmount: rateUnavailable ? undefined : money(excessDays.reduce((sum, day) => sum + (day.suggestedRecovery ?? 0), 0)),
+    dailyPricing,
+  };
+}
+
 /** Calculates a bill-group snapshot using the existing statement calculator. */
 export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupCalculationResult {
   const activities = normalizeHireActivities(input.activities).filter(a =>
@@ -413,24 +567,26 @@ export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupC
   const grossAmount = input.grossAmountOverride !== undefined ? input.grossAmountOverride
     : input.quantityOverride !== undefined ? money(quantity * input.terms.rate) : calculated.grossAmount;
   const deductionAmount = money(Math.min(grossAmount, calculated.deductionAmount));
-  const actualDiesel = money(activities.reduce((sum, a) => sum + (a.actualDiesel ?? 0), 0));
-  const expectedDiesel = money(activities.reduce((sum, a) => sum + (a.expectedDiesel ?? 0), 0));
-  const suggestedExcess = money(Math.max(0, actualDiesel - expectedDiesel));
+  const dieselPricing = calculateHireDieselPricing(activities, input.dieselPurchases, input.periodFrom, input.periodTo);
   const recovery = input.dieselRecovery;
-  if ((recovery?.decision === "accept" || recovery?.decision === "edit") &&
+  if (recovery?.decision === "accept" && dieselPricing.suggestedRecoveryAmount === undefined) {
+    throw new Error("A suggested diesel recovery cannot be accepted because the applicable HSD rate is unavailable.");
+  }
+  if (recovery?.decision === "edit" &&
       (!Number.isFinite(recovery.finalAmount) || (recovery.finalAmount ?? 0) < 0)) {
     throw new Error("An explicit non-negative diesel recovery amount is required.");
   }
-  const finalRecoveryAmount = recovery?.decision === "accept" || recovery?.decision === "edit"
-    ? money(recovery.finalAmount!) : 0;
+  const finalRecoveryAmount = recovery?.decision === "accept"
+    ? dieselPricing.suggestedRecoveryAmount!
+    : recovery?.decision === "edit" ? money(recovery.finalAmount!) : 0;
   return {
     ...calculated, quantity, grossAmount, deductionAmount,
     calculatedQuantity: calculated.quantity, calculatedGrossAmount: calculated.grossAmount,
     netAmount: money(Math.max(0, grossAmount - deductionAmount - finalRecoveryAmount)),
     activityIds: activities.map(hireActivityIdentity),
-    diesel: { actualDiesel, expectedDiesel,
+    diesel: { ...dieselPricing,
       consumptionNorm: input.dieselNormOverride ?? activities.find(a => a.consumptionNorm != null)?.consumptionNorm ?? undefined,
       normBasis: input.dieselNormBasisOverride ?? activities.find(a => a.normBasis)?.normBasis ?? undefined,
-      suggestedExcess, recoveryDecision: recovery?.decision, finalRecoveryAmount, remarks: recovery?.remarks ?? undefined },
+      recoveryDecision: recovery?.decision, finalRecoveryAmount, remarks: recovery?.remarks ?? undefined },
   };
 }

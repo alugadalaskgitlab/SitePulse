@@ -1,0 +1,220 @@
+Instruction 07C-HF2 — Auto-Priced HSD Recovery + Day-Wise Activity Review for Equipment Hire
+
+Do NOT rebuild 07C or 07C-HF1. This is two targeted improvements on top of
+the working Vendor Bill Equipment Hire Calculation feature.
+
+
+PART 1 — CALCULATE THE SUGGESTED HSD RECOVERY AMOUNT, NOT JUST THE LITRES
+
+CURRENT GAP
+
+The Equipment Hire Calculation section already shows Actual HSD issued,
+Expected HSD (norm-based), and Excess litres. It stops there and expects
+the drafting user to work out a rupee amount by hand before they can even
+use "Accept Suggested Recovery" — which defeats the purpose of a
+"suggested" recovery. Fix this so the app proposes an actual rupee amount.
+
+RATE RULE
+
+For the excess litres on a given hire line/period:
+1. Find the diesel purchase rate that applies to each excess day: the
+   rate from a diesel purchase dated ON that day; if none, the latest
+   available diesel purchase rate BEFORE that day. Never use a rate from
+   a purchase dated AFTER the day being priced.
+2. If more than one purchase falls on the same applicable day, use the
+   quantity-weighted average rate across those purchases for that day
+   (sum(rate x qtyPurchased) / sum(qtyPurchased)), not a simple average
+   and not just the first one found.
+3. The rate actually used must be frozen into the bill's calculation
+   snapshot at the time the recovery is calculated/saved, so a later
+   diesel purchase can never change an already-saved bill's numbers.
+
+GROUND TRUTH — WHERE THE RATE DATA ACTUALLY LIVES, INVESTIGATE SCOPE FIRST
+
+The only reliable price-per-purchase data found in this app today is on
+the Daily Diesel Requirement purchase record (dieselRequirements: rate,
+qtyPurchased, purchasedAt). General bulk Material Receipts for diesel do
+not carry a rate/price field at all — so for diesel stock that entered
+through that path with no linked Daily Diesel Requirement, there may
+genuinely be no rate to find, and that is expected, not a bug to work
+around.
+
+INVESTIGATE FIRST: dieselRequirements does not appear to be scoped by
+plant in the same way other diesel records are (it carries siteId, not a
+plant field) — confirm whether "the applicable diesel rate" for a given
+piece of equipment's fuel should be looked up within its own site/plant's
+purchases specifically, or company-wide, before implementing broadly. Do
+not silently assume company-wide is correct if the data model implies
+otherwise; report what you find.
+
+purchasedAt is stored as text, not a date column — handle date comparison
+robustly (do not naive-string-compare across formats) and report how this
+was handled.
+
+IF NO VALID RATE CAN BE FOUND
+
+Show "Rate unavailable" next to the excess litres, and let the drafting
+user enter a manual rate/recovery amount instead of guessing one. Do not
+fabricate a rate.
+
+UI RESULT (matches the existing HSD Performance layout, extended)
+
+Actual HSD: 482.7 L
+Expected: 412.8 L
+Excess: 69.9 L
+Applicable HSD rate: Rs 92.40/L  (or "Rate unavailable")
+Suggested recovery: Rs 6,458.76  (blank/— if rate unavailable)
+
+Then the existing three choices operate on this real number:
+- Accept Suggested -> uses Rs 6,458.76 as-is
+- Edit -> drafting user enters a different agreed amount
+- Ignore / No Recovery -> Rs 0, with remarks
+
+Do not change the existing rule that this is a suggestion only, never
+auto-posted, and never alters diesel stock or accounting records.
+
+
+PART 2 — REPLACE "PULL ITEMS" WITH DAY-WISE ACTIVITY REVIEW INSIDE A HIRE GROUP
+
+CURRENT GAP AND WHY IT MATTERS FOR MONTHLY HIRE SPECIFICALLY
+
+For Monthly Hire, the agreed hire amount is owed for the period the
+machine was available to HLC — it is NOT calculated from how many days it
+actually worked. Whether it worked 7 of 13 days because HLC had no work is
+irrelevant to whether the vendor is owed the monthly rate; only
+vendor-caused breakdown reduces it. The day-by-day activity records exist
+to answer a different question: which days did it work, how many hours,
+which days was there a vendor breakdown, was it a half-day, how much HSD
+was used — i.e. they are the EVIDENCE behind the monthly figure and its
+deductions, not the basis for the monthly figure itself.
+
+Today, "PULL N ITEMS" surfaces that same day-by-day activity as if each
+row were its own ordinary payable bill line (07C-HF1 already stops those
+rows from being counted twice if a Hire Group covers the same dates, but
+that does not fix the underlying UX problem: a machine's daily activity
+should never look like N separate payable line items for Monthly hire in
+the first place — for a Monthly-basis line, there is no such thing as a
+legitimate standalone "MONTHLY HIRE" line item per day).
+
+REQUIRED CHANGE
+
+For equipment covered by an Equipment Hire Calculation group (Month, Day,
+or Trip basis), replace the raw "PULL N ITEMS" action for that
+equipment's dates with:
+
+VIEW N ACTIVITY RECORDS
+
+Opening it shows a day-wise table for the group's date range, e.g.:
+
+Date    | Activity     | Hours | HSD  | Status / Exception
+19 Jul  | Worked       | 8.5   | 24 L | Normal
+20 Jul  | Worked       | 7.0   | 21 L | Normal
+21 Jul  | No activity  | —     | —    | HLC no work
+22 Jul  | Breakdown    | 2.5   | —    | Vendor breakdown
+23 Jul  | Worked       | 9.0   | 27 L | Normal
+
+Ground truth: storage.getVendorBillHireActivities already assembles
+exactly this data per equipment/date (dpr_log and plant_usage rows with
+hoursOrKmRun/actualDiesel/expectedDiesel/numberOfTrips, and maintenance
+rows with eventType/downtimeHours/description) and the client
+(VendorBills.tsx activityForGroup/maintenanceForGroup) already has it
+loaded per hire group. This should mostly be a presentation change over
+data that is already fetched, not a new backend endpoint.
+
+Status derivation rules (do not invent new ones beyond this):
+- A maintenance log row (eventType "breakdown") on that date/equipment ->
+  Vendor breakdown.
+- No maintenance row, but a dpr_log/plant_usage row exists for that
+  date/equipment -> Worked, show its hours/trips and HSD.
+- No activity and no maintenance row at all for that date -> "No
+  activity" shown as information only. Do NOT automatically label this
+  "HLC no work" vs. some other idle reason, and do NOT treat it as
+  deductible — it is informational context for the reviewer, consistent
+  with the existing rule that idle-but-available days are never
+  auto-deducted.
+- A movement/location change on that date is shown for reference only,
+  never as a deduction trigger, consistent with the existing Part 13
+  (Equipment Movement) rule.
+
+This view feeds the SAME existing exceptionDecisions/dailyDecisions/
+tripDecisions review already built for Month/Day/Trip — it is a better
+window into that data, not a new calculation path. The reviewer still
+only has to act on flagged exceptions, not every normal day, exactly as
+today.
+
+ADDITIONAL TIGHTENING FOUND DURING INVESTIGATION — SUPPRESS STANDALONE
+MONTHLY ROWS FROM ORDINARY AUTO-ITEMS ENTIRELY
+
+Separately from Hire Groups: getVendorBillAutoItems currently labels any
+individual equipment_logs/equipment_usage row with entryType "monthly" as
+its own one-off "MONTHLY HIRE" line (qty 1) in the ordinary auto-items
+list, available to "Pull Items" even when no Hire Group exists yet for
+that equipment/period. A single day's raw log entry is never a valid
+standalone bill line for monthly-basis equipment. Exclude entryType
+"monthly" rows from the ordinary auto-items/"Pull Items" result entirely —
+that equipment's activity should only ever be reviewed through the
+Equipment Hire Calculation group's Activity view (Part 2 above), never
+offered as an ad hoc payable line. Confirm Daily and Trip basis rows are
+NOT affected by this change — those remain correctly pullable as ordinary
+activity when no Hire Group is being used for them.
+
+
+PART 3 — DO NOT TOUCH
+
+Do not change: the existing overlap/dedup protection from 07C-HF1; the
+Monthly/Daily/Trip calculation formulas themselves; the frozen
+calculation-snapshot behavior for approved bills; Material Trip; DPR
+entry; Equipment Usage entry; diesel stock/accounting; any other Vendor
+Bill type.
+
+
+TESTS
+
+A. HSD recovery pricing: excess litres on a date with exactly one same-day
+   diesel purchase -> suggested recovery uses that purchase's rate.
+B. Excess litres on a date with two same-day purchases at different rates
+   and quantities -> suggested recovery uses the quantity-weighted average
+   of the two.
+C. Excess litres on a date with no purchase that day -> uses the latest
+   purchase rate before that date.
+D. Excess litres with no qualifying purchase before that date anywhere ->
+   shows "Rate unavailable", allows manual entry, does not fabricate a
+   rate.
+E. A diesel purchase entered AFTER the bill period/after the bill was
+   calculated must never change an already-frozen bill's recovery amount.
+F. Day-wise Activity view for a Monthly hire group shows every date in the
+   period with the correct status (Worked / No activity / Breakdown) and
+   correct hours/HSD, matching Ground Truth's data sources.
+G. A "No activity" day is never treated as a deduction by default.
+H. entryType "monthly" rows no longer appear in the ordinary "Pull Items"
+   result; Daily and Trip rows still do.
+I. Existing 07C / 07C-HF1 tests continue to pass.
+J. Full test suite.
+
+
+SCHEMA
+
+No new schema expected — this reuses dieselRequirements.rate/purchasedAt
+and the existing getVendorBillHireActivities data. If investigation finds
+a genuine need for additive schema (e.g. to record which rate/date was
+used, if the existing calculationSnapshot jsonb cannot cleanly hold it),
+report the minimum proposal before migrating. No destructive migration.
+
+
+REPORT BACK
+
+1. Exact rate-lookup query used (source table/columns, same-day weighting,
+   most-recent-before fallback, future-purchase exclusion).
+2. Confirmed scope of "applicable" (site-specific vs. company-wide) and
+   why.
+3. How the used rate/date is frozen into the bill snapshot.
+4. What happens when no valid rate exists.
+5. Day-wise Activity view: confirm it reuses existing fetched data with no
+   new endpoint, or explain what new endpoint was required and why.
+6. Confirm entryType "monthly" rows are excluded from ordinary auto-items/
+   Pull Items, and Daily/Trip rows are unaffected.
+7. Files changed.
+8. Focused test results (A-J).
+9. Full test suite result.
+
+DO NOT START ANOTHER FEATURE. STOP AND REPORT BACK.

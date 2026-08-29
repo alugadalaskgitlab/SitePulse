@@ -53,6 +53,21 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(client).toContain("Removed ${covered.length} raw activity row");
   });
 
+  it("keeps monthly activity out of ordinary auto-items while retaining grouped review", () => {
+    expect(storage).toContain('if ((entryType || "").toLowerCase() === "monthly") return false');
+    expect(storage).toContain('if (entryTypeFilter === "daily_hourly") return ["daily", "hourly", "time_meter"].includes(et)');
+    expect(storage).toContain('if (entryTypeFilter === "trip_based") return et === "trip_based"');
+    expect(client).toContain("VIEW {activityDays.length} ACTIVITY RECORDS");
+  });
+
+  it("loads authoritative diesel purchase evidence and freezes calculated recovery", () => {
+    expect(storage).toContain("dieselPurchaseRates");
+    expect(storage).toContain('eq(dieselRequirements.status, "purchased")');
+    expect(storage).toContain("lte(dieselRequirements.date, periodTo)");
+    expect(storage).toContain("dieselPurchases,");
+    expect(storage).toContain("dieselRecoveryFinalAmount: calc.diesel.finalRecoveryAmount");
+  });
+
   it("serializes draft reconciliation against lifecycle transitions", () => {
     expect(storage.match(/from\(vendorBills\).*?for\("update"\)/gs)?.length).toBeGreaterThanOrEqual(3);
     expect(storage.match(/from\(hireStatements\).*?for\("update"\)/gs)?.length).toBeGreaterThanOrEqual(3);
