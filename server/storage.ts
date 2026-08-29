@@ -1384,7 +1384,7 @@ export interface IStorage {
   ensureMaterialReceiptDieselLinkColumn(): Promise<void>;
   getDieselRequirementReceipts(requirementIds: number[]): Promise<MaterialReceipt[]>;
   deleteVendorBill(id: number): Promise<boolean>;
-  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<Partial<InsertVendorBillItem>[]>;
+  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string })[]>;
   getVendorBillHireActivities(vendorName: string, periodFrom: string, periodTo: string): Promise<any[]>;
   // Hired equipment billing
   getHireStatements(): Promise<HireStatement[]>;
@@ -14302,10 +14302,10 @@ export class DatabaseStorage implements IStorage {
     ];
   }
 
-  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<Partial<InsertVendorBillItem>[]> {
+  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string })[]> {
     const vendorVariants = await this.resolveVendorAliases(vendorName);
     const bt = billType.toLowerCase();
-    const items: Partial<InsertVendorBillItem>[] = [];
+    const items: (Partial<InsertVendorBillItem> & { sourceId?: number | string })[] = [];
 
     const entryTypeLabel = (entryType: string | null) => {
       switch ((entryType || "").toLowerCase()) {
@@ -14404,6 +14404,7 @@ export class DatabaseStorage implements IStorage {
         const eqMap = new Map(hiredEquipment.map(e => [e.id, e.name]));
 
         const dprLogs = await db.select({
+          id: equipmentLogs.id,
           date: dprs.date,
           machine: equipmentLogs.machine,
           entryType: equipmentLogs.entryType,
@@ -14447,6 +14448,7 @@ export class DatabaseStorage implements IStorage {
               qty,
               unit: entryTypeUnit(row.entryType),
               source: "auto",
+              sourceId: `dpr_equipment:${row.id}`,
               equipmentId: row.equipmentId,
               siteName: siteLabel,
             });
@@ -14480,6 +14482,7 @@ export class DatabaseStorage implements IStorage {
               qty,
               unit: entryTypeUnit(et),
               source: "auto",
+              sourceId: `plant_usage:${row.id}`,
               equipmentId: row.equipmentId,
               siteName: "PLANT",
             });
@@ -14499,6 +14502,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       const unlinkedLogs = await db.select({
+        id: equipmentLogs.id,
         date: dprs.date,
         machine: equipmentLogs.machine,
         entryType: equipmentLogs.entryType,
@@ -14535,6 +14539,7 @@ export class DatabaseStorage implements IStorage {
             qty,
             unit: entryTypeUnit(row.entryType),
             source: "auto",
+            sourceId: `dpr_equipment:${row.id}`,
             siteName: siteLabel,
           });
         }
@@ -14543,6 +14548,7 @@ export class DatabaseStorage implements IStorage {
 
     if (bt === "material" || bt === "all") {
       const dprMaterials = await db.select({
+        id: materialLogs.id,
         date: dprs.date,
         material: materialLogs.material,
         quantity: materialLogs.quantity,
@@ -14571,6 +14577,7 @@ export class DatabaseStorage implements IStorage {
             qty: row.quantity,
             unit: row.uom || "NOS",
             source: "auto",
+            sourceId: `dpr_material:${row.id}`,
             siteName: siteLabel,
           });
         }
@@ -14593,12 +14600,14 @@ export class DatabaseStorage implements IStorage {
             qty: row.quantity,
             unit: row.uom || "NOS",
             source: "auto",
+            sourceId: `site_material_trip:${row.id}`,
             siteName: `SITE: ${(row.site || "").toUpperCase()}`,
           });
         }
       }
 
       const plantReceipts = await db.select({
+        id: materialReceipts.id,
         date: materialReceipts.date,
         materialId: materialReceipts.materialId,
         quantity: materialReceipts.quantity,
@@ -14625,6 +14634,7 @@ export class DatabaseStorage implements IStorage {
             qty: row.quantity,
             unit: row.uom || "NOS",
             source: "auto",
+            sourceId: `material_receipt:${row.id}`,
             siteName: "PLANT",
             suppliedTo: row.partyName ?? null,
             transporter: row.receiptTransporter ?? null,
@@ -14673,6 +14683,7 @@ export class DatabaseStorage implements IStorage {
               qty: 1,
               unit: "TRIP",
               source: "auto",
+              sourceId: `plant_usage:${row.id}`,
               equipmentId: row.transportEquipmentId || row.equipmentId,
               leadDistance: (row as any).transportDistance || null,
             });
@@ -14696,6 +14707,7 @@ export class DatabaseStorage implements IStorage {
           qty: 1,
           unit: "TRIP",
           source: "auto",
+          sourceId: `truck_dispatch:${row.id}`,
           leadDistance: null,
         });
       }
@@ -14703,6 +14715,7 @@ export class DatabaseStorage implements IStorage {
       // Material receipts where the transporter matches the vendor — allows
       // generating haulage bills for aggregate/material transport contractors.
       const transportReceipts = await db.select({
+        id: materialReceipts.id,
         date: materialReceipts.date,
         materialName: plantMaterials.name,
         quantity: materialReceipts.quantity,
@@ -14730,6 +14743,7 @@ export class DatabaseStorage implements IStorage {
           qty: 1,
           unit: "TRIP",
           source: "auto",
+          sourceId: `material_receipt_transport:${row.id}`,
           siteName: "PLANT",
           suppliedTo: row.partyName ?? null,
         });
@@ -14789,6 +14803,7 @@ export class DatabaseStorage implements IStorage {
           qty: grp.count,
           unit: "HEAD-DAY",
           source: "auto",
+          sourceId: `dpr_labour_group:${grp.date}|${grp.site}|${grp.category}|${grp.gender || ""}`,
           siteName: siteLabel,
         });
       }
@@ -14830,6 +14845,7 @@ export class DatabaseStorage implements IStorage {
           qty: grp.count,
           unit: "HEAD-DAY",
           source: "auto",
+          sourceId: `plant_labour_group:${grp.date}|${grp.plant}|${grp.category}|${grp.gender || ""}`,
           siteName: `PLANT: ${grp.plant}`,
         });
       }

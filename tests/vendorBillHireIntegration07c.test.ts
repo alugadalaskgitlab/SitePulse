@@ -49,7 +49,7 @@ describe("07C vendor-bill hire transaction wiring", () => {
   it("rejects raw auto rows covered by hire groups without touching manual rows", () => {
     expect(storage.match(/rawAutoItemCoveredByHireGroup\(item, data\.hireGroups\)/g)?.length).toBe(2);
     expect(storage).toContain("is already covered by a hire group for this bill");
-    expect(client).toContain("Excluded ${covered.length} raw activity row");
+    expect(client).toContain("availableOtherBillItems(mappedAutoItems, lineItems, hireGroups)");
     expect(client).toContain("Removed ${covered.length} raw activity row");
   });
 
@@ -57,7 +57,36 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain('if ((entryType || "").toLowerCase() === "monthly") return false');
     expect(storage).toContain('if (entryTypeFilter === "daily_hourly") return ["daily", "hourly", "time_meter"].includes(et)');
     expect(storage).toContain('if (entryTypeFilter === "trip_based") return et === "trip_based"');
-    expect(client).toContain("EQUIPMENT HIRE WORKING SHEET · {activityDays.length} DATES");
+    expect(client).toContain("WORKING / MEASUREMENT SHEET — {activityDays.length} DAYS");
+  });
+
+  it("keeps Pull Other Items additive and derives its count from final eligibility", () => {
+    expect(client).toContain("availableOtherBillItems(mappedAutoItems, lineItems, hireGroups)");
+    expect(client).toContain("setLineItems(prev => mergeOtherBillItems(prev, mapped))");
+    expect(client).not.toContain("setLineItems(uncovered)");
+    expect(client).toContain("PULL ${availableOtherItems.length} OTHER ITEM");
+  });
+
+  it("keeps source-qualified auto evidence read-only and visibly marked as auto", () => {
+    expect(client).toContain('const isAutoLineSource = (source: string) => source === "auto" || source.startsWith("auto:")');
+    expect(client.match(/isGeneratedEvidenceLine\(item\.source\)/g)).toHaveLength(3);
+    expect(client).toContain("isAutoLineSource(item.source) ? \"AUTO\" : \"-\"");
+  });
+
+  it("presents part-month monthly hire as calendar days rather than one month", () => {
+    expect(client).toContain("${periodDays}/${calendarDays} CALENDAR DAYS");
+    expect(client).toContain("CONTRACT DIVISOR: ${customDivisor} DAYS");
+    expect(client).toContain("CONTRACT DIVISOR: 30 DAYS");
+    expect(client).toContain("EDIT QTY / AMOUNT");
+    expect(client).not.toContain('result.quantity.toFixed(2)} MONTHS');
+  });
+
+  it("shows recorded descriptions as primary evidence and computed no-activity separately", () => {
+    expect(client).toContain("RECORDED ACTIVITY");
+    expect(client).toContain('<span className="font-semibold text-muted-foreground">NO ACTIVITY</span>');
+    expect(client).toContain('Number(day.activityCount || 0) > 0');
+    expect(client).toContain("TOTAL TRIPS");
+    expect(client).toContain("NET HSD VARIANCE");
   });
 
   it("loads authoritative diesel purchase evidence and freezes calculated recovery", () => {

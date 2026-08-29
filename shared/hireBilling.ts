@@ -402,9 +402,28 @@ export interface HireGroupCalculationResult extends HireBillingResult {
 
 export interface RawAutoBillItem {
   source?: string | null;
+  sourceId?: number | string | null;
   equipmentId?: number | null;
   date?: string | null;
+  category?: string | null;
+  description?: string | null;
+  siteName?: string | null;
+  entryType?: string | null;
 }
+
+const isAutoBillSource = (source: string | null | undefined) => {
+  const normalized = (source || "").toLowerCase();
+  return normalized === "auto" || normalized.startsWith("auto:");
+};
+
+const semanticAutoBillItemIdentity = (item: RawAutoBillItem): string => [
+  "auto",
+  item.date || "",
+  item.category || "",
+  item.equipmentId ?? "",
+  (item.siteName || "").trim().toUpperCase(),
+  (item.description || "").trim().replace(/\s+/g, " ").toUpperCase(),
+].join(":");
 
 export interface HireGroupCoverage {
   equipmentId: number;
@@ -417,12 +436,60 @@ export function rawAutoItemCoveredByHireGroup(
   item: RawAutoBillItem,
   groups: readonly HireGroupCoverage[] | null | undefined,
 ): HireGroupCoverage | undefined {
-  if ((item.source || "").toLowerCase() !== "auto" || item.equipmentId == null || !item.date) return undefined;
+  if (!isAutoBillSource(item.source) || item.equipmentId == null || !item.date) return undefined;
+  // Transport mobilization may also carry an equipmentId; only raw equipment
+  // activity is superseded by a hire-group summary.
+  if ((item.category || "").toLowerCase() !== "equipment") return undefined;
   return groups?.find(group =>
     Number(item.equipmentId) === Number(group.equipmentId) &&
     item.date! >= group.periodFrom &&
     item.date! <= group.periodTo
   );
+}
+
+/** Stable client-side identity for additive Pull Other Items behaviour. */
+export function autoBillItemIdentity(item: RawAutoBillItem): string {
+  const source = (item.source || "auto").toLowerCase();
+  const date = item.date || "";
+  if (source.startsWith("auto:")) return `${source}:${date}`;
+  if (item.sourceId != null && String(item.sourceId) !== "") return `auto:${String(item.sourceId).toLowerCase()}:${date}`;
+  return semanticAutoBillItemIdentity(item);
+}
+
+export function isMonthlyRawAutoBillItem(item: RawAutoBillItem): boolean {
+  if (!isAutoBillSource(item.source)) return false;
+  if ((item.entryType || "").toLowerCase() === "monthly") return true;
+  return /\bMONTHLY HIRE\b/i.test(item.description || "");
+}
+
+/** One eligibility seam used by both the banner count and Pull action. */
+export function availableOtherBillItems<T extends RawAutoBillItem>(
+  candidates: readonly T[] | null | undefined,
+  existing: readonly RawAutoBillItem[] | null | undefined,
+  groups: readonly HireGroupCoverage[] | null | undefined,
+): T[] {
+  const seen = new Set((existing || []).map(autoBillItemIdentity));
+  // Legacy rows saved before source-qualified identities use the visible-field
+  // fingerprint. New rows persist provenance in the existing source column.
+  const legacySeen = new Set((existing || [])
+    .filter(item => (item.source || "").toLowerCase() === "auto" && item.sourceId == null)
+    .map(semanticAutoBillItemIdentity));
+  const available: T[] = [];
+  for (const item of candidates || []) {
+    if (isMonthlyRawAutoBillItem(item) || rawAutoItemCoveredByHireGroup(item, groups)) continue;
+    const key = autoBillItemIdentity(item);
+    if (seen.has(key) || legacySeen.has(semanticAutoBillItemIdentity(item))) continue;
+    seen.add(key);
+    available.push(item);
+  }
+  return available;
+}
+
+export function mergeOtherBillItems<T extends RawAutoBillItem>(
+  existing: readonly T[],
+  additions: readonly T[],
+): T[] {
+  return [...existing, ...availableOtherBillItems(additions, existing, [])];
 }
 
 /** Returns the review decisions still required before a linked bill can advance. */

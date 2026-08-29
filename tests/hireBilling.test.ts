@@ -1,16 +1,64 @@
 import { describe, expect, it } from "vitest";
-import { buildHireActivityDays, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, getHireReviewGaps, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup } from "../shared/hireBilling";
+import { availableOtherBillItems, buildHireActivityDays, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, getHireReviewGaps, mergeOtherBillItems, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup } from "../shared/hireBilling";
 
 describe("hire billing calculator", () => {
+  it("appends Pull Other Items without replacing hire-group or manual lines", () => {
+    const existing = [
+      { source: "hire_group", sourceId: "group:7", date: "2026-07-19", description: "TRACTOR DOZER MONTHLY HIRE" },
+      { source: "manual", date: "2026-07-20", description: "MANUAL ADJUSTMENT" },
+    ];
+    const candidates = [
+      { source: "auto", sourceId: "material:1", date: "2026-07-21", category: "material", description: "AGGREGATE" },
+      { source: "auto", sourceId: "trip:2", date: "2026-07-22", category: "transport", description: "TRUCK TRIP" },
+    ];
+
+    const available = availableOtherBillItems(candidates, existing, []);
+    expect(available).toHaveLength(2);
+    expect(mergeOtherBillItems(existing, available)).toEqual([...existing, ...candidates]);
+  });
+
+  it("uses identical pull eligibility for count and insertion and ignores repeated pulls", () => {
+    const group = [{ equipmentId: 7, periodFrom: "2026-07-19", periodTo: "2026-07-31" }];
+    const existing = [{ source: "manual", date: "2026-07-19", description: "KEEP ME" }];
+    const candidates = [
+      { source: "auto", sourceId: "equipment:1", category: "equipment", equipmentId: 7, date: "2026-07-20", description: "TRACTOR DOZER - DAILY HIRE" },
+      { source: "auto", sourceId: "equipment:2", category: "equipment", equipmentId: 8, date: "2026-07-20", description: "ROLLER - DAILY HIRE" },
+      { source: "auto", sourceId: "equipment:3", category: "equipment", equipmentId: 9, date: "2026-07-20", entryType: "monthly", description: "PAVER - MONTHLY HIRE" },
+      { source: "auto", sourceId: "trip:4", date: "2026-07-21", category: "transport", description: "TRUCK TRIP" },
+    ];
+
+    const available = availableOtherBillItems(candidates, existing, group);
+    expect(available.map(item => item.sourceId)).toEqual(["equipment:2", "trip:4"]);
+    const once = mergeOtherBillItems(existing, available);
+    expect(once).toHaveLength(existing.length + available.length);
+    expect(mergeOtherBillItems(once, available)).toEqual(once);
+  });
+
+  it("deduplicates the same auto row after save/reload when sourceId is not persisted", () => {
+    const saved = [{ source: "auto:material:1", date: "2026-07-21", category: "material", description: "AGGREGATE", siteName: "PLANT" }];
+    const refetched = [{ source: "auto", sourceId: "material:1", date: "2026-07-21", category: "material", description: "AGGREGATE", siteName: "PLANT" }];
+    expect(availableOtherBillItems(refetched, saved, [])).toEqual([]);
+  });
+
+  it("keeps distinct source rows eligible when their displayed fields are identical", () => {
+    const candidates = [
+      { source: "auto", sourceId: "material_receipt:1", date: "2026-07-21", category: "material", description: "AGGREGATE (PLANT)", siteName: "PLANT" },
+      { source: "auto", sourceId: "material_receipt:2", date: "2026-07-21", category: "material", description: "AGGREGATE (PLANT)", siteName: "PLANT" },
+    ];
+    expect(availableOtherBillItems(candidates, [], [])).toEqual(candidates);
+    expect(availableOtherBillItems(candidates, [{ ...candidates[0], source: "auto:material_receipt:1", sourceId: undefined }], []))
+      .toEqual([candidates[1]]);
+  });
   it("matches only raw auto equipment rows inside a hire-group period", () => {
     const groups = [{ equipmentId: 7, periodFrom: "2026-08-01", periodTo: "2026-08-15" }];
 
-    expect(rawAutoItemCoveredByHireGroup({ source: "auto", equipmentId: 7, date: "2026-08-01" }, groups)).toBeTruthy();
-    expect(rawAutoItemCoveredByHireGroup({ source: "auto", equipmentId: 7, date: "2026-08-15" }, groups)).toBeTruthy();
-    expect(rawAutoItemCoveredByHireGroup({ source: "auto", equipmentId: 7, date: "2026-08-16" }, groups)).toBeUndefined();
-    expect(rawAutoItemCoveredByHireGroup({ source: "auto", equipmentId: 8, date: "2026-08-10" }, groups)).toBeUndefined();
-    expect(rawAutoItemCoveredByHireGroup({ source: "manual", equipmentId: 7, date: "2026-08-10" }, groups)).toBeUndefined();
-    expect(rawAutoItemCoveredByHireGroup({ source: "auto", equipmentId: null, date: "2026-08-10" }, groups)).toBeUndefined();
+    expect(rawAutoItemCoveredByHireGroup({ source: "auto", category: "equipment", equipmentId: 7, date: "2026-08-01" }, groups)).toBeTruthy();
+    expect(rawAutoItemCoveredByHireGroup({ source: "auto", category: "equipment", equipmentId: 7, date: "2026-08-15" }, groups)).toBeTruthy();
+    expect(rawAutoItemCoveredByHireGroup({ source: "auto", category: "equipment", equipmentId: 7, date: "2026-08-16" }, groups)).toBeUndefined();
+    expect(rawAutoItemCoveredByHireGroup({ source: "auto", category: "equipment", equipmentId: 8, date: "2026-08-10" }, groups)).toBeUndefined();
+    expect(rawAutoItemCoveredByHireGroup({ source: "manual", category: "equipment", equipmentId: 7, date: "2026-08-10" }, groups)).toBeUndefined();
+    expect(rawAutoItemCoveredByHireGroup({ source: "auto", category: "equipment", equipmentId: null, date: "2026-08-10" }, groups)).toBeUndefined();
+    expect(rawAutoItemCoveredByHireGroup({ source: "auto", category: "transport", equipmentId: 7, date: "2026-08-10" }, groups)).toBeUndefined();
   });
 
   it("constrains monthly billing to hire dates and prorates partial calendar months", () => {
@@ -342,6 +390,58 @@ describe("normalized vendor-bill hire groups", () => {
     });
     expect(result.workingSheet.slice(1).every(day => day.activity === "no_activity")).toBe(true);
     expect(result).toMatchObject({ grossAmount: 13_000, deductionAmount: 0 });
+  });
+
+  it("keeps recorded NO WORK distinct from a computed no-activity calendar date", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "monthly", rate: 60_000, monthlyDivisorType: "calendar" },
+      periodFrom: "2026-07-19",
+      periodTo: "2026-07-31",
+      activities: [
+        { source: "dpr_log", sourceId: 1, equipmentId: 7, businessDate: "2026-07-19", task: "NO WORK (SITE)", actualDiesel: 41.12, expectedDiesel: 30 },
+      ],
+      dieselPurchases: [{ id: 1, date: "2026-07-19", rate: 104.6, qtyPurchased: 100 }],
+      dieselRecovery: { decision: "accept" },
+    });
+    expect(result.workingSheet).toHaveLength(13);
+    expect(result.workingSheet[0]).toMatchObject({
+      activity: "worked",
+      activityCount: 1,
+      activityDescriptions: ["NO WORK (SITE)"],
+    });
+    expect(result.workingSheet[1]).toMatchObject({
+      activity: "no_activity",
+      activityCount: 0,
+      activityDescriptions: [],
+    });
+    expect(result).toMatchObject({
+      calculatedGrossAmount: 25_161.29,
+      deductionAmount: 0,
+      netAmount: 23_998.14,
+      diesel: {
+        actualDiesel: 41.12,
+        expectedDiesel: 30,
+        suggestedExcess: 11.12,
+        suggestedRecoveryAmount: 1_163.15,
+        finalRecoveryAmount: 1_163.15,
+      },
+    });
+  });
+
+  it("keeps recorded activity visible on a day that also has a breakdown", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "monthly", rate: 30_000, monthlyDivisorType: "30" },
+      periodFrom: "2026-07-19",
+      periodTo: "2026-07-19",
+      activities: [{ source: "dpr_log", sourceId: 1, equipmentId: 7, businessDate: "2026-07-19", task: "NO WORK" }],
+      maintenance: [{ id: 2, date: "2026-07-19", eventType: "breakdown", description: "HOSE FAILURE" }],
+    });
+    expect(result.workingSheet[0]).toMatchObject({
+      activity: "breakdown",
+      activityCount: 1,
+      activityDescriptions: ["NO WORK"],
+      maintenanceDescriptions: ["HOSE FAILURE"],
+    });
   });
 
   it("suppresses only an explicit mirror while retaining real unlinked same-day activity in one visible day", () => {

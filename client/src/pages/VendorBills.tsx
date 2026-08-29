@@ -19,7 +19,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
-import { calculateHireGroup, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireActivity } from "@shared/hireBilling";
+import { availableOtherBillItems, calculateHireGroup, mergeOtherBillItems, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireActivity } from "@shared/hireBilling";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -55,12 +55,36 @@ interface LineItem {
   rate: number;
   amount: number;
   source: string;
+  sourceId?: number | string | null;
   equipmentId: number | null;
   leadDistance: number | null;
   siteName?: string | null;
   billedIn?: { billNo: string; billStatus: string } | null;
   suppliedTo?: string | null;
   transporter?: string | null;
+}
+
+const isAutoLineSource = (source: string) => source === "auto" || source.startsWith("auto:");
+const isGeneratedEvidenceLine = (source: string) =>
+  isAutoLineSource(source) || ["hire_group", "hire_statement"].includes(source);
+
+function mapAutoBillItem(item: any): LineItem {
+  return {
+    date: item.date || "",
+    category: item.category || "other",
+    description: item.description || "",
+    qty: item.qty || 0,
+    unit: item.unit || "HRS",
+    rate: item.rate || 0,
+    amount: (item.qty || 0) * (item.rate || 0),
+    source: item.sourceId != null ? `auto:${String(item.sourceId).toLowerCase()}` : (item.source || "auto"),
+    sourceId: item.sourceId ?? null,
+    equipmentId: item.equipmentId || null,
+    leadDistance: item.leadDistance ?? null,
+    siteName: item.siteName || null,
+    suppliedTo: item.suppliedTo ?? null,
+    transporter: item.transporter ?? null,
+  };
 }
 
 type HireDecision = { date: string; decision: "full_day" | "half_day" | "exclude"; reason?: string };
@@ -384,7 +408,7 @@ function HireWorkingSheet({ group, result, activities, maintenance, patchHireGro
       ...existing, ...patch, decision,
     }] });
   };
-  const workedDays = days.filter(d => d.activity === "worked").length;
+  const workedDays = days.filter(d => Number(d.activityCount || 0) > 0).length;
   const breakdownDays = days.filter(d => d.activity === "breakdown").length;
   const noActivityDays = days.filter(d => d.activity === "no_activity").length;
   const retainedDays = days.filter(d => Number(d.billableActivityCount || 0) > 0);
@@ -404,7 +428,7 @@ function HireWorkingSheet({ group, result, activities, maintenance, patchHireGro
     ? [["DAILY FULL / HALF / EXCLUDED", `${fullDays} / ${halfDays} / ${excludedDays}`], ["PAYABLE DAYS", payableDays.toFixed(2)]]
     : group.basis === "trip"
       ? [["TRIPS RECORDED / ADJUSTMENT / EXCLUDED", `${recordedTrips.toFixed(2)} / ${adjustmentQty.toFixed(2)} / ${excludedTripQty.toFixed(2)}`], ["PAYABLE TRIPS", Number(result?.quantity || 0).toFixed(2)]]
-      : [["MONTHLY PERIOD", `${days.length} DAYS · ${workedDays} WORKED · ${breakdownDays} BREAKDOWN · ${noActivityDays} NO ACTIVITY`]];
+      : [["PERIOD DAYS", `${days.length}`], ["ACTIVITY / RECORDED DAYS", `${workedDays}`], ["NO ACTIVITY DAYS", `${noActivityDays}`], ["VENDOR BREAKDOWN DAYS", `${breakdownDays}`]];
   const financialTotals = [["GROSS", `₹${formatCurrency(result?.grossAmount || 0)}`], ["BREAKDOWN DEDUCTION", `₹${formatCurrency(result?.deductionAmount || 0)}`], ["NET HSD EXCESS", `${Number(result?.diesel?.suggestedExcess || 0).toFixed(2)} L`], ["SUGGESTED RECOVERY", `₹${formatCurrency(result?.diesel?.suggestedRecoveryAmount)}`], ["FINAL RECOVERY", `₹${formatCurrency(result?.diesel?.finalRecoveryAmount || 0)}`], ["NET HIRE", `₹${formatCurrency(result?.netAmount || 0)}`]];
   return (
     <div className="mt-2 rounded border border-slate-300 bg-slate-50/70 dark:bg-slate-950/30" data-testid="equipment-hire-working-sheet">
@@ -432,7 +456,7 @@ function HireWorkingSheet({ group, result, activities, maintenance, patchHireGro
               return <tr key={date} className="align-top border-b border-slate-200 dark:border-slate-800">
                 <td className="whitespace-nowrap px-2 py-1.5 font-semibold">{formatDate(date)}<span className="block text-[9px] font-normal text-muted-foreground">{day.activityCount ? `${day.activityCount} MERGED ROW${day.activityCount === 1 ? "" : "S"}` : "CALENDAR DATE"}</span></td>
                 <td className="max-w-[250px] px-2 py-1.5"><div className="font-semibold">{formatEvidenceValue(day.equipmentNames?.join(" · "))}</div><div>{formatEvidenceValue(day.siteLocations?.join(" · "))}</div><div className="text-[9px] text-muted-foreground">{formatEvidenceValue(day.movementReferences?.join(" · "))}</div></td>
-                <td className="min-w-[190px] px-2 py-1.5"><span className={day.activity === "breakdown" || day.openActivityCount > 0 ? "font-bold text-amber-700" : day.activity === "no_activity" ? "text-muted-foreground" : "font-bold text-emerald-700"}>{day.activity === "breakdown" ? "VENDOR BREAKDOWN" : day.activity === "no_activity" ? "NO ACTIVITY" : day.billableActivityCount === 0 && day.openActivityCount > 0 ? "OPEN — NOT BILLABLE" : "WORKED"}</span>{day.openActivityCount > 0 && day.billableActivityCount > 0 && <span className="block text-[9px] font-semibold text-amber-700">{day.openActivityCount} OPEN ROW{day.openActivityCount === 1 ? "" : "S"} EXCLUDED</span>}<div className="mt-1 max-w-[230px] text-[9px]">{formatEvidenceValue(day.activityDescriptions?.join(" · "))}</div>
+                <td className="min-w-[190px] px-2 py-1.5">{Number(day.activityCount || 0) > 0 ? <><div className="max-w-[230px] font-bold text-emerald-700">{formatEvidenceValue(day.activityDescriptions?.join(" · "))}</div><span className="block text-[9px] font-semibold text-muted-foreground">{day.billableActivityCount === 0 && day.openActivityCount > 0 ? "RECORDED · OPEN — NOT BILLABLE" : "RECORDED ACTIVITY"}</span></> : <span className="font-semibold text-muted-foreground">NO ACTIVITY</span>}{day.activity === "breakdown" && <><span className="mt-1 block font-bold text-amber-700">VENDOR BREAKDOWN</span><div className="max-w-[230px] font-semibold">{formatEvidenceValue(day.maintenanceDescriptions?.join(" · "))}</div></>}{day.openActivityCount > 0 && day.billableActivityCount > 0 && <span className="block text-[9px] font-semibold text-amber-700">{day.openActivityCount} OPEN ROW{day.openActivityCount === 1 ? "" : "S"} EXCLUDED</span>}
                   {group.basis === "daily" && day.billableActivityCount > 0 && <Select value={daily} onValueChange={v => setDaily(date, v as HireDecision["decision"])}><SelectTrigger className="mt-1 h-7 w-[130px] text-[10px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="full_day">FULL DAY</SelectItem><SelectItem value="half_day">HALF DAY</SelectItem><SelectItem value="exclude">EXCLUDE</SelectItem></SelectContent></Select>}</td>
                 <td className="whitespace-nowrap px-2 py-1.5">{day.hours ? `${day.hours} H` : "—"} / {day.trips ? `${day.trips} T` : "—"}
                   {group.basis === "trip" && billableDayActs.filter(a => a.entryType === "trip_based").length > 0 && <div className="mt-1 space-y-1">{billableDayActs.filter(a => a.entryType === "trip_based").map(a => { const d = group.tripDecisions.find(x => x.source === a.source && x.sourceId === a.sourceId); const selected = d?.selected !== false; return <div key={`${a.source}:${a.sourceId}`} className="flex items-center gap-1"><Button type="button" variant="outline" className="h-6 px-1 text-[9px]" onClick={() => setTrip(a, selected ? "exclude" : "include")}>{selected ? "INCLUDE" : "EXCLUDE"}</Button><Input aria-label="Correct trips" className="h-6 w-14 px-1 text-[10px]" type="number" min="0" placeholder="CORRECT" value={d?.correctedTrips ?? ""} onChange={e => setTrip(a, "correct", e.target.value === "" ? undefined : Number(e.target.value))} /></div>; })}</div>}</td>
@@ -448,7 +472,7 @@ function HireWorkingSheet({ group, result, activities, maintenance, patchHireGro
         </table>
       </div>
       <div className="grid min-w-[900px] grid-cols-2 gap-px border-t bg-slate-300 text-[10px] dark:bg-slate-700 sm:grid-cols-4 lg:grid-cols-8">
-        {[...basisTotals, ["HOURS", `${days.reduce((n, d) => n + Number(d.hours || 0), 0).toFixed(2)} H`], ["ACTUAL / EXPECTED HSD", `${actual.toFixed(2)} / ${expected.toFixed(2)} L`], ["NET VARIANCE", `${variance >= 0 ? "+" : ""}${variance.toFixed(2)} L`], ...financialTotals].map(([label, value]) => <div key={label} className="bg-background px-2 py-1.5"><span className="block font-bold uppercase text-muted-foreground">{label}</span><strong>{value}</strong></div>)}
+        {[...basisTotals, ["TOTAL HOURS", `${days.reduce((n, d) => n + Number(d.hours || 0), 0).toFixed(2)} H`], ["TOTAL TRIPS", `${days.reduce((n, d) => n + Number(d.trips || 0), 0).toFixed(2)}`], ["ACTUAL / EXPECTED HSD", `${actual.toFixed(2)} / ${expected.toFixed(2)} L`], ["NET HSD VARIANCE", `${variance >= 0 ? "+" : ""}${variance.toFixed(2)} L`], ...financialTotals].map(([label, value]) => <div key={label} className="bg-background px-2 py-1.5"><span className="block font-bold uppercase text-muted-foreground">{label}</span><strong>{value}</strong></div>)}
       </div>
     </div>
   );
@@ -495,6 +519,7 @@ export default function VendorBills() {
   const [view, setView] = useState<ViewMode>("list");
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
   const [editingBillId, setEditingBillId] = useState<number | null>(null);
+  const [editingHireCommercial, setEditingHireCommercial] = useState<Record<string, boolean>>({});
 
   const _vbSp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const mgmtReportSite = _vbSp?.get("from") === "management-report" ? (_vbSp?.get("site") || null) : null;
@@ -675,6 +700,7 @@ export default function VendorBills() {
     queryFn: () => autoItemsUrl ? fetch(autoItemsUrl).then(r => r.json()) : Promise.resolve([]),
     enabled: !!autoItemsUrl,
   });
+  const mappedAutoItems = useMemo(() => (autoItems || []).map(mapAutoBillItem), [autoItems]);
 
   const hireActivitiesUrl = vendorName && periodFrom && periodTo
     ? `/api/vendor-bills/hire-activities?vendorName=${encodeURIComponent(vendorName)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}`
@@ -846,22 +872,8 @@ export default function VendorBills() {
   };
 
   const handleAutoPopulate = async () => {
-    if (autoItems && autoItems.length > 0) {
-      const mapped: LineItem[] = autoItems.map((item: any) => ({
-        date: item.date || "",
-        category: item.category || "other",
-        description: item.description || "",
-        qty: item.qty || 0,
-        unit: item.unit || "HRS",
-        rate: item.rate || 0,
-        amount: (item.qty || 0) * (item.rate || 0),
-        source: "auto",
-        equipmentId: item.equipmentId || null,
-        leadDistance: item.leadDistance ?? null,
-        siteName: item.siteName || null,
-        suppliedTo: item.suppliedTo ?? null,
-        transporter: item.transporter ?? null,
-      }));
+    if (availableOtherItems.length > 0) {
+      const mapped: LineItem[] = availableOtherItems.map(item => ({ ...item }));
 
       try {
         const rcRes = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(vendorName)}`);
@@ -956,13 +968,8 @@ export default function VendorBills() {
         return (a.date || "").localeCompare(b.date || "");
       });
 
-      const covered = mapped.filter(item => rawAutoItemCoveredByHireGroup(item, hireGroups));
-      const uncovered = mapped.filter(item => !rawAutoItemCoveredByHireGroup(item, hireGroups));
-      setLineItems(uncovered);
-      if (covered.length) {
-        toast({ title: `Excluded ${covered.length} raw activity row${covered.length === 1 ? "" : "s"} already covered by hire groups` });
-      }
-      toast({ title: `${uncovered.length} items auto-populated from records` });
+      setLineItems(prev => mergeOtherBillItems(prev, mapped));
+      toast({ title: `${mapped.length} items added from records` });
     }
   };
 
@@ -1093,13 +1100,24 @@ export default function VendorBills() {
   const hireCalculated = useMemo(() => hireGroups.map(group => {
     try { return { group, result: hireResult(group) }; } catch { return { group, result: null }; }
   }), [hireGroups, hireActivityRows, hireEquipment]);
+  const availableOtherItems = useMemo(
+    () => availableOtherBillItems(mappedAutoItems, lineItems, hireGroups),
+    [mappedAutoItems, lineItems, hireGroups],
+  );
 
   useEffect(() => {
     const generated = hireCalculated.filter(x => x.result).map(({ group, result }) => {
       const eq = hireEquipmentFor(group.equipmentId);
       const unit = group.basis === "monthly" ? "MONTHS" : group.basis === "daily" ? "DAYS" : "TRIPS";
+      const effectiveFrom = result!.billablePeriodFrom || group.periodFrom;
+      const effectiveTo = result!.billablePeriodTo || group.periodTo;
+      const effectiveEnd = new Date(`${effectiveTo}T00:00:00`);
+      const partMonth = group.basis === "monthly" && (
+        effectiveFrom.slice(8, 10) !== "01" ||
+        effectiveEnd.getDate() !== new Date(effectiveEnd.getFullYear(), effectiveEnd.getMonth() + 1, 0).getDate()
+      );
       return { date: group.periodFrom, category: "equipment", equipmentId: group.equipmentId,
-        description: `${eq?.name || "EQUIPMENT"} · ${formatDate(group.periodFrom)}–${formatDate(group.periodTo)} · ${group.basis.toUpperCase()} HIRE`,
+        description: `${eq?.name || "EQUIPMENT"} · ${formatDate(effectiveFrom)}–${formatDate(effectiveTo)} · ${group.basis.toUpperCase()} HIRE${partMonth ? " · PART-MONTH PRORATED" : ""}`,
         qty: result!.quantity, unit, rate: result!.netAmount / (result!.quantity || 1), amount: result!.netAmount,
         source: "hire_group", leadDistance: null, siteName: null, suppliedTo: null, transporter: null } as LineItem;
     });
@@ -2093,6 +2111,28 @@ export default function VendorBills() {
                 const dates = Array.from(new Set(acts.map((a: any) => a.businessDate))).sort();
                 const operationalExceptions = result?.exceptions.filter(exception => exception.sourceType === "usage") || [];
                 const activityDays = (result?.workingSheet || []) as any[];
+                const periodDays = activityDays.length;
+                const effectiveFrom = result?.billablePeriodFrom || group.periodFrom;
+                const effectiveTo = result?.billablePeriodTo || group.periodTo;
+                const monthlyDivisorType = eq?.hireMonthlyDivisorType || "30";
+                const customDivisor = Number(eq?.hireMonthlyDivisor || 0);
+                const sameMonth = effectiveFrom.slice(0, 7) === effectiveTo.slice(0, 7);
+                const endDate = new Date(`${effectiveTo}T00:00:00`);
+                const isPartMonth = group.basis === "monthly" && (
+                  effectiveFrom.slice(8, 10) !== "01" ||
+                  endDate.getDate() !== new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).getDate()
+                );
+                const calendarDays = sameMonth
+                  ? new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).getDate()
+                  : null;
+                const dayFraction = monthlyDivisorType === "calendar" && calendarDays
+                  ? `${periodDays}/${calendarDays} CALENDAR DAYS`
+                  : `${periodDays} BILLABLE DAYS`;
+                const divisorHelper = monthlyDivisorType === "calendar"
+                  ? "CALENDAR-DAY PRORATION BY MONTH"
+                  : monthlyDivisorType === "custom" && customDivisor > 0
+                    ? `CONTRACT DIVISOR: ${customDivisor} DAYS`
+                    : "CONTRACT DIVISOR: 30 DAYS";
                 const diesel = (result?.diesel || {}) as any;
                 const suggestedRecoveryAmount = Number(diesel.suggestedRecoveryAmount ?? 0);
                 const pricingRates = Array.from(new Set((diesel.dailyPricing || [])
@@ -2129,7 +2169,7 @@ export default function VendorBills() {
                          data-testid={`button-view-activity-${index}`}
                        >
                          <ChevronLeft className={`w-3 h-3 mr-1 transition-transform ${expandedHireActivity[group.id] ? "-rotate-90" : "rotate-180"}`} />
-                         {expandedHireActivity[group.id] ? "HIDE" : "OPEN"} EQUIPMENT HIRE WORKING SHEET · {activityDays.length} DATES
+                          {expandedHireActivity[group.id] ? "HIDE" : "OPEN"} WORKING / MEASUREMENT SHEET — {activityDays.length} DAYS
                        </Button>
                        {expandedHireActivity[group.id] && (
                          <HireWorkingSheet group={group} result={result} activities={acts} maintenance={maintenance} patchHireGroup={patchHireGroup} formatEvidenceValue={formatEvidenceValue} />
@@ -2214,12 +2254,21 @@ export default function VendorBills() {
                       const without = group.exceptionDecisions.filter((decision: any) => !(decision.sourceType === "usage" && decision.sourceId === exception.sourceId && decision.exceptionType === exception.exceptionType && decision.date === exception.date));
                       return <div key={`${exception.sourceId}-${exception.exceptionType}-${exception.date}-${exceptionIndex}`} className="flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs"><span>{formatDate(exception.date)} · {exception.description}</span><Button type="button" size="sm" variant={acknowledged ? "secondary" : "outline"} className="h-7" onClick={() => patchHireGroup(group.id, { exceptionDecisions: acknowledged ? without : [...without, { sourceType: "usage", sourceId: exception.sourceId, exceptionType: exception.exceptionType, date: exception.date, decision: "none", remarks: "REVIEWED IN VENDOR BILL" }] })}>{acknowledged ? "ACKNOWLEDGED" : "ACKNOWLEDGE"}</Button></div>;
                     })}</div>}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t pt-2">
-                      <div><Label className="text-[11px] uppercase">Qty Override</Label><Input type="number" placeholder={result ? result.quantity.toFixed(2) : "AUTO"} value={group.quantityOverride ?? ""} onChange={e => patchHireGroup(group.id, { quantityOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div>
-                      <div><Label className="text-[11px] uppercase">Gross Override (₹)</Label><Input type="number" placeholder={result ? formatCurrency(result.grossAmount) : "AUTO"} value={group.grossAmountOverride ?? ""} onChange={e => patchHireGroup(group.id, { grossAmountOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div>
-                      <div><Label className="text-[11px] uppercase">Bill Norm</Label><Input type="number" placeholder={result?.diesel.consumptionNorm?.toString() || "NOT RECORDED"} value={group.dieselNormOverride ?? ""} onChange={e => patchHireGroup(group.id, { dieselNormOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div>
-                      <div><Label className="text-[11px] uppercase">Norm Basis</Label><Input placeholder={result?.diesel.normBasis || "L/HOUR OR KM/L"} value={group.dieselNormBasisOverride || ""} onChange={e => patchHireGroup(group.id, { dieselNormBasisOverride: e.target.value.toUpperCase() })} /></div>
-                    </div>
+                     {group.basis === "monthly" && result && <div className="border-t pt-2 rounded bg-orange-50/60 p-2 text-xs dark:bg-orange-950/20">
+                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                         <div><span className="text-muted-foreground uppercase">Monthly rate</span><strong className="block">₹{formatCurrency(group.rate)}</strong></div>
+                         <div><span className="text-muted-foreground uppercase">Billable period</span><strong className="block">{isPartMonth ? `${formatDate(effectiveFrom)} TO ${formatDate(effectiveTo)} — ${dayFraction}` : "FULL MONTH"}</strong></div>
+                         <div><span className="text-muted-foreground uppercase">Suggested hire</span><strong className="block">₹{formatCurrency(result.calculatedGrossAmount)}</strong></div>
+                       </div>
+                       {isPartMonth && <p className="mt-1 text-[11px] text-muted-foreground">{divisorHelper}</p>}
+                       <Button type="button" variant="ghost" size="sm" className="mt-1 h-7 px-0 text-[10px]" onClick={() => setEditingHireCommercial(prev => ({ ...prev, [group.id]: !prev[group.id] }))}>EDIT QTY / AMOUNT</Button>
+                     </div>}
+                     <div className="grid grid-cols-2 gap-2 border-t pt-2 sm:grid-cols-4">
+                       {(group.basis !== "monthly" || editingHireCommercial[group.id]) && <><div><Label className="text-[11px] uppercase">Agreed Qty</Label><Input type="number" placeholder={result ? result.quantity.toFixed(2) : "AUTO"} value={group.quantityOverride ?? ""} onChange={e => patchHireGroup(group.id, { quantityOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div>
+                       <div><Label className="text-[11px] uppercase">Agreed Gross Amount (₹)</Label><Input type="number" placeholder={result ? formatCurrency(result.grossAmount) : "AUTO"} value={group.grossAmountOverride ?? ""} onChange={e => patchHireGroup(group.id, { grossAmountOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div></>}
+                       <div><Label className="text-[11px] uppercase">Bill Norm</Label><Input type="number" placeholder={result?.diesel.consumptionNorm?.toString() || "NOT RECORDED"} value={group.dieselNormOverride ?? ""} onChange={e => patchHireGroup(group.id, { dieselNormOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div>
+                       <div><Label className="text-[11px] uppercase">Norm Basis</Label><Input placeholder={result?.diesel.normBasis || "L/HOUR OR KM/L"} value={group.dieselNormBasisOverride || ""} onChange={e => patchHireGroup(group.id, { dieselNormBasisOverride: e.target.value.toUpperCase() })} /></div>
+                     </div>
                      {result && <div className="border-t pt-2 space-y-2">
                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                          <div><span className="text-muted-foreground uppercase">Actual</span><strong className="block">{diesel.actualDiesel?.toFixed(2) || "0.00"} L</strong></div>
@@ -2251,8 +2300,7 @@ export default function VendorBills() {
                          <div><Label className="text-[11px] uppercase">Recovery Remarks</Label><Input value={group.dieselRecoveryRemarks || ""} onChange={e => patchHireGroup(group.id, { dieselRecoveryRemarks: e.target.value.toUpperCase() })} /></div>
                        </div>}
                      </div>}
-                    {group.basis === "monthly" && (group.periodFrom.slice(8, 10) !== "01" || new Date(`${group.periodTo}T00:00:00`).getDate() !== new Date(new Date(`${group.periodTo}T00:00:00`).getFullYear(), new Date(`${group.periodTo}T00:00:00`).getMonth() + 1, 0).getDate()) && <p className="text-xs text-amber-700">PARTIAL MONTH: REVIEW THE DIVISOR-BASED SUGGESTION AND CONFIRM WITH A QTY OR GROSS OVERRIDE IF THE AGREEMENT DIFFERS.</p>}
-                    {result && <div className="border-t pt-2 grid grid-cols-2 sm:grid-cols-7 gap-2 text-xs"><div><span className="text-muted-foreground uppercase">Suggested Qty</span><strong className="block">{result.quantity.toFixed(2)} {group.basis === "monthly" ? "MONTHS" : group.basis === "daily" ? "DAYS" : "TRIPS"}</strong></div><div><span className="text-muted-foreground uppercase">Gross</span><strong className="block">₹{formatCurrency(result.grossAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Breakdown deduction</span><strong className="block">₹{formatCurrency(result.deductionAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Net Excess</span><strong className="block">{result.diesel.suggestedExcess.toFixed(2)} L</strong></div><div><span className="text-muted-foreground uppercase">Suggested / Final recovery</span><strong className="block">₹{formatCurrency(result.diesel.suggestedRecoveryAmount)} / ₹{formatCurrency(result.diesel.finalRecoveryAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Net Hire</span><strong className="block text-orange-700">₹{formatCurrency(result.netAmount)}</strong></div></div>}
+                     {result && <div className="border-t pt-2 grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs">{group.basis !== "monthly" && <div><span className="text-muted-foreground uppercase">Suggested Qty</span><strong className="block">{result.quantity.toFixed(2)} {group.basis === "daily" ? "DAYS" : "TRIPS"}</strong></div>}<div><span className="text-muted-foreground uppercase">Gross</span><strong className="block">₹{formatCurrency(result.grossAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Breakdown deduction</span><strong className="block">₹{formatCurrency(result.deductionAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Net Excess</span><strong className="block">{result.diesel.suggestedExcess.toFixed(2)} L</strong></div><div><span className="text-muted-foreground uppercase">Suggested / Final recovery</span><strong className="block">₹{formatCurrency(result.diesel.suggestedRecoveryAmount)} / ₹{formatCurrency(result.diesel.finalRecoveryAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Net Hire</span><strong className="block text-orange-700">₹{formatCurrency(result.netAmount)}</strong></div></div>}
                     <div className="flex justify-end"><Button type="button" variant="ghost" size="sm" onClick={() => removeHireGroup(group.id)}><Trash2 className="w-3 h-3 mr-1" /> REMOVE</Button></div>
                   </div>
                 );
@@ -2278,17 +2326,17 @@ export default function VendorBills() {
                     ? `Labour deployment for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) from DPR labour logs (grouped by date, site, category, gender).`
                     : `Transport dispatches for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) from truck dispatch records.`}
                 </span>
-                <span className="w-full text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Other billable activities available — pull them into this bill when required; excluded monthly evidence is not missing.</span>
-                <Button
+                <span className="w-full text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Other billable activities for this vendor/period are shown here. Monthly hire activity is available in the Hire Working Sheet above.</span>
+                {availableOtherItems.length > 0 ? <Button
                   variant="outline"
                   size="sm"
                   onClick={handleAutoPopulate}
-                  disabled={autoItemsLoading || !autoItems?.length}
+                  disabled={autoItemsLoading}
                   data-testid="button-auto-populate"
                 >
                   {autoItemsLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                  {autoItems?.length ? `PULL ${autoItems.length} OTHER ITEM${autoItems.length === 1 ? "" : "S"}` : "NO OTHER ITEMS AVAILABLE"}
-                </Button>
+                  {`PULL ${availableOtherItems.length} OTHER ITEM${availableOtherItems.length === 1 ? "" : "S"}`}
+                </Button> : <span className="text-[11px] font-semibold uppercase">No other billable activities available</span>}
               </div>
             </CardContent>
           </Card>
@@ -2338,7 +2386,7 @@ export default function VendorBills() {
                 <tr key={idx} className="border-b">
                   <td className="px-2 py-1.5 text-muted-foreground text-sm">{idx + 1}</td>
                   <td className="px-2 py-1.5">
-                    {["auto", "hire_group", "hire_statement"].includes(item.source) ? (
+                    {isGeneratedEvidenceLine(item.source) ? (
                       <span className="text-sm font-mono" data-testid={`text-item-date-${idx}`}>{formatDate(item.date)}</span>
                     ) : (
                       <Input
@@ -2351,7 +2399,7 @@ export default function VendorBills() {
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-center">
-                    {["auto", "hire_group", "hire_statement"].includes(item.source) ? (
+                    {isGeneratedEvidenceLine(item.source) ? (
                       <Badge
                         variant="outline"
                         className={`text-[12px] ${getCategoryBadgeClass(item.category)} no-default-hover-elevate no-default-active-elevate`}
@@ -2375,7 +2423,7 @@ export default function VendorBills() {
                     )}
                   </td>
                   <td className="px-2 py-1.5">
-                    {["auto", "hire_group", "hire_statement"].includes(item.source) ? (
+                    {isGeneratedEvidenceLine(item.source) ? (
                       <div className="space-y-1">
                         <span className="text-sm" data-testid={`text-item-desc-${idx}`}>{item.description}</span>
                         <div className="flex items-center gap-1 flex-wrap">
@@ -2496,7 +2544,7 @@ export default function VendorBills() {
                         onWheel={e => (e.target as HTMLInputElement).blur()}
                         data-testid={`input-item-rate-${idx}`}
                       />
-                      {item.rate > 0 && item.equipmentId && item.source === "auto" && (
+                      {item.rate > 0 && item.equipmentId && isAutoLineSource(item.source) && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -3093,7 +3141,7 @@ export default function VendorBills() {
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-[12px] text-muted-foreground">
-                        {item.source === "auto" ? "AUTO" : "-"}
+                        {isAutoLineSource(item.source) ? "AUTO" : "-"}
                       </Badge>
                     )}
                   </td>
