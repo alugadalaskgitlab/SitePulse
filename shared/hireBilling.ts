@@ -333,6 +333,31 @@ export interface HireGroupCalculationResult extends HireBillingResult {
   netAmount: number;
 }
 
+export interface RawAutoBillItem {
+  source?: string | null;
+  equipmentId?: number | null;
+  date?: string | null;
+}
+
+export interface HireGroupCoverage {
+  equipmentId: number;
+  periodFrom: string;
+  periodTo: string;
+}
+
+/** Narrow 07C-HF1 matcher: manual and non-equipment lines are never covered. */
+export function rawAutoItemCoveredByHireGroup(
+  item: RawAutoBillItem,
+  groups: readonly HireGroupCoverage[] | null | undefined,
+): HireGroupCoverage | undefined {
+  if ((item.source || "").toLowerCase() !== "auto" || item.equipmentId == null || !item.date) return undefined;
+  return groups?.find(group =>
+    Number(item.equipmentId) === Number(group.equipmentId) &&
+    item.date! >= group.periodFrom &&
+    item.date! <= group.periodTo
+  );
+}
+
 /** Returns the review decisions still required before a linked bill can advance. */
 export function getHireReviewGaps(snapshot: Partial<HireGroupCalculationResult> | null | undefined): string[] {
   if (!snapshot) return ["calculation snapshot"];

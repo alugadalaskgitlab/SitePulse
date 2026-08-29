@@ -5,6 +5,7 @@ describe("07C vendor-bill hire transaction wiring", () => {
   const schema = readFileSync("shared/schema.ts", "utf8");
   const storage = readFileSync("server/storage.ts", "utf8");
   const routes = readFileSync("server/routes.ts", "utf8");
+  const client = readFileSync("client/src/pages/VendorBills.tsx", "utf8");
 
   it("has a unique nullable item-to-statement link", () => {
     expect(schema).toContain('hireStatementId: integer("hire_statement_id")');
@@ -43,6 +44,13 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain("Edits to a bill with linked hire statements must include its hire groups");
     expect(storage).toContain('existing.status !== "draft"');
     expect(routes).toContain('assertCreateEither(req, res, "vendor_bills_raise", "vendor_bills")');
+  });
+
+  it("rejects raw auto rows covered by hire groups without touching manual rows", () => {
+    expect(storage.match(/rawAutoItemCoveredByHireGroup\(item, data\.hireGroups\)/g)?.length).toBe(2);
+    expect(storage).toContain("is already covered by a hire group for this bill");
+    expect(client).toContain("Excluded ${covered.length} raw activity row");
+    expect(client).toContain("Removed ${covered.length} raw activity row");
   });
 
   it("serializes draft reconciliation against lifecycle transitions", () => {

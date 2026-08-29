@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { calculateHireGroup, getHireReviewGaps, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
+import { calculateHireGroup, getHireReviewGaps, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import {
   auditLogs,
   type AuditLog,
@@ -13850,6 +13850,10 @@ export class DatabaseStorage implements IStorage {
 
       let items: VendorBillItem[] = [];
       if (data.items?.length) {
+        const conflict = data.items.find(item => rawAutoItemCoveredByHireGroup(item, data.hireGroups));
+        if (conflict) {
+          throw Object.assign(new Error(`Line item for ${conflict.description} on ${conflict.date} is already covered by a hire group for this bill — remove it before saving`), { code: "CONFLICT" });
+        }
         const ordinaryItems = data.items.filter(item =>
           data.hireGroups === undefined ||
           !["hire_statement", "hire_group"].includes((item.source || "").toLowerCase())
@@ -14054,6 +14058,10 @@ export class DatabaseStorage implements IStorage {
 
       let items: VendorBillItem[] = [];
       if (data.items?.length) {
+        const conflict = data.items.find(item => rawAutoItemCoveredByHireGroup(item, data.hireGroups));
+        if (conflict) {
+          throw Object.assign(new Error(`Line item for ${conflict.description} on ${conflict.date} is already covered by a hire group for this bill — remove it before saving`), { code: "CONFLICT" });
+        }
         const ordinaryItems = data.items.filter(item =>
           data.hireGroups === undefined ||
           !["hire_statement", "hire_group"].includes((item.source || "").toLowerCase())

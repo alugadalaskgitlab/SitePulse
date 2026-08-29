@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { calculateHireBilling, calculateHireGroup, getHireReviewGaps, normalizeHireActivities, planHireRegisterRows } from "../shared/hireBilling";
+import { calculateHireBilling, calculateHireGroup, getHireReviewGaps, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup } from "../shared/hireBilling";
 
 describe("hire billing calculator", () => {
+  it("matches only raw auto equipment rows inside a hire-group period", () => {
+    const groups = [{ equipmentId: 7, periodFrom: "2026-08-01", periodTo: "2026-08-15" }];
+
+    expect(rawAutoItemCoveredByHireGroup({ source: "auto", equipmentId: 7, date: "2026-08-01" }, groups)).toBeTruthy();
+    expect(rawAutoItemCoveredByHireGroup({ source: "auto", equipmentId: 7, date: "2026-08-15" }, groups)).toBeTruthy();
+    expect(rawAutoItemCoveredByHireGroup({ source: "auto", equipmentId: 7, date: "2026-08-16" }, groups)).toBeUndefined();
+    expect(rawAutoItemCoveredByHireGroup({ source: "auto", equipmentId: 8, date: "2026-08-10" }, groups)).toBeUndefined();
+    expect(rawAutoItemCoveredByHireGroup({ source: "manual", equipmentId: 7, date: "2026-08-10" }, groups)).toBeUndefined();
+    expect(rawAutoItemCoveredByHireGroup({ source: "auto", equipmentId: null, date: "2026-08-10" }, groups)).toBeUndefined();
+  });
+
   it("constrains monthly billing to hire dates and prorates partial calendar months", () => {
     const result = calculateHireBilling({
       terms: { billingBasis: "monthly", rate: 31_000, hireStartDate: "2025-01-16", hireEndDate: "2025-02-10", monthlyDivisorType: "calendar" },

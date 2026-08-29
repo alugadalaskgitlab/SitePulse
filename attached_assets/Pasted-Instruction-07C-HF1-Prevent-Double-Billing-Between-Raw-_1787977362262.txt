@@ -1,0 +1,116 @@
+Instruction 07C-HF1 — Prevent Double-Billing Between Raw Auto-Items and Hire Groups
+
+DO NOT rebuild 07C. This is a single, targeted fix.
+
+CONFIRMED GAP — TRACED IN THE ACTUAL CODE
+
+In client/src/pages/VendorBills.tsx, the "PULL N ITEMS" button
+(handleAutoPopulate) adds every raw per-row auto-item returned by
+/api/vendor-bills/auto-items into lineItems with source: "auto" —
+unconditionally, regardless of whether a Hire Group has also been added
+for that same equipment covering the same or overlapping dates.
+
+handleSubmit then sends ALL of lineItems (including any source: "auto"
+rows) as data.items, plus hireGroups separately. There is no check
+anywhere in VendorBills.tsx blocking or excluding a source: "auto" row
+for an equipment/date that a Hire Group already covers.
+
+On the server, storage.ts createVendorBill/updateVendorBill only strips
+items whose source is exactly "hire_statement" or "hire_group" when
+hireGroups is present:
+
+  const ordinaryItems = data.items.filter(item =>
+    data.hireGroups === undefined ||
+    !["hire_statement", "hire_group"].includes((item.source || "").toLowerCase())
+  );
+
+Raw auto-pulled rows use source: "auto", so this filter does NOT catch
+them. Today, nothing stops a user from: (1) clicking Pull Items for a
+vendor's hired equipment, (2) also adding a Hire Group for that same
+equipment covering the same dates, and (3) submitting without deleting the
+raw pulled rows — resulting in that equipment's hire being counted twice
+in the same Vendor Bill total. No existing test covers this scenario.
+
+REQUIRED FIX — PICK ONE MECHANISM, APPLIED CONSISTENTLY CLIENT AND SERVER
+
+SCOPE THE MATCH NARROWLY — IMPORTANT CORRECTION
+
+Only apply this exclusion/rejection to raw activity-derived equipment
+lines — that is, items whose source is "auto" (the existing auto-pull
+tag) or another specific existing auto-pull source, matched on
+equipmentId + date falling inside the hire group's period. Do NOT reject
+or remove a manual line item merely because it happens to share the same
+equipmentId and date. A manual line can legitimately represent something
+unrelated to hire (a repair charge, a one-off adjustment, a note) for the
+same equipment on the same date, and must never be blocked or silently
+removed just for that coincidence. Only treat a manual line as subject to
+this check if it is explicitly marked/flagged as representing hire
+activity for that equipment/date — if no such flag exists today, then
+manual lines are simply out of scope for this fix entirely; do not invent
+a new flag in this batch to bring them into scope.
+
+1. CLIENT: when a Hire Group exists for an equipment covering a given
+   date, exclude that equipment's raw auto-items (source: "auto" only) for
+   dates inside that group's period from the "Pull Items" result (or gray
+   them out and uncheck them so they are not included in the pulled set),
+   and if such source: "auto" rows are already present in lineItems when a
+   Hire Group is added or edited to cover their date, remove them
+   automatically with a visible toast explaining why ("Removed N raw
+   activity rows now covered by the Tipper 01 hire group"). Manual rows
+   (source: "manual") must never be touched by this logic.
+
+2. SERVER (defence in depth — required even if the client fix above is
+   done): in createVendorBill / updateVendorBill, when hireGroups is
+   present, also reject or drop any submitted item where item.source is
+   "auto" (or another specific existing auto-pull source — do not match on
+   "manual") AND item.equipmentId matches a hireGroups[].equipmentId AND
+   item.date falls within that group's periodFrom/periodTo — do not rely
+   on the client alone. Prefer rejecting with a clear 409 ("Line item for
+   <equipment> on <date> is already covered by a hire group for this bill
+   — remove it before saving") over silently dropping it, so the drafting
+   user is not surprised by a total that doesn't match what they saw on
+   screen.
+
+Do not weaken the existing source: "hire_statement"/"hire_group" filter —
+add this as an additional, separate, source-scoped check.
+
+TESTS TO ADD
+
+A. Pull raw auto-items (source: "auto") for a hired tipper, then add a
+   Hire Group for the same tipper covering an overlapping date range, then
+   submit. Expected: either the source: "auto" rows are auto-removed/
+   excluded client-side before submit, or the server rejects the
+   submission — the resulting bill must never contain both the raw
+   auto-pulled per-day rows and the hire-group line for the same
+   equipment/date.
+B. Same as A but with a Hire Group covering only PART of the pulled
+   date range (e.g. raw items for 1–20 Aug, hire group for 1–15 Aug only).
+   Expected: only the 1–15 Aug source: "auto" rows for that equipment are
+   excluded; 16–20 Aug raw rows remain, since they are not covered by any
+   group.
+C. A manual line item (source: "manual") with the same equipmentId and a
+   date inside a Hire Group's period — e.g. a repair charge or one-off
+   adjustment for that same machine that day. Expected: this manual line
+   is NOT removed, NOT rejected, and saves normally alongside the hire
+   group line. This is the scenario this hotfix must NOT break.
+D. Confirm ordinary (non-equipment) auto-items and manual items unrelated
+   to any equipment are completely unaffected.
+E. Existing 07C tests continue to pass.
+F. Full test suite.
+
+REPORT BACK
+
+1. Which mechanism was implemented (client exclusion, server rejection, or
+   both — confirm both, per "required fix" above).
+2. Exact matching logic used, confirming it is scoped to source: "auto"
+   (or the specific existing auto-pull source) plus equipmentId plus
+   date-within-period, and does NOT match on manual lines.
+3. What happens to source: "auto" rows already in lineItems when a Hire
+   Group is added/edited to newly cover their dates.
+4. Confirmation a manual line sharing equipmentId/date with a hire group
+   is left untouched (test C).
+5. Test results for A–F.
+6. Full test suite result.
+7. Files changed.
+
+DO NOT START ANOTHER FEATURE. STOP AND REPORT BACK.

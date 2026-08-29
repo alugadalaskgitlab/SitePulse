@@ -40,3 +40,9 @@ Vendor Bill edit, lifecycle transition, and deletion paths must all lock the bil
 **Why:** A preflight check outside the transaction allows concurrent edit/verify/delete requests to overwrite a frozen snapshot or remove a newly approved liability.
 
 **How to apply:** Keep one lock order across all linked-hire mutations; omission of hire groups must never bypass reconciliation for a bill that already has linked statements.
+
+Raw activity-derived Vendor Bill auto-lines must not coexist with a hire group for the same equipment and covered date; manual lines remain independent even when their equipment/date matches.
+
+**Why:** Auto-lines and grouped hire charges represent the same operational activity and would double-bill it, while a manual line may represent a legitimate repair or adjustment.
+
+**How to apply:** Match narrowly on auto source, equipment identity, and inclusive group period on both client and server; never infer that an unflagged manual line is hire activity.

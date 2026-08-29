@@ -19,7 +19,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
-import { calculateHireGroup, normalizeHireActivities, type HireActivity } from "@shared/hireBilling";
+import { calculateHireGroup, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireActivity } from "@shared/hireBilling";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -826,8 +826,13 @@ export default function VendorBills() {
         return (a.date || "").localeCompare(b.date || "");
       });
 
-      setLineItems(mapped);
-      toast({ title: `${mapped.length} items auto-populated from records` });
+      const covered = mapped.filter(item => rawAutoItemCoveredByHireGroup(item, hireGroups));
+      const uncovered = mapped.filter(item => !rawAutoItemCoveredByHireGroup(item, hireGroups));
+      setLineItems(uncovered);
+      if (covered.length) {
+        toast({ title: `Excluded ${covered.length} raw activity row${covered.length === 1 ? "" : "s"} already covered by hire groups` });
+      }
+      toast({ title: `${uncovered.length} items auto-populated from records` });
     }
   };
 
@@ -878,21 +883,33 @@ export default function VendorBills() {
     }
     const { eq, from, to } = available;
     const basis = ["monthly", "daily", "trip"].includes(eq.hireBillingBasis) ? eq.hireBillingBasis : "daily";
-    setHireGroups(prev => [...prev, { id: `hire-${Date.now()}`, equipmentId: Number(eq.id), periodFrom: from, periodTo: to, basis,
-      rate: Number(eq.hireRate) || 0, dailyDecisions: [], tripDecisions: [], exceptionDecisions: [] }]);
+    const group = { id: `hire-${Date.now()}`, equipmentId: Number(eq.id), periodFrom: from, periodTo: to, basis,
+      rate: Number(eq.hireRate) || 0, dailyDecisions: [], tripDecisions: [], exceptionDecisions: [] } as HireGroup;
+    setHireGroups(prev => [...prev, group]);
+    const covered = lineItems.filter(item => rawAutoItemCoveredByHireGroup(item, [group]));
+    if (covered.length) {
+      setLineItems(prev => prev.filter(item => !rawAutoItemCoveredByHireGroup(item, [group])));
+      toast({ title: `Removed ${covered.length} raw activity row${covered.length === 1 ? "" : "s"} now covered by the ${eq.name || "equipment"} hire group` });
+    }
   };
-  const patchHireGroup = (id: string, patch: Partial<HireGroup>) =>
-    setHireGroups(prev => {
-      const current = prev.find(g => g.id === id);
-      if (!current) return prev;
-      const next = { ...current, ...patch };
-      if (next.periodFrom && next.periodTo && next.periodFrom <= next.periodTo &&
-          prev.some(g => g.id !== id && g.equipmentId === next.equipmentId && next.periodFrom <= g.periodTo && next.periodTo >= g.periodFrom)) {
-        toast({ title: "HIRE GROUP OVERLAPS ANOTHER GROUP FOR THIS EQUIPMENT", variant: "destructive" });
-        return prev;
-      }
-      return prev.map(g => g.id === id ? next : g);
-    });
+  const patchHireGroup = (id: string, patch: Partial<HireGroup>) => {
+    const current = hireGroups.find(g => g.id === id);
+    if (!current) return;
+    const next = { ...current, ...patch };
+    if (next.periodFrom && next.periodTo && next.periodFrom <= next.periodTo &&
+        hireGroups.some(g => g.id !== id && g.equipmentId === next.equipmentId && next.periodFrom <= g.periodTo && next.periodTo >= g.periodFrom)) {
+      toast({ title: "HIRE GROUP OVERLAPS ANOTHER GROUP FOR THIS EQUIPMENT", variant: "destructive" });
+      return;
+    }
+    const nextGroups = hireGroups.map(g => g.id === id ? next : g);
+    setHireGroups(nextGroups);
+    const covered = lineItems.filter(item => rawAutoItemCoveredByHireGroup(item, [next]));
+    if (covered.length) {
+      setLineItems(prev => prev.filter(item => !rawAutoItemCoveredByHireGroup(item, [next])));
+      const equipment = hireEquipmentFor(next.equipmentId);
+      toast({ title: `Removed ${covered.length} raw activity row${covered.length === 1 ? "" : "s"} now covered by the ${equipment?.name || "equipment"} hire group` });
+    }
+  };
   const removeHireGroup = (id: string) => setHireGroups(prev => prev.filter(g => g.id !== id));
 
   const removeLineItem = (index: number) => {
