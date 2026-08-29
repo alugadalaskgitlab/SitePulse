@@ -1,0 +1,321 @@
+Instruction 07C-HF4 — Fix Pull Items Data Loss + Working Sheet Usability
+
+DO NOT rebuild 07C / HF1 / HF2 / HF3.
+This is a focused correction based on a live Vendor Bill screen recording.
+The underlying hire calculations are now substantially correct.
+Do not change the period-net HSD calculation.
+
+FIX ONLY:
+1. "Pull Other Items" destroying existing bill line items (confirmed root cause below — this is the priority fix).
+2. Working/Measurement Sheet usability and completeness.
+3. Part-month Monthly Hire presentation.
+4. Preservation/display of original day-wise activity description/status.
+
+
+GROUND TRUTH FROM THE SCREEN RECORDING — CONFIRMED ROOT CAUSE FOR PART 2
+
+Frame-by-frame review of the recording shows the following exact sequence
+on a real Vendor Bill (MAHIPAL, HLC/VB/2026/0045, 19-Jul-2026 to
+31-Jul-2026):
+
+1. A Tractor Dozer Monthly Hire Group is added. The app correctly removes
+   13 stale raw activity lines and computes Gross Rs 25,161.29, HSD Net
+   Excess 11.12 L, Suggested Recovery Rs 1,163.15. Accepting the recovery
+   correctly produces ONE clean line item: "TRACTOR DOZER · 19-JUL-2026-
+   31-JUL-2026 · MONTHLY HIRE", amount Rs 23,998.14. The line items table
+   TOTAL correctly reads Rs 23,998.14. This part is confirmed working —
+   do not change this calculation path.
+
+2. The blue banner reads "PULL 2 OTHER ITEMS". The user clicks it.
+
+3. In the very next captured frame, a toast reads "0 items auto-populated
+   from records" and the line items table is now EMPTY — TOTAL Rs 0.00.
+   The Rs 23,998.14 hire-group line is GONE, not just un-incremented.
+
+This is not primarily a count-display mismatch (banner says 2, only 0
+inserted). The confirmed, observable defect is that clicking Pull Items
+REPLACED the entire lineItems array with the freshly fetched auto-items
+result (which happened to resolve to 0 rows) instead of ADDING eligible
+rows to whatever was already in the bill. The pre-existing hire-group
+line was not part of that fetch and must never be removed by it.
+
+REQUIRED FIX (this is the priority item in this batch)
+
+In client/src/pages/VendorBills.tsx, handleAutoPopulate (or whatever now
+implements "Pull Other Items") must:
+a. Never call setLineItems(newItemsOnly). It must merge: keep every
+   existing line item (hire-group-derived lines, manual lines, previously
+   pulled lines) and APPEND only the newly fetched eligible auto-items
+   that are not already present (by source + sourceId/date, avoid
+   duplicate insertion on repeated clicks).
+b. The count shown on the banner ("PULL N OTHER ITEMS") must be computed
+   from the exact same final eligibility list that clicking the button
+   actually inserts — apply, before showing N:
+   - exclude entryType monthly raw hire evidence;
+   - exclude raw equipment items covered by an Equipment Hire Group
+     (existing HF1 rawAutoItemCoveredByHireGroup logic);
+   - exclude items already present in the current Vendor Bill's line
+     items;
+   - preserve legitimate Daily/Trip/unrelated auto-items.
+   availableOtherItems.length must equal the number of rows
+   handleAutoPopulate actually adds. If 0, show "NO OTHER BILLABLE
+   ACTIVITIES AVAILABLE" (or hide/disable the button) — never show
+   "Pull 2" and then add 0.
+c. Investigate and report explicitly why the fetch itself returned 0
+   eligible items at that moment when the banner had shown 2 seconds
+   earlier — do not assume it was only the array-replacement bug; confirm
+   whether the eligibility query result also changed, and if so why (e.g.
+   stale client cache, a race with the hire group's own state update,
+   etc). Report the actual cause found, not a guess.
+
+Add a regression test reproducing the exact observed scenario: a bill
+with an existing hire-group-derived line item (source reflecting the
+group, not "auto"), where "Pull N Other Items" is then clicked. Assert
+the existing hire-group line is still present and unchanged afterward,
+and that exactly N new eligible rows were appended (not that the array
+was replaced with N or fewer rows).
+
+
+PART 1 — CONFIRMED WORKING CALCULATION: DO NOT BREAK
+
+The live example correctly shows:
+Monthly Rate: Rs 60,000
+Period: 19-Jul-2026 to 31-Jul-2026
+Part-month Gross: Rs 25,161.29
+HSD: Actual 41.12 L, Expected 30.00 L, Net Excess 11.12 L
+Applicable Weighted Rate: Rs 104.60/L
+Suggested Recovery: Rs 1,163.15
+Net Hire (recovery accepted): Rs 23,998.14
+
+Keep this period-net HSD behaviour exactly as-is. Do NOT revert to
+positive-daily-excess summing. Do NOT change this calculation while
+fixing Part 2 above — the bug is in what happens to the line items array
+after a bill state already contains a correct hire-group line, not in the
+calculation itself.
+
+
+PART 2 — WORKING / MEASUREMENT SHEET (GROUND TRUTH: LARGELY ALREADY BUILT)
+
+07C-HF3 already added buildHireActivityDays()/the workingSheet field to
+calculateHireGroup() and an expandable "Working Sheet" panel in
+VendorBills.tsx that loops every calendar date in the group period. Do
+not rebuild this mechanism — extend/fix it per the specifics below rather
+than starting over.
+
+For every Equipment Hire Group, the action "OPEN EQUIPMENT HIRE WORKING
+SHEET — N DATES" must open a clear day-wise working/measurement sheet.
+For Month and Day basis, every calendar date between From and To must
+appear. For the live case (19-Jul-2026 through 31-Jul-2026) this must be
+exactly 13 date rows.
+
+The user must be able to inspect the evidence behind the Vendor Bill
+without pulling those activity rows into the payable line-item table.
+
+REQUIRED COLUMNS (show only where reliable data exists — do not invent
+missing values):
+Date, Site/Location, Original Activity/DPR Description, Status/Exception,
+Hours, Trips, Opening Meter, Closing Meter, Actual HSD, Expected HSD,
+Daily Variance, Breakdown/Downtime, Reviewer Decision, Remarks.
+
+
+PART 3 — PRESERVE THE ORIGINAL ACTIVITY DESCRIPTION, AND KEEP IT DISTINCT
+FROM THE COMPUTED "NO ACTIVITY" STATUS
+
+CURRENT GAP (confirmed in code)
+
+The current Working Sheet row renders the STATUS word as a hardcoded
+"WORKED" whenever any activity record exists that day, with the real
+recorded description (e.g. "C&G (SITE)", "EMBANKMENT WORK (SITE)", "NO
+WORK (SITE)") shown only as a small secondary line underneath. That
+secondary text is not the bug — losing the distinction between two very
+different facts is:
+
+- "NO WORK (SITE)" is a REAL, RECORDED DPR/usage entry — the crew logged
+  that the machine was present that day with nothing assigned. It may
+  still carry hours/diesel data.
+- "No Activity" is the app's OWN COMPUTED status for a date with ZERO
+  records of any kind.
+
+These must never be visually or semantically merged. A day whose actual
+recorded description says "NO WORK" is still a WORKED/RECORDED day (it
+has a real DPR/usage row) and must be labelled and grouped as such — not
+displayed or treated the same as a day the app marks "No Activity"
+because nothing was logged at all. Do not relabel a recorded "NO WORK"
+entry as the computed "No Activity" status, and do not let a genuinely
+blank day borrow the "NO WORK" wording.
+
+Show the real recorded description prominently (not just as small
+muted secondary text) for any date that has an activity record, whatever
+that description says. Status derivation remains conservative:
+- maintenance breakdown log -> Vendor Breakdown
+- an activity record exists (regardless of what it says, including "NO
+  WORK") -> show the actual recorded description as the primary text
+- no activity record and no maintenance record at all -> "No Activity"
+  (informational only, distinct wording, never a deduction trigger)
+
+A recorded "NO WORK" description must NOT automatically become a vendor
+deduction. Only a confirmed vendor-caused breakdown/unavailability or an
+explicit reviewer decision creates a deduction.
+
+
+PART 4 — WORKING SHEET MUST SUPPORT THE BILL REVIEW, NOT BYPASS IT
+
+For Monthly Hire the Working Sheet is evidence, not the gross-hire
+quantity calculation. The reviewer must be able to see, in one place:
+every date in period; which had recorded activity (with its real
+description) vs none; hours/trips where available; vendor breakdown
+records; HSD actual/expected/variance. Breakdown reviewer decisions made
+here must reconcile to the Hire Calculation summary. Do NOT require
+pulling these rows as ordinary Vendor Bill items to review them.
+
+WORKING SHEET TOTALS — show at the bottom:
+Period Days, Activity/Recorded Days, No Activity Days, Vendor Breakdown
+Days/equivalents, Total Hours, Total Trips where applicable, Actual HSD,
+Expected HSD, Net HSD Variance.
+
+For Monthly Hire: No Activity Days are informational only and MUST NOT
+reduce gross hire automatically.
+
+
+PART 5 — MONTHLY PART-PERIOD UI — REMOVE CONFUSING PRESENTATION
+
+The live screen currently shows "QTY OVERRIDE: 1.00", "GROSS OVERRIDE: Rs
+25,161.29", "SUGGESTED QTY: 1.00 MONTHS" for a 19-Jul to 31-Jul partial
+month. This is confusing — the user is not billing a full calendar month
+and "1.00 MONTHS" reads as if it were.
+
+Do NOT change the calculation. Change the presentation only.
+
+For a calendar-day divisor example show:
+MONTHLY RATE: Rs 60,000
+BILLABLE PERIOD: 19-Jul-2026 to 31-Jul-2026 — 13 of 31 calendar days
+SUGGESTED HIRE: Rs 25,161.29
+Calculation helper: Rs 60,000 / 31 x 13 days
+
+Then offer an unobtrusive "EDIT QTY / AMOUNT" only if the commercial
+agreement differs. Do not prominently expose the internal labels "Qty
+Override" and "Gross Override" to normal users unless they enter edit
+mode. Do not display "1.00 MONTHS" as if it were a full month when the
+amount is a prorated part-month calculation.
+
+For a TRUE full-month period show instead:
+MONTHLY RATE: Rs X
+BILLABLE PERIOD: Full Month
+SUGGESTED HIRE: Rs X
+with no divisor warning dominating the screen.
+
+The Vendor Bill may still store one summary line internally — this is a
+UI/commercial-description correction only.
+
+
+PART 6 — PAYABLE BILL LINE
+
+For Monthly Hire, continue creating ONE payable hire line for the Hire
+Group. Example description:
+TRACTOR DOZER — MONTHLY HIRE
+19-Jul-2026 to 31-Jul-2026
+Part month: 13/31 days
+Amount: Rs 25,161.29 before accepted deductions/recoveries.
+
+Do NOT recreate the 13 raw activity lines as payable Vendor Bill items.
+
+
+PART 7 — HISTORICAL EXISTING BILLS
+
+The live recording shows an older, already-PAID bill (MAHIPAL,
+HLC/VB/2026/0045) containing 13 raw monthly activity lines from before
+these fixes existed. When that bill is explicitly opened for correction
+and a Hire Group is added, the existing HF1 behaviour correctly removes
+those raw rows and shows a toast — keep that. Do NOT automatically
+rewrite old approved/paid bills merely because this feature now exists.
+Correction must happen only through the existing authorised bill-edit
+workflow, and only when a user deliberately opens that specific bill.
+
+INVESTIGATE AND REPORT — DO NOT ASSUME
+
+Confirm and report exactly what currently gates editing and recalculating
+an already-PAID bill's Equipment Hire Calculation: is any special
+permission required, is any warning shown before a paid bill's
+commercial total can change, and is the change captured in an audit
+trail (who/when/old amount/new amount)? State what exists today plainly.
+If nothing currently gates this beyond the ordinary Edit button, say so
+explicitly rather than assuming it is adequately controlled — this is a
+real open question for the business owner to decide on, not something to
+silently leave as-is.
+
+NOTE: this instruction does not fix the MAHIPAL bill itself and must not
+attempt to. That bill will need a deliberate, separate manual correction
+once Part 2's fix lands, since the correction attempt in the recording
+failed only because of the Pull Items bug above.
+
+
+PART 8 — UI WORDING
+
+Make the separation clear:
+Inside Hire Group: "OPEN WORKING / MEASUREMENT SHEET — 13 DAYS"
+Outside the group: "OTHER BILLABLE ACTIVITIES"
+
+Do not describe the monthly evidence as missing merely because it is
+excluded from Pull Items. Suggested blue-banner wording:
+"Other billable activities for this vendor/period are shown here.
+Monthly hire activity is available in the Hire Working Sheet above."
+
+Button: "PULL N OTHER ITEMS" — only show the button where N > 0.
+
+
+TESTS
+
+A. Exact live case: Vendor MAHIPAL, Tractor Dozer, 19-Jul-2026 to
+   31-Jul-2026, Month, Rs 60,000 — Working Sheet contains exactly 13
+   calendar dates.
+B. PRIORITY: reproduce the observed "Pull 2 -> line items wiped to 0"
+   case. Assert that a pre-existing hire-group-derived line item survives
+   a Pull Items click untouched, and exactly the correct number of new
+   eligible rows are appended (not that the array is replaced).
+C. Pull count/action reconciliation: if the banner says Pull N, clicking
+   it appends exactly N eligible rows on top of whatever already existed.
+D. Working Sheet shows the real recorded description (including "NO
+   WORK") prominently for any date with an activity record, and never
+   relabels it as, or confuses it with, the computed "No Activity"
+   status for a genuinely blank date.
+E. HSD totals remain: Actual 41.12, Expected 30.00, Net Excess 11.12.
+F. Part-month gross remains Rs 25,161.29 for calendar-day divisor
+   (60,000 / 31 x 13).
+G. UI does not present a part-month calculation as "1.00 months"; it
+   clearly shows the 13/31-day part-month breakdown.
+H. Monthly raw activity remains excluded from ordinary payable auto-items.
+I. Daily/Trip/unrelated auto-items remain available when genuinely
+   eligible.
+J. Adding a Hire Group to a historical editable bill removes overlapping
+   raw activity rows as before, without touching unrelated manual lines.
+K. No-activity days never auto-deduct Monthly Hire.
+L. Working Sheet totals reconcile to the Hire Calculation summary.
+M. Existing HF1/HF2/HF3 tests continue to pass.
+N. Full test suite.
+
+
+SCHEMA
+
+No schema change expected. If any schema change is claimed necessary,
+STOP and report before migration. No destructive migration.
+
+
+REPORT BACK
+
+1. Confirmed root cause of the line-items wipeout (array replacement vs.
+   eligibility-query change vs. both) — state which, with evidence.
+2. Exact final eligibility logic used for the Pull count and for what
+   gets inserted, confirming both now agree.
+3. Confirmation the merge preserves existing hire-group/manual lines.
+4. Description of the corrected 13-day Working Sheet, including how "NO
+   WORK" recorded entries are distinguished from computed "No Activity".
+5. Corrected part-month presentation.
+6. Confirmation the HSD calculations are unchanged.
+7. What currently gates editing/recalculating an already-PAID bill's hire
+   calculation (Part 7 investigation) — plain statement of what exists.
+8. Files changed.
+9. Focused test results A-N.
+10. Full test suite result.
+
+DO NOT START ANOTHER FEATURE.
+STOP AND REPORT BACK.
