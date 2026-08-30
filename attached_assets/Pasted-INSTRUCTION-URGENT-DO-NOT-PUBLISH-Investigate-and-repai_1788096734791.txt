@@ -1,0 +1,156 @@
+INSTRUCTION — URGENT: DO NOT PUBLISH. Investigate and repair database drift
+before any further deploy attempt.
+
+BACKGROUND:
+The Publish preview shown to the client proposes destructive operations:
+  DROP TABLE programme_bar_outcome_events CASCADE;
+  DROP INDEX eml_source_lookup_idx;
+  ALTER TABLE equipment_maintenance_logs DROP COLUMN from_time;
+  ALTER TABLE equipment_maintenance_logs DROP COLUMN to_time;
+  ALTER TABLE equipment_maintenance_logs DROP COLUMN responsibility;
+  ALTER TABLE equipment_maintenance_logs DROP COLUMN repair_scope;
+  ALTER TABLE equipment_maintenance_logs DROP COLUMN debitable_to_vendor;
+  ALTER TABLE equipment_maintenance_logs DROP COLUMN source_type;
+  ALTER TABLE equipment_maintenance_logs DROP COLUMN source_record_id;
+  ALTER TABLE site_material_trips DROP COLUMN transport_type;
+  ALTER TABLE site_material_trips DROP COLUMN internal_equipment_id;
+
+The Publish UI itself states site_material_trips.transport_type currently
+holds 330 items on the database this migration would run against. That is
+important evidence, not something to merely re-confirm: it means the
+database this migration targets ALREADY HAS this column with real data in
+it. This is not a case of production lacking new schema — something in the
+Publish tool's own comparison reference is out of sync with
+shared/schema.ts and with the database's actual current state, and it is
+proposing to delete real, already-in-use data and an entire history table
+(programme_bar_outcome_events) to force a match with that stale reference.
+
+None of these fields are obsolete. They are the DPR-01 and DPR-02 schema
+this client approved and had independently verified as additive-only
+across multiple builds. Nothing in that work ever called for removing any
+of it.
+
+DO NOT click Republish. DO NOT approve this migration. DO NOT run any
+further Publish/deploy attempt until this is fully investigated and a
+clean, non-destructive preview is shown for approval.
+
+===========================================================================
+STEP 1 — IDENTIFY, DO NOT ASSUME
+===========================================================================
+Before touching anything, state plainly, with evidence (not a summary):
+1. Exactly how many distinct Postgres databases/connection strings are
+   involved here (development DB, the Publish-facing comparison DB used to
+   generate this migration diff, and the actual live production DB serving
+   the deployed app). Do not assume these are the same thing, and do not
+   assume Krishna's or the client's guess at which is which is correct —
+   verify it directly (e.g. by checking which connection string the live
+   deployed app is actually configured to use).
+2. For EACH of those databases, run and paste back the literal current
+   column list for site_material_trips and equipment_maintenance_logs, and
+   confirm whether programme_bar_outcome_events exists at all. Do not
+   describe this — paste the actual \d-style output or query result.
+3. Identify what the Publish tool is actually diffing against to produce
+   this migration (a drizzle-kit snapshot/journal file, a cached schema
+   state, or something else). Migration files 0019, 0020, and 0021 are
+   understood to correspond to the Material Trip, maintenance/breakdown,
+   and programme-outcome additions — confirm this against what actually
+   exists in the project's migrations folder and paste their content,
+   rather than taking the numbering as given.
+
+===========================================================================
+STEP 2 — CONFIRM ROOT CAUSE BEFORE CHANGING ANYTHING
+===========================================================================
+Using the evidence from Step 1, state which specific database or snapshot
+is missing the DPR-01/DPR-02 schema (transport_type, internal_equipment_id,
+the equipment_maintenance_logs breakdown fields plus eml_source_lookup_idx,
+and the full programme_bar_outcome_events table with its constraints/
+indexes), and why the Publish tool is treating that as the source of truth
+instead of shared/schema.ts and the live production database's real state.
+
+===========================================================================
+PROHIBITED SHORTCUTS — READ BEFORE STEP 3
+===========================================================================
+Do NOT "fix" this by editing shared/schema.ts, deleting or rewriting
+migration files, editing the Drizzle journal/snapshot metadata, or marking
+any migration as applied without it actually having been applied. Do NOT
+change the application's schema to match whatever stale reference the
+Publish tool is comparing against. The application schema as it stands —
+including all the DPR-01 fields and the programme_bar_outcome_events table
+— is intentional and correct. The stale reference is the thing to fix, not
+the application. Find and correct which database/schema reference is out
+of date; do not take the shortcut of making the diff "go quiet" by editing
+the source of truth instead.
+
+===========================================================================
+STEP 3 — BACK UP BEFORE ANY REPAIR
+===========================================================================
+Before running any repair SQL anywhere, take a snapshot/backup of whichever
+database Step 1 confirms is the actual live production database. Do not
+assume in advance which database that is, or that it is necessarily the
+same one the Publish warning's 330-item figure refers to — Step 1 is what
+establishes that, not this step.
+
+If a full, independently restorable backup/snapshot of that production
+database cannot be created and verified, STOP and report that limitation
+rather than proceeding. Do not substitute a partial export of only the
+affected tables, and do not run any operation against the live production
+database without a verified full backup in hand first.
+
+===========================================================================
+STEP 4 — REPAIR, ADDITIVE ONLY, NOT ON PRODUCTION ITSELF
+===========================================================================
+If the drift is confirmed to be in a separate Publish-facing/comparison
+database (not the live production database itself), mirror the missing
+schema there using additive DDL only, matching shared/schema.ts exactly:
+  - site_material_trips: add transport_type, internal_equipment_id
+  - equipment_maintenance_logs: add from_time, to_time, responsibility,
+    repair_scope, debitable_to_vendor, source_type, source_record_id, and
+    the eml_source_lookup_idx index
+  - programme_bar_outcome_events: create the complete table with its full
+    column set, constraints, and indexes exactly matching shared/schema.ts
+Do NOT modify or delete anything on the actual live production database.
+Do NOT drop, rename, or alter any existing production object as part of
+this repair, under any circumstance.
+
+If, instead, Step 1/2 finds that the DRIFT IS ON THE ACTUAL PRODUCTION
+DATABASE itself (i.e. production genuinely never received this schema and
+the 330-items warning refers to some other database), STOP immediately and
+report back before doing anything — that is a different and more serious
+situation than a stale comparison snapshot, and needs the client's explicit
+decision before any DDL runs against production.
+
+===========================================================================
+STEP 5 — REGENERATE AND SHOW THE PREVIEW, DO NOT PUBLISH
+===========================================================================
+After the repair, regenerate the Publish migration preview and confirm:
+  DROP TABLE = 0
+  DROP COLUMN = 0
+  DROP CONSTRAINT = 0
+  destructive ALTER = 0
+  no existing data deleted or altered
+DPR-02 itself introduced no schema change, so a correct preview at this
+point should show little or nothing pending — confirm that explicitly.
+
+Do NOT click Republish/Approve automatically once the preview looks clean.
+STOP and paste back the full regenerated preview for the client to review
+first.
+
+===========================================================================
+REPORT BACK (with evidence, not summaries)
+===========================================================================
+1. How many databases are involved and which one the live deployed app
+   actually uses.
+2. The literal column listings from Step 1 for each database.
+3. What the Publish tool was actually diffing against, and the specific
+   root cause of the drift.
+4. Confirmation a backup of the real production database was taken before
+   any repair, and how to restore it if needed.
+5. The exact additive repair SQL run, and which database it was run
+   against.
+6. Explicit confirmation that the live production database was not
+   modified, altered, or had any data deleted during this investigation
+   and repair.
+7. The complete regenerated Publish migration preview, pasted in full.
+
+DO NOT PUBLISH. STOP after Step 5 and wait for explicit approval of the
+clean preview.
