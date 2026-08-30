@@ -68,7 +68,7 @@ import { checkProgrammeLinkRow, deriveChainageReviewStatus, barSideCoverage, nor
 import { checkQuantitySourceRow, resolveQuantitySource } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessIssue } from "@shared/dprSubmitReadiness";
 import { chainageOverlapReadinessIssues, isChainageGuardRow, unchangedChainageRowKeys, type CandidateChainageRow } from "@shared/chainageOverlap";
-import { reusedExcavationConfigurationIssue } from "@shared/materialReceiptSummary";
+import { blocksExternalReceiptsForBoqItem, mergeMaterialTripLinkage, reusedExcavationConfigurationIssue } from "@shared/materialReceiptSummary";
 import { validateExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
 import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
@@ -444,6 +444,17 @@ export async function registerRoutes(
     return allSites.filter((s) => permittedIds.includes(s.id)).map((s) => s.name);
   }
 
+  /** Site trips are operational records: both their current record and their
+   * requested destination must be in the caller's site scope. */
+  async function assertTripSiteAccess(req: Express.Request, res: Express.Response, site: string | null | undefined): Promise<boolean> {
+    const permittedSiteNames = await getPermittedSiteNames(req);
+    if (!site || (permittedSiteNames !== null && !siteMatchesPermitted(site, permittedSiteNames))) {
+      res.status(403).json({ message: "Access denied for this site" });
+      return false;
+    }
+    return true;
+  }
+
   // List DPRs with filters
   app.get(api.dprs.list.path, async (req, res) => {
     try {
@@ -618,11 +629,29 @@ export async function registerRoutes(
     boqItemId?: number | null;
     programmeBarId?: number | null;
     earthworkArrangementId?: number | null;
+    site?: string | null;
+    requireProjectItemPair?: boolean;
   }): Promise<string | null> => {
-    const { boqProjectId, boqItemId, programmeBarId, earthworkArrangementId } = input;
+    const { boqProjectId, boqItemId, programmeBarId, earthworkArrangementId, site, requireProjectItemPair } = input;
+    if (requireProjectItemPair && (boqProjectId == null || boqItemId == null)) {
+      return "boqProjectId and boqItemId are required for a material trip";
+    }
+    if ((boqProjectId == null) !== (boqItemId == null)) {
+      return "boqProjectId and boqItemId must be provided together";
+    }
     if (boqProjectId != null) {
       const project = await storage.getBoqProject(boqProjectId);
       if (!project) return `BOQ project ${boqProjectId} not found`;
+      if (site != null) {
+        const sites = await storage.getSites();
+        const projectSite = project.siteId != null ? sites.find((candidate) => candidate.id === project.siteId)?.name ?? null : null;
+        // Compare in both directions so provenance suffixes use the same
+        // canonical-site rules as the rest of the API, without allowing a
+        // broad prefix match to cross sites.
+        if (projectSite == null || !siteMatchesPermitted(site, [projectSite]) || !siteMatchesPermitted(projectSite, [site])) {
+          return `BOQ project ${boqProjectId} does not belong to trip site ${site}`;
+        }
+      }
     }
     if (boqItemId != null) {
       const item = await storage.getBoqItem(boqItemId);
@@ -660,6 +689,12 @@ export async function registerRoutes(
         }
       }
     }
+    if (boqProjectId != null && boqItemId != null) {
+      const itemArrangements = await storage.getEarthworkArrangementsForItem(boqProjectId, boqItemId);
+      if (blocksExternalReceiptsForBoqItem(itemArrangements, boqItemId)) {
+        return "This BOQ item's material comes from the Roadway Excavation cut-fill ledger and cannot accept an external material trip";
+      }
+    }
     return null;
   };
 
@@ -668,6 +703,7 @@ export async function registerRoutes(
     try {
       if (!assertCreate(req, res, "site_materials")) return;
       const input = insertSiteMaterialTripSchema.parse(req.body);
+      if (!await assertTripSiteAccess(req, res, input.site)) return;
       // New receipts must declare their transport route.  The base insert
       // schema intentionally remains nullable because historical data and
       // PATCH payloads need to remain backward compatible.
@@ -677,7 +713,7 @@ export async function registerRoutes(
       if (input.internalEquipmentId != null && input.transportType !== "in_house") {
         return res.status(400).json({ message: "internalEquipmentId is only allowed for in-house transport" });
       }
-      const linkageError = await validateTripLinkage(input);
+      const linkageError = await validateTripLinkage({ ...input, requireProjectItemPair: true });
       if (linkageError) return res.status(400).json({ message: linkageError });
       const trip = await storage.createSiteMaterialTrip(input);
       sendPushToSection("site_materials", "Site Material Trip Added", `${input.material || 'Material'} - ${input.site || ''}`, "/site-reports").catch(() => {});
@@ -694,6 +730,10 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "site_materials")) return;
       const id = Number(req.params.id);
       const input = insertSiteMaterialTripSchema.partial().parse(req.body);
+      const existing = await storage.getSiteMaterialTripById(id);
+      if (!existing) return res.status(404).json({ message: "Site material trip not found" });
+      if (!await assertTripSiteAccess(req, res, existing.site)) return;
+      if ("site" in input && !await assertTripSiteAccess(req, res, input.site)) return;
       if (input.transportType != null && input.transportType !== "in_house" && input.transportType !== "agency_vendor") {
         return res.status(400).json({ message: "transportType must be in_house or agency_vendor" });
       }
@@ -701,32 +741,21 @@ export async function registerRoutes(
       // internal-master link attached to the same trip.
       if (input.transportType === "agency_vendor") input.internalEquipmentId = null;
       if (input.internalEquipmentId != null && input.transportType !== "in_house") {
-        const existing = await storage.getSiteMaterialTripById(id);
-        if (!existing) return res.status(404).json({ message: "Site material trip not found" });
         if ((input.transportType ?? existing.transportType) !== "in_house") {
           return res.status(400).json({ message: "internalEquipmentId is only allowed for in-house transport" });
         }
       }
-      if ("boqProjectId" in input || "boqItemId" in input || "programmeBarId" in input || "earthworkArrangementId" in input) {
-        const existing = await storage.getSiteMaterialTripById(id);
-        if (!existing) return res.status(404).json({ message: "Site material trip not found" });
-        // 06E conflict guard: a receipt already linked to DPR/BOQ context may
-        // not be silently re-linked to different context — unlink (null) first.
-        const linkFields = ["boqProjectId", "boqItemId", "programmeBarId", "earthworkArrangementId"] as const;
-        for (const f of linkFields) {
-          if (f in input && input[f] != null && existing[f] != null && input[f] !== existing[f]) {
-            return res.status(409).json({ message: `This receipt is already linked (${f} #${existing[f]}). Remove the existing link before linking it elsewhere.` });
-          }
-        }
-        // Validate the MERGED record, not just the patch fields.
-        const merged = {
-          boqProjectId: "boqProjectId" in input ? input.boqProjectId : existing.boqProjectId,
-          boqItemId: "boqItemId" in input ? input.boqItemId : existing.boqItemId,
-          programmeBarId: "programmeBarId" in input ? input.programmeBarId : existing.programmeBarId,
-          earthworkArrangementId: "earthworkArrangementId" in input ? input.earthworkArrangementId : existing.earthworkArrangementId,
-        };
+      if ("boqProjectId" in input || "boqItemId" in input || "programmeBarId" in input || "earthworkArrangementId" in input || "site" in input) {
+        // DPR-02: correcting an existing link is a normal deliberate edit.
+        // Validate the complete resulting row atomically instead of requiring
+        // an unsafe two-request "unlink, then relink" transition.
+        const merged = mergeMaterialTripLinkage(existing, input);
         if (merged.boqProjectId != null || merged.boqItemId != null || merged.programmeBarId != null || merged.earthworkArrangementId != null) {
-          const linkageError = await validateTripLinkage(merged);
+          const linkageError = await validateTripLinkage({
+            ...merged,
+            site: ("site" in input ? input.site : existing.site) ?? null,
+            requireProjectItemPair: true,
+          });
           if (linkageError) return res.status(400).json({ message: linkageError });
         }
       }
@@ -13996,7 +14025,7 @@ export async function registerRoutes(
     programmeBarId: z.coerce.number().int().positive(),
     eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "eventDate must be YYYY-MM-DD"),
     outcome: z.enum(PROGRAMME_BAR_OUTCOMES),
-    reason: z.enum(PROGRAMME_BAR_OUTCOME_REASONS),
+    reason: z.enum(PROGRAMME_BAR_OUTCOME_REASONS).optional().nullable(),
     reasonOther: z.string().trim().max(2000).optional().nullable(),
     rescheduledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
     actualQuantity: z.coerce.number().finite().nonnegative().optional().nullable(),
@@ -14021,9 +14050,25 @@ export async function registerRoutes(
     return true;
   }
 
+  function assertOutcomeManagerAuthority(req: any, res: any): boolean {
+    const user = req.authUser;
+    if (!user) {
+      res.status(401).json({ message: "Authentication required" });
+      return false;
+    }
+    const role = String(user.role ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+    const permitted = !!user.isAdmin || !!user.isOwner ||
+      ["manager", "pm", "project_manager"].includes(role);
+    if (!permitted) {
+      res.status(403).json({ message: "Manager, PM, Admin or Owner authority is required to set arrangement status." });
+      return false;
+    }
+    return true;
+  }
+
   app.post("/api/dpr/programme-bar-outcomes", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_dprs")) return;
+      if (!assertOutcomeManagerAuthority(req, res)) return;
       const parsed = outcomeInputSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid outcome event" });
       const input = parsed.data;
@@ -14036,7 +14081,7 @@ export async function registerRoutes(
       const tupleError = programmeBarOutcomeInputError({ ...input, reasonOther, rescheduledDate, actualUom });
       if (tupleError) return res.status(400).json({ message: tupleError });
       const [event] = await db.insert(programmeBarOutcomeEvents).values({
-        programmeBarId: input.programmeBarId, eventDate: input.eventDate, outcome: input.outcome, reason: input.reason,
+        programmeBarId: input.programmeBarId, eventDate: input.eventDate, outcome: input.outcome, reason: input.reason ?? "",
         reasonOther, rescheduledDate, actualQuantity: input.actualQuantity ?? null, actualUom,
         remarks: input.remarks?.trim() || null, createdBy: req.authUser?.id ?? null,
       }).returning();

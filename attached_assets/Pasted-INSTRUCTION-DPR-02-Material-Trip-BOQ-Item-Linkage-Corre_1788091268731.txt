@@ -1,0 +1,352 @@
+INSTRUCTION DPR-02 — Material Trip / BOQ Item Linkage Correction, Arrangement
+Status Governance, and DPR Layout Cleanup
+
+BACKGROUND (verified against live code and two screen recordings before writing
+this — do not treat any of this as guesswork):
+
+1. shared/schema.ts siteMaterialTrips already has boqProjectId, boqItemId,
+   programmeBarId, earthworkArrangementId columns. No new columns are needed
+   for the linkage fix in this batch.
+2. client/src/components/ActivityReceiptStrip.tsx currently offers a
+   "suggested trips" panel (component SuggestionBlock) that matches unlinked
+   trips to the open DPR activity by LOOSE MATERIAL NAME ONLY (see
+   shared/materialReceiptSummary.ts materialsLooselyMatch / MATERIAL_ALIAS,
+   which treats "earth", "murrum", "moorum" as the same as "soil"), and offers
+   a single "Link all" button that PATCHes every matched trip's boqItemId /
+   earthworkArrangementId in one click. This is the confirmed, reproduced
+   root cause of trips meant for one BOQ item (e.g. Embankment - Borrow
+   Earth) being bulk-attached to a different BOQ item (Embankment -
+   Excavated Earth) merely because both are "soil". This must be fixed, not
+   just the one-time bad data.
+3. client/src/pages/SiteMaterialsReceived.tsx has a working Edit action
+   (TripEditForm / updateMutation / PATCH /api/site-material-trips/:id) but
+   the edit form does NOT expose boqItemId, boqProjectId, programmeBarId, or
+   earthworkArrangementId at all. There is currently NO way for a user to
+   unlink or correct a wrongly-linked trip anywhere in the product. This is
+   the most urgent gap — it blocks a live, known-bad data correction today.
+4. client/src/components/CutFillOutcomeControls.tsx (line ~89) shows the
+   warning "This is embankment/fill work. To track cut material usage, link
+   this activity to an Execution Arrangement set to 'Reused excavated'..."
+   whenever fillMode is true and no reused_excavated arrangement is attached
+   — with NO check on whether that specific BOQ item is even supposed to
+   source cut material. Confirmed on video: this warning appears on
+   Embankment - Borrow Earth, which should never show it.
+5. client/src/components/ProgrammeBarPicker.tsx contains the "Record
+   outcome" control (Executed / Partially Executed / Not Executed /
+   Cancelled / Suspended / Early Closed / Rescheduled) built against
+   programmeBarOutcomeEvents. It is used ONLY inside DPR entry screens
+   (SiteEntry.tsx, SiteEdit.tsx, GuidedDpr.tsx) and has NO permission check
+   of any kind — any user who can fill a DPR can change a vendor
+   arrangement's status. There is a separate, existing PM/Admin-facing
+   screen for these arrangements (client/src/pages/EarthworkControl.tsx)
+   where this control belongs instead.
+6. DPR activity cards mix activity identity fields, programme/arrangement
+   context, cut-fill controls, and geometry fields in a scattered order, per
+   both the client's and Krishna's independent review of the recording.
+
+DO NOT REBUILD: hire billing (07C/HF1–HF4), the period-net HSD calculation,
+the cut-fill ledger math (cutFillOpeningBalances / cutFillConsumptions /
+CutFillOutcomeControls allocation logic), or the programmeBarOutcomeEvents
+append-only history model itself. This batch only relocates WHO can write to
+it and WHERE that control is shown. Do not touch DPR-01's validation-error
+fix, dashboard draft-resume fix, or equipment log summary changes.
+
+===========================================================================
+PART 1 — MATERIAL TRIP: MAKE BOQ ITEM EDITABLE, AND KEEP THE LINK CONSISTENT
+===========================================================================
+
+This is the highest-priority part. It is blocking a live, already-identified
+data error (a handful of Subgrade/Borrow Earth trips wrongly linked to
+Embankment - Excavated Earth) that cannot currently be corrected by any user.
+
+NOTE: client/src/pages/SiteMaterialTrips.tsx (the New Material Trip entry
+form) already renders ReceiptWorkContext, which includes a "Work Item / BOQ
+Activity" picker — so BOQ item capture at entry is not entirely missing.
+The actual gap is that this field is explicitly labelled optional
+("(optional — links this receipt to the work it serves)") and can be
+skipped. That is what must change, alongside the Edit-screen gap.
+
+REQUIRED WORK:
+
+1. Make BOQ Item / Intended Activity a REQUIRED selection on the New
+   Material Trip entry form (client/src/pages/SiteMaterialTrips.tsx /
+   ReceiptWorkContext.tsx), not an optional/skippable section, so this is
+   captured going forward on every trip, not only corrected after the fact.
+   Where the trip is being recorded from within a DPR activity that already
+   determines the BOQ item (the RecordReceiptDialog path inside
+   ActivityReceiptStrip.tsx, which already auto-fills boqProjectId/
+   boqItemId from the open activity), keep that auto-fill and do not ask the
+   user again. Only the standalone entry form (not opened from within a
+   specific activity) needs the field to become mandatory.
+2. Also add "BOQ Item / Intended Activity" (and, where applicable,
+   "Execution Arrangement") to the existing Edit Material Trip form in
+   client/src/pages/SiteMaterialsReceived.tsx (TripEditForm /
+   startEditingFields / handleSaveEdit), using the same
+   ReceiptWorkContext.tsx picker — reuse it, do not build a second one. This
+   is what makes correcting the already-known-bad trips possible.
+3. In this schema, a "Material Trip" and the "Material Receipt" shown
+   elsewhere (e.g. in Materials Received, or ActivityReceiptStrip's
+   Required/Received figures) are the SAME site_material_trips row read
+   from different screens — there is no separate receipt record that needs
+   to inherit the trip's BOQ item after the fact. Confirm this is still true
+   before building anything, and if any other code path creates a distinct
+   "receipt" record without carrying boqItemId/boqProjectId through from its
+   originating trip, report that back rather than silently patching it.
+4. When a trip's boqItemId is changed on edit:
+   - If the previously-linked earthworkArrangementId does not cover the
+     newly selected boqItemId (see arrangementCoveredBoqItemIds in
+     shared/materialReceiptSummary.ts), CLEAR earthworkArrangementId and
+     programmeBarId on that trip. Do not leave a trip pointing at the
+     correct BOQ item but the wrong vendor arrangement — that produces a
+     half-corrected record that still misreports against the old vendor's
+     Supplied total.
+   - If resolveApplicableArrangements against the new boqItemId yields
+     exactly one applicable arrangement, it is acceptable to auto-set it
+     (same rule already used elsewhere). If it yields more than one, leave
+     earthworkArrangementId null and let the normal linking flow apply it
+     later — never guess between vendors.
+   - This must correctly update whichever screens/queries read
+     earthworkArrangementId-based Supplied totals (ActivityReceiptStrip's
+     "Arranged/Supplied/Balance" line) — invalidate the relevant queries on
+     save the same way updateMutation already does for
+     /api/site-material-trips and /api/materials-received.
+5. This is explicitly a NORMAL EDIT/ENTRY capability, not a special "bulk
+   reclassify" tool. Do not add a bulk-relink screen, a mass-reassignment
+   action, or new permissions beyond whatever already gates trip editing.
+   The client has explicitly said a one-off small correction does not
+   justify a permanent bulk feature — build only the field-level capability
+   above (required at entry, editable after).
+6. Add the safeguard in Part 2 so this mistake is harder to make again —
+   Part 1 fixes the ability to capture/correct the link; Part 2 fixes the
+   behaviour that caused the bad records in the first place.
+7. Do NOT auto-correct any existing trip data yourselves. Once the edit
+   capability exists, report back which trips currently look
+   misattributed (e.g. trips whose material is soil/earth-family but whose
+   linked BOQ item's arrangement type is not consistent with an external
+   delivery) so the client can review and correct them manually with the
+   new edit control.
+
+===========================================================================
+PART 2 — BLOCK SOIL/EARTH TRIPS FROM BEING LINKABLE TO A CUT-MATERIAL ITEM
+===========================================================================
+
+Correction from the client's review: a warn-and-confirm ("record anyway?")
+is NOT strong enough — someone will simply click through it and reproduce
+the same contamination. For a BOQ item that is configured to source
+material from the cut-fill ledger (arrangementType "reused_excavated" —
+draft, submitted, or approved), an external Material Trip must NORMALLY BE
+BLOCKED from linking to it entirely. Do not build an override/exception
+path in this batch — if a genuinely exceptional case comes up later, that
+is a separate, explicitly-requested change, not something to add
+speculatively now.
+
+REQUIRED WORK — this must close BOTH of the two ways a trip gets linked:
+
+(a) Manual entry (RecordReceiptDialog in ActivityReceiptStrip.tsx): if the
+    BOQ item open on the DPR activity has a reused_excavated arrangement
+    (draft, submitted, or approved — see the existing
+    pendingApprovalArrangement / validSourceReuseContexts detection already
+    in ActivityReceiptStrip.tsx), do not allow "Record Receipt" to create an
+    external trip against it at all. Show a plain explanation ("This item's
+    material comes from the Roadway Excavation cut-fill ledger, not an
+    external delivery — use the cut-fill allocation above.") and disable the
+    action, rather than allowing entry with a confirmation click-through.
+
+(b) Suggested-trip quick-link (SuggestionBlock in ActivityReceiptStrip.tsx,
+    the "Link" / "Link all" buttons): the SAME rule applies. A trip must
+    never be offered for one-click linking (individually or via "Link all")
+    to a BOQ item under the same condition as (a). Filter these trips out of
+    the suggestion list entirely.
+
+Investigate WHY suggestions currently still appear for an item with a
+draft/submitted (not-yet-approved) reused_excavated arrangement: relevance
+"none" (which correctly suppresses receipt prompts) is currently only
+applied once an arrangement is APPROVED. Close this gap so the safeguard
+also covers the pending-approval window, since that is exactly the state
+the client's own reproduced example was in.
+
+Do not weaken or remove the existing "linked" vs "suggested" match-strength
+distinction (shared/materialReceiptSummary.ts classifyReceiptMatch) for any
+other BOQ item type — this safeguard is specifically about cut-material-fed
+items, not a general tightening of all material matching.
+
+===========================================================================
+PART 3 — FIX THE WRONGLY-APPEARING CUT-MATERIAL WARNING
+===========================================================================
+
+client/src/components/CutFillOutcomeControls.tsx currently shows the
+"link this to Reused excavated..." prompt for ANY fillMode activity lacking
+a reused_excavated arrangement — including Embankment - Borrow Earth, where
+it is simply wrong and confusing (confirmed on video).
+
+REQUIRED WORK: only show this prompt when the BOQ item is plausibly a
+cut-material consumer — i.e., a draft/submitted/approved arrangement of type
+reused_excavated already exists targeting this item, OR the item is
+otherwise explicitly identified as a cut-material-consuming item. If neither
+is true, show nothing from this component (or, at most, the ordinary
+material-receipt context that already applies to externally-supplied items)
+rather than a "you should be using excavated material" nudge.
+
+===========================================================================
+PART 4 — MOVE EXECUTION ARRANGEMENT STATUS OUT OF THE DPR
+===========================================================================
+
+REQUIRED WORK:
+
+1. Add a prominent status control to the existing Execution Arrangement
+   management screen (client/src/pages/EarthworkControl.tsx) — "Arrangement
+   Status: Active ▾" — offering the FULL list:
+     Active / Arranged
+     Executed
+     Partially Executed
+     Not Executed
+     Cancelled
+     Suspended
+     Early Closed
+     Rescheduled
+   Correction: an earlier draft of this instruction omitted "Executed" from
+   this list — it must be included, since it is how a PM formally closes an
+   arrangement that was fully carried out. Capture a reason for every choice
+   other than Active/Arranged and Executed, and a new date for Rescheduled.
+   This writes to the SAME programmeBarOutcomeEvents table already built in
+   DPR-01 — do not create a second outcome table.
+2. Restrict this control to Admin/Owner/PM permission, using the same
+   permission pattern already used elsewhere in the app (e.g. isAdmin /
+   isOwner as used in client/src/pages/SiteMaterialsReceived.tsx). A Site
+   Engineer must not be able to set this status.
+3. In the DPR (client/src/components/ProgrammeBarPicker.tsx as used from
+   SiteEntry.tsx / SiteEdit.tsx / GuidedDpr.tsx), REMOVE the "Record
+   outcome" edit control entirely from the Site Engineer's flow — DPR
+   records only what actually happened on site (qty done, no-site-work,
+   breakdown, materials/equipment/personnel used, remarks); it is not where
+   arrangement status is set or requested.
+   Replace it with a single compact, collapsed-by-default read-only line
+   (e.g. tucked under an existing "Add details" / secondary-info disclosure
+   rather than always shown inline), reflecting the latest event from the
+   same append-only history, e.g.:
+     "Execution Arrangement: Suspended by PM on 30-Aug-2026 — Site not ready"
+   Keep the full "Outcome history" list available on click/expand as
+   read-only context — do not remove the audit trail. The point of making it
+   collapsed rather than prominent is to avoid adding back the clutter this
+   batch is otherwise removing; it does not need to be hidden entirely,
+   just out of the way by default.
+4. Do NOT add a Site Engineer "report non-execution / request status
+   change" workflow in this batch. This was proposed in an earlier draft of
+   this instruction and is explicitly withdrawn — DPR remains pure factual
+   operational reporting; PM/Admin manages the official Execution
+   Arrangement outcome from the Execution Arrangement screen only, informed
+   by what the Site Engineer records in the DPR. Do not add any new
+   request/notification/permission mechanism for this purpose. If a genuine
+   need for a site-to-PM notification is identified later, that will be a
+   separate, explicitly-requested change.
+5. Do not change the shape or semantics of programmeBarOutcomeEvents itself
+   — it stays append-only, multiple events per bar. This part only moves
+   the write control and adds permission-gating; it does not touch the
+   underlying model.
+
+===========================================================================
+PART 5 — DPR ACTIVITY CARD LAYOUT CLEANUP (display only, no logic change)
+===========================================================================
+
+Reorganize each DPR activity card into four grouped blocks, in this order.
+Do not change any calculation, validation, or stored value — this is purely
+a re-arrangement of existing fields/components on the page.
+
+1. Activity identity (one grid): BOQ Item, Side, From, To, Length, Width,
+   Thickness, Layer/Lift, Qty — all together, nothing else interleaved.
+2. Execution status: the read-only Execution Arrangement line from Part 4
+   (no edit control here anymore).
+3. Material source — show only what is relevant to THIS BOQ item's type:
+   - Cut-material-consuming item (e.g. Embankment - Excavated Earth):
+     excavation source, available cut material, allocated, consumed today,
+     balance (existing CutFillOutcomeControls allocation UI).
+   - Externally-supplied item (e.g. Embankment - Borrow Earth, Sub-grade,
+     GSB, WMM): linked Material Trips/Receipts — supplier, quantity
+     received, quantity used (existing ActivityReceiptStrip UI).
+   Do not show both blocks stacked for the same activity — the BOQ item's
+   type determines which one applies.
+4. Resources: personnel, equipment, photos.
+
+Convert the long explanatory sentences currently shown inline (e.g.
+"Cut-to-fill reuse: excavated material supplies embankment…", "Execution:
+HLC · Reused Excavated Material") into short badges with an optional info
+icon/tooltip carrying the full text, rather than full paragraphs inside the
+activity card.
+
+===========================================================================
+TESTS
+===========================================================================
+A. The standalone New Material Trip form cannot be saved without a BOQ
+   Item / Intended Activity selection (except where auto-filled from an
+   originating DPR activity context, per Part 1.1).
+B. Editing a Material Trip's BOQ Item to a different item that the current
+   earthworkArrangementId does not cover clears the arrangement link.
+C. Editing a Material Trip's BOQ Item to an item with exactly one applicable
+   arrangement auto-sets that arrangement; with more than one, leaves it
+   null.
+D. A soil/earth-family trip is NOT offered in the suggested-trips list for a
+   BOQ item that has an approved reused_excavated arrangement.
+E. Same as D, but the arrangement is in draft/submitted (not yet approved)
+   status — trip is still excluded from suggestions.
+F. "Link all" on a suggestions panel never includes a trip for a
+   cut-material-consuming item under the above conditions.
+G. Manually recording a receipt against a cut-material-consuming item is
+   blocked outright (no confirmation click-through path exists).
+H. The "link this to Reused excavated" prompt does not appear on Embankment
+   - Borrow Earth, Sub-grade, GSB, WMM, or any other non-cut-material item.
+I. The prompt DOES still appear on Embankment - Excavated Earth (or
+   equivalent) when no reused_excavated arrangement is linked.
+J. A Site Engineer role cannot see/use any write control for Execution
+   Arrangement status inside the DPR — only the collapsed, read-only line
+   is present, with no request/notification action anywhere in the DPR.
+K. An Admin/Owner/PM can set all EIGHT statuses (including Executed) from
+   the Execution Arrangement screen, each producing a new
+   programmeBarOutcomeEvents row (existing history preserved, not
+   overwritten).
+L. Reason is required for Cancelled/Suspended/Not Executed/Early Closed;
+   new date is required for Rescheduled; Partially Executed requires actual
+   quantity; Executed and Active/Arranged require neither.
+M. DPR activity card renders the four blocks in the specified order with no
+   calculation differences versus the pre-change version (snapshot/regression
+   check against existing DPR-01 test data).
+N. Existing DPR-01 tests (dashboard resume, chainage manual-length guard,
+   cut-fill ledger math, validation error codes, equipment summary, material
+   trips display, breakdown logging, outcome append-only history) all
+   continue to pass unmodified.
+O. Full existing test suite.
+
+===========================================================================
+SCHEMA
+===========================================================================
+No new tables. No destructive changes expected. site_material_trips already
+has the columns needed for Part 1 — this is a UI and update-logic change
+against the existing PATCH endpoint, not a schema change. Part 4 needs no
+schema change to programmeBarOutcomeEvents — the status list correction
+(adding "Executed") is a UI/enum-options fix, not a data model change, since
+programmeBarOutcomeEvents already supports arbitrary outcome values per the
+DPR-01 build. NO destructive migration under any circumstance.
+
+===========================================================================
+REPORT BACK
+===========================================================================
+1. Confirmation of which trips currently look misattributed (per Part 1.7),
+   for manual review — do not correct them yourselves.
+2. Confirmation that BOQ Item is now required on the New Material Trip form
+   (with the DPR-activity auto-fill path preserved), and the exact fields
+   added to the Material Trip edit form.
+3. Confirmation of the Part 1.3 investigation (trip/receipt same-record
+   check) and its result.
+4. Where in the code the suggestion-list filtering and hard block (Part 2)
+   were added, and how the draft/submitted-arrangement gap was closed.
+5. Screenshot/description confirming the warning no longer appears on
+   Borrow Earth but still appears on Excavated Earth.
+6. Confirmation of the permission check added to the Execution Arrangement
+   status control (all eight statuses present), and that the DPR-side
+   control was removed and replaced with a collapsed read-only line with no
+   request/notification workflow added.
+7. Screenshot of the reorganized DPR activity card.
+8. Files changed.
+9. Focused test results (A–O).
+10. Full test suite result.
+
+DO NOT START ANOTHER FEATURE. STOP AND REPORT BACK.

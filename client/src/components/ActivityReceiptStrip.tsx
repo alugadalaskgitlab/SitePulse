@@ -31,6 +31,7 @@ import {
   normaliseUom,
   receiptRelevanceForType,
   arrangementCoveredBoqItemIds,
+  blocksExternalReceiptsForBoqItem,
   arrangementScopeLabel,
   resolveReusedExcavationSourceContexts,
   reusedExcavationConfigurationIssue,
@@ -254,6 +255,10 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
         : null,
     [arrangement, arrangements, boqProjectId, boqItemId],
   );
+  const externalReceiptsBlocked = useMemo(
+    () => blocksExternalReceiptsForBoqItem(arrangements, boqItemId),
+    [arrangements, boqItemId],
+  );
   // Non-arrangement daily overrides for TODAY's supplier display:
   const dailyOverride =
     dailyFulfilment?.entry.fulfilmentType === "other_agency" || dailyFulfilment?.entry.fulfilmentType === "hlc"
@@ -301,8 +306,10 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     [dayTrips, siteName, date, boqItemId, programmeBarId, arrangement?.id],
   );
   const suggestedTrips = useMemo(
-    () => dayTrips.filter((t) => classifyReceiptMatch(t as unknown as SuggestableTrip, ctx) === "suggested"),
-    [dayTrips, siteName, date, boqItemId, programmeBarId, arrangement?.id, arrangement?.materialLabel],
+    () => externalReceiptsBlocked
+      ? []
+      : dayTrips.filter((t) => classifyReceiptMatch(t as unknown as SuggestableTrip, ctx) === "suggested"),
+    [dayTrips, siteName, date, boqItemId, programmeBarId, arrangement?.id, arrangement?.materialLabel, externalReceiptsBlocked],
   );
 
   // Required today — approved priority. Only an arrangement bar allocation
@@ -411,6 +418,16 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
             Reuse: fill uses excavated material from {arrangement.sourceExcavationBoqItemLabel || `BOQ item #${arrangement.sourceExcavationBoqItemId}`} · {arrangementScopeLabel(arrangement)}
           </p>
         )}
+        {externalReceiptsBlocked && (
+          <p className="text-amber-700 dark:text-amber-400" data-testid={`${testIdPrefix}-receipt-hard-block`}>
+            This item's material comes from the Roadway Excavation cut-fill ledger, not an external delivery — use the cut-fill allocation above.
+          </p>
+        )}
+        {!readOnly && externalReceiptsBlocked && (
+          <Button variant="outline" size="sm" disabled data-testid={`${testIdPrefix}-record-receipt`}>
+            Record Receipt
+          </Button>
+        )}
       </div>
     );
   }
@@ -476,6 +493,11 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
             Execution arrangement not linked to this activity.
           </p>
         )
+      )}
+      {externalReceiptsBlocked && (
+        <p className="text-xs text-amber-700 dark:text-amber-400" data-testid={`${testIdPrefix}-receipt-hard-block`}>
+          This item's material comes from the Roadway Excavation cut-fill ledger, not an external delivery — use the cut-fill allocation above.
+        </p>
       )}
 
       {resolution.requiresSelection && dailyArrangement == null && !readOnly && (
@@ -571,14 +593,14 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
           View Receipts{linkedTrips.length > 0 ? ` (${linkedTrips.length})` : ""}
         </Button>
         {!readOnly && relevance !== "none" && (
-          <Button variant="outline" size="sm" onClick={() => setRecordOpen(true)} data-testid={`${testIdPrefix}-record-receipt`}>
+          <Button variant="outline" size="sm" disabled={externalReceiptsBlocked} onClick={() => setRecordOpen(true)} data-testid={`${testIdPrefix}-record-receipt`}>
             Record Receipt
           </Button>
         )}
       </div>
 
       <ViewReceiptsDialog open={viewOpen} onOpenChange={setViewOpen} trips={linkedTrips} testIdPrefix={testIdPrefix} />
-      {!readOnly && (
+      {!readOnly && !externalReceiptsBlocked && (
         <RecordReceiptDialog
           open={recordOpen}
           onOpenChange={setRecordOpen}
@@ -611,6 +633,9 @@ function SuggestionBlock({ trips, ctx, testIdPrefix }: { trips: SiteMaterialTrip
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips", ctx.siteName, ctx.date] });
+      queryClient.invalidateQueries({ predicate: (query) =>
+        typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/materials-received")
+      });
       toast({ title: "Receipt linked", description: "The existing receipt is now linked to this activity." });
     },
     onError: (e: any) => toast({ title: "Could not link receipt", description: e?.message ?? "You may not have permission to edit receipts.", variant: "destructive" }),
@@ -630,6 +655,9 @@ function SuggestionBlock({ trips, ctx, testIdPrefix }: { trips: SiteMaterialTrip
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips", ctx.siteName, ctx.date] });
+      queryClient.invalidateQueries({ predicate: (query) =>
+        typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/materials-received")
+      });
       toast({ title: "Receipts linked", description: `${trips.length} receipts are now linked to this activity.` });
     },
     onError: (e: any) => toast({ title: "Could not link all receipts", description: e?.message ?? "Some receipts may not have been linked — check and retry.", variant: "destructive" }),
@@ -756,6 +784,7 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
         boqItemId: props.boqItemId,
         programmeBarId: props.programmeBarId ?? undefined,
         earthworkArrangementId: arrangementIdForTrip,
+        transportType: dailyOverride?.fulfilmentType === "hlc" ? "in_house" : "agency_vendor",
         // 06S §3: auto-attach the single matched PI — never on ambiguity/none.
         indentId: piMatch?.indentId ?? undefined,
         indentItemId: piMatch?.indentItemId ?? undefined,
@@ -784,6 +813,9 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
       }
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips", props.siteName, props.date] });
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips"] });
+      queryClient.invalidateQueries({ predicate: (query) =>
+        typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/materials-received")
+      });
       // 06G rapid repeat-trip mode: the dialog STAYS OPEN. Keep all context;
       // clear only the truck-specific fields; refresh time; focus vehicle no.
       setStagedPhotos([]);

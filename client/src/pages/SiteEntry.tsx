@@ -63,6 +63,7 @@ import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import { flattenCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
+import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 
 interface ProgressEntry {
   // Batch 06C §22: stable client key so photos can link to this activity row
@@ -499,6 +500,8 @@ export default function SiteEntry() {
     },
     enabled: !!siteBoqProjectId,
   });
+  const usesCutMaterialSource = (boqItemId: number | null) =>
+    boqItemId != null && blocksExternalReceiptsForBoqItem(cutFillArrangements, boqItemId);
 
   // ── Phase 2: Programme-linked DPR entry ────────────────────────────────
   // Reuses the existing Work Programme + Plan vs Actual read endpoints (no new
@@ -2162,14 +2165,6 @@ export default function SiteEntry() {
                 </div>
               ) : (
                 <>
-                {entry.boqItemId != null && classifyWorkType(String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? ""), String(siteBoqItems.find(i => i.id === entry.boqItemId)?.unit ?? "")) === "roadway_excavation" && (
-                  <CutFillOutcomeControls quantity={entry.quantity} outcome={entry.materialOutcome ?? null} reusableQty={entry.reusableQty ?? null}
-                    onOutcomeChange={(materialOutcome, reusableQty) => { const updated = [...progress]; updated[idx] = { ...updated[idx], materialOutcome, reusableQty }; setProgress(updated); }} />
-                )}
-                <CutFillOutcomeControls fillMode={entry.boqItemId != null && classifyWorkType(String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? ""), String(siteBoqItems.find(i => i.id === entry.boqItemId)?.unit ?? "")) === "earthwork"} projectId={siteBoqProjectId} arrangementId={entry.earthworkArrangementId}
-                  quantity={entry.quantity} outcome={null} reusableQty={null} allocations={entry.allocations as any}
-                  currentEntryKey={entry.entryKey} formRows={progress as any} boqItems={siteBoqItems}
-                  onOutcomeChange={() => undefined} onAllocationsChange={allocations => { const updated = [...progress]; updated[idx] = { ...updated[idx], allocations: allocations as any }; setProgress(updated); }} />
                 {entry.isIncidental && (
                   <div className="space-y-2">
                     <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">
@@ -2191,7 +2186,7 @@ export default function SiteEntry() {
                     </div>
                   </div>
                 )}
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3" data-testid={`activity-identity-block-${idx}`}>
                   <div className="col-span-2">
                     {/* When site has a BOQ project, Activity becomes a BOQ item selector.
                         boqItemId is stored on the progress entry and sent with the DPR payload. */}
@@ -2217,6 +2212,7 @@ export default function SiteEntry() {
                       />
                     ) : null}
                     {siteBoqItems.length > 0 && entry.boqItemId != null && siteBoqProjectId != null && (
+                      <div data-testid={`activity-execution-status-block-${idx}`}>
                       <ProgrammeBarPicker
                         projectId={siteBoqProjectId}
                         boqItemId={entry.boqItemId}
@@ -2253,6 +2249,7 @@ export default function SiteEntry() {
                           setProgress(updated);
                         }}
                       />
+                      </div>
                     )}
                     {/* 031: shared link feedback — bar-scoped balance (Part D), side
                         compatibility, out-of-range modal + review flag (Parts F/G),
@@ -2287,24 +2284,6 @@ export default function SiteEntry() {
                         Receipts for this activity (linkage lives on the
                         site_material_trip record, so Guided ↔ Detailed never
                         loses it). */}
-                    {entry.boqItemId != null && siteBoqProjectId != null && header.site && !entry.noSiteWork && (
-                      <ActivityReceiptStrip
-                        siteName={header.site}
-                        date={header.date}
-                        boqProjectId={siteBoqProjectId}
-                        boqItemId={entry.boqItemId}
-                        programmeBarId={entry.programmeBarId}
-                        executedQty={(() => { const q = entry.quantity ?? calculateQuantity(entry); const f = (siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.dprConversionFactor ?? 1; return q != null ? q * f : null; })()}
-                        executedUom={(siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.unit ?? entry.uom ?? null}
-                        readOnly
-                        persistedArrangementId={entry.earthworkArrangementId}
-                        onArrangementResolved={(id) => {
-                          setProgress((prev) => prev.map((p, i) => (i === idx ? { ...p, earthworkArrangementId: id } : p)));
-                        }}
-                        activityMaterialHint={entry.activity || null}
-                        testIdPrefix={`detailed-receipt-${idx}`}
-                      />
-                    )}
                     {/* Batch 06B: possible-overlap advisory — reuses this row's
                         chainageOverrideReason; prior DPRs open read-only in a
                         modal over this form. */}
@@ -2615,10 +2594,31 @@ export default function SiteEntry() {
                     })()}
                   </div>
                 </div>
+                <div className="space-y-2 border-t pt-2" data-testid={`activity-material-source-block-${idx}`}>
+                  {entry.boqItemId != null && classifyWorkType(String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? ""), String(siteBoqItems.find(i => i.id === entry.boqItemId)?.unit ?? "")) === "roadway_excavation" ? (
+                    <CutFillOutcomeControls quantity={entry.quantity} outcome={entry.materialOutcome ?? null} reusableQty={entry.reusableQty ?? null}
+                      onOutcomeChange={(materialOutcome, reusableQty) => { const updated = [...progress]; updated[idx] = { ...updated[idx], materialOutcome, reusableQty }; setProgress(updated); }} />
+                  ) : usesCutMaterialSource(entry.boqItemId) ? (
+                    <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={entry.earthworkArrangementId}
+                      boqItemDescription={entry.boqItemId != null ? String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? siteBoqItems.find(i => i.id === entry.boqItemId)?.displayName ?? "") : ""}
+                      quantity={entry.quantity} outcome={null} reusableQty={null} allocations={entry.allocations as any}
+                      currentEntryKey={entry.entryKey} formRows={progress as any} boqItems={siteBoqItems}
+                      onOutcomeChange={() => undefined} onAllocationsChange={allocations => { const updated = [...progress]; updated[idx] = { ...updated[idx], allocations: allocations as any }; setProgress(updated); }} />
+                  ) : entry.boqItemId != null && siteBoqProjectId != null && header.site ? (
+                    <ActivityReceiptStrip siteName={header.site} date={header.date} boqProjectId={siteBoqProjectId}
+                      boqItemId={entry.boqItemId} programmeBarId={entry.programmeBarId}
+                      executedQty={(() => { const q = entry.quantity ?? calculateQuantity(entry); const f = (siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.dprConversionFactor ?? 1; return q != null ? q * f : null; })()}
+                      executedUom={(siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.unit ?? entry.uom ?? null}
+                      readOnly persistedArrangementId={entry.earthworkArrangementId}
+                      onArrangementResolved={(id) => setProgress((prev) => prev.map((p, i) => (i === idx ? { ...p, earthworkArrangementId: id } : p)))}
+                      activityMaterialHint={entry.activity || null} testIdPrefix={`detailed-receipt-${idx}`} />
+                  ) : null}
+                </div>
                 </>
               )}
 
 
+              <div className="space-y-2 border-t pt-2" data-testid={`activity-resources-block-${idx}`}>
               <div className="flex items-center gap-2 flex-wrap">
                 <Label className="text-sm text-muted-foreground">Personnel:</Label>
                 {entry.personnelIds.map(pid => {
@@ -2702,6 +2702,7 @@ export default function SiteEntry() {
                     ))}
                   </div>
                 )}
+              </div>
               </div>
             </div>
           )))}

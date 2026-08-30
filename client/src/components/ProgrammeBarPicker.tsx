@@ -11,17 +11,13 @@
  */
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertTriangle } from "lucide-react";
 import { barSideLabel, isDprSideCompatible } from "@shared/barSide";
 import { chainageOutsideBar, barBalanceFigures, autoMatchBar, isBarCompatible, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { OutOfRangeChainageModal } from "@/components/OutOfRangeChainageModal";
-import { Textarea } from "@/components/ui/textarea";
-import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export type PickerBar = {
   id: number;
@@ -58,8 +54,6 @@ type ProgrammeBarOutcome = {
   reasonOther: string | null; rescheduledDate: string | null;
   actualQuantity: number | null; actualUom: string | null; remarks: string | null;
 };
-const OUTCOMES = ["executed", "partially_executed", "not_executed", "cancelled", "suspended", "early_closed", "rescheduled"];
-const REASONS = ["rain", "site_not_ready", "client_instruction", "equipment_breakdown", "vendor_unavailable", "material_unavailable", "work_completed_early", "change_in_programme", "other"];
 const label = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase());
 
 const fmtKmRange = (list: Array<[number, number]>): string =>
@@ -134,30 +128,6 @@ export function ProgrammeBarPicker({
   const reconcileRef = useRef<string | null>(null);
   // 06T §2: chips collapsed by default — "Programme context" disclosure.
   const [chipsOpen, setChipsOpen] = useState(false);
-  const [outcomeOpen, setOutcomeOpen] = useState(false);
-  const [outcome, setOutcome] = useState("executed");
-  const [reason, setReason] = useState("rain");
-  const [reasonOther, setReasonOther] = useState("");
-  const [rescheduledDate, setRescheduledDate] = useState("");
-  const [actualQuantity, setActualQuantity] = useState("");
-  const [actualUom, setActualUom] = useState("");
-  const [remarks, setRemarks] = useState("");
-  const recordOutcome = useMutation({
-    mutationFn: async () => {
-      if (value == null) throw new Error("Choose a planned reach first.");
-      const response = await apiRequest("POST", "/api/dpr/programme-bar-outcomes", {
-        programmeBarId: value, eventDate: dprDate, outcome, reason,
-        reasonOther: reasonOther || null, rescheduledDate: rescheduledDate || null,
-        actualQuantity: actualQuantity === "" ? null : Number(actualQuantity),
-        actualUom: actualUom || null, remarks: remarks || null,
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dpr/programme-bars", projectId, boqItemId] });
-      setOutcomeOpen(false); setReasonOther(""); setRescheduledDate(""); setActualQuantity(""); setActualUom(""); setRemarks("");
-    },
-  });
   const sideKey = sideLabel ? normalizeDprSideKey(sideLabel) : null;
   useEffect(() => {
     if (!autoSelect || bars.length === 0 || value != null) return;
@@ -304,43 +274,22 @@ export function ProgrammeBarPicker({
           {" "}— use “Change planned reach” if this isn't right.
         </p>
       )}
-      {selected?.arrangement && (
-        <p className="text-[10px] text-purple-700 dark:text-purple-300" data-testid={`${testidPrefix}-arrangement-context`}>
-          Executed under arrangement #{selected.arrangement.id}
-          {selected.arrangement.agency ? ` — agency: ${selected.arrangement.agency}` : ""}
-          {selected.arrangement.mode ? ` (${selected.arrangement.mode})` : ""}. The executing agency comes from the arrangement, never from who files this DPR.
-        </p>
-      )}
        {selected && (
-         <div className="rounded border border-muted p-1.5 space-y-1" data-testid={`${testidPrefix}-outcome-context`}>
-           <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-             <span className="font-semibold">Planned:</span>
-             <span>{selected.startDate || "unscheduled"}{selected.endDate ? ` → ${selected.endDate}` : ""}</span>
-             <span className="font-semibold ml-1">Actual:</span>
-             <span>{selected.latestOutcome ? `${label(selected.latestOutcome.outcome)} · ${selected.latestOutcome.eventDate}` : "Not recorded"}</span>
-             <Button type="button" size="sm" variant="ghost" className="h-5 px-1.5 text-[10px]" onClick={() => setOutcomeOpen(v => !v)} data-testid={`${testidPrefix}-record-outcome`}>
-               {outcomeOpen ? "Close" : "Record outcome"}
-             </Button>
+         <details className="rounded border border-muted px-2 py-1 text-[10px]" data-testid={`${testidPrefix}-outcome-context`}>
+           <summary className="cursor-pointer font-medium" data-testid={`${testidPrefix}-outcome-summary`}>
+             Execution Arrangement: {selected.latestOutcome ? `${label(selected.latestOutcome.outcome)} on ${selected.latestOutcome.eventDate}` : "Active / Arranged"}
+           </summary>
+           <div className="pt-1 text-muted-foreground">
+             Planned {selected.startDate || "unscheduled"}{selected.endDate ? ` → ${selected.endDate}` : ""}
+             {selected.arrangement ? ` · Arrangement #${selected.arrangement.id}${selected.arrangement.agency ? ` · ${selected.arrangement.agency}` : ""}` : ""}
            </div>
            {selected.outcomeHistory?.length ? (
-             <details className="text-[10px]" data-testid={`${testidPrefix}-outcome-history`}>
-               <summary className="cursor-pointer">Outcome history ({selected.outcomeHistory.length})</summary>
-               {selected.outcomeHistory.map(event => <div key={event.id}>{event.eventDate}: {label(event.outcome)} — {label(event.reason)}{event.actualQuantity != null ? ` · actual ${event.actualQuantity} ${event.actualUom ?? ""}` : ""}{event.rescheduledDate ? ` · moved to ${event.rescheduledDate}` : ""}</div>)}
-             </details>
-           ) : null}
-           {outcomeOpen && (
-             <div className="grid grid-cols-2 gap-1 pt-1">
-               <Select value={outcome} onValueChange={setOutcome}><SelectTrigger className="h-7 text-[11px]"><SelectValue /></SelectTrigger><SelectContent>{OUTCOMES.map(v => <SelectItem key={v} value={v}>{label(v)}</SelectItem>)}</SelectContent></Select>
-               <Select value={reason} onValueChange={setReason}><SelectTrigger className="h-7 text-[11px]"><SelectValue /></SelectTrigger><SelectContent>{REASONS.map(v => <SelectItem key={v} value={v}>{label(v)}</SelectItem>)}</SelectContent></Select>
-               {reason === "other" && <Input className="h-7 text-[11px] col-span-2" value={reasonOther} onChange={e => setReasonOther(e.target.value)} placeholder="Other reason *" />}
-               {outcome === "rescheduled" && <Input className="h-7 text-[11px] col-span-2" type="date" value={rescheduledDate} onChange={e => setRescheduledDate(e.target.value)} />}
-               {(outcome === "executed" || outcome === "partially_executed") && <><Input className="h-7 text-[11px]" type="number" min="0" value={actualQuantity} onChange={e => setActualQuantity(e.target.value)} placeholder="Actual quantity *" /><Input className="h-7 text-[11px]" value={actualUom} onChange={e => setActualUom(e.target.value)} placeholder="Actual UOM *" /></>}
-               <Textarea className="min-h-7 h-10 text-[11px] col-span-2" value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Remarks (optional)" />
-               <Button type="button" size="sm" className="h-7 text-[11px] col-span-2" onClick={() => recordOutcome.mutate()} disabled={recordOutcome.isPending}>{recordOutcome.isPending ? "Recording…" : "Record immutable outcome"}</Button>
-               {recordOutcome.error && <p className="text-[10px] text-red-600 col-span-2">{recordOutcome.error.message}</p>}
+             <div className="mt-1 space-y-0.5" data-testid={`${testidPrefix}-outcome-history`}>
+               <p className="font-semibold">Immutable outcome history ({selected.outcomeHistory.length})</p>
+               {selected.outcomeHistory.map(event => <div key={event.id}>{event.eventDate}: {label(event.outcome)}{event.reason ? ` — ${label(event.reason)}` : ""}{event.reasonOther ? ` (${event.reasonOther})` : ""}{event.actualQuantity != null ? ` · actual ${event.actualQuantity} ${event.actualUom ?? ""}` : ""}{event.rescheduledDate ? ` · moved to ${event.rescheduledDate}` : ""}</div>)}
              </div>
-           )}
-         </div>
+           ) : <p className="mt-1">No status changes recorded.</p>}
+         </details>
        )}
     </div>
   );

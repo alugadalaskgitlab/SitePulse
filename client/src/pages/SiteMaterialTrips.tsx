@@ -16,7 +16,7 @@ import type { EquipmentMasterType, SiteMaterialTrip, Site } from "@shared/schema
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { useUpload } from "@/hooks/use-upload";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
-import { ReceiptWorkContext, TripWorkContextSummary, EMPTY_WORK_CONTEXT, type TripWorkContext } from "@/components/ReceiptWorkContext";
+import { ReceiptWorkContext, TripWorkContextSummary, EMPTY_WORK_CONTEXT, hasRequiredWorkContext, type TripWorkContext } from "@/components/ReceiptWorkContext";
 import { findAllocationEntry, receiptSuggestionFromFulfilment, fulfilmentLabel } from "@shared/requirementFulfilment";
 
 const MATERIAL_OPTIONS = [
@@ -81,8 +81,7 @@ export default function SiteMaterialTrips() {
     yardLabel: "",
   });
 
-  // Batch 06E-F: optional Work Context (project / work item / arrangement /
-  // programme reach). Additional to procurement links — never required.
+  // Batch 06E-F / DPR-02: standalone trips require project + intended item.
   const [workCtx, setWorkCtx] = useState<TripWorkContext>(EMPTY_WORK_CONTEXT);
   // 06G: keep material/supplier/location/work-context between trucks (default ON).
   const [keepContext, setKeepContext] = useState(true);
@@ -301,8 +300,8 @@ export default function SiteMaterialTrips() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTrip.site || !newTrip.material || !newTrip.quantity || !newTrip.transportType) {
-      toast({ title: "Required Fields", description: "Please fill in Site, Material, Transport Type, and Quantity.", variant: "destructive" });
+    if (!newTrip.site || !newTrip.material || !newTrip.quantity || !newTrip.transportType || !hasRequiredWorkContext(workCtx)) {
+      toast({ title: "Required Fields", description: "Please fill in Site, Material, Transport Type, Quantity, and BOQ Item / Intended Activity.", variant: "destructive" });
       return;
     }
     if (newTrip.transportType === "agency_vendor" && !newTrip.supplier.trim()) {
@@ -598,7 +597,7 @@ export default function SiteMaterialTrips() {
                   <Button 
                     type="submit" 
                     className="w-full"
-                    disabled={createMutation.isPending}
+                    disabled={createMutation.isPending || !hasRequiredWorkContext(workCtx)}
                     data-testid="button-submit-trip"
                   >
                     {createMutation.isPending ? (
@@ -646,15 +645,16 @@ export default function SiteMaterialTrips() {
                 </div>
               )}
 
-              {/* 06E-F: optional work-context linkage — hidden in PI-linked
-                  mode (procurement receipts keep their own linkage). */}
-              {!isPILinked && newTrip.site && (
+              {/* DPR-02: every standalone trip, including a PI-linked
+                  delivery, identifies the BOQ activity it is intended for. */}
+              {newTrip.site && (
                 <ReceiptWorkContext
                   siteName={newTrip.site}
                   sitesList={sitesList}
                   value={workCtx}
                   onChange={setWorkCtx}
                   onArrangementPrefill={applyArrangementPrefill}
+                  required
                   testIdPrefix="trip-work-ctx"
                 />
               )}

@@ -19,10 +19,16 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
-import { TripWorkContextSummary } from "@/components/ReceiptWorkContext";
+import {
+  ReceiptWorkContext,
+  TripWorkContextSummary,
+  type TripWorkContext,
+} from "@/components/ReceiptWorkContext";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { useAuth } from "@/lib/auth-context";
+import type { Site } from "@shared/schema";
+import { isEditableMaterialReceiptSource } from "@shared/materialReceiptSummary";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix",
@@ -43,6 +49,7 @@ interface TripEditForm {
   receiptNumber: string;
   notes: string;
   workType: string;
+  workContext: TripWorkContext;
 }
 
 function SourceBadge({ source }: { source: string }) {
@@ -126,6 +133,9 @@ export default function SiteMaterialsReceived() {
   const { data: supplierList = [] } = useQuery<string[]>({
     queryKey: ["/api/materials/suppliers"],
   });
+  const { data: sitesList = [] } = useQuery<Site[]>({
+    queryKey: ["/api/sites"],
+  });
 
   const uniqueSites = useMemo(() => {
     const s = new Set<string>();
@@ -189,6 +199,12 @@ export default function SiteMaterialsReceived() {
       receiptNumber: trip.receiptNumber || "",
       notes: trip.notes || "",
       workType: trip.workType || "",
+      workContext: {
+        boqProjectId: trip.boqProjectId ?? null,
+        boqItemId: trip.boqItemId ?? null,
+        programmeBarId: trip.programmeBarId ?? null,
+        earthworkArrangementId: trip.earthworkArrangementId ?? null,
+      },
     });
   };
 
@@ -210,6 +226,10 @@ export default function SiteMaterialsReceived() {
       receiptNumber: editForm.receiptNumber.trim() || null,
       notes: editForm.notes.trim() || null,
       workType: editForm.workType || null,
+      boqProjectId: editForm.workContext.boqProjectId,
+      boqItemId: editForm.workContext.boqItemId,
+      programmeBarId: editForm.workContext.programmeBarId,
+      earthworkArrangementId: editForm.workContext.earthworkArrangementId,
     };
     updateMutation.mutate({ id: selectedTrip.id, payload });
   };
@@ -435,7 +455,7 @@ export default function SiteMaterialsReceived() {
               {/* Edit Request button on trip entries. Non-admins request/consume real
                   permission; admins/owners get a plain Edit button plus a "preview as
                   requester" toggle so they can test the non-admin flow themselves. */}
-              {selectedTrip.source === "trip" && !editForm && (
+              {isEditableMaterialReceiptSource(selectedTrip.source) && !editForm && (
                 <div className="flex justify-end">
                   <EditPermissionButton
                     recordType="site_material_trip"
@@ -556,6 +576,13 @@ export default function SiteMaterialsReceived() {
                       />
                     </div>
                   </div>
+                  <ReceiptWorkContext
+                    siteName={editForm.site}
+                    sitesList={sitesList}
+                    value={editForm.workContext}
+                    onChange={(workContext) => setEditForm((form) => form && ({ ...form, workContext }))}
+                    testIdPrefix="received-edit-work-ctx"
+                  />
                   <div className="flex items-center justify-end gap-2 pt-1">
                     <Button
                       variant="outline"

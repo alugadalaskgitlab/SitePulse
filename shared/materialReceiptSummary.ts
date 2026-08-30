@@ -159,6 +159,42 @@ export function arrangementCoveredBoqItemIds(a: ApplicableArrangementInput): num
   ));
 }
 
+/** A cut-material destination never accepts external delivery receipts while
+ * its reuse arrangement is being prepared or has been approved.  Keep this
+ * separate from receipt match strength: it is a hard business-rule gate. */
+export function blocksExternalReceiptsForBoqItem(
+  arrangements: ApplicableArrangementInput[],
+  boqItemId: number,
+): boolean {
+  return arrangements.some(
+    (arrangement) =>
+      arrangement.arrangementType === "reused_excavated" &&
+      ["draft", "submitted", "approved"].includes(arrangement.status) &&
+      arrangementCoveredBoqItemIds(arrangement).includes(Number(boqItemId)),
+  );
+}
+
+/** Explicit textual evidence that a fill item is intended to consume cut
+ * material. Generic earthwork/fill descriptions are deliberately excluded. */
+export function isExplicitCutMaterialConsumerDescription(
+  description: string | null | undefined,
+): boolean {
+  const value = String(description ?? "").toLowerCase();
+  if (!value.trim()) return false;
+  return (
+    /\breused?\s+excavat(?:ed|ion)\b/.test(value) ||
+    /\bexcavat(?:ed|ion)\s+(?:earth|soil|material)\b/.test(value) ||
+    /\bcut(?:\s+|-)?(?:earth|soil|material)\b/.test(value) ||
+    /\bcut(?:\s+|-)?to(?:\s+|-)?fill\b/.test(value)
+  );
+}
+
+/** Only canonical site_material_trips rows are editable from the combined
+ * Materials Received view; DPR/equipment pseudo-receipts are projections. */
+export function isEditableMaterialReceiptSource(source: string | null | undefined): boolean {
+  return source === "trip";
+}
+
 function arrangementCoversItem(a: ApplicableArrangementInput, boqItemId: number): boolean {
   if (a.boqItemId != null) return a.boqItemId === boqItemId;
   const allocs = Array.isArray(a.boqItemAllocations) ? a.boqItemAllocations : [];
@@ -423,6 +459,30 @@ export interface ReceiptMatchContext {
    * Used ONLY for the "suggested" tier — never for authoritative linking.
    */
   materialHints?: Array<string | null | undefined> | null;
+}
+
+export type MaterialTripLinkage = {
+  boqProjectId?: number | null;
+  boqItemId?: number | null;
+  programmeBarId?: number | null;
+  earthworkArrangementId?: number | null;
+};
+
+/** Build the linkage state that the server validates for an atomic PATCH.
+ * Deliberate replacements are allowed, while omitted stale fields remain
+ * visible to integrity validation instead of being silently corrected. */
+export function mergeMaterialTripLinkage(
+  existing: MaterialTripLinkage,
+  patch: MaterialTripLinkage,
+): MaterialTripLinkage {
+  const pick = (field: keyof MaterialTripLinkage) =>
+    Object.prototype.hasOwnProperty.call(patch, field) ? patch[field] : existing[field];
+  return {
+    boqProjectId: pick("boqProjectId"),
+    boqItemId: pick("boqItemId"),
+    programmeBarId: pick("programmeBarId"),
+    earthworkArrangementId: pick("earthworkArrangementId"),
+  };
 }
 
 // 06T §4: tolerant material-name comparison for the SUGGESTED tier only.

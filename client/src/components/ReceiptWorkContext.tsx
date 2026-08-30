@@ -2,8 +2,7 @@
  * Batch 06E-F — Work Context section for the standalone Site Material Trip
  * (Material Received) form, plus a read-only context display for saved trips.
  *
- * All linkage is OPTIONAL: ordinary procurement receipts (indent/PI/pending
- * receipt) never require it. Raw IDs are never shown as the primary UI —
+ * Raw IDs are never shown as the primary UI —
  * users pick a Project, a Work Item, an Execution Arrangement, and (where a
  * reliable one exists) a Programme / Reach by readable labels. The shared
  * seam `shared/materialReceiptSummary.ts` decides which arrangements apply
@@ -37,6 +36,19 @@ export const EMPTY_WORK_CONTEXT: TripWorkContext = {
   programmeBarId: null,
   earthworkArrangementId: null,
 };
+
+/** BOQ-item changes are atomic: a programme reach and commercial arrangement
+ * from the previous item must never survive the transition. */
+export function workContextForBoqItem(
+  value: TripWorkContext,
+  boqItemId: number | null,
+): TripWorkContext {
+  return { ...value, boqItemId, programmeBarId: null, earthworkArrangementId: null };
+}
+
+export function hasRequiredWorkContext(value: TripWorkContext): boolean {
+  return value.boqProjectId != null && value.boqItemId != null;
+}
 
 type BoqItemRow = { id: number; description: string; itemCode: string | null; unit: string; displayName?: string | null };
 type BarRow = { id: number; reachLabel: string | null; chainageFrom: number | null; chainageTo: number | null; side: string | null; startDate: string | null; endDate: string | null };
@@ -114,6 +126,7 @@ export function ReceiptWorkContext({
   value,
   onChange,
   onArrangementPrefill,
+  required = false,
   testIdPrefix = "work-ctx",
 }: {
   siteName: string;
@@ -123,6 +136,8 @@ export function ReceiptWorkContext({
   /** Called when an arrangement is (auto-)selected so the parent form can
       prefill Material/Supplier — the parent decides whether to overwrite. */
   onArrangementPrefill?: (p: { material: string | null; supplier: string | null; clientSupplied: boolean; external: boolean }) => void;
+  /** Standalone trip entry requires a project and intended BOQ activity. */
+  required?: boolean;
   testIdPrefix?: string;
 }) {
   const siteId = useMemo(() => sitesList.find((s) => s.name === siteName)?.id ?? null, [sitesList, siteName]);
@@ -182,13 +197,15 @@ export function ReceiptWorkContext({
   return (
     <div className="rounded-md border bg-muted/30 p-3 space-y-3" data-testid={`${testIdPrefix}-section`}>
       <div className="flex items-center gap-2">
-        <Label className="text-sm font-semibold">Work Context</Label>
-        <span className="text-xs text-muted-foreground">(optional — links this receipt to the work it serves)</span>
+        <Label className="text-sm font-semibold">BOQ Item / Intended Activity{required ? " *" : ""}</Label>
+        <span className="text-xs text-muted-foreground">
+          {required ? "(required for this material trip)" : "(links this receipt to the work it serves)"}
+        </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {projects.length > 1 && (
           <div>
-            <Label className="text-xs">Project</Label>
+            <Label className="text-xs">Project{required ? " *" : ""}</Label>
             <Select
               value={value.boqProjectId != null ? String(value.boqProjectId) : ""}
               onValueChange={(v) => onChange({ ...EMPTY_WORK_CONTEXT, boqProjectId: Number(v) })}
@@ -201,17 +218,17 @@ export function ReceiptWorkContext({
           </div>
         )}
         <div>
-          <Label className="text-xs">Work Item / BOQ Activity</Label>
+          <Label className="text-xs">Work Item / BOQ Activity{required ? " *" : ""}</Label>
           <Select
             value={value.boqItemId != null ? String(value.boqItemId) : "none"}
             onValueChange={(v) =>
-              onChange({ ...value, boqItemId: v === "none" ? null : Number(v), programmeBarId: null, earthworkArrangementId: null })
+              onChange(workContextForBoqItem(value, v === "none" ? null : Number(v)))
             }
             disabled={value.boqProjectId == null}
           >
             <SelectTrigger data-testid={`${testIdPrefix}-select-item`}><SelectValue placeholder="Select work item" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">— Not linked to a work item —</SelectItem>
+              {!required && <SelectItem value="none">— Not linked to a work item —</SelectItem>}
               {items.map((it) => (
                 <SelectItem key={it.id} value={String(it.id)}>{boqItemDisplayName(it)}</SelectItem>
               ))}
@@ -280,7 +297,7 @@ export function ReceiptWorkContext({
       </div>
       {selectedArrangement && receiptRelevanceForType(selectedArrangement.arrangementType) === "none" && (
         <p className="text-xs text-amber-700" data-testid={`${testIdPrefix}-reused-note`}>
-          This arrangement reuses excavated material — no external delivery is expected. Record a receipt only if material genuinely arrived from outside.
+          This item's material comes from the Roadway Excavation cut-fill ledger, not an external delivery.
         </p>
       )}
     </div>

@@ -1,0 +1,151 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+
+const OUTCOMES = [
+  ["active_arranged", "Active / Arranged"],
+  ["executed", "Executed"],
+  ["partially_executed", "Partially Executed"],
+  ["not_executed", "Not Executed"],
+  ["cancelled", "Cancelled"],
+  ["suspended", "Suspended"],
+  ["early_closed", "Early Closed"],
+  ["rescheduled", "Rescheduled"],
+] as const;
+
+const REASONS = [
+  "rain", "site_not_ready", "client_instruction", "equipment_breakdown",
+  "vendor_unavailable", "material_unavailable", "work_completed_early",
+  "change_in_programme", "other",
+] as const;
+
+type OutcomeEvent = {
+  id: number;
+  eventDate: string;
+  outcome: string;
+  reason?: string | null;
+  reasonOther?: string | null;
+  rescheduledDate?: string | null;
+  actualQuantity?: number | null;
+  actualUom?: string | null;
+};
+
+const label = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+/** PM/Admin/Owner arrangement-status writer. Every save appends one bar event. */
+export function ArrangementOutcomeControl({
+  projectId, programmeBarId, defaultUom,
+}: {
+  projectId: number;
+  programmeBarId: number;
+  defaultUom?: string | null;
+}) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const queryKey = ["/api/dpr/programme-bar-outcomes", projectId, programmeBarId];
+  const [outcome, setOutcome] = useState("active_arranged");
+  const [eventDate, setEventDate] = useState(today);
+  const [reason, setReason] = useState("");
+  const [reasonOther, setReasonOther] = useState("");
+  const [rescheduledDate, setRescheduledDate] = useState("");
+  const [actualQuantity, setActualQuantity] = useState("");
+  const [actualUom, setActualUom] = useState(defaultUom ?? "");
+  const [remarks, setRemarks] = useState("");
+  const requiresReason = outcome !== "active_arranged" && outcome !== "executed";
+
+  const { data } = useQuery<{ latestOutcome: OutcomeEvent | null; outcomeHistory: OutcomeEvent[] }>({
+    queryKey,
+    queryFn: async () => {
+      const response = await fetch(`/api/dpr/programme-bar-outcomes?projectId=${projectId}&programmeBarId=${programmeBarId}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load arrangement status history");
+      return response.json();
+    },
+  });
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (requiresReason && !reason) throw new Error("Select a reason.");
+      if (reason === "other" && !reasonOther.trim()) throw new Error("Enter the other reason.");
+      if (outcome === "rescheduled" && !rescheduledDate) throw new Error("Select the rescheduled date.");
+      if (outcome === "partially_executed" && (actualQuantity === "" || !actualUom.trim())) {
+        throw new Error("Actual quantity and UOM are required for Partially Executed.");
+      }
+      const response = await fetch("/api/dpr/programme-bar-outcomes", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          programmeBarId, eventDate, outcome,
+          reason: requiresReason ? reason : null,
+          reasonOther: reason === "other" ? reasonOther.trim() : null,
+          rescheduledDate: outcome === "rescheduled" ? rescheduledDate : null,
+          actualQuantity: outcome === "partially_executed" ? Number(actualQuantity) : null,
+          actualUom: outcome === "partially_executed" ? actualUom.trim() : null,
+          remarks: remarks.trim() || null,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message ?? `Could not record status (${response.status})`);
+      return body;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({ queryKey: ["/api/dpr/programme-bars", projectId] }),
+      ]);
+      setReason(""); setReasonOther(""); setRescheduledDate(""); setActualQuantity(""); setRemarks("");
+      toast({ title: "Arrangement status recorded", description: "The immutable history has been preserved." });
+    },
+    onError: (error: Error) => toast({ title: "Could not record arrangement status", description: error.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="rounded-md border-2 border-teal-200 bg-teal-50/60 p-3 space-y-2" data-testid={`arrangement-status-control-${programmeBarId}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-semibold text-teal-900">Arrangement Status</p>
+        <span className="text-[11px] text-teal-800">
+          Current: {data?.latestOutcome ? `${label(data.latestOutcome.outcome)} · ${data.latestOutcome.eventDate}` : "Active / Arranged"}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Select value={outcome} onValueChange={setOutcome}>
+          <SelectTrigger data-testid={`select-arrangement-status-${programmeBarId}`}><SelectValue /></SelectTrigger>
+          <SelectContent>{OUTCOMES.map(([value, text]) => <SelectItem key={value} value={value}>{text}</SelectItem>)}</SelectContent>
+        </Select>
+        <Input type="date" aria-label="Status date" value={eventDate} onChange={e => setEventDate(e.target.value)} />
+        {requiresReason && (
+          <Select value={reason} onValueChange={setReason}>
+            <SelectTrigger data-testid={`select-arrangement-reason-${programmeBarId}`}><SelectValue placeholder="Reason *" /></SelectTrigger>
+            <SelectContent>{REASONS.map(value => <SelectItem key={value} value={value}>{label(value)}</SelectItem>)}</SelectContent>
+          </Select>
+        )}
+        {reason === "other" && <Input value={reasonOther} onChange={e => setReasonOther(e.target.value)} placeholder="Other reason *" />}
+        {outcome === "rescheduled" && <Input type="date" aria-label="Rescheduled date" value={rescheduledDate} onChange={e => setRescheduledDate(e.target.value)} />}
+        {outcome === "partially_executed" && (<>
+          <Input type="number" min="0" value={actualQuantity} onChange={e => setActualQuantity(e.target.value)} placeholder="Actual quantity *" />
+          <Input value={actualUom} onChange={e => setActualUom(e.target.value)} placeholder="Actual UOM *" />
+        </>)}
+        <Textarea className="col-span-2 min-h-16" value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Remarks (optional)" />
+        <Button className="col-span-2" disabled={mutation.isPending || !eventDate} onClick={() => mutation.mutate()} data-testid={`button-record-arrangement-status-${programmeBarId}`}>
+          {mutation.isPending ? "Recording…" : "Record status change"}
+        </Button>
+      </div>
+      {!!data?.outcomeHistory.length && (
+        <details className="text-[11px]" data-testid={`arrangement-status-history-${programmeBarId}`}>
+          <summary className="cursor-pointer font-medium">Immutable history ({data.outcomeHistory.length})</summary>
+          {data.outcomeHistory.map(event => (
+            <div key={event.id}>{event.eventDate}: {label(event.outcome)}{event.reason ? ` — ${label(event.reason)}` : ""}{event.reasonOther ? ` (${event.reasonOther})` : ""}</div>
+          ))}
+        </details>
+      )}
+    </div>
+  );
+}

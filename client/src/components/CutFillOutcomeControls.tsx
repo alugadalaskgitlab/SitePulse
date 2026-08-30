@@ -12,6 +12,7 @@ import {
   type LedgerAllocation,
 } from "@/lib/cutFillLedger";
 import type { CutFillConsumptionInput } from "@shared/cutFillReconciliation";
+import { isExplicitCutMaterialConsumerDescription } from "@shared/materialReceiptSummary";
 
 type Props = {
   quantity: number | null;
@@ -25,6 +26,7 @@ type Props = {
   sourceBoqItemId?: number | null;
   fillMode?: boolean;
   arrangementId?: number | null;
+  boqItemDescription?: string | null;
   formRows?: Array<{ entryKey: string; boqItemId: number | null; quantity: number | null; allocations?: LedgerAllocation[]; reusableQty?: number | null }>;
   boqItems?: any[];
   currentEntryKey?: string;
@@ -43,6 +45,7 @@ export function CutFillOutcomeControls({
   sourceBoqItemId,
   fillMode = false,
   arrangementId,
+  boqItemDescription,
   formRows = [],
   boqItems = [],
   currentEntryKey,
@@ -86,6 +89,10 @@ export function CutFillOutcomeControls({
   );
   const ledger = rowLedger[currentEntryKey ?? effectiveRows[0]?.entryKey ?? "current"]
     ?? provisionalLedger(quantity ?? 0, sources, allocations);
+  const plausibleCutMaterialConsumer =
+    arrangement?.arrangementType === "reused_excavated" ||
+    isExplicitCutMaterialConsumerDescription(boqItemDescription);
+  if (fillMode && !plausibleCutMaterialConsumer) return null;
   if (fillMode && (!arrangement || arrangement.arrangementType !== "reused_excavated" || arrangement.sourceExcavationBoqItemId == null)) {
     return (
       <div className="mt-2 rounded border border-amber-200 bg-amber-50/60 p-2 text-[11px] text-amber-900" data-testid="cut-fill-link-prompt">

@@ -63,6 +63,7 @@ import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import { flattenCutFillConsumptions, hydrateCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
+import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
@@ -557,6 +558,8 @@ export default function GuidedDpr() {
     },
     enabled: !!boqProjectId,
   });
+  const usesCutMaterialSource = (boqItemId: number | null) =>
+    boqItemId != null && blocksExternalReceiptsForBoqItem(cutFillArrangements, boqItemId);
   const itemById = useMemo(() => {
     const m = new Map<number, SiteBoqItem>();
     boqItems.forEach((i) => m.set(i.id, i));
@@ -1578,14 +1581,6 @@ export default function GuidedDpr() {
               </div>
             )}
             {!e.noSiteWork && (<>
-            {e.boqItemId != null && classifyWorkType(String(itemById.get(e.boqItemId)?.description ?? ""), String(itemById.get(e.boqItemId)?.unit ?? "")) === "roadway_excavation" && (
-              <CutFillOutcomeControls quantity={e.quantity} outcome={e.materialOutcome ?? null} reusableQty={e.reusableQty ?? null}
-                onOutcomeChange={(materialOutcome, reusableQty) => updateEntry(idx, { materialOutcome, reusableQty })} />
-            )}
-            <CutFillOutcomeControls fillMode projectId={boqProjectId} arrangementId={e.earthworkArrangementId}
-              quantity={e.quantity} outcome={null} reusableQty={null} allocations={e.allocations as any}
-              currentEntryKey={e.entryKey} formRows={entries as any} boqItems={boqItems}
-              onOutcomeChange={() => undefined} onAllocationsChange={allocations => updateEntry(idx, { allocations: allocations as any })} />
             {/* Batch 06C §7: rows created via "+ Add Row" pick their BOQ item
                 right here — programme-suggested rows keep their item fixed
                 (the bar defines it), so the selector shows only for unlinked
@@ -1608,64 +1603,6 @@ export default function GuidedDpr() {
                 </Select>
               </div>
             )}
-            {/* 031 Part C: manually-added items get the shared bar picker with
-                auto-matching (1 candidate → auto-link, several → pick,
-                incompatible bars stay behind "Other bars"). */}
-            {e.boqItemId != null && boqProjectId != null && (
-              <ProgrammeBarPicker
-                projectId={boqProjectId}
-                boqItemId={e.boqItemId}
-                dprDate={date}
-                value={e.programmeBarId}
-                autoSelect={e.programmeBarId == null}
-                sideLabel={e.side || null}
-                fromKm={parseChainageKm(e.chainageFrom)}
-                toKm={parseChainageKm(e.chainageTo)}
-                testidPrefix={`guided-${idx}`}
-                onSelect={(bar) => {
-                  // 06T §3: bar context changed — persisted arrangement re-resolves.
-                  if (!bar) { updateEntry(idx, { programmeBarId: null, earthworkArrangementId: null }); return; }
-                  updateEntry(idx, {
-                    programmeBarId: bar.id,
-                    earthworkArrangementId: null,
-                    ...(bar.chainageFrom != null && !e.chainageFrom ? { chainageFrom: fmtCh(bar.chainageFrom) } : {}),
-                    // Batch 1: the bar's PLANNED side never overwrites a chosen
-                    // actual side; a blank side is prefilled only when the
-                    // matrix allows exactly one value (never for Both/Full bars).
-                    ...(!e.side ? { side: prefillSideFor(bar.side) } : {}),
-                  });
-                }}
-              />
-            )}
-            {/* 031 Parts D/F/G/H: same shared feedback component as the Detailed DPR */}
-            {e.programmeBarId != null && (
-              <BarLinkFeedback
-                projectId={boqProjectId}
-                boqItemId={e.boqItemId}
-                programmeBarId={e.programmeBarId}
-                sideKey={sideKeyOf(e.side)}
-                sideLabel={e.side}
-                fromKm={parseChainageKm(e.chainageFrom)}
-                toKm={parseChainageKm(e.chainageTo)}
-                overrideReason={e.chainageOverrideReason}
-                onOverrideReason={(v) => updateEntry(idx, { chainageOverrideReason: v })}
-                qty={e.quantity}
-                warnOverBalance
-                itemTotals={itemTotals(e.boqItemId)}
-                executedBy={e.executedBy || null}
-                onExecutedBy={(v) => updateEntry(idx, { executedBy: v })}
-                testidPrefix={`guided-${idx}`}
-              />
-            )}
-            {/* Batch 06B: possible-overlap advisory (same-DPR + prior submitted
-                DPRs) — reuses the row's chainageOverrideReason; prior DPRs open
-                read-only in a modal over this form. */}
-            <ChainageOverlapWarning
-              hits={overlapHits.get(idx) ?? []}
-              overrideReason={e.chainageOverrideReason}
-              onOverrideReason={(v) => updateEntry(idx, { chainageOverrideReason: v })}
-              testidPrefix={`guided-${idx}`}
-            />
             {/* Batch 1 Part A: actual execution side is a core, ALWAYS-visible,
                 editable field — never just a fixed badge. Options come from the
                 shared matrix, narrowed by the linked bar's planned side. */}
@@ -1700,7 +1637,7 @@ export default function GuidedDpr() {
               const srcState = entrySourceState(e);
               return (
                 <>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-2" data-testid={`activity-identity-block-${idx}`}>
                     <div>
                       <Label>Ch. From</Label>
                       <Input value={e.chainageFrom} placeholder="0+000" onChange={(ev) => updateGeometry(idx, { chainageFrom: ev.target.value })} data-testid={`input-ch-from-${idx}`} />
@@ -1796,10 +1733,50 @@ export default function GuidedDpr() {
                 </>
               );
             })()}
+            <div className="space-y-1 border-t pt-2" data-testid={`activity-execution-status-block-${idx}`}>
+              {e.boqItemId != null && boqProjectId != null && (
+                <ProgrammeBarPicker
+                  projectId={boqProjectId} boqItemId={e.boqItemId} dprDate={date}
+                  value={e.programmeBarId} autoSelect={e.programmeBarId == null}
+                  sideLabel={e.side || null} fromKm={parseChainageKm(e.chainageFrom)}
+                  toKm={parseChainageKm(e.chainageTo)} testidPrefix={`guided-${idx}`}
+                  onSelect={(bar) => {
+                    if (!bar) { updateEntry(idx, { programmeBarId: null, earthworkArrangementId: null }); return; }
+                    updateEntry(idx, {
+                      programmeBarId: bar.id, earthworkArrangementId: null,
+                      ...(bar.chainageFrom != null && !e.chainageFrom ? { chainageFrom: fmtCh(bar.chainageFrom) } : {}),
+                      ...(!e.side ? { side: prefillSideFor(bar.side) } : {}),
+                    });
+                  }}
+                />
+              )}
+              {e.programmeBarId != null && (
+                <BarLinkFeedback projectId={boqProjectId} boqItemId={e.boqItemId}
+                  programmeBarId={e.programmeBarId} sideKey={sideKeyOf(e.side)} sideLabel={e.side}
+                  fromKm={parseChainageKm(e.chainageFrom)} toKm={parseChainageKm(e.chainageTo)}
+                  overrideReason={e.chainageOverrideReason} onOverrideReason={(v) => updateEntry(idx, { chainageOverrideReason: v })}
+                  qty={e.quantity} warnOverBalance itemTotals={itemTotals(e.boqItemId)}
+                  executedBy={e.executedBy || null} onExecutedBy={(v) => updateEntry(idx, { executedBy: v })}
+                  testidPrefix={`guided-${idx}`} />
+              )}
+              <ChainageOverlapWarning hits={overlapHits.get(idx) ?? []}
+                overrideReason={e.chainageOverrideReason} onOverrideReason={(v) => updateEntry(idx, { chainageOverrideReason: v })}
+                testidPrefix={`guided-${idx}`} />
+            </div>
             {/* Batch 06E: material receipt strip — arrangement-linked bulk
                 receipts (site_material_trips) for this activity. Renders only
                 where it has meaning (arrangement exists or receipts linked). */}
-            {e.boqItemId != null && boqProjectId != null && siteName && (() => {
+            <div className="space-y-2 border-t pt-2" data-testid={`activity-material-source-block-${idx}`}>
+            {e.boqItemId != null && classifyWorkType(String(itemById.get(e.boqItemId)?.description ?? ""), String(itemById.get(e.boqItemId)?.unit ?? "")) === "roadway_excavation" ? (
+              <CutFillOutcomeControls quantity={e.quantity} outcome={e.materialOutcome ?? null} reusableQty={e.reusableQty ?? null}
+                onOutcomeChange={(materialOutcome, reusableQty) => updateEntry(idx, { materialOutcome, reusableQty })} />
+            ) : usesCutMaterialSource(e.boqItemId) ? (
+              <CutFillOutcomeControls fillMode projectId={boqProjectId} arrangementId={e.earthworkArrangementId}
+                boqItemDescription={e.boqItemId != null ? String(itemById.get(e.boqItemId)?.description ?? itemById.get(e.boqItemId)?.displayName ?? "") : ""}
+                quantity={e.quantity} outcome={null} reusableQty={null} allocations={e.allocations as any}
+                currentEntryKey={e.entryKey} formRows={entries as any} boqItems={boqItems}
+                onOutcomeChange={() => undefined} onAllocationsChange={allocations => updateEntry(idx, { allocations: allocations as any })} />
+            ) : e.boqItemId != null && boqProjectId != null && siteName && (() => {
               const item = itemById.get(e.boqItemId);
               const factor = item?.dprConversionFactor ?? 1;
               const executedQty = e.quantity != null ? e.quantity * factor : null;
@@ -1822,6 +1799,7 @@ export default function GuidedDpr() {
                 />
               );
             })()}
+            </div>
             <button className="text-xs text-primary flex items-center gap-1" onClick={() => updateEntry(idx, { expanded: !e.expanded })} data-testid={`button-details-${idx}`}>
               {e.expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               Add details
@@ -1834,7 +1812,7 @@ export default function GuidedDpr() {
             )}
             </>)}
             {/* Task #1409: per-activity photos — Camera / Gallery / File */}
-            <div className="pt-1 border-t" data-testid={`entry-photos-${idx}`}>
+            <div className="pt-1 border-t" data-testid={`activity-resources-block-${idx}`}>
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <Label className="flex items-center gap-1.5 text-xs"><Camera className="w-3.5 h-3.5" />Photos for this activity</Label>
                 <div className="flex gap-1.5">

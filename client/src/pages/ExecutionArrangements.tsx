@@ -36,6 +36,7 @@ import {
   approveExecutionArrangement,
   canShowExecutionArrangementApprove,
 } from "@/lib/executionArrangementApproval";
+import { ArrangementOutcomeControl } from "@/components/ArrangementOutcomeControl";
 
 interface ProgrammeBar {
   id: number;
@@ -88,9 +89,11 @@ export default function ExecutionArrangements() {
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id ?? "0", 10);
   const queryClient = useQueryClient();
-  const { sectionCan } = useAuth();
+  const { sectionCan, isAdmin, isOwner, user } = useAuth();
   const { toast } = useToast();
   const canEditArrangements = sectionCan("qto_boq", "edit");
+  const role = String((user as any)?.role ?? "").toLowerCase().replace(/[\s-]+/g, "_");
+  const canSetArrangementOutcome = isAdmin || isOwner || ["manager", "pm", "project_manager"].includes(role);
 
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -446,6 +449,20 @@ export default function ExecutionArrangements() {
                     </div>
                   )}
                 </div>
+
+                {canSetArrangementOutcome && r.allocs.length > 0 && (
+                  <div className="space-y-2" data-testid="arrangement-execution-status">
+                    <p className="font-semibold text-slate-700">Official execution status</p>
+                    {r.allocs.map(al => (
+                      <ArrangementOutcomeControl
+                        key={al.programmeBarId}
+                        projectId={projectId}
+                        programmeBarId={al.programmeBarId}
+                        defaultUom={uom}
+                      />
+                    ))}
+                  </div>
+                )}
 
                 <div className="flex gap-2 pt-1">
                   {canEditArrangements && (
