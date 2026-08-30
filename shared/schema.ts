@@ -798,6 +798,12 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   material: text("material").notNull(), // Material name
   supplier: text("supplier"), // Supplier name
   vehicleNumber: text("vehicle_number"), // Vehicle registration
+  // DPR-01 Parts 8/9: null preserves historical trips whose transport source
+  // was not recorded. New entries classify the trip without overloading supplier.
+  transportType: text("transport_type"), // "in_house" | "agency_vendor"
+  // Optional internal fleet/master link for in-house transport. vehicleNumber
+  // remains available as a free-text fallback when no master record exists.
+  internalEquipmentId: integer("internal_equipment_id"),
   quantity: real("quantity").notNull(),
   uom: text("uom").notNull(),
   location: text("location"), // Chainage/location where dumped
@@ -913,7 +919,33 @@ export const createDprRequestSchema = insertDprSchema.extend({
   progress: z.array(insertProgressSchema.extend({
     personnelIds: z.array(z.number()).optional(),
   })).optional(),
-  equipment: z.array(insertEquipmentSchema).optional(),
+  // Client-staged stoppages travel with their exact equipment-row position
+  // until the transaction has created the equipment_logs serial id. Storage
+  // strips this transient property before inserting equipment_logs.
+  equipment: z.array(insertEquipmentSchema.extend({
+    // Existing equipment_logs identity. It is never inserted; replacement
+    // storage uses it to relink its explicitly source-linked stoppages.
+    persistedId: z.number().int().positive().optional(),
+    breakdowns: z.array(z.object({
+      clientKey: z.string().min(1),
+      maintenanceLogId: z.number().int().positive().optional(),
+      fromTime: z.string().optional(),
+      toTime: z.string().optional(),
+      description: z.string().optional(),
+      responsibility: z.enum(["vendor", "hlc"]).or(z.literal("")).optional(),
+      repairScope: z.enum(["vendor", "hlc"]).or(z.literal("")).optional(),
+      debitableToVendor: z.boolean().optional(),
+      remarks: z.string().optional(),
+      // Files are uploaded before the DPR transaction.  Only validated object
+      // metadata crosses this boundary; File objects never enter the API.
+      attachment: z.object({
+        fileName: z.string().min(1),
+        objectPath: z.string().min(1),
+        mimeType: z.string().min(1).optional(),
+        fileSize: z.number().int().nonnegative().optional(),
+      }).optional(),
+    })).optional(),
+  })).optional(),
   labour: z.array(insertLabourSchema).optional(),
   materials: z.array(insertMaterialSchema).optional(),
   sitePurchases: z.array(insertSitePurchaseSchema).optional(),
@@ -2658,6 +2690,16 @@ export const equipmentMaintenanceLogs = pgTable("equipment_maintenance_logs", {
   eventType: text("event_type").notNull(), // "breakdown" | "service" | "pm"
   description: text("description").notNull(),
   downtimeHours: real("downtime_hours"),
+  // DPR-01: structured stoppage facts. Nullable so historical maintenance
+  // records remain valid; source linkage is deliberately exact, never inferred
+  // from equipment/date.
+  fromTime: text("from_time"),
+  toTime: text("to_time"),
+  responsibility: text("responsibility"), // vendor | hlc
+  repairScope: text("repair_scope"), // vendor | hlc
+  debitableToVendor: boolean("debitable_to_vendor"),
+  sourceType: text("source_type"), // dpr_log | plant_usage
+  sourceRecordId: integer("source_record_id"),
   status: text("status").notNull().default("open"), // "open" | "resolved"
   nextServiceDue: date("next_service_due"),
   servicedBy: text("serviced_by"),
@@ -2670,6 +2712,7 @@ export const equipmentMaintenanceLogs = pgTable("equipment_maintenance_logs", {
 }, (t) => ({
   dateIdx: index("eml_date_idx").on(t.date),
   equipmentIdx: index("eml_equipment_idx").on(t.equipmentId),
+  sourceLookupIdx: index("eml_source_lookup_idx").on(t.sourceType, t.sourceRecordId),
 }));
 
 export const maintenancePartsUsed = pgTable("maintenance_parts_used", {
@@ -3157,6 +3200,26 @@ export const workProgramBars = pgTable("work_program_bars", {
   itemIdx: index("work_program_bars_item_idx").on(t.boqItemId),
 }));
 
+// DPR execution disposition is an immutable event stream, not a mutable bar
+// status. A bar can be suspended, rescheduled, and later executed; every
+// decision remains auditable while the newest event is its current state.
+export const programmeBarOutcomeEvents = pgTable("programme_bar_outcome_events", {
+  id: serial("id").primaryKey(),
+  programmeBarId: integer("programme_bar_id").notNull().references(() => workProgramBars.id, { onDelete: "restrict" }),
+  eventDate: date("event_date").notNull(),
+  outcome: text("outcome").notNull(), // executed | partially_executed | not_executed | cancelled | suspended | early_closed | rescheduled
+  reason: text("reason").notNull(), // rain | site_not_ready | client_instruction | equipment_breakdown | vendor_unavailable | material_unavailable | work_completed_early | change_in_programme | other
+  reasonOther: text("reason_other"),
+  rescheduledDate: date("rescheduled_date"),
+  actualQuantity: real("actual_quantity"),
+  actualUom: text("actual_uom"),
+  remarks: text("remarks"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  barDateIdx: index("programme_bar_outcome_events_bar_date_idx").on(t.programmeBarId, t.eventDate, t.id),
+}));
+
 // ─── BOQ Item Recipe Tables (for BOM & Duration calculations) ──────────────
 
 // Equipment deployed per BOQ work item — drives auto-duration + equipment demand
@@ -3271,6 +3334,7 @@ export const insertBoqItemSchema = createInsertSchema(boqItems).omit({ id: true,
 export const insertBoqRevisionSchema = createInsertSchema(boqRevisions).omit({ id: true, createdAt: true, approvedAt: true });
 export const insertBoqRevisionItemSchema = createInsertSchema(boqRevisionItems).omit({ id: true });
 export const insertWorkProgramBarSchema = createInsertSchema(workProgramBars).omit({ id: true, createdAt: true });
+export const insertProgrammeBarOutcomeEventSchema = createInsertSchema(programmeBarOutcomeEvents).omit({ id: true, createdAt: true });
 export const insertBoqItemEquipmentSchema = createInsertSchema(boqItemEquipment).omit({ id: true, createdAt: true });
 export const insertBoqItemLabourSchema = createInsertSchema(boqItemLabour).omit({ id: true, createdAt: true });
 export const insertBoqItemMaterialsSchema = createInsertSchema(boqItemMaterials).omit({ id: true, createdAt: true });
@@ -3294,6 +3358,8 @@ export type BoqRevisionItem = typeof boqRevisionItems.$inferSelect;
 export type InsertBoqRevisionItem = z.infer<typeof insertBoqRevisionItemSchema>;
 export type WorkProgramBar = typeof workProgramBars.$inferSelect;
 export type InsertWorkProgramBar = z.infer<typeof insertWorkProgramBarSchema>;
+export type ProgrammeBarOutcomeEvent = typeof programmeBarOutcomeEvents.$inferSelect;
+export type InsertProgrammeBarOutcomeEvent = z.infer<typeof insertProgrammeBarOutcomeEventSchema>;
 
 // Task #1240 — additive expansion of the planning_mode vocabulary. Existing
 // stored values (null | "structure_location") remain valid; the new values

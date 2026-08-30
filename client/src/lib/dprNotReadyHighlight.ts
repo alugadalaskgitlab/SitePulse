@@ -45,7 +45,9 @@ export function extractNotReadyRowTarget(error: unknown): DprNotReadyRowTarget |
     return null;
   }
 
-  if (body?.error !== "DPR_NOT_READY") return null;
+  // DPR validation responses use { message, code }; accept the historical
+  // `error` field too so locally cached/older responses remain actionable.
+  if (body?.code !== "DPR_NOT_READY" && body?.error !== "DPR_NOT_READY") return null;
 
   // mandatory may come from evaluateDprSubmitReadiness (rowIndex) or
   // chainageOverlapReadinessIssues (rowKey).

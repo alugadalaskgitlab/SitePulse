@@ -972,6 +972,20 @@ export function assertCreate(req: Request, res: Response, section: SectionKey): 
   return true;
 }
 
+export function assertCreateOrEdit(req: Request, res: Response, section: SectionKey): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: "not_authenticated" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  const permission = req.authPermissions?.[section];
+  if (!permission?.create && !permission?.edit) {
+    res.status(403).json({ error: "forbidden", section, action: "create_or_edit" });
+    return false;
+  }
+  return true;
+}
+
 export function assertCreateEither(req: Request, res: Response, ...sections: SectionKey[]): boolean {
   if (!req.authUser) {
     res.status(401).json({ error: "not_authenticated" });

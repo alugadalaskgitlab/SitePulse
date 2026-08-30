@@ -1107,15 +1107,16 @@ export interface IStorage {
   generateReceiptNoForMaterial(materialId: number): Promise<string>;
 
   // Equipment Maintenance & Breakdown Logs
-  getMaintenanceLogs(filters?: { equipmentId?: number; eventType?: string; status?: string; dateFrom?: string; dateTo?: string }): Promise<EquipmentMaintenanceLogWithDetails[]>;
+  getMaintenanceLogs(filters?: { equipmentId?: number; eventType?: string; status?: string; dateFrom?: string; dateTo?: string; sourceType?: string; sourceRecordId?: number; sourceRecordIds?: number[]; includeCancelled?: boolean }): Promise<EquipmentMaintenanceLogWithDetails[]>;
   getMaintenanceLog(id: number): Promise<EquipmentMaintenanceLogWithDetails | undefined>;
   createMaintenanceLog(log: InsertEquipmentMaintenanceLog, parts?: InsertMaintenancePartUsed[]): Promise<EquipmentMaintenanceLogWithDetails>;
   updateMaintenanceLog(id: number, log: Partial<InsertEquipmentMaintenanceLog>): Promise<EquipmentMaintenanceLogWithDetails | undefined>;
   deleteMaintenanceLog(id: number, userId: number): Promise<boolean>;
   addMaintenanceParts(logId: number, parts: InsertMaintenancePartUsed[]): Promise<EquipmentMaintenanceLogWithDetails>;
   removeMaintenancePart(partId: number): Promise<boolean>;
-  getEquipmentHealthSummary(): Promise<EquipmentHealthSummary[]>;
-  getOpenBreakdownCount(): Promise<number>;
+  getMaintenancePart(partId: number): Promise<MaintenancePartUsed | undefined>;
+  getEquipmentHealthSummary(visibleMaintenanceLogIds?: number[]): Promise<EquipmentHealthSummary[]>;
+  getOpenBreakdownCount(visibleMaintenanceLogIds?: number[]): Promise<number>;
 
   // RMC Plant Module (Task #697)
   getDistinctRmcPlantNames(): Promise<string[]>;
@@ -1232,6 +1233,8 @@ export interface IStorage {
   updateSitePurchase(id: number, data: { itemDescription?: string; quantity?: number | null; uom?: string | null; vendor?: string | null; billNo?: string | null; amount?: number | null }): Promise<any>;
 
   // Site Material Trips (Quick Entry)
+  // Adds only nullable, backward-compatible transport fields to existing trips.
+  ensureSiteMaterialTripsLinkageColumns(): Promise<void>;
   getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
   getSiteMaterialTripById(id: number): Promise<SiteMaterialTrip | undefined>;
@@ -1530,6 +1533,7 @@ export interface IStorage {
   deleteZeroQtyBoqItemsForProject(projectId: number): Promise<number>;
   // Task #1126 — Program Settings per BOQ project
   ensureBoqProgramSettingsTables(): Promise<void>;
+  ensureProgrammeBarOutcomeEventsTable(): Promise<void>;
   getBoqProgramSettings(projectId: number): Promise<BoqProgramSettings | null>;
   upsertBoqProgramSettings(projectId: number, data: Partial<InsertBoqProgramSettings>): Promise<BoqProgramSettings>;
   upsertBoqProgramSettingsWithCalendarRealignment(
@@ -2311,7 +2315,37 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(progressEntries, eq(progressEntries.id, cutFillConsumptions.fillProgressEntryId))
       .leftJoin(sql`progress_entries source`, sql`source.id = ${cutFillConsumptions.sourceProgressEntryId}`)
       .where(inArray(cutFillConsumptions.fillProgressEntryId, fillIds)) : [];
-    return { ...dpr, cutFillConsumptions: links } as DprWithDetails;
+    const equipmentIds = (dpr.equipment ?? []).map(row => row.id);
+    const breakdowns = equipmentIds.length
+      ? await db.select().from(equipmentMaintenanceLogs).where(and(
+        eq(equipmentMaintenanceLogs.sourceType, "dpr_log"),
+        inArray(equipmentMaintenanceLogs.sourceRecordId, equipmentIds),
+        eq(equipmentMaintenanceLogs.isCancelled, false),
+        eq(equipmentMaintenanceLogs.isDeleted, false),
+      ))
+      : [];
+    const breakdownsByEquipmentLog = new Map<number, any[]>();
+    for (const breakdown of breakdowns) {
+      const sourceId = Number(breakdown.sourceRecordId);
+      const rows = breakdownsByEquipmentLog.get(sourceId) ?? [];
+      rows.push({
+        clientKey: `maintenance-${breakdown.id}`,
+        maintenanceLogId: breakdown.id,
+        fromTime: breakdown.fromTime ?? "",
+        toTime: breakdown.toTime ?? "",
+        description: breakdown.description,
+        responsibility: breakdown.responsibility ?? "",
+        repairScope: breakdown.repairScope ?? "",
+        debitableToVendor: !!breakdown.debitableToVendor,
+        remarks: breakdown.remarks ?? "",
+      });
+      breakdownsByEquipmentLog.set(sourceId, rows);
+    }
+    return {
+      ...dpr,
+      equipment: (dpr.equipment ?? []).map(row => ({ ...row, breakdowns: breakdownsByEquipmentLog.get(row.id) ?? [] })),
+      cutFillConsumptions: links,
+    } as DprWithDetails;
   }
 
   /**
@@ -2505,6 +2539,126 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  /**
+   * Reconcile DPR-created stoppages after a wholesale equipment_logs replacement.
+   * A maintenance record is linked only by its old sourceRecordId: persistedId is
+   * authoritative and plantUsageId is permitted solely when unique on both sides.
+   * In particular, equipment/date is never a matching key.
+   */
+  private async reconcileDprBreakdownsTx(tx: any, oldRows: any[], newRows: any[], inputs: any[] | undefined, date: string): Promise<void> {
+    const oldIds = oldRows.map(row => Number(row.id)).filter(Number.isFinite);
+    const oldBreakdowns = oldIds.length
+      ? await tx.select().from(equipmentMaintenanceLogs).where(and(
+        eq(equipmentMaintenanceLogs.sourceType, "dpr_log"),
+        inArray(equipmentMaintenanceLogs.sourceRecordId, oldIds),
+      ))
+      : [];
+    const oldById = new Map(oldRows.map(row => [Number(row.id), row]));
+    const oldUsageCounts = new Map<number, number>();
+    const newUsageCounts = new Map<number, number>();
+    oldRows.forEach(row => row.plantUsageId != null && oldUsageCounts.set(Number(row.plantUsageId), (oldUsageCounts.get(Number(row.plantUsageId)) ?? 0) + 1));
+    newRows.forEach(row => row.plantUsageId != null && newUsageCounts.set(Number(row.plantUsageId), (newUsageCounts.get(Number(row.plantUsageId)) ?? 0) + 1));
+    const oldByUsage = new Map(oldRows.filter(row => row.plantUsageId != null && oldUsageCounts.get(Number(row.plantUsageId)) === 1).map(row => [Number(row.plantUsageId), row]));
+    const newByOldId = new Map<number, any>();
+    (inputs ?? []).forEach((input, index) => {
+      const inserted = newRows[index];
+      if (!inserted) return;
+      // `id` is used only by the internal clone path; API payloads are
+      // validated to expose persistedId instead.
+      const explicitId = Number(input?.persistedId ?? input?.id);
+      const hasExplicitId = Number.isFinite(explicitId);
+      const explicit = hasExplicitId ? oldById.get(explicitId) : undefined;
+      const usageId = input?.plantUsageId != null ? Number(input.plantUsageId) : NaN;
+      const fallback = !hasExplicitId && Number.isFinite(usageId) && oldUsageCounts.get(usageId) === 1 && newUsageCounts.get(usageId) === 1
+        ? oldByUsage.get(usageId)
+        : undefined;
+      const old = explicit ?? fallback;
+      if (old) newByOldId.set(Number(old.id), inserted);
+    });
+
+    const selectedIds = new Set<number>();
+    const staged: Array<{ values: any; attachment?: any }> = [];
+    const attach = async (maintenanceId: number, attachment: any) => {
+      if (!attachment?.objectPath) return;
+      if (
+        typeof attachment.fileName !== "string" || !attachment.fileName.trim() ||
+        typeof attachment.objectPath !== "string" || !attachment.objectPath.startsWith("/objects/") ||
+        (attachment.mimeType && !["image/", "application/pdf"].some(prefix => String(attachment.mimeType).startsWith(prefix))) ||
+        (attachment.fileSize != null && (!Number.isInteger(attachment.fileSize) || attachment.fileSize < 0 || attachment.fileSize > 15 * 1024 * 1024))
+      ) throw new Error("Invalid breakdown attachment metadata.");
+      // Retries can replay the same uploaded object path after a DPR write
+      // failure.  One object is evidence once for its canonical maintenance row.
+      const existing = await tx.select({ id: attachments.id }).from(attachments).where(and(
+        eq(attachments.moduleType, "equipment_breakdown"),
+        eq(attachments.linkedRecordId, maintenanceId),
+        eq(attachments.objectPath, attachment.objectPath),
+      ));
+      if (existing.length) return;
+      await tx.insert(attachments).values({
+        moduleType: "equipment_breakdown", linkedRecordId: maintenanceId,
+        fileName: attachment.fileName, objectPath: attachment.objectPath,
+        mimeType: attachment.mimeType ?? "application/octet-stream",
+        fileSize: attachment.fileSize ?? null,
+      });
+    };
+    for (let index = 0; index < (inputs?.length ?? 0); index++) {
+      const input = inputs![index];
+      const target = newRows[index];
+      if (!target || !Array.isArray(input?.breakdowns)) continue; // UI omitted field: preserve linked rows.
+      const old = newByOldId.size ? [...newByOldId.entries()].find(([, row]) => row.id === target.id)?.[0] : undefined;
+      const candidates = old == null ? [] : oldBreakdowns.filter(row => Number(row.sourceRecordId) === old);
+      const candidateById = new Map(candidates.map(row => [Number(row.id), row]));
+      for (const breakdown of input.breakdowns) {
+        if (!breakdown.description || !breakdown.fromTime || !breakdown.toTime) continue;
+        const [fh, fm] = String(breakdown.fromTime).split(":").map(Number);
+        const [th, tm] = String(breakdown.toTime).split(":").map(Number);
+        const minutes = th * 60 + tm - fh * 60 - fm;
+        const downtimeHours = minutes > 0 ? Math.round((minutes / 60) * 1000) / 1000 : null;
+        if (downtimeHours == null) throw new Error("Breakdown to time must be later than from time.");
+        const values = {
+          date, equipmentId: target.equipmentId, description: String(breakdown.description),
+          downtimeHours, fromTime: String(breakdown.fromTime), toTime: String(breakdown.toTime),
+          responsibility: breakdown.responsibility || null, repairScope: breakdown.repairScope || null,
+          debitableToVendor: !!breakdown.debitableToVendor, remarks: breakdown.remarks || null,
+          sourceType: "dpr_log", sourceRecordId: target.id,
+        };
+        const maintenanceLogId = Number(breakdown.maintenanceLogId);
+        const canonical = Number.isFinite(maintenanceLogId) ? candidateById.get(maintenanceLogId) : undefined;
+        if (Number.isFinite(maintenanceLogId) && !canonical) {
+          throw new Error("Breakdown does not belong to the replaced DPR equipment row.");
+        }
+        if (canonical) {
+          selectedIds.add(canonical.id);
+          await tx.update(equipmentMaintenanceLogs).set(values).where(eq(equipmentMaintenanceLogs.id, canonical.id));
+          await attach(canonical.id, breakdown.attachment);
+        } else {
+          staged.push({ values: { ...values, eventType: "breakdown", status: "open" }, attachment: breakdown.attachment });
+        }
+      }
+    }
+    // Linked logs survive a replacement unless their row was removed or the
+    // caller explicitly supplied a breakdown list which omitted that log.
+    for (const log of oldBreakdowns) {
+      const replacement = newByOldId.get(Number(log.sourceRecordId));
+      const inputIndex = replacement ? newRows.findIndex(row => row.id === replacement.id) : -1;
+      const explicitList = inputIndex >= 0 && Array.isArray(inputs?.[inputIndex]?.breakdowns);
+      if (replacement && (!explicitList || selectedIds.has(log.id))) {
+        if (!selectedIds.has(log.id)) await tx.update(equipmentMaintenanceLogs)
+          .set({ sourceRecordId: replacement.id, equipmentId: replacement.equipmentId, date })
+          .where(eq(equipmentMaintenanceLogs.id, log.id));
+      } else if (!log.isCancelled && !log.isDeleted) {
+        await tx.update(equipmentMaintenanceLogs).set({
+          isCancelled: true, cancelledAt: new Date(),
+          cancellationReason: "Removed from DPR equipment stoppages",
+        }).where(eq(equipmentMaintenanceLogs.id, log.id));
+      }
+    }
+    if (staged.length) {
+      const created = await tx.insert(equipmentMaintenanceLogs).values(staged.map(x => x.values)).returning();
+      for (let i = 0; i < created.length; i++) await attach(created[i].id, staged[i].attachment);
+    }
+  }
+
   async createDpr(
     dprData: CreateDprRequest,
     clientTimestamp?: string,
@@ -2557,14 +2711,15 @@ export class DatabaseStorage implements IStorage {
       // 3. Insert Equipment Logs with uppercase text fields
       if (dprData.equipment?.length) {
         insertedEquipLogs = await tx.insert(equipmentLogs).values(
-          dprData.equipment.map(e => ({ 
-            ...e, 
+          dprData.equipment.map((input: any) => { const { breakdowns: _breakdowns, persistedId: _persistedId, ...e } = input; return ({
+            ...e,
             dprId,
             machine: e.machine?.toUpperCase() || e.machine,
             operator: e.operator?.toUpperCase() || e.operator,
             task: e.task?.toUpperCase() || e.task,
-          }))
+          }); })
         ).returning();
+        await this.reconcileDprBreakdownsTx(tx, [], insertedEquipLogs, dprData.equipment as any[], dprData.date);
 
         await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
       }
@@ -2662,6 +2817,7 @@ export class DatabaseStorage implements IStorage {
         .returning();
 
       await this.cleanupDprEquipmentDieselLedger(tx, id);
+      const oldEquipmentRows = await tx.select().from(equipmentLogs).where(eq(equipmentLogs.dprId, id));
       const oldProgressRows = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey }).from(progressEntries).where(eq(progressEntries.dprId, id));
       const oldProgressIds = oldProgressRows.map(p => p.id);
       const externalSourceLinks = oldProgressIds.length ? await tx.select().from(cutFillConsumptions)
@@ -2706,10 +2862,11 @@ export class DatabaseStorage implements IStorage {
       let insertedEquipLogs: any[] = [];
       if (dprData.equipment?.length) {
         insertedEquipLogs = await tx.insert(equipmentLogs).values(
-          dprData.equipment.map(e => ({ ...e, dprId: id, machine: e.machine?.toUpperCase() || e.machine, operator: e.operator?.toUpperCase() || e.operator, task: e.task?.toUpperCase() || e.task }))
+          dprData.equipment.map((input: any) => { const { breakdowns: _breakdowns, persistedId: _persistedId, ...e } = input; return ({ ...e, dprId: id, machine: e.machine?.toUpperCase() || e.machine, operator: e.operator?.toUpperCase() || e.operator, task: e.task?.toUpperCase() || e.task }); })
         ).returning();
         await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
       }
+      await this.reconcileDprBreakdownsTx(tx, oldEquipmentRows, insertedEquipLogs, dprData.equipment as any[], dprData.date);
       if (dprData.labour?.length) {
         await tx.insert(labourLogs).values(dprData.labour.map(l => ({ ...l, dprId: id })));
       }
@@ -2747,6 +2904,7 @@ export class DatabaseStorage implements IStorage {
 
       // Clean up old DPR equipment diesel ledger entries before deleting equipment logs
       await this.cleanupDprEquipmentDieselLedger(tx, id);
+      const oldEquipmentRows = await tx.select().from(equipmentLogs).where(eq(equipmentLogs.dprId, id));
 
       // Clean up old activity personnel before deleting progress entries
       const oldProgressRows = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey }).from(progressEntries).where(eq(progressEntries.dprId, id));
@@ -2794,13 +2952,14 @@ export class DatabaseStorage implements IStorage {
         await this.persistCutFillConsumptionsTx(tx, updated, insertedProgress, dprData, [id]);
       }
 
+      let insertedEquipLogs: any[] = [];
       if (dprData.equipment?.length) {
-        const insertedEquipLogs = await tx.insert(equipmentLogs).values(
-          dprData.equipment.map(e => ({ ...e, dprId: id }))
+        insertedEquipLogs = await tx.insert(equipmentLogs).values(
+          dprData.equipment.map((input: any) => { const { breakdowns: _breakdowns, persistedId: _persistedId, ...e } = input; return ({ ...e, dprId: id }); })
         ).returning();
-
         await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
       }
+      await this.reconcileDprBreakdownsTx(tx, oldEquipmentRows, insertedEquipLogs, dprData.equipment as any[], dprData.date);
 
       if (dprData.labour?.length) {
         await tx.insert(labourLogs).values(
@@ -2988,6 +3147,7 @@ export class DatabaseStorage implements IStorage {
             plantUsageId: (e as any).plantUsageId ?? null,
           }))
         ).returning();
+        await this.reconcileDprBreakdownsTx(tx, original.equipment, insertedEquipLogs, original.equipment, original.date);
 
         await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, original.date, original.site);
       }
@@ -3109,6 +3269,8 @@ export class DatabaseStorage implements IStorage {
       const dprId = newDpr.id;
       let insertedEquipLogs: any[] = [];
       let insertedProgress: any[] = [];
+      const originalEquipmentRows = await tx.select().from(equipmentLogs)
+        .where(eq(equipmentLogs.dprId, originalId));
       const originalProgressForRemap = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey })
         .from(progressEntries).where(eq(progressEntries.dprId, originalId));
 
@@ -3138,17 +3300,17 @@ export class DatabaseStorage implements IStorage {
       // Insert edited equipment logs with uppercase text fields
       if (dprData.equipment?.length) {
         insertedEquipLogs = await tx.insert(equipmentLogs).values(
-          dprData.equipment.map(e => ({ 
-            ...e, 
+          dprData.equipment.map((input: any) => { const { breakdowns: _breakdowns, persistedId: _persistedId, ...e } = input; return ({
+            ...e,
             dprId,
             machine: e.machine?.toUpperCase() || e.machine,
             operator: e.operator?.toUpperCase() || e.operator,
             task: e.task?.toUpperCase() || e.task,
-          }))
+          }); })
         ).returning();
-
         await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
       }
+      await this.reconcileDprBreakdownsTx(tx, originalEquipmentRows, insertedEquipLogs, dprData.equipment as any[], dprData.date);
 
       // Insert edited labour logs
       if (dprData.labour?.length) {
@@ -3385,6 +3547,8 @@ export class DatabaseStorage implements IStorage {
 
       for (const dprId of allVersionIds) {
         await this.cleanupDprEquipmentDieselLedger(tx, dprId);
+        const oldEquipmentRows = await tx.select().from(equipmentLogs)
+          .where(eq(equipmentLogs.dprId, dprId));
         const progressIds = (await tx.select({ id: progressEntries.id }).from(progressEntries)
           .where(eq(progressEntries.dprId, dprId))).map(x => x.id);
         if (progressIds.length) {
@@ -3401,6 +3565,7 @@ export class DatabaseStorage implements IStorage {
           await tx.delete(cutFillConsumptions).where(inArray(cutFillConsumptions.fillProgressEntryId, progressIds));
         }
         await tx.delete(progressEntries).where(eq(progressEntries.dprId, dprId));
+        await this.reconcileDprBreakdownsTx(tx, oldEquipmentRows, [], [], "");
         await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, dprId));
         await tx.delete(labourLogs).where(eq(labourLogs.dprId, dprId));
         await tx.delete(materialLogs).where(eq(materialLogs.dprId, dprId));
@@ -12599,7 +12764,9 @@ export class DatabaseStorage implements IStorage {
         ADD COLUMN IF NOT EXISTS programme_bar_id integer,
         ADD COLUMN IF NOT EXISTS earthwork_arrangement_id integer,
         ADD COLUMN IF NOT EXISTS unloaded_at text,
-        ADD COLUMN IF NOT EXISTS yard_label text
+        ADD COLUMN IF NOT EXISTS yard_label text,
+        ADD COLUMN IF NOT EXISTS transport_type text,
+        ADD COLUMN IF NOT EXISTS internal_equipment_id integer
     `));
   }
 
@@ -15517,6 +15684,13 @@ export class DatabaseStorage implements IStorage {
         event_type text NOT NULL,
         description text NOT NULL,
         downtime_hours real,
+        from_time text,
+        to_time text,
+        responsibility text,
+        repair_scope text,
+        debitable_to_vendor boolean,
+        source_type text,
+        source_record_id integer,
         status text NOT NULL DEFAULT 'open',
         next_service_due date,
         serviced_by text,
@@ -15532,6 +15706,22 @@ export class DatabaseStorage implements IStorage {
     `));
     await db.execute(sql.raw(`
       CREATE INDEX IF NOT EXISTS eml_equipment_idx ON equipment_maintenance_logs (equipment_id)
+    `));
+    // The CREATE TABLE above only protects fresh installs. Each ALTER is
+    // idempotent for existing deployments which predate DPR stoppage logging.
+    await db.execute(sql.raw(`
+      ALTER TABLE equipment_maintenance_logs
+        ADD COLUMN IF NOT EXISTS from_time text,
+        ADD COLUMN IF NOT EXISTS to_time text,
+        ADD COLUMN IF NOT EXISTS responsibility text,
+        ADD COLUMN IF NOT EXISTS repair_scope text,
+        ADD COLUMN IF NOT EXISTS debitable_to_vendor boolean,
+        ADD COLUMN IF NOT EXISTS source_type text,
+        ADD COLUMN IF NOT EXISTS source_record_id integer
+    `));
+    await db.execute(sql.raw(`
+      CREATE INDEX IF NOT EXISTS eml_source_lookup_idx
+      ON equipment_maintenance_logs (source_type, source_record_id)
     `));
     await db.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS maintenance_parts_used (
@@ -22964,13 +23154,16 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getMaintenanceLogs(filters?: { equipmentId?: number; eventType?: string; status?: string; dateFrom?: string; dateTo?: string; includeCancelled?: boolean }): Promise<EquipmentMaintenanceLogWithDetails[]> {
+  async getMaintenanceLogs(filters?: { equipmentId?: number; eventType?: string; status?: string; dateFrom?: string; dateTo?: string; sourceType?: string; sourceRecordId?: number; sourceRecordIds?: number[]; includeCancelled?: boolean }): Promise<EquipmentMaintenanceLogWithDetails[]> {
     const conds: any[] = [];
     if (filters?.equipmentId) conds.push(eq(equipmentMaintenanceLogs.equipmentId, filters.equipmentId));
     if (filters?.eventType) conds.push(eq(equipmentMaintenanceLogs.eventType, filters.eventType));
     if (filters?.status) conds.push(eq(equipmentMaintenanceLogs.status, filters.status));
     if (filters?.dateFrom) conds.push(gte(equipmentMaintenanceLogs.date, filters.dateFrom));
     if (filters?.dateTo) conds.push(lte(equipmentMaintenanceLogs.date, filters.dateTo));
+    if (filters?.sourceType) conds.push(eq(equipmentMaintenanceLogs.sourceType, filters.sourceType));
+    if (filters?.sourceRecordId != null) conds.push(eq(equipmentMaintenanceLogs.sourceRecordId, filters.sourceRecordId));
+    if (filters?.sourceRecordIds?.length) conds.push(inArray(equipmentMaintenanceLogs.sourceRecordId, filters.sourceRecordIds));
     if (!filters?.includeCancelled) {
       conds.push(eq(equipmentMaintenanceLogs.isCancelled, false));
       conds.push(eq(equipmentMaintenanceLogs.isDeleted, false));
@@ -23123,14 +23316,35 @@ export class DatabaseStorage implements IStorage {
     return ((result as any).rowCount ?? 0) > 0;
   }
 
-  async getEquipmentHealthSummary(): Promise<EquipmentHealthSummary[]> {
+  async getMaintenancePart(partId: number): Promise<MaintenancePartUsed | undefined> {
+    const [part] = await db.select().from(maintenancePartsUsed).where(eq(maintenancePartsUsed.id, partId));
+    return part;
+  }
+
+  async getEquipmentHealthSummary(visibleMaintenanceLogIds?: number[]): Promise<EquipmentHealthSummary[]> {
     const allEquipment = await db.select().from(equipmentMaster).where(eq(equipmentMaster.isActive, 1)).orderBy(asc(equipmentMaster.name));
 
     const now = new Date();
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 
     const result = await Promise.all(allEquipment.map(async (eq_) => {
-      const logs = await db.select().from(equipmentMaintenanceLogs).where(eq(equipmentMaintenanceLogs.equipmentId, eq_.id));
+      const conditions = [
+        eq(equipmentMaintenanceLogs.equipmentId, eq_.id),
+        eq(equipmentMaintenanceLogs.isCancelled, false),
+        eq(equipmentMaintenanceLogs.isDeleted, false),
+      ];
+      if (visibleMaintenanceLogIds) {
+        if (visibleMaintenanceLogIds.length === 0) {
+          return {
+            equipmentId: eq_.id, equipmentName: eq_.name,
+            registrationNumber: eq_.registrationNumber ?? null,
+            lastServiceDate: null, nextServiceDue: null, openBreakdowns: 0,
+            downtimeHoursThisMonth: 0, totalMaintenanceEvents: 0,
+          };
+        }
+        conditions.push(inArray(equipmentMaintenanceLogs.id, visibleMaintenanceLogIds));
+      }
+      const logs = await db.select().from(equipmentMaintenanceLogs).where(and(...conditions));
 
       const openBreakdowns = logs.filter(l => l.eventType === 'breakdown' && l.status === 'open').length;
       const downtimeThisMonth = logs
@@ -23156,11 +23370,19 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getOpenBreakdownCount(): Promise<number> {
+  async getOpenBreakdownCount(visibleMaintenanceLogIds?: number[]): Promise<number> {
+    if (visibleMaintenanceLogIds && visibleMaintenanceLogIds.length === 0) return 0;
+    const conditions = [
+      eq(equipmentMaintenanceLogs.eventType, 'breakdown'),
+      eq(equipmentMaintenanceLogs.status, 'open'),
+      eq(equipmentMaintenanceLogs.isCancelled, false),
+      eq(equipmentMaintenanceLogs.isDeleted, false),
+    ];
+    if (visibleMaintenanceLogIds) conditions.push(inArray(equipmentMaintenanceLogs.id, visibleMaintenanceLogIds));
     const rows = await db
       .select({ id: equipmentMaintenanceLogs.id })
       .from(equipmentMaintenanceLogs)
-      .where(and(eq(equipmentMaintenanceLogs.eventType, 'breakdown'), eq(equipmentMaintenanceLogs.status, 'open')));
+      .where(and(...conditions));
     return rows.length;
   }
 
@@ -24855,6 +25077,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ─── BOQ Program Settings ─────────────────────────────────────────────────
+
+  async ensureProgrammeBarOutcomeEventsTable(): Promise<void> {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS programme_bar_outcome_events (
+        id serial PRIMARY KEY,
+        programme_bar_id integer NOT NULL REFERENCES work_program_bars(id) ON DELETE RESTRICT,
+        event_date date NOT NULL,
+        outcome text NOT NULL,
+        reason text NOT NULL,
+        reason_other text,
+        rescheduled_date date,
+        actual_quantity real,
+        actual_uom text,
+        remarks text,
+        created_by integer,
+        created_at timestamp with time zone NOT NULL DEFAULT now()
+      )
+    `));
+    await db.execute(sql.raw(`
+      CREATE INDEX IF NOT EXISTS programme_bar_outcome_events_bar_date_idx
+      ON programme_bar_outcome_events (programme_bar_id, event_date, id)
+    `));
+  }
 
   async ensureBoqProgramSettingsTables(): Promise<void> {
     // Create tables with authoritative schema (migration 0013)

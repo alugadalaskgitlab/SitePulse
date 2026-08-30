@@ -86,7 +86,13 @@ export function CutFillOutcomeControls({
   );
   const ledger = rowLedger[currentEntryKey ?? effectiveRows[0]?.entryKey ?? "current"]
     ?? provisionalLedger(quantity ?? 0, sources, allocations);
-  if (fillMode && (!arrangement || arrangement.arrangementType !== "reused_excavated" || arrangement.sourceExcavationBoqItemId == null)) return null;
+  if (fillMode && (!arrangement || arrangement.arrangementType !== "reused_excavated" || arrangement.sourceExcavationBoqItemId == null)) {
+    return (
+      <div className="mt-2 rounded border border-amber-200 bg-amber-50/60 p-2 text-[11px] text-amber-900" data-testid="cut-fill-link-prompt">
+        This is embankment/fill work. To track cut material usage, link this activity to an Execution Arrangement set to “Reused excavated” with an excavation source.
+      </div>
+    );
+  }
   return (
     <div className="mt-2 rounded border border-amber-200 bg-amber-50/60 p-2 space-y-2" data-testid="cut-fill-controls">
       <div className="flex items-center justify-between gap-2">

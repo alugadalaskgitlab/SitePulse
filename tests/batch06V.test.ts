@@ -444,7 +444,7 @@ describe("T: parseDprError — normalised error output", () => {
   });
 
   it("PROGRAMME_LINK_INVALID maps to a meaningful title", () => {
-    const body = JSON.stringify({ code: "PROGRAMME_LINK_INVALID", error: "Bar link outdated" });
+    const body = JSON.stringify({ code: "PROGRAMME_LINK_INVALID", message: "Bar link outdated" });
     const err = makeErr(`400: ${body}`);
     const result = parseDprError(err);
     expect(result.title).toBe("Programme link invalid");

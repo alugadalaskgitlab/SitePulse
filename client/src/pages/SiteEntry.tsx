@@ -60,6 +60,7 @@ import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import { openUsageHandoffContext, type OpenUsageLike } from "@shared/dprPlantLink";
 import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
+import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import { flattenCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
 
@@ -124,6 +125,7 @@ interface EquipmentEntry {
   structureId: string | null;
   // Batch 6: links this DPR equipment row back to the plant equipment_usage record it closes
   plantUsageId: number | null;
+  breakdowns?: StagedBreakdown[];
 }
 
 interface LabourEntry {
@@ -377,6 +379,28 @@ export default function SiteEntry() {
     }
     return { failed, failedByEntry };
   };
+  // Breakdown evidence is part of the DPR write, unlike general photos which
+  // can be attached after a DPR exists.  Upload first and retain File state on
+  // failure so Save never silently drops selected evidence.
+  const prepareBreakdownAttachments = async (rows: EquipmentEntry[]) => Promise.all(rows.map(async (row) => ({
+    ...row,
+    breakdowns: await Promise.all((row.breakdowns ?? []).map(async (breakdown) => {
+      if (!breakdown.file || breakdown.attachment) return breakdown;
+      const uploaded = await uploadFile(breakdown.file);
+      if (!uploaded) throw new Error(`Failed to upload breakdown attachment: ${breakdown.file.name}`);
+      const attachment = {
+        fileName: breakdown.file.name, objectPath: uploaded.objectPath,
+        mimeType: breakdown.file.type || "application/octet-stream", fileSize: breakdown.file.size,
+      };
+      // Store the object identity before the request. A network-ambiguous
+      // retry then reuses this upload instead of creating duplicate objects.
+      setEquipment(current => current.map(item => ({
+        ...item, breakdowns: (item.breakdowns ?? []).map(candidate =>
+          candidate.clientKey === breakdown.clientKey ? { ...candidate, attachment, file: undefined } : candidate),
+      })));
+      return { ...breakdown, attachment, file: undefined };
+    })),
+  })));
 
   // Fetch equipment master for unified equipment tracking
   const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
@@ -815,6 +839,11 @@ export default function SiteEntry() {
   const [progress, setProgress] = useState<ProgressEntry[]>([
     { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
   ]);
+  // This is deliberately client-only: an existing saved override is inferred
+  // from length vs chainage on reload, while an in-session edit is keyed by
+  // the stable entryKey rather than a mutable row index.
+  const [manualLengthByEntryKey, setManualLengthByEntryKey] = useState<Record<string, boolean>>({});
+  const [lengthUpdatePrompt, setLengthUpdatePrompt] = useState<Record<string, number>>({});
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
   // as Guided DPR, Progress Report and the server Final-Submit recheck).
@@ -920,6 +949,42 @@ export default function SiteEntry() {
   const getEffectiveLength = (entry: ProgressEntry): number | null =>
     getEffLengthShared(entry.length ?? null, entry.chainageFrom, entry.chainageTo);
 
+  const hasManualLength = (entry: ProgressEntry) => {
+    if (manualLengthByEntryKey[entry.entryKey]) return true;
+    const calculated = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
+    return calculated != null && entry.length != null && entry.length > 0
+      && Math.abs(calculated - entry.length) > 0.01;
+  };
+
+  const changeChainage = (idx: number, field: "chainageFrom" | "chainageTo", value: string) => {
+    const updated = [...progress];
+    const entry = updated[idx];
+    entry[field] = value.toUpperCase();
+    const calculated = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
+    if (calculated != null) {
+      if (hasManualLength(entry)) {
+        setLengthUpdatePrompt((current) => ({ ...current, [entry.entryKey]: calculated }));
+      } else {
+        entry.length = calculated;
+      }
+    }
+    applyCalc(entry);
+    setProgress(updated);
+  };
+
+  const acceptRecalculatedLength = (idx: number, length: number) => {
+    const updated = [...progress];
+    updated[idx].length = length;
+    applyCalc(updated[idx]);
+    setProgress(updated);
+    setManualLengthByEntryKey((current) => ({ ...current, [updated[idx].entryKey]: false }));
+    setLengthUpdatePrompt((current) => {
+      const next = { ...current };
+      delete next[updated[idx].entryKey];
+      return next;
+    });
+  };
+
   // UOM follows the linked BOQ item's dprMeasurementMethod (explicit) or unit (derived).
   // Count/weight/lump-sum methods keep a manual quantity; formula methods auto-compute.
   const progressUom = (entry: ProgressEntry): string | null => {
@@ -1020,7 +1085,7 @@ export default function SiteEntry() {
     if (section === 'progress') {
       setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
     } else if (section === 'materials') {
@@ -1096,7 +1161,7 @@ export default function SiteEntry() {
       isIncidental: false,
       incidentalDescription: "",
     })));
-    const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null };
+    const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] as StagedBreakdown[] };
     if (st.equipment.length > 0) setEquipment(st.equipment.map(e => ({ ...blankEq, ...e })) as any);
     if (st.labour.length > 0) setLabour(st.labour.map(l => ({ category: l.category, gender: "", count: l.count, task: l.task, contractor: l.contractor, boqItemId: null, structureId: null })) as any);
     setShowYesterdayPreview(false);
@@ -1139,7 +1204,7 @@ export default function SiteEntry() {
       // Send client's local timestamp for accurate time display
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
 
-      const normalizedEquipment = equipment.map(eq => ({
+      const normalizedEquipment = (await prepareBreakdownAttachments(equipment)).map(eq => ({
         ...eq,
         totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
           ? computeTripTotalKm(eq.numberOfTrips, eq.tripDistance) : eq.totalKm || null,
@@ -2101,7 +2166,7 @@ export default function SiteEntry() {
                   <CutFillOutcomeControls quantity={entry.quantity} outcome={entry.materialOutcome ?? null} reusableQty={entry.reusableQty ?? null}
                     onOutcomeChange={(materialOutcome, reusableQty) => { const updated = [...progress]; updated[idx] = { ...updated[idx], materialOutcome, reusableQty }; setProgress(updated); }} />
                 )}
-                <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={entry.earthworkArrangementId}
+                <CutFillOutcomeControls fillMode={entry.boqItemId != null && classifyWorkType(String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? ""), String(siteBoqItems.find(i => i.id === entry.boqItemId)?.unit ?? "")) === "earthwork"} projectId={siteBoqProjectId} arrangementId={entry.earthworkArrangementId}
                   quantity={entry.quantity} outcome={null} reusableQty={null} allocations={entry.allocations as any}
                   currentEntryKey={entry.entryKey} formRows={progress as any} boqItems={siteBoqItems}
                   onOutcomeChange={() => undefined} onAllocationsChange={allocations => { const updated = [...progress]; updated[idx] = { ...updated[idx], allocations: allocations as any }; setProgress(updated); }} />
@@ -2297,12 +2362,7 @@ export default function SiteEntry() {
                       placeholder="0+000"
                       value={entry.chainageFrom}
                       onChange={(e) => {
-                        const updated = [...progress];
-                        updated[idx].chainageFrom = e.target.value.toUpperCase();
-                        const calc = calculateLengthFromChainage(e.target.value.toUpperCase(), updated[idx].chainageTo);
-                        if (calc !== null) updated[idx].length = calc;
-                        applyCalc(updated[idx]);
-                        setProgress(updated);
+                        changeChainage(idx, "chainageFrom", e.target.value);
                       }}
                       className="uppercase"
                       data-testid={`input-progress-from-${idx}`}
@@ -2314,12 +2374,7 @@ export default function SiteEntry() {
                       placeholder="0+000"
                       value={entry.chainageTo}
                       onChange={(e) => {
-                        const updated = [...progress];
-                        updated[idx].chainageTo = e.target.value.toUpperCase();
-                        const calc = calculateLengthFromChainage(updated[idx].chainageFrom, e.target.value.toUpperCase());
-                        if (calc !== null) updated[idx].length = calc;
-                        applyCalc(updated[idx]);
-                        setProgress(updated);
+                        changeChainage(idx, "chainageTo", e.target.value);
                       }}
                       className="uppercase"
                       data-testid={`input-progress-to-${idx}`}
@@ -2337,9 +2392,22 @@ export default function SiteEntry() {
                         updated[idx].length = e.target.value ? parseFloat(e.target.value) : null;
                         applyCalc(updated[idx]);
                         setProgress(updated);
+                        setManualLengthByEntryKey((current) => ({ ...current, [updated[idx].entryKey]: e.target.value !== "" }));
+                        setLengthUpdatePrompt((current) => {
+                          const next = { ...current };
+                          delete next[updated[idx].entryKey];
+                          return next;
+                        });
                       }}
                       data-testid={`input-progress-length-${idx}`}
                     />
+                    {lengthUpdatePrompt[entry.entryKey] != null && (
+                      <div className="mt-1 text-[11px] text-amber-800" data-testid={`prompt-length-update-${idx}`}>
+                        Chainage changed — recalculated length is {lengthUpdatePrompt[entry.entryKey]} m, current length is {entry.length ?? 0} m. Update to {lengthUpdatePrompt[entry.entryKey]} m?
+                        <Button type="button" variant="link" className="h-auto px-1 text-[11px]" onClick={() => acceptRecalculatedLength(idx, lengthUpdatePrompt[entry.entryKey])} data-testid={`button-update-length-${idx}`}>Update</Button>
+                        <Button type="button" variant="link" className="h-auto px-1 text-[11px]" onClick={() => setLengthUpdatePrompt((current) => { const next = { ...current }; delete next[entry.entryKey]; return next; })}>Keep current</Button>
+                      </div>
+                    )}
                   </div>
                   {(() => {
                     const prof = entryBoqProfile(entry);
@@ -3180,6 +3248,11 @@ export default function SiteEntry() {
                     </>
                   )}
                 </div>
+                <BreakdownStoppageEditor
+                  value={entry.breakdowns ?? []}
+                  onChange={(breakdowns) => setEquipment(current => current.map((row, rowIndex) => rowIndex === idx ? { ...row, breakdowns } : row))}
+                  testId={`equipment-breakdown-${idx}`}
+                />
               </div>
             );
           })}

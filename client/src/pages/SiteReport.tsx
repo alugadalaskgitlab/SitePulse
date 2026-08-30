@@ -28,6 +28,8 @@ import {
   linkedUsageId,
   type EquipmentDestinationType,
 } from "@/lib/equipmentLifecycle";
+import { computeEquipmentUsage } from "@/lib/equipmentUsage";
+import { ProgrammeBarOutcomeHistory } from "@/components/ProgrammeBarOutcomeHistory";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -87,6 +89,39 @@ export default function SiteReport() {
     enabled: linkedUsageIds.length > 0,
   });
   const lifecycle = useMemo(() => lifecycleByUsageId(lifecyclePayload), [lifecyclePayload]);
+  const dprEquipmentLogIds = useMemo(
+    () => (dpr?.equipment ?? []).map((row: any) => Number(row.id)).filter(Number.isInteger),
+    [dpr?.equipment],
+  );
+  const { data: equipmentMaster = [] } = useQuery<any[]>({
+    queryKey: ["/api/plant-module/equipment", "report"],
+    queryFn: async () => {
+      const res = await fetch("/api/plant-module/equipment?includeInactive=true", { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+  });
+  const { data: linkedBreakdowns = [] } = useQuery<any[]>({
+    queryKey: ["/api/maintenance/logs", "dpr_log", dprEquipmentLogIds.join(",")],
+    queryFn: async () => {
+      const res = await fetch(`/api/maintenance/logs?sourceType=dpr_log&sourceRecordIds=${encodeURIComponent(dprEquipmentLogIds.join(","))}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: dprEquipmentLogIds.length > 0,
+  });
+  const equipmentById = useMemo(
+    () => new Map(equipmentMaster.map((item: any) => [item.id, item])),
+    [equipmentMaster],
+  );
+  const breakdownsBySourceId = useMemo(() => {
+    const result = new Map<number, any[]>();
+    linkedBreakdowns.forEach((log) => {
+      if (log.sourceRecordId == null) return;
+      const rows = result.get(Number(log.sourceRecordId)) ?? [];
+      rows.push(log);
+      result.set(Number(log.sourceRecordId), rows);
+    });
+    return result;
+  }, [linkedBreakdowns]);
 
   const moveMutation = useMutation({
     mutationFn: async ({
@@ -439,6 +474,14 @@ export default function SiteReport() {
                       <TableRow key={i} data-testid={`row-progress-${i}`}>
                         <TableCell className="font-medium max-w-[320px]">
                           <div title={item.activity}>{shortItemName(item.activity) || item.activity}</div>
+                          {item.programmeBarId != null && (
+                            <ProgrammeBarOutcomeHistory
+                              projectId={(dpr as any).boqProjectId}
+                              boqItemId={item.boqItemId}
+                              programmeBarId={Number(item.programmeBarId)}
+                              testidPrefix={`progress-${i}`}
+                            />
+                          )}
                           {item.noSiteWorkDescription && (
                             <div className="text-sm text-muted-foreground mt-1">{item.noSiteWorkDescription}</div>
                           )}
@@ -460,6 +503,14 @@ export default function SiteReport() {
                     <TableRow key={i} data-testid={`row-progress-${i}`}>
                       <TableCell className="font-medium max-w-[320px]">
                         <div title={item.activity}>{shortItemName(item.activity) || item.activity}</div>
+                          {item.programmeBarId != null && (
+                            <ProgrammeBarOutcomeHistory
+                              projectId={(dpr as any).boqProjectId}
+                              boqItemId={item.boqItemId}
+                              programmeBarId={Number(item.programmeBarId)}
+                              testidPrefix={`progress-${i}`}
+                            />
+                          )}
                         {/* Batch 06V: incidental badge — shown in the activity cell */}
                         {item.isIncidental && (
                           <div className="mt-1">
@@ -513,6 +564,9 @@ export default function SiteReport() {
                     <TableHead>Time/Meter</TableHead>
                     <TableHead className="text-right">Hours</TableHead>
                     <TableHead className="text-right">Diesel (L)</TableHead>
+                    <TableHead className="text-right">Expected Diesel</TableHead>
+                    <TableHead>Norm / Efficiency</TableHead>
+                    <TableHead>Breakdown / Stoppage</TableHead>
                     <TableHead>Diesel Source</TableHead>
                     <TableHead className="print:hidden">Lifecycle</TableHead>
                   </TableRow>
@@ -562,6 +616,11 @@ export default function SiteReport() {
                       && usageId != null
                       && usageLifecycle?.status === "closed"
                       && usageLifecycle.successorId == null;
+                    const usage = computeEquipmentUsage(
+                      equipmentById.get(item.equipmentId) ?? (item.dieselNorm != null ? { consumptionNorm: item.dieselNorm } : null),
+                      item,
+                    );
+                    const linkedRows = breakdownsBySourceId.get(Number(item.id)) ?? [];
                     
                     return (
                       <TableRow key={i} data-testid={`row-equipment-${i}`}>
@@ -588,6 +647,26 @@ export default function SiteReport() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">{item.diesel || '-'}</TableCell>
+                        <TableCell className="text-right">
+                          {usage.expectedDiesel != null ? `${usage.expectedDiesel.toFixed(3)} L` : "-"}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {usage.efficiencyLabel ?? "-"}
+                          {usage.expectedDiesel != null && item.diesel != null && (
+                            <div className="text-xs text-muted-foreground">
+                              Actual variance: {(Number(item.diesel) - usage.expectedDiesel).toFixed(3)} L
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {linkedRows.length === 0 ? "-" : linkedRows.map((log: any) => (
+                            <div key={log.id} className="mb-1">
+                              <Badge variant={log.status === "resolved" ? "outline" : "secondary"}>{log.status}</Badge>
+                              <span className="ml-1">{log.fromTime && log.toTime ? `${log.fromTime}–${log.toTime} (${log.downtimeHours ?? "-"} h)` : `${log.downtimeHours ?? "-"} h`}</span>
+                              <div className="text-xs text-muted-foreground">{log.description}{log.responsibility ? ` · ${String(log.responsibility).toUpperCase()}` : ""}</div>
+                            </div>
+                          ))}
+                        </TableCell>
                         <TableCell>
                           <span className="text-sm">{dieselSourceLabel}</span>
                           {item.dieselSource === 'direct_purchase' && (

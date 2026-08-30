@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 import FieldHome from "@/pages/FieldHome";
 import { getWorkspaceMode, setWorkspaceMode, type WorkspaceMode } from "@/lib/workspaceMode";
 import { format, parseISO, subDays } from "date-fns";
+import { roadDprDraftHref } from "@/lib/dprEntryMode";
 
 
 export default function Home() {
@@ -63,6 +64,10 @@ function HomeDashboard({
   onSwitchToFieldView: () => void;
 }) {
   const { user, sectionVisible, isAdmin } = useAuth();
+  // Keep the dashboard's resume path identical to Field Home: structures use
+  // the detailed editor, while road drafts honour the user's DPR entry mode.
+  const continueDraftHref = (d: any): string =>
+    d?.workType === "structure" ? `/site/edit/${d.id}?draft` : roadDprDraftHref(d.id, "/", { complete: true });
 
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const todayDisplay = format(new Date(), "EEEE, d MMMM yyyy");
@@ -323,7 +328,7 @@ function HomeDashboard({
                           {d.engineer || "—"} · saved as draft, not submitted
                         </p>
                       </div>
-                      <Link href={`/dpr/${d.id}`}>
+                      <Link href={continueDraftHref(d)}>
                         <a className="text-xs px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 font-medium flex-shrink-0 hover:bg-rose-100" data-testid={`link-pending-draft-${d.id}`}>
                           Open
                         </a>

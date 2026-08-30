@@ -16,6 +16,8 @@
  */
 
 export type GuidedEquipmentRow = {
+  /** Existing equipment_logs id used by DPR replacement to relink stoppages. */
+  persistedId?: number;
   machine: string;
   vehicleNo: string;
   operator: string;
@@ -36,6 +38,7 @@ export function splitGuidedEquipmentRow(dbRow: Record<string, unknown> | null | 
     passthrough[k] = v;
   }
   return {
+    persistedId: typeof row.id === "number" ? row.id : undefined,
     machine: typeof row.machine === "string" ? row.machine : "",
     vehicleNo: typeof row.vehicleNo === "string" ? row.vehicleNo : "",
     operator: typeof row.operator === "string" ? row.operator : "",
@@ -50,6 +53,7 @@ export function newGuidedEquipmentRow(): GuidedEquipmentRow {
 
 export function buildGuidedEquipmentPayload(row: GuidedEquipmentRow): Record<string, unknown> {
   return {
+    ...(row.persistedId != null ? { persistedId: row.persistedId } : {}),
     ...row.passthrough,
     machine: row.machine,
     vehicleNo: row.vehicleNo,

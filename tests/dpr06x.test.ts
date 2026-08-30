@@ -73,7 +73,7 @@ describe("A: extractNotReadyRowTarget — rowIndex from DprReadinessIssue", () =
 
 describe("B: extractNotReadyRowTarget — non-DPR_NOT_READY errors", () => {
   it("returns null for PROGRAMME_LINK_INVALID", () => {
-    const err = makeNotReadyError({ error: "PROGRAMME_LINK_INVALID", message: "bad link" }, 400);
+    const err = makeNotReadyError({ code: "PROGRAMME_LINK_INVALID", message: "bad link" }, 400);
     expect(extractNotReadyRowTarget(err)).toBeNull();
   });
 

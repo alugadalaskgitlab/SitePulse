@@ -60,6 +60,7 @@ import { MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } fro
 import { Checkbox } from "@/components/ui/checkbox";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
+import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import { flattenCutFillConsumptions, hydrateCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
 
@@ -172,6 +173,30 @@ export default function GuidedDpr() {
   const searchStr = useSearch();
   const { toast } = useToast();
   const { uploadFile } = useUpload();
+  const prepareBreakdownAttachments = async (rows: SimpleEquipmentRow[]) => Promise.all(rows.map(async (row) => {
+    const breakdowns = (row.passthrough?.breakdowns ?? []) as StagedBreakdown[];
+    return {
+      ...row,
+      passthrough: {
+        ...row.passthrough,
+        breakdowns: await Promise.all(breakdowns.map(async (breakdown) => {
+          if (!breakdown.file || breakdown.attachment) return breakdown;
+          const uploaded = await uploadFile(breakdown.file);
+          if (!uploaded) throw new Error(`Failed to upload breakdown attachment: ${breakdown.file.name}`);
+          const attachment = {
+            fileName: breakdown.file.name, objectPath: uploaded.objectPath,
+            mimeType: breakdown.file.type || "application/octet-stream", fileSize: breakdown.file.size,
+          };
+          setEquipment(current => current.map(item => {
+            const existing = (item.passthrough?.breakdowns ?? []) as StagedBreakdown[];
+            return { ...item, passthrough: { ...item.passthrough, breakdowns: existing.map(candidate =>
+              candidate.clientKey === breakdown.clientKey ? { ...candidate, attachment, file: undefined } : candidate) } };
+          }));
+          return { ...breakdown, attachment, file: undefined };
+        })),
+      },
+    };
+  }));
   const returnTo = new URLSearchParams(searchStr).get("returnTo") ?? "/site";
   // Pre-deployment Part A: Classic → Guided keeps the SAME server draft.
   // `?draftId=` loads that draft here instead of starting a fresh one.
@@ -1048,14 +1073,21 @@ export default function GuidedDpr() {
 
   const saveMutation = useMutation({
     mutationFn: async (asDraft: boolean) => {
+      const payload = buildPayload(asDraft);
+      const payloadRows = equipment.filter((e) =>
+        asDraft
+          ? e.machine || e.vehicleNo || e.operator || e.task || Object.values(e.passthrough ?? {}).some((v) => v != null && v !== "")
+          : e.machine,
+      );
+      payload.equipment = (await prepareBreakdownAttachments(payloadRows)).map((row) => buildGuidedEquipmentPayload(row)) as any[];
       // Part A: reuse the saved draft record instead of creating duplicates.
       let res;
       if (draftId != null && asDraft) {
-        res = await apiRequest("PATCH", `/api/dprs/${draftId}/draft`, buildPayload(true));
+        res = await apiRequest("PATCH", `/api/dprs/${draftId}/draft`, payload);
       } else if (draftId != null && !asDraft) {
-        res = await apiRequest("POST", `/api/dprs/${draftId}/submit`, buildPayload(false));
+        res = await apiRequest("POST", `/api/dprs/${draftId}/submit`, payload);
       } else {
-        res = await apiRequest("POST", "/api/dprs", buildPayload(asDraft));
+        res = await apiRequest("POST", "/api/dprs", payload);
       }
       return { data: await res.json(), asDraft };
     },
@@ -2266,6 +2298,13 @@ export default function GuidedDpr() {
                       {advisory && (
                         <p className="text-xs text-amber-700 dark:text-amber-400" data-testid={`text-eq-dup-advisory-${i}`}>{advisory}</p>
                       )}
+                      <BreakdownStoppageEditor
+                        value={(pt.breakdowns ?? []) as StagedBreakdown[]}
+                        onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) =>
+                          rowIndex === i ? { ...row, passthrough: { ...row.passthrough, breakdowns } } : row,
+                        ))}
+                        testId={`guided-equipment-breakdown-${i}`}
+                      />
                     </div>
                   );
                 })}

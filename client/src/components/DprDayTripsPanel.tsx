@@ -26,7 +26,8 @@ export function DprDayTripsPanel({ siteName, date, testIdPrefix }: {
     () => dayTrips.filter((t) => !(t as any).isCancelled && !(t as any).isDeleted),
     [dayTrips],
   );
-  // Group by material + uom for a compact summary.
+  // Keep the aggregate as a quick scan, but retain every already-fetched trip
+  // below it so DPR reflects the day's actual logistics.
   const groups = useMemo(() => {
     const map = new Map<string, { material: string; uom: string; qty: number; trips: number; linked: number }>();
     for (const t of active) {
@@ -61,6 +62,30 @@ export function DprDayTripsPanel({ siteName, date, testIdPrefix }: {
           )}
         </div>
       ))}
+      <div className="pt-1 space-y-1.5 border-t mt-2">
+        {active.map((trip) => {
+          const transportLabel = trip.transportType === "in_house"
+            ? "In-house"
+            : trip.transportType === "agency_vendor"
+              ? "Agency / Vendor"
+              : "Not specified";
+          const destination = trip.yardLabel || trip.location || "Location not recorded";
+          return (
+            <div
+              key={trip.id}
+              className="rounded border bg-background/60 px-2 py-1.5 text-xs grid gap-x-3 gap-y-1 sm:grid-cols-3"
+              data-testid={`${testIdPrefix}-day-trip-${trip.id}`}
+            >
+              <span className="font-medium">{trip.material} · {Number(trip.quantity || 0)} {trip.uom}</span>
+              <span>{destination}</span>
+              <span>Vehicle: {trip.vehicleNumber || "Not recorded"}</span>
+              <span>Transport: {transportLabel}</span>
+              <span>Supplier: {trip.supplier || "Not recorded"}</span>
+              <span>Receipt: {trip.receiptNumber || "Not recorded"}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

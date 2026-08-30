@@ -30,6 +30,8 @@ import { METER_TYPES } from "@shared/schema";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { plantDestinationType } from "@/lib/equipmentLifecycle";
+import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
+import { useUpload } from "@/hooks/use-upload";
 
 // 06X-HF2: extract the server's `message` field from apiRequest errors.
 // apiRequest throws "STATUS: {json}" — parse the JSON and return the
@@ -49,6 +51,7 @@ function parseServerMessage(err: unknown): string | null {
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
+  const { uploadFile } = useUpload();
   const { sectionCan, isAdmin, user } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_equipment", "create");
@@ -101,6 +104,7 @@ export default function PlantEquipmentUsage() {
   const [destinationSite, setDestinationSite] = useState("");
   // A received Site → Plant row is completed in-place, never recreated.
   const [receivingUsage, setReceivingUsage] = useState<EquipmentUsage | null>(null);
+  const [breakdowns, setBreakdowns] = useState<StagedBreakdown[]>([]);
   
   const [newEquipmentDialogOpen, setNewEquipmentDialogOpen] = useState(false);
   const [newEquipmentName, setNewEquipmentName] = useState("");
@@ -241,6 +245,23 @@ export default function PlantEquipmentUsage() {
   const { data: usage, isLoading } = useQuery<EquipmentUsage[]>({
     queryKey: ["/api/plant-module/equipment-usage"],
   });
+  const breakdownSourceId = editingUsage?.id ?? receivingUsage?.id ?? null;
+  const { data: persistedBreakdowns = [] } = useQuery<any[]>({
+    queryKey: ["/api/maintenance/logs", "plant_usage", breakdownSourceId],
+    queryFn: async () => {
+      const res = await fetch(`/api/maintenance/logs?sourceType=plant_usage&sourceRecordId=${breakdownSourceId}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: breakdownSourceId != null,
+  });
+  useEffect(() => {
+    if (breakdownSourceId == null) return;
+    setBreakdowns(persistedBreakdowns.map((row: any) => ({
+      clientKey: String(row.id), maintenanceLogId: row.id, fromTime: row.fromTime ?? "", toTime: row.toTime ?? "",
+      description: row.description ?? "", responsibility: row.responsibility ?? "", repairScope: row.repairScope ?? "",
+      debitableToVendor: !!row.debitableToVendor, remarks: row.remarks ?? "",
+    })));
+  }, [breakdownSourceId, persistedBreakdowns]);
 
   // Read plant context from URL (passed by Plant.tsx OperationsTab via ?plant=...)
   const contextPlantName = useMemo(() => {
@@ -316,6 +337,55 @@ export default function PlantEquipmentUsage() {
     },
   });
 
+  const persistPlantUsageBreakdowns = async (source: EquipmentUsage) => {
+    const retainedIds = new Set(
+      breakdowns.map((breakdown) => Number(breakdown.maintenanceLogId)).filter(Number.isFinite),
+    );
+    // The editor is an authoritative list for this source usage.  Reconcile
+    // removals via the canonical cancellation endpoint rather than leaving
+    // orphaned active stoppages behind.
+    for (const existing of persistedBreakdowns) {
+      if (retainedIds.has(Number(existing.id)) || existing.isCancelled || existing.isDeleted) continue;
+      await apiRequest("POST", `/api/maintenance/logs/${existing.id}/cancel`, {
+        reason: "Removed from Plant Equipment Usage stoppages",
+      });
+    }
+    for (const breakdown of breakdowns) {
+      if (!breakdown.description || !breakdown.fromTime || !breakdown.toTime) continue;
+      const body = {
+        date: source.date, equipmentId: source.equipmentId, eventType: "breakdown",
+        description: breakdown.description, fromTime: breakdown.fromTime, toTime: breakdown.toTime,
+        responsibility: breakdown.responsibility || null, repairScope: breakdown.repairScope || null,
+        debitableToVendor: breakdown.debitableToVendor, remarks: breakdown.remarks || null,
+        sourceType: "plant_usage", sourceRecordId: source.id, status: "open",
+      };
+      const response = await apiRequest(breakdown.maintenanceLogId ? "PATCH" : "POST",
+        breakdown.maintenanceLogId ? `/api/maintenance/logs/${breakdown.maintenanceLogId}` : "/api/maintenance/logs", body);
+      const saved = await response.json();
+      if ((breakdown.file || breakdown.attachment) && saved?.id) {
+        let attachment = breakdown.attachment;
+        if (!attachment && breakdown.file) {
+          const uploaded = await uploadFile(breakdown.file);
+          if (!uploaded) throw new Error(`Failed to upload breakdown attachment: ${breakdown.file.name}`);
+        // Persist the successful upload identity before the attachment write;
+        // retrying an ambiguous request must not upload the same File again.
+          attachment = {
+            fileName: breakdown.file.name, objectPath: uploaded.objectPath,
+            mimeType: breakdown.file.type || "application/octet-stream", fileSize: breakdown.file.size,
+          };
+          setBreakdowns(current => current.map(candidate =>
+            candidate.clientKey === breakdown.clientKey ? { ...candidate, attachment, file: undefined } : candidate,
+          ));
+        }
+        await apiRequest("POST", "/api/attachments", {
+          moduleType: "equipment_breakdown", linkedRecordId: saved.id,
+          ...attachment!,
+        });
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ["/api/maintenance/logs"] });
+  };
+
   const resetNewEquipmentForm = () => {
     setNewEquipmentName("");
     setNewEquipmentRegNo("");
@@ -326,9 +396,9 @@ export default function PlantEquipmentUsage() {
   };
 
   const createMutation = useMutation({
-    mutationFn: (data: any) =>
-      apiRequest("POST", "/api/plant-module/equipment-usage", data),
-    onSuccess: () => {
+    mutationFn: async (data: any) => (await apiRequest("POST", "/api/plant-module/equipment-usage", data)).json() as Promise<EquipmentUsage>,
+    onSuccess: async (created) => {
+      await persistPlantUsageBreakdowns(created);
       clearDraft();
       setDraftRestored(false);
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage"] });
@@ -350,7 +420,8 @@ export default function PlantEquipmentUsage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) =>
       apiRequest("PUT", `/api/plant-module/equipment-usage/${id}`, data),
-    onSuccess: () => {
+    onSuccess: async () => {
+      if (editingUsage) await persistPlantUsageBreakdowns(editingUsage);
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage"] });
       setDialogOpen(false);
       setEditingUsage(null);
@@ -438,6 +509,7 @@ export default function PlantEquipmentUsage() {
     setSendToSite(false);
     setDestinationSite("");
     setReceivingUsage(null);
+    setBreakdowns([]);
   };
 
   const adoptIncomingUsage = (entry: EquipmentUsage) => {
@@ -1702,6 +1774,7 @@ export default function PlantEquipmentUsage() {
                 <Label>Remarks</Label>
                 <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value.toUpperCase())} placeholder="Optional notes" data-testid="input-usage-remarks" />
               </div>
+              <BreakdownStoppageEditor value={breakdowns} onChange={setBreakdowns} testId="plant-usage-breakdown" />
 
               <Button 
                 onClick={handleSubmit} 

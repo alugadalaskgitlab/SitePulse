@@ -276,7 +276,7 @@ describe("Part B — programmeBarId survives draft → update → submit (real r
       progressOverrides: { chainageFrom: "", chainageTo: "", chainageFromKm: null, chainageToKm: null },
     }));
     expect(submit.status).toBe(400);
-    expect(submit.body.error).toBe("PROGRAMME_LINK_INVALID");
+    expect(submit.body.code).toBe("PROGRAMME_LINK_INVALID");
     expect(calls.submits).toHaveLength(0);
     // The draft still exists untouched, link intact:
     expect(fx.drafts.get(id).progress[0].programmeBarId).toBe(BAR_ID);
@@ -297,7 +297,7 @@ describe("Part D — out-of-range chainage reason persistence", () => {
       asDraft: false, progressOverrides: outOfRange,
     }));
     expect(submit.status).toBe(400);
-    expect(submit.body.error).toBe("PROGRAMME_LINK_INVALID");
+    expect(submit.body.code).toBe("PROGRAMME_LINK_INVALID");
   });
 
   it("with a reason: submit succeeds, reason persisted, row stamped review_required", async () => {

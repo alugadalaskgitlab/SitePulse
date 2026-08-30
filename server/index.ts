@@ -87,6 +87,9 @@ app.use((req, res, next) => {
     storage.ensureBoqMaterialMappings()
       .then(() => console.log("Startup: ensureBoqMaterialMappings — boq_material_mappings table verified/created"))
       .catch(e => console.error("Pre-routes: Failed to ensure boq_material_mappings table:", e)),
+    storage.ensureProgrammeBarOutcomeEventsTable()
+      .then(() => console.log("Startup: programme_bar_outcome_events table verified/created"))
+      .catch(e => console.error("Pre-routes: Failed to ensure programme bar outcome events table:", e)),
     storage.ensureStockReconciliationTables()
       .then(() => console.log("Startup: ensureStockReconciliationTables — stock_reconciliation_sessions/items tables verified/created"))
       .catch(e => console.error("Pre-routes: Failed to ensure stock reconciliation tables:", e)),
@@ -108,6 +111,12 @@ app.use((req, res, next) => {
     storage.ensureWorkProgrammeRevisionColumns()
       .then(() => console.log("Startup: ensureWorkProgrammeRevisionColumns — baseline + revision history columns verified/backfilled"))
       .catch(e => console.error("Pre-routes: Failed to ensure work programme revision columns:", e)),
+    // Maintenance routes (and DPR breakdown reconciliation) read these tables
+    // synchronously.  Keep their schema guard in the pre-routes barrier rather
+    // than racing it in the post-listen migration runner.
+    storage.ensureMaintenanceTables()
+      .then(() => console.log("Startup: equipment_maintenance_logs and maintenance_parts_used tables ensured"))
+      .catch(e => console.error("Pre-routes: Failed to ensure maintenance tables:", e)),
     // ── Earthwork tables — MUST complete before routes register ───────────────
     // Earthwork POST/PATCH routes check the earthworkSchemaReady flag (set below).
     // Runs here (blocking) so the flag is true before any request arrives.
@@ -186,7 +195,6 @@ async function runBackgroundMigrations() {
   // ── Phase 1: Schema ensures (independent — run in parallel) ────────────────
   await Promise.all([
     (async () => { try { await storage.resetAllSequences(); console.log("Startup: All database sequences reset successfully"); } catch (e) { console.error("Startup: Failed to reset sequences:", e); } })(),
-    (async () => { try { await storage.ensureMaintenanceTables(); console.log("Startup: equipment_maintenance_logs and maintenance_parts_used tables ensured"); } catch (e) { console.error("Startup: Failed to ensure maintenance tables:", e); } })(),
     (async () => { try { await storage.ensureBoqProgramSettingsTables(); console.log("Startup: boq_program_settings and boq_mix_template_links tables ensured"); } catch (e) { console.error("Startup: Failed to ensure BOQ program settings tables:", e); } })(),
     (async () => { try { await storage.ensureRmcTables(); console.log("Startup: RMC tables ensured"); } catch (e) { console.error("Startup: Failed to ensure RMC tables:", e); } })(),
     (async () => { try { await storage.ensureSiteRequirementsTable(); console.log("Startup: site_requirements table ensured"); } catch (e) { console.error("Startup: Failed to ensure site_requirements table:", e); } })(),

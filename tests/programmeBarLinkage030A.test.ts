@@ -254,7 +254,7 @@ describe("030A route — DPR programme link validation (POST /api/dprs)", () => 
     fx.bars = [roadBar({ side: "lhs" })];
     const res = await request(app).post("/api/dprs").send(dprBody({ side: "RHS" }));
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("PROGRAMME_LINK_INVALID");
+    expect(res.body.code).toBe("PROGRAMME_LINK_INVALID");
     expect(calls.createdDprs).toHaveLength(0);
   });
 
@@ -267,7 +267,7 @@ describe("030A route — DPR programme link validation (POST /api/dprs)", () => 
     fx.bars = [roadBar({ side: "both_sides" })];
     res = await request(app).post("/api/dprs").send(dprBody({ side: "" }));
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("PROGRAMME_LINK_INVALID");
+    expect(res.body.code).toBe("PROGRAMME_LINK_INVALID");
   });
 
   it("legacy null-side bar is unrestricted — never silently treated as Full Width, but fully usable", async () => {
@@ -280,7 +280,7 @@ describe("030A route — DPR programme link validation (POST /api/dprs)", () => 
       dprBody({ chainageFrom: "", chainageTo: "", chainageFromKm: null, chainageToKm: null }),
     );
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("PROGRAMME_LINK_INVALID");
+    expect(res.body.code).toBe("PROGRAMME_LINK_INVALID");
 
     res = await request(app).post("/api/dprs").send(
       dprBody({ chainageFromKm: 105, chainageToKm: 103 }),
@@ -293,7 +293,7 @@ describe("030A route — DPR programme link validation (POST /api/dprs)", () => 
       dprBody({ chainageFromKm: 111, chainageToKm: 112, chainageOverrideReason: "" }),
     );
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("PROGRAMME_LINK_INVALID");
+    expect(res.body.code).toBe("PROGRAMME_LINK_INVALID");
 
     res = await request(app).post("/api/dprs").send(
       dprBody({ chainageFromKm: 111, chainageToKm: 112, chainageOverrideReason: "Client instructed extension beyond planned stretch" }),
@@ -309,14 +309,14 @@ describe("030A route — DPR programme link validation (POST /api/dprs)", () => 
     fx.bars = [roadBar({ boqProjectId: OTHER_PROJECT_ID })];
     res = await request(app).post("/api/dprs").send(dprBody());
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("PROGRAMME_LINK_INVALID");
+    expect(res.body.code).toBe("PROGRAMME_LINK_INVALID");
   });
 
   it("unlinked progress entries skip bar checks, but Batch 1 makes actual side mandatory for chainage-based work", async () => {
     // Blank side + chainage → blocked on final submission even without a bar.
     let res = await request(app).post("/api/dprs").send(dprBody({ programmeBarId: null, side: "" }));
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("PROGRAMME_LINK_INVALID");
+    expect(res.body.code).toBe("PROGRAMME_LINK_INVALID");
     // With an explicit actual side, unlinked rows pass untouched.
     res = await request(app).post("/api/dprs").send(dprBody({ programmeBarId: null, side: "Both Sides" }));
     expect(res.status).toBeLessThan(300);

@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { SiteMaterialTrip, Site } from "@shared/schema";
+import type { EquipmentMasterType, SiteMaterialTrip, Site } from "@shared/schema";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { useUpload } from "@/hooks/use-upload";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
@@ -68,6 +68,8 @@ export default function SiteMaterialTrips() {
     material: piParams.material || "",
     supplier: piParams.supplier || "",
     vehicleNumber: "",
+    transportType: "",
+    internalEquipmentId: null as number | null,
     quantity: piParams.qty || "",
     uom: piParams.uom || "CFT",
     location: "",
@@ -184,6 +186,14 @@ export default function SiteMaterialTrips() {
   const { data: trips, isLoading } = useQuery<SiteMaterialTrip[]>({
     queryKey: [buildTripsUrl()],
   });
+  // Reuse the existing equipment-master endpoint. The number field remains
+  // editable because older/internal vehicles may not yet have a master row.
+  const { data: internalEquipment = [] } = useQuery<EquipmentMasterType[]>({
+    queryKey: ["/api/plant-module/equipment"],
+  });
+  const activeInternalEquipment = internalEquipment.filter(
+    (equipment) => equipment.isActive && equipment.ownership === "owned",
+  );
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof newTrip) => {
@@ -228,6 +238,7 @@ export default function SiteMaterialTrips() {
         setNewTrip(prev => ({
           ...prev,
           vehicleNumber: "",
+            internalEquipmentId: null,
           quantity: "",
           receiptNumber: "",
           notes: "",
@@ -251,6 +262,8 @@ export default function SiteMaterialTrips() {
           material: "",
           supplier: "",
           vehicleNumber: "",
+            transportType: "",
+            internalEquipmentId: null,
           quantity: "",
           uom: "CFT",
           location: "",
@@ -288,8 +301,20 @@ export default function SiteMaterialTrips() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTrip.site || !newTrip.material || !newTrip.quantity) {
-      toast({ title: "Required Fields", description: "Please fill in Site, Material, and Quantity.", variant: "destructive" });
+    if (!newTrip.site || !newTrip.material || !newTrip.quantity || !newTrip.transportType) {
+      toast({ title: "Required Fields", description: "Please fill in Site, Material, Transport Type, and Quantity.", variant: "destructive" });
+      return;
+    }
+    if (newTrip.transportType === "agency_vendor" && !newTrip.supplier.trim()) {
+      toast({ title: "Vendor required", description: "Enter the agency/vendor transporting this trip.", variant: "destructive" });
+      return;
+    }
+    if (newTrip.transportType === "agency_vendor" && !newTrip.vehicleNumber.trim()) {
+      toast({ title: "Vehicle required", description: "Enter the agency/vendor vehicle number.", variant: "destructive" });
+      return;
+    }
+    if (newTrip.transportType === "in_house" && newTrip.internalEquipmentId == null && !newTrip.vehicleNumber.trim()) {
+      toast({ title: "Vehicle required", description: "Choose internal equipment or enter a vehicle number.", variant: "destructive" });
       return;
     }
     createMutation.mutate(newTrip);
@@ -412,7 +437,7 @@ export default function SiteMaterialTrips() {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <Label className="text-sm">Supplier</Label>
+                  <Label className="text-sm">{newTrip.transportType === "agency_vendor" ? "Vendor / Supplier *" : "Supplier"}</Label>
                   <Input
                     placeholder="e.g. Sanganna"
                     value={newTrip.supplier}
@@ -422,7 +447,7 @@ export default function SiteMaterialTrips() {
                   />
                 </div>
                 <div>
-                  <Label className="text-sm">Vehicle Number</Label>
+                  <Label className="text-sm">Vehicle Number <span className="text-muted-foreground">(free text fallback)</span></Label>
                   <Input
                     placeholder="e.g. TS15U1234"
                     value={newTrip.vehicleNumber}
@@ -461,6 +486,53 @@ export default function SiteMaterialTrips() {
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <Label className="text-sm">Transport Type *</Label>
+                  <Select
+                    value={newTrip.transportType}
+                    onValueChange={(transportType) => setNewTrip((prev) => ({
+                      ...prev,
+                      transportType,
+                      internalEquipmentId: transportType === "in_house" ? prev.internalEquipmentId : null,
+                    }))}
+                  >
+                    <SelectTrigger data-testid="select-trip-transport-type">
+                      <SelectValue placeholder="Select transport" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="in_house">In-house</SelectItem>
+                      <SelectItem value="agency_vendor">Agency / Vendor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {newTrip.transportType === "in_house" && (
+                  <div>
+                    <Label className="text-sm">Internal Equipment <span className="text-muted-foreground">(optional)</span></Label>
+                    <Select
+                      value={newTrip.internalEquipmentId?.toString() ?? "none"}
+                      onValueChange={(value) => {
+                        const equipment = activeInternalEquipment.find((item) => item.id === Number(value));
+                        setNewTrip((prev) => ({
+                          ...prev,
+                          internalEquipmentId: value === "none" ? null : Number(value),
+                          vehicleNumber: equipment?.registrationNumber || equipment?.name || prev.vehicleNumber,
+                        }));
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-trip-internal-equipment">
+                        <SelectValue placeholder="Choose internal vehicle" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No master record — use vehicle number</SelectItem>
+                        {activeInternalEquipment.map((equipment) => (
+                          <SelectItem key={equipment.id} value={String(equipment.id)}>
+                            {equipment.registrationNumber || equipment.name} — {equipment.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div>
                   <Label className="text-sm">Unloaded At</Label>
                   <Select value={newTrip.unloadedAt} onValueChange={(v) => setNewTrip({ ...newTrip, unloadedAt: v })}>

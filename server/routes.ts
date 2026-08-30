@@ -16,9 +16,9 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import { db } from "./db";
-import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
+import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { siteMatchesPermitted } from "@shared/siteName";
 import { calculateHireBilling, planHireRegisterRows, type HireExceptionDecisionInput } from "@shared/hireBilling";
@@ -79,12 +79,14 @@ import {
   assertView,
   assertAuthed,
   assertCreate,
+  assertCreateOrEdit,
   assertCreateEither,
   assertApprove,
   assertDeleteOrCancel,
   currentUserName,
 } from "./auth-routes";
 import { registerManagementReportRoutes } from "./management-report";
+import { PROGRAMME_BAR_OUTCOMES, PROGRAMME_BAR_OUTCOME_REASONS, programmeBarOutcomeInputError } from "@shared/programmeBarOutcome";
 
 const ESTIMATOR_COOKIE = 'hlc_est_role';
 
@@ -666,6 +668,15 @@ export async function registerRoutes(
     try {
       if (!assertCreate(req, res, "site_materials")) return;
       const input = insertSiteMaterialTripSchema.parse(req.body);
+      // New receipts must declare their transport route.  The base insert
+      // schema intentionally remains nullable because historical data and
+      // PATCH payloads need to remain backward compatible.
+      if (input.transportType !== "in_house" && input.transportType !== "agency_vendor") {
+        return res.status(400).json({ message: "transportType must be in_house or agency_vendor" });
+      }
+      if (input.internalEquipmentId != null && input.transportType !== "in_house") {
+        return res.status(400).json({ message: "internalEquipmentId is only allowed for in-house transport" });
+      }
       const linkageError = await validateTripLinkage(input);
       if (linkageError) return res.status(400).json({ message: linkageError });
       const trip = await storage.createSiteMaterialTrip(input);
@@ -683,6 +694,19 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "site_materials")) return;
       const id = Number(req.params.id);
       const input = insertSiteMaterialTripSchema.partial().parse(req.body);
+      if (input.transportType != null && input.transportType !== "in_house" && input.transportType !== "agency_vendor") {
+        return res.status(400).json({ message: "transportType must be in_house or agency_vendor" });
+      }
+      // A transport-type correction away from in-house must not leave an
+      // internal-master link attached to the same trip.
+      if (input.transportType === "agency_vendor") input.internalEquipmentId = null;
+      if (input.internalEquipmentId != null && input.transportType !== "in_house") {
+        const existing = await storage.getSiteMaterialTripById(id);
+        if (!existing) return res.status(404).json({ message: "Site material trip not found" });
+        if ((input.transportType ?? existing.transportType) !== "in_house") {
+          return res.status(400).json({ message: "internalEquipmentId is only allowed for in-house transport" });
+        }
+      }
       if ("boqProjectId" in input || "boqItemId" in input || "programmeBarId" in input || "earthworkArrangementId" in input) {
         const existing = await storage.getSiteMaterialTripById(id);
         if (!existing) return res.status(404).json({ message: "Site material trip not found" });
@@ -1032,6 +1056,10 @@ export async function registerRoutes(
         return res.status(400).json({ message: "moduleType and linkedRecordId are required" });
       }
       if (moduleType === "diesel_purchase" && !assertDieselOrStoresView(req, res)) return;
+      if (moduleType === "equipment_breakdown") {
+        if (!req.authUser) return res.status(401).json({ message: "not_authenticated" });
+        if (!(await assertMaintenanceRecordAccess(req, res, linkedRecordId, true))) return;
+      }
       const list = await storage.getAttachments(moduleType, linkedRecordId);
       res.json(list);
     } catch (err) {
@@ -1056,6 +1084,12 @@ export async function registerRoutes(
         return res.status(400).json({ message: "moduleType and ids are required" });
       }
       if (moduleType === "diesel_purchase" && !assertDieselOrStoresView(req, res)) return;
+      if (moduleType === "equipment_breakdown") {
+        if (!req.authUser) return res.status(401).json({ message: "not_authenticated" });
+        for (const id of ids) {
+          if (!(await assertMaintenanceRecordAccess(req, res, id, true))) return;
+        }
+      }
       const counts = await storage.getAttachmentCounts(moduleType, ids, docTypes);
       res.json(counts);
     } catch (err) {
@@ -1073,6 +1107,10 @@ export async function registerRoutes(
       // Diesel purchase evidence changes the purchase record's audit trail.
       // Stores inventory visibility is intentionally not sufficient to mutate it.
       if (parsed.moduleType === "diesel_purchase" && !assertEdit(req, res, "site_diesel")) return;
+      if (parsed.moduleType === "equipment_breakdown") {
+        if (!assertCreateOrEdit(req, res, "plant_equipment")) return;
+        if (!(await assertMaintenanceRecordAccess(req, res, parsed.linkedRecordId, true))) return;
+      }
       if (!parsed.objectPath.startsWith("/objects/")) {
         return res.status(400).json({ message: "objectPath must reference an uploaded object" });
       }
@@ -1094,6 +1132,14 @@ export async function registerRoutes(
           return res.status(400).json({ message: "Maximum 3 photos allowed for this activity." });
         }
       }
+      // Evidence uploads may be retried after an ambiguous network response.
+      // Do not create a second attachment row for the same canonical breakdown
+      // and storage object.
+      if (parsed.moduleType === "equipment_breakdown") {
+        const existing = await storage.getAttachments(parsed.moduleType, parsed.linkedRecordId);
+        const duplicate = existing.find((attachment: any) => attachment.objectPath === parsed.objectPath);
+        if (duplicate) return res.status(200).json(duplicate);
+      }
       const record = await storage.createAttachment({ ...parsed, uploadedBy: req.authUser.id });
       res.status(201).json(record);
     } catch (err: any) {
@@ -1110,6 +1156,10 @@ export async function registerRoutes(
       if (!attachment) return res.status(404).json({ message: "Attachment not found" });
       // Match the diesel purchase-update authority for removing its evidence.
       if (attachment.moduleType === "diesel_purchase" && !assertEdit(req, res, "site_diesel")) return;
+      if (attachment.moduleType === "equipment_breakdown") {
+        if (!assertEdit(req, res, "plant_equipment")) return;
+        if (!(await assertMaintenanceRecordAccess(req, res, attachment.linkedRecordId, true))) return;
+      }
       const deleted = await storage.deleteAttachment(id);
       if (!deleted) return res.status(404).json({ message: "Attachment not found" });
       res.status(204).send();
@@ -2068,13 +2118,13 @@ export async function registerRoutes(
       // 030A Part F: validate programme-bar links server-side (draft-lenient
       // when saving a draft — Instruction 031 Part B).
       const linkError = await validateProgressProgrammeLinks(input, { draft: (input as any).dprStatus === "draft" });
-      if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
+      if (linkError) return res.status(400).json({ message: linkError, code: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input, { draft: (input as any).dprStatus === "draft" });
-      if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
+      if (qtySourceError) return res.status(400).json({ message: qtySourceError, code: "QUANTITY_SOURCE_INVALID" });
       const materialOutcomeError = await validateProgressMaterialOutcomes(input, { draft: (input as any).dprStatus === "draft" });
-      if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, error: "MATERIAL_OUTCOME_INVALID" });
+      if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, code: "MATERIAL_OUTCOME_INVALID" });
       const scopeError = await validateProgressScope(input, req, { draft: (input as any).dprStatus === "draft" });
-      if (scopeError) return res.status(422).json({ message: scopeError.error, error: scopeError.code });
+      if (scopeError) return res.status(422).json({ message: scopeError.error, code: scopeError.code });
       // Batch 04: shared submit-readiness gate. Drafts stay lenient; Final
       // Submit is rejected only for MANDATORY issues (advisories never block).
       if ((input as any).dprStatus !== "draft") {
@@ -2086,7 +2136,7 @@ export async function registerRoutes(
         if (mandatory.length > 0) {
           return res.status(422).json({
             message: "DPR is not ready to submit",
-            error: "DPR_NOT_READY",
+            code: "DPR_NOT_READY",
             mandatory,
             advisories: readiness.advisories,
           });
@@ -2132,13 +2182,13 @@ export async function registerRoutes(
       }
       const input = createDprRequestSchema.parse(req.body);
       const linkError = await validateProgressProgrammeLinks(input, { draft: true });
-      if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
+      if (linkError) return res.status(400).json({ message: linkError, code: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input, { draft: true });
-      if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
+      if (qtySourceError) return res.status(400).json({ message: qtySourceError, code: "QUANTITY_SOURCE_INVALID" });
       const materialOutcomeError = await validateProgressMaterialOutcomes(input, { draft: true });
-      if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, error: "MATERIAL_OUTCOME_INVALID" });
+      if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, code: "MATERIAL_OUTCOME_INVALID" });
       const scopeError = await validateProgressScope(input, req, { draft: true });
-      if (scopeError) return res.status(422).json({ message: scopeError.error, error: scopeError.code });
+      if (scopeError) return res.status(422).json({ message: scopeError.error, code: scopeError.code });
       const updated = await storage.updateDraftDpr(id, input);
       if (!updated) return res.status(404).json({ message: "DPR not found or not a draft" });
       res.json(updated);
@@ -2165,13 +2215,13 @@ export async function registerRoutes(
       }
       const input = createDprRequestSchema.parse(req.body);
       const linkError = await validateProgressProgrammeLinks(input);
-      if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
+      if (linkError) return res.status(400).json({ message: linkError, code: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input);
-      if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
+      if (qtySourceError) return res.status(400).json({ message: qtySourceError, code: "QUANTITY_SOURCE_INVALID" });
       const materialOutcomeError = await validateProgressMaterialOutcomes(input);
-      if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, error: "MATERIAL_OUTCOME_INVALID" });
+      if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, code: "MATERIAL_OUTCOME_INVALID" });
       const scopeError = await validateProgressScope(input, req, {});
-      if (scopeError) return res.status(422).json({ message: scopeError.error, error: scopeError.code });
+      if (scopeError) return res.status(422).json({ message: scopeError.error, code: scopeError.code });
       // Batch 04: same shared submit-readiness gate as non-draft create.
       {
         const readiness = evaluateDprSubmitReadiness(input as any);
@@ -2182,7 +2232,7 @@ export async function registerRoutes(
         if (mandatory.length > 0) {
           return res.status(422).json({
             message: "DPR is not ready to submit",
-            error: "DPR_NOT_READY",
+            code: "DPR_NOT_READY",
             mandatory,
             advisories: readiness.advisories,
           });
@@ -2408,11 +2458,11 @@ export async function registerRoutes(
       }
       // 030A Part F: programme-bar link validation applies to edits too.
       const linkError = await validateProgressProgrammeLinks(input.data);
-      if (linkError) return res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" });
+      if (linkError) return res.status(400).json({ message: linkError, code: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input.data);
-      if (qtySourceError) return res.status(400).json({ message: qtySourceError, error: "QUANTITY_SOURCE_INVALID" });
+      if (qtySourceError) return res.status(400).json({ message: qtySourceError, code: "QUANTITY_SOURCE_INVALID" });
       const materialOutcomeError = await validateProgressMaterialOutcomes(input.data);
-      if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, error: "MATERIAL_OUTCOME_INVALID" });
+      if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, code: "MATERIAL_OUTCOME_INVALID" });
       const editedBy = input.editedBy || "engineer";
 
       if (editedBy === "engineer") {
@@ -2437,7 +2487,7 @@ export async function registerRoutes(
         if (overlapIssues.length > 0) {
           return res.status(422).json({
             message: "DPR is not ready to submit",
-            error: "DPR_NOT_READY",
+            code: "DPR_NOT_READY",
             mandatory: overlapIssues,
             advisories: [],
           });
@@ -11343,6 +11393,117 @@ export async function registerRoutes(
   // EQUIPMENT MAINTENANCE & BREAKDOWN LOGS (Task #696)
   // ============================================
 
+  /**
+   * DPR-01: validate and canonicalise the structured stoppage fields before
+   * they reach the existing maintenance table. This intentionally permits
+   * legacy/unlinked maintenance records, but when a source is supplied it must
+   * be an exact source row and belong to the submitted equipment.
+   */
+  const normalizeBreakdownLogInput = async (raw: any): Promise<{ data?: any; message?: string }> => {
+    const data = { ...raw };
+    const sourceType = data.sourceType == null || data.sourceType === "" ? null : String(data.sourceType);
+    const sourceRecordId = data.sourceRecordId == null || data.sourceRecordId === "" ? null : Number(data.sourceRecordId);
+    if ((sourceType == null) !== (sourceRecordId == null)) {
+      return { message: "Source type and source record are required together." };
+    }
+    if (sourceType != null) {
+      if (!["dpr_log", "plant_usage"].includes(sourceType) || !Number.isInteger(sourceRecordId) || sourceRecordId! <= 0) {
+        return { message: "Source must be an exact DPR equipment log or plant equipment usage record." };
+      }
+      const source = sourceType === "dpr_log"
+        ? (await db.select({ equipmentId: equipmentLogs.equipmentId }).from(equipmentLogs).where(eq(equipmentLogs.id, sourceRecordId!)))[0]
+        : (await db.select({ equipmentId: equipmentUsage.equipmentId }).from(equipmentUsage).where(eq(equipmentUsage.id, sourceRecordId!)))[0];
+      if (!source) return { message: "The linked operational equipment record no longer exists." };
+      if (Number(data.equipmentId) !== source.equipmentId) {
+        return { message: "The linked operational record belongs to different equipment." };
+      }
+      data.sourceType = sourceType;
+      data.sourceRecordId = sourceRecordId;
+    } else {
+      data.sourceType = null;
+      data.sourceRecordId = null;
+    }
+    for (const key of ["responsibility", "repairScope"] as const) {
+      if (data[key] != null && data[key] !== "" && !["vendor", "hlc"].includes(data[key])) {
+        return { message: `${key === "responsibility" ? "Responsibility" : "Repair scope"} must be Vendor or HLC.` };
+      }
+      if (data[key] === "") data[key] = null;
+    }
+    const from = data.fromTime == null || data.fromTime === "" ? null : String(data.fromTime);
+    const to = data.toTime == null || data.toTime === "" ? null : String(data.toTime);
+    if ((from == null) !== (to == null)) return { message: "Breakdown from and to time are required together." };
+    if (from && to) {
+      const toMinutes = (value: string) => {
+        const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+        return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+      };
+      const fromMinutes = toMinutes(from);
+      const endMinutes = toMinutes(to);
+      if (fromMinutes == null || endMinutes == null || endMinutes <= fromMinutes) {
+        return { message: "Breakdown to time must be later than from time (HH:MM)." };
+      }
+      data.fromTime = from;
+      data.toTime = to;
+      data.downtimeHours = Math.round(((endMinutes - fromMinutes) / 60) * 1000) / 1000;
+    } else {
+      data.fromTime = null;
+      data.toTime = null;
+    }
+    return { data };
+  };
+
+  // Source-linked maintenance inherits the source record's site ACL.  A
+  // maintenance log with no source link is legacy plant data and keeps the
+  // coarse plant-equipment permission behaviour.
+  async function maintenanceSourceSite(log: any): Promise<string | null> {
+    if (log?.sourceType === "dpr_log" && Number.isInteger(Number(log.sourceRecordId))) {
+      // dpr_log.sourceRecordId is the equipment_logs serial id, not the DPR
+      // header id. Resolve its owner in one query; using getDpr(id) here can
+      // accidentally authorise a completely unrelated DPR with that same id.
+      const [source] = await db.select({ site: dprsTable.site })
+        .from(equipmentLogs)
+        .innerJoin(dprsTable, eq(equipmentLogs.dprId, dprsTable.id))
+        .where(eq(equipmentLogs.id, Number(log.sourceRecordId)));
+      return source?.site ?? null;
+    }
+    if (log?.sourceType === "plant_usage" && Number.isInteger(Number(log.sourceRecordId))) {
+      const usage = await storage.getEquipmentUsageById(Number(log.sourceRecordId));
+      return (usage as any)?.destinationSite ?? (usage as any)?.siteName ?? null;
+    }
+    return null;
+  }
+  async function canAccessMaintenanceSource(req: any, log: any): Promise<boolean> {
+    if (log?.sourceType !== "dpr_log" && log?.sourceType !== "plant_usage") return true;
+    const sourceSite = await maintenanceSourceSite(log);
+    const permitted = await getPermittedSiteNames(req);
+    return !!sourceSite && (permitted === null || siteMatchesPermitted(sourceSite, permitted));
+  }
+  async function assertMaintenanceSourceAccess(req: any, res: any, log: any, conceal = false): Promise<boolean> {
+    if (await canAccessMaintenanceSource(req, log)) return true;
+    res.status(conceal ? 404 : 403).json(conceal
+      ? { message: "Maintenance record not found" }
+      : { message: "You do not have access to this maintenance record's source site" });
+    return false;
+  }
+  async function assertMaintenanceRecordAccess(req: any, res: any, id: number, conceal = false): Promise<boolean> {
+    const log = await storage.getMaintenanceLog(id);
+    if (!log) {
+      res.status(404).json({ message: "Maintenance record not found" });
+      return false;
+    }
+    return assertMaintenanceSourceAccess(req, res, log, conceal);
+  }
+  async function visibleMaintenanceLogIds(req: any): Promise<number[] | undefined> {
+    const permitted = await getPermittedSiteNames(req);
+    if (permitted === null) return undefined;
+    const logs = await storage.getMaintenanceLogs({ includeCancelled: true });
+    const visible: number[] = [];
+    for (const log of logs) {
+      if (await canAccessMaintenanceSource(req, log)) visible.push(log.id);
+    }
+    return visible;
+  }
+
   app.get("/api/maintenance/logs", async (req, res) => {
     try {
       if (!assertView(req, res, "plant_equipment")) return;
@@ -11352,9 +11513,23 @@ export async function registerRoutes(
         status: req.query.status as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
+        sourceType: req.query.sourceType as string | undefined,
+        sourceRecordId: req.query.sourceRecordId ? Number(req.query.sourceRecordId) : undefined,
+        sourceRecordIds: typeof req.query.sourceRecordIds === "string"
+          ? req.query.sourceRecordIds.split(",").map(Number).filter(Number.isInteger)
+          : undefined,
       };
       const logs = await storage.getMaintenanceLogs(filters);
-      res.json(logs);
+      const permitted = await getPermittedSiteNames(req);
+      if (permitted === null) return res.json(logs);
+      const visible: any[] = [];
+      for (const log of logs) {
+        // Legacy rows have no explicit source site and retain their historical
+        // coarse permission visibility. Linked rows never leak cross-site.
+        if (log.sourceType !== "dpr_log" && log.sourceType !== "plant_usage") { visible.push(log); continue; }
+        if (await canAccessMaintenanceSource(req, log)) visible.push(log);
+      }
+      res.json(visible);
     } catch (err) {
       console.error("GET /api/maintenance/logs:", err);
       res.status(500).json({ error: "Failed to fetch maintenance logs" });
@@ -11366,6 +11541,7 @@ export async function registerRoutes(
       if (!assertView(req, res, "plant_equipment")) return;
       const log = await storage.getMaintenanceLog(Number(req.params.id));
       if (!log) return res.status(404).json({ error: "Not found" });
+      if (!(await assertMaintenanceSourceAccess(req, res, log))) return;
       res.json(log);
     } catch (err) {
       console.error("GET /api/maintenance/logs/:id:", err);
@@ -11377,7 +11553,10 @@ export async function registerRoutes(
     try {
       if (!assertCreate(req, res, "plant_equipment")) return;
       const { parts, ...logData } = req.body;
-      const log = await storage.createMaintenanceLog(logData, parts || []);
+      const normalized = await normalizeBreakdownLogInput(logData);
+      if (!normalized.data) return res.status(400).json({ message: normalized.message });
+      if (!(await assertMaintenanceSourceAccess(req, res, normalized.data))) return;
+      const log = await storage.createMaintenanceLog(normalized.data, parts || []);
       res.status(201).json(log);
     } catch (err) {
       console.error("POST /api/maintenance/logs:", err);
@@ -11388,7 +11567,28 @@ export async function registerRoutes(
   app.patch("/api/maintenance/logs/:id", async (req, res) => {
     try {
       if (!assertEdit(req, res, "plant_equipment")) return;
-      const updated = await storage.updateMaintenanceLog(Number(req.params.id), req.body);
+      const existing = await storage.getMaintenanceLog(Number(req.params.id));
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      if (!(await assertMaintenanceSourceAccess(req, res, existing))) return;
+      const normalized = await normalizeBreakdownLogInput({ ...existing, ...req.body });
+      if (!normalized.data) return res.status(400).json({ message: normalized.message });
+      if (!(await assertMaintenanceSourceAccess(req, res, normalized.data))) return;
+      // Keep PATCH semantics: use the canonical derived fields, while passing
+      // only fields actually supplied by the caller (not read-model fields
+      // such as equipmentName/parts from `existing`).
+      const { id: _id, createdAt: _createdAt, autoIssueId: _autoIssueId, equipmentName: _equipmentName, autoIssueNumber: _autoIssueNumber, parts: _parts, ...canonical } = normalized.data;
+      const { parts: _ignoredParts, id: _requestId, createdAt: _requestCreatedAt, autoIssueId: _requestAutoIssueId, ...requestedUpdates } = req.body;
+      const updates = {
+        ...requestedUpdates,
+        fromTime: canonical.fromTime,
+        toTime: canonical.toTime,
+        downtimeHours: canonical.downtimeHours,
+        responsibility: canonical.responsibility,
+        repairScope: canonical.repairScope,
+        sourceType: canonical.sourceType,
+        sourceRecordId: canonical.sourceRecordId,
+      };
+      const updated = await storage.updateMaintenanceLog(Number(req.params.id), updates);
       if (!updated) return res.status(404).json({ error: "Not found" });
       res.json(updated);
     } catch (err) {
@@ -11402,6 +11602,7 @@ export async function registerRoutes(
       if (!assertAdmin(req, res)) return;
       const id = Number(req.params.id);
       const before = await storage.getMaintenanceLog(id);
+      if (before && !(await assertMaintenanceSourceAccess(req, res, before))) return;
       const deleted = await storage.deleteMaintenanceLog(id, req.authUser!.id);
       if (!deleted) return res.status(404).json({ error: "Not found" });
       await storage.logAudit({
@@ -11429,6 +11630,7 @@ export async function registerRoutes(
       if (!reason) return res.status(400).json({ error: "Cancellation reason is required" });
       const before = await storage.getMaintenanceLog(id);
       if (!before) return res.status(404).json({ error: "Not found" });
+      if (!(await assertMaintenanceSourceAccess(req, res, before))) return;
       const updated = await storage.cancelEquipmentMaintenanceLog(id, req.authUser!.id, reason);
       await storage.logAudit({
         module: "equipment_maintenance_logs",
@@ -11475,6 +11677,9 @@ export async function registerRoutes(
       if (!Array.isArray(parts) || parts.length === 0) {
         return res.status(400).json({ error: "parts array is required" });
       }
+      const parent = await storage.getMaintenanceLog(Number(req.params.id));
+      if (!parent) return res.status(404).json({ error: "Not found" });
+      if (!(await assertMaintenanceSourceAccess(req, res, parent))) return;
       const log = await storage.addMaintenanceParts(Number(req.params.id), parts);
       res.status(201).json(log);
     } catch (err) {
@@ -11486,7 +11691,13 @@ export async function registerRoutes(
   app.delete("/api/maintenance/parts/:partId", async (req, res) => {
     try {
       if (!assertEdit(req, res, "plant_equipment")) return;
-      const deleted = await storage.removeMaintenancePart(Number(req.params.partId));
+      const partId = Number(req.params.partId);
+      const part = await storage.getMaintenancePart(partId);
+      // Conceal both a missing part and a parent outside the caller's site
+      // scope so this endpoint cannot be used as a cross-site existence oracle.
+      if (!part) return res.status(404).json({ error: "Not found" });
+      if (!(await assertMaintenanceRecordAccess(req, res, part.maintenanceLogId, true))) return;
+      const deleted = await storage.removeMaintenancePart(partId);
       if (!deleted) return res.status(404).json({ error: "Not found" });
       res.json({ success: true });
     } catch (err) {
@@ -11498,7 +11709,7 @@ export async function registerRoutes(
   app.get("/api/maintenance/health-summary", async (req, res) => {
     try {
       if (!assertView(req, res, "plant_equipment")) return;
-      const summary = await storage.getEquipmentHealthSummary();
+      const summary = await storage.getEquipmentHealthSummary(await visibleMaintenanceLogIds(req));
       res.json(summary);
     } catch (err) {
       console.error("GET /api/maintenance/health-summary:", err);
@@ -11509,7 +11720,7 @@ export async function registerRoutes(
   app.get("/api/maintenance/open-count", async (req, res) => {
     try {
       if (!assertView(req, res, "plant_equipment")) return;
-      const count = await storage.getOpenBreakdownCount();
+      const count = await storage.getOpenBreakdownCount(await visibleMaintenanceLogIds(req));
       res.json({ count });
     } catch (err) {
       console.error("GET /api/maintenance/open-count:", err);
@@ -13779,6 +13990,82 @@ export async function registerRoutes(
     }
   });
 
+  // DPR programme-bar outcome events are append-only. Corrections are recorded
+  // as a new event; there intentionally are no PATCH or DELETE routes.
+  const outcomeInputSchema = z.object({
+    programmeBarId: z.coerce.number().int().positive(),
+    eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "eventDate must be YYYY-MM-DD"),
+    outcome: z.enum(PROGRAMME_BAR_OUTCOMES),
+    reason: z.enum(PROGRAMME_BAR_OUTCOME_REASONS),
+    reasonOther: z.string().trim().max(2000).optional().nullable(),
+    rescheduledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+    actualQuantity: z.coerce.number().finite().nonnegative().optional().nullable(),
+    actualUom: z.string().trim().max(64).optional().nullable(),
+    remarks: z.string().trim().max(5000).optional().nullable(),
+  });
+
+  async function assertOutcomeProjectScope(req: any, res: any, projectId: number): Promise<boolean> {
+    const project = await storage.getBoqProject(projectId);
+    if (!project) {
+      res.status(404).json({ message: "BOQ project not found" });
+      return false;
+    }
+    const permitted = await getPermittedSiteNames(req);
+    if (permitted !== null) {
+      const site = (await storage.getSites()).find((candidate) => candidate.id === project.siteId);
+      if (!site || !siteMatchesPermitted(site.name, permitted)) {
+        res.status(403).json({ message: "You do not have access to this project's site." });
+        return false;
+      }
+    }
+    return true;
+  }
+
+  app.post("/api/dpr/programme-bar-outcomes", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_dprs")) return;
+      const parsed = outcomeInputSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid outcome event" });
+      const input = parsed.data;
+      const bar = await storage.getWorkProgramBar(input.programmeBarId);
+      if (!bar) return res.status(404).json({ message: "Programme bar not found" });
+      if (!(await assertOutcomeProjectScope(req, res, bar.boqProjectId))) return;
+      const reasonOther = input.reasonOther?.trim() || null;
+      const rescheduledDate = input.rescheduledDate || null;
+      const actualUom = input.actualUom?.trim() || null;
+      const tupleError = programmeBarOutcomeInputError({ ...input, reasonOther, rescheduledDate, actualUom });
+      if (tupleError) return res.status(400).json({ message: tupleError });
+      const [event] = await db.insert(programmeBarOutcomeEvents).values({
+        programmeBarId: input.programmeBarId, eventDate: input.eventDate, outcome: input.outcome, reason: input.reason,
+        reasonOther, rescheduledDate, actualQuantity: input.actualQuantity ?? null, actualUom,
+        remarks: input.remarks?.trim() || null, createdBy: req.authUser?.id ?? null,
+      }).returning();
+      res.status(201).json(event);
+    } catch (err) {
+      console.error("POST /api/dpr/programme-bar-outcomes:", err);
+      res.status(500).json({ message: "Failed to record programme-bar outcome" });
+    }
+  });
+
+  app.get("/api/dpr/programme-bar-outcomes", async (req, res) => {
+    try {
+      if (!assertView(req, res, "site_dprs")) return;
+      const projectId = Number(req.query.projectId);
+      const programmeBarId = Number(req.query.programmeBarId);
+      if (!Number.isInteger(projectId) || !Number.isInteger(programmeBarId)) return res.status(400).json({ message: "projectId and programmeBarId are required" });
+      const bar = await storage.getWorkProgramBar(programmeBarId);
+      if (!bar || bar.boqProjectId !== projectId) return res.status(404).json({ message: "Programme bar not found in this project" });
+      if (!(await assertOutcomeProjectScope(req, res, projectId))) return;
+      const history = await db.select().from(programmeBarOutcomeEvents)
+        .where(eq(programmeBarOutcomeEvents.programmeBarId, programmeBarId))
+        .orderBy(desc(programmeBarOutcomeEvents.eventDate), desc(programmeBarOutcomeEvents.createdAt), desc(programmeBarOutcomeEvents.id));
+      res.json({ latestOutcome: history[0] ?? null, outcomeHistory: history });
+    } catch (err) {
+      console.error("GET /api/dpr/programme-bar-outcomes:", err);
+      res.status(500).json({ message: "Failed to load programme-bar outcomes" });
+    }
+  });
+
   // ── Instruction 030A Part C point 12-13: programme bars for the DPR picker ──
   // Returns bars for a BOQ item with reach/side/dates/planned qty, reported
   // quantity so far, remaining, arrangement context (Part D), and execution
@@ -13791,14 +14078,20 @@ export async function registerRoutes(
       if (!Number.isFinite(boqProjectId) || !Number.isFinite(boqItemId)) {
         return res.status(400).json({ error: "projectId and boqItemId are required" });
       }
+      if (!(await assertOutcomeProjectScope(req, res, boqProjectId))) return;
       const allBars = await storage.getWorkProgramBars(boqProjectId);
       const itemBars = allBars.filter(b => b.boqItemId === boqItemId && (b as any).scheduled !== false);
       const barIds = itemBars.map(b => b.id);
-      const [reported, allocRows, sideEntries] = await Promise.all([
+       const [reported, allocRows, sideEntries, outcomeRows] = await Promise.all([
         storage.getReportedQtyByBar(barIds),
         storage.getArrangementProgrammeAllocationsForProject(boqProjectId),
         storage.getProgressSideEntriesByBar(barIds),
+        barIds.length ? db.select().from(programmeBarOutcomeEvents)
+          .where(drizzleInArray(programmeBarOutcomeEvents.programmeBarId, barIds))
+          .orderBy(desc(programmeBarOutcomeEvents.eventDate), desc(programmeBarOutcomeEvents.createdAt), desc(programmeBarOutcomeEvents.id)) : Promise.resolve([]),
       ]);
+       const outcomesByBar = new Map<number, any[]>();
+       outcomeRows.forEach((event: any) => outcomesByBar.set(event.programmeBarId, [...(outcomesByBar.get(event.programmeBarId) ?? []), event]));
       // Approved arrangement context per bar (Part D) — executing agency shown,
       // never inferred from the DPR author.
       const arrangementByBar = new Map<number, any>();
@@ -13844,6 +14137,8 @@ export async function registerRoutes(
             mode: (arr as any).arrangementType ?? (arr as any).mode ?? null,
             agency: (arr as any).agencyName ?? (arr as any).partyName ?? null,
           } : null,
+           latestOutcome: outcomesByBar.get(b.id)?.[0] ?? null,
+           outcomeHistory: outcomesByBar.get(b.id) ?? [],
         };
       }));
     } catch (err) {
