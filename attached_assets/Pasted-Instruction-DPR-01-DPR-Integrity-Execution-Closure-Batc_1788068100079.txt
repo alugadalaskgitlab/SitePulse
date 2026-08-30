@@ -1,0 +1,516 @@
+Instruction DPR-01 — DPR Integrity & Execution Closure Batch
+
+Do not redesign DPR. Do not create duplicate logs or duplicate tables for
+anything that already has a home. Reuse and link existing records.
+
+This batch is grounded in a direct code investigation of the current
+codebase (not assumptions) — every part below states exactly what was
+found before describing what to change. Where the investigation found
+the reported problem does NOT exist as described, that is stated plainly
+so you do not spend time "fixing" something that already works.
+
+DPR should become the daily truth sheet: work done, resources used,
+material moved, equipment performance, stoppages, and what happened to
+the planned execution arrangement.
+
+
+PART 1 — RESUME DRAFT DPR FROM DASHBOARD (CONFIRMED BUG, EXACT FIX)
+
+GROUND TRUTH
+
+client/src/pages/Home.tsx renders the "Unfinished Draft DPR" card and
+links its "Open" action to the literal URL `/dpr/${d.id}`. No such route
+exists anywhere in client/src/App.tsx — the only DPR routes registered
+are `/site/edit/:id`, `/site/report/:id`, `/site/success/:id`,
+`/site/guided`, `/site/new`. The app's catch-all route renders NotFound,
+which is the exact 404 observed. This is a leftover/incorrect hardcoded
+path, not a missing route registration.
+
+The correct pattern already exists and already works correctly elsewhere
+in this same codebase: client/src/lib/dprEntryMode.ts exports
+`roadDprDraftHref`, and client/src/pages/FieldHome.tsx already uses it
+correctly (`continueDraftHref`) for its own equivalent draft-resume
+action.
+
+REQUIRED FIX
+
+In Home.tsx, replace the hardcoded `/dpr/${d.id}` with the same resolved
+href FieldHome.tsx already uses correctly — branch by DPR type exactly as
+FieldHome.tsx does (e.g. structure DPRs go to `/site/edit/${d.id}`-style
+routes, road DPRs go through `roadDprDraftHref(d.id)`). Do not invent a
+new routing scheme; mirror the already-correct, already-tested logic.
+
+Opening a draft must restore every previously entered section and value
+exactly as saved. No new DPR should ever be created by clicking Open, and
+no "record not found" error should appear when the draft genuinely
+exists.
+
+
+PART 2 — MANUAL LENGTH OVERRIDE IS SILENTLY DISCARDED (this is the real
+bug — the chainage→length FORMULA itself is correct, do not touch it)
+
+GROUND TRUTH
+
+The Length calculation is centralized in one place —
+shared/dprGeometry.ts (`calculateLengthFromChainage`,
+`getEffectiveLength`) — and is correct: Length(m) = |To(Km) − From(Km)|
+× 1000. This is reused consistently across SiteEntry.tsx, SiteEdit.tsx,
+and GuidedDpr.tsx, and is independently recomputed and verified
+server-side before trusting any client value. Side (LHS/RHS/Both
+Sides) does not multiply or otherwise affect this calculation. Do NOT
+change this formula and do NOT re-derive it independently anywhere —
+it is already correct and already centralized.
+
+The real, separate problem: in SiteEntry.tsx and SiteEdit.tsx, the Length
+field can be manually typed (correctly supporting a curved-alignment
+stretch where the straight chainage difference is not the true length).
+But the onChange handler on EITHER chainage field unconditionally
+overwrites `length` with the freshly recalculated chainage-based value
+the moment the user touches chainage again — with no check for whether
+Length currently holds a legitimate manual value, and no warning. A
+manually entered Length is silently discarded on the next chainage edit.
+
+GuidedDpr.tsx does not have this problem — there, Length is read-only and
+always chainage-derived by design, so there is nothing to protect there.
+
+REQUIRED FIX
+
+In SiteEntry.tsx and SiteEdit.tsx only: track whether Length was manually
+edited by the user for that row (a per-row flag is sufficient — do not
+add a schema column unless investigation shows the flag must persist
+across save/reload; if a manual value was already saved, treat a Length
+that differs from the chainage-derived value on load as manual and
+preserve that distinction). When a chainage field changes on a row whose
+Length was manually set:
+- do NOT silently overwrite it;
+- show a small inline prompt such as "Chainage changed — recalculated
+  length is X m, current length is Y m. Update to X m?" with an
+  explicit action, defaulting to keeping the user's existing manual
+  value if they take no action.
+When Length has never been manually touched for that row, keep the
+current auto-recompute-on-chainage-change behavior exactly as it is.
+
+
+PART 3 — CUT→FILL LINKAGE (CONFIRMED WORKING — investigate discoverability,
+do not rebuild)
+
+GROUND TRUTH
+
+This is a real, quantity-tracked ledger, not a loose cross-reference
+banner. shared/schema.ts already has `progressEntries.materialOutcome`
+(fully_reusable/partly_reusable/unsuitable) with `reusableQty`, plus two
+dedicated ledger tables: `cutFillOpeningBalances` (available quantity per
+source excavation) and `cutFillConsumptions` (the actual allocation of a
+specific quantity from a specific source into a specific fill row, with a
+constraint ensuring exactly one source per consumption row). Server-side,
+these are correctly maintained across create/draft-update/submit/edit/
+delete. Client-side, client/src/components/CutFillOutcomeControls.tsx
+already renders exactly the Required / Available / Allocated / Uncovered
+view, with per-source allocation inputs capped at each source's available
+quantity — this already matches the desired behavior:
+Cut Material Available / Cut Material Used in this entry / Balance
+Available.
+
+THE ACTUAL GAP
+
+This rich ledger view only appears for a fill row when the Execution
+Arrangement behind it is specifically typed `reused_excavated` with a
+`sourceExcavationBoqItemId` set. For any other arrangement type
+(vendor-delivered, client-supplied, etc.) no ledger UI shows — which is
+correct, since those fills do not draw from project-cut material. The
+likely real-world problem is that this prerequisite setup step on the
+Execution Arrangement is easy to miss or not obvious to the person
+preparing it, not that the feature is unbuilt.
+
+REQUIRED WORK
+
+Do NOT build a new cut-to-fill mechanism. Instead:
+1. Confirm with a concrete example (the same embankment-with-excavated-
+   earth scenario from the recording) that when the Execution Arrangement
+   is correctly set to `reused_excavated` with a source excavation item,
+   the existing ledger view appears and behaves as: Required vs Available
+   vs Allocated vs Uncovered, exactly as designed.
+2. If, in the recording's example, the arrangement was NOT set up this
+   way and that is why the linkage looked incomplete, make that
+   prerequisite more visible/discoverable at the point where a fill
+   activity is being entered (e.g. a clear prompt: "This is Embankment
+   with Excavated Earth — link it to an excavation source to track cut
+   material usage" when no `reused_excavated` arrangement is linked yet),
+   rather than silently letting the fill proceed with no material
+   traceability.
+3. Report which of these two situations was actually the case.
+
+
+PART 4 — EQUIPMENT LOG SUMMARY (CONFIRMED GAP)
+
+GROUND TRUTH
+
+client/src/pages/SiteReport.tsx's read-only "Equipment Log" card already
+shows: Machine, Vehicle No, Operator, Task, a combined Time/Meter string
+(opening/closing reading or start/end time), Hours, Diesel (L), Diesel
+Source, Lifecycle. The entry form (SiteEntry.tsx) additionally computes
+and displays, live, per equipment row: Expected Diesel (norm-based) and
+a Norm/Efficiency label — neither of these reaches the read-only summary
+at all. Breakdown information is absent from both, because it does not
+exist yet anywhere in DPR equipment entry (see Part 5).
+
+REQUIRED FIX
+
+In SiteReport.tsx's Equipment Log card, add: Expected Diesel and
+Norm/Efficiency (or variance: actual vs expected), reusing the exact
+same computed values already available from entry time — do not
+reimplement the expected-diesel/norm calculation, reuse the existing
+shared logic. Once Part 5 exists, also show breakdown/stoppage
+information per equipment row here (from the same linked
+equipment_maintenance_logs record — see Part 5). Keep opening/closing
+reading and start/end time visible (the current merged "Time/Meter"
+string is acceptable; splitting it into separate columns is optional
+polish, not required).
+
+
+PART 5 — LOG BREAKDOWN FROM DPR/PLANT EQUIPMENT USAGE (CONFIRMED GAP,
+NEW CAPABILITY, REUSE EXISTING TABLE)
+
+GROUND TRUTH
+
+`equipmentMaintenanceLogs` (shared/schema.ts) already has eventType
+("breakdown"/"service"/"pm"), downtimeHours, status
+("open"/"resolved"), and related fields. The only existing write path is
+POST /api/maintenance/logs, called only from the separate Equipment &
+Fleet / Plant Maintenance screen. Neither DPR equipment usage entry
+(SiteEntry.tsx/SiteEdit.tsx/GuidedDpr.tsx) nor Plant Equipment Usage
+entry (PlantEquipmentUsage.tsx) has any breakdown/downtime field or
+concept today.
+
+IMPORTANT — PERSISTENCE / LINKING CHECK BEFORE BUILDING ANYTHING
+
+The ground truth above confirms equipment_maintenance_logs has eventType,
+downtimeHours, and status — it does NOT confirm the table already has
+structured fields for responsibility, repair/payment scope, debitability,
+from/to times, or a reliable link back to the exact source DPR equipment
+log or Plant equipment_usage record. Do not assume "reuse the existing
+table" means "no schema change" — that has not been verified. Before
+implementing the new fields described below:
+
+Inspect the exact equipment_maintenance_logs schema and confirm whether
+it already has structured fields capable of preserving:
+- breakdown from time
+- breakdown to time
+- responsibility: Vendor / HLC
+- repair/payment scope: Vendor / HLC
+- debitable to vendor: Yes / No
+- remarks
+- a source operational record linkage back to the exact DPR equipment log
+  or Plant equipment_usage record it arose from
+
+Do NOT hide these structured commercial facts inside one free-text
+description field merely to avoid schema work — responsibility, repair
+scope, and debitability are commercial facts that Vendor Hire Billing and
+downtime reporting need to query and filter on, not just display.
+
+If the current table cannot cleanly preserve them, STOP BEFORE MIGRATION
+and report the minimum ADDITIVE proposal. Prefer adding only the smallest
+required fields to the existing equipment_maintenance_logs table — for
+example, as applicable after investigation: fromTime, toTime,
+responsibility, repairScope, debitableToVendor, sourceType,
+sourceRecordId. Do not match a maintenance entry back to a DPR/Plant
+usage record merely by equipment + date — with multiple usage rows or
+multiple breakdowns on the same equipment/day that match is ambiguous;
+use an explicit source link (sourceType + sourceRecordId, or equivalent)
+instead. Reuse the existing attachment/document mechanism for photos/
+documents rather than adding a second attachment model.
+
+REQUIRED WORK
+
+Add a "Breakdown / Stoppage" section inside DPR Equipment Usage entry
+and inside Plant Equipment Usage entry (both operational entry points),
+with:
+- From time, To time, Duration (derived)
+- Reason
+- Responsibility: Vendor / HLC
+- Repair/payment scope: Vendor's scope / HLC's scope
+- If HLC paid/did the repair: Debitable to vendor? Yes/No
+- Remarks
+- Optional photo/document
+
+Saving this must create (or update) a row in the EXISTING
+equipmentMaintenanceLogs table via the EXISTING POST /api/maintenance/logs
+path (or a thin equivalent that writes to the same table), extended per
+the investigation above — do not create a second breakdown table or a
+parallel data model. The resulting record must be the same one visible
+in Equipment & Fleet, so it becomes available automatically to: Equipment
+& Fleet, Vendor Hire Bill (equipment_maintenance_logs is already the
+source for breakdown deductions per the existing hire billing work), DPR
+summary (Part 4), and downtime reporting. One breakdown entry, multiple
+consumers — do not duplicate.
+
+
+PART 6 — SUBMISSION VALIDATION SHOWS RAW ERROR CODES INSTEAD OF THE REAL
+MESSAGE (CONFIRMED, EXACT ROOT CAUSE — THIS IS A PRECISE, HIGH-VALUE FIX)
+
+GROUND TRUTH — EXACT ROOT CAUSE
+
+server/routes.ts's `validateProgressProgrammeLinks()` already produces a
+specific, human-readable message naming the exact activity and reason
+(e.g. "Progress entry 'X': the actual execution side (LHS/RHS/Both
+Sides/Full Width) is required for chainage-based work", or a specific
+programme-bar mismatch reason). The four DPR endpoints that call it
+(create, draft-update, submit, version-edit) all respond with:
+  res.status(400).json({ message: linkError, error: "PROGRAMME_LINK_INVALID" })
+i.e. the real, useful message is put in the `message` field, and the
+machine-readable code is put in the `error` field.
+
+client/src/lib/apiError.ts then builds the object the UI actually uses,
+and it prioritizes `json.error` over `json.message`:
+  message: typeof json.error === "string" ? json.error
+          : typeof json.message === "string" ? json.message
+          : body
+Because the server put the CODE under `error` (not the message), this
+picks up the literal string "PROGRAMME_LINK_INVALID" as the "message",
+and the real per-activity explanation is discarded before it ever reaches
+the screen. `code` in the same object ends up undefined (apiError.ts only
+reads `json.code`, which was never set), so
+client/src/lib/dprErrors.ts's dedicated `if (code === "PROGRAMME_LINK_INVALID")`
+branch never matches either, and it falls through to the generic 400
+handler that just prints whatever ended up in `message` — the raw code.
+
+This same field-naming mismatch likely affects other DPR-validation
+codes emitted the same way (at minimum check QUANTITY_SOURCE_INVALID and
+MATERIAL_OUTCOME_INVALID for the identical pattern — DPR_NOT_READY
+happens to still work today only because dprErrors.ts has an extra
+string-matching fallback specific to that one code).
+
+REQUIRED FIX
+
+Pick ONE consistent convention and apply it everywhere DPR validation
+responds with a machine code, rather than patching this one string:
+- Preferred: change the four DPR-validation response sites in
+  server/routes.ts to send the machine token under `code` and the human
+  message under `message` (i.e. swap the two field names used today),
+  matching what apiError.ts already expects for `code`. Confirm this
+  does not break any other consumer of these endpoints that might already
+  depend on the current field names — search for `.error ===` or similar
+  checks against these specific literals before changing the response
+  shape.
+- Alternative if the above is judged risky: fix apiError.ts to prefer
+  `json.message` over `json.error` when both are present as strings, and
+  use `json.error` (or `json.code`) only to populate the `code` field.
+State which approach was taken and why.
+
+Whichever is chosen, the end result must be: submitting a DPR with an
+invalid programme link (or any of the other affected codes) shows the
+real, specific, per-activity message on screen — never a bare internal
+constant. Also investigate whether any currently-hidden or inapplicable
+fields are being incorrectly treated as mandatory by this validation path
+(the user reported entering "everything" and still being blocked) —
+report what you find rather than assuming the message fix alone resolves
+every case.
+
+
+PART 7 — EXECUTION ARRANGEMENT OUTCOME LINKED TO DPR (CONFIRMED GAP, NEW
+CAPABILITY)
+
+GROUND TRUTH
+
+`workProgramBars` (shared/schema.ts) is the planned execution item DPR
+already links against via `progressEntries.programmeBarId` (a real FK,
+validated server-side by Part 6's function for side/BOQ-item/scheduled
+compatibility). It has no field capturing a specific day's execution
+outcome — no executed/partially executed/not executed/cancelled/
+suspended/rescheduled vocabulary exists anywhere in the schema.
+`earthworkArrangements.status` is a different concept entirely — it is
+the arrangement's own approval workflow status (draft/submitted/approved/
+rejected/cancelled), not a per-day outcome for planned work.
+
+REQUIRED WORK
+
+For each relevant execution arrangement / programme item, let the DPR
+(or a dedicated step tied to it) record an outcome:
+- Executed
+- Partially Executed (record actual executed quantity/resource use)
+- Not Executed
+- Cancelled
+- Suspended
+- Early Closed
+- Rescheduled (capture the new date)
+
+with a reason selected from a list (Rain, Site not ready, Client
+instruction, Equipment breakdown, Vendor unavailable, Material
+unavailable, Work completed early, Change in programme, Other) plus free
+text for Other.
+
+The original planned arrangement must remain in history — do not delete
+or overwrite it; record the outcome as an additional linked record
+alongside it. Show Planned vs Actual outcome together wherever the
+programme bar or its linked DPR entries are viewed. Reuse the existing
+`programmeBarId` link already present on `progressEntries` as the
+connection point — do not invent a second, parallel link between DPR and
+programme.
+
+INVESTIGATE FIRST: confirm the minimal additive schema needed (most
+likely a new small table keyed to workProgramBars.id plus date, holding
+outcome/reason/reschedule-date/actual-quantity) and report the proposed
+shape before migrating — do not guess at a larger schema than necessary.
+
+PRESERVE HISTORY — DO NOT MODEL THIS AS ONE MUTABLE STATUS
+
+One programme bar may go through multiple outcome events over time — for
+example Suspended on 30 Aug, then Rescheduled or Executed on 2 Sep. Do
+NOT design this as a single row per bar that gets overwritten each time
+its disposition changes. Each outcome event must be its own record (i.e.
+the new table is append-only / one row per event, not one row per bar),
+so earlier Suspended/Rescheduled actions remain visible and auditable
+alongside the current one. The most recent event can be shown prominently
+as the bar's current disposition, but the full event history must remain
+queryable — this is exactly the "arranged for tomorrow, didn't happen,
+moved to another day" case that matters in practice.
+
+
+PART 8 — MATERIAL TRIP: IN-HOUSE / AGENCY (CONFIRMED GAP, NEW FIELD)
+
+GROUND TRUTH
+
+`siteMaterialTrips` (shared/schema.ts) has no field distinguishing
+in-house/own-fleet transport from agency/vendor transport today — only a
+free-text `supplier` field and indent/BOQ linkage fields, neither of
+which reliably distinguishes this.
+
+REQUIRED WORK
+
+Add a Transport Type to every material trip:
+- In-house
+- Agency / Vendor
+
+If Agency: capture Vendor, Vehicle, trip quantity/details (largely
+already captured — just needs the Agency/Vendor classification attached).
+If In-house: allow linking an internal vehicle/equipment where available,
+falling back to free text if no master record exists yet — do not block
+entry on a missing vehicle master record.
+
+This distinction affects costing and vendor billing, so it must be a
+structured field (not folded into the free-text `supplier` field) even
+though the internal-vehicle-master linkage itself can remain simple/
+free-text-fallback for now.
+
+
+PART 9 — SHOW MATERIAL TRIPS INSIDE DPR (CONFIRMED — DISPLAY FIX ONLY, NO
+NEW DATA FETCHING NEEDED)
+
+GROUND TRUTH
+
+client/src/components/DprDayTripsPanel.tsx already fetches the complete
+list of that day's site material trips (material, supplier, vehicle,
+quantity, uom, location, receipt number, time — everything needed) via
+the existing `/api/site-material-trips` endpoint. It then immediately
+collapses this into an aggregate grouped by material+uom and renders only
+a one-line summary ("Soil 26400 CFT · 44 trips · 44 not linked to an
+activity yet") — discarding the per-trip detail before it ever reaches
+the screen. The data is already there; only the rendering collapses it.
+
+REQUIRED FIX
+
+Render the individual trips (the already-fetched, already-filtered
+`active` array), not just the aggregate — either as the primary view or
+as an expandable list under the existing summary line. Show, per trip:
+Material, From/To or Location, Vehicle, Transport Type (In-house/Agency,
+once Part 8 exists), Vendor/Supplier, Quantity, Receipt/reference. Do NOT
+duplicate this into a second data-entry surface — it must remain
+read-only/linked, sourced from the same trips record used by the
+Material Receipt report. The Material Receipt report can remain the
+detailed stores record; this is DPR reflecting the same day's logistics
+for completeness.
+
+
+DO NOT TOUCH
+
+Do not change: the underlying chainage→length formula in
+shared/dprGeometry.ts (Part 2 only adds a manual-override guard around
+it); the cut-fill ledger's calculation logic (Part 3 only addresses
+discoverability); any Vendor Bill / Equipment Hire billing logic from
+prior batches; Material Receipt report; Purchase Indent workflow;
+existing Equipment & Fleet maintenance screen behavior (Part 5 only adds
+a second entry point into the same table).
+
+
+TESTS
+
+A. Dashboard "Open" on an unfinished draft DPR (both a road-DPR draft and
+   a structure-DPR draft) opens that exact draft with all previously
+   entered sections/values intact — no 404, no new DPR created.
+B. A row with a manually entered Length: changing From or To chainage
+   afterward does NOT silently overwrite Length; the user is prompted and
+   must confirm before it changes. A row where Length was never manually
+   touched continues to auto-recompute on chainage change exactly as
+   today.
+C. Chainage 2.900→3.000 still yields Length 100m and Qty computed
+   correctly (regression — confirm the formula itself is untouched).
+D. A fill activity correctly linked to a `reused_excavated` arrangement
+   still shows Required/Available/Allocated/Uncovered exactly as before
+   (regression). A fill activity NOT linked this way now surfaces a clear
+   prompt about linking a source rather than proceeding silently
+   untracked.
+E. Equipment Log summary (SiteReport.tsx) now shows Expected Diesel and
+   Norm/Efficiency per row, matching the values already shown at entry
+   time.
+F. Logging a breakdown from DPR Equipment Usage entry creates/links a row
+   visible in Equipment & Fleet's existing maintenance log view, and vice
+   versa — one record, both surfaces.
+G. Submitting a DPR that fails the programme-link validation shows the
+   real, specific, per-activity message on screen — not a raw code.
+   Confirm this for the exact recorded scenario and at least one other
+   distinct validation failure reason from the same function.
+H. Any other DPR-validation codes found to share this field-naming bug
+   (e.g. QUANTITY_SOURCE_INVALID, MATERIAL_OUTCOME_INVALID) are fixed
+   consistently and also show real messages.
+I. An execution arrangement item can be marked Executed / Partially
+   Executed / Not Executed / Cancelled / Suspended / Early Closed /
+   Rescheduled with a reason; the original planned record remains in
+   history unchanged; Planned vs Actual is visible together.
+J. A material trip can be marked In-house or Agency/Vendor; existing
+   trips without this field set do not break existing reports.
+K. DPR now shows the day's individual material trips (not just an
+   aggregate count), sourced from the same existing data, with no
+   duplicate entry surface created.
+L. Full test suite.
+
+
+SCHEMA
+
+Additive only. Expected additive needs: possibly a small number of new
+fields on `equipmentMaintenanceLogs` for Part 5 (investigate first per
+that part's persistence/linking check — do not assume none are needed),
+an append-only outcome-event table for Part 7 (investigate and report
+exact shape before migrating — must support multiple events per bar, not
+one mutable row per bar), and a transport-type field (plus vendor/vehicle
+linkage as needed) on `siteMaterialTrips` for Part 8. No schema changes
+are expected for Parts 1, 2, 4, 6, 9. If any other schema change is found
+necessary, STOP and report the minimum proposal before migrating. No
+destructive migration.
+
+
+REPORT BACK
+
+1. Exact fix applied to Home.tsx's draft-resume link, and confirmation it
+   now matches FieldHome.tsx's working pattern.
+2. How the manual-length-override guard was implemented (flag location,
+   whether it persists across reload).
+3. Findings on Part 3 (was the arrangement type the actual cause in the
+   recorded example, and what discoverability change was made).
+4. Files changed for the Equipment Log summary additions.
+5. Results of the Part 5 persistence/linking investigation — what
+   equipment_maintenance_logs already had vs. what additive fields (if
+   any) were needed, and confirmation the source link is explicit
+   (sourceType + sourceRecordId or equivalent), not equipment+date
+   matching. Confirm breakdown logging writes to the existing table via
+   the existing endpoint, with no new table created.
+6. Which fix approach was taken for Part 6 (server field rename vs client
+   priority fix), why, and confirmation of which other codes were found
+   to share the bug and were fixed.
+7. Proposed/implemented schema for Part 7's outcome tracking, confirming
+   it is append-only (multiple events per bar preserved, not overwritten).
+8. Exact fields added for Part 8.
+9. Confirmation Part 9 required no new endpoint/fetch.
+10. Full test suite result.
+
+DO NOT START ANOTHER FEATURE.
+STOP AND REPORT BACK.
