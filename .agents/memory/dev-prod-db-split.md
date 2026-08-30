@@ -1,28 +1,29 @@
 ---
-name: Dev/Prod Database Split
-description: Architecture of the two-database setup — dev uses sitelog_dev, production uses heliumdb; how server/db.ts selects the connection.
+name: Three database targets
+description: Dev runtime, Publish comparison source, and managed production are distinct database targets that must not be conflated.
 ---
 
-# Dev/Prod Database Split
+# Three Database Targets
 
 ## The Rule
-The dev server (`npm run dev`) connects to `sitelog_dev`; the production deployment connects to `heliumdb`. All bug-fixing and feature testing is done against the dev database only. Production only receives code changes via Publish.
+Treat the dev runtime database, Replit's managed development database used by Publish, and managed production as three distinct targets. Never infer one target's schema from another.
 
-**Why:** Previously both environments shared `heliumdb`, meaning every test run risked corrupting live data.
+**Why:** The dev app was correctly using its isolated database while the managed Publish comparison database missed additive migrations. Publish therefore proposed deleting populated production columns and a history table to match stale development schema.
 
 ## How to Apply
 - `server/db.ts` reads `process.env.DEV_DATABASE_URL || process.env.DATABASE_URL`.
 - `DEV_DATABASE_URL` is set as a **development-scoped** env var (not shared, not a secret) pointing to `postgresql://...@helium:5432/sitelog_dev?sslmode=disable`.
-- The production deployment does not have `DEV_DATABASE_URL` in its secrets, so it continues to use `DATABASE_URL` → `heliumdb`.
+- The production deployment does not select `DEV_DATABASE_URL`; Replit supplies its managed production connection.
 - On startup, if `DEV_DATABASE_URL` is active, the server logs: `[db] Using DEV_DATABASE_URL (development database)`.
 
-## Database Details
-| | Name | Used by |
+## Database Roles
+| Role | Name | Used by |
 |---|---|---|
-| Production | `heliumdb` | Deployed app via Publish |
-| Development | `sitelog_dev` | Dev server, testing |
+| App development | `sitelog_dev` | Dev server and testing |
+| Publish comparison source | `heliumdb` | Replit's managed development schema |
+| Managed production | platform production database | Deployed app and production read-only query path |
 
-Both databases live in the same PostgreSQL cluster on host `helium:5432` (postgres superuser). `sitelog_dev` was seeded from a clean pg_dump taken on 2026-07-18 after removing test sites SMOKE (id=15) and NH-167 (id=17).
+**How to apply:** verify the dev workflow connection, the development SQL callback target, and the production read-only SQL target separately. Before Publish, align additive schema in both development targets and require a zero-drop schema preview.
 
 ## Backup Files
 Located in `.local/backups/` (not committed to git — push manually to GitHub if needed):
