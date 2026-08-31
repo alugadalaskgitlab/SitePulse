@@ -64,6 +64,8 @@ import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/Brea
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import { flattenCutFillConsumptions, hydrateCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
 import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
+import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
@@ -1060,7 +1062,21 @@ export default function GuidedDpr() {
             ? e.machine || e.vehicleNo || e.operator || e.task || Object.values(e.passthrough ?? {}).some((v) => v != null && v !== "")
             : e.machine,
         )
-        .map((e) => buildGuidedEquipmentPayload(e)),
+        .map((e) => {
+          const pt = e.passthrough as any;
+          const master = activeEquipmentMaster.find((m: any) => m.id === pt.equipmentId);
+          const preview = computeEquipmentUsage(master ?? (pt.dieselNorm != null ? { consumptionNorm: Number(pt.dieselNorm) } : null), pt);
+          return buildGuidedEquipmentPayload({
+            ...e,
+            passthrough: {
+              ...pt,
+              totalKm: preview.totalKm ?? pt.totalKm ?? null,
+              hoursWorked: preview.hoursWorked,
+              expectedDiesel: preview.expectedDiesel,
+              dieselNorm: preview.efficiencyValue ?? pt.dieselNorm ?? null,
+            },
+          });
+        }),
       // Batch 06C §12: real values round-trip — gender / work-item / structure
       // links are never wiped by a Guided save.
       labour: labour.filter((l) => l.category).map((l) => ({
@@ -1980,6 +1996,8 @@ export default function GuidedDpr() {
                   const isDirectPurchase = pt.dieselSource === "direct_purchase";
                   return (
                     <div key={i} className="mb-3 p-3 border rounded-lg bg-muted/20 space-y-2 transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", i)} data-testid={"equipment-row-" + String(i)}>
+                      <details open={!eq.machine} className="group">
+                      <summary className="cursor-pointer list-none text-xs font-semibold text-muted-foreground after:ml-2 after:content-['Edit_Usage_Details'] group-open:after:content-['Close_Usage_Details']" />
                       {/* A. Identity */}
                       <div className="grid grid-cols-[1fr_auto] gap-2">
                         {/* Batch 06C §8: machine comes from the Equipment & Fleet
@@ -2283,6 +2301,16 @@ export default function GuidedDpr() {
                       {advisory && (
                         <p className="text-xs text-amber-700 dark:text-amber-400" data-testid={`text-eq-dup-advisory-${i}`}>{advisory}</p>
                       )}
+                      </details>
+                      <DprEquipmentCompact
+                        row={{ ...pt, machine: eq.machine, vehicleNo: eq.vehicleNo }}
+                        equipment={master}
+                        index={i}
+                        beforeDate={date}
+                        site={siteName}
+                        onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === i
+                          ? { ...row, passthrough: { ...row.passthrough, ...patch } } : row))}
+                      />
                       <BreakdownStoppageEditor
                         value={(pt.breakdowns ?? []) as StagedBreakdown[]}
                         onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) =>

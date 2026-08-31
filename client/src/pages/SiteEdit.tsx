@@ -54,6 +54,8 @@ import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/Brea
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import { flattenCutFillConsumptions, hydrateCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
 import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
+import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 
 interface ProgressEntry {
   /** Client-only database id for exact-row report deep links; stripped on save. */
@@ -104,6 +106,10 @@ interface EquipmentEntry {
   openingReading: number | null;
   closingReading: number | null;
   diesel: number | null;
+  openingDiesel?: number | null;
+  dieselBalanceInTank?: number | null;
+  dieselBalanceConfirmed?: boolean | null;
+  dieselNorm?: number | null;
   equipmentId: number | null;
   plantUsageId: number | null;
   dieselSource: string;
@@ -250,6 +256,12 @@ function mapDprToFormState(dpr: any) {
         openingReading: e.openingReading ?? null,
         closingReading: e.closingReading ?? null,
         diesel: e.diesel,
+        openingDiesel: e.openingDiesel ?? null,
+        dieselBalanceInTank: e.dieselBalanceInTank ?? null,
+        dieselBalanceConfirmed: e.dieselBalanceConfirmed ?? null,
+        dieselNorm: e.dieselNorm ?? null,
+        expectedDiesel: e.expectedDiesel ?? null,
+        hoursWorked: e.hoursWorked ?? null,
         equipmentId: e.equipmentId ?? null,
         plantUsageId: e.plantUsageId ?? null,
         dieselSource: e.dieselSource ?? "",
@@ -1089,10 +1101,18 @@ export default function SiteEdit() {
     equipment: equipment.filter(e => e.machine).map(eq => {
       // 06Q: isNew is client-session state only — never sent to the server.
       const { isNew: _isNew, ...rest } = eq;
+      const preview = computeEquipmentUsage(
+        activeEquipment.find((item) => item.id === eq.equipmentId) ??
+          (eq.dieselNorm != null ? { consumptionNorm: eq.dieselNorm } : null),
+        eq,
+      );
       return {
         ...rest,
-        totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
-          ? Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2 : eq.totalKm || null,
+        totalKm: preview.totalKm ?? (eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
+          ? Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2 : eq.totalKm || null),
+        hoursWorked: preview.hoursWorked,
+        expectedDiesel: preview.expectedDiesel,
+        dieselNorm: preview.efficiencyValue ?? eq.dieselNorm ?? null,
       };
     }),
     labour: labour.filter(l => l.count > 0),
@@ -2360,6 +2380,8 @@ export default function SiteEdit() {
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
+              <details open={!entry.machine} className="group">
+              <summary className="mb-2 cursor-pointer list-none text-xs font-semibold text-muted-foreground after:ml-2 after:content-['Edit_Usage_Details'] group-open:after:content-['Close_Usage_Details']" />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="col-span-2">
                 <Label className="text-sm">Equipment</Label>
@@ -2784,7 +2806,16 @@ export default function SiteEdit() {
                   </>
                 )}
               </div>
-              <BreakdownStoppageEditor
+                </details>
+                <DprEquipmentCompact
+                  row={entry}
+                  equipment={activeEquipment.find((item) => item.id === entry.equipmentId)}
+                  index={idx}
+                  beforeDate={header.date}
+                  site={header.site}
+                  onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } : row))}
+                />
+                <BreakdownStoppageEditor
                 value={entry.breakdowns ?? []}
                 onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, breakdowns } : row))}
                 testId={`edit-equipment-breakdown-${idx}`}

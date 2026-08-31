@@ -209,6 +209,11 @@ export const equipmentLogs = pgTable("equipment_logs", {
   diesel: real("diesel"),
   dieselNorm: real("diesel_norm"), // L/hr norm for efficiency calculation
   expectedDiesel: real("expected_diesel"), // Auto-calculated: hoursWorked * norm
+  // Physical tank readings are intentionally nullable: do not manufacture
+  // historical tank balances from diesel issued or norms.
+  openingDiesel: real("opening_diesel"),
+  dieselBalanceInTank: real("diesel_balance_in_tank"),
+  dieselBalanceConfirmed: boolean("diesel_balance_confirmed"),
   task: text("task"), // e.g., "Rolling WMM", "Watering shoulders"
   // Optional link to equipment master for unified reporting
   equipmentId: integer("equipment_id"), // Links to equipmentMaster for unified tracking

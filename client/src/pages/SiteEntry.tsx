@@ -64,6 +64,7 @@ import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/Brea
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import { flattenCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
 import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
+import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 
 interface ProgressEntry {
   // Batch 06C §22: stable client key so photos can link to this activity row
@@ -126,6 +127,12 @@ interface EquipmentEntry {
   structureId: string | null;
   // Batch 6: links this DPR equipment row back to the plant equipment_usage record it closes
   plantUsageId: number | null;
+  openingDiesel?: number | null;
+  dieselBalanceInTank?: number | null;
+  dieselBalanceConfirmed?: boolean | null;
+  hoursWorked?: number | null;
+  expectedDiesel?: number | null;
+  dieselNorm?: number | null;
   breakdowns?: StagedBreakdown[];
 }
 
@@ -1207,11 +1214,21 @@ export default function SiteEntry() {
       // Send client's local timestamp for accurate time display
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
 
-      const normalizedEquipment = (await prepareBreakdownAttachments(equipment)).map(eq => ({
-        ...eq,
-        totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
-          ? computeTripTotalKm(eq.numberOfTrips, eq.tripDistance) : eq.totalKm || null,
-      }));
+      const normalizedEquipment = (await prepareBreakdownAttachments(equipment)).map(eq => {
+        const preview = computeEquipmentUsage(
+          activeEquipment.find((item) => item.id === eq.equipmentId) ??
+            (eq.dieselNorm != null ? { consumptionNorm: eq.dieselNorm } : null),
+          eq,
+        );
+        return {
+          ...eq,
+          totalKm: preview.totalKm ?? (eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
+            ? computeTripTotalKm(eq.numberOfTrips, eq.tripDistance) : eq.totalKm || null),
+          hoursWorked: preview.hoursWorked,
+          expectedDiesel: preview.expectedDiesel,
+          dieselNorm: preview.efficiencyValue ?? eq.dieselNorm ?? null,
+        };
+      });
 
       const response = await apiRequest("POST", "/api/dprs", {
         date: header.date,
@@ -1416,11 +1433,19 @@ export default function SiteEntry() {
         };
       });
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
-      const normalizedEquipment = equipment.map(eq => ({
-        ...eq,
-        totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
-          ? computeTripTotalKm(eq.numberOfTrips, eq.tripDistance) : eq.totalKm || null,
-      }));
+      const normalizedEquipment = equipment.map(eq => {
+        const preview = computeEquipmentUsage(
+          activeEquipment.find((item) => item.id === eq.equipmentId) ??
+            (eq.dieselNorm != null ? { consumptionNorm: eq.dieselNorm } : null), eq);
+        return {
+          ...eq,
+          totalKm: preview.totalKm ?? (eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
+            ? computeTripTotalKm(eq.numberOfTrips, eq.tripDistance) : eq.totalKm || null),
+          hoursWorked: preview.hoursWorked,
+          expectedDiesel: preview.expectedDiesel,
+          dieselNorm: preview.efficiencyValue ?? eq.dieselNorm ?? null,
+        };
+      });
       const response = await apiRequest("POST", "/api/dprs", {
         date: header.date,
         site: header.site,
@@ -2772,6 +2797,8 @@ export default function SiteEntry() {
                   <Trash2 className="w-4 h-4" />
                 </Button>
                 
+                <details open={!entry.machine} className="group">
+                <summary className="mb-2 cursor-pointer list-none text-xs font-semibold text-muted-foreground after:ml-2 after:content-['Edit_Usage_Details'] group-open:after:content-['Close_Usage_Details']" />
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="col-span-2">
                     <Label className="text-sm">Equipment</Label>
@@ -3257,6 +3284,15 @@ export default function SiteEntry() {
                     </>
                   )}
                 </div>
+                </details>
+                <DprEquipmentCompact
+                  row={entry}
+                  equipment={selectedEquipForRow}
+                  index={idx}
+                  beforeDate={header.date}
+                  site={header.site}
+                  onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } : row))}
+                />
                 <BreakdownStoppageEditor
                   value={entry.breakdowns ?? []}
                   onChange={(breakdowns) => setEquipment(current => current.map((row, rowIndex) => rowIndex === idx ? { ...row, breakdowns } : row))}

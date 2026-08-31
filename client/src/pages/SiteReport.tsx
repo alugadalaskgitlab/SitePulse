@@ -28,8 +28,8 @@ import {
   linkedUsageId,
   type EquipmentDestinationType,
 } from "@/lib/equipmentLifecycle";
-import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { ProgrammeBarOutcomeHistory } from "@/components/ProgrammeBarOutcomeHistory";
+import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -418,6 +418,12 @@ export default function SiteReport() {
               <p className="text-muted-foreground italic">No structure items recorded.</p>
             ) : (
               <div className="overflow-x-auto">
+              <details className="rounded-md border border-border/60">
+                <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted-foreground">Open detailed audit fields</summary>
+              <div className="overflow-x-auto p-1">
+              <details className="rounded-md border border-border/60">
+                <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted-foreground">Open detailed audit fields</summary>
+                <div className="overflow-x-auto p-1">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -446,6 +452,10 @@ export default function SiteReport() {
                   ))}
                 </TableBody>
               </Table>
+                </div>
+              </details>
+              </div>
+              </details>
               </div>
             )
           ) : dpr.progress.length === 0 ? (
@@ -554,6 +564,18 @@ export default function SiteReport() {
             {dpr.equipment.length === 0 ? (
               <p className="text-muted-foreground italic">No equipment usage recorded.</p>
             ) : (
+              <div className="space-y-2">
+              <div className="space-y-2">
+                {dpr.equipment.map((item: any, i: number) => (
+                  <DprEquipmentCompact
+                    key={i}
+                    row={item}
+                    equipment={equipmentById.get(item.equipmentId)}
+                    editable={false}
+                    index={i}
+                  />
+                ))}
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -562,7 +584,7 @@ export default function SiteReport() {
                     <TableHead>Operator</TableHead>
                     <TableHead>Task</TableHead>
                     <TableHead>Time/Meter</TableHead>
-                    <TableHead className="text-right">Hours</TableHead>
+                    <TableHead className="text-right">Operating Quantity</TableHead>
                     <TableHead className="text-right">Diesel (L)</TableHead>
                     <TableHead className="text-right">Expected Diesel</TableHead>
                     <TableHead>Norm / Efficiency</TableHead>
@@ -573,32 +595,14 @@ export default function SiteReport() {
                 </TableHeader>
                 <TableBody>
                   {dpr.equipment.map((item: any, i: number) => {
-                    const calculateTimeHours = (startTime?: string, endTime?: string) => {
-                      if (!startTime || !endTime) return null;
-                      try {
-                        const [startHour, startMin] = startTime.split(':').map(Number);
-                        const [endHour, endMin] = endTime.split(':').map(Number);
-                        const startMins = startHour * 60 + startMin;
-                        const endMins = endHour * 60 + endMin;
-                        let diff = endMins - startMins;
-                        if (diff < 0) diff += 24 * 60;
-                        return diff / 60;
-                      } catch {
-                        return null;
-                      }
-                    };
-                    const calculateMeterHours = (opening?: number, closing?: number) => {
-                      if (opening == null || closing == null) return null;
-                      const diff = closing - opening;
-                      return diff >= 0 ? diff : null;
-                    };
-                    
                     const et = item.entryType || "time_meter";
                     const isTripBased = et === "trip_based";
-                    
-                    const meterHours = calculateMeterHours(item.openingReading, item.closingReading);
-                    const timeHours = calculateTimeHours(item.startTime, item.endTime);
-                    const hours = item.hoursWorked ?? meterHours ?? timeHours;
+                    const operatingQuantity = item.hoursWorked != null
+                      ? `${Number(item.hoursWorked).toFixed(3)} h`
+                      : item.totalKm != null ? `${Number(item.totalKm).toFixed(3)} km` : "—";
+                    const persistedExpected = item.expectedDiesel != null ? Number(item.expectedDiesel) : null;
+                    const persistedNorm = item.dieselNorm != null ? Number(item.dieselNorm) : null;
+                    const persistedNormUnit = item.totalKm != null ? "L/km" : item.hoursWorked != null ? "L/hr" : "";
                     
                     const hasReading = item.openingReading != null && item.closingReading != null;
                     const hasTime = item.startTime && item.endTime;
@@ -616,10 +620,6 @@ export default function SiteReport() {
                       && usageId != null
                       && usageLifecycle?.status === "closed"
                       && usageLifecycle.successorId == null;
-                    const usage = computeEquipmentUsage(
-                      equipmentById.get(item.equipmentId) ?? (item.dieselNorm != null ? { consumptionNorm: item.dieselNorm } : null),
-                      item,
-                    );
                     const linkedRows = breakdownsBySourceId.get(Number(item.id)) ?? [];
                     
                     return (
@@ -641,20 +641,17 @@ export default function SiteReport() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          {hours != null ? hours.toFixed(3) : '-'}
-                          {isTripBased && item.numberOfTrips && item.tripDistance && (
-                            <div className="text-[12px] text-muted-foreground">{(item.numberOfTrips * item.tripDistance * 2).toFixed(1)} km</div>
-                          )}
+                          {operatingQuantity}
                         </TableCell>
                         <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                         <TableCell className="text-right">
-                          {usage.expectedDiesel != null ? `${usage.expectedDiesel.toFixed(3)} L` : "-"}
+                          {persistedExpected != null ? `${persistedExpected.toFixed(3)} L` : "—"}
                         </TableCell>
                         <TableCell className="text-sm">
-                          {usage.efficiencyLabel ?? "-"}
-                          {usage.expectedDiesel != null && item.diesel != null && (
+                          {persistedNorm != null ? `${persistedNorm.toFixed(3)}${persistedNormUnit ? ` ${persistedNormUnit}` : ""}` : "—"}
+                          {persistedExpected != null && item.diesel != null && (
                             <div className="text-xs text-muted-foreground">
-                              Actual variance: {(Number(item.diesel) - usage.expectedDiesel).toFixed(3)} L
+                              Actual variance: {(Number(item.diesel) - persistedExpected).toFixed(3)} L
                             </div>
                           )}
                         </TableCell>
@@ -756,6 +753,7 @@ export default function SiteReport() {
                   })}
                 </TableBody>
               </Table>
+              </div>
             )}
           </CardContent>
         </Card>

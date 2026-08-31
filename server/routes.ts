@@ -4441,6 +4441,29 @@ export async function registerRoutes(
     }
   });
 
+  // Physical fuel-tank continuity is intentionally separate from calculated
+  // diesel closings: only a submitted, live DPR's confirmed dip is eligible.
+  app.get("/api/equipment/:equipmentId/latest-confirmed-diesel-tank", requireAuth, async (req, res) => {
+    try {
+      if (!assertView(req, res, "site_dprs")) return;
+      const equipmentId = parseInt(req.params.equipmentId);
+      const beforeDate = req.query.beforeDate as string | undefined;
+      const siteName = typeof req.query.site === "string" ? req.query.site.trim() : "";
+      if (!equipmentId || !beforeDate || !/^\d{4}-\d{2}-\d{2}$/.test(beforeDate) || !siteName) {
+        return res.status(400).json({ message: "equipmentId, site, and beforeDate (YYYY-MM-DD) are required" });
+      }
+      if (!await assertTripSiteAccess(req, res, siteName)) return;
+      const inclusive = req.query.inclusive === "1" || req.query.inclusive === "true";
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      const resolved = await storage.resolveLatestConfirmedDieselTank(
+        equipmentId, beforeDate, { siteName, permittedSiteNames }, { inclusive },
+      );
+      res.json(resolved ?? { dieselBalanceInTank: null, sourceDate: null, recordId: null });
+    } catch (_) {
+      res.status(500).json({ message: "Failed to resolve latest confirmed diesel tank" });
+    }
+  });
+
   // 06X: destinationSite is a Site-master identity, not arbitrary text.
   // Canonicalise casing on both create and update and enforce the same
   // destination-site access boundary used by DPR equipment discovery.

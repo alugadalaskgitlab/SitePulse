@@ -390,6 +390,7 @@ import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc,
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { pickLatestClosing, type ResolvedClosing } from "@shared/equipmentContinuity";
+import { computeEquipmentUsage } from "@shared/equipmentUsage";
 import { shouldCreateDprEquipmentDieselLedger } from "@shared/dprPlantLink";
 import { normaliseUnit, computeRequirementStatus, isContractCutToFillDescription } from "@shared/planningEngine";
 import { convertSolidQty } from "@shared/uomConvert";
@@ -537,6 +538,10 @@ export type DprEquipmentClosureAudit = {
   userName?: string | null;
   closedAt?: Date;
   allowMovedSourceReuse?: boolean;
+  /** Clone copies an existing physical event: retain its canonical linkage. */
+  preserveLinkedClone?: boolean;
+  /** Clone-log id -> legacy source-log id, used to establish linkage once. */
+  cloneSourceLogIds?: Record<number, number>;
 };
 
 export interface IStorage {
@@ -662,6 +667,7 @@ export interface IStorage {
   getEquipmentUsageById(id: number): Promise<EquipmentUsage | undefined>;
   // 06Q: canonical cross-source "latest prior valid closing" resolver.
   resolveLatestPriorClosing(equipmentId: number, beforeDate: string, opts?: { inclusive?: boolean }): Promise<import("@shared/equipmentContinuity").ResolvedClosing | null>;
+  resolveLatestConfirmedDieselTank(equipmentId: number, beforeDate: string, scope: { siteName: string; permittedSiteNames: string[] | null }, opts?: { inclusive?: boolean }): Promise<{ dieselBalanceInTank: number; sourceDate: string; recordId: number } | null>;
   createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage>;
   updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined>;
   deleteEquipmentUsage(id: number): Promise<boolean>;
@@ -2864,14 +2870,15 @@ export class DatabaseStorage implements IStorage {
       // 3. Insert Equipment Logs with uppercase text fields
       if (dprData.equipment?.length) {
         this.assertValidDprEquipmentDieselSources(dprData.equipment);
+        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, dprData.equipment as any[]);
         insertedEquipLogs = await tx.insert(equipmentLogs).values(
-          dprData.equipment.map((input: any) => { const { breakdowns: _breakdowns, persistedId: _persistedId, ...e } = input; return ({
+          normalisedEquipment.map((e: any) => ({
             ...e,
             dprId,
             machine: e.machine?.toUpperCase() || e.machine,
             operator: e.operator?.toUpperCase() || e.operator,
             task: e.task?.toUpperCase() || e.task,
-          }); })
+          }))
         ).returning();
         await this.reconcileDprBreakdownsTx(tx, [], insertedEquipLogs, dprData.equipment as any[], dprData.date);
 
@@ -3016,8 +3023,9 @@ export class DatabaseStorage implements IStorage {
       let insertedEquipLogs: any[] = [];
       if (dprData.equipment?.length) {
         this.assertValidDprEquipmentDieselSources(dprData.equipment);
+        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, dprData.equipment as any[]);
         insertedEquipLogs = await tx.insert(equipmentLogs).values(
-          dprData.equipment.map((input: any) => { const { breakdowns: _breakdowns, persistedId: _persistedId, ...e } = input; return ({ ...e, dprId: id, machine: e.machine?.toUpperCase() || e.machine, operator: e.operator?.toUpperCase() || e.operator, task: e.task?.toUpperCase() || e.task }); })
+          normalisedEquipment.map((e: any) => ({ ...e, dprId: id, machine: e.machine?.toUpperCase() || e.machine, operator: e.operator?.toUpperCase() || e.operator, task: e.task?.toUpperCase() || e.task }))
         ).returning();
         await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
       }
@@ -3110,8 +3118,9 @@ export class DatabaseStorage implements IStorage {
       let insertedEquipLogs: any[] = [];
       if (dprData.equipment?.length) {
         this.assertValidDprEquipmentDieselSources(dprData.equipment);
+        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, dprData.equipment as any[]);
         insertedEquipLogs = await tx.insert(equipmentLogs).values(
-          dprData.equipment.map((input: any) => { const { breakdowns: _breakdowns, persistedId: _persistedId, ...e } = input; return ({ ...e, dprId: id }); })
+          normalisedEquipment.map((e: any) => ({ ...e, dprId: id }))
         ).returning();
         await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
       }
@@ -3276,8 +3285,9 @@ export class DatabaseStorage implements IStorage {
       // Copy equipment logs with uppercase
       if (original.equipment?.length) {
         this.assertValidDprEquipmentDieselSources(original.equipment);
+        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, original.equipment as any[]);
         const insertedEquipLogs = await tx.insert(equipmentLogs).values(
-          original.equipment.map(e => ({
+          normalisedEquipment.map((e: any) => ({
             dprId,
             machine: e.machine?.toUpperCase() || e.machine,
             operator: e.operator?.toUpperCase() || e.operator,
@@ -3296,6 +3306,9 @@ export class DatabaseStorage implements IStorage {
             hoursWorked: e.hoursWorked,
             dieselNorm: e.dieselNorm,
             expectedDiesel: e.expectedDiesel,
+            openingDiesel: e.openingDiesel,
+            dieselBalanceInTank: e.dieselBalanceInTank,
+            dieselBalanceConfirmed: e.dieselBalanceConfirmed,
             entryType: (e as any).entryType ?? "time_meter",
             numberOfTrips: (e as any).numberOfTrips ?? null,
             tripDistance: (e as any).tripDistance ?? null,
@@ -3305,8 +3318,18 @@ export class DatabaseStorage implements IStorage {
           }))
         ).returning();
         await this.reconcileDprBreakdownsTx(tx, original.equipment, insertedEquipLogs, original.equipment, original.date);
-
-        await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, original.date, original.site);
+        // A clone is another document view of the same physical event. It
+        // neither posts fuel again nor creates a second canonical usage.
+        // Existing links remain authoritative; only genuinely legacy,
+        // unlinked rows are materialized once and linked to this clone.
+        await this.finalizeDprEquipmentUsageTx(tx, newDpr, insertedEquipLogs, {
+          userName: editedBy,
+          allowMovedSourceReuse: true,
+          preserveLinkedClone: true,
+          cloneSourceLogIds: Object.fromEntries(
+            insertedEquipLogs.map((row: any, index: number) => [row.id, original.equipment![index].id]),
+          ),
+        });
       }
 
       // Copy labour logs
@@ -3457,14 +3480,15 @@ export class DatabaseStorage implements IStorage {
       // Insert edited equipment logs with uppercase text fields
       if (dprData.equipment?.length) {
         this.assertValidDprEquipmentDieselSources(dprData.equipment);
+        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, dprData.equipment as any[]);
         insertedEquipLogs = await tx.insert(equipmentLogs).values(
-          dprData.equipment.map((input: any) => { const { breakdowns: _breakdowns, persistedId: _persistedId, ...e } = input; return ({
+          normalisedEquipment.map((e: any) => ({
             ...e,
             dprId,
             machine: e.machine?.toUpperCase() || e.machine,
             operator: e.operator?.toUpperCase() || e.operator,
             task: e.task?.toUpperCase() || e.task,
-          }); })
+          }))
         ).returning();
         await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
       }
@@ -5194,6 +5218,83 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
+  /** Latest physically confirmed DPR tank dip; never derives a value from norms. */
+  async resolveLatestConfirmedDieselTank(
+    equipmentId: number,
+    beforeDate: string,
+    scope: { siteName: string; permittedSiteNames: string[] | null },
+    opts?: { inclusive?: boolean },
+  ): Promise<{ dieselBalanceInTank: number; sourceDate: string; recordId: number } | null> {
+    const dateCondition = opts?.inclusive ? lte(dprs.date, beforeDate) : lt(dprs.date, beforeDate);
+    // Defense in depth: storage receives both the requested current site and
+    // the caller's resolved scope.  Never use an equipment id as permission.
+    const wanted = scope.siteName.trim().toUpperCase();
+    const permitted = scope.permittedSiteNames?.map(s => s.trim().toUpperCase()) ?? null;
+    if (permitted !== null && !permitted.includes(wanted)) return null;
+    const sameDprSite = sql`UPPER(TRIM(${dprs.site})) = ${wanted}`;
+    const sameUsageSite = sql`UPPER(TRIM(COALESCE(${equipmentUsage.siteName}, ''))) = ${wanted}`;
+    const usageDateCondition = opts?.inclusive ? lte(equipmentUsage.date, beforeDate) : lt(equipmentUsage.date, beforeDate);
+    const [usageRows, logRows] = await Promise.all([
+      db.select({ recordId: equipmentUsage.id, sourceDate: equipmentUsage.date, dieselBalanceInTank: equipmentUsage.dieselBalanceInTank })
+        .from(equipmentUsage).where(and(
+          eq(equipmentUsage.equipmentId, equipmentId), usageDateCondition, sameUsageSite,
+          isNotNull(equipmentUsage.dieselBalanceInTank), eq(equipmentUsage.dieselBalanceConfirmed, true),
+          eq(equipmentUsage.status, "closed"),
+        )).orderBy(desc(equipmentUsage.date), sql`${equipmentUsage.createdAt} DESC NULLS LAST`, desc(equipmentUsage.id)).limit(1),
+      db.select({ recordId: equipmentLogs.id, sourceDate: dprs.date, dieselBalanceInTank: equipmentLogs.dieselBalanceInTank })
+        .from(equipmentLogs).innerJoin(dprs, eq(equipmentLogs.dprId, dprs.id)).where(and(
+          eq(equipmentLogs.equipmentId, equipmentId), dateCondition, sameDprSite,
+          isNotNull(equipmentLogs.dieselBalanceInTank), eq(equipmentLogs.dieselBalanceConfirmed, true),
+          eq(dprs.isDeleted, false), eq(dprs.isSuperseded, false), ne(dprs.dprStatus, "draft"),
+          // A linked DPR log mirrors the authoritative canonical usage row.
+          sql`NOT EXISTS (SELECT 1 FROM equipment_usage eu WHERE eu.id = ${equipmentLogs.plantUsageId})`,
+        )).orderBy(desc(dprs.date), desc(equipmentLogs.id)).limit(1),
+    ]);
+    const candidates = [...usageRows, ...logRows].filter(r => r.dieselBalanceInTank != null);
+    candidates.sort((a, b) => String(b.sourceDate).localeCompare(String(a.sourceDate)) || b.recordId - a.recordId);
+    return candidates[0] ? candidates[0] as any : null;
+  }
+
+  /**
+   * Single DPR write seam. Client-provided derived values are never trusted:
+   * master meter type and norm decide whether the operating quantity is hours
+   * or kilometres. Raw readings, times, trip inputs and tank observations are
+   * deliberately retained unchanged.
+   */
+  private async normaliseDprEquipmentRowsTx(tx: any, rows: any[]): Promise<any[]> {
+    const ids = Array.from(new Set(rows.map(r => Number(r?.equipmentId)).filter(Number.isFinite)));
+    const masters = ids.length
+      ? await tx.select().from(equipmentMaster).where(inArray(equipmentMaster.id, ids))
+      : [];
+    const masterById = new Map<number, any>(masters.map((master: any) => [master.id, master] as [number, any]));
+    return rows.map((input: any) => {
+      const { breakdowns: _breakdowns, persistedId: _persistedId, ...row } = input;
+      const master = masterById.get(Number(row.equipmentId));
+      // A deleted/unavailable master makes the unit ambiguous. Never guess
+      // hour-meter semantics and overwrite historical derived evidence.
+      if (!master) {
+        const persisted = input.persistedId != null || input.id != null;
+        return {
+          ...row,
+          hoursWorked: persisted ? row.hoursWorked ?? null : null,
+          totalKm: persisted ? row.totalKm ?? null : null,
+          expectedDiesel: persisted ? row.expectedDiesel ?? null : null,
+          dieselNorm: persisted ? row.dieselNorm ?? null : null,
+        };
+      }
+      const result = computeEquipmentUsage(master, row);
+      return {
+        ...row,
+        // Never put km into hours_worked. Explicit trip rows operate in km.
+        hoursWorked: result.hoursWorked,
+        totalKm: result.totalKm,
+        expectedDiesel: result.expectedDiesel,
+        // Actual applied norm (L/hr or L/km, including trip conversion).
+        dieselNorm: result.efficiencyValue,
+      };
+    });
+  }
+
   private async _createEquipmentUsageTxn(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {
     assertValidDieselSourceForQuantity(Number(usage.dieselIssued || 0), usage.dieselSource);
     return db.transaction(async (tx) => {
@@ -5224,62 +5325,21 @@ export class DatabaseStorage implements IStorage {
       let totalKm = 0;
       
       if (isShifting) {
-        hoursOrKmRun = 0;
-        expectedDiesel = 0;
         openingDiesel = 0;
         dieselIssued = 0;
-        closingDiesel = 0;
-        variance = 0;
         numberOfTrips = 0;
         tripDistance = 0;
         tripBasedEntry = false;
-        totalKm = 0;
       } else {
-        // Calculate hours/km from meter readings or time entry (meter takes priority)
-        const isHourMeterEquip = equipment?.meterType === "hour_meter";
-        const AVERAGE_SPEED_KMPH = 25;
-        
-        if (usage.openingReading !== null && usage.openingReading !== undefined && 
-            usage.closingReading !== null && usage.closingReading !== undefined) {
-          hoursOrKmRun = usage.closingReading - usage.openingReading;
-        } else if (usage.startTime && usage.endTime) {
-          const [startHour, startMin] = usage.startTime.split(':').map(Number);
-          const [endHour, endMin] = usage.endTime.split(':').map(Number);
-          const startMins = startHour * 60 + startMin;
-          const endMins = endHour * 60 + endMin;
-          const diff = endMins - startMins;
-          const hoursFromTime = diff > 0 ? diff / 60 : 0;
-          
-          if (isHourMeterEquip) {
-            hoursOrKmRun = hoursFromTime;
-          } else {
-            hoursOrKmRun = hoursFromTime * AVERAGE_SPEED_KMPH;
-          }
-        }
-        
-        totalKm = numberOfTrips * tripDistance * 2;
-        
-        const norm = equipment?.consumptionNorm || 0;
-        const isHourMeter = equipment?.meterType === "hour_meter";
-        
-        if (tripBasedEntry) {
-          if (totalKm > 0) {
-            const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
-            expectedDiesel = totalKm * normPerKm;
-          }
-        } else if (hoursOrKmRun > 0) {
-          expectedDiesel = hoursOrKmRun * norm;
-        }
-        
+        const computed = computeEquipmentUsage(equipment, usage);
+        hoursOrKmRun = computed.runtime;
+        totalKm = computed.totalKm ?? 0;
+        expectedDiesel = computed.expectedDiesel ?? 0;
         closingDiesel = openingDiesel + dieselIssued - expectedDiesel;
-        variance = dieselIssued - expectedDiesel;
-
-        // If the operator entered a Diesel Balance in Tank dip, that is the
-        // source of truth for the closing-tank value (overrides the
-        // norm-derived estimate above).
         if (usage.dieselBalanceInTank != null) {
           closingDiesel = usage.dieselBalanceInTank;
         }
+        variance = dieselIssued - expectedDiesel;
       }
       
       const [result] = await tx.insert(equipmentUsage).values({
@@ -5520,6 +5580,12 @@ export class DatabaseStorage implements IStorage {
         .limit(1);
       if (!usage) throw new EquipmentIncomingConflictError("Linked equipment usage not found");
 
+      // cloneDpr has no editable equipment payload: this row was copied from
+      // the source DPR and is a reference to the same physical operation.
+      // Do not transfer canonical DPR ownership, alter a moved predecessor,
+      // or invoke the usage update/stock-delta path.
+      if (audit?.preserveLinkedClone) continue;
+
       const [successor] = await tx.select({ id: equipmentUsage.id }).from(equipmentUsage)
         .where(eq((equipmentUsage as any).sourceUsageId, usageId))
         .limit(1);
@@ -5595,6 +5661,14 @@ export class DatabaseStorage implements IStorage {
         amountPaid: log.amountPaid ?? undefined,
         numberOfTrips: log.numberOfTrips ?? undefined,
         tripDistance: log.tripDistance ?? undefined,
+        tripBasedEntry: log.entryType === "trip_based",
+        openingDiesel: log.openingDiesel ?? undefined,
+        dieselBalanceInTank: log.dieselBalanceInTank ?? undefined,
+        dieselBalanceConfirmed: log.dieselBalanceConfirmed ?? undefined,
+        // A verified physical closing is informational and must not post
+        // diesel stock a second time; _updateEquipmentUsageTxn only updates
+        // the already-linked canonical record.
+        closingDiesel: log.dieselBalanceInTank ?? undefined,
       } : {};
       await this._updateEquipmentUsageTxn(usageId, { ...closure, ...ownedFacts }, tx);
     }
@@ -5628,12 +5702,26 @@ export class DatabaseStorage implements IStorage {
         amountPaid: log.amountPaid,
         numberOfTrips: log.numberOfTrips,
         tripDistance: log.tripDistance,
+        tripBasedEntry: log.entryType === "trip_based",
+        openingDiesel: log.openingDiesel,
+        dieselBalanceInTank: log.dieselBalanceInTank,
+        dieselBalanceConfirmed: log.dieselBalanceConfirmed,
+        closingDiesel: log.dieselBalanceInTank,
         totalKm: log.totalKm,
-        hoursOrKmRun: log.hoursWorked,
+        // The canonical operating quantity is hours for hour-meter runtime
+        // and km for odometer/trip runtime; never coerce km into hours.
+        hoursOrKmRun: log.hoursWorked ?? log.totalKm,
         expectedDiesel: log.expectedDiesel,
         variance: Number(log.diesel ?? 0) - Number(log.expectedDiesel ?? 0),
       } as any).returning();
       await tx.update(equipmentLogs).set({ plantUsageId: usage.id }).where(eq(equipmentLogs.id, log.id));
+      const cloneSourceLogId = audit?.cloneSourceLogIds?.[log.id];
+      if (cloneSourceLogId != null) {
+        // Establish the canonical link on the legacy source too. A later
+        // clone then reuses this same operation instead of materializing it.
+        await tx.update(equipmentLogs).set({ plantUsageId: usage.id })
+          .where(and(eq(equipmentLogs.id, cloneSourceLogId), isNull(equipmentLogs.plantUsageId)));
+      }
       const oldReference = -log.id;
       await tx.update(stockLedger).set({
         referenceId: usage.id,
@@ -5675,6 +5763,9 @@ export class DatabaseStorage implements IStorage {
       "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'equipment_usage_destination_type_check') THEN ALTER TABLE equipment_usage ADD CONSTRAINT equipment_usage_destination_type_check CHECK (destination_type IS NULL OR destination_type IN ('site', 'hmp', 'rmc')); END IF; END $$",
       "CREATE UNIQUE INDEX IF NOT EXISTS equipment_usage_source_usage_successor_uq ON equipment_usage (source_usage_id) WHERE source_usage_id IS NOT NULL",
       "ALTER TABLE equipment_logs ADD COLUMN IF NOT EXISTS plant_usage_id integer",
+      "ALTER TABLE equipment_logs ADD COLUMN IF NOT EXISTS opening_diesel real",
+      "ALTER TABLE equipment_logs ADD COLUMN IF NOT EXISTS diesel_balance_in_tank real",
+      "ALTER TABLE equipment_logs ADD COLUMN IF NOT EXISTS diesel_balance_confirmed boolean",
     ];
     for (const stmt of stmts) {
       try { await db.execute(sql.raw(stmt)); } catch (_) {}
@@ -5740,53 +5831,27 @@ export class DatabaseStorage implements IStorage {
         tripBasedEntry = usage.tripBasedEntry !== undefined 
           ? usage.tripBasedEntry === true 
           : (existing as any).tripBasedEntry === true;
-        totalKm = numberOfTrips * tripDistance2 * 2;
-        
-        const AVERAGE_SPEED_KMPH = 25;
-        const isHourMeterEquip = equipment?.meterType === "hour_meter";
-        
-        if (openingReading !== null && openingReading !== undefined && 
-            closingReading !== null && closingReading !== undefined) {
-          hoursOrKmRun = closingReading - openingReading;
-        } else if (startTime && endTime) {
-          const [startHour, startMin] = startTime.split(':').map(Number);
-          const [endHour, endMin] = endTime.split(':').map(Number);
-          const startMins = startHour * 60 + startMin;
-          const endMins = endHour * 60 + endMin;
-          const diff = endMins - startMins;
-          const hoursFromTime = diff > 0 ? diff / 60 : 0;
-          
-          if (isHourMeterEquip) {
-            hoursOrKmRun = hoursFromTime;
-          } else {
-            hoursOrKmRun = hoursFromTime * AVERAGE_SPEED_KMPH;
-          }
-        }
-        
-        const norm = equipment?.consumptionNorm || 0;
-        const isHourMeter = equipment?.meterType === "hour_meter";
-        
-        if (tripBasedEntry) {
-          if (totalKm > 0) {
-            const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
-            expectedDiesel = totalKm * normPerKm;
-          }
-        } else if (hoursOrKmRun > 0) {
-          expectedDiesel = hoursOrKmRun * norm;
-        }
-        
-        closingDiesel = openingDiesel + newDieselIssued - expectedDiesel;
-        variance = newDieselIssued - expectedDiesel;
-
-        // Operator's Diesel Balance in Tank dip overrides the norm-derived
-        // closing value. Prefer the new value, falling back to the existing
-        // stored dip when not changed in this update.
         const effectiveDip = usage.dieselBalanceInTank !== undefined
           ? usage.dieselBalanceInTank
           : existing.dieselBalanceInTank;
+        const computed = computeEquipmentUsage(equipment, {
+          entryType,
+          tripBasedEntry,
+          openingReading,
+          closingReading,
+          startTime,
+          endTime,
+          numberOfTrips,
+          tripDistance: tripDistance2,
+        });
+        hoursOrKmRun = computed.runtime;
+        totalKm = computed.totalKm ?? 0;
+        expectedDiesel = computed.expectedDiesel ?? 0;
+        closingDiesel = openingDiesel + newDieselIssued - expectedDiesel;
         if (effectiveDip != null) {
           closingDiesel = effectiveDip;
         }
+        variance = newDieselIssued - expectedDiesel;
       }
       const effectiveDieselSource = usage.dieselSource !== undefined ? usage.dieselSource : (existing as any).dieselSource;
       assertValidDieselSourceForQuantity(Number(newDieselIssued || 0), effectiveDieselSource);
