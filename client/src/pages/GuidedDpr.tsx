@@ -1076,6 +1076,13 @@ export default function GuidedDpr() {
 
   const saveMutation = useMutation({
     mutationFn: async (asDraft: boolean) => {
+      const missingFuelSource = equipment.some((row) =>
+        Number(row.passthrough?.diesel ?? 0) > 0 && !row.passthrough?.dieselSource
+      );
+      if (missingFuelSource) {
+        toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
+        throw new Error("Diesel source is required for positive diesel");
+      }
       const payload = buildPayload(asDraft);
       const payloadRows = equipment.filter((e) =>
         asDraft
@@ -1970,7 +1977,7 @@ export default function GuidedDpr() {
                   // stored type is never hidden or silently lost.
                   const showEntryType = isHired || entryType !== "time_meter";
                   const isWaterTanker = isWaterTankerName(eq.machine);
-                  const isDirectPurchase = (pt.dieselSource ?? "plant_stock") === "direct_purchase";
+                  const isDirectPurchase = pt.dieselSource === "direct_purchase";
                   return (
                     <div key={i} className="mb-3 p-3 border rounded-lg bg-muted/20 space-y-2 transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", i)} data-testid={"equipment-row-" + String(i)}>
                       {/* A. Identity */}
@@ -2239,10 +2246,10 @@ export default function GuidedDpr() {
                         <div>
                           <Label className="text-xs text-muted-foreground">Diesel Source</Label>
                           <Select
-                            value={(pt.dieselSource as string) ?? "plant_stock"}
+                            value={(pt.dieselSource as string) ?? ""}
                             onValueChange={(v) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, passthrough: { ...r.passthrough, dieselSource: v } } : r))}
                           >
-                            <SelectTrigger data-testid={`select-eq-diesel-source-${i}`}><SelectValue /></SelectTrigger>
+                            <SelectTrigger data-testid={`select-eq-diesel-source-${i}`}><SelectValue placeholder="Select diesel source" /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="plant_stock">Plant Stock</SelectItem>
                               <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>

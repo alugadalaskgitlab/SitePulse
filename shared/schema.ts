@@ -213,7 +213,7 @@ export const equipmentLogs = pgTable("equipment_logs", {
   // Optional link to equipment master for unified reporting
   equipmentId: integer("equipment_id"), // Links to equipmentMaster for unified tracking
   // Diesel source tracking
-  dieselSource: text("diesel_source").default("plant_stock"), // plant_stock, direct_purchase, contractor
+  dieselSource: text("diesel_source"), // plant_stock, direct_purchase, contractor
   // Direct purchase fields (when dieselSource = direct_purchase)
   fuelStation: text("fuel_station"), // Commercial pump name/location
   billNumber: text("bill_number"), // Receipt/bill number
@@ -493,6 +493,10 @@ export const materialReceipts = pgTable("material_receipts", {
   // 06M-C: links a Diesel receipt back to the Daily Diesel Requirement purchase
   // it fulfils (nullable — only set for receipts recorded against a purchase).
   linkedDieselRequirementId: integer("linked_diesel_requirement_id"),
+  // Task #1433: retained audit reason for an authorised standalone Diesel/HSD
+  // receipt. Pending regularisation is derived when this is non-null and the
+  // Daily Diesel Requirement link above is null.
+  dieselExceptionReason: text("diesel_exception_reason"),
   plantName: text("plant_name").notNull().default("Main Plant"),
   createdAt: timestamp("created_at").defaultNow(),
   ...cancellationFields,
@@ -572,7 +576,7 @@ export const equipmentUsage = pgTable("equipment_usage", {
   operator: text("operator"), // Equipment operator name
   task: text("task"), // Task performed by equipment
   // Diesel source tracking
-  dieselSource: text("diesel_source").default("plant_stock"), // plant_stock, direct_purchase, contractor
+  dieselSource: text("diesel_source"), // plant_stock, direct_purchase, contractor
   // Direct purchase fields (when dieselSource = direct_purchase)
   fuelStation: text("fuel_station"), // Commercial pump name/location
   billNumber: text("bill_number"), // Receipt/bill number

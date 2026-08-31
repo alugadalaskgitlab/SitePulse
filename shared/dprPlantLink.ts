@@ -140,7 +140,7 @@ export type DprEquipmentUsageRow = {
   diesel: number | null;
   equipmentId: number;
   plantUsageId: number;
-  dieselSource: string;
+  dieselSource: string | null;
   fuelStation: string;
   billNumber: string;
   amountPaid: number | null;
@@ -169,7 +169,7 @@ export function usageToDprEquipmentRow(
     diesel: pt.diesel != null ? Number(pt.diesel) : null,
     equipmentId: usage.equipmentId,
     plantUsageId: usage.id,
-    dieselSource: String(pt.dieselSource ?? "plant_stock"),
+    dieselSource: pt.dieselSource != null ? String(pt.dieselSource) : null,
     fuelStation: String(pt.fuelStation ?? ""),
     billNumber: String(pt.billNumber ?? ""),
     amountPaid: pt.amountPaid != null ? Number(pt.amountPaid) : null,

@@ -161,6 +161,17 @@ describe("06X-HF6 SiteEdit dispatch discovery", () => {
     });
   });
 
+  it("preserves a missing diesel source for storage-boundary validation", () => {
+    const row = usageToDprEquipmentRow({
+      id: 162,
+      equipmentId: 47,
+      dieselIssued: 20,
+      dieselSource: null,
+    });
+    expect(row.diesel).toBe(20);
+    expect(row.dieselSource).toBeNull();
+  });
+
   it("C/D: Guided keeps the same linkage and linked/closed usage is not offered again", () => {
     const guided = usageToGuidedRow(OPEN_USAGE, "SOIL COMPACTOR");
     expect(guided.passthrough).toMatchObject({

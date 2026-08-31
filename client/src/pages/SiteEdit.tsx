@@ -252,7 +252,7 @@ function mapDprToFormState(dpr: any) {
         diesel: e.diesel,
         equipmentId: e.equipmentId ?? null,
         plantUsageId: e.plantUsageId ?? null,
-        dieselSource: e.dieselSource ?? "plant_stock",
+        dieselSource: e.dieselSource ?? "",
         fuelStation: e.fuelStation ?? "",
         billNumber: e.billNumber ?? "",
         amountPaid: e.amountPaid ?? null,
@@ -262,7 +262,7 @@ function mapDprToFormState(dpr: any) {
         waterQuantity: e.waterQuantity ?? null,
         breakdowns: e.breakdowns ?? [],
       }))
-    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, isNew: true }];
+    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, isNew: true }];
 
   const labour: LabourEntry[] = dpr.labour?.length
     ? dpr.labour.map((l: any) => ({
@@ -511,7 +511,7 @@ export default function SiteEdit() {
   const overlapHits = useChainageOverlapHits(overlapCandidateRows, overlapPriors, unchangedOverlapRowKeys);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }
   ]);
   // 06X-HF6: submitted DPRs can pre-date a later dispatch to the same
   // site/date. Reuse the Guided/Detailed open-today discovery contract.
@@ -972,7 +972,7 @@ export default function SiteEdit() {
     } else if (section === 'equipment') {
       // 06Q: rows added during the edit session are flagged isNew — they get
       // opening-reading continuity when equipment is selected.
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, isNew: true }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, isNew: true }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }]);
     }
@@ -1211,6 +1211,10 @@ export default function SiteEdit() {
   };
 
   const handleSubmitDraft = () => {
+    if (equipment.some((row) => Number(row.diesel || 0) > 0 && !row.dieselSource)) {
+      toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
+      return;
+    }
     if (!header.date || !header.site || !header.engineer) {
       toast({ title: "Missing Fields", description: "Please fill in date, site name, and engineer name.", variant: "destructive" });
       return;
@@ -1237,6 +1241,10 @@ export default function SiteEdit() {
   };
 
   const handleSave = () => {
+    if (equipment.some((row) => Number(row.diesel || 0) > 0 && !row.dieselSource)) {
+      toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
+      return;
+    }
     if (!header.date || !header.site || !header.engineer) {
       toast({
         title: "Missing Fields",
@@ -2710,7 +2718,7 @@ export default function SiteEdit() {
                 <div>
                   <Label className="text-sm">Diesel Source</Label>
                   <Select
-                    value={entry.dieselSource ?? "plant_stock"}
+                    value={entry.dieselSource ?? ""}
                     disabled={entry.plantUsageId != null}
                     onValueChange={(value) => {
                       const updated = [...equipment];
@@ -2719,7 +2727,7 @@ export default function SiteEdit() {
                     }}
                   >
                     <SelectTrigger data-testid={`select-diesel-source-${idx}`}>
-                      <SelectValue />
+                      <SelectValue placeholder="Select diesel source" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="plant_stock">Plant Stock</SelectItem>

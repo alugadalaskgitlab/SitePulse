@@ -74,7 +74,14 @@ vi.mock("../server/storage", async (importOriginal) => {
     fx.linkedReceipts.filter((r) => ids.includes(r.linkedDieselRequirementId)));
   methods.updateDieselPurchase = vi.fn(async (id: number, data: any) => ({ ...fx.requirement, ...data, id }));
   methods.createNotification = vi.fn(async () => ({}));
-  methods.createMaterialReceipt = vi.fn(async (input: any) => ({ id: 501, ...input }));
+  methods.createMaterialReceipt = vi.fn(async (input: any) => {
+    const created = { id: 501, isCancelled: false, isDeleted: false, ...input };
+    if (input.linkedDieselRequirementId != null) {
+      fx.linkedReceipts = fx.linkedReceipts.filter((r) => r.id !== created.id);
+      fx.linkedReceipts.push(created);
+    }
+    return created;
+  });
   methods.getAllPlantMaterials = vi.fn(async () => [
     { id: 12, name: "DIESEL", defaultUom: "Liters" },
     { id: 30, name: "20MM AGGREGATE", defaultUom: "Ton" },
@@ -205,6 +212,7 @@ describe("06M-C purchase completion", () => {
 describe("06M-C linked material receipt", () => {
   it("links qualifying diesel purchase evidence to the newly created receipt", async () => {
     const { storage } = await import("../server/storage");
+    fx.linkedReceipts = [];
     await request(app).post("/api/plant-module/material-receipts").send({
       date: "2026-08-15", materialId: 12, quantity: 100, uom: "Liters",
       partyId: null, isPlantCommon: 1, linkedDieselRequirementId: 77,
@@ -215,6 +223,7 @@ describe("06M-C linked material receipt", () => {
 
   it("keeps a successfully created receipt successful when optional evidence linking fails", async () => {
     const { storage } = await import("../server/storage");
+    fx.linkedReceipts = [];
     (storage as any).linkDieselPurchaseEvidenceToMaterialReceipt.mockRejectedValueOnce(new Error("link unavailable"));
     const res = await request(app).post("/api/plant-module/material-receipts").send({
       date: "2026-08-15", materialId: 12, quantity: 100, uom: "Liters",
@@ -226,7 +235,7 @@ describe("06M-C linked material receipt", () => {
 
   it("D/T/22: creating a LINKED receipt notifies partial progress with derived figures (stock-IN via existing receipt path)", async () => {
     pushCalls.length = 0;
-    fx.linkedReceipts = [R(1, 400)];
+    fx.linkedReceipts = [];
     const res = await request(app).post("/api/plant-module/material-receipts").send({
       date: "2026-08-15", materialId: 12, quantity: 400, uom: "Liters",
       partyId: null, isPlantCommon: 1, linkedDieselRequirementId: 77,
@@ -242,7 +251,7 @@ describe("06M-C linked material receipt", () => {
 
   it("G (route): cumulative receipts reaching purchased qty notify FULLY RECEIVED", async () => {
     pushCalls.length = 0;
-    fx.linkedReceipts = [R(1, 400), R(2, 200)];
+    fx.linkedReceipts = [R(1, 400)];
     await request(app).post("/api/plant-module/material-receipts").send({
       date: "2026-08-15", materialId: 12, quantity: 200, uom: "Liters",
       partyId: null, isPlantCommon: 1, linkedDieselRequirementId: 77,
@@ -280,6 +289,7 @@ describe("06M-C linked material receipt", () => {
 
   it("14/immutability: normal receipt edit can never change or strip the purchase link", async () => {
     const { storage } = await import("../server/storage");
+    fx.linkedReceipts = [R(501, 100)];
     const res = await request(app).put("/api/plant-module/material-receipts/501").send({
       quantity: 570, linkedDieselRequirementId: 12345,
     });
@@ -291,6 +301,7 @@ describe("06M-C linked material receipt", () => {
 
   it("requires and consumes the matching approved request for a non-direct submitted correction", async () => {
     const { storage } = await import("../server/storage");
+    fx.linkedReceipts = [R(501, 100)];
     fx.auth = { isAdmin: false, permissions: {} };
     fx.receipt = { ...fx.receipt, documentStatus: "submitted" };
     (storage as any).checkActiveEditPermission.mockResolvedValueOnce({
@@ -352,12 +363,130 @@ describe("06M-C linked material receipt", () => {
     fx.receipt = { ...fx.receipt, documentStatus: "draft" };
   });
 
-  it("L/P: an UNLINKED Diesel receipt (Direct Site Purchase world untouched) triggers no diesel-purchase push", async () => {
+  it("L/P: an authorised UNLINKED Diesel exception triggers no diesel-purchase push", async () => {
     pushCalls.length = 0;
     await request(app).post("/api/plant-module/material-receipts").send({
       date: "2026-08-15", materialId: 12, quantity: 100, uom: "Liters",
-      partyId: null, isPlantCommon: 1,
+      partyId: null, isPlantCommon: 1, dieselExceptionReason: "Emergency delivery pending requirement regularisation",
     });
     expect(pushCalls.find((c) => String(c[1]).startsWith("DIESEL "))).toBeUndefined();
+  });
+
+  it("rejects an ordinary unlinked Diesel receipt without an exception reason", async () => {
+    const res = await request(app).post("/api/plant-module/material-receipts").send({
+      date: "2026-08-15", materialId: 12, quantity: 100, uom: "Liters",
+      partyId: null, isPlantCommon: 1,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("DIESEL_EXCEPTION_REASON_REQUIRED");
+  });
+
+  it("rejects a standalone Diesel exception from a user without Owner/Admin/PM authority", async () => {
+    fx.auth = { isAdmin: false, permissions: { plant_materials: { create: true } } };
+    const res = await request(app).post("/api/plant-module/material-receipts").send({
+      date: "2026-08-15", materialId: 12, quantity: 100, uom: "Liters",
+      partyId: null, isPlantCommon: 1, dieselExceptionReason: "Not authorised",
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("DIESEL_STANDALONE_NOT_AUTHORISED");
+    fx.auth = { isAdmin: true, permissions: {} };
+  });
+
+  it("rejects a linked receipt above the valid remaining purchased quantity", async () => {
+    fx.linkedReceipts = [R(1, 570), R(2, 25, { isCancelled: true }), R(3, 20, { isDeleted: true })];
+    const res = await request(app).post("/api/plant-module/material-receipts").send({
+      date: "2026-08-15", materialId: 12, quantity: 40, uom: "Liters",
+      partyId: null, isPlantCommon: 1, linkedDieselRequirementId: 77,
+    });
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({
+      code: "DIESEL_RECEIPT_EXCEEDS_REMAINING",
+      requestedQty: 40,
+      remainingQty: 30,
+      excessQty: 10,
+    });
+  });
+
+  it("allows an authorised edit to regularise an exceptional receipt by linking it", async () => {
+    const { storage } = await import("../server/storage");
+    fx.linkedReceipts = [];
+    fx.receipt = { ...fx.receipt, linkedDieselRequirementId: null, dieselExceptionReason: "Emergency delivery" };
+    const res = await request(app).put("/api/plant-module/material-receipts/501").send({
+      linkedDieselRequirementId: 77,
+    });
+    expect(res.status).toBe(200);
+    expect((storage as any).updateMaterialReceipt.mock.calls.at(-1)[1]).toMatchObject({
+      linkedDieselRequirementId: 77,
+      dieselExceptionReason: "Emergency delivery",
+    });
+    fx.receipt = { ...fx.receipt, linkedDieselRequirementId: 77 };
+  });
+
+  it("grandfathers a legacy unlinked Diesel receipt on an ordinary plant-material edit", async () => {
+    const { storage } = await import("../server/storage");
+    fx.auth = { isAdmin: false, permissions: { plant_materials: { edit: true } } };
+    fx.receipt = {
+      ...fx.receipt,
+      linkedDieselRequirementId: null,
+      dieselExceptionReason: null,
+      documentStatus: "draft",
+    };
+    const res = await request(app).put("/api/plant-module/material-receipts/501").send({ supplier: "CORRECTED SUPPLIER" });
+    expect(res.status).toBe(200);
+    expect((storage as any).updateMaterialReceipt.mock.calls.at(-1)[1]).toMatchObject({
+      supplier: "CORRECTED SUPPLIER",
+      dieselExceptionReason: null,
+    });
+    fx.auth = { isAdmin: true, permissions: {} };
+    fx.receipt = { ...fx.receipt, linkedDieselRequirementId: 77, dieselExceptionReason: undefined };
+  });
+
+  it("blocks ordinary plant-material editors from regularising legacy or exceptional Diesel receipts", async () => {
+    fx.auth = { isAdmin: false, permissions: { plant_materials: { edit: true } } };
+    fx.receipt = {
+      ...fx.receipt,
+      linkedDieselRequirementId: null,
+      dieselExceptionReason: null,
+      documentStatus: "draft",
+    };
+    fx.linkedReceipts = [];
+    const res = await request(app).put("/api/plant-module/material-receipts/501").send({
+      linkedDieselRequirementId: 77,
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("DIESEL_REGULARISATION_NOT_AUTHORISED");
+    fx.auth = { isAdmin: true, permissions: {} };
+    fx.receipt = { ...fx.receipt, linkedDieselRequirementId: 77, dieselExceptionReason: undefined };
+  });
+
+  it("maps an atomically blocked Diesel receipt credit reduction to the standard stock 409", async () => {
+    const storageModule = await import("../server/storage");
+    const { storage, InsufficientPlantStockError } = storageModule as any;
+    fx.auth = { isAdmin: true, permissions: {} };
+    fx.receipt = {
+      ...fx.receipt,
+      materialId: 12,
+      quantity: 100,
+      linkedDieselRequirementId: 77,
+      documentStatus: "draft",
+    };
+    fx.linkedReceipts = [R(501, 100)];
+    storage.updateMaterialReceipt.mockRejectedValueOnce(new InsufficientPlantStockError({
+      material: "DIESEL",
+      source: "material_receipt_update",
+      materialId: 12,
+      partyId: null,
+      requestedQty: 20,
+      availableQty: 10,
+      shortageQty: 10,
+    }));
+    const res = await request(app).put("/api/plant-module/material-receipts/501").send({ quantity: 80 });
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({
+      code: "INSUFFICIENT_PLANT_STOCK",
+      requestedQty: 20,
+      availableQty: 10,
+      shortageQty: 10,
+    });
   });
 });

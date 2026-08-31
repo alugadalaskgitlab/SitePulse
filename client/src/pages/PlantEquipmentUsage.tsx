@@ -78,7 +78,7 @@ export default function PlantEquipmentUsage() {
   const [openingDiesel, setOpeningDiesel] = useState("");
   const [dieselIssued, setDieselIssued] = useState("");
   const [dieselIncluded, setDieselIncluded] = useState(false);
-  const [dieselSource, setDieselSource] = useState<string>("plant_stock");
+  const [dieselSource, setDieselSource] = useState<string>("");
   const [fuelStation, setFuelStation] = useState("");
   const [billNumber, setBillNumber] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
@@ -160,7 +160,7 @@ export default function PlantEquipmentUsage() {
     setOpeningDiesel(data.openingDiesel);
     setDieselIssued(data.dieselIssued);
     setDieselIncluded(data.dieselIncluded || false);
-    setDieselSource(data.dieselSource ?? "plant_stock");
+    setDieselSource(data.dieselSource ?? "");
     setFuelStation(data.fuelStation ?? "");
     setBillNumber(data.billNumber ?? "");
     setAmountPaid(data.amountPaid ?? "");
@@ -484,7 +484,7 @@ export default function PlantEquipmentUsage() {
     setOpeningDiesel("");
     setDieselIssued("");
     setDieselIncluded(false);
-    setDieselSource("plant_stock");
+    setDieselSource("");
     setFuelStation("");
     setBillNumber("");
     setAmountPaid("");
@@ -528,7 +528,7 @@ export default function PlantEquipmentUsage() {
     setOpeningDiesel((entry as any).openingDiesel != null ? String((entry as any).openingDiesel) : "0");
     setDieselIssued("");
     setDieselIncluded((entry as any).dieselIncluded === true);
-    setDieselSource((entry as any).dieselSource ?? "plant_stock");
+    setDieselSource((entry as any).dieselSource ?? "");
     setWorkingPlant(incomingDestinationType === "rmc" ? "RMC PLANT" : "HMP PLANT");
     setSiteName("");
     setRemarks((entry.remarks ?? "").toUpperCase());
@@ -549,7 +549,7 @@ export default function PlantEquipmentUsage() {
     setOpeningDiesel((entry as any).openingDiesel ? String((entry as any).openingDiesel) : "0");
     setDieselIssued(entry.dieselIssued ? String(entry.dieselIssued) : "");
     setDieselIncluded((entry as any).dieselIncluded || false);
-    setDieselSource((entry as any).dieselSource ?? "plant_stock");
+    setDieselSource((entry as any).dieselSource ?? "");
     setFuelStation((entry as any).fuelStation ?? "");
     setBillNumber((entry as any).billNumber ?? "");
     setAmountPaid((entry as any).amountPaid ? String((entry as any).amountPaid) : "");
@@ -603,7 +603,7 @@ export default function PlantEquipmentUsage() {
         setDieselSource("contractor");
       } else if ((selectedEquip as any).hireDieselResponsibility === "hlc") {
         setDieselIncluded(false);
-        setDieselSource("plant_stock");
+        setDieselSource("");
       }
     }
     if (selectedEquip && (selectedEquip as any).ownership !== "hired" && entryType !== "shifting") {
@@ -659,6 +659,10 @@ export default function PlantEquipmentUsage() {
   };
 
   const handleSubmit = () => {
+    if (Number(dieselIssued || 0) > 0 && !dieselIncluded && !dieselSource) {
+      toast({ title: "Select diesel source before submitting positive diesel", variant: "destructive" });
+      return;
+    }
     if (receivingUsage) {
       if (!equipmentId || !openingReading || !closingReading) {
         toast({ title: "Enter the Plant closing meter reading to complete this incoming entry", variant: "destructive" });

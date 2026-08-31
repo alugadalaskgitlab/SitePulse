@@ -870,7 +870,7 @@ export default function SiteEntry() {
 
   const [openPlantMap, setOpenPlantMap] = useState<Record<number, any>>({});
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
@@ -1088,7 +1088,7 @@ export default function SiteEntry() {
     if (section === 'progress') {
       setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
     } else if (section === 'materials') {
@@ -1164,7 +1164,7 @@ export default function SiteEntry() {
       isIncidental: false,
       incidentalDescription: "",
     })));
-    const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] as StagedBreakdown[] };
+    const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] as StagedBreakdown[] };
     if (st.equipment.length > 0) setEquipment(st.equipment.map(e => ({ ...blankEq, ...e })) as any);
     if (st.labour.length > 0) setLabour(st.labour.map(l => ({ category: l.category, gender: "", count: l.count, task: l.task, contractor: l.contractor, boqItemId: null, structureId: null })) as any);
     setShowYesterdayPreview(false);
@@ -1497,6 +1497,10 @@ export default function SiteEntry() {
   });
 
   const handleSaveDraft = () => {
+    if (equipment.some((row) => Number(row.diesel || 0) > 0 && !row.dieselSource)) {
+      toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
+      return;
+    }
     if (!header.site || !header.engineer) {
       toast({
         title: "Missing Information",
@@ -1536,6 +1540,10 @@ export default function SiteEntry() {
   };
 
   const handleSubmit = () => {
+    if (equipment.some((row) => Number(row.diesel || 0) > 0 && !row.dieselSource)) {
+      toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
+      return;
+    }
     if (workType !== "structure") {
       for (let i = 0; i < progress.length; i++) {
         const p = progress[i];
@@ -2476,7 +2484,7 @@ export default function SiteEntry() {
                       }}
                     >
                       <SelectTrigger data-testid={`select-progress-uom-${idx}`}>
-                        <SelectValue />
+                        <SelectValue placeholder="Select diesel source" />
                       </SelectTrigger>
                       <SelectContent>
                         {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
@@ -3184,7 +3192,7 @@ export default function SiteEntry() {
                   <div>
                     <Label className="text-sm">Diesel Source</Label>
                     <Select 
-                      value={entry.dieselSource ?? "plant_stock"} 
+                      value={entry.dieselSource ?? ""}
                       onValueChange={(value) => {
                         const updated = [...equipment];
                         updated[idx].dieselSource = value;

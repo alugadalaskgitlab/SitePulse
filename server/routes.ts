@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError } from "./storage";
+import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, assertValidDieselPhysicalStock } from "./storage";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -2123,10 +2123,11 @@ export async function registerRoutes(
   // the client dialogs render (required/available/shortage in litres).
   const handleInsufficientPlantStock = (err: unknown, res: any): boolean => {
     if (err instanceof InsufficientPlantStockError) {
+      const material = err.payload.material.trim().toUpperCase();
       res.status(409).json({
         code: err.code,
         ...err.payload,
-        message: `INSUFFICIENT DIESEL IN PLANT STOCK — Required: ${err.payload.requestedQty} L, Available: ${err.payload.availableQty} L, Short: ${err.payload.shortageQty} L. If purchased Diesel has already arrived, first enter its physical receipt under Material Receipt so it is added to Plant Stock.`,
+        message: `INSUFFICIENT ${material} IN PLANT STOCK — Required: ${err.payload.requestedQty} L, Available: ${err.payload.availableQty} L, Shortfall: ${err.payload.shortageQty} L. If purchased Diesel has already arrived, first enter its physical receipt under Material Receipt so it is added to Plant Stock.`,
       });
       return true;
     }
@@ -2190,6 +2191,7 @@ export async function registerRoutes(
         });
       }
       if (handleInsufficientPlantStock(err, res)) return;
+      if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message, availableQty: err.availableQty, alreadyUsedQty: err.alreadyUsedQty });
       if (err instanceof CutFillValidationError) return res.status(422).json({ code: err.code, message: err.message });
       if (handleEquipmentLifecycleConflict(err, res)) return;
@@ -2222,6 +2224,7 @@ export async function registerRoutes(
       if (!updated) return res.status(404).json({ message: "DPR not found or not a draft" });
       res.json(updated);
     } catch (err) {
+      if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
       if (handleInsufficientPlantStock(err, res)) return;
       if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message, availableQty: err.availableQty, alreadyUsedQty: err.alreadyUsedQty });
@@ -2278,6 +2281,7 @@ export async function registerRoutes(
       sendPushToSection("site_dprs", "New DPR Submitted", `${submitted.engineer || 'Engineer'} - ${submitted.site} - ${submitted.date}`, "/site-reports").catch(() => {});
       res.json(submitted);
     } catch (err) {
+      if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
       if (handleInsufficientPlantStock(err, res)) return;
       if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message, availableQty: err.availableQty, alreadyUsedQty: err.alreadyUsedQty });
@@ -2546,6 +2550,7 @@ export async function registerRoutes(
 
       res.status(201).json(newVersion);
     } catch (err) {
+      if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,
@@ -2603,6 +2608,7 @@ export async function registerRoutes(
 
       res.status(201).json(cloned);
     } catch (err) {
+      if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,
@@ -3085,6 +3091,7 @@ export async function registerRoutes(
       const result = await storage.rebuildDispatchLedgerForTemplate({ templateId, fromDateTime: parsed.data.fromDateTime });
       res.json(result);
     } catch (err) {
+      if (handleInsufficientPlantStock(err, res)) return;
       console.error("Error rebuilding dispatch ledger:", err);
       res.status(500).json({ message: "Failed to rebuild dispatch ledger" });
     }
@@ -3381,6 +3388,121 @@ export async function registerRoutes(
     ).find(Boolean);
   }
 
+  const isDieselMaterialName = (name: string | null | undefined) =>
+    /^(diesel|hsd)$/i.test((name ?? "").trim());
+
+  const canRecordStandaloneDieselReceipt = (req: any) => !!(
+    req.authUser?.isOwner ||
+    req.authUser?.isAdmin ||
+    req.authPermissions?.site_diesel?.edit
+  );
+
+  async function validateDieselReceiptControl(
+    req: any,
+    input: Partial<import("@shared/schema").InsertMaterialReceipt>,
+    existing?: import("@shared/schema").MaterialReceipt,
+  ): Promise<{ status: number; body: any } | null> {
+    const materialId = input.materialId ?? existing?.materialId;
+    const material = (await storage.getAllPlantMaterials()).find((m) => m.id === materialId);
+    if (!material) return { status: 400, body: { message: `Plant material #${materialId} not found` } };
+
+    const diesel = isDieselMaterialName(material.name);
+    const suppliedLink = Object.prototype.hasOwnProperty.call(input, "linkedDieselRequirementId");
+    let effectiveLink = suppliedLink ? input.linkedDieselRequirementId : existing?.linkedDieselRequirementId;
+    const isRegularising = existing?.linkedDieselRequirementId == null && effectiveLink != null;
+
+    // A valid existing purchase link cannot be stripped or changed through a
+    // receipt correction. An unlinked exception may, however, be regularised.
+    if (existing?.linkedDieselRequirementId != null) {
+      effectiveLink = existing.linkedDieselRequirementId;
+    }
+
+    if (!diesel) {
+      if (effectiveLink != null) {
+        return { status: 400, body: { code: "LINKED_DIESEL_MATERIAL_MISMATCH", message: "Only Diesel receipts can be linked to a Daily Diesel Requirement" } };
+      }
+      input.dieselExceptionReason = null;
+      return null;
+    }
+
+    if (effectiveLink == null) {
+      // Historical unlinked Diesel/HSD rows predate the exception field. An
+      // ordinary correction must leave them distinguishable as legacy rows:
+      // do not require a new reason and do not silently write one.
+      if (existing && existing.linkedDieselRequirementId == null && existing.dieselExceptionReason == null) {
+        input.dieselExceptionReason = null;
+        return null;
+      }
+      if (!canRecordStandaloneDieselReceipt(req)) {
+        return { status: 403, body: { code: "DIESEL_STANDALONE_NOT_AUTHORISED", message: "Diesel/HSD receipts must be linked to a purchased Daily Diesel Requirement. Only Owner/Admin/PM may record a standalone exception." } };
+      }
+      const reason = String(input.dieselExceptionReason ?? existing?.dieselExceptionReason ?? "").trim();
+      if (!reason) {
+        return { status: 400, body: { code: "DIESEL_EXCEPTION_REASON_REQUIRED", message: "A reason is required for an exceptional standalone Diesel/HSD receipt" } };
+      }
+      input.dieselExceptionReason = reason;
+      return null;
+    }
+
+    // Linking a legacy or exceptional receipt is a deliberate stock-record
+    // regularisation, not an ordinary plant-material correction.
+    if (isRegularising && !canRecordStandaloneDieselReceipt(req)) {
+      return { status: 403, body: { code: "DIESEL_REGULARISATION_NOT_AUTHORISED", message: "Only Owner/Admin/PM may link a standalone Diesel/HSD receipt to a Daily Diesel Requirement." } };
+    }
+
+    const linkedReq = await storage.getDieselRequirement(effectiveLink);
+    if (!linkedReq || linkedReq.status !== "purchased" || !(linkedReq as any).qtyPurchased) {
+      return { status: 400, body: { message: "Linked diesel requirement not found or not a completed purchase" } };
+    }
+    const canonicalDiesel = await getCanonicalDieselMaterial();
+    if (!canonicalDiesel) {
+      return { status: 400, body: { code: "CANONICAL_DIESEL_MATERIAL_NOT_CONFIGURED", message: "Linked diesel receipts require an active canonical DIESEL or HSD plant material" } };
+    }
+    if (material.id !== canonicalDiesel.id) {
+      return { status: 400, body: { code: "LINKED_DIESEL_MATERIAL_MISMATCH", message: "Only Diesel receipts using the canonical diesel material can be linked to a diesel purchase" } };
+    }
+    const effectiveUom = input.uom ?? existing?.uom ?? "";
+    if (effectiveUom.trim().toLowerCase() !== "liters") {
+      return { status: 400, body: { code: "LINKED_DIESEL_UOM_INVALID", message: "Linked diesel receipts must use UOM Liters" } };
+    }
+    input.uom = "Liters";
+    if (isRegularising || !existing) input.linkedDieselRequirementId = effectiveLink;
+    else delete input.linkedDieselRequirementId;
+
+    const linkedReceipts = (await storage.getDieselRequirementReceipts([effectiveLink]))
+      .filter((r) => r.id !== existing?.id);
+    const state = computeDieselReceiptState((linkedReq as any).qtyPurchased, linkedReceipts);
+    const requestedQty = Number(input.quantity ?? existing?.quantity ?? 0);
+    if (requestedQty > state.pendingQty + 0.001) {
+      const excessQty = Math.round((requestedQty - state.pendingQty) * 1000) / 1000;
+      return {
+        status: 409,
+        body: {
+          code: "DIESEL_RECEIPT_EXCEEDS_REMAINING",
+          message: `Diesel receipt quantity ${requestedQty} L exceeds the remaining purchased quantity ${state.pendingQty} L by ${excessQty} L`,
+          requestedQty,
+          remainingQty: state.pendingQty,
+          excessQty,
+          linkedDieselRequirementId: effectiveLink,
+        },
+      };
+    }
+    // Retain a historical exception reason after later regularisation.
+    input.dieselExceptionReason = existing?.dieselExceptionReason ?? null;
+    return null;
+  }
+
+  const handleDieselReceiptRemainingError = (err: unknown, res: any): boolean => {
+    if (!(err instanceof DieselReceiptExceedsRemainingError)) return false;
+    const p = err.payload;
+    res.status(409).json({
+      code: err.code,
+      message: `Diesel receipt quantity ${p.requestedQty} L exceeds the remaining purchased quantity ${p.remainingQty} L by ${p.excessQty} L`,
+      ...p,
+    });
+    return true;
+  };
+
   app.get("/api/plant-module/material-receipts", async (req, res) => {
     try {
       const filters = {
@@ -3403,6 +3525,8 @@ export async function registerRoutes(
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
       }
       const input = insertMaterialReceiptSchema.parse(body);
+      const dieselControlError = await validateDieselReceiptControl(req, input);
+      if (dieselControlError) return res.status(dieselControlError.status).json(dieselControlError.body);
       // 06M-C: a purchase↔receipt link must point at a real PURCHASED Daily
       // Diesel Requirement and the receipt must be for the canonical Diesel
       // material — otherwise arbitrary receipts could inflate a purchase's
@@ -3486,6 +3610,8 @@ export async function registerRoutes(
       res.status(201).json(receipt);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid receipt data", errors: err.errors });
+      if (handleDieselReceiptRemainingError(err, res)) return;
+      if (handleInsufficientPlantStock(err, res)) return;
       console.error("Error creating material receipt:", err);
       res.status(500).json({ message: "Failed to create material receipt" });
     }
@@ -3542,9 +3668,8 @@ export async function registerRoutes(
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
       }
       const input = insertMaterialReceiptSchema.partial().parse(body);
-      // 06M-C: purchase↔receipt linkage is immutable through the normal edit
-      // path — it can only be set at creation via the deep-linked flow.
-      delete (input as any).linkedDieselRequirementId;
+      const dieselControlError = await validateDieselReceiptControl(req, input, existing);
+      if (dieselControlError) return res.status(dieselControlError.status).json(dieselControlError.body);
       // A receipt already linked to a diesel purchase remains constrained during
       // correction. Validate effective values so a partial update cannot leave
       // an invalid historical material/UOM in place; supplying both canonical
@@ -3594,6 +3719,8 @@ export async function registerRoutes(
       res.json(updated);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid receipt data", errors: err.errors });
+      if (handleDieselReceiptRemainingError(err, res)) return;
+      if (handleInsufficientPlantStock(err, res)) return;
       console.error("Error updating material receipt:", err);
       res.status(500).json({ message: "Failed to update material receipt" });
     }
@@ -3758,6 +3885,7 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
       }
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to create material issue" });
     }
   });
@@ -3774,6 +3902,7 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
       }
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to update material issue" });
     }
   });
@@ -3862,6 +3991,7 @@ export async function registerRoutes(
       if (err.message?.includes("not found")) {
         return res.status(404).json({ message: err.message });
       }
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to update material return" });
     }
   });
@@ -3874,6 +4004,7 @@ export async function registerRoutes(
       sendPushToSection("plant_materials", "Material Return Deleted", `Return #${req.params.id} deleted`, "/plant/material-returns").catch(() => {});
       res.status(204).send();
     } catch (err) {
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to delete material return" });
     }
   });
@@ -3932,6 +4063,7 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
       }
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to update opening stock" });
     }
   });
@@ -3944,6 +4076,7 @@ export async function registerRoutes(
       sendPushToSection("plant_stock", "Opening Stock Deleted", `Opening stock #${req.params.id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to delete opening stock" });
     }
   });
@@ -3983,6 +4116,7 @@ export async function registerRoutes(
       if (err instanceof StockShortageError) {
         return res.status(409).json(err.payload);
       }
+      if (handleInsufficientPlantStock(err, res)) return;
       console.error("Dispatch error:", err);
       res.status(500).json({ message: "Failed to create truck dispatch" });
     }
@@ -4107,6 +4241,7 @@ export async function registerRoutes(
       sendPushToSection("plant_production", "Dispatch Updated", `Dispatch #${id} updated`, "/plant").catch(() => {});
       res.json(updated);
     } catch (err) {
+      if (handleInsufficientPlantStock(err, res)) return;
       console.error("Update dispatch error:", err);
       res.status(500).json({ message: "Failed to update dispatch" });
     }
@@ -4553,6 +4688,9 @@ export async function registerRoutes(
       if (err instanceof EquipmentIncomingConflictError) {
         return res.status(409).json({ code: err.code, message: err.message });
       }
+      if (err instanceof InvalidDieselSourceError) {
+        return res.status(400).json({ code: err.code, field: err.field, message: err.message });
+      }
       res.status(400).json({ message: err?.message ?? "Failed to complete incoming equipment" });
     }
   });
@@ -4569,6 +4707,7 @@ export async function registerRoutes(
     } catch (err) {
       console.error("POST /api/plant-module/equipment-usage:", err);
       if (handleInsufficientPlantStock(err, res)) return;
+      if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0]?.message ?? "Validation failed", field: err.errors[0]?.path?.join(".") });
       }
@@ -4602,6 +4741,7 @@ export async function registerRoutes(
         stack: err instanceof Error ? err.stack : undefined,
       });
       if (handleInsufficientPlantStock(err, res)) return;
+      if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0]?.message ?? "Validation failed", field: err.errors[0]?.path?.join(".") });
       }
@@ -4624,6 +4764,7 @@ export async function registerRoutes(
       sendPushToSection("plant_equipment", "Equipment Entry Deleted", `Equipment usage #${id} deleted`, "/plant/equipment-usage").catch(() => {});
       res.status(204).send();
     } catch (err) {
+      if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       res.status(500).json({ message: "Failed to delete equipment usage" });
     }
   });
@@ -4831,10 +4972,21 @@ export async function registerRoutes(
       if (!materialId || !partyId || physicalQty === undefined || !uom || !date) {
         return res.status(400).json({ message: "materialId, partyId, physicalQty, uom and date are required" });
       }
+      const numericPhysicalQty = Number(physicalQty);
+      const correctionMaterial = (await storage.getAllPlantMaterials()).find((m) => m.id === Number(materialId));
+      if (!correctionMaterial) return res.status(400).json({ code: "MATERIAL_NOT_FOUND", message: `Plant material #${materialId} not found` });
+      try {
+        assertValidDieselPhysicalStock(correctionMaterial.name, numericPhysicalQty);
+      } catch (err) {
+        if (err instanceof InvalidDieselPhysicalStockError) {
+          return res.status(400).json({ code: err.code, message: err.message });
+        }
+        throw err;
+      }
       const result = await storage.postStockCorrection({
         materialId: Number(materialId),
         partyId: Number(partyId),
-        physicalQty: Number(physicalQty),
+        physicalQty: numericPhysicalQty,
         uom,
         date,
         notes: notes || "",
@@ -4842,6 +4994,9 @@ export async function registerRoutes(
       });
       res.json(result);
     } catch (err: any) {
+      if (err instanceof InvalidDieselPhysicalStockError) {
+        return res.status(400).json({ code: err.code, message: err.message });
+      }
       res.status(500).json({ message: err.message || "Failed to post stock correction" });
     }
   });
@@ -4968,6 +5123,7 @@ export async function registerRoutes(
         ...result 
       });
     } catch (err) {
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to reconcile stock balances" });
     }
   });
@@ -4986,6 +5142,7 @@ export async function registerRoutes(
         stockBalances: balanceResult
       });
     } catch (err) {
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: "Failed to reconcile equipment usage ledger" });
     }
   });
@@ -5046,6 +5203,7 @@ export async function registerRoutes(
         ...result,
       });
     } catch (err) {
+      if (handleInsufficientPlantStock(err, res)) return;
       console.error("Reassign execute error:", err);
       res.status(500).json({ message: "Failed to reassign ledger rows" });
     }
@@ -5095,6 +5253,10 @@ export async function registerRoutes(
         reconciled: result.reconciled,
       });
     } catch (err: any) {
+      if (handleInsufficientPlantStock(err, res)) return;
+      if (err instanceof InvalidStockTransferQuantityError) {
+        return res.status(400).json({ code: err.code, message: err.message });
+      }
       console.error("Stock transfer error:", err);
       res.status(500).json({ message: err.message || "Failed to create stock transfer" });
     }
@@ -8207,6 +8369,7 @@ export async function registerRoutes(
       sendPushToSection("irn_view", "Issue Voucher Recorded", `Issue ${issue.issueNumber} recorded for IRN`, "/irn").catch(() => {});
       res.status(201).json(issue);
     } catch (err: any) {
+      if (handleInsufficientPlantStock(err, res)) return;
       const msg = err?.message ?? "Failed to record issue voucher";
       if (msg.includes("must be in approved") || msg.includes("exceeds remaining balance")) {
         return res.status(400).json({ message: msg });
@@ -11928,6 +12091,7 @@ export async function registerRoutes(
       res.status(201).json(warnings.length > 0 ? { ...batch, warnings } : batch);
     } catch (err: any) {
       if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: err.message });
     }
   });
@@ -11942,6 +12106,7 @@ export async function registerRoutes(
       res.json(warnings.length > 0 ? { ...batch, warnings } : batch);
     } catch (err: any) {
       if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: err.message });
     }
   });
@@ -11952,6 +12117,7 @@ export async function registerRoutes(
       const result = await storage.reprocessRmcMissedDeductions();
       res.json(result);
     } catch (err: any) {
+      if (handleInsufficientPlantStock(err, res)) return;
       res.status(500).json({ message: err.message });
     }
   });
@@ -20040,8 +20206,8 @@ async function seedDatabase() {
         { activity: "BC Laying", chainageFrom: "12+000", chainageTo: "12+100", length: 100, width: 7.5, thickness: 0.04, quantity: 30, uom: "cum" }
       ],
       equipment: [
-        { machine: "Paver", operator: "Mike", startTime: "08:00", endTime: "17:00", diesel: 50 },
-        { machine: "Roller", operator: "Steve", startTime: "09:00", endTime: "18:00", diesel: 40 }
+        { machine: "Paver", operator: "Mike", startTime: "08:00", endTime: "17:00", diesel: 50, dieselSource: "plant_stock" },
+        { machine: "Roller", operator: "Steve", startTime: "09:00", endTime: "18:00", diesel: 40, dieselSource: "plant_stock" }
       ],
       labour: [
         { category: "Skilled", gender: "Male", count: 5 },

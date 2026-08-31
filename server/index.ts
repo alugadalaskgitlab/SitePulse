@@ -100,7 +100,7 @@ app.use((req, res, next) => {
       .then(() => console.log("Startup: ensureVendorBillPaymentColumns — vendor_bills payment columns + diesel payment_status columns verified/added"))
       .catch(e => console.error("Pre-routes: Failed to ensure vendor bill payment columns:", e)),
     storage.ensureMaterialReceiptDieselLinkColumn()
-      .then(() => console.log("Startup: ensureMaterialReceiptDieselLinkColumn — material_receipts.linked_diesel_requirement_id verified/added"))
+      .then(() => console.log("Startup: ensureMaterialReceiptDieselLinkColumn — material_receipts Diesel linkage/exception columns verified/added"))
       .catch(e => console.error("Pre-routes: Failed to ensure material receipt diesel link column:", e)),
     storage.ensureProjectScopeSchema()
       .then(() => console.log("Startup: ensureProjectScopeSchema — project_scope_segments table + corridor/scope columns verified/added"))
@@ -249,7 +249,20 @@ async function runBackgroundMigrations() {
     (async () => { try { const r = await storage.backfillBoqPlanningInclude(); if (r.set > 0 || r.excluded > 0) console.log(`Startup: backfillBoqPlanningInclude — set: ${r.set}, auto-excluded: ${r.excluded}`); } catch (e) { console.error("Startup: backfillBoqPlanningInclude failed:", e); } })(),
     (async () => {
       try {
-        const orphanFix = await db.execute(sql`UPDATE stock_ledger SET quantity_in = 0 WHERE transaction_type = 'adjustment' AND notes ILIKE '%orphan balance correction%' AND quantity_in > 0 AND quantity_out = 0`);
+        const orphanFix = await db.execute(sql`
+          UPDATE stock_ledger
+          SET quantity_in = 0
+          WHERE transaction_type = 'adjustment'
+            AND notes ILIKE '%orphan balance correction%'
+            AND quantity_in > 0
+            AND quantity_out = 0
+            AND EXISTS (
+              SELECT 1
+              FROM plant_materials pm
+              WHERE pm.id = stock_ledger.material_id
+                AND UPPER(TRIM(pm.name)) NOT IN ('DIESEL', 'HSD')
+            )
+        `);
         const orphanFixCount = (orphanFix as any).rowCount ?? 0;
         if (orphanFixCount > 0) console.log(`Startup: fixOrphanAdjustmentLedger — zeroed quantity_in on ${orphanFixCount} wrong adjustment row(s)`);
       } catch (e) { console.error("Startup: fixOrphanAdjustmentLedger failed:", e); }

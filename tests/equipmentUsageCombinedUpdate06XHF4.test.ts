@@ -36,6 +36,8 @@ const fx = vi.hoisted(() => {
         return [state.hlcParty];
       case "stockBalances":
         return [{ id: 1, balance: state.stockBalance, uom: "Liters" }];
+      case "stockLedger":
+        return state.ledger;
       default:
         return [];
     }
@@ -44,13 +46,17 @@ const fx = vi.hoisted(() => {
   const tx = {
     select: vi.fn((projection?: Record<string, unknown>) => ({
       from: (table: any) => ({
-        where: () => ({
+        where: () => {
+          const rows = rowsFor(table);
+          return {
           limit: async () => (
             state.tableKinds.get(table) === "equipmentUsage" && projection?.id
               ? (state.successorExists ? [{ id: 999 }] : [])
-              : rowsFor(table)
+              : rows
           ),
-        }),
+          then: (resolve: any) => resolve(rows),
+        };
+        },
       }),
     })),
     update: vi.fn((table: any) => ({

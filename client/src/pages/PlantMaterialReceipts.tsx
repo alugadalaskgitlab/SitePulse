@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -181,6 +182,7 @@ export default function PlantMaterialReceipts() {
   // 06M-C: when opened from a Daily Diesel Purchase, this links the new
   // receipt back to that purchase (audit / Purchased-vs-Received tracking).
   const [linkedDieselRequirementId, setLinkedDieselRequirementId] = useState<number | null>(null);
+  const [dieselExceptionReason, setDieselExceptionReason] = useState("");
   // For a Final Submitted receipt, retain the authorization that opened this
   // edit session. Direct editors are represented by 0; request-flow editors
   // provide their approved request id via EditPermissionButton.
@@ -201,11 +203,12 @@ export default function PlantMaterialReceipts() {
     invoiceNo: string;
     invoiceDate: string;
     indentRef: string;
+    dieselExceptionReason: string;
   }
 
   const formData = useMemo<ReceiptFormData>(() => ({
-    date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef
-  }), [date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef]);
+    date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason
+  }), [date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason]);
 
   const handleRestoreDraft = useCallback((data: ReceiptFormData) => {
     setDate(data.date);
@@ -222,6 +225,7 @@ export default function PlantMaterialReceipts() {
     setInvoiceNo(data.invoiceNo || "");
     setInvoiceDate(data.invoiceDate || "");
     setIndentRef(data.indentRef || "");
+    setDieselExceptionReason(data.dieselExceptionReason || "");
   }, []);
 
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<ReceiptFormData>({
@@ -347,6 +351,15 @@ export default function PlantMaterialReceipts() {
     const m = materials?.find(m => m.id === parseInt(materialId || "0"));
     return m?.name || "";
   }, [materials, materialId]);
+  const isSelectedDiesel = /^(diesel|hsd)$/i.test(selectedMaterialName.trim());
+  const canRecordStandaloneDiesel = isOwnerOrAdmin || sectionCan("site_diesel", "edit");
+  const { data: dieselRequirements = [] } = useQuery<any[]>({
+    queryKey: ["/api/diesel-requirements"],
+    enabled: dialogOpen && isSelectedDiesel,
+  });
+  const purchasedDieselRequirements = dieselRequirements.filter((r) =>
+    r.status === "purchased" && Number(r.qtyPurchased) > 0,
+  );
 
   const { data: allPurchaseIndents = [] } = useQuery<{id: number; indentNo: string; status: string; date?: string; raisedBy?: string; items: {description: string; qty: number; uom: string}[]}[]>({
     queryKey: ["/api/purchase-indents/for-material", selectedMaterialName],
@@ -499,6 +512,7 @@ export default function PlantMaterialReceipts() {
     setSelectedPendingPiItemId(null);
     setIndentLockedFromPi(false);
     setLinkedDieselRequirementId(null);
+    setDieselExceptionReason("");
     setEditPermissionRequestId(null);
   };
 
@@ -522,6 +536,7 @@ export default function PlantMaterialReceipts() {
     // and an ordinary edit explicitly resets it.
     const dieselLink = (receipt as any).linkedDieselRequirementId ?? null;
     setLinkedDieselRequirementId(dieselLink);
+    setDieselExceptionReason((receipt as any).dieselExceptionReason || "");
     setIndentRef(dieselLink != null ? "" : ((receipt as any).indentRef || ""));
     setSelectedPendingPiItemId(null);
     setIndentComboSearch("");
@@ -535,6 +550,16 @@ export default function PlantMaterialReceipts() {
         toast({ title: "Error", description: "Challan / DN No. is required", variant: "destructive" });
       }
       return;
+    }
+    if (isSelectedDiesel && linkedDieselRequirementId == null) {
+      if (!canRecordStandaloneDiesel) {
+        toast({ title: "Daily Diesel Requirement required", description: "Select a purchased Daily Diesel Requirement. Only Owner/Admin/PM may use the standalone exception.", variant: "destructive" });
+        return;
+      }
+      if (!dieselExceptionReason.trim()) {
+        toast({ title: "Exception reason required", description: "Explain why this Diesel/HSD receipt cannot yet be linked to a purchased Daily Diesel Requirement.", variant: "destructive" });
+        return;
+      }
     }
     // 06M-C-HF §5: PI validation is skipped only for diesel-sourced receipts;
     // ordinary receipts keep the existing rule exactly.
@@ -574,6 +599,8 @@ export default function PlantMaterialReceipts() {
         ...((editingReceipt as any).documentStatus === "submitted" && editPermissionRequestId !== null
           ? { editPermissionRequestId }
           : {}),
+        ...(linkedDieselRequirementId != null ? { linkedDieselRequirementId } : {}),
+        dieselExceptionReason: dieselExceptionReason.trim() || null,
       };
       updateMutation.mutate({ id: editingReceipt.id, data: updateData });
     } else {
@@ -595,6 +622,7 @@ export default function PlantMaterialReceipts() {
         tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
         // 06M-C: purchase↔receipt audit linkage (never inferred, only deep-linked)
         linkedDieselRequirementId: linkedDieselRequirementId ?? null,
+        dieselExceptionReason: dieselExceptionReason.trim() || null,
       };
       createMutation.mutate(data);
     }
@@ -1041,6 +1069,54 @@ export default function PlantMaterialReceipts() {
                   </Select>
                 </div>
               </div>
+
+              {isSelectedDiesel && (
+                <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50/60 dark:border-amber-700 dark:bg-amber-900/10 p-3" data-testid="section-diesel-receipt-control">
+                  <div className="space-y-1.5">
+                    <Label>Daily Diesel Requirement <span className="text-destructive">*</span></Label>
+                    <Select
+                      value={linkedDieselRequirementId != null ? String(linkedDieselRequirementId) : "standalone"}
+                      onValueChange={(value) => setLinkedDieselRequirementId(value === "standalone" ? null : Number(value))}
+                      disabled={(editingReceipt as any)?.linkedDieselRequirementId != null}
+                    >
+                      <SelectTrigger data-testid="select-diesel-requirement">
+                        <SelectValue placeholder="Select purchased requirement" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="standalone" disabled={!canRecordStandaloneDiesel}>
+                          Standalone exception — regularisation pending
+                        </SelectItem>
+                        {purchasedDieselRequirements.map((requirement) => (
+                          <SelectItem key={requirement.id} value={String(requirement.id)}>
+                            #{requirement.id} · {requirement.date} · Purchased {requirement.qtyPurchased} L
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Ordinary Diesel/HSD receipts must use a purchased requirement with quantity remaining.
+                    </p>
+                  </div>
+                  {linkedDieselRequirementId == null && (
+                    canRecordStandaloneDiesel ? (
+                      <div className="space-y-1.5">
+                        <Label>Standalone exception reason <span className="text-destructive">*</span></Label>
+                        <Textarea
+                          value={dieselExceptionReason}
+                          onChange={(e) => setDieselExceptionReason(e.target.value)}
+                          placeholder="Why is this receipt not linked to a purchased Daily Diesel Requirement?"
+                          data-testid="input-diesel-exception-reason"
+                        />
+                        <p className="text-xs font-medium text-amber-700 dark:text-amber-300">This receipt will remain Pending Regularisation until linked.</p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-destructive" data-testid="notice-diesel-link-required">
+                        Select a purchased Daily Diesel Requirement. Standalone receipts are restricted to Owner/Admin/PM.
+                      </p>
+                    )
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1506,6 +1582,11 @@ export default function PlantMaterialReceipts() {
                                  }) && (
                                   <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-amber-400 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20" data-testid={`badge-pi-pending-${receipt.id}`}>PI Pending</Badge>
                                 )}
+                                 {(receipt as any).dieselExceptionReason && (receipt as any).linkedDieselRequirementId == null && (
+                                   <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-orange-500 text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/20" data-testid={`badge-diesel-regularisation-${receipt.id}`}>
+                                     Diesel Pending Regularisation
+                                   </Badge>
+                                 )}
                                 {(() => {
                                    const closureStatus = receiptClosureStatus((receipt as any).documentStatus, (receipt as any).hasRequiredDoc);
                                    if (closureStatus === "Final Submitted") {
@@ -1678,6 +1759,15 @@ export default function PlantMaterialReceipts() {
                                     </div>
                                   </div>
                                 )}
+                                 {(receipt as any).dieselExceptionReason && (receipt as any).linkedDieselRequirementId == null && (
+                                   <div className="mt-3 flex items-start gap-2 rounded-md border border-orange-400 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-700 px-3 py-2" data-testid={`notice-diesel-regularisation-${receipt.id}`}>
+                                     <AlertTriangle className="w-4 h-4 text-orange-600 dark:text-orange-300 shrink-0 mt-0.5" />
+                                     <div>
+                                       <p className="text-sm font-semibold text-orange-800 dark:text-orange-200">Diesel receipt pending regularisation</p>
+                                       <p className="text-sm text-orange-700 dark:text-orange-300">Exception reason: {(receipt as any).dieselExceptionReason}</p>
+                                     </div>
+                                   </div>
+                                 )}
                                 {(() => {
                                   const indentRef = (receipt as any).indentRef;
                                   const indentStatus = indentRef ? indentStatusMap[indentRef] : undefined;

@@ -1,0 +1,358 @@
+INSTRUCTION — Equipment Usage / DPR Consistency
+
+OBJECTIVE
+Make Site DPR Equipment Usage capture the same essential operational data as the
+existing standalone Equipment Usage form.
+Do NOT create a second equipment-usage model.
+Do NOT duplicate movement, diesel, maintenance or breakdown records.
+The same machine must have the same quality of operational data whether its usage
+is entered:
+- from a Site DPR;
+- from Plant / Equipment Usage;
+- or from another existing equipment operational entry point.
+Reuse the existing fields, calculations, APIs and records wherever they already
+exist.
+
+====================================================================
+PART 1 — INVESTIGATE THE TWO CURRENT ENTRY PATHS FIRST
+====================================================================
+Compare the actual current code for:
+1. Site DPR Equipment Log / Equipment Usage
+   - SiteEntry.tsx
+   - SiteEdit.tsx
+   - GuidedDpr.tsx
+   - related shared/schema/storage/routes (equipment_logs table)
+2. Standalone Equipment Usage
+   - PlantEquipmentUsage.tsx
+   - equipment_usage table and related APIs
+
+Report first which fields exist in each path and which fields already map to the
+same underlying concepts. Do not rebuild existing working logic.
+
+The current visible gap includes at least:
+Standalone Equipment Usage has: date, working plant/location, equipment,
+opening/closing meter, start/end time, working hours/km, diesel source, opening
+diesel tank balance, diesel issued, closing/balance in tank, balance confirmed,
+movement / Send to Site, breakdown/stoppage.
+Site DPR Equipment Log currently has only a reduced subset: equipment, operator,
+task, entry type, opening/closing meter, start/end time, working hours, diesel
+issued, diesel source, breakdown/stoppage.
+Close this inconsistency.
+
+IMPORTANT — INVESTIGATE THE EXISTING MOVEMENT MECHANISM IN DETAIL, IT IS MORE
+THAN A PAIR OF TEXT FIELDS. equipment_usage already has more than shiftFrom/
+shiftTo: there is a sourceUsageId chain linking one usage row to the row it
+"moved into", plus destinationType/destinationSite fields, plus existing
+conflict-detection logic (EquipmentIncomingConflictError) that already checks a
+linked usage row's destination against the DPR's site when a dispatched-from-
+plant record is closed at site. Map out this ENTIRE existing chain — not just the
+shiftFrom/shiftTo fields visible in the standalone form's UI — before deciding
+how DPR-originated movement should plug into it. Building a simpler, separate
+movement concept for DPR-native rows would recreate exactly the two-tier
+inconsistency this batch exists to remove.
+
+Also explicitly investigate and report: does anything today (Equipment & Fleet,
+a report, or any other screen) actually compute and display a machine's CURRENT
+location from this chain, or does the chain currently only serve the specific
+"open dispatch closed by a DPR" conflict check? This determines whether Part 5/6's
+"same movement must be visible in Equipment & Fleet" is extending something that
+already reads this data, or would be the first thing to actually read it. Report
+this plainly rather than assuming either way.
+
+Also specifically investigate: equipment_usage already has dprId, siteName,
+operator, and task columns described in its own code comments as "Site/DPR
+context for site equipment entries." Determine whether DPR-native equipment rows
+(not dispatched from plant) should be recorded as equipment_usage rows linked by
+dprId — the same way a plant-dispatched-and-site-closed row already works — rather
+than adding new parallel columns to equipment_logs. This is the preferred
+candidate to evaluate first, precisely because equipment_usage was apparently
+already built with this in mind and already has every field this batch needs
+(tank balance, balance confirmed, movement chain). Report which approach was
+chosen and why before building either one.
+
+====================================================================
+PART 2 — ONE CANONICAL EQUIPMENT-USAGE RULE
+====================================================================
+The business rule is: a DPR equipment row and a standalone Equipment Usage row
+are two ENTRY SURFACES for the same operational concept.
+They may differ in context:
+DPR already knows: project/site, DPR date, task/activity, engineer.
+Standalone Equipment Usage may ask for: plant/location, movement destination,
+operational context.
+But the core machine operating fields and calculations must behave consistently.
+Prefer shared components/helpers rather than maintaining two separate sets of
+logic.
+
+====================================================================
+PART 3 — DPR EQUIPMENT LOG: ADD MISSING DIESEL TANK FIELDS
+====================================================================
+For each DPR equipment usage row add/reuse:
+- Opening Diesel Tank Balance (L)
+- Diesel Issued (L)
+- Closing Diesel Tank Balance (L)
+- Balance Confirmed
+Use the same semantics and calculations as standalone Equipment Usage. Do not
+create a second diesel-balance formula.
+Where an opening tank balance can be reliably carried forward from the previous
+confirmed usage record for the same equipment, suggest/prefill it using the same
+existing rule as standalone Equipment Usage. Do not invent an opening balance
+where no reliable prior balance exists.
+Closing balance must remain an actual/confirmed field, not a calculated
+assumption, unless that is already how the canonical usage model works.
+
+====================================================================
+PART 3A — CONFIRMED BUG: DPR HOURS WORKED / EXPECTED DIESEL ARE NEVER SAVED
+====================================================================
+This was independently confirmed in the current code and must be fixed as part
+of this same batch, not filed separately, since it sits in the exact code this
+batch is already touching.
+
+The Site DPR equipment form calculates Working Hours and Expected Diesel
+correctly on screen (meter reading first, falling back to start/end time only
+when no meter reading exists — this part is already right and must not
+change). But that calculated result is never attached to the row data that
+gets submitted, and the server-side DPR save path does not independently
+recompute it either — it simply stores whatever the client sent for those two
+fields, which today is nothing. The result: hoursWorked and expectedDiesel are
+effectively never persisted for DPR equipment rows, regardless of whether a
+meter reading or start/end time was used. This is broader than "only when
+time is missing" — it currently does not save for either case.
+
+Contrast this with the standalone Plant Equipment Usage save path, which
+already recomputes hoursOrKmRun/expectedDiesel/closingDiesel/variance
+server-side from the equipment's own meter type and consumption norm,
+independent of whatever the client sends, correctly prioritizing the meter
+reading and falling back to time. That server-side logic is correct and
+already proven — reuse it (or the equivalent shared client-side calculation
+already used for the on-screen DPR display) for the DPR equipment save path
+instead of writing a third implementation.
+
+Required fix:
+1. When a DPR is created or updated, compute hoursWorked and expectedDiesel
+   for each equipment row server-side, using the equipment's actual meter
+   type and consumption norm, with the same meter-first/time-fallback logic
+   already used correctly elsewhere (both the standalone Equipment Usage save
+   path and the DPR screen's own on-screen display already implement this
+   correctly — reuse one of them as the single source of truth rather than
+   inventing new logic).
+2. Do this for every DPR write path that inserts/updates equipment_logs rows
+   (new DPR creation, DPR edit/update, and any other path that persists
+   equipment rows), not only the primary create path.
+3. Do NOT change the correct meter-first/time-fallback priority itself — it
+   is already implemented correctly on screen. The bug is that the result
+   never reaches the database, not that the formula is wrong.
+4. After this fix, opening a saved DPR must show the same Working Hours and
+   Expected Diesel that were shown at the time of entry, not blank/zero.
+5. This does not require any schema change — hoursWorked and expectedDiesel
+   columns already exist on equipment_logs; they are simply not being
+   populated.
+
+====================================================================
+PART 4 — DIESEL SOURCE
+====================================================================
+Reuse the same Diesel Source choices and stock behaviour as standalone Equipment
+Usage. Do not create different diesel-source vocabularies between DPR and
+standalone usage. If Diesel Source = HLC stock, preserve all existing
+stock-deduction rules. Do not create an additional stock transaction merely
+because the entry was made through DPR.
+
+====================================================================
+PART 5 — EQUIPMENT MOVEMENT FROM SITE
+====================================================================
+A machine used in a Site DPR may move after the shift. Add a compact:
+MOVEMENT AFTER SHIFT
+with options such as: Remains at current site, Move to Plant, Move to another
+Site, Move to Yard/Other.
+Capture destination, date/time where the existing movement logic supports it, and
+optional remarks/reference.
+Reuse the EXISTING equipment_usage movement chain investigated in Part 1
+(sourceUsageId / destinationType / destinationSite), not a new, separate
+mechanism. Do NOT create movement data only inside DPR.
+For DPR context, do not show the standalone wording "Send to Site" where the
+machine is already at a site — use "Movement after shift" / "Move equipment"
+instead.
+
+====================================================================
+PART 6 — PLANT / STANDALONE MOVEMENT CONSISTENCY
+====================================================================
+Review the standalone "Send to Site" control. The movement engine should
+consistently support: Plant → Site, Site → Plant, Site A → Site B, Site →
+Yard/Other, No movement/Remain.
+Do not maintain one movement implementation for DPR and another for Equipment
+Usage. Reuse the chain mapped out in Part 1 and only improve the UI choices if
+the underlying model already supports these directions.
+
+====================================================================
+PART 7 — TIME / METER CONSISTENCY
+====================================================================
+DPR and standalone Equipment Usage must use the same logic for meter type,
+opening/closing reading, start/end time, working hours/km.
+Do not treat kilometres as working hours. Hour Meter equipment derives hours per
+existing logic; Odometer equipment derives km per existing logic. Start/end time
+and meter readings remain independent evidence where both are captured — do not
+silently overwrite one with the other.
+
+====================================================================
+PART 8 — BREAKDOWN / STOPPAGE
+====================================================================
+DPR and standalone Equipment Usage already need to use the SAME existing
+equipment_maintenance_logs record. Keep/reuse the DPR-01 fields (from time, to
+time, duration, reason, responsibility, repair scope, debitable to vendor,
+remarks, attachments). One breakdown record must remain visible to DPR, Equipment
+Usage, Equipment & Fleet, and Vendor Hire Billing. Do not create duplicate
+maintenance logs when the same stoppage is edited from another surface.
+
+====================================================================
+PART 9 — DPR UI MUST REMAIN COMPACT
+====================================================================
+Do NOT copy the entire standalone Equipment Usage form vertically into each DPR
+activity card. Use a compact equipment row/card with a summary (Time / Meter /
+HSD / Movement / Breakdown), then "Edit usage details" or compact expandable
+sections for the full fields. This compact summary format applies uniformly to
+BOTH newly entered rows and older rows being viewed/edited now — do not build a
+different, plainer layout for old rows just because some of their fields are
+blank. An old row simply shows "Not recorded" in the same layout a new row would
+use for that field.
+
+====================================================================
+PART 10 — DPR REVIEW / SUMMARY
+====================================================================
+The DPR read-only summary/report must show enough information to audit equipment
+usage: equipment, vehicle/registration, vendor/ownership, operator, task, entry
+type, start/end time, duration, opening/closing reading, working hours/km, diesel
+source, opening/closing tank balance, HSD issued, balance confirmed, expected
+diesel, actual vs expected/efficiency, breakdown/stoppage, movement/destination.
+Keep it readable; grouping into Time/Meter/HSD/Movement sections is acceptable.
+This applies to historical rows too, per Part 13.
+
+====================================================================
+PART 11 — NO DUPLICATE OPERATIONAL ENTRY
+====================================================================
+If Site DPR Equipment Log already creates the canonical operational record
+required for reporting/billing, do not ask the engineer to separately enter the
+same machine again under Equipment Usage. Likewise, if an equipment usage row is
+already linked to the DPR, do not create another parallel row merely to obtain
+tank/movement fields. This is the same decision flagged in Part 1 (extend
+equipment_logs vs. link DPR-native rows into equipment_usage) — investigate the
+current tables and linkages and choose one source-of-truth approach. Report the
+exact approach taken and why.
+
+====================================================================
+PART 12 — NEXT-DAY CONTINUITY
+====================================================================
+Where reliable data exists, the next equipment usage entry should be able to use:
+previous closing meter as suggested opening meter; previous confirmed closing
+tank balance as suggested opening tank balance; previous movement destination as
+the current location. Only suggest/carry forward from a valid prior record. Never
+overwrite a user's actual opening reading/balance silently.
+
+====================================================================
+PART 13 — HISTORICAL DATA: DISPLAY ONLY, NEVER INVENT
+====================================================================
+Confirmed with the client: this means old records must be shown clearly and
+consistently in the SAME new compact/summary format as new records (Part 9/10),
+with genuinely missing fields marked "Not recorded" or "—". It does NOT mean
+fabricating tank balances, movement, or any other value that was never actually
+captured at the time — there is no honest way to reconstruct a diesel tank
+reading nobody wrote down, and inventing one would create a false audit trail.
+Existing DPR equipment rows without the newly surfaced tank/movement fields must
+remain valid and open normally, without validation failure.
+
+====================================================================
+PART 14 — DO NOT TOUCH
+====================================================================
+Do NOT change: DPR BOQ/progress calculations, the cut-fill ledger, Material
+Trip/Receipt logic, Vendor Bill hire calculations, period-net HSD recovery,
+Equipment Master commercial hire logic, maintenance history semantics, diesel
+stock accounting rules, unrelated Equipment & Fleet workflows, Execution
+Arrangement status logic. This batch is only equipment operational-entry
+consistency.
+
+====================================================================
+TESTS
+====================================================================
+A. DPR EQUIPMENT — TANK BALANCE: Opening Tank 35 L, Diesel Issued 20 L, Closing
+   Tank 18 L, Balance Confirmed — all values save/reload correctly and appear in
+   DPR summary.
+A1. HOURS/DIESEL PERSISTENCE — METER: Opening 2539.3, Closing 2540.8, no
+    start/end time entered. Save the DPR, reload it. Working Hours (1.5) and
+    Expected Diesel (norm x 1.5) must both be present and correct — not blank.
+A2. HOURS/DIESEL PERSISTENCE — TIME FALLBACK: no meter reading entered, Start
+    09:22, End 11:00. Save the DPR, reload it. Working Hours (1:38) and
+    Expected Diesel must both be present and correct, computed from time since
+    no meter reading exists.
+A3. HOURS/DIESEL PERSISTENCE — EDIT PATH: editing an existing DPR's equipment
+    row and changing meter/time values recomputes and re-saves Working Hours
+    and Expected Diesel correctly, not just on first creation.
+B. CARRY FORWARD: next valid usage for same equipment suggests Opening Tank =
+   prior confirmed closing balance; user can edit it; no silent overwrite.
+C. METER CONTINUITY: previous closing reading is suggested as next opening
+   reading where current canonical logic allows it.
+D. HOUR METER: Opening 2539.3, Closing 2540.8 → 1.5 operating hours per existing
+   meter logic.
+E. ODOMETER: odometer difference is treated as km, never as working hours.
+F. MOVEMENT: DPR machine Site A → Plant. Same movement appears wherever the
+   investigation in Part 1 confirms movement is actually surfaced today; if
+   nothing surfaces it today, this test instead confirms the movement record is
+   correctly written into the existing chain and report where it can be seen.
+G. SITE-TO-SITE: DPR machine Site A → Site B produces a single movement record;
+   no duplicate movement rows.
+H. NO MOVEMENT: "Remains at current site" does not create a false movement
+   transaction.
+I. BREAKDOWN: recording breakdown from DPR shows the same equipment_maintenance_
+   logs record in Equipment & Fleet and Vendor Hire Billing; no duplicate record.
+J. STANDALONE EQUIPMENT USAGE: existing form remains fully functional and retains
+   its current tank/movement/breakdown behaviour.
+K. DPR REVIEW: saved DPR summary shows time, readings, working hours/km, HSD,
+   tank balances, efficiency, and movement.
+L. HISTORICAL DPR: old DPR without tank/movement data opens normally in the same
+   layout as a new one, showing Not recorded/blank for missing fields, without
+   validation failure.
+M. NO DUPLICATE ENTRY: a DPR equipment usage does not require the same usage to
+   be separately entered again in the standalone Equipment Usage workflow.
+N. FULL TEST SUITE.
+
+====================================================================
+SCHEMA
+====================================================================
+Investigate existing schema first. Prefer ZERO new schema if DPR equipment logs
+already have equivalent fields or can reliably link to the canonical
+equipment_usage / movement / maintenance records — per Part 1's investigation,
+equipment_usage very likely already covers everything needed via its existing
+dprId/siteName linkage and tank/movement columns.
+If any missing persistence field genuinely requires additive schema, STOP BEFORE
+MIGRATION and report: exact missing field; why existing equipment_usage/
+equipment_logs/movement records cannot hold it; minimum additive proposal;
+historical-data compatibility.
+No destructive migration. NO DROP TABLE. NO DROP COLUMN. NO destructive rename.
+
+====================================================================
+REPORT BACK
+====================================================================
+0. Confirmation that hoursWorked/expectedDiesel are now computed and saved
+   server-side for every DPR equipment write path (create, edit, and any
+   other path that persists equipment_logs rows), with test evidence (A1-A3).
+1. Exact differences found between DPR Equipment Log and standalone Equipment
+   Usage.
+2. Which fields/components/helpers were reused.
+3. Source of truth chosen for tank balances, and for DPR-native rows generally
+   (equipment_logs extended, or linked into equipment_usage via dprId) — with
+   reasoning.
+4. How previous closing tank becomes suggested next opening tank.
+5. How meter/hour/km calculation is shared.
+6. The full existing movement chain as found (sourceUsageId/destinationType/
+   destinationSite/conflict-checking), how DPR movement writes into it, and
+   explicit confirmation of whether any screen today actually reads it back into
+   a "current location" display — do not assume this exists if it was not found.
+7. How current location is derived after movement, if it is derived anywhere.
+8. Confirmation breakdown uses one existing maintenance record.
+9. Screenshot/description of compact DPR equipment UI.
+10. Screenshot/description of DPR equipment summary, including a historical row
+    shown in the same format.
+11. Confirmation no duplicate equipment usage entry is required.
+12. Schema changes, if any.
+13. Files changed.
+14. Focused tests A–M.
+15. Full test-suite/build/type-check result.
+
+STOP AFTER THIS BATCH. DO NOT START ANOTHER FEATURE.
