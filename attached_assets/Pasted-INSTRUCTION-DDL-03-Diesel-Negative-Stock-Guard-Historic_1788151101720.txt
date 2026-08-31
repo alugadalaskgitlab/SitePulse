@@ -1,0 +1,190 @@
+INSTRUCTION DDL-03 — Diesel Negative-Stock Guard, Historical Trace & Duplicate
+Correction Sequencing
+
+OBJECTIVE
+Diesel/HSD stock must stop being able to go negative. Once that is closed, the
+165 L duplicate receipt can be corrected properly instead of by waiting for
+unrelated future purchases to quietly create room for it.
+
+This instruction has two parts with a hard boundary between them:
+
+PART A is to be implemented now. It closes the real, currently-existing gap
+using the same safeguard mechanism already proven elsewhere in this codebase.
+
+PART B is investigation-and-proposal ONLY. Do not write any implementation
+code for Part B in this batch. A true "chronological, as-of-transaction-date"
+stock engine is a materially bigger change than Part A, and it needs a design
+review before anything is built.
+
+Do NOT weaken any existing stock safeguard.
+Do NOT alter non-diesel materials.
+Do NOT modify, delete, cancel, or void any production record in this batch.
+Do NOT run a destructive migration. No DROP TABLE, DROP COLUMN, destructive
+rename. Any new column must use the existing additive/idempotent
+ensure-column pattern already used in this codebase, proposed before writing.
+
+════════════════════════════════════════════════════════════════════════════
+PART A — BUILD NOW
+════════════════════════════════════════════════════════════════════════════
+
+A1. CLOSE THE REAL GAP: APPLY THE EXISTING SUFFICIENCY GUARD EVERYWHERE DIESEL
+    IS CONSUMED
+
+The stock-adjustment helper used across this codebase already supports an
+optional sufficiency guard that blocks a posting when it would push a balance
+negative (this is the exact mechanism that currently, correctly, blocks
+cancelling the duplicate 165 L receipt). It is already applied to at least one
+diesel-consumption code path (equipment usage issued from Plant Stock), but
+NOT to every diesel-deducting code path — at least one diesel deduction
+(tied to equipment breakdown / DPR-linked diesel consumption) currently posts
+without this guard, which is the most likely direct cause of the negative
+diesel balances seen in production history.
+
+1. Audit every code location that deducts Diesel/HSD stock (equipment usage,
+   DPR equipment usage, issues, transfers — anywhere diesel quantity is
+   subtracted from a stock balance).
+2. Report exactly which of these already pass the sufficiency guard and which
+   do not.
+3. Add the same guard to every diesel-deducting path that is currently missing
+   it, so none of them can push diesel stock negative.
+4. When blocked, surface a clear message: required quantity, available
+   quantity as of now, and shortfall — consistent with the existing blocked-
+   reversal message style.
+5. This must be enforced server-side (already true for the paths that have
+   the guard — extend the same server-side enforcement, not a UI-only check).
+6. Do NOT change this behavior for any non-diesel material.
+
+This alone stops new negative diesel stock from being created going forward.
+It does not require redesigning how stock is calculated — it closes a
+consistency gap in a mechanism that already exists and is already tested.
+
+A2. REPORT HISTORICAL NEGATIVE DIESEL PERIODS (READ-ONLY)
+
+Using production data, report every period since 07-Aug-2026 where the diesel
+running balance went below zero. For each:
+- date/time
+- balance immediately before
+- the issue/consumption/DPR record that caused it to go negative
+- quantity
+- resulting negative balance
+- the next receipt that brought it back positive, and its gap in time
+
+Do not modify any of these records. This is reporting only, so PM/Admin can
+see the pattern before deciding what (if anything) needs a historical
+correction.
+
+A3. RE-CONFIRM THE CURRENT 70 L REVERSAL SHORTFALL
+
+Re-state, from current production data: the duplicate receipt's exact ID,
+receipt number, quantity, date, linked-requirement status; current available
+diesel stock; and the exact shortfall preventing its reversal. Confirm whether
+this figure has changed since the last investigation.
+
+A4. DO NOT USE FUTURE PURCHASES TO QUIETLY CLOSE THE GAP
+
+Do not treat the passage of time or unrelated future diesel receipts as a fix
+for the duplicate. Before any correction of the duplicate is attempted:
+1. PM/Admin must first confirm whether any genuine diesel purchase/delivery
+   from the affected period was never entered into SitePulse at all (a real
+   missing historical receipt, not the duplicate itself).
+2. Any such genuine missing receipt must be identified and entered with
+   supporting documentation (this batch does not need to build a special
+   "backdated entry" mechanism to do this — report to PM/Admin what evidence
+   would be needed and let them confirm before anything is entered).
+3. Only once real, evidenced stock supports it should the duplicate be
+   voided, using the existing reversal/cancellation mechanism as-is (no
+   change needed there — it already works correctly and safely).
+4. If, after any genuine missing receipts are accounted for, stock still does
+   not support reversing the full 165 L, report the exact remaining shortfall
+   rather than forcing anything.
+
+A5. STANDALONE DIESEL RECEIPT CONTROL
+
+This was already scoped in a separate, still-pending instruction (diesel
+receipts must normally link to an approved Daily Diesel Requirement purchase;
+an unlinked standalone diesel receipt is a PM/Admin-only exceptional action
+with a mandatory reason and a visible "pending regularisation" flag until it
+is linked; the server must reject a linked receipt that would exceed the
+purchase's remaining quantity). Treat that as part of this same effort and
+prioritize it alongside Part A above — do not re-implement it differently or
+in conflict with what was already specified.
+
+════════════════════════════════════════════════════════════════════════════
+PART B — PROPOSAL ONLY. DO NOT IMPLEMENT IN THIS BATCH.
+════════════════════════════════════════════════════════════════════════════
+
+The idea of validating diesel stock "as of" each transaction's own effective
+date/time (so a later receipt can never retroactively make an earlier
+transaction look valid) is the more rigorous long-term model, and there is a
+genuine operational case where diesel is physically received before its
+paperwork is entered (a "Late Receipt / Regularise Stock" PM/Admin action with
+mandatory actual receipt date/time, supplier, document reference, and reason).
+
+Do NOT build either of these in this batch. Instead, produce a written design
+proposal covering:
+
+1. How "available stock as of a given date/time" would be computed, given
+   that stock is currently tracked as a single running balance per
+   material/party rather than derived fresh from the ledger on each read.
+2. Specifically how inserting a backdated "Late Receipt" after later
+   transactions already exist would be handled — including whether and how
+   the stock_ledger's stored balance-after values for everything between the
+   backdated date and now would need to be recomputed, and what happens to
+   any transaction in that window that would have been blocked as
+   insufficient had the late receipt existed at the time.
+3. Whether this becomes diesel-specific logic, or a shared change to the
+   underlying stock engine used by every material — and, if diesel-specific,
+   how that is kept from diverging or conflicting with the shared engine over
+   time.
+4. Concurrency/locking implications: the current mechanism relies on locking
+   a single balance row; chronological validation likely requires locking or
+   scanning a range of ledger rows instead. Describe how correctness under
+   concurrent postings would be preserved.
+5. A rough size/risk estimate and a recommended incremental path (e.g.,
+   whether this can be limited to the Late Receipt path specifically rather
+   than applied to every ordinary diesel posting).
+6. Full field/workflow design for the "Late Receipt / Regularise Stock"
+   PM/Admin action itself (mandatory fields, audit trail, who can use it),
+   assuming the above is resolved.
+
+Report this proposal back. Do not write implementation code for Part B, and
+do not touch the existing stock engine's core calculation logic, until this
+proposal is reviewed and explicitly approved.
+
+════════════════════════════════════════════════════════════════════════════
+TESTS (Part A only)
+════════════════════════════════════════════════════════════════════════════
+A. Every diesel-deducting code path is confirmed to use the sufficiency
+   guard; a diesel consumption attempt that would exceed current stock is
+   blocked server-side with a clear shortfall message, on every such path —
+   not just the one that already had it.
+B. Non-diesel materials are unaffected by this change.
+C. Historical negative-period report matches production data and modifies
+   nothing.
+D. The 70 L shortfall figure is re-confirmed against current production data.
+E. No receipt, balance, or ledger record was modified, voided, or deleted in
+   this batch.
+F. The existing reversal-sufficiency guard (used for cancel/delete) is
+   unchanged and its tests still pass.
+G. Full test suite, type-check, and build all pass.
+
+════════════════════════════════════════════════════════════════════════════
+DATA / MIGRATION SAFETY
+════════════════════════════════════════════════════════════════════════════
+No destructive migration. If a new column is genuinely needed for Part A
+(unlikely — this should mostly be wiring the existing guard parameter into
+call sites that omit it), propose it as additive-only before writing it.
+
+════════════════════════════════════════════════════════════════════════════
+REPORT BACK
+════════════════════════════════════════════════════════════════════════════
+1. Every diesel-deducting code path found, and which ones lacked the
+   sufficiency guard before this fix.
+2. Confirmation the guard is now applied consistently, with test evidence.
+3. Historical negative-diesel-period report (Part A2).
+4. Re-confirmed exact current 70 L shortfall detail (Part A3).
+5. Status of the standalone-diesel-receipt-control work (Part A5).
+6. The full Part B design proposal, unimplemented, for review.
+7. Files changed, and full test/build/type-check results.
+
+DO NOT PUBLISH AUTOMATICALLY. STOP AND REPORT BACK.
