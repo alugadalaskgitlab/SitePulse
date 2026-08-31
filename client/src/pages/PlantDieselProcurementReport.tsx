@@ -10,6 +10,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, ChevronDown, ChevronRight, Fuel, TrendingUp, Package, MapPin, Loader2, Download, Printer } from "lucide-react";
 import { format } from "date-fns";
 import type { StockLedgerEntry, PlantMaterial, MaterialReceipt, Party } from "@shared/schema";
+import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -86,8 +87,12 @@ export default function PlantDieselProcurementReport() {
   const isLoading = isLoadingLedger || isLoadingReceipts;
 
   const getPartyName = (id: number | null) => {
-    if (!id) return "Unknown";
-    return parties?.find(p => p.id === id)?.name || "Unknown";
+    return stockOwnerLabel({
+      partyId: id,
+      materialName: dieselMaterial?.name,
+      resolvedPartyName: id == null ? null : parties?.find((p) => p.id === id)?.name,
+      unresolvedPartyPrefix: "Party #",
+    });
   };
 
   const plantStockReceipts = (receipts || []).filter(r => r.materialId === dieselMaterialId);

@@ -10,7 +10,7 @@ description: Purchased ≠ Received for Daily Diesel purchases; linked Material 
 **Why:** anti-pilferage — Purchased is the purchaser's claim, Received is an independent physical confirmation; storing receivedQty would go stale on receipt cancel/edit.
 
 **How to apply:**
-- Valid receipts = not cancelled AND not deleted. Over-receipt shows as explicit +variance, never clamped. Cancelled linked receipts set `cancelledReceiptCount` → UI must show the "Plant Stock may not have been automatically reversed" note (cancelMaterialReceipt flags only; it does NOT reverse stock — pre-existing, deliberate).
+- Valid receipts = not cancelled AND not deleted. Over-receipt shows as explicit +variance, never clamped. Cancelled linked receipts are excluded from received totals and set `cancelledReceiptCount`.
 - Create and correction paths must both enforce the active canonical DIESEL/HSD material and Liters ledger UOM. UI locks are only guidance; server enforcement is mandatory because receipt quantities are aggregated as litres.
 - Deep links must carry material, remaining quantity, supplier, and UOM so the receipt opens with the same physical-stock assumptions used by the purchase.
 - New and historical linked receipts must resolve the same qualifying purchase evidence without duplicating it. Multiple reference paths must still display and count one document once.

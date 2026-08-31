@@ -125,3 +125,10 @@ id = "Wg2IojhdDitNECGN-gclO"
 uri = "file://attached_assets/logos/sitepulse-combo-3.png"
 type = "image"
 title = "Combo 3 — \"Live Ops — Beyond the Logbook.\""
+
+[[outputs]]
+id = "Rrj_g8xx-2KQi1F6r9-q_"
+uri = "file://reports/diesel-stock-bucket-and-receipt-investigation-2026-08-31.md"
+type = "text"
+title = "Diesel stock and receipt investigation"
+description = "Read-only production findings covering stock buckets, reconciliation, duplicate receipts, PI exemption, safeguards, and validation."

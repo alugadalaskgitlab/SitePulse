@@ -32,6 +32,7 @@ import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialReceipt } from "@shared/schema";
 import { UOM_OPTIONS } from "@shared/schema";
 import { decidePiAutoSelect, submitBlockedByPi, showPiIndentBlock, showPiPendingBadge, showRegulariseIndentNotice, receiptClosureStatus } from "@shared/dieselReceiptSource";
+import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
@@ -616,7 +617,12 @@ export default function PlantMaterialReceipts() {
   const handlePrintClick = () => handlePrint();
 
   const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || "Unknown";
-  const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || "Unknown" : "Unknown";
+  const getPartyName = (id: number | null, receiptMaterialId: number) => stockOwnerLabel({
+    partyId: id,
+    materialName: materials?.find((m) => m.id === receiptMaterialId)?.name,
+    resolvedPartyName: id == null ? null : parties?.find((p) => p.id === id)?.name,
+    unresolvedPartyPrefix: "Party #",
+  });
 
   // Filter receipts
   const filteredReceipts = receipts?.filter(r => {
@@ -705,7 +711,7 @@ export default function PlantMaterialReceipts() {
         "Indent Ref": (r as any).indentRef || "",
         Supplier: r.supplier || "",
         Transporter: r.transporter || "",
-        "Party/Job": getPartyName(r.partyId),
+        "Party/Job": getPartyName(r.partyId, r.materialId),
       }));
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
@@ -768,7 +774,7 @@ export default function PlantMaterialReceipts() {
         (r as any).invoiceDate || "-",
         r.supplier || "-",
         r.transporter || "-",
-        getPartyName(r.partyId),
+        getPartyName(r.partyId, r.materialId),
         (r as any).indentRef || "-",
       ]);
       
@@ -883,7 +889,7 @@ export default function PlantMaterialReceipts() {
                   <td>${(r as any).indentRef || '-'}</td>
                   <td>${r.supplier || '-'}</td>
                   <td>${r.transporter || '-'}</td>
-                  <td>${getPartyName(r.partyId)}</td>
+                  <td>${getPartyName(r.partyId, r.materialId)}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -1606,7 +1612,7 @@ export default function PlantMaterialReceipts() {
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground text-sm block">Party/Job</span>
-                                    <span className="font-medium">{getPartyName(receipt.partyId)}</span>
+                                    <span className="font-medium">{getPartyName(receipt.partyId, receipt.materialId)}</span>
                                   </div>
                                   {(receipt as any).invoiceNo && (
                                     <div>

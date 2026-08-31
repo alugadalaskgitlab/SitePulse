@@ -22,6 +22,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { NegativeBalanceBannerMulti } from "@/components/NegativeBalanceBanner";
 import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
+import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 
 type StockBalanceAsOf = {
   materialId: number;
@@ -285,7 +286,11 @@ export default function PlantStock() {
   });
 
   const getMaterialName = (id: number) => materials?.find((m) => m.id === id)?.name || `Material ${id}`;
-  const getPartyName = (id: number | null) => id ? parties?.find((p) => p.id === id)?.name || `Party ${id}` : "Unknown";
+  const getPartyName = (id: number | null, materialId: number) => stockOwnerLabel({
+    partyId: id,
+    materialName: materials?.find((m) => m.id === materialId)?.name,
+    resolvedPartyName: id == null ? null : parties?.find((p) => p.id === id)?.name,
+  });
 
   // Detect if the currently selected material tracks per-tank stock (Bitumen or LDO).
   // When true: tank filter is visible and T1/T2 balances are shown in the Balance column.
@@ -724,7 +729,7 @@ export default function PlantStock() {
           materialId: entry.materialId,
           materialName: getMaterialName(entry.materialId),
           partyId: entry.partyId,
-          partyName: getPartyName(entry.partyId),
+          partyName: getPartyName(entry.partyId, entry.materialId),
           uom: targetUom,
           openingStock: 0,
           received: 0,
@@ -838,7 +843,7 @@ export default function PlantStock() {
           materialId: entry.materialId,
           materialName: getMaterialName(entry.materialId),
           partyId: entry.partyId,
-          partyName: getPartyName(entry.partyId),
+          partyName: getPartyName(entry.partyId, entry.materialId),
           uom: targetUom,
           totalReceipts: 0,
           totalIssues: 0,
@@ -989,7 +994,7 @@ export default function PlantStock() {
         const row: Record<string, string> = {
           Date: entry.date,
           Material: getMaterialName(entry.materialId),
-          "Stock Owner": getPartyName(entry.partyId),
+          "Stock Owner": getPartyName(entry.partyId, entry.materialId),
           Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'tank_transfer' ? '→ Boiler Tank' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType === 'ldo_dip_consumption' ? 'Actual Consumption' : entry.transactionType,
           "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '')
@@ -1130,7 +1135,7 @@ export default function PlantStock() {
         const row: (string)[] = [
           entry.date,
           getMaterialName(entry.materialId),
-          getPartyName(entry.partyId),
+          getPartyName(entry.partyId, entry.materialId),
           entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : isRevision ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType),
           entry.transactionType === 'opening_balance'
             ? (entry.notes || '-')
@@ -1334,7 +1339,7 @@ export default function PlantStock() {
                 <tr${isBF ? ' class="bf-row"' : ''}>
                   <td>${entry.date}</td>
                   <td>${getMaterialName(entry.materialId)}</td>
-                  <td>${getPartyName(entry.partyId)}</td>
+                  <td>${getPartyName(entry.partyId, entry.materialId)}</td>
                   <td>${typeLabel}</td>
                   <td>${notes}</td>
                   <td class="text-right text-green">${convData.displayIn > 0 ? convData.displayIn.toFixed(3) : '-'}</td>
@@ -2065,7 +2070,7 @@ export default function PlantStock() {
                                 : entry.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
                                 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
                             }`}>
-                              {isBF && selectedPartyId === "all" ? "All Parties" : getPartyName(entry.partyId)}
+                              {isBF && selectedPartyId === "all" ? "All Parties" : getPartyName(entry.partyId, entry.materialId)}
                             </span>
                           </td>
                           <td className="p-3">

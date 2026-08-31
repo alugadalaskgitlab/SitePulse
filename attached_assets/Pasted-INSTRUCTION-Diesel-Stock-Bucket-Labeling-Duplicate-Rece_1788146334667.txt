@@ -1,0 +1,151 @@
+INSTRUCTION — Diesel Stock Bucket Labeling & Duplicate Receipt Investigation
+
+OBJECTIVE
+Investigate two confirmed live issues in the Diesel stock/receipt flow and report
+back with evidence BEFORE changing or correcting any data. This is an
+investigation-and-narrow-fix batch, not a redesign of the stock or reconciliation
+system.
+
+DO NOT, under any circumstances in this batch:
+- Change the stock-reversal sufficiency check (the guard that blocks cancelling
+  or deleting a receipt when reversing it would push the balance negative). This
+  check is correct and must not be loosened, bypassed, or reworked. It already
+  uses the live, current balance, which reflects every receipt and issue posted
+  so far — confirm this in your report rather than "fixing" it.
+- Change the existing duplicate-receipt prevention (the Receive action already
+  disappears once a Diesel Requirement is fully received, and the server already
+  rejects a receipt that would exceed the remaining/pending quantity). Confirm
+  this is intact; do not rebuild it.
+- Silently correct, delete, cancel, or "reconcile" any live data.
+- Touch non-diesel materials, other reconciliation flows, DPR, Equipment Usage,
+  Vendor Bills, or PI/IRN rules for any material other than diesel.
+- Run any destructive migration. No DROP TABLE, DROP COLUMN, or destructive
+  rename. If a schema change is genuinely needed, STOP and propose it as an
+  additive-only change before writing any migration.
+
+PART 1 — CONFIRM AND FIX THE "UNKNOWN" STOCK LABEL
+The Stores & Inventory stock screens (Stock Summary / Ledger Details / Current
+Balances) label some diesel balance rows "Unknown" when they belong to no
+specific party. Elsewhere in the app (the Physical Stock Reconciliation screen)
+the exact same kind of row is correctly labeled "Plant Common."
+
+1. Confirm that "Unknown" and "Plant Common" refer to the same underlying
+   concept (a stock balance/ledger row with no party attached).
+2. Fix every screen that currently displays "Unknown" for this case so it
+   consistently shows "Plant Common" instead, matching the Reconciliation
+   screen's existing language. This is a label-only fix — do not change how
+   these rows are stored or calculated.
+3. Report every file/screen where this label appears and confirm each one is
+   now consistent.
+
+PART 2 — INVESTIGATE WHY DIESEL SPLITS INTO TWO BUCKETS
+Live evidence shows diesel currently exists in two separate balance rows: one
+under "Plant Common" (no party) carrying roughly 881 L, and one under
+"HIGH LANE CONSTRUCTIONS" carrying a much smaller, actively-changing amount.
+
+Investigate and report, without changing anything yet:
+1. Which diesel transactions (receipts, issues, opening balances, prior
+   reconciliations) posted to the Plant Common row, with their dates.
+2. Which diesel transactions posted to the HIGH LANE CONSTRUCTIONS row, with
+   their dates.
+3. What in the code decides which of the two a given diesel transaction goes to
+   (e.g. is it based on how/where the transaction was entered, a default that
+   changed over time, or a specific field the user picks).
+4. Whether there is any real-world reason HLC's diesel should be split into two
+   separate tracked pools, given it is understood to be one physical diesel
+   stock for the company.
+
+Do not merge, zero, or move any balance yet. Just report the findings and give a
+recommendation: either (a) diesel should always post to a single, consistent
+bucket going forward, with a proposal for which one and how existing data would
+be handled, or (b) the two-bucket split is intentional and serves a real purpose
+— in which case propose how to make that distinction visible enough that it
+cannot be missed again during a physical count.
+
+PART 3 — CONFIRM THE 7-AUG PHYSICAL RECONCILIATION COVERAGE
+A physical stock reconciliation was posted on 07-Aug-2026 that zeroed diesel
+under HIGH LANE CONSTRUCTIONS. Confirm whether that same reconciliation session
+included a line for the Plant Common diesel row, or whether that row was left
+untouched (i.e., never counted).
+
+Report exactly what was and wasn't included in that 07-Aug session. Do not post
+any new reconciliation or adjustment — this is confirmation only, for PM/Admin
+to act on separately once they've physically counted the Plant Common diesel.
+
+PART 4 — INVESTIGATE THE DUPLICATE 165 L DIESEL RECEIPTS
+Two Material Receipts (RECV/DSL/26-27/0008 and RECV/DSL/26-27/0009), both
+165 Liters of Diesel, both linked to Daily Diesel Requirement #33's purchase,
+exist as apparent duplicates of the same purchase.
+
+1. Report the exact creation timestamp of each of these two receipts.
+2. Confirm whether, at the time the second (duplicate) receipt was created, the
+   current "cannot exceed remaining/pending quantity" server-side check was
+   already live in the deployed code, or whether these receipts predate that
+   protection.
+3. If the duplicate predates the protection: state that plainly — this is
+   historical data from before the safeguard existed, not a live gap.
+4. If the duplicate was created AFTER the protection was live: find and report
+   the exact gap that let a second full receipt through despite the check
+   (e.g. a different code path, a race condition, or a receipt created without
+   linkedDieselRequirementId set at creation time and only linked afterward).
+Do not fix a gap yet if you find one — report it first with the exact
+mechanism, and wait for confirmation before touching that code path.
+
+PART 5 — CONFIRM PI/IRN EXEMPTION STATUS FOR THE SPECIFIC RECEIPT FLAGGED
+A receipt dated 29-Aug-2026 (165 L, Diesel, linked to the same duplicate
+situation above) showed a "No approved indent linked" warning. The existing
+rule is supposed to hide that warning for any receipt created from an approved
+Daily Diesel Requirement purchase (via its linkedDieselRequirementId).
+
+1. Confirm whether that specific 29-Aug receipt had linkedDieselRequirementId
+   set at the time the warning was shown.
+2. If it was set and the warning still showed, that is a genuine bug — find and
+   fix the exact reason the exemption didn't apply for that record, without
+   changing the exemption's scope (it must remain limited to diesel receipts
+   linked to an approved Daily Diesel Requirement; do not exempt diesel
+   receipts in general).
+3. If it was NOT set (i.e. this receipt was entered as a standalone/manual
+   receipt rather than via the Diesel Requirement's own Record Receipt flow),
+   state that plainly — the warning is correct in that case and should not be
+   removed.
+
+PART 6 — DO NOT ACT ON THE DUPLICATE RECEIPTS YET
+Once Parts 1–5 are reported, do NOT delete, cancel, or void either of the two
+165 L receipts, and do not attempt to force the earlier reversal-blocked
+cancellation through. Present the findings and a recommended resolution path
+(e.g., "once Plant Common diesel is physically counted and reconciled, stock
+will likely be sufficient to reverse the duplicate cleanly via the existing
+Cancel action") for PM/Admin to review and explicitly approve before any record
+is touched.
+
+TESTS
+A. Every screen previously showing "Unknown" for a no-party diesel balance now
+   shows "Plant Common", and no other material's labeling changed.
+B. Report clearly lists which diesel transactions built up the Plant Common
+   balance and which built up the HIGH LANE CONSTRUCTIONS balance, with dates.
+C. Report confirms whether the 07-Aug reconciliation session included a Plant
+   Common diesel line item or not.
+D. Report states the creation timestamps of both duplicate 165 L receipts and
+   whether they predate the existing duplicate-prevention check.
+E. Report confirms linkedDieselRequirementId status of the 29-Aug receipt and
+   whether the PI/IRN exemption is working correctly for it.
+F. No stock balances, receipts, or reconciliation records were modified.
+G. Existing reversal-sufficiency guard and duplicate-prevention checks are
+   unchanged and still pass their existing tests.
+H. Full test suite / type-check / build all still pass.
+
+REPORT BACK
+1. Every file/screen changed for the label fix (Part 1).
+2. Full breakdown of Plant Common vs HIGH LANE CONSTRUCTIONS diesel
+   transactions and a recommendation on whether the split should continue.
+3. Whether the 07-Aug reconciliation covered Plant Common diesel or not.
+4. Creation timestamps and root cause for the two duplicate 165 L receipts.
+5. linkedDieselRequirementId status and PI/IRN exemption result for the 29-Aug
+   receipt, and whether a fix was needed.
+6. Any schema change proposal (additive only) if genuinely required — stop and
+   report before writing a migration.
+7. Confirmation that the reversal-sufficiency guard and duplicate-prevention
+   checks were not modified.
+8. Test/build/type-check results.
+
+DO NOT PUBLISH AUTOMATICALLY. STOP AND REPORT BACK.

@@ -24,6 +24,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialIssue } from "@shared/schema";
 import { UOM_OPTIONS } from "@shared/schema";
+import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 
 const LDO_TANK_LABELS: Record<string, string> = {
   "1": "LDO TANK 1 (BOILER)",
@@ -351,10 +352,12 @@ export default function PlantMaterialIssues() {
   };
 
   const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || `Material #${id}`;
-  const getPartyName = (id: number | null) => {
-    if (id === null) return "Unknown";
-    return parties?.find(p => p.id === id)?.name || `Party #${id}`;
-  };
+  const getPartyName = (id: number | null, issueMaterialId: number) => stockOwnerLabel({
+    partyId: id,
+    materialName: materials?.find((m) => m.id === issueMaterialId)?.name,
+    resolvedPartyName: id == null ? null : parties?.find((p) => p.id === id)?.name,
+    unresolvedPartyPrefix: "Party #",
+  });
 
   const filteredIssues = useMemo(() => {
     if (!issues) return [];
@@ -397,7 +400,7 @@ export default function PlantMaterialIssues() {
     const data = filteredIssues.map(issue => ({
       Date: issue.date,
       Time: issue.time || "",
-      "Stock Owner": getPartyName(issue.partyId),
+      "Stock Owner": getPartyName(issue.partyId, issue.materialId),
       Material: getMaterialName(issue.materialId),
       "LDO Tank": getLdoTankLabel(issue.ldoTankNumber) || "",
       Quantity: issue.quantity,
@@ -425,7 +428,7 @@ export default function PlantMaterialIssues() {
 
     const tableData = filteredIssues.map(issue => [
       issue.date,
-      getPartyName(issue.partyId),
+      getPartyName(issue.partyId, issue.materialId),
       getMaterialName(issue.materialId),
       getLdoTankLabel(issue.ldoTankNumber) || "",
       `${issue.quantity} ${issue.uom}`,
@@ -450,7 +453,7 @@ export default function PlantMaterialIssues() {
     const tableRows = filteredIssues.map(issue => `
       <tr>
         <td>${issue.date}</td>
-        <td>${getPartyName(issue.partyId)}</td>
+        <td>${getPartyName(issue.partyId, issue.materialId)}</td>
         <td>${getMaterialName(issue.materialId)}</td>
         <td>${getLdoTankLabel(issue.ldoTankNumber) || ""}</td>
         <td>${issue.quantity} ${issue.uom}</td>
@@ -804,7 +807,7 @@ export default function PlantMaterialIssues() {
                         </div>
                       )}
                       <div className="text-sm text-muted-foreground">
-                        From: {getPartyName(issue.partyId)}
+                        From: {getPartyName(issue.partyId, issue.materialId)}
                       </div>
                     </div>
                   </div>
