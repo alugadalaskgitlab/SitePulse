@@ -1,0 +1,176 @@
+INSTRUCTION — Diesel Standalone Receipt Control, Exact Duplicate Identification &
+Repair
+
+OBJECTIVE
+Close the gap the last investigation found (a standalone Diesel Material Receipt
+can be created without going through an approved Daily Diesel Requirement
+purchase, with no server-side quantity guard), and correctly remove the one
+confirmed wrong 165 L duplicate receipt — without weakening any existing
+safeguard, and without guessing which database record is the duplicate before
+it is proven.
+
+Scope: Diesel Material Receipts only. Do not change behavior for any other
+material.
+
+DO NOT, under any circumstances in this batch:
+- Touch, weaken, or rework the stock-reversal sufficiency guard (the check that
+  blocks cancelling/deleting a receipt when reversal would push a balance
+  negative). It is correct and must stay exactly as is.
+- Change standalone Material Receipt behavior for any material other than
+  Diesel.
+- Delete, cancel, or void any receipt before Part 1 below is completed and its
+  exact findings are reported.
+- Run a destructive migration. No DROP TABLE, DROP COLUMN, destructive rename.
+  If a new column is genuinely needed, use the existing additive/idempotent
+  pattern already used elsewhere in this codebase (an ensure...Column-style
+  migration that only ever ADDs), and report the proposal before writing it.
+
+PART 1 — MATCH THE EXACT DUPLICATE RECORD FIRST
+An earlier investigation reported that Material Receipt "0009" is a standalone,
+unlinked, DRAFT record. But the live screen Sunil (the owner) was actually
+working from showed a 165 L Diesel receipt behaving as Final Submitted, whose
+cancellation attempt tried to reverse 165 L of posted stock and was blocked by
+the sufficiency guard.
+
+These two descriptions do not obviously match (draft vs. final-submitted). Do
+not assume they are the same record.
+
+1. Re-identify, by exact database ID, receipt number, date, quantity, status
+   (draft/final-submitted), and linkedDieselRequirementId, every 165 L Diesel
+   receipt around 29-Aug-2026 connected to Daily Diesel Requirement #33 /
+   Requirement ID 38 (both the genuine one and the suspected duplicate).
+2. Explicitly reconcile the discrepancy: if the record shown on the live
+   cancel-attempt screen is NOT the same row previously reported as "0009",
+   identify which row it actually is and correct the earlier report.
+3. Report exact IDs, receipt numbers, statuses, and linkedDieselRequirementId
+   for every receipt involved before proceeding to Part 2.
+
+Do not modify any record until this is reported and confirmed.
+
+PART 2 — REMOVE THE CONFIRMED DUPLICATE CORRECTLY
+Once Part 1 identifies the true duplicate record:
+- If it is genuinely still draft/unposted (never posted stock), delete or
+  cancel it normally — no stock reversal complication should exist.
+- If it is Final Submitted and has posted stock, use (or add, if it does not
+  already exist in a suitable form) an audited "Void Duplicate Receipt" action
+  that:
+  - requires a reason (default/suggested: "Duplicate created by workflow
+    error");
+  - reverses ONLY that duplicate receipt's stock posting, through the existing
+    reversal mechanism and its existing sufficiency guard;
+  - preserves the receipt row for audit, excluded from active totals/reports;
+  - leaves the genuine receipt and the Diesel Requirement's own purchase record
+    completely untouched;
+  - records who removed it, when, and the reason.
+- If the sufficiency guard still blocks the reversal because current stock is
+  genuinely too low, do NOT force it. Report the exact shortfall and stop —
+  that is a real reconciliation question for PM/Admin, not something to
+  override in code.
+
+PART 3 — DIESEL STANDALONE RECEIPT CONTROL
+Today, a Diesel Material Receipt can be created without being linked to any
+Daily Diesel Requirement purchase, and without any server-side check against
+how much of that purchase is still outstanding. Fix this as follows, for
+Diesel only:
+
+1. When a user starts a new Diesel Material Receipt and there is at least one
+   approved Daily Diesel Requirement purchase with outstanding (not fully
+   received) quantity, the normal path must require them to select that
+   requirement/purchase — same as the existing "Record Receipt" flow already
+   launched from the Diesel Requirement screen. Do not let an ordinary user
+   silently create an unlinked Diesel receipt when a matching outstanding
+   purchase exists.
+2. Add a genuine PM/Admin-only exceptional path: "Record Exceptional Standalone
+   Diesel Receipt", for real cases where no Diesel Requirement exists yet
+   (emergency purchase before a requirement was raised, an opening/legacy
+   correction, diesel received from another site/company, or similar). This
+   requires a mandatory reason and is only available to PM/Admin (or Owner).
+3. Any receipt created through that exceptional path must be visibly flagged
+   as pending regularisation — reuse the existing amber "regularise this
+   receipt" notice pattern already used elsewhere in Material Receipts (the
+   same visual language as the current "No approved indent linked — regularise
+   this receipt through its Edit action" notice), adapted to say something
+   like: "Exceptional standalone diesel receipt — link this to a Daily Diesel
+   Requirement to regularise." It must stay visibly flagged until it is linked
+   to a Diesel Requirement (existing or newly raised to cover it) via Edit.
+   Once linked, the flag clears and it behaves like a normal diesel receipt
+   from then on.
+4. Server-side enforcement (not just UI):
+   - A linked diesel receipt cannot be created/saved for more than the
+     remaining outstanding quantity of its Diesel Requirement purchase; once a
+     purchase is fully received, reject any further linked receipt against it.
+   - An ordinary (non PM/Admin) user's attempt to save a standalone Diesel
+     receipt with no linkedDieselRequirementId, while an outstanding purchase
+     exists, must be rejected server-side with a clear message pointing them to
+     the correct requirement(s) to select from — not just hidden in the UI.
+   - A PM/Admin exceptional standalone diesel receipt is allowed only with a
+     reason present, and is saved with the pending-regularisation flag set.
+5. Do not change anything about standalone receipts for non-diesel materials.
+
+PART 4 — DO NOT WEAKEN EXISTING SAFEGUARDS
+Confirm explicitly in your report that:
+- The stock-reversal sufficiency guard is unchanged and its existing tests
+  still pass.
+- Non-diesel Material Receipt creation/behavior is unchanged.
+- The existing diesel PI/IRN exemption (for receipts linked to an approved
+  Daily Diesel Requirement) is unchanged and still correctly does NOT apply to
+  any standalone receipt, exceptional or not, unless/until that receipt is
+  linked to a requirement.
+
+TESTS
+A. Part 1 produces an exact, ID-matched account of every 165 L diesel receipt
+   involved, resolving the earlier "0009 is draft" vs. "live screen showed
+   final-submitted" discrepancy.
+B. The confirmed duplicate is removed the correct way for its actual status
+   (plain delete if draft/unposted; audited void-with-reversal if
+   final-submitted/posted) and the genuine receipt is untouched.
+C. If reversal is still blocked by insufficient current stock, the batch stops
+   and reports the shortfall rather than forcing it.
+D. An ordinary user starting a new Diesel receipt with an outstanding
+   Requirement purchase available is required to link it; cannot silently save
+   an unlinked standalone diesel receipt.
+E. A second linked diesel receipt that would exceed the outstanding purchased
+   quantity is rejected server-side, not just hidden client-side.
+F. Once a Diesel Requirement purchase is fully received, no further linked
+   receipt against it is accepted.
+G. PM/Admin can create an exceptional standalone diesel receipt only with a
+   reason; it is visibly flagged as pending regularisation.
+H. Linking a previously-exceptional standalone diesel receipt to a Diesel
+   Requirement via Edit clears the regularisation flag and it behaves like a
+   normal linked diesel receipt afterward.
+I. Non-diesel standalone Material Receipts are completely unaffected.
+J. The diesel PI/IRN exemption still only applies to receipts actually linked
+   to an approved Diesel Requirement.
+K. The stock-reversal sufficiency guard and its existing tests are unchanged.
+L. Full test suite, type-check, and build all pass.
+
+SCHEMA / DATA SAFETY
+If a new column or flag (e.g. an "isExceptionalStandalone" / "needsRegularise"
+marker on Material Receipts) is genuinely needed, use the existing
+additive/idempotent ensure-column migration pattern already used in this
+codebase. No destructive changes. Report the exact proposed column(s) before
+writing the migration.
+
+Do not correct, delete, or void any production record until Part 1's exact
+identification is reported and confirmed.
+
+REPORT BACK
+1. Exact ID/receipt-number/status/date reconciliation for every 165 L diesel
+   receipt investigated, and resolution of the "0009 draft" vs. "live screen
+   final-submitted" discrepancy.
+2. Which record was the true duplicate, its status, and exactly how it was
+   removed (plain delete vs. audited void-with-reversal), or the exact
+   shortfall reported if reversal was still blocked.
+3. Confirmation the genuine receipt and its Diesel Requirement purchase are
+   untouched.
+4. What was built for standalone diesel receipt control (linked-path
+   requirement, PM/Admin exceptional path, regularisation flag and how it
+   clears).
+5. Exact server-side enforcement added for remaining/outstanding quantity on
+   linked diesel receipts.
+6. Confirmation that non-diesel receipts, the PI/IRN exemption scope, and the
+   stock-reversal guard are all unchanged.
+7. Any schema proposal (additive only), files changed, and full test/build/
+   type-check results.
+
+DO NOT PUBLISH AUTOMATICALLY. STOP AND REPORT BACK.
