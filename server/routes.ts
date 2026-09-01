@@ -2146,6 +2146,10 @@ export async function registerRoutes(
     try {
       if (!assertCreate(req, res, "site_dprs")) return;
       const input = api.dprs.create.input.parse(req.body);
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
+        return res.status(403).json({ message: "Access denied for this site" });
+      }
       // 030A Part F: validate programme-bar links server-side (draft-lenient
       // when saving a draft — Instruction 031 Part B).
       const linkError = await validateProgressProgrammeLinks(input, { draft: (input as any).dprStatus === "draft" });
@@ -2177,7 +2181,7 @@ export async function registerRoutes(
         userId: req.authUser?.id ?? null,
         userName: req.authUser ? currentUserName(req) : input.engineer,
         closedAt: new Date(),
-      });
+      }, { reuseExistingDraft: req.query.resumeExisting === "1" });
       const isDraft = (input as any).dprStatus === "draft";
       if (!isDraft) {
         await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${input.engineer || 'Engineer'} submitted DPR for ${input.site} (${input.date})`, isRead: 0 });
@@ -2213,6 +2217,9 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied for this site" });
       }
       const input = createDprRequestSchema.parse(req.body);
+      if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
+        return res.status(403).json({ message: "Access denied for this site" });
+      }
       const linkError = await validateProgressProgrammeLinks(input, { draft: true });
       if (linkError) return res.status(400).json({ message: linkError, code: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input, { draft: true });
@@ -2247,6 +2254,9 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Access denied for this site" });
       }
       const input = createDprRequestSchema.parse(req.body);
+      if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
+        return res.status(403).json({ message: "Access denied for this site" });
+      }
       const linkError = await validateProgressProgrammeLinks(input);
       if (linkError) return res.status(400).json({ message: linkError, code: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input);

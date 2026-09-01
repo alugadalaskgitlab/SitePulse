@@ -27,14 +27,25 @@ const tx: any = {
   execute: vi.fn(async () => ({ rows: [] })),
 };
 const fakeDb: any = {
-  transaction: vi.fn(async (fn: any) => fn(tx)),
+  transaction: vi.fn(async (fn: any) => {
+    const writeBoundary = fx.writes.length;
+    try {
+      return await fn(tx);
+    } catch (error) {
+      // Mirror the database transaction boundary closely enough for the
+      // focused storage runtime tests to observe all-or-nothing writes.
+      fx.writes.splice(writeBoundary);
+      throw error;
+    }
+  }),
   select: tx.select,
 };
 vi.mock("../server/db", () => ({ db: fakeDb }));
 
 let DatabaseStorage: any;
+let InsufficientPlantStockError: any;
 beforeAll(async () => {
-  ({ DatabaseStorage } = await import("../server/storage"));
+  ({ DatabaseStorage, InsufficientPlantStockError } = await import("../server/storage"));
 });
 beforeEach(() => {
   fx.queue = [];
@@ -124,6 +135,137 @@ describe("equipment consistency storage runtime", () => {
   });
 });
 
+describe("DPR draft operational side-effect boundary", () => {
+  const payload = (status: "draft" | "submitted" = "draft") => ({
+    date: "2026-09-01",
+    site: "SITE A",
+    engineer: "ENGINEER",
+    dprStatus: status,
+    progress: [],
+    labour: [],
+    materials: [],
+    sitePurchases: [],
+    structureItems: [],
+    equipment: [{
+      machine: "ROLLER",
+      equipmentId: 4,
+      openingReading: 10,
+      closingReading: 12,
+      diesel: 50,
+      dieselSource: "plant_stock",
+      breakdowns: [{
+        clientKey: "breakdown-1",
+        description: "Hydraulic leak",
+        fromTime: "09:00",
+        toTime: "10:00",
+      }],
+    }],
+  });
+
+  function operationalSpies(storage: any) {
+    storage.processDprEquipmentDieselLedger = vi.fn();
+    storage.reconcileDprBreakdownsTx = vi.fn();
+    storage.finalizeDprEquipmentUsageTx = vi.fn();
+    storage.cleanupDprEquipmentDieselLedger = vi.fn();
+    return {
+      diesel: storage.processDprEquipmentDieselLedger,
+      maintenance: storage.reconcileDprBreakdownsTx,
+      canonicalUsage: storage.finalizeDprEquipmentUsageTx,
+      cleanup: storage.cleanupDprEquipmentDieselLedger,
+    };
+  }
+
+  it("creates an insufficient-stock draft without posting stock, usage, breakdown, movement or billing facts", async () => {
+    fx.queue.push([{ id: 4, meterType: "hour_meter", consumptionNorm: 4 }]);
+    const storage = new DatabaseStorage();
+    const effects = operationalSpies(storage);
+    effects.diesel.mockRejectedValue(new Error("insufficient stock must not be consulted for a draft"));
+
+    await expect(storage.createDpr(payload() as any)).resolves.toMatchObject({ id: 91 });
+    expect(effects.diesel).not.toHaveBeenCalled();
+    expect(effects.maintenance).not.toHaveBeenCalled();
+    expect(effects.canonicalUsage).not.toHaveBeenCalled();
+    expect(effects.cleanup).not.toHaveBeenCalled();
+    // Movement and hire billing consume canonical equipment_usage. With no
+    // canonical materialization, the draft creates no source fact for either.
+  });
+
+  it("serializes Field Home starts and reuses the existing site/date draft", async () => {
+    fx.queue.push([{ id: 7, date: "2026-09-01", site: "SITE A", dprStatus: "draft" }]);
+    const storage = new DatabaseStorage();
+    const effects = operationalSpies(storage);
+
+    await expect(storage.createDpr(
+      payload() as any,
+      undefined,
+      undefined,
+      { reuseExistingDraft: true },
+    )).resolves.toMatchObject({ id: 7 });
+
+    expect(tx.execute).toHaveBeenCalled();
+    expect(fx.writes).toHaveLength(0);
+    expect(effects.diesel).not.toHaveBeenCalled();
+    expect(effects.maintenance).not.toHaveBeenCalled();
+    expect(effects.canonicalUsage).not.toHaveBeenCalled();
+  });
+
+  it("repeatedly replaces the same canonical draft id with zero operational effects", async () => {
+    const storage = new DatabaseStorage();
+    storage.getDpr = vi.fn().mockResolvedValue({ id: 7, dprStatus: "draft" });
+    const effects = operationalSpies(storage);
+    for (let save = 0; save < 2; save++) {
+      fx.queue.push(
+        [], // old equipment rows
+        [], // old progress rows
+        [{ id: 4, meterType: "hour_meter", consumptionNorm: 4 }],
+      );
+      await expect(storage.updateDraftDpr(7, payload() as any)).resolves.toMatchObject({ id: 7 });
+    }
+    expect(storage.getDpr).toHaveBeenCalledTimes(2);
+    expect(effects.diesel).not.toHaveBeenCalled();
+    expect(effects.maintenance).not.toHaveBeenCalled();
+    expect(effects.canonicalUsage).not.toHaveBeenCalled();
+    expect(effects.cleanup).not.toHaveBeenCalled();
+  });
+
+  it("rolls an insufficient submit back exactly, then posts operational effects once on retry", async () => {
+    const storage = new DatabaseStorage();
+    storage.getDpr = vi.fn().mockResolvedValue({ id: 7, dprStatus: "draft" });
+    const effects = operationalSpies(storage);
+    const insufficient = new InsufficientPlantStockError({
+      material: "Diesel",
+      materialId: 1,
+      requestedQty: 50,
+      availableQty: 20,
+      shortageQty: 30,
+      source: "plant_stock",
+    });
+    effects.diesel.mockRejectedValueOnce(insufficient).mockResolvedValueOnce(undefined);
+
+    const queueSubmitReads = () => fx.queue.push(
+      [], // cleanup is mocked; old equipment rows
+      [], // old progress rows
+      [{ id: 4, meterType: "hour_meter", consumptionNorm: 4 }],
+    );
+    queueSubmitReads();
+    const before = [...fx.writes];
+    await expect(storage.submitDraftDpr(7, payload("submitted") as any)).rejects.toBe(insufficient);
+    expect(fx.writes).toEqual(before);
+    expect(effects.maintenance).not.toHaveBeenCalled();
+    expect(effects.canonicalUsage).not.toHaveBeenCalled();
+
+    queueSubmitReads();
+    await expect(storage.submitDraftDpr(7, payload("submitted") as any)).resolves.toMatchObject({
+      id: 7,
+      dprStatus: "submitted",
+    });
+    expect(effects.diesel).toHaveBeenCalledTimes(2);
+    expect(effects.maintenance).toHaveBeenCalledTimes(1);
+    expect(effects.canonicalUsage).toHaveBeenCalledTimes(1);
+    expect(effects.cleanup).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("all DPR write paths and route authorization remain wired", () => {
   const source = fs.readFileSync("server/storage.ts", "utf8");
   it.each(["createDpr", "_replaceDprChildRecords", "updateDpr", "cloneDpr", "createVersionDpr"])(
@@ -161,5 +303,10 @@ describe("all DPR write paths and route authorization remain wired", () => {
     expect(body).toContain("req.query.site");
     expect(body).toContain("assertTripSiteAccess");
     expect(body).toContain("{ siteName, permittedSiteNames }");
+  });
+
+  it("keeps start identity and draft state transitions inside transaction guards", () => {
+    expect(source).toContain("pg_advisory_xact_lock(1437");
+    expect(source).toContain('and(eq(dprs.id, id), eq(dprs.dprStatus, "draft"))');
   });
 });

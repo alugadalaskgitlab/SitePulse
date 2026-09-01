@@ -42,6 +42,7 @@ const SiteDashboard         = lazy(() => import("@/pages/SiteDashboard"));
 const SiteEntry             = lazy(() => import("@/pages/SiteEntry"));
 const GuidedDpr             = lazy(() => import("@/pages/GuidedDpr"));
 const SiteEdit              = lazy(() => import("@/pages/SiteEdit"));
+const DprWorkHub            = lazy(() => import("@/pages/DprWorkHub"));
 const SiteMaterialStock     = lazy(() => import("@/pages/SiteMaterialStock"));
 const SiteSuccess           = lazy(() => import("@/pages/SiteSuccess"));
 const SiteReport            = lazy(() => import("@/pages/SiteReport"));
@@ -269,6 +270,7 @@ function AuthedShell() {
           <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />
           <Route path="/site/new" component={gated(SiteEntry, "site_dprs")} />
           <Route path="/site/guided" component={gated(GuidedDpr, "site_dprs")} />
+          <Route path="/site/work/:id" component={gated(DprWorkHub, "site_dprs")} />
           <Route path="/site/edit/:id" component={gated(SiteEdit, "site_dprs")} />
           <Route path="/site/success/:id" component={gated(SiteSuccess, "site_dprs")} />
           <Route path="/site/report/:id" component={gated(SiteReport, "site_dprs")} />

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation } from "wouter";
+import { useQuery, useMutation, useQueryClient, useQueries } from "@tanstack/react-query";
 import {
   Truck, ShoppingBag,
   BookOpen, LayoutDashboard, MapPin,
@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { format, addDays } from "date-fns";
 import { roadDprHref, roadDprDraftHref } from "@/lib/dprEntryMode";
+import { dprWorkHubHref, resolveExistingSiteDpr, resolveFieldSitePriority } from "@/lib/dprWorkHub";
 import { findOlderPendingDprs } from "@/lib/dprLifecycle";
 import { deriveDprChecklist } from "@shared/dprFieldChecklist";
 import { findAllocationEntry, fulfilmentLabel } from "@shared/requirementFulfilment";
@@ -682,6 +683,7 @@ function ReadinessSection() {
 export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard?: () => void }) {
   const { user, sectionVisible } = useAuth();
   const deviceType = useDeviceType();
+  const [, setLocation] = useLocation();
 
   const todayStr    = format(new Date(), "yyyy-MM-dd");
   const todayDisplay = format(new Date(), "EEE, d MMM yyyy");
@@ -764,15 +766,51 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   const activeSites = (sites as any[]).filter(s => s.isActive !== 0);
 
   // ── Multi-site: let user pick which site to view ──────────────────────────
-  const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
+  const [selectedSiteId, setSelectedSiteId] = useState<number | null>(() => {
+    try {
+      const value = Number(sessionStorage.getItem("sitepulse.field.lastSiteId"));
+      return Number.isInteger(value) && value > 0 ? value : null;
+    } catch { return null; }
+  });
+  const programmePriorityQueries = useQueries({
+    queries: activeSites.map((site) => ({
+      queryKey: ["/api/field-site-programme-priority", site.id, todayStr],
+      queryFn: async () => {
+        const projectsResponse = await fetch(`/api/boq/projects?siteId=${site.id}`, { credentials: "include" });
+        if (!projectsResponse.ok) return { siteId: site.id, activeToday: false };
+        const projects: Array<{ id: number; barCount?: number }> = await projectsResponse.json();
+        for (const project of projects.filter((candidate) => (candidate.barCount ?? 0) > 0)) {
+          const barsResponse = await fetch(`/api/boq/projects/${project.id}/programme`, { credentials: "include" });
+          if (!barsResponse.ok) continue;
+          const bars: Array<{ startDate?: string | null; endDate?: string | null }> = await barsResponse.json();
+          if (bars.some((bar) => !!bar.startDate && !!bar.endDate && bar.startDate <= todayStr && todayStr <= bar.endDate)) {
+            return { siteId: site.id, activeToday: true };
+          }
+        }
+        return { siteId: site.id, activeToday: false };
+      },
+      enabled: activeSites.length > 0,
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+  const programmeSites = programmePriorityQueries
+    .map((query) => query.data)
+    .filter((value): value is { siteId: number; activeToday: boolean } => value != null);
 
   const currentSiteId: number | null =
-    activeSites.length === 1
-      ? activeSites[0].id
-      : selectedSiteId ?? (activeSites[0]?.id ?? null);
+    resolveFieldSitePriority(activeSites, {
+      explicitSiteId: selectedSiteId,
+      todayDprs: Array.isArray(allDprsResponse) ? allDprsResponse as any[] : [],
+      programmeSites,
+      today: todayStr,
+    });
 
   const currentSite = activeSites.find(s => s.id === currentSiteId) ?? activeSites[0] ?? null;
   const currentSiteName: string = currentSite?.name ?? "";
+  const chooseSite = (siteId: number) => {
+    setSelectedSiteId(siteId);
+    try { sessionStorage.setItem("sitepulse.field.lastSiteId", String(siteId)); } catch { /* unavailable */ }
+  };
 
   // ── BOQ projects for selected site ───────────────────────────────────────
   const { data: boqProjects = [] } = useQuery<BoqProjectWithCounts[]>({
@@ -812,27 +850,11 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
       !d.isSuperseded
   );
 
-  // Engineer name match: DPR stores e.g. "RAMESH - SUPERVISOR" while user.fullName
-  // is "Ramesh". Split on " - " and compare the first part case-insensitively.
-  const engineerBase = (eng: string) => eng.split(" - ")[0].trim().toLowerCase();
-  const myNameNorm   = myName.toLowerCase();
-
-  // Current user's DPR:
-  const myDpr    = siteDprs.find(d => engineerBase(d.engineer ?? "") === myNameNorm) ?? null;
-  // Any other engineer's DPR for same site+date:
-  const otherDpr = siteDprs.find(d => engineerBase(d.engineer ?? "") !== myNameNorm) ?? null;
-
-  // Phase: what does the CTA look like?
-  const dprPhase: DprPhase = (() => {
-    if (myDpr) {
-      const submitted = myDpr.status === "submitted" || !!myDpr.submittedAt;
-      return submitted ? "submitted-own" : "draft-own";
-    }
-    if (otherDpr) return "submitted-other";
-    return "not-started";
-  })();
-
-  const activeDpr = myDpr ?? otherDpr ?? null;
+  // Drafts are shared site work. Any authorised user resumes the same existing
+  // server id; the engineer label is only used to describe submitted reports.
+  const { activeDpr, phase: dprPhase } = resolveExistingSiteDpr(siteDprs, myName);
+  const myDpr = dprPhase === "draft-own" || dprPhase === "submitted-own" ? activeDpr : null;
+  const otherDpr = dprPhase === "submitted-other" ? activeDpr : null;
   const dprId: number | null = activeDpr?.id ?? null;
 
   // ── Batch 06D §13–15: own unsubmitted DPRs BEFORE today (7-day window) ────
@@ -973,7 +995,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   // Batch 06D §10/§12: "Complete" is a deliberate intent — Guided may open at
   // the first incomplete step (complete=1) instead of the autosaved step.
   const continueDraftHref = (d: any): string =>
-    (d?.workType === "structure") ? `/site/edit/${d.id}?draft` : roadDprDraftHref(d.id, "/", { complete: true });
+    (d?.workType === "structure") ? `/site/edit/${d.id}?draft` : dprWorkHubHref(d.id);
   const dprHref = myDpr
     ? (dprPhase === "submitted-own" ? `/site/report/${myDpr.id}` : continueDraftHref(myDpr))
     : otherDpr
@@ -995,7 +1017,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
       case "not-started":
         return {
           label: "Start Today's DPR",
-          href: roadDprHref("/"),
+          href: "#start-todays-work",
           status: "DPR not started yet",
           color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200",
           dotColor: "bg-orange-300",
@@ -1043,6 +1065,31 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
       }
     }
   })();
+
+  // One click creates one server draft; all later work is routed through its id.
+  // A draft never stores a UI-only completion state — the hub derives its counts.
+  const startTodayMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/dprs?resumeExisting=1", {
+        date: todayStr,
+        site: currentSiteName,
+        engineer: myName,
+        role: "engineer",
+        workType: "road",
+        dprStatus: "draft",
+        progress: [],
+        structureItems: [],
+        equipment: [],
+        labour: [],
+        materials: [],
+        sitePurchases: [],
+      });
+      return response.json();
+    },
+    onSuccess: (draft: any) => {
+      setLocation(dprWorkHubHref(draft.id));
+    },
+  });
 
   // ── Shortcut derived state ────────────────────────────────────────────────
   const tomorrowPlans = (tomorrowReqs as any[]).filter(
@@ -1156,7 +1203,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
                   <p className="text-xs text-gray-400 leading-tight">
                     {greeting}, <span className="font-semibold text-gray-800">{firstName || "Engineer"}</span>
                   </p>
-                  <p className="text-xs font-medium text-gray-500 leading-tight">{user?.role ?? "Field Engineer"}</p>
+                  <p className="text-xs font-medium text-gray-500 leading-tight">{(user as any)?.role ?? "Field Engineer"}</p>
                   {currentSiteName && (
                     <div className="flex items-center gap-1 mt-0.5">
                       <MapPin className="w-3 h-3 text-orange-500 flex-shrink-0" />
@@ -1204,7 +1251,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
                   return (
                     <button
                       key={s.id}
-                      onClick={() => setSelectedSiteId(s.id)}
+                       onClick={() => chooseSite(s.id)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                         isActive
                           ? "bg-orange-500 text-white border-orange-500"
@@ -1411,15 +1458,27 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
             </div>
 
             {/* CTA */}
-            <Link href={ctaConfig.href}>
-              <a
+            {dprPhase === "not-started" ? (
+              <button
+                type="button"
+                onClick={() => startTodayMutation.mutate()}
+                disabled={!currentSiteName || startTodayMutation.isPending}
+                className={`w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98] disabled:opacity-60 ${ctaConfig.color}`}
+                data-testid="button-site-work-cta"
+              >
+                <span>{startTodayMutation.isPending ? "Opening today’s draft..." : "Start Today’s Work"}</span>
+                <ArrowRight className="w-5 h-5 ml-auto" />
+              </button>
+            ) : (
+              <Link
+                href={ctaConfig.href}
                 className={`w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98] ${ctaConfig.color}`}
                 data-testid="button-site-work-cta"
               >
                 <span>{ctaConfig.label}</span>
                 <ArrowRight className="w-5 h-5 ml-auto" />
-              </a>
-            </Link>
+              </Link>
+            )}
 
             {/* Status + pending badge */}
             <div className="flex items-center justify-between gap-2">

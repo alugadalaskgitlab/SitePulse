@@ -560,7 +560,12 @@ export interface IStorage {
   getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<Dpr[]>;
   getDprsWithDetails(opts?: { dateFrom?: string; dateTo?: string }): Promise<DprWithDetails[]>;
   getDpr(id: number): Promise<DprWithDetails | undefined>;
-  createDpr(dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit): Promise<Dpr>;
+  createDpr(
+    dpr: CreateDprRequest,
+    clientTimestamp?: string,
+    audit?: DprEquipmentClosureAudit,
+    options?: { reuseExistingDraft?: boolean },
+  ): Promise<Dpr>;
   updateDraftDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
   submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit): Promise<Dpr | undefined>;
   updateDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
@@ -2822,6 +2827,7 @@ export class DatabaseStorage implements IStorage {
     dprData: CreateDprRequest,
     clientTimestamp?: string,
     audit?: DprEquipmentClosureAudit,
+    options?: { reuseExistingDraft?: boolean },
   ): Promise<Dpr> {
     // Transaction to insert DPR and all related nested data
     // Use client-provided timestamp for accurate local time, fall back to server time
@@ -2831,6 +2837,23 @@ export class DatabaseStorage implements IStorage {
       : (clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss"));
     
     return await db.transaction(async (tx) => {
+      if (dprStatusVal === "draft" && options?.reuseExistingDraft) {
+        // Field Home's Start action is a transactional get-or-create. The
+        // advisory lock closes the simultaneous-user/tab race without changing
+        // normal draft creation in the established editors.
+        const identityKey = `${dprData.date}|${dprData.site.trim().toLowerCase()}`;
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(1437, hashtext(${identityKey}))`);
+        const [existingDraft] = await tx.select().from(dprs).where(and(
+          eq(dprs.date, dprData.date),
+          sql`lower(trim(${dprs.site})) = lower(trim(${dprData.site}))`,
+          eq(dprs.dprStatus, "draft"),
+          or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
+          or(eq(dprs.isDeleted, false), isNull(dprs.isDeleted)),
+          or(eq(dprs.isCancelled, false), isNull(dprs.isCancelled)),
+        )).orderBy(asc(dprs.id)).limit(1);
+        if (existingDraft) return existingDraft;
+      }
+
       // 1. Insert DPR Header with submission timestamp (uppercase text fields)
       const [newDpr] = await tx.insert(dprs).values({
         date: dprData.date,
@@ -2880,9 +2903,14 @@ export class DatabaseStorage implements IStorage {
             task: e.task?.toUpperCase() || e.task,
           }))
         ).returning();
-        await this.reconcileDprBreakdownsTx(tx, [], insertedEquipLogs, dprData.equipment as any[], dprData.date);
-
-        await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
+        if (dprStatusVal !== "draft") {
+          // Operational effects start only on Final Submit. Keep the stock
+          // sufficiency check first so an expected rejection does not even
+          // attempt maintenance/canonical-usage work; the surrounding
+          // transaction remains the rollback boundary for every effect.
+          await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
+          await this.reconcileDprBreakdownsTx(tx, [], insertedEquipLogs, dprData.equipment as any[], dprData.date);
+        }
       }
 
       // 4. Insert Labour Logs
@@ -2935,6 +2963,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateDraftDpr(id: number, dprData: CreateDprRequest): Promise<Dpr | undefined> {
+    // Canonical draft identity rule (intentionally unchanged): the id returned
+    // by the initial POST is the draft's sole identity. Every autosave replaces
+    // children under that same dprs.id; there is no site/date/user deduplication
+    // and no new DPR/version row until the explicit version/clone workflows.
     const existing = await this.getDpr(id);
     if (!existing || (existing as any).dprStatus !== "draft") return undefined;
     return await this._replaceDprChildRecords(id, dprData, {});
@@ -2964,6 +2996,7 @@ export class DatabaseStorage implements IStorage {
     audit?: DprEquipmentClosureAudit,
   ): Promise<Dpr | undefined> {
     return await db.transaction(async (tx) => {
+      const isSubmitting = headerOverrides.dprStatus === "submitted";
       const [updated] = await tx.update(dprs)
         .set({
           date: dprData.date,
@@ -2974,10 +3007,17 @@ export class DatabaseStorage implements IStorage {
           remarks: (dprData as any).remarks ?? null,
           ...headerOverrides,
         })
-        .where(eq(dprs.id, id))
+        // PostgreSQL rechecks this predicate after any concurrent row update.
+        // A stale PATCH therefore cannot replace children after submit, and
+        // only one concurrent submit can own the operational effects.
+        .where(and(eq(dprs.id, id), eq(dprs.dprStatus, "draft")))
         .returning();
+      if (!updated) return undefined;
 
-      await this.cleanupDprEquipmentDieselLedger(tx, id);
+      // Draft saves own document rows only. Cleanup/posting is reserved for
+      // the atomic draft -> submitted transition (cleanup also supports
+      // historical drafts created before this invariant).
+      if (isSubmitting) await this.cleanupDprEquipmentDieselLedger(tx, id);
       const oldEquipmentRows = await tx.select().from(equipmentLogs).where(eq(equipmentLogs.dprId, id));
       const oldProgressRows = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey }).from(progressEntries).where(eq(progressEntries.dprId, id));
       const oldProgressIds = oldProgressRows.map(p => p.id);
@@ -3027,9 +3067,13 @@ export class DatabaseStorage implements IStorage {
         insertedEquipLogs = await tx.insert(equipmentLogs).values(
           normalisedEquipment.map((e: any) => ({ ...e, dprId: id, machine: e.machine?.toUpperCase() || e.machine, operator: e.operator?.toUpperCase() || e.operator, task: e.task?.toUpperCase() || e.task }))
         ).returning();
-        await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
+        if (isSubmitting) {
+          await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
+        }
       }
-      await this.reconcileDprBreakdownsTx(tx, oldEquipmentRows, insertedEquipLogs, dprData.equipment as any[], dprData.date);
+      if (isSubmitting) {
+        await this.reconcileDprBreakdownsTx(tx, oldEquipmentRows, insertedEquipLogs, dprData.equipment as any[], dprData.date);
+      }
       if (dprData.labour?.length) {
         await tx.insert(labourLogs).values(dprData.labour.map(l => ({ ...l, dprId: id })));
       }
@@ -3042,7 +3086,7 @@ export class DatabaseStorage implements IStorage {
       if (dprData.structureItems?.length) {
         await tx.insert(dprStructureItems).values(dprData.structureItems.map(s => ({ ...s, dprId: id })));
       }
-      if (headerOverrides.dprStatus === "submitted") {
+      if (isSubmitting) {
         await this.finalizeDprEquipmentUsageTx(tx, updated, insertedEquipLogs, audit);
       }
       return updated;

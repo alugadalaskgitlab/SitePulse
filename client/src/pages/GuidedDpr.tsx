@@ -213,6 +213,14 @@ export default function GuidedDpr() {
   // autosaved step. Only this explicit intent overrides the normal
   // accidental-refresh step restore.
   const completeIntent = new URLSearchParams(searchStr).get("complete") === "1";
+  // The work hub uses semantic section names, while this established screen
+  // owns the actual editing controls. Keep the route small and deterministic.
+  const hubSection = new URLSearchParams(searchStr).get("section");
+  const hubStep: GuidedStepId | null = hubSection === "activities" ? 3
+    : hubSection === "labour" ? 4
+    : hubSection === "equipment" ? 5
+    : hubSection === "review" ? 7
+    : null;
 
   // Batch 05 (spec §4): merely VIEWING a screen must never change the user's
   // persistent entry-mode preference — the old mount-time setDprEntryMode
@@ -235,7 +243,7 @@ export default function GuidedDpr() {
   const photoCameraRef = useRef<HTMLInputElement>(null);
   // Task #1409: wizard step (1 Report · 2 Activities · 3 Details · 4 Photos &
   // crew · 5 Review). Steps 1–2 gate Next; later steps stay draft-lenient.
-  const [step, setStep] = useState<GuidedStepId>(1);
+  const [step, setStep] = useState<GuidedStepId>(hubStep ?? 1);
   // Task #1409: per-activity staged photos, keyed by the row's stable
   // entryKey. Kept OUT of the (JSON) autosave blob — File objects don't
   // serialise; like the DPR-level staged list they live only in this session.
@@ -403,8 +411,10 @@ export default function GuidedDpr() {
         materials: urlDraftDpr.materials ?? [],
       });
       setStep(firstIncompleteGuidedStep(r.mandatory.map((i) => i.section)));
+    } else if (hubStep != null) {
+      setStep(hubStep);
     }
-  }, [urlDraftDpr]);
+  }, [urlDraftDpr, completeIntent, hubStep]);
 
   // ── Batch 05: Equipment & Fleet linkage (same mechanism as Detailed DPR) ──
   // Open usage records for the DPR date are discoverable and linkable via
@@ -2466,7 +2476,7 @@ export default function GuidedDpr() {
                         variant="outline"
                         size="sm"
                         className="shrink-0"
-                        onClick={() => setLocation(`/site/edit/${draftId}?rowSection=materials&rowIndex=${idx}`)}
+                        onClick={() => setLocation(`/site/edit/${draftId}?draft&rowSection=materials&rowIndex=${idx}&returnTo=${encodeURIComponent(returnTo)}`)}
                         data-testid={`button-edit-guided-material-${idx}`}
                       >
                         Edit in Detailed DPR
