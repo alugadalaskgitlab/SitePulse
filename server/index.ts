@@ -159,6 +159,13 @@ app.use((req, res, next) => {
     })(),
   ]);
 
+  // DPR relational reads select every equipment_logs column. Ensure the
+  // equipment lifecycle/tank columns exist before routes can receive traffic;
+  // running this in the background creates a cold-start window where
+  // /api/dprs/with-details fails with a missing-column error.
+  await (storage as any).ensureEquipmentUsageAuditColumns();
+  console.log("Startup: ensureEquipmentUsageAuditColumns — audit columns verified before serving");
+
   await registerRoutes(httpServer, app);
 
   // ── Start serving immediately — background migrations run after listen ─────
@@ -207,7 +214,6 @@ async function runBackgroundMigrations() {
     (async () => { try { await (storage as any).ensurePendingPlantReceiptsTable(); console.log("Startup: ensurePendingPlantReceiptsTable — Batch 12 table ensured"); } catch (e) { console.error("Startup: Failed to ensure pending_plant_receipts table:", e); } })(),
     (async () => { try { await (storage as any).ensureServiceCompletionsTable(); console.log("Startup: ensureServiceCompletionsTable — Batch 13 table ensured"); } catch (e) { console.error("Startup: Failed to ensure service_completions table:", e); } })(),
     (async () => { try { await (storage as any).ensureSiteMaterialTripsLinkageColumns(); console.log("Startup: ensureSiteMaterialTripsLinkageColumns — Batch 14 columns ensured"); } catch (e) { console.error("Startup: Failed to ensure site_material_trips linkage columns:", e); } })(),
-    (async () => { try { await (storage as any).ensureEquipmentUsageAuditColumns(); console.log("Startup: ensureEquipmentUsageAuditColumns — audit columns verified"); } catch (e) { console.error("Startup: Failed to ensure equipment usage audit columns:", e); } })(),
     (async () => { try { await (storage as any).ensureSiteEnabledModulesColumn(); } catch (e) { console.error("Startup: Failed to ensure enabled_modules column on sites:", e); } })(),
     (async () => { try { await storage.ensureMaterialUomConversionsTable(); console.log("Startup: ensureMaterialUomConversionsTable — material_uom_conversions table + BOQ mapping columns verified/added"); } catch (e) { console.error("Startup: Failed to ensure material_uom_conversions table:", e); } })(),
     // ensureEarthworkTables intentionally removed from background phase —

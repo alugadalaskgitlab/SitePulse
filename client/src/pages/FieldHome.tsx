@@ -701,12 +701,17 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   // today-only, so an older unsubmitted own draft is detectable — still a
   // single dateFrom/dateTo-bounded query, never the full DPR history.
   const lookbackFromStr = format(addDays(new Date(), -7), "yyyy-MM-dd");
-  const { data: allDprsWithDetails = [] } = useQuery<any[]>({
+  const { data: allDprsResponse } = useQuery<unknown>({
     queryKey: ["/api/dprs/with-details", lookbackFromStr, todayStr],
-    queryFn: () =>
-      fetch(`/api/dprs/with-details?dateFrom=${lookbackFromStr}&dateTo=${todayStr}`)
-        .then(r => r.json()),
+    queryFn: async () => {
+      const response = await fetch(`/api/dprs/with-details?dateFrom=${lookbackFromStr}&dateTo=${todayStr}`);
+      if (!response.ok) throw new Error(`Failed to load DPRs (${response.status})`);
+      const payload: unknown = await response.json();
+      if (!Array.isArray(payload)) throw new Error("DPR response was not an array");
+      return payload;
+    },
   });
+  const allDprsWithDetails: any[] = Array.isArray(allDprsResponse) ? allDprsResponse : [];
 
   const canProcure  = sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve");
 

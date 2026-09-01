@@ -518,6 +518,7 @@ export async function registerRoutes(
       }
       res.json(response);
     } catch (err) {
+      console.error("GET /api/dprs/with-details failed:", err);
       res.status(500).json({ message: "Failed to fetch DPRs with details" });
     }
   });
