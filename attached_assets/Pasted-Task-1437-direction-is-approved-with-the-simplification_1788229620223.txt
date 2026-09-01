@@ -1,0 +1,128 @@
+Task #1437 direction is approved, with the simplifications and evidence
+requirements below. Proceed under this scope.
+
+1. KEEP THE SECTION HUB SIMPLE
+
+Start Today's Work should open/resume ONE existing canonical DPR draft and
+show:
+- Activity Progress
+- Equipment
+- Labour
+- Materials
+- Review & Submit
+
+These are navigation links/sections of the same DPR, not separate workflows
+or records.
+
+Do not create new section tables, APIs, approvals, or save models.
+
+2. DO NOT ADD A COMPLICATED SECTION-STATUS SYSTEM
+
+Prefer simple derived indicators, for example:
+
+Activity Progress — 2 entries
+Equipment — 3 machines
+Labour — 24 workers
+Materials — Not entered
+
+Do not introduce new persisted Not Started / In Progress / Complete fields
+unless such state already exists and can be reused with zero schema change.
+
+3. PRESERVE THE EXISTING CANONICAL DPR IDENTITY RULE — PROVE IT, DON'T JUST STATE IT
+
+Do NOT redefine a DPR as "one per user + site + date" merely for this
+feature. Whatever existing rule currently ensures one correct DPR/draft for
+the site/date/project context must remain authoritative. All section links
+must resolve back to that SAME draft ID.
+
+This must be demonstrated, not assumed: include a test that two different
+authorised users touching the same site/date resolve to the same existing
+draft under the current rule, unchanged by this batch. Report exactly what
+that identity rule is today and confirm it was not altered.
+
+4. SITE SELECTION PRIORITY FOR MULTI-SITE USERS
+
+- user's explicit/last selected site first;
+- otherwise site with today's existing DPR;
+- otherwise site with active programme bars today;
+- otherwise existing fallback.
+
+Once the user selects a site, do not automatically switch it underneath
+them.
+
+5. DRAFT SAVE MUST BE SIDE-EFFECT FREE — THIS IS THE CRITICAL LIVE FIX
+
+Saving Activity / Equipment / Labour / Materials as a draft must NOT post:
+- diesel stock
+- canonical equipment_usage
+- maintenance/breakdown operational records
+- movement
+- billing effects
+
+Final submission performs the existing operational posting atomically and
+retains the existing non-negative stock safeguard, with rollback and the
+exact required/available/shortfall quantities on failure.
+
+Repeated draft saves, failed submits, successful retries, edits, versions,
+and clones must not be able to duplicate any of these effects.
+
+6. PROTECT CROSS-SECTION DATA — PROVE IT, DON'T JUST STATE IT
+
+Saving one section must never replace or erase data already saved in another
+section. Every editor must hydrate the complete current draft and preserve
+fields/sections it does not own.
+
+This is the single riskiest part of this batch — getting it wrong replaces
+"DPR won't save" with the worse problem of "DPR saves but silently loses
+what was already entered." Before this ships, include explicit test
+coverage proving that saving Equipment does not erase Labour, Materials, or
+Activity Progress, and vice versa in each direction, and report that
+evidence specifically rather than folding it into general test-pass counts.
+
+7. KEEP MATERIALS ON THE EXISTING DETAILED EDITOR
+
+If that is the current correct implementation, do not redesign Material
+entry in this task.
+
+8. KEEP THE UI FIELD-FRIENDLY
+
+Start Today's Work → choose a section → enter/save → return to the section
+hub, with minimum navigation. No movement redesign. No diesel-stock
+redesign. No unrelated DPR redesign.
+
+9. READ-ONLY: QUANTIFY HOW MUCH OF THE −260 L IS DOUBLE-COUNTED
+
+Separately from the fix itself, and without changing any data: report how
+much of the current negative Diesel balance traces back to the same draft's
+diesel entry being posted more than once because draft saves were, until
+now, posting consumption immediately on every save (not only once at
+submission). Identify how many ledger rows are duplicate postings of the
+same underlying DPR/equipment row, and what the balance would be with those
+duplicates excluded. This is investigation only — do not correct any
+balance or ledger row as part of this task.
+
+TESTS (in addition to whatever Replit already scoped)
+A. Draft save with insufficient Diesel stock succeeds and posts nothing.
+B. Final submit with insufficient Diesel stock is blocked with exact
+   required/available/shortfall, and rolls back cleanly.
+C. Repeated draft saves of the same DPR do not create duplicate ledger
+   postings once finally submitted.
+D. Retry after genuine reconciliation submits successfully and posts each
+   effect exactly once.
+E. Two authorised users touching the same site/date resolve to the same
+   canonical draft — identity rule unchanged.
+F. Saving Equipment does not alter/erase Labour, Materials, or Activity
+   Progress already saved in the same draft (and the reverse, for every
+   section pair touched by this batch).
+G. Site selection follows the stated priority order and does not silently
+   override an explicit user selection mid-session.
+H. Full existing test suite, type-check baseline, and build all still pass.
+
+REPORT BACK
+1. Confirmation and evidence for items 3 and 6 specifically (not just "tests
+   passed" — show what was tested).
+2. The double-counting quantification from item 9.
+3. Files changed, full test/build/type-check results.
+4. Confirmation nothing was published and no production data was changed.
+
+DO NOT PUBLISH AUTOMATICALLY. STOP AND REPORT BACK.
