@@ -61,3 +61,4 @@ Replit Publishing diffs the **Replit-managed dev DB (heliumdb via workspace DATA
 - **Why:** Publish once proposed restoring an obsolete Stores default even though the Drizzle schema and production were correct; only the Publish-facing development database was stale.
 - **How to apply:** keep default changes in the versioned schema/migrations, align DATABASE_URL to that source of truth, and remove runtime-only DDL that masks the mismatch.
 - A development-environment database callback can update the Publish-facing `DATABASE_URL` database rather than the custom `DEV_DATABASE_URL` used by the running app. For additive schema work, verify both connections explicitly and confirm the restarted app logs no missing-column errors.
+- Publish warnings that say a column has “N items” report the containing table's row count, not the column's non-null count. Query non-null values separately before judging the data at risk.

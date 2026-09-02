@@ -1,0 +1,86 @@
+STOP PUBLISHING. DO NOT APPROVE THIS MIGRATION.
+
+The Publish preview is destructive and is trying to DROP active columns:
+
+equipment_logs.opening_diesel
+equipment_logs.diesel_balance_in_tank
+equipment_logs.diesel_balance_confirmed
+material_receipts.diesel_exception_reason
+
+These are active application fields and the first three are required by the current
+DPR Equipment implementation. We have independently confirmed all four columns are
+still present and correctly defined in the current shared/schema.ts, so this is not
+a case of the application code dropping the feature. Investigate schema drift
+before any publish.
+
+============================================================
+PART 0 — CONFIRM WHICH DATABASE IS ACTUALLY LIVE
+============================================================
+
+Before anything else, confirm and report which database is actually serving the
+running production application right now (connection string / environment
+variable it uses at runtime), rather than assuming the names "production" /
+"neondb" / "heliumdb" line up the way we expect. Do not proceed on an assumed
+identity for any of these databases — verify it.
+
+============================================================
+PART 1 — READ-ONLY COMPARISON
+============================================================
+
+Please compare, read-only:
+
+1. shared/schema.ts
+2. current dev DB actually used by the running app
+3. Replit Publish comparison DB / heliumdb
+4. production DB confirmed live in Part 0
+
+For each of the four columns, report whether it exists in:
+- code schema
+- dev DB
+- heliumdb (Publish comparison DB)
+- production DB
+
+Also report, for each of the four columns in the confirmed-live production
+database only, the current row counts with non-null data (we are expecting
+approximately 565 for the three equipment_logs columns and 131 for
+material_receipts.diesel_exception_reason — confirm the real current numbers,
+do not assume ours are still accurate).
+
+Do not modify production.
+
+============================================================
+PART 2 — MINIMUM FIX, COMPARISON LAYER ONLY
+============================================================
+
+If heliumdb / the Publish comparison DB is stale or missing these columns while
+code/dev/production all contain them, bring the comparison DB forward using ONLY
+the minimum additive schema needed so Publish no longer generates DROP statements.
+
+Do NOT alter the real production database in this step.
+Do NOT drop or modify any column anywhere as part of this fix.
+
+Then regenerate the Publish preview.
+
+============================================================
+PART 3 — VERIFY NOTHING WAS LOST
+============================================================
+
+Before showing the regenerated preview, re-confirm and report the same four
+row/data counts from Part 1 for the confirmed-live production database, to prove
+nothing was altered or lost while investigating and fixing this.
+
+============================================================
+EXPECTED FINAL PREVIEW
+============================================================
+
+- no DROP TABLE
+- no DROP COLUMN
+- no destructive data-loss warning
+- ideally no schema diff at all
+
+Do not publish automatically.
+Stop and show me:
+1. The Part 1 comparison table (column x database).
+2. The Part 1 and Part 3 row/data counts, side by side.
+3. Confirmation of which database is actually live production.
+4. The regenerated Publish preview.
