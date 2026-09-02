@@ -1,0 +1,490 @@
+OBJECTIVE
+
+Improve the Execution Arrangement status screen so PM/Admin does not normally
+type "Actual Quantity" manually.
+
+For earthwork/vendor arrangements, derive execution evidence from:
+
+1. Submitted DPR progress for the same BOQ item / relevant chainage;
+2. Material Trips / Receipts linked to the same vendor / BOQ item / arrangement.
+
+Show BOTH original trip quantity in CFT and converted quantity in Cum wherever
+relevant.
+
+This should also prepare the same verified quantity trail for future Vendor Bills.
+
+DO NOT redesign DPR, Material Trips, or Vendor Billing in this batch.
+DO NOT create duplicate quantity-entry systems.
+
+
+============================================================
+PART 1 — INVESTIGATE CURRENT LINKS FIRST
+============================================================
+
+Inspect the current code/data relationships for:
+
+- Execution Arrangements
+- Programme Bars / Reaches
+- DPR progress entries
+- Material Trips
+- Material Receipts
+- Vendor / Agency
+- BOQ item linkage
+- earthworkArrangementId
+- programmeBarId
+- Vendor Bills
+
+Report first:
+
+1. Which DPR records can already be linked reliably to:
+   - BOQ item
+   - chainage/reach
+   - programme bar
+   - arrangement
+
+2. Which Material Trip / Receipt records already contain:
+   - vendor/agency
+   - BOQ item
+   - arrangement
+   - programme bar
+   - quantity
+   - UOM
+
+3. Which existing conversion helper should be reused for CFT ↔ Cum.
+
+Do not invent a second conversion formula if one already exists.
+
+
+============================================================
+PART 2 — DPR EXECUTED QUANTITY
+============================================================
+
+For every programme bar/reach covered by an arrangement, calculate:
+
+DPR Executed Qty
+
+from valid submitted DPR progress matching:
+
+- same BOQ item;
+- same project/site;
+- overlapping chainage/reach;
+- relevant side/layer/lift where applicable.
+
+Exclude:
+
+- draft DPRs;
+- cancelled/deleted DPRs;
+- superseded/version-invalid entries;
+- unrelated BOQ items.
+
+Use the existing DPR/BOQ quantity and geometry logic wherever possible.
+
+Do NOT simply assign the full DPR quantity to every overlapping programme bar.
+
+If one DPR spans multiple programme bars/reaches, use the existing reach/geometry
+logic to allocate the relevant quantity correctly.
+
+If reliable allocation cannot be determined from existing data, show:
+"DPR quantity incomplete / requires review"
+rather than guessing.
+
+
+============================================================
+PART 3 — VENDOR TRIP QUANTITY
+============================================================
+
+For vendor-arranged earthwork, calculate:
+
+Vendor Trip Qty
+
+from Material Trips / Receipts linked to the same:
+
+- vendor/agency;
+- BOQ item / intended activity;
+- arrangement where available;
+- programme bar / reach where available;
+- relevant date period.
+
+Prefer exact existing IDs:
+- earthworkArrangementId
+- programmeBarId
+- boqItemId
+
+Do NOT use loose material-name matching where exact linkage exists.
+
+Avoid double counting where a Material Receipt is already the receipt representation
+of the same Material Trip.
+
+One physical trip must count once.
+
+
+============================================================
+PART 4 — SHOW BOTH CFT AND CUM
+============================================================
+
+The original recorded quantity and UOM remain authoritative.
+
+If a trip/receipt is recorded in CFT and Cum is required for BOQ/arrangement
+comparison:
+
+show BOTH:
+
+Example:
+
+Vendor Trips:
+63,400 CFT
+= 1,795.40 Cum
+
+Use the canonical conversion:
+
+1 Cum = 35.3147 CFT
+Cum = CFT / 35.3147
+
+BUT:
+Reuse any existing approved conversion helper/configuration if already present.
+Do not introduce inconsistent conversion logic.
+
+Never overwrite the original CFT quantity with the converted Cum value.
+
+Store/display:
+- Original Qty
+- Original UOM
+- Converted Qty
+- Converted UOM
+
+as appropriate.
+
+
+============================================================
+PART 5 — ARRANGEMENT STATUS SCREEN
+============================================================
+
+The current screen shows repeated status forms without clearly identifying which
+programme bar they belong to.
+
+For each programme bar/reach, show a clear header:
+
+Reach / Chainage
+Allocated Qty
+Current Status
+
+Example:
+
+Reach 3
+Ch. 2.500–3.800
+Allocated: 3,783.052 Cum
+
+Then show:
+
+DPR Executed:
+1,820.000 Cum
+
+Vendor Trips:
+63,400 CFT
+= 1,795.400 Cum
+
+Difference:
+24.600 Cum
+
+Balance vs Allocation:
+1,963.052 Cum
+
+Current Status:
+Partially Executed
+
+This information must be calculated separately for each programme bar/reach.
+
+
+============================================================
+PART 6 — REMOVE NORMAL MANUAL ACTUAL-QTY ENTRY
+============================================================
+
+Do NOT require PM/Admin to manually retype Actual Quantity when reliable DPR/trip
+evidence exists.
+
+Replace the normal Actual Quantity field with:
+
+DPR Executed Qty
+Vendor Trip Qty
+Variance
+
+For exceptional cases provide:
+
+"Override / Accepted Qty"
+
+PM/Admin only.
+
+If override is used:
+- require reason;
+- retain DPR/trip-derived figures;
+- record accepted quantity separately;
+- audit user/date/time/reason.
+
+Do not overwrite source DPR or trip records.
+
+
+============================================================
+PART 7 — STATUS CHANGE
+============================================================
+
+PM/Admin still controls official execution status.
+
+Statuses remain existing values such as:
+- Active / Arranged
+- Partially Executed
+- Executed
+- Not Executed
+- Cancelled
+- Suspended
+- Rescheduled
+- Early Closed
+
+The status control should use the derived quantities as evidence.
+
+Do NOT automatically change official status merely because a quantity threshold
+was reached unless that behavior already exists and is explicitly approved.
+
+Suggested helper only:
+
+If DPR/trip quantity > 0:
+"Execution evidence available"
+
+If accepted qty >= allocated qty:
+"May be ready to mark Executed"
+
+PM/Admin makes the final status decision.
+
+
+============================================================
+PART 8 — VARIANCE / RECONCILIATION
+============================================================
+
+Show:
+
+DPR Executed Qty
+Vendor Trip Qty
+Difference
+
+Do not silently choose one as "correct".
+
+Interpretation:
+
+DPR Qty = work/progress evidence
+Trip Qty = vendor/material movement evidence
+Accepted Qty = commercial/verified quantity when required
+
+If variance exists, show it clearly.
+
+Example:
+
+DPR: 1,820.00 Cum
+Trips: 1,795.40 Cum
+Variance: +24.60 Cum
+
+No blocking workflow is required in this batch.
+
+Keep it informative and simple.
+
+
+============================================================
+PART 9 — PREPARE FOR VENDOR BILLING
+============================================================
+
+Do not redesign Vendor Bills now.
+
+But make the arrangement calculation reusable so Vendor Bills can later consume:
+
+- vendor
+- arrangement
+- BOQ item
+- period
+- trip quantity in original UOM
+- converted Cum
+- DPR executed quantity
+- accepted quantity
+- variance
+
+Do not make users enter the same trip/quantity again in Vendor Bills.
+
+This batch should expose/shared-helper the calculation, not build a new billing
+workflow.
+
+
+============================================================
+PART 10 — HISTORICAL / INCOMPLETE DATA
+============================================================
+
+Older records may not have complete:
+
+- BOQ linkage
+- arrangement linkage
+- programmeBarId
+- chainage precision
+
+Do not guess.
+
+Show:
+
+"Partially linked historical data"
+or
+"Derived quantity incomplete"
+
+PM/Admin may use Accepted Qty override with mandatory reason if needed.
+
+Do not backfill historical links automatically unless exact evidence exists.
+
+
+============================================================
+PART 11 — UI SIMPLICITY
+============================================================
+
+Keep the screen compact.
+
+For each reach show one concise card:
+
+Reach / Chainage
+Allocated
+DPR Qty
+Trips CFT = Cum
+Variance
+Balance
+Status
+
+Then:
+Change Status
+Reason
+Remarks
+Record Status Change
+
+Only show Accepted Qty override if PM/Admin chooses:
+"Override derived quantity"
+
+Do not show a large repeated form without reach identification.
+
+
+============================================================
+PART 12 — DO NOT TOUCH
+============================================================
+
+Do NOT change:
+
+- DPR entry workflow
+- DPR quantity formulas
+- Material Trip entry workflow
+- receipt stock accounting
+- Diesel logic
+- Vendor Bill calculation logic
+- Equipment Usage
+- cut-fill ledger
+- BOQ contract quantities
+- Execution Arrangement allocation quantities
+- unrelated programme-bar logic
+
+This batch is only:
+Arrangement quantity evidence + DPR/Trip comparison + clearer status UI.
+
+
+============================================================
+TESTS
+============================================================
+
+A. ONE BAR / DPR
+Arrangement bar:
+Ch. 2.5–3.8
+DPR submitted for same BOQ/reach
+→ correct DPR executed qty shown.
+
+B. MULTI-BAR DPR
+One DPR overlaps two programme bars.
+→ quantity is allocated correctly, not duplicated into both bars.
+
+C. TRIP CFT CONVERSION
+Trip = 35,314.7 CFT
+→ show:
+35,314.7 CFT
+= 1,000.00 Cum
+
+D. MULTIPLE TRIPS
+Correctly sum all valid trips for same vendor/arrangement/bar.
+
+E. NO DOUBLE COUNT
+Trip + linked receipt representing same physical delivery
+→ count once.
+
+F. WRONG VENDOR
+Trip from another vendor
+→ excluded.
+
+G. WRONG BOQ
+Same material but different BOQ item
+→ excluded.
+
+H. DPR/TRIP VARIANCE
+DPR = 1,820 Cum
+Trips = 1,795.4 Cum
+→ variance = 24.6 Cum.
+
+I. OVERRIDE
+PM/Admin enters Accepted Qty override.
+→ source quantities remain unchanged.
+→ audit reason recorded.
+
+J. HISTORICAL INCOMPLETE
+Missing exact linkage
+→ no guessed quantity.
+→ show incomplete evidence state.
+
+K. STATUS
+Derived quantity does not automatically change official status.
+
+L. EXISTING STATUS HISTORY
+Immutable status history remains unchanged.
+
+M. FULL TEST SUITE / BUILD / TYPE-CHECK.
+
+
+============================================================
+SCHEMA / SAFETY
+============================================================
+
+Prefer ZERO schema change.
+
+Reuse existing DPR, Material Trip, Receipt, Arrangement and Programme Bar IDs.
+
+If Accepted Qty / override audit requires new persistence and equivalent fields do
+not already exist:
+
+STOP BEFORE MIGRATION and report:
+- exact required fields;
+- why existing status event fields cannot hold them;
+- minimum additive schema proposal.
+
+No destructive migration.
+No DROP TABLE.
+No DROP COLUMN.
+No production data rewrite.
+
+
+============================================================
+REPORT BACK
+============================================================
+
+Report:
+
+1. Exact DPR→programme bar/reach matching logic.
+2. Exact Material Trip→vendor/arrangement/bar matching logic.
+3. How duplicate trip/receipt counting is prevented.
+4. CFT→Cum helper used.
+5. Screenshot/description of one revised arrangement reach card.
+6. Example DPR vs Trip variance.
+7. Accepted Qty override behavior.
+8. Historical incomplete-data behavior.
+9. How calculation is prepared for future Vendor Bills.
+10. Schema changes, if any.
+11. Files changed.
+12. Focused tests.
+13. Full build/test/type-check result.
+
+STOP AFTER THIS BATCH.
+DO NOT PUBLISH AUTOMATICALLY.
+DO NOT START VENDOR BILL REDESIGN.
