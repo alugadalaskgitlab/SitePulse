@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateSequencedProgramme } from "../shared/programmeSequencer";
-import { classifyWorkType, normaliseBoqUnit } from "../shared/workTypeRecipes";
+import { classifyPlanningItem, classifyWorkType, normaliseBoqUnit } from "../shared/workTypeRecipes";
 
 // ─── classifyWorkType: roadway_excavation vs earthwork ───────────────────────
 
@@ -359,5 +359,24 @@ describe("generateSequencedProgramme — workCategory fallback when classifyWork
     const subbaseStart = Math.min(...subbaseBars.map(b => b.startMonth));
     // Subbase must start after or at earthwork end (dependency ordering)
     expect(subbaseStart).toBeGreaterThanOrEqual(earthworkEnd);
+  });
+});
+
+describe("canonical planning classifier parity", () => {
+  it("keeps ROAD_FURNITURE with an RCC foundation on the road track", () => {
+    const item = {
+      boqItemId: 99,
+      description: "Providing RCC M20 foundation for kilometre stone",
+      unit: "CUM",
+      totalQty: 10,
+      fullDurationMonths: 1,
+      workCategory: "ROAD_FURNITURE",
+    };
+    expect(classifyPlanningItem(item).planningWorkType).toBe("road");
+    const { diagnostics, unclassifiedItemIds } = generateSequencedProgramme([item], {
+      fronts: 1, staggerMonths: 0, lagMonths: 0,
+    });
+    expect(unclassifiedItemIds).not.toContain(item.boqItemId);
+    expect(diagnostics.find(diagnostic => diagnostic.boqItemId === item.boqItemId)?.track).toBe("pavement");
   });
 });

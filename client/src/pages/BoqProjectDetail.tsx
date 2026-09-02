@@ -1842,18 +1842,20 @@ export default function BoqProjectDetail() {
   });
 
   // ── Derived values ──
-  // Group strictly by the BOQ's OWN bill structure as imported from Excel
-  // (categoryName, e.g. "BILL No. 1 SITE CLEARANCE"), preserving the file's order.
+  // Group strictly by the BOQ's OWN bill structure as imported from Excel,
+  // keeping the raw Bill/Schedule number separate from its section title.
   // Only falls back to the standardized work category / "Uncategorized" when an item
   // genuinely has no bill assigned.
   const billSections = useMemo(() => {
     const map = new Map<string, { name: string; order: number; items: BoqItemWithCategory[] }>();
     for (const item of items) {
+      const sectionTitle = item.categoryName?.trim() || "";
+      const sourceBillNo = item.categorySourceBillNo?.trim() || "";
       const name =
-        (item.categoryName?.trim()) ||
+        ([sourceBillNo, sectionTitle].filter(Boolean).join(" · ")) ||
         getWorkCategoryLabel(item.workCategory) ||
         "Uncategorized";
-      const so = item.sortOrder ?? Number.MAX_SAFE_INTEGER;
+      const so = item.categorySortOrder ?? item.sortOrder ?? Number.MAX_SAFE_INTEGER;
       let bucket = map.get(name);
       if (!bucket) { bucket = { name, order: so, items: [] }; map.set(name, bucket); }
       bucket.items.push(item);
@@ -1865,7 +1867,7 @@ export default function BoqProjectDetail() {
     // Within a bill keep the file order, then fall back to item-code order.
     for (const s of sections) {
       s.items.sort((a, b) => {
-        const ao = a.sortOrder ?? 0, bo = b.sortOrder ?? 0;
+        const ao = a.excelRow ?? a.sortOrder ?? 0, bo = b.excelRow ?? b.sortOrder ?? 0;
         if (ao !== bo) return ao - bo;
         return compareItemCode(a.itemCode, b.itemCode);
       });

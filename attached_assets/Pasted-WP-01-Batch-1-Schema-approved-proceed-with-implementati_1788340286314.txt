@@ -1,0 +1,220 @@
+WP-01 Batch 1 — Schema approved, proceed with implementation.
+
+We reviewed your stop-before-migration report in full. Approved, proceed as
+follows. This is still BATCH 1 only — do not start the manual-planning /
+draft-baseline-revision lifecycle work (Batch 2), and do not start any other
+follow-up task on your own initiative. If you notice something else while
+working, report it and wait, as before.
+
+============================================================
+PART 1 — SCHEMA CHANGE APPROVED (MINIMUM, ADDITIVE ONLY)
+============================================================
+
+Approved exactly as proposed:
+
+  boq_categories.source_bill_no  text, nullable
+
+No other schema change. Reuse, as you proposed:
+- boq_categories.name for Bill/section title
+- boq_categories.sort_order for natural Bill/section order
+- boq_items.excel_row for original Excel row
+- boq_items.sort_order for original source order
+- boq_items.item_code for source item/sub-item identifier
+
+Apply this additive column to every database target that needs it for a clean
+Publish later (dev, Publish-comparison DB, and eventually production through
+the normal migration path) -- follow the same three-database discipline
+documented from the earlier Publish-migration incident. Do not let this new
+column repeat that drift.
+
+No DROP, no destructive migration, no other schema change.
+
+============================================================
+PART 2 — WE ARE RE-SENDING THE ORIGINAL ALLADURG WORKBOOK
+============================================================
+
+Sunil is re-attaching the original ALLADURG import Excel file in this
+conversation. Use it to recover the true Bill numbers, Bill titles, and
+original row order for the already-imported project. Do not treat this as a
+fresh import that creates a second/duplicate project -- backfill the existing
+ALLADURG project's records (source_bill_no, excel_row, category sort order)
+from this workbook, matched against the existing BOQ items already in
+production, rather than re-importing from scratch.
+
+If any row cannot be matched confidently to an existing BOQ item, do not
+guess -- list it separately for manual confirmation instead of backfilling it.
+
+============================================================
+PART 3 — IMPLEMENT THE BILL-DETECTION FIX FOR FUTURE IMPORTS
+============================================================
+
+Fix the importer (per WP-01 Part 2/3) so future imports:
+- detect Bill boundaries beyond the single narrow "Bill No." pattern in one
+  column (handle variants like "BILL-II", "SCHEDULE B", markers landing in
+  the description column, as already scoped);
+- persist source_bill_no separately from the category display name;
+- populate excel_row and preserve source sort order, which your investigation
+  found are not currently being populated at all;
+- show an import-review warning instead of silently guessing when a Bill
+  boundary genuinely cannot be detected.
+
+============================================================
+PART 4 — UNIFY THE CLASSIFIERS (CONFIRMED: FOUR PATHS, NOT TWO)
+============================================================
+
+Your investigation found four separate classification paths (import's private
+isStructureWorkItem keyword list, the canonical classifyWorkType/
+resolveWorkType, isStructureOrLocationScheduledItem for location scheduling,
+and the sequencer's own reconciliation plus a private bridge detector). This
+is more duplication than originally scoped -- proceed with unifying them per
+your own proposal:
+- import uses the canonical work-type resolver, not its own keyword list;
+- planningWorkType is derived from the canonical resolved type and category;
+- isStructureOrLocationScheduledItem is used for location-scheduling
+  decisions;
+- unresolved ambiguity is marked needsReview, never defaulted to structure
+  (or road) on a weak match.
+
+Report every call site you change and confirm no other behavior in those
+paths is altered beyond removing the duplicate classification logic.
+
+============================================================
+PART 5 — EXPAND THE MoRTH PIPE-CULVERT LIBRARY (EVIDENCE-BASED)
+============================================================
+
+Approved: add the three evidence-backed entries you found in the attached
+MoRTH workbook, with the exact diameter-to-material-code pairing your own
+investigation already established -- do not re-derive or re-pair these:
+
+  MoRTH 9.2 (single row):
+  - 1000 mm NP4 -> M-149
+  - 1200 mm NP4 -> M-150
+  - 300 mm NP4  -> M-151
+
+Keep the existing 600 mm NP3 entry unchanged. Do not add any size/class you
+cannot source from the attached workbook. If 9.3 (double row) variants are
+also clearly present with their own diameter/class rows in the workbook, add
+those too and report them separately from the 9.2 additions -- otherwise
+leave 9.3 as-is and report why.
+
+============================================================
+PART 6 — CORRECT THE ALLADURG PROJECT ITSELF
+============================================================
+
+You confirmed no DPR actuals or progress entries are linked to any of the
+affected BOQ items (23-36) or programme bars, so the source classification and
+mapping can be corrected safely.
+
+Proceed in this order:
+
+1. Backfill Bill metadata and excelRow from the re-supplied workbook.
+
+2. Run the corrected unified classifier in REPORT / REVIEW MODE FIRST.
+
+For every ALLADURG BOQ item show: BOQ ID, Bill No / Section, Item Code,
+Description, UOM, current classification, proposed canonical work type,
+proposed planning context, and reason/confidence.
+
+Pay particular attention to BOQ IDs 23-36.
+
+Planning context must distinguish appropriately between:
+A. Linear Road Work
+B. Structure / Location-Based Work
+C. Discrete Road Asset / Road Furniture (e.g. kilometre stones, direction/
+   name boards, cautionary/mandatory signs, reflective studs, thermoplastic
+   marking) -- these are discrete/location-based activities but they are NOT
+   culvert/structure work and must not be classified as Structure merely
+   because they are not a continuous pavement layer
+D. Needs Review
+
+STOP and show this classification report before applying classification
+changes.
+
+3. Run the expanded mapping logic in REPORT / REVIEW MODE FIRST.
+
+For BOQ items 23-28 show: current mapping, proposed mapping, sector/category,
+MoRTH/SNL reference, confidence, and Needs Review where appropriate.
+
+Specifically confirm:
+- Item 26 does not retain an incompatible ROAD-sector M15/M20 mapping.
+- Item 27 does not retain an M10 mapping when the BOQ specifies M15.
+- Item 28, 1000 mm NP4 pipe, does not map to 600 mm NP3.
+- Item 28 maps only to the evidence-supported 1000 mm NP4 standard/library
+  entry (M-149) added in Part 5.
+
+STOP and show us this mapping report before applying mapping changes.
+
+4. AFTER OUR CONFIRMATION ONLY:
+
+Apply the approved classification and mapping corrections.
+- Clear only incompatible auto-derived mappings.
+- Preserve explicit manual mappings unless specifically approved for
+  correction.
+- Do not alter BOQ quantities, rates or descriptions.
+- Do not touch any other project.
+
+5. DO NOT REGENERATE THE ALLADURG WORK PROGRAMME IN BATCH 1.
+
+This is important. ALLADURG is still at its INITIAL PLANNING stage and Sunil
+wants to prepare its first programme manually. Therefore:
+- do not auto-sequence new bars;
+- do not create culvert bars automatically;
+- do not create road-furniture bars automatically;
+- do not regenerate road bars;
+- do not publish/freeze a baseline.
+
+After classification/mapping correction, report the EXISTING ALLADURG bars as:
+Correct/reusable, Incorrect classification/context, Missing programme, or
+Safe to remove/reset later -- but do not alter them yet unless we separately
+approve removal.
+
+Batch 2 will implement the Initial Manual Programme workflow where PM/Admin
+sets Start Date, End Date and Duration directly and builds the first
+programme.
+
+6. FINAL BATCH-1 STATE
+
+At the end of Batch 1, ALLADURG should have: correct Bill hierarchy, correct
+source order, corrected canonical work classification, correct/reviewed
+SNL/MoRTH mappings, and a clear report identifying which existing programme
+bars are valid or wrong -- but NO new programme generated.
+
+STOP there.
+
+Do NOT touch any other project. Do NOT publish automatically. Do NOT proceed
+past step 2/3's report checkpoints without our confirmation -- stop and show
+us the classification and mapping results first, then wait.
+
+============================================================
+REMINDERS (UNCHANGED FROM BATCH 1)
+============================================================
+
+Do not build Batch 2 (manual planning / draft-baseline-revision lifecycle).
+Do not touch diesel, DPR draft/submit, or equipment logic.
+Do not start any follow-up task or feature on your own initiative -- report
+and wait.
+No DROP TABLE, no DROP COLUMN, no destructive migration, no production
+data rewrite beyond the explicitly approved ALLADURG repair in Part 6, which
+itself stops for confirmation before the final regeneration step.
+
+============================================================
+REPORT BACK
+============================================================
+
+1. Confirmation the schema column was added additively, and to which database
+   targets.
+2. Backfill results from the re-supplied workbook (Part 2) -- matched rows
+   and any rows that could not be matched confidently.
+3. Files changed for the importer fix (Part 3) and classifier unification
+   (Part 4).
+4. The three (or more) new MoRTH library entries added (Part 5), with source
+   evidence.
+5. Part 6 steps 2 and 3 report-mode results (classification + mapping for
+   items 23-36) -- STOP HERE and wait for our confirmation before continuing
+   Part 6.
+6. Full build/test/type-check result.
+7. Anything else noticed but not acted on.
+
+DO NOT PUBLISH AUTOMATICALLY.
+DO NOT PROCEED PAST PART 6 STEP 3 WITHOUT CONFIRMATION.
+DO NOT START ANY FOLLOW-UP TASK ON YOUR OWN INITIATIVE.

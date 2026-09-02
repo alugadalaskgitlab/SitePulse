@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BOQ_WORK_CATEGORIES, suggestWorkCategory, getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { canonicalizeUnit } from "@shared/boqNormalise";
+import { detectBoqBillBoundary } from "@shared/boqImportParsing";
+import { classifyPlanningItem } from "@shared/workTypeRecipes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +41,9 @@ interface ParsedItem {
   snlCode?: string;
   clientRate?: number;
   categoryName?: string;
+  sourceBillNo?: string;
+  /** Original 1-based spreadsheet row, before title rows/blanks are removed. */
+  sourceRow: number;
   sortOrder: number;
 }
 
@@ -76,10 +81,6 @@ function normCode(v: string | number | null): string {
     return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.00$/, "");
   }
   return String(v).trim();
-}
-// "BILL No. 1", "Bill No 2", "BILL No.1" → section/category header
-function isBillRow(itemCol: string): boolean {
-  return /^bill\s*no\.?/i.test(itemCol.trim());
 }
 // "Total Carried to Summary", "Sub Total", "Grand Total"
 function isTotalRow(desc: string): boolean {
@@ -123,6 +124,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
   const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
   const [fileName, setFileName] = useState("");
   const [rawRows, setRawRows] = useState<(string | number | null)[][]>([]);
+  const [sourceRowNumbers, setSourceRowNumbers] = useState<number[]>([]);
   const [colMap, setColMap] = useState<ColumnMap>(EMPTY_COL_MAP);
   const [parseError, setParseError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -152,17 +154,20 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
     setParseError("");
     try {
       const rows = await parseExcelFile(file);
-      const nonEmpty = rows.filter(r => r.some(c => c != null && String(c).trim() !== ""));
+      const nonEmpty = rows
+        .map((cells, index) => ({ cells, sourceRow: index + 1 }))
+        .filter(({ cells }) => cells.some(c => c != null && String(c).trim() !== ""));
       if (nonEmpty.length === 0) {
         setParseError("The file appears to be empty.");
         return;
       }
       // Skip any title/banner rows above the real header (e.g. "BILL OF QUANTITY")
-      const headerIdx = findHeaderRowIdx(nonEmpty);
+      const headerIdx = findHeaderRowIdx(nonEmpty.map(({ cells }) => cells));
       const trimmed = nonEmpty.slice(headerIdx);
-      setRawRows(trimmed);
+      setRawRows(trimmed.map(({ cells }) => cells));
+      setSourceRowNumbers(trimmed.map(({ sourceRow }) => sourceRow));
       setFileName(file.name);
-      const header = trimmed[0].map(cellStr);
+      const header = trimmed[0].cells.map(cellStr);
       const autoMap: ColumnMap = { ...EMPTY_COL_MAP };
       header.forEach((h, i) => {
         const lh = h.toLowerCase().trim();
@@ -214,6 +219,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
       spec: sCol != null ? normCode(row[sCol]) : "",
       qc: qCol != null ? row[qCol] : null,
       rc: rCol != null ? row[rCol] : null,
+      boundary: detectBoqBillBoundary(iCol != null ? row[iCol] : null, row[dCol]),
     });
     type Row = ReturnType<typeof get>;
     const isSkippable = (r: Row) =>
@@ -225,7 +231,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
     const nextMeaningful = (start: number): Row | null => {
       for (let j = start + 1; j < dataRows.length; j++) {
         const rr = get(dataRows[j]);
-        if (isBillRow(rr.item)) return null;
+        if (rr.boundary) return null;
         if (isSkippable(rr)) continue;
         return rr;
       }
@@ -234,7 +240,8 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
 
     const out: ParsedItem[] = [];
     let currentCategory = "";
-    let parent: { code?: string; spec?: string; desc: string; unit: string } | null = null;
+    let currentBillNo = "";
+    let parent: { code?: string; spec?: string; desc: string; unit: string; sourceRow: number } | null = null;
     let parentHadChild = false;
     let order = 0;
 
@@ -244,7 +251,8 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
         out.push({
           description: parent.desc, unit: parent.unit || "-", boqQty: 0,
           itemCode: parent.code, snlCode: parent.spec,
-          categoryName: currentCategory || undefined, sortOrder: order++,
+          categoryName: currentCategory || undefined, sourceBillNo: currentBillNo || undefined,
+          sourceRow: parent.sourceRow, sortOrder: order++,
         });
       }
       parent = null; parentHadChild = false;
@@ -253,8 +261,13 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
     for (let i = 0; i < dataRows.length; i++) {
       const r = get(dataRows[i]);
 
-      // 1) "BILL No. X" → start a new category
-      if (isBillRow(r.item)) { flushParent(); if (r.desc) currentCategory = r.desc; continue; }
+      // 1) Explicit Bill/Schedule marker → start a new section. Never infer one.
+      if (r.boundary) {
+        flushParent();
+        currentBillNo = r.boundary.billNo;
+        currentCategory = r.boundary.title ?? "";
+        continue;
+      }
       // 2) Skip empty / total / echoed-header rows
       if (isSkippable(r)) continue;
 
@@ -266,7 +279,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
       // 3) Parent heading → store context, do not import the heading itself yet
       if (isParentHeading) {
         flushParent();
-        parent = { code: r.item, spec: r.spec || undefined, desc: r.desc, unit: r.unit };
+        parent = { code: r.item, spec: r.spec || undefined, desc: r.desc, unit: r.unit, sourceRow: sourceRowNumbers[i + 1] ?? 0 };
         parentHadChild = false;
         continue;
       }
@@ -278,7 +291,8 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
           description: r.desc, unit: r.unit || "-", boqQty: toNum(r.qc),
           itemCode: r.item, snlCode: r.spec || undefined,
           clientRate: cellStr(r.rc) !== "" ? toNum(r.rc) || undefined : undefined,
-          categoryName: currentCategory || undefined, sortOrder: order++,
+          categoryName: currentCategory || undefined, sourceBillNo: currentBillNo || undefined,
+          sourceRow: sourceRowNumbers[i + 1] ?? 0, sortOrder: order++,
         });
         continue;
       }
@@ -290,12 +304,22 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
         unit: r.unit || "-", boqQty: toNum(r.qc),
         itemCode: parent?.code, snlCode: r.spec || parent?.spec || undefined,
         clientRate: cellStr(r.rc) !== "" ? toNum(r.rc) || undefined : undefined,
-        categoryName: currentCategory || undefined, sortOrder: order++,
+          categoryName: currentCategory || undefined, sourceBillNo: currentBillNo || undefined,
+          sourceRow: sourceRowNumbers[i + 1] ?? 0, sortOrder: order++,
       });
       parentHadChild = true;
     }
     flushParent();
     return out;
+  }, [dataRows, colMap, sourceRowNumbers]);
+
+  const billBoundaryCount = useMemo(() => {
+    if (colMap.description == null) return 0;
+    const descriptionColumn = colMap.description;
+    const itemColumn = colMap.itemCode;
+    return dataRows.filter(row =>
+      detectBoqBillBoundary(itemColumn != null ? row[itemColumn] : null, row[descriptionColumn])
+    ).length;
   }, [dataRows, colMap]);
 
   function enterStep2() {
@@ -349,6 +373,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
     return parsedItems
       .map((item, idx) => ({
         ...item,
+        excelRow: item.sourceRow,
         workCategory: itemWorkCats[idx] || undefined,
       }))
       .filter(item => !(skipZeroQty && (item.boqQty ?? 0) <= 0));
@@ -769,24 +794,60 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
               )}
             </div>
 
+            {billBoundaryCount === 0 && (
+              <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded-lg p-3" data-testid="warning-no-bill-boundary">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>
+                  <strong>No Bill/section boundary was confidently detected.</strong> Items will be imported without a Bill section;
+                  the wizard has not guessed one from item codes or headings.
+                </span>
+              </div>
+            )}
+
             <div>
-              <p className="text-sm font-semibold text-muted-foreground mb-1.5">FIRST 5 ITEMS TO IMPORT</p>
+              <p className="text-sm font-semibold text-muted-foreground mb-1.5">IMPORT REVIEW — FIRST 5 ITEMS</p>
               <div className="space-y-1.5">
-                {parsedItems.slice(0, 5).map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 text-sm bg-slate-50 rounded-lg px-3 py-2">
-                    {item.itemCode && <span className="font-mono text-slate-500 w-16 flex-shrink-0 truncate">{item.itemCode}</span>}
-                    <span className="flex-1 truncate font-medium">{item.description}</span>
-                    <span className="text-slate-500 flex-shrink-0">{item.boqQty} {item.unit}</span>
-                    {item.clientRate && <span className="text-slate-500 flex-shrink-0">₹{item.clientRate}</span>}
-                    {itemWorkCats[i] && (
-                      <Badge variant="outline" className="text-[12px] flex-shrink-0 border-blue-200 text-blue-700">
-                        {getWorkCategoryLabel(itemWorkCats[i])}
-                      </Badge>
-                    )}
+                {finalItems.slice(0, 5).map((item) => (
+                  <div key={`${item.sourceRow}-${item.sortOrder}`} className="text-sm bg-slate-50 rounded-lg px-3 py-2 space-y-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs text-slate-500 flex-shrink-0">Excel row {item.sourceRow}</span>
+                      <span className="text-xs font-medium text-violet-700 truncate">
+                        {item.sourceBillNo ?? "No Bill/section"}{item.categoryName ? ` · ${item.categoryName}` : ""}
+                      </span>
+                      {item.itemCode && <span className="font-mono text-slate-500 flex-shrink-0">{item.itemCode}</span>}
+                      <span className="flex-1 truncate font-medium">{item.description}</span>
+                      <span className="text-slate-500 flex-shrink-0">{item.boqQty} {item.unit}</span>
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      {(() => {
+                        const planning = classifyPlanningItem({
+                          description: item.description,
+                          unit: item.unit,
+                          workCategory: item.workCategory,
+                          categoryName: item.categoryName,
+                        });
+                        const contextLabel = planning.context === "linear_road"
+                          ? "Linear Road Work"
+                          : planning.context === "structure_location"
+                            ? "Structure / Location-Based Work"
+                            : planning.context === "discrete_road_asset"
+                              ? "Discrete Road Asset / Road Furniture"
+                              : "Needs Review";
+                        const mappingIntent = item.snlCode
+                          ? `Exact SNL/MoRTH code ${item.snlCode}`
+                          : "Auto-map after import";
+                        return (
+                          <>
+                            Planning → <span className="font-medium">{contextLabel}</span>
+                            {" · "}Mapping → <span className="font-medium">{mappingIntent}</span>
+                          </>
+                        );
+                      })()}
+                    </div>
                   </div>
                 ))}
-                {parsedItems.length > 5 && (
-                  <p className="text-sm text-center text-muted-foreground">…and {parsedItems.length - 5} more items</p>
+                {finalItems.length > 5 && (
+                  <p className="text-sm text-center text-muted-foreground">…and {finalItems.length - 5} more items</p>
                 )}
               </div>
             </div>

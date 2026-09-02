@@ -3045,6 +3045,7 @@ export const boqCategories = pgTable("boq_categories", {
   id: serial("id").primaryKey(),
   boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  sourceBillNo: text("source_bill_no"),
   sortOrder: integer("sort_order").notNull().default(0),
 });
 
@@ -3396,7 +3397,19 @@ export const insertBoqMixTemplateLinkSchema = createInsertSchema(boqMixTemplateL
 export type InsertBoqMixTemplateLink = z.infer<typeof insertBoqMixTemplateLinkSchema>;
 
 // Composite types for API responses
-export type BoqItemWithCategory = BoqItem & { categoryName: string | null; workCategory: string | null; canonicalUnit?: string | null; snlMappingStatus?: string | null; snlItemId?: number | null; snlItemCode?: string | null; snlConfidence?: number | null; snlItemDescription?: string | null; isComposite?: boolean | null };
+export type BoqItemWithCategory = BoqItem & {
+  categoryName: string | null;
+  categorySourceBillNo?: string | null;
+  categorySortOrder?: number | null;
+  workCategory: string | null;
+  canonicalUnit?: string | null;
+  snlMappingStatus?: string | null;
+  snlItemId?: number | null;
+  snlItemCode?: string | null;
+  snlConfidence?: number | null;
+  snlItemDescription?: string | null;
+  isComposite?: boolean | null;
+};
 export type BoqRevisionWithItems = BoqRevision & { items: (BoqRevisionItem & { description: string; unit: string })[] };
 export type BoqProjectWithCounts = BoqProject & { siteName: string | null; itemCount: number; activeRevision: string | null; barCount: number };
 export type WorkProgramBarWithItem = WorkProgramBar & {

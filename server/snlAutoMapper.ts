@@ -20,7 +20,7 @@
  */
 
 import { db } from "./db";
-import { boqItems, snlItems, snlBoqMappings, snlCompositeComponents } from "@shared/schema";
+import { boqCategories, boqItems, snlItems, snlBoqMappings, snlCompositeComponents } from "@shared/schema";
 import { eq, and, inArray, notInArray } from "drizzle-orm";
 import { storage } from "./storage";
 
@@ -387,9 +387,10 @@ const RULE_TAG_KEYWORDS: Record<string, string[]> = {
  * Grade-specific tags (PCC_M20, RCC_M25) get an extra grade match score.
  * Returns snlItemId + confidence=0.82 or null if no keyword match in corpus.
  */
-function ruleMatchSnl(
+export function ruleMatchSnl(
   tag: string,
   snlRows: Array<{ id: number; description: string; shortLabel: string | null; unit: string }>,
+  boqDescription?: string,
 ): { snlItemId: number; confidence: number } | null {
   const baseTag = tag.replace(/_M\d+$/, "");
   const keywords = RULE_TAG_KEYWORDS[baseTag] ?? RULE_TAG_KEYWORDS[tag];
@@ -397,12 +398,34 @@ function ruleMatchSnl(
 
   const gradeMatch = tag.match(/_M(\d+)$/);
   const grade = gradeMatch ? `m${gradeMatch[1]}` : null;
+  const sourceText = String(boqDescription ?? "").toLowerCase();
+  const sourcePipeDiameter = sourceText.match(/\b(\d{3,4})\s*mm\b/)?.[1] ?? null;
+  const sourcePipeClass = sourceText.match(/\bnp[-\s]?([34])\b/)?.[1] ?? null;
+  const sourceRowMode = /\bdouble\s+row\b|\b2\s*v\b|\btwo\s+vents?\b/.test(sourceText)
+    ? "double"
+    : /\bsingle\s+row\b|\b1\s*v\b|\bone\s+vent\b/.test(sourceText)
+      ? "single"
+      : null;
 
   let bestId: number | null = null;
   let bestScore = 0;
 
   for (const snl of snlRows) {
     const haystack = `${snl.description ?? ""} ${snl.shortLabel ?? ""}`.toLowerCase();
+    if (baseTag === "PIPE_CULVERT") {
+      const candidateDiameter = haystack.match(/\b(\d{3,4})\s*mm\b/)?.[1] ?? null;
+      const candidateClass = haystack.match(/\bnp[-\s]?([34])\b/)?.[1] ?? null;
+      const candidateRowMode = /\bdouble\s+row\b/.test(haystack)
+        ? "double"
+        : /\bsingle\s+row\b/.test(haystack)
+          ? "single"
+          : null;
+      // Explicit BOQ pipe identity is a veto, not a soft preference: a 1000mm
+      // NP4 line must never rule-map to the legacy 600mm NP3 norm.
+      if (sourcePipeDiameter && candidateDiameter && sourcePipeDiameter !== candidateDiameter) continue;
+      if (sourcePipeClass && candidateClass && sourcePipeClass !== candidateClass) continue;
+      if (sourceRowMode && candidateRowMode && sourceRowMode !== candidateRowMode) continue;
+    }
     let score = 0;
     for (const kw of keywords) {
       if (haystack.includes(kw)) score += 1;
@@ -410,6 +433,11 @@ function ruleMatchSnl(
     if (score === 0) continue;
     if (grade && haystack.includes(grade)) score += 2;
     else if (grade) score -= 0.5; // mild penalty for wrong grade match
+    if (baseTag === "PIPE_CULVERT") {
+      if (sourcePipeDiameter && haystack.includes(`${sourcePipeDiameter}mm`)) score += 4;
+      if (sourcePipeClass && new RegExp(`\\bnp[-\\s]?${sourcePipeClass}\\b`).test(haystack)) score += 3;
+      if (sourceRowMode && haystack.includes(`${sourceRowMode} row`)) score += 2;
+    }
 
     if (score > bestScore) { bestScore = score; bestId = snl.id; }
   }
@@ -480,7 +508,7 @@ const COMPOSITE_PATTERNS: Array<{ tag: string; detect: RegExp; extract: RegExp }
  * Detection is conservative: both components must match COMPOSITE_PATTERNS.
  * This avoids false positives on plain descriptions.
  */
-function detectCompositeComponents(description: string): ComponentDraft[] | null {
+export function detectCompositeComponents(description: string): ComponentDraft[] | null {
   const d = description.toLowerCase();
   const found: ComponentDraft[] = [];
   const seenTags = new Set<string>();
@@ -507,10 +535,15 @@ function detectCompositeComponents(description: string): ComponentDraft[] | null
   // SDBC ("Semi Dense Bituminous Concrete") subsumes BC ("Bituminous Concrete").
   // DBM descriptions frequently contain "bituminous" which also fires BC — suppress BC too.
   const tagSet = new Set(found.map(f => f.tag));
+  const rccNamesThePipe =
+    /(?:reinforced\s+cement\s+concrete|\brcc\b)\s+(?:hume\s+)?pipes?\b/i.test(description);
   const suppressed = found.filter(f => {
     if (f.tag === "BM"  && tagSet.has("DBM"))  return false;
     if (f.tag === "BC"  && tagSet.has("SDBC")) return false;
     if (f.tag === "BC"  && tagSet.has("DBM"))  return false;
+    // "Reinforced cement concrete pipe" names the pipe product; it is not a
+    // separate RCC structural-concrete component.
+    if (f.tag.startsWith("RCC") && tagSet.has("PIPE_CULVERT") && rccNamesThePipe) return false;
     return true;
   });
 
@@ -538,8 +571,10 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       description: boqItems.description,
       unit: boqItems.unit,
       workCategory: boqItems.workCategory,
+      categoryName: boqCategories.name,
     })
     .from(boqItems)
+    .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
     .where(inArray(boqItems.id, boqItemIds));
 
   if (boqRows.length === 0) return;
@@ -598,7 +633,7 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
         const rulePool = roadCompatibleRows.length > 0 ? roadCompatibleRows : snlRows;
 
         const componentRows = compositeDrafts.map((draft, idx) => {
-          const ruleResult = ruleMatchSnl(draft.tag, rulePool);
+          const ruleResult = ruleMatchSnl(draft.tag, rulePool, draft.description);
           return {
             componentIndex: idx,
             componentTag: draft.tag,
@@ -686,7 +721,11 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       if (ruleTag) {
         const allowedRows = snlRows.filter(s => getSectorMultiplier(boqCategory, s.sector) > 0);
         const ruleSearchPool = allowedRows.length >= 5 ? allowedRows : snlRows;
-        const ruleResult = ruleMatchSnl(ruleTag, ruleSearchPool);
+        const ruleResult = ruleMatchSnl(
+          ruleTag,
+          ruleSearchPool,
+          `${boqRow.description} ${boqRow.categoryName ?? ""}`,
+        );
         if (ruleResult) {
           const ruleSnl = snlRows.find(s => s.id === ruleResult.snlItemId)!;
           const ruleUnitOk = unitsCompatible(boqRow.unit, ruleSnl.unit);
@@ -1118,7 +1157,7 @@ export async function backfillCompositeDetection(): Promise<{ promoted: number }
     );
 
     const componentRows = drafts.map((draft, idx) => {
-      const ruleResult = ruleMatchSnl(draft.tag, rulePool);
+      const ruleResult = ruleMatchSnl(draft.tag, rulePool, draft.description);
       return {
         componentIndex: idx,
         componentTag: draft.tag,

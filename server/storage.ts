@@ -111,7 +111,7 @@ import {
   type MovementRequest,
 } from "@shared/equipmentMovement";
 import { insufficientCutFillMessage, cutFillCapacityExceeded } from "@shared/cutFillReconciliation";
-import { classifyWorkType } from "@shared/workTypeRecipes";
+import { classifyPlanningItem, classifyWorkType } from "@shared/workTypeRecipes";
 import {
   dateToMonthIndexCal,
   displayFinishDateCal,
@@ -426,40 +426,6 @@ function isNonPlanningItem(description: string): boolean {
     d.includes("signage") ||
     d.includes("ambulance") ||
     d.includes("first aid")
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// BOQ work-type helper — shared between importBoqItems and backfillBoqWorkType.
-// Returns true when a description is a structure / point-location work item
-// that should NOT be quantity-distributed linearly along the road axis.
-function isStructureWorkItem(description: string): boolean {
-  const d = description.toLowerCase();
-  return (
-    d.includes("bridge") ||
-    d.includes("flyover") ||
-    d.includes("viaduct") ||
-    d.includes("culvert") ||
-    d.includes("minor bridge") ||
-    d.includes("major bridge") ||
-    d.includes("abutment") ||
-    d.includes("pier cap") ||
-    d.includes("pier stem") ||
-    d.includes("deck slab") ||
-    d.includes("deck concrete") ||
-    d.includes("wearing coat") ||
-    d.includes("wearing course on bridge") ||
-    d.includes("cd work") ||
-    d.includes("cross drain") ||
-    d.includes("retaining wall") ||
-    d.includes("breast wall") ||
-    d.includes("toe wall") ||
-    d.includes("wing wall") ||
-    d.includes("box drain") ||
-    d.includes("catch pit") ||
-    d.includes("catch water drain") ||
-    d.includes("head wall") ||
-    d.includes("protection wall")
   );
 }
 
@@ -25493,14 +25459,41 @@ export class DatabaseStorage implements IStorage {
       .orderBy(boqCategories.sortOrder, boqCategories.name);
   }
 
-  async upsertBoqCategory(boqProjectId: number, name: string): Promise<BoqCategory> {
+  async upsertBoqCategory(
+    boqProjectId: number,
+    name: string,
+    sourceBillNo?: string | null,
+    sortOrder?: number,
+  ): Promise<BoqCategory> {
+    const cleanBillNo = sourceBillNo?.trim() || null;
     const [existing] = await db
       .select()
       .from(boqCategories)
-      .where(and(eq(boqCategories.boqProjectId, boqProjectId), eq(boqCategories.name, name)))
+      .where(and(
+        eq(boqCategories.boqProjectId, boqProjectId),
+        eq(boqCategories.name, name),
+        cleanBillNo
+          ? eq(boqCategories.sourceBillNo, cleanBillNo)
+          : isNull(boqCategories.sourceBillNo),
+      ))
       .limit(1);
-    if (existing) return existing;
-    const [row] = await db.insert(boqCategories).values({ boqProjectId, name, sortOrder: 0 }).returning();
+    if (existing) {
+      if (sortOrder != null && sortOrder < existing.sortOrder) {
+        const [updated] = await db
+          .update(boqCategories)
+          .set({ sortOrder })
+          .where(eq(boqCategories.id, existing.id))
+          .returning();
+        return updated;
+      }
+      return existing;
+    }
+    const [row] = await db.insert(boqCategories).values({
+      boqProjectId,
+      name,
+      sourceBillNo: cleanBillNo,
+      sortOrder: sortOrder ?? 0,
+    }).returning();
     return row;
   }
 
@@ -25543,6 +25536,8 @@ export class DatabaseStorage implements IStorage {
         shoulderLayerClass: boqItems.shoulderLayerClass,
         createdAt: boqItems.createdAt,
         categoryName: boqCategories.name,
+        categorySourceBillNo: boqCategories.sourceBillNo,
+        categorySortOrder: boqCategories.sortOrder,
         snlItemId: snlBoqMappings.snlItemId,
         snlItemCode: snlItems.itemCode,
         snlItemDescription: snlItems.description,
@@ -25559,7 +25554,12 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(snlBoqMappings, eq(snlBoqMappings.boqItemId, boqItems.id))
       .leftJoin(snlItems, eq(snlItems.id, snlBoqMappings.snlItemId))
       .where(eq(boqItems.boqProjectId, boqProjectId))
-      .orderBy(boqItems.sortOrder, boqItems.id);
+      .orderBy(
+        sql`${boqCategories.sortOrder} ASC NULLS LAST`,
+        sql`${boqItems.excelRow} ASC NULLS LAST`,
+        boqItems.sortOrder,
+        boqItems.id,
+      );
 
     return rows.map((r) => ({
       ...r,
@@ -25646,8 +25646,10 @@ export class DatabaseStorage implements IStorage {
       boqQty: number;
       clientRate?: number;
       categoryName?: string;
+      sourceBillNo?: string;
       workCategory?: string;
       sortOrder?: number;
+      excelRow?: number;
     }>
   ): Promise<{ created: number; categories: string[]; insertedIds: number[] }> {
     const categoryCache = new Map<string, number>();
@@ -25657,13 +25659,20 @@ export class DatabaseStorage implements IStorage {
       const item = items[i];
       let categoryId: number | null = null;
 
-      if (item.categoryName?.trim()) {
-        const catName = item.categoryName.trim();
-        if (!categoryCache.has(catName)) {
-          const cat = await this.upsertBoqCategory(boqProjectId, catName);
-          categoryCache.set(catName, cat.id);
+      if (item.categoryName?.trim() || item.sourceBillNo?.trim()) {
+        const sourceBillNo = item.sourceBillNo?.trim() || null;
+        const catName = item.categoryName?.trim() || sourceBillNo!;
+        const categoryKey = `${sourceBillNo ?? ""}\u0000${catName}`;
+        if (!categoryCache.has(categoryKey)) {
+          const cat = await this.upsertBoqCategory(
+            boqProjectId,
+            catName,
+            sourceBillNo,
+            item.sortOrder ?? i,
+          );
+          categoryCache.set(categoryKey, cat.id);
         }
-        categoryId = categoryCache.get(catName)!;
+        categoryId = categoryCache.get(categoryKey)!;
       }
 
       const clientAmount =
@@ -25672,7 +25681,17 @@ export class DatabaseStorage implements IStorage {
           : null;
 
       const includedInPlanning = !isNonPlanningItem(item.description);
-      const planningWorkType = isStructureWorkItem(item.description) ? "structure" : "road";
+      const canonicalUnit = canonicalizeUnit(item.unit);
+      const workCategory = item.workCategory
+        ?? suggestWorkCategory(item.itemCode)
+        ?? suggestWorkCategoryFromDescription(item.description, canonicalUnit)
+        ?? null;
+      const planning = classifyPlanningItem({
+        description: item.description,
+        unit: canonicalUnit,
+        workCategory,
+        categoryName: item.categoryName,
+      });
 
       const [inserted] = await db.insert(boqItems).values({
         boqProjectId,
@@ -25686,18 +25705,21 @@ export class DatabaseStorage implements IStorage {
         clientRate: item.clientRate ?? null,
         clientAmount,
         sortOrder: item.sortOrder ?? i,
-        canonicalUnit: canonicalizeUnit(item.unit),
-        workCategory: item.workCategory
-          ?? suggestWorkCategory(item.itemCode)
-          ?? suggestWorkCategoryFromDescription(item.description, canonicalizeUnit(item.unit))
-          ?? null,
+        excelRow: item.excelRow ?? null,
+        canonicalUnit,
+        workCategory,
         includedInPlanning,
-        planningWorkType,
+        // This text column predates richer planning contexts and is NOT NULL.
+        // Preserve unresolved intent explicitly rather than silently defaulting
+        // ambiguous items to a confident road or structure classification.
+        planningWorkType: planning.planningWorkType ?? "needs_review",
+        needsReview: planning.context === "needs_review",
       }).returning({ id: boqItems.id });
       insertedIds.push(inserted.id);
     }
 
-    return { created: insertedIds.length, categories: Array.from(categoryCache.keys()), insertedIds };
+    const categories = Array.from(categoryCache.keys()).map((key) => key.split("\u0000")[1]);
+    return { created: insertedIds.length, categories, insertedIds };
   }
 
   async updateBoqItem(id: number, data: Partial<InsertBoqItem>): Promise<BoqItem | null> {
@@ -28090,6 +28112,11 @@ export class DatabaseStorage implements IStorage {
       PCC_M10_ITEM, PCC_M10_PRODUCTIVITY, PCC_M10_LABOUR, PCC_M10_EQUIPMENT, PCC_M10_MATERIALS,
       RCC_M25_ITEM, RCC_M25_PRODUCTIVITY, RCC_M25_LABOUR, RCC_M25_EQUIPMENT, RCC_M25_MATERIALS,
       PIPE_CULVERT_ITEM, PIPE_CULVERT_PRODUCTIVITY, PIPE_CULVERT_LABOUR, PIPE_CULVERT_EQUIPMENT, PIPE_CULVERT_MATERIALS,
+      PIPE_CULVERT_NP4_1000MM_ITEM, PIPE_CULVERT_NP4_1000MM_PRODUCTIVITY, PIPE_CULVERT_NP4_1000MM_LABOUR, PIPE_CULVERT_NP4_1000MM_EQUIPMENT, PIPE_CULVERT_NP4_1000MM_MATERIALS,
+      PIPE_CULVERT_NP4_1200MM_ITEM, PIPE_CULVERT_NP4_1200MM_PRODUCTIVITY, PIPE_CULVERT_NP4_1200MM_LABOUR, PIPE_CULVERT_NP4_1200MM_EQUIPMENT, PIPE_CULVERT_NP4_1200MM_MATERIALS,
+      PIPE_CULVERT_NP4_300MM_ITEM, PIPE_CULVERT_NP4_300MM_PRODUCTIVITY, PIPE_CULVERT_NP4_300MM_LABOUR, PIPE_CULVERT_NP4_300MM_EQUIPMENT, PIPE_CULVERT_NP4_300MM_MATERIALS,
+      PIPE_CULVERT_NP4_1000MM_DOUBLE_ITEM, PIPE_CULVERT_NP4_1000MM_DOUBLE_PRODUCTIVITY, PIPE_CULVERT_NP4_1000MM_DOUBLE_LABOUR, PIPE_CULVERT_NP4_1000MM_DOUBLE_EQUIPMENT, PIPE_CULVERT_NP4_1000MM_DOUBLE_MATERIALS,
+      PIPE_CULVERT_NP4_1200MM_DOUBLE_ITEM, PIPE_CULVERT_NP4_1200MM_DOUBLE_PRODUCTIVITY, PIPE_CULVERT_NP4_1200MM_DOUBLE_LABOUR, PIPE_CULVERT_NP4_1200MM_DOUBLE_EQUIPMENT, PIPE_CULVERT_NP4_1200MM_DOUBLE_MATERIALS,
       GSB_DIRECT_ITEM, GSB_DIRECT_PRODUCTIVITY, GSB_DIRECT_LABOUR, GSB_DIRECT_EQUIPMENT, GSB_DIRECT_MATERIALS,
       SCARIFYING_BT_ITEM, SCARIFYING_BT_PRODUCTIVITY, SCARIFYING_BT_LABOUR, SCARIFYING_BT_EQUIPMENT, SCARIFYING_BT_MATERIALS,
       SHOULDERS_ITEM, SHOULDERS_PRODUCTIVITY, SHOULDERS_LABOUR, SHOULDERS_EQUIPMENT, SHOULDERS_MATERIALS,
@@ -28119,6 +28146,12 @@ export class DatabaseStorage implements IStorage {
       { item: RCC_M25_ITEM,              prod: RCC_M25_PRODUCTIVITY,              lab: RCC_M25_LABOUR,              equip: RCC_M25_EQUIPMENT,              mat: RCC_M25_MATERIALS },
       // Chapter 7 — Drainage
       { item: PIPE_CULVERT_ITEM,         prod: PIPE_CULVERT_PRODUCTIVITY,         lab: PIPE_CULVERT_LABOUR,         equip: PIPE_CULVERT_EQUIPMENT,         mat: PIPE_CULVERT_MATERIALS },
+      // Chapter 9 — evidence-backed NP4 pipe-culvert variants
+      { item: PIPE_CULVERT_NP4_1000MM_ITEM, prod: PIPE_CULVERT_NP4_1000MM_PRODUCTIVITY, lab: PIPE_CULVERT_NP4_1000MM_LABOUR, equip: PIPE_CULVERT_NP4_1000MM_EQUIPMENT, mat: PIPE_CULVERT_NP4_1000MM_MATERIALS },
+      { item: PIPE_CULVERT_NP4_1200MM_ITEM, prod: PIPE_CULVERT_NP4_1200MM_PRODUCTIVITY, lab: PIPE_CULVERT_NP4_1200MM_LABOUR, equip: PIPE_CULVERT_NP4_1200MM_EQUIPMENT, mat: PIPE_CULVERT_NP4_1200MM_MATERIALS },
+      { item: PIPE_CULVERT_NP4_300MM_ITEM, prod: PIPE_CULVERT_NP4_300MM_PRODUCTIVITY, lab: PIPE_CULVERT_NP4_300MM_LABOUR, equip: PIPE_CULVERT_NP4_300MM_EQUIPMENT, mat: PIPE_CULVERT_NP4_300MM_MATERIALS },
+      { item: PIPE_CULVERT_NP4_1000MM_DOUBLE_ITEM, prod: PIPE_CULVERT_NP4_1000MM_DOUBLE_PRODUCTIVITY, lab: PIPE_CULVERT_NP4_1000MM_DOUBLE_LABOUR, equip: PIPE_CULVERT_NP4_1000MM_DOUBLE_EQUIPMENT, mat: PIPE_CULVERT_NP4_1000MM_DOUBLE_MATERIALS },
+      { item: PIPE_CULVERT_NP4_1200MM_DOUBLE_ITEM, prod: PIPE_CULVERT_NP4_1200MM_DOUBLE_PRODUCTIVITY, lab: PIPE_CULVERT_NP4_1200MM_DOUBLE_LABOUR, equip: PIPE_CULVERT_NP4_1200MM_DOUBLE_EQUIPMENT, mat: PIPE_CULVERT_NP4_1200MM_DOUBLE_MATERIALS },
       // Extended items
       { item: GSB_DIRECT_ITEM,           prod: GSB_DIRECT_PRODUCTIVITY,           lab: GSB_DIRECT_LABOUR,           equip: GSB_DIRECT_EQUIPMENT,           mat: GSB_DIRECT_MATERIALS },
       { item: SCARIFYING_BT_ITEM,        prod: SCARIFYING_BT_PRODUCTIVITY,        lab: SCARIFYING_BT_LABOUR,        equip: SCARIFYING_BT_EQUIPMENT,        mat: SCARIFYING_BT_MATERIALS },
@@ -28127,11 +28160,11 @@ export class DatabaseStorage implements IStorage {
 
     let count = 0;
     for (const { item, prod, lab, equip, mat } of itemDefs) {
-      const inserted = await this.upsertSnlItem({ ...item, sourceId: source.id, isActive: true });
+      const inserted = await this.upsertSnlItem({ ...(item as any), sourceId: source.id, isActive: true });
       await this.replaceSnlItemNorms(inserted.id, {
-        productivity: prod.map(p => ({ ...p, itemId: inserted.id })),
-        equipment: equip.map(e => ({ ...e, itemId: inserted.id })),
-        labour: lab.map(l => ({ ...l, itemId: inserted.id })),
+        productivity: prod.map(p => ({ ...p, itemId: inserted.id })) as any,
+        equipment: equip.map(e => ({ ...e, itemId: inserted.id })) as any,
+        labour: lab.map(l => ({ ...l, itemId: inserted.id })) as any,
         materials: (mat as any[]).map(m => ({ ...m, itemId: inserted.id })),
       });
       count++;
@@ -28142,7 +28175,7 @@ export class DatabaseStorage implements IStorage {
       importedBy: "system",
       itemCount: count,
       method: "MANUAL",
-      notes: `SNL seed v2 — ${count} MoRTH SDB 2019 items (Ch.2–7)`,
+      notes: `SNL seed v2 — ${count} MoRTH SDB 2019 items (Ch.2–9)`,
     }).returning();
 
     return { source, items: count };

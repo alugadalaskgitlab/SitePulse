@@ -328,8 +328,18 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
   const d = description.toLowerCase();
   const u = normaliseBoqUnit(unit);
 
-  // ── Clearing & Grubbing (MoRTH Cl. 201) — MUST be first check ──────────────
-  if (/clearing\s*(and|&)\s*grubbing|clear\s*(and|&)\s*grub|grubbing|removal\s*of\s*(trees?|stumps?|vegetation|bushes?)|felling\s*of\s*trees?|uprooting|removal\s*of\s*shrubs?/i.test(d)) return "clearing_grubbing";
+  // ── Clearing & Grubbing (MoRTH Cl. 201) ───────────────────────────────────
+  // Structure-excavation specifications commonly mention incidental "removal
+  // of stumps". That phrase must not override explicit foundation/structure
+  // excavation context.
+  if (
+    /clearing\s*(and|&)\s*grubbing|clear\s*(and|&)\s*grub|grubbing|removal\s*of\s*(trees?|stumps?|vegetation|bushes?)|felling\s*of\s*trees?|uprooting|removal\s*of\s*shrubs?/i.test(d) &&
+    !(
+      /excavat/i.test(d) &&
+      /foundation|footing|abutment|pier|culvert|structure|retaining\s*wall/i.test(d) &&
+      /^(CUM|CUB|M3|CU\.?M)$/i.test(u)
+    )
+  ) return "clearing_grubbing";
 
   // ── Dismantling / demolition of existing structures / pavement (MoRTH Cl. 202)
   if (/\bdismantl|\bdemolit|\bdemolish|\bscarif|\bmilling\b/i.test(d)) return "dismantling";
@@ -505,10 +515,83 @@ export const STRUCTURE_KEYWORD_RE =
 const BRIDGE_CRASH_BARRIER_RE = /crash\s*barrier|metal\s*beam\s*crash\s*barrier|\bmbcb\b/i;
 const BRIDGE_CONTEXT_RE = /\bbridge\b|\bviaduct\b|\bflyover\b|\bdeck\b/i;
 
+/** Canonical bridge-context predicate shared by sequencing and planning. */
+export function isBridgeStructureDescription(description: string | null | undefined): boolean {
+  return /\bbridge\b|viaduct|flyover|abutment|pier\b|bearing\b|girder|deck\s*slab|superstructure|substructure|pile\s*cap|pylon|\barch\b|major\s*bridge|minor\s*bridge|retaining\s*wall|breast\s*wall/i
+    .test(description ?? "");
+}
+
 export interface StructureClassifiableItem {
   planningWorkType?: string | null;
   categoryName?: string | null;
   description?: string | null;
+  unit?: string | null;
+  workCategory?: string | null;
+}
+
+export type PlanningClassificationContext =
+  | "linear_road"
+  | "structure_location"
+  | "discrete_road_asset"
+  | "needs_review";
+
+export interface PlanningClassification {
+  context: PlanningClassificationContext;
+  /** Value safe to persist in the legacy road/structure planningWorkType field. */
+  planningWorkType: "road" | "structure" | null;
+  confidence: "high" | "medium" | "none";
+  workType: WorkType | null;
+  reason: string;
+}
+
+const DISCRETE_ROAD_ASSET_RE =
+  /road\s*furniture|kilomet(re|er)\s*stone|traffic\s*(sign|signal)|direction\s*(sign|board)|name\s*board|cautionary\s*sign|mandatory\s*sign|reflective\s*stud|road\s*stud|thermoplastic\s*(marking|paint)|road\s*marking/i;
+
+/**
+ * The one canonical planning classifier.  It deliberately retains the richer
+ * planning contexts instead of forcing every non-linear item into "structure".
+ * planningWorkType is supplied only for classifications supported by a
+ * deterministic type/category/context signal; callers must not persist a value
+ * for needs_review.
+ */
+export function classifyPlanningItem(item: StructureClassifiableItem): PlanningClassification {
+  const description = item.description ?? "";
+  const categoryName = item.categoryName ?? "";
+  const wc = (item.workCategory ?? "").trim().toUpperCase();
+  const resolution = resolveWorkType(description, item.unit ?? "", { workCategory: wc || undefined });
+
+  // A declared road-furniture category is stronger context than incidental
+  // words such as "RCC foundation" in the installation specification.
+  if (wc === "ROAD_FURNITURE" || DISCRETE_ROAD_ASSET_RE.test(categoryName) || DISCRETE_ROAD_ASSET_RE.test(description)) {
+    return { context: "discrete_road_asset", planningWorkType: "road", confidence: "high", workType: resolution.workType, reason: "Road-furniture/discrete road-asset context" };
+  }
+
+  if (resolution.workType) {
+    const planCategory = WORK_TYPE_PLAN_CATEGORY[resolution.workType];
+    return {
+      context: planCategory === "road" ? "linear_road" : "structure_location",
+      planningWorkType: planCategory,
+      confidence: resolution.confidence,
+      workType: resolution.workType,
+      reason: resolution.reason,
+    };
+  }
+
+  if (wc && WORK_CAT_PLAN_CATEGORY[wc]) {
+    const planCategory = WORK_CAT_PLAN_CATEGORY[wc];
+    return {
+      context: planCategory === "road" ? "linear_road" : "structure_location",
+      planningWorkType: planCategory,
+      confidence: "medium",
+      workType: null,
+      reason: `Planning context inferred from work category "${wc}"`,
+    };
+  }
+  if (STRUCTURE_CATEGORY_RE.test(categoryName) || STRUCTURE_KEYWORD_RE.test(description) ||
+      (BRIDGE_CRASH_BARRIER_RE.test(description) && BRIDGE_CONTEXT_RE.test(description))) {
+    return { context: "structure_location", planningWorkType: "structure", confidence: "medium", workType: null, reason: "Structure/location category or description context" };
+  }
+  return { context: "needs_review", planningWorkType: null, confidence: "none", workType: null, reason: resolution.reason };
 }
 
 /**
@@ -517,7 +600,7 @@ export interface StructureClassifiableItem {
  * programmed via the Structure Schedule Import (or shown as
  * "Not programmed — schedule/location required." until it is).
  *
- * Checks (in order, any match is sufficient):
+ * Checks canonical planning resolution plus structure-specific context:
  *   1. It already has a structure_import bar (pass via `hasStructureImportBar`).
  *   2. Its stored planningWorkType is already "structure".
  *   3. Its BOQ category/section name matches a known structure section.
@@ -529,13 +612,13 @@ export function isStructureOrLocationScheduledItem(
   opts?: { hasStructureImportBar?: boolean },
 ): boolean {
   if (opts?.hasStructureImportBar) return true;
-  if (item.planningWorkType === "structure") return true;
-  const cat = item.categoryName ?? "";
-  const d = item.description ?? "";
-  if (STRUCTURE_CATEGORY_RE.test(cat)) return true;
-  if (STRUCTURE_KEYWORD_RE.test(d)) return true;
-  if (BRIDGE_CRASH_BARRIER_RE.test(d) && BRIDGE_CONTEXT_RE.test(d)) return true;
-  return false;
+  const planning = classifyPlanningItem(item);
+  // Discrete road assets are location-based, but never structure bars.
+  if (planning.context === "discrete_road_asset") return false;
+  if (planning.context === "structure_location") return true;
+  // Preserve an explicit legacy structure decision only where no canonical
+  // road/discrete context contradicts it.
+  return planning.context === "needs_review" && item.planningWorkType === "structure";
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

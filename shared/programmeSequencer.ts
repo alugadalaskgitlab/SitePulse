@@ -3,17 +3,10 @@
 // where each reach (front) runs the crust sequence in dependency order, reaches run
 // in parallel (staggered), and the critical chain is scaled to fit the project duration.
 
-import { resolveWorkType, WORK_TYPE_PLAN_CATEGORY, WORK_CAT_PLAN_CATEGORY, isShoulderDesc, classifyShoulderLayer, SHOULDER_CLASSES, type ShoulderClass, type WorkType } from "./workTypeRecipes";
+import { classifyPlanningItem, resolveWorkType, WORK_TYPE_PLAN_CATEGORY, WORK_CAT_PLAN_CATEGORY, isBridgeStructureDescription, isShoulderDesc, classifyShoulderLayer, SHOULDER_CLASSES, type ShoulderClass, type WorkType } from "./workTypeRecipes";
 import { areSidesDistinctCorridors } from "./barSide";
 
 export type Track = "pavement" | "structure" | "bridge" | "other";
-
-// ─── Bridge keyword detector ──────────────────────────────────────────────────
-// Fires for bridges, viaducts, flyovers, retaining/breast walls.
-// Used to route structure items onto the bridge track instead of culvert track.
-function isBridgeDesc(desc: string): boolean {
-  return /\bbridge\b|viaduct|flyover|abutment|pier\b|bearing\b|girder|deck\s*slab|superstructure|substructure|pile\s*cap|pylon|\barch\b|major\s*bridge|minor\s*bridge|retaining\s*wall|breast\s*wall/i.test(desc);
-}
 
 // ─── Pavement crust (road items) ─────────────────────────────────────────────
 // MoRTH sequence: C&G → Dismantling → Earthwork (Excavation + Embankment concurrent) → GSB → WMM → Prime → DBM → BC
@@ -548,6 +541,12 @@ function classifyItem(it: SeqInputItem): ClassifyResult {
     workCategory: it.workCategory,
   });
   const wt = resolution.workType;
+  const planning = classifyPlanningItem({
+    description: it.description,
+    unit: it.unit,
+    workCategory: it.workCategory,
+    planningWorkType: it.planningWorkType,
+  });
 
   // Resolve effective planning track.
   // The stored planningWorkType is the primary hint, BUT if the WorkType
@@ -571,6 +570,12 @@ function classifyItem(it: SeqInputItem): ClassifyResult {
       // else: workCategory is a road category (EARTHWORK, SUBBASE_BASE, BITUMINOUS…)
       //       Keep effectivePWT=road — saved categories take precedence over regex.
     }
+  }
+  // For items without a persisted hint, use the same canonical planning
+  // classification as import/review.  In particular, ROAD_FURNITURE remains
+  // road even when its installation detail mentions an RCC foundation.
+  if (!effectivePWT && planning.planningWorkType) {
+    effectivePWT = planning.planningWorkType;
   }
 
   // 0. Shoulder items (road track only) — stage by ACTUAL construction layer.
@@ -617,7 +622,7 @@ function classifyItem(it: SeqInputItem): ClassifyResult {
 
   // 2. planningWorkType = "structure" ────────────────────────────────────────
   if (effectivePWT === "structure") {
-    if (isBridgeDesc(it.description)) {
+    if (isBridgeStructureDescription(it.description)) {
       const stage = wt !== null ? (BRIDGE_STAGE[wt] ?? 99) : 99;
       return { track: "bridge", stage, resolvedWorkType: wt, skipReason: null };
     }
@@ -648,7 +653,7 @@ function classifyItem(it: SeqInputItem): ClassifyResult {
   }
 
   // Structure work types — distinguish bridge from culvert by description.
-  if (isBridgeDesc(it.description)) {
+  if (isBridgeStructureDescription(it.description)) {
     return { track: "bridge", stage: BRIDGE_STAGE[wt] ?? 99, resolvedWorkType: wt, skipReason: null };
   }
 

@@ -32,6 +32,8 @@ export type BillItem = {
   unit: string;
   dprConversionFactor: number | null;
   categoryName?: string | null;
+  categorySourceBillNo?: string | null;
+  categorySortOrder?: number | null;
   workCategory?: string | null;
   includeInDpr?: boolean | null;
   sortOrder?: number | null;
@@ -137,15 +139,20 @@ export function BillItemPicker({
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
 
-  // Bills derived from workCategory (set via BOQ Review). Falls back to categoryName
-  // for items not yet classified. "Needs Mapping" group always appears last.
+  // Prefer the imported Bill hierarchy. Fall back to reviewed work category for
+  // legacy/unbilled items. "Needs Mapping" remains the final fallback group.
   const bills = useMemo(() => {
     const m = new Map<string, number>();
     for (const it of items) {
       if (it.includeInDpr === false) continue;
-      const unmapped = !it.workCategory?.trim() || it.needsReview;
-      const name = unmapped ? NEEDS_MAPPING : (WORK_CAT_LABEL.get(it.workCategory!)?.label ?? it.workCategory!);
-      const catSortOrder = it.workCategory ? (WORK_CAT_LABEL.get(it.workCategory)?.sortOrder ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+      const importedBill = [it.categorySourceBillNo?.trim(), it.categoryName?.trim()].filter(Boolean).join(" · ");
+      const unmapped = !importedBill && (!it.workCategory?.trim() || it.needsReview);
+      const name = importedBill || (unmapped ? NEEDS_MAPPING : (WORK_CAT_LABEL.get(it.workCategory!)?.label ?? it.workCategory!));
+      const catSortOrder = importedBill
+        ? (it.categorySortOrder ?? Number.MAX_SAFE_INTEGER)
+        : it.workCategory
+          ? (WORK_CAT_LABEL.get(it.workCategory)?.sortOrder ?? Number.MAX_SAFE_INTEGER)
+          : Number.MAX_SAFE_INTEGER;
       const so = catSortOrder * 1000 + (it.sortOrder ?? 0);
       if (!m.has(name) || so < (m.get(name) as number)) m.set(name, so);
     }
@@ -162,6 +169,8 @@ export function BillItemPicker({
 
   function itemGroup(it: BillItem | null): string {
     if (!it) return "";
+    const importedBill = [it.categorySourceBillNo?.trim(), it.categoryName?.trim()].filter(Boolean).join(" · ");
+    if (importedBill) return importedBill;
     if (!it.workCategory?.trim() || it.needsReview) return NEEDS_MAPPING;
     return WORK_CAT_LABEL.get(it.workCategory!)?.label ?? it.workCategory!;
   }
@@ -173,8 +182,9 @@ export function BillItemPicker({
     return items
       .filter((i) => {
         if (i.includeInDpr === false) return false;
-        const unmapped = !i.workCategory?.trim() || i.needsReview;
-        const groupName = unmapped ? NEEDS_MAPPING : (WORK_CAT_LABEL.get(i.workCategory!)?.label ?? i.workCategory!);
+        const importedBill = [i.categorySourceBillNo?.trim(), i.categoryName?.trim()].filter(Boolean).join(" · ");
+        const unmapped = !importedBill && (!i.workCategory?.trim() || i.needsReview);
+        const groupName = importedBill || (unmapped ? NEEDS_MAPPING : (WORK_CAT_LABEL.get(i.workCategory!)?.label ?? i.workCategory!));
         return groupName === effectiveBill;
       })
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));

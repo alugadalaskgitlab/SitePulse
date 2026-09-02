@@ -13344,8 +13344,10 @@ export async function registerRoutes(
           boqQty: number;
           clientRate?: number;
           categoryName?: string;
+          sourceBillNo?: string;
           workCategory?: string;
           sortOrder?: number;
+          excelRow?: number;
         }>;
         mode?: "append" | "replace";
       };
@@ -19603,7 +19605,7 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
-      const { resolveWorkType, buildEquipmentRows, buildLabourRows, WORK_TYPE_PLAN_CATEGORY, WORK_CAT_PLAN_CATEGORY } = await import("@shared/workTypeRecipes");
+      const { resolveWorkType, buildEquipmentRows, buildLabourRows, classifyPlanningItem } = await import("@shared/workTypeRecipes");
       const user = (req as any).user?.username ?? "auto";
 
       // Ensure the planning master is seeded with standard norms (idempotent).
@@ -19648,9 +19650,18 @@ export async function registerRoutes(
         if (snlItemId) {
           try {
             await storage.applySnlMappingToRecipes(item.id, snlItemId, "MEDIUM", null, user);
-            // Derive planningWorkType from workCategory (BOQ's own category reflects SNL's)
-            const planCat = workCategory ? WORK_CAT_PLAN_CATEGORY[workCategory] : null;
-            if (planCat) await storage.updateBoqItemWorkType(item.id, planCat);
+            const planning = classifyPlanningItem({
+              description: item.description,
+              unit: canonicalUnit ?? item.unit,
+              workCategory,
+              categoryName: item.categoryName,
+              planningWorkType: item.planningWorkType,
+            });
+            if (planning.planningWorkType) {
+              await storage.updateBoqItemWorkType(item.id, planning.planningWorkType);
+            } else {
+              await storage.bulkSetBoqItemsNeedsReview([item.id], true);
+            }
             snlRecipied++;
             recipied++;
           } catch (snlErr: any) {
@@ -19686,10 +19697,18 @@ export async function registerRoutes(
           }));
           await storage.upsertBoqItemEquipment(item.id, eqRows);
           await storage.upsertBoqItemLabour(item.id, labRows);
-          // Set planningWorkType from WorkType → WORK_TYPE_PLAN_CATEGORY, or
-          // fall back to workCategory → WORK_CAT_PLAN_CATEGORY for category-inferred types.
-          const planCat = WORK_TYPE_PLAN_CATEGORY[wt] ?? (workCategory ? WORK_CAT_PLAN_CATEGORY[workCategory] : undefined);
-          if (planCat) await storage.updateBoqItemWorkType(item.id, planCat);
+          const planning = classifyPlanningItem({
+            description: item.description,
+            unit: effectiveUnit,
+            workCategory,
+            categoryName: item.categoryName,
+            planningWorkType: item.planningWorkType,
+          });
+          if (planning.planningWorkType) {
+            await storage.updateBoqItemWorkType(item.id, planning.planningWorkType);
+          } else {
+            await storage.bulkSetBoqItemsNeedsReview([item.id], true);
+          }
           recipied++;
         } else {
           // ── Path 4: Unresolvable — return exact identity + reason ──────────────

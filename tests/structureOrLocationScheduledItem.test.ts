@@ -1,5 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { classifyWorkType, isStructureOrLocationScheduledItem } from "../shared/workTypeRecipes";
+import {
+  classifyPlanningItem,
+  classifyWorkType,
+  isBridgeStructureDescription,
+  isStructureOrLocationScheduledItem,
+} from "../shared/workTypeRecipes";
+import {
+  PIPE_CULVERT_NP4_1000MM_ITEM,
+  PIPE_CULVERT_NP4_1000MM_MATERIALS,
+  PIPE_CULVERT_NP4_1200MM_ITEM,
+  PIPE_CULVERT_NP4_1200MM_MATERIALS,
+  PIPE_CULVERT_NP4_300MM_ITEM,
+  PIPE_CULVERT_NP4_300MM_MATERIALS,
+} from "../shared/snlSeedData";
 
 // ─── Shared helper used by Auto-generate, Auto-sequence, Clean Structure Bars, ──
 // and the Work Programme coverage/status display. Must classify by BOQ
@@ -123,5 +136,50 @@ describe("isStructureOrLocationScheduledItem", () => {
     const wt = classifyWorkType(desc, "RM");
     expect(wt).toBe("bridge_finishing");
     expect(isStructureOrLocationScheduledItem({ categoryName: "Civil Works", description: desc })).toBe(true);
+  });
+
+  it("does not turn a ROAD_FURNITURE RCC foundation specification into a structure bar", () => {
+    const item = {
+      workCategory: "ROAD_FURNITURE",
+      categoryName: "Road Furniture",
+      description: "Providing RCC M20 foundation for kilometre stone",
+      unit: "CUM",
+    };
+    expect(classifyPlanningItem(item)).toMatchObject({
+      context: "discrete_road_asset",
+      planningWorkType: "road",
+    });
+    expect(isStructureOrLocationScheduledItem(item)).toBe(false);
+  });
+
+  it("classifies culvert foundation excavation as structure even when stump removal is incidental", () => {
+    const item = {
+      workCategory: "CROSS_DRAINAGE",
+      categoryName: "HP Culvert 1V",
+      description: "Earthwork excavation in soils for foundations of structures including removal of stumps and dressing sides",
+      unit: "CUM",
+    };
+    expect(classifyPlanningItem(item)).toMatchObject({
+      context: "structure_location",
+      planningWorkType: "structure",
+      workType: "excavation_structure",
+    });
+  });
+
+  it("uses the exported bridge predicate consistently with structure planning", () => {
+    const description = "Providing elastomeric bearing on bridge deck";
+    expect(isBridgeStructureDescription(description)).toBe(true);
+    expect(classifyPlanningItem({ description, unit: "NOS" }).context).toBe("structure_location");
+  });
+});
+
+describe("MoRTH 9.2 NP4 single-row pipe seeds", () => {
+  it("retains the exact evidence-backed diameter/class/material identities", () => {
+    expect(PIPE_CULVERT_NP4_1000MM_ITEM.shortLabel).toContain("NP4 1000mm");
+    expect(PIPE_CULVERT_NP4_1000MM_MATERIALS.some(material => material.materialName.includes("M-149"))).toBe(true);
+    expect(PIPE_CULVERT_NP4_1200MM_ITEM.shortLabel).toContain("NP4 1200mm");
+    expect(PIPE_CULVERT_NP4_1200MM_MATERIALS.some(material => material.materialName.includes("M-150"))).toBe(true);
+    expect(PIPE_CULVERT_NP4_300MM_ITEM.shortLabel).toContain("NP4 300mm");
+    expect(PIPE_CULVERT_NP4_300MM_MATERIALS[0].materialName).toContain("M-151");
   });
 });

@@ -884,3 +884,102 @@ export const PIPE_CULVERT_MATERIALS = [
   { projectCategory: "ALL", gradingVariant: null, sortOrder: 3, materialName: "Fine Aggregate (Sand)",       materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 0.600, shiftOutputRef: 40, derivedPerUnit: 0.600 / 40, isDesignSpecific: false },
   { projectCategory: "ALL", gradingVariant: null, sortOrder: 4, materialName: "Coarse Aggregate 20mm",       materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 1.200, shiftOutputRef: 40, derivedPerUnit: 1.200 / 40, isDesignSpecific: false },
 ];
+
+// ─── MoRTH 9.2: NP4 pipes, first-class bedding, single row ─────────────────
+// Source workbook: MoRTH Standard Data Book Road & Bridge, sheet 13, items 9.2.
+// The workbook supplies a generic laying output of 12.5 m (five 2.5 m pipes);
+// it does not provide plant-hours, so no equipment is inferred here.
+const NP4_SINGLE_ROW_PRODUCTIVITY = [
+  { projectCategory: "ALL", shiftOutput: 12.5, shiftHours: 8, outputUnit: "RM", derivedPerHour: 12.5 / 8 },
+];
+const NP4_SINGLE_ROW_EQUIPMENT: never[] = [];
+
+export const PIPE_CULVERT_NP4_1000MM_ITEM = {
+  itemCode: "9.2-NP4-1000", description: "Laying reinforced cement concrete pipe NP4 / prestressed concrete pipe 1000mm dia on first class bedding in single row including fixing collar with cement mortar 1:2.", shortLabel: "RCC Pipe NP4 1000mm — single row", unit: "RM", workCategory: "CROSS_DRAINAGE", workSubCategory: "Pipe Culvert", chapterNo: "9", chapterTitle: "Pipe Culverts", sourcePage: "Workbook sheet 9", specClause: "MoRTH 9.2", sector: "STRUCTURE", isMixSpecific: false, hasGradingVariants: false, notes: "Source material code M-149; output stated as 12.5 m/shift.",
+};
+export const PIPE_CULVERT_NP4_1000MM_PRODUCTIVITY = NP4_SINGLE_ROW_PRODUCTIVITY;
+export const PIPE_CULVERT_NP4_1000MM_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate", skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.18, shiftOutputRef: 12.5, derivedPerUnit: 0.18 / 12.5 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mason", skillTier: "SKILLED", unit: "day", quantityPerShift: 0.5, shiftOutputRef: 12.5, derivedPerUnit: 0.5 / 12.5 },
+  { projectCategory: "ALL", sortOrder: 3, designation: "Mazdoor", skillTier: "UNSKILLED", unit: "day", quantityPerShift: 4, shiftOutputRef: 12.5, derivedPerUnit: 4 / 12.5 },
+];
+export const PIPE_CULVERT_NP4_1000MM_EQUIPMENT = NP4_SINGLE_ROW_EQUIPMENT;
+export const PIPE_CULVERT_NP4_1000MM_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "Sand at site (M-005)", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 0.07, shiftOutputRef: 12.5, derivedPerUnit: 0.07 / 12.5, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 2, materialName: "Cement at site (M-081)", materialCategory: "CEMENT", unit: "MT", quantityPerShift: 0.05, shiftOutputRef: 12.5, derivedPerUnit: 0.05 / 12.5, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 3, materialName: "RCC Pipe NP4 1000mm dia (M-149)", materialCategory: "PIPE", unit: "RM", quantityPerShift: 12.5, shiftOutputRef: 12.5, derivedPerUnit: 1, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 4, materialName: "Granular material passing 5.6mm sieve for bedding (M-009)", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 4.5, shiftOutputRef: 12.5, derivedPerUnit: 4.5 / 12.5, isDesignSpecific: false },
+];
+
+export const PIPE_CULVERT_NP4_1200MM_ITEM = {
+  ...PIPE_CULVERT_NP4_1000MM_ITEM, itemCode: "9.2-NP4-1200", description: "Laying reinforced cement concrete pipe NP4 / prestressed concrete pipe 1200mm dia on first class bedding in single row including fixing collar with cement mortar 1:2.", shortLabel: "RCC Pipe NP4 1200mm — single row", notes: "Source material code M-150; output stated as 12.5 m/shift.",
+};
+export const PIPE_CULVERT_NP4_1200MM_PRODUCTIVITY = NP4_SINGLE_ROW_PRODUCTIVITY;
+export const PIPE_CULVERT_NP4_1200MM_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate", skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.28, shiftOutputRef: 12.5, derivedPerUnit: 0.28 / 12.5 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mason", skillTier: "SKILLED", unit: "day", quantityPerShift: 1, shiftOutputRef: 12.5, derivedPerUnit: 1 / 12.5 },
+  { projectCategory: "ALL", sortOrder: 3, designation: "Mazdoor", skillTier: "UNSKILLED", unit: "day", quantityPerShift: 6, shiftOutputRef: 12.5, derivedPerUnit: 6 / 12.5 },
+];
+export const PIPE_CULVERT_NP4_1200MM_EQUIPMENT = NP4_SINGLE_ROW_EQUIPMENT;
+export const PIPE_CULVERT_NP4_1200MM_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "Sand at site (M-005)", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 0.09, shiftOutputRef: 12.5, derivedPerUnit: 0.09 / 12.5, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 2, materialName: "Cement at site (M-081)", materialCategory: "CEMENT", unit: "MT", quantityPerShift: 0.07, shiftOutputRef: 12.5, derivedPerUnit: 0.07 / 12.5, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 3, materialName: "RCC Pipe NP4 1200mm dia (M-150)", materialCategory: "PIPE", unit: "RM", quantityPerShift: 12.5, shiftOutputRef: 12.5, derivedPerUnit: 1, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 4, materialName: "Granular material passing 5-6mm sieve for bedding (M-009)", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 5, shiftOutputRef: 12.5, derivedPerUnit: 5 / 12.5, isDesignSpecific: false },
+];
+
+export const PIPE_CULVERT_NP4_300MM_ITEM = {
+  ...PIPE_CULVERT_NP4_1000MM_ITEM, itemCode: "9.2-NP4-300", description: "Laying reinforced cement concrete pipe NP4 / prestressed concrete pipe 300mm dia on first class bedding in single row including fixing collar with cement mortar 1:2.", shortLabel: "RCC Pipe NP4 300mm — single row", notes: "Source material code M-151 is present in the workbook input catalogue; no diameter-specific 9.2 labour or bedding norm is supplied.",
+};
+export const PIPE_CULVERT_NP4_300MM_PRODUCTIVITY = NP4_SINGLE_ROW_PRODUCTIVITY;
+export const PIPE_CULVERT_NP4_300MM_LABOUR: never[] = [];
+export const PIPE_CULVERT_NP4_300MM_EQUIPMENT = NP4_SINGLE_ROW_EQUIPMENT;
+export const PIPE_CULVERT_NP4_300MM_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "RCC Pipe NP4 300mm dia (M-151)", materialCategory: "PIPE", unit: "RM", quantityPerShift: 12.5, shiftOutputRef: 12.5, derivedPerUnit: 1, isDesignSpecific: false },
+];
+
+// ─── MoRTH 9.3: NP4 pipes, first-class bedding, double row ─────────────────
+// The same workbook explicitly provides 1000mm/M-149 and 1200mm/M-150 variants.
+// Output is 12.5m of culvert; pipe consumption is 25m because two rows are laid.
+export const PIPE_CULVERT_NP4_1000MM_DOUBLE_ITEM = {
+  ...PIPE_CULVERT_NP4_1000MM_ITEM,
+  itemCode: "9.3-NP4-1000",
+  description: "Laying reinforced cement concrete pipe NP4 / prestressed concrete pipe 1000mm dia on first class bedding in double row including fixing collar with cement mortar 1:2.",
+  shortLabel: "RCC Pipe NP4 1000mm — double row",
+  specClause: "MoRTH 9.3",
+  notes: "Source material code M-149; output 12.5 m/shift using 25 m of pipe in two rows.",
+};
+export const PIPE_CULVERT_NP4_1000MM_DOUBLE_PRODUCTIVITY = NP4_SINGLE_ROW_PRODUCTIVITY;
+export const PIPE_CULVERT_NP4_1000MM_DOUBLE_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate", skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.36, shiftOutputRef: 12.5, derivedPerUnit: 0.36 / 12.5 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mason", skillTier: "SKILLED", unit: "day", quantityPerShift: 1, shiftOutputRef: 12.5, derivedPerUnit: 1 / 12.5 },
+  { projectCategory: "ALL", sortOrder: 3, designation: "Mazdoor", skillTier: "UNSKILLED", unit: "day", quantityPerShift: 8, shiftOutputRef: 12.5, derivedPerUnit: 8 / 12.5 },
+];
+export const PIPE_CULVERT_NP4_1000MM_DOUBLE_EQUIPMENT = NP4_SINGLE_ROW_EQUIPMENT;
+export const PIPE_CULVERT_NP4_1000MM_DOUBLE_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "Sand at site (M-005)", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 0.14, shiftOutputRef: 12.5, derivedPerUnit: 0.14 / 12.5, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 2, materialName: "Cement at site (M-081)", materialCategory: "CEMENT", unit: "MT", quantityPerShift: 0.1, shiftOutputRef: 12.5, derivedPerUnit: 0.1 / 12.5, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 3, materialName: "RCC Pipe NP4 1000mm dia (M-149)", materialCategory: "PIPE", unit: "RM", quantityPerShift: 25, shiftOutputRef: 12.5, derivedPerUnit: 2, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 4, materialName: "Granular material passing 5.6mm sieve for bedding (M-009)", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 12.5, shiftOutputRef: 12.5, derivedPerUnit: 1, isDesignSpecific: false },
+];
+
+export const PIPE_CULVERT_NP4_1200MM_DOUBLE_ITEM = {
+  ...PIPE_CULVERT_NP4_1000MM_DOUBLE_ITEM,
+  itemCode: "9.3-NP4-1200",
+  description: "Laying reinforced cement concrete pipe NP4 / prestressed concrete pipe 1200mm dia on first class bedding in double row including fixing collar with cement mortar 1:2.",
+  shortLabel: "RCC Pipe NP4 1200mm — double row",
+  notes: "Source material code M-150; output 12.5 m/shift using 25 m of pipe in two rows.",
+};
+export const PIPE_CULVERT_NP4_1200MM_DOUBLE_PRODUCTIVITY = NP4_SINGLE_ROW_PRODUCTIVITY;
+export const PIPE_CULVERT_NP4_1200MM_DOUBLE_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate", skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.56, shiftOutputRef: 12.5, derivedPerUnit: 0.56 / 12.5 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mason", skillTier: "SKILLED", unit: "day", quantityPerShift: 2, shiftOutputRef: 12.5, derivedPerUnit: 2 / 12.5 },
+  { projectCategory: "ALL", sortOrder: 3, designation: "Mazdoor", skillTier: "UNSKILLED", unit: "day", quantityPerShift: 12, shiftOutputRef: 12.5, derivedPerUnit: 12 / 12.5 },
+];
+export const PIPE_CULVERT_NP4_1200MM_DOUBLE_EQUIPMENT = NP4_SINGLE_ROW_EQUIPMENT;
+export const PIPE_CULVERT_NP4_1200MM_DOUBLE_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "Sand at site (M-005)", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 0.18, shiftOutputRef: 12.5, derivedPerUnit: 0.18 / 12.5, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 2, materialName: "Cement at site (M-081)", materialCategory: "CEMENT", unit: "MT", quantityPerShift: 0.14, shiftOutputRef: 12.5, derivedPerUnit: 0.14 / 12.5, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 3, materialName: "RCC Pipe NP4 1200mm dia (M-150)", materialCategory: "PIPE", unit: "RM", quantityPerShift: 25, shiftOutputRef: 12.5, derivedPerUnit: 2, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 4, materialName: "Granular material passing 5-6mm sieve for bedding (M-009)", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 13.75, shiftOutputRef: 12.5, derivedPerUnit: 1.1, isDesignSpecific: false },
+];
