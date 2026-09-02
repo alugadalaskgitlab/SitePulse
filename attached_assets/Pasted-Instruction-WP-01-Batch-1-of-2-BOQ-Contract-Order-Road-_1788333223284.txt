@@ -1,0 +1,362 @@
+Instruction WP-01 (Batch 1 of 2) — BOQ Contract Order, Road/Structure
+Classification & MoRTH Pipe-Culvert Mapping Fix
+
+SCOPE OF THIS BATCH — READ FIRST
+
+This is BATCH 1 of a two-part correction. This batch fixes the confirmed data
+and classification problems in the BOQ import for the ALLADURG project. It does
+NOT include the manual initial-planning / draft-baseline-revision lifecycle
+change. That is a separate, larger design decision and will be sent as its own
+follow-up instruction (Batch 2) once its design is confirmed. Do not attempt any
+part of the draft/baseline/revision lifecycle work in this batch.
+
+DO NOT START ANY FOLLOW-UP TASK, FEATURE, OR IMPROVEMENT ON YOUR OWN INITIATIVE.
+If you notice something else that looks broken or worth improving while working
+on this batch, STOP, note it in your report, and wait for us to explicitly ask
+for it. Do not expand scope, do not "also fix" adjacent things, do not start
+Batch 2 items even if they seem related or easy. We will tell you what to do
+next after reviewing this batch's report.
+
+OBJECTIVE
+
+Fix the BOQ import so contract Bill structure is preserved, road and
+structure/culvert items are classified reliably and consistently, and
+structure items (starting with the pipe culvert in the ALLADURG project) can
+be correctly mapped against the standard MoRTH/SNL library.
+
+Confirmed problems in the newly imported ALLADURG project
+("UPGRADATION FROM ALLADURG PWD ROAD TO PAMPAD"):
+
+1. BOQ items are not being grouped/sorted correctly by Bill No. A "Bill"
+   grouping concept already exists in the app (via category/section), and the
+   display already groups by it when populated correctly — but the import
+   step that detects where one Bill ends and the next begins only checks one
+   specific column for the literal text "Bill No" and misses other common
+   phrasings/placements, silently falling back to flat file order when it
+   fails. This is why culvert items appear interleaved with road items.
+
+2. Because of that, culvert/structure items visually appear mixed into the
+   road-work sequence, though this does not automatically wrong the actual
+   scheduling logic used to generate programme bars — see item 3.
+
+3. Programme sequencing (auto-generation of bars) does classify road vs.
+   structure independently, using each item's own description/category, not
+   file order. However, there are TWO separate places in the code that each
+   independently decide whether a BOQ item is "road" or "structure": one used
+   at import time, and a different, more complete one used later at
+   sequencing time. They do not always agree — the import-time check misses
+   some legitimate structure wording (e.g., pipe descriptions that don't
+   contain the literal word "culvert"), which can cause an item to be
+   mis-tagged at import and only sometimes get corrected later. Unify these
+   into one classifier so there is a single source of truth.
+
+4. The one pipe-culvert item in this project is not mapping to a standard
+   MoRTH item. This is NOT a matching-algorithm bug. The app's own internal
+   library of standard MoRTH reference items currently contains exactly ONE
+   pipe-culvert entry (a single diameter and class). Any BOQ pipe-culvert item
+   of a different diameter or class will correctly fail to match closely
+   enough, because it genuinely is a different item. The fix is to expand the
+   reference library with the fuller realistic range of standard pipe-culvert
+   sizes/classes, not to loosen the matching threshold or force a match to the
+   single existing entry.
+
+Required end state for this batch:
+
+CONTRACT BOQ
+→ preserve Bill hierarchy/order on import
+→ classify road vs structure context correctly and consistently (one
+  classifier, not two)
+→ map structure items (starting with pipe culverts) against an adequately
+  complete standard library
+→ report on the existing ALLADURG project's current (likely wrong) state,
+  propose a safe correction, but do not apply it automatically.
+
+
+====================================================================
+PART 1 — INVESTIGATE THE CURRENT ALLADURG IMPORT FIRST
+====================================================================
+
+Before changing code, inspect the actual imported project:
+"UPGRADATION FROM ALLADURG PWD ROAD TO PAMPAD"
+
+Report:
+
+1. All imported BOQ items with: database ID, source Excel row, Bill No (if
+   detectable from the source file), Bill title/section if available, source
+   serial number, item code/sub-item, description, UOM, quantity, current
+   category, current sortOrder, current SNL/spec mapping, current road/
+   structure classification.
+
+2. Show exactly why the current display/programme order intermixes culvert
+   items with road Bill items for this specific file.
+
+3. Identify the pipe culvert in this project and list the BOQ items currently
+   associated with it / expected to be associated with it.
+
+4. Report which of those items currently map incorrectly or remain unmapped,
+   and why (using the actual scoring breakdown from the matcher).
+
+Do not alter production data during investigation.
+
+
+====================================================================
+PART 2 — PRESERVE CONTRACT BILL HIERARCHY ON IMPORT
+====================================================================
+
+Every imported BOQ item should retain sufficient source identity to
+reconstruct: Bill No -> Bill/Section title where available -> Item/Sub-item
+-> original source-row order.
+
+Do NOT sort/group the project by a flat serial number when the source BOQ has
+multiple Bills/sections.
+
+Required display/planning order:
+1. Natural Bill No order.
+2. Within each Bill, original contract/source order.
+3. Item/Sub-item ordering only as a secondary rule where appropriate.
+
+Example:
+BILL 1 -- ROAD WORKS
+  Item 1, Item 2, Item 3 ...
+BILL 2 -- CULVERT / STRUCTURE WORKS
+  Item 1, Item 2 ...
+
+A Bill 2 item must not appear between Bill 1 road items merely because its
+local serial number happens to be 2.
+
+Preserve the original contract identifiers. Do not invent new item numbers.
+
+Fix the confirmed narrow-detection cause (bill-marker text only checked in one
+auto-mapped column against a strict "Bill No." regex). Detection should
+reasonably handle common real-world variants (e.g., "BILL-II", "SCHEDULE B",
+marker text landing in the description column) without over-guessing.
+
+If the source Excel genuinely does not provide a reliable Bill boundary for a
+given file: show an import-review warning rather than silently guessing, and
+fall back to flat order with that warning visible (current behavior minus the
+silent part).
+
+
+====================================================================
+PART 3 — ONE ROAD/STRUCTURE CLASSIFIER, NOT TWO
+====================================================================
+
+Unify the import-time road/structure classification with the classifier
+already used by the sequencer, so there is a single source of truth instead
+of two independently-maintained keyword lists that can disagree.
+
+Distinguish at least:
+A. LINEAR ROAD WORK -- planned by reach/chainage stretch, road productivity/
+   resource logic.
+B. LOCATION-BASED STRUCTURE WORK (Pipe Culvert, Slab Culvert, Box Culvert,
+   Minor/Major Bridge, drain/retaining structure where applicable) -- planned
+   by structure/location/chainage, must NOT be divided/sequenced as ordinary
+   road length.
+
+Do not globally classify an ambiguous generic BOQ description merely because
+one word matches. Do not guess a classification the existing rules cannot
+support confidently -- surface it for review instead.
+
+
+====================================================================
+PART 4 — PIPE CULVERT / STRUCTURE MAPPING
+====================================================================
+
+For the ALLADURG project, inspect the one pipe culvert and its BOQ items.
+
+Compare those BOQ items against the existing SNL / Norms Library / MoRTH
+mapping using, in priority order:
+1. internal boq_item_id for stored mapping;
+2. exact item code/sub-item where reliable;
+3. BOQ description and context;
+4. Road vs Structure sector/category guardrail;
+5. MoRTH/spec reference where available.
+
+Do NOT allow a road-work SNL mapping to be used for a structure item merely
+because the description is similar, and do not use a structure mapping for
+ordinary road work.
+
+Expand the standard MoRTH reference library with the realistic range of
+standard pipe-culvert sizes and classes (the range actually used in typical
+road BOQs), not just the single entry currently present. Source these from
+whatever standard/spec reference data is already available or embeddable in
+the existing library format -- do not fabricate non-standard entries. Report
+exactly which sizes/classes were added.
+
+Do NOT loosen the matching threshold or force a match between a BOQ item and
+a reference item of a different size/class just to produce a "mapped" result.
+
+For genuinely uncertain matches after the library is expanded: show "Needs
+Mapping" and let PM/Admin choose the correct standard/spec item. Do not guess
+a high-confidence mapping from loose keywords.
+
+
+====================================================================
+PART 5 — CLEAR STALE/WRONG MAPPINGS SAFELY
+====================================================================
+
+If an imported BOQ item has an existing mapping that becomes invalid after its
+Road/Structure context is corrected:
+- do not retain the stale mapping silently;
+- mark it for remapping;
+- preserve audit/history where existing architecture supports it.
+
+Correct mapping must flow into productivity, labour requirement, equipment
+requirement, material/BOM requirement, and programme calculations. Do not
+allow calculations to continue using an incompatible old mapping. Do not
+permanently cache a wrong earlier classification -- corrections must flow
+through automatically without a separate manual "rebuild report" step.
+
+
+====================================================================
+PART 6 — RESOURCE / BOM / LABOUR / EQUIPMENT SAFETY
+====================================================================
+
+Verify that road programme bars use road mapping/productivity/resources, and
+structure programme bars use the correctly mapped structure-stage/spec
+resources. Do NOT allow a culvert BOQ bar accidentally treated as a road
+stretch to generate road-length-based BOM/equipment/labour/productivity
+requirements.
+
+
+====================================================================
+PART 7 — EXISTING ALLADURG PROGRAMME: REPORT AND PROPOSE ONLY
+====================================================================
+
+The current ALLADURG programme may already contain bars generated from the
+wrong ordering/classification.
+
+Do NOT silently modify production programme data.
+
+Report: current bars; which are road bars; which appear to be culvert/
+structure items wrongly treated as road; which resource mappings are
+affected; whether any actual DPR/progress is already linked to those bars.
+
+Because this project is newly planned, if there are NO submitted actuals
+linked to the affected bars: propose a safe "Reset/Rebuild Initial Programme
+Draft" for just this project using the corrected BOQ grouping/classification.
+Do NOT perform it automatically -- report the proposal and wait for
+confirmation.
+
+If actuals already exist for any affected bar: STOP and propose a
+non-destructive repair plan instead.
+
+
+====================================================================
+PART 8 — IMPORT REVIEW SCREEN
+====================================================================
+
+After a BOQ import, before creating programme bars, show a compact review:
+Bill No | Item Code | Description | UOM | Qty | Context | Mapping
+
+Context: Road / Structure / Needs Review.
+Mapping: Mapped / Needs Mapping.
+
+Allow PM/Admin to correct classification/mapping before programme creation.
+Do NOT create a cumbersome approval workflow -- this is just an
+import-quality review step.
+
+
+====================================================================
+PART 9 — TESTS
+====================================================================
+
+A. BILL ORDER
+Source: Bill 1 items 1,2,3; Bill 2 items 1,2; Bill 3 items 1,2.
+-> display/programme order remains grouped by bill in that order, not
+   interleaved by local serial number.
+
+B. SOURCE ORDER
+Items inside one Bill preserve original contract/source-row order.
+
+C. ROAD CLASSIFICATION
+Road item creates linear/reach planning context.
+
+D. PIPE CULVERT CLASSIFICATION
+Pipe culvert item creates location/structure planning context and is not
+auto-split by road length.
+
+E. SINGLE CLASSIFIER
+Import-time and sequencing-time classification agree (same function/result)
+for a representative set of ambiguous descriptions (e.g., "NP3 RCC Hume pipe"
+without the word "culvert").
+
+F. MAPPING GUARDRAIL
+Structure item cannot silently use an incompatible road-only SNL mapping.
+
+G. EXPANDED LIBRARY
+A pipe-culvert BOQ item of a size/class now present in the expanded library
+maps correctly; a size/class genuinely not covered remains "Needs Mapping"
+rather than being force-matched.
+
+H. NEEDS MAPPING
+Uncertain culvert item remains "Needs Mapping" instead of guessed.
+
+I. ALLADURG REPORT-ONLY REGRESSION
+Running the corrected logic against the imported ALLADURG BOQ (read-only)
+shows: correct Bill ordering, road and pipe-culvert items separated, pipe
+culvert classified for location-based planning. No production data changed
+by the test itself.
+
+J. FULL TEST SUITE / BUILD / TYPE-CHECK.
+
+
+====================================================================
+PART 10 — SCHEMA / DATA SAFETY
+====================================================================
+
+Investigate first. If Bill No / source hierarchy is already persistable with
+existing fields, prefer zero schema change and fix persistence/order/use.
+
+If genuinely missing persistence is required for Bill No, Bill title/section,
+or source-row/order: STOP BEFORE MIGRATION and report the minimum additive
+proposal.
+
+No DROP TABLE. No DROP COLUMN. No destructive migration. No production data
+rewrite.
+
+
+====================================================================
+DO NOT
+====================================================================
+
+Do not build the manual initial-planning mode, the draft/baseline/revision
+lifecycle change, or anything else from the earlier discussion beyond what is
+listed above -- that is Batch 2 and will be sent separately.
+Do not change Auto Sequence behavior beyond what Part 3 requires for
+classification consistency.
+Do not touch diesel, DPR draft/submit, or equipment logic.
+Do not start any follow-up task, feature, or "while I'm here" improvement on
+your own initiative -- report anything else you notice and wait for
+instruction.
+Do not publish automatically.
+Do not modify production programme data automatically.
+
+
+====================================================================
+REPORT BACK
+====================================================================
+
+1. Exact reason Bill No was not retained/used correctly, and the corrected
+   detection rule.
+2. ALLADURG BOQ grouped by Bill after correction (report only).
+3. Pipe culvert and its associated BOQ items, before/after classification.
+4. Proposed corrected SNL/MoRTH mappings and confidence, and exactly which
+   new standard pipe-culvert sizes/classes were added to the library.
+5. Confirmation the import-time and sequencing-time classifiers are now
+   unified into one.
+6. Existing ALLADURG bars affected by wrong classification, and whether any
+   submitted DPR actuals are linked to them.
+7. Safe repair/reset proposal for the ALLADURG initial programme (proposal
+   only, not applied).
+8. Schema changes, if any.
+9. Files changed.
+10. Focused tests.
+11. Full build/test/type-check result.
+12. Anything else you noticed while working on this that you did NOT act on,
+    per the "do not start follow-up work" instruction above.
+
+DO NOT PUBLISH AUTOMATICALLY.
+DO NOT MODIFY PRODUCTION PROGRAMME DATA AUTOMATICALLY.
+DO NOT START ANY FOLLOW-UP TASK ON YOUR OWN INITIATIVE.
+STOP AND REPORT BEFORE ANY ALLADURG DATA REPAIR.
