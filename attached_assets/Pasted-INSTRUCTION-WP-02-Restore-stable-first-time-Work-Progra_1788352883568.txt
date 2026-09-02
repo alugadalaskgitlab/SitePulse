@@ -1,0 +1,60 @@
+INSTRUCTION WP-02: Restore stable first-time Work Programme editing + make BOQ/SDB/SNL/equipment/labour mapping automatic by default
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. If you notice something else broken or worth improving while doing this work, write it down in your report and WAIT for instructions. Do not touch code, data, or schema outside what is explicitly listed below.
+
+Do NOT roll back or discard any prior verified work. The Bill-hierarchy field, the unified classifier, and the expanded MoRTH pipe-culvert library added in the last approved batch (WP-01) are correct and must remain exactly as they are. This instruction builds on top of that work — it does not undo it.
+
+BACKGROUND (for your context only — do not re-litigate this)
+We tested a real multi-bill tender BOQ (Road Works items 1-10, then CD Works/Pipe Culvert items 1-6, then Road Furniture items 1-4, then Road Safety items 1-4 — each Bill restarting its own item numbering at 1, exactly as the original government tender document does). We confirmed against the source PDF that this numbering is correct and standard practice — it is not a data error. This means the app's item list and programme MUST always group and order by Bill first, then by item number within that Bill. If it currently sorts by a flat/global item number, items from different Bills interleave and look scrambled even though the data is fine. Confirm and fix this if needed (see Part 3).
+
+We also separately confirmed, through a live video review, that the SNL/MoRTH mapping suggestions currently shown for the ALLADURG project (e.g., a pipe culvert item and a kilometre-stone item both being suggested against a generic RCC M25 structural item at only 25% confidence) are pre-existing weaknesses in the automatic mapping logic, not something that changed unexpectedly. This instruction is where we fix that properly.
+
+PART 1 — RESTORE FREE MANUAL EDITING FOR FIRST-TIME PROGRAMME PLANNING
+Problem: Every edit to a programme bar's start date, end date, or duration currently triggers the mandatory "Schedule Revision" workflow (requiring a typed reason and going through a revision-preview/apply flow), even on a brand-new project that has never been baselined and has zero actual progress recorded. This did not happen a few days ago — bars could be dragged/edited directly. This is a real regression introduced when the revision-protection feature was added, and it is separate from anything in WP-01.
+
+Required fix:
+1. Add a check before requiring Schedule Revision: if the project (or the specific programme) has not yet had a baseline explicitly published/frozen, AND the bar being edited has no recorded actual progress (no execution/outcome events), allow the start date, end date, duration, and manual/auto mode fields to be edited directly — no revision required, no reason required.
+2. Once a baseline has been explicitly published for that programme, restore the current behavior: any further edit to those fields requires the Schedule Revision flow with a reason, exactly as it does today.
+3. There is currently no "baseline published" concept in the schema. Add the smallest possible additive field to represent it (e.g., a nullable timestamp/flag on the programme or project record indicating whether a baseline has been published, defaulting to "not published" for all existing projects). Do not remove or repurpose any existing field. If this requires a schema change, stop and show me the exact change before writing any migration, per our usual schema-safety rule.
+4. Do not build the full Draft/Baseline/Revision lifecycle UI here (that is a separate, larger piece we are deliberately holding for later). This part is only: unlock free editing pre-baseline, keep revision protection post-baseline.
+
+Test: On the Takkadpally project (or any project that has never had a baseline published), confirm you can now drag/edit a bar's dates and duration directly without hitting the Revision workflow, exactly like the older behavior. On any project that already went through baseline publishing (if one exists), confirm Revision is still required. Show me both results.
+
+PART 2 — MAKE AUTOMATIC MAPPING THE DEFAULT, NOT THE EXCEPTION
+This is the most important part of this instruction. Right now the Mapping Review screen is showing far too many items as uncertain, including very ordinary, standard road and culvert items that any experienced engineer would recognize instantly (WMM, DBM, BC, tack coat, prime coat, embankment, subgrade, PCC, Hume pipe culverts, kilometre stones, sign boards, thermoplastic road marking, crash barriers, rumble strips, reflective studs, etc.). These are not unusual or ambiguous items — they are standard MoRTH/IRC-specification items that appear in virtually every road tender BOQ in the country. The app should recognize them with confidence and map them automatically, without asking the user.
+
+Required approach:
+1. First, investigate and report back: how many distinct SNL/SDB standard-item libraries or sources currently exist in the app (for example: the MoRTH SDB library seeded in the last batch, and any other standard-item source tables or seed files you find in the codebase)? List them by name/table and item count before changing anything. If there is currently only one library, say so plainly — do not invent additional libraries that do not exist in the code.
+2. For whichever standard-item library/libraries exist, build a small set of deterministic, identity-based matching rules for the common, unambiguous item families listed above (and any other equally standard, equally unambiguous families you find in the codebase's existing keyword/classification lists). "Deterministic" means: when a BOQ item's description, chapter/spec reference, and unit clearly identify it as one specific standard item (for example, a 1000mm NP4 RCC Hume pipe item with a pipe-laying description and RM unit), the app assigns that exact standard-item mapping directly, with high confidence, and does NOT send it to Mapping Review.
+3. Reserve the fuzzy/scored matching (the existing 0.70/0.50 threshold logic) only for items that do not match any deterministic rule — i.e., genuinely unusual, poorly worded, or composite items. Mapping Review should end up showing only that leftover minority, not common items.
+4. Apply the same "recognize the obvious, only flag the unusual" principle to equipment and labour/resource mapping (BOM/recipe mapping) wherever the same style of auto-suggestion exists in the app today — investigate and report what you find there before changing it, following the same deterministic-first approach.
+5. Target stated by the client: roughly 85-90% or more of normal BOQ items in a standard road/culvert/furniture/safety BOQ should map automatically with zero user action. Mapping Review should contain only genuine exceptions — not become a second full mapping exercise for the user.
+6. Do not loosen the existing fuzzy-matching confidence thresholds to force more items through as "mapped." That would hide real ambiguity instead of resolving it, and it is exactly the kind of shortcut we do not want. The improvement must come from recognizing obvious items directly, not from lowering the bar for uncertain ones.
+
+Test: Re-run the existing ALLADURG mapping review (already documented in the last batch's report) and the Pampad-style test BOQ we discussed, and show me, before and after this change, how many items were auto-mapped vs. sent to review, with a couple of concrete examples (e.g., the 1000mm NP4 pipe item, the kilometre-stone item, the WMM/DBM/BC items).
+
+PART 3 — CONFIRM AND FIX BILL-FIRST GROUPING AND ORDERING
+1. Confirm whether the item list and programme currently sort/group by Bill first and then by item number within that Bill, or whether they use a flat item-number/sl-no order across the whole project. Report which one you find.
+2. If it is not already Bill-first, fix the sort/group order so that all of a Bill's items always stay together, in their original within-Bill order, and Bills themselves appear in their original order (Bill 1, then Bill 2, then Bill 3...). This applies to the BOQ item list, the Mapping Review list, and the Work Programme view.
+3. Do this as a display/ordering fix only. Do not change any stored item numbers, descriptions, quantities, rates, or categories.
+
+Test: Re-import the Pampad-style test BOQ (Road Works items 1-10, CD Works items 1-6, Road Furniture items 1-4, Road Safety items 1-4) and confirm the item list and programme both show Bill 1's ten items together and in order, then Bill 2's items together and in order, and so on — with no interleaving between Bills.
+
+WHAT NOT TO DO
+- Do not roll back any code or database checkpoint.
+- Do not touch the ALLADURG project's live data in this batch — Parts 1-3 above are app-behavior fixes, not per-project data changes. If applying Part 2's improved mapping to ALLADURG specifically would change any existing mapping there, stop and show me the before/after list first, exactly as we did last time, before applying it.
+- Do not build the Draft/Baseline/Revision lifecycle screens — only the minimal "not yet baselined = freely editable" check in Part 1.
+- Do not loosen mapping confidence thresholds as a shortcut.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+Prefer zero schema change. If Part 1 genuinely requires one small additive field (see above), it must be additive only (a new nullable column), never a DROP, RENAME, or type change to any existing column. Stop before writing any migration and show me the exact change for approval, exactly as in our previous batches.
+
+REPORT BACK (required, in this order)
+1. Part 1: confirm free editing is restored pre-baseline and still protected post-baseline (or explain why not), with test evidence.
+2. Part 2: list of SDB/SNL library sources found, the deterministic rules you added and for which item families, before/after auto-mapped-vs-review counts on both ALLADURG and the Pampad-style test BOQ, and confirmation you did not lower any confidence thresholds.
+3. Part 3: which ordering the app used before, what you changed (if anything), and test evidence with the Pampad-style test BOQ.
+4. Any schema change proposed, with the exact SQL, awaiting my approval before it is applied.
+5. Anything else you noticed but did not touch, for us to decide on separately.
+6. Confirmation that ALLADURG's live data was not changed except where explicitly shown to and approved by me first.
