@@ -10,6 +10,7 @@ import {
   aggregateReceived,
   buildReceiptComparison,
   classifyReceiptMatch,
+  convertReceiptVolumeQty,
   receiptRelevanceForType,
   arrangementScopeLabel,
   resolveReusedExcavationSourceContexts,
@@ -222,6 +223,20 @@ describe("06X-HF2 reused-excavated context", () => {
     expect(source).toContain("reuse-configuration-warning");
   });
 
+  it("cancelled/rejected persisted arrangements reopen as inactive while active persisted arrangements are unchanged", () => {
+    for (const status of ["cancelled", "rejected"]) {
+      const html = renderStrip([arr({ status })], 1);
+      expect(html).toContain('data-testid="hf2-arrangement-unset"');
+      expect(html).not.toContain('data-testid="hf2-arrangement-badge"');
+      expect(html).not.toContain('data-testid="hf2-arranged-tag"');
+    }
+
+    const activeHtml = renderStrip([arr({ status: "in_progress" })], 1);
+    expect(activeHtml).toContain('data-testid="hf2-arrangement-badge"');
+    expect(activeHtml).toContain('data-testid="hf2-arranged-tag"');
+    expect(activeHtml).not.toContain('data-testid="hf2-arrangement-unset"');
+  });
+
   it("create and PATCH routes both enforce the shared explicit-source invariant", async () => {
     const fs = await import("node:fs/promises");
     const routes = await fs.readFile("server/routes.ts", "utf8");
@@ -314,6 +329,24 @@ describe("06E comparison safety (spec §G/R/S)", () => {
     expect(c.varianceToRequired).toBeNull();
     expect(c.receivedLessExecuted).toBeNull();
     expect(c.comparisonReason).toBe(COMPARISON_BASES_DIFFER);
+  });
+
+  it("converts CFT receipts to the CUM requirement basis and computes real variances", () => {
+    expect(convertReceiptVolumeQty(35.3147, "CFT", "Cum")).toBe(1);
+    const c = buildReceiptComparison({
+      requiredQty: 300,
+      requiredUom: "Cum",
+      requiredSource: "arrangement_allocation",
+      received: received(10_594.41, "CFT"),
+      executedQty: 280,
+      executedUom: "CUM",
+    });
+    expect(c.comparable).toBe(true);
+    expect(c.receivedQty).toBe(300);
+    expect(c.receivedUom).toBe("Cum");
+    expect(c.varianceToRequired).toBe(0);
+    expect(c.receivedLessExecuted).toBe(20);
+    expect(c.comparisonReason).toMatch(/converted/i);
   });
 
   it("mixed receipt UoMs are non-comparable regardless of other bases", () => {

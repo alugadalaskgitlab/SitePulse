@@ -15,6 +15,8 @@
 // shared/progressReport.ts semantics). This module never invents another
 // execution formula.
 
+import { convertSolidQty, normalizeUom as normalizeConvertibleUom } from "./uomConvert";
+
 // ---------- Arrangement types ----------
 
 export type ArrangementType =
@@ -391,9 +393,28 @@ export const COMPARISON_BASES_DIFFER =
   "Comparison only — receipt and BOQ measurement bases differ.";
 
 /**
- * Numerical variance is calculated ONLY when every present quantity shares one
- * UoM. Mixed receipt UoMs, or a receipt UoM differing from the BOQ UoM, show
- * quantities separately with no variance (no invented conversions — 06E §8).
+ * DPR receipt comparisons may freely translate the same physical volume
+ * between CFT and CUM. Mass/volume and loose/compacted conversions still need
+ * material-specific evidence and remain deliberately unsupported here.
+ */
+export function convertReceiptVolumeQty(
+  qty: number | null | undefined,
+  fromUom: string | null | undefined,
+  toUom: string | null | undefined,
+): number | null {
+  if (qty == null || !Number.isFinite(Number(qty)) || !fromUom || !toUom) return null;
+  if (normaliseUom(fromUom) === normaliseUom(toUom)) return Number(qty);
+  const from = normalizeConvertibleUom(fromUom);
+  const to = normalizeConvertibleUom(toUom);
+  if (!["CFT", "CUM"].includes(from) || !["CFT", "CUM"].includes(to)) return null;
+  const converted = convertSolidQty(Number(qty), fromUom, toUom);
+  return converted == null ? null : Number(converted.toFixed(3));
+}
+
+/**
+ * Numerical variance is calculated when every present quantity either shares
+ * one UoM or differs only by the standard CFT↔CUM volume conversion. Mixed
+ * receipts and material-specific conversions remain non-comparable.
  */
 export function buildReceiptComparison(input: ReceiptComparisonInput): ReceiptComparison {
   const { received } = input;
@@ -416,19 +437,46 @@ export function buildReceiptComparison(input: ReceiptComparisonInput): ReceiptCo
   if (present.length < 2 || uoms.length < 2) {
     return { ...base, comparable: false, comparisonReason: "Not enough comparable quantities.", varianceToRequired: null, receivedLessExecuted: null };
   }
-  const allSame = uoms.every((u) => u === uoms[0]);
-  if (!allSame) {
+  const targetUom =
+    (input.requiredQty != null ? input.requiredUom : null) ??
+    (received.receivedQty != null ? received.receivedUom : null) ??
+    input.executedUom;
+  const convertPresent = (qty: number | null, uom: string | null) =>
+    qty == null ? null : convertReceiptVolumeQty(qty, uom, targetUom);
+  const requiredQty = convertPresent(input.requiredQty, input.requiredUom);
+  const receivedQty = convertPresent(received.receivedQty, received.receivedUom);
+  const executedQty = convertPresent(input.executedQty, input.executedUom);
+  if (
+    targetUom == null ||
+    (input.requiredQty != null && requiredQty == null) ||
+    (received.receivedQty != null && receivedQty == null) ||
+    (input.executedQty != null && executedQty == null)
+  ) {
     return { ...base, comparable: false, comparisonReason: COMPARISON_BASES_DIFFER, varianceToRequired: null, receivedLessExecuted: null };
   }
   const varianceToRequired =
-    received.receivedQty != null && input.requiredQty != null
-      ? Number((received.receivedQty - input.requiredQty).toFixed(3))
+    receivedQty != null && requiredQty != null
+      ? Number((receivedQty - requiredQty).toFixed(3))
       : null;
   const receivedLessExecuted =
-    received.receivedQty != null && input.executedQty != null
-      ? Number((received.receivedQty - input.executedQty).toFixed(3))
+    receivedQty != null && executedQty != null
+      ? Number((receivedQty - executedQty).toFixed(3))
       : null;
-  return { ...base, comparable: true, comparisonReason: "Same measurement basis.", varianceToRequired, receivedLessExecuted };
+  return {
+    ...base,
+    requiredQty,
+    requiredUom: input.requiredQty != null ? targetUom : input.requiredUom,
+    receivedQty,
+    receivedUom: received.receivedQty != null ? targetUom : received.receivedUom,
+    executedQty,
+    executedUom: input.executedQty != null ? targetUom : input.executedUom,
+    comparable: true,
+    comparisonReason: uoms.every((u) => u === uoms[0])
+      ? "Same measurement basis."
+      : "CFT and CUM converted to one volume basis.",
+    varianceToRequired,
+    receivedLessExecuted,
+  };
 }
 
 // ---------- Existing-receipt suggestion ----------

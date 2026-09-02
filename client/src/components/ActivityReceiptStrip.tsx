@@ -27,6 +27,7 @@ import {
   aggregateReceived,
   buildReceiptComparison,
   classifyReceiptMatch,
+  convertReceiptVolumeQty,
   isHlcProcurementResponsible,
   normaliseUom,
   receiptRelevanceForType,
@@ -221,6 +222,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
   // below reports the configuration warning without rewriting the row.
   const persistedArrangement =
     persistedArrangementCandidate != null &&
+    !["cancelled", "rejected"].includes(String(persistedArrangementCandidate.status).toLowerCase()) &&
     reusedExcavationConfigurationIssue(persistedArrangementCandidate) == null
       ? persistedArrangementCandidate
       : null;
@@ -347,18 +349,18 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     () => aggregateReceived(arrangementTrips.filter((t) => !(t as any).isCancelled && !(t as any).isDeleted)),
     [arrangementTrips],
   );
-  // Balance only when the arrangement UOM and the supplied UOM genuinely
-  // compare — never invent a conversion (spec §3).
+  // CFT and CUM are the same physical volume basis in this data model. Convert
+  // only that standard pair; mixed or material-specific bases remain separate.
   const arrangedQty = arrangement?.allocatedQty != null ? Number(arrangement.allocatedQty) : null;
-  const suppliedComparable =
-    suppliedTotal.tripCount === 0 ||
-    (!suppliedTotal.mixedUoms &&
-      suppliedTotal.receivedUom != null &&
-      arrangement?.uom != null &&
-      normaliseUom(suppliedTotal.receivedUom) === normaliseUom(arrangement.uom));
+  const suppliedQtyInArrangementUom =
+    suppliedTotal.tripCount === 0
+      ? 0
+      : suppliedTotal.mixedUoms
+        ? null
+        : convertReceiptVolumeQty(suppliedTotal.receivedQty, suppliedTotal.receivedUom, arrangement?.uom);
   const balanceQty =
-    arrangedQty != null && suppliedComparable
-      ? arrangedQty - (suppliedTotal.receivedQty ?? 0)
+    arrangedQty != null && suppliedQtyInArrangementUom != null
+      ? Number((arrangedQty - suppliedQtyInArrangementUom).toFixed(3))
       : null;
   const comparison = buildReceiptComparison({
     ...required,
@@ -366,6 +368,10 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     executedQty: props.executedQty ?? null,
     executedUom: props.executedUom ?? null,
   });
+  const receivedTodayInRequiredUom =
+    !received.mixedUoms && required.requiredUom != null
+      ? convertReceiptVolumeQty(received.receivedQty, received.receivedUom, required.requiredUom)
+      : null;
 
   const fmt = (q: number | null | undefined, u?: string | null) =>
     q == null ? "—" : `${Number(q.toFixed ? q.toFixed(2) : q)} ${u ?? ""}`.trim();
@@ -459,8 +465,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
       </div>
 
       {/* 06T-HF §3: compact operational tag — Arranged / Supplied / Balance
-          from the resolved arrangement + cumulative linked-trip aggregation.
-          Balance only when the UOMs genuinely compare; never a conversion. */}
+          from the resolved arrangement + cumulative linked-trip aggregation. */}
       {arrangement && (
         <p className="text-xs text-muted-foreground" data-testid={`${testIdPrefix}-arranged-tag`}>
           Arranged: {arrangement.agencyName || "HLC"}{arrangedQty != null ? ` · ${fmt(arrangedQty, arrangement.uom)}` : ""}
@@ -469,7 +474,9 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
             ? fmt(0, arrangement.uom)
             : suppliedTotal.mixedUoms
               ? suppliedTotal.byUom.map((r) => `${r.qty} ${r.uom}`).join(" + ")
-              : fmt(suppliedTotal.receivedQty, suppliedTotal.receivedUom)}
+              : suppliedQtyInArrangementUom != null
+                ? fmt(suppliedQtyInArrangementUom, arrangement.uom)
+                : fmt(suppliedTotal.receivedQty, suppliedTotal.receivedUom)}
           {arrangedQty != null && (
             <> · Balance: {balanceQty != null ? fmt(balanceQty, arrangement.uom) : "Not comparable"}</>
           )}
@@ -534,7 +541,10 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
             {received.mixedUoms
               ? received.byUom.map((r) => `${r.qty} ${r.uom}`).join(" + ")
               : received.receivedQty != null
-                ? `${fmt(received.receivedQty, received.receivedUom)} · ${received.tripCount} trip${received.tripCount === 1 ? "" : "s"}`
+                ? `${fmt(
+                    receivedTodayInRequiredUom ?? received.receivedQty,
+                    receivedTodayInRequiredUom != null ? required.requiredUom : received.receivedUom,
+                  )} · ${received.tripCount} trip${received.tripCount === 1 ? "" : "s"}`
                 : "—"}
           </p>
         </div>

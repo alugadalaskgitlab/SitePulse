@@ -1,0 +1,44 @@
+INSTRUCTION DPR-01: Stop showing cancelled arrangements as active on the DPR activity screen, and clarify the material-receipt unit comparison
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. If you notice something else broken while doing this, write it down in your report and WAIT for instructions. Do not touch anything outside what is listed below. This is unrelated to the current Work Programme/BOQ mapping work in progress — do not combine it with that, and do not let it block or interfere with it.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+On the Guided DPR activity-entry screen, the "Material receipt" card (`ActivityReceiptStrip`) shows an arrangement (vendor, arranged quantity, supplied quantity, balance) tied to the activity/reach being recorded. A client cancelled a specific vendor arrangement through the normal cancel flow, and it correctly changed to status "cancelled" in the database. But the DPR activity screen kept showing it as "Execution Arrangement: Active / Arranged" with its full receipt comparison, as if it were still live.
+
+PART 1 — DO NOT DISPLAY A CANCELLED ARRANGEMENT AS ACTIVE
+Root cause: once a DPR activity row has ever had a specific arrangement id saved on it, the display logic (`ActivityReceiptStrip.tsx`, the `persistedArrangementCandidate` / `persistedArrangement` lookup) looks that arrangement up by id with no check on its current status, and treats it as authoritative over the live/current arrangement resolution — which does correctly filter out cancelled arrangements everywhere else in the app.
+
+Required fix:
+1. When resolving which arrangement to display for a DPR activity row, if the persisted arrangement id refers to an arrangement whose current status is "cancelled" (or "rejected"), do not present it as the active "Execution Arrangement: Active/Arranged" state and do not show its live Material receipt comparison (Arranged/Supplied/Balance) as if it were current.
+2. Decide and implement one clear, simple behavior for this case — either: (a) fall back to showing no active arrangement for that row (same as if none had ever been linked), or (b) clearly label it as a past/cancelled arrangement, visually distinct from an active one, without the live balance comparison. Pick whichever is the smaller, safer change given the existing component structure; report which you chose and why.
+3. Do not change how a still-active (approved/mobilisation_pending/in_progress) persisted arrangement is displayed — this fix is only for the cancelled/rejected case.
+4. Do not change the underlying cancel endpoint, the arrangement status model, or any other arrangement display elsewhere in the app (the main Execution Arrangements register already correctly filters out cancelled ones — leave that alone).
+
+Test: Reproduce the exact scenario — link an arrangement to a DPR activity row, then cancel that arrangement, then reopen the same DPR activity row. Confirm it no longer shows as "Active/Arranged" with a live receipt comparison. Confirm a different, still-active arrangement on another row is unaffected.
+
+PART 2 — CLARIFY AND FIX THE "BALANCE: NOT COMPARABLE" MESSAGE
+Background: the Material receipt card currently shows, for example, "Arranged: 9000 Cum — Supplied: 9600 CFT — Balance: Not comparable" with the note "Comparison only — receipt and BOQ measurement bases differ." The code deliberately never auto-converts between units when computing this balance (a documented policy against inventing conversions), but there is no unit-conversion logic anywhere in this area of the code at all — not even a plain Cum-to-CFT conversion (1 Cum = 35.3147 CFT). It is not clear from the code or any comment whether this is because CFT here specifically represents a loose/uncompacted supply measurement that should never be equated with compacted in-place Cum (a legitimate engineering reason), or simply because unit conversion was never implemented.
+
+Required action:
+1. First, answer this plainly in your report before changing anything: is the CFT figure in this comparison a loose/uncompacted volume that is genuinely not equivalent to the Cum figure (a real engineering difference), or is it simply the same physical quantity expressed in a different unit that has never been converted?
+2. If it is genuinely the same physical quantity in a different unit (a straightforward unit-of-measure difference), add a plain, standard unit conversion (Cum <-> CFT, and any other unit pairs already used elsewhere in the app for the same materials) so the "Required today" and "Received today" figures can be shown on the same basis, and a real balance/variance can be computed. Use whatever existing unit-conversion utility already exists elsewhere in the codebase if one does; if none exists, add the smallest possible standalone conversion table for the units actually in use here — do not build a general-purpose conversion engine beyond what is needed.
+3. If there is a genuine engineering reason the two figures should not be directly equated (e.g. loose vs. compacted volume), keep the current no-auto-convert behavior, but change the message so it explains the actual reason in plain language instead of the generic "measurement bases differ" — for example, something like "Supplied quantity is measured loose (before compaction); BOQ quantity is measured compacted in place, so these are not directly comparable." Do not invent this explanation yourself — confirm with us before writing it if you are not certain which case applies.
+4. Do not change the underlying "never invent a conversion" policy itself, and do not change how any other part of the app handles unit-of-measure differences.
+
+Test: Show, for the same scenario as Part 1's test (or a similar one with mismatched units), what the card now displays — either a real computed balance with the conversion applied, or the same "not comparable" outcome with the clearer, specific explanation.
+
+WHAT NOT TO DO
+- Do not touch the Work Programme, BOQ import, mapping, or classification code in any way.
+- Do not change the cancel/status-transition endpoints for arrangements.
+- Do not build a general unit-conversion engine — only what's needed for the specific units seen in this comparison.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+This should not require any schema change. If you find you genuinely need one, stop and show me the exact change before writing any migration, per our usual rule.
+
+REPORT BACK
+1. Part 1: confirm the fix and which of the two display options you chose, with test evidence (before/after) for the cancel-then-reopen scenario.
+2. Part 2: your plain answer on whether CFT here is a loose/uncompacted measurement or just an unconverted unit, what you changed as a result, and test evidence.
+3. Confirm nothing outside these two areas was touched.
+4. Anything else noticed but not touched, for a separate decision.
