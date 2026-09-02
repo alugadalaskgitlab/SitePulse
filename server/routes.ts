@@ -16669,6 +16669,33 @@ export async function registerRoutes(
     }
   });
 
+  /**
+   * Read-only, live arrangement evidence. It intentionally derives from the
+   * current valid DPR/trip records each request rather than persisting a
+   * classification or commercial quantity.
+   */
+  app.get("/api/earthwork-arrangements/:id/execution-evidence", async (req, res) => {
+    try {
+      if (!assertAuthed(req, res) || !assertView(req, res, "qto_boq")) return;
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "A valid arrangement id is required" });
+      const arrangement = await storage.getEarthworkArrangementById(id);
+      if (!arrangement) return res.status(404).json({ message: "Arrangement not found" });
+      if (!(await assertOutcomeProjectScope(req, res, arrangement.boqProjectId))) return;
+      const bars = await storage.getArrangementExecutionEvidence(id);
+      res.json({
+        arrangementId: arrangement.id,
+        boqProjectId: arrangement.boqProjectId,
+        evidence: bars,
+        // This endpoint exposes evidence only; status events and billing retain
+        // their existing, separate semantics.
+      });
+    } catch (err) {
+      console.error("GET /api/earthwork-arrangements/:id/execution-evidence:", err);
+      res.status(500).json({ message: "Failed to load arrangement execution evidence" });
+    }
+  });
+
   /** Update an earthwork arrangement — full status lifecycle. */
   /**
    * Instruction 030: non-blocking, idempotent auto-sync of arrangement → bar

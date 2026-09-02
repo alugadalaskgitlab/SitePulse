@@ -18,13 +18,11 @@ describe("Task 1430 programme-bar outcome contract", () => {
 
   it("validates every outcome/reason tuple and all conditional fields", () => {
     for (const outcome of PROGRAMME_BAR_OUTCOMES) {
-      const input = outcome === "partially_executed"
-        ? valid({ outcome })
-        : valid({
-            outcome, actualQuantity: null, actualUom: null,
-            reason: outcome === "active_arranged" || outcome === "executed" ? null : "rain",
-            rescheduledDate: outcome === "rescheduled" ? "2026-09-01" : null,
-          });
+      const input = valid({
+        outcome, actualQuantity: null, actualUom: null,
+        reason: outcome === "active_arranged" || outcome === "executed" ? null : "rain",
+        rescheduledDate: outcome === "rescheduled" ? "2026-09-01" : null,
+      });
       expect(programmeBarOutcomeInputError(input)).toBeNull();
     }
     for (const reason of PROGRAMME_BAR_OUTCOME_REASONS) {
@@ -34,12 +32,16 @@ describe("Task 1430 programme-bar outcome contract", () => {
     expect(programmeBarOutcomeInputError(valid({ reason: "rain", reasonOther: "no" }))).toMatch(/only allowed/);
     expect(programmeBarOutcomeInputError(valid({ outcome: "rescheduled", actualQuantity: null, actualUom: null, rescheduledDate: null }))).toMatch(/rescheduledDate is required/);
     expect(programmeBarOutcomeInputError(valid({ rescheduledDate: "2026-09-01" }))).toMatch(/only allowed/);
-    expect(programmeBarOutcomeInputError(valid({ actualQuantity: null }))).toMatch(/actualQuantity and actualUom are required/);
-    expect(programmeBarOutcomeInputError(valid({ outcome: "suspended", actualQuantity: 1, actualUom: "CUM" }))).toMatch(/only allowed/);
+    expect(programmeBarOutcomeInputError(valid({ actualQuantity: null }))).toMatch(/provided together/);
+    expect(programmeBarOutcomeInputError(valid({ outcome: "suspended", actualQuantity: 1, actualUom: "CUM" }))).toBeNull();
     expect(programmeBarOutcomeInputError({ outcome: "active_arranged", reason: null })).toBeNull();
     expect(programmeBarOutcomeInputError({ outcome: "executed", reason: null })).toBeNull();
-    expect(programmeBarOutcomeInputError({ outcome: "partially_executed", reason: "rain" })).toMatch(/actualQuantity/);
+    expect(programmeBarOutcomeInputError({ outcome: "partially_executed", reason: "rain" })).toBeNull();
     expect(programmeBarOutcomeInputError({ outcome: "cancelled", reason: null })).toMatch(/Reason is required/);
+    expect(programmeBarOutcomeInputError({ outcome: "executed", actualQuantity: 5, actualUom: "CUM" })).toMatch(/Reason is required/);
+    expect(programmeBarOutcomeInputError({ outcome: "executed", reason: "rain", actualQuantity: 5, actualUom: "CUM" })).toBeNull();
+    expect(programmeBarOutcomeInputError({ outcome: "active_arranged", reason: "rain", actualQuantity: 0, actualUom: "CUM" })).toBeNull();
+    expect(programmeBarOutcomeInputError({ outcome: "active_arranged", reason: null, actualQuantity: 0, actualUom: "CUM" })).toMatch(/Reason is required/);
   });
 
   it("preserves multiple events per bar and identifies the latest by date then creation", () => {
@@ -72,6 +74,15 @@ describe("Task 1430 programme-bar outcome contract", () => {
     expect(routes).toContain("siteMatchesPermitted(site.name, permitted)");
     expect(routes).toContain("latestOutcome: outcomesByBar.get(b.id)?.[0] ?? null");
     expect(routes).toContain("outcomeHistory: outcomesByBar.get(b.id) ?? []");
+  });
+
+  it("guards live execution evidence with arrangement-view permission before site scope", () => {
+    const routes = readFileSync("server/routes.ts", "utf8");
+    const start = routes.indexOf('app.get("/api/earthwork-arrangements/:id/execution-evidence"');
+    const body = routes.slice(start, start + 1200);
+    expect(start).toBeGreaterThan(-1);
+    expect(body).toContain('assertView(req, res, "qto_boq")');
+    expect(body.indexOf('assertView(req, res, "qto_boq")')).toBeLessThan(body.indexOf("assertOutcomeProjectScope"));
   });
 
   it("keeps DPR programme status collapsed and read-only while management owns all eight choices", () => {

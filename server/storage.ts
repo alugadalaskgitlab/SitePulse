@@ -121,6 +121,7 @@ import {
 import { chainageRangesOverlap } from "@shared/arrangementAutoAllocation";
 import { isDprSideCompatible } from "@shared/barSide";
 import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
+import { calculateArrangementExecutionEvidence, type ArrangementBarEvidence } from "@shared/arrangementExecutionEvidence";
 import {
   appendRevisionHistory,
   captureInitialBaseline,
@@ -1623,6 +1624,8 @@ export interface IStorage {
   getProgressLinksForProject(boqProjectId: number): Promise<Array<{ programmeBarId: number; submittedCount: number; draftCount: number }>>;
   markProgressLinksReviewRequired(programmeBarId: number): Promise<number[]>;
   getReportedQtyByBar(barIds: number[]): Promise<Map<number, number>>;
+  /** Current-source, read-only DPR/trip evidence for one arrangement's allocated reaches. */
+  getArrangementExecutionEvidence(arrangementId: number): Promise<ArrangementBarEvidence[]>;
   getArrangementProgress(arrangementId: number): Promise<{
     completedQty: number;
     recentDailyOutput: number;
@@ -26516,6 +26519,56 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return result;
+  }
+
+  /**
+   * Deliberately re-queries live rows on every call. Correcting a DPR version
+   * or material-trip linkage therefore changes this result immediately; no
+   * snapshot, report rebuild, receipt projection, or payable quantity is used.
+   */
+  async getArrangementExecutionEvidence(arrangementId: number): Promise<ArrangementBarEvidence[]> {
+    const arrangement = await this.getEarthworkArrangementById(arrangementId);
+    if (!arrangement) return [];
+    const allocations = await this.getArrangementProgrammeAllocations(arrangementId);
+    const allBars = await this.getWorkProgramBars(arrangement.boqProjectId);
+    const allocationByBar = new Map(allocations.map(a => [a.programmeBarId, a]));
+    const bars = allBars.filter(bar => allocationByBar.has(bar.id)).map(bar => ({
+      id: bar.id, boqProjectId: bar.boqProjectId, boqItemId: bar.boqItemId,
+      chainageFrom: bar.chainageFrom, chainageTo: bar.chainageTo, side: (bar as any).side ?? null,
+      allocatedQty: allocationByBar.get(bar.id)?.allocatedQty ?? null,
+      // Allocation is arrangement commercial scope; do not present an
+      // unrelated programme-bar item unit as its allocation unit.
+      unit: (arrangement as any).uom ?? null,
+    }));
+    if (!bars.length) return [];
+    const [progress, trips] = await Promise.all([
+      db.select({
+        id: progressEntries.id, boqItemId: progressEntries.boqItemId,
+        programmeBarId: progressEntries.programmeBarId, earthworkArrangementId: progressEntries.earthworkArrangementId,
+        quantity: progressEntries.quantity, chainageFromKm: progressEntries.chainageFromKm,
+        chainageToKm: progressEntries.chainageToKm, side: progressEntries.side, layerNo: progressEntries.layerNo,
+        dprConversionFactor: boqItems.dprConversionFactor,
+      }).from(progressEntries).innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+        // BOQ item's project is the canonical project relation for a progress
+        // row. Do not fetch all submitted DPR rows then stamp a project on them.
+        .innerJoin(boqItems, eq(progressEntries.boqItemId, boqItems.id))
+        .where(and(eq(boqItems.boqProjectId, arrangement.boqProjectId), eq(dprs.dprStatus, "submitted"),
+          or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
+          or(eq(dprs.isCancelled, false), isNull(dprs.isCancelled)),
+          or(eq(dprs.isDeleted, false), isNull(dprs.isDeleted)),
+          or(eq(progressEntries.noSiteWork, false), isNull(progressEntries.noSiteWork)),
+          or(eq(progressEntries.isIncidental, false), isNull(progressEntries.isIncidental)),
+          sql`(${progressEntries.linkReviewRequired} IS NULL OR ${progressEntries.linkReviewRequired} = false)`,
+          sql`(${progressEntries.chainageReviewStatus} IS NULL OR ${progressEntries.chainageReviewStatus} <> 'review_required')`)),
+      db.select().from(siteMaterialTrips).where(and(eq(siteMaterialTrips.boqProjectId, arrangement.boqProjectId),
+        eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false))),
+    ]);
+    return calculateArrangementExecutionEvidence(
+      { id: arrangement.id, boqProjectId: arrangement.boqProjectId, agencyName: arrangement.agencyName, uom: (arrangement as any).uom ?? null },
+      bars,
+      progress.map(row => ({ ...row, boqProjectId: arrangement.boqProjectId, isValid: true })),
+      trips,
+    );
   }
 
   /**

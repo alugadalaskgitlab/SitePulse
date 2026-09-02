@@ -49,6 +49,23 @@ interface ProgrammeBar {
   unit: string | null;
 }
 
+interface ArrangementEvidence {
+  arrangementId: number;
+  boqProjectId: number;
+  evidence: Array<{
+    programmeBarId: number;
+    allocatedQty: number | null;
+    allocationUom: string | null;
+    dprExecutedQty: number;
+    tripCount: number;
+    tripOriginal: Array<{ uom: string; quantity: number }>;
+    tripConvertedCum: number | null;
+    varianceCum: number | null;
+    balanceVsAllocation: number | null;
+    warnings: string[];
+  }>;
+}
+
 interface ScopeSegmentRow {
   id: number;
   segmentType: string;
@@ -124,6 +141,26 @@ export default function ExecutionArrangements() {
     enabled: projectId > 0,
   });
   const barById = useMemo(() => new Map(bars.map(b => [b.id, b])), [bars]);
+  const {
+    data: executionEvidence,
+    isLoading: evidenceLoading,
+    isError: evidenceError,
+    refetch: refetchEvidence,
+  } = useQuery<ArrangementEvidence>({
+    queryKey: ["/api/earthwork-arrangements", detailTargetId, "execution-evidence"],
+    queryFn: async () => {
+      const response = await fetch(`/api/earthwork-arrangements/${detailTargetId}/execution-evidence`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load execution evidence");
+      return response.json();
+    },
+    enabled: detailTargetId != null,
+    refetchInterval: detailTargetId != null ? 30_000 : false,
+    refetchOnWindowFocus: true,
+  });
+  const evidenceByBar = useMemo(
+    () => new Map((executionEvidence?.evidence ?? []).map(item => [item.programmeBarId, item])),
+    [executionEvidence],
+  );
 
   // Instruction 031 B6: resolve scope_segment_ids → reach labels for the register column.
   const { data: scopeSegments = [] } = useQuery<ScopeSegmentRow[]>({
@@ -413,56 +450,48 @@ export default function ExecutionArrangements() {
                     <p className="text-slate-400">Not linked to any programme bar{a.reachLabel ? ` — legacy scope: ${a.reachLabel}` : ""}.</p>
                   )}
                   {r.allocs.length > 0 && (
-                    <div className="border border-slate-200 rounded divide-y" data-testid="detail-bar-list">
+                    <div className="space-y-2" data-testid="detail-bar-list">
+                      {evidenceError && (
+                        <div className="flex items-center justify-between gap-3 rounded border border-rose-300 bg-rose-50 px-2.5 py-2 text-[11px] text-rose-800" role="alert" data-testid="execution-evidence-error">
+                          <span><strong>Execution evidence unavailable.</strong> Derived DPR and trip values could not be refreshed.</span>
+                          <Button type="button" variant="outline" size="sm" className="h-6 shrink-0 border-rose-300 bg-rose-50 px-2 text-[11px] text-rose-800 hover:bg-rose-100" onClick={() => refetchEvidence()} data-testid="button-retry-execution-evidence">Retry</Button>
+                        </div>
+                      )}
                       {r.allocs.map(al => {
                         const b = barById.get(al.programmeBarId);
                         const label = b ? (b.reachLabel || (b.chainageFrom != null ? `Ch ${b.chainageFrom}–${b.chainageTo}` : `Bar #${b.id}`)) : `Bar #${al.programmeBarId}`;
+                        const evidence = evidenceByBar.get(al.programmeBarId);
+                        const hasWarnings = (evidence?.warnings.length ?? 0) > 0;
                         return (
-                          <div key={al.id} className="flex items-center gap-2 px-2 py-1.5" data-testid={`detail-bar-${al.programmeBarId}`}>
-                            <div className="flex-1 min-w-0">
-                              <span className="font-medium text-slate-700">{label}</span>
-                              {b?.side && <span className="ml-1.5 rounded bg-slate-100 border border-slate-200 px-1 text-[10px] uppercase">{b.side}</span>}
-                              {b?.chainageFrom != null && b.reachLabel && (
-                                <span className="ml-1.5 text-slate-400 font-mono text-[11px]">Ch. {b.chainageFrom}–{b.chainageTo}</span>
-                              )}
+                          <div key={al.id} className={`rounded border ${hasWarnings ? "border-amber-300 bg-amber-50/50" : "border-slate-200 bg-slate-50/40"} p-2.5`} data-testid={`detail-bar-${al.programmeBarId}`}>
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-semibold text-slate-700">{label}</span>
+                                  {b?.side && <span className="rounded bg-slate-100 border border-slate-200 px-1 text-[10px] uppercase">{b.side}</span>}
+                                  {b?.chainageFrom != null && <span className="text-slate-500 font-mono text-[10px]">Ch. {b.chainageFrom}–{b.chainageTo}</span>}
+                                  {al.arrangementStatus && <span className="rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">Current: {al.arrangementStatus}</span>}
+                                </div>
+                                <div className="mt-1 grid grid-cols-2 md:grid-cols-5 gap-x-3 gap-y-1 text-[11px]">
+                                  <span><b className="text-slate-500">Allocated</b><br /><strong className="font-mono">{Number(evidence?.allocatedQty ?? al.allocatedQty).toLocaleString()} {evidence?.allocationUom ?? uom}</strong></span>
+                                  <span><b className="text-slate-500">DPR executed</b><br /><strong className="font-mono text-teal-800">{evidence ? evidence.dprExecutedQty.toLocaleString() : "—"} {uom}</strong></span>
+                                  <span><b className="text-slate-500">Balance</b><br /><strong className={`font-mono ${evidence?.balanceVsAllocation == null ? "text-slate-500" : "text-slate-800"}`}>{evidence?.balanceVsAllocation == null ? "Review" : `${evidence.balanceVsAllocation.toLocaleString()} ${uom}`}</strong></span>
+                                  <span><b className="text-slate-500">Trips</b><br /><strong className="font-mono">{evidence ? evidence.tripCount : "—"}</strong>{evidence?.tripOriginal.length ? <small className="block text-slate-500">{evidence.tripOriginal.map(t => `${t.quantity.toLocaleString()} ${t.uom}`).join(" + ")}{evidence.tripConvertedCum != null ? ` = ${evidence.tripConvertedCum.toLocaleString()} Cum` : " = review Cum"}</small> : null}</span>
+                                  <span><b className="text-slate-500">DPR − trips</b><br /><strong className={`font-mono ${evidence?.varianceCum != null && Math.abs(evidence.varianceCum) > 0.01 ? "text-amber-800" : "text-slate-700"}`}>{evidence?.varianceCum == null ? "Review" : `${evidence.varianceCum.toLocaleString()} CUM`}</strong></span>
+                                </div>
+                                <div className="mt-1 text-[10px] text-slate-500">Balance source: DPR executed quantity{evidence?.tripConvertedCum != null ? " · trip conversion shown for reconciliation" : ""}</div>
+                                {evidenceLoading && <div className="mt-1 h-3 w-40 rounded bg-slate-200 animate-pulse" />}
+                                {hasWarnings && <div className="mt-1.5 space-y-0.5 text-[10px] font-medium text-amber-800">{evidence?.warnings.map(warning => <div key={warning}>Review: {warning}</div>)}</div>}
+                              </div>
+                              {b && <button className="text-[11px] text-teal-700 hover:underline shrink-0" onClick={() => { setDetailTargetId(null); setOpenPanel({ barId: b.id, boqItemId: al.boqItemId, label, qty: Number(b.plannedQty ?? 0), unit: b.unit ?? uom }); }} data-testid={`button-open-bar-${al.programmeBarId}`}>Open bar →</button>}
                             </div>
-                            <span className="font-mono text-slate-600 shrink-0">{Number(al.allocatedQty).toLocaleString()} {uom}</span>
-                            {al.arrangementStatus && <span className="text-[10px] text-slate-400 shrink-0">{al.arrangementStatus}</span>}
-                            {b && (
-                              <button
-                                className="text-[11px] text-teal-600 hover:underline shrink-0"
-                                onClick={() => {
-                                  setDetailTargetId(null);
-                                  setOpenPanel({
-                                    barId: b.id, boqItemId: al.boqItemId, label,
-                                    qty: Number(b.plannedQty ?? 0), unit: b.unit ?? uom,
-                                  });
-                                }}
-                                data-testid={`button-open-bar-${al.programmeBarId}`}
-                              >
-                                Open bar →
-                              </button>
-                            )}
+                            {canSetArrangementOutcome && <div className="mt-2 border-t border-slate-200 pt-2"><ArrangementOutcomeControl projectId={projectId} programmeBarId={al.programmeBarId} defaultUom={uom} /></div>}
                           </div>
                         );
                       })}
                     </div>
                   )}
                 </div>
-
-                {canSetArrangementOutcome && r.allocs.length > 0 && (
-                  <div className="space-y-2" data-testid="arrangement-execution-status">
-                    <p className="font-semibold text-slate-700">Official execution status</p>
-                    {r.allocs.map(al => (
-                      <ArrangementOutcomeControl
-                        key={al.programmeBarId}
-                        projectId={projectId}
-                        programmeBarId={al.programmeBarId}
-                        defaultUom={uom}
-                      />
-                    ))}
-                  </div>
-                )}
 
                 <div className="flex gap-2 pt-1">
                   {canEditArrangements && (

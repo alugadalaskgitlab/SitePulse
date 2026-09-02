@@ -67,6 +67,7 @@
 - [Cut/fill version identity](cut-fill-version-identity.md) — stable DPR keys repeat across versions; current transaction rows must win source resolution over superseded rows.
 - [Work-type source phrases](work-type-source-phrases.md) — classify the principal work, not material-source phrases; preserve genuine road excavation that mentions embankment context.
 - [Arrangement approval UI](arrangement-approval-ui.md) — ordinary arrangement approval uses qto_boq.edit; register detail actions must mirror the canonical PATCH lifecycle.
+- [Arrangement execution evidence](arrangement-execution-evidence.md) — derive live DPR/trip evidence per bar; status overrides are append-only evidence, never payable quantity.
 - [Startup ledger backfill race](startup-ledger-backfill-race.md) — rapid workflow restarts can collide in a legacy stock-ledger backfill even while the app serves; verify a settled restart before diagnosing new work.
 - [Hired Equipment Billing](hired-equipment-billing.md) — billing derives from operational records; exception decisions, immutable snapshots, overlap locks, and idempotent bill creation preserve auditability.
 - [DPR equipment canonicalization](dpr-equipment-canonicalization.md) — DPR and standalone usage share one calculator; reports keep snapshots; clones never repost the same Diesel.
