@@ -1,0 +1,124 @@
+BOQ Project Edit "Failed to update project" — confirmed root cause, targeted fix.
+
+BACKGROUND / ROOT CAUSE ALREADY CONFIRMED IN CODE
+
+The Edit BOQ Project screen cannot save ANY change right now — not just Total
+Months, not just for imported projects. This affects every project.
+
+Confirmed cause:
+
+1. The update route (PATCH /api/boq/projects/:id) intentionally rejects any
+   request body that contains a "startDate" property at all, returning:
+     409 PROJECT_START_SETTING_REQUIRED
+   with the message that the start date must be changed via Program Settings
+   instead, so dependent schedule dates/calendar indices stay aligned. This
+   guard itself is intentional and must be KEPT.
+
+2. The Edit BOQ Project client form unconditionally includes
+     startDate: form.startDate || null
+   in the update payload on every save, regardless of whether the user
+   actually touched the Start Date field. This means every edit — even one
+   that only changes Total Months, Road Length, or Status — trips the guard
+   above and is rejected.
+
+3. The client's error handling then shows a generic "Failed to update
+   project" message and swallows the specific reason returned by the server,
+   which is why this looked like a mysterious/unexplained failure.
+
+This is why Work Programme bars are not generating for the newly imported
+project: Total Months could never actually be saved, because the save request
+was always rejected for the unrelated startDate reason.
+
+Do NOT investigate this as an unknown bug. Confirm the above against the
+current code first (it should match), then proceed directly to the fix below.
+
+============================================================
+PART 1 — CONFIRM (QUICK, NOT OPEN-ENDED)
+============================================================
+
+1. Confirm the PATCH /api/boq/projects/:id guard described above and its exact
+   condition.
+2. Confirm the Edit BOQ Project client form includes startDate unconditionally
+   in its update payload.
+3. Confirm the client swallows the specific server error message/reason on
+   failure.
+4. Report project ID, current stored totalMonths, current stored startDate,
+   and linked site for:
+   "UPGRADATION FROM ALLADURG PWD ROAD TO PAMPAD"
+   so we know its current saved state before any fix.
+
+============================================================
+PART 2 — FIX (CLIENT ONLY, MINIMAL)
+============================================================
+
+1. In the Edit BOQ Project form, only include "startDate" in the update
+   payload if the user actually changed it in that screen (compare against
+   the value the form was opened with). If it was not changed, omit the
+   property entirely from the request body.
+
+2. If the user DID change Start Date in this screen, do not silently send it
+   and fail. Instead:
+   - block the save client-side before calling the API;
+   - show a clear message directing them to Program Settings to change the
+     start date, the same intent as the existing server message;
+   - do not weaken or remove the server-side guard.
+
+3. Fix the client's error handling for this save so the real server-provided
+   error message (not a generic "Failed to update project") is shown to the
+   user going forward, for this failure and others like it.
+
+4. Do NOT change the PATCH /api/boq/projects/:id guard/behavior itself. It is
+   correct and protects schedule/calendar alignment. Only the client's request
+   payload and error display change.
+
+============================================================
+PART 3 — CONFIRM PROGRAM SETTINGS ALREADY HANDLES THIS CORRECTLY
+============================================================
+
+Separately, confirm whether Total Months can currently be set/edited via the
+Program Settings screen as well, or only Start Date. Report this — do not
+add Total Months to Program Settings in this batch unless it is trivial and
+already fits the existing pattern there; if it requires new design, report
+and stop instead of building it now.
+
+============================================================
+PART 4 — VERIFY THE ORIGINAL SYMPTOM IS RESOLVED
+============================================================
+
+For the specific project "UPGRADATION FROM ALLADURG PWD ROAD TO PAMPAD":
+
+1. Confirm Total Months (3) and Start Date (24/08/2026) as currently entered
+   in the Edit screen can now be saved successfully (Total Months via Edit
+   Project; Start Date via Program Settings if not already set correctly).
+2. Confirm reopening the project shows the saved values correctly.
+3. Confirm Work Programme now reads a valid scheduling horizon for this
+   project and programme bars can be generated/drawn normally.
+
+============================================================
+DO NOT
+============================================================
+
+Do not redesign Work Programme.
+Do not change BOQ quantities.
+Do not change auto-sequencing logic.
+Do not remove or weaken the start-date-via-Program-Settings guard.
+Do not run any destructive migration.
+Do not change schema unless the investigation in Part 1 finds something
+genuinely different from the confirmed cause above — if so, STOP and report
+before changing anything further.
+Do not publish automatically.
+
+============================================================
+REPORT BACK
+============================================================
+
+1. Confirmation of Part 1 findings (or what was actually different, if
+   anything).
+2. Files changed.
+3. Confirmation the server-side guard was not modified.
+4. Confirmation of Part 3 (Program Settings / Total Months scope).
+5. Part 4 verification results for the named project.
+6. Focused tests added.
+7. Full build/test/type-check result.
+
+Do not publish automatically. Stop and report back.

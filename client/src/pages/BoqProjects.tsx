@@ -20,6 +20,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { boqProjectUpdateErrorMessage, prepareBoqProjectUpdate } from "@/lib/boqProjectEdit";
 import { Link } from "wouter";
 import { BoqImportWizard } from "@/components/BoqImportWizard";
 import type { BoqProjectWithCounts } from "@shared/schema";
@@ -232,7 +233,11 @@ function EditProjectDialog({
       toast({ title: "Project updated" });
       onClose();
     },
-    onError: () => toast({ title: "Failed to update project", variant: "destructive" }),
+    onError: (error) => toast({
+      title: "Failed to update project",
+      description: boqProjectUpdateErrorMessage(error),
+      variant: "destructive",
+    }),
   });
 
   function handleSubmit() {
@@ -240,17 +245,16 @@ function EditProjectDialog({
       toast({ title: "Project name is required", variant: "destructive" });
       return;
     }
-    updateMutation.mutate({
-      name: form.name.trim(),
-      contractNo: form.contractNo.trim() || null,
-      client: form.client.trim() || null,
-      contractor: form.contractor.trim() || null,
-      siteId: form.siteId ? parseInt(form.siteId) : null,
-      roadLengthKm: form.roadLengthKm ? parseFloat(form.roadLengthKm) : null,
-      startDate: form.startDate || null,
-      totalMonths: form.totalMonths ? parseInt(form.totalMonths) : null,
-      status: form.status,
-    });
+    const prepared = prepareBoqProjectUpdate(project.startDate, form);
+    if (!prepared.ok) {
+      toast({
+        title: "Use Program Settings for Start Date",
+        description: prepared.message,
+        variant: "destructive",
+      });
+      return;
+    }
+    updateMutation.mutate(prepared.payload);
   }
 
   return (
