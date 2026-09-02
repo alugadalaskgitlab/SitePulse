@@ -58,6 +58,7 @@ import { scopeReachesToStretchRows, scopeConstraints, scopeFingerprint } from "@
 import { SCOPE_SEGMENT_TYPE_LABELS } from "@shared/projectScope";
 import { isStructureOrLocationScheduledItem, isShoulderDesc, classifyShoulderLayer, SHOULDER_DEPENDENCY_NOTES, SHOULDER_CLASSES, type ShoulderClass } from "@shared/workTypeRecipes";
 import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
+import { boqDisplaySourceKey, buildBoqDisplayHierarchy } from "@shared/boqDisplayOrder";
 import { shortItemName, boqItemDisplayName } from "@/lib/itemName";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import type {
@@ -515,6 +516,10 @@ function StretchRow({
 
   const roadLen = project.roadLengthKm ?? 0;
   const boqQty = item.currentQty;
+  const directScheduleEditAllowed = !(project as any).programmeBaselinePublishedAt
+    && Number((bar as any).reportedQty ?? 0) <= 0
+    && !(bar as any).actualStartDate
+    && !(bar as any).hasOutcomeEvents;
 
   // Derive initial multiplier from saved data (back-calc from qty/chainage, or default to boqQty/roadLen)
   function initMult() {
@@ -809,9 +814,19 @@ function StretchRow({
       chainageTo: validCh ? ctNum : bar.chainageTo,
       plannedQty: qty,
       isQtyOverride,
-      // Schedule fields are deliberately absent. Calendar changes must pass
-      // through Revise Schedule so evidence locks, reason, history and cascade
-      // are enforced; quantity/geometry edits remain independent.
+      ...(directScheduleEditAllowed ? {
+        startMonth: smNum,
+        endMonth: em,
+        startDate: project.startDate
+          ? formatDateForInput(monthIndexToDate(smNum, project.startDate))
+          : null,
+        endDate: project.startDate
+          ? formatDateForInput(displayFinishDateCal(em, project.startDate, smNum))
+          : null,
+        durationMode: durationModeState,
+        durationDays: calDays,
+        isDurationOverride,
+      } : {}),
       sequenceOrder: prioNum != null && Number.isFinite(prioNum) && prioNum > 0 ? prioNum : null,
       // 030A: side + planned geometry. "" = Unspecified → null (never silently Full Width).
       ...(geomApp.side ? { side: sideVal || null } : {}),
@@ -1066,7 +1081,7 @@ function StretchRow({
         {project.startDate ? (
           <input
             type="date"
-            disabled
+            disabled={!directScheduleEditAllowed}
             value={
               !isNaN(smNum) && project.startDate
                 ? formatDateForInput(monthIndexToDate(smNum, project.startDate))
@@ -1085,7 +1100,7 @@ function StretchRow({
               }
             }}
               className="w-[108px] text-xs border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200 ml-1"
-            title="Schedule dates are changed through Revise Schedule"
+            title={directScheduleEditAllowed ? "Edit the unpublished programme schedule" : "Schedule dates are changed through Revise Schedule"}
             data-testid={`input-date-${bar.id}`}
           />
         ) : (
@@ -1093,11 +1108,11 @@ function StretchRow({
             <span className="text-xs text-slate-400 flex-shrink-0 ml-1">M</span>
             <input
               type="number" min="0.1" max="120" step="0.1"
-              disabled
+              disabled={!directScheduleEditAllowed}
               value={startM}
               onChange={e => { dirty.current = true; setStartM(e.target.value); }}
                   className="w-[36px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
-              title="Schedule dates are changed through Revise Schedule"
+              title={directScheduleEditAllowed ? "Edit the unpublished programme schedule" : "Schedule dates are changed through Revise Schedule"}
               data-testid={`input-sm-${bar.id}`}
             />
           </>
@@ -1106,7 +1121,7 @@ function StretchRow({
         {/* Mode toggle: auto ↔ fixed */}
         {project.startDate && (
           <button
-            disabled
+            disabled={!directScheduleEditAllowed}
             onClick={() => {
               // Part 0.2: don't act while dates are invalid (would seed fallbacks)
               if (startDateInvalid) return;
@@ -1125,7 +1140,7 @@ function StretchRow({
                 ? "bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-900/30 dark:text-violet-300"
                 : "bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400"
             }`}
-            title="Schedule mode and dates are changed through Revise Schedule"
+            title={directScheduleEditAllowed ? "Toggle auto/fixed mode before publishing the baseline" : "Schedule mode and dates are changed through Revise Schedule"}
             data-testid={`button-dur-mode-${bar.id}`}
           >
             {durationModeState === "fixed" ? "FIX" : "AUTO"}
@@ -1151,7 +1166,7 @@ function StretchRow({
             <span className="text-xs text-slate-400 flex-shrink-0 ml-0.5">→</span>
             <input
               type="date"
-              disabled
+              disabled={!directScheduleEditAllowed}
               value={
                 !isNaN(endMNum) && project.startDate
                   ? formatDateForInput(displayFinishDateCal(endMNum, project.startDate, smNum))
@@ -1168,7 +1183,7 @@ function StretchRow({
                 }
               }}
                   className="w-[108px] text-xs border-b border-violet-400 bg-transparent text-center focus:outline-none focus:border-violet-600 dark:text-slate-200 ml-0.5"
-              title="Schedule dates are changed through Revise Schedule"
+              title={directScheduleEditAllowed ? "Edit the unpublished programme schedule" : "Schedule dates are changed through Revise Schedule"}
               data-testid={`input-end-date-${bar.id}`}
             />
             {calDays != null && (
@@ -1638,6 +1653,46 @@ function StructureLocationRow({
   onDelete: (id: number) => void;
 }) {
   const b = bar as any;
+  const directScheduleEditAllowed = !project.programmeBaselinePublishedAt
+    && Number(b.reportedQty ?? 0) <= 0
+    && !b.actualStartDate
+    && !b.hasOutcomeEvents;
+  const [editingSchedule, setEditingSchedule] = useState(false);
+  const [startDate, setStartDate] = useState(String(bar.startDate ?? "").slice(0, 10));
+  const [endDate, setEndDate] = useState(String(bar.endDate ?? "").slice(0, 10));
+  const [durationDays, setDurationDays] = useState(String(b.durationDays ?? ""));
+  const [durationMode, setDurationMode] = useState<"auto" | "fixed">(
+    b.durationMode === "fixed" ? "fixed" : "auto",
+  );
+  useEffect(() => {
+    if (editingSchedule) return;
+    setStartDate(String(bar.startDate ?? "").slice(0, 10));
+    setEndDate(String(bar.endDate ?? "").slice(0, 10));
+    setDurationDays(String(b.durationDays ?? ""));
+    setDurationMode(b.durationMode === "fixed" ? "fixed" : "auto");
+  }, [bar.startDate, bar.endDate, b.durationDays, b.durationMode, editingSchedule]);
+  const patchSchedule = useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      apiRequest("PATCH", `/api/boq/programme/bars/${bar.id}`, data),
+    onSuccess: async () => {
+      setEditingSchedule(false);
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+    },
+  });
+  const saveSchedule = () => {
+    const startMonth = project.startDate ? dateToMonthIndex(startDate, project.startDate) : bar.startMonth;
+    const endMonth = project.startDate ? finishDateInputToIdx(endDate, project.startDate) : bar.endMonth;
+    if (!startDate || !endDate || !Number.isFinite(startMonth) || !Number.isFinite(endMonth) || endMonth < startMonth) return;
+    patchSchedule.mutate({
+      startDate,
+      endDate,
+      startMonth,
+      endMonth,
+      durationDays: durationDays.trim() === "" ? null : Number(durationDays),
+      durationMode,
+      isDurationOverride: durationMode === "fixed",
+    });
+  };
 
   const liveStart = bar.startMonth;
   const liveEnd   = bar.endMonth;
@@ -1718,8 +1773,20 @@ function StructureLocationRow({
             {fmtQty(bar.plannedQty, 2)} {(bar as any).canonicalUnit ?? (bar as any).unit ?? ""}
           </span>
         </div>
-        {/* Row 3: start date + duration + delete */}
+        {/* Row 3: direct pre-baseline schedule edit, otherwise controlled revision */}
         <div className="flex items-center gap-1 min-w-0">
+          {editingSchedule ? (
+            <>
+              <Input aria-label="Structure start date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="h-6 w-[112px] text-[10px] px-1" />
+              <Input aria-label="Structure finish date" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="h-6 w-[112px] text-[10px] px-1" />
+              <Input aria-label="Structure duration days" type="number" min="0" value={durationDays} onChange={e => setDurationDays(e.target.value)} className="h-6 w-12 text-[10px] px-1" />
+              <select aria-label="Structure duration mode" value={durationMode} onChange={e => setDurationMode(e.target.value as "auto" | "fixed")} className="h-6 w-11 text-[10px] border rounded">
+                <option value="auto">AUTO</option><option value="fixed">FIX</option>
+              </select>
+              <button onClick={saveSchedule} disabled={patchSchedule.isPending} className="text-[10px] text-violet-700 font-semibold">Save</button>
+              <button onClick={() => setEditingSchedule(false)} className="text-[10px] text-slate-500">Cancel</button>
+            </>
+          ) : <>
           {bar.startDate && (
             <span className="text-[10px] text-slate-400 font-mono flex-shrink-0 whitespace-nowrap">
               {String(bar.startDate).slice(0, 10)}
@@ -1730,8 +1797,20 @@ function StructureLocationRow({
               {b.durationDays}d
             </span>
           )}
+          {directScheduleEditAllowed && (
+            <button
+              onClick={() => setEditingSchedule(true)}
+              className="p-0.5 rounded text-violet-500 hover:text-violet-700 hover:bg-violet-100 flex-shrink-0"
+              title="Edit the unpublished programme schedule"
+              data-testid={`button-edit-sloc-schedule-${bar.id}`}
+            >
+              <Pencil className="w-3 h-3" />
+            </button>
+          )}
           <ScheduleRevisionActions bar={bar} projectId={projectId} />
           <BaselineIndicator bar={bar} />
+          </>
+          }
           <button
             onClick={() => onDelete(bar.id)}
             className="p-0.5 rounded text-violet-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 ml-auto"
@@ -2332,11 +2411,7 @@ function InlineGanttTable({
     if (!deepLinkItemId || !items.some(i => i.id === deepLinkItemId)) return;
     const item = items.find(i => i.id === deepLinkItemId);
     if (!item) return;
-    const cat = item.workCategory
-      ? `wc:${item.workCategory}`
-      : item.categoryName
-        ? `cat:${item.categoryName}`
-        : "__uncategorised__";
+    const cat = boqDisplaySourceKey(item);
     setCollapsedCats(prev => ({ ...prev, [cat]: false }));
     setDeepLinkHighlight(deepLinkItemId);
     const timer = window.setTimeout(() => document.getElementById(`programme-item-${deepLinkItemId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
@@ -2358,33 +2433,13 @@ function InlineGanttTable({
     [bars],
   );
 
-  const grouped = useMemo(() => {
-    const m: Record<string, BoqItemWithCategory[]> = {};
-    for (const it of items) {
-      if (it.includedInPlanning === false) continue;
-      // Fallback chain: persisted workCategory → imported categoryName → uncategorised.
-      // Using workCategory as the primary key ensures items appear under their correct
-      // operational group even when the imported BOQ has no categoryId / categoryName.
-      const cat = it.workCategory
-        ? `wc:${it.workCategory}`
-        : it.categoryName
-          ? `cat:${it.categoryName}`
-          : "__uncategorised__";
-      if (!m[cat]) m[cat] = [];
-      m[cat].push(it);
-    }
-    for (const cat of Object.keys(m)) {
-      m[cat].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
-    }
-    return m;
-  }, [items]);
-
-  const allCategoryKeys = useMemo(() => {
-    const keys = Object.keys(grouped).filter(k => k !== "__uncategorised__");
-    keys.sort((a, b) => compareItemCode(grouped[a][0]?.itemCode, grouped[b][0]?.itemCode));
-    if (grouped["__uncategorised__"]?.length) keys.push("__uncategorised__");
-    return keys;
-  }, [grouped]);
+  const displayHierarchy = useMemo(
+    () => buildBoqDisplayHierarchy(
+      items.filter(it => it.includedInPlanning !== false),
+      getWorkCategoryLabel,
+    ),
+    [items],
+  );
 
   const monthHeaders = useMemo(
     () => Array.from({ length: axisMonths }, (_, i) => ({ num: i + 1, label: monthLabel(i + 1, project.startDate) })),
@@ -2585,15 +2640,19 @@ function InlineGanttTable({
         </div>
 
         {/* ── Category groups ── */}
-        {allCategoryKeys.map((cat, catIdx) => {
-          const catItems = grouped[cat] ?? [];
-          const catLabel = cat === "__uncategorised__"
-            ? "Uncategorised"
-            : cat.startsWith("wc:")
-              ? getWorkCategoryLabel(cat.slice(3))
-              : cat.startsWith("cat:")
-                ? cat.slice(4)
-                : cat;
+        {displayHierarchy.flatMap((bill, billIdx) => [
+          ...(bill.imported ? [(
+            <div key={`${bill.key}:header`} style={{ minWidth: LEFT_W + totalRightW }}
+              className="h-8 flex items-center px-3 bg-slate-900 text-white text-[12px] font-bold uppercase tracking-wider"
+              data-testid={`programme-bill-${bill.label}`}>
+              {bill.label}
+            </div>
+          )] : []),
+          ...bill.sources.map((source, sourceIdx) => {
+          const cat = source.key;
+          const catItems = source.items;
+          const catLabel = source.label;
+          const catIdx = billIdx * 7 + sourceIdx;
           const color = getCatColor(catIdx);
           const collapsed = collapsedCats[cat] ?? false;
 
@@ -2769,7 +2828,8 @@ function InlineGanttTable({
               })}
             </div>
           );
-        })}
+        }),
+        ])}
       </div>
 
       {/* Delete confirmation dialog */}
@@ -2885,35 +2945,13 @@ function MonthlyPlanView({
     return m;
   }, [bars]);
 
-  const grouped = useMemo(() => {
-    const m: Record<string, BoqItemWithCategory[]> = {};
-    for (const it of items) {
-      // Show if: included in planning OR already has bars (keep programmed items visible)
-      if (it.includedInPlanning === false) continue;
-      // Fallback chain: persisted workCategory → imported categoryName → uncategorised.
-      const cat = it.workCategory
-        ? `wc:${it.workCategory}`
-        : it.categoryName
-          ? `cat:${it.categoryName}`
-          : "__uncategorised__";
-      if (!m[cat]) m[cat] = [];
-      m[cat].push(it);
-    }
-    // Sort items within each category by bill/item code (1.01, 1.02, … 2.01, 10.01)
-    for (const cat of Object.keys(m)) {
-      m[cat].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
-    }
-    return m;
-  }, [items]);
-
-  const allCategoryKeys = useMemo(() => {
-    const keys = Object.keys(grouped).filter(k => k !== "__uncategorised__");
-    // Order categories by the lowest item code they contain, so bills appear
-    // in BOQ order (Preliminaries → Site Clearance → Earthwork → …).
-    keys.sort((a, b) => compareItemCode(grouped[a][0]?.itemCode, grouped[b][0]?.itemCode));
-    if (grouped["__uncategorised__"]?.length) keys.push("__uncategorised__");
-    return keys;
-  }, [grouped]);
+  const displayHierarchy = useMemo(
+    () => buildBoqDisplayHierarchy(
+      items.filter(it => it.includedInPlanning !== false),
+      getWorkCategoryLabel,
+    ),
+    [items],
+  );
 
   const months = useMemo(() => Array.from({ length: maxMonth }, (_, i) => i + 1), [maxMonth]);
 
@@ -2967,15 +3005,19 @@ function MonthlyPlanView({
           </tr>
         </thead>
         <tbody>
-          {allCategoryKeys.map((cat, catIdx) => {
-            const catItems = grouped[cat] ?? [];
-            const catLabel = cat === "__uncategorised__"
-              ? "Uncategorised"
-              : cat.startsWith("wc:")
-                ? getWorkCategoryLabel(cat.slice(3))
-                : cat.startsWith("cat:")
-                  ? cat.slice(4)
-                  : cat;
+          {displayHierarchy.flatMap((bill, billIdx) => [
+            ...(bill.imported && bill.sources.some(source => source.items.some(it => monthlyGrid[it.id] && Object.keys(monthlyGrid[it.id]).length > 0)) ? [(
+              <tr key={`${bill.key}:header`} data-testid={`monthly-bill-${bill.label}`}>
+                <td colSpan={3 + maxMonth + 1} className="bg-slate-900 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white">
+                  {bill.label}
+                </td>
+              </tr>
+            )] : []),
+            ...bill.sources.map((source, sourceIdx) => {
+            const cat = source.key;
+            const catItems = source.items;
+            const catLabel = source.label;
+            const catIdx = billIdx * 7 + sourceIdx;
             const color = getCatColor(catIdx);
             const catHasBars = catItems.some(it => monthlyGrid[it.id] && Object.keys(monthlyGrid[it.id]).length > 0);
             if (!catHasBars) return null;
@@ -3045,7 +3087,8 @@ function MonthlyPlanView({
                   );
                 }),
             ];
-          })}
+          }),
+          ])}
 
           {/* Grand total row */}
           {(() => {
@@ -3388,6 +3431,23 @@ export default function WorkProgramme() {
         disposalDistanceKm: progSettings?.disposalDistanceKm ?? null,
       }
     : project;
+
+  const publishBaselineMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", `/api/boq/projects/${projectId}/programme/publish-baseline`, {}),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId] });
+      toast({
+        title: "Programme baseline published",
+        description: "Further schedule changes must use Schedule Revision.",
+      });
+    },
+    onError: (error: any) => toast({
+      title: "Baseline publish failed",
+      description: error instanceof Error ? error.message : "Try again",
+      variant: "destructive",
+    }),
+  });
 
   const { data: items = [], isLoading: itemsLoading } = useQuery<BoqItemWithCategory[]>({
     queryKey: ["/api/boq/projects", projectId, "items"],
@@ -4057,6 +4117,36 @@ export default function WorkProgramme() {
             project conditions; conditional state only affects enabled/disabled,
             counts and attention indicators inside the menus. ── */}
         <div className="flex gap-2 flex-wrap items-center">
+          {effectiveProject && (
+            (effectiveProject as any).programmeBaselinePublishedAt ? (
+              <span
+                className="inline-flex items-center gap-1 rounded border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700"
+                title={`Published ${new Date((effectiveProject as any).programmeBaselinePublishedAt).toLocaleString()}`}
+                data-testid="badge-programme-baseline-published"
+              >
+                <LockKeyhole className="w-3.5 h-3.5" /> Baseline published
+              </span>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={publishBaselineMutation.isPending || bars.length === 0}
+                onClick={() => {
+                  if (window.confirm("Publish this programme baseline? Schedule changes will require the Schedule Revision workflow afterwards.")) {
+                    publishBaselineMutation.mutate();
+                  }
+                }}
+                title={bars.length === 0 ? "Add programme bars before publishing" : "Freeze the current programme as the baseline"}
+                data-testid="button-publish-programme-baseline"
+                className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+              >
+                {publishBaselineMutation.isPending
+                  ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  : <LockKeyhole className="w-4 h-4 mr-1" />}
+                Publish Baseline
+              </Button>
+            )
+          )}
           <Button
             variant="outline"
             size="sm"

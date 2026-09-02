@@ -20,6 +20,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { shortItemName } from "@/lib/itemName";
 import { BOQ_WORK_CATEGORIES } from "@shared/boqWorkCategories";
 import { isShoulderDesc, classifyShoulderLayer } from "@shared/workTypeRecipes";
+import { buildBoqDisplayHierarchy } from "@shared/boqDisplayOrder";
 import type { BoqItemWithCategory } from "@shared/schema";
 
 const DPR_METHOD_OPTIONS = [
@@ -291,6 +292,12 @@ export default function BoqItemReview() {
     return list;
   }, [items, filterMode, search]);
 
+  const displayHierarchy = useMemo(
+    () => buildBoqDisplayHierarchy(filtered, code =>
+      BOQ_WORK_CATEGORIES.find(category => category.code === code)?.label ?? code ?? "Uncategorised"),
+    [filtered],
+  );
+
   const needsReviewCount = (items as ItemRow[]).filter(i => i.needsReview).length;
   const unmappedCount = (items as ItemRow[]).filter(i => !i.workCategory?.trim()).length;
 
@@ -412,9 +419,25 @@ export default function BoqItemReview() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(item => (
-                    <ItemEditRow key={item.id} item={item} projectId={projectId} />
-                  ))}
+                  {displayHierarchy.flatMap(bill => [
+                    ...(bill.imported ? [(
+                      <tr key={`${bill.key}:header`} data-testid={`review-bill-${bill.label}`}>
+                        <td colSpan={14} className="bg-slate-800 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white">
+                          {bill.label}
+                        </td>
+                      </tr>
+                    )] : []),
+                    ...bill.sources.flatMap(source => [
+                      <tr key={`${source.key}:header`} data-testid={`review-source-${source.key}`}>
+                        <td colSpan={14} className={`${bill.imported ? "bg-slate-100 pl-6" : "bg-slate-700 text-white"} px-3 py-1.5 text-xs font-semibold`}>
+                          {source.label}
+                        </td>
+                      </tr>,
+                      ...source.items.map(item => (
+                        <ItemEditRow key={item.id} item={item} projectId={projectId} />
+                      )),
+                    ]),
+                  ])}
                 </tbody>
               </table>
             )}

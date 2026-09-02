@@ -16,6 +16,9 @@ const fx = {
   bars: [] as any[],
   evidence: new Map<number, { reportedQty: number; earliestProgressDate: string | null }>(),
   projectStartDate: "2026-01-01" as string | null,
+  baselinePublishedAt: null as string | null,
+  outcomeCounts: new Map<number, number>(),
+  items: [] as any[],
   isAdmin: true,
 };
 
@@ -24,6 +27,8 @@ const calls = {
   audits: [] as any[],
   barUpdates: [] as Array<{ id: number; data: any }>,
   settingsSaves: [] as Array<{ projectId: number; data: any }>,
+  barDeletes: [] as number[],
+  barInserts: [] as any[],
 };
 
 vi.mock("../server/push", () => ({
@@ -64,9 +69,19 @@ vi.mock("../server/storage", () => {
     fx.bars.filter((bar) => bar.boqProjectId === projectId),
   );
   methods.getWorkProgrammeExecutionEvidence = vi.fn(async () => fx.evidence);
+  methods.getProgrammeBarOutcomeEventCounts = vi.fn(async () => fx.outcomeCounts);
   methods.getBoqProject = vi.fn(async (id: number) =>
-    id === PROJECT_ID ? { id, startDate: fx.projectStartDate } : undefined,
+    id === PROJECT_ID ? {
+      id,
+      startDate: fx.projectStartDate,
+      programmeBaselinePublishedAt: fx.baselinePublishedAt,
+    } : undefined,
   );
+  methods.publishProgrammeBaseline = vi.fn(async (id: number) => {
+    if (id !== PROJECT_ID || fx.baselinePublishedAt) return null;
+    fx.baselinePublishedAt = "2026-03-01T10:00:00.000Z";
+    return { id, startDate: fx.projectStartDate, programmeBaselinePublishedAt: fx.baselinePublishedAt };
+  });
   methods.getBoqProgramSettings = vi.fn(async () => ({ projectStartDate: fx.projectStartDate }));
   methods.upsertBoqProgramSettings = vi.fn(async (_id: number, body: any) => body);
   methods.upsertBoqProgramSettingsWithCalendarRealignment = vi.fn(async (projectId: number, data: any) => {
@@ -87,7 +102,17 @@ vi.mock("../server/storage", () => {
     calls.barUpdates.push({ id, data });
     return { id, ...data };
   });
-  methods.getBoqItems = vi.fn(async () => []);
+  methods.upsertWorkProgramBar = vi.fn(async (data: any) => {
+    calls.barInserts.push(data);
+    return { id: 9900 + calls.barInserts.length, ...data };
+  });
+  methods.deleteWorkProgramBar = vi.fn(async (id: number) => {
+    calls.barDeletes.push(id);
+    return true;
+  });
+  methods.getSubmittedProgressLinkCounts = vi.fn(async () => new Map());
+  methods.getActiveAllocationsForBar = vi.fn(async () => []);
+  methods.getBoqItems = vi.fn(async () => fx.items);
   methods.commitWorkProgrammeScheduleRevision = vi.fn(async (input: any) => {
     calls.commits.push(input);
     return {
@@ -159,11 +184,16 @@ function resetFixtures() {
   ];
   fx.evidence = new Map([[8003, { reportedQty: 25, earliestProgressDate: "2026-02-03" }]]);
   fx.projectStartDate = "2026-01-01";
+  fx.baselinePublishedAt = null;
+  fx.outcomeCounts = new Map();
   fx.isAdmin = true;
+  fx.items = [];
   calls.commits = [];
   calls.audits = [];
   calls.barUpdates = [];
   calls.settingsSaves = [];
+  calls.barDeletes = [];
+  calls.barInserts = [];
 }
 
 beforeAll(async () => {
@@ -319,14 +349,177 @@ describe("06W revision routes", () => {
     expect(calls.commits).toHaveLength(0);
   });
 
-  it("blocks generic PATCH from bypassing the controlled revision workflow", async () => {
+  it("allows direct schedule editing before baseline when the bar has no evidence", async () => {
     const res = await request(app)
       .patch("/api/boq/programme/bars/8001")
-      .send({ startDate: "2026-01-10", endDate: "2026-02-10" });
+      .send({
+        startDate: "2026-01-10",
+        endDate: "2026-02-10",
+        startMonth: 1.3,
+        endMonth: 2.4,
+        durationMode: "fixed",
+        durationDays: 32,
+        isDurationOverride: true,
+      });
+
+    expect(res.status).toBe(200);
+    expect(calls.barUpdates.at(-1)).toMatchObject({
+      id: 8001,
+      data: { startDate: "2026-01-10", endDate: "2026-02-10", durationMode: "fixed" },
+    });
+    expect(calls.commits).toHaveLength(0);
+  });
+
+  it("blocks direct schedule editing before baseline when progress or outcome evidence exists", async () => {
+    fx.evidence.set(8001, { reportedQty: 1, earliestProgressDate: "2026-01-05" });
+    let res = await request(app)
+      .patch("/api/boq/programme/bars/8001")
+      .send({ startDate: "2026-01-10" });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("SCHEDULE_REVISION_REQUIRED");
+
+    fx.evidence.delete(8001);
+    fx.outcomeCounts.set(8001, 1);
+    res = await request(app)
+      .patch("/api/boq/programme/bars/8001")
+      .send({ durationMode: "fixed" });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("SCHEDULE_REVISION_REQUIRED");
+    expect(calls.barUpdates).toHaveLength(0);
+  });
+
+  it("blocks direct schedule editing after the baseline is published", async () => {
+    fx.baselinePublishedAt = "2026-02-01T09:00:00.000Z";
+    const res = await request(app)
+      .patch("/api/boq/programme/bars/8001")
+      .send({ startMonth: 2, endMonth: 3 });
 
     expect(res.status).toBe(409);
     expect(res.body.error).toBe("SCHEDULE_REVISION_REQUIRED");
-    expect(calls.commits).toHaveLength(0);
+    expect(calls.barUpdates).toHaveLength(0);
+  });
+
+  it("publishes the project programme baseline explicitly and only once", async () => {
+    const first = await request(app)
+      .post(`/api/boq/projects/${PROJECT_ID}/programme/publish-baseline`)
+      .send({});
+    expect(first.status).toBe(200);
+    expect(first.body.programmeBaselinePublishedAt).toBe("2026-03-01T10:00:00.000Z");
+    expect(calls.audits.at(-1)).toMatchObject({
+      module: "work_programme",
+      transactionId: PROJECT_ID,
+      action: "publish_baseline",
+    });
+
+    const second = await request(app)
+      .post(`/api/boq/projects/${PROJECT_ID}/programme/publish-baseline`)
+      .send({});
+    expect(second.status).toBe(409);
+    expect(second.body.error).toBe("PROGRAMME_BASELINE_ALREADY_PUBLISHED");
+  });
+
+  it("does not publish an empty programme baseline", async () => {
+    fx.bars = [];
+    const res = await request(app)
+      .post(`/api/boq/projects/${PROJECT_ID}/programme/publish-baseline`)
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("PROGRAMME_BASELINE_EMPTY");
+  });
+
+  it("blocks published create, bulk-create, and auto-sequence bypass routes", async () => {
+    fx.baselinePublishedAt = "2026-02-01T09:00:00.000Z";
+    const create = await request(app).post(`/api/boq/projects/${PROJECT_ID}/programme`)
+      .send({ boqItemId: 999, startMonth: 1, endMonth: 2 });
+    const bulk = await request(app).post(`/api/boq/projects/${PROJECT_ID}/programme/bulk`)
+      .send({ bars: [{ boqItemId: 999, startMonth: 1, endMonth: 2 }] });
+    const auto = await request(app).post(`/api/boq/projects/${PROJECT_ID}/auto-sequence`)
+      .send({});
+    const structures = await request(app).post(`/api/boq/projects/${PROJECT_ID}/auto-sequence-structures`)
+      .send({});
+    for (const res of [create, bulk, auto, structures]) {
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe("SCHEDULE_REVISION_REQUIRED");
+    }
+    expect(calls.barUpdates).toHaveLength(0);
+  });
+
+  it("blocks published delete, split commit, and structure cleanup without mutations", async () => {
+    fx.baselinePublishedAt = "2026-02-01T09:00:00.000Z";
+    fx.items = [{
+      id: 501,
+      planningWorkType: "structure",
+      categoryName: "Culverts",
+      description: "Culvert concrete",
+    }];
+    fx.bars = [bar({ id: 8001, boqItemId: 501, source: "auto-sequence" })];
+
+    const deletion = await request(app).delete("/api/boq/programme/bars/8001");
+    const split = await request(app)
+      .post("/api/boq/programme/bars/8001/split-by-side")
+      .send({ parts: [{ side: "lhs" }, { side: "rhs" }] });
+    const cleanup = await request(app)
+      .post(`/api/boq/projects/${PROJECT_ID}/programme/clean-structure-bars`)
+      .send({});
+
+    for (const res of [deletion, split, cleanup]) {
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe("SCHEDULE_REVISION_REQUIRED");
+    }
+    expect(calls.barDeletes).toEqual([]);
+    expect(calls.barUpdates).toEqual([]);
+    expect(calls.barInserts).toEqual([]);
+  });
+
+  it("blocks evidence-linked delete, split, and cleanup while retaining split preview", async () => {
+    fx.items = [{
+      id: 501,
+      planningWorkType: "structure",
+      categoryName: "Culverts",
+      description: "Culvert concrete",
+    }];
+    fx.bars = [bar({ id: 8001, boqItemId: 501, source: "auto-sequence" })];
+    fx.outcomeCounts.set(8001, 1);
+
+    const preview = await request(app)
+      .post("/api/boq/programme/bars/8001/split-by-side")
+      .send({ preview: true, parts: [{ side: "lhs" }, { side: "rhs" }] });
+    expect(preview.status).toBe(200);
+    expect(preview.body.preview).toBe(true);
+
+    const responses = [
+      await request(app).delete("/api/boq/programme/bars/8001"),
+      await request(app).post("/api/boq/programme/bars/8001/split-by-side")
+        .send({ parts: [{ side: "lhs" }, { side: "rhs" }] }),
+      await request(app).post(`/api/boq/projects/${PROJECT_ID}/programme/clean-structure-bars`).send({}),
+    ];
+    for (const res of responses) {
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe("SCHEDULE_REVISION_REQUIRED");
+    }
+    expect(calls.barDeletes).toEqual([]);
+    expect(calls.barUpdates).toEqual([]);
+    expect(calls.barInserts).toEqual([]);
+  });
+
+  it("allows an evidence-free unpublished structure row to patch its schedule", async () => {
+    fx.bars = [bar({ id: 8101, planningMode: "structure_location", source: "structure_import" })];
+    fx.evidence = new Map();
+    const res = await request(app)
+      .patch("/api/boq/programme/bars/8101")
+      .send({
+        startDate: "2026-01-08",
+        endDate: "2026-01-19",
+        startMonth: 1.25,
+        endMonth: 1.65,
+        durationDays: 12,
+        durationMode: "fixed",
+      });
+    expect(res.status).toBe(200);
+    expect(calls.barUpdates.at(-1)).toMatchObject({
+      id: 8101,
+      data: expect.objectContaining({ durationMode: "fixed", durationDays: 12 }),
+    });
   });
 
   it("enriches programme rows from execution evidence without changing schedule dates", async () => {
@@ -375,7 +568,7 @@ describe("06W revision routes", () => {
     expect(calls.barUpdates).toHaveLength(0);
   });
 
-  it("does not let structure auto-sequencing overwrite revised, started, or completed bars", async () => {
+  it("does not let structure auto-sequencing overwrite revised bars", async () => {
     fx.bars = [
       bar({
         id: 8101,
@@ -403,17 +596,14 @@ describe("06W revision routes", () => {
         source: "structure_import",
       }),
     ];
-    fx.evidence = new Map([
-      [8102, { reportedQty: 10, earliestProgressDate: "2026-01-05" }],
-      [8103, { reportedQty: 1000, earliestProgressDate: "2026-01-04" }],
-    ]);
+    fx.evidence = new Map();
 
     const res = await request(app)
       .post(`/api/boq/projects/${PROJECT_ID}/auto-sequence-structures`)
       .send({ scope: "all" });
 
     expect(res.status).toBe(200);
-    expect(res.body.updated).toBe(1);
-    expect(calls.barUpdates.map((row) => row.id)).toEqual([8104]);
+    expect(res.body.updated).toBe(3);
+    expect(calls.barUpdates.map((row) => row.id)).toEqual([8102, 8103, 8104]);
   });
 });

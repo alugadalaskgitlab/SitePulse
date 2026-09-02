@@ -96,6 +96,21 @@ export interface BarEvidence {
   earliestProgressDate: string | null; // YYYY-MM-DD or null
 }
 
+/**
+ * WP-02 first-draft exception. This is deliberately narrow: only an
+ * unpublished project and a bar with neither canonical actual-progress
+ * evidence nor any outcome event may bypass Schedule Revision.
+ */
+export function canDirectlyEditSchedule(input: {
+  programmeBaselinePublishedAt: Date | string | null | undefined;
+  evidence: BarEvidence | null | undefined;
+  hasOutcomeEvents: boolean;
+}): boolean {
+  if (input.programmeBaselinePublishedAt != null || input.hasOutcomeEvents) return false;
+  return !input.evidence
+    || (Number(input.evidence.reportedQty ?? 0) <= 0 && !input.evidence.earliestProgressDate);
+}
+
 /** Preserve an already-captured baseline; otherwise capture the first date. */
 export function captureInitialBaseline(
   existingBaseline: string | null | undefined,

@@ -8,6 +8,7 @@ import {
   Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X, Sparkles, Zap, Wrench, Layers, ClipboardList, MapPin, Ruler,
 } from "lucide-react";
 import { BOQ_WORK_CATEGORIES, getWorkCategoryLabel } from "@shared/boqWorkCategories";
+import { buildBoqDisplayHierarchy } from "@shared/boqDisplayOrder";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1032,6 +1033,21 @@ function SnlMappingPanel({
   const needsReview = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "needs_review");
   const unmapped    = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "unmapped");
   const mapped      = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "mapped");
+  type MappingDisplayRow =
+    | { kind: "bill" | "source"; key: string; label: string }
+    | { kind: "item"; key: string; item: BoqItemWithCategory };
+  const mappingDisplayRows = (list: BoqItemWithCategory[]): MappingDisplayRow[] =>
+    buildBoqDisplayHierarchy(list, getWorkCategoryLabel).flatMap(bill => [
+      ...(bill.imported
+        ? [{ kind: "bill" as const, key: `${bill.key}:bill`, label: bill.label! }]
+        : []),
+      ...bill.sources.flatMap(source => [
+        { kind: "source" as const, key: `${source.key}:source`, label: source.label },
+        ...source.items.map(item => ({ kind: "item" as const, key: `item:${item.id}`, item })),
+      ]),
+    ]);
+  const reviewRows = mappingDisplayRows(needsReview);
+  const unmappedRows = mappingDisplayRows(unmapped);
 
   const [searchItem, setSearchItem] = useState<BoqItemWithCategory | null>(null);
   const [searchQ, setSearchQ] = useState("");
@@ -1185,7 +1201,20 @@ function SnlMappingPanel({
                 </button>
               </div>
               <div className="space-y-1.5 max-h-60 overflow-y-auto">
-                {needsReview.map(item => {
+                {reviewRows.map(row => {
+                  if (row.kind === "bill") return (
+                    <div key={row.key} className="rounded bg-slate-800 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-white"
+                      data-testid={`mapping-review-bill-${row.label}`}>
+                      {row.label}
+                    </div>
+                  );
+                  if (row.kind === "source") return (
+                    <div key={row.key} className="px-2 pt-1 text-[11px] font-semibold text-slate-600"
+                      data-testid={`mapping-review-source-${row.key}`}>
+                      {row.label}
+                    </div>
+                  );
+                  const item = row.item;
                   // Composite items get their own expandable sub-card per detected layer
                   if (item.isComposite) {
                     return (
@@ -1270,8 +1299,22 @@ function SnlMappingPanel({
                 Unmapped ({unmapped.length})
               </p>
               <div className="space-y-1 max-h-48 overflow-y-auto">
-                {unmapped.map(item => (
-                  <div key={item.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-colors"
+                {unmappedRows.map(row => {
+                  if (row.kind === "bill") return (
+                    <div key={row.key} className="rounded bg-slate-800 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-white"
+                      data-testid={`mapping-unmapped-bill-${row.label}`}>
+                      {row.label}
+                    </div>
+                  );
+                  if (row.kind === "source") return (
+                    <div key={row.key} className="px-2 pt-1 text-[11px] font-semibold text-slate-600"
+                      data-testid={`mapping-unmapped-source-${row.key}`}>
+                      {row.label}
+                    </div>
+                  );
+                  const item = row.item;
+                  return (
+                  <div key={row.key} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-colors"
                     data-testid={`row-unmapped-${item.id}`}>
                     <div className="flex-1 min-w-0">
                       <p className="text-[12px] font-mono text-muted-foreground">{item.itemCode ?? "—"}</p>
@@ -1285,7 +1328,8 @@ function SnlMappingPanel({
                       Map
                     </button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

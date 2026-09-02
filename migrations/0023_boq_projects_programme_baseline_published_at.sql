@@ -1,0 +1,1 @@
+ALTER TABLE boq_projects ADD COLUMN IF NOT EXISTS programme_baseline_published_at timestamp;

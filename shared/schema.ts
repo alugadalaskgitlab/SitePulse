@@ -2906,6 +2906,9 @@ export const boqProjects = pgTable("boq_projects", {
   // Automatic excavation availability starts at this project-controlled date.
   // Null keeps reconciliation inactive until explicitly enabled.
   cutFillReconciliationActivatedOn: date("cut_fill_reconciliation_activated_on"),
+  // WP-02: null means the programme is still a freely editable first draft.
+  // Once set, schedule-field changes must use the revision workflow.
+  programmeBaselinePublishedAt: timestamp("programme_baseline_published_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

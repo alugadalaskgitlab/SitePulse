@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import type { Server } from "http";
 import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, assertValidDieselPhysicalStock } from "./storage";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
@@ -36,6 +36,7 @@ import {
   classifyBarExecutionState,
   deriveItemStatus,
   isAutoSequenceManagedBar,
+  canDirectlyEditSchedule,
   planScheduleRevision,
   type BarEvidence,
   type RevisionBar,
@@ -12838,6 +12839,12 @@ export async function registerRoutes(
           message: "Change the programme start date through Program Settings so existing schedule dates and calendar indices stay aligned.",
         });
       }
+      if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "programmeBaselinePublishedAt")) {
+        return res.status(409).json({
+          error: "PROGRAMME_BASELINE_ACTION_REQUIRED",
+          message: "Publish the programme baseline through the explicit Publish Baseline action.",
+        });
+      }
       const updated = await storage.updateBoqProject(id, req.body);
       if (!updated) return res.status(404).json({ error: "BOQ project not found" });
       res.json(updated);
@@ -13560,6 +13567,7 @@ export async function registerRoutes(
       const projectId = parseInt(req.params.id);
       const bars = await storage.getWorkProgramBars(projectId);
       const evidence = await storage.getWorkProgrammeExecutionEvidence(projectId, bars);
+      const outcomeCounts = await storage.getProgrammeBarOutcomeEventCounts(bars.map((bar) => bar.id));
       res.json(bars.map((bar) => {
         const barEvidence = evidence.get(bar.id) ?? { reportedQty: 0, earliestProgressDate: null };
         return {
@@ -13567,11 +13575,55 @@ export async function registerRoutes(
           reportedQty: barEvidence.reportedQty,
           actualStartDate: barEvidence.earliestProgressDate,
           executionState: classifyBarExecutionState(Number(bar.plannedQty ?? 0), barEvidence),
+          hasOutcomeEvents: (outcomeCounts.get(bar.id) ?? 0) > 0,
         };
       }));
     } catch (err) {
       console.error("GET /api/boq/projects/:id/programme:", err);
       res.status(500).json({ error: "Failed to fetch work programme" });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/programme/publish-baseline", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const existing = await storage.getBoqProject(projectId);
+      if (!existing) return res.status(404).json({ error: "BOQ project not found" });
+      if (existing.programmeBaselinePublishedAt) {
+        return res.status(409).json({
+          error: "PROGRAMME_BASELINE_ALREADY_PUBLISHED",
+          message: "This programme baseline has already been published.",
+        });
+      }
+      const bars = await storage.getWorkProgramBars(projectId);
+      if (bars.length === 0) {
+        return res.status(400).json({
+          error: "PROGRAMME_BASELINE_EMPTY",
+          message: "Add at least one programme bar before publishing the baseline.",
+        });
+      }
+      const published = await storage.publishProgrammeBaseline(projectId);
+      if (!published) {
+        return res.status(409).json({
+          error: "PROGRAMME_BASELINE_ALREADY_PUBLISHED",
+          message: "This programme baseline was published by another request.",
+        });
+      }
+      await storage.logAudit({
+        module: "work_programme",
+        transactionId: projectId,
+        action: "publish_baseline",
+        userId: (req as any).authUser?.id ?? null,
+        userName: currentUserName(req) ?? "unknown",
+        userRole: (req as any).authUser?.isAdmin ? "admin" : ((req as any).authUser?.role ?? null),
+        oldValues: { programmeBaselinePublishedAt: null },
+        newValues: { programmeBaselinePublishedAt: published.programmeBaselinePublishedAt },
+      });
+      res.json(published);
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/programme/publish-baseline:", err);
+      res.status(500).json({ error: "Failed to publish programme baseline" });
     }
   });
 
@@ -13908,6 +13960,62 @@ export async function registerRoutes(
   // Touching boundaries (split-at-midpoint) are fine; strict interior overlap
   // blocks the save. Runs on create AND on chainage edits — not just Auto Sequence.
   const CH_OVERLAP_EPS = 0.0005; // 0.5 m — matches shared validateStretches
+  /**
+   * WP-02 applies this one guard to every direct schedule writer.  Revisions
+   * have their own controlled route; this guard is deliberately not used there.
+   */
+  async function directScheduleMutationBlock(
+    projectId: number,
+    affectedBars: any[] = [],
+  ): Promise<{ status: number; error: string; message: string } | null> {
+    const project = await storage.getBoqProject(projectId);
+    if (!project) return { status: 404, error: "BOQ_PROJECT_NOT_FOUND", message: "BOQ project not found" };
+    if (project.programmeBaselinePublishedAt) {
+      return {
+        status: 409,
+        error: "SCHEDULE_REVISION_REQUIRED",
+        message: "Published programme dates can only be changed through Revise Schedule.",
+      };
+    }
+    if (!affectedBars.length) return null;
+    const evidence = await storage.getWorkProgrammeExecutionEvidence(projectId, affectedBars);
+    const outcomes = await storage.getProgrammeBarOutcomeEventCounts(affectedBars.map((bar) => bar.id));
+    const keyedValue = (source: any, id: number) => {
+      if (source instanceof Map) return source.get(id);
+      if (Array.isArray(source)) {
+        return source.find((row) => Number(row?.barId ?? row?.id) === id);
+      }
+      return source?.[id] ?? source?.[String(id)];
+    };
+    if (affectedBars.some((bar) => !canDirectlyEditSchedule({
+      programmeBaselinePublishedAt: null,
+      evidence: keyedValue(evidence, bar.id),
+      hasOutcomeEvents: Number(keyedValue(outcomes, bar.id) ?? 0) > 0,
+    }))) {
+      return {
+        status: 409,
+        error: "SCHEDULE_REVISION_REQUIRED",
+        message: "Bars with recorded execution evidence can only be changed through Revise Schedule.",
+      };
+    }
+    return null;
+  }
+
+  function sendDirectScheduleMutationBlock(
+    res: Response,
+    block: { status: number; error: string; message: string } | null,
+  ): boolean {
+    if (!block) return false;
+    res.status(block.status).json({ error: block.error, message: block.message });
+    return true;
+  }
+  class DirectScheduleMutationBlockedError extends Error {
+    readonly code = "SCHEDULE_REVISION_REQUIRED";
+    constructor(readonly block: { status: number; error: string; message: string }) {
+      super(block.message);
+    }
+  }
+
   // 029B Part D: the single-bar create/PATCH guard shares the same side-aware
   // corridor policy as validateStretches(). Distinct corridors (LHS vs RHS,
   // shoulder L/R, …) may share chainage; full_width/both_sides/same-side still
@@ -13942,7 +14050,9 @@ export async function registerRoutes(
 
   app.post("/api/boq/projects/:id/programme", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "qto_boq")) return;
       const boqProjectId = parseInt(req.params.id);
+      if (sendDirectScheduleMutationBlock(res, await directScheduleMutationBlock(boqProjectId))) return;
       const data = { ...req.body, boqProjectId };
       if (!data.boqItemId || !data.startMonth || !data.endMonth) {
         return res.status(400).json({ error: "boqItemId, startMonth, endMonth are required" });
@@ -13975,7 +14085,9 @@ export async function registerRoutes(
 
   app.post("/api/boq/projects/:id/programme/bulk", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "qto_boq")) return;
       const boqProjectId = parseInt(req.params.id);
+      if (sendDirectScheduleMutationBlock(res, await directScheduleMutationBlock(boqProjectId))) return;
       const { bars } = req.body as { bars: Array<Record<string, any>> };
       if (!Array.isArray(bars) || bars.length === 0) {
         return res.status(400).json({ error: "bars array is required and must not be empty" });
@@ -13984,7 +14096,7 @@ export async function registerRoutes(
       for (const b of bars) {
         if (!b.boqItemId || b.startMonth == null || b.endMonth == null) continue;
         if (b.endMonth < b.startMonth) continue;
-        await storage.upsertWorkProgramBar({ ...b, boqProjectId });
+        await storage.upsertWorkProgramBar({ ...b, boqProjectId } as any);
         created++;
       }
       res.status(201).json({ created });
@@ -13998,12 +14110,14 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
       const barId = parseInt(req.params.id);
-      const scheduleFields = ["startDate", "endDate", "startMonth", "endMonth", "durationMode", "isDurationOverride"];
+      const scheduleFields = [
+        "startDate", "endDate", "startMonth", "endMonth",
+        "durationMode", "durationDays", "durationSource", "isDurationOverride",
+      ];
       if (scheduleFields.some((field) => Object.prototype.hasOwnProperty.call(req.body ?? {}, field))) {
-        return res.status(409).json({
-          error: "SCHEDULE_REVISION_REQUIRED",
-          message: "Schedule dates can only be changed through Revise Schedule so execution locks, reason, history and cascade are enforced.",
-        });
+        const existing = await storage.getWorkProgramBar(barId);
+        if (!existing) return res.status(404).json({ error: "Bar not found" });
+        if (sendDirectScheduleMutationBlock(res, await directScheduleMutationBlock(existing.boqProjectId, [existing]))) return;
       }
       // 030A invariant: a manual length override always carries a reason.
       if (req.body?.lengthOverrideM != null && !(req.body?.lengthOverrideReason ?? "").toString().trim()) {
@@ -14062,6 +14176,12 @@ export async function registerRoutes(
       // DPR-linked path below additionally demands delete/cancel authority.
       if (!assertEdit(req, res, "boq_projects")) return;
       const barId = parseInt(req.params.id);
+      const bar = await storage.getWorkProgramBar?.(barId);
+      if (!bar) return res.status(404).json({ error: "Bar not found" });
+      if (sendDirectScheduleMutationBlock(
+        res,
+        await directScheduleMutationBlock((bar as any).boqProjectId, [bar]),
+      )) return;
       const linkCounts = await storage.getSubmittedProgressLinkCounts([barId]);
       const linkedCount = linkCounts.get(barId) ?? 0;
       if (linkedCount > 0) {
@@ -14079,7 +14199,6 @@ export async function registerRoutes(
         if (!reason) {
           return res.status(400).json({ error: "REASON_REQUIRED", message: "An exceptional deletion of a DPR-linked bar requires a reason." });
         }
-        const bar = await storage.getWorkProgramBar?.(barId);
         const affectedIds = await storage.markProgressLinksReviewRequired(barId);
         await storage.deleteWorkProgramBar(barId); // FK ON DELETE SET NULL clears programmeBarId
         await storage.logAudit({
@@ -14182,6 +14301,10 @@ export async function registerRoutes(
         return res.json({ preview: true, allocation, ...context, note: "The original bar becomes the first side (all arrangement and DPR links stay on it); the remaining sides are created as new bars." });
       }
       // Commit: in-place transform + inserts.
+      if (sendDirectScheduleMutationBlock(
+        res,
+        await directScheduleMutationBlock((bar as any).boqProjectId, [bar]),
+      )) return;
       const first = allocation[0];
       await storage.updateWorkProgramBar(barId, { side: first.side, plannedQty: first.qty } as any);
       const createdBars: any[] = [];
@@ -14466,6 +14589,14 @@ export async function registerRoutes(
           }
         }
       }
+
+      // A request with no deletion candidate is a read-only discovery response
+      // (notably the manual-bar confirmation preview), so leave it available.
+      // Guard only immediately before an actual cleanup commit.
+      if (toDelete.length > 0 && sendDirectScheduleMutationBlock(
+        res,
+        await directScheduleMutationBlock(boqProjectId, toDelete),
+      )) return;
 
       // 030A: never delete a bar with linked submitted DPR progress — even in a
       // bulk cleanup. Report them instead of silently destroying the linkage.
@@ -18101,6 +18232,12 @@ export async function registerRoutes(
 
       // dryRun=true: classify items and return diagnostics WITHOUT touching bars or DB.
       const dryRun = req.body?.dryRun === true;
+      // A real auto-sequence rewrites/deletes existing schedule bars and creates
+      // replacements. It is a direct schedule writer, never a revision bypass.
+      if (!dryRun && sendDirectScheduleMutationBlock(
+        res,
+        await directScheduleMutationBlock(projectId, existingBars as any[]),
+      )) return;
 
       // ── Instruction 029 Part A/C: real user-entered stretch rows ─────────────
       // stretches: [{ label?, chainageFrom, chainageTo, priority, manualQtyFraction? }]
@@ -19176,6 +19313,11 @@ export async function registerRoutes(
     } else if (opts.scope !== "all") {
       targetBars = targetBars.filter((b: any) => b.scheduled === false || b.needsReview === true);
     }
+    // This function is also used by import-time auto-sequencing. Keep the
+    // guard here as well as on the standalone endpoint so no caller becomes a
+    // schedule-revision bypass.
+    const directMutationBlock = await directScheduleMutationBlock(projectId, targetBars);
+    if (directMutationBlock) throw new DirectScheduleMutationBlockedError(directMutationBlock);
     // Auto-sequencing is never allowed to overwrite a deliberate schedule
     // revision or execution evidence. This applies even to the explicit
     // scope="all" path; intentional changes to those bars must use Revise
@@ -19268,10 +19410,18 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
       const scope: "unscheduled" | "all" = req.body?.scope === "all" ? "all" : "unscheduled";
+      const existingBars = await storage.getWorkProgramBars(projectId);
+      if (sendDirectScheduleMutationBlock(
+        res,
+        await directScheduleMutationBlock(projectId, existingBars as any[]),
+      )) return;
       const summary = await runStructureAutoSequence(projectId, { scope });
       res.json(summary);
     } catch (err: any) {
       console.error("auto-sequence-structures:", err);
+      if (err instanceof DirectScheduleMutationBlockedError) {
+        return res.status(err.block.status).json({ error: err.block.error, message: err.block.message });
+      }
       res.status(500).json({ error: `Failed to auto-sequence structures: ${err?.message ?? String(err)}` });
     }
   });

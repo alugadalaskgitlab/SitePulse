@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectCompositeComponents, ruleMatchSnl } from "../server/snlAutoMapper";
+import { classifyBoqItemForSnl, detectCompositeComponents, ruleMatchSnl } from "../server/snlAutoMapper";
 
 const candidates = [
   { id: 1, description: "RCC hume pipe NP3 600mm", shortLabel: "NP3 600mm", unit: "RM" },
@@ -37,5 +37,19 @@ describe("pipe-culvert deterministic rule matching", () => {
       candidates,
       "Laying 1000 mm dia NP4 RCC Hume pipe · HP Culvert 1V",
     )).toEqual({ snlItemId: 2, confidence: 0.82 });
+  });
+
+  it("classifies RCC Hume pipe by pipe identity before generic RCC", () => {
+    expect(classifyBoqItemForSnl(
+      "Providing 1000 mm NP4 RCC Hume pipe for HP Culvert 1V",
+    )).toBe("PIPE_CULVERT");
+  });
+
+  it("does not choose between single and double row when arrangement is absent", () => {
+    expect(ruleMatchSnl(
+      "PIPE_CULVERT",
+      candidates,
+      "Laying 1000 mm dia NP4 RCC Hume pipe",
+    )).toBeNull();
   });
 });

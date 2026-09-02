@@ -171,3 +171,31 @@ mtime_ms = 1788341371456
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2e04e5d5-3c53-47b3-a6ce-4c2d641f12b5/75b26e92-26cc-4dbf-93f8-8787b90dab3e"
 storage_version_token = "1788341479711554"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "3pDmVwduZN_U9hVqg0D4m"
+uri = "file://reports/wp02-completion-report.md"
+type = "text"
+title = "WP-02 Completion Report"
+description = "Complete Part 1–3 implementation, schema, validation, and live-data safety report in the requested order."
+logical_id = "4217a6b3-dfc4-4f16-8a01-6f2eaf985601"
+content_hash = "sha256:8f7da30390efff18d1918de3ff9216318e3dd4da86633463265118f22e4c242d"
+size = 6881
+mtime_ms = 1788355550239
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4217a6b3-dfc4-4f16-8a01-6f2eaf985601/61b4c9f6-efaf-4f05-be13-d9575309d98f"
+storage_version_token = "1788355559394585"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "KcqZx6HgO5Wd-06GsYYAe"
+uri = "file://reports/wp02-part2-identity-matching-dry-run.md"
+type = "text"
+title = "WP-02 Mapping Dry-Run Evidence"
+description = "Detailed six-library inventory and item-by-item 24-row ALLADURG-to-PAMPAD identity-matching evidence."
+logical_id = "8a613709-0670-42a1-b743-78a5db9ffa2e"
+content_hash = "sha256:c6f70b01a567e729c591d5c47f3b50d23118297ed504f7465ed4cbc5c7b4bc3e"
+size = 5807
+mtime_ms = 1788355111323
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8a613709-0670-42a1-b743-78a5db9ffa2e/e8d70931-7108-49a7-ab79-b04df6e5fa9e"
+storage_version_token = "1788355560806733"
+content_type = "text/markdown"

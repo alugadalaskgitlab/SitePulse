@@ -316,6 +316,7 @@ import {
   boqRevisions,
   boqRevisionItems,
   workProgramBars,
+  programmeBarOutcomeEvents,
   boqItemEquipment,
   boqItemLabour,
   boqItemMaterials,
@@ -25175,6 +25176,7 @@ export class DatabaseStorage implements IStorage {
         status: boqProjects.status,
         createdBy: boqProjects.createdBy,
         cutFillReconciliationActivatedOn: boqProjects.cutFillReconciliationActivatedOn,
+        programmeBaselinePublishedAt: boqProjects.programmeBaselinePublishedAt,
         createdAt: boqProjects.createdAt,
         siteName: sites.name,
       })
@@ -25222,6 +25224,17 @@ export class DatabaseStorage implements IStorage {
 
   async updateBoqProject(id: number, data: Partial<InsertBoqProject>): Promise<BoqProject | null> {
     const [row] = await db.update(boqProjects).set(data).where(eq(boqProjects.id, id)).returning();
+    return row ?? null;
+  }
+
+  async publishProgrammeBaseline(id: number): Promise<BoqProject | null> {
+    const [row] = await db.update(boqProjects)
+      .set({ programmeBaselinePublishedAt: new Date() })
+      .where(and(
+        eq(boqProjects.id, id),
+        isNull(boqProjects.programmeBaselinePublishedAt),
+      ))
+      .returning();
     return row ?? null;
   }
 
@@ -26541,6 +26554,18 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return result;
+  }
+
+  /** Any outcome event is schedule evidence, irrespective of its outcome/qty. */
+  async getProgrammeBarOutcomeEventCounts(barIds: number[]): Promise<Map<number, number>> {
+    if (barIds.length === 0) return new Map();
+    const rows = await db.select({
+      barId: programmeBarOutcomeEvents.programmeBarId,
+      count: sql<number>`count(*)::int`,
+    }).from(programmeBarOutcomeEvents)
+      .where(inArray(programmeBarOutcomeEvents.programmeBarId, barIds))
+      .groupBy(programmeBarOutcomeEvents.programmeBarId);
+    return new Map(rows.map((row) => [row.barId, Number(row.count)]));
   }
 
   /**

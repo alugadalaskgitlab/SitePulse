@@ -20,7 +20,7 @@
  */
 
 import { db } from "./db";
-import { boqCategories, boqItems, snlItems, snlBoqMappings, snlCompositeComponents } from "@shared/schema";
+import { boqCategories, boqItems, snlItems, snlSources, snlBoqMappings, snlCompositeComponents } from "@shared/schema";
 import { eq, and, inArray, notInArray } from "drizzle-orm";
 import { storage } from "./storage";
 
@@ -58,7 +58,7 @@ function normalizeUnit(u: string): string {
     .replace(/\bCUM\b|M3\b/, "CUM")
     .replace(/\bMT\b|TON(S)?\b|TONNE(S)?\b/, "MT")
     .replace(/\bRM\b|RMT\b|LM\b/, "LM")
-    .replace(/\bNOS\b|NO\b|NO\.\b|NUMBERS?\b/, "NOS");
+    .replace(/\bNOS\b|NO\b|NO\.\b|NUMBERS?\b|EACH\b/, "NOS");
 }
 
 /**
@@ -175,7 +175,7 @@ export function classifyBoqItem(description: string): BoqWorkCategory {
   if (/\bbinding\s*wire\b/.test(d)) return "reinforcement";
 
   // ── Road furniture / crash barrier / signage ─────────────────────────────────
-  if (/\b(crash\s*barrier|metal\s*beam\s*guard|guard\s*rail|delineator|road\s*stud|cat[-\s]*eye|w[-\s]*beam)\b/.test(d))
+  if (/\b(crash\s*barrier|metal\s*beam\s*guard|guard\s*rail|delineator|road\s*studs?|reflective\s*studs?|cat[-\s]*eye|w[-\s]*beam|rumble\s*strips?)\b/.test(d))
     return "road_furniture";
   if (/\b(traffic\s*sign|sign\s*board|cautionary|mandatory|informatory|kilometre\s*stone|boundary\s*stone|hectometre\s*stone|road\s*marking|thermoplastic\s*marking)\b/.test(d))
     return "road_furniture";
@@ -271,6 +271,20 @@ export function getSectorMultiplier(boqCategory: BoqWorkCategory, snlSector: str
   return 0.0; // excluded
 }
 
+export function isPrimaryRuleCandidate(
+  boqCategory: BoqWorkCategory,
+  snl: { sector?: string | null; sourceCode?: string | null; workCategory?: string | null },
+): boolean {
+  if (getSectorMultiplier(boqCategory, snl.sector) === 1.0) return true;
+  if (String(snl.sourceCode ?? "").toUpperCase() !== "MORTH_SDB_2019" || String(snl.sector ?? "").trim()) return false;
+  const wc = String(snl.workCategory ?? "").toUpperCase();
+  if (boqCategory === "road_pavement") return ["SUBBASE_BASE", "BITUMINOUS", "CONCRETE"].includes(wc);
+  if (boqCategory === "earthwork") return ["EARTHWORK", "SITE_CLEARANCE", "SHOULDERS_MEDIANS"].includes(wc);
+  if (boqCategory === "road_furniture") return wc === "ROAD_FURNITURE";
+  if (boqCategory === "pipe_culvert") return ["CROSS_DRAINAGE", "DRAINAGE", "CONCRETE"].includes(wc);
+  return false;
+}
+
 /**
  * For composite-item rule matching (spans multiple categories): true when sector
  * is any road/structure/drainage type that is relevant to road-construction projects.
@@ -304,18 +318,33 @@ const MAJOR_AUTOMAP_CATEGORIES = new Set<string>([
  * description patterns. Returns null when no reliable rule applies.
  * Takes priority over fuzzy scoring for standard road-construction items.
  */
-function classifyBoqItemForSnl(description: string): string | null {
+export function classifyBoqItemForSnl(description: string): string | null {
   const d = String(description ?? "").toLowerCase();
+
+  // Primary work identity must precede incidental substrate/foundation words.
+  // Prime/tack descriptions routinely mention WMM; furniture installation
+  // descriptions routinely mention PCC/RCC foundation blocks.
+  if (/tack\s*coat/.test(d)) return "TACK_COAT";
+  if (/prime\s*coat|primer\s*coat|\bprimer\b/.test(d)) return "PRIME_COAT";
+  if (/thermoplastic|road\s*marking/.test(d)) return "THERMOPLASTIC_MARKING";
+  if (/kilometre\s*stone|boundary\s*stone|hectometre|\bh\.?\s*m\.?\s*stone/.test(d)) return "ROAD_STONES";
+  if (/sign\s*board|traffic\s*sign|cautionary|mandatory|informatory|direction(?:al)?\s*(?:sign|board)/.test(d)) return "SIGNAGE";
+  if (/crash\s*barrier|metal\s*beam/.test(d)) return "CRASH_BARRIER";
+  if (/rumble\s*strip/.test(d)) return "RUMBLE_STRIPS";
+  if (/reflective\s*(?:road\s*)?stud|road\s*stud|cat[-\s]*eye/.test(d)) return "REFLECTIVE_STUDS";
 
   if (/\bgsb\b|granular\s*sub[-\s]*base/.test(d)) return "GSB";
   if (/\bwmm\b|wet\s*mix\s*macadam|wet\s*mix/.test(d)) return "WMM";
-  if (/\bdbm\b|dense\s*bituminous\s*macadam/.test(d)) return "DBM";
+  if (/\bdbm\b|dense\s*(?:graded\s*)?bituminous\s*macadam/.test(d)) return "DBM";
   if (/\bsdbc\b|semi\s*dense/.test(d)) return "SDBC";
   if (/\bbc\b|bituminous\s*concrete/.test(d)) return "BC";
   if (/\bbm\b|bituminous\s*macadam/.test(d)) return "BM";
   if (/mastic\s*asphalt/.test(d)) return "MASTIC_ASPHALT";
-  if (/prime\s*coat/.test(d)) return "PRIME_COAT";
-  if (/tack\s*coat/.test(d)) return "TACK_COAT";
+  if (/\bsub[-\s]*grade\b|preparation\s+of\s+sub[-\s]*grade/.test(d)) return "SUBGRADE";
+  if (/\bembankment\b|formation\s+fill|borrow\s+(?:earth|material)/.test(d)) return "EMBANKMENT";
+  // Product identity precedes RCC/PCC: "RCC Hume pipe" describes the pipe,
+  // not a separate reinforced-concrete pour.
+  if (/\bhume\s*pipe\b|\brcc\s*pipe\b|\bpipe\s*culvert\b|\bnp[234]\b|\bhdpe\s*pipe\b/.test(d)) return "PIPE_CULVERT";
 
   // Concrete — detect grade first, then bare type
   const gradeM = d.match(/\bm\s*([0-9]{2,3})\b/);
@@ -325,10 +354,6 @@ function classifyBoqItemForSnl(description: string): string | null {
   if (/\bhysd\b|\btmt\b|\breinforcement\b|reinforcing\s*steel|steel\s*reinforcement/.test(d)) return "REINFORCEMENT_STEEL";
   if (/binding\s*wire/.test(d)) return "BINDING_WIRE";
   if (/stone\s*pitching|stone\s*spalls|\bapron\b|\bboulder\b/.test(d)) return "STONE_PITCHING";
-  if (/thermoplastic|road\s*marking/.test(d)) return "THERMOPLASTIC_MARKING";
-  if (/kilometre\s*stone|boundary\s*stone|hectometre/.test(d)) return "ROAD_STONES";
-  if (/sign\s*board|traffic\s*sign|cautionary|mandatory|informatory/.test(d)) return "SIGNAGE";
-  if (/crash\s*barrier|metal\s*beam/.test(d)) return "CRASH_BARRIER";
   if (/expansion\s*joint|strip\s*seal|joint\s*sealant/.test(d)) return "JOINTS_SEALANTS";
   if (/\bbearing\b|elastomeric/.test(d)) return "BEARINGS";
   if (/\bpipe\b|\bculvert\b|\bnp3\b|\bnp4\b|\bhdpe\b/.test(d)) return "PIPE_CULVERT";
@@ -352,12 +377,14 @@ function classifyBoqItemForSnl(description: string): string | null {
 const RULE_TAG_KEYWORDS: Record<string, string[]> = {
   GSB:                  ["granular sub-base", "gsb", "granular subbase"],
   WMM:                  ["wet mix macadam", "wmm", "wet mix"],
-  DBM:                  ["dense bituminous macadam", "dbm"],
+  DBM:                  ["dense bituminous macadam", "dense graded bituminous macadam", "dbm"],
   SDBC:                 ["semi dense bituminous", "sdbc"],
   BC:                   ["bituminous concrete"],
   BM:                   ["bituminous macadam"],
   PRIME_COAT:           ["prime coat", "priming"],
   TACK_COAT:            ["tack coat"],
+  EMBANKMENT:           ["embankment", "borrow fill", "borrow material"],
+  SUBGRADE:             ["subgrade", "sub-grade", "sub grade preparation"],
   PCC:                  ["plain cement concrete", "pcc"],
   RCC:                  ["reinforced cement concrete", "rcc"],
   REINFORCEMENT_STEEL:  ["hysd", "tmt", "reinforcement", "reinforcing steel"],
@@ -365,9 +392,11 @@ const RULE_TAG_KEYWORDS: Record<string, string[]> = {
   FILTER_MEDIA:         ["filter media"],
   STONE_PITCHING:       ["stone pitching", "stone spalls", "boulder pitching"],
   THERMOPLASTIC_MARKING:["thermoplastic", "road marking"],
-  ROAD_STONES:          ["kilometre stone", "boundary stone", "hectometre stone"],
-  SIGNAGE:              ["sign board", "traffic sign"],
+  ROAD_STONES:          ["kilometre stone", "kilometer stone", "boundary stone", "hectometre stone", "hectometer stone"],
+  SIGNAGE:              ["sign board", "traffic sign", "direction and place identification signs", "retro-reflectorised traffic signs"],
   CRASH_BARRIER:        ["crash barrier", "metal beam"],
+  RUMBLE_STRIPS:        ["rumble strip"],
+  REFLECTIVE_STUDS:     ["reflective stud", "road stud", "cat eye"],
   JOINTS_SEALANTS:      ["expansion joint", "joint sealant"],
   BEARINGS:             ["elastomeric bearing", "bearing"],
   MASTIC_ASPHALT:       ["mastic asphalt", "mastic"],
@@ -389,7 +418,7 @@ const RULE_TAG_KEYWORDS: Record<string, string[]> = {
  */
 export function ruleMatchSnl(
   tag: string,
-  snlRows: Array<{ id: number; description: string; shortLabel: string | null; unit: string }>,
+  snlRows: Array<{ id: number; description: string; shortLabel: string | null; unit: string; itemCode?: string; sourceCode?: string | null }>,
   boqDescription?: string,
 ): { snlItemId: number; confidence: number } | null {
   const baseTag = tag.replace(/_M\d+$/, "");
@@ -407,11 +436,79 @@ export function ruleMatchSnl(
       ? "single"
       : null;
 
+  // Identity-bearing qualifiers are vetoes, never merely scoring hints. This is
+  // deliberately conservative: a deterministic rule may only select a canonical
+  // SNL row that states every identity explicitly stated by the BOQ.
+  const concreteFamily = baseTag === "PCC" || baseTag === "RCC";
+  const sourceGrade = concreteFamily
+    ? sourceText.match(/\bm\s*[- ]?\s*(\d{2,3})\b/)?.[1] ?? null
+    : null;
+  const sourceMix = concreteFamily
+    ? sourceText.match(/\b(1\s*:\s*\d+(?:\.\d+)?\s*:\s*\d+(?:\.\d+)?)\b/)?.[1]?.replace(/\s/g, "") ?? null
+    : null;
+  const sourceGrading = ["DBM", "BC", "SDBC"].includes(baseTag)
+    ? sourceText.match(/\bgrad(?:e|ing)[-\s]*(i{1,3}|iv|v|[1-5])\b/)?.[1]?.toLowerCase() ?? null
+    : null;
+
+  function roadAssetSubtype(text: string): string | null {
+    if (baseTag === "ROAD_STONES") {
+      if (/hecto(?:metre|meter)\s*stone|\bh\.?\s*m\.?\s*stone/.test(text)) return "hectometre";
+      if (/boundary\s*stone/.test(text)) return "boundary";
+      if (/(?:kilo(?:metre|meter)|\bkm)\s*stone/.test(text)) return "kilometre";
+    }
+    if (baseTag === "SIGNAGE") {
+      if (/cautionary|warning\s*sign/.test(text)) return "cautionary";
+      if (/mandatory|regulatory\s*sign/.test(text)) return "mandatory";
+      if (/informatory|information\s*(?:sign|board)/.test(text)) return "informatory";
+      if (/direction(?:al)?\s*(?:sign|board)|direction\s+and\s+place\s+identification/.test(text)) return "direction";
+    }
+    if (baseTag === "CRASH_BARRIER") {
+      if (/thrie[-\s]*beam/.test(text)) return "thrie-beam";
+      if (/\bw[-\s]*beam\b|metal\s*beam/.test(text)) return "w-beam";
+    }
+    return null;
+  }
+  const sourceSubtype = roadAssetSubtype(sourceText);
+  const sourceSignSize = baseTag === "SIGNAGE"
+    ? sourceText.match(/\b(\d{3,4})\s*[x×]\s*(\d{3,4})\s*mm\b/i)
+    : null;
+  const sourceSignArea = sourceSignSize
+    ? (Number(sourceSignSize[1]) * Number(sourceSignSize[2])) / 1_000_000
+    : null;
+  const desiredSignCode = baseTag === "SIGNAGE"
+    ? (sourceSubtype === "direction"
+      ? (sourceSignArea != null && sourceSignArea > 0.9 ? "8.6" : "8.5")
+      : "8.4")
+    : null;
+
   let bestId: number | null = null;
   let bestScore = 0;
+  let bestPrecedence = Number.NEGATIVE_INFINITY;
+  let bestCount = 0;
+
+  // Auditable authority order for road-project rules. MORTH is preferred to
+  // duplicate book imports; specialised ROAD/STRUCTURES books then precede
+  // fallback disciplines. Exact WP-01 pipe item codes remain identity vetoed
+  // before this precedence is considered.
+  const sourcePriority = (sourceCode: string | null | undefined): number => {
+    const code = String(sourceCode ?? "").toUpperCase();
+    if (code === "MORTH_SDB_2019") return 600;
+    if (code === "SDB_ROAD") return 500;
+    if (code === "SDB_STRUCTURES") return 450;
+    if (code === "SDB_IRRIGATION") return 300;
+    if (code === "SDB_GATES") return 200;
+    if (code === "SDB_MISCELLANEOUS") return 100;
+    return 0;
+  };
 
   for (const snl of snlRows) {
     const haystack = `${snl.description ?? ""} ${snl.shortLabel ?? ""}`.toLowerCase();
+    if (baseTag === "BC" && /\bsdbc\b|semi[-\s]*dense/.test(haystack)) continue;
+    if (baseTag === "SIGNAGE") {
+      const code = String(snl.itemCode ?? "").toLowerCase();
+      if (/gantry|construction\s+zone|variable\s+message/.test(haystack)) continue;
+      if (desiredSignCode && code && code !== desiredSignCode) continue;
+    }
     if (baseTag === "PIPE_CULVERT") {
       const candidateDiameter = haystack.match(/\b(\d{3,4})\s*mm\b/)?.[1] ?? null;
       const candidateClass = haystack.match(/\bnp[-\s]?([34])\b/)?.[1] ?? null;
@@ -422,39 +519,133 @@ export function ruleMatchSnl(
           : null;
       // Explicit BOQ pipe identity is a veto, not a soft preference: a 1000mm
       // NP4 line must never rule-map to the legacy 600mm NP3 norm.
-      if (sourcePipeDiameter && candidateDiameter && sourcePipeDiameter !== candidateDiameter) continue;
-      if (sourcePipeClass && candidateClass && sourcePipeClass !== candidateClass) continue;
-      if (sourceRowMode && candidateRowMode && sourceRowMode !== candidateRowMode) continue;
+      if (sourcePipeDiameter && candidateDiameter !== sourcePipeDiameter) continue;
+      if (sourcePipeClass && candidateClass !== sourcePipeClass) continue;
+      if (sourceRowMode && candidateRowMode !== sourceRowMode) continue;
+      if (!sourcePipeDiameter && candidateDiameter) continue;
+      if (!sourcePipeClass && candidateClass) continue;
+      if (!sourceRowMode && candidateRowMode) continue;
+    }
+    if (concreteFamily) {
+      const candidateGrade = haystack.match(/\bm\s*[- ]?\s*(\d{2,3})\b/)?.[1] ?? null;
+      const candidateMix = haystack.match(/\b(1\s*:\s*\d+(?:\.\d+)?\s*:\s*\d+(?:\.\d+)?)\b/)?.[1]?.replace(/\s/g, "") ?? null;
+      if (sourceGrade && candidateGrade !== sourceGrade) continue;
+      if (sourceMix && candidateMix !== sourceMix) continue;
+      // A bare "PCC" is not enough to choose among grade-specific norms.
+      if (!sourceGrade && !sourceMix && (candidateGrade || candidateMix)) continue;
+    }
+    if (sourceGrading) {
+      const candidateGrading = haystack.match(/\bgrad(?:e|ing)[-\s]*(i{1,3}|iv|v|[1-5])\b/)?.[1]?.toLowerCase() ?? null;
+      if (candidateGrading !== sourceGrading) continue;
+    } else if (["DBM", "BC", "SDBC"].includes(baseTag) &&
+      /\bgrad(?:e|ing)[-\s]*(?:i{1,3}|iv|v|[1-5])\b/.test(haystack)) {
+      continue;
+    }
+    const candidateSubtype = roadAssetSubtype(haystack);
+    const genericSignMaster = baseTag === "SIGNAGE" && candidateSubtype === null &&
+      /traffic\s*sign|retro[-\s]*reflectori[sz]ed\s*.*sign/.test(haystack);
+    if (sourceSubtype && candidateSubtype !== sourceSubtype && !genericSignMaster) continue;
+    if (!sourceSubtype && candidateSubtype) continue;
+    if (baseTag === "SIGNAGE" && sourceSignArea != null) {
+      if (/(?:more|greater)\s+than\s+0?\.9\s*sqm/.test(haystack) && sourceSignArea <= 0.9) continue;
+      if (/(?:up\s*to|upto)\s+0?\.9\s*sqm/.test(haystack) && sourceSignArea > 0.9) continue;
     }
     let score = 0;
     for (const kw of keywords) {
       if (haystack.includes(kw)) score += 1;
     }
     if (score === 0) continue;
-    if (grade && haystack.includes(grade)) score += 2;
-    else if (grade) score -= 0.5; // mild penalty for wrong grade match
+    // Synonym count is not stronger identity evidence: incidental prose often
+    // repeats several family words. Canonical-label/source precedence below
+    // chooses among standard duplicate identities.
+    score = 1;
+    if (baseTag === "PIPE_CULVERT" && /approach\s*slab/.test(haystack) && !/approach\s*slab/.test(sourceText)) continue;
+    if (concreteFamily && /approach\s*slab/.test(haystack) && !/approach\s*slab/.test(sourceText)) continue;
+    if (grade && new RegExp(`\\bm[- ]?${grade.slice(1)}\\b`).test(haystack)) score += 2;
+    else if (grade) continue;
     if (baseTag === "PIPE_CULVERT") {
       if (sourcePipeDiameter && haystack.includes(`${sourcePipeDiameter}mm`)) score += 4;
       if (sourcePipeClass && new RegExp(`\\bnp[-\\s]?${sourcePipeClass}\\b`).test(haystack)) score += 3;
       if (sourceRowMode && haystack.includes(`${sourceRowMode} row`)) score += 2;
     }
 
-    if (score > bestScore) { bestScore = score; bestId = snl.id; }
+    const sourceRank = sourcePriority(snl.sourceCode);
+    const label = String(snl.shortLabel ?? "").toLowerCase();
+    const labelKeywordHits = keywords.filter(kw => label.includes(kw)).length;
+    const exactCanonicalLabel = keywords.some(kw => label.trim() === kw) ? 50 : 0;
+    const subtypeRank = sourceSubtype && candidateSubtype === sourceSubtype ? 100 : 0;
+    const standardCodeRank =
+      baseTag === "SIGNAGE" && String(snl.itemCode ?? "").toLowerCase() === "8.4" ? 30
+        : baseTag === "WMM" && String(snl.itemCode ?? "").toLowerCase() === "4.14" ? 100
+          : baseTag === "DBM" && String(snl.itemCode ?? "").toLowerCase() === "5.04b" ? 100
+          : 0;
+    // Prefer an item code explicitly cited in BOQ prose after source authority.
+    const compactSource = sourceText.replace(/\s/g, "").toLowerCase();
+    const compactCode = String(snl.itemCode ?? "").replace(/\s/g, "").toLowerCase();
+    const explicitCodeRank = compactCode && compactSource.includes(compactCode) ? 10 : 0;
+    const precedence = sourceRank + subtypeRank + standardCodeRank +
+      exactCanonicalLabel + labelKeywordHits * 20 + explicitCodeRank;
+    if (score > bestScore || (score === bestScore && precedence > bestPrecedence)) {
+      bestScore = score;
+      bestPrecedence = precedence;
+      bestId = snl.id;
+      bestCount = 1;
+    } else if (score === bestScore && precedence === bestPrecedence) {
+      bestCount++;
+    }
   }
 
-  return bestId === null ? null : { snlItemId: bestId, confidence: 0.82 };
+  // Equal evidence for two compatible rows is ambiguity, not determinism.
+  return bestId === null || bestCount !== 1 ? null : { snlItemId: bestId, confidence: 0.82 };
 }
 
 /**
- * Normalise a BOQ description to a stable deduplication key.
- * Strips numbers, collapses whitespace, appends unit.
+ * Conservative duplicate-propagation signature.  Unlike the former
+ * description key, it deliberately retains every number: stripping numbers
+ * made "NP3 600mm" and "NP4 1000mm", or PCC M10 and M15, look alike.
+ *
+ * The complete normalised description is retained in addition to the explicit
+ * identity fields. This intentionally sacrifices convenience for safety:
+ * recipe/mapping propagation is only for actual textual duplicates, never
+ * merely similar work descriptions.
  */
-function normaliseBoqDescriptionKey(desc: string, unit?: string | null): string {
-  return `${String(desc ?? "")
-    .toLowerCase()
-    .replace(/[0-9]+(\.[0-9]+)?/g, "#")
-    .replace(/\s+/g, " ")
-    .trim()}|${String(unit ?? "").toLowerCase()}`;
+export function boqIdentitySignature(desc: string, unit?: string | null): string {
+  const d = String(desc ?? "").toLowerCase();
+  const normalisedDescription = d.replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+  const tag = classifyBoqItemForSnl(d) ?? "UNCLASSIFIED";
+  const pipe = [
+    d.match(/\b(\d{3,4})\s*mm\b/)?.[1] ?? "-",
+    d.match(/\bnp[-\s]?([234])\b/)?.[1] ?? "-",
+    /\bdouble\s+row\b|\b2\s*v\b|\btwo\s+vents?\b/.test(d) ? "double"
+      : /\bsingle\s+row\b|\b1\s*v\b|\bone\s+vent\b/.test(d) ? "single" : "-",
+  ].join(":");
+  const concrete = [
+    d.match(/\bm\s*[- ]?\s*(\d{2,3})\b/)?.[1] ?? "-",
+    d.match(/\b(1\s*:\s*\d+(?:\.\d+)?\s*:\s*\d+(?:\.\d+)?)\b/)?.[1]?.replace(/\s/g, "") ?? "-",
+  ].join(":");
+  const bituminousGrading = d.match(/\bgrad(?:e|ing)[-\s]*(i{1,3}|iv|v|[1-5])\b/)?.[1] ?? "-";
+  const assetSubtype =
+    /hecto(?:metre|meter)\s*stone|\bh\.?\s*m\.?\s*stone/.test(d) ? "hectometre-stone"
+      : /boundary\s*stone/.test(d) ? "boundary-stone"
+      : /(?:kilo(?:metre|meter)|\bkm)\s*stone/.test(d) ? "kilometre-stone"
+      : /cautionary|warning\s*sign/.test(d) ? "cautionary-sign"
+      : /mandatory|regulatory\s*sign/.test(d) ? "mandatory-sign"
+      : /informatory|information\s*(?:sign|board)/.test(d) ? "informatory-sign"
+      : /direction(?:al)?\s*(?:sign|board)/.test(d) ? "direction-sign"
+      : /thrie[-\s]*beam/.test(d) ? "thrie-beam"
+      : /\bw[-\s]*beam\b|metal\s*beam/.test(d) ? "w-beam" : "-";
+  return [tag, normalizeUnit(unit ?? ""), pipe, concrete, bituminousGrading, assetSubtype, normalisedDescription].join("|");
+}
+
+/** Only an already deterministic automatic result may be copied to an exact duplicate. */
+export function canPropagateDuplicateMapping(
+  source: { description: string; unit: string | null; mappedBy: string | null; isAutoMapped: boolean; confidenceScore: number | null },
+  target: { description: string; unit: string | null },
+): boolean {
+  const deterministicSource = source.isAutoMapped &&
+    (source.mappedBy === "rule" || (source.mappedBy === "auto" && Number(source.confidenceScore) === 1));
+  return deterministicSource &&
+    boqIdentitySignature(source.description, source.unit) === boqIdentitySignature(target.description, target.unit);
 }
 
 // ─── Composite item detection ─────────────────────────────────────────────────
@@ -591,8 +782,10 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       unit: snlItems.unit,
       workCategory: snlItems.workCategory,
       sector: snlItems.sector,
+      sourceCode: snlSources.code,
     })
     .from(snlItems)
+    .innerJoin(snlSources, eq(snlItems.sourceId, snlSources.id))
     .where(eq(snlItems.isActive, true));
 
   if (snlRows.length === 0) {
@@ -671,9 +864,10 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       // a filter (Cum) item to premix surfacing (SQM). Bill numbers go to semantic scoring.
       const explicitCode = (boqRow.snlCode ?? "").trim().toLowerCase();
       if (explicitCode) {
-        const directSnl = snlRows.find(
+        const directMatches = snlRows.filter(
           (s) => s.itemCode.trim().toLowerCase() === explicitCode,
         );
+        const directSnl = directMatches.length === 1 ? directMatches[0] : null;
         if (directSnl && unitsCompatible(boqRow.unit, directSnl.unit)) {
           await db
             .insert(snlBoqMappings)
@@ -715,12 +909,11 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       }
 
       // ── 1. Rule-based pre-match (after explicit SNL-code, before fuzzy) ───
-      // Filter to road/structure sector items first so rule keywords never match
-      // cross-sector (e.g. irrigation) items. Fall back to full corpus only if no
-      // road-compatible items exist in the loaded SDB data.
+      // Rule mapping is stricter than suggestion scoring: only primary-sector
+      // identities participate. Secondary/unknown-sector rows remain eligible
+      // for the fuzzy review path but are never recipe-applied as deterministic.
       if (ruleTag) {
-        const allowedRows = snlRows.filter(s => getSectorMultiplier(boqCategory, s.sector) > 0);
-        const ruleSearchPool = allowedRows.length >= 5 ? allowedRows : snlRows;
+        const ruleSearchPool = snlRows.filter(s => isPrimaryRuleCandidate(boqCategory, s));
         const ruleResult = ruleMatchSnl(
           ruleTag,
           ruleSearchPool,
@@ -925,9 +1118,9 @@ export async function remapBoqProject(boqProjectId: number): Promise<{ remapped:
 
 /**
  * After auto-mapping, propagate a confident mapping to all other BOQ items in the
- * same project that share the same normalised description+unit key.
- * Prevents repeated confirmation clicks for identical rows (e.g. repeated
- * reinforcement tiers, repeated concrete grades, repeated kilometre-stone rows).
+ * same project that have the exact identity signature. Only already
+ * deterministic automatic mappings can be copied; manual/fuzzy mappings and
+ * identity-ambiguous rows remain review work.
  */
 async function propagateDuplicateMappings(boqProjectId: number): Promise<{ propagated: number }> {
   const allItems = await db
@@ -947,16 +1140,19 @@ async function propagateDuplicateMappings(boqProjectId: number): Promise<{ propa
       boqItemId: snlBoqMappings.boqItemId,
       snlItemId: snlBoqMappings.snlItemId,
       confidenceScore: snlBoqMappings.confidenceScore,
+      mappedBy: snlBoqMappings.mappedBy,
+      isAutoMapped: snlBoqMappings.isAutoMapped,
     })
     .from(snlBoqMappings)
     .where(inArray(snlBoqMappings.boqItemId, allItems.map(i => i.id)));
 
   const mappingByItemId = new Map(allMappings.map(m => [m.boqItemId, m]));
 
-  // Group by stable key
+  // Group by an exact identity signature.  Never erase numerical identity
+  // attributes here: pipe, concrete and grading variants must not coalesce.
   const groups = new Map<string, typeof allItems>();
   for (const item of allItems) {
-    const key = normaliseBoqDescriptionKey(item.description, item.unit);
+    const key = boqIdentitySignature(item.description, item.unit);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(item);
   }
@@ -966,13 +1162,30 @@ async function propagateDuplicateMappings(boqProjectId: number): Promise<{ propa
   for (const [, group] of groups) {
     if (group.length < 2) continue;
     // Find a mapped source item for this group
-    const source = group.find(i => i.mappingStatus === "mapped" && mappingByItemId.has(i.id));
+    const source = group.find(i => {
+      const mapping = mappingByItemId.get(i.id);
+      return i.mappingStatus === "mapped" && mapping != null &&
+        canPropagateDuplicateMapping({
+          description: i.description,
+          unit: i.unit,
+          mappedBy: mapping.mappedBy,
+          isAutoMapped: mapping.isAutoMapped,
+          confidenceScore: mapping.confidenceScore,
+        }, { description: i.description, unit: i.unit });
+    });
     if (!source) continue;
     const srcMapping = mappingByItemId.get(source.id)!;
 
     for (const item of group) {
       if (item.id === source.id) continue;
       if (item.mappingStatus === "mapped") continue;
+      if (!canPropagateDuplicateMapping({
+        description: source.description,
+        unit: source.unit,
+        mappedBy: srcMapping.mappedBy,
+        isAutoMapped: srcMapping.isAutoMapped,
+        confidenceScore: srcMapping.confidenceScore,
+      }, { description: item.description, unit: item.unit })) continue;
       try {
         await db
           .insert(snlBoqMappings)
@@ -1139,8 +1352,10 @@ export async function backfillCompositeDetection(): Promise<{ promoted: number }
       unit: snlItems.unit,
       workCategory: snlItems.workCategory,
       sector: snlItems.sector,
+      sourceCode: snlSources.code,
     })
     .from(snlItems)
+    .innerJoin(snlSources, eq(snlItems.sourceId, snlSources.id))
     .where(eq(snlItems.isActive, true));
 
   const roadCompatibleRows = snlRows.filter(s => isRoadOrStructureSector(s.sector));
