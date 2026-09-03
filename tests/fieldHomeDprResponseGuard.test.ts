@@ -22,4 +22,14 @@ describe("FieldHome DPR response reliability", () => {
     expect(ensureIndex).toBeLessThan(routesIndex);
     expect(routesIndex).toBeLessThan(listenIndex);
   });
+
+  it("shows the real trip UOM and keeps mixed units separate", () => {
+    const source = fs.readFileSync("client/src/pages/FieldHome.tsx", "utf8");
+    expect(source).toContain("tripTotalsByUom");
+    expect(source).toContain("trip.uom");
+    expect(source).toContain("tripQuantityLabel");
+    expect(source).toContain('.join(" + ")');
+    expect(source).not.toContain("tripQty.toLocaleString");
+    expect(source).not.toContain("} MT`");
+  });
 });

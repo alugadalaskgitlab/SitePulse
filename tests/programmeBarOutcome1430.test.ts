@@ -95,6 +95,9 @@ describe("Task 1430 programme-bar outcome contract", () => {
     expect(picker).not.toContain("Record outcome");
     expect(picker).toContain("<details");
     expect(picker).toContain("Immutable outcome history");
+    expect(picker).toContain("selected.arrangement.status");
+    expect(picker).toContain('["approved", "mobilisation_pending", "in_progress"]');
+    expect(picker).not.toContain(' : "Active / Arranged"');
     expect(control).toContain('["active_arranged", "Active / Arranged"]');
     expect(control).toContain('["executed", "Executed"]');
     for (const outcome of PROGRAMME_BAR_OUTCOMES) expect(control).toContain(`["${outcome}",`);
@@ -103,6 +106,15 @@ describe("Task 1430 programme-bar outcome contract", () => {
     expect(report).toContain("<ProgrammeBarOutcomeHistory");
     expect(history).toContain("Outcome history");
     expect(history).not.toContain("apiRequest");
+  });
+
+  it("projects the real arrangement status into the DPR programme-bar picker", () => {
+    const routes = readFileSync("server/routes.ts", "utf8");
+    const projection = routes.slice(
+      routes.indexOf("arrangement: arr ? {"),
+      routes.indexOf("latestOutcome:", routes.indexOf("arrangement: arr ? {")),
+    );
+    expect(projection).toContain("status: (arr as any).status ?? null");
   });
 
   it("renders the four DPR activity blocks in identity/status/material/resources order", () => {

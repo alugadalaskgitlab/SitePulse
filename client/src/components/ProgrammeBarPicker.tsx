@@ -44,7 +44,7 @@ export type PickerBar = {
     rhsFraction: number;
     fullyCovered: boolean;
   } | null;
-  arrangement: { id: number; mode: string | null; agency: string | null } | null;
+  arrangement: { id: number; mode: string | null; agency: string | null; status: string | null } | null;
   latestOutcome?: ProgrammeBarOutcome | null;
   outcomeHistory?: ProgrammeBarOutcome[];
 };
@@ -274,15 +274,20 @@ export function ProgrammeBarPicker({
           {" "}— use “Change planned reach” if this isn't right.
         </p>
       )}
-       {selected && (
+       {selected?.arrangement && ["approved", "mobilisation_pending", "in_progress"].includes(String(selected.arrangement.status ?? "").toLowerCase()) && (
          <details className="rounded border border-muted px-2 py-1 text-[10px]" data-testid={`${testidPrefix}-outcome-context`}>
            <summary className="cursor-pointer font-medium" data-testid={`${testidPrefix}-outcome-summary`}>
-             Execution Arrangement: {selected.latestOutcome ? `${label(selected.latestOutcome.outcome)} on ${selected.latestOutcome.eventDate}` : "Active / Arranged"}
+             Execution Arrangement: {label(selected.arrangement.status ?? "")}
            </summary>
            <div className="pt-1 text-muted-foreground">
              Planned {selected.startDate || "unscheduled"}{selected.endDate ? ` → ${selected.endDate}` : ""}
              {selected.arrangement ? ` · Arrangement #${selected.arrangement.id}${selected.arrangement.agency ? ` · ${selected.arrangement.agency}` : ""}` : ""}
            </div>
+           {selected.latestOutcome && (
+             <p className="mt-1 text-muted-foreground">
+               Latest outcome: {label(selected.latestOutcome.outcome)} on {selected.latestOutcome.eventDate}
+             </p>
+           )}
            {selected.outcomeHistory?.length ? (
              <div className="mt-1 space-y-0.5" data-testid={`${testidPrefix}-outcome-history`}>
                <p className="font-semibold">Immutable outcome history ({selected.outcomeHistory.length})</p>

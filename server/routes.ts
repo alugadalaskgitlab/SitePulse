@@ -14506,6 +14506,7 @@ export async function registerRoutes(
             id: arr.id,
             mode: (arr as any).arrangementType ?? (arr as any).mode ?? null,
             agency: (arr as any).agencyName ?? (arr as any).partyName ?? null,
+            status: (arr as any).status ?? null,
           } : null,
            latestOutcome: outcomesByBar.get(b.id)?.[0] ?? null,
            outcomeHistory: outcomesByBar.get(b.id) ?? [],

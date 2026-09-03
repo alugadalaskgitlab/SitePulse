@@ -37,7 +37,7 @@ import {
   resolveReusedExcavationSourceContexts,
   reusedExcavationConfigurationIssue,
   resolveApplicableArrangements,
-  resolveRequiredToday,
+  resolveArrangementPlannedDailyOutput,
   COMPARISON_BASES_DIFFER,
   type ArrangementBarAllocation,
   type SuggestableTrip,
@@ -45,6 +45,7 @@ import {
 import { findDailyFulfilmentForItem, fulfilmentLabel } from "@shared/requirementFulfilment";
 
 const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
+const ACTIVE_ARRANGEMENT_STATUSES = new Set(["approved", "mobilisation_pending", "in_progress"]);
 
 interface ArrangementRow {
   id: number;
@@ -59,6 +60,7 @@ interface ArrangementRow {
   uom?: string | null;
   agreedRate?: number | null;
   allocatedQty?: number | null;
+  plannedDailyOutput?: number | null;
   sourceExcavationBoqItemId?: number | null;
   sourceExcavationBoqItemLabel?: string | null;
   destinationBoqItemLabels?: string[] | null;
@@ -75,6 +77,7 @@ const ARRANGEMENT_TYPE_LABELS: Record<string, string> = {
   agency_supplied_material: "Agency Supplied Material",
   full_outsourced: "Fully Outsourced",
   client_supplied: "Client Supplied",
+  hlc_in_house: "HLC — In-house / Self Execution",
 };
 function arrangementTypeLabel(type: string | null | undefined): string {
   if (!type) return "Arrangement";
@@ -183,12 +186,17 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     [arrangements, boqItemId],
   );
   const validSourceReuseContexts = useMemo(
-    () => sourceReuseContexts.filter((candidate) => reusedExcavationConfigurationIssue(candidate) == null),
+    () => sourceReuseContexts.filter(
+      (candidate) =>
+        ACTIVE_ARRANGEMENT_STATUSES.has(String(candidate.status).toLowerCase()) &&
+        reusedExcavationConfigurationIssue(candidate) == null,
+    ),
     [sourceReuseContexts],
   );
   const invalidReuseArrangement = useMemo(
     () => arrangements.find(
       (candidate) =>
+        ACTIVE_ARRANGEMENT_STATUSES.has(String(candidate.status).toLowerCase()) &&
         reusedExcavationConfigurationIssue(candidate) != null &&
         arrangementCoveredBoqItemIds(candidate).includes(boqItemId),
     ) ?? null,
@@ -222,7 +230,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
   // below reports the configuration warning without rewriting the row.
   const persistedArrangement =
     persistedArrangementCandidate != null &&
-    !["cancelled", "rejected"].includes(String(persistedArrangementCandidate.status).toLowerCase()) &&
+    ACTIVE_ARRANGEMENT_STATUSES.has(String(persistedArrangementCandidate.status).toLowerCase()) &&
     reusedExcavationConfigurationIssue(persistedArrangementCandidate) == null
       ? persistedArrangementCandidate
       : null;
@@ -240,23 +248,6 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     if (arrangement?.id != null) onArrangementResolved(arrangement.id);
   }, [arrangement?.id, props.persistedArrangementId, onArrangementResolved]);
   const relevance = receiptRelevanceForType(arrangement?.arrangementType);
-  // 06T §3: arrangements that cover this item but are stuck before approval —
-  // the message must say "awaiting approval", not "nothing set up".
-  const pendingApprovalArrangement = useMemo(
-    () =>
-      arrangement == null
-        ? arrangements.find(
-            (a) =>
-              a.boqProjectId === boqProjectId &&
-              // 06T-HF §4: ONLY genuinely pre-approval states — never show
-              // "awaiting approval" for anything else.
-              ["draft", "submitted"].includes(a.status) &&
-              (a.boqItemId === boqItemId ||
-                (Array.isArray(a.boqItemAllocations) && a.boqItemAllocations.some((al) => Number(al?.boqItemId) === boqItemId))),
-          ) ?? null
-        : null,
-    [arrangement, arrangements, boqProjectId, boqItemId],
-  );
   const externalReceiptsBlocked = useMemo(
     () => blocksExternalReceiptsForBoqItem(arrangements, boqItemId),
     [arrangements, boqItemId],
@@ -304,31 +295,22 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     materialHints: [props.activityMaterialHint],
   };
   const linkedTrips = useMemo(
-    () => dayTrips.filter((t) => classifyReceiptMatch(t as unknown as SuggestableTrip, ctx) === "linked"),
+    () => arrangement
+      ? dayTrips.filter((t) => classifyReceiptMatch(t as unknown as SuggestableTrip, ctx) === "linked")
+      : [],
     [dayTrips, siteName, date, boqItemId, programmeBarId, arrangement?.id],
   );
   const suggestedTrips = useMemo(
-    () => externalReceiptsBlocked
+    () => externalReceiptsBlocked || !arrangement
       ? []
       : dayTrips.filter((t) => classifyReceiptMatch(t as unknown as SuggestableTrip, ctx) === "suggested"),
     [dayTrips, siteName, date, boqItemId, programmeBarId, arrangement?.id, arrangement?.materialLabel, externalReceiptsBlocked],
   );
 
-  // Required today — approved priority. Only an arrangement bar allocation
-  // qualifies as an authoritative planned requirement here; a multi-day bar
-  // total is context, never divided by days.
-  const barAllocation = useMemo(
-    () =>
-      arrangement && programmeBarId != null
-        ? allocations.find((al) => al.arrangementId === arrangement.id && al.programmeBarId === programmeBarId) ?? null
-        : null,
-    [allocations, arrangement, programmeBarId],
-  );
-  const required = resolveRequiredToday({
-    arrangementAllocationQty: barAllocation?.allocatedQty ?? null,
-    dayProgrammeQty: props.dayProgrammeQty ?? null,
-    bomRequirementQty: props.bomRequirementQty ?? null,
-    uom: arrangement?.uom ?? null,
+  const required = resolveArrangementPlannedDailyOutput({
+    plannedDailyOutput: arrangement?.plannedDailyOutput ?? null,
+    arrangementUom: arrangement?.uom ?? null,
+    boqUom: props.executedUom ?? null,
   });
   const received = useMemo(() => aggregateReceived(linkedTrips), [linkedTrips]);
 
@@ -460,7 +442,6 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     !arrangement &&
     !dailyOverride &&
     !resolution.requiresSelection &&
-    pendingApprovalArrangement == null &&
     invalidReuseArrangement == null &&
     linkedTrips.length === 0 &&
     suggestedTrips.length === 0
@@ -512,11 +493,6 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
           <p className="text-xs text-amber-700 dark:text-amber-400" data-testid={`${testIdPrefix}-reuse-configuration-warning`}>
             Reuse arrangement #{invalidReuseArrangement.id}: {reusedExcavationConfigurationIssue(invalidReuseArrangement)} Status: {invalidReuseArrangement.status}.
           </p>
-        ) : pendingApprovalArrangement ? (
-          <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`${testIdPrefix}-arrangement-pending-approval`}>
-            An arrangement exists for this stretch{pendingApprovalArrangement.agencyName ? ` (${pendingApprovalArrangement.agencyName}${pendingApprovalArrangement.materialLabel ? ` · ${pendingApprovalArrangement.materialLabel}` : ""})` : ""} but is
-            {" "}{pendingApprovalArrangement.status === "draft" ? "still a draft" : "awaiting approval"}.
-          </p>
         ) : (
           <p className="text-xs text-muted-foreground" data-testid={`${testIdPrefix}-arrangement-unset`}>
             Execution arrangement not linked to this activity.
@@ -537,7 +513,9 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
             <SelectContent>
               {resolution.applicable.map((a) => (
                 <SelectItem key={a.id} value={String(a.id)}>
-                  {a.agencyName || `Arrangement #${a.id}`} — {a.materialLabel}
+                  {a.arrangementType === "hlc_in_house"
+                    ? "HLC — In-house / Self Execution"
+                    : `${a.agencyName || `Arrangement #${a.id}`} — ${a.materialLabel ?? "Material"}`}
                 </SelectItem>
               ))}
             </SelectContent>

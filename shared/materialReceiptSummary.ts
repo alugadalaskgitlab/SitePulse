@@ -303,6 +303,7 @@ export function resolveApplicableArrangements<T extends ApplicableArrangementInp
 // ---------- Required Today ----------
 
 export type RequiredSource =
+  | "arrangement_planned_daily_output"
   | "arrangement_allocation"
   | "day_programme"
   | "bom_requirement"
@@ -345,6 +346,35 @@ export function resolveRequiredToday(input: RequiredTodayInput): RequiredTodayRe
       requiredSource: "not_determined",
     }
   );
+}
+
+/** ARR-02: the DPR daily target comes only from the selected arrangement's
+ * explicit planned output. It never falls back to bar/programme/BOM figures. */
+export function resolveArrangementPlannedDailyOutput(input: {
+  plannedDailyOutput?: number | null;
+  arrangementUom?: string | null;
+  boqUom?: string | null;
+}): RequiredTodayResult {
+  const planned = Number(input.plannedDailyOutput);
+  if (!Number.isFinite(planned) || planned <= 0 || !input.boqUom) {
+    return {
+      requiredQty: null,
+      requiredUom: input.boqUom ?? null,
+      requiredSource: "not_determined",
+    };
+  }
+  const converted = convertReceiptVolumeQty(planned, input.arrangementUom, input.boqUom);
+  return converted == null
+    ? {
+        requiredQty: null,
+        requiredUom: input.boqUom,
+        requiredSource: "not_determined",
+      }
+    : {
+        requiredQty: converted,
+        requiredUom: input.boqUom,
+        requiredSource: "arrangement_planned_daily_output",
+      };
 }
 
 // ---------- Received aggregation ----------
@@ -613,12 +643,7 @@ export function classifyReceiptMatch(trip: SuggestableTrip, ctx: ReceiptMatchCon
     trip.boqItemId === ctx.boqItemId &&
     ctx.programmeBarId != null &&
     trip.programmeBarId === ctx.programmeBarId;
-  const itemOnlyLinked =
-    ctx.boqItemId != null &&
-    trip.boqItemId === ctx.boqItemId &&
-    ctx.programmeBarId == null &&
-    trip.programmeBarId == null;
-  const idLinked = arrangementLinked || exactBarLinked || itemOnlyLinked;
+  const idLinked = arrangementLinked || exactBarLinked;
   if (idLinked) return "linked";
   // 06T §4: suggestions consider the arrangement label AND caller-provided
   // hints (BOQ item name), with tolerant matching — still confirmation-only,

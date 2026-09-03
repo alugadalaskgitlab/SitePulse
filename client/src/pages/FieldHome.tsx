@@ -1120,7 +1120,15 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
     t => normSite(t.site ?? "") === currentSiteName
   );
   const tripCount = siteTrips.length;
-  const tripQty   = siteTrips.reduce((sum, t) => sum + (Number(t.quantity) || 0), 0);
+  const tripTotalsByUom = siteTrips.reduce<Map<string, number>>((totals, trip) => {
+    const uom = String(trip.uom ?? "").trim() || "unit";
+    totals.set(uom, (totals.get(uom) ?? 0) + (Number(trip.quantity) || 0));
+    return totals;
+  }, new Map<string, number>());
+  const tripQuantityLabel = Array.from(tripTotalsByUom.entries())
+    .filter(([, quantity]) => quantity > 0)
+    .map(([uom, quantity]) => `${quantity.toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${uom}`)
+    .join(" + ");
 
   // Immediate requirements: live allocation status from today's site requirements
   const todaySiteReqs = (todayReqs as any[]).filter(
@@ -1575,7 +1583,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
                         ) : (
                           <p className="text-xs text-gray-500 mt-0.5">
                             {tripCount} trip{tripCount !== 1 ? "s" : ""}
-                            {tripQty > 0 && ` · ${tripQty.toLocaleString("en-IN", { maximumFractionDigits: 2 })} MT`}
+                            {tripQuantityLabel && ` · ${tripQuantityLabel}`}
                           </p>
                         )}
                       </div>

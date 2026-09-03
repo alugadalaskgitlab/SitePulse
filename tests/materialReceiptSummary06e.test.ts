@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ActivityReceiptStrip } from "../client/src/components/ActivityReceiptStrip";
 import {
   resolveApplicableArrangements,
+  resolveArrangementPlannedDailyOutput,
   resolveRequiredToday,
   aggregateReceived,
   buildReceiptComparison,
@@ -274,6 +275,52 @@ describe("06E Required Today priority (approved correction — NO prorating)", (
   it("zero/negative/NaN quantities are not authoritative", () => {
     expect(resolveRequiredToday({ arrangementAllocationQty: 0, uom: "Cum" }).requiredSource).toBe("not_determined");
     expect(resolveRequiredToday({ arrangementAllocationQty: NaN, dayProgrammeQty: 5, uom: "Cum" }).requiredSource).toBe("day_programme");
+  });
+});
+
+describe("ARR-02 Required Today uses only arrangement planned daily output", () => {
+  it.each(["vendor_material_delivered", "hlc_in_house"])(
+    "converts planned daily output to the BOQ unit for %s",
+    () => {
+      expect(resolveArrangementPlannedDailyOutput({
+        plannedDailyOutput: 6_300,
+        arrangementUom: "CFT",
+        boqUom: "Cum",
+      })).toEqual({
+        requiredQty: 178.396,
+        requiredUom: "Cum",
+        requiredSource: "arrangement_planned_daily_output",
+      });
+    },
+  );
+
+  it("shows Not determined instead of inventing a fallback", () => {
+    expect(resolveArrangementPlannedDailyOutput({
+      plannedDailyOutput: null,
+      arrangementUom: "Cum",
+      boqUom: "Cum",
+    }).requiredSource).toBe("not_determined");
+    expect(resolveArrangementPlannedDailyOutput({
+      plannedDailyOutput: 10,
+      arrangementUom: "MT",
+      boqUom: "Cum",
+    }).requiredSource).toBe("not_determined");
+  });
+
+  it("wires the strip to plannedDailyOutput without allocation/programme/BOM fallbacks", async () => {
+    const source = await (await import("node:fs/promises")).readFile(
+      "client/src/components/ActivityReceiptStrip.tsx",
+      "utf8",
+    );
+    const requiredBlock = source.slice(
+      source.indexOf("const required = resolveArrangementPlannedDailyOutput"),
+      source.indexOf("const received =", source.indexOf("const required = resolveArrangementPlannedDailyOutput")),
+    );
+    expect(requiredBlock).toContain("arrangement?.plannedDailyOutput");
+    expect(requiredBlock).toContain("boqUom: props.executedUom");
+    expect(requiredBlock).not.toContain("allocatedQty");
+    expect(requiredBlock).not.toContain("dayProgrammeQty");
+    expect(requiredBlock).not.toContain("bomRequirementQty");
   });
 });
 

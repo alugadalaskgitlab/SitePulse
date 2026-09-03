@@ -1,0 +1,89 @@
+INSTRUCTION ARR-02: Fix arrangement current-status display, and add explicit execution-arrangement linkage to Material Trip and DPR Activity Progress
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. If you notice something else broken while doing this, write it down in your report and WAIT for instructions. Do not touch Vendor Billing, diesel, stock logic, Work Programme/BOQ mapping, or programme generation. Do not publish automatically. STOP after this fix and report back.
+
+This instruction replaces and supersedes the earlier draft "INSTRUCTION_DPR-01_Stale_Arrangement_and_Receipt_Comparison.txt" — that one was not sent and should be discarded. Everything in it is covered here, more completely.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+- `earthworkArrangements.status` is a plain, directly-updated field (draft/submitted/approved/mobilisation_pending/in_progress/on_hold/completed/returned/rejected/cancelled) — it is not derived from an event log. The status-transition endpoint (`PATCH /api/earthwork-arrangements/:id`) updates it correctly and does invalidate the client's arrangement queries on save.
+- A first bug was already fixed in a prior change: the "Material receipt" card (`client/src/components/ActivityReceiptStrip.tsx`) now correctly checks arrangement status before treating a persisted arrangement id as current. Leave that fix as-is.
+- A SECOND, separate bug is confirmed and still unfixed: on the same Guided DPR activity screen, a different component (`client/src/components/ProgrammeBarPicker.tsx`, the "Execution Arrangement" disclosure panel around lines 277-292) prints the literal header text "Active / Arranged" unconditionally whenever no outcome event has been logged for the bar — it never checks the arrangement's status at all, cancelled or not. This is why the same screen can show "not linked" in one card and "Active / Arranged" in another for the very same cancelled arrangement. Fix this the same way as the first bug: the header must reflect the arrangement's real current status, not a hardcoded default.
+- Confirmed already in the schema, so no new schema should be needed for most of this instruction:
+  - `siteMaterialTrips` (Material Trip table) already has nullable `boqProjectId`, `boqItemId`, `programmeBarId`, and `earthworkArrangementId` columns (app-level linkage, no DB-level FK by design). These are largely unused by the trip-entry form today.
+  - `earthworkArrangements.arrangementType` already supports a value `"hlc_in_house"` — HLC self-execution is already a first-class arrangement type in the data model, not something to invent.
+
+PART 1 — STOP SHOWING NON-ACTIVE ARRANGEMENTS AT ALL
+Simplified decision: do not try to explain or label a cancelled/on-hold/suspended/rejected arrangement in place. If an arrangement is not in an active, currently-selectable state (approved / mobilisation_pending / in_progress), it must simply not be shown as "the arrangement" for that row — no note, no "was cancelled" message, no commentary. It just doesn't appear. Once Part 2/4's explicit dropdown ships, the real source of truth for "who executed this work" becomes the engineer's own selection saved on the DPR (see Part 4a) — the app does not need to narrate arrangement history on this screen.
+
+1. Fix `ProgrammeBarPicker.tsx`'s "Execution Arrangement" header (see Background) so it stops unconditionally printing "Active / Arranged" and instead reflects whether a genuinely active arrangement exists — showing nothing/no arrangement line at all when it does not, consistent with the rule above.
+2. Check every other place in the app that displays an arrangement's current status — the Execution Arrangement screen, arrangement status cards, programme bar arrangement/history views, and any other DPR/programme reference — and confirm each one either shows the real current status or shows nothing at all for a non-active arrangement. Do not assume this is only wrong in the two places already found; verify each one and report what you found.
+3. Do not change how a still-active (approved/mobilisation_pending/in_progress) arrangement is displayed. Do not change the underlying status-transition endpoint. Do not touch the append-only `revisionHistory` or `programme_bar_outcome_events` audit models — leave them exactly as they are; this fix is about which status is read and shown, not about how status changes are recorded.
+
+Test A: An arrangement with status "Approved" or "In Progress" is changed to "Cancelled". Reload every screen listed in point 3. All of them must show "Cancelled" as the current status, with the prior status still visible in history where history is already shown. No screen may keep showing the arrangement as active.
+
+PART 2 — MATERIAL TRIP: ADD AN EXPLICIT EXECUTION ARRANGEMENT DROPDOWN
+1. On the Log Material Trip form, after Project and BOQ Item are selected, show an "Execution Arrangement" field.
+2. Populate its options only with arrangements valid for the selected project + BOQ item + reach/chainage/context — never show arrangements belonging to a different BOQ item or reach. Example options for a given item/reach:
+   - Narasimulu — Borrow Earth — Ch. 2.500–3.800
+   - ABC Contractor — Borrow Earth — Ch. 1.250–2.100
+   - HLC — In-house / Self Execution
+3. "HLC — In-house / Self Execution" must use the existing `arrangementType = "hlc_in_house"` concept — do not create a fake vendor record to represent it. If you find the existing architecture does not fully support selecting it in this context, report the minimum change required and stop before adding any new schema.
+4. Prefill logic: if exactly one valid arrangement exists for the selected BOQ item/reach, preselect it. If more than one exists, require the user to choose — do not guess. If none exists, allow the trip to remain unlinked only if the current workflow already allows an unlinked trip, and show "No execution arrangement linked". Never infer an arrangement from vendor name or loose material text.
+5. Cancelled/rejected/suspended/early-closed arrangements should not appear as selectable default options for a new trip. If historical editing requires seeing them (see Part 5), show them clearly labelled with their status (e.g. "Narasimulu — Ch. 2.500–3.800 — Cancelled") but never auto-select them for a new trip.
+6. Save the selected arrangement into the trip's existing `earthworkArrangementId` field (already present on `siteMaterialTrips` — do not add a new column for this).
+
+PART 3 — EDITING HISTORICAL TRIPS
+When an existing Material Trip's arrangement is changed on edit:
+1. The old arrangement's aggregation (supplied quantity / trip count shown against it) must lose that trip's contribution.
+2. The new arrangement must gain it.
+3. No double-counting in either direction.
+4. Any report or card that shows "Supplied" / "trips" totals against an arrangement must recalculate automatically from live data — do not maintain a separately-stored running total that could drift.
+5. Preserve whatever audit/history behavior already exists for trip edits; do not change it.
+
+PART 4 — DPR ACTIVITY PROGRESS ROW: SAME ARRANGEMENT LINKAGE, PLUS TRIP EVIDENCE
+Extend the same idea into the DPR Activity Progress row itself, not only Material Trip, so the chain is: DPR Activity → BOQ Item → Reach/Chainage → Arrangement → Vendor/HLC in-house → Material Trips.
+
+1. Whenever the BOQ item/reach behind a DPR activity row has one or more valid execution arrangements, the row must show an "Execution Arrangement" dropdown for the engineer to select from — reuse Part 2's dropdown component/logic rather than building a second implementation. Same selection rules: prefill if exactly one valid arrangement, require a choice if more than one, show nothing extra if none.
+   a. The selected arrangement (vendor name, or "HLC — In-house / Self Execution") must be saved onto the DPR activity/progress row itself, not just resolved live each time the screen opens. Whenever that DPR is reopened — as a draft, after final submission, or in any review/read-only view — it must show the arrangement that was actually selected at entry time, exactly as saved. This selection, once saved, is the authoritative record of who executed the work; the app does not need to separately re-narrate arrangement history elsewhere on this screen (see Part 1).
+2. Under that arrangement, show the material trips received today that are linked to it, using conservative matching only — in this priority order: exact `earthworkArrangementId` match (preferred), then exact `programmeBarId`/BOQ item match, then same site/date/reach. Never fall back to guessing from material name text alone.
+3. Show trip quantities in their original received UOM AND converted to the BOQ item's UOM, both together — for example "6,300 CFT = 178.39 Cum". Never hide the original received quantity; it is the audit evidence. If the BOQ item's UOM is already the same as the received UOM, show it once, with no unnecessary conversion. Use whatever unit-conversion utility already exists elsewhere in the codebase for this; if none exists for the unit pairs actually needed here, add the smallest possible conversion table for those units only — do not build a general-purpose conversion engine.
+4. Show a variance between the DPR's executed quantity and the trip-derived quantity, both expressed in the BOQ item's own unit — never in the arrangement's or the trip's original unit — since that is the only basis on which "work done" and "material delivered" are actually comparable (e.g. "+1.61 Cum DPR vs Trips" where Cum is the BOQ item's unit). Keep DPR executed quantity (work done) and trip quantity (material delivered/moved) as two separate, independently-editable facts — displaying a variance must never cause one to silently overwrite the other.
+5. "Required today" — the target quantity shown for the day — must be sourced only from the selected arrangement's own planned daily output field (`plannedDailyOutput`, already present on `earthworkArrangements`), converted to the BOQ item's unit if needed. This applies the same way whether the selected arrangement is a vendor or "HLC — In-house / Self Execution" — self-execution is not a special case. If the selected arrangement has no planned daily output set, or no arrangement is selected, show "Not determined" — do not estimate a daily figure by dividing the total allocated quantity across the remaining days or by any other invented method.
+6. Keep the on-screen presentation compact: arrangement name, DPR executed quantity, trips line (original UOM = BOQ UOM), variance — with a "View Trips" expander for vehicle/challan-level detail, rather than showing everything inline at all times.
+7. This section follows Part 1's rule — a non-active arrangement must never appear as the current one here either.
+
+PART 5 — SMALL UNRELATED LABEL FIX (FIELD HOME)
+On the Field Home screen's "Today's Activity" section, the "Materials received" row (`client/src/pages/FieldHome.tsx`, around line 1578) shows the correct total quantity but always prints the fixed, hardcoded unit label "MT" regardless of what unit the trips were actually logged in — it never reads the trip's real `uom` field, which is already available in the same data. Fix this one line: show the actual unit from the trips (e.g. "15,000 CFT"), consistent with how UOM is already read correctly elsewhere in this file (e.g. lines 398/439/606). If today's trips mix more than one unit, show the figure without converting/summing across units, or however the nearest similar case is already handled elsewhere in this file — do not invent new mixed-unit handling for this. This is a one-line label fix, unrelated to Parts 1-4; do not let it expand into anything larger.
+
+WHAT NOT TO DO
+- Do not touch Vendor Billing, diesel, stock logic, Work Programme/BOQ import, mapping/classification, or programme bar generation.
+- Do not change the arrangement status-transition endpoint or the append-only audit models.
+- Do not create a fake vendor record for HLC self-execution.
+- Do not build a general-purpose unit-conversion engine — only the specific unit pairs actually needed here.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+Based on our own review, this should be achievable with no schema change at all — the linkage fields on Material Trip and the HLC in-house arrangement type already exist. If you find during implementation that something genuinely requires a new column, stop and show us the exact change before writing any migration, per our usual rule.
+
+TESTS
+A. Arrangement status: change "Approved" or "In Progress" to "Cancelled" → every screen listed in Part 1 shows no arrangement at all for that row (not "Active/Arranged", not a cancelled-note) after reload.
+B. Material Trip: select a BOQ item/reach with two valid arrangements → dropdown shows exactly those two, plus HLC self-execution where applicable, and nothing from other items/reaches.
+C. Exactly one valid arrangement for a BOQ item/reach → it is preselected automatically.
+D. An arrangement belonging to an unrelated BOQ item/reach → never appears in the dropdown.
+E. Edit a historical trip and change its arrangement → the quantity moves from the old arrangement's total to the new one exactly once, with no double-counting.
+F. A cancelled arrangement → never auto-selected for a new trip; only shown, clearly labelled, if historical editing requires it.
+G. DPR Activity Progress row for a BOQ item/reach with one arrangement and several trips today → select the arrangement, save the DPR as a draft, reopen it, then submit it, then view it again after submission → the same selected arrangement is shown every time, read from what was saved, not re-resolved live.
+H. Same row: confirm "Required today" shows the arrangement's planned daily output converted to the BOQ item's unit when set, and "Not determined" (no invented number) when not set — test both a vendor arrangement and an "HLC — In-house / Self Execution" selection.
+I. Same row: confirm the DPR-vs-Trips variance is shown entirely in the BOQ item's own unit, not the arrangement's or trip's original unit.
+J. DPR Activity Progress row for a BOQ item/reach with no arrangement → no arrangement dropdown or trip-evidence section appears; the row behaves as it does today.
+K. Field Home "Materials received" tile shows the real unit from today's trips, not a fixed "MT" label.
+
+REPORT BACK
+1. Part 1: confirm the fix in both `ActivityReceiptStrip.tsx`'s prior fix and the new `ProgrammeBarPicker.tsx` fix, and what you found when checking each of the other listed screens.
+2. Part 2/3: confirm the dropdown, prefill logic, and historical-edit reassignment, with test evidence.
+3. Part 4: confirm the DPR Activity Progress changes, including a concrete before/after example (arrangement, quantities, UOM conversion, variance, Required today) similar to the ones in this instruction, and confirm the saved-selection persists across draft/submit/review.
+4. Part 5: confirm the Field Home label fix.
+5. Confirm no schema change was needed; if one was, stop and show it before applying, as instructed above.
+6. Confirm Vendor Billing, diesel, stock logic, and Work Programme/BOQ code were not touched.
+7. Anything else noticed but not touched, for a separate decision.
