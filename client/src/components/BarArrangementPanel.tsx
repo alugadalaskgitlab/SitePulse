@@ -24,7 +24,7 @@ import { ArrangementStatusBadge, ArrangementSummaryCard, EarthworkArrangementDia
 import { invalidateArrangementQueries } from "@/lib/arrangementCache";
 
 const ACTIVE_STATUSES = new Set(["approved", "mobilisation_pending", "in_progress", "on_hold"]);
-const LINKABLE_STATUSES = new Set(["draft", "submitted", "approved", "mobilisation_pending", "in_progress", "on_hold"]);
+const LINKABLE_STATUSES = new Set(["approved", "mobilisation_pending", "in_progress"]);
 
 interface Arrangement {
   id: number;
@@ -94,9 +94,17 @@ export function BarArrangementPanel({
     enabled: open,
   });
 
+  const liveArrangementById = useMemo(
+    () => new Map(arrangements.map((arrangement) => [arrangement.id, arrangement])),
+    [arrangements],
+  );
   const activeAllocations = useMemo(
-    () => allAllocations.filter(a => !["cancelled", "rejected"].includes(String(a.arrangementStatus ?? ""))),
-    [allAllocations],
+    () => allAllocations.filter((allocation) => {
+      const currentStatus = liveArrangementById.get(allocation.arrangementId)?.status;
+      if (currentStatus == null) return false;
+      return !["cancelled", "rejected"].includes(String(currentStatus ?? "").toLowerCase());
+    }),
+    [allAllocations, liveArrangementById],
   );
   const barAllocations = useMemo(() => activeAllocations.filter(a => a.programmeBarId === barId), [activeAllocations, barId]);
   const barAllocatedTotal = barAllocations.reduce((s, a) => s + Number(a.allocatedQty), 0);

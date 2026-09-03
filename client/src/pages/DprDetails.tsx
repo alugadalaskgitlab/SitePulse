@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation } from "wouter";
 import { ChevronLeft, Loader2, Printer, Edit, Trash2 } from "lucide-react";
@@ -17,6 +17,7 @@ import { DprPhotoGroups } from "@/components/DprPhotoGroups";
 import type { EquipmentMasterType, Site } from "@shared/schema";
 import { boqItemDisplayName } from "@shared/boqItemName";
 import { dprMeasurementSummary } from "@shared/dprGeometry";
+import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
@@ -52,6 +53,10 @@ export default function DprDetails() {
       .toUpperCase();
     return sites.find((s) => s.name.toUpperCase() === baseSite)?.id ?? null;
   }, [dpr, sites]);
+  const resolvedDprSiteName = useMemo(
+    () => sites.find((site) => site.id === dprSiteId)?.name ?? dpr?.site ?? "",
+    [sites, dprSiteId, dpr?.site],
+  );
 
   const { data: siteBoqProjects = [] } = useQuery<any[]>({
     queryKey: ["/api/boq/projects", { siteId: dprSiteId }],
@@ -295,8 +300,9 @@ export default function DprDetails() {
                   const m = dprMeasurementSummary(item, boqItem);
                   
                   return (
-                    <TableRow key={i} data-testid={`row-progress-${i}`}>
-                      <TableCell className="font-medium">
+                    <Fragment key={item.id ?? item.entryKey ?? i}>
+                      <TableRow data-testid={`row-progress-${i}`}>
+                        <TableCell className="font-medium">
                         {item.boqItemId && boqItemMap.has(item.boqItemId) ? (
                           <span className="flex items-center gap-1.5 flex-wrap">
                             {boqItemMap.get(item.boqItemId)!.itemCode && (
@@ -314,20 +320,40 @@ export default function DprDetails() {
                             )}
                           </span>
                         )}
-                      </TableCell>
-                      <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
-                      <TableCell>{item.chainageFrom || '-'}</TableCell>
-                      <TableCell>{item.chainageTo || '-'}</TableCell>
-                      <TableCell className="whitespace-nowrap">{m.dims ?? '-'}</TableCell>
-                      <TableCell className="text-right font-semibold whitespace-nowrap" data-testid={`text-measured-${i}`}>
-                        {m.measuredQty != null ? `${m.measuredQty} ${m.measuredUom ?? ''}`.trim() : '-'}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap" data-testid={`text-boq-progress-${i}`}>
-                        {m.converted && m.boqQty != null
-                          ? `${Number(m.boqQty.toFixed(4))} ${m.boqUom}`
-                          : m.boqQty != null ? `${Number(m.boqQty.toFixed(3))} ${m.boqUom ?? ''}`.trim() : '-'}
-                      </TableCell>
-                    </TableRow>
+                        </TableCell>
+                        <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
+                        <TableCell>{item.chainageFrom || '-'}</TableCell>
+                        <TableCell>{item.chainageTo || '-'}</TableCell>
+                        <TableCell className="whitespace-nowrap">{m.dims ?? '-'}</TableCell>
+                        <TableCell className="text-right font-semibold whitespace-nowrap" data-testid={`text-measured-${i}`}>
+                          {m.measuredQty != null ? `${m.measuredQty} ${m.measuredUom ?? ''}`.trim() : '-'}
+                        </TableCell>
+                        <TableCell className="text-right whitespace-nowrap" data-testid={`text-boq-progress-${i}`}>
+                          {m.converted && m.boqQty != null
+                            ? `${Number(m.boqQty.toFixed(4))} ${m.boqUom}`
+                            : m.boqQty != null ? `${Number(m.boqQty.toFixed(3))} ${m.boqUom ?? ''}`.trim() : '-'}
+                        </TableCell>
+                      </TableRow>
+                      {boqProjectId != null && item.boqItemId != null && (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={7} className="pt-0">
+                            <ActivityReceiptStrip
+                              siteName={resolvedDprSiteName}
+                              date={dpr.date}
+                              boqProjectId={boqProjectId}
+                              boqItemId={item.boqItemId}
+                              programmeBarId={item.programmeBarId ?? null}
+                              persistedArrangementId={item.earthworkArrangementId ?? null}
+                              executedQty={m.boqQty ?? null}
+                              executedUom={m.boqUom ?? boqItem?.unit ?? null}
+                              activityMaterialHint={boqItem ? boqItemDisplayName(boqItem) : item.activity}
+                              readOnly
+                              testIdPrefix={`dpr-detail-${item.entryKey ?? i}`}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
                   );
                 })}
               </TableBody>

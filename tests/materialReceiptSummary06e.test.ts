@@ -138,7 +138,11 @@ describe("06X-HF2 reused-excavated context", () => {
       destinationBoqItemLabels: ["Embankment - excavated earth"],
       reachLabel: "Km 2 to Km 4",
     });
-    expect(resolveApplicableArrangements([reuse], { boqProjectId: 10, boqItemId: 200 }).prefill?.id).toBe(1);
+    expect(resolveApplicableArrangements([reuse], {
+      boqProjectId: 10,
+      boqItemId: 200,
+      reachLabel: "Km 2 to Km 4",
+    }).prefill?.id).toBe(1);
     expect(resolveReusedExcavationSourceContexts([reuse], 100)).toEqual([reuse]);
     expect(arrangementScopeLabel(reuse)).toBe("Km 2 to Km 4");
   });
@@ -226,7 +230,7 @@ describe("06X-HF2 reused-excavated context", () => {
   it("cancelled/rejected persisted arrangements reopen as inactive while active persisted arrangements are unchanged", () => {
     for (const status of ["cancelled", "rejected"]) {
       const html = renderStrip([arr({ status })], 1);
-      expect(html).toContain('data-testid="hf2-arrangement-unset"');
+      expect(html).toBe("");
       expect(html).not.toContain('data-testid="hf2-arrangement-badge"');
       expect(html).not.toContain('data-testid="hf2-arranged-tag"');
     }
@@ -349,6 +353,21 @@ describe("06E comparison safety (spec §G/R/S)", () => {
     expect(c.comparisonReason).toMatch(/converted/i);
   });
 
+  it("ARR-02 G: 6,300 CFT stays visible as evidence and compares as 178.396 CUM", () => {
+    const c = buildReceiptComparison({
+      requiredQty: null,
+      requiredUom: null,
+      requiredSource: "not_determined",
+      received: received(6_300, "CFT"),
+      executedQty: 180,
+      executedUom: "Cum",
+    });
+    expect(c.comparable).toBe(true);
+    expect(c.receivedQty).toBe(178.396);
+    expect(c.receivedUom).toBe("Cum");
+    expect(c.receivedLessExecuted).toBe(-1.604);
+  });
+
   it("mixed receipt UoMs are non-comparable regardless of other bases", () => {
     const mixed = aggregateReceived([trip(), trip({ id: 2, uom: "MT" })]);
     const c = buildReceiptComparison({
@@ -377,7 +396,7 @@ describe("06E existing-receipt matching (spec §12/13/D/G/H)", () => {
   it("G: stable-ID matches classify as linked (arrangement id, or boq item + bar)", () => {
     expect(classifyReceiptMatch(trip({ earthworkArrangementId: 7 }), ctx)).toBe("linked");
     expect(classifyReceiptMatch(trip({ boqItemId: 100, programmeBarId: 55 }), ctx)).toBe("linked");
-    expect(classifyReceiptMatch(trip({ boqItemId: 100, programmeBarId: null }), ctx)).toBe("linked");
+    expect(classifyReceiptMatch(trip({ boqItemId: 100, programmeBarId: null }), ctx)).toBeNull();
   });
 
   it("H/D: unlinked same-site/date/material receipt is a SUGGESTION requiring user action", () => {

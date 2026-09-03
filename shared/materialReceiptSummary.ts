@@ -247,15 +247,43 @@ export function resolveReusedExcavationSourceContexts<T extends ApplicableArrang
  */
 export function resolveApplicableArrangements<T extends ApplicableArrangementInput>(
   arrangements: T[],
-  ctx: { boqProjectId: number; boqItemId: number; programmeBarId?: number | null },
+  ctx: {
+    boqProjectId: number;
+    boqItemId: number;
+    programmeBarId?: number | null;
+    reachLabel?: string | null;
+    chainageFrom?: number | null;
+    chainageTo?: number | null;
+  },
   barAllocations?: ArrangementBarAllocation[],
 ): ArrangementResolution<T> {
+  const normaliseReach = (value: string | null | undefined) =>
+    String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  const scopeMatches = (arrangement: T) => {
+    const arrangementHasChainage = arrangement.chainageFrom != null && arrangement.chainageTo != null;
+    const contextHasChainage = ctx.chainageFrom != null && ctx.chainageTo != null;
+    if (arrangementHasChainage) {
+      if (!contextHasChainage) return false;
+      const contextStart = Math.min(Number(ctx.chainageFrom), Number(ctx.chainageTo));
+      const contextEnd = Math.max(Number(ctx.chainageFrom), Number(ctx.chainageTo));
+      const arrangementStart = Math.min(Number(arrangement.chainageFrom), Number(arrangement.chainageTo));
+      const arrangementEnd = Math.max(Number(arrangement.chainageFrom), Number(arrangement.chainageTo));
+      return arrangementStart < contextEnd && contextStart < arrangementEnd;
+    }
+    if (arrangement.reachLabel) {
+      if (!ctx.reachLabel) return false;
+      return normaliseReach(ctx.reachLabel) === normaliseReach(arrangement.reachLabel);
+    }
+    // No scope on the arrangement means it applies to the whole BOQ item.
+    return true;
+  };
   let applicable = arrangements.filter(
     (a) =>
       a.boqProjectId === ctx.boqProjectId &&
       (APPLICABLE_ARRANGEMENT_STATUSES as readonly string[]).includes(a.status) &&
       reusedExcavationConfigurationIssue(a) == null &&
-      arrangementCoversItem(a, ctx.boqItemId),
+      arrangementCoversItem(a, ctx.boqItemId) &&
+      scopeMatches(a),
   );
   if (ctx.programmeBarId != null && barAllocations && barAllocations.length > 0) {
     const allocatedIds = new Set(
@@ -439,8 +467,8 @@ export function buildReceiptComparison(input: ReceiptComparisonInput): ReceiptCo
   }
   const targetUom =
     (input.requiredQty != null ? input.requiredUom : null) ??
-    (received.receivedQty != null ? received.receivedUom : null) ??
-    input.executedUom;
+    (input.executedQty != null ? input.executedUom : null) ??
+    received.receivedUom;
   const convertPresent = (qty: number | null, uom: string | null) =>
     qty == null ? null : convertReceiptVolumeQty(qty, uom, targetUom);
   const requiredQty = convertPresent(input.requiredQty, input.requiredUom);
@@ -569,19 +597,28 @@ export type ReceiptMatchStrength = "linked" | "suggested";
 /**
  * Conservative matching (06E §13):
  * - "linked": stable IDs already prove the relationship (same arrangement, or
- *   same BOQ item — and bar when both sides have one) → safe to display as
- *   authoritative for the activity.
+ *   exact programme bar + BOQ item; item-only is accepted only when neither
+ *   side has a programme bar) → safe to display as authoritative.
  * - "suggested": same site + date + material only → shown as a suggestion the
  *   user must confirm. NEVER auto-linked from supplier/material text alone.
  */
 export function classifyReceiptMatch(trip: SuggestableTrip, ctx: ReceiptMatchContext): ReceiptMatchStrength | null {
   if (trip.isCancelled || trip.isDeleted) return null;
   if (trip.site !== ctx.siteName || trip.date !== ctx.date) return null;
-  const idLinked =
-    (ctx.earthworkArrangementId != null && trip.earthworkArrangementId === ctx.earthworkArrangementId) ||
-    (ctx.boqItemId != null &&
-      trip.boqItemId === ctx.boqItemId &&
-      (ctx.programmeBarId == null || trip.programmeBarId == null || trip.programmeBarId === ctx.programmeBarId));
+  const arrangementLinked =
+    ctx.earthworkArrangementId != null &&
+    trip.earthworkArrangementId === ctx.earthworkArrangementId;
+  const exactBarLinked =
+    ctx.boqItemId != null &&
+    trip.boqItemId === ctx.boqItemId &&
+    ctx.programmeBarId != null &&
+    trip.programmeBarId === ctx.programmeBarId;
+  const itemOnlyLinked =
+    ctx.boqItemId != null &&
+    trip.boqItemId === ctx.boqItemId &&
+    ctx.programmeBarId == null &&
+    trip.programmeBarId == null;
+  const idLinked = arrangementLinked || exactBarLinked || itemOnlyLinked;
   if (idLinked) return "linked";
   // 06T §4: suggestions consider the arrangement label AND caller-provided
   // hints (BOQ item name), with tolerant matching — still confirmation-only,

@@ -30,6 +30,17 @@ describe("execution arrangement reach-card presentation", () => {
     expect(page).toContain("varianceCum");
   });
 
+  it("uses the live arrangement status rather than allocation snapshots everywhere current status is shown", () => {
+    const page = source("pages/ExecutionArrangements.tsx");
+    const barPanel = source("components/BarArrangementPanel.tsx");
+    const executionState = source("components/ExecutionStateBadge.tsx");
+    expect(page).toContain("Current: {a.status}");
+    expect(page).not.toContain("Current: {al.arrangementStatus}");
+    expect(barPanel).toContain("const currentStatus = liveArrangementById.get(allocation.arrangementId)?.status");
+    expect(barPanel).toContain('new Set(["approved", "mobilisation_pending", "in_progress"])');
+    expect(executionState).toContain("liveStatusByArrangementId.get(al.arrangementId)");
+  });
+
   it("requires explicit override before writing event actual quantity", () => {
     const control = source("components/ArrangementOutcomeControl.tsx");
     expect(control).toContain("Override / accepted quantity");

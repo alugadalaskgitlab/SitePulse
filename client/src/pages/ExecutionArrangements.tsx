@@ -470,7 +470,7 @@ export default function ExecutionArrangements() {
                                   <span className="font-semibold text-slate-700">{label}</span>
                                   {b?.side && <span className="rounded bg-slate-100 border border-slate-200 px-1 text-[10px] uppercase">{b.side}</span>}
                                   {b?.chainageFrom != null && <span className="text-slate-500 font-mono text-[10px]">Ch. {b.chainageFrom}–{b.chainageTo}</span>}
-                                  {al.arrangementStatus && <span className="rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">Current: {al.arrangementStatus}</span>}
+                                  <span className="rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">Current: {a.status}</span>
                                 </div>
                                 <div className="mt-1 grid grid-cols-2 md:grid-cols-5 gap-x-3 gap-y-1 text-[11px]">
                                   <span><b className="text-slate-500">Allocated</b><br /><strong className="font-mono">{Number(evidence?.allocatedQty ?? al.allocatedQty).toLocaleString()} {evidence?.allocationUom ?? uom}</strong></span>

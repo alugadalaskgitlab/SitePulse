@@ -368,13 +368,32 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     executedQty: props.executedQty ?? null,
     executedUom: props.executedUom ?? null,
   });
+  const fmt = (q: number | null | undefined, u?: string | null) =>
+    q == null ? "—" : `${Number(q.toFixed ? q.toFixed(2) : q)} ${u ?? ""}`.trim();
   const receivedTodayInRequiredUom =
     !received.mixedUoms && required.requiredUom != null
       ? convertReceiptVolumeQty(received.receivedQty, received.receivedUom, required.requiredUom)
       : null;
-
-  const fmt = (q: number | null | undefined, u?: string | null) =>
-    q == null ? "—" : `${Number(q.toFixed ? q.toFixed(2) : q)} ${u ?? ""}`.trim();
+  const receivedTodayDisplay =
+    received.receivedQty == null
+      ? null
+      : receivedTodayInRequiredUom != null &&
+          normaliseUom(received.receivedUom) !== normaliseUom(required.requiredUom)
+        ? `${fmt(received.receivedQty, received.receivedUom)} = ${fmt(receivedTodayInRequiredUom, required.requiredUom)}`
+        : fmt(received.receivedQty, received.receivedUom);
+  const suppliedDisplay =
+    suppliedTotal.tripCount === 0
+      ? fmt(0, arrangement?.uom)
+      : suppliedTotal.mixedUoms
+        ? suppliedTotal.byUom.map((row) => `${row.qty} ${row.uom}`).join(" + ")
+        : suppliedQtyInArrangementUom != null &&
+            normaliseUom(suppliedTotal.receivedUom) !== normaliseUom(arrangement?.uom)
+          ? `${fmt(suppliedTotal.receivedQty, suppliedTotal.receivedUom)} = ${fmt(suppliedQtyInArrangementUom, arrangement?.uom)}`
+          : fmt(suppliedTotal.receivedQty, suppliedTotal.receivedUom);
+  const dprVsTrips =
+    comparison.receivedLessExecuted == null
+      ? null
+      : Number((-comparison.receivedLessExecuted).toFixed(3));
 
   // 06X-HF2: a source excavation row gets read-only cut-to-fill context from
   // the explicitly configured source link. It never receives/persists the fill
@@ -437,6 +456,15 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
       </div>
     );
   }
+  if (
+    !arrangement &&
+    !dailyOverride &&
+    !resolution.requiresSelection &&
+    pendingApprovalArrangement == null &&
+    invalidReuseArrangement == null &&
+    linkedTrips.length === 0 &&
+    suggestedTrips.length === 0
+  ) return null;
   if (relevance === "none" && !arrangement && linkedTrips.length === 0 && suggestedTrips.length === 0) return null;
 
   return (
@@ -470,13 +498,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
         <p className="text-xs text-muted-foreground" data-testid={`${testIdPrefix}-arranged-tag`}>
           Arranged: {arrangement.agencyName || "HLC"}{arrangedQty != null ? ` · ${fmt(arrangedQty, arrangement.uom)}` : ""}
           {" — Supplied: "}
-          {suppliedTotal.tripCount === 0
-            ? fmt(0, arrangement.uom)
-            : suppliedTotal.mixedUoms
-              ? suppliedTotal.byUom.map((r) => `${r.qty} ${r.uom}`).join(" + ")
-              : suppliedQtyInArrangementUom != null
-                ? fmt(suppliedQtyInArrangementUom, arrangement.uom)
-                : fmt(suppliedTotal.receivedQty, suppliedTotal.receivedUom)}
+          {suppliedDisplay}
           {arrangedQty != null && (
             <> · Balance: {balanceQty != null ? fmt(balanceQty, arrangement.uom) : "Not comparable"}</>
           )}
@@ -540,11 +562,8 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
           <p data-testid={`${testIdPrefix}-received-qty`}>
             {received.mixedUoms
               ? received.byUom.map((r) => `${r.qty} ${r.uom}`).join(" + ")
-              : received.receivedQty != null
-                ? `${fmt(
-                    receivedTodayInRequiredUom ?? received.receivedQty,
-                    receivedTodayInRequiredUom != null ? required.requiredUom : received.receivedUom,
-                  )} · ${received.tripCount} trip${received.tripCount === 1 ? "" : "s"}`
+              : receivedTodayDisplay != null
+                ? `${receivedTodayDisplay} · ${received.tripCount} trip${received.tripCount === 1 ? "" : "s"}`
                 : "—"}
           </p>
         </div>
@@ -585,7 +604,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
             <>Variance to requirement: {comparison.varianceToRequired > 0 ? "+" : ""}{comparison.varianceToRequired} {comparison.receivedUom} · </>
           )}
           {comparison.receivedLessExecuted != null && (
-            <>Received less Executed: {comparison.receivedLessExecuted > 0 ? "+" : ""}{comparison.receivedLessExecuted} {comparison.receivedUom}</>
+            <>DPR vs Trips: {dprVsTrips != null && dprVsTrips > 0 ? "+" : ""}{dprVsTrips} {comparison.receivedUom}</>
           )}
         </p>
       ) : (

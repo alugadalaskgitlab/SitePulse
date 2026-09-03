@@ -83,9 +83,12 @@ export function deriveBarExecutionStateFromProject(
     itemType?: string | null;
   },
 ): ExecutionStateResult {
+    const liveStatusByArrangementId = new Map(arrangements.map((arrangement) => [arrangement.id, arrangement.status]));
     const linkedByArr = new Map<number, number>();
     for (const al of allocations) {
-      if (["cancelled", "rejected"].includes(String(al.arrangementStatus ?? ""))) continue;
+      const currentStatus = liveStatusByArrangementId.get(al.arrangementId);
+      if (currentStatus == null) continue;
+      if (["cancelled", "rejected"].includes(String(currentStatus ?? "").toLowerCase())) continue;
       linkedByArr.set(al.arrangementId, (linkedByArr.get(al.arrangementId) ?? 0) + Number(al.allocatedQty));
     }
     const relevant: ExecutionStateArrangement[] = [];
@@ -96,7 +99,11 @@ export function deriveBarExecutionStateFromProject(
         : (Number(arr.boqItemId) === opts.boqItemId ? Number(arr.allocatedQty) : 0);
       if (itemQty <= 0.001) continue;
       const linkedHere = allocations
-        .filter(al => al.arrangementId === arr.id && al.programmeBarId === opts.barId)
+        .filter(al =>
+          al.arrangementId === arr.id &&
+          al.programmeBarId === opts.barId &&
+          !["cancelled", "rejected"].includes(String(liveStatusByArrangementId.get(al.arrangementId) ?? "").toLowerCase())
+        )
         .reduce((s, al) => s + Number(al.allocatedQty), 0);
       const linkedTotal = linkedByArr.get(arr.id) ?? 0;
       const unlinked = Math.max(0, Number(arr.allocatedQty) - linkedTotal);

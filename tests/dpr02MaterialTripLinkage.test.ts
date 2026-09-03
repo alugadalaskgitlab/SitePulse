@@ -7,6 +7,7 @@ import {
   resolveApplicableArrangements,
 } from "../shared/materialReceiptSummary";
 import {
+  arrangementLabel,
   EMPTY_WORK_CONTEXT,
   hasRequiredWorkContext,
   workContextForBoqItem,
@@ -49,6 +50,80 @@ describe("DPR-02 Parts 1-3 material trip safeguards", () => {
     );
     expect(multiple.prefill).toBeNull();
     expect(multiple.requiresSelection).toBe(true);
+  });
+
+  it("B/F: HLC self-execution is a real labelled arrangement and inactive rows never prefill", () => {
+    expect(arrangementLabel(arrangement({
+      arrangementType: "hlc_in_house",
+      agencyName: null,
+    }) as any)).toBe("HLC — In-house / Self Execution");
+    for (const status of ["cancelled", "rejected", "on_hold", "completed", "returned"]) {
+      const result = resolveApplicableArrangements(
+        [arrangement({ status })],
+        { boqProjectId: 1, boqItemId: 20 },
+      );
+      expect(result.prefill).toBeNull();
+      expect(result.none).toBe(true);
+    }
+  });
+
+  it("B/D: programme-bar context narrows multiple arrangements without showing another reach", () => {
+    const candidates = [
+      arrangement({ id: 10 }),
+      arrangement({ id: 11 }),
+      arrangement({ id: 12, boqItemId: 99 }),
+    ];
+    const result = resolveApplicableArrangements(
+      candidates,
+      { boqProjectId: 1, boqItemId: 20, programmeBarId: 501 },
+      [
+        { arrangementId: 10, programmeBarId: 501, allocatedQty: 100 },
+        { arrangementId: 11, programmeBarId: 777, allocatedQty: 100 },
+      ],
+    );
+    expect(result.applicable.map((row) => row.id)).toEqual([10]);
+    expect(result.prefill?.id).toBe(10);
+  });
+
+  it("B/D: chainage context excludes another arrangement for the same BOQ item", () => {
+    const result = resolveApplicableArrangements(
+      [
+        arrangement({ id: 10, chainageFrom: 1.25, chainageTo: 2.1 }),
+        arrangement({ id: 11, chainageFrom: 2.5, chainageTo: 3.8 }),
+      ],
+      {
+        boqProjectId: 1,
+        boqItemId: 20,
+        chainageFrom: 2.6,
+        chainageTo: 3.2,
+      },
+    );
+    expect(result.applicable.map((row) => row.id)).toEqual([11]);
+    expect(result.prefill?.id).toBe(11);
+  });
+
+  it("B/D: scoped arrangements are not offered until matching reach context exists", () => {
+    const scoped = arrangement({ chainageFrom: 2.5, chainageTo: 3.8 });
+    expect(resolveApplicableArrangements(
+      [scoped],
+      { boqProjectId: 1, boqItemId: 20 },
+    ).none).toBe(true);
+    expect(resolveApplicableArrangements(
+      [scoped],
+      { boqProjectId: 1, boqItemId: 20, reachLabel: "unrelated reach" },
+    ).none).toBe(true);
+  });
+
+  it("Part 2/4 UI reuses one arrangement context and preserves historical inactive labels", async () => {
+    const fs = await import("node:fs/promises");
+    const context = await fs.readFile("client/src/components/ReceiptWorkContext.tsx", "utf8");
+    const dprDetail = await fs.readFile("client/src/pages/DprDetails.tsx", "utf8");
+    expect(context).toContain("historicalInactiveArrangement");
+    expect(context).toContain("arrangement-historical");
+    expect(context).toContain("No execution arrangement linked");
+    expect(dprDetail).toContain("<ActivityReceiptStrip");
+    expect(dprDetail).toContain("persistedArrangementId={item.earthworkArrangementId ?? null}");
+    expect(dprDetail).toContain("readOnly");
   });
 
   it.each(["approved", "draft", "submitted"])(

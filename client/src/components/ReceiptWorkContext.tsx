@@ -68,6 +68,9 @@ const fmtCh = (v: number | string | null | undefined) => {
 };
 
 export function arrangementLabel(a: ArrangementRow): string {
+  if (a.arrangementType === "hlc_in_house") {
+    return "HLC — In-house / Self Execution";
+  }
   const parts = [
     [a.agencyName, a.materialLabel ?? a.workDescription].filter(Boolean).join(" — "),
   ];
@@ -162,14 +165,33 @@ export function ReceiptWorkContext({
   }, [projects, value.boqProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { items, arrangements, allocations, bars } = useProjectContextData(value.boqProjectId, value.boqItemId);
+  const selectedBar = useMemo(
+    () => bars.find((bar) => bar.id === value.programmeBarId) ?? null,
+    [bars, value.programmeBarId],
+  );
 
   const resolution = useMemo(
     () =>
       value.boqProjectId != null && value.boqItemId != null
-        ? resolveApplicableArrangements(arrangements, { boqProjectId: value.boqProjectId, boqItemId: value.boqItemId, programmeBarId: value.programmeBarId }, allocations)
+        ? resolveApplicableArrangements(arrangements, {
+            boqProjectId: value.boqProjectId,
+            boqItemId: value.boqItemId,
+            programmeBarId: value.programmeBarId,
+            reachLabel: selectedBar?.reachLabel ?? null,
+            chainageFrom: selectedBar?.chainageFrom ?? null,
+            chainageTo: selectedBar?.chainageTo ?? null,
+          }, allocations)
         : null,
-    [arrangements, allocations, value.boqProjectId, value.boqItemId, value.programmeBarId],
+    [arrangements, allocations, value.boqProjectId, value.boqItemId, value.programmeBarId, selectedBar],
   );
+  const historicalInactiveArrangement = useMemo(() => {
+    if (value.earthworkArrangementId == null) return null;
+    const linked = arrangements.find((arrangement) => arrangement.id === value.earthworkArrangementId) ?? null;
+    if (!linked || resolution?.applicable.some((arrangement) => arrangement.id === linked.id)) return null;
+    return ["cancelled", "rejected", "on_hold", "completed", "returned"].includes(String(linked.status).toLowerCase())
+      ? linked
+      : null;
+  }, [arrangements, resolution, value.earthworkArrangementId]);
 
   // Auto-preselect when exactly one arrangement applies; fire prefill hook.
   useEffect(() => {
@@ -185,12 +207,18 @@ export function ReceiptWorkContext({
       });
     }
     // Selected arrangement no longer applicable (item changed) → clear it.
-    if (value.earthworkArrangementId != null && !resolution.applicable.some((a) => a.id === value.earthworkArrangementId)) {
+    if (
+      value.earthworkArrangementId != null &&
+      !resolution.applicable.some((a) => a.id === value.earthworkArrangementId) &&
+      historicalInactiveArrangement == null
+    ) {
       onChange({ ...value, earthworkArrangementId: null });
     }
-  }, [resolution?.prefill?.id, resolution?.applicable?.length, value.boqItemId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resolution?.prefill?.id, resolution?.applicable?.length, value.boqItemId, historicalInactiveArrangement?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selectedArrangement = resolution?.applicable.find((a) => a.id === value.earthworkArrangementId) ?? null;
+  const selectedArrangement =
+    resolution?.applicable.find((a) => a.id === value.earthworkArrangementId) ??
+    historicalInactiveArrangement;
 
   if (siteId == null || projects.length === 0) return null;
 
@@ -235,10 +263,14 @@ export function ReceiptWorkContext({
             </SelectContent>
           </Select>
         </div>
-        {value.boqItemId != null && resolution && !resolution.none && (
+        {value.boqItemId != null && resolution && (!resolution.none || historicalInactiveArrangement != null) && (
           <div>
             <Label className="text-xs">Execution Arrangement</Label>
-            {resolution.applicable.length === 1 ? (
+            {historicalInactiveArrangement ? (
+              <p className="text-xs mt-1.5 font-medium text-muted-foreground" data-testid={`${testIdPrefix}-arrangement-historical`}>
+                {arrangementLabel(historicalInactiveArrangement)} · {historicalInactiveArrangement.status}
+              </p>
+            ) : resolution.applicable.length === 1 ? (
               <p className="text-xs mt-1.5 font-medium" data-testid={`${testIdPrefix}-arrangement-single`}>
                 {arrangementLabel(resolution.applicable[0])}
                 {resolution.applicable[0].arrangementType === "client_supplied" && (
@@ -272,7 +304,7 @@ export function ReceiptWorkContext({
             )}
           </div>
         )}
-        {value.boqItemId != null && resolution?.none && (
+        {value.boqItemId != null && resolution?.none && historicalInactiveArrangement == null && (
           <div className="flex items-end pb-1">
             <span className="text-xs text-muted-foreground" data-testid={`${testIdPrefix}-no-arrangement`}>
               No execution arrangement linked — receipt entry still works.
