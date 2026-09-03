@@ -1,0 +1,55 @@
+INSTRUCTION LAYER-01: Show the Layer/Lift number wherever a DPR entry is displayed, and fix chainage coverage to account for layers
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. If you notice something else broken while doing this, write it down in your report and WAIT for instructions. Do not touch Vendor Billing, diesel, stock logic, Work Programme/BOQ import/mapping, or the Execution Arrangement work from ARR-02. Do not publish automatically. STOP after this fix and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+`progressEntries.layerNo` (nullable integer) already exists and is already captured correctly on entry, and the overlap-detection logic (`shared/chainageOverlap.ts`) already correctly treats two entries at the same chainage/side/BOQ item with different non-null layer numbers as separate, non-overlapping work — that part needs no change, do not touch `shared/chainageOverlap.ts`'s core comparison logic.
+
+We reviewed every place that reports or aggregates "work done" and found:
+- The RA-style progress totals (`shared/progressReport.ts`, `computeItemAbstract`) and the Plan vs Actual table (`client/src/components/PlanVsActualTable.tsx`, `server/storage.ts` `getPlanVsActual`) both sum quantity across all layers into one total. This is mathematically correct as-is — separate layers are separate, additive physical volumes of the same pay item — and must NOT be changed. Do not touch this aggregation logic.
+- One real, confirmed gap: the chainage "Covered so far" summary and its "full range covered" claim (`client/src/components/ProgrammeBarPicker.tsx` around lines 385-389, fed by `barSideCoverage()` in `shared/dprProgrammeLink.ts` and `getProgressSideEntriesByBar()` in `server/storage.ts`) does not consider layer at all — the query that fetches entries for this summary doesn't even select `layerNo`. This means completing only Layer 1 of a multi-layer item across a stretch can make the app claim "full range covered on both sides," even though further layers are still required. This is the part that needs fixing.
+
+PART 1 — SHOW LAYER/LIFT WHEREVER A DPR ENTRY IS DISPLAYED
+The Layer/Lift value is captured on entry but never shown back anywhere. Add it to every screen where a DPR activity row is displayed, whenever `layerNo` is not null for that row (continue to show nothing extra when it is null, since null means "not a layered entry" — do not default it to "Layer 1" or any other invented value):
+1. `client/src/components/DprPreviewDialog.tsx` — draft preview.
+2. `client/src/pages/DprDetails.tsx` — submitted DPR detail view.
+3. `client/src/pages/SitePreview.tsx` — draft/site preview table.
+4. `client/src/pages/GuidedDpr.tsx` — the review step (step 7) summary rows.
+Match the existing display style already used for layer on `client/src/pages/ProgressReport.tsx` (which already shows it correctly) rather than inventing a new format.
+
+PART 2 — MAKE CHAINAGE COVERAGE LAYER-AWARE
+1. First, investigate and report: does the app have any existing concept of "how many layers are required" for a given BOQ item, reach, or bar (a planned lift/layer count) anywhere in the schema or Work Programme setup? Answer this plainly before changing anything.
+2. If such a "required layer count" concept already exists: use it so that a stretch is only reported as genuinely "fully covered" when every required layer has been completed there — not just one of several.
+3. If no such concept exists anywhere (which is what our own review suggests): do not invent one. Instead, change the coverage summary to report coverage separately per layer number, rather than collapsing all layers into a single "covered"/"fully covered" claim that ignores which layer was actually done. For example, show coverage per layer (e.g. "Layer 1 — LHS: 2.500–3.800 covered; Layer 2 — LHS: not started") instead of one merged line that could be true for Layer 1 while Layer 2 hasn't begun. Entries with a null `layerNo` (non-layered items) keep working exactly as they do today — this change only affects items that actually have layered entries.
+4. This requires selecting `layerNo` in `getProgressSideEntriesByBar()` (`server/storage.ts`) and threading it through `barSideCoverage()` (`shared/dprProgrammeLink.ts`) and into `ProgrammeBarPicker.tsx`'s display — do not change the underlying entries or how they're recorded, only how coverage is computed and displayed from them.
+5. Separately, note (for your awareness, no action required unless you find it's trivial to align): the Progress Report page's own coverage strip (`shared/progressReport.ts`, `buildCoverageStrips`) has a similar layer-agnostic grouping, but it already avoids the misleading claim by labeling itself "recorded here, not complete" rather than "fully covered" — leave that one as it is; it does not have the same problem.
+
+PART 3 — OPTIONAL: SHOW A PER-LAYER BREAKDOWN ON THE PROGRESS REPORT
+`shared/progressReport.ts` already contains an existing, unused helper, `layerBreakdown()`, that splits a BOQ item's cumulative quantity by layer without changing the correct total. On `client/src/pages/ProgressReport.tsx`, where this total is already shown, add this per-layer breakdown as additional, purely informational detail (e.g. an expandable "by layer" view) for items that have layered entries. Do not change the existing total/cumulative/percentage-complete figures — this is display-only, additive detail on top of what's already correct.
+
+WHAT NOT TO DO
+- Do not change `shared/chainageOverlap.ts`'s overlap-comparison logic — it already correctly accounts for layer.
+- Do not change the RA/Plan-vs-Actual total aggregation (`shared/progressReport.ts` `computeItemAbstract`, `server/storage.ts` `getPlanVsActual`) — these totals are already correct as additive sums across layers.
+- Do not default a missing/null `layerNo` to any assumed value anywhere.
+- Do not touch Vendor Billing, diesel, stock logic, Work Programme/BOQ import/mapping, or the ARR-02 arrangement work.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+This should not require any schema change — `layerNo` already exists. If you find you genuinely need one, stop and show us the exact change before writing any migration, per our usual rule.
+
+TESTS
+A. A DPR entry saved with a layer number → the same number is visible in the draft preview, the submitted detail view, the site preview, and the Guided DPR review step.
+B. A DPR entry saved with no layer number (null) → no layer text appears anywhere for that row; nothing is invented.
+C. A stretch with Layer 1 fully entered and Layer 2 not yet started → the coverage summary must not claim the stretch is "fully covered" without qualification; it must make clear which layer(s) are actually complete.
+D. A non-layered item (all entries have null layerNo) → coverage behaves exactly as it does today, unchanged.
+E. RA overview / Plan vs Actual totals for a multi-layer item → unchanged, still the correct additive sum across all layers.
+F. (If Part 3 is implemented) Progress Report shows a correct per-layer breakdown that adds up to the same existing total.
+
+REPORT BACK
+1. Part 1: confirm layer now displays in all four listed screens, with test evidence.
+2. Part 2: your plain answer on whether a "required layer count" concept exists, what you changed as a result, and test evidence for the coverage fix.
+3. Part 3: confirm whether implemented, and how it's presented.
+4. Confirm RA overview, Plan vs Actual, and overlap-detection logic were not touched.
+5. Confirm no schema change was needed; if one was, stop and show it before applying.
+6. Anything else noticed but not touched, for a separate decision.

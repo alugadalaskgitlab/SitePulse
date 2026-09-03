@@ -18,6 +18,7 @@ import type { EquipmentMasterType, Site } from "@shared/schema";
 import { boqItemDisplayName } from "@shared/boqItemName";
 import { dprMeasurementSummary } from "@shared/dprGeometry";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
+import { layerDisplayName } from "@shared/layerDisplay";
 
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
@@ -286,6 +287,7 @@ export default function DprDetails() {
                   <TableHead>Side</TableHead>
                   <TableHead>From</TableHead>
                   <TableHead>To</TableHead>
+                  <TableHead>Layer / Lift</TableHead>
                   <TableHead>Dimensions</TableHead>
                   <TableHead className="text-right">Measured</TableHead>
                   <TableHead className="text-right">BOQ Progress</TableHead>
@@ -324,6 +326,9 @@ export default function DprDetails() {
                         <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
                         <TableCell>{item.chainageFrom || '-'}</TableCell>
                         <TableCell>{item.chainageTo || '-'}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {item.layerNo != null ? layerDisplayName(item.activity, item.layerNo) : null}
+                        </TableCell>
                         <TableCell className="whitespace-nowrap">{m.dims ?? '-'}</TableCell>
                         <TableCell className="text-right font-semibold whitespace-nowrap" data-testid={`text-measured-${i}`}>
                           {m.measuredQty != null ? `${m.measuredQty} ${m.measuredUom ?? ''}`.trim() : '-'}
@@ -336,7 +341,7 @@ export default function DprDetails() {
                       </TableRow>
                       {boqProjectId != null && item.boqItemId != null && (
                         <TableRow className="hover:bg-transparent">
-                          <TableCell colSpan={7} className="pt-0">
+                          <TableCell colSpan={8} className="pt-0">
                             <ActivityReceiptStrip
                               siteName={resolvedDprSiteName}
                               date={dpr.date}

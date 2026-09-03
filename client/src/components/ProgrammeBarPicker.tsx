@@ -43,6 +43,16 @@ export type PickerBar = {
     lhsFraction: number;
     rhsFraction: number;
     fullyCovered: boolean;
+    byLayer?: Array<{
+      layerNo: number | null;
+      lhs: Array<[number, number]>;
+      rhs: Array<[number, number]>;
+      lhsCoveredKm: number;
+      rhsCoveredKm: number;
+      lhsFraction: number;
+      rhsFraction: number;
+      fullyCovered: boolean;
+    }>;
   } | null;
   arrangement: { id: number; mode: string | null; agency: string | null; status: string | null } | null;
   latestOutcome?: ProgrammeBarOutcome | null;
@@ -383,10 +393,22 @@ export function BarLinkFeedback({
           balance, but chainage coverage is per side — executing LHS never
           marks RHS covered, and "fully covered" needs both sides accounted. */}
       {bar.sideCoverage && (bar.side === "both_sides" || bar.side === "full_width") && (bar.sideCoverage.lhsCoveredKm > 0 || bar.sideCoverage.rhsCoveredKm > 0) && (
-        <p className="text-[10px] text-muted-foreground" data-testid={`${testidPrefix}-side-coverage`}>
-          Covered so far — LHS: {fmtKmRange(bar.sideCoverage.lhs)} · RHS: {fmtKmRange(bar.sideCoverage.rhs)}
-          {bar.sideCoverage.fullyCovered ? " · full range covered on both sides" : ""}
-        </p>
+        (bar.sideCoverage.byLayer?.length ?? 0) > 0 ? (
+          <div className="text-[10px] text-muted-foreground space-y-0.5" data-testid={`${testidPrefix}-side-coverage`}>
+            <p className="font-medium">Recorded layer coverage — this does not indicate that all required layers are complete.</p>
+            {bar.sideCoverage.byLayer!.map((layer) => (
+              <p key={layer.layerNo ?? "unrecorded"}>
+                {layer.layerNo != null ? `Layer ${layer.layerNo}` : "Layer not recorded"} — LHS: {fmtKmRange(layer.lhs)} · RHS: {fmtKmRange(layer.rhs)}
+                {layer.fullyCovered ? " · full range recorded for this layer only" : ""}
+              </p>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[10px] text-muted-foreground" data-testid={`${testidPrefix}-side-coverage`}>
+            Covered so far — LHS: {fmtKmRange(bar.sideCoverage.lhs)} · RHS: {fmtKmRange(bar.sideCoverage.rhs)}
+            {bar.sideCoverage.fullyCovered ? " · full range covered on both sides" : ""}
+          </p>
+        )
       )}
       {warnOverBalance && scoped && qty != null && qty > scoped.balance + 1e-9 && (
         <p className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-700" data-testid={`${testidPrefix}-warn-over-balance`}>

@@ -287,9 +287,10 @@ export type CoverageEntry = {
   side: string | null | undefined;       // label ("LHS") or key ("lhs")
   fromKm: number | null | undefined;
   toKm: number | null | undefined;
+  layerNo?: number | null | undefined;
 };
 
-export type BarSideCoverage = {
+export type BarSideCoverageSummary = {
   /** Merged covered km intervals per carriageway side (clipped to the bar). */
   lhs: Array<[number, number]>;
   rhs: Array<[number, number]>;
@@ -305,6 +306,19 @@ export type BarSideCoverage = {
    * side or explicit Both-Sides/Full-Width entries, which count on both).
    */
   fullyCovered: boolean;
+};
+
+export type LayerSideCoverage = BarSideCoverageSummary & {
+  layerNo: number | null;
+};
+
+export type BarSideCoverage = BarSideCoverageSummary & {
+  /**
+   * Present only when at least one entry has an explicit layer/lift number.
+   * With no planned layer count, each recorded layer is reported separately
+   * and aggregate fullyCovered is deliberately suppressed.
+   */
+  byLayer?: LayerSideCoverage[];
 };
 
 const COVER_EPS = 1e-6;
@@ -324,10 +338,10 @@ function intervalsLength(list: Array<[number, number]>): number {
   return list.reduce((s, [a, b]) => s + (b - a), 0);
 }
 
-export function barSideCoverage(
+function computeSideCoverage(
   bar: Pick<LinkableBar, "side" | "chainageFrom" | "chainageTo">,
   entries: CoverageEntry[],
-): BarSideCoverage {
+): BarSideCoverageSummary {
   const barFrom = bar.chainageFrom;
   const barTo = bar.chainageTo;
   const lhsRaw: Array<[number, number]> = [];
@@ -370,4 +384,35 @@ export function barSideCoverage(
   else if (plannedKey === "rhs" || plannedKey === "shoulder_rhs" || plannedKey === "service_road_rhs") fullyCovered = covers(rhsFraction);
   else fullyCovered = covers(lhsFraction) && covers(rhsFraction); // both_sides / full_width / median / unknown
   return { lhs, rhs, lhsCoveredKm, rhsCoveredKm, lhsFraction, rhsFraction, fullyCovered };
+}
+
+export function barSideCoverage(
+  bar: Pick<LinkableBar, "side" | "chainageFrom" | "chainageTo">,
+  entries: CoverageEntry[],
+): BarSideCoverage {
+  const aggregate = computeSideCoverage(bar, entries);
+  const hasExplicitLayers = entries.some((entry) => entry.layerNo != null);
+  if (!hasExplicitLayers) return aggregate;
+
+  const grouped = new Map<number | null, CoverageEntry[]>();
+  for (const entry of entries) {
+    const layerNo = entry.layerNo == null ? null : Number(entry.layerNo);
+    const group = grouped.get(layerNo) ?? [];
+    group.push(entry);
+    grouped.set(layerNo, group);
+  }
+  const byLayer = Array.from(grouped.entries())
+    .sort(([a], [b]) => a == null ? 1 : b == null ? -1 : a - b)
+    .map(([layerNo, layerEntries]) => ({
+      layerNo,
+      ...computeSideCoverage(bar, layerEntries),
+    }));
+
+  return {
+    ...aggregate,
+    // No required-layer count exists, so an aggregate "fully covered" claim
+    // would imply completion beyond the recorded layer evidence.
+    fullyCovered: false,
+    byLayer,
+  };
 }

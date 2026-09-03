@@ -26821,8 +26821,8 @@ export class DatabaseStorage implements IStorage {
   // Batch 1 Part E: side + chainage of every counted progress entry per bar —
   // used to derive SIDE-SPECIFIC chainage coverage (quantity stays shared).
   // Same inclusion rules as getReportedQtyByBar so coverage and quantity agree.
-  async getProgressSideEntriesByBar(barIds: number[]): Promise<Map<number, Array<{ side: string | null; fromKm: number | null; toKm: number | null }>>> {
-    const map = new Map<number, Array<{ side: string | null; fromKm: number | null; toKm: number | null }>>();
+  async getProgressSideEntriesByBar(barIds: number[]): Promise<Map<number, Array<{ side: string | null; fromKm: number | null; toKm: number | null; layerNo: number | null }>>> {
+    const map = new Map<number, Array<{ side: string | null; fromKm: number | null; toKm: number | null; layerNo: number | null }>>();
     if (barIds.length === 0) return map;
     const rows = await db
       .select({
@@ -26830,6 +26830,7 @@ export class DatabaseStorage implements IStorage {
         side: progressEntries.side,
         fromKm: progressEntries.chainageFromKm,
         toKm: progressEntries.chainageToKm,
+        layerNo: progressEntries.layerNo,
       })
       .from(progressEntries)
       .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
@@ -26849,6 +26850,7 @@ export class DatabaseStorage implements IStorage {
         side: r.side ?? null,
         fromKm: r.fromKm != null ? Number(r.fromKm) : null,
         toKm: r.toKm != null ? Number(r.toKm) : null,
+        layerNo: r.layerNo != null ? Number(r.layerNo) : null,
       });
       map.set(r.barId, list);
     }

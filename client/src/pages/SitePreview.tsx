@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import type { Personnel, EquipmentMasterType } from "@shared/schema";
+import { layerDisplayName } from "@shared/layerDisplay";
 
 interface PreviewData {
   date: string;
@@ -138,6 +139,7 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                   <TableHead>Side</TableHead>
                   <TableHead>From</TableHead>
                   <TableHead>To</TableHead>
+                  <TableHead>Layer / Lift</TableHead>
                   <TableHead className="text-right">Length (m)</TableHead>
                   <TableHead className="text-right">Width (m)</TableHead>
                   <TableHead className="text-right">Thickness (m)</TableHead>
@@ -160,7 +162,7 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                             <div className="text-sm text-muted-foreground mt-1">Personnel: {personnelNames}</div>
                           )}
                         </TableCell>
-                        <TableCell colSpan={8} className="text-muted-foreground italic">No site work</TableCell>
+                        <TableCell colSpan={9} className="text-muted-foreground italic">No site work</TableCell>
                       </TableRow>
                     );
                   }
@@ -192,6 +194,9 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                       <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
                       <TableCell>{item.chainageFrom || '-'}</TableCell>
                       <TableCell>{item.chainageTo || '-'}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {item.layerNo != null ? layerDisplayName(item.activity, item.layerNo) : null}
+                      </TableCell>
                       <TableCell className="text-right">{displayLength || '-'}</TableCell>
                       <TableCell className="text-right">{item.width || '-'}</TableCell>
                       <TableCell className="text-right">{item.thickness || '-'}</TableCell>

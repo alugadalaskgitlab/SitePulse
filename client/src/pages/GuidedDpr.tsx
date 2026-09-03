@@ -33,6 +33,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { layerDisplayName } from "@shared/layerDisplay";
 import { parseDprError } from "@/lib/dprErrors";
 import { InsufficientDieselDialog, parseInsufficientPlantStock, type InsufficientPlantStockPayload } from "@/components/InsufficientDieselDialog";
 import { useUpload } from "@/hooks/use-upload";
@@ -2428,6 +2429,7 @@ export default function GuidedDpr() {
                             e.isIncidental ? "Incidental / Non-BOQ · No BOQ Credit" : null,
                             e.side || null,
                             e.chainageFrom && e.chainageTo ? `Ch ${e.chainageFrom}–${e.chainageTo}` : "No chainage",
+                            e.layerNo != null ? layerDisplayName(e.activity, e.layerNo) : null,
                             e.quantity != null ? `${e.quantity} ${e.uom || ""}`.trim() : "No quantity",
                           ].filter(Boolean).join(" · ")}
                       {photoCount > 0 ? ` · ${photoCount} photo${photoCount > 1 ? "s" : ""}` : ""}

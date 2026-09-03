@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Badge } from "@/components/ui/badge";
 import { formatChainageKm } from "@shared/barSide";
 import { DprPhotoGroups } from "@/components/DprPhotoGroups";
+import { layerDisplayName } from "@shared/layerDisplay";
 
 type PreviewDpr = {
   id: number;
@@ -32,6 +33,7 @@ type PreviewDpr = {
     length: number | null;
     width: number | null;
     thickness: number | null;
+    layerNo: number | null;
     quantity: number | null;
     uom: string | null;
     chainageOverrideReason?: string | null;
@@ -102,6 +104,11 @@ export function DprPreviewDialog({
                     >
                       <p className="font-medium text-slate-900 dark:text-slate-100">
                         {p.activity ?? "—"}
+                        {p.layerNo != null && (
+                          <Badge variant="outline" className="ml-2">
+                            {layerDisplayName(p.activity, p.layerNo)}
+                          </Badge>
+                        )}
                         {highlighted && <Badge className="ml-2 bg-amber-500 text-white">Referenced row</Badge>}
                       </p>
                       <p className="text-slate-600 dark:text-slate-400">
