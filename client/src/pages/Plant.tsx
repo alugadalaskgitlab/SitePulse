@@ -27,6 +27,7 @@ import { generateChartPreview, parseTankConfig, getTankCapacity, TANK_SHAPE_LABE
 import { EQUIPMENT_TYPES, METER_TYPES, PERSONNEL_ROLES } from "@shared/schema";
 import { computeTankStock } from "@/lib/ldoStock";
 import { format } from "date-fns";
+import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
 
 export default function Plant() {
   const searchString = useSearch();
@@ -4500,7 +4501,7 @@ export function EquipmentMasterSection() {
               <div key={equip.id} className={`flex items-center justify-between p-3 rounded-md ${isInactive ? "bg-muted/30 opacity-60" : "bg-muted/50"}`} data-testid={`row-equipment-${equip.id}`}>
                 <div>
                   <p className="font-medium flex items-center gap-2 flex-wrap">
-                    {equip.name}
+                    {formatEquipmentOptionLabel(equip)}
                     {equippedPlantName ? (
                       <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" data-testid={`badge-plant-${equip.id}`}>{equippedPlantName}</span>
                     ) : (
@@ -4509,13 +4510,6 @@ export function EquipmentMasterSection() {
                     {isInactive && <Badge variant="outline" className="text-sm bg-gray-100 dark:bg-gray-800 text-gray-500">Inactive</Badge>}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {(equip as any).registrationNumber && <span className="font-medium">{(equip as any).registrationNumber} | </span>}
-                    {(equip as any).ownership === "hired" ? (
-                      <span className="text-orange-600 font-medium">Hired{(equip as any).vendorName ? ` - ${(equip as any).vendorName}` : ""} | </span>
-                    ) : (
-                      <span className="text-green-600 font-medium">Owned | </span>
-                    )}
-                    {equip.meterType === "hour_meter" ? "Hour Meter" : "Odometer"} | 
                     Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}
                   </p>
                 </div>

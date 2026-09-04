@@ -32,6 +32,7 @@ import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { plantDestinationType } from "@/lib/equipmentLifecycle";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { useUpload } from "@/hooks/use-upload";
+import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
 
 // 06X-HF2: extract the server's `message` field from apiRequest errors.
 // apiRequest throws "STATUS: {json}" — parse the JSON and return the
@@ -1335,7 +1336,7 @@ export default function PlantEquipmentUsage() {
                       const eqPlant = (equip as any).plantName as string | null;
                       return (
                         <SelectItem key={equip.id} value={String(equip.id)}>
-                          {equip.name} {(equip as any).registrationNumber ? `(${(equip as any).registrationNumber})` : ""} - {equip.meterType === "hour_meter" ? "hrs" : "km"} | {(equip as any).ownership === "hired" ? `HIRED: ${(equip as any).vendorName}` : "HLC OWN"}{eqPlant ? ` | ${eqPlant}` : ""}
+                          {formatEquipmentOptionLabel(equip)}{eqPlant ? ` | ${eqPlant}` : ""}
                         </SelectItem>
                       );
                     })}
@@ -1448,7 +1449,7 @@ export default function PlantEquipmentUsage() {
                       <SelectContent>
                         {activeEquipment.map((equip) => (
                           <SelectItem key={equip.id} value={String(equip.id)}>
-                            {equip.name}{(equip as any).registrationNumber ? ` (${(equip as any).registrationNumber})` : ""} | {(equip as any).ownership === "hired" ? `HIRED: ${(equip as any).vendorName || "Unknown"}` : "HLC OWN"}
+                            {formatEquipmentOptionLabel(equip)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1457,7 +1458,7 @@ export default function PlantEquipmentUsage() {
                       const tEquip = activeEquipment.find(e => e.id === parseInt(transportEquipmentId));
                       return tEquip ? (
                         <p className="text-sm text-muted-foreground mt-1">
-                          {(tEquip as any).ownership === "hired" ? `Owner: ${(tEquip as any).vendorName || "N/A"}` : "HLC Owned Vehicle"}
+                          {formatEquipmentOptionLabel(tEquip)}
                         </p>
                       ) : null;
                     })()}
@@ -1876,7 +1877,7 @@ export default function PlantEquipmentUsage() {
                   <SelectItem value="all">All Equipment</SelectItem>
                   {equipment?.map((equip) => (
                     <SelectItem key={equip.id} value={String(equip.id)}>
-                      {equip.name}{(equip as any).registrationNumber ? ` - ${(equip as any).registrationNumber}` : ""}{(equip as any).ownership === "hired" ? ` (HIRED${(equip as any).vendorName ? `: ${(equip as any).vendorName}` : ""})` : (equip as any).ownership === "owned" ? " (HLC OWN)" : ""}
+                      {formatEquipmentOptionLabel(equip)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -2123,7 +2124,7 @@ export default function PlantEquipmentUsage() {
                       existing.expected += expected;
                     } else {
                       map.set(key, {
-                        name: equip.name + (equip.registrationNumber ? ` (${equip.registrationNumber})` : ""),
+                        name: formatEquipmentOptionLabel(equip),
                         meterUnit,
                         runtime,
                         actual: consumed,
@@ -2150,7 +2151,7 @@ export default function PlantEquipmentUsage() {
                           ? Math.max(0, openingDieselVal + dieselIssuedVal - closingDieselEntry)
                           : (entry.expectedDiesel ?? 0);
                         const isExpanded = expandedIds.has(entry.id);
-                        const ownerLabel = equip ? ((equip as any).ownership === "hired" ? `HIRED${(equip as any).vendorName ? `: ${(equip as any).vendorName}` : ""}` : "HLC OWN") : "";
+                        const equipmentLabel = equip ? formatEquipmentOptionLabel(equip) : "Unknown equipment";
                         const runtimeDisplay = isPartialEntry(entry) ? "Pending"
                           : (entry as any).totalKm > 0 && !entry.hoursOrKmRun ? `${((entry as any).totalKm || 0).toFixed(1)} km`
                           : entry.hoursOrKmRun != null ? `${entry.hoursOrKmRun.toFixed(2)} ${equip?.meterType === "hour_meter" ? "hrs" : "km"}` : "—";
@@ -2174,8 +2175,7 @@ export default function PlantEquipmentUsage() {
                               <div className="flex-1 min-w-0">
                                 {/* Line 1: name, ownership, entry-type badges */}
                                 <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-sm">
-                                  <span className="font-semibold">{equip?.name || "Unknown"}{(equip as any)?.registrationNumber ? ` (${(equip as any).registrationNumber})` : ""}</span>
-                                  {equip && <span className="text-sm text-muted-foreground">{ownerLabel}</span>}
+                                  <span className="font-semibold">{equipmentLabel}</span>
                                   {(() => {
                                     const loc = (entry as any).siteName;
                                     if (!loc) return null;
@@ -2198,7 +2198,7 @@ export default function PlantEquipmentUsage() {
                                     <span className="font-medium text-foreground">{(entry as any).shiftFrom || "?"} → {(entry as any).shiftTo || "?"}</span>
                                     {(() => {
                                       const tEquip = equipment?.find(e => e.id === (entry as any).transportEquipmentId);
-                                      return tEquip ? <span>{tEquip.name}{(tEquip as any).registrationNumber ? ` (${(tEquip as any).registrationNumber})` : ""}</span> : null;
+                                      return tEquip ? <span>{formatEquipmentOptionLabel(tEquip)}</span> : null;
                                     })()}
                                     {(entry as any).transportDistance ? <span>{(entry as any).transportDistance} km</span> : null}
                                   </div>

@@ -1,0 +1,56 @@
+INSTRUCTION EQUIP-03: Make every equipment-selection dropdown show name, ownership, and vendor exactly as the Equipment Master list does — and fix a blank-vendor display bug
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. If you notice something else broken while doing this, write it down in your report and WAIT for instructions. Do not touch diesel receipt/reconciliation work (REC-01/02/03), Work Programme/BOQ (WP-04), or the Fleet Performance Ledger changes already covered by EQUIP-01/EQUIP-02. This batch is a display-label fix only — it must not change what equipment can be selected, any saved usage data, or any other field/behavior on these forms. Do not publish automatically. STOP after this fix and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+The "Record Equipment Usage" form (client/src/pages/PlantEquipmentUsage.tsx) and other spots in the same file build equipment dropdown option labels independently, inline, at six separate locations — there is no shared helper function. Each location formats name/registration/ownership/vendor slightly differently:
+- Line ~1338 (primary "Select equipment" dropdown in the "Record Equipment Usage" dialog): `{name} ({registrationNumber}) - {hrs/km} | HIRED: {vendorName} / HLC OWN`
+- Line ~1451 (transfer/receiving equipment list): `{name} ({registrationNumber}) | HIRED: {vendorName || "Unknown"} / HLC OWN`
+- Line ~1460: `Owner: {vendorName || "N/A"} / HLC Owned Vehicle`
+- Line ~1879: `{name}{" - "+registrationNumber}{" (HIRED: vendor)"/" (HLC OWN)"}`
+- Line ~2126, ~2153: further inline name/registration/ownership concatenations for other lists/table rows
+None of these guard against a blank `vendorName` the way line ~1451 does (`|| "Unknown"`) — most will literally render the string "HIRED: undefined" on screen if a hired equipment record has no vendor name saved, which is a real, user-visible bug, not just inconsistent styling.
+The Equipment Master list itself (client/src/pages/Plant.tsx, ~lines 4500-4520) already has a clean, correct reference format for the same data:
+```
+{registrationNumber} | {ownership === "hired" ? `Hired${vendorName ? ` - ${vendorName}` : ""}` : "Owned"} | {meterType label} | Norm: ...
+```
+This already guards against a blank vendor name (`vendorName ? ... : ""`), uses plain "Hired"/"Owned" (not "HIRED:"/"HLC OWN"), and spells out the meter type in full ("Hour Meter"/"Odometer" rather than "hrs"/"km").
+
+PART 1 — BUILD ONE SHARED LABEL HELPER
+1. Add a single shared function (e.g. `formatEquipmentOptionLabel(equipment)`) that takes an equipment_master record and returns the display label, matching the Equipment Master list's existing format and wording as the canonical style: name, registration number, "Hired - {vendorName}" (only appending the vendor if `vendorName` is present) or "Owned", and meter type. Place it wherever this codebase's existing shared formatting helpers live (mirror the location/pattern already used for a comparable helper, if one exists) so both PlantEquipmentUsage.tsx and Plant.tsx can import it — do not duplicate the logic a seventh time.
+2. The helper must never render the literal string "undefined" or "null" for a missing vendor name, registration number, or any other optional field — omit that segment cleanly instead, matching how Plant.tsx already handles this.
+
+PART 2 — APPLY IT EVERYWHERE AN EQUIPMENT DROPDOWN/LIST CURRENTLY BUILDS ITS OWN LABEL
+1. Replace the inline label-building code at all six locations identified above (~1338, ~1451, ~1460, ~1879, ~2126, ~2153 in PlantEquipmentUsage.tsx) with calls to the new shared helper, so every equipment-selection dropdown and equipment-referencing list in this form uses the identical, correct format.
+2. Do not change which equipment appears in each list (active-only filtering, already-assigned exclusions, or any other existing selection/filter logic) — only the label text changes.
+3. Confirm the Equipment Master list in Plant.tsx itself is either left as-is (if it's already the canonical reference) or also switched to call the same shared helper if that can be done without changing its current visible wording — owner's preference is that all these labels look identical to what the Equipment Master list already shows.
+
+PART 3 — VERIFY NO BEHAVIOR CHANGE BEYOND THE LABEL TEXT
+1. Confirm selecting an equipment option, saving a usage record, editing an existing record, and the transfer/receiving-equipment flow all continue to work exactly as before — only the visible text of each dropdown option/list row changes.
+2. Confirm this does not touch the Fleet Performance Ledger's own equipment dropdowns (EQUIP-02 Part 5 already covers those separately) — this instruction is scoped to PlantEquipmentUsage.tsx (and Plant.tsx's own list, per Part 2.3) only.
+
+WHAT NOT TO DO
+- Do not change which equipment is selectable, any filtering/eligibility logic, or any saved data — label text only.
+- Do not touch the Fleet Performance Ledger screens already covered by EQUIP-01/EQUIP-02.
+- Do not touch diesel receipt/reconciliation, Work Programme/BOQ, Execution Arrangement, or Layer/Lift work.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change is expected — this reads existing `equipment_master` fields (`name`, `registrationNumber`, `ownership`, `vendorName`, `meterType`) that are already being fetched by these forms today. If you find you need any schema or query change, stop and show us the exact proposed change before writing any migration, per our usual rule.
+
+TESTS
+A. Open "Record Equipment Usage" → the "Equipment" dropdown → confirm every option now shows name, registration (if present), Hired/Owned status, and vendor name (if hired and present) in the same wording/order as the Equipment Master list.
+B. Find or create a test case where a hired equipment record has no vendor name saved → confirm its dropdown label does NOT show "HIRED: undefined" or any similar broken text, and instead cleanly omits the vendor segment.
+C. Open the transfer/receiving-equipment list and any other equipment-referencing list in this file → confirm all now use the same corrected format.
+D. Select an equipment option, save a usage record, then edit it → confirm the save/edit behavior and saved data are completely unchanged from before this fix.
+E. Confirm the Fleet Performance Ledger's own dropdowns (from EQUIP-02) are unaffected by this change.
+
+REPORT BACK
+1. Confirm the shared helper was created and where it lives.
+2. Confirm all six identified locations (plus Plant.tsx if applicable) now use it, with a real before/after label example for at least one owned and one hired machine.
+3. Confirm Test B's blank-vendor case specifically, with evidence.
+4. Confirm Test D — no behavior change beyond label text.
+5. Confirm EQUIP-01/EQUIP-02 areas were not touched.
+6. Confirm no schema change was needed; if one was, stop and show it before applying.
+7. Anything else noticed but not touched, for a separate decision.
