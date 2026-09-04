@@ -29,7 +29,7 @@ import {
   type EarthworkArrangementSummary,
   deriveEarthworkSourcingBadge,
 } from "@shared/planningEngine";
-import { shortItemName, boqItemDisplayName } from "@/lib/itemName";
+import { boqItemDisplayName } from "@/lib/itemName";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
@@ -169,7 +169,7 @@ function MaterialsTable({
                           <div key={i} className="flex items-center gap-2 px-3 py-1.5 hover:bg-teal-50/30 text-xs">
                             <span className="flex-1 min-w-0 truncate text-slate-700" title={b.fullDescription ?? b.itemDescription}>
                               {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1">[{b.itemCode}]</span>}
-                              {shortItemName(b.fullDescription ?? b.itemDescription)}
+                              {boqItemDisplayName({ description: b.fullDescription ?? b.itemDescription, displayName: b.displayName, canonicalDisplayName: b.canonicalDisplayName })}
                               {b.compositeLabel && (
                                 <span className="ml-1 inline-flex items-center rounded px-1 py-0.5 text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200" title="Composite bituminous item — demand split across sub-layers">
                                   {b.compositeLabel}
@@ -317,7 +317,7 @@ function EquipmentTable({
                               <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-blue-50/30">
                                 <td className="px-3 py-1.5 text-slate-700 max-w-[320px]" title={b.fullDescription ?? b.itemDescription}>
                                   {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1.5">[{b.itemCode}]</span>}
-                                  {shortItemName(b.fullDescription ?? b.itemDescription)}
+                                  {boqItemDisplayName({ description: b.fullDescription ?? b.itemDescription, displayName: b.displayName, canonicalDisplayName: b.canonicalDisplayName })}
                                 </td>
                                 <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap">
                                   <span className="text-slate-500">{fmtQty(b.hrsPerUnit, 4)}</span>
@@ -444,7 +444,7 @@ function LabourTable({
                           <div key={i} className="flex items-center gap-2 px-3 py-1.5 hover:bg-purple-50/30 text-xs">
                             <span className="flex-1 min-w-0 truncate text-slate-700" title={b.fullDescription ?? b.itemDescription}>
                               {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1">[{b.itemCode}]</span>}
-                              {shortItemName(b.fullDescription ?? b.itemDescription)}
+                              {boqItemDisplayName({ description: b.fullDescription ?? b.itemDescription, displayName: b.displayName, canonicalDisplayName: b.canonicalDisplayName })}
                             </span>
                             <span className="font-mono whitespace-nowrap text-[11px] flex-shrink-0">
                               <span className="text-slate-500">{fmtQty(b.daysPerUnit, 4)}</span>
@@ -477,6 +477,8 @@ function LabourTable({
 interface ItemDemandRow {
   description: string;
   itemCode?: string | null;
+  displayName?: string | null;
+  canonicalDisplayName?: string | null;
   unit: string;
   workQty: number;
   isProgrammed: boolean;
@@ -490,17 +492,19 @@ function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<stri
   const map = new Map<string, ItemDemandRow>();
   // Key by itemCode + description so items from different bills with the same short name
   // stay as separate rows (e.g. Bill-4 DBM "4.03" vs Bill-10 DBM "10.09").
-  const rowKey = (bd: { itemCode?: string | null; itemDescription: string }) =>
-    (bd.itemCode ?? "") + "|" + bd.itemDescription;
-  const get = (bd: { itemCode?: string | null; itemDescription: string; unit?: string; compositeLabel?: string }): ItemDemandRow => {
+  const rowKey = (bd: { itemCode?: string | null; itemDescription: string; fullDescription?: string }) =>
+    (bd.itemCode ?? "") + "|" + (bd.fullDescription ?? bd.itemDescription);
+  const get = (bd: { itemCode?: string | null; itemDescription: string; fullDescription?: string; displayName?: string | null; canonicalDisplayName?: string | null; unit?: string; compositeLabel?: string }): ItemDemandRow => {
     const key = rowKey(bd);
     if (!map.has(key)) {
       map.set(key, {
-        description: bd.itemDescription,
+        description: bd.fullDescription ?? bd.itemDescription,
         itemCode: bd.itemCode ?? null,
+        displayName: bd.displayName ?? null,
+        canonicalDisplayName: bd.canonicalDisplayName ?? null,
         unit: bd.unit ?? "",
         workQty: 0,
-        isProgrammed: !unprogrammedDescriptions.has(bd.itemDescription),
+        isProgrammed: !unprogrammedDescriptions.has(bd.fullDescription ?? bd.itemDescription),
         compositeLabel: bd.compositeLabel,
         materials: [],
         equipment: [],
@@ -607,6 +611,7 @@ interface PlanVsActualItemRow {
   description: string;
   displayName?: string | null;
   itemName?: string | null;
+  canonicalDisplayName?: string | null;
   unit: string;
   plannedEquipHours: number;
   actualEquipHours: number;
@@ -717,6 +722,7 @@ function computePlanVsActual(
       description: item.description,
       displayName: (item as any).displayName ?? null,
       itemName: item.itemName ?? null,
+      canonicalDisplayName: (item as any).canonicalDisplayName ?? null,
       unit: (item as any).canonicalUnit ?? item.unit,
       plannedEquipHours: planned.equipment.reduce((s, e) => s + e.totalHours, 0),
       actualEquipHours,
@@ -2718,17 +2724,23 @@ export default function WorkDemand() {
     const driving = items.filter(it => (it.materials?.length ?? 0) > 0 || !!it.materialSetupWarning);
     const readyCount = driving.filter(it => (it.materials?.length ?? 0) > 0 && !it.materialSetupWarning).length;
     const blocked = driving.filter(it => !!it.materialSetupWarning);
-    const groups = new Map<string, { reason: string; items: { id: number; itemCode?: string | null; description: string }[] }>();
+    const groups = new Map<string, { reason: string; items: { id: number; itemCode?: string | null; description: string; displayName?: string | null; canonicalDisplayName?: string | null }[] }>();
     for (const it of blocked) {
       const reason = it.materialSetupWarning as string;
       if (!groups.has(reason)) groups.set(reason, { reason, items: [] });
-      groups.get(reason)!.items.push({ id: it.id, itemCode: it.itemCode, description: it.description });
+      groups.get(reason)!.items.push({
+        id: it.id,
+        itemCode: it.itemCode,
+        description: it.description,
+        displayName: (it as any).displayName ?? null,
+        canonicalDisplayName: (it as any).canonicalDisplayName ?? null,
+      });
     }
     return {
       total: driving.length,
       readyCount,
       blockedCount: blocked.length,
-      groups: [...groups.values()],
+      groups: Array.from(groups.values()),
     };
   }, [bomData]);
 
@@ -2950,7 +2962,7 @@ export default function WorkDemand() {
                             {g.items.slice(0, 6).map((it, j) => (
                               <li key={j} className="flex items-center gap-2 text-[11px] text-slate-600">
                                 <span className="truncate flex-1 min-w-0" title={it.description}>
-                                  {it.itemCode ? <span className="font-mono text-slate-500">{it.itemCode} </span> : null}{shortItemName(it.description)}
+                                  {it.itemCode ? <span className="font-mono text-slate-500">{it.itemCode} </span> : null}{boqItemDisplayName(it)}
                                 </span>
                                 <button
                                   type="button"

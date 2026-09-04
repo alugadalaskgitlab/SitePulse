@@ -171,8 +171,10 @@ function corridorWeight(c: Corridor): number {
 // ─── Applicability (Part E) ──────────────────────────────────────────────────
 
 export function segmentAppliesToItem(seg: ScopeSegmentLike, q: ScopeItemQuery): boolean {
-  if (seg.segmentType === "working_reach") return true; // reaches define WHERE work happens for everyone
   const mode: ScopeApplicabilityMode = (seg.applicability as ScopeApplicabilityMode) || "all_linear";
+  // Preserve the pre-WP-04 Working Reach default: an unscoped/all_linear reach
+  // remains universal. Only explicit item/category selections narrow a reach.
+  if (seg.segmentType === "working_reach" && mode === "all_linear") return true;
   if (mode === "all_linear") return q.isLinear === true; // discrete items never inherit (Part E)
   if (mode === "categories")
     return q.categoryId != null && (seg.categoryIds ?? []).includes(q.categoryId);
@@ -228,7 +230,7 @@ export function resolveEligibleScope(
     const m = new Map<Corridor, Ival[]>();
     for (const s of segs) {
       if (!type(s)) continue;
-      if (applies && s.segmentType !== "working_reach" && !segmentAppliesToItem(s, q)) continue;
+      if (applies && !segmentAppliesToItem(s, q)) continue;
       if (s.segmentType !== "working_reach" && !segmentActiveOnDate(s, q.onDate)) continue;
       if (s.side == null && s.id != null) sideReviewSegmentIds.push(s.id);
       for (const c of corridorsForSide(s.side)) {

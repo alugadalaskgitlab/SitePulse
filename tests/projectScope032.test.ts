@@ -105,6 +105,23 @@ describe("032 applicability (Part E) — item and category exceptions", () => {
     expect(segmentAppliesToItem(s, q({ boqItemId: 8 }))).toBe(false);
   });
 
+  it("working reaches obey the same item/category applicability modes", () => {
+    const itemReach = reach(0, 1, { applicability: "items", itemIds: [7] });
+    const categoryReach = reach(1, 2, { applicability: "categories", categoryIds: [3] });
+    expect(segmentAppliesToItem(itemReach, q())).toBe(true);
+    expect(segmentAppliesToItem(itemReach, q({ boqItemId: 8 }))).toBe(false);
+    expect(segmentAppliesToItem(categoryReach, q())).toBe(true);
+    expect(segmentAppliesToItem(categoryReach, q({ categoryId: 4 }))).toBe(false);
+  });
+
+  it("preserves the legacy universal all_linear Working Reach default", () => {
+    const legacyReach = reach(0, 10, { applicability: "all_linear" });
+    expect(segmentAppliesToItem(legacyReach, q({ isLinear: false }))).toBe(true);
+    const resolved = resolveEligibleScope([legacyReach], { isLinear: false, boqItemId: 7 });
+    expect(resolved.hasWorkingReaches).toBe(true);
+    expect(resolved.eligibleSideLenKm).toBeCloseTo(10, 5);
+  });
+
   it("exception example: signage still eligible where earthwork is excluded", () => {
     const segs = [reach(0, 10), seg("no_scope", 2, 4, { applicability: "categories", categoryIds: [1] })];
     const earthwork = resolveEligibleScope(segs, { isLinear: true, categoryId: 1 });
@@ -318,5 +335,29 @@ describe("032 sequencer integration — scopeCoverage callback", () => {
     }) as any);
     expect(res.bars.filter(b => b.boqItemId === 1).length).toBe(0);
     expect(res.scopeSummary?.[1]?.fullyExcluded).toBe(true);
+  });
+
+  it("unchecked Reach 1 gets no bar and the full item quantity moves to enabled Reach 2", () => {
+    const segments = [
+      reach(0, 1, { id: 101, applicability: "items", itemIds: [999] }),
+      reach(1, 2, { id: 102, applicability: "items", itemIds: [1] }),
+    ];
+    const scope = resolveEligibleScope(segments, { isLinear: true, boqItemId: 1 });
+    expect(scope.hasWorkingReaches).toBe(true);
+    expect(scope.eligibleSideLenKm).toBeCloseTo(1, 5);
+
+    const res = generateSequencedProgramme([item(1, 1000)], baseOpts({
+      roadLengthKm: 2,
+      stretches: [
+        { label: "Reach 1", chainageFrom: 0, chainageTo: 1, priority: 1 },
+        { label: "Reach 2", chainageFrom: 1, chainageTo: 2, priority: 2 },
+      ],
+      scopeCoverage: (_id: number, st: any) => coverageForStretch(scope, st),
+    }) as any);
+    const roadBars = res.bars.filter(b => b.boqItemId === 1);
+    expect(roadBars).toHaveLength(1);
+    expect(roadBars[0].chainageFrom).toBeCloseTo(1, 5);
+    expect(roadBars[0].chainageTo).toBeCloseTo(2, 5);
+    expect(roadBars[0].plannedQty).toBeCloseTo(1000, 3);
   });
 });

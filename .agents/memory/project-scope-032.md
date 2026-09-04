@@ -9,7 +9,7 @@ description: Corridor vs executable scope — shared eligible-scope service, seq
 - `shared/projectScope.ts` is the ONLY scope brain: `resolveEligibleScope`, `coverageForStretch`, `computeScopeReconciliation`, `evaluateDprScope`, `segmentAppliesToItem`. Pure functions; no DB.
 - Corridor algebra over 5 corridors (lhs/rhs/median/service_lhs/service_rhs, 0.5 side-km weight each); side vocab reuses shared/barSide lowercase strings.
 - Segment types: working_reach / no_scope / temporary_block / withdrawn; statuses draft/confirmed/superseded. **Scope is inactive until at least one CONFIRMED working_reach exists** — zero behavior change for legacy projects.
-- Applicability: all_linear (discrete items NEVER inherit), categories, items. categoryIds/itemIds stored as JSON text — always parse via `safeIdList` (routes) / `safeParseIds` (client); never raw JSON.parse.
+- Applicability has one intentional Working Reach exception: legacy/default `all_linear` reaches remain universal (including discrete items), while explicit `items` / `categories` selections filter each reach. Exclusion segments keep the old rule that `all_linear` never applies to discrete items.
 - `evaluateDprScope` precedence: withdrawn > no_scope > temporary_block > **outside-any-reach gap ⇒ no_scope** (gaps between discontinuous reaches block even without an explicit no_scope record) > ok. Withdrawals date-gated by DPR date (history preserved).
 
 ## Date semantics — two deliberately different rules
@@ -18,6 +18,7 @@ description: Corridor vs executable scope — shared eligible-scope service, seq
 
 ## Integration points
 - Sequencer: optional `SeqOptions.scopeCoverage(boqItemId, stretch)` callback; when present, pav items emit one bar per executable sub-range, qty ∝ eligible side-len / contractual total; `scopeSummary` on result. Callback absent ⇒ legacy path untouched.
+- Auto Sequence resolves Working Reach applicability per BOQ item. An unchecked reach receives no bar for that item, and the item's complete applicable quantity is redistributed across the remaining enabled reaches rather than reduced.
 - Supersede-and-revise: confirmed segments are never edited in place — `updateProjectScopeSegment` creates a draft revision (`revisionOf`) and marks the old row superseded.
 - DPR create/draft/submit + earthwork-arrangement POST share `validateProgressScope`/`evaluateDprScope`; overrides need project_scope.approve + reason, stamped into progress_entries scope_* columns; cloneDpr copies them.
 - Startup: `storage.ensureProjectScopeSchema()` (pre-routes in server/index.ts) idempotently creates project_scope_segments + corridor + progress scope columns — prod gets schema at publish; do not rely on drizzle push.

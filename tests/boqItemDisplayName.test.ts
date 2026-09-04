@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
-import { shortItemName, boqItemDisplayName } from "../shared/boqItemName";
+import {
+  shortItemName,
+  boqItemDisplayName,
+  cleanBoqDisplayFallback,
+  trustedCanonicalBoqName,
+} from "../shared/boqItemName";
 
 const EMBANKMENT_DESC =
   "Construction of Embankment with Material Obtained from Borrowed useful earth from outside road boundary MDD of 18 KN/Cum including all leads and lifts complete as per technical specification";
@@ -14,18 +19,16 @@ describe("boqItemDisplayName priority rules", () => {
     })).toBe("Embankment — Borrow Earth");
   });
 
-  it("derives a fallback short name from itemName/description only when no displayName", () => {
+  it("lightly cleans the original description when no trusted name exists", () => {
     const noSaved = boqItemDisplayName({ displayName: null, itemName: null, description: EMBANKMENT_DESC });
-    expect(noSaved).toBe(shortItemName(EMBANKMENT_DESC));
-    expect(noSaved.length).toBeLessThanOrEqual(81); // 80 + ellipsis
+    expect(noSaved).toBe(cleanBoqDisplayFallback(EMBANKMENT_DESC));
     expect(noSaved.toLowerCase()).toContain("embankment");
-    // Boilerplate must be stripped — no full-contract tail
-    expect(noSaved.toLowerCase()).not.toContain("technical specification");
+    expect(noSaved.toLowerCase()).toContain("technical specification");
   });
 
   it("ignores whitespace-only displayName", () => {
     expect(boqItemDisplayName({ displayName: "   ", itemName: null, description: EMBANKMENT_DESC }))
-      .toBe(shortItemName(EMBANKMENT_DESC));
+      .toBe(cleanBoqDisplayFallback(EMBANKMENT_DESC));
   });
 
   it("falls back to the raw value when short-naming can't produce a label", () => {
@@ -41,9 +44,47 @@ describe("boqItemDisplayName priority rules", () => {
       .toContain("Granular Sub-Base");
   });
 
-  it("never exceeds ~80 chars — long descriptions cannot stretch across the screen", () => {
-    const long = "Providing and laying in position " + "very long specification text ".repeat(30);
-    expect(boqItemDisplayName({ description: long }).length).toBeLessThanOrEqual(81);
+  it("preserves technical abbreviations and only capitalizes the first meaningful character", () => {
+    expect(boqItemDisplayName({
+      description: "   providing RCC M25 PCC NP4 DBM BC WMM GSB M15 complete   ",
+    })).toBe("Providing RCC M25 PCC NP4 DBM BC WMM GSB M15 complete");
+  });
+
+  it("uses deterministic and manually confirmed canonical mappings", () => {
+    expect(boqItemDisplayName({
+      description: EMBANKMENT_DESC,
+      mappingStatus: "mapped",
+      snlShortLabel: "Embankment Construction | forming embankment borrow fill",
+      snlMappedBy: "rule",
+      snlMappingIsAuto: true,
+      snlConfidence: 1,
+    })).toBe("Embankment Construction");
+    expect(trustedCanonicalBoqName({
+      mappingStatus: "mapped",
+      snlShortLabel: "RCC Pipe NP4 1000mm — single row",
+      snlMappedBy: "planner",
+      snlMappingIsAuto: false,
+      snlConfidence: 0.61,
+    })).toBe("RCC Pipe NP4 1000mm — single row");
+  });
+
+  it("never treats an unconfirmed fuzzy mapping as the display name", () => {
+    expect(boqItemDisplayName({
+      description: "providing RCC NP4 pipe 1200mm",
+      mappingStatus: "mapped",
+      snlShortLabel: "Wrong fuzzy label",
+      snlMappedBy: "auto",
+      snlMappingIsAuto: true,
+      snlConfidence: 0.92,
+    })).toBe("Providing RCC NP4 pipe 1200mm");
+  });
+
+  it("ignores legacy generated display names but preserves distinct manual overrides", () => {
+    const generated = shortItemName(EMBANKMENT_DESC);
+    expect(boqItemDisplayName({ displayName: generated, description: EMBANKMENT_DESC }))
+      .toBe(cleanBoqDisplayFallback(EMBANKMENT_DESC));
+    expect(boqItemDisplayName({ displayName: "Borrow Earth Embankment", description: EMBANKMENT_DESC }))
+      .toBe("Borrow Earth Embankment");
   });
 });
 
@@ -84,24 +125,42 @@ describe("operational screens use the shared helper (source regression scan)", (
     expect(src).not.toContain(".displayName || shortItemName(item.description)");
   });
 
-  it("server auto-classify uses the shared short-name (no duplicated logic)", () => {
+  it("server auto-classify no longer persists a generic display name", () => {
     const src = read("server/routes.ts");
-    expect(src).toContain('shortItemName as sharedShortItemName } from "@shared/boqItemName"');
+    expect(src).toContain("const toClassify = allItems.filter(it => it.needsReview || !it.workCategory?.trim());");
+    expect(src).not.toMatch(/updateBoqItem\(item\.id,\s*\{[\s\S]{0,100}displayName:/);
     expect(src).not.toMatch(/function serverShortItemName\(full/);
   });
 
   it("DPR Details passes displayName/itemName through to the label (saved override honoured)", () => {
     const src = read("client/src/pages/DprDetails.tsx");
     expect(src).toContain("displayName: (item as any).displayName ?? null");
+    expect(src).toContain("canonicalDisplayName: (item as any).canonicalDisplayName ?? null");
     expect(src).toContain("boqItemDisplayName(boqItemMap.get(item.boqItemId)!)");
   });
 
   it("Work Demand and Resource Review use short/display names, not full descriptions", () => {
     const wd = read("client/src/pages/WorkDemand.tsx");
     expect(wd).toContain("boqItemDisplayName(row as any)");
-    expect(wd).toContain("{shortItemName(it.description)}"); // readiness list shortened
+    expect(wd).not.toMatch(/\{shortItemName\((?:b\.fullDescription \?\? b\.itemDescription|it\.description)\)\}/);
+    expect(wd).toContain("{boqItemDisplayName(it)}");
     const rr = read("client/src/pages/ResourceReview.tsx");
     expect(rr).toContain("boqItemDisplayName(r.it as any)");
+  });
+
+  it("Progress Report routes operational item labels through the shared helper", () => {
+    const src = read("client/src/pages/ProgressReport.tsx");
+    expect(src).toContain('from "@shared/boqItemName"');
+    expect(src).toContain("const itemLabel = (b: ReportItem[\"boqItem\"]) => boqItemDisplayName(b);");
+    expect(src).not.toContain("b.displayName || b.itemName || b.description");
+
+    const routes = read("server/routes.ts");
+    const exportBlock = routes.slice(
+      routes.indexOf('["Progress Report — RA-style DPR Rollup"]'),
+      routes.indexOf('const wb = XLSX.utils.book_new()', routes.indexOf('["Progress Report — RA-style DPR Rollup"]')),
+    );
+    expect(exportBlock.match(/boqItemDisplayName\(it\.boqItem\)/g)).toHaveLength(2);
+    expect(exportBlock).not.toContain("it.boqItem.displayName || it.boqItem.itemName || it.boqItem.description");
   });
 
   it("BOQ management screens still show the complete imported description", () => {

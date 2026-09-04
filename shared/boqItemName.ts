@@ -1,15 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // BOQ item display naming — SINGLE SOURCE OF TRUTH for client and server.
 //
-// Business rule: the full imported BOQ description belongs only on the BOQ /
-// Item Review / BOQ-management screens. Every OPERATIONAL screen (DPRs,
-// programme, reports, equipment/labour/material links, procurement selectors)
-// shows the item's short name as the primary label.
+// Business rule: operational labels use a manually saved override or a
+// trustworthy canonical SNL label. Without either, lightly clean the imported
+// description without rewriting its technical meaning or abbreviations.
 //
 // Priority for the operational label (boqItemDisplayName):
-//   1. Saved short-name override (`displayName` column on boq_items)
-//   2. Saved `itemName` / description run through shortItemName()
-//   3. The raw itemName/description as a last resort
+//   1. Saved manual short-name override (`displayName` column on boq_items)
+//   2. Canonical SNL label from a deterministic or manually confirmed mapping
+//   3. Lightly cleaned original description
 //
 // Do NOT re-implement short-name logic locally in pages/components — import
 // from here so naming cannot drift.
@@ -94,18 +93,76 @@ export interface BoqItemNameFields {
   displayName?: string | null;
   itemName?: string | null;
   description?: string | null;
+  canonicalDisplayName?: string | null;
+  mappingStatus?: string | null;
+  snlMappingStatus?: string | null;
+  snlShortLabel?: string | null;
+  snlMappedBy?: string | null;
+  snlMappingIsAuto?: boolean | null;
+  snlConfidence?: number | null;
+}
+
+/** Preserve BOQ terminology; only normalize whitespace and the first character. */
+export function cleanBoqDisplayFallback(full?: string | null): string {
+  const cleaned = String(full ?? "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  const firstMeaningful = cleaned.search(/[A-Za-z]/);
+  if (firstMeaningful < 0) return cleaned;
+  return cleaned.slice(0, firstMeaningful)
+    + cleaned[firstMeaningful].toUpperCase()
+    + cleaned.slice(firstMeaningful + 1);
+}
+
+function cleanCanonicalLabel(label?: string | null): string {
+  return String(label ?? "")
+    .split(/\s+\|\s+/)[0]
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Return a canonical SNL label only when existing mapping provenance proves the
+ * mapping was manually confirmed or came from a deterministic automatic path.
+ */
+export function trustedCanonicalBoqName(item?: BoqItemNameFields | null): string {
+  if (!item) return "";
+  const status = item.snlMappingStatus ?? item.mappingStatus;
+  if (status !== "mapped") return "";
+
+  const manual = item.snlMappingIsAuto === false;
+  const deterministic = item.snlMappingIsAuto === true && (
+    item.snlMappedBy === "rule"
+    || item.snlMappedBy === "auto-propagated"
+    || (item.snlMappedBy === "auto" && Number(item.snlConfidence) === 1)
+  );
+  return manual || deterministic ? cleanCanonicalLabel(item.snlShortLabel) : "";
+}
+
+function manualDisplayOverride(item: BoqItemNameFields): string {
+  const saved = item.displayName?.replace(/\s+/g, " ").trim() ?? "";
+  if (!saved) return "";
+
+  // The old bulk classifier populated display_name with shortItemName(). Those
+  // values have no manual provenance, so do not let them masquerade as a saved
+  // override. Distinct values remain valid admin-entered names.
+  const generatedCandidates = [item.itemName, item.description]
+    .map(source => shortItemName(source))
+    .filter(Boolean);
+  if (generatedCandidates.some(candidate => candidate.toLocaleLowerCase() === saved.toLocaleLowerCase())) {
+    return "";
+  }
+  return saved;
 }
 
 /**
  * The authoritative OPERATIONAL display label for a BOQ item.
- * 1. saved short-name override → 2. shortItemName(itemName || description)
- * → 3. raw itemName/description fallback. Never returns undefined.
+ * Never treats an unconfirmed fuzzy SNL suggestion as a canonical name.
  */
 export function boqItemDisplayName(item?: BoqItemNameFields | null): string {
   if (!item) return "";
-  const saved = item.displayName?.trim();
+  const saved = manualDisplayOverride(item);
   if (saved) return saved;
-  const source = item.itemName?.trim() || item.description?.trim() || "";
-  const short = shortItemName(source);
-  return short || source;
+  const canonical = cleanCanonicalLabel(item.canonicalDisplayName) || trustedCanonicalBoqName(item);
+  if (canonical) return canonical;
+  return cleanBoqDisplayFallback(item.description ?? item.itemName);
 }

@@ -1,0 +1,74 @@
+INSTRUCTION WP-04: Make reach item-selection actually govern Auto Sequence, fix the BOQ import line-fragmentation bug, and give BOQ items clean canonical display names
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. If you notice something else broken while doing this, write it down in your report and WAIT for instructions. Do not touch culvert/structure-schedule placement — that is a separate, already-identified follow-up batch, deliberately not included here. Do not touch diesel, Vendor Billing, Execution Arrangement, or Layer/Lift work. Do not publish automatically. STOP after this fix and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+Three separate, confirmed issues, found while reviewing why an owner's own scope decisions were not being respected by the schedule, and why BOQ item names display badly.
+
+1. THE REACH ITEM-APPLICABILITY BUG (the important one)
+On the Work Programme "Scope Reconciliation" screen, a "Working Reach" record (e.g. "REACH 1") has an "Applies to: Only selected items" checklist where the user ticks/unticks which BOQ items apply within that reach. The owner unchecked "Forming Embankment with material" (and the culvert/structure items) for Reach 1, since that work genuinely does not occur there. This selection IS saved to the reach record (`project_scope_segments`, `itemIds`/`applicability`).
+However, the central scope resolver, `segmentAppliesToItem()` in `shared/projectScope.ts` (~line 178), has this:
+```
+if (seg.segmentType === "working_reach") return true; // reaches define WHERE work happens for everyone
+```
+A `working_reach` segment is treated as applying to every item unconditionally — its own `itemIds`/`applicability` selection is never consulted. Meanwhile, the SAME eligibility/redistribution machinery (`resolveEligibleScope`/`coverageForStretch` in `shared/projectScope.ts`, wired into `generateSequencedProgramme` via the `scopeCoverage` callback, `server/routes.ts` ~line 18483) already works correctly for `no_scope`, `temporary_block`, and `withdrawn` segment types — it correctly clips bars and (per that existing logic) computes quantity distribution only over the eligible stretch. So the mechanism to do this right already exists and is proven; a `working_reach`'s own item checklist is simply never routed through it.
+Net effect: the owner's explicit "this item doesn't apply here" answer is silently ignored, and embankment (and other unchecked items) still gets spread proportionally into Reach 1 as if the whole corridor were uniform.
+
+2. THE BOQ IMPORT LINE-FRAGMENTATION BUG
+Separately, many BOQ item descriptions in the current import are showing as multiple broken fragments instead of one item — e.g. a single real item is showing as five separate checklist rows: "earthen shoulder", ", spreading and", "applying primer", "applying tack", "50" (plus some entirely blank rows), instead of one full, correctly-worded item. Root cause, confirmed in `client/src/components/BoqImportWizard.tsx`, `parsedItems` (~lines 206-305): the importer reads the Excel sheet strictly one physical row at a time and treats every row that has no item code as a new "sub-item" of whatever came before it. Real BOQ sheets commonly wrap one long clause across several physical Excel rows (via manual line breaks/merged cells) with only the last line carrying the unit/quantity — the importer has no logic to merge those continuation rows back into a single description, so each wrapped line becomes its own bogus, fragment-only BOQ item. This is why some fragments are blank, why some are lowercase mid-sentence pieces, and why identical continuation text can appear duplicated under two different parent items.
+
+3. RAW, UNCLEANED DISPLAY NAMES
+Even for correctly-imported single-row items, screens display the raw imported description verbatim — e.g. a long sentence starting in lowercase — rather than a clean, readable name. WP-02 already built deterministic identity-matching/classification against the SNL/SDB libraries for auto-mapping; that same intelligence is not currently used to also produce a better display name.
+
+PART 1 — MAKE REACH ITEM-SELECTION ACTUALLY GOVERN AUTO SEQUENCE
+1. In `segmentAppliesToItem()`, a `working_reach` segment must consult its own `applicability` field (already schema-supported: `all_linear` | `categories` | `items`, `shared/schema.ts` ~line 2990) exactly the way the field is meant to be read — do not special-case `working_reach` to always return true. Be explicit, not a blind copy of exclusion-segment handling:
+   - `applicability = "items"` → the reach applies ONLY to the listed `itemIds`.
+   - `applicability = "categories"` → the reach applies ONLY to the listed `categoryIds`.
+   - `applicability = "all_linear"` (the default/legacy mode) → preserve exactly today's current normal Working Reach behavior for existing records — do not let this default start silently excluding discrete/non-linear items it wasn't excluding before.
+   Reuse the existing eligibility/redistribution CALCULATION machinery already proven correct for `no_scope`/`temporary_block`/`withdrawn` (do not write new, separate math) — but do not reuse or copy the exclusion segment types' applicability MEANING onto `working_reach` unchanged; the three modes above are the correct, explicit semantics for a working reach specifically.
+2. Required outcome: if an item is unchecked for Reach 1 (i.e. Reach 1's `applicability = "items"` and that item is not in its `itemIds`), Reach 1 contributes zero bars/quantity for that item — and critically, the item's total applicable BOQ quantity must then be redistributed only across the reaches where it IS enabled (i.e. the denominator changes too), not merely suppressed in Reach 1 while under-allocating the remainder. Confirm explicitly that this redistribution behavior (already proven for no-scope/withdrawn segments) applies identically here.
+3. Do not change how `no_scope`, `temporary_block`, or `withdrawn` segments behave — they are already correct; only fix `working_reach`'s handling.
+4. Existing, already-confirmed scope records (including any the owner already saved for ALLADURG) must take effect immediately once this is fixed — do not require the owner to re-enter the same selections.
+
+PART 2 — FIX THE BOQ IMPORT LINE-FRAGMENTATION BUG
+Reconstruct LOGICAL BOQ items before creating `parsedItems` — a physical Excel row is not automatically a new BOQ item.
+1. Use genuine item-boundary evidence to start a new logical item: a new item/serial/code value, a recognized Bill/Section marker, or another existing importer rule that conclusively starts a new BOQ item. Rows without a new-item boundary continue the description of the CURRENT logical item and must be appended to it, not turned into a new item.
+2. IMPORTANT — this corrects an internal contradiction in an earlier draft of this instruction: the presence of a UOM and/or quantity on a row must NOT by itself start a new item. A continuation row is very often exactly the row that carries the UOM/quantity completing the current logical item (e.g. the clause's description spans two blank-code rows, and the third row has no new item code but does carry "CUM | 500" — that row still completes and belongs to the SAME item as the two rows before it, not a new one). Boundary detection must be based solely on genuine new-item evidence (point 1), never on whether a row happens to carry a unit/qty.
+3. Never merge across a genuine next-item, Bill, Section, or other recognized source boundary.
+4. Preserve source Bill/Section, source Item No., original first-row position and ordering for the reconstructed logical item.
+5. Skip rows that are only whitespace/empty after trimming entirely — never create a blank-labeled item.
+6. This is a fix to the importer for FUTURE imports. Do not attempt to auto-repair already-imported, already-fragmented ALLADURG items in this batch — the owner is separately planning to rebuild that import file from the original tender document and re-run it through the (now fixed) importer. Confirm this scope boundary explicitly in your report.
+
+PART 3 — CANONICAL, CLEAN BOQ DISPLAY NAMES
+1. Keep the full original imported description intact and always accessible (e.g. in an item detail view/tooltip) — this remains the contractual record. Never lose or alter it.
+2. Add a separate, derived "display name" shown on normal list/programme/DPR screens wherever the item name currently renders. A canonical display label may be used ONLY when it comes from a deterministic/exact WP-02 identity match, or a mapping the user has manually confirmed — call it a "canonical concise display label where a reliable canonical label exists," not a guaranteed short name (the canonical source's own label is not always short). Do NOT promote an ordinary fuzzy-match suggestion into the displayed item name merely because its confidence score is above some threshold — an unconfirmed fuzzy match must never be shown as if it were the authoritative item name, since that risks turning a messy-but-correct description into a clean-looking WRONG one.
+3. Where no exact/deterministic or manually-confirmed canonical label exists, fall back to a cleaned version of the raw description rather than the raw text verbatim: capitalize only the first letter of the first meaningful word, and leave the rest of the sentence's casing as imported. Do NOT apply Title-Case-Every-Word — that would corrupt technical abbreviations. Preserve known technical abbreviations exactly as written wherever they appear in the sentence, not just at the start (e.g. RCC, PCC, NP4, DBM, BC, WMM, GSB, M15, and similar grade/class codes already recognized elsewhere in the app's classification/matching logic) — do not lowercase or re-case them.
+4. This display-name change is presentation-only — it must not alter the stored `description` field, any matching/classification logic, quantities, or BOQ Bill/item ordering.
+
+WHAT NOT TO DO
+- Do not touch culvert/structure-schedule placement or the Structure Schedule Import path — that is intentionally a separate next batch.
+- Do not touch diesel, Vendor Billing, Execution Arrangement, or Layer/Lift work.
+- Do not auto-repair or bulk-edit already-imported ALLADURG BOQ items in Part 2 — importer fix only, for future imports.
+- Do not invent a new redistribution formula for Part 1 — reuse the existing, already-correct mechanism.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+Part 3's display name should be derivable/computed, not necessarily a new stored column — if you find you genuinely need a schema change for any part of this, stop and show us the exact change before writing any migration, per our usual rule.
+
+TESTS
+A. A project with Reach 1 (embankment unchecked) and Reach 2 (embankment checked) covering the full corridor between them → Auto Sequence produces zero embankment bars/quantity in Reach 1, and Reach 2 receives the FULL applicable embankment quantity (not a proportionally-reduced share) — show the before/after numbers.
+B. Re-run Auto Sequence on the owner's existing, already-saved ALLADURG scope records (no re-entry) → the fix takes effect immediately.
+C. Confirm no-scope/temporary-block/withdrawn segment behavior is byte-for-byte unchanged (same test scenarios as before this batch, same results).
+D. Import a test BOQ sheet where one item's description deliberately spans 3 physical rows — e.g. row 1 has the item code and "Providing and forming embankment with approved", row 2 is blank-code with "material including spreading", row 3 is blank-code with "watering and compaction... | CUM | 500" (the UOM/qty lands on the LAST continuation row, not the first) → imports as ONE logical item with the full merged description ("Providing and forming embankment with approved material including spreading watering and compaction..."), UOM = CUM, Qty = 500 — not three items, and the presence of UOM/qty on that last row must not have caused it to be treated as a separate new item.
+E. Import a normal, single-row-per-item sheet → completely unaffected, imports exactly as before.
+F. Display name test: an item with a deterministic/exact WP-02 identity match, or a manually confirmed mapping, shows that canonical concise display label; an item with only an unconfirmed fuzzy suggestion does NOT show that suggestion as its name — it falls back to the cleaned first-letter-capitalized description instead, with RCC/PCC/WMM/M15-style abbreviations preserved exactly; the full original description is still visible/accessible in all cases.
+G. Confirm stored `description`, matching/classification results, quantities, and Bill/item ordering are unchanged by Part 3.
+
+REPORT BACK
+1. Part 1: confirm the fix and the redistribution behavior, with before/after test evidence (Tests A, B, C).
+2. Part 2: confirm the importer fix with test evidence (Tests D, E), and confirm existing ALLADURG data was NOT auto-modified.
+3. Part 3: confirm canonical names are derived correctly with a few real ALLADURG examples (Test F), and confirm nothing else changed (Test G).
+4. Confirm culvert/structure-schedule placement was not touched.
+5. Confirm no schema change was needed; if one was, stop and show it before applying.
+6. Anything else noticed but not touched, for a separate decision.

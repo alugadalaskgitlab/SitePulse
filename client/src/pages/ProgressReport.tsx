@@ -48,12 +48,13 @@ import {
 } from "@shared/progressReport";
 import { layerDisplayName, showLayerField } from "@shared/layerDisplay";
 import { parseChainageKm, formatChainageKm } from "@shared/barSide";
+import { boqItemDisplayName } from "@shared/boqItemName";
 import {
   type ProgressReportState, parseReportState, progressReportUrl, dprLinkWithReturn,
   isOverlapReviewOpen, overlapReviewTargetId,
 } from "@/lib/progressReportNav";
 
-type ReportItem = { boqItem: ReportBoqItem & { itemName?: string | null; displayName?: string | null; description: string }; entries: ComputedEntry[] };
+type ReportItem = { boqItem: ReportBoqItem & { itemName?: string | null; displayName?: string | null; canonicalDisplayName?: string | null; description: string }; entries: ComputedEntry[] };
 type Report = {
   project: { id: number; name: string; startDate: string | null };
   defaultFromDate: string | null;
@@ -64,7 +65,7 @@ type Report = {
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (n: number | null | undefined, dp = 3) =>
   n == null ? "—" : Number(n.toFixed(dp)).toLocaleString("en-IN");
-const itemLabel = (b: ReportItem["boqItem"]) => b.displayName || b.itemName || b.description;
+const itemLabel = (b: ReportItem["boqItem"]) => boqItemDisplayName(b);
 
 export default function ProgressReport() {
   const { toast } = useToast();

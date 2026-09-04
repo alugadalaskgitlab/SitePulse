@@ -40,6 +40,7 @@ export type ReportBoqItem = {
   itemCode?: string | null;
   description: string;
   displayName?: string | null;
+  canonicalDisplayName?: string | null;
   unit: string;
   /** Contract BOQ Qty — original contract quantity (boq_items.boq_qty). */
   boqQty: number | null;

@@ -35,7 +35,8 @@
 - [Physical Stock Reconciliation](stock-reconciliation-1385.md) — server recomputes with configured-factor-only conversion; clientRequestId idempotency; sorted FOR UPDATE locks; stock_balances lacks unique (material,party).
 - [Project Scope 032](project-scope-032.md) — shared/projectScope.ts is the only scope brain; scope inactive until a confirmed working_reach; planning ignores dates (conservative), DPRs use DPR date; `a ?? b || c` breaks esbuild.
 - [Site-Access Security](site-access-security.md) — zero site rows = deny-all; all-sites is an explicit grant; guided user creation + escalation guards; guided-DPR preference is per-user.
-- [BOQ Item Display Naming](boq-item-display-naming.md) — shared/boqItemName.ts is the only label source; operational screens show short names, BOQ management keeps full descriptions; pass displayName+itemName through reduced objects.
+- [BOQ Item Display Naming](boq-item-display-naming.md) — canonical labels require manual/deterministic provenance; fuzzy mappings fall back to lightly cleaned source text.
+- [BOQ Import Continuations](boq-import-continuations.md) — blank-code Excel rows continue the current item; late UOM/quantity must remain on that same logical BOQ item.
 - [Arrangement Auto-Allocation](arrangement-auto-allocation.md) — allocation writes must lock arrangement→bars (id order) or capacity double-books; auto rows reconcile on scope revisions, manual rows never touched.
 - [Arrangement Scope Linkage](arrangement-scope-linkage.md) — scope_segment_ids links confirmed reaches; reach-linked skips 032 chainage guard; PATCH must not drop operational fields beside material changes.
 - [Quantity Resolver Batch 01](quantity-resolver-batch01.md) — shared/quantityResolver.ts is the only quantity-math seam; Arrangement (eligible denom) vs Auto Sequence (contractual denom) disagreement documented, never silently unify.

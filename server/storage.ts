@@ -133,6 +133,7 @@ import {
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
+import { trustedCanonicalBoqName } from "@shared/boqItemName";
 import { sendPushToAll } from "./push";
 import {
   type CreateDprRequest,
@@ -25626,7 +25627,10 @@ export class DatabaseStorage implements IStorage {
         snlItemId: snlBoqMappings.snlItemId,
         snlItemCode: snlItems.itemCode,
         snlItemDescription: snlItems.description,
+        snlShortLabel: snlItems.shortLabel,
         snlConfidence: snlBoqMappings.confidenceScore,
+        snlMappedBy: snlBoqMappings.mappedBy,
+        snlMappingIsAuto: snlBoqMappings.isAutoMapped,
         isComposite: boqItems.isComposite,
         displayName: boqItems.displayName,
         dprMeasurementMethod: boqItems.dprMeasurementMethod,
@@ -25654,7 +25658,17 @@ export class DatabaseStorage implements IStorage {
       snlItemId: r.snlItemId ?? null,
       snlItemCode: r.snlItemCode ?? null,
       snlItemDescription: r.snlItemDescription ?? null,
+      snlShortLabel: r.snlShortLabel ?? null,
       snlConfidence: r.snlConfidence ?? null,
+      snlMappedBy: r.snlMappedBy ?? null,
+      snlMappingIsAuto: r.snlMappingIsAuto ?? null,
+      canonicalDisplayName: trustedCanonicalBoqName({
+        mappingStatus: r.mappingStatus,
+        snlShortLabel: r.snlShortLabel,
+        snlMappedBy: r.snlMappedBy,
+        snlMappingIsAuto: r.snlMappingIsAuto,
+        snlConfidence: r.snlConfidence,
+      }) || null,
       includedInPlanning: r.includedInPlanning ?? true,
       planningWorkType: (r as any).planningWorkType ?? "road",
       isComposite: (r as any).isComposite ?? false,
@@ -26385,10 +26399,19 @@ export class DatabaseStorage implements IStorage {
         categoryName: boqCategories.name,
         categoryId: boqItems.categoryId,
         sortOrder: boqItems.sortOrder,
+        displayName: boqItems.displayName,
+        itemName: boqItems.itemName,
+        mappingStatus: boqItems.mappingStatus,
+        snlShortLabel: snlItems.shortLabel,
+        snlMappedBy: snlBoqMappings.mappedBy,
+        snlMappingIsAuto: snlBoqMappings.isAutoMapped,
+        snlConfidence: snlBoqMappings.confidenceScore,
       })
       .from(workProgramBars)
       .innerJoin(boqItems, eq(workProgramBars.boqItemId, boqItems.id))
       .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
+      .leftJoin(snlBoqMappings, eq(snlBoqMappings.boqItemId, boqItems.id))
+      .leftJoin(snlItems, eq(snlItems.id, snlBoqMappings.snlItemId))
       .where(eq(workProgramBars.boqProjectId, boqProjectId))
       .orderBy(boqItems.sortOrder, workProgramBars.startMonth);
 
@@ -26397,6 +26420,7 @@ export class DatabaseStorage implements IStorage {
       categoryName: r.categoryName ?? null,
       categoryId: r.categoryId ?? null,
       sortOrder: r.sortOrder ?? 0,
+      canonicalDisplayName: trustedCanonicalBoqName(r) || null,
     }));
   }
 

@@ -82,13 +82,14 @@ export default function DprDetails() {
   });
 
   const boqItemMap = useMemo(() => {
-    const map = new Map<number, { itemCode: string | null; description: string; displayName: string | null; itemName: string | null; unit: string | null; dprMeasurementMethod: string | null; dprConversionFactor: number | null }>();
+    const map = new Map<number, { itemCode: string | null; description: string; displayName: string | null; itemName: string | null; canonicalDisplayName: string | null; unit: string | null; dprMeasurementMethod: string | null; dprConversionFactor: number | null }>();
     for (const item of siteBoqItems) {
       map.set(item.id, {
         itemCode: item.itemCode ?? null,
         description: item.description,
         displayName: (item as any).displayName ?? null,
         itemName: item.itemName ?? null,
+        canonicalDisplayName: (item as any).canonicalDisplayName ?? null,
         // Batch 04: measurement profile for the shared measurement summary
         unit: item.unit ?? null,
         dprMeasurementMethod: (item as any).dprMeasurementMethod ?? null,

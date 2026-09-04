@@ -3411,6 +3411,10 @@ export type BoqItemWithCategory = BoqItem & {
   snlItemCode?: string | null;
   snlConfidence?: number | null;
   snlItemDescription?: string | null;
+  snlShortLabel?: string | null;
+  snlMappedBy?: string | null;
+  snlMappingIsAuto?: boolean | null;
+  canonicalDisplayName?: string | null;
   isComposite?: boolean | null;
 };
 export type BoqRevisionWithItems = BoqRevision & { items: (BoqRevisionItem & { description: string; unit: string })[] };
@@ -3418,6 +3422,9 @@ export type BoqProjectWithCounts = BoqProject & { siteName: string | null; itemC
 export type WorkProgramBarWithItem = WorkProgramBar & {
   itemCode: string | null;
   description: string;
+  itemName?: string | null;
+  displayName?: string | null;
+  canonicalDisplayName?: string | null;
   unit: string;
   categoryName: string | null;
   categoryId: number | null;

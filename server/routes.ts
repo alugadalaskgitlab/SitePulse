@@ -24,7 +24,7 @@ import { siteMatchesPermitted } from "@shared/siteName";
 import { calculateHireBilling, planHireRegisterRows, type HireExceptionDecisionInput } from "@shared/hireBilling";
 import { computeItemEntries, computeItemAbstract } from "@shared/progressReport";
 import { isLayerCapableItem } from "@shared/layerDisplay";
-import { boqItemDisplayName, shortItemName as sharedShortItemName } from "@shared/boqItemName";
+import { boqItemDisplayName, shortItemName as sharedShortItemName, trustedCanonicalBoqName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
 import { computeDieselReceiptState } from "@shared/dieselReceiptStatus";
@@ -502,9 +502,21 @@ export async function registerRoutes(
             displayName: boqItems.displayName,
             itemName: boqItems.itemName,
             description: boqItems.description,
-          }).from(boqItems).where(drizzleInArray(boqItems.id, boqItemIds))
+            mappingStatus: boqItems.mappingStatus,
+            snlShortLabel: snlItems.shortLabel,
+            snlMappedBy: snlBoqMappings.mappedBy,
+            snlMappingIsAuto: snlBoqMappings.isAutoMapped,
+            snlConfidence: snlBoqMappings.confidenceScore,
+          })
+            .from(boqItems)
+            .leftJoin(snlBoqMappings, eq(snlBoqMappings.boqItemId, boqItems.id))
+            .leftJoin(snlItems, eq(snlItems.id, snlBoqMappings.snlItemId))
+            .where(drizzleInArray(boqItems.id, boqItemIds))
         : [];
-      const boqItemById = new Map(linkedBoqItems.map((item) => [item.id, item]));
+      const boqItemById = new Map(linkedBoqItems.map((item) => [item.id, {
+        ...item,
+        canonicalDisplayName: trustedCanonicalBoqName(item) || null,
+      }]));
       const response = dprs.map((dpr) => ({
         ...dpr,
         progress: dpr.progress.map((entry) => ({
@@ -13406,16 +13418,12 @@ export async function registerRoutes(
       const boqProjectId = parseInt(req.params.id);
       if (isNaN(boqProjectId)) return res.status(400).json({ error: "Invalid project id" });
 
-      // Short-name extraction: shared single source of truth (shared/boqItemName.ts)
-      const serverShortItemName = sharedShortItemName;
-
       const allItems = await storage.getBoqItems(boqProjectId);
-      const toClassify = allItems.filter(it => it.needsReview || !it.workCategory?.trim() || !it.displayName?.trim());
+      const toClassify = allItems.filter(it => it.needsReview || !it.workCategory?.trim());
       let updated = 0;
       for (const item of toClassify) {
         const desc = item.description || item.itemName || "";
         const unit = (item as any).unit ?? "";
-        const shortName = serverShortItemName(item.itemName || desc);
         const suggestedCategory = suggestWorkCategoryFromDescription(desc, unit);
         const newCategory = item.needsReview || !(item as any).workCategory?.trim()
           ? (suggestedCategory ?? (item as any).workCategory ?? null)
@@ -13425,7 +13433,6 @@ export async function registerRoutes(
         // visible in the "Needs Mapping" queue.
         const stillNeedsReview = !newCategory;
         await storage.updateBoqItem(item.id, {
-          displayName: shortName || null,
           workCategory: newCategory,
           needsReview: stillNeedsReview,
         } as any);
@@ -14708,6 +14715,7 @@ export async function registerRoutes(
           description: item.description,
           displayName: (item as any).displayName ?? null,
           itemName: (item as any).itemName ?? null,
+          canonicalDisplayName: (item as any).canonicalDisplayName ?? null,
           unit: item.unit,
           boqQty: item.boqQty != null ? Number(item.boqQty) : null,
           dprConversionFactor: (item as any).dprConversionFactor ?? null,
@@ -14781,7 +14789,7 @@ export async function registerRoutes(
         sl++;
         summaryRows.push([
           sl,
-          it.boqItem.displayName || it.boqItem.itemName || it.boqItem.description,
+          boqItemDisplayName(it.boqItem),
           it.boqItem.unit,
           abstract.contractQty,
           round3(abstract.previousQty),
@@ -14795,7 +14803,7 @@ export async function registerRoutes(
           if (e.dprDate < from || e.dprDate > to) continue;
           detailRows.push([
             e.dprDate,
-            it.boqItem.displayName || it.boqItem.itemName || it.boqItem.description,
+            boqItemDisplayName(it.boqItem),
             e.side ?? "",
             e.chainageFrom ?? "",
             e.chainageTo ?? "",
@@ -20200,6 +20208,8 @@ export async function registerRoutes(
           boqItemId: snlBoqMappings.boqItemId,
           snlItemId: snlBoqMappings.snlItemId,
           confidenceScore: snlBoqMappings.confidenceScore,
+          projectCategory: snlBoqMappings.projectCategory,
+          gradingVariant: snlBoqMappings.gradingVariant,
           snlSector: snlItems.sector,
         })
         .from(snlBoqMappings)
@@ -20226,6 +20236,16 @@ export async function registerRoutes(
         }
         try {
           await storage.applySnlMappingToRecipes(item.id, mapping.snlItemId, "MEDIUM", null, user);
+          await storage.setSnlMapping(item.id, {
+            boqItemId: item.id,
+            snlItemId: mapping.snlItemId,
+            projectCategory: mapping.projectCategory ?? "MEDIUM",
+            gradingVariant: mapping.gradingVariant ?? null,
+            mappedBy: user,
+            isAutoMapped: false,
+            confidenceScore: mapping.confidenceScore,
+            notes: `Bulk-confirmed by ${user}`,
+          });
           await storage.updateBoqItemMappingStatus(item.id, "mapped");
           confirmed++;
         } catch (err) {

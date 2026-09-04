@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BOQ_WORK_CATEGORIES, suggestWorkCategory, getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { canonicalizeUnit } from "@shared/boqNormalise";
-import { detectBoqBillBoundary } from "@shared/boqImportParsing";
+import { detectBoqBillBoundary, reconstructLogicalBoqItems } from "@shared/boqImportParsing";
 import { classifyPlanningItem } from "@shared/workTypeRecipes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -68,24 +68,6 @@ function parseExcelFile(file: File): Promise<(string | number | null)[][]> {
   });
 }
 
-// ─── MoRTH / EPC BoQ structure helpers ──────────────────────────────────────
-function toNum(v: unknown): number {
-  if (v == null || v === "") return 0;
-  const n = typeof v === "number" ? v : parseFloat(String(v).replace(/,/g, ""));
-  return isNaN(n) ? 0 : n;
-}
-// BoQ codes: numeric 201 → "201"; float-mangled 2.0199999 → "2.02"; "2.03A" → "2.03A"
-function normCode(v: string | number | null): string {
-  if (v == null || v === "") return "";
-  if (typeof v === "number") {
-    return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.00$/, "");
-  }
-  return String(v).trim();
-}
-// "Total Carried to Summary", "Sub Total", "Grand Total"
-function isTotalRow(desc: string): boolean {
-  return /total\s+carried|carried to summary|^sub\s*total$|^total$|grand total/i.test(desc.trim());
-}
 // Find the real header row (contains Description + Unit + Quantity) within the first ~15 rows
 function findHeaderRowIdx(rows: (string | number | null)[][]): number {
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
@@ -211,106 +193,18 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
     if (colMap.description == null || colMap.unit == null) return [];
     const dCol = colMap.description, uCol = colMap.unit;
     const iCol = colMap.itemCode, sCol = colMap.snlCode, qCol = colMap.boqQty, rCol = colMap.clientRate;
-
-    const get = (row: (string | number | null)[]) => ({
-      item: iCol != null ? normCode(row[iCol]) : "",
-      desc: cellStr(row[dCol]),
-      unit: canonicalizeUnit(cellStr(row[uCol])) || cellStr(row[uCol]),
-      spec: sCol != null ? normCode(row[sCol]) : "",
-      qc: qCol != null ? row[qCol] : null,
-      rc: rCol != null ? row[rCol] : null,
-      boundary: detectBoqBillBoundary(iCol != null ? row[iCol] : null, row[dCol]),
-    });
-    type Row = ReturnType<typeof get>;
-    const isSkippable = (r: Row) =>
-      !r.desc || isTotalRow(r.desc) || r.desc.toLowerCase() === "description" || r.item.toLowerCase() === "item";
-
-    // The next meaningful row (null if a BILL boundary or end-of-sheet is hit first).
-    // Used to decide whether a coded row is a PARENT heading (i.e. its next line is a
-    // blank-coded sub-item) vs a self-contained priced leaf.
-    const nextMeaningful = (start: number): Row | null => {
-      for (let j = start + 1; j < dataRows.length; j++) {
-        const rr = get(dataRows[j]);
-        if (rr.boundary) return null;
-        if (isSkippable(rr)) continue;
-        return rr;
-      }
-      return null;
-    };
-
-    const out: ParsedItem[] = [];
-    let currentCategory = "";
-    let currentBillNo = "";
-    let parent: { code?: string; spec?: string; desc: string; unit: string; sourceRow: number } | null = null;
-    let parentHadChild = false;
-    let order = 0;
-
-    const flushParent = () => {
-      // A coded heading that turned out to have NO sub-items → keep it as its own line
-      if (parent && !parentHadChild) {
-        out.push({
-          description: parent.desc, unit: parent.unit || "-", boqQty: 0,
-          itemCode: parent.code, snlCode: parent.spec,
-          categoryName: currentCategory || undefined, sourceBillNo: currentBillNo || undefined,
-          sourceRow: parent.sourceRow, sortOrder: order++,
-        });
-      }
-      parent = null; parentHadChild = false;
-    };
-
-    for (let i = 0; i < dataRows.length; i++) {
-      const r = get(dataRows[i]);
-
-      // 1) Explicit Bill/Schedule marker → start a new section. Never infer one.
-      if (r.boundary) {
-        flushParent();
-        currentBillNo = r.boundary.billNo;
-        currentCategory = r.boundary.title ?? "";
-        continue;
-      }
-      // 2) Skip empty / total / echoed-header rows
-      if (isSkippable(r)) continue;
-
-      const hasCode = r.item.length > 0;
-      const hasUnit = r.unit.length > 0;
-      const nxt = nextMeaningful(i);
-      const isParentHeading = hasCode && nxt != null && nxt.item === ""; // next line is a sub-item
-
-      // 3) Parent heading → store context, do not import the heading itself yet
-      if (isParentHeading) {
-        flushParent();
-        parent = { code: r.item, spec: r.spec || undefined, desc: r.desc, unit: r.unit, sourceRow: sourceRowNumbers[i + 1] ?? 0 };
-        parentHadChild = false;
-        continue;
-      }
-
-      // 4) Self-contained priced leaf (own code, no sub-items follow)
-      if (hasCode) {
-        flushParent();
-        out.push({
-          description: r.desc, unit: r.unit || "-", boqQty: toNum(r.qc),
-          itemCode: r.item, snlCode: r.spec || undefined,
-          clientRate: cellStr(r.rc) !== "" ? toNum(r.rc) || undefined : undefined,
-          categoryName: currentCategory || undefined, sourceBillNo: currentBillNo || undefined,
-          sourceRow: sourceRowNumbers[i + 1] ?? 0, sortOrder: order++,
-        });
-        continue;
-      }
-
-      // 5) Blank code → sub-item of the current parent (skip strays with no unit & no parent)
-      if (!hasUnit && !parent) continue;
-      out.push({
-        description: parent?.desc ? `${parent.desc} — ${r.desc}` : r.desc,
-        unit: r.unit || "-", boqQty: toNum(r.qc),
-        itemCode: parent?.code, snlCode: r.spec || parent?.spec || undefined,
-        clientRate: cellStr(r.rc) !== "" ? toNum(r.rc) || undefined : undefined,
-          categoryName: currentCategory || undefined, sourceBillNo: currentBillNo || undefined,
-          sourceRow: sourceRowNumbers[i + 1] ?? 0, sortOrder: order++,
-      });
-      parentHadChild = true;
-    }
-    flushParent();
-    return out;
+    return reconstructLogicalBoqItems(dataRows.map((row, index) => ({
+      itemCode: iCol != null ? row[iCol] : null,
+      description: row[dCol],
+      unit: row[uCol],
+      boqQty: qCol != null ? row[qCol] : null,
+      snlCode: sCol != null ? row[sCol] : null,
+      clientRate: rCol != null ? row[rCol] : null,
+      sourceRow: sourceRowNumbers[index + 1] ?? 0,
+    }))).map(item => ({
+      ...item,
+      unit: canonicalizeUnit(item.unit) || item.unit || "-",
+    }));
   }, [dataRows, colMap, sourceRowNumbers]);
 
   const billBoundaryCount = useMemo(() => {

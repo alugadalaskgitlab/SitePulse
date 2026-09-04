@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { useState } from "react";
 import { ScheduleRevisionActions } from "@/pages/WorkProgramme";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { shortItemName } from "@shared/boqItemName";
+import { cleanBoqDisplayFallback } from "@shared/boqItemName";
 import { barSideLabel } from "@shared/barSide";
 
 vi.mock("@/lib/queryClient", () => ({
@@ -302,7 +302,7 @@ describe("06W-HF3 successor row identity in preview", () => {
     await openIdentityPreview();
     const row = screen.getByTestId("revision-shifted-row-0").textContent ?? "";
     expect(row).toContain("[4.01]");
-    expect(row).toContain(shortItemName(GSB_DESC));
+    expect(row).toContain(cleanBoqDisplayFallback(GSB_DESC));
     expect(row).not.toMatch(/Clearing and grubbing/i);
     expect(row).toContain("Reach 2");
     expect(row).toContain("Ch 1.2 → 2.4");

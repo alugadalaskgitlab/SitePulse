@@ -38,6 +38,7 @@ export type BillItem = {
   includeInDpr?: boolean | null;
   sortOrder?: number | null;
   displayName?: string | null;
+  canonicalDisplayName?: string | null;
   needsReview?: boolean | null;
 };
 
