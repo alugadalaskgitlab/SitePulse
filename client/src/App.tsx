@@ -227,7 +227,7 @@ function Router() {
             <HmpHub />
           </RequireAuth>
         </Route>
-        <Route path="/equipment/hub" component={gatedEither(EquipmentHub, "equipment_hub", "plant_equipment")} />
+        <Route path="/equipment/hub" component={gatedEither(EquipmentHub, "equipment_hub", "equipment_performance_report", "plant_equipment")} />
         <Route path="/reports/hub" component={gated(ReportsHub, "reports_hub")} />
         <Route path="/site/hub" component={gated(SiteHub, "site_hub")} />
         <Route path="/admin/hub">
@@ -267,7 +267,7 @@ function AuthedShell() {
       <Suspense fallback={<PageLoader />}>
         <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
           <Switch>
-          <Route path="/reports/equipment-performance" component={gated(EquipmentPerformanceReport, "plant_equipment")} />
+          <Route path="/reports/equipment-performance" component={gatedEither(EquipmentPerformanceReport, "equipment_performance_report", "plant_equipment")} />
           {/* Site pages */}
           <Route path="/site" component={SiteHome} />
           <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />

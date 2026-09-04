@@ -20,3 +20,15 @@ Hired utilization exists only when both real hire-window bounds exist. Owned equ
 **Why:** Missing hire dates and filtered event windows otherwise fabricate commercial or operational conclusions.
 
 **How to apply:** Return unavailable utilization/gap metrics plus a data-quality warning for incomplete hire windows; preserve the unfiltered earliest project event separately from filtered totals.
+
+Tank diesel is measured consumption only when the closing balance was explicitly confirmed and opening, issued, effective closing, and derived consumption are all non-negative. Prefer the confirmed tank balance over a legacy closing value; otherwise label the figure as issued fuel.
+
+**Why:** Legacy unconfirmed rows can contain negative or internally inconsistent dip readings. Treating those as consumption creates false efficiency and variance figures.
+
+**How to apply:** Carry a diesel basis through events and aggregates. Keep total diesel visible, but calculate expected/variance/efficiency only from rows that have both diesel and a valid expected norm, and disclose incomplete comparisons.
+
+No-DPR usage may enter the fleet report only as clearly identified Plant/HMP/RMC activity with no project ID. Site-restricted viewers must not receive standalone plant rows because those rows have no verified site grant.
+
+**Why:** Free-text locations are not project linkage, and unscoped plant rows can expose fleet, operator, and fuel data outside a restricted viewer's sites.
+
+**How to apply:** DPR-linked canonical usage inherits the DPR's site scope regardless of record source. Admit standalone rows only from explicit plant location evidence; never infer a project from names or dates.

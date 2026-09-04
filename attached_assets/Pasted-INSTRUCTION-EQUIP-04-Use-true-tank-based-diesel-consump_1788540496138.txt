@@ -1,0 +1,66 @@
+INSTRUCTION EQUIP-04: Use true tank-based diesel consumption where available, separate record source from operational location, include standalone Plant/HMP usage, and split the view/edit permission
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. If you notice something else broken while doing this, write it down in your report and WAIT for instructions. Do not touch diesel receipt/reconciliation work (REC-01/02/03/04), Work Programme/BOQ (WP-04), or the display/navigation fixes already covered by EQUIP-02/EQUIP-03 — this batch only touches the Equipment Performance report's underlying calculation, scope, and permission logic described below. Do not publish automatically. STOP after this fix and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+Four separate, confirmed issues in the Equipment Performance report (client/src/pages/EquipmentPerformanceReport.tsx, shared/equipmentPerformance.ts):
+
+1. "Diesel actual" is computed as `usage.dieselIssued` (shared/equipmentPerformance.ts ~line 286) and reported/labeled as actual consumption. But `equipment_usage` already has real tank-based fields (shared/schema.ts ~lines 554-597: `openingDiesel`, `closingDiesel`, `dieselBalanceInTank`, `dieselBalanceConfirmed`) that are never read anywhere in the report. Where genuine opening/closing tank readings exist, true physical consumption is `opening + issued - closing`, which can differ meaningfully from diesel issued (e.g. issued 60L but actual consumption 75L if the tank also drew down 15L already in it) — using "issued" as "actual" makes the efficiency % calculation wrong wherever tank readings were actually recorded.
+2. The report's "scope" (Plant vs Site) label is derived purely from which table an event's canonical record lives in — `scope: source === "plant_usage" ? "plant" : "site"` (~line 292, with a comment acknowledging this is "the recording channel, not a guessed location"). But a DPR-linked equipment event (e.g. a roller working on a road DPR) gets its canonical record promoted into `equipment_usage` per the app's existing dedup design (EQUIP-01), and that promotion alone currently flips its reported scope to "plant" even though the actual operational location is the road site, not a plant. This conflates "which table stores the record" with "where the work actually happened."
+3. The report's scope boundary only includes events tied to a live DPR on an active BOQ project (~lines 268-269, 354-373) — any `equipment_usage` row with `dprId == null` is skipped entirely (`if (representedUsageIds.has(usage.id) || usage.dprId == null) continue;`). This correctly protects against guessing project association, but it also means genuine standalone Plant/HMP equipment usage — a loader, generator, or plant machine logged directly in the Plant module with no DPR and no project link — never appears anywhere in the report, even though this was intended to be a true fleet-wide performance report ("Include Plant module tracking too" was an explicit earlier scope decision).
+4. The report route is gated by the same `"plant_equipment"` permission section (client/src/App.tsx line 269) that also gates creating/editing Plant Equipment Usage transactions (PlantEquipmentUsage.tsx `canCreate`/`canEdit`/`canExport`, same section). A manager who should be able to view fleet performance has no way to get that access without also being granted transaction-entry rights.
+
+PART 1 — USE TRUE TANK-BASED CONSUMPTION WHERE RELIABLY AVAILABLE
+1. Where a usage event has both `openingDiesel` and `closingDiesel` recorded (and, if the schema's `dieselBalanceConfirmed` flag exists and is meaningful, prefer events where it's true/confirmed — use your judgment on what "reliably available" means given the actual data in these columns, and describe what threshold you used), compute actual diesel consumption as `openingDiesel + dieselIssued - closingDiesel` instead of `dieselIssued` alone.
+2. Where opening/closing tank readings are NOT available or not reliable, keep using `dieselIssued` as today — but do not label it "actual consumption" as if it were physically measured; label it clearly as "Diesel Issued" (distinct from true consumption) so the two are never visually conflated. Efficiency % calculated from issued-only figures should be clearly distinguishable (e.g. a footnote/marker) from efficiency calculated off true tank-based consumption.
+3. Apply this consistently everywhere `dieselActual`/diesel-variance/efficiency % is shown (fleet summary row, machine drill-down, any totals) — not just one place.
+4. Do not change how `openingDiesel`/`closingDiesel`/`dieselIssued` are entered or stored — this is a report calculation change only.
+
+PART 2 — SEPARATE RECORD SOURCE FROM OPERATIONAL LOCATION
+1. Stop deriving the "Plant" vs "Site" label from which table the canonical event lives in. Instead derive operational location from the event's own genuine location data: for a DPR-linked event, use the DPR's own site reference; for a standalone plant-module usage event, use `equipment_usage.siteName`/`plantName` (whichever is actually populated and meaningful for that row).
+2. Keep the underlying record-source/dedup mechanism (`plant_usage` vs `dpr_log`, `plantUsageId` linkage) exactly as-is — that is a separate, already-correct concept (which record is authoritative for counting) from operational location (where the work happened). Do not conflate them going forward; if useful, keep both as separate fields (e.g. `recordSource` and `location`) rather than collapsing back into one.
+3. Update the report's "Scope" filter/label (currently Plant/Site, ~EquipmentPerformanceReport.tsx line 100 and the event ledger's scope display ~line 278) to reflect true operational location under this corrected logic. Confirm with a real example: a roller worked on an active road DPR whose canonical record was promoted into `equipment_usage` — confirm it now shows as Site/road location, not Plant.
+
+PART 3 — INCLUDE GENUINE STANDALONE PLANT/HMP USAGE
+1. Refine the scope boundary so it covers two categories rather than one:
+   - Project-linked (Site) usage: current active-project + automatically-future-project events, from each project's own first logged usage — exactly as EQUIP-01 already established, unchanged.
+   - Plant/HMP/RMC usage with no DPR/project association: include these too, as genuine fleet/plant operations usage, WITHOUT inventing or guessing a project association for them.
+2. For this second category, show its "Project" field as something honest like "Plant Operations / HMP" rather than blank, a fake project name, or an error — the fleet summary and drill-down should handle a row with no project cleanly.
+3. Do not weaken the existing protection against guessing project association from machine name/site text for the Site/DPR-linked category — that rule stays exactly as it is. This only adds a second, honestly-labeled category for usage that was never supposed to have a project in the first place.
+4. Confirm with a real example: a genuine standalone HMP loader/generator usage record with no `dprId` now appears in the report, correctly labeled, and not silently dropped.
+
+PART 4 — SEPARATE THE VIEW PERMISSION FROM THE CREATE/EDIT PERMISSION
+1. Introduce a distinct permission for viewing the Equipment Performance report, separate from `"plant_equipment"` (which continues to gate creating/editing Plant Equipment Usage transactions as it does today). Use whatever pattern this codebase already has for defining/checking permission sections (mirror how other report-only routes are gated, if any exist, or describe the smallest addition needed if this is a new pattern).
+2. Update the route registration (`client/src/App.tsx` ~line 269) to gate on the new view permission instead of `"plant_equipment"`.
+3. Ensure existing users who currently have `"plant_equipment"` access are not locked out — decide and describe a sensible default/migration for existing permission grants (e.g. anyone with plant_equipment access today also gets the new view permission by default) so this change doesn't silently remove access anyone currently relies on.
+4. This is a permissions-model change only — do not alter what the report shows or calculates as part of this part.
+
+WHAT NOT TO DO
+- Do not change how diesel/tank data is entered or stored (Part 1) — calculation/display only.
+- Do not remove or weaken the existing dedup/record-source mechanism (`plantUsageId` linkage, `pickLatestClosing` logic) — Part 2 only changes how location is labeled, not how duplicate events are detected.
+- Do not guess a project association for genuinely standalone Plant/HMP usage (Part 3) — label it honestly as Plant Operations instead.
+- Do not remove `plant_equipment`-gated access for anyone who currently has it (Part 4).
+- Do not touch diesel receipt/reconciliation, Work Programme/BOQ, or the EQUIP-02/EQUIP-03 display/navigation fixes.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+Part 4 may need a new permission section/enum value if this codebase's permission model requires one — if so, stop and show us the exact proposed schema change before writing any migration, per our usual rule. Parts 1-3 should not need schema changes (they read/derive from existing columns). If you find otherwise, stop and show us the exact change first.
+
+TESTS
+A. Find or create a real equipment_usage event with both openingDiesel and closingDiesel recorded, where physical consumption differs from diesel issued (e.g. opening 40L, issued 60L, closing 25L → true consumption 75L) — confirm the report now shows 75L as actual consumption (or clearly-labeled true consumption), not 60L, and confirm efficiency % is computed off the correct figure.
+B. Find or create an event with no reliable tank readings — confirm it still shows Diesel Issued, now clearly labeled as such rather than implied to be measured consumption.
+C. Find a real DPR-linked road equipment event whose canonical record lives in equipment_usage — confirm it now reports as Site/road location, not Plant, under the corrected scope logic.
+D. Find or create a genuine standalone Plant/HMP usage record with no dprId — confirm it now appears in the report, labeled "Plant Operations / HMP" (or similar honest label), not silently excluded.
+E. Confirm a Site/DPR-linked event still requires genuine DPR/project linkage — no guessed project association was introduced for that category.
+F. Confirm a user with only the new view permission (not plant_equipment) can open the Equipment Performance report but cannot create/edit Plant Equipment Usage transactions; confirm a user who currently has plant_equipment retains report access after this change.
+G. Confirm EQUIP-01's existing dedup/scope tests and EQUIP-02/EQUIP-03's display fixes still pass unchanged.
+
+REPORT BACK
+1. Confirm Part 1 with Test A/B evidence, and state what threshold you used for "reliably available" tank readings.
+2. Confirm Part 2 with Test C evidence, and confirm record-source/dedup logic is untouched.
+3. Confirm Part 3 with Test D evidence, and confirm Test E (no guessed project association).
+4. Confirm Part 4 with Test F evidence, and describe the migration/default you chose for existing plant_equipment users.
+5. Confirm Test G — no regression to EQUIP-01/02/03.
+6. Confirm no schema change was needed; if one was, stop and show it before applying.
+7. Anything else noticed but not touched, for a separate decision.

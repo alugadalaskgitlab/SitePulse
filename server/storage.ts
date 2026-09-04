@@ -5183,18 +5183,17 @@ export class DatabaseStorage implements IStorage {
     const activeProjects = await db.select({
       id: boqProjects.id, name: boqProjects.name, status: boqProjects.status,
     }).from(boqProjects).where(eq(boqProjects.status, "active"));
-    if (!activeProjects.length) {
-      return buildEquipmentPerformanceReport({ projects: [], dprs: [], masters: [], usages: [], logs: [], filters });
-    }
     const unrestricted = options?.permittedSiteNames === null || options?.permittedSiteNames === undefined;
     const projectIds = activeProjects.map((project) => project.id);
-    const liveDprRows = await db.select().from(dprs).where(and(
-      inArray(dprs.boqProjectId, projectIds),
-      eq(dprs.isDeleted, false),
-      eq(dprs.isCancelled, false),
-      eq(dprs.isSuperseded, false),
-      ne(dprs.dprStatus, "draft"),
-    ));
+    const liveDprRows = projectIds.length
+      ? await db.select().from(dprs).where(and(
+          inArray(dprs.boqProjectId, projectIds),
+          eq(dprs.isDeleted, false),
+          eq(dprs.isCancelled, false),
+          eq(dprs.isSuperseded, false),
+          ne(dprs.dprStatus, "draft"),
+        ))
+      : [];
     // This is an access filter, not project attribution. The report builder
     // still relies only on explicit DPR/project links.
     const liveDprs = unrestricted
@@ -5204,24 +5203,29 @@ export class DatabaseStorage implements IStorage {
     const reportProjects = unrestricted
       ? activeProjects
       : activeProjects.filter((project) => visibleProjectIds.has(project.id));
-    if (!liveDprs.length) {
-      const masters = unrestricted ? await this.getEquipmentMaster(true) : [];
-      return buildEquipmentPerformanceReport({
-        projects: reportProjects, dprs: [], masters, filterMasters: masters, usages: [], logs: [], filters,
-      });
-    }
     const dprIds = liveDprs.map((dpr) => dpr.id);
-    const logs = await db.select().from(equipmentLogs).where(inArray(equipmentLogs.dprId, dprIds));
+    const logs = dprIds.length
+      ? await db.select().from(equipmentLogs).where(inArray(equipmentLogs.dprId, dprIds))
+      : [];
     const linkedUsageIds = logs
       .map((log) => log.plantUsageId)
       .filter((id): id is number => id != null);
-    const usageCondition = linkedUsageIds.length
-      ? or(inArray(equipmentUsage.dprId, dprIds), inArray(equipmentUsage.id, linkedUsageIds))
-      : inArray(equipmentUsage.dprId, dprIds);
-    const [usages, masters] = await Promise.all([
+    const linkedConditions = [];
+    if (dprIds.length) linkedConditions.push(inArray(equipmentUsage.dprId, dprIds));
+    if (linkedUsageIds.length) linkedConditions.push(inArray(equipmentUsage.id, linkedUsageIds));
+    const usageCondition = linkedConditions.length
+      ? or(isNull(equipmentUsage.dprId), ...linkedConditions)
+      : isNull(equipmentUsage.dprId);
+    const [loadedUsages, masters] = await Promise.all([
       db.select().from(equipmentUsage).where(usageCondition),
       this.getEquipmentMaster(true),
     ]);
+    // Site-restricted callers may see only usages explicitly attached to their
+    // visible DPR/log set. Standalone plant rows have no site grant to verify.
+    const linkedUsageIdSet = new Set(linkedUsageIds);
+    const usages = unrestricted
+      ? loadedUsages
+      : loadedUsages.filter((usage) => usage.dprId != null || linkedUsageIdSet.has(usage.id));
     const breakdownSourceConditions = [];
     const logIds = logs.map((log) => log.id);
     const usageIds = usages.map((usage) => usage.id);

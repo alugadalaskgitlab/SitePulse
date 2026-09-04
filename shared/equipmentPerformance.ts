@@ -3,6 +3,7 @@ import { computeEquipmentUsage, type UsageBasis } from "./equipmentUsage";
 export type EquipmentConfidence = "linked" | "confirmed_legacy_match" | "unclassified";
 export type EquipmentEventSource = "plant_usage" | "dpr_log";
 export type EquipmentScope = "plant" | "site";
+export type DieselPerformanceBasis = "tank_measured" | "issued_only" | "mixed" | "unavailable";
 
 export interface EquipmentPerformanceProject {
   id: number;
@@ -50,6 +51,10 @@ export interface EquipmentPerformanceUsage {
   numberOfTrips?: number | null;
   tripDistance?: number | null;
   dieselIssued?: number | null;
+  openingDiesel?: number | null;
+  closingDiesel?: number | null;
+  dieselBalanceInTank?: number | null;
+  dieselBalanceConfirmed?: boolean | null;
   operator?: string | null;
   task?: string | null;
   remarks?: string | null;
@@ -96,7 +101,7 @@ export interface EquipmentSuggestion {
 export interface EquipmentPerformanceEvent {
   key: string;
   date: string;
-  projectId: number;
+  projectId: number | null;
   project: string;
   scope: EquipmentScope;
   site: string | null;
@@ -116,12 +121,14 @@ export interface EquipmentPerformanceEvent {
   runtimeHours: number | null;
   totalKm: number | null;
   dieselActual: number | null;
+  /** Whether dieselActual is physical tank consumption or only fuel issued. */
+  dieselBasis: Exclude<DieselPerformanceBasis, "mixed">;
   dieselExpected: number | null;
   dieselVariance: number | null;
-  /** Actual diesel per hour/km, never a percentage. */
+  /** Measured consumption or issued-fuel fallback per hour/km, never a percentage. */
   actualConsumptionRate: number | null;
   dieselEfficiencyUnit: "L/hr" | "L/km";
-  /** Expected / actual × 100, available only when actual diesel is positive. */
+  /** Expected / reported diesel × 100, available only when reported diesel is positive. */
   efficiencyPercent: number | null;
   operator: string | null;
   source: EquipmentEventSource;
@@ -163,6 +170,10 @@ export interface EquipmentPerformanceFleetRow {
   totalKm: number;
   trips: number;
   dieselActual: number | null;
+  dieselBasis: DieselPerformanceBasis;
+  /** Diesel denominator used for expected/variance/efficiency comparisons. */
+  dieselComparedActual: number | null;
+  dieselComparisonIncomplete: boolean;
   dieselExpected: number | null;
   dieselVariance: number | null;
   efficiencyPercent: number | null;
@@ -184,18 +195,19 @@ export interface EquipmentPerformanceReport {
     ownership: string[];
     equipmentTypes: string[];
     equipment: Array<{ id: number; name: string; registrationNumber: string | null }>;
-    scopes: ["site", "plant"];
+    scopes: Array<{ value: EquipmentScope; label: string }>;
   };
   totals: {
     eventCount: number; linkedCount: number; confirmedLegacyCount: number; unclassifiedCount: number;
     runtimeHours: number; totalKm: number; trips: number; dieselActual: number; dieselExpected: number; dieselVariance: number;
-    activeDays: number; efficiencyPercent: number | null;
+    activeDays: number; efficiencyPercent: number | null; dieselBasis: DieselPerformanceBasis;
+    dieselComparedActual: number; dieselComparisonIncomplete: boolean;
   };
   reviewRows: Array<{ logId: number; date: string; machine: string; project: string; site: string | null; usageValue: number; suggestions: EquipmentSuggestion[] }>;
   events: EquipmentPerformanceEvent[];
   fleet: EquipmentPerformanceFleetRow[];
   projects: Array<{
-    projectId: number;
+    projectId: number | null;
     project: string;
     historyFrom: string;
     eventCount: number;
@@ -206,6 +218,8 @@ export interface EquipmentPerformanceReport {
     totalKm: number;
     trips: number;
     dieselActual: number;
+    dieselComparedActual: number;
+    dieselComparisonIncomplete: boolean;
     dieselExpected: number;
   }>;
 }
@@ -248,6 +262,57 @@ function dayDifference(from: string, to: string): number {
   return Math.max(0, inclusiveDays(from, to) - 1);
 }
 
+function finiteNonnegative(value: unknown): number | null {
+  const parsed = Number(value);
+  return value != null && Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+/**
+ * Tank consumption is trustworthy only when the operator explicitly confirmed
+ * the physical closing balance and all inputs produce a non-negative result.
+ * Unconfirmed/invalid rows retain the historical issued-fuel fallback.
+ */
+export function resolveDieselPerformance(
+  usage: EquipmentPerformanceUsage | null,
+  issuedFallback: number | null | undefined,
+): { diesel: number | null; basis: Exclude<DieselPerformanceBasis, "mixed"> } {
+  if (usage?.dieselBalanceConfirmed === true) {
+    const opening = finiteNonnegative(usage.openingDiesel);
+    const closing = finiteNonnegative(usage.dieselBalanceInTank ?? usage.closingDiesel);
+    const issued = usage.dieselIssued == null ? 0 : finiteNonnegative(usage.dieselIssued);
+    if (opening != null && closing != null && issued != null) {
+      const consumed = opening + issued - closing;
+      if (consumed >= 0) return { diesel: consumed, basis: "tank_measured" };
+    }
+  }
+  const issued = finiteNonnegative(issuedFallback);
+  return issued == null
+    ? { diesel: null, basis: "unavailable" }
+    : { diesel: issued, basis: "issued_only" };
+}
+
+function aggregateDieselBasis(rows: EquipmentPerformanceEvent[]): DieselPerformanceBasis {
+  const available = new Set(rows.map((row) => row.dieselBasis).filter((basis) => basis !== "unavailable"));
+  if (available.size === 0) return "unavailable";
+  if (available.size > 1) return "mixed";
+  return Array.from(available)[0];
+}
+
+function isClearlyPlantLocation(value: unknown): boolean {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return /\b(hmp|rmc)\b/.test(normalized) || /\bplant$/.test(normalized);
+}
+
+/**
+ * A no-DPR row is admitted only when its own fields clearly identify Plant,
+ * HMP, or RMC operations. Arbitrary site text never creates a Site/project link.
+ */
+export function isStandalonePlantUsage(usage: EquipmentPerformanceUsage): boolean {
+  if (usage.dprId != null) return false;
+  if (!String(usage.siteName ?? "").trim()) return !!String(usage.plantName ?? "").trim();
+  return isClearlyPlantLocation(usage.siteName);
+}
+
 /**
  * Pure report builder. Identity is explicit only: a log is collapsed solely
  * when its plantUsageId resolves to a supplied canonical usage row.
@@ -275,7 +340,7 @@ export function buildEquipmentPerformanceReport(input: {
   const makeEvent = (
     source: EquipmentEventSource,
     row: EquipmentPerformanceUsage | EquipmentPerformanceLog,
-    dpr: EquipmentPerformanceDpr,
+    dpr: EquipmentPerformanceDpr | null,
     confidence: EquipmentConfidence,
     log: EquipmentPerformanceLog | null,
   ) => {
@@ -283,13 +348,15 @@ export function buildEquipmentPerformanceReport(input: {
     const equipmentId = usage?.equipmentId ?? log?.equipmentId ?? null;
     const master = equipmentId == null ? undefined : masters.get(equipmentId);
     const calculated = computeEquipmentUsage(master, row);
-    const actual = usage ? usage.dieselIssued ?? null : log?.diesel ?? null;
+    const diesel = resolveDieselPerformance(usage, usage ? usage.dieselIssued : log?.diesel);
+    const actual = diesel.diesel;
     const expected = calculated.expectedDiesel;
-    const site = usage?.siteName ?? usage?.destinationSite ?? (source === "dpr_log" ? dpr.site : null);
+    const site = dpr ? dpr.site : usage?.siteName ?? usage?.destinationSite ?? null;
     const plant = usage?.plantName ?? master?.plantName ?? null;
-    // Scope is the recording channel, not a guessed location: canonical
-    // equipment_usage is Plant scope; an independent DPR log is Site scope.
-    const scope: EquipmentScope = source === "plant_usage" ? "plant" : "site";
+    // Record source remains `source`; scope reflects where work happened.
+    const scope: EquipmentScope = dpr ? "site" : "plant";
+    const projectId = dpr?.boqProjectId ?? null;
+    const project = projectId == null ? "Plant Operations / HMP" : projects.get(projectId)!.name;
     const machine = master?.name ?? log?.machine ?? `Equipment #${equipmentId}`;
     const runtimeForEfficiency = calculated.totalKm ?? calculated.hoursWorked;
     const qualityWarnings = [
@@ -316,9 +383,9 @@ export function buildEquipmentPerformanceReport(input: {
       ].filter(Boolean).join(" · "));
     events.push({
       key: `${source}:${row.id}`,
-      date: usage?.date ?? dpr.date,
-      projectId: dpr.boqProjectId!,
-      project: projects.get(dpr.boqProjectId!)!.name,
+      date: usage?.date ?? dpr!.date,
+      projectId,
+      project,
       scope, site, plant, equipmentId, machine,
       equipmentType: master?.equipmentType ?? null,
       ownership: master?.ownership ?? null,
@@ -333,6 +400,7 @@ export function buildEquipmentPerformanceReport(input: {
       runtimeHours: calculated.hoursWorked,
       totalKm: calculated.totalKm,
       dieselActual: actual,
+      dieselBasis: diesel.basis,
       dieselExpected: expected,
       dieselVariance: actual != null && expected != null ? actual - expected : null,
       actualConsumptionRate: actual != null && runtimeForEfficiency != null && runtimeForEfficiency > 0 ? actual / runtimeForEfficiency : null,
@@ -341,7 +409,7 @@ export function buildEquipmentPerformanceReport(input: {
       operator: row.operator ?? null,
       source,
       link: confidence,
-      reference: { dprId: dpr.id, equipmentLogId: log?.id ?? null, plantUsageId: usage?.id ?? log?.plantUsageId ?? null },
+      reference: { dprId: dpr?.id ?? null, equipmentLogId: log?.id ?? null, plantUsageId: usage?.id ?? log?.plantUsageId ?? null },
       notes,
       breakdownNotes,
       confidence,
@@ -367,12 +435,16 @@ export function buildEquipmentPerformanceReport(input: {
   // A canonical usage may independently establish its project only by a live
   // explicit DPR link. Machine/date/site are never consulted for attribution.
   for (const usage of input.usages) {
-    if (representedUsageIds.has(usage.id) || usage.dprId == null) continue;
+    if (representedUsageIds.has(usage.id)) continue;
+    if (usage.dprId == null) {
+      if (isStandalonePlantUsage(usage)) makeEvent("plant_usage", usage, null, "linked", null);
+      continue;
+    }
     const dpr = dprs.get(usage.dprId);
     if (dpr) makeEvent("plant_usage", usage, dpr, "linked", null);
   }
 
-  const projectHistoryFrom = new Map<number, string>();
+  const projectHistoryFrom = new Map<number | null, string>();
   for (const event of events) {
     const current = projectHistoryFrom.get(event.projectId);
     if (!current || event.date < current) projectHistoryFrom.set(event.projectId, event.date);
@@ -389,9 +461,19 @@ export function buildEquipmentPerformanceReport(input: {
     (!normalizedMachine || normalizeEquipmentLabel(event.machine).includes(normalizedMachine))
   ).sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key));
 
-  const projectGroups = new Map<number, EquipmentPerformanceEvent[]>();
+  const projectGroups = new Map<number | null, EquipmentPerformanceEvent[]>();
   for (const event of filtered) projectGroups.set(event.projectId, [...(projectGroups.get(event.projectId) ?? []), event]);
   const projectRows = Array.from(projectGroups.entries()).map(([projectId, rows]) => ({
+    ...(() => {
+      const dieselRows = rows.filter((row) => row.dieselActual != null);
+      const comparableRows = dieselRows.filter((row) => row.dieselExpected != null);
+      return {
+        dieselActual: dieselRows.reduce((n, row) => n + row.dieselActual!, 0),
+        dieselComparedActual: comparableRows.reduce((n, row) => n + row.dieselActual!, 0),
+        dieselComparisonIncomplete: comparableRows.length !== dieselRows.length,
+        dieselExpected: comparableRows.reduce((n, row) => n + row.dieselExpected!, 0),
+      };
+    })(),
     projectId,
     project: rows[0].project,
     historyFrom: projectHistoryFrom.get(projectId) ?? rows[0].date,
@@ -402,8 +484,6 @@ export function buildEquipmentPerformanceReport(input: {
     runtimeHours: rows.reduce((n, r) => n + (r.runtimeHours ?? 0), 0),
     totalKm: rows.reduce((n, r) => n + (r.totalKm ?? 0), 0),
     trips: rows.reduce((n, r) => n + (r.trips ?? 0), 0),
-    dieselActual: rows.reduce((n, r) => n + (r.dieselActual ?? 0), 0),
-    dieselExpected: rows.reduce((n, r) => n + (r.dieselExpected ?? 0), 0),
   }));
 
   const byEquipment = new Map<number, EquipmentPerformanceEvent[]>();
@@ -422,6 +502,8 @@ export function buildEquipmentPerformanceReport(input: {
     if (!master || !asOf) return [];
     const first = rows[0].date;
     const last = rows.at(-1)!;
+    const dieselRows = rows.filter((row) => row.dieselActual != null);
+    const comparableDieselRows = dieselRows.filter((row) => row.dieselExpected != null);
     const base: EquipmentPerformanceFleetRow = {
       key: `equipment:${equipmentId}`, equipmentId, machine: master.name, registrationNumber: master.registrationNumber ?? null,
       equipmentType: master.equipmentType ?? null, ownership: master.ownership === "hired" ? "hired" : "owned",
@@ -438,12 +520,15 @@ export function buildEquipmentPerformanceReport(input: {
       runtimeHours: rows.reduce((n, row) => n + (row.runtimeHours ?? 0), 0),
       totalKm: rows.reduce((n, row) => n + (row.totalKm ?? 0), 0),
       trips: rows.reduce((n, row) => n + (row.trips ?? 0), 0),
-      dieselActual: sumNullable(rows, "dieselActual"),
-      dieselExpected: sumNullable(rows, "dieselExpected"),
-      dieselVariance: sumNullable(rows, "dieselVariance"),
+      dieselActual: sumNullable(dieselRows, "dieselActual"),
+      dieselBasis: aggregateDieselBasis(dieselRows),
+      dieselComparedActual: sumNullable(comparableDieselRows, "dieselActual"),
+      dieselComparisonIncomplete: comparableDieselRows.length !== dieselRows.length,
+      dieselExpected: sumNullable(comparableDieselRows, "dieselExpected"),
+      dieselVariance: sumNullable(comparableDieselRows, "dieselVariance"),
       efficiencyPercent: (() => {
-        const actual = rows.reduce((n, row) => n + (row.dieselActual ?? 0), 0);
-        const expected = rows.reduce((n, row) => n + (row.dieselExpected ?? 0), 0);
+        const actual = comparableDieselRows.reduce((n, row) => n + row.dieselActual!, 0);
+        const expected = comparableDieselRows.reduce((n, row) => n + row.dieselExpected!, 0);
         return actual > 0 ? expected / actual * 100 : null;
       })(),
       dataQualityWarnings: rowWarnings(rows),
@@ -487,6 +572,8 @@ export function buildEquipmentPerformanceReport(input: {
   }
   for (const [key, rows] of Array.from(unclassifiedGroups.entries())) {
     const last = rows.at(-1)!;
+    const dieselRows = rows.filter((row) => row.dieselActual != null);
+    const comparableDieselRows = dieselRows.filter((row) => row.dieselExpected != null);
     fleet.push({
       key: `unclassified:${key}`, equipmentId: null, machine: last.machine, registrationNumber: null,
       equipmentType: null, ownership: "unclassified", confidence: "unclassified",
@@ -497,35 +584,48 @@ export function buildEquipmentPerformanceReport(input: {
       runtimeHours: rows.reduce((n, row) => n + (row.runtimeHours ?? 0), 0),
       totalKm: rows.reduce((n, row) => n + (row.totalKm ?? 0), 0),
       trips: rows.reduce((n, row) => n + (row.trips ?? 0), 0),
-      dieselActual: sumNullable(rows, "dieselActual"),
-      dieselExpected: sumNullable(rows, "dieselExpected"),
-      dieselVariance: sumNullable(rows, "dieselVariance"),
+      dieselActual: sumNullable(dieselRows, "dieselActual"),
+      dieselBasis: aggregateDieselBasis(dieselRows),
+      dieselComparedActual: sumNullable(comparableDieselRows, "dieselActual"),
+      dieselComparisonIncomplete: comparableDieselRows.length !== dieselRows.length,
+      dieselExpected: sumNullable(comparableDieselRows, "dieselExpected"),
+      dieselVariance: sumNullable(comparableDieselRows, "dieselVariance"),
       efficiencyPercent: (() => {
-        const actual = rows.reduce((n, row) => n + (row.dieselActual ?? 0), 0);
-        return actual > 0 ? rows.reduce((n, row) => n + (row.dieselExpected ?? 0), 0) / actual * 100 : null;
+        const actual = comparableDieselRows.reduce((n, row) => n + row.dieselActual!, 0);
+        return actual > 0 ? comparableDieselRows.reduce((n, row) => n + row.dieselExpected!, 0) / actual * 100 : null;
       })(),
       dataQualityWarnings: rowWarnings(rows),
     });
   }
   const total = (field: keyof EquipmentPerformanceEvent) => filtered.reduce((sum, event) => sum + (Number(event[field]) || 0), 0);
-  const totalDieselActual = total("dieselActual");
-  const totalDieselExpected = total("dieselExpected");
+  const dieselRows = filtered.filter((event) => event.dieselActual != null);
+  const comparableDieselRows = dieselRows.filter((event) => event.dieselExpected != null);
+  const totalDieselActual = dieselRows.reduce((sum, event) => sum + event.dieselActual!, 0);
+  const totalDieselComparedActual = comparableDieselRows.reduce((sum, event) => sum + event.dieselActual!, 0);
+  const totalDieselExpected = comparableDieselRows.reduce((sum, event) => sum + event.dieselExpected!, 0);
   return {
     filterOptions: {
       projects: Array.from(projects.values()).map(({ id, name }) => ({ id, name })),
       ownership: Array.from(new Set((input.filterMasters ?? input.masters).map((m) => m.ownership).filter((v): v is string => !!v))).sort(),
       equipmentTypes: Array.from(new Set((input.filterMasters ?? input.masters).map((m) => m.equipmentType).filter((v): v is string => !!v))).sort(),
       equipment: (input.filterMasters ?? input.masters).map((m) => ({ id: m.id, name: m.name, registrationNumber: m.registrationNumber ?? null })),
-      scopes: ["site", "plant"],
+      scopes: [
+        { value: "site", label: "Site / road operations" },
+        { value: "plant", label: "Plant / HMP / RMC operations" },
+      ],
     },
     totals: {
       eventCount: filtered.length, linkedCount: filtered.filter((e) => e.confidence === "linked").length,
       confirmedLegacyCount: filtered.filter((e) => e.confidence === "confirmed_legacy_match").length,
       unclassifiedCount: filtered.filter((e) => e.confidence === "unclassified").length,
       runtimeHours: total("runtimeHours"), totalKm: total("totalKm"), trips: total("trips"),
-      dieselActual: totalDieselActual, dieselExpected: totalDieselExpected, dieselVariance: total("dieselVariance"),
+      dieselActual: totalDieselActual, dieselExpected: totalDieselExpected,
+      dieselComparedActual: totalDieselComparedActual,
+      dieselComparisonIncomplete: comparableDieselRows.length !== dieselRows.length,
+      dieselVariance: comparableDieselRows.reduce((sum, event) => sum + event.dieselVariance!, 0),
       activeDays: fleet.reduce((sum, row) => sum + row.activeDays, 0),
-      efficiencyPercent: totalDieselActual > 0 ? totalDieselExpected / totalDieselActual * 100 : null,
+      efficiencyPercent: totalDieselComparedActual > 0 ? totalDieselExpected / totalDieselComparedActual * 100 : null,
+      dieselBasis: aggregateDieselBasis(dieselRows),
     },
     reviewRows: filtered.filter((e) => e.confidence === "unclassified").map((e) => ({
       logId: e.reference.equipmentLogId!, date: e.date, machine: e.machine, project: e.project,

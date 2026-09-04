@@ -78,6 +78,7 @@ import {
   assertAdmin,
   assertEdit,
   assertView,
+  assertViewEither,
   assertAuthed,
   assertCreate,
   assertCreateOrEdit,
@@ -4352,7 +4353,7 @@ export async function registerRoutes(
 
   app.get("/api/reports/equipment-performance", requireAuth, async (req, res) => {
     try {
-      if (!assertView(req, res, "plant_equipment")) return;
+      if (!assertViewEither(req, res, "equipment_performance_report", "plant_equipment")) return;
       const dateFrom = typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined;
       const dateTo = typeof req.query.dateTo === "string" ? req.query.dateTo : undefined;
       if ((dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) || (dateTo && !/^\d{4}-\d{2}-\d{2}$/.test(dateTo))) {

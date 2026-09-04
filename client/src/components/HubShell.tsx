@@ -129,7 +129,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     ...(sectionVisible("site_hub") || isAdmin ? [{ href: "/site/hub", icon: HardHat, label: "Site Operations", matchPrefix: "/site", contextKey: "site" }] : []),
     ...(moduleAllowed("hmp") ? [{ href: "/plant/hub", icon: Factory, label: "HMP Operations", matchPrefix: "/plant", contextKey: "hmp" }] : []),
     ...(rmcEnabled && moduleAllowed("rmc") ? [{ href: "/rmc/hub", icon: Building2, label: "RMC Operations", matchPrefix: "/rmc", contextKey: "rmc" }] : []),
-    ...(sectionVisible("equipment_hub") || sectionVisible("plant_equipment") || isAdmin ? [{ href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment", contextKey: "equipment" }] : []),
+    ...(sectionVisible("equipment_hub") || sectionVisible("equipment_performance_report") || sectionVisible("plant_equipment") || isAdmin ? [{ href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment", contextKey: "equipment" }] : []),
     ...(sectionVisible("stores_hub") || sectionVisible("stores_inventory") || isAdmin ? [{ href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores", contextKey: "stores" }] : []),
     ...(sectionVisible("finance_hub") || isAdmin ? [{ href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" }] : []),
     ...(canSeeIrn ? [{ href: "/irn", icon: ClipboardList, label: "Requisitions", matchPrefix: "/irn" }] : []),

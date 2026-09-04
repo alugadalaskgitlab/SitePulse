@@ -12,6 +12,7 @@ const spies = vi.hoisted(() => ({
   createUsage: vi.fn(),
   permitted: vi.fn(),
   sites: vi.fn(),
+  viewEither: vi.fn(),
 }));
 
 vi.mock("../server/storage", () => {
@@ -63,7 +64,13 @@ vi.mock("../server/auth-routes", () => ({
       if (!allowed) res.status(403).json({ error: "admin_required" });
       return allowed;
     },
-    assertView: () => true, assertAuthed: () => true,
+    assertView: () => true,
+    assertViewEither: (_req: Request, res: Response, ...sections: string[]) => {
+      const allowed = spies.viewEither(...sections);
+      if (!allowed) res.status(403).json({ error: "forbidden", sections, action: "view" });
+      return allowed;
+    },
+    assertAuthed: () => true,
   assertCreateOrEdit: () => true, assertCreateEither: () => true, assertApprove: () => true,
   assertDeleteOrCancel: () => true, currentUserName: () => "Route Tester",
 }));
@@ -84,6 +91,7 @@ beforeEach(() => {
   spies.admin.mockReturnValue(true);
   spies.permitted.mockResolvedValue([1]);
   spies.sites.mockResolvedValue([{ id: 1, name: "Site A" }]);
+  spies.viewEither.mockReturnValue(true);
 });
 
 describe("EQUIP-01 routes", () => {
@@ -95,6 +103,14 @@ describe("EQUIP-01 routes", () => {
     }), { permittedSiteNames: ["Site A"] });
     expect(spies.confirm).not.toHaveBeenCalled();
     expect(spies.createUsage).not.toHaveBeenCalled();
+    expect(spies.viewEither).toHaveBeenCalledWith("equipment_performance_report", "plant_equipment");
+  });
+
+  it("denies the report when neither the new nor legacy view permission is granted", async () => {
+    spies.viewEither.mockReturnValue(false);
+    const response = await request(app).get("/api/reports/equipment-performance");
+    expect(response.status).toBe(403);
+    expect(spies.report).not.toHaveBeenCalled();
   });
 
   it("passes a restricted caller's permitted sites to the report loader", async () => {

@@ -37,7 +37,7 @@ export default function ReportsHub() {
   const canAudit      = sectionVisible("plant_audit");
   const canDieselReq  = sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve");
   const canBills      = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view") || sectionVisible("vendor_bills_raise") || sectionVisible("vendor_bills_verify") || sectionVisible("vendor_bills_approve");
-  const canEquipment  = sectionVisible("plant_equipment");
+  const canEquipment  = sectionVisible("equipment_performance_report") || sectionVisible("plant_equipment");
 
   const hasSiteReports  = canSiteDprs || canSiteMat || canSiteProcure || canReports;
   const hasHmpReports   = canDailyRep || canHeating || canProd || canDieselProc || canShift;

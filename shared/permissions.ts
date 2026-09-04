@@ -59,6 +59,7 @@ export const SECTION_KEYS = [
   "plant_audit",
   "plant_diesel_proc",
   "stock_reconciliation",
+  "equipment_performance_report",
 
   // ── RMC Module ────────────────────────────────────────────────────────────
   "rmc_operations",              // legacy broad key — kept for backward compat
@@ -181,6 +182,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   plant_audit: "Audit Report",
   plant_diesel_proc: "Diesel Procurement Report",
   stock_reconciliation: "Physical Stock Reconciliation",
+  equipment_performance_report: "Equipment Performance — View Report",
 
   // RMC
   rmc_operations: "RMC Operations (legacy)",
@@ -360,6 +362,11 @@ const _PM_MATRIX = buildTemplateMatrix(
   // edit
   ["qto_boq", "project_scope"],
 );
+_PM_MATRIX.equipment_performance_report = {
+  ..._PM_MATRIX.equipment_performance_report,
+  view: true,
+  view_reports: true,
+};
 
 const _STORES_MATRIX = buildTemplateMatrix(
   [
@@ -397,6 +404,11 @@ const _EQUIPMENT_PLANT_MATRIX = buildTemplateMatrix(
     "master_equipment",
   ],
 );
+_EQUIPMENT_PLANT_MATRIX.equipment_performance_report = {
+  ..._EQUIPMENT_PLANT_MATRIX.equipment_performance_report,
+  view: true,
+  view_reports: true,
+};
 
 const _BILLING_MEASUREMENTS_MATRIX = buildTemplateMatrix(
   [
@@ -419,6 +431,7 @@ function buildViewerMatrix(): PermissionMatrix {
     "stores_inventory", "vendor_bills_view",
     "report_management", "report_site_purchases",
     "plant_daily_reports", "plant_stock",
+    "equipment_performance_report",
     "qto_boq", "project_scope",
   ];
   for (const k of viewSections) m[k] = { ...m[k], view: true, view_reports: true };
@@ -533,6 +546,7 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
       "plant_daily_reports", "plant_stock", "plant_ldo_reconciliation",
       "plant_variance", "plant_audit", "plant_diesel_proc",
       "stock_reconciliation",
+      "equipment_performance_report",
     ],
   },
   {

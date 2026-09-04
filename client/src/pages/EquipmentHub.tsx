@@ -28,8 +28,8 @@ export default function EquipmentHub() {
   const { sectionVisible } = useAuth();
 
   // Anyone who can reach the hub (equipment_hub OR plant_equipment) sees core content
-  const canSeeEquip = sectionVisible("equipment_hub") || sectionVisible("plant_equipment");
-  const canSeePerformanceReport = sectionVisible("plant_equipment");
+  const canSeeEquip = sectionVisible("equipment_hub") || sectionVisible("equipment_performance_report") || sectionVisible("plant_equipment");
+  const canSeePerformanceReport = sectionVisible("equipment_performance_report") || sectionVisible("plant_equipment");
 
   // Standalone equipment usage logs (plant/HMP source)
   const { data: equipmentUsage = [] } = useQuery<any[]>({
