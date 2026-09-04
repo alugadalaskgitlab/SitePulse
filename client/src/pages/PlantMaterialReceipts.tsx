@@ -44,6 +44,7 @@ export default function PlantMaterialReceipts() {
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
+  const canDirectEditSubmittedReceipt = isOwnerOrAdmin || sectionCan("plant_materials", "edit");
   const canExport = sectionCan("plant_stock", "view_reports");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -498,6 +499,14 @@ export default function PlantMaterialReceipts() {
       setEditingReceipt(null);
       resetForm();
       toast({ title: "Receipt updated successfully" });
+    },
+    onError: (error: any) => {
+      let msg = "Failed to update material receipt";
+      try {
+        const parsed = JSON.parse(error.message.replace(/^\d+:\s*/, ""));
+        msg = parsed.message || msg;
+      } catch { msg = error.message || msg; }
+      toast({ title: "Cannot update receipt", description: msg, variant: "destructive" });
     },
   });
 
@@ -1681,7 +1690,20 @@ export default function PlantMaterialReceipts() {
                                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                                   </Button>
                                 )}
-                                {(receipt as any).documentStatus === "submitted" && (
+                                {(receipt as any).documentStatus === "submitted" && canDirectEditSubmittedReceipt && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleEditClick(receipt, 0)}
+                                    data-testid={`button-correct-submitted-receipt-${receipt.id}`}
+                                    title="Correct this locked receipt"
+                                    className="gap-1"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                    Correct
+                                  </Button>
+                                )}
+                                {(receipt as any).documentStatus === "submitted" && !canDirectEditSubmittedReceipt && (
                                   <EditPermissionButton
                                     recordType="material_receipt"
                                     recordId={receipt.id}

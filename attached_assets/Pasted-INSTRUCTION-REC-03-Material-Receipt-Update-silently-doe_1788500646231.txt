@@ -1,0 +1,48 @@
+INSTRUCTION REC-03: Material Receipt "Update" silently does nothing on failure, and direct editors cannot correct a Final Submitted receipt at all
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a pre-existing bug, unrelated to REC-01/REC-02 and unrelated to Invoice Date — do not touch any Invoice Date, ledger-date, or recompute logic in this batch, that work is already done and verified. Do not start any other task on your own initiative. Do not touch Vendor Billing, Work Programme/BOQ, Execution Arrangement, or Layer/Lift work. Do not publish automatically. STOP after this fix and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+Reported symptom: editing a Material Receipt (client/src/pages/PlantMaterialReceipts.tsx, "Update Receipt") and clicking save appears to do nothing — the dialog doesn't show an error, but the receipt is not updated either.
+
+Two separate, compounding bugs, both confirmed in the code:
+
+1. `updateMutation` (~line 490) has no `onError` handler at all. `createMutation`... actually specifically `deleteMutation` (~line 504) and `finalSubmitMutation` (~line 520) both have an `onError` that shows a toast with the server's message; `updateMutation` has none. So whenever the PUT request to `/api/plant-module/material-receipts/:id` fails for any reason, the user sees nothing — no toast, the dialog stays open, and it looks exactly like a silent no-op. This is the reason no error message appears, regardless of why the underlying save failed.
+
+2. A specific, real case that WILL fail every time today: correcting a receipt that has already been Final Submitted (documentStatus = "submitted", shown with a lock icon). The server (`server/routes.ts` ~line 3645-3670, `PUT /api/plant-module/material-receipts/:id`) requires, for a submitted receipt:
+   - A "direct editor" (Owner/Admin/anyone with the `plant_materials` edit permission) must send `editPermissionRequestId: 0` exactly.
+   - Anyone else must send a real, currently-active, approved edit-permission request id (obtained via the `EditPermissionButton` component's request/approval flow).
+   But the client only ever shows the `EditPermissionButton` (~line 1684-1691) for a submitted receipt's row — regardless of whether the logged-in user is a direct editor or not — and that button's flow always produces a real granted request id via `onEditGranted`, never `0`. So even an Owner/Admin going through the only edit path the UI offers for a submitted receipt ends up sending a real (non-zero) id, which the server's direct-editor branch rejects, because it specifically requires exactly `0`. Combined with bug #1, this failure is currently invisible — the correction attempt just silently fails.
+
+PART 1 — SHOW WHY A RECEIPT UPDATE FAILS
+Add an `onError` handler to `updateMutation` (~line 490), matching the existing pattern already used on `deleteMutation`/`finalSubmitMutation` in this same file: parse the server's error message (including the `NNN: {json}` prefix pattern already handled in `finalSubmitMutation`'s `onError`) and show it in a destructive toast. Do not change `onSuccess` or the mutation function itself.
+
+PART 2 — LET A DIRECT EDITOR ACTUALLY CORRECT A FINAL SUBMITTED RECEIPT
+1. For a submitted receipt's row, a direct editor (Owner/Admin, or anyone with the `plant_materials` edit permission — the same check already used elsewhere in this file, e.g. `isOwnerOrAdmin`/`canEdit`) must get a control that opens the edit form and, on save, sends `editPermissionRequestId: 0` — bypassing the request/approval flow entirely, consistent with what the server already expects from a direct editor. This can be a small, clearly-labelled addition next to or instead of the existing `EditPermissionButton` for that role, e.g. calling `handleEditClick(receipt, 0)` directly. Keep it visually distinct from the ordinary (non-submitted) Edit button so it's clear this is a "correct a locked receipt" action.
+2. A non-direct-editor (no `plant_materials` edit permission) must keep using the existing `EditPermissionButton` request/approval flow exactly as today — do not change anything about that path.
+3. Confirm the payload-building logic (~line 646-648, the `editPermissionRequestId` conditional in the update-submit handler) correctly sends `0` (not omitted, not `null`) when a direct editor uses the new control from 2.1, and still sends the real granted id when a non-direct-editor uses the existing approval flow.
+
+WHAT NOT TO DO
+- Do not touch any Invoice Date, ledger date, or `recomputeBalanceAfterForMaterial` logic — that is already fixed and verified separately (REC-01/REC-02). This batch is unrelated.
+- Do not change the underlying permission rules themselves (who counts as a direct editor, how approval requests are granted) — only fix how the UI exercises the existing rule for direct editors.
+- Do not change `createMutation`'s or `deleteMutation`'s or `finalSubmitMutation`'s existing behavior.
+- Do not touch Vendor Billing, Work Programme/BOQ, Execution Arrangement, or Layer/Lift work.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+This should not require any schema change. If you find you genuinely need one, stop and show us the exact change before writing any migration.
+
+TESTS
+A. Force an update to fail (e.g. attempt to correct a cancelled receipt, or any other existing server-side rejection) → a destructive toast now shows the real reason; the dialog stays open so the user can fix and retry.
+B. As an Owner/Admin, open a Final Submitted diesel receipt using the new direct-edit control, change a field (e.g. Invoice Date or quantity), save → it succeeds, the receipt updates, and the ledger reflects the change correctly.
+C. As a user who is NOT a direct editor, confirm the existing "request edit permission" flow on a Final Submitted receipt is completely unchanged and still works exactly as before.
+D. Confirm a normal (non-submitted, draft) receipt edit is completely unaffected by this change — still saves exactly as before.
+
+REPORT BACK
+1. Confirm Part 1: `updateMutation` now shows a real error message on failure, with test evidence (Test A).
+2. Confirm Part 2: a direct editor can now correct a Final Submitted receipt (Test B), and the non-direct-editor approval flow is untouched (Test C).
+3. Confirm ordinary draft-receipt edits are unaffected (Test D).
+4. Confirm no schema change was needed; if one was, stop and show it before applying.
+5. Confirm nothing outside this scope — especially Invoice Date/ledger-date/recompute logic — was touched.
+6. Anything else noticed but not touched, for a separate decision.
