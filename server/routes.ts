@@ -9263,6 +9263,7 @@ export async function registerRoutes(
             id: r.id,
             date: r.date,
             time: r.time,
+            invoiceDate: r.invoiceDate || r.date,
             quantity: r.quantity,
             uom: r.uom,
             supplier: r.supplier,

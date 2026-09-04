@@ -110,6 +110,7 @@ export interface DieselReceiptStatusEntry {
     id: number;
     date: string;
     time: string | null;
+    invoiceDate: string;
     quantity: number;
     uom: string;
     supplier: string | null;
@@ -199,7 +200,8 @@ function DieselReceiptPanel({
           <div className="space-y-2" data-testid="list-linked-receipts">
             {state.receipts.map((r) => (
               <div key={r.id} className={`rounded-md border p-2 text-sm flex flex-wrap gap-x-4 gap-y-1 ${r.isCancelled ? "opacity-60" : ""}`} data-testid={`row-linked-receipt-${r.id}`}>
-                <span className="font-medium">{r.date}{r.time ? ` ${r.time}` : ""}</span>
+                <span className="font-medium">Invoice {r.invoiceDate}</span>
+                <span className="text-muted-foreground">Entered {r.date}{r.time ? ` ${r.time}` : ""}</span>
                 <span className="font-semibold">{r.quantity} {r.uom}</span>
                 {r.supplier && <span>{r.supplier}</span>}
                 {(r.challanNumber || r.receiptNo) && <span className="text-muted-foreground">{r.challanNumber || r.receiptNo}</span>}

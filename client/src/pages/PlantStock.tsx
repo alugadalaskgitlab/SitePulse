@@ -36,7 +36,13 @@ type StockBalanceAsOf = {
   t2TotalOut: number;
 };
 
-type ProcessedLedgerEntry = StockLedgerEntry & {
+type ReceiptDatedLedgerEntry = StockLedgerEntry & {
+  invoiceDate?: string | null;
+  entryDate?: string | null;
+  entryTime?: string | null;
+};
+
+type ProcessedLedgerEntry = ReceiptDatedLedgerEntry & {
   calculatedBalance: number;
   partyBalance?: number;
   t1BalanceAfter?: number;
@@ -47,7 +53,7 @@ type ProcessedLedgerEntry = StockLedgerEntry & {
 };
 
 const n = (v: unknown): number | null => (v == null ? null : Number(v));
-const normLedger = (e: StockLedgerEntry): StockLedgerEntry => ({
+const normLedger = (e: ReceiptDatedLedgerEntry): ReceiptDatedLedgerEntry => ({
   ...e,
   quantityIn: n(e.quantityIn) as typeof e.quantityIn,
   quantityOut: n(e.quantityOut) as typeof e.quantityOut,
@@ -226,7 +232,7 @@ export default function PlantStock() {
 
   type PartyStatementResult = {
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
-    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number; templateQty?: number; ownQty?: number })[];
+    entries: (ReceiptDatedLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number; templateQty?: number; ownQty?: number })[];
   };
   type HlcReconResult = {
     uom: string;
@@ -246,7 +252,7 @@ export default function PlantStock() {
         uom: d.summary.uom,
       },
       entries: d.entries.map(e => ({
-        ...normLedger(e as StockLedgerEntry),
+        ...normLedger(e),
         displayType: e.displayType,
         borrowedQty: Number(e.borrowedQty),
         runningBalance: Number(e.runningBalance),
@@ -260,13 +266,13 @@ export default function PlantStock() {
     enabled: !!reconUrl,
   });
 
-  const { data: ledger, isLoading: ledgerLoading } = useQuery<StockLedgerEntry[]>({ 
+  const { data: ledger, isLoading: ledgerLoading } = useQuery<ReceiptDatedLedgerEntry[]>({
     queryKey: [buildLedgerUrl()],
     select: (rows) => rows.map(normLedger),
   });
 
   // All-time ledger for Current Balances tab — only fetched when that tab is active
-  const { data: allTimeLedger, isLoading: allTimeLedgerLoading } = useQuery<StockLedgerEntry[]>({ 
+  const { data: allTimeLedger, isLoading: allTimeLedgerLoading } = useQuery<ReceiptDatedLedgerEntry[]>({
     queryKey: [buildAllTimeLedgerUrl()],
     enabled: activeTab === "balances",
     select: (rows) => rows.map(normLedger),
@@ -992,7 +998,10 @@ export default function PlantStock() {
       const ledgerData = ledgerRows.map(entry => {
         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
         const row: Record<string, string> = {
-          Date: entry.date,
+          "Transaction Date": entry.date,
+          "Invoice Date": entry.invoiceDate || "",
+          "Entry Date": entry.entryDate || "",
+          "Entry Time": entry.entryTime || "",
           Material: getMaterialName(entry.materialId),
           "Stock Owner": getPartyName(entry.partyId, entry.materialId),
           Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'tank_transfer' ? '→ Boiler Tank' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType === 'ldo_dip_consumption' ? 'Actual Consumption' : entry.transactionType,
@@ -1134,6 +1143,9 @@ export default function PlantStock() {
           : '';
         const row: (string)[] = [
           entry.date,
+          entry.invoiceDate || "-",
+          entry.entryDate || "-",
+          entry.entryTime || "-",
           getMaterialName(entry.materialId),
           getPartyName(entry.partyId, entry.materialId),
           entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : isRevision ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType),
@@ -1163,7 +1175,7 @@ export default function PlantStock() {
         return row;
       });
 
-      const pdfLedgerHead = ["Date", "Material", "Stock Owner", "Type", "Notes/Issued To", "In", "Out", "Balance", "UOM"];
+      const pdfLedgerHead = ["Transaction Date", "Invoice Date", "Entry Date", "Entry Time", "Material", "Stock Owner", "Type", "Notes/Issued To", "In", "Out", "Balance", "UOM"];
       if (pdfHasTankedRows) {
         pdfLedgerHead.push("T1 Balance", "T2 Balance");
       }
@@ -2017,7 +2029,9 @@ export default function PlantStock() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-muted/50">
-                        <th className="text-left p-3 font-semibold">Date</th>
+                        <th className="text-left p-3 font-semibold">Transaction Date</th>
+                        <th className="text-left p-3 font-semibold">Invoice Date</th>
+                        <th className="text-left p-3 font-semibold">Entry Date / Time</th>
                         <th className="text-left p-3 font-semibold">Material</th>
                         <th className="text-left p-3 font-semibold">Stock Owner</th>
                         <th className="text-left p-3 font-semibold">Type</th>
@@ -2061,7 +2075,11 @@ export default function PlantStock() {
                           ref={entry.id === scrollToId ? scrollTargetCallbackRef : undefined}
                           className={`border-b ${isBF ? 'bg-amber-50 dark:bg-amber-900/20 font-semibold' : 'hover:bg-muted/30'}`}
                         >
-                          <td className="p-3">{entry.date}</td>
+                          <td className="p-3 whitespace-nowrap">{entry.date}</td>
+                          <td className="p-3 whitespace-nowrap">{entry.invoiceDate || "-"}</td>
+                          <td className="p-3 whitespace-nowrap">
+                            {entry.entryDate ? `${entry.entryDate}${entry.entryTime ? ` ${entry.entryTime}` : ""}` : "-"}
+                          </td>
                           <td className="p-3 font-medium">{getMaterialName(entry.materialId)}</td>
                           <td className="p-3">
                             <span className={`px-2 py-0.5 text-sm rounded ${
@@ -2677,6 +2695,8 @@ export default function PlantStock() {
                     const borrowedStr = isDispatch ? (e.borrowedQty ?? 0).toFixed(3) : '-';
                     return `<tr${hasBorrow ? ' style="background:#fffbeb"' : ''}>
                       <td>${e.date}</td>
+                      <td>${e.invoiceDate || '-'}</td>
+                      <td>${e.entryDate ? `${e.entryDate}${e.entryTime ? ` ${e.entryTime}` : ''}` : '-'}</td>
                       <td>${typeLabel(e.displayType)}</td>
                       <td>${materialName}</td>
                       <td style="text-align:right">${qIn > 0 ? qIn.toFixed(3) : '-'}</td>
@@ -2713,7 +2733,7 @@ export default function PlantStock() {
                       <div class="card ${isSettled ? 'settled' : 'outstanding'}"><div class="card-label">Still Outstanding</div><div class="card-value">${summary.outstanding.toFixed(3)} ${uom}</div></div>
                     </div>
                     <table><thead><tr>
-                      <th>Date</th><th>Type</th><th>Material</th>
+                      <th>Transaction Date</th><th>Invoice Date</th><th>Entry Date / Time</th><th>Type</th><th>Material</th>
                       <th>Received (${uom})</th>
                       <th>Template Qty (${uom})</th>
                       <th>From Own Stock (${uom})</th>
@@ -2723,7 +2743,7 @@ export default function PlantStock() {
                     </tr></thead>
                     <tbody>${rows}</tbody>
                     <tfoot><tr>
-                      <td colspan="3"><strong>Totals</strong></td>
+                      <td colspan="5"><strong>Totals</strong></td>
                       <td style="text-align:right"><strong>${summary.totalReceived.toFixed(3)}</strong></td>
                       <td style="text-align:right"><strong>${totalOut.toFixed(3)}</strong></td>
                       <td style="text-align:right"><strong>${summary.dispatchedOwn.toFixed(3)}</strong></td>
@@ -2757,7 +2777,7 @@ export default function PlantStock() {
                   autoTable(doc, {
                     startY: 38,
                     head: [[
-                      'Date', 'Type', 'Material',
+                      'Transaction Date', 'Invoice Date', 'Entry Date / Time', 'Type', 'Material',
                       `Received\n(${uom})`,
                       `Template Qty\n(${uom})`,
                       `From Own\nStock (${uom})`,
@@ -2769,6 +2789,8 @@ export default function PlantStock() {
                       const isDispatch = e.displayType === 'own_dispatch';
                       return [
                         e.date,
+                        e.invoiceDate || '-',
+                        e.entryDate ? `${e.entryDate}${e.entryTime ? ` ${e.entryTime}` : ''}` : '-',
                         typeLabel(e.displayType),
                         materialName,
                         (e.quantityIn || 0) > 0 ? (e.quantityIn || 0).toFixed(3) : '-',
@@ -2851,7 +2873,9 @@ export default function PlantStock() {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b bg-muted/50">
-                            <th className="text-left p-3 font-semibold">Date</th>
+                            <th className="text-left p-3 font-semibold">Transaction Date</th>
+                            <th className="text-left p-3 font-semibold">Invoice Date</th>
+                            <th className="text-left p-3 font-semibold">Entry Date / Time</th>
                             <th className="text-left p-3 font-semibold">Type</th>
                             <th className="text-left p-3 font-semibold">Material</th>
                             <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">Received ({uom})</th>
@@ -2869,6 +2893,10 @@ export default function PlantStock() {
                             return (
                             <tr key={e.id} className={`border-b hover:bg-muted/30 ${hasBorrow ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`}>
                               <td className="p-3 whitespace-nowrap">{e.date}</td>
+                              <td className="p-3 whitespace-nowrap">{e.invoiceDate || '-'}</td>
+                              <td className="p-3 whitespace-nowrap">
+                                {e.entryDate ? `${e.entryDate}${e.entryTime ? ` ${e.entryTime}` : ''}` : '-'}
+                              </td>
                               <td className="p-3">
                                 <span className={`px-2 py-0.5 text-sm rounded ${typeBadgeClass(e.displayType)}`}>
                                   {typeLabel(e.displayType)}
@@ -2895,12 +2923,12 @@ export default function PlantStock() {
                             );
                           })}
                           {entries.length === 0 && (
-                            <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">No entries found for this selection.</td></tr>
+                            <tr><td colSpan={11} className="p-6 text-center text-muted-foreground">No entries found for this selection.</td></tr>
                           )}
                         </tbody>
                         <tfoot className="bg-muted/70 border-t-2">
                           <tr>
-                            <td colSpan={2} className="p-3 font-bold">Totals</td>
+                            <td colSpan={4} className="p-3 font-bold">Totals</td>
                             <td className="p-3 text-muted-foreground">{materialName}</td>
                             <td className="p-3 text-right text-green-600 dark:text-green-400 font-bold">{summary.totalReceived.toFixed(3)}</td>
                             <td className="p-3 text-right text-blue-600 dark:text-blue-400 font-bold">{totalOut.toFixed(3)}</td>

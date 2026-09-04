@@ -12,7 +12,17 @@ import type { DieselRequirementWithItems, Attachment, PlantMaterial } from "@sha
 import type { DieselReceiptState } from "@shared/dieselReceiptStatus";
 
 type ReceiptEntry = DieselReceiptState & {
-  receipts: Array<{ id: number; date: string; quantity: number; uom: string; challanNumber: string | null; receiptNo: string | null; isCancelled: boolean }>;
+  receipts: Array<{
+    id: number;
+    date: string;
+    time: string | null;
+    invoiceDate: string;
+    quantity: number;
+    uom: string;
+    challanNumber: string | null;
+    receiptNo: string | null;
+    isCancelled: boolean;
+  }>;
 };
 
 function Qty({ value }: { value: number | null | undefined }) {
@@ -97,7 +107,11 @@ function RequirementRow({
           {receipt?.receipts.length ? (
             <div className="text-sm">
               <p className="text-xs uppercase text-slate-500 mb-2">Prior receipts</p>
-              <div className="space-y-1">{receipt.receipts.map(r => <p key={r.id} className={r.isCancelled ? "text-slate-400 line-through" : "text-slate-700"}>{r.date} · {r.quantity} {r.uom} · {r.challanNumber || r.receiptNo || `Receipt #${r.id}`}{r.isCancelled ? " (cancelled)" : ""}</p>)}</div>
+              <div className="space-y-1">{receipt.receipts.map(r => (
+                <p key={r.id} className={r.isCancelled ? "text-slate-400 line-through" : "text-slate-700"}>
+                  Invoice {r.invoiceDate} · Entered {r.date}{r.time ? ` ${r.time}` : ""} · {r.quantity} {r.uom} · {r.challanNumber || r.receiptNo || `Receipt #${r.id}`}{r.isCancelled ? " (cancelled)" : ""}
+                </p>
+              ))}</div>
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">

@@ -389,6 +389,7 @@ import {
   type SnlSearchResult,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
+import { materialReceiptTransactionDate } from "@shared/materialReceiptDates";
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { pickLatestClosing, type ResolvedClosing } from "@shared/equipmentContinuity";
@@ -4442,9 +4443,10 @@ export class DatabaseStorage implements IStorage {
 
   async getMaterialReceipts(filters?: { partyId?: number; dateFrom?: string; dateTo?: string; includeCancelled?: boolean }): Promise<MaterialReceipt[]> {
     let conditions = [];
+    const transactionDate = sql<string>`COALESCE(${materialReceipts.invoiceDate}, ${materialReceipts.date})`;
     if (filters?.partyId) conditions.push(eq(materialReceipts.partyId, filters.partyId));
-    if (filters?.dateFrom) conditions.push(gte(materialReceipts.date, filters.dateFrom));
-    if (filters?.dateTo) conditions.push(lte(materialReceipts.date, filters.dateTo));
+    if (filters?.dateFrom) conditions.push(gte(transactionDate, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(transactionDate, filters.dateTo));
     if (!filters?.includeCancelled) {
       conditions.push(eq(materialReceipts.isCancelled, false));
       conditions.push(eq(materialReceipts.isDeleted, false));
@@ -4452,7 +4454,7 @@ export class DatabaseStorage implements IStorage {
     
     const rows = await db.select().from(materialReceipts)
       .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(materialReceipts.date));
+      .orderBy(desc(transactionDate), desc(materialReceipts.date), desc(materialReceipts.time), desc(materialReceipts.id));
 
     if (rows.length === 0) return rows;
     const requiredDocTypes = ["bill", "challan", "dc", "invoice", "receipt"];
@@ -4565,7 +4567,8 @@ export class DatabaseStorage implements IStorage {
       autoReceiptNo = await this.generateMaterialReceiptNumber(catCode);
     }
 
-    return db.transaction(async (tx) => {
+    const transactionDate = materialReceiptTransactionDate(receipt.invoiceDate, receipt.date);
+    const result = await db.transaction(async (tx) => {
       if (receipt.linkedDieselRequirementId != null) {
         await this._assertDieselReceiptWithinPurchasedQuantity(
           tx,
@@ -4580,6 +4583,7 @@ export class DatabaseStorage implements IStorage {
         transporter: receipt.transporter?.toUpperCase(),
         vehicleNumber: receipt.vehicleNumber?.toUpperCase(),
         challanNumber: receipt.challanNumber?.toUpperCase(),
+        invoiceDate: transactionDate,
         documentStatus: "draft" as const,
       };
       const [result] = await tx.insert(materialReceipts).values(uppercased).returning();
@@ -4613,7 +4617,7 @@ export class DatabaseStorage implements IStorage {
         : receipt.supplier ? `From ${receipt.supplier}` : undefined;
       
       await tx.insert(stockLedger).values({
-        date: receipt.date,
+        date: transactionDate,
         partyId: targetPartyId,
         materialId: receipt.materialId,
         transactionType: "receipt",
@@ -4633,7 +4637,7 @@ export class DatabaseStorage implements IStorage {
           (material.name.toUpperCase().trim() === "LDO" || material.name.toUpperCase().trim() === "DIESEL")) {
         const qtyL = convertLdoQtyToLiters(receipt.quantity, receipt.uom);
         await tx.insert(ldoFlowReadings).values({
-          date: receipt.date,
+          date: transactionDate,
           time: receipt.time || null,
           tankNumber: receipt.tankNumber,
           meterReading: 0,
@@ -4647,6 +4651,8 @@ export class DatabaseStorage implements IStorage {
       
       return result;
     });
+    await this.recomputeBalanceAfterForMaterial(receipt.materialId);
+    return result;
   }
 
   async updateMaterialReceipt(id: number, receipt: Partial<InsertMaterialReceipt>): Promise<MaterialReceipt | undefined> {
@@ -4657,6 +4663,10 @@ export class DatabaseStorage implements IStorage {
       // Get existing receipt first
       const [existing] = await tx.select().from(materialReceipts).where(eq(materialReceipts.id, id)).limit(1);
       if (!existing) return undefined;
+      const transactionDate = materialReceiptTransactionDate(
+        receipt.invoiceDate ?? existing.invoiceDate,
+        receipt.date ?? existing.date,
+      );
       const effectiveDieselRequirementId = receipt.linkedDieselRequirementId ?? existing.linkedDieselRequirementId;
       if (effectiveDieselRequirementId != null) {
         await this._assertDieselReceiptWithinPurchasedQuantity(
@@ -4669,6 +4679,11 @@ export class DatabaseStorage implements IStorage {
       
       // Uppercase text fields
       const updates = { ...receipt };
+      // Do not silently backfill untouched historical rows. A supplied value
+      // (including blank) is normalised, while omitted legacy nulls stay null.
+      if (receipt.invoiceDate !== undefined || existing.invoiceDate != null) {
+        updates.invoiceDate = transactionDate;
+      }
       if (updates.supplier) updates.supplier = updates.supplier.toUpperCase();
       if (updates.transporter) updates.transporter = updates.transporter.toUpperCase();
       if (updates.vehicleNumber) updates.vehicleNumber = updates.vehicleNumber.toUpperCase();
@@ -4738,7 +4753,7 @@ export class DatabaseStorage implements IStorage {
       
       const receiptTankNumber = receipt.tankNumber !== undefined ? receipt.tankNumber : existing.tankNumber;
       await tx.insert(stockLedger).values({
-        date: receipt.date ?? existing.date,
+        date: transactionDate,
         partyId: newTargetPartyId,
         materialId: newMaterialId,
         transactionType: "receipt",
@@ -4759,12 +4774,11 @@ export class DatabaseStorage implements IStorage {
       const newTankNumber = receipt.tankNumber !== undefined ? receipt.tankNumber : existing.tankNumber;
       if (newTankNumber != null && newMaterialForLdo &&
           (newMaterialForLdo.name.toUpperCase().trim() === "LDO" || newMaterialForLdo.name.toUpperCase().trim() === "DIESEL")) {
-        const newDate = receipt.date ?? existing.date;
         const newTime = receipt.time !== undefined ? receipt.time : existing.time;
         const newPlantName = receipt.plantName ?? existing.plantName ?? "Main Plant";
         const qtyL = convertLdoQtyToLiters(newQuantity, newUom);
         await tx.insert(ldoFlowReadings).values({
-          date: newDate,
+          date: transactionDate,
           time: newTime || null,
           tankNumber: newTankNumber,
           meterReading: 0,
@@ -6365,7 +6379,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Stock Ledger
-  async getStockLedger(filters?: { partyId?: number; materialId?: number; dateFrom?: string; dateTo?: string }): Promise<StockLedgerEntry[]> {
+  async getStockLedger(filters?: { partyId?: number; materialId?: number; dateFrom?: string; dateTo?: string }): Promise<Array<StockLedgerEntry & {
+    invoiceDate: string | null;
+    entryDate: string | null;
+    entryTime: string | null;
+  }>> {
     let conditions = [];
     if (filters?.partyId !== undefined) {
       conditions.push(filters.partyId === null 
@@ -6376,9 +6394,23 @@ export class DatabaseStorage implements IStorage {
     if (filters?.dateFrom) conditions.push(gte(stockLedger.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(stockLedger.date, filters.dateTo));
     
-    return db.select().from(stockLedger)
+    return db.select({
+      ...getTableColumns(stockLedger),
+      invoiceDate: sql<string | null>`CASE WHEN ${stockLedger.transactionType} = 'receipt' THEN COALESCE(${materialReceipts.invoiceDate}, ${stockLedger.date}) ELSE NULL END`,
+      entryDate: sql<string | null>`CASE WHEN ${stockLedger.transactionType} = 'receipt' THEN ${materialReceipts.date} ELSE NULL END`,
+      entryTime: sql<string | null>`CASE WHEN ${stockLedger.transactionType} = 'receipt' THEN ${materialReceipts.time} ELSE NULL END`,
+    }).from(stockLedger)
+      .leftJoin(materialReceipts, and(
+        eq(stockLedger.transactionType, "receipt"),
+        eq(stockLedger.referenceId, materialReceipts.id),
+      ))
       .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(stockLedger.date));
+      .orderBy(
+        desc(stockLedger.date),
+        desc(sql`COALESCE(${materialReceipts.date}, ${stockLedger.date})`),
+        desc(materialReceipts.time),
+        desc(stockLedger.id),
+      );
   }
 
   async getStockBalanceAsOf(date: string, filters?: { partyId?: number; materialId?: number }): Promise<{ materialId: number; partyId: number | null; uom: string; totalIn: number; totalOut: number; t1TotalIn: number; t1TotalOut: number; t2TotalIn: number; t2TotalOut: number }[]> {
@@ -6413,7 +6445,16 @@ export class DatabaseStorage implements IStorage {
 
   async getPartyStatement(partyId: number, materialId: number, dateFrom?: string, dateTo?: string): Promise<{
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
-    entries: (StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number; templateQty?: number; ownQty?: number })[];
+    entries: (StockLedgerEntry & {
+      displayType: string;
+      borrowedQty: number;
+      runningBalance: number;
+      templateQty?: number;
+      ownQty?: number;
+      invoiceDate: string | null;
+      entryDate: string | null;
+      entryTime: string | null;
+    })[];
   }> {
     // Fetch ledger entries for this party+material in the date range
     const conditions = [
@@ -6424,7 +6465,16 @@ export class DatabaseStorage implements IStorage {
     if (dateFrom) conditions.push(gte(stockLedger.date, dateFrom));
     if (dateTo) conditions.push(lte(stockLedger.date, dateTo));
 
-    const entries = await db.select().from(stockLedger)
+    const entries = await db.select({
+      ...getTableColumns(stockLedger),
+      invoiceDate: sql<string | null>`CASE WHEN ${stockLedger.transactionType} = 'receipt' THEN COALESCE(${materialReceipts.invoiceDate}, ${stockLedger.date}) ELSE NULL END`,
+      entryDate: sql<string | null>`CASE WHEN ${stockLedger.transactionType} = 'receipt' THEN ${materialReceipts.date} ELSE NULL END`,
+      entryTime: sql<string | null>`CASE WHEN ${stockLedger.transactionType} = 'receipt' THEN ${materialReceipts.time} ELSE NULL END`,
+    }).from(stockLedger)
+      .leftJoin(materialReceipts, and(
+        eq(stockLedger.transactionType, "receipt"),
+        eq(stockLedger.referenceId, materialReceipts.id),
+      ))
       .where(and(...conditions))
       .orderBy(asc(stockLedger.date), asc(stockLedger.id));
 
@@ -6542,7 +6592,7 @@ export class DatabaseStorage implements IStorage {
     let borrowedFromHlc = 0;
     let running = 0; // party's own-stock running balance
 
-    type DetailEntry = StockLedgerEntry & {
+    type DetailEntry = (typeof entries)[number] & {
       displayType: string;
       borrowedQty: number;
       runningBalance: number;
@@ -11648,16 +11698,17 @@ export class DatabaseStorage implements IStorage {
     // Fetch LDO material receipts in the date range
     let ldoReceiptRows: { date: string; quantity: number; uom: string }[] = [];
     if (ldoMaterial) {
+      const receiptTransactionDate = sql<string>`COALESCE(${materialReceipts.invoiceDate}, ${materialReceipts.date})`;
       ldoReceiptRows = await db.select({
-        date: materialReceipts.date,
+        date: receiptTransactionDate,
         quantity: materialReceipts.quantity,
         uom: materialReceipts.uom,
       }).from(materialReceipts)
         .where(and(
           eq(materialReceipts.materialId, ldoMaterial.id),
           eq(materialReceipts.plantName, plant),
-          gte(materialReceipts.date, dateFrom),
-          lte(materialReceipts.date, dateTo),
+          gte(receiptTransactionDate, dateFrom),
+          lte(receiptTransactionDate, dateTo),
         ));
     }
 
@@ -14795,7 +14846,12 @@ export class DatabaseStorage implements IStorage {
     if (requirementIds.length === 0) return [];
     return db.select().from(materialReceipts)
       .where(inArray(materialReceipts.linkedDieselRequirementId, requirementIds))
-      .orderBy(materialReceipts.date, materialReceipts.id);
+      .orderBy(
+        desc(sql`COALESCE(${materialReceipts.invoiceDate}, ${materialReceipts.date})`),
+        desc(materialReceipts.date),
+        desc(materialReceipts.time),
+        desc(materialReceipts.id),
+      );
   }
 
   // 06M-A: retrospective payment details on a bill — touches ONLY
@@ -19755,7 +19811,10 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(bitumenDipReadings.date, date), eq(bitumenDipReadings.plantName, plantName)));
     const ldoDips = await db.select().from(ldoDipReadings)
       .where(and(eq(ldoDipReadings.date, date), eq(ldoDipReadings.plantName, plantName)));
-    const receipts = await db.select().from(materialReceipts).where(and(eq(materialReceipts.date, date), eq(materialReceipts.plantName, plantName)));
+    const receipts = await db.select().from(materialReceipts).where(and(
+      eq(sql<string>`COALESCE(${materialReceipts.invoiceDate}, ${materialReceipts.date})`, date),
+      eq(materialReceipts.plantName, plantName),
+    ));
     const generators = await db.select().from(generatorLogs).where(and(eq(generatorLogs.date, date), eq(generatorLogs.plantName, plantName)));
     const allMixTemplates = await db.select().from(mixTemplates);
     const allParties = await db.select().from(parties);

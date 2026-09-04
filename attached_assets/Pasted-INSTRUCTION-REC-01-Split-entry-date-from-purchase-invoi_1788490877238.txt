@@ -1,0 +1,55 @@
+INSTRUCTION REC-01: Split "entry date" from "purchase/invoice date" on Material Receipts — stock, sorting and filtering must run on the purchase/invoice date; the top Date/Time box becomes a pure audit timestamp
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. If you notice something else broken while doing this, write it down in your report and WAIT for instructions. Do not touch Vendor Billing, Work Programme/BOQ, Execution Arrangement, or Layer/Lift work. Do not publish automatically. STOP after this fix and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+The Material Receipt entry screen (client/src/pages/PlantMaterialReceipts.tsx, used for diesel and every other plant material) has three relevant fields today:
+- "Date" — free-text-editable, defaults to today.
+- "Time" — defaults to the current clock time at entry.
+- "Invoice Date" — exists on the form and on the `material_receipts` table (`invoiceDate`, nullable) but is blank by default and is never used anywhere except as a displayed/exported reference value.
+`server/storage.ts` `createMaterialReceipt` (~line 4558) writes the receipt's "Date" value into the `stock_ledger` row (`date: receipt.date`, ~line 4616) and into the linked `ldo_flow_readings` row when applicable (~line 4636). This "Date" is also what every downstream period filter, sort, and group-by currently keys off (Stock Balances & Ledger period filters, the Materials Received / GRN list grouping, the Diesel Purchase Register list, exports). `updateMaterialReceipt` (~line 4741, 4762) does the same on edit, and separately calls `recomputeBalanceAfterForMaterial` (~line 8658) afterward — a SQL window function that recomputes every ledger row's running `balance_after` for that material strictly in `(date, id)` order. `createMaterialReceipt` does NOT call this recompute function today.
+
+The owner's decision: going forward, the "Date"/"Time" boxes at the top of the entry form should represent when the entry was actually keyed into the app (an audit fact, not editable to mean anything else) — Date auto-fills today, Time auto-fills now, exactly as today's behavior. Separately, "Invoice Date" becomes the field that represents the real purchase/invoice date, and that field — not "Date" — is what the stock ledger, running balance date-ordering, sorting, and filtering must use everywhere. Reports must still display the entry Date + Time (for audit reference) alongside the Invoice Date on each row.
+
+PART 1 — INVOICE DATE BECOMES A REAL, DEFAULTED, EDITABLE FIELD
+1. When a receipt is created against a linked purchase (Diesel Requirement / Purchase Indent), auto-fill "Invoice Date" from that linked purchase's own date. Keep it editable — the actual invoice may arrive/be dated differently.
+2. When a receipt is standalone (no linked purchase — e.g. the diesel backfill entries the owner is currently making), auto-fill "Invoice Date" the same way "Date" auto-fills today (defaults to today), but the user is expected to change it to the true purchase date. Keep it editable.
+3. "Invoice Date" must never be silently left blank — if for any reason it cannot be defaulted, fall back to the current "Date" value so there is always a valid value to post with.
+4. Do not change how "Date" or "Time" behave or auto-fill — they keep working exactly as today (Date defaults to today, Time defaults to now, both remain user-editable exactly as now, since they still need to represent "when this was actually keyed in").
+
+PART 2 — STOCK LEDGER, RUNNING BALANCE DATE, SORTING AND FILTERING USE INVOICE DATE, NOT ENTRY DATE
+1. In `createMaterialReceipt` and `updateMaterialReceipt`, the `date` written into the `stock_ledger` row (and into the linked `ldo_flow_readings` row, when applicable) must be the receipt's Invoice Date, not the entry "Date" field.
+2. Every screen/report that currently sorts, groups, or date-range-filters material receipts or the stock ledger (Stock Balances & Ledger's Stock Summary/Current Balances/Ledger Details/Party Statement tabs, the Materials Received / GRN list and its date grouping, the Diesel Purchase Register list, and exports) must key off Invoice Date going forward. Most of these already read from `stock_ledger.date`, so Part 2.1 covers them automatically — but confirm each one explicitly and report which, if any, read `material_receipts.date` directly instead and had to be changed separately.
+3. Every one of these same screens/reports must still show the entry Date and Time as a visible column/detail on each row — this is an addition, not a replacement of what's shown; it must not disappear from view.
+4. After `createMaterialReceipt` finishes inserting the ledger row, call the existing `recomputeBalanceAfterForMaterial` for that material (the same function `updateMaterialReceipt` already calls) so a backdated (by Invoice Date) new receipt's running balance trail is correctly re-sequenced immediately, not just on a later edit. This directly matters now because Invoice Date — which can legitimately be entered out of chronological order relative to when rows are keyed in — is the field driving ledger order.
+
+PART 3 — HISTORICAL DATA
+Existing receipts have `invoiceDate = null`. Do not touch, backfill, or reinterpret any existing `stock_ledger` row's `date` — those already reflect what the owner intended as the transaction date at the time. This split only changes behavior for receipts created or edited from now on. Confirm this explicitly in your report — no historical ledger rows should show as changed in the publish diff.
+
+WHAT NOT TO DO
+- Do not change how Physical Stock Reconciliation posts or dates its adjustment rows (`postStockReconciliation` uses `countDate` — a separate, already-correct concept). Leave it untouched.
+- Do not change the Date/Time auto-fill behavior on the entry form itself.
+- Do not touch Vendor Billing, Work Programme/BOQ, Execution Arrangement, or Layer/Lift work.
+- Do not rewrite or backfill any existing ledger/receipt row's stored date.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+`invoiceDate` already exists on `material_receipts` — this should not require any schema change. If you find you genuinely need one, stop and show us the exact change before writing any migration, per our usual rule.
+
+TESTS
+A. Create a standalone diesel receipt with Date = today (auto), Invoice Date changed to a past date (e.g. 10 days ago) → the stock ledger row is dated with the past Invoice Date, the running balance updates correctly, and the receipt list / ledger detail row shows BOTH the past Invoice Date and today's real entry Date + Time.
+B. Create a receipt linked to a Diesel Requirement/Purchase Indent → Invoice Date auto-fills from that purchase's date; confirm it is still editable.
+C. A Stock Summary / Ledger Details date-range filter set to a range that includes the backdated Invoice Date but not today → the backdated receipt appears; a range that includes today but not the Invoice Date → it does not appear.
+D. Enter two receipts for the same material out of chronological Invoice Date order (e.g. enter one dated 20/08 first, then one dated 05/08 second) → after the second is saved, the ledger's running balance-after trail is correctly reordered by Invoice Date, not entry order.
+E. Edit an existing receipt's Invoice Date → ledger row and running trail update correctly (this path already works via the existing recompute call — confirm it still does).
+F. Existing/historical receipts and ledger rows are unchanged — publish diff shows no modification to old rows.
+G. Physical Stock Reconciliation entries are unaffected — still dated by count date as before.
+
+REPORT BACK
+1. Confirm Part 1: Invoice Date now defaults correctly from a linked purchase, or from today for standalone receipts, and remains editable in both cases.
+2. Confirm Part 2: exact list of every screen/report/export you found reading the receipt or ledger date, and whether each now uses Invoice Date; explicitly flag any that read `material_receipts.date` directly rather than via the ledger.
+3. Confirm the recompute-after-create fix, with test evidence (Test D).
+4. Confirm no historical data was touched (Test F) and Physical Stock Reconciliation is untouched (Test G).
+5. Confirm no schema change was needed; if one was, stop and show it before applying.
+6. Anything else noticed but not touched, for a separate decision.

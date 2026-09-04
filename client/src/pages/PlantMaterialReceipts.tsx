@@ -32,6 +32,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialReceipt } from "@shared/schema";
 import { UOM_OPTIONS } from "@shared/schema";
+import { materialReceiptTransactionDate } from "@shared/materialReceiptDates";
 import { decidePiAutoSelect, submitBlockedByPi, showPiIndentBlock, showPiPendingBadge, showRegulariseIndentNotice, receiptClosureStatus } from "@shared/dieselReceiptSource";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 
@@ -171,7 +172,8 @@ export default function PlantMaterialReceipts() {
   const [challanNumber, setChallanNumber] = useState("");
   const [tankNumber, setTankNumber] = useState<string>("");
   const [invoiceNo, setInvoiceNo] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const invoiceDateDefaultSourceRef = useRef<string>("standalone");
   const [indentRef, setIndentRef] = useState("");
   const [indentComboSearch, setIndentComboSearch] = useState("");
   const [indentComboOpen, setIndentComboOpen] = useState(false);
@@ -223,7 +225,8 @@ export default function PlantMaterialReceipts() {
     setChallanNumber(data.challanNumber);
     setTankNumber(data.tankNumber || "");
     setInvoiceNo(data.invoiceNo || "");
-    setInvoiceDate(data.invoiceDate || "");
+    setInvoiceDate(data.invoiceDate || data.date || format(new Date(), "yyyy-MM-dd"));
+    invoiceDateDefaultSourceRef.current = "restored";
     setIndentRef(data.indentRef || "");
     setDieselExceptionReason(data.dieselExceptionReason || "");
   }, []);
@@ -387,6 +390,46 @@ export default function PlantMaterialReceipts() {
     enabled: parsedMaterialId > 0 && dialogOpen,
   });
 
+  // REC-01: default a new receipt's invoice date from its selected purchase
+  // once. Later user edits remain untouched, including after query refetches.
+  useEffect(() => {
+    if (editingReceipt || invoiceDateDefaultSourceRef.current === "restored") return;
+
+    if (linkedDieselRequirementId != null) {
+      const requirement = purchasedDieselRequirements.find((row) => row.id === linkedDieselRequirementId);
+      if (!requirement) return;
+      const source = `diesel:${linkedDieselRequirementId}`;
+      if (invoiceDateDefaultSourceRef.current !== source) {
+        setInvoiceDate(requirement.date || date);
+        invoiceDateDefaultSourceRef.current = source;
+      }
+      return;
+    }
+
+    if (indentRef) {
+      const purchaseIndent = allPurchaseIndents.find((row) => row.indentNo === indentRef);
+      if (!purchaseIndent) return;
+      const source = `pi:${purchaseIndent.id}`;
+      if (invoiceDateDefaultSourceRef.current !== source) {
+        setInvoiceDate(purchaseIndent.date || date);
+        invoiceDateDefaultSourceRef.current = source;
+      }
+      return;
+    }
+
+    if (invoiceDateDefaultSourceRef.current !== "standalone") {
+      setInvoiceDate(date);
+      invoiceDateDefaultSourceRef.current = "standalone";
+    }
+  }, [
+    editingReceipt,
+    linkedDieselRequirementId,
+    purchasedDieselRequirements,
+    indentRef,
+    allPurchaseIndents,
+    date,
+  ]);
+
   // Auto-select indent: prefer pending Material Indents (by materialId) over name-based matches.
   // 06M-C-HF §8: never fires for a diesel-sourced receipt — a coincidental Diesel
   // PI/indent must not replace the Diesel Requirement source context.
@@ -492,9 +535,10 @@ export default function PlantMaterialReceipts() {
   });
 
   const resetForm = () => {
+    const now = new Date();
     setStagedPhotos([]);
-    setDate(format(new Date(), "yyyy-MM-dd"));
-    setTime(format(new Date(), "HH:mm"));
+    setDate(format(now, "yyyy-MM-dd"));
+    setTime(format(now, "HH:mm"));
     setPartyId("");
     setMaterialId("");
     setQuantity("");
@@ -505,7 +549,8 @@ export default function PlantMaterialReceipts() {
     setChallanNumber("");
     setTankNumber("");
     setInvoiceNo("");
-    setInvoiceDate("");
+    setInvoiceDate(format(now, "yyyy-MM-dd"));
+    invoiceDateDefaultSourceRef.current = "standalone";
     setIndentRef("");
     setIndentComboSearch("");
     setIndentOverride(false);
@@ -530,7 +575,8 @@ export default function PlantMaterialReceipts() {
     setChallanNumber(receipt.challanNumber || "");
     setTankNumber(receipt.tankNumber ? String(receipt.tankNumber) : "");
     setInvoiceNo((receipt as any).invoiceNo || "");
-    setInvoiceDate((receipt as any).invoiceDate || "");
+    setInvoiceDate((receipt as any).invoiceDate || receipt.date);
+    invoiceDateDefaultSourceRef.current = "editing";
     // 06M-C-HF: restore the diesel source link so an existing diesel-linked
     // receipt edits in diesel mode (PI block hidden, PI validation skipped)
     // and an ordinary edit explicitly resets it.
@@ -579,6 +625,7 @@ export default function PlantMaterialReceipts() {
       (selectedMaterial.name || "").toUpperCase() === "HSD"
     );
     
+    const effectiveInvoiceDate = materialReceiptTransactionDate(invoiceDate, date);
     if (editingReceipt) {
       const updateData = {
         date,
@@ -593,7 +640,7 @@ export default function PlantMaterialReceipts() {
         vehicleNumber,
         challanNumber,
         invoiceNo: invoiceNo || null,
-        invoiceDate: invoiceDate || null,
+        invoiceDate: effectiveInvoiceDate,
         indentRef: linkedDieselRequirementId != null ? null : (indentRef || null),
         tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
         ...((editingReceipt as any).documentStatus === "submitted" && editPermissionRequestId !== null
@@ -617,7 +664,7 @@ export default function PlantMaterialReceipts() {
         vehicleNumber,
         challanNumber,
         invoiceNo: invoiceNo || null,
-        invoiceDate: invoiceDate || null,
+        invoiceDate: effectiveInvoiceDate,
         indentRef: linkedDieselRequirementId != null ? null : (indentRef || null),
         tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
         // 06M-C: purchase↔receipt audit linkage (never inferred, only deep-linked)
@@ -651,11 +698,14 @@ export default function PlantMaterialReceipts() {
     resolvedPartyName: id == null ? null : parties?.find((p) => p.id === id)?.name,
     unresolvedPartyPrefix: "Party #",
   });
+  const getReceiptTransactionDate = (receipt: MaterialReceipt): string =>
+    materialReceiptTransactionDate((receipt as any).invoiceDate, receipt.date);
 
   // Filter receipts
   const filteredReceipts = receipts?.filter(r => {
-    if (filterDateFrom && r.date < filterDateFrom) return false;
-    if (filterDateTo && r.date > filterDateTo) return false;
+    const transactionDate = getReceiptTransactionDate(r);
+    if (filterDateFrom && transactionDate < filterDateFrom) return false;
+    if (filterDateTo && transactionDate > filterDateTo) return false;
     if (filterPartyId !== "all") {
       if (r.partyId !== parseInt(filterPartyId)) return false;
     }
@@ -669,9 +719,9 @@ export default function PlantMaterialReceipts() {
     return true;
   }) || [];
 
-  // Group filtered receipts by date
+  // Group filtered receipts by invoice/purchase date.
   const groupedReceipts = filteredReceipts.reduce((acc, receipt) => {
-    const dateKey = receipt.date;
+    const dateKey = getReceiptTransactionDate(receipt);
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(receipt);
     return acc;
@@ -726,8 +776,8 @@ export default function PlantMaterialReceipts() {
   const exportToExcel = async () => {
     try {
       const data = filteredReceipts.map(r => ({
-        Date: r.date,
-        Time: r.time || "",
+        "Entry Date": r.date,
+        "Entry Time": r.time || "",
         Material: getMaterialName(r.materialId),
         "RECV No": (r as any).receiptNo || "",
         Quantity: r.quantity,
@@ -735,7 +785,7 @@ export default function PlantMaterialReceipts() {
         "Vehicle No": r.vehicleNumber || "",
         "Challan No": r.challanNumber || "",
         "Invoice No": (r as any).invoiceNo || "",
-        "Invoice Date": (r as any).invoiceDate || "",
+        "Invoice Date": getReceiptTransactionDate(r),
         "Indent Ref": (r as any).indentRef || "",
         Supplier: r.supplier || "",
         Transporter: r.transporter || "",
@@ -799,7 +849,7 @@ export default function PlantMaterialReceipts() {
         r.vehicleNumber || "-",
         r.challanNumber || "-",
         (r as any).invoiceNo || "-",
-        (r as any).invoiceDate || "-",
+        getReceiptTransactionDate(r),
         r.supplier || "-",
         r.transporter || "-",
         getPartyName(r.partyId, r.materialId),
@@ -808,7 +858,7 @@ export default function PlantMaterialReceipts() {
       
       autoTable(doc, {
         startY: filterDateFrom || filterDateTo ? 34 : 28,
-        head: [["RECV No", "Date", "Time", "Material", "Quantity", "Vehicle No", "Challan", "Invoice No", "Inv Date", "Supplier", "Transporter", "Party/Job", "Indent Ref"]],
+        head: [["RECV No", "Entry Date", "Entry Time", "Material", "Quantity", "Vehicle No", "Challan", "Invoice No", "Invoice Date", "Supplier", "Transporter", "Party/Job", "Indent Ref"]],
         body: tableData,
         theme: "striped",
         headStyles: { fillColor: [59, 130, 246] },
@@ -886,8 +936,8 @@ export default function PlantMaterialReceipts() {
             <thead>
               <tr>
                 <th>RECV No.</th>
-                <th>Date</th>
-                <th>Time</th>
+                <th>Entry Date</th>
+                <th>Entry Time</th>
                 <th>Material</th>
                 <th>Qty</th>
                 <th>UOM</th>
@@ -913,7 +963,7 @@ export default function PlantMaterialReceipts() {
                   <td>${r.vehicleNumber || '-'}</td>
                   <td>${r.challanNumber || '-'}</td>
                   <td>${(r as any).invoiceNo || '-'}</td>
-                  <td>${(r as any).invoiceDate || '-'}</td>
+                  <td>${getReceiptTransactionDate(r)}</td>
                   <td>${(r as any).indentRef || '-'}</td>
                   <td>${r.supplier || '-'}</td>
                   <td>${r.transporter || '-'}</td>
@@ -1155,7 +1205,7 @@ export default function PlantMaterialReceipts() {
                   <Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value.toUpperCase())} placeholder="e.g. INV-2024-001" data-testid="input-invoice-no" />
                 </div>
                 <div>
-                  <Label>Invoice Date <span className="text-muted-foreground text-sm">(optional)</span></Label>
+                  <Label>Invoice Date</Label>
                   <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} data-testid="input-invoice-date" />
                 </div>
               </div>
@@ -1533,7 +1583,9 @@ export default function PlantMaterialReceipts() {
           ) : (
             <div className="space-y-6">
               {sortedDates.map((dateKey) => {
-                const dayReceipts = groupedReceipts[dateKey].sort((a, b) => (b.time || "").localeCompare(a.time || ""));
+                const dayReceipts = groupedReceipts[dateKey].sort((a, b) =>
+                  `${b.date}T${b.time || ""}`.localeCompare(`${a.date}T${a.time || ""}`),
+                );
                 const dayTotal = filterMaterialId !== "all"
                   ? dayReceipts.reduce((sum, r) => sum + r.quantity, 0)
                   : null;
@@ -1542,7 +1594,7 @@ export default function PlantMaterialReceipts() {
                   <div key={dateKey}>
                     <div className="sticky top-14 z-10 bg-background border-b pb-2 mb-3 pt-1">
                       <h3 className="font-semibold text-lg flex items-center justify-between gap-2">
-                        <span>{format(new Date(dateKey), "EEEE, dd MMM yyyy")}</span>
+                        <span>Invoice date — {format(new Date(dateKey), "EEEE, dd MMM yyyy")}</span>
                         {dayTotal !== null && (
                           <span className="text-sm font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">
                             Total: {dayTotal.toFixed(3)} {dayUom}
@@ -1570,7 +1622,10 @@ export default function PlantMaterialReceipts() {
                                     {(receipt as any).receiptNo}
                                   </span>
                                 )}
-                                {receipt.time && <span className="text-sm text-muted-foreground">{receipt.time}</span>}
+                                 <span className="text-sm font-medium">Invoice {getReceiptTransactionDate(receipt)}</span>
+                                <span className="text-sm text-muted-foreground">
+                                  Entered {receipt.date}{receipt.time ? ` ${receipt.time}` : ""}
+                                </span>
                                 <span className="font-semibold">{getMaterialName(receipt.materialId)}</span>
                                 <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
                                 {receipt.vehicleNumber && <span className="text-sm text-muted-foreground">{receipt.vehicleNumber}</span>}
@@ -1664,7 +1719,11 @@ export default function PlantMaterialReceipts() {
                                     <span className="font-medium font-mono text-sm">{(receipt as any).receiptNo || "—"}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-sm block">Time</span>
+                                    <span className="text-muted-foreground text-sm block">Entry Date</span>
+                                    <span className="font-medium">{receipt.date}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-sm block">Entry Time</span>
                                     <span className="font-medium">{receipt.time || "-"}</span>
                                   </div>
                                   <div>
@@ -1701,12 +1760,10 @@ export default function PlantMaterialReceipts() {
                                       <span className="font-medium">{(receipt as any).invoiceNo}</span>
                                     </div>
                                   )}
-                                  {(receipt as any).invoiceDate && (
-                                    <div>
-                                      <span className="text-muted-foreground text-sm block">Invoice Date</span>
-                                      <span className="font-medium">{(receipt as any).invoiceDate}</span>
-                                    </div>
-                                  )}
+                                  <div>
+                                    <span className="text-muted-foreground text-sm block">Invoice Date</span>
+                                    <span className="font-medium">{getReceiptTransactionDate(receipt)}</span>
+                                  </div>
                                   {(receipt as any).indentRef && (
                                     <div>
                                       <span className="text-muted-foreground text-sm block">Indent Ref</span>
