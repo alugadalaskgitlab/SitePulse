@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DIESEL_RECEIPT_STATUS_LABELS, CANCELLED_RECEIPT_STOCK_NOTE, type DieselReceiptStatus } from "@shared/dieselReceiptStatus";
 import { useOrigin } from "@/hooks/use-origin";
@@ -402,6 +402,7 @@ function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirement
 }
 
 export default function DieselRequirements() {
+  const search = useSearch();
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const { rmcEnabled } = useFeatureFlags();
@@ -409,6 +410,17 @@ export default function DieselRequirements() {
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const linkedRequirementId = useMemo(() => {
+    const value = new URLSearchParams(search).get("dieselReqId");
+    if (!value || !/^\d+$/.test(value)) return null;
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+  }, [search]);
+  useEffect(() => {
+    if (linkedRequirementId == null) return;
+    setSelectedId(linkedRequirementId);
+    setView("detail");
+  }, [linkedRequirementId]);
 
   const [drFilters, setDrFilters, resetDrFilters] = usePersistedFilters(
     "diesel-requirements:filters:v1",

@@ -3,16 +3,13 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { format, subDays } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
-import { useFeatureFlags } from "@/lib/featureFlags";
 import { roadDprHref } from "@/lib/dprEntryMode";
 import {
   FileText, Package, ShoppingCart, Fuel,
   Plus, ChevronRight, Clock, CheckCircle,
-  AlertCircle, Calendar, TrendingUp, Home,
+  AlertCircle, Calendar, TrendingUp,
   Route, Building2, CalendarPlus, AlertTriangle,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
 const DATE_FROM = format(subDays(new Date(), 30), "yyyy-MM-dd");
@@ -41,8 +38,7 @@ function getStatus(s: string) {
 }
 
 export default function SiteHome() {
-  const { sectionVisible, user } = useAuth();
-  const { companyName } = useFeatureFlags();
+  const { sectionVisible } = useAuth();
   const canDprs       = sectionVisible("site_dprs");
   const canMaterials  = sectionVisible("site_materials");
   const canProcure    = sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve");
@@ -117,36 +113,10 @@ export default function SiteHome() {
       .slice(0, 5);
   }, [dprs, indents, dieselReqs]);
 
-  const userInitials = useMemo(() => {
-    const name: string = (user as any)?.username ?? "U";
-    return name.slice(0, 2).toUpperCase();
-  }, [user]);
-
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
-      {/* Top nav */}
-      <header className="bg-slate-900 text-white px-4 md:px-6 py-3 flex items-center justify-between shadow-lg flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <img src={companyLogo} alt="HLC" className="h-7 w-7 rounded object-cover" />
-          <div>
-            <span className="font-bold text-sm md:text-base tracking-tight">SiteLog</span>
-            <span className="ml-2 text-slate-400 text-sm hidden sm:inline">{companyName}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/">
-            <Button variant="ghost" size="icon" className="w-9 h-9 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-600 hover:border-slate-500" data-testid="button-home">
-              <Home className="w-5 h-5" />
-            </Button>
-          </Link>
-          <div className="w-7 h-7 bg-amber-500 rounded-full flex items-center justify-center font-bold text-sm">
-            {userInitials}
-          </div>
-        </div>
-      </header>
-
+    <div className="space-y-5">
       {/* Project banner */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-4 md:px-6 py-3 flex items-center justify-between flex-shrink-0">
+      <div className="rounded-xl bg-gradient-to-r from-slate-800 to-slate-700 text-white px-4 md:px-6 py-3 flex items-center justify-between">
         <div>
           <p className="text-[12px] text-slate-400 uppercase tracking-wider mb-0.5">Site Management</p>
           <h1 className="text-base font-bold flex items-center gap-2">
@@ -178,7 +148,7 @@ export default function SiteHome() {
         )}
       </div>
 
-      <div className="flex-1 p-4 md:p-5 space-y-5 max-w-5xl mx-auto w-full">
+      <div className="space-y-5 max-w-5xl mx-auto w-full">
 
         {/* Quick Actions */}
         <section>

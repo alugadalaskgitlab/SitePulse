@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
-import { useLocation, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,15 @@ import { UOM_OPTIONS } from "@shared/schema";
 import { materialReceiptTransactionDate } from "@shared/materialReceiptDates";
 import { decidePiAutoSelect, submitBlockedByPi, showPiIndentBlock, showPiPendingBadge, showRegulariseIndentNotice, receiptClosureStatus } from "@shared/dieselReceiptSource";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
+import type { DieselReceiptState } from "@shared/dieselReceiptStatus";
+
+function invalidateDieselRequirementQueries() {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements"] }),
+    queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements/receipt-status"] }),
+    queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements/summary"] }),
+  ]);
+}
 
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
@@ -175,6 +184,7 @@ export default function PlantMaterialReceipts() {
   const [invoiceNo, setInvoiceNo] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const invoiceDateDefaultSourceRef = useRef<string>("standalone");
+  const invoiceNoDefaultSourceRef = useRef<string>("standalone");
   const [indentRef, setIndentRef] = useState("");
   const [indentComboSearch, setIndentComboSearch] = useState("");
   const [indentComboOpen, setIndentComboOpen] = useState(false);
@@ -228,6 +238,7 @@ export default function PlantMaterialReceipts() {
     setInvoiceNo(data.invoiceNo || "");
     setInvoiceDate(data.invoiceDate || data.date || format(new Date(), "yyyy-MM-dd"));
     invoiceDateDefaultSourceRef.current = "restored";
+    invoiceNoDefaultSourceRef.current = "restored";
     setIndentRef(data.indentRef || "");
     setDieselExceptionReason(data.dieselExceptionReason || "");
   }, []);
@@ -361,8 +372,26 @@ export default function PlantMaterialReceipts() {
     queryKey: ["/api/diesel-requirements"],
     enabled: dialogOpen && isSelectedDiesel,
   });
+  const purchasedDieselRequirementIds = dieselRequirements
+    .filter((row) => row.status === "purchased" && Number(row.qtyPurchased) > 0)
+    .map((row) => row.id);
+  const dieselReceiptStatusKey = purchasedDieselRequirementIds.join(",");
+  const { data: dieselReceiptStatusMap = {} } = useQuery<Record<number, DieselReceiptState>>({
+    queryKey: ["/api/diesel-requirements/receipt-status", dieselReceiptStatusKey],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/diesel-requirements/receipt-status?ids=${dieselReceiptStatusKey}`);
+      return response.json();
+    },
+    enabled: dialogOpen && isSelectedDiesel && purchasedDieselRequirementIds.length > 0,
+  });
   const purchasedDieselRequirements = dieselRequirements.filter((r) =>
-    r.status === "purchased" && Number(r.qtyPurchased) > 0,
+    r.status === "purchased" &&
+    Number(r.qtyPurchased) > 0 &&
+    (
+      dieselReceiptStatusMap[r.id] == null ||
+      dieselReceiptStatusMap[r.id].pendingQty > 0 ||
+      (!!editingReceipt && r.id === linkedDieselRequirementId)
+    ),
   );
 
   const { data: allPurchaseIndents = [] } = useQuery<{id: number; indentNo: string; status: string; date?: string; raisedBy?: string; items: {description: string; qty: number; uom: string}[]}[]>({
@@ -404,6 +433,10 @@ export default function PlantMaterialReceipts() {
         setInvoiceDate(requirement.date || date);
         invoiceDateDefaultSourceRef.current = source;
       }
+      if (invoiceNoDefaultSourceRef.current !== source && invoiceNoDefaultSourceRef.current !== "manual") {
+        setInvoiceNo(requirement.billNo?.trim() || "");
+        invoiceNoDefaultSourceRef.current = source;
+      }
       return;
     }
 
@@ -421,6 +454,10 @@ export default function PlantMaterialReceipts() {
     if (invoiceDateDefaultSourceRef.current !== "standalone") {
       setInvoiceDate(date);
       invoiceDateDefaultSourceRef.current = "standalone";
+    }
+    if (invoiceNoDefaultSourceRef.current !== "standalone" && invoiceNoDefaultSourceRef.current !== "manual") {
+      setInvoiceNo("");
+      invoiceNoDefaultSourceRef.current = "standalone";
     }
   }, [
     editingReceipt,
@@ -482,6 +519,7 @@ export default function PlantMaterialReceipts() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
+      await invalidateDieselRequirementQueries();
       setDialogOpen(false);
       resetForm();
       toast({ title: "Material receipt recorded", description: receipt?.receiptNo ? `GRN: ${receipt.receiptNo}` : undefined });
@@ -491,10 +529,11 @@ export default function PlantMaterialReceipts() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) =>
       apiRequest("PUT", `/api/plant-module/material-receipts/${id}`, data),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
+      await invalidateDieselRequirementQueries();
       setDialogOpen(false);
       setEditingReceipt(null);
       resetForm();
@@ -513,8 +552,9 @@ export default function PlantMaterialReceipts() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
       apiRequest("DELETE", `/api/plant-module/material-receipts/${id}`),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
+      await invalidateDieselRequirementQueries();
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       setDeleteConfirmId(null);
@@ -560,6 +600,7 @@ export default function PlantMaterialReceipts() {
     setInvoiceNo("");
     setInvoiceDate(format(now, "yyyy-MM-dd"));
     invoiceDateDefaultSourceRef.current = "standalone";
+    invoiceNoDefaultSourceRef.current = "standalone";
     setIndentRef("");
     setIndentComboSearch("");
     setIndentOverride(false);
@@ -586,6 +627,7 @@ export default function PlantMaterialReceipts() {
     setInvoiceNo((receipt as any).invoiceNo || "");
     setInvoiceDate((receipt as any).invoiceDate || receipt.date);
     invoiceDateDefaultSourceRef.current = "editing";
+    invoiceNoDefaultSourceRef.current = "editing";
     // 06M-C-HF: restore the diesel source link so an existing diesel-linked
     // receipt edits in diesel mode (PI block hidden, PI validation skipped)
     // and an ordinary edit explicitly resets it.
@@ -600,12 +642,7 @@ export default function PlantMaterialReceipts() {
   };
 
   const handleSubmit = () => {
-    if (!materialId || !quantity || !partyId || !challanNumber.trim()) {
-      if (!challanNumber.trim()) {
-        toast({ title: "Error", description: "Challan / DN No. is required", variant: "destructive" });
-      }
-      return;
-    }
+    if (!materialId || !quantity || !partyId) return;
     if (isSelectedDiesel && linkedDieselRequirementId == null) {
       if (!canRecordStandaloneDiesel) {
         toast({ title: "Daily Diesel Requirement required", description: "Select a purchased Daily Diesel Requirement. Only Owner/Admin/PM may use the standalone exception.", variant: "destructive" });
@@ -1203,15 +1240,15 @@ export default function PlantMaterialReceipts() {
                   <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())} placeholder="e.g., KA-01-XX-1234" data-testid="input-vehicle" />
                 </div>
                 <div>
-                  <Label>Challan / DN No. <span className="text-destructive">*</span></Label>
-                  <Input value={challanNumber} onChange={(e) => setChallanNumber(e.target.value.toUpperCase())} placeholder="Supplier challan / delivery note no. (Required)" data-testid="input-challan" className={!challanNumber.trim() ? "border-destructive/50" : ""} />
+                  <Label>Challan / DN No. <span className="text-muted-foreground text-sm">(optional)</span></Label>
+                  <Input value={challanNumber} onChange={(e) => setChallanNumber(e.target.value.toUpperCase())} placeholder="Supplier challan / delivery note no." data-testid="input-challan" />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Invoice No. <span className="text-muted-foreground text-sm">(optional)</span></Label>
-                  <Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value.toUpperCase())} placeholder="e.g. INV-2024-001" data-testid="input-invoice-no" />
+                  <Input value={invoiceNo} onChange={(e) => { invoiceNoDefaultSourceRef.current = "manual"; setInvoiceNo(e.target.value.toUpperCase()); }} placeholder="e.g. INV-2024-001" data-testid="input-invoice-no" />
                 </div>
                 <div>
                   <Label>Invoice Date</Label>
@@ -1432,7 +1469,7 @@ export default function PlantMaterialReceipts() {
               })()}
 
               <div className="space-y-1.5">
-                <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity || !challanNumber.trim()} data-testid="button-save-receipt">
+                <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity} data-testid="button-save-receipt">
                   {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingReceipt ? "Update Receipt" : "Save Receipt"}
                 </Button>
                 {!editingReceipt && <AutoSaveIndicator lastSavedAt={lastSavedAt} className="justify-center w-full" />}
@@ -1834,7 +1871,7 @@ export default function PlantMaterialReceipts() {
                                 {(receipt as any).linkedDieselRequirementId != null && (
                                   <div className="mt-3 flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-700 px-3 py-2" data-testid={`notice-diesel-source-${receipt.id}`}>
                                     <div className="flex-1">
-                                       <span className="text-sm text-emerald-700 dark:text-emerald-300">Purchase document linked ✓ from Daily Diesel Requirement #{(receipt as any).linkedDieselRequirementId}. It appears once under Attachments above.</span>
+                                       <span className="text-sm text-emerald-700 dark:text-emerald-300">Purchase document linked ✓ from <Link href={`/plant/diesel-requirements?dieselReqId=${(receipt as any).linkedDieselRequirementId}`} className="font-semibold underline underline-offset-2 hover:text-emerald-900 dark:hover:text-emerald-100" data-testid={`link-diesel-requirement-${(receipt as any).linkedDieselRequirementId}`}>Daily Diesel Requirement #{(receipt as any).linkedDieselRequirementId}</Link>. It appears once under Attachments above.</span>
                                     </div>
                                   </div>
                                 )}

@@ -264,8 +264,9 @@ function AuthedShell() {
   const { rmcEnabled } = useFeatureFlags();
   return (
     <HubShell>
-      <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
-        <Switch>
+      <Suspense fallback={<PageLoader />}>
+        <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
+          <Switch>
           <Route path="/reports/equipment-performance" component={gated(EquipmentPerformanceReport, "plant_equipment")} />
           {/* Site pages */}
           <Route path="/site" component={SiteHome} />
@@ -390,8 +391,9 @@ function AuthedShell() {
           <Route path="/notifications/preferences" component={NotificationPreferences} />
           <Route path="/account" component={Account} />
           <Route component={NotFound} />
-        </Switch>
-      </div>
+          </Switch>
+        </div>
+      </Suspense>
     </HubShell>
   );
 }

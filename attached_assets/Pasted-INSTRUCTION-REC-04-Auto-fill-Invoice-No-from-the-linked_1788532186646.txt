@@ -1,0 +1,72 @@
+INSTRUCTION REC-04: Auto-fill Invoice No. from the linked Diesel Requirement, make Challan No. optional, fix stale "Receipt Pending" status, and three navigation/UX gaps
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. If you notice something else broken while doing this, write it down in your report and WAIT for instructions. Do not touch Work Programme/BOQ (WP-04), the Fleet Performance Ledger (EQUIP-01/02/03), or the REC-01/02/03 Invoice Date logic already in place — this batch only touches the specific fields/behaviors described below. Do not publish automatically. STOP after this fix and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+Six separate, confirmed issues found from a live-use recording of the Daily Diesel Requirement → Material Receipt flow:
+
+1. When a Daily Diesel Requirement is marked "Purchased," its Purchase Summary already captures a Bill No. (`dieselRequirements.billNo`, shared/schema.ts ~line 2020, entered via client/src/pages/DieselRequirements.tsx's `purchaseBillNo` field). When a Material Receipt is then recorded against that same requirement (via the "Daily Diesel Requirement" dropdown), the receipt's own "Invoice No. (optional)" field (client/src/pages/PlantMaterialReceipts.tsx, `invoiceNo` state, ~line 175) stays blank — there is an existing effect (~lines 397-429) that auto-fills the Invoice Date from the linked requirement, but it never reads `requirement.billNo` or sets `invoiceNo`.
+2. "Challan / DN No." is required only by client-side logic (`handleSubmit` guard ~line 603, Save button disabled condition ~line 1435, red-asterisk styling ~line 1207) — the database column is nullable and the server does not require it. "Invoice No." has no such requirement anywhere. This mismatch is backwards for real usage: the owner usually has the invoice/bill number (now available from the linked requirement per Part 1) but often does not have a physical challan/delivery note.
+3. A Diesel Requirement's "Received/Pending" status does not update promptly after a linked receipt is created and Final Submitted. Root cause is NOT a missing recompute — `computeDieselReceiptState()` (shared/dieselReceiptStatus.ts) already computes status live from actual receipts each time it's queried. The real cause is stale client-side caching: the material-receipt create/update/final-submit mutations in PlantMaterialReceipts.tsx invalidate several query caches (material-receipts, stock-balances, stock-ledger, attachments, purchase-indents) but never invalidate `/api/diesel-requirements`, `/api/diesel-requirements/receipt-status`, or `/api/diesel-requirements/summary` — so the Diesel Requirement screens keep showing pre-receipt data for up to 5 minutes (the default `staleTime`) or until a manual reload. Separately, the "Daily Diesel Requirement" dropdown's own filter (`purchasedDieselRequirements`, ~line 364: `status === "purchased" && qtyPurchased > 0`) checks nothing about REMAINING quantity, so an already-fully-received requirement stays selectable forever, contradicting its own helper text ("must use a purchased requirement with quantity remaining").
+4. Navigating between major sections sometimes blanks the ENTIRE screen (including the sidebar) to a plain centered "Loading page…" message. Cause: client/src/App.tsx wraps the whole top-level `<Switch>` (including `AuthedShell`/`HubShell`, which renders the sidebar) in one single `<Suspense>` boundary (~line 206), so any lazy-loaded page chunk triggers the fallback for the whole tree, sidebar included, instead of just the content area.
+5. "Site Operations" navigates to `client/src/pages/SiteHome.tsx` (registered at App.tsx ~line 271, path `/site`), which is a legacy standalone page that never adopted the shared `HubShell` sidebar shell used by the rest of the app (Dashboard, Material Receipts, etc.) — it renders its own full-page layout with a dark "SiteLog" branded header and no persistent sidebar, making it look like a different app.
+6. A saved Material Receipt shows its linked Diesel Requirement only as plain static text — `Purchase document linked ✓ from Daily Diesel Requirement #{linkedDieselRequirementId}` (PlantMaterialReceipts.tsx ~line 1837) — not a link. There is no way to click through from a receipt back to its requirement's detail page; the user has to manually search the Diesel Requirements list.
+
+PART 1 — AUTO-FILL INVOICE NO. FROM THE LINKED REQUIREMENT'S BILL NO.
+1. In the same effect that already auto-fills Invoice Date from the linked requirement (PlantMaterialReceipts.tsx ~lines 397-429), also read `requirement.billNo` and set it as the receipt's `invoiceNo`, using the same source-tracking pattern already used for Invoice Date (so switching requirements, editing manually, or restoring a draft behaves consistently — do not overwrite a value the user has already typed/edited themselves, matching how Invoice Date's own source-tracking already protects manual edits).
+2. If the linked requirement has no Bill No. recorded, leave Invoice No. blank/editable as it is today — do not invent a placeholder value.
+3. This is a default/starting value only — the field remains editable, exactly like Invoice Date is today.
+
+PART 2 — MAKE CHALLAN/DN NO. OPTIONAL, KEEP INVOICE NO. AS IS
+1. Remove the client-side requirement on `challanNumber`: the `handleSubmit` guard (~line 603), the Save-button-disabled condition (~line 1435), and the red-asterisk/required styling (~line 1207) should all treat Challan/DN No. as optional, matching how Invoice No. is already labeled and treated.
+2. No server change should be needed since the database column and server validation are already nullable — confirm this explicitly in your report rather than assuming it.
+3. Do not add any new requirement onto Invoice No. — it stays optional, now simply pre-filled by default per Part 1.
+
+PART 3 — FIX THE STALE "RECEIPT PENDING" STATUS
+1. Add `/api/diesel-requirements`, `/api/diesel-requirements/receipt-status`, and `/api/diesel-requirements/summary` (or whichever exact query keys back the Diesel Requirement list/detail/summary views — confirm the real keys in code rather than assuming these exact strings) to the `queryClient.invalidateQueries` calls in the material-receipt create, update, and final-submit mutations' `onSuccess` handlers, so a Diesel Requirement's status reflects a just-submitted receipt immediately, without waiting for the cache to go stale or a manual reload.
+2. Fix the "Daily Diesel Requirement" dropdown's filter (`purchasedDieselRequirements`) to also exclude requirements with zero remaining quantity — i.e. it should reflect actual remaining quantity (purchased minus already-received via valid, non-cancelled receipts), consistent with the dropdown's own existing helper text ("must use a purchased requirement with quantity remaining"). Reuse `computeDieselReceiptState()`'s existing logic for what counts as "received" rather than writing new logic.
+3. Confirm with a real before/after test: fully receive a requirement, confirm it no longer appears as selectable in a NEW receipt's dropdown, and confirm its own detail/list page shows "Fully Received" promptly after the linked receipt is Final Submitted — without a manual page reload.
+
+PART 4 — FIX THE FULL-SCREEN "LOADING PAGE…" FLASH
+1. Restructure the Suspense boundaries in App.tsx so the persistent sidebar (`HubShell`) is NOT inside the same Suspense boundary as the lazy-loaded page content — the sidebar should stay visible and only the content area should show a loading state while a page chunk loads. Use whichever approach fits this codebase's existing routing structure best (e.g. moving `HubShell` outside/above the `<Suspense>` that wraps only its nested content `<Switch>`) — describe the approach you chose in your report.
+2. Do not change what triggers lazy-loading, route definitions, or any other routing behavior — this is a loading-state placement fix only.
+
+PART 5 — BRING "SITE OPERATIONS" (SiteHome.tsx) INTO THE SHARED SIDEBAR SHELL
+1. Update `client/src/pages/SiteHome.tsx` to render inside the same `HubShell` sidebar shell used by the rest of the app (Dashboard, HMP Operations, Material Receipts, etc.), instead of its own standalone full-page layout with a separate dark header.
+2. Preserve all of SiteHome's existing content, cards, Quick Actions, and Recent Activity feed exactly as they are today — this is a shell/wrapper change only, not a content redesign. If any visual element (like the current dark "SiteLog" header banner) doesn't fit naturally inside the shared shell's content area, adapt it minimally to fit rather than removing information — describe what you changed and why.
+3. Confirm no other page that already uses HubShell is affected.
+
+PART 6 — LINK A RECEIPT BACK TO ITS DIESEL REQUIREMENT
+1. Change the plain text "Purchase document linked ✓ from Daily Diesel Requirement #{id}" (PlantMaterialReceipts.tsx ~line 1837) into an actual link/clickable element that navigates to that specific requirement's detail page.
+2. Reuse whatever existing route/pattern already exists for opening a specific Diesel Requirement's detail view (the same one used when clicking a requirement from its own list) — do not invent a new route.
+3. This is additive — do not change anything else about how the receipt or requirement displays.
+
+WHAT NOT TO DO
+- Do not touch the REC-01/02/03 Invoice Date logic itself — only add the new Invoice No. auto-fill alongside it.
+- Do not remove or weaken any other required-field validation on the Material Receipt form.
+- Do not touch Work Programme/BOQ, Execution Arrangement, Layer/Lift work, or the Fleet Performance Ledger (EQUIP-01/02/03).
+- Do not redesign SiteHome's content — shell/wrapper change only (Part 5).
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change is expected — Part 1 reads an existing field (`dieselRequirements.billNo`), Part 2 relaxes only client-side validation (server/DB are already nullable), Parts 3/4/5/6 are query-invalidation, Suspense-structure, shell-wrapper, and link-rendering changes respectively. If you find you need any schema change, stop and show us the exact proposed change before writing any migration, per our usual rule.
+
+TESTS
+A. Mark a Diesel Requirement "Purchased" with a real Bill No. → open "Record Material Receipt" and select that requirement in the dropdown → confirm Invoice No. is pre-filled with the requirement's Bill No., and remains editable.
+B. Confirm a requirement with no Bill No. leaves Invoice No. blank as before, with no placeholder/invented value.
+C. Attempt to save a new Material Receipt with Challan/DN No. left blank but Invoice No. filled → confirm it saves successfully (no client-side block), and confirm no server-side rejection occurs either.
+D. Fully receive a Diesel Requirement (receipt qty = purchased qty) and Final Submit the receipt → without manually reloading the page, confirm the requirement's own detail/list view shows "Fully Received" promptly, and confirm it no longer appears in a new receipt's "Daily Diesel Requirement" dropdown.
+E. Navigate between two major sections that require a lazy-loaded chunk → confirm the sidebar remains visible throughout, with only the content area showing a loading state (no full-screen blank flash).
+F. Open "Site Operations" → confirm it now renders inside the same sidebar shell as the rest of the app, with all of its existing content (Quick Actions, Recent Activity, etc.) still present and correct.
+G. Open a Material Receipt that's linked to a Diesel Requirement → click the "linked from Daily Diesel Requirement #___" reference → confirm it navigates to that requirement's own detail page.
+
+REPORT BACK
+1. Confirm Part 1's auto-fill with a real before/after example, and confirm manual edits to Invoice No. are still respected (not overwritten).
+2. Confirm Part 2 — Challan/DN No. is now optional client-side, and confirm the server already allowed this (no server change needed).
+3. Confirm Part 3 with Test D's evidence, and confirm the dropdown filter now reflects real remaining quantity.
+4. Confirm Part 4's Suspense restructuring approach and Test E's evidence.
+5. Confirm Part 5 — Site Operations now uses the shared shell, with Test F's evidence, and note any visual adaptation you had to make.
+6. Confirm Part 6's link works per Test G.
+7. Confirm no schema change was needed; if one was, stop and show it before applying.
+8. Anything else noticed but not touched, for a separate decision.
