@@ -41,6 +41,17 @@
   --radius: 0.5rem;
 }
 
+.equip-shell {
+  background-image: linear-gradient(90deg, rgba(20, 85, 104, .035) 1px, transparent 1px), linear-gradient(rgba(20, 85, 104, .035) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.equip-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.equip-panel { box-shadow: 0 10px 26px rgba(45, 53, 42, .06); }
+.equip-row { transition: background-color 160ms ease, transform 160ms ease; }
+.equip-row:hover { background-color: rgba(238, 177, 50, .12); }
+@keyframes equip-enter { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: translateY(0) } }
+.equip-enter { animation: equip-enter .38s cubic-bezier(.2,.8,.2,1) both; }
+
 .dark {
   --background: 222.2 84% 4.9%;
   --foreground: 210 40% 98%;

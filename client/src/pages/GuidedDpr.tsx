@@ -49,7 +49,7 @@ import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { reconcileNewDprAutosaves } from "@/lib/dprAutosaveReconcile";
 import { unlinkedOpenUsages, usageToGuidedRow, duplicateUsageAdvisory, openUsageHandoffContext, type OpenUsageLike } from "@shared/dprPlantLink";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
-import { splitGuidedEquipmentRow, buildGuidedEquipmentPayload, newGuidedEquipmentRow, computeTotalDiesel, computeTripTotalKm, isWaterTankerName, type GuidedEquipmentRow } from "@shared/guidedEquipment";
+import { applyGuidedEquipmentMasterSelection, splitGuidedEquipmentRow, buildGuidedEquipmentPayload, newGuidedEquipmentRow, computeTotalDiesel, computeTripTotalKm, isWaterTankerName, OTHER_EQUIPMENT_VALUE, type GuidedEquipmentRow } from "@shared/guidedEquipment";
 import { evaluateDprSubmitReadiness, type DprReadinessIssue, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
@@ -236,6 +236,7 @@ export default function GuidedDpr() {
   const [engineer, setEngineer] = useState("");
   const [entries, setEntries] = useState<GuidedEntry[]>([]);
   const [equipment, setEquipment] = useState<SimpleEquipmentRow[]>([]);
+  const [otherEquipmentRows, setOtherEquipmentRows] = useState<Set<number>>(() => new Set());
   const [labour, setLabour] = useState<SimpleLabourRow[]>([]);
   const [remarks, setRemarks] = useState("");
   const [showYesterdayPreview, setShowYesterdayPreview] = useState(false);
@@ -2016,14 +2017,25 @@ export default function GuidedDpr() {
                             machine identity. Selecting sets equipmentId, canonical
                             name, registration and keeps ownership context. */}
                         <Select
-                          value={pt.equipmentId != null ? String(pt.equipmentId) : ""}
+                          value={pt.equipmentId != null ? String(pt.equipmentId) : (eq.machine ? OTHER_EQUIPMENT_VALUE : "")}
                           onValueChange={(v) => {
+                            if (v === OTHER_EQUIPMENT_VALUE) {
+                              setEquipment((p) => p.map((r, j) =>
+                                j === i ? applyGuidedEquipmentMasterSelection(r, null) : r));
+                              setOtherEquipmentRows((rows) => new Set(rows).add(i));
+                              return;
+                            }
                             const sel = activeEquipmentMaster.find((m: any) => m.id === Number(v));
                             if (!sel) return;
+                            setOtherEquipmentRows((rows) => {
+                              const next = new Set(rows);
+                              next.delete(i);
+                              return next;
+                            });
                             setEquipment((p) => p.map((r, j) => {
                               if (j !== i) return r;
-                              const nextPt = { ...r.passthrough, equipmentId: sel.id } as Record<string, any>;
-                              delete nextPt.plantUsageId; // reset link until reuse/fetch resolves
+                              const selectedRow = applyGuidedEquipmentMasterSelection(r, sel);
+                              const nextPt = { ...selectedRow.passthrough } as Record<string, any>;
                               // Same rule as Detailed: owned equipment is always
                               // Time / Meter — trip fields don't apply.
                               if (sel.ownership !== "hired") {
@@ -2042,7 +2054,7 @@ export default function GuidedDpr() {
                                 nextPt.plantUsageId = open.id;
                                 if (open.openingReading != null) nextPt.openingReading = open.openingReading;
                               }
-                              return { ...r, machine: sel.name, vehicleNo: sel.registrationNumber || "", passthrough: nextPt };
+                              return { ...selectedRow, passthrough: nextPt };
                             }));
                             // 06Q priority 2: otherwise the canonical resolver —
                             // latest valid closing strictly before this DPR's
@@ -2085,10 +2097,28 @@ export default function GuidedDpr() {
                                 {m.name} {m.registrationNumber ? `(${m.registrationNumber})` : ""} — {m.ownership === "hired" ? `HIRED: ${m.vendorName ?? ""}` : "HLC OWN"}
                               </SelectItem>
                             ))}
+                            <SelectItem value={OTHER_EQUIPMENT_VALUE}>Other / Unlisted equipment</SelectItem>
                           </SelectContent>
                         </Select>
-                        <Button variant="ghost" size="icon" onClick={() => setEquipment((p) => p.filter((_, j) => j !== i))}><Trash2 className="w-4 h-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => {
+                          setEquipment((p) => p.filter((_, j) => j !== i));
+                          setOtherEquipmentRows((rows) => new Set(
+                            Array.from(rows).filter((j) => j !== i).map((j) => j > i ? j - 1 : j),
+                          ));
+                        }}><Trash2 className="w-4 h-4" /></Button>
                       </div>
+                      {pt.equipmentId == null && (otherEquipmentRows.has(i) || !!eq.machine) && (
+                        <Input
+                          value={eq.machine}
+                          onChange={(e) => setEquipment((p) => p.map((r, j) =>
+                            j === i
+                              ? { ...r, machine: e.target.value, passthrough: { ...r.passthrough, equipmentId: null } }
+                              : r))}
+                          placeholder="Enter equipment name"
+                          aria-label="Other / Unlisted equipment name"
+                          data-testid={`input-eq-machine-other-${i}`}
+                        />
+                      )}
                       {eq.vehicleNo && (
                         <p className="text-xs text-muted-foreground" data-testid={`text-eq-reg-${i}`}>Reg: {eq.vehicleNo}</p>
                       )}

@@ -29,6 +29,7 @@ const Home              = lazy(() => import("@/pages/Home"));
 const HmpHub            = lazy(() => import("@/pages/HmpHub"));
 const EquipmentHub      = lazy(() => import("@/pages/EquipmentHub"));
 const ReportsHub        = lazy(() => import("@/pages/ReportsHub"));
+const EquipmentPerformanceReport = lazy(() => import("@/pages/EquipmentPerformanceReport"));
 const SiteHub           = lazy(() => import("@/pages/SiteHub"));
 const MastersHub        = lazy(() => import("@/pages/MastersHub"));
 const AdminMastersHub   = lazy(() => import("@/pages/AdminMastersHub"));
@@ -265,6 +266,7 @@ function AuthedShell() {
     <HubShell>
       <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
         <Switch>
+          <Route path="/reports/equipment-performance" component={gated(EquipmentPerformanceReport, "plant_equipment")} />
           {/* Site pages */}
           <Route path="/site" component={SiteHome} />
           <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />

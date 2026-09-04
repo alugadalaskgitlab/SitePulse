@@ -4,6 +4,7 @@
  * Detailed ↔ Guided round-trip with zero field loss.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   splitGuidedEquipmentRow,
   buildGuidedEquipmentPayload,
@@ -11,6 +12,8 @@ import {
   computeTotalDiesel,
   computeTripTotalKm,
   isWaterTankerName,
+  applyEquipmentMasterSelection,
+  applyGuidedEquipmentMasterSelection,
 } from "../shared/guidedEquipment";
 import { usageToGuidedRow } from "../shared/dprPlantLink";
 
@@ -76,6 +79,69 @@ describe("Detailed → Guided → payload round-trip (§12 — release blocker)"
   it("a new Guided row fabricates nothing", () => {
     const p = buildGuidedEquipmentPayload(newGuidedEquipmentRow());
     expect(Object.keys(p).sort()).toEqual(["machine", "operator", "task", "vehicleNo"]);
+  });
+});
+
+describe("EQUIP-01 master-first equipment identity", () => {
+  const master = { id: 12, name: "TATA HYVA", registrationNumber: "KA-01-1234" };
+
+  it("normal master selection sets equipmentId in the payload", () => {
+    const row = applyGuidedEquipmentMasterSelection(newGuidedEquipmentRow(), master);
+    expect(buildGuidedEquipmentPayload(row)).toMatchObject({
+      equipmentId: 12,
+      machine: "TATA HYVA",
+      vehicleNo: "KA-01-1234",
+    });
+  });
+
+  it("Other clears equipmentId and permits a free-text machine", () => {
+    const selected = applyGuidedEquipmentMasterSelection(
+      splitGuidedEquipmentRow(FULL_DETAILED_ROW),
+      null,
+    );
+    const payload = buildGuidedEquipmentPayload({ ...selected, machine: "Village tractor" });
+    expect(payload.equipmentId).toBeNull();
+    expect(payload.machine).toBe("Village tractor");
+  });
+
+  it("adapting the classic identity preserves every surrounding field", () => {
+    const row = { ...FULL_DETAILED_ROW, equipmentId: 99, plantUsageId: 87 };
+    const selected = applyEquipmentMasterSelection(row, master);
+    expect(selected).toMatchObject({
+      ...row,
+      machine: "TATA HYVA",
+      vehicleNo: "KA-01-1234",
+      equipmentId: 12,
+      plantUsageId: null,
+    });
+    expect(selected.operator).toBe(row.operator);
+    expect(selected.task).toBe(row.task);
+    expect(selected.diesel).toBe(row.diesel);
+    expect(selected.openingReading).toBe(row.openingReading);
+    expect(selected.closingReading).toBe(row.closingReading);
+  });
+});
+
+describe("EQUIP-01 routed DPR source contract", () => {
+  const app = readFileSync("client/src/App.tsx", "utf8");
+  const classic = readFileSync("client/src/pages/SiteEntry.tsx", "utf8");
+  const guided = readFileSync("client/src/pages/GuidedDpr.tsx", "utf8");
+
+  it("covers the two DPR equipment-entry pages that App actually routes", () => {
+    expect(app).toContain('path="/site/new" component={gated(SiteEntry');
+    expect(app).toContain('path="/site/guided" component={gated(GuidedDpr');
+  });
+
+  it("keeps master selection primary and exposes free text only for Other", () => {
+    for (const source of [classic, guided]) {
+      expect(source).toContain("OTHER_EQUIPMENT_VALUE");
+      expect(source).toContain("Other / Unlisted equipment");
+      expect(source).toContain("equipmentId: null");
+    }
+    expect(classic).toContain("applyEquipmentMasterSelection");
+    expect(guided).toContain("applyGuidedEquipmentMasterSelection");
+    expect(classic).toContain("otherEquipmentRows.has(idx)");
+    expect(guided).toContain("otherEquipmentRows.has(i)");
   });
 });
 

@@ -130,6 +130,12 @@ import {
   type BarEvidence,
   type RevisionBar,
 } from "@shared/programmeRevision";
+import {
+  buildEquipmentPerformanceReport,
+  suggestEquipment,
+  type EquipmentPerformanceFilters,
+  type EquipmentPerformanceReport,
+} from "@shared/equipmentPerformance";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
@@ -639,6 +645,9 @@ export interface IStorage {
   deleteTruckDispatch(id: number): Promise<boolean>;
   
   getEquipmentUsage(filters?: { equipmentId?: number; dateFrom?: string; dateTo?: string }): Promise<EquipmentUsage[]>;
+  getEquipmentPerformanceReport(filters?: EquipmentPerformanceFilters, options?: { permittedSiteNames?: string[] | null }): Promise<EquipmentPerformanceReport>;
+  getEquipmentPerformanceLogContext(id: number): Promise<{ id: number; site: string; equipmentId: number | null; plantUsageId: number | null } | undefined>;
+  confirmEquipmentPerformanceLog(id: number, equipmentId: number, actor: { userId?: number | null; userName: string; userRole?: string | null }): Promise<any>;
   getEquipmentUsageById(id: number): Promise<EquipmentUsage | undefined>;
   // 06Q: canonical cross-source "latest prior valid closing" resolver.
   resolveLatestPriorClosing(equipmentId: number, beforeDate: string, opts?: { inclusive?: boolean }): Promise<import("@shared/equipmentContinuity").ResolvedClosing | null>;
@@ -5165,6 +5174,177 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(equipmentUsage)
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(equipmentUsage.date));
+  }
+
+  async getEquipmentPerformanceReport(
+    filters?: EquipmentPerformanceFilters,
+    options?: { permittedSiteNames?: string[] | null },
+  ): Promise<EquipmentPerformanceReport> {
+    const activeProjects = await db.select({
+      id: boqProjects.id, name: boqProjects.name, status: boqProjects.status,
+    }).from(boqProjects).where(eq(boqProjects.status, "active"));
+    if (!activeProjects.length) {
+      return buildEquipmentPerformanceReport({ projects: [], dprs: [], masters: [], usages: [], logs: [], filters });
+    }
+    const unrestricted = options?.permittedSiteNames === null || options?.permittedSiteNames === undefined;
+    const projectIds = activeProjects.map((project) => project.id);
+    const liveDprRows = await db.select().from(dprs).where(and(
+      inArray(dprs.boqProjectId, projectIds),
+      eq(dprs.isDeleted, false),
+      eq(dprs.isCancelled, false),
+      eq(dprs.isSuperseded, false),
+      ne(dprs.dprStatus, "draft"),
+    ));
+    // This is an access filter, not project attribution. The report builder
+    // still relies only on explicit DPR/project links.
+    const liveDprs = unrestricted
+      ? liveDprRows
+      : liveDprRows.filter((dpr) => siteMatchesPermitted(dpr.site, options.permittedSiteNames!));
+    const visibleProjectIds = new Set(liveDprs.map((dpr) => dpr.boqProjectId).filter((id): id is number => id != null));
+    const reportProjects = unrestricted
+      ? activeProjects
+      : activeProjects.filter((project) => visibleProjectIds.has(project.id));
+    if (!liveDprs.length) {
+      const masters = unrestricted ? await this.getEquipmentMaster(true) : [];
+      return buildEquipmentPerformanceReport({
+        projects: reportProjects, dprs: [], masters, filterMasters: masters, usages: [], logs: [], filters,
+      });
+    }
+    const dprIds = liveDprs.map((dpr) => dpr.id);
+    const logs = await db.select().from(equipmentLogs).where(inArray(equipmentLogs.dprId, dprIds));
+    const linkedUsageIds = logs
+      .map((log) => log.plantUsageId)
+      .filter((id): id is number => id != null);
+    const usageCondition = linkedUsageIds.length
+      ? or(inArray(equipmentUsage.dprId, dprIds), inArray(equipmentUsage.id, linkedUsageIds))
+      : inArray(equipmentUsage.dprId, dprIds);
+    const [usages, masters] = await Promise.all([
+      db.select().from(equipmentUsage).where(usageCondition),
+      this.getEquipmentMaster(true),
+    ]);
+    const breakdownSourceConditions = [];
+    const logIds = logs.map((log) => log.id);
+    const usageIds = usages.map((usage) => usage.id);
+    if (logIds.length) {
+      breakdownSourceConditions.push(and(
+        eq(equipmentMaintenanceLogs.sourceType, "dpr_log"),
+        inArray(equipmentMaintenanceLogs.sourceRecordId, logIds),
+      ));
+    }
+    if (usageIds.length) {
+      breakdownSourceConditions.push(and(
+        eq(equipmentMaintenanceLogs.sourceType, "plant_usage"),
+        inArray(equipmentMaintenanceLogs.sourceRecordId, usageIds),
+      ));
+    }
+    const breakdowns = breakdownSourceConditions.length
+      ? await db.select({
+          sourceType: equipmentMaintenanceLogs.sourceType,
+          sourceRecordId: equipmentMaintenanceLogs.sourceRecordId,
+          description: equipmentMaintenanceLogs.description,
+          fromTime: equipmentMaintenanceLogs.fromTime,
+          toTime: equipmentMaintenanceLogs.toTime,
+          remarks: equipmentMaintenanceLogs.remarks,
+        }).from(equipmentMaintenanceLogs).where(and(
+          or(...breakdownSourceConditions),
+          eq(equipmentMaintenanceLogs.eventType, "breakdown"),
+          eq(equipmentMaintenanceLogs.isCancelled, false),
+          eq(equipmentMaintenanceLogs.isDeleted, false),
+        ))
+      : [];
+    const visibleMasterIds = new Set<number>([
+      ...logs.map((log) => log.equipmentId).filter((id): id is number => id != null),
+      ...usages.map((usage) => usage.equipmentId),
+    ]);
+    if (!unrestricted) {
+      for (const log of logs.filter((row) => row.equipmentId == null)) {
+        for (const suggestion of suggestEquipment(log.machine, masters)) {
+          visibleMasterIds.add(suggestion.equipmentId);
+        }
+      }
+    }
+    const filterMasters = unrestricted
+      ? masters
+      : masters.filter((master) => visibleMasterIds.has(master.id));
+    return buildEquipmentPerformanceReport({
+      projects: reportProjects,
+      dprs: liveDprs as any,
+      masters,
+      filterMasters,
+      usages: usages as any,
+      logs: logs as any,
+      breakdowns,
+      filters,
+      asOfDate: filters?.dateTo ?? new Date().toISOString().slice(0, 10),
+    });
+  }
+
+  async getEquipmentPerformanceLogContext(id: number): Promise<{ id: number; site: string; equipmentId: number | null; plantUsageId: number | null } | undefined> {
+    const [row] = await db.select({
+      id: equipmentLogs.id,
+      site: dprs.site,
+      equipmentId: equipmentLogs.equipmentId,
+      plantUsageId: equipmentLogs.plantUsageId,
+    }).from(equipmentLogs)
+      .innerJoin(dprs, eq(equipmentLogs.dprId, dprs.id))
+      .innerJoin(boqProjects, eq(dprs.boqProjectId, boqProjects.id))
+      .where(and(
+        eq(equipmentLogs.id, id),
+        eq(boqProjects.status, "active"),
+        eq(dprs.isDeleted, false),
+        eq(dprs.isCancelled, false),
+        eq(dprs.isSuperseded, false),
+        ne(dprs.dprStatus, "draft"),
+      )).limit(1);
+    return row;
+  }
+
+  async confirmEquipmentPerformanceLog(
+    id: number,
+    equipmentId: number,
+    actor: { userId?: number | null; userName: string; userRole?: string | null },
+  ): Promise<any> {
+    return db.transaction(async (tx) => {
+      const [existing] = await tx.select({
+        id: equipmentLogs.id,
+        equipmentId: equipmentLogs.equipmentId,
+        plantUsageId: equipmentLogs.plantUsageId,
+      }).from(equipmentLogs)
+        .innerJoin(dprs, eq(equipmentLogs.dprId, dprs.id))
+        .innerJoin(boqProjects, eq(dprs.boqProjectId, boqProjects.id))
+        .where(and(
+          eq(equipmentLogs.id, id),
+          eq(boqProjects.status, "active"),
+          eq(dprs.isDeleted, false),
+          eq(dprs.isCancelled, false),
+          eq(dprs.isSuperseded, false),
+          ne(dprs.dprStatus, "draft"),
+        )).limit(1);
+      if (!existing) throw new Error("Active-project equipment log not found");
+      if (existing.plantUsageId != null) {
+        throw new Error("Canonical-linked equipment logs cannot be reclassified");
+      }
+      const [master] = await tx.select({ id: equipmentMaster.id }).from(equipmentMaster)
+        .where(eq(equipmentMaster.id, equipmentId)).limit(1);
+      if (!master) throw new Error("Equipment master not found");
+      const [updated] = await tx.update(equipmentLogs)
+        .set({ equipmentId })
+        .where(and(eq(equipmentLogs.id, id), isNull(equipmentLogs.plantUsageId)))
+        .returning();
+      if (!updated) throw new Error("Equipment log became canonical-linked and was not changed");
+      await tx.insert(auditLogs).values({
+        module: "equipment_log",
+        transactionId: id,
+        action: "edit",
+        userId: actor.userId ?? null,
+        userName: actor.userName,
+        userRole: actor.userRole ?? null,
+        oldValues: { equipmentId: existing.equipmentId },
+        newValues: { equipmentId },
+        reason: "Confirmed historical equipment identity from performance report",
+      });
+      return updated;
+    });
   }
 
   async getEquipmentUsageById(id: number): Promise<EquipmentUsage | undefined> {

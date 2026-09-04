@@ -43,7 +43,7 @@ import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { checkQuantitySourceRow, quantitiesMatch, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
-import { computeTotalDiesel, computeTripTotalKm } from "@shared/guidedEquipment";
+import { applyEquipmentMasterSelection, computeTotalDiesel, computeTripTotalKm, OTHER_EQUIPMENT_VALUE } from "@shared/guidedEquipment";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
 import { History } from "lucide-react";
@@ -879,6 +879,7 @@ export default function SiteEntry() {
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
     { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }
   ]);
+  const [otherEquipmentRows, setOtherEquipmentRows] = useState<Set<number>>(() => new Set());
 
   const [labour, setLabour] = useState<LabourEntry[]>([
     { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }
@@ -1108,6 +1109,9 @@ export default function SiteEntry() {
       setProgress(progress.filter((_, i) => i !== index));
     } else if (section === 'equipment' && equipment.length > 1) {
       setEquipment(equipment.filter((_, i) => i !== index));
+      setOtherEquipmentRows((rows) => new Set(
+        Array.from(rows).filter((i) => i !== index).map((i) => i > index ? i - 1 : i),
+      ));
     } else if (section === 'labour' && labour.length > 1) {
       setLabour(labour.filter((_, i) => i !== index));
     } else if (section === 'materials') {
@@ -2803,15 +2807,23 @@ export default function SiteEntry() {
                   <div className="col-span-2">
                     <Label className="text-sm">Equipment</Label>
                     <Select
-                      value={entry.equipmentId ? String(entry.equipmentId) : ""}
+                      value={entry.equipmentId ? String(entry.equipmentId) : (entry.machine ? OTHER_EQUIPMENT_VALUE : "")}
                       onValueChange={(val) => {
                         const updated = [...equipment];
+                        if (val === OTHER_EQUIPMENT_VALUE) {
+                          updated[idx] = applyEquipmentMasterSelection(updated[idx], null);
+                          setOtherEquipmentRows((rows) => new Set(rows).add(idx));
+                          setEquipment(updated);
+                          return;
+                        }
                         const selectedEquip = activeEquipment.find(e => e.id === Number(val));
                         if (selectedEquip) {
-                          updated[idx].equipmentId = selectedEquip.id;
-                          updated[idx].machine = selectedEquip.name;
-                          updated[idx].vehicleNo = selectedEquip.registrationNumber || "";
-                          updated[idx].plantUsageId = null; // reset until fetch resolves
+                          updated[idx] = applyEquipmentMasterSelection(updated[idx], selectedEquip);
+                          setOtherEquipmentRows((rows) => {
+                            const next = new Set(rows);
+                            next.delete(idx);
+                            return next;
+                          });
                           if (selectedEquip.ownership !== "hired") {
                             updated[idx].entryType = "time_meter";
                             updated[idx].numberOfTrips = null;
@@ -2833,8 +2845,23 @@ export default function SiteEntry() {
                             {eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""} — {eq.ownership === "hired" ? `HIRED: ${eq.vendorName}` : "HLC OWN"}
                           </SelectItem>
                         ))}
+                        <SelectItem value={OTHER_EQUIPMENT_VALUE}>Other / Unlisted equipment</SelectItem>
                       </SelectContent>
                     </Select>
+                    {!entry.equipmentId && (otherEquipmentRows.has(idx) || !!entry.machine) && (
+                      <Input
+                        className="mt-2"
+                        value={entry.machine}
+                        onChange={(e) => {
+                          const updated = [...equipment];
+                          updated[idx] = { ...updated[idx], machine: e.target.value, equipmentId: null };
+                          setEquipment(updated);
+                        }}
+                        placeholder="Enter equipment name"
+                        aria-label="Other / Unlisted equipment name"
+                        data-testid={`input-equipment-other-${idx}`}
+                      />
+                    )}
                     {entry.equipmentId && entry.vehicleNo && (
                       <p className="text-sm text-muted-foreground mt-1">Reg: {entry.vehicleNo}</p>
                     )}

@@ -26,6 +26,47 @@ export type GuidedEquipmentRow = {
   passthrough: Record<string, unknown>;
 };
 
+export const OTHER_EQUIPMENT_VALUE = "__other_unlisted_equipment__";
+
+export type EquipmentMasterChoice = {
+  id: number;
+  name: string;
+  registrationNumber?: string | null;
+};
+
+/**
+ * Apply only equipment identity fields. All usage fields remain untouched.
+ * A null choice is the explicit Other / Unlisted path.
+ */
+export function applyEquipmentMasterSelection<
+  T extends { machine: string; vehicleNo: string; equipmentId: number | null; plantUsageId?: number | null },
+>(row: T, master: EquipmentMasterChoice | null): T {
+  return {
+    ...row,
+    machine: master?.name ?? "",
+    vehicleNo: master?.registrationNumber ?? "",
+    equipmentId: master?.id ?? null,
+    ...(Object.prototype.hasOwnProperty.call(row, "plantUsageId") ? { plantUsageId: null } : {}),
+  };
+}
+
+/** Guided stores equipmentId in its passthrough bag; preserve every other key. */
+export function applyGuidedEquipmentMasterSelection(
+  row: GuidedEquipmentRow,
+  master: EquipmentMasterChoice | null,
+): GuidedEquipmentRow {
+  return {
+    ...row,
+    machine: master?.name ?? "",
+    vehicleNo: master?.registrationNumber ?? "",
+    passthrough: {
+      ...row.passthrough,
+      equipmentId: master?.id ?? null,
+      plantUsageId: null,
+    },
+  };
+}
+
 const EDITED_FIELDS = ["machine", "vehicleNo", "operator", "task"] as const;
 /** never echo row identity back into a create/update payload */
 const STRIPPED_FIELDS = new Set(["id", "dprId"]);

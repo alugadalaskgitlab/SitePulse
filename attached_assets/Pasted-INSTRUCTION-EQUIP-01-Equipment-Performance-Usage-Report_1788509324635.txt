@@ -1,0 +1,88 @@
+INSTRUCTION EQUIP-01: Equipment Performance & Usage Report — fleet summary + machine drill-down, built on the app's existing usage/dedup model
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. If you notice something else broken while doing this, write it down in your report and WAIT for instructions. Do not touch diesel receipt/reconciliation work (REC-01/02/03), Work Programme/BOQ (WP-04), Execution Arrangement, or Layer/Lift work. Do not include billing/hire-payable calculations, maintenance costing, or equipment movement tracking — those are explicitly out of scope for this batch. Above all: this is a new reporting screen plus one small forward-looking preference on entry forms — it must NOT disturb any existing logging form or workflow (DPR equipment logging, Plant/HMP equipment usage entry, or anything else). Every existing form must keep working exactly as it does today, field-for-field. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+SitePulse already has the right foundation for this — we are not asking you to invent a new usage-tracking model, only to report off the one that exists:
+- `equipment_usage` (plant-module) and `equipment_logs` (DPR-linked) are the two usage sources. When a DPR with an `equipmentId`-linked `equipment_logs` row is closed, the app already automatically creates the matching canonical `equipment_usage` row and records the link via `plantUsageId` on the log.
+- `shared/equipmentContinuity.ts` (`pickLatestClosing`) is the app's own existing cross-source identity resolver — it already treats a `dpr_log` row and the `plant_usage` row it closed (matched via `plantUsageId`) as ONE physical event, not two. This report must follow that same principle for counting usage, not invent a separate heuristic (matching by same machine/date/hours) to detect duplicates.
+- `shared/equipmentUsage.ts` (`computeEquipmentUsage()`) is the app's existing shared runtime/fuel calculation logic (hours or km/trips depending on meter type, expected diesel from the equipment's consumption norm, variance). Reuse this directly for the report's numbers — do not re-derive the math separately.
+- `equipment_master` is the canonical fleet table (name, registration number, ownership owned/hired, hire start/end dates, consumption norm, plant name, active flag, output figures, meter type hour_meter/odometer). Both `equipment_logs.equipmentId` and `equipment_usage.equipmentId` reference this same table.
+- `boq_projects.status` is `draft | active | closed` — this is the field to use for the active-project scope boundary below.
+- There is no existing "equipment is scheduled/expected to work on date X" table. Only a hired machine's `hireStartDate`–`hireEndDate` window gives a real expected-activity period; owned equipment has nothing equivalent.
+- No true fuzzy/similarity-matching library exists in this codebase; existing free-text matching elsewhere (e.g. `matchPlanTypeId`) uses normalize (lowercase/trim/collapse whitespace) + exact-or-substring matching. Reuse that same pattern for Part 1 below — do not add a new matching library.
+
+REPORTING SCOPE BOUNDARY (agreed, do not deviate)
+- Include projects where `boq_projects.status = 'active'` at the time the report is viewed — this automatically includes future projects too, since a new project naturally starts in this pool once it's active; no hardcoded project list.
+- For each included project, the report's history starts from that project's own first-ever recorded equipment usage (earliest `equipment_logs`/`equipment_usage` row for that project) — do not attempt to reach further back or reconstruct anything before that.
+- Do NOT include closed/inactive legacy projects in this batch.
+- Within an included project's own history, rows that are still free-text/unmatched must remain VISIBLE as "Unclassified," never hidden and never silently excluded from totals — hiding them would understate real project totals.
+
+PART 1 — REVIEW-BASED HISTORICAL NAME MATCHING (never silently applied)
+1. For `equipment_logs` rows (within the scope boundary above) where `equipmentId` is null, suggest a match against `equipment_master` using the existing normalize + exact-or-substring pattern (reference: `matchPlanTypeId`) — e.g. "JCB 3DX", "JCB-3DX", "JCB Backhoe" all suggesting the same equipment master entry.
+2. Present suggestions for the owner to confirm, reject, or leave unmatched — never auto-apply. Only a confirmed match writes `equipmentId` onto that row.
+3. Confirming a match must NOT create a new `equipment_usage` row for an already-closed historical DPR — that automatic linkage only applies going forward, as it already does today. This step only fixes which equipment a historical row is attributed to.
+4. Every row gets one of three states, and the report must show this state plainly wherever that row's data is used:
+   - Linked — has a real `equipmentId` and a canonical `equipment_usage` record (via `plantUsageId`).
+   - Confirmed legacy match — `equipmentId` set through this batch's manual review (Part 1.2), not yet tied to a canonical `equipment_usage` row.
+   - Unclassified — free text only, no confirmed match.
+
+PART 2 — STRICT, LINK-BASED DEDUPLICATION (not heuristic)
+1. Counting rule: if an `equipment_logs` row has a valid `plantUsageId` pointing to a real `equipment_usage` row, count that usage ONCE via the `equipment_usage` row — the `equipment_logs` row is its source/reference only, never a second event. Only `equipment_logs` rows with no `plantUsageId` (unlinked legacy rows, whether Unclassified or Confirmed-legacy-matched) are counted as their own separate events.
+2. Do not deduplicate by matching same-machine/same-date/same-hours or any other heuristic — the existing `plantUsageId` link (and `equipmentContinuity.ts`'s existing same-event logic) is the sole, authoritative source of truth for "is this the same event."
+3. Report back a concrete before/after count for at least one real equipment example proving no double-counting.
+
+PART 3 — THE REPORT: FLEET SUMMARY + MACHINE DRILL-DOWN
+Build one permanent Equipment Performance & Usage screen with two levels:
+
+A. Fleet summary (default view)
+Filters: date range, site/project, plant-usage vs site-usage, ownership (owned/hired), equipment type, specific machine.
+Per-equipment row: total working hours or km/trips (per its meter type), number of active days, diesel issued/consumed, expected diesel (via `computeEquipmentUsage`), diesel variance, efficiency %, last-used date, current location/status where available, and its data-confidence state (Part 1.4).
+- Hired equipment: also show hire-period utilization — usage vs its `hireStartDate`–`hireEndDate` window, with gap days flagged only inside that window.
+- Owned equipment: show "days since last use" — do NOT call it idle; there is no expected-activity schedule to justify that claim for owned equipment.
+
+B. Machine drill-down (opening one equipment)
+Chronological usage history table: date, site/plant, task, opening/closing meter, hours/km/trips, diesel actual, expected, variance, operator, linked DPR/usage source, breakdown notes if any. Table is the primary view; add an hours-and-diesel-efficiency trend chart above/alongside it as a secondary, visual aid — not a replacement for the table.
+
+Diesel efficiency and utilization are two separate concepts — do not conflate them in the UI:
+- Efficiency = actual vs expected diesel, from the equipment's consumption norm and usage basis (via `computeEquipmentUsage`) — computable for most equipment now.
+- Utilization = working time vs an expected/available period — only reliable for hired equipment within its hire window; not shown as a hard number for owned equipment (Part 3.A).
+
+PART 4 — FORWARD PREFERENCE ON NEW DPR EQUIPMENT ENTRIES (must not disturb the existing form)
+1. Going forward, the DPR equipment-entry flow should PREFER picking equipment from the Equipment Master list (setting `equipmentId` directly) rather than typing free text.
+2. Free text remains available, but only as an explicit "Other / Unlisted equipment" option — not the default path.
+3. This must be the SMALLEST possible change to the existing entry form: do not restructure, rename, move, or remove any existing field; do not change any other behavior of DPR entry, save, edit, or submission. If you are not confident a change is this narrow, stop and describe the smallest option you found instead of implementing something broader.
+
+WHAT NOT TO DO
+- Do not disturb any existing logging form (DPR equipment entry, Plant/HMP equipment usage entry, or any other entry screen) beyond the one narrow, explicit change in Part 4.
+- Do not double-count usage — follow Part 2's link-based rule exactly, no heuristic matching.
+- Do not silently write `equipmentId` onto historical rows without owner confirmation.
+- Do not label owned-equipment gaps as "idle."
+- Do not add billing/hire-payable calculations, maintenance costing, or equipment movement tracking in this batch.
+- Do not add a new fuzzy-matching library.
+- Do not touch diesel receipt/reconciliation, Work Programme/BOQ, Execution Arrangement, or Layer/Lift work.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+Part 1 writes `equipmentId` (existing nullable column) onto confirmed rows — should not need a migration. If you find you need a new column (e.g. to store the match-confidence state from Part 1.4, if it can't be derived at read-time) or any other schema change, stop and show us the exact proposed change before writing any migration, per our usual rule.
+
+TESTS
+A. An `equipment_logs` row with a valid `plantUsageId` is counted exactly once (via its `equipment_usage` row) — show the specific row.
+B. A suggested historical match is NOT applied until explicitly confirmed; after confirming, that row is attributed correctly without creating a duplicate `equipment_usage` row.
+C. Fleet summary correctly separates hired-equipment hire-window utilization from owned-equipment "days since last use" — no owned equipment is labeled idle.
+D. Machine drill-down shows a correct chronological history with the trend chart matching the table's underlying numbers.
+E. A project with `status = 'closed'` does NOT appear anywhere in this report; a project that changes from `active` to `closed` (or vice versa) is picked up correctly the next time the report is viewed.
+F. The Unclassified bucket is visible within an included project's data, not hidden, and its rows are excluded from "Linked/Confirmed" totals but still visible as their own reviewable group.
+G. Confirm every existing DPR equipment-entry and Plant/HMP equipment-usage entry form still works exactly as before, except the one narrow preference change in Part 4 — walk through a normal DPR save with equipment logged, end to end.
+H. Diesel efficiency % for at least one real active-project equipment example matches a manual back-of-envelope check using its consumption norm.
+
+REPORT BACK
+1. Confirm Part 1's review-first flow with real examples; confirm nothing was auto-applied.
+2. Confirm Part 2's link-based dedup rule with the before/after count evidence.
+3. Confirm Part 3's fleet summary and drill-down are both working, with the hired-vs-owned distinction evidence (Test C).
+4. Confirm Part 4's change is the narrow, explicit change described, and that Test G passes — every existing form still works unchanged.
+5. Confirm the active/future-project scope boundary works as described (Test E).
+6. Confirm no schema change was needed; if one was, stop and show it before applying.
+7. Confirm nothing outside this scope — including billing/costing/movement-tracking — was added.
+8. Anything else noticed but not touched, for a separate decision.

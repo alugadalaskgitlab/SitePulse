@@ -73,3 +73,4 @@
 - [Hired Equipment Billing](hired-equipment-billing.md) — billing derives from operational records; exception decisions, immutable snapshots, overlap locks, and idempotent bill creation preserve auditability.
 - [DPR equipment canonicalization](dpr-equipment-canonicalization.md) — DPR and standalone usage share one calculator; reports keep snapshots; clones never repost the same Diesel.
 - [Material receipt date semantics](material-receipt-date-semantics.md) — entry timestamp is audit history; invoice date drives receipt and stock chronology with legacy fallback.
+- [Equipment performance integrity](equipment-performance-integrity.md) — explicit project/source links govern history, deduplication, review authority, and hire-window metrics.

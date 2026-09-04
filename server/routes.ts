@@ -438,7 +438,7 @@ export async function registerRoutes(
   // Returns null for admins or users with no site restrictions (all sites).
   // Returns string[] of permitted site names when the user is restricted.
   async function getPermittedSiteNames(req: Express.Request): Promise<string[] | null> {
-    if (!req.authUser || req.authUser.isAdmin) return null;
+    if (!req.authUser || req.authUser.isAdmin || req.authUser.isOwner) return null;
     const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
     if (permittedIds === null) return null;
     const allSites = await storage.getSites();
@@ -4347,6 +4347,70 @@ export async function registerRoutes(
       res.json(usageData);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch equipment usage" });
+    }
+  });
+
+  app.get("/api/reports/equipment-performance", requireAuth, async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_equipment")) return;
+      const dateFrom = typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined;
+      const dateTo = typeof req.query.dateTo === "string" ? req.query.dateTo : undefined;
+      if ((dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) || (dateTo && !/^\d{4}-\d{2}-\d{2}$/.test(dateTo))) {
+        return res.status(400).json({ message: "dateFrom and dateTo must use YYYY-MM-DD" });
+      }
+      const projectId = req.query.projectId == null ? undefined : Number(req.query.projectId);
+      const equipmentId = req.query.equipmentId == null ? undefined : Number(req.query.equipmentId);
+      if ((projectId !== undefined && (!Number.isInteger(projectId) || projectId <= 0)) ||
+          (equipmentId !== undefined && (!Number.isInteger(equipmentId) || equipmentId <= 0))) {
+        return res.status(400).json({ message: "projectId and equipmentId must be positive integers" });
+      }
+      const scope = req.query.scope == null ? undefined : String(req.query.scope);
+      if (scope !== undefined && scope !== "plant" && scope !== "site") {
+        return res.status(400).json({ message: "scope must be plant or site" });
+      }
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      res.json(await storage.getEquipmentPerformanceReport({
+        dateFrom,
+        dateTo,
+        projectId,
+        equipmentId,
+        scope,
+        ownership: typeof req.query.ownership === "string" ? req.query.ownership : undefined,
+        equipmentType: typeof req.query.equipmentType === "string" ? req.query.equipmentType : undefined,
+        machine: typeof req.query.machine === "string" ? req.query.machine : undefined,
+      }, { permittedSiteNames }));
+    } catch (err) {
+      console.error("GET /api/reports/equipment-performance:", err);
+      res.status(500).json({ message: "Failed to fetch equipment performance report" });
+    }
+  });
+
+  // Explicitly confirms one historical DPR log identity. This never creates
+  // or mutates a canonical equipment_usage row.
+  app.post("/api/reports/equipment-performance/logs/:id/confirm", requireAuth, async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const id = Number(req.params.id);
+      const equipmentId = Number(req.body?.equipmentId);
+      if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(equipmentId) || equipmentId <= 0) {
+        return res.status(400).json({ message: "Valid log id and equipmentId are required" });
+      }
+      const context = await storage.getEquipmentPerformanceLogContext(id);
+      if (!context) return res.status(404).json({ message: "Equipment log not found in an active project" });
+      if (context.plantUsageId != null) {
+        return res.status(409).json({ message: "Canonical-linked equipment logs cannot be reclassified" });
+      }
+      if (!await assertTripSiteAccess(req, res, context.site)) return;
+      const updated = await storage.confirmEquipmentPerformanceLog(id, equipmentId, {
+        userId: req.authUser?.id ?? null,
+        userName: currentUserName(req),
+        userRole: (req.authUser as any)?.role ?? null,
+      });
+      res.json(updated);
+    } catch (err: any) {
+      const message = err?.message ?? "Failed to confirm equipment identity";
+      const status = /canonical-linked/i.test(message) ? 409 : /not found/i.test(message) ? 404 : 500;
+      res.status(status).json({ message });
     }
   });
 

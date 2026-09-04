@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Activity, AlertTriangle, Fuel, Zap, ShoppingCart, ClipboardList, CalendarCheck,
+  Activity, AlertTriangle, Fuel, Zap, ShoppingCart, ClipboardList, CalendarCheck, BarChart3,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -29,6 +29,7 @@ export default function EquipmentHub() {
 
   // Anyone who can reach the hub (equipment_hub OR plant_equipment) sees core content
   const canSeeEquip = sectionVisible("equipment_hub") || sectionVisible("plant_equipment");
+  const canSeePerformanceReport = sectionVisible("plant_equipment");
 
   // Standalone equipment usage logs (plant/HMP source)
   const { data: equipmentUsage = [] } = useQuery<any[]>({
@@ -133,6 +134,15 @@ export default function EquipmentHub() {
               accent="blue"
               iconBg="bg-blue-100"
               enabled={canSeeEquip}
+            />
+            <HubActionTile
+              href="/reports/equipment-performance"
+              icon={BarChart3}
+              title="Fleet Performance Ledger"
+              description="Review attributed machine hours, diesel efficiency and unresolved legacy usage"
+              accent="amber"
+              iconBg="bg-amber-100"
+              enabled={canSeePerformanceReport}
             />
             <HubActionTile
               href={`/plant/maintenance?returnTo=${HUB}&context=equipment`}
