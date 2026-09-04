@@ -117,7 +117,18 @@ function stubTx(f: Fixture) {
   return { tx, calls };
 }
 
-const RECEIPT = { id: 88, materialId: 12, quantity: 600, uom: "Liters", partyId: null, isPlantCommon: 1, isCancelled: false, tankNumber: null };
+const RECEIPT = {
+  id: 88,
+  materialId: 12,
+  quantity: 600,
+  uom: "Liters",
+  partyId: null,
+  isPlantCommon: 1,
+  isCancelled: false,
+  tankNumber: null,
+  invoiceDate: "2026-01-15",
+  date: "2026-09-04",
+};
 const MATERIAL = { id: 12, name: "DIESEL", conversionFactor: null, conversionFromUom: null, conversionToUom: "Liters" };
 
 let inst: any;
@@ -140,6 +151,7 @@ describe("06M-D cancel reversal (tx body)", () => {
     // compensating OUT ledger row, original IN untouched (no deletes)
     expect(calls.ledgerInserts).toHaveLength(1);
     expect(calls.ledgerInserts[0]).toMatchObject({
+      date: "2026-01-15",
       transactionType: "material_receipt_cancel_reversal",
       referenceId: 88,
       quantityOut: 600,
@@ -149,6 +161,24 @@ describe("06M-D cancel reversal (tx body)", () => {
     expect(calls.ledgerInserts[0].notes).toContain("Reason: duplicate entry");
     // one delete = the linked LDO flow reading; ledger rows are never deleted on cancel
     expect(calls.deletes).toBe(1);
+  });
+
+  it("REC-02: a legacy null invoice date keeps the original historical entry date on reversal", async () => {
+    const receipt = { ...RECEIPT, invoiceDate: null, date: "2025-12-20" };
+    const { tx, calls } = stubTx({ receipt, material: MATERIAL, balance: 765, hasReversalRow: false });
+    await inst._cancelMaterialReceiptWithinTx(tx, 88, 9, "legacy duplicate");
+    expect(calls.ledgerInserts[0].date).toBe("2025-12-20");
+  });
+
+  it("REC-02: a same-day duplicate reversal remains on that same invoice date", async () => {
+    const receipt = { ...RECEIPT, quantity: 165, invoiceDate: "2026-09-04", date: "2026-09-04" };
+    const { tx, calls } = stubTx({ receipt, material: MATERIAL, balance: 765, hasReversalRow: false });
+    await inst._cancelMaterialReceiptWithinTx(tx, 88, 9, "duplicate 165 L");
+    expect(calls.ledgerInserts[0]).toMatchObject({
+      date: "2026-09-04",
+      quantityOut: 165,
+      balanceAfter: 600,
+    });
   });
 
   it("D: already-cancelled receipt → ReceiptAlreadyCancelledError, no reversal writes", async () => {

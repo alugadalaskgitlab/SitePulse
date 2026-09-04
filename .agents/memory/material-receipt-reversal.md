@@ -15,5 +15,7 @@ description: Reversal-on-cancel/delete rules for stock-affecting Material Receip
 - **Cancelled receipts are terminal**: PUT edit is blocked 409 server-side and Edit/Cancel buttons hidden client-side. Editing a cancelled receipt would re-apply stock via updateMaterialReceipt's reverse-old/apply-new sync and break the zero-net guarantee (architect-caught bug).
 - Cancellation also deletes the linked `ldo_flow_readings` row (same as delete) so cancelled tank Diesel/LDO stops counting in the LDO tracker.
 - Conversion parity: reversal recomputes the same conversionFactor/from/to quantity the create path posted.
+- Cancel reversal rows use the original receipt's resolved invoice date (entry-date fallback for historical nulls), never the cancellation date.
+- After a successful cancel or hard delete commits, resequence the affected material's ledger balances immediately so later rows do not retain stale running totals.
 - Edit stock sync (reverse-old/apply-new, unguarded) is pre-existing and untouched.
 - Tx bodies are separated (`_cancelMaterialReceiptWithinTx`, `_deleteMaterialReceiptWithinTx`) so stub-tx tests can drive them without a live DB.

@@ -1,0 +1,44 @@
+INSTRUCTION REC-02: Fix cancel/delete date + recompute gaps left by REC-01, then give one final confirmation before we deploy
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a follow-up to REC-01 (already applied) — not a new feature. Fix only the two specific defects named in Part 1 below. Part 2 is verification-only — re-confirm behavior that should already be correct after REC-01; do not change any of it unless a check genuinely fails, and if something fails, fix only that specific thing and say so plainly. Do not start any other task on your own initiative. Do not touch Vendor Billing, Work Programme/BOQ, Execution Arrangement, or Layer/Lift work. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review of the REC-01 build — do not re-derive)
+REC-01 correctly made Invoice Date the operative stock date for creating and editing a Material Receipt (`createMaterialReceipt`, `updateMaterialReceipt` in server/storage.ts, via the shared `materialReceiptTransactionDate()` helper), and correctly calls `recomputeBalanceAfterForMaterial` after a create so the ledger's running balance trail re-sorts into correct chronological order.
+
+Two gaps remain in the paths REC-01 did not touch:
+1. `_cancelMaterialReceiptWithinTx` (server/storage.ts, `cancelMaterialReceipt`) inserts its compensating reversal ledger row with `date: new Date().toISOString().slice(0, 10)` — i.e. today's actual date — instead of the original receipt's resolved Invoice Date. Cancelling a backdated receipt will therefore park the reversal on today's date instead of next to the original transaction, distorting the historical trail for any date range between the original Invoice Date and today.
+2. Neither the cancel path nor `_deleteMaterialReceiptWithinTx` (`deleteMaterialReceipt`) calls `recomputeBalanceAfterForMaterial` after reversing/removing stock — unlike create and edit, which already do. This can leave other, unrelated ledger rows for that material showing a stale `balance_after` figure after a cancel or delete.
+
+We are asking for this now because the very next real action is entering several backdated diesel receipts and then cancelling or deleting one accidental duplicate (approx. 165 L) — this must produce a clean, correctly-ordered ledger the first time.
+
+PART 1 — FIX THE TWO CONFIRMED DEFECTS
+1. In `_cancelMaterialReceiptWithinTx`, date the compensating reversal ledger row using `materialReceiptTransactionDate(originalReceipt)` (resolved Invoice Date, with the existing historical-date fallback), not today's date. This avoids any ambiguity for an old receipt whose `invoiceDate` is null and relies on the fallback historical date. The reversal must sit chronologically next to the entry it reverses.
+2. After a successful cancel (`cancelMaterialReceipt`) and after a successful delete (`deleteMaterialReceipt`/`_deleteMaterialReceiptWithinTx`), call `recomputeBalanceAfterForMaterial` for the affected material — the same call `createMaterialReceipt` already makes — so the running balance trail is correct immediately, not just after some later edit.
+3. Do not change the stock-sufficiency guard behavior on cancel/delete (the block that refuses to reverse when the quantity has already been consumed) — leave that exactly as is.
+
+PART 2 — FINAL VERIFICATION (re-confirm, do not redesign)
+We independently reviewed the REC-01 build and believe the following are already correct. Please re-confirm each briefly in your report; if you find one is NOT actually correct, fix only that specific item and flag it clearly as an unplanned correction.
+1. Opening an old receipt whose `invoiceDate` is null for editing shows a safe visible default (its own historical date), and saving it can never post a null stock date, and does not bulk-backfill other, untouched historical rows.
+2. A receipt created from a linked Diesel Requirement or Purchase Indent defaults Invoice Date from that record's own `date` field (the requirement/indent's own date) — confirm this explicitly, and confirm it is NOT `createdAt`, `approvedAt`, or today's date.
+3. Stock Summary, Ledger Details, Party Statement, the Diesel Purchase Register, the LDO reconciliation calculation, and the Diesel-Requirement-linked receipts list all consistently use the same resolved Invoice Date (not the entry Date) for filtering, grouping, and sorting.
+4. The entry Date and Time remain visible on every receipt row/report as audit/reference information — they must not disappear.
+5. Physical Stock Reconciliation is untouched by any of this.
+
+TESTS
+A. Create a backdated diesel receipt (Invoice Date well in the past), then cancel it → the reversal ledger row is dated with that same past Invoice Date, not today; the running balance trail immediately reflects correct chronological order with no separate action needed.
+B. Same as A but using Delete instead of Cancel → the row is removed and the running balance trail for that material is immediately correct (re-run recompute confirmed).
+C. Enter a genuine duplicate diesel receipt (~165 L) dated today, then cancel it → reversal lands on the same date, balance returns to the pre-duplicate figure, no stale trail elsewhere.
+D. Attempt to cancel/delete a receipt whose quantity has already been partly consumed downstream → still correctly blocked with the existing insufficient-stock message; unchanged behavior.
+E. Re-run Part 2's five confirmations with concrete evidence (screenshots or before/after figures), not just a restated claim.
+
+SCHEMA SAFETY
+No schema change expected. If you find you genuinely need one, stop and show us the exact change before writing any migration.
+
+REPORT BACK
+1. Part 1: confirm both fixes with test evidence (Tests A, B, C).
+2. Confirm the existing insufficient-stock block on cancel/delete is unchanged (Test D).
+3. Part 2: PASS/FAIL for each of the five items, with evidence; note any item that required an unplanned correction and exactly what you changed.
+4. Confirm no schema change was needed; if one was, stop and show it before applying.
+5. Confirm nothing outside this scope was touched.
+6. Anything else noticed but not touched, for a separate decision.

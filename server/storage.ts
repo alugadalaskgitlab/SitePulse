@@ -2223,7 +2223,11 @@ export class DatabaseStorage implements IStorage {
   // InsufficientPlantStockError when the stock has already been consumed
   // (never partially reverse, never allow negative stock).
   async cancelMaterialReceipt(id: number, userId: number, reason: string): Promise<MaterialReceipt | undefined> {
-    return db.transaction(async (tx) => this._cancelMaterialReceiptWithinTx(tx, id, userId, reason));
+    const result = await db.transaction(async (tx) => this._cancelMaterialReceiptWithinTx(tx, id, userId, reason));
+    if (result) {
+      await this.recomputeBalanceAfterForMaterial(result.materialId);
+    }
+    return result;
   }
 
   // Tx-scoped body, separated so tests can drive it with a stub transaction
@@ -2274,8 +2278,9 @@ export class DatabaseStorage implements IStorage {
     );
 
     // Compensating ledger entry — the original stock-IN row is preserved.
+    const transactionDate = materialReceiptTransactionDate(receipt.invoiceDate, receipt.date);
     await tx.insert(stockLedger).values({
-      date: new Date().toISOString().slice(0, 10),
+      date: transactionDate,
       partyId: targetPartyId,
       materialId: receipt.materialId,
       transactionType: "material_receipt_cancel_reversal",
@@ -4806,7 +4811,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteMaterialReceipt(id: number): Promise<boolean> {
-    return db.transaction(async (tx) => this._deleteMaterialReceiptWithinTx(tx, id));
+    const [existing] = await db.select({ materialId: materialReceipts.materialId })
+      .from(materialReceipts)
+      .where(eq(materialReceipts.id, id))
+      .limit(1);
+    const deleted = await db.transaction(async (tx) => this._deleteMaterialReceiptWithinTx(tx, id));
+    if (deleted && existing?.materialId) {
+      await this.recomputeBalanceAfterForMaterial(existing.materialId);
+    }
+    return deleted;
   }
 
   // 06M-D: tx-scoped body. Locks the receipt row, reverses stock exactly once
