@@ -117,10 +117,24 @@ describe("DPR-02 Parts 1-3 material trip safeguards", () => {
   it("Part 2/4 UI reuses one arrangement context and preserves historical inactive labels", async () => {
     const fs = await import("node:fs/promises");
     const context = await fs.readFile("client/src/components/ReceiptWorkContext.tsx", "utf8");
+    const siteEntry = await fs.readFile("client/src/pages/SiteEntry.tsx", "utf8");
+    const siteEdit = await fs.readFile("client/src/pages/SiteEdit.tsx", "utf8");
+    const guidedDpr = await fs.readFile("client/src/pages/GuidedDpr.tsx", "utf8");
+    const sitePreview = await fs.readFile("client/src/pages/SitePreview.tsx", "utf8");
     const dprDetail = await fs.readFile("client/src/pages/DprDetails.tsx", "utf8");
     expect(context).toContain("historicalInactiveArrangement");
     expect(context).toContain("arrangement-historical");
     expect(context).toContain("No execution arrangement linked");
+    for (const editableDpr of [siteEntry, siteEdit, guidedDpr]) {
+      expect(editableDpr).toContain("<ActivityReceiptStrip");
+      expect(editableDpr).toContain("onArrangementResolved=");
+    }
+    expect(siteEntry).not.toMatch(/readOnly persistedArrangementId=\{entry\.earthworkArrangementId\}/);
+    expect(siteEdit).not.toMatch(/readOnly persistedArrangementId=\{entry\.earthworkArrangementId\}/);
+    expect(sitePreview).toContain("<ActivityReceiptStrip");
+    expect(sitePreview).toContain("persistedArrangementId={item.earthworkArrangementId ?? null}");
+    expect(sitePreview).toContain("testIdPrefix={`dpr-preview-");
+    expect(sitePreview).toContain("readOnly");
     expect(dprDetail).toContain("<ActivityReceiptStrip");
     expect(dprDetail).toContain("persistedArrangementId={item.earthworkArrangementId ?? null}");
     expect(dprDetail).toContain("readOnly");

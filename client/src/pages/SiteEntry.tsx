@@ -1675,12 +1675,18 @@ export default function SiteEntry() {
       date: header.date,
       site: header.site,
       engineer: header.engineer,
+      boqProjectId: siteBoqProjectId,
       progress: progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
+        const boqItem = p.boqItemId != null ? siteBoqItems.find((item) => item.id === p.boqItemId) : null;
+        const quantity = p.quantity || calculateQuantity(p);
         return {
           ...p,
           length: effectiveLength,
-          quantity: p.quantity || calculateQuantity(p)
+          quantity,
+          executedBoqQty: quantity != null ? quantity * (boqItem?.dprConversionFactor ?? 1) : null,
+          executedBoqUom: boqItem?.unit ?? p.uom ?? null,
+          activityMaterialHint: boqItem ? boqItemDisplayName(boqItem) : p.activity || null,
         };
       }),
       equipment,
@@ -2646,7 +2652,7 @@ export default function SiteEntry() {
                       boqItemId={entry.boqItemId} programmeBarId={entry.programmeBarId}
                       executedQty={(() => { const q = entry.quantity ?? calculateQuantity(entry); const f = (siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.dprConversionFactor ?? 1; return q != null ? q * f : null; })()}
                       executedUom={(siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.unit ?? entry.uom ?? null}
-                      readOnly persistedArrangementId={entry.earthworkArrangementId}
+                      persistedArrangementId={entry.earthworkArrangementId}
                       onArrangementResolved={(id) => setProgress((prev) => prev.map((p, i) => (i === idx ? { ...p, earthworkArrangementId: id } : p)))}
                       activityMaterialHint={entry.activity || null} testIdPrefix={`detailed-receipt-${idx}`} />
                   ) : null}

@@ -2172,7 +2172,7 @@ export default function SiteEdit() {
                         boqItemId={entry.boqItemId} programmeBarId={entry.programmeBarId}
                         executedQty={(() => { const q = entry.quantity ?? calculateQuantity(entry); const f = (siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.dprConversionFactor ?? 1; return q != null ? q * f : null; })()}
                         executedUom={(siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.unit ?? entry.uom ?? null}
-                        readOnly persistedArrangementId={entry.earthworkArrangementId}
+                        persistedArrangementId={entry.earthworkArrangementId}
                         onArrangementResolved={(id) => setProgress((prev) => prev.map((p, i) => (i === idx ? { ...p, earthworkArrangementId: id } : p)))}
                         activityMaterialHint={entry.activity || null} testIdPrefix={`detailed-receipt-${idx}`} />
                     ) : null}

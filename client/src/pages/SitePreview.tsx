@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { ChevronLeft, Send, Loader2, Fuel } from "lucide-react";
 import { ReportHeader } from "@/components/ReportHeader";
 import { Button } from "@/components/ui/button";
@@ -8,11 +9,13 @@ import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import type { Personnel, EquipmentMasterType } from "@shared/schema";
 import { layerDisplayName } from "@shared/layerDisplay";
+import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 
 interface PreviewData {
   date: string;
   site: string;
   engineer: string;
+  boqProjectId?: number | null;
   progress: any[];
   equipment: any[];
   labour: any[];
@@ -173,7 +176,8 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                   const displayLength = item.length || (derivedLength ? derivedLength.toFixed(0) : null);
                   
                   return (
-                    <TableRow key={i}>
+                    <Fragment key={item.entryKey ?? i}>
+                    <TableRow>
                       <TableCell className="font-medium">
                         <div>{item.activity}</div>
                         {/* Batch 06V: incidental badge */}
@@ -203,6 +207,26 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                       <TableCell className="text-right font-semibold">{item.quantity?.toFixed(3) || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{item.uom}</TableCell>
                     </TableRow>
+                    {data.boqProjectId != null && item.boqItemId != null && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={10} className="pt-0">
+                          <ActivityReceiptStrip
+                            siteName={data.site}
+                            date={data.date}
+                            boqProjectId={data.boqProjectId}
+                            boqItemId={item.boqItemId}
+                            programmeBarId={item.programmeBarId ?? null}
+                            persistedArrangementId={item.earthworkArrangementId ?? null}
+                            executedQty={item.executedBoqQty ?? null}
+                            executedUom={item.executedBoqUom ?? item.uom ?? null}
+                            activityMaterialHint={item.activityMaterialHint ?? item.activity ?? null}
+                            readOnly
+                            testIdPrefix={`dpr-preview-${item.entryKey ?? i}`}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    </Fragment>
                   );
                 })}
               </TableBody>
