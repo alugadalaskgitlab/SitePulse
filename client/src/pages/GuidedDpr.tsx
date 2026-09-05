@@ -1623,19 +1623,25 @@ export default function GuidedDpr() {
             {e.programmeBarId == null && (
               <div>
                 <Label>BOQ Item / Activity</Label>
-                <Select
-                  value={e.boqItemId != null ? String(e.boqItemId) : ""}
-                  onValueChange={(v) => { const item = itemById.get(Number(v)); if (item) setEntryBoqItem(idx, item); }}
-                >
-                  <SelectTrigger data-testid={`select-boq-item-${idx}`}><SelectValue placeholder="Select BOQ item…" /></SelectTrigger>
-                  <SelectContent>
+                <div className="relative">
+                  <select
+                    value={e.boqItemId != null ? String(e.boqItemId) : ""}
+                    onChange={(event) => {
+                      const item = itemById.get(Number(event.target.value));
+                      if (item) setEntryBoqItem(idx, item);
+                    }}
+                    className="flex h-9 w-full appearance-none rounded-md border border-input bg-background px-3 py-2 pr-9 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    data-testid={`select-boq-item-${idx}`}
+                  >
+                    <option value="">Select BOQ item…</option>
                     {boqItems.map((item) => (
-                      <SelectItem key={item.id} value={String(item.id)}>
+                      <option key={item.id} value={String(item.id)}>
                         {boqItemDisplayName(item)}{item.unit ? ` · ${item.unit}` : ""}
-                      </SelectItem>
+                      </option>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50" />
+                </div>
               </div>
             )}
             {/* Batch 1 Part A: actual execution side is a core, ALWAYS-visible,
