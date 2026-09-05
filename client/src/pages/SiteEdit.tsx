@@ -120,6 +120,8 @@ interface EquipmentEntry {
   tripDistance: number | null;
   totalKm: number | null;
   waterQuantity: number | null;
+  boqItemId: number | null;
+  structureId: string | null;
   breakdowns?: StagedBreakdown[];
   // 06Q (client-only, stripped from the payload): true for rows added during
   // this edit session — only those get opening-reading continuity. Rows
@@ -133,6 +135,8 @@ interface LabourEntry {
   count: number;
   task: string;
   contractor: string;
+  boqItemId: number | null;
+  structureId: string | null;
 }
 
 interface MaterialEntry {
@@ -213,13 +217,8 @@ function mapDprToFormState(dpr: any) {
         side: p.side || "",
         chainageFrom: p.chainageFrom || "",
         chainageTo: p.chainageTo || "",
-        // 06T §1: a missing/zero stored Length is reconciled from chainage on
-        // load (shared module) — a stale stored value is never shown silently.
-        length: (() => {
-          const stored = p.length != null ? Number(p.length) : null;
-          if (stored != null && stored > 0) return stored;
-          return calculateLengthFromChainage(p.chainageFrom || "", p.chainageTo || "") ?? stored;
-        })(),
+        // Road-progress length is a chainage-derived physical measurement.
+        length: calculateLengthFromChainage(p.chainageFrom || "", p.chainageTo || ""),
         width: p.width,
         thickness: p.thickness,
         quantity: p.quantity,
@@ -272,9 +271,11 @@ function mapDprToFormState(dpr: any) {
         tripDistance: e.tripDistance ?? null,
         totalKm: e.totalKm ?? null,
         waterQuantity: e.waterQuantity ?? null,
+        boqItemId: e.boqItemId ?? null,
+        structureId: e.structureId ?? null,
         breakdowns: e.breakdowns ?? [],
       }))
-    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, isNew: true }];
+    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true }];
 
   const labour: LabourEntry[] = dpr.labour?.length
     ? dpr.labour.map((l: any) => ({
@@ -283,8 +284,10 @@ function mapDprToFormState(dpr: any) {
         count: l.count,
         task: l.task || "",
         contractor: l.contractor || "",
+        boqItemId: l.boqItemId ?? null,
+        structureId: l.structureId ?? null,
       }))
-    : [{ category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }];
+    : [{ category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }];
 
   const materials: MaterialEntry[] = dpr.materials
     ? dpr.materials.map((m: any) => ({
@@ -480,8 +483,6 @@ export default function SiteEdit() {
   const [progress, setProgress] = useState<ProgressEntry[]>([
     { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }
   ]);
-  const [manualLengthByEntryKey, setManualLengthByEntryKey] = useState<Record<string, boolean>>({});
-  const [lengthUpdatePrompt, setLengthUpdatePrompt] = useState<Record<string, number>>({});
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
   // as Guided/Detailed entry, Progress Report and the server recheck). The
@@ -523,7 +524,7 @@ export default function SiteEdit() {
   const overlapHits = useChainageOverlapHits(overlapCandidateRows, overlapPriors, unchangedOverlapRowKeys);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null }
   ]);
   // 06X-HF6: submitted DPRs can pre-date a later dispatch to the same
   // site/date. Reuse the Guided/Detailed open-today discovery contract.
@@ -585,8 +586,12 @@ export default function SiteEdit() {
 
   const useDispatchedUsage = (usage: OpenUsageLike) => {
     const master = masterForUsage(usage);
+    const linkedBase = usageToDprEquipmentRow(usage, master);
     const linkedRow: EquipmentEntry = {
-      ...usageToDprEquipmentRow(usage, master),
+      ...linkedBase,
+      dieselSource: linkedBase.dieselSource ?? "",
+      boqItemId: null,
+      structureId: null,
       isNew: true,
     };
     setEquipment((current) => {
@@ -603,7 +608,7 @@ export default function SiteEdit() {
   };
 
   const [labour, setLabour] = useState<LabourEntry[]>([
-    { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }
+    { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }
   ]);
 
   const [materials, setMaterials] = useState<MaterialEntry[]>([]);
@@ -878,47 +883,18 @@ export default function SiteEdit() {
     },
   });
 
-  // Calculate length from chainage if not manually entered
-  const getEffectiveLength = (entry: ProgressEntry): number | null => {
-    // If length is manually entered, use it
-    if (entry.length !== null && entry.length > 0) {
-      return entry.length;
-    }
-    // Otherwise calculate from chainage
-    return calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
-  };
-
-  const hasManualLength = (entry: ProgressEntry) => {
-    if (manualLengthByEntryKey[entry.entryKey]) return true;
-    const calculated = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
-    return calculated != null && entry.length != null && entry.length > 0
-      && Math.abs(calculated - entry.length) > 0.01;
-  };
+  // Road-progress length is always the physical chainage span. Invalid or
+  // incomplete chainage deliberately produces no length.
+  const getEffectiveLength = (entry: ProgressEntry): number | null =>
+    calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
 
   const changeChainage = (idx: number, field: "chainageFrom" | "chainageTo", value: string) => {
     const updated = [...progress];
     const entry = updated[idx];
     entry[field] = value.toUpperCase();
-    const calculated = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
-    if (calculated != null) {
-      if (hasManualLength(entry)) setLengthUpdatePrompt((current) => ({ ...current, [entry.entryKey]: calculated }));
-      else entry.length = calculated;
-    }
+    entry.length = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
     applyCalc(entry);
     setProgress(updated);
-  };
-
-  const acceptRecalculatedLength = (idx: number, length: number) => {
-    const updated = [...progress];
-    updated[idx].length = length;
-    applyCalc(updated[idx]);
-    setProgress(updated);
-    setManualLengthByEntryKey((current) => ({ ...current, [updated[idx].entryKey]: false }));
-    setLengthUpdatePrompt((current) => {
-      const next = { ...current };
-      delete next[updated[idx].entryKey];
-      return next;
-    });
   };
 
   // Geometry quantity via the SAME shared BOQ-profile-aware formula used by
@@ -950,7 +926,11 @@ export default function SiteEdit() {
       entry.quantitySource = "calculated";
       entry.quantitySourceNote = "";
     } else if (entry.quantitySource === "calculated") {
+      // Calculated quantities must never survive invalid/incomplete geometry.
+      // Approved manual overrides carry a non-calculated source and are kept.
+      entry.quantity = null;
       entry.quantitySource = "";
+      entry.quantitySourceNote = "";
     }
   };
 
@@ -984,9 +964,9 @@ export default function SiteEdit() {
     } else if (section === 'equipment') {
       // 06Q: rows added during the edit session are flagged isNew — they get
       // opening-reading continuity when equipment is selected.
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, isNew: true }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true }]);
     } else if (section === 'labour') {
-      setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }]);
+      setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
     }
   };
 
@@ -1977,44 +1957,13 @@ export default function SiteEdit() {
                   <div>
                     <Label className="text-sm">Length (m)</Label>
                     <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="0"
-                      value={entry.length ?? ""}
-                      onChange={(e) => {
-                        const updated = [...progress];
-                        updated[idx].length = e.target.value ? parseFloat(e.target.value) : null;
-                        applyCalc(updated[idx]);
-                        setProgress(updated);
-                        setManualLengthByEntryKey((current) => ({ ...current, [updated[idx].entryKey]: e.target.value !== "" }));
-                        setLengthUpdatePrompt((current) => {
-                          const next = { ...current };
-                          delete next[updated[idx].entryKey];
-                          return next;
-                        });
-                      }}
+                      readOnly
+                      tabIndex={-1}
+                      className="bg-muted/50"
+                      value={calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo)?.toFixed(2) ?? ""}
+                      placeholder="—"
                       data-testid={`input-length-${idx}`}
                     />
-                    {lengthUpdatePrompt[entry.entryKey] != null && (
-                      <div className="mt-1 text-[11px] text-amber-800" data-testid={`prompt-length-update-${idx}`}>
-                        Chainage changed — recalculated length is {lengthUpdatePrompt[entry.entryKey]} m, current length is {entry.length ?? 0} m. Update to {lengthUpdatePrompt[entry.entryKey]} m?
-                        <Button type="button" variant="link" className="h-auto px-1 text-[11px]" onClick={() => acceptRecalculatedLength(idx, lengthUpdatePrompt[entry.entryKey])} data-testid={`button-update-length-${idx}`}>Update</Button>
-                        <Button type="button" variant="link" className="h-auto px-1 text-[11px]" onClick={() => setLengthUpdatePrompt((current) => { const next = { ...current }; delete next[entry.entryKey]; return next; })}>Keep current</Button>
-                      </div>
-                    )}
-                    {(() => {
-                      // 06T §1: computed-vs-overridden visibility (same pattern
-                      // as quantity) — never silently show a stale Length.
-                      const calc = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
-                      if (calc != null && entry.length != null && entry.length > 0 && Math.abs(calc - entry.length) > 0.01) {
-                        return (
-                          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1" data-testid={`note-length-override-${idx}`}>
-                            Overridden — chainage gives {calc} m
-                          </p>
-                        );
-                      }
-                      return null;
-                    })()}
                   </div>
                   <div>
                     <Label className="text-sm">Width (m)</Label>
@@ -2380,7 +2329,7 @@ export default function SiteEdit() {
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
-              <details open={!entry.machine} className="group">
+              <details open className="group">
               <summary className="mb-2 cursor-pointer list-none text-xs font-semibold text-muted-foreground after:ml-2 after:content-['Edit_Usage_Details'] group-open:after:content-['Close_Usage_Details']" />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="col-span-2">
@@ -2537,6 +2486,32 @@ export default function SiteEdit() {
                 />
               </div>
               </div>
+              {siteBoqItems.length > 0 && (
+                <div>
+                  <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
+                  <Select
+                    value={entry.boqItemId != null ? String(entry.boqItemId) : "__none__"}
+                    onValueChange={(val) => {
+                      const updated = [...equipment];
+                      updated[idx].boqItemId = val === "__none__" ? null : Number(val);
+                      updated[idx].structureId = null;
+                      setEquipment(updated);
+                    }}
+                  >
+                    <SelectTrigger data-testid={`select-equipment-boqitem-${idx}`}>
+                      <SelectValue placeholder="Not linked" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Not linked</SelectItem>
+                      {siteBoqItems.map((item) => (
+                        <SelectItem key={item.id} value={String(item.id)}>
+                          {item.itemCode ? `[${item.itemCode}] ` : ""}{boqItemDisplayName(item)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <>
                   <p className="text-sm font-semibold text-muted-foreground border-b pb-1">
@@ -2932,6 +2907,32 @@ export default function SiteEdit() {
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               </div>
+              {siteBoqItems.length > 0 && (
+                <div className="col-span-2 md:col-span-6">
+                  <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
+                  <Select
+                    value={entry.boqItemId != null ? String(entry.boqItemId) : "__none__"}
+                    onValueChange={(val) => {
+                      const updated = [...labour];
+                      updated[idx].boqItemId = val === "__none__" ? null : Number(val);
+                      updated[idx].structureId = null;
+                      setLabour(updated);
+                    }}
+                  >
+                    <SelectTrigger data-testid={`select-labour-boqitem-${idx}`}>
+                      <SelectValue placeholder="Not linked" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Not linked</SelectItem>
+                      {siteBoqItems.map((item) => (
+                        <SelectItem key={item.id} value={String(item.id)}>
+                          {item.itemCode ? `[${item.itemCode}] ` : ""}{boqItemDisplayName(item)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           ))}
           <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('labour')} data-testid="button-add-labour-bottom">

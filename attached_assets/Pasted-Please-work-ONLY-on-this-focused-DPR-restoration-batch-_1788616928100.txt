@@ -1,0 +1,191 @@
+Please work ONLY on this focused DPR restoration batch, starting from the current restored production baseline plus the already-completed BOQ activity dropdown fix.
+
+OBJECTIVE
+Restore the practical DPR working behavior for activity measurements and resource/link visibility without redesigning the DPR, changing schema, or reintroducing the broader restoration work.
+
+PART 1 — LENGTH MUST BE AUTO-CALCULATED FROM CHAINAGE
+For normal linear road activities:
+
+1. Length must be derived automatically from:
+   To Chainage − From Chainage.
+
+2. Length must NOT be manually editable.
+
+3. Remove the current behavior that asks:
+   "Chainage changed — recalculated length is ___ m, current length is ___ m. Update?"
+   There should be no Update / Keep Current choice.
+
+4. Whenever From or To chainage changes, Length must update immediately.
+
+5. If chainage is incomplete or invalid, do not invent a Length.
+
+6. Preserve existing chainage-range validation, planned-reach validation, layer/lift rules, and authorised override logic.
+
+PART 2 — QUANTITY MUST AUTO-CALCULATE FROM GEOMETRY
+1. When the BOQ/activity geometry supports calculation, Qty must update immediately from the current physical measurements.
+
+2. Examples:
+   - Area work:
+     Length × Width
+   - Volume work:
+     Length × Width × Thickness
+   - Linear work:
+     chainage-derived Length
+   - Other existing geometry recipes:
+     keep using the current shared calculation logic already defined in the app.
+
+3. Changing chainage, width, thickness, or any relevant dimension must immediately recalculate physical Qty.
+
+4. Do not leave stale quantity from the previous geometry.
+
+5. Keep PHYSICAL DPR quantity separate from BOQ-credit quantity.
+
+6. If BOQ UOM conversion is required, apply the existing conversion factor exactly ONCE.
+
+7. Do not make Qty manually editable unless the existing approved override mechanism specifically allows it.
+   If manual override already exists, preserve its existing reason/audit safeguards.
+
+TEST EXAMPLE:
+For chainage 1.850 to 2.100:
+Length = 250 m automatically.
+
+If Width = 3.10 m:
+Physical Qty = 775 SQM.
+
+If BOQ item is in Ha and conversion is 10,000 SQM = 1 Ha:
+BOQ credit = 0.0775 Ha.
+Do not convert twice.
+
+PART 3 — EQUIPMENT DETAILS SHOULD BE OPEN/VISIBLE IN DPR
+The current DPR hides the normal equipment working fields behind the compact/collapsed "Edit Usage Details" layout.
+
+For DPR entry/edit:
+
+1. Show the normal equipment usage fields directly by default so the engineer can work without opening another collapsed section.
+
+2. Preserve all existing equipment safeguards and fields, including where applicable:
+   - equipment identity;
+   - operator;
+   - task/activity;
+   - opening/closing meter;
+   - start/end time;
+   - diesel fields;
+   - opening/closing tank balance;
+   - breakdown details;
+   - movement/shift;
+   - remarks;
+   - linked Plant Usage continuity.
+
+3. Do NOT change the equipment data model or the standalone Equipment Usage module.
+
+4. This is a DPR presentation/usability restoration only.
+
+5. Existing old/historical rows must still render safely even if some fields were never recorded.
+
+PART 4 — EQUIPMENT AND LABOUR MUST REMAIN VISIBLY LINKED TO THE BOQ ACTIVITY
+For every DPR activity row:
+
+1. Equipment used for that activity must retain/show its association with that exact BOQ activity.
+
+2. Labour/personnel used for that activity must retain/show its association with that exact BOQ activity.
+
+3. Do not infer links from:
+   - equipment name;
+   - labour description;
+   - date;
+   - free-text activity name.
+
+4. Use the existing BOQ item/activity identity already stored on the DPR activity/resource linkage.
+
+5. If an existing row is already linked, preserve that link through:
+   - edit;
+   - Save Draft;
+   - reopen;
+   - final submit.
+
+6. If a resource is genuinely unlinked, show it honestly as unlinked rather than guessing.
+
+7. Do not change Plan-vs-Actual BOQ logic.
+
+PART 5 — EARTHWORK ARRANGEMENT / MATERIAL TRIPS MUST STAY LINKED TO THE EXACT ACTIVITY CONTEXT
+Preserve the existing exact arrangement linkage.
+
+1. Earthwork Arrangement must remain tied to the exact:
+   Project + BOQ Item + Reach/Chainage Context.
+
+2. Material Trips must remain tied to that same exact arrangement/context.
+
+3. DPR Activity must show/use the same arrangement when applicable.
+
+4. Do NOT infer an arrangement from:
+   - material name alone;
+   - vendor name;
+   - date;
+   - approximate chainage;
+   - free-text activity description.
+
+5. If a Material Trip already exists for the activity/arrangement, the DPR should continue to reflect that exact link.
+
+6. Do not create a second parallel arrangement/trip system.
+
+7. Do not change procurement, billing, diesel stock, or material receipt logic in this batch.
+
+WHAT NOT TO TOUCH
+- Do not change the newly-fixed BOQ activity dropdown behavior.
+- Do not reintroduce the broad DPR-restoration work that was deliberately removed.
+- Do not change diesel-efficiency/norm calculations in this batch.
+- Do not change equipment master logic.
+- Do not change Work Programme sequencing.
+- Do not change BOQ import/mapping.
+- Do not change ARR status workflow.
+- Do not change material receipt/stock posting logic.
+- Do not change schema.
+- Do not create migrations.
+- Do not publish.
+
+REGRESSION TESTS
+
+A. BOQ dropdown still works:
+Select BOQ items on 3 different activity rows and confirm the selected value remains visible.
+
+B. Length:
+Change From/To chainage.
+Confirm Length updates automatically and there is no Update/Keep Current prompt.
+
+C. Quantity:
+Change chainage/width/thickness.
+Confirm physical Qty recalculates immediately and BOQ conversion is applied once.
+
+D. Save Draft / reopen:
+Confirm:
+- BOQ item;
+- chainage;
+- auto Length;
+- Qty;
+- equipment link;
+- labour link;
+- arrangement link
+all persist correctly.
+
+E. Equipment:
+Confirm detailed usage fields are visible directly in DPR without having to expand "Edit Usage Details".
+
+F. BOQ-resource linkage:
+For one activity with equipment and labour, confirm both remain tied to that exact BOQ item after Save Draft/reopen.
+
+G. Arrangement/trips:
+Use one earthwork activity with a known arrangement/material trip and confirm the DPR shows the same exact arrangement/trip context with no guessed or duplicate linkage.
+
+H. Submission safeguards:
+Existing executable-scope / planned-reach / authorised-override validation must still work exactly as before.
+
+REPORT BACK
+Report only:
+1. What was changed for Parts 1–5.
+2. Test results A–H.
+3. Exact confirmation that no schema/database migration was needed.
+4. Any issue noticed but NOT touched.
+
+STOP after this batch.
+DO NOT START ANOTHER FEATURE.
+DO NOT PUBLISH.

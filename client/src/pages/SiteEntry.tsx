@@ -18,7 +18,6 @@ import { deriveDprUom, resolveBoqUomProfile } from "@/lib/dprUom";
 import {
   parseChainageToMeters,
   calculateLengthFromChainage,
-  getEffectiveLength as getEffLengthShared,
   calculateDprQuantity,
   entryBoqProfile as entryBoqProfileShared,
 } from "@/lib/dprCalculations";
@@ -849,11 +848,6 @@ export default function SiteEntry() {
   const [progress, setProgress] = useState<ProgressEntry[]>([
     { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
   ]);
-  // This is deliberately client-only: an existing saved override is inferred
-  // from length vs chainage on reload, while an in-session edit is keyed by
-  // the stable entryKey rather than a mutable row index.
-  const [manualLengthByEntryKey, setManualLengthByEntryKey] = useState<Record<string, boolean>>({});
-  const [lengthUpdatePrompt, setLengthUpdatePrompt] = useState<Record<string, number>>({});
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
   // as Guided DPR, Progress Report and the server Final-Submit recheck).
@@ -955,45 +949,18 @@ export default function SiteEntry() {
 
   const { confirmLeave } = useBeforeUnload(isDirty);
 
-  // Calculate length from chainage if not manually entered
-  // Thin wrapper — delegates to shared getEffectiveLength in @/lib/dprCalculations
+  // Road-progress length is always the physical chainage span. Invalid or
+  // incomplete chainage deliberately produces no length.
   const getEffectiveLength = (entry: ProgressEntry): number | null =>
-    getEffLengthShared(entry.length ?? null, entry.chainageFrom, entry.chainageTo);
-
-  const hasManualLength = (entry: ProgressEntry) => {
-    if (manualLengthByEntryKey[entry.entryKey]) return true;
-    const calculated = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
-    return calculated != null && entry.length != null && entry.length > 0
-      && Math.abs(calculated - entry.length) > 0.01;
-  };
+    calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
 
   const changeChainage = (idx: number, field: "chainageFrom" | "chainageTo", value: string) => {
     const updated = [...progress];
     const entry = updated[idx];
     entry[field] = value.toUpperCase();
-    const calculated = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
-    if (calculated != null) {
-      if (hasManualLength(entry)) {
-        setLengthUpdatePrompt((current) => ({ ...current, [entry.entryKey]: calculated }));
-      } else {
-        entry.length = calculated;
-      }
-    }
+    entry.length = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
     applyCalc(entry);
     setProgress(updated);
-  };
-
-  const acceptRecalculatedLength = (idx: number, length: number) => {
-    const updated = [...progress];
-    updated[idx].length = length;
-    applyCalc(updated[idx]);
-    setProgress(updated);
-    setManualLengthByEntryKey((current) => ({ ...current, [updated[idx].entryKey]: false }));
-    setLengthUpdatePrompt((current) => {
-      const next = { ...current };
-      delete next[updated[idx].entryKey];
-      return next;
-    });
   };
 
   // UOM follows the linked BOQ item's dprMeasurementMethod (explicit) or unit (derived).
@@ -1032,12 +999,16 @@ export default function SiteEntry() {
   const applyCalc = (entry: ProgressEntry) => {
     const boqItem = entry.boqItemId != null ? siteBoqItems.find(i => i.id === entry.boqItemId) : null;
     const geo = calculateDprQuantity(getEffectiveLength(entry), entry.width, entry.thickness, boqItem);
-    entry.quantity = geo ?? entry.quantity ?? null;
     if (geo != null) {
+      entry.quantity = geo;
       entry.quantitySource = "calculated";
       entry.quantitySourceNote = "";
     } else if (entry.quantitySource === "calculated") {
-      entry.quantitySource = ""; // geometry no longer applies — source unknown
+      // Calculated quantities must never survive invalid/incomplete geometry.
+      // Approved manual overrides carry a non-calculated source and are kept.
+      entry.quantity = null;
+      entry.quantitySource = "";
+      entry.quantitySourceNote = "";
     }
   };
 
@@ -2280,8 +2251,7 @@ export default function SiteEntry() {
                             else if (bar.side === "rhs") updated[idx].side = "RHS";
                           }
                           if (updated[idx].width == null && bar.plannedWidthM != null) updated[idx].width = Number(bar.plannedWidthM);
-                          const calc = calculateLengthFromChainage(updated[idx].chainageFrom, updated[idx].chainageTo);
-                          if (calc !== null) updated[idx].length = calc;
+                          updated[idx].length = calculateLengthFromChainage(updated[idx].chainageFrom, updated[idx].chainageTo);
                           applyCalc(updated[idx]);
                           setProgress(updated);
                         }}
@@ -2399,31 +2369,13 @@ export default function SiteEntry() {
                   <div>
                     <Label className="text-sm">L (m)</Label>
                     <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="0"
-                      value={entry.length ?? (calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo)?.toFixed(0) ?? "")}
-                      onChange={(e) => {
-                        const updated = [...progress];
-                        updated[idx].length = e.target.value ? parseFloat(e.target.value) : null;
-                        applyCalc(updated[idx]);
-                        setProgress(updated);
-                        setManualLengthByEntryKey((current) => ({ ...current, [updated[idx].entryKey]: e.target.value !== "" }));
-                        setLengthUpdatePrompt((current) => {
-                          const next = { ...current };
-                          delete next[updated[idx].entryKey];
-                          return next;
-                        });
-                      }}
+                      readOnly
+                      tabIndex={-1}
+                      className="bg-muted/50"
+                      value={calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo)?.toFixed(2) ?? ""}
+                      placeholder="—"
                       data-testid={`input-progress-length-${idx}`}
                     />
-                    {lengthUpdatePrompt[entry.entryKey] != null && (
-                      <div className="mt-1 text-[11px] text-amber-800" data-testid={`prompt-length-update-${idx}`}>
-                        Chainage changed — recalculated length is {lengthUpdatePrompt[entry.entryKey]} m, current length is {entry.length ?? 0} m. Update to {lengthUpdatePrompt[entry.entryKey]} m?
-                        <Button type="button" variant="link" className="h-auto px-1 text-[11px]" onClick={() => acceptRecalculatedLength(idx, lengthUpdatePrompt[entry.entryKey])} data-testid={`button-update-length-${idx}`}>Update</Button>
-                        <Button type="button" variant="link" className="h-auto px-1 text-[11px]" onClick={() => setLengthUpdatePrompt((current) => { const next = { ...current }; delete next[entry.entryKey]; return next; })}>Keep current</Button>
-                      </div>
-                    )}
                   </div>
                   {(() => {
                     const prof = entryBoqProfile(entry);
@@ -2801,7 +2753,7 @@ export default function SiteEntry() {
                   <Trash2 className="w-4 h-4" />
                 </Button>
                 
-                <details open={!entry.machine} className="group">
+                <details open className="group">
                 <summary className="mb-2 cursor-pointer list-none text-xs font-semibold text-muted-foreground after:ml-2 after:content-['Edit_Usage_Details'] group-open:after:content-['Close_Usage_Details']" />
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="col-span-2">

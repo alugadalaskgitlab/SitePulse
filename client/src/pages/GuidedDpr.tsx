@@ -2014,7 +2014,7 @@ export default function GuidedDpr() {
                   const isDirectPurchase = pt.dieselSource === "direct_purchase";
                   return (
                     <div key={i} className="mb-3 p-3 border rounded-lg bg-muted/20 space-y-2 transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", i)} data-testid={"equipment-row-" + String(i)}>
-                      <details open={!eq.machine} className="group">
+                      <details open className="group">
                       <summary className="cursor-pointer list-none text-xs font-semibold text-muted-foreground after:ml-2 after:content-['Edit_Usage_Details'] group-open:after:content-['Close_Usage_Details']" />
                       {/* A. Identity */}
                       <div className="grid grid-cols-[1fr_auto] gap-2">
