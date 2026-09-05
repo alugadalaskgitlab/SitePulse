@@ -2393,7 +2393,7 @@ export class DatabaseStorage implements IStorage {
     let rows = await db.select()
       .from(dprs)
       .where(and(...conditions))
-      .orderBy(desc(dprs.date));
+      .orderBy(desc(dprs.date), desc(dprs.id));
 
     // Exact base-name matching in JS — edited/copied DPRs carry an
     // "– Edited by …" suffix in `site` and must remain visible; prefix-LIKE
@@ -2438,7 +2438,7 @@ export class DatabaseStorage implements IStorage {
         sitePurchases: true,
         structureItems: true,
       },
-      orderBy: desc(dprs.date),
+      orderBy: [desc(dprs.date), desc(dprs.id)],
     });
   }
 
@@ -2855,7 +2855,7 @@ export class DatabaseStorage implements IStorage {
           or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
           or(eq(dprs.isDeleted, false), isNull(dprs.isDeleted)),
           or(eq(dprs.isCancelled, false), isNull(dprs.isCancelled)),
-        )).orderBy(asc(dprs.id)).limit(1);
+        )).orderBy(desc(dprs.id)).limit(1);
         if (existingDraft) return existingDraft;
       }
 

@@ -67,7 +67,11 @@ import { flattenCutFillConsumptions, hydrateCutFillConsumptions, validateCutFill
 import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
-import { canRestoreGuidedServerDraft } from "@/lib/guidedDraftReconcile";
+import {
+  canRestoreGuidedServerDraft,
+  guidedServerDraftFingerprint,
+  hydrateGuidedDraftItems,
+} from "@/lib/guidedDraftReconcile";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
@@ -274,6 +278,7 @@ export default function GuidedDpr() {
   const [readiness, setReadiness] = useState<DprReadinessResult | null>(null);
   const [draftHydrationComplete, setDraftHydrationComplete] = useState(urlDraftId == null);
   const [baseDraftRevision, setBaseDraftRevision] = useState<string | null>(null);
+  const [serverDraftFingerprint, setServerDraftFingerprint] = useState<string | null>(null);
 
   // Part A: local autosave so accidental navigation/refresh loses nothing
   // (same mechanism as the Detailed DPR, guided-specific key).
@@ -282,12 +287,16 @@ export default function GuidedDpr() {
     entries: GuidedEntry[]; equipment: SimpleEquipmentRow[]; labour: SimpleLabourRow[];
     remarks: string; draftId: number | null;
     baseDraftRevision?: string | null;
+    serverDraftFingerprint?: string | null;
     step?: number;
   };
   // Set true by every restore/hydration generation; consumed by the
   // override-derivation effect once BOQ items are available.
   const deriveNeededRef = useRef(false);
-  const autosaveData: GuidedFormState = { date, siteName, engineer, entries, equipment, labour, remarks, draftId, baseDraftRevision, step };
+  const autosaveData: GuidedFormState = {
+    date, siteName, engineer, entries, equipment, labour, remarks, draftId,
+    baseDraftRevision, serverDraftFingerprint, step,
+  };
   const autosave = useAutosave<GuidedFormState>({
     // A draft with a server id autosaves under its own key so it never
     // collides with (or duplicates into) the fresh-DPR autosave blob.
@@ -300,7 +309,9 @@ export default function GuidedDpr() {
     // when it names this draft and was based on this exact server snapshot.
     enabled: draftHydrationComplete,
     saveInitialData: (urlDraftId ?? draftId) == null,
-    validateRestore: (d) => urlDraftId == null || canRestoreGuidedServerDraft(d, urlDraftId, baseDraftRevision),
+    validateRestore: (d) => urlDraftId == null || canRestoreGuidedServerDraft(
+      d, urlDraftId, baseDraftRevision, serverDraftFingerprint,
+    ),
     onRestore: (d) => {
       setDate(d.date); setSiteName(d.siteName); setEngineer(d.engineer);
       // Legacy blobs predate entryKey / No Work — normalise so old rows keep
@@ -328,6 +339,7 @@ export default function GuidedDpr() {
       setLabour((d.labour ?? []).map((l: any) => ({ ...newLabourRow(), ...l })));
       setRemarks(d.remarks ?? ""); setDraftId(d.draftId ?? null);
       setBaseDraftRevision(d.baseDraftRevision ?? null);
+      setServerDraftFingerprint(d.serverDraftFingerprint ?? null);
       // Restored rows (incl. legacy blobs without the flag) get their override
       // state re-derived from geometry once BOQ items are available.
       deriveNeededRef.current = true;
@@ -349,7 +361,9 @@ export default function GuidedDpr() {
   useEffect(() => {
     if (!urlDraftDpr || hydratedRef.current) return;
     hydratedRef.current = true;
+    const hydratedItems = hydrateGuidedDraftItems(urlDraftDpr, newEntryKey);
     setBaseDraftRevision(urlDraftDpr.draftRevision ?? null);
+    setServerDraftFingerprint(guidedServerDraftFingerprint(urlDraftDpr));
     setDraftId(urlDraftDpr.id);
     setDate(urlDraftDpr.date ?? today);
     setSiteName(String(urlDraftDpr.site ?? "").replace(/ – (Edited by|Copy by) .+$/, "").trim());
@@ -357,42 +371,14 @@ export default function GuidedDpr() {
     setRemarks(urlDraftDpr.remarks ?? "");
     // Task #1409: no-work rows are first-class in Guided now — hydrate them
     // instead of silently dropping them from the draft.
-     setEntries(hydrateCutFillConsumptions((urlDraftDpr.progress ?? [])
-      .map((p: any): GuidedEntry => ({
-        entryKey: p.entryKey || newEntryKey(),
-        noSiteWork: !!p.noSiteWork,
-        noSiteWorkDescription: p.noSiteWorkDescription || "",
-        activity: p.activity || "",
-        boqItemId: p.boqItemId ?? null,
-        programmeBarId: p.programmeBarId ?? null, // never stripped client-side
-        earthworkArrangementId: p.earthworkArrangementId ?? null,
-        side: p.side || "",
-        chainageFrom: p.chainageFrom || "",
-        chainageTo: p.chainageTo || "",
-        quantity: p.quantity != null ? Number(p.quantity) : null,
-        uom: p.uom || "SQM",
-        expanded: false,
-        width: p.width != null ? Number(p.width) : null,
-        thickness: p.thickness != null ? Number(p.thickness) : null,
-        remark: "",
-        quantitySource: p.quantitySource || "",
-        quantitySourceNote: p.quantitySourceNote || "",
-        chainageOverrideReason: p.chainageOverrideReason || "",
-        executedBy: p.executedBy || "",
-        // Derived properly once BOQ items load (see derivation effect); this
-        // is only the pre-derivation placeholder.
-        qtyOverridden: p.quantitySource != null && p.quantitySource !== "" && p.quantitySource !== "calculated",
-        layerNo: p.layerNo != null ? Number(p.layerNo) : null,
-        isIncidental: !!p.isIncidental,
-        incidentalDescription: p.incidentalDescription || "",
-         materialOutcome: p.materialOutcome ?? null,
-         reusableQty: p.reusableQty != null ? Number(p.reusableQty) : null,
-         allocations: [],
-      })), urlDraftDpr.cutFillConsumptions));
+    setEntries(hydrateCutFillConsumptions(
+      hydratedItems.entries as GuidedEntry[],
+      urlDraftDpr.cutFillConsumptions,
+    ));
     deriveNeededRef.current = true;
     // Batch 04: keep every non-edited equipment field for round-trip — a
     // Guided save must never wipe readings/times/fuel entered elsewhere.
-    setEquipment((urlDraftDpr.equipment ?? []).map((e: any): SimpleEquipmentRow => splitGuidedEquipmentRow(e)));
+    setEquipment(hydratedItems.equipment);
     // Sections the Guided UI doesn't manage must be passed back on save,
     // otherwise the child-row replacement deletes them from the draft.
     unmanagedSectionsRef.current = {
@@ -400,12 +386,7 @@ export default function GuidedDpr() {
       sitePurchases: (urlDraftDpr.sitePurchases ?? []).map(({ id, dprId, ...rest }: any) => rest),
       structureItems: (urlDraftDpr.structureItems ?? []).map(({ id, dprId, ...rest }: any) => rest),
     };
-    setLabour((urlDraftDpr.labour ?? []).map((l: any): SimpleLabourRow => ({
-      category: l.category || "", gender: l.gender || "",
-      count: l.count != null ? Number(l.count) : null,
-      contractor: l.contractor || "", task: l.task || "",
-      boqItemId: l.boqItemId ?? null, structureId: l.structureId ?? null,
-    })));
+    setLabour(hydratedItems.labour);
     // Batch 05 (spec §10): this server draft is authoritative — silence any
     // stale "new DPR" autosave blob that belongs to the same draft/context.
     reconcileNewDprAutosaves({
@@ -1168,6 +1149,10 @@ export default function GuidedDpr() {
         const savedId = data.id ?? draftId;
         setDraftId(savedId);
         setBaseDraftRevision(data.draftRevision ?? null);
+        setServerDraftFingerprint(guidedServerDraftFingerprint({
+          id: savedId,
+          draftRevision: data.draftRevision ?? null,
+        }));
         // Batch 05 (spec §10): once the server draft holds this work, the
         // server is authoritative — clear this screen's local blob and any
         // stale new-DPR blob (either silo) for the same draft/site/date.

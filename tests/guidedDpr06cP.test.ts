@@ -5,7 +5,11 @@
 import { describe, it, expect } from "vitest";
 import { calculateLengthFromChainage, getEffectiveLength } from "../shared/dprGeometry";
 import { GUIDED_STEPS, guidedStepBlocker } from "../client/src/lib/guidedWizard";
-import { canRestoreGuidedServerDraft } from "../client/src/lib/guidedDraftReconcile";
+import {
+  canRestoreGuidedServerDraft,
+  guidedServerDraftFingerprint,
+  hydrateGuidedDraftItems,
+} from "../client/src/lib/guidedDraftReconcile";
 
 describe("derived Length (06C-P §13)", () => {
   it("2+570 → 2+660 gives 90 m", () => {
@@ -51,38 +55,63 @@ describe("7-step wizard structure (06C-P §5)", () => {
 describe("server-first Guided draft recovery", () => {
   const serverDraft = {
     id: 41,
+    draftRevision: "12",
     date: "2026-09-05",
     site: "NH-44",
     engineer: "A",
     boqProjectId: 7,
-    progress: [{ id: 1, activity: "GSB", quantity: 12 }],
-    equipment: [{ id: 2, machine: "ROLLER" }],
-    labour: [{ id: 3, category: "Skilled", count: 2 }],
+    progress: [{ id: 1, entryKey: "saved-progress", activity: "GSB", quantity: 12, chainageFrom: "1+000" }],
+    equipment: [{ id: 2, machine: "ROLLER", operator: "RAVI", openingReading: 120 }],
+    labour: [{ id: 3, category: "Skilled", count: 2, contractor: "ABC" }],
     materials: [],
     sitePurchases: [],
     structureItems: [],
   };
+  const fingerprint = guidedServerDraftFingerprint(serverDraft);
 
   it("rejects stale, unmarked, empty, and wrong-draft browser overlays", () => {
-    expect(canRestoreGuidedServerDraft({ draftId: 41 }, 41, "12")).toBe(false);
-    expect(canRestoreGuidedServerDraft({ draftId: 99, baseDraftRevision: "12" }, 41, "12")).toBe(false);
-    expect(canRestoreGuidedServerDraft({ draftId: 41, baseDraftRevision: "11" }, 41, "12")).toBe(false);
+    expect(canRestoreGuidedServerDraft({ draftId: 41 }, 41, "12", fingerprint)).toBe(false);
+    expect(canRestoreGuidedServerDraft({ draftId: 99, baseDraftRevision: "12", serverDraftFingerprint: fingerprint }, 41, "12", fingerprint)).toBe(false);
+    expect(canRestoreGuidedServerDraft({ draftId: 41, baseDraftRevision: "11", serverDraftFingerprint: fingerprint }, 41, "12", fingerprint)).toBe(false);
+    // This is the old failure mode: an empty form captured the right revision
+    // before saved child rows hydrated. It has no post-hydration fingerprint.
+    expect(canRestoreGuidedServerDraft({
+      draftId: 41,
+      baseDraftRevision: "12",
+    }, 41, "12", fingerprint)).toBe(false);
   });
 
   it("keeps newer local edits recoverable only when based on the current server snapshot", () => {
     expect(canRestoreGuidedServerDraft({
       draftId: 41,
       baseDraftRevision: "12",
-    }, 41, "12")).toBe(true);
+      serverDraftFingerprint: fingerprint,
+    }, 41, "12", fingerprint)).toBe(true);
     expect(canRestoreGuidedServerDraft({
       draftId: 41,
       baseDraftRevision: "12",
-    }, 41, "13")).toBe(false);
+      serverDraftFingerprint: fingerprint,
+    }, 41, "13", fingerprint)).toBe(false);
   });
 
-  it("accepts a current revision regardless of which server child section is populated", () => {
-    expect(serverDraft.equipment).toHaveLength(1);
-    expect(serverDraft.labour).toHaveLength(1);
-    expect(canRestoreGuidedServerDraft({ draftId: 41, baseDraftRevision: "12" }, 41, "12")).toBe(true);
+  it("hydrates saved activity, equipment, and labour values into Guided form rows", () => {
+    const hydrated = hydrateGuidedDraftItems(serverDraft, () => "fallback-entry");
+    expect(hydrated.entries).toMatchObject([{
+      entryKey: "saved-progress",
+      activity: "GSB",
+      quantity: 12,
+      chainageFrom: "1+000",
+    }]);
+    expect(hydrated.equipment).toMatchObject([{
+      persistedId: 2,
+      machine: "ROLLER",
+      operator: "RAVI",
+      passthrough: { openingReading: 120 },
+    }]);
+    expect(hydrated.labour).toMatchObject([{
+      category: "Skilled",
+      count: 2,
+      contractor: "ABC",
+    }]);
   });
 });
