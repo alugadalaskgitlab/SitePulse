@@ -5508,7 +5508,11 @@ export class DatabaseStorage implements IStorage {
           dieselNorm: persisted ? row.dieselNorm ?? null : null,
         };
       }
-      const result = computeEquipmentUsage(master, row);
+      // Breakdown intervals are client input at this point and are persisted to
+      // maintenance rows just after the equipment log. Include them in the
+      // authoritative server recomputation before stripping the transport-only
+      // field from the equipment_logs insert.
+      const result = computeEquipmentUsage(master, input);
       return {
         ...row,
         // Never put km into hours_worked. Explicit trip rows operate in km.

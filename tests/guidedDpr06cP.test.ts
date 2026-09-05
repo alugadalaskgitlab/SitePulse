@@ -22,8 +22,8 @@ describe("derived Length (06C-P §13)", () => {
     expect(calculateLengthFromChainage("abc", "2+660")).toBeNull();
   });
 
-  it("explicit manual length takes precedence over the chainage span (§14)", () => {
-    expect(getEffectiveLength(75, "2+570", "2+660")).toBe(75);
+  it("complete chainage is authoritative over a stale stored length", () => {
+    expect(getEffectiveLength(75, "2+570", "2+660")).toBe(90);
     expect(getEffectiveLength(null, "2+570", "2+660")).toBe(90);
     expect(getEffectiveLength(0, "2+570", "2+660")).toBe(90);
   });

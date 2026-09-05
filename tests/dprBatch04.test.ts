@@ -11,6 +11,7 @@
 import { describe, it, expect } from "vitest";
 import {
   calculateLengthFromChainage,
+  getEffectiveLength,
   calculateDprQuantity,
   resolveDprConversionFactor,
   boqProgressQty,
@@ -34,6 +35,17 @@ describe("Batch 04 — measurement & BOQ-unit conversion", () => {
     expect(calculateLengthFromChainage("2+900", "3+050")).toBeCloseTo(150, 6);
   });
 
+  it("complete chainage is authoritative over a stale persisted manual length", () => {
+    expect(getEffectiveLength(90, "2.900", "3.050")).toBeCloseTo(150, 6);
+    expect(formatDprDimensions({
+      length: 90,
+      chainageFrom: "2.900",
+      chainageTo: "3.050",
+      width: 1.5,
+      uom: "SQM",
+    }, CG)).toBe("150 × 1.5 m");
+  });
+
   it("B — area geometry: 150 × 1.5 = 225 SQM (physical measurement)", () => {
     expect(calculateDprQuantity(150, 1.5, null, CG)).toBeCloseTo(225, 6);
   });
@@ -53,6 +65,16 @@ describe("Batch 04 — measurement & BOQ-unit conversion", () => {
     // Feeding an already-converted value back through would double-convert —
     // the contract is: boqQty is ALWAYS measuredQty × factor, nothing else.
     expect(m.boqQty).toBeCloseTo(m.measuredQty! * m.factor, 12);
+  });
+
+  it("BOQ profile is authoritative for physical UOM over a stale row UOM", () => {
+    const m = dprMeasurementSummary(
+      { chainageFrom: "2.900", chainageTo: "3.050", width: 1.5, quantity: 225, uom: "Ha" },
+      CG,
+    );
+    expect(m.measuredUom).toBe("SQM");
+    expect(m.boqUom).toBe("Ha");
+    expect(formatDprMeasurement(m)).toBe("150 × 1.5 m = 225 SQM → 0.0225 Ha");
   });
 
   it("E — blank/default factor behaves as 1 (matches SQL COALESCE(factor,1))", () => {

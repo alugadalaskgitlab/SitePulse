@@ -19,6 +19,8 @@ import { boqItemDisplayName } from "@shared/boqItemName";
 import { dprMeasurementSummary } from "@shared/dprGeometry";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { layerDisplayName } from "@shared/layerDisplay";
+import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
@@ -69,7 +71,9 @@ export default function DprDetails() {
     enabled: dprSiteId != null,
   });
 
-  const boqProjectId = siteBoqProjects[0]?.id ?? null;
+  // Prefer the DPR's persisted BOQ project. Site lookup is only a legacy
+  // fallback for reports created before that link was stored.
+  const boqProjectId = (dpr as any)?.boqProjectId ?? siteBoqProjects[0]?.id ?? null;
 
   const { data: siteBoqItems = [] } = useQuery<any[]>({
     queryKey: ["/api/boq/projects", boqProjectId, "items"],
@@ -379,6 +383,17 @@ export default function DprDetails() {
               <p className="text-muted-foreground italic">No equipment usage recorded.</p>
             ) : (
               <>
+                <div className="mb-4 space-y-2">
+                  {dpr.equipment.map((item: any, i: number) => (
+                    <DprEquipmentCompact
+                      key={item.id ?? i}
+                      row={item}
+                      equipment={item.equipmentId ? equipmentList.find((equipment) => equipment.id === item.equipmentId) : null}
+                      editable={false}
+                      index={i}
+                    />
+                  ))}
+                </div>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -393,23 +408,14 @@ export default function DprDetails() {
                   </TableHeader>
                   <TableBody>
                     {dpr.equipment.map((item: any, i: number) => {
-                      const calculateHours = (startTime?: string, endTime?: string) => {
-                        if (!startTime || !endTime) return '-';
-                        try {
-                          const [startHour, startMin] = startTime.split(':').map(Number);
-                          const [endHour, endMin] = endTime.split(':').map(Number);
-                          const startMins = startHour * 60 + startMin;
-                          const endMins = endHour * 60 + endMin;
-                          const diff = endMins - startMins;
-                          if (diff < 0) return '-';
-                          return (diff / 60).toFixed(3);
-                        } catch {
-                          return '-';
-                        }
-                      };
-                      const hours = calculateHours(item.startTime, item.endTime);
-                      
                       const masterEquip = item.equipmentId ? equipmentList.find((e: EquipmentMasterType) => e.id === item.equipmentId) : null;
+                      const usage = computeEquipmentUsage(
+                        masterEquip ?? (item.dieselNorm != null ? { consumptionNorm: Number(item.dieselNorm) } : null),
+                        item,
+                      );
+                      const hours = usage.hoursWorked != null
+                        ? usage.hoursWorked.toFixed(3)
+                        : usage.totalKm != null ? `${usage.totalKm.toFixed(3)} km` : "—";
                       const ownerLabel = masterEquip
                         ? masterEquip.ownership === "hired"
                           ? `HIRED: ${masterEquip.vendorName || "Unknown Vendor"}`
@@ -434,11 +440,24 @@ export default function DprDetails() {
                             </div>
                           </TableCell>
                           <TableCell>{item.operator || '-'}</TableCell>
-                          <TableCell className="text-sm">{item.task || '-'}</TableCell>
+                          <TableCell className="text-sm">
+                            {item.task || '-'}
+                            {item.boqItemId != null && boqItemMap.has(Number(item.boqItemId)) && (
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                BOQ: {boqItemDisplayName(boqItemMap.get(Number(item.boqItemId))!)}
+                                {item.structureId ? ` · ${item.structureId}` : ""}
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell>{item.startTime || '-'}</TableCell>
                           <TableCell>{item.endTime || '-'}</TableCell>
                           <TableCell className="text-right">{hours}</TableCell>
-                          <TableCell className="text-right">{item.diesel || '-'}</TableCell>
+                          <TableCell className="text-right">
+                            {usage.actualDiesel != null ? usage.actualDiesel.toFixed(3) : "-"}
+                            {usage.actualDieselBasis === "tank_derived" && (
+                              <div className="text-xs text-muted-foreground">tank actual</div>
+                            )}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -469,6 +488,7 @@ export default function DprDetails() {
                     <TableHead>Category</TableHead>
                     <TableHead>Gender</TableHead>
                     <TableHead className="text-right">Count</TableHead>
+                    <TableHead>Task / BOQ Work Item</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -477,6 +497,15 @@ export default function DprDetails() {
                       <TableCell>{item.category}</TableCell>
                       <TableCell>{item.gender}</TableCell>
                       <TableCell className="text-right font-mono font-bold">{item.count}</TableCell>
+                      <TableCell className="text-sm">
+                        {item.task || "-"}
+                        {item.boqItemId != null && boqItemMap.has(Number(item.boqItemId)) && (
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            BOQ: {boqItemDisplayName(boqItemMap.get(Number(item.boqItemId))!)}
+                            {item.structureId ? ` · ${item.structureId}` : ""}
+                          </div>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
