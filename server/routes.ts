@@ -503,9 +503,6 @@ export async function registerRoutes(
             displayName: boqItems.displayName,
             itemName: boqItems.itemName,
             description: boqItems.description,
-            unit: boqItems.unit,
-            dprMeasurementMethod: boqItems.dprMeasurementMethod,
-            dprConversionFactor: boqItems.dprConversionFactor,
             mappingStatus: boqItems.mappingStatus,
             snlShortLabel: snlItems.shortLabel,
             snlMappedBy: snlBoqMappings.mappedBy,
@@ -1630,32 +1627,31 @@ export async function registerRoutes(
 
   // Get single DPR details
   app.get(api.dprs.get.path, async (req, res) => {
-    try {
-      // Batch 06B: require DPR view permission — this endpoint returns full DPR
-      // contents (and now backs the read-only overlap preview), so it must not
-      // be readable by authenticated users without site_dprs access.
-      if (!assertView(req, res, "site_dprs")) return;
-      // Guard: a non-numeric id must 400, not crash the pg driver with NaN.
-      const dprIdNum = Number(req.params.id);
-      if (!Number.isInteger(dprIdNum) || dprIdNum <= 0) {
-        return res.status(400).json({ message: "Invalid DPR id" });
-      }
-      const dpr = await storage.getDpr(dprIdNum);
-      if (!dpr) {
-        return res.status(404).json({ message: 'DPR not found' });
-      }
-      // Permission System v2: check that the requesting user can access this DPR's site
-      const permittedSiteNames = await getPermittedSiteNames(req);
-      if (permittedSiteNames !== null && !siteMatchesPermitted(dpr.site, permittedSiteNames)) {
-        return res.status(403).json({ message: 'Access denied for this site' });
-      }
-      res.json(dpr);
-    } catch (err) {
-      console.error("GET /api/dprs/:id failed:", err);
-      if (!res.headersSent) {
-        res.status(500).json({ message: "Failed to fetch DPR details" });
-      }
+    // Batch 06B: require DPR view permission — this endpoint returns full DPR
+    // contents (and now backs the read-only overlap preview), so it must not
+    // be readable by authenticated users without site_dprs access.
+    if (!assertView(req, res, "site_dprs")) return;
+    // Guard: a non-numeric id must 400, not crash the pg driver with NaN.
+    const dprIdNum = Number(req.params.id);
+    if (!Number.isInteger(dprIdNum) || dprIdNum <= 0) {
+      return res.status(400).json({ message: "Invalid DPR id" });
     }
+    const dpr = await storage.getDpr(dprIdNum);
+    if (!dpr) {
+      return res.status(404).json({ message: 'DPR not found' });
+    }
+    // Permission System v2: check that the requesting user can access this DPR's site
+    const permittedSiteNames = await getPermittedSiteNames(req);
+    if (permittedSiteNames !== null && !siteMatchesPermitted(dpr.site, permittedSiteNames)) {
+      return res.status(403).json({ message: 'Access denied for this site' });
+    }
+    const progressIds = dpr.progress?.map(p => p.id) || [];
+    const actPersonnel = progressIds.length > 0 ? await storage.getActivityPersonnel(progressIds) : [];
+    const enrichedProgress = dpr.progress?.map(p => ({
+      ...p,
+      personnelIds: actPersonnel.filter(ap => ap.progressEntryId === p.id).map(ap => ap.personnelId),
+    }));
+    res.json({ ...dpr, progress: enrichedProgress });
   });
 
   // ── Instruction 030A Part F: server-side validation of DPR → programme-bar
@@ -2205,8 +2201,7 @@ export async function registerRoutes(
         await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${input.engineer || 'Engineer'} submitted DPR for ${input.site} (${input.date})`, isRead: 0 });
         sendPushToSection("site_dprs", "New DPR Submitted", `${input.engineer || 'Engineer'} - ${input.site} - ${input.date}`, "/site-reports").catch(() => {});
       }
-      const responseDpr = isDraft ? await storage.getDpr(dpr.id) ?? dpr : dpr;
-      res.status(201).json(responseDpr);
+      res.status(201).json(dpr);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
@@ -2228,21 +2223,12 @@ export async function registerRoutes(
     try {
       if (!assertCreate(req, res, "site_dprs")) return;
       const id = Number(req.params.id);
-      const expectedDraftRevision = typeof req.body?.baseDraftRevision === "string"
-        ? req.body.baseDraftRevision
-        : undefined;
       const existing = await storage.getDpr(id);
       if (!existing) return res.status(404).json({ message: "DPR not found" });
       if ((existing as any).dprStatus !== "draft") return res.status(400).json({ message: "Only draft DPRs can be updated via this endpoint" });
       const permittedSiteNames = await getPermittedSiteNames(req);
       if (permittedSiteNames !== null && !siteMatchesPermitted(existing.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
-      }
-      if (!expectedDraftRevision) {
-        return res.status(400).json({
-          code: "DPR_DRAFT_REVISION_REQUIRED",
-          message: "Reload this draft before saving so the latest server version can be verified.",
-        });
       }
       const input = createDprRequestSchema.parse(req.body);
       if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
@@ -2256,13 +2242,7 @@ export async function registerRoutes(
       if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, code: "MATERIAL_OUTCOME_INVALID" });
       const scopeError = await validateProgressScope(input, req, { draft: true });
       if (scopeError) return res.status(422).json({ message: scopeError.error, code: scopeError.code });
-      const updated = await storage.updateDraftDpr(id, input, expectedDraftRevision);
-      if (!updated && expectedDraftRevision) {
-        return res.status(409).json({
-          code: "DPR_DRAFT_STALE",
-          message: "This draft changed after you opened it. Your local work was not applied; reopen the draft to review the latest saved version.",
-        });
-      }
+      const updated = await storage.updateDraftDpr(id, input);
       if (!updated) return res.status(404).json({ message: "DPR not found or not a draft" });
       res.json(updated);
     } catch (err) {
@@ -2280,21 +2260,12 @@ export async function registerRoutes(
     try {
       if (!assertCreate(req, res, "site_dprs")) return;
       const id = Number(req.params.id);
-      const expectedDraftRevision = typeof req.body?.baseDraftRevision === "string"
-        ? req.body.baseDraftRevision
-        : undefined;
       const existing = await storage.getDpr(id);
       if (!existing) return res.status(404).json({ message: "DPR not found" });
       if ((existing as any).dprStatus !== "draft") return res.status(400).json({ message: "Only draft DPRs can be submitted via this endpoint" });
       const permittedSiteNames = await getPermittedSiteNames(req);
       if (permittedSiteNames !== null && !siteMatchesPermitted(existing.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
-      }
-      if (!expectedDraftRevision) {
-        return res.status(400).json({
-          code: "DPR_DRAFT_REVISION_REQUIRED",
-          message: "Reload this draft before submitting so the latest server version can be verified.",
-        });
       }
       const input = createDprRequestSchema.parse(req.body);
       if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
@@ -2329,13 +2300,7 @@ export async function registerRoutes(
         userId: req.authUser?.id ?? null,
         userName: req.authUser ? currentUserName(req) : input.engineer,
         closedAt: new Date(),
-      }, expectedDraftRevision);
-      if (!submitted && expectedDraftRevision) {
-        return res.status(409).json({
-          code: "DPR_DRAFT_STALE",
-          message: "This draft changed after you opened it. Your local work was not submitted; reopen the draft to review the latest saved version.",
-        });
-      }
+      });
       if (!submitted) return res.status(404).json({ message: "DPR not found or not a draft" });
       await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${submitted.engineer || 'Engineer'} submitted DPR for ${submitted.site} (${submitted.date})`, isRead: 0 });
       sendPushToSection("site_dprs", "New DPR Submitted", `${submitted.engineer || 'Engineer'} - ${submitted.site} - ${submitted.date}`, "/site-reports").catch(() => {});
@@ -20452,7 +20417,6 @@ export async function registerRoutes(
     await ensureBoqItemNameColumn();
     await ensureDprEntryKeyColumns();
     await ensureProgressLayerNoColumn();
-    await ensureProgressIncidentalColumns();
     await ensureBoqDprConversionFactor();
     seedDatabase();
     seedPlantMasterData();
@@ -20933,18 +20897,6 @@ async function ensureProgressLayerNoColumn() {
     console.log("progress_entries.layer_no ensured");
   } catch (err) {
     console.error("ensureProgressLayerNoColumn failed:", err);
-  }
-}
-
-// Batch 06V: older per-customer databases may predate incidental/non-BOQ
-// progress fields. Ensure both columns exist before any DPR query runs.
-async function ensureProgressIncidentalColumns() {
-  try {
-    await db.execute(sql.raw(`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS is_incidental boolean NOT NULL DEFAULT false`));
-    await db.execute(sql.raw(`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS incidental_description text`));
-    console.log("progress_entries incidental columns ensured");
-  } catch (err) {
-    console.error("ensureProgressIncidentalColumns failed:", err);
   }
 }
 

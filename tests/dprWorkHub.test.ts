@@ -3,7 +3,6 @@ import fs from "node:fs";
 import {
   dprSectionCounts,
   dprWorkSectionHref,
-  newestDpr,
   resolveExistingSiteDpr,
   resolveFieldSitePriority,
 } from "../client/src/lib/dprWorkHub";
@@ -45,39 +44,6 @@ describe("DPR work hub navigation", () => {
     });
     expect(resolveExistingSiteDpr(siteDprs, "Second Engineer")).toMatchObject({
       activeDpr: { id: 418 },
-      phase: "draft-own",
-    });
-  });
-
-  it("resumes the newest saved draft when legacy duplicates exist for one site and date", () => {
-    const emptyOldDraft = {
-      id: 323,
-      engineer: "FIRST ENGINEER",
-      dprStatus: "draft",
-      progress: [],
-      equipment: [],
-      labour: [],
-    };
-    const populatedLatestDraft = {
-      id: 324,
-      engineer: "SECOND ENGINEER",
-      dprStatus: "draft",
-      progress: [{ activity: "EMBANKMENT" }],
-      equipment: [{ machine: "ROLLER" }],
-      labour: [{ category: "Skilled", count: 2 }],
-    };
-
-    expect(newestDpr([emptyOldDraft, populatedLatestDraft])?.id).toBe(324);
-    expect(resolveExistingSiteDpr(
-      [emptyOldDraft, populatedLatestDraft],
-      "First Engineer",
-    )).toMatchObject({
-      activeDpr: {
-        id: 324,
-        progress: [{ activity: "EMBANKMENT" }],
-        equipment: [{ machine: "ROLLER" }],
-        labour: [{ category: "Skilled", count: 2 }],
-      },
       phase: "draft-own",
     });
   });

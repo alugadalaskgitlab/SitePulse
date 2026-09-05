@@ -86,14 +86,8 @@ export function getEffectiveLength(
   chainageFrom: string,
   chainageTo: string,
 ): number | null {
-  // A complete chainage pair is the authoritative geometry. Persisted
-  // `length` values can be stale after either chainage endpoint is edited, so
-  // they must never override the span (including a legitimate zero span).
-  if (chainageFrom && chainageTo) {
-    return calculateLengthFromChainage(chainageFrom, chainageTo);
-  }
   if (manualLength != null && manualLength > 0) return manualLength;
-  return null;
+  return calculateLengthFromChainage(chainageFrom, chainageTo);
 }
 
 /** Single formula for DPR / Tomorrow's Plan quantity from geometry. */
@@ -131,9 +125,8 @@ export type GeometryRowInput = {
 
 /**
  * Recompute the geometry-implied quantity for a submitted row.
- * Effective length = complete chainage span when present, else explicit
- * length. Returns null when geometry cannot produce a quantity (manual-only
- * items / missing dims).
+ * Effective length = explicit length, else chainage span. Returns null when
+ * geometry cannot produce a quantity (manual-only items / missing dims).
  */
 export function geometryQtyForRow(
   row: GeometryRowInput,
@@ -141,20 +134,6 @@ export function geometryQtyForRow(
 ): number | null {
   const length = getEffectiveLength(row.length, row.chainageFrom ?? "", row.chainageTo ?? "");
   return calculateDprQuantity(length, row.width, row.thickness, boqItem);
-}
-
-/**
- * Materialize the physical DPR quantity used for persistence and submit
- * readiness. An entered quantity wins; otherwise geometry is calculated.
- * This deliberately does NOT apply dprConversionFactor — conversion belongs
- * only to BOQ progress/reporting after the physical measurement is stored.
- */
-export function resolveDprPhysicalQuantity(
-  row: GeometryRowInput,
-  boqItem: { unit?: string | null; dprMeasurementMethod?: string | null } | null | undefined,
-): number | null {
-  if (row.quantity != null && Number.isFinite(Number(row.quantity))) return Number(row.quantity);
-  return geometryQtyForRow(row, boqItem);
 }
 
 /** Tolerance for "is this the system-calculated value?" (rounding-safe). */
@@ -278,7 +257,7 @@ export type DprMeasurementSummary = {
   /** e.g. "150 × 1.5 m" — null when the row has no geometric dimensions */
   dims: string | null;
   measuredQty: number | null;
-  /** UOM of the physical measurement (BOQ profile when known, else stored row UOM) */
+  /** UOM of the physical measurement (stored row uom, else profile uom) */
   measuredUom: string | null;
   factor: number;
   /** measuredQty × factor — null when no BOQ item / no quantity */
@@ -295,13 +274,7 @@ export function dprMeasurementSummary(
 ): DprMeasurementSummary {
   const prof = boqItem ? resolveBoqUomProfile(boqItem) : boqUomProfile(row.uom);
   const measuredQty = row.quantity != null && Number.isFinite(Number(row.quantity)) ? Number(row.quantity) : null;
-  // The BOQ measurement profile defines the physical quantity represented by
-  // the row (e.g. a Ha BOQ item is physically measured in SQM). Historical
-  // rows may retain the BOQ unit in `row.uom`, so it is not authoritative when
-  // BOQ context is available.
-  const measuredUom = boqItem
-    ? prof.uom
-    : (row.uom || (prof.dims.length ? prof.uom : null)) ?? null;
+  const measuredUom = (row.uom || (prof.dims.length ? prof.uom : null)) ?? null;
   const factor = resolveDprConversionFactor(boqItem);
   const converted = boqItem != null && factor !== 1;
   return {

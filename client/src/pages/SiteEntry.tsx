@@ -41,7 +41,7 @@ import { BillItemPicker } from "@/components/BillItemPicker";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
-import { checkQuantitySourceRow, dprMeasurementSummary, quantitiesMatch, MANUAL_QUANTITY_SOURCES, resolveDprPhysicalQuantity } from "@shared/dprGeometry";
+import { checkQuantitySourceRow, quantitiesMatch, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { applyEquipmentMasterSelection, computeTotalDiesel, computeTripTotalKm, OTHER_EQUIPMENT_VALUE } from "@shared/guidedEquipment";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
@@ -227,8 +227,6 @@ const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS", "LS"];
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
 const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
-
-const currentLocalTime = () => format(new Date(), "HH:mm");
 
 type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; planningWorkType?: string | null; dprMeasurementMethod?: string | null };
 
@@ -851,6 +849,11 @@ export default function SiteEntry() {
   const [progress, setProgress] = useState<ProgressEntry[]>([
     { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
   ]);
+  // This is deliberately client-only: an existing saved override is inferred
+  // from length vs chainage on reload, while an in-session edit is keyed by
+  // the stable entryKey rather than a mutable row index.
+  const [manualLengthByEntryKey, setManualLengthByEntryKey] = useState<Record<string, boolean>>({});
+  const [lengthUpdatePrompt, setLengthUpdatePrompt] = useState<Record<string, number>>({});
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
   // as Guided DPR, Progress Report and the server Final-Submit recheck).
@@ -874,7 +877,7 @@ export default function SiteEntry() {
 
   const [openPlantMap, setOpenPlantMap] = useState<Record<number, any>>({});
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: currentLocalTime(), endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }
+    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }
   ]);
   const [otherEquipmentRows, setOtherEquipmentRows] = useState<Set<number>>(() => new Set());
 
@@ -934,7 +937,7 @@ export default function SiteEntry() {
   }), [header, workType, progress, structureItems, equipment, labour, materials, sitePurchases]);
 
   const handleRestoreDraft = useCallback((data: SiteEntryFormData) => {
-    setHeader((current) => ({ ...current, ...data.header }));
+    setHeader(data.header);
     if (data.workType) setWorkType(data.workType);
     setProgress(data.progress);
     if (data.structureItems) setStructureItems(data.structureItems);
@@ -952,19 +955,45 @@ export default function SiteEntry() {
 
   const { confirmLeave } = useBeforeUnload(isDirty);
 
-  // Chainage is authoritative for road length. The shared helper falls back to
-  // a stored length only for legacy/non-chainage rows.
+  // Calculate length from chainage if not manually entered
+  // Thin wrapper — delegates to shared getEffectiveLength in @/lib/dprCalculations
   const getEffectiveLength = (entry: ProgressEntry): number | null =>
     getEffLengthShared(entry.length ?? null, entry.chainageFrom, entry.chainageTo);
+
+  const hasManualLength = (entry: ProgressEntry) => {
+    if (manualLengthByEntryKey[entry.entryKey]) return true;
+    const calculated = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
+    return calculated != null && entry.length != null && entry.length > 0
+      && Math.abs(calculated - entry.length) > 0.01;
+  };
 
   const changeChainage = (idx: number, field: "chainageFrom" | "chainageTo", value: string) => {
     const updated = [...progress];
     const entry = updated[idx];
     entry[field] = value.toUpperCase();
     const calculated = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
-    entry.length = calculated;
+    if (calculated != null) {
+      if (hasManualLength(entry)) {
+        setLengthUpdatePrompt((current) => ({ ...current, [entry.entryKey]: calculated }));
+      } else {
+        entry.length = calculated;
+      }
+    }
     applyCalc(entry);
     setProgress(updated);
+  };
+
+  const acceptRecalculatedLength = (idx: number, length: number) => {
+    const updated = [...progress];
+    updated[idx].length = length;
+    applyCalc(updated[idx]);
+    setProgress(updated);
+    setManualLengthByEntryKey((current) => ({ ...current, [updated[idx].entryKey]: false }));
+    setLengthUpdatePrompt((current) => {
+      const next = { ...current };
+      delete next[updated[idx].entryKey];
+      return next;
+    });
   };
 
   // UOM follows the linked BOQ item's dprMeasurementMethod (explicit) or unit (derived).
@@ -1067,7 +1096,7 @@ export default function SiteEntry() {
     if (section === 'progress') {
       setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: currentLocalTime(), endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
     } else if (section === 'materials') {
@@ -1146,7 +1175,7 @@ export default function SiteEntry() {
       isIncidental: false,
       incidentalDescription: "",
     })));
-    const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: currentLocalTime(), endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] as StagedBreakdown[] };
+    const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] as StagedBreakdown[] };
     if (st.equipment.length > 0) setEquipment(st.equipment.map(e => ({ ...blankEq, ...e })) as any);
     if (st.labour.length > 0) setLabour(st.labour.map(l => ({ category: l.category, gender: "", count: l.count, task: l.task, contractor: l.contractor, boqItemId: null, structureId: null })) as any);
     setShowYesterdayPreview(false);
@@ -1158,8 +1187,6 @@ export default function SiteEntry() {
     mutationFn: async () => {
       const progressWithCalc = progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
-        const boqItem = p.boqItemId != null ? siteBoqItems.find((item) => item.id === p.boqItemId) : null;
-        const physicalQuantity = resolveDprPhysicalQuantity({ ...p, length: effectiveLength }, boqItem);
         if (p.noSiteWork) {
           return {
             ...p,
@@ -1174,13 +1201,13 @@ export default function SiteEntry() {
         return {
           ...p,
           length: effectiveLength,
-          quantity: physicalQuantity,
+          quantity: p.quantity || calculateQuantity(p),
           // 030A: numeric chainage (Km) alongside the display text
           chainageFromKm: parseChainageKm(p.chainageFrom),
           chainageToKm: parseChainageKm(p.chainageTo),
           // 031 Part E: an untouched quantity that came from geometry is
           // recorded as "Calculated from geometry" automatically.
-          quantitySource: p.quantitySource || (p.quantity == null && physicalQuantity != null ? "calculated" : null),
+          quantitySource: p.quantitySource || (p.quantity == null && calculateQuantity(p) != null ? "calculated" : null),
           quantitySourceNote: p.quantitySourceNote?.trim() || null,
           chainageOverrideReason: p.chainageOverrideReason || null,
           executedBy: p.executedBy || null,
@@ -1394,17 +1421,15 @@ export default function SiteEntry() {
     mutationFn: async () => {
       const progressWithCalc = progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
-        const boqItem = p.boqItemId != null ? siteBoqItems.find((item) => item.id === p.boqItemId) : null;
-        const physicalQuantity = resolveDprPhysicalQuantity({ ...p, length: effectiveLength }, boqItem);
         return {
           ...p,
           length: effectiveLength,
-          quantity: physicalQuantity,
+          quantity: p.quantity || calculateQuantity(p),
           chainageFromKm: parseChainageKm(p.chainageFrom),
           chainageToKm: parseChainageKm(p.chainageTo),
           // 031 Part E: an untouched quantity that came from geometry is
           // recorded as "Calculated from geometry" automatically.
-          quantitySource: p.quantitySource || (p.quantity == null && physicalQuantity != null ? "calculated" : null),
+          quantitySource: p.quantitySource || (p.quantity == null && calculateQuantity(p) != null ? "calculated" : null),
           quantitySourceNote: p.quantitySourceNote?.trim() || null,
           chainageOverrideReason: p.chainageOverrideReason || null,
           executedBy: p.executedBy || null,
@@ -1618,14 +1643,7 @@ export default function SiteEntry() {
     // Mandatory issues block; advisories only ask for confirmation.
     const r = evaluateDprSubmitReadiness({
       workType,
-      progress: workType === "structure" ? [] : progress.map((p) => {
-        const boqItem = p.boqItemId != null ? siteBoqItems.find((item) => item.id === p.boqItemId) : null;
-        return {
-          ...p,
-          length: getEffectiveLength(p),
-          quantity: resolveDprPhysicalQuantity({ ...p, length: getEffectiveLength(p) }, boqItem),
-        };
-      }),
+      progress: workType === "structure" ? [] : progress,
       equipment,
       labour,
       materials,
@@ -1657,18 +1675,12 @@ export default function SiteEntry() {
       date: header.date,
       site: header.site,
       engineer: header.engineer,
-      boqProjectId: siteBoqProjectId,
       progress: progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
-        const boqItem = p.boqItemId != null ? siteBoqItems.find((item) => item.id === p.boqItemId) : null;
-        const quantity = resolveDprPhysicalQuantity({ ...p, length: effectiveLength }, boqItem);
         return {
           ...p,
           length: effectiveLength,
-          quantity,
-          executedBoqQty: quantity != null ? quantity * (boqItem?.dprConversionFactor ?? 1) : null,
-          executedBoqUom: boqItem?.unit ?? p.uom ?? null,
-          activityMaterialHint: boqItem ? boqItemDisplayName(boqItem) : p.activity || null,
+          quantity: p.quantity || calculateQuantity(p)
         };
       }),
       equipment,
@@ -2389,20 +2401,29 @@ export default function SiteEntry() {
                     <Input
                       type="number"
                       step="0.01"
-                      placeholder="From chainage"
-                      value={getEffectiveLength(entry) ?? ""}
-                      readOnly
-                      aria-readonly="true"
-                      className="bg-muted"
+                      placeholder="0"
+                      value={entry.length ?? (calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo)?.toFixed(0) ?? "")}
+                      onChange={(e) => {
+                        const updated = [...progress];
+                        updated[idx].length = e.target.value ? parseFloat(e.target.value) : null;
+                        applyCalc(updated[idx]);
+                        setProgress(updated);
+                        setManualLengthByEntryKey((current) => ({ ...current, [updated[idx].entryKey]: e.target.value !== "" }));
+                        setLengthUpdatePrompt((current) => {
+                          const next = { ...current };
+                          delete next[updated[idx].entryKey];
+                          return next;
+                        });
+                      }}
                       data-testid={`input-progress-length-${idx}`}
                     />
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      {entry.chainageFrom && entry.chainageTo
-                        ? "Calculated automatically from chainage."
-                        : entry.length != null
-                          ? "Saved legacy length shown until chainage is completed."
-                          : "Complete From and To chainage to calculate Length."}
-                    </p>
+                    {lengthUpdatePrompt[entry.entryKey] != null && (
+                      <div className="mt-1 text-[11px] text-amber-800" data-testid={`prompt-length-update-${idx}`}>
+                        Chainage changed — recalculated length is {lengthUpdatePrompt[entry.entryKey]} m, current length is {entry.length ?? 0} m. Update to {lengthUpdatePrompt[entry.entryKey]} m?
+                        <Button type="button" variant="link" className="h-auto px-1 text-[11px]" onClick={() => acceptRecalculatedLength(idx, lengthUpdatePrompt[entry.entryKey])} data-testid={`button-update-length-${idx}`}>Update</Button>
+                        <Button type="button" variant="link" className="h-auto px-1 text-[11px]" onClick={() => setLengthUpdatePrompt((current) => { const next = { ...current }; delete next[entry.entryKey]; return next; })}>Keep current</Button>
+                      </div>
+                    )}
                   </div>
                   {(() => {
                     const prof = entryBoqProfile(entry);
@@ -2549,24 +2570,6 @@ export default function SiteEntry() {
                       }}
                       data-testid={`input-progress-qty-${idx}`}
                     />
-                    {entry.boqItemId != null && (() => {
-                      const boqItem = siteBoqItems.find((item) => item.id === entry.boqItemId) ?? null;
-                      const physicalQty = entry.quantity ?? calculateQuantity(entry);
-                      if (!boqItem || physicalQty == null) return null;
-                      const measurement = dprMeasurementSummary({
-                        ...entry,
-                        length: getEffectiveLength(entry),
-                        quantity: physicalQty,
-                      }, boqItem);
-                      return (
-                        <p className="mt-1 text-xs font-medium text-primary" data-testid={`text-progress-measurement-${idx}`}>
-                          {Number(measurement.measuredQty!.toFixed(3))} {measurement.measuredUom}
-                          {measurement.boqQty != null && (
-                            <> → {Number(measurement.boqQty.toFixed(4))} {measurement.boqUom}</>
-                          )}
-                        </p>
-                      );
-                    })()}
                     {/* Quantity source: a system-calculated quantity is labelled
                         read-only and never prompts; only a manually entered or
                         overridden quantity requires picking a real source. */}
@@ -2634,7 +2637,7 @@ export default function SiteEntry() {
                       onOutcomeChange={(materialOutcome, reusableQty) => { const updated = [...progress]; updated[idx] = { ...updated[idx], materialOutcome, reusableQty }; setProgress(updated); }} />
                   ) : usesCutMaterialSource(entry.boqItemId) ? (
                     <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={entry.earthworkArrangementId}
-                      boqItemDescription={entry.boqItemId != null ? String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? siteBoqItems.find(i => i.id === entry.boqItemId)?.itemName ?? "") : ""}
+                      boqItemDescription={entry.boqItemId != null ? String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? siteBoqItems.find(i => i.id === entry.boqItemId)?.displayName ?? "") : ""}
                       quantity={entry.quantity} outcome={null} reusableQty={null} allocations={entry.allocations as any}
                       currentEntryKey={entry.entryKey} formRows={progress as any} boqItems={siteBoqItems}
                       onOutcomeChange={() => undefined} onAllocationsChange={allocations => { const updated = [...progress]; updated[idx] = { ...updated[idx], allocations: allocations as any }; setProgress(updated); }} />
@@ -2643,7 +2646,7 @@ export default function SiteEntry() {
                       boqItemId={entry.boqItemId} programmeBarId={entry.programmeBarId}
                       executedQty={(() => { const q = entry.quantity ?? calculateQuantity(entry); const f = (siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.dprConversionFactor ?? 1; return q != null ? q * f : null; })()}
                       executedUom={(siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.unit ?? entry.uom ?? null}
-                      persistedArrangementId={entry.earthworkArrangementId}
+                      readOnly persistedArrangementId={entry.earthworkArrangementId}
                       onArrangementResolved={(id) => setProgress((prev) => prev.map((p, i) => (i === idx ? { ...p, earthworkArrangementId: id } : p)))}
                       activityMaterialHint={entry.activity || null} testIdPrefix={`detailed-receipt-${idx}`} />
                   ) : null}
@@ -2798,10 +2801,8 @@ export default function SiteEntry() {
                   <Trash2 className="w-4 h-4" />
                 </Button>
                 
-                <details open>
-                <summary className="mb-2 cursor-pointer list-none text-xs font-semibold text-muted-foreground">
-                  Equipment Usage Details
-                </summary>
+                <details open={!entry.machine} className="group">
+                <summary className="mb-2 cursor-pointer list-none text-xs font-semibold text-muted-foreground after:ml-2 after:content-['Edit_Usage_Details'] group-open:after:content-['Close_Usage_Details']" />
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="col-span-2">
                     <Label className="text-sm">Equipment</Label>

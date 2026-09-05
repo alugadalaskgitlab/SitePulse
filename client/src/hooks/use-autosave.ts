@@ -1,11 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  saveFormDraft,
-  loadFormDraft,
-  clearFormDraft,
-  formatDraftAge,
-  type AutosaveData,
-} from "@/lib/autosave";
+import { saveFormDraft, loadFormDraft, clearFormDraft, formatDraftAge } from "@/lib/autosave";
 import { useToast } from "@/hooks/use-toast";
 
 interface UseAutosaveOptions<T> {
@@ -13,13 +7,8 @@ interface UseAutosaveOptions<T> {
   data: T;
   enabled?: boolean;
   debounceMs?: number;
-  /** Existing server-backed forms should not create a browser draft until edited. */
-  saveInitialData?: boolean;
-  onRestore?: (data: T, metadata: AutosaveMetadata) => void;
-  validateRestore?: (data: T, metadata: AutosaveMetadata) => boolean;
+  onRestore?: (data: T) => void;
 }
-
-type AutosaveMetadata = Pick<AutosaveData, "savedAt" | "formKey" | "version">;
 
 interface UseAutosaveReturn<T> {
   isLoading: boolean;
@@ -37,9 +26,7 @@ export function useAutosave<T>({
   data,
   enabled = true,
   debounceMs = 1000,
-  saveInitialData = true,
   onRestore,
-  validateRestore,
 }: UseAutosaveOptions<T>): UseAutosaveReturn<T> {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
@@ -48,25 +35,10 @@ export function useAutosave<T>({
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [restoredData, setRestoredData] = useState<T | null>(null);
-  const [restoredMetadata, setRestoredMetadata] = useState<AutosaveMetadata | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedDataRef = useRef<string>("");
   const hasRestoredRef = useRef(false);
   const initialDataRef = useRef<string | null>(null);
-  const validateRestoreRef = useRef(validateRestore);
-  validateRestoreRef.current = validateRestore;
-
-  useEffect(() => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    hasRestoredRef.current = false;
-    initialDataRef.current = null;
-    lastSavedDataRef.current = "";
-    setHasDraft(false);
-    setRestoredData(null);
-    setRestoredMetadata(null);
-    setDraftAge(null);
-    setLastSavedAt(null);
-  }, [formKey]);
 
   useEffect(() => {
     if (!enabled) {
@@ -78,20 +50,7 @@ export function useAutosave<T>({
       try {
         const draft = await loadFormDraft<T>(formKey);
         if (draft && !hasRestoredRef.current) {
-          const metadata = {
-            savedAt: draft.savedAt,
-            formKey: draft.formKey,
-            version: draft.version,
-          };
-          if (validateRestoreRef.current && !validateRestoreRef.current(draft.data, metadata)) {
-            await clearFormDraft(formKey);
-            setHasDraft(false);
-            setRestoredData(null);
-            setRestoredMetadata(null);
-            return;
-          }
           setRestoredData(draft.data);
-          setRestoredMetadata(metadata);
           setHasDraft(true);
           setDraftAge(formatDraftAge(draft.savedAt));
         }
@@ -127,15 +86,6 @@ export function useAutosave<T>({
     if (!enabled || isLoading || hasDraft) return;
 
     const currentDataStr = JSON.stringify(data);
-
-    if (!saveInitialData && initialDataRef.current === currentDataStr) {
-      if (lastSavedDataRef.current && lastSavedDataRef.current !== currentDataStr) {
-        clearFormDraft(formKey).catch((error) => console.error("Error clearing reverted draft:", error));
-        lastSavedDataRef.current = "";
-        setLastSavedAt(null);
-      }
-      return;
-    }
     
     if (currentDataStr === lastSavedDataRef.current) return;
 
@@ -158,18 +108,16 @@ export function useAutosave<T>({
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [formKey, data, enabled, debounceMs, isLoading, hasDraft, saveInitialData]);
+  }, [formKey, data, enabled, debounceMs, isLoading, hasDraft]);
 
   useEffect(() => {
     if (!enabled) return;
 
     const handleVisibilityChange = async () => {
       if (document.visibilityState === "hidden" && !hasDraft) {
-        const currentData = JSON.stringify(data);
-        if (!saveInitialData && initialDataRef.current === currentData) return;
         try {
           await saveFormDraft(formKey, data);
-          lastSavedDataRef.current = currentData;
+          lastSavedDataRef.current = JSON.stringify(data);
           setLastSavedAt(new Date());
         } catch (error) {
           console.error("Error saving on visibility change:", error);
@@ -179,7 +127,6 @@ export function useAutosave<T>({
 
     const handleBeforeUnload = async () => {
       if (!hasDraft) {
-        if (!saveInitialData && initialDataRef.current === JSON.stringify(data)) return;
         try {
           await saveFormDraft(formKey, data);
         } catch (error) {
@@ -195,21 +142,20 @@ export function useAutosave<T>({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [formKey, data, enabled, hasDraft, saveInitialData]);
+  }, [formKey, data, enabled, hasDraft]);
 
   const restoreDraft = useCallback(() => {
-    if (restoredData && restoredMetadata && onRestore) {
-      onRestore(restoredData, restoredMetadata);
+    if (restoredData && onRestore) {
+      onRestore(restoredData);
       hasRestoredRef.current = true;
       setHasDraft(false);
       setRestoredData(null);
-      setRestoredMetadata(null);
       toast({
         title: "Draft restored",
         description: "Your previous work has been restored.",
       });
     }
-  }, [restoredData, restoredMetadata, onRestore, toast]);
+  }, [restoredData, onRestore, toast]);
 
   const discardDraft = useCallback(async () => {
     try {
@@ -217,7 +163,6 @@ export function useAutosave<T>({
       hasRestoredRef.current = true;
       setHasDraft(false);
       setRestoredData(null);
-      setRestoredMetadata(null);
       toast({
         title: "Draft discarded",
         description: "Starting with a fresh form.",
@@ -233,7 +178,6 @@ export function useAutosave<T>({
       lastSavedDataRef.current = "";
       setHasDraft(false);
       setRestoredData(null);
-      setRestoredMetadata(null);
       setLastSavedAt(null);
     } catch (error) {
       console.error("Error clearing draft:", error);

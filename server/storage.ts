@@ -542,8 +542,8 @@ export interface IStorage {
     audit?: DprEquipmentClosureAudit,
     options?: { reuseExistingDraft?: boolean },
   ): Promise<Dpr>;
-  updateDraftDpr(id: number, dpr: CreateDprRequest, expectedDraftRevision: string): Promise<Dpr | undefined>;
-  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp: string | undefined, audit: DprEquipmentClosureAudit | undefined, expectedDraftRevision: string): Promise<Dpr | undefined>;
+  updateDraftDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
+  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit): Promise<Dpr | undefined>;
   updateDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
   cloneDpr(id: number, editedBy: string, clientTimestamp?: string): Promise<Dpr | undefined>;
   createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string, audit?: DprEquipmentClosureAudit): Promise<Dpr>;
@@ -2393,7 +2393,7 @@ export class DatabaseStorage implements IStorage {
     let rows = await db.select()
       .from(dprs)
       .where(and(...conditions))
-      .orderBy(desc(dprs.date), desc(dprs.id));
+      .orderBy(desc(dprs.date));
 
     // Exact base-name matching in JS — edited/copied DPRs carry an
     // "– Edited by …" suffix in `site` and must remain visible; prefix-LIKE
@@ -2438,83 +2438,64 @@ export class DatabaseStorage implements IStorage {
         sitePurchases: true,
         structureItems: true,
       },
-      orderBy: [desc(dprs.date), desc(dprs.id)],
+      orderBy: desc(dprs.date),
     });
   }
 
   async getDpr(id: number): Promise<DprWithDetails | undefined> {
-    return await db.transaction(async (tx) => {
-      const [revisionRow] = await tx.select({
-        draftRevision: sql<string>`xmin::text`,
-      }).from(dprs).where(eq(dprs.id, id)).limit(1);
-      const dpr = await tx.query.dprs.findFirst({
-        where: eq(dprs.id, id),
-        with: {
-          progress: true,
-          equipment: true,
-          labour: true,
-          materials: true,
-          sitePurchases: true,
-          structureItems: true,
-        }
+    const dpr = await db.query.dprs.findFirst({
+      where: eq(dprs.id, id),
+      with: {
+        progress: true,
+        equipment: true,
+        labour: true,
+        materials: true,
+        sitePurchases: true,
+        structureItems: true,
+      }
+    });
+    if (!dpr) return undefined;
+    const fillIds = (dpr.progress ?? []).map(p => p.id);
+    const links = fillIds.length ? await db.select({
+      fillEntryKey: progressEntries.entryKey,
+      sourceEntryKey: sql<string | null>`source.entry_key`,
+      openingBalanceId: cutFillConsumptions.openingBalanceId,
+      quantity: cutFillConsumptions.quantity,
+    }).from(cutFillConsumptions)
+      .innerJoin(progressEntries, eq(progressEntries.id, cutFillConsumptions.fillProgressEntryId))
+      .leftJoin(sql`progress_entries source`, sql`source.id = ${cutFillConsumptions.sourceProgressEntryId}`)
+      .where(inArray(cutFillConsumptions.fillProgressEntryId, fillIds)) : [];
+    const equipmentIds = (dpr.equipment ?? []).map(row => row.id);
+    const breakdowns = equipmentIds.length
+      ? await db.select().from(equipmentMaintenanceLogs).where(and(
+        eq(equipmentMaintenanceLogs.sourceType, "dpr_log"),
+        inArray(equipmentMaintenanceLogs.sourceRecordId, equipmentIds),
+        eq(equipmentMaintenanceLogs.isCancelled, false),
+        eq(equipmentMaintenanceLogs.isDeleted, false),
+      ))
+      : [];
+    const breakdownsByEquipmentLog = new Map<number, any[]>();
+    for (const breakdown of breakdowns) {
+      const sourceId = Number(breakdown.sourceRecordId);
+      const rows = breakdownsByEquipmentLog.get(sourceId) ?? [];
+      rows.push({
+        clientKey: `maintenance-${breakdown.id}`,
+        maintenanceLogId: breakdown.id,
+        fromTime: breakdown.fromTime ?? "",
+        toTime: breakdown.toTime ?? "",
+        description: breakdown.description,
+        responsibility: breakdown.responsibility ?? "",
+        repairScope: breakdown.repairScope ?? "",
+        debitableToVendor: !!breakdown.debitableToVendor,
+        remarks: breakdown.remarks ?? "",
       });
-      if (!dpr) return undefined;
-      const fillIds = (dpr.progress ?? []).map(p => p.id);
-      const progressPersonnel = fillIds.length
-        ? await tx.select().from(activityPersonnel).where(inArray(activityPersonnel.progressEntryId, fillIds))
-        : [];
-      const personnelByProgress = new Map<number, number[]>();
-      for (const assignment of progressPersonnel) {
-        const personnelIds = personnelByProgress.get(assignment.progressEntryId) ?? [];
-        personnelIds.push(assignment.personnelId);
-        personnelByProgress.set(assignment.progressEntryId, personnelIds);
-      }
-      const links = fillIds.length ? await tx.select({
-        fillEntryKey: progressEntries.entryKey,
-        sourceEntryKey: sql<string | null>`source.entry_key`,
-        openingBalanceId: cutFillConsumptions.openingBalanceId,
-        quantity: cutFillConsumptions.quantity,
-      }).from(cutFillConsumptions)
-        .innerJoin(progressEntries, eq(progressEntries.id, cutFillConsumptions.fillProgressEntryId))
-        .leftJoin(sql`progress_entries source`, sql`source.id = ${cutFillConsumptions.sourceProgressEntryId}`)
-        .where(inArray(cutFillConsumptions.fillProgressEntryId, fillIds)) : [];
-      const equipmentIds = (dpr.equipment ?? []).map(row => row.id);
-      const breakdowns = equipmentIds.length
-        ? await tx.select().from(equipmentMaintenanceLogs).where(and(
-          eq(equipmentMaintenanceLogs.sourceType, "dpr_log"),
-          inArray(equipmentMaintenanceLogs.sourceRecordId, equipmentIds),
-          eq(equipmentMaintenanceLogs.isCancelled, false),
-          eq(equipmentMaintenanceLogs.isDeleted, false),
-        ))
-        : [];
-      const breakdownsByEquipmentLog = new Map<number, any[]>();
-      for (const breakdown of breakdowns) {
-        const sourceId = Number(breakdown.sourceRecordId);
-        const rows = breakdownsByEquipmentLog.get(sourceId) ?? [];
-        rows.push({
-          clientKey: `maintenance-${breakdown.id}`,
-          maintenanceLogId: breakdown.id,
-          fromTime: breakdown.fromTime ?? "",
-          toTime: breakdown.toTime ?? "",
-          description: breakdown.description,
-          responsibility: breakdown.responsibility ?? "",
-          repairScope: breakdown.repairScope ?? "",
-          debitableToVendor: !!breakdown.debitableToVendor,
-          remarks: breakdown.remarks ?? "",
-        });
-        breakdownsByEquipmentLog.set(sourceId, rows);
-      }
-      return {
-        ...dpr,
-        draftRevision: revisionRow?.draftRevision ?? null,
-        progress: (dpr.progress ?? []).map(row => ({
-          ...row,
-          personnelIds: personnelByProgress.get(row.id) ?? [],
-        })),
-        equipment: (dpr.equipment ?? []).map(row => ({ ...row, breakdowns: breakdownsByEquipmentLog.get(row.id) ?? [] })),
-        cutFillConsumptions: links,
-      } as DprWithDetails;
-    }, { isolationLevel: "repeatable read" });
+      breakdownsByEquipmentLog.set(sourceId, rows);
+    }
+    return {
+      ...dpr,
+      equipment: (dpr.equipment ?? []).map(row => ({ ...row, breakdowns: breakdownsByEquipmentLog.get(row.id) ?? [] })),
+      cutFillConsumptions: links,
+    } as DprWithDetails;
   }
 
   /**
@@ -2855,7 +2836,7 @@ export class DatabaseStorage implements IStorage {
           or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
           or(eq(dprs.isDeleted, false), isNull(dprs.isDeleted)),
           or(eq(dprs.isCancelled, false), isNull(dprs.isCancelled)),
-        )).orderBy(desc(dprs.id)).limit(1);
+        )).orderBy(asc(dprs.id)).limit(1);
         if (existingDraft) return existingDraft;
       }
 
@@ -2967,35 +2948,31 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async updateDraftDpr(id: number, dprData: CreateDprRequest, expectedDraftRevision: string): Promise<Dpr | undefined> {
+  async updateDraftDpr(id: number, dprData: CreateDprRequest): Promise<Dpr | undefined> {
     // Canonical draft identity rule (intentionally unchanged): the id returned
     // by the initial POST is the draft's sole identity. Every autosave replaces
     // children under that same dprs.id; there is no site/date/user deduplication
     // and no new DPR/version row until the explicit version/clone workflows.
     const existing = await this.getDpr(id);
     if (!existing || (existing as any).dprStatus !== "draft") return undefined;
-    const updated = await this._replaceDprChildRecords(id, dprData, {}, undefined, expectedDraftRevision);
-    return updated;
+    return await this._replaceDprChildRecords(id, dprData, {});
   }
 
   async submitDraftDpr(
     id: number,
     dprData: CreateDprRequest,
-    clientTimestamp: string | undefined,
-    audit: DprEquipmentClosureAudit | undefined,
-    expectedDraftRevision: string,
+    clientTimestamp?: string,
+    audit?: DprEquipmentClosureAudit,
   ): Promise<Dpr | undefined> {
     const existing = await this.getDpr(id);
     if (!existing || (existing as any).dprStatus !== "draft") return undefined;
     const submittedAt = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
-    const updated = await this._replaceDprChildRecords(
+    return await this._replaceDprChildRecords(
       id,
       dprData,
       { dprStatus: "submitted", submittedAt, lockStatus: "locked" },
       audit,
-      expectedDraftRevision,
     );
-    return updated;
   }
 
   private async _replaceDprChildRecords(
@@ -3003,7 +2980,6 @@ export class DatabaseStorage implements IStorage {
     dprData: CreateDprRequest,
     headerOverrides: Record<string, any>,
     audit?: DprEquipmentClosureAudit,
-    expectedDraftRevision?: string,
   ): Promise<Dpr | undefined> {
     return await db.transaction(async (tx) => {
       const isSubmitting = headerOverrides.dprStatus === "submitted";
@@ -3020,15 +2996,8 @@ export class DatabaseStorage implements IStorage {
         // PostgreSQL rechecks this predicate after any concurrent row update.
         // A stale PATCH therefore cannot replace children after submit, and
         // only one concurrent submit can own the operational effects.
-        .where(and(
-          eq(dprs.id, id),
-          eq(dprs.dprStatus, "draft"),
-          expectedDraftRevision ? sql`xmin::text = ${expectedDraftRevision}` : undefined,
-        ))
-        .returning({
-          ...getTableColumns(dprs),
-          draftRevision: sql<string>`xmin::text`,
-        });
+        .where(and(eq(dprs.id, id), eq(dprs.dprStatus, "draft")))
+        .returning();
       if (!updated) return undefined;
 
       // Draft saves own document rows only. Cleanup/posting is reserved for
@@ -5539,11 +5508,7 @@ export class DatabaseStorage implements IStorage {
           dieselNorm: persisted ? row.dieselNorm ?? null : null,
         };
       }
-      // Breakdown intervals are client input at this point and are persisted to
-      // maintenance rows just after the equipment log. Include them in the
-      // authoritative server recomputation before stripping the transport-only
-      // field from the equipment_logs insert.
-      const result = computeEquipmentUsage(master, input);
+      const result = computeEquipmentUsage(master, row);
       return {
         ...row,
         // Never put km into hours_worked. Explicit trip rows operate in km.

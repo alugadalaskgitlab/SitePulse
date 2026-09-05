@@ -1,4 +1,3 @@
-import { Fragment, useMemo } from "react";
 import { ChevronLeft, Send, Loader2, Fuel } from "lucide-react";
 import { ReportHeader } from "@/components/ReportHeader";
 import { Button } from "@/components/ui/button";
@@ -9,17 +8,11 @@ import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import type { Personnel, EquipmentMasterType } from "@shared/schema";
 import { layerDisplayName } from "@shared/layerDisplay";
-import { dprMeasurementSummary } from "@shared/dprGeometry";
-import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
-import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
-import { computeEquipmentUsage } from "@/lib/equipmentUsage";
-import { boqItemDisplayName } from "@shared/boqItemName";
 
 interface PreviewData {
   date: string;
   site: string;
   engineer: string;
-  boqProjectId?: number | null;
   progress: any[];
   equipment: any[];
   labour: any[];
@@ -46,24 +39,24 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
     queryFn: () => fetch("/api/plant-module/equipment?includeInactive=true").then(r => r.json()),
   });
 
-  const { data: siteBoqItems = [] } = useQuery<any[]>({
-    queryKey: ["/api/boq/projects", data.boqProjectId, "items"],
-    queryFn: async () => {
-      const res = await fetch(`/api/boq/projects/${data.boqProjectId}/items`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load BOQ items for DPR preview");
-      return res.json();
-    },
-    enabled: data.boqProjectId != null,
-  });
-
-  const boqItemMap = useMemo(
-    () => new Map(siteBoqItems.map((item) => [item.id, item])),
-    [siteBoqItems],
-  );
-
   const getPersonnelNames = (ids: number[] | undefined) => {
     if (!ids?.length || !personnelList) return null;
     return ids.map(id => personnelList.find(p => p.id === id)?.name).filter(Boolean).join(", ");
+  };
+
+  const calculateHours = (startTime?: string, endTime?: string): string => {
+    if (!startTime || !endTime) return '-';
+    try {
+      const [startHour, startMin] = startTime.split(':').map(Number);
+      const [endHour, endMin] = endTime.split(':').map(Number);
+      const startMins = startHour * 60 + startMin;
+      const endMins = endHour * 60 + endMin;
+      const diff = endMins - startMins;
+      if (diff < 0) return '-';
+      return (diff / 60).toFixed(3);
+    } catch {
+      return '-';
+    }
   };
 
   return (
@@ -147,9 +140,11 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                   <TableHead>From</TableHead>
                   <TableHead>To</TableHead>
                   <TableHead>Layer / Lift</TableHead>
-                  <TableHead>Dimensions</TableHead>
-                  <TableHead className="text-right">Measured</TableHead>
-                  <TableHead className="text-right">BOQ Progress</TableHead>
+                  <TableHead className="text-right">Length (m)</TableHead>
+                  <TableHead className="text-right">Width (m)</TableHead>
+                  <TableHead className="text-right">Thickness (m)</TableHead>
+                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead>UOM</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -167,17 +162,18 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                             <div className="text-sm text-muted-foreground mt-1">Personnel: {personnelNames}</div>
                           )}
                         </TableCell>
-                        <TableCell colSpan={7} className="text-muted-foreground italic">No site work</TableCell>
+                        <TableCell colSpan={9} className="text-muted-foreground italic">No site work</TableCell>
                       </TableRow>
                     );
                   }
 
-                  const boqItem = item.boqItemId != null ? boqItemMap.get(item.boqItemId) ?? null : null;
-                  const measurement = dprMeasurementSummary(item, boqItem);
+                  const derivedLength = (!item.length && item.chainageFrom && item.chainageTo) 
+                    ? Math.abs((parseFloat(item.chainageTo) - parseFloat(item.chainageFrom)) * 1000)
+                    : null;
+                  const displayLength = item.length || (derivedLength ? derivedLength.toFixed(0) : null);
                   
                   return (
-                    <Fragment key={item.entryKey ?? i}>
-                    <TableRow>
+                    <TableRow key={i}>
                       <TableCell className="font-medium">
                         <div>{item.activity}</div>
                         {/* Batch 06V: incidental badge */}
@@ -201,38 +197,12 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                       <TableCell className="whitespace-nowrap">
                         {item.layerNo != null ? layerDisplayName(item.activity, item.layerNo) : null}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap">{measurement.dims ?? '-'}</TableCell>
-                      <TableCell className="text-right font-semibold whitespace-nowrap">
-                        {measurement.measuredQty != null
-                          ? `${Number(measurement.measuredQty.toFixed(3))} ${measurement.measuredUom ?? ''}`.trim()
-                          : '-'}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        {measurement.boqQty != null
-                          ? `${Number(measurement.boqQty.toFixed(measurement.converted ? 4 : 3))} ${measurement.boqUom ?? ''}`.trim()
-                          : '-'}
-                      </TableCell>
+                      <TableCell className="text-right">{displayLength || '-'}</TableCell>
+                      <TableCell className="text-right">{item.width || '-'}</TableCell>
+                      <TableCell className="text-right">{item.thickness || '-'}</TableCell>
+                      <TableCell className="text-right font-semibold">{item.quantity?.toFixed(3) || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{item.uom}</TableCell>
                     </TableRow>
-                    {data.boqProjectId != null && item.boqItemId != null && (
-                      <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={8} className="pt-0">
-                          <ActivityReceiptStrip
-                            siteName={data.site}
-                            date={data.date}
-                            boqProjectId={data.boqProjectId}
-                            boqItemId={item.boqItemId}
-                            programmeBarId={item.programmeBarId ?? null}
-                            persistedArrangementId={item.earthworkArrangementId ?? null}
-                            executedQty={measurement.boqQty ?? item.executedBoqQty ?? null}
-                            executedUom={measurement.boqUom ?? item.executedBoqUom ?? null}
-                            activityMaterialHint={item.activityMaterialHint ?? item.activity ?? null}
-                            readOnly
-                            testIdPrefix={`dpr-preview-${item.entryKey ?? i}`}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    </Fragment>
                   );
                 })}
               </TableBody>
@@ -248,17 +218,6 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
             <CardTitle>Equipment Log</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="mb-4 space-y-2">
-              {data.equipment.filter((entry) => entry.machine).map((entry, index) => (
-                <DprEquipmentCompact
-                  key={index}
-                  row={entry}
-                  equipment={entry.equipmentId ? equipmentList?.find((equipment) => equipment.id === entry.equipmentId) : null}
-                  editable={false}
-                  index={index}
-                />
-              ))}
-            </div>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -276,17 +235,12 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
               <TableBody>
                 {data.equipment.filter(e => e.machine).map((item, i) => {
                   const et = item.entryType || "time_meter";
-                  const master = item.equipmentId && equipmentList
-                    ? equipmentList.find((equipment) => equipment.id === item.equipmentId)
-                    : null;
-                  const usage = computeEquipmentUsage(
-                    master ?? (item.dieselNorm != null ? { consumptionNorm: Number(item.dieselNorm) } : null),
-                    item,
-                  );
+                  const meterDiff = (item.openingReading != null && item.closingReading != null)
+                    ? item.closingReading - item.openingReading : null;
+                  const meterHours = (meterDiff != null && meterDiff >= 0) ? meterDiff.toFixed(3) : null;
+                  const timeHours = calculateHours(item.startTime, item.endTime);
                   const isTripBased = et === "trip_based";
-                  const displayHours = usage.hoursWorked != null
-                    ? `${usage.hoursWorked.toFixed(3)} h`
-                    : usage.totalKm != null ? `${usage.totalKm.toFixed(3)} km` : "—";
+                  const displayHours = meterHours || timeHours;
                   return (
                   <TableRow key={i}>
                     <TableCell className="font-medium">
@@ -313,29 +267,18 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                       })()}
                     </TableCell>
                     <TableCell>{item.operator || '-'}</TableCell>
-                    <TableCell className="text-sm">
-                      {item.task || '-'}
-                      {item.boqItemId != null && boqItemMap.has(Number(item.boqItemId)) && (
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          BOQ: {boqItemDisplayName(boqItemMap.get(Number(item.boqItemId)))}
-                          {item.structureId ? ` · ${item.structureId}` : ""}
-                        </div>
-                      )}
-                    </TableCell>
+                    <TableCell className="text-sm">{item.task || '-'}</TableCell>
                     <TableCell>{item.startTime || '-'}</TableCell>
                     <TableCell>{item.endTime || '-'}</TableCell>
                     <TableCell className="text-right">{item.openingReading != null ? item.openingReading : '-'}</TableCell>
                     <TableCell className="text-right">{item.closingReading != null ? item.closingReading : '-'}</TableCell>
                     <TableCell className="text-right text-sm">
-                      {displayHours}
+                      {displayHours || '-'}
                       {isTripBased && item.numberOfTrips && item.tripDistance && (
                         <div className="text-[12px] text-muted-foreground">{item.numberOfTrips} trips × {item.tripDistance} km = {(item.numberOfTrips * item.tripDistance * 2).toFixed(1)} km</div>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
-                      {usage.actualDiesel != null ? usage.actualDiesel.toFixed(3) : "-"}
-                      {usage.actualDieselBasis === "tank_derived" && <div className="text-xs text-muted-foreground">tank actual</div>}
-                    </TableCell>
+                    <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                   </TableRow>
                   );
                 })}
@@ -359,7 +302,6 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                   <TableHead>Category</TableHead>
                   <TableHead>Gender</TableHead>
                   <TableHead className="text-right">Count</TableHead>
-                  <TableHead>Task / BOQ Work Item</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -368,15 +310,6 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                     <TableCell>{item.category}</TableCell>
                     <TableCell>{item.gender}</TableCell>
                     <TableCell className="text-right font-mono font-bold">{item.count}</TableCell>
-                    <TableCell className="text-sm">
-                      {item.task || "-"}
-                      {item.boqItemId != null && boqItemMap.has(Number(item.boqItemId)) && (
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          BOQ: {boqItemDisplayName(boqItemMap.get(Number(item.boqItemId)))}
-                          {item.structureId ? ` · ${item.structureId}` : ""}
-                        </div>
-                      )}
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

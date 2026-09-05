@@ -13,7 +13,6 @@ import { Badge } from "@/components/ui/badge";
 import { formatChainageKm } from "@shared/barSide";
 import { DprPhotoGroups } from "@/components/DprPhotoGroups";
 import { layerDisplayName } from "@shared/layerDisplay";
-import { dprMeasurementSummary } from "@shared/dprGeometry";
 
 type PreviewDpr = {
   id: number;
@@ -23,7 +22,6 @@ type PreviewDpr = {
   weather?: string | null;
   remarks?: string | null;
   dprStatus?: string | null;
-  boqProjectId?: number | null;
   progress: Array<{
     id: number;
     activity: string | null;
@@ -38,7 +36,6 @@ type PreviewDpr = {
     layerNo: number | null;
     quantity: number | null;
     uom: string | null;
-    boqItemId?: number | null;
     chainageOverrideReason?: string | null;
     entryKey?: string | null;
   }>;
@@ -71,17 +68,6 @@ export function DprPreviewDialog({
     staleTime: 60_000,
   });
 
-  const { data: boqItems = [] } = useQuery<any[]>({
-    queryKey: ["/api/boq/projects", dpr?.boqProjectId, "items"],
-    queryFn: async () => {
-      const res = await fetch(`/api/boq/projects/${dpr!.boqProjectId}/items`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load BOQ items for DPR preview");
-      return res.json();
-    },
-    enabled: dpr?.boqProjectId != null,
-  });
-  const boqItemMap = new Map(boqItems.map((item) => [item.id, item]));
-
   return (
     <Dialog open={dprId != null} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dpr-preview-dialog">
@@ -109,8 +95,6 @@ export function DprPreviewDialog({
                 {(dpr.progress ?? []).length === 0 && <p className="px-3 py-2 text-slate-500">No progress rows.</p>}
                 {(dpr.progress ?? []).map((p) => {
                   const highlighted = highlightEntryId != null && p.id === highlightEntryId;
-                  const boqItem = p.boqItemId != null ? boqItemMap.get(p.boqItemId) ?? null : null;
-                  const measurement = dprMeasurementSummary(p, boqItem);
                   return (
                     <div
                       key={p.id}
@@ -129,15 +113,9 @@ export function DprPreviewDialog({
                       </p>
                       <p className="text-slate-600 dark:text-slate-400">
                         {p.side ? `${p.side} · ` : ""}Ch. {chLabel(p)}
-                      </p>
-                      <p className="text-slate-600 dark:text-slate-400" data-testid={`dpr-preview-measurement-${p.id}`}>
-                        Dimensions: {measurement.dims ?? "—"}
-                        {" · "}Measured: {measurement.measuredQty != null
-                          ? `${Number(measurement.measuredQty.toFixed(3))} ${measurement.measuredUom ?? ""}`.trim()
-                          : "—"}
-                        {" · "}BOQ: {measurement.boqQty != null
-                          ? `${Number(measurement.boqQty.toFixed(measurement.converted ? 4 : 3))} ${measurement.boqUom ?? ""}`.trim()
-                          : "—"}
+                        {p.quantity != null ? ` · ${p.quantity} ${p.uom ?? ""}` : ""}
+                        {p.width != null ? ` · W ${p.width}m` : ""}
+                        {p.thickness != null ? ` · T ${p.thickness}m` : ""}
                       </p>
                       {p.chainageOverrideReason && (
                         <p className="text-xs text-slate-500 mt-0.5">Reason recorded: {p.chainageOverrideReason}</p>

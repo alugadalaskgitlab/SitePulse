@@ -37,7 +37,7 @@ export const api = {
       method: 'GET' as const,
       path: '/api/dprs/:id',
       responses: {
-        200: z.custom<typeof dprs.$inferSelect & { draftRevision?: string, progress: any[], equipment: any[], labour: any[], materials: any[], sitePurchases: any[] }>(),
+        200: z.custom<typeof dprs.$inferSelect & { progress: any[], equipment: any[], labour: any[], materials: any[], sitePurchases: any[] }>(),
         404: errorSchemas.notFound,
       },
     },

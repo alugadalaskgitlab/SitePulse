@@ -30,8 +30,6 @@ import {
 } from "@/lib/equipmentLifecycle";
 import { ProgrammeBarOutcomeHistory } from "@/components/ProgrammeBarOutcomeHistory";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
-import { dprMeasurementSummary, formatDprMeasurement, getEffectiveLength } from "@shared/dprGeometry";
-import { boqItemDisplayName } from "@shared/boqItemName";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -48,20 +46,6 @@ export default function SiteReport() {
   const { data: sites = [] } = useQuery<Site[]>({
     queryKey: ["/api/sites"],
   });
-  const boqProjectId = (dpr as any)?.boqProjectId != null ? Number((dpr as any).boqProjectId) : null;
-  const { data: boqItems = [] } = useQuery<any[]>({
-    queryKey: ["/api/boq/projects", boqProjectId, "items"],
-    queryFn: async () => {
-      const response = await fetch(`/api/boq/projects/${boqProjectId}/items`, { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to load BOQ items for DPR report");
-      return response.json();
-    },
-    enabled: boqProjectId != null,
-  });
-  const boqItemMap = useMemo(
-    () => new Map<number, any>(boqItems.map((item: any) => [Number(item.id), item])),
-    [boqItems],
-  );
 
   const getPersonnelNames = (ids: number[] | undefined) => {
     if (!ids?.length || !personnelList) return null;
@@ -520,25 +504,15 @@ export default function SiteReport() {
                     );
                   }
 
-                  const linkedBoqItem = item.boqItemId != null
-                    ? boqItemMap.get(Number(item.boqItemId)) ?? null
+                  const derivedLength = (!item.length && item.chainageFrom && item.chainageTo) 
+                    ? Math.abs((parseFloat(item.chainageTo) - parseFloat(item.chainageFrom)) * 1000)
                     : null;
-                  const displayLength = getEffectiveLength(
-                    item.length != null ? Number(item.length) : null,
-                    item.chainageFrom ?? "",
-                    item.chainageTo ?? "",
-                  );
-                  const measurement = dprMeasurementSummary(item, linkedBoqItem);
+                  const displayLength = item.length || (derivedLength ? derivedLength.toFixed(0) : null);
                   
                   return (
                     <TableRow key={i} data-testid={`row-progress-${i}`}>
                       <TableCell className="font-medium max-w-[320px]">
                         <div title={item.activity}>{shortItemName(item.activity) || item.activity}</div>
-                        {linkedBoqItem && (
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            BOQ: {linkedBoqItem.itemCode ? `[${linkedBoqItem.itemCode}] ` : ""}{boqItemDisplayName(linkedBoqItem)}
-                          </div>
-                        )}
                           {item.programmeBarId != null && (
                             <ProgrammeBarOutcomeHistory
                               projectId={(dpr as any).boqProjectId}
@@ -565,14 +539,11 @@ export default function SiteReport() {
                       <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
                       <TableCell>{item.chainageFrom || '-'}</TableCell>
                       <TableCell>{item.chainageTo || '-'}</TableCell>
-                      <TableCell className="text-right">{displayLength ?? '-'}</TableCell>
+                      <TableCell className="text-right">{displayLength || '-'}</TableCell>
                       <TableCell className="text-right">{item.width || '-'}</TableCell>
                       <TableCell className="text-right">{item.thickness || '-'}</TableCell>
-                      <TableCell className="text-right font-semibold" colSpan={2}>
-                        {item.isIncidental
-                          ? `${measurement.measuredQty != null ? Number(measurement.measuredQty.toFixed(3)) : "—"} ${measurement.measuredUom ?? ""}`.trim()
-                          : formatDprMeasurement(measurement)}
-                      </TableCell>
+                      <TableCell className="text-right font-semibold">{item.quantity?.toFixed(3) || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{item.uom}</TableCell>
                     </TableRow>
                   );
                 })}
@@ -626,10 +597,6 @@ export default function SiteReport() {
                   {dpr.equipment.map((item: any, i: number) => {
                     const et = item.entryType || "time_meter";
                     const isTripBased = et === "trip_based";
-                    const linkedRows = breakdownsBySourceId.get(Number(item.id)) ?? [];
-                    // Submitted reports are audit snapshots. These four values
-                    // were authoritatively computed on save and must not change
-                    // when the Equipment Master norm is edited later.
                     const operatingQuantity = item.hoursWorked != null
                       ? `${Number(item.hoursWorked).toFixed(3)} h`
                       : item.totalKm != null ? `${Number(item.totalKm).toFixed(3)} km` : "—";
@@ -653,6 +620,8 @@ export default function SiteReport() {
                       && usageId != null
                       && usageLifecycle?.status === "closed"
                       && usageLifecycle.successorId == null;
+                    const linkedRows = breakdownsBySourceId.get(Number(item.id)) ?? [];
+                    
                     return (
                       <TableRow key={i} data-testid={`row-equipment-${i}`}>
                         <TableCell className="font-medium">
@@ -664,15 +633,7 @@ export default function SiteReport() {
                         </TableCell>
                         <TableCell>{item.vehicleNo || '-'}</TableCell>
                         <TableCell>{item.operator || '-'}</TableCell>
-                        <TableCell className="text-sm">
-                          {item.task || '-'}
-                          {item.boqItemId != null && boqItemMap.has(Number(item.boqItemId)) && (
-                            <div className="text-xs text-muted-foreground mt-0.5">
-                              BOQ: {boqItemDisplayName(boqItemMap.get(Number(item.boqItemId)))}
-                              {item.structureId ? ` · ${item.structureId}` : ""}
-                            </div>
-                          )}
-                        </TableCell>
+                        <TableCell className="text-sm">{item.task || '-'}</TableCell>
                         <TableCell className="text-sm">
                           {readingSource}
                           {isTripBased && item.numberOfTrips && item.tripDistance && (
@@ -682,7 +643,7 @@ export default function SiteReport() {
                         <TableCell className="text-right">
                           {operatingQuantity}
                         </TableCell>
-                        <TableCell className="text-right">{item.diesel != null ? Number(item.diesel).toFixed(3) : "-"}</TableCell>
+                        <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                         <TableCell className="text-right">
                           {persistedExpected != null ? `${persistedExpected.toFixed(3)} L` : "—"}
                         </TableCell>
@@ -690,7 +651,7 @@ export default function SiteReport() {
                           {persistedNorm != null ? `${persistedNorm.toFixed(3)}${persistedNormUnit ? ` ${persistedNormUnit}` : ""}` : "—"}
                           {persistedExpected != null && item.diesel != null && (
                             <div className="text-xs text-muted-foreground">
-                              Entered variance: {(Number(item.diesel) - persistedExpected).toFixed(3)} L
+                              Actual variance: {(Number(item.diesel) - persistedExpected).toFixed(3)} L
                             </div>
                           )}
                         </TableCell>
@@ -821,15 +782,7 @@ export default function SiteReport() {
                       <TableCell>{item.category}</TableCell>
                       <TableCell>{item.gender}</TableCell>
                       <TableCell className="text-right font-mono font-bold">{item.count}</TableCell>
-                      <TableCell>
-                        {item.task || '-'}
-                        {item.boqItemId != null && boqItemMap.has(Number(item.boqItemId)) && (
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            BOQ: {boqItemDisplayName(boqItemMap.get(Number(item.boqItemId)))}
-                            {item.structureId ? ` · ${item.structureId}` : ""}
-                          </div>
-                        )}
-                      </TableCell>
+                      <TableCell>{item.task || '-'}</TableCell>
                       <TableCell>{item.contractor || '-'}</TableCell>
                     </TableRow>
                   ))}
