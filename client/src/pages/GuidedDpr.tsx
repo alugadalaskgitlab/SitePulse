@@ -61,6 +61,9 @@ import { MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } fro
 import { Checkbox } from "@/components/ui/checkbox";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
+import { BillItemPicker } from "@/components/BillItemPicker";
+import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
+import { dprBoqItemDisplayName } from "@shared/dprBoqSelection";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import { flattenCutFillConsumptions, hydrateCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
@@ -530,38 +533,15 @@ export default function GuidedDpr() {
   useEffect(() => {
     if (activeSites.length === 1 && !siteName) setSiteName(activeSites[0].name);
   }, [activeSites, siteName]);
-  const selectedSiteId = useMemo(
-    () => sitesList.find((s) => s.name === siteName)?.id ?? null,
-    [siteName, sitesList],
-  );
-
   const { data: personnelList = [] } = useQuery<Personnel[]>({ queryKey: ["/api/personnel"] });
 
-  const { data: siteBoqProjects = [] } = useQuery<Array<{ id: number; name: string; status?: string; barCount?: number }>>({
-    queryKey: ["/api/boq/projects", selectedSiteId],
-    queryFn: async () => {
-      const res = await fetch(`/api/boq/projects?siteId=${selectedSiteId}`, { credentials: "include" });
-      return res.ok ? res.json() : [];
-    },
-    enabled: !!selectedSiteId,
-  });
-  // Same project-resolution priority as the Detailed DPR.
-  const boqProjectId = useMemo(() => {
-    if (siteBoqProjects.length === 0) return null;
-    return (
-      siteBoqProjects.find((p) => p.status === "active" && (p.barCount ?? 0) > 0)?.id ??
-      siteBoqProjects.find((p) => p.status === "active")?.id ??
-      siteBoqProjects[0].id
-    );
-  }, [siteBoqProjects]);
-
-  const { data: boqItems = [] } = useQuery<SiteBoqItem[]>({
-    queryKey: ["/api/boq/projects", boqProjectId, "items"],
-    queryFn: async () => {
-      const res = await fetch(`/api/boq/projects/${boqProjectId}/items`, { credentials: "include" });
-      return res.ok ? res.json() : [];
-    },
-    enabled: !!boqProjectId,
+  const {
+    siteId: selectedSiteId,
+    projectId: boqProjectId,
+    items: boqItems,
+  } = useDprBoqItems<SiteBoqItem>({
+    siteName,
+    sites: sitesList,
   });
   const { data: cutFillArrangements = [] } = useQuery<any[]>({
     queryKey: ["/api/boq/projects", boqProjectId, "earthwork-arrangements"],
@@ -736,7 +716,7 @@ export default function GuidedDpr() {
     setEntries((prev) => prev.map((e, i) => (i === idx ? {
       ...e,
       boqItemId: item.id,
-      activity: boqItemDisplayName(item),
+      activity: dprBoqItemDisplayName(item),
       uom: resolveBoqUomProfile(item).uom,
       programmeBarId: null,
       // 06T §3: deliberate BOQ-item change — the persisted arrangement no
@@ -1642,25 +1622,27 @@ export default function GuidedDpr() {
             {e.programmeBarId == null && (
               <div>
                 <Label>BOQ Item / Activity</Label>
-                <div className="relative">
-                  <select
-                    value={e.boqItemId != null ? String(e.boqItemId) : ""}
-                    onChange={(event) => {
-                      const item = itemById.get(Number(event.target.value));
-                      if (item) setEntryBoqItem(idx, item);
-                    }}
-                    className="flex h-9 w-full appearance-none rounded-md border border-input bg-background px-3 py-2 pr-9 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                    data-testid={`select-boq-item-${idx}`}
-                  >
-                    <option value="">Select BOQ item…</option>
-                    {boqItems.map((item) => (
-                      <option key={item.id} value={String(item.id)}>
-                        {boqItemDisplayName(item)}{item.unit ? ` · ${item.unit}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50" />
-                </div>
+                <BillItemPicker
+                  items={boqItems}
+                  value={e.boqItemId}
+                  stacked
+                  labels={false}
+                  testidPrefix={`guided-progress-${idx}`}
+                  reviewPath={boqProjectId ? `/work-program/${boqProjectId}/item-review` : undefined}
+                  onChange={(_id, item) => {
+                    if (item) {
+                      setEntryBoqItem(idx, item as SiteBoqItem);
+                    } else {
+                      updateEntry(idx, {
+                        boqItemId: null,
+                        activity: "",
+                        uom: "",
+                        programmeBarId: null,
+                        earthworkArrangementId: null,
+                      });
+                    }
+                  }}
+                />
               </div>
             )}
             {/* Batch 1 Part A: actual execution side is a core, ALWAYS-visible,

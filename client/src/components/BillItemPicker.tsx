@@ -22,7 +22,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { BOQ_WORK_CATEGORIES } from "@shared/boqWorkCategories";
-import { shortItemName, boqItemDisplayName } from "@shared/boqItemName";
+import { shortItemName } from "@shared/boqItemName";
+import { dprBoqItemDisplayName, dprSelectableBoqItems } from "@shared/dprBoqSelection";
 
 export type BillItem = {
   id: number;
@@ -52,7 +53,7 @@ const BILL_OTHER = "Other / Unbilled";
 const NEEDS_MAPPING = "⚠ Needs Mapping";
 
 function ItemRow({ it, unitSuffix }: { it: BillItem; unitSuffix: string }) {
-  const short = boqItemDisplayName(it);
+  const short = dprBoqItemDisplayName(it);
   return (
     <div className="flex flex-col min-w-0" title={it.description}>
       <span className="flex items-center gap-1.5 font-medium leading-snug truncate">
@@ -84,7 +85,7 @@ function ItemSearchList({
       filter={(value, search) => {
         const it = billItems.find((i) => String(i.id) === value);
         if (!it) return 0;
-        const haystack = [it.itemCode, it.itemName, it.description, it.unit]
+        const haystack = [it.itemCode, it.displayName, it.itemName, it.description, it.unit]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -139,13 +140,13 @@ export function BillItemPicker({
 }) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
+  const selectableItems = useMemo(() => dprSelectableBoqItems(items), [items]);
 
   // Prefer the imported Bill hierarchy. Fall back to reviewed work category for
   // legacy/unbilled items. "Needs Mapping" remains the final fallback group.
   const bills = useMemo(() => {
     const m = new Map<string, number>();
-    for (const it of items) {
-      if (it.includeInDpr === false) continue;
+    for (const it of selectableItems) {
       const importedBill = [it.categorySourceBillNo?.trim(), it.categoryName?.trim()].filter(Boolean).join(" · ");
       const unmapped = !importedBill && (!it.workCategory?.trim() || it.needsReview);
       const name = importedBill || (unmapped ? NEEDS_MAPPING : (WORK_CAT_LABEL.get(it.workCategory!)?.label ?? it.workCategory!));
@@ -164,7 +165,7 @@ export function BillItemPicker({
         return a[1] - b[1];
       })
       .map(([name]) => name);
-  }, [items]);
+  }, [selectableItems]);
 
   const selectedItem = value != null ? items.find((i) => i.id === value) ?? null : null;
 
@@ -180,16 +181,15 @@ export function BillItemPicker({
   const effectiveBill = bill || itemGroup(selectedItem);
 
   const billItems = useMemo(() => {
-    return items
+    return selectableItems
       .filter((i) => {
-        if (i.includeInDpr === false) return false;
         const importedBill = [i.categorySourceBillNo?.trim(), i.categoryName?.trim()].filter(Boolean).join(" · ");
         const unmapped = !importedBill && (!i.workCategory?.trim() || i.needsReview);
         const groupName = importedBill || (unmapped ? NEEDS_MAPPING : (WORK_CAT_LABEL.get(i.workCategory!)?.label ?? i.workCategory!));
         return groupName === effectiveBill;
       })
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-  }, [items, effectiveBill]);
+  }, [selectableItems, effectiveBill]);
 
   const handleSelect = (it: BillItem | null) => {
     onChange(it ? it.id : null, it);

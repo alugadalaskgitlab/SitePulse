@@ -37,6 +37,8 @@ import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { BillItemPicker } from "@/components/BillItemPicker";
+import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
+import { dprBoqItemDisplayName } from "@shared/dprBoqSelection";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
@@ -436,32 +438,15 @@ export default function SiteEntry() {
   });
 
   // Resolve numeric siteId from selected site name (must be after `header`)
-  const selectedSiteId = useMemo(() => {
-    if (!header.site) return null;
-    return sitesList.find((s) => s.name === header.site)?.id ?? null;
-  }, [header.site, sitesList]);
-
-  // Find the BOQ project(s) linked to this site (if any)
-  const { data: siteBoqProjects = [] } = useQuery<Array<{ id: number; name: string; status?: string; barCount?: number; itemCount?: number }>>({
-    queryKey: ["/api/boq/projects", selectedSiteId],
-    queryFn: async () => {
-      const res = await fetch(`/api/boq/projects?siteId=${selectedSiteId}`, { credentials: "include" });
-      return res.ok ? res.json() : [];
-    },
-    enabled: !!selectedSiteId,
+  const {
+    siteId: selectedSiteId,
+    projects: siteBoqProjects,
+    projectId: resolvedBoqProjectId,
+    items: siteBoqItems,
+  } = useDprBoqItems<SiteBoqItem>({
+    siteName: header.site,
+    sites: sitesList,
   });
-
-  // Priority: 1. active + has bars  2. any active  3. first (newest) in list
-  const resolvedBoqProjectId = useMemo(() => {
-    if (siteBoqProjects.length === 0) return null;
-    const activeWithBars = siteBoqProjects.find(
-      (p) => p.status === "active" && (p.barCount ?? 0) > 0
-    );
-    if (activeWithBars) return activeWithBars.id;
-    const active = siteBoqProjects.find((p) => p.status === "active");
-    if (active) return active.id;
-    return siteBoqProjects[0].id;
-  }, [siteBoqProjects]);
 
   // Sync resolved project explicitly into header state so the DPR carries the
   // right project ID as a first-class field, not an implicit computation at
@@ -487,15 +472,6 @@ export default function SiteEntry() {
     return siteBoqProjects.find((p) => p.id === siteBoqProjectId)?.name ?? null;
   }, [siteBoqProjectId, siteBoqProjects]);
 
-  // Fetch items of that BOQ project
-  const { data: siteBoqItems = [] } = useQuery<SiteBoqItem[]>({
-    queryKey: ["/api/boq/projects", siteBoqProjectId, "items"],
-    queryFn: async () => {
-      const res = await fetch(`/api/boq/projects/${siteBoqProjectId}/items`, { credentials: "include" });
-      return res.ok ? res.json() : [];
-    },
-    enabled: !!siteBoqProjectId,
-  });
   const { data: cutFillArrangements = [] } = useQuery<any[]>({
     queryKey: ["/api/boq/projects", siteBoqProjectId, "earthwork-arrangements"],
     queryFn: async () => {
@@ -2213,7 +2189,7 @@ export default function SiteEntry() {
                         onChange={(id, it) => {
                           const updated = [...progress];
                           updated[idx].boqItemId = id;
-                          updated[idx].activity = it ? boqItemDisplayName(it).toUpperCase() : "";
+                          updated[idx].activity = it ? dprBoqItemDisplayName(it).toUpperCase() : "";
                           // 06T §3: deliberate item change — arrangement and
                           // bar link re-resolve for the new context.
                           updated[idx].earthworkArrangementId = null;

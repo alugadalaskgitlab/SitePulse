@@ -123,7 +123,7 @@ describe("operational screens use the shared helper (source regression scan)", (
   it("SiteEdit no longer stores/lists full descriptions for BOQ activity", () => {
     const src = read("client/src/pages/SiteEdit.tsx");
     expect(src).not.toMatch(/boqItem\.description\.toUpperCase/);
-    expect(src).toContain("boqItemDisplayName(boqItem).toUpperCase()");
+    expect(src).toContain("dprBoqItemDisplayName(boqItem).toUpperCase()");
   });
 
   it("Guided DPR uses the shared helper with no local short-name copy", () => {
@@ -134,9 +134,9 @@ describe("operational screens use the shared helper (source regression scan)", (
 
   it("BillItemPicker uses the shared helper with no local short-name copy", () => {
     const src = read("client/src/components/BillItemPicker.tsx");
-    expect(src).toContain('from "@shared/boqItemName"');
+    expect(src).toContain('from "@shared/dprBoqSelection"');
     expect(src).not.toMatch(/const PREFIXES = \[/);
-    expect(src).toContain("boqItemDisplayName(it)");
+    expect(src).toContain("dprBoqItemDisplayName(it)");
   });
 
   it("Work Programme / auto-sequence selectors use the shared display name", () => {

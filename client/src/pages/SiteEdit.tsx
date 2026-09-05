@@ -40,6 +40,9 @@ import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAtta
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { parseDprError } from "@/lib/dprErrors";
 import { resolveReturnTo } from "@/lib/progressReportNav";
+import { BillItemPicker, type BillItem } from "@/components/BillItemPicker";
+import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
+import { dprBoqItemDisplayName } from "@shared/dprBoqSelection";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import {
   adoptOpenUsageIntoDprRow,
@@ -423,36 +426,16 @@ export default function SiteEdit() {
     engineer: "",
   });
 
-  // Resolve numeric siteId from the selected site name
-  const selectedSiteId = useMemo(() => {
-    if (!header.site) return null;
-    return sitesList.find((s) => s.name === header.site)?.id ?? null;
-  }, [header.site, sitesList]);
-
-  // BOQ project linked to this site
-  const { data: siteBoqProjects = [] } = useQuery<Array<{ id: number; name: string }>>({
-    queryKey: ["/api/boq/projects", selectedSiteId],
-    queryFn: async () => {
-      const res = await fetch(`/api/boq/projects?siteId=${selectedSiteId}`, { credentials: "include" });
-      return res.ok ? res.json() : [];
-    },
-    enabled: !!selectedSiteId,
-  });
-  const siteBoqProjectId = siteBoqProjects[0]?.id ?? null;
-
-  // Items of that BOQ project
-  const { data: siteBoqItems = [] } = useQuery<Array<{
-    id: number;
-    description: string;
-    displayName?: string | null;
-    itemName?: string | null;
-    itemCode: string | null;
-    unit: string;
-    dprConversionFactor?: number | null;
+  type SiteEditBoqItem = BillItem & {
     dprMeasurementMethod?: string | null;
-  }>>({
-    queryKey: ["/api/boq/projects", siteBoqProjectId, "items"],
-    enabled: !!siteBoqProjectId,
+  };
+  const {
+    projectId: siteBoqProjectId,
+    items: siteBoqItems,
+  } = useDprBoqItems<SiteEditBoqItem>({
+    siteName: header.site,
+    sites: sitesList,
+    preferredProjectId: dpr?.boqProjectId ?? null,
   });
   const { data: cutFillArrangements = [] } = useQuery<any[]>({
     queryKey: ["/api/boq/projects", siteBoqProjectId, "earthwork-arrangements"],
@@ -1754,71 +1737,26 @@ export default function SiteEdit() {
                         - If free-text activity exists (legacy data): show text input with option to switch to BOQ
                         boqItemId is saved with the DPR payload and persisted to progress_entries.boq_item_id */}
                     <Label className="text-sm">{siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
-                    {siteBoqItems.length > 0 && entry.boqItemId != null ? (
-                      <Select
-                        value={String(entry.boqItemId)}
-                        onValueChange={(val) => {
+                    {siteBoqItems.length > 0 && (entry.boqItemId != null || !entry.activity) ? (
+                      <BillItemPicker
+                        items={siteBoqItems}
+                        value={entry.boqItemId}
+                        stacked
+                        labels={false}
+                        testidPrefix={`edit-progress-${idx}`}
+                        reviewPath={siteBoqProjectId ? `/work-program/${siteBoqProjectId}/item-review` : undefined}
+                        onChange={(boqItemId, boqItem) => {
                           const updated = [...progress];
-                          if (val === "__none__") {
-                            updated[idx].boqItemId = null;
-                            updated[idx].activity = "";
-                          } else {
-                            const boqItem = siteBoqItems.find((i) => i.id === parseInt(val));
-                            updated[idx].boqItemId = parseInt(val);
-                            updated[idx].activity = boqItem ? boqItemDisplayName(boqItem).toUpperCase() : "";
-                            if (boqItem) updated[idx].uom = resolveBoqUomProfile(boqItem).uom;
-                          }
-                          // 06T §3: deliberate BOQ-item change — the old
-                          // arrangement and bar link no longer describe this
-                          // row's context; both re-resolve.
+                          updated[idx].boqItemId = boqItemId;
+                          updated[idx].activity = boqItem ? dprBoqItemDisplayName(boqItem).toUpperCase() : "";
+                          if (boqItem) updated[idx].uom = resolveBoqUomProfile(boqItem).uom;
+                          // Deliberate BOQ context change: arrangement and bar
+                          // links must be resolved again for the selected item.
                           updated[idx].earthworkArrangementId = null;
                           updated[idx].programmeBarId = null;
                           setProgress(updated);
                         }}
-                        data-testid={`select-boq-item-${idx}`}
-                      >
-                        <SelectTrigger className="uppercase text-sm">
-                          <SelectValue placeholder="Select BOQ item…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">— Unlink from BOQ —</SelectItem>
-                          {siteBoqItems.map((item) => (
-                            <SelectItem key={item.id} value={String(item.id)}>
-                              {item.itemCode ? `${item.itemCode} · ` : ""}{boqItemDisplayName(item)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : siteBoqItems.length > 0 && !entry.activity ? (
-                      <Select
-                        value="__none__"
-                        onValueChange={(val) => {
-                          const updated = [...progress];
-                          if (val !== "__none__") {
-                            const boqItem = siteBoqItems.find((i) => i.id === parseInt(val));
-                            updated[idx].boqItemId = parseInt(val);
-                            updated[idx].activity = boqItem ? boqItemDisplayName(boqItem).toUpperCase() : "";
-                            if (boqItem) updated[idx].uom = resolveBoqUomProfile(boqItem).uom;
-                            // 06T §3: BOQ context change — arrangement/bar re-resolve.
-                            updated[idx].earthworkArrangementId = null;
-                            updated[idx].programmeBarId = null;
-                          }
-                          setProgress(updated);
-                        }}
-                        data-testid={`select-boq-item-${idx}`}
-                      >
-                        <SelectTrigger className="uppercase text-sm">
-                          <SelectValue placeholder="Select BOQ item…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">— Select activity —</SelectItem>
-                          {siteBoqItems.map((item) => (
-                            <SelectItem key={item.id} value={String(item.id)}>
-                              {item.itemCode ? `${item.itemCode} · ` : ""}{boqItemDisplayName(item)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      />
                     ) : (
                       <div className="space-y-1">
                         <Input

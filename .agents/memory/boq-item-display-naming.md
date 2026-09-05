@@ -14,4 +14,6 @@ Rule: The shared BOQ naming helper is the single source of truth. User-facing pr
 - SNL fields remain available to planning, sequencing, recipes, duration, equipment/labour norms, material calculations, and internal classification.
 - Full BOQ descriptions may remain as secondary detail/tooltips, but the primary visible item identity uses the shared helper.
 - Historic DPR `activity` text is untouched; programme/bar linkage matches on IDs, never on activity text.
-- Regression tests: `tests/boqItemDisplayName.test.ts` (helper rules + source scans).
+- Guided, Detailed, and Edit DPR activity selectors must share site/project resolution, explicit `includeInDpr:false` exclusion, ID/order semantics, and the same Bill/Item picker.
+- Edit DPR preserves its saved BOQ project when still valid for the site; legacy free-text activity remains editable rather than being silently remapped.
+- Regression tests cover both BOQ-owned naming and the shared DPR selection contract.
