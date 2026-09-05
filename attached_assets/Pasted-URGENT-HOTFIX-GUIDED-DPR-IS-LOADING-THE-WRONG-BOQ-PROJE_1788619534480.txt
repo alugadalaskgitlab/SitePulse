@@ -1,0 +1,58 @@
+URGENT HOTFIX — GUIDED DPR IS LOADING THE WRONG BOQ PROJECT IN PRODUCTION
+
+The BOQ dropdown control itself is now working, but production is showing BOQ items from the wrong project.
+
+Evidence:
+- Preview showed the correct BOQ list.
+- Production now shows different items such as:
+  "DBM Grading-II (26.5mm)"
+  "Extra over item..."
+  etc.
+- Do not change the dropdown implementation again.
+
+Please diagnose only the BOQ PROJECT resolution.
+
+Current Guided DPR resolves the project by taking the first:
+active project with programme bars
+→ then active project
+→ then first project.
+
+That is unsafe when a site has more than one eligible BOQ project.
+
+Please check the actual production data for the affected site and report:
+1. every BOQ project returned for that site;
+2. project ID, name, status and programme-bar count for each;
+3. which project ID Guided DPR is currently choosing;
+4. which project contains the correct BOQ list seen in preview.
+
+Then fix project resolution with these rules:
+
+A. If opening/completing/editing an existing DPR/draft and that DPR already has a boqProjectId:
+   ALWAYS use that exact stored boqProjectId.
+   Do not re-resolve another project from the site.
+
+B. For a new DPR:
+   use the site's genuinely intended current/active BOQ project deterministically.
+   Do not simply use whichever active-with-bars project happens to come first from the API.
+
+C. If production has more than one genuinely active/current BOQ project for the same site and there is no existing authoritative project link:
+   STOP and report the ambiguity rather than guessing.
+
+D. Do not change:
+   - BOQ item data;
+   - BOQ mappings;
+   - programme bars;
+   - quantities;
+   - newly fixed dropdown control;
+   - DPR geometry/resource restoration;
+   - schema/database.
+
+TEST:
+1. Open the same production site/draft that currently shows the wrong list.
+2. Confirm the correct boqProjectId is resolved.
+3. Confirm the BOQ dropdown shows exactly the expected project items.
+4. Save Draft/reopen and confirm the same project and same BOQ item remain.
+5. Confirm another site's DPR still resolves its own correct BOQ project.
+
+DO NOT PUBLISH.
+STOP and report the production project IDs and the exact root cause first.
