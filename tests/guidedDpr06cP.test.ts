@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { calculateLengthFromChainage, getEffectiveLength } from "../shared/dprGeometry";
 import { GUIDED_STEPS, guidedStepBlocker } from "../client/src/lib/guidedWizard";
+import { canRestoreGuidedServerDraft } from "../client/src/lib/guidedDraftReconcile";
 
 describe("derived Length (06C-P §13)", () => {
   it("2+570 → 2+660 gives 90 m", () => {
@@ -44,5 +45,44 @@ describe("7-step wizard structure (06C-P §5)", () => {
     for (const step of [3, 4, 5, 6] as const) {
       expect(guidedStepBlocker(step, s)).toBeNull();
     }
+  });
+});
+
+describe("server-first Guided draft recovery", () => {
+  const serverDraft = {
+    id: 41,
+    date: "2026-09-05",
+    site: "NH-44",
+    engineer: "A",
+    boqProjectId: 7,
+    progress: [{ id: 1, activity: "GSB", quantity: 12 }],
+    equipment: [{ id: 2, machine: "ROLLER" }],
+    labour: [{ id: 3, category: "Skilled", count: 2 }],
+    materials: [],
+    sitePurchases: [],
+    structureItems: [],
+  };
+
+  it("rejects stale, unmarked, empty, and wrong-draft browser overlays", () => {
+    expect(canRestoreGuidedServerDraft({ draftId: 41 }, 41, "12")).toBe(false);
+    expect(canRestoreGuidedServerDraft({ draftId: 99, baseDraftRevision: "12" }, 41, "12")).toBe(false);
+    expect(canRestoreGuidedServerDraft({ draftId: 41, baseDraftRevision: "11" }, 41, "12")).toBe(false);
+  });
+
+  it("keeps newer local edits recoverable only when based on the current server snapshot", () => {
+    expect(canRestoreGuidedServerDraft({
+      draftId: 41,
+      baseDraftRevision: "12",
+    }, 41, "12")).toBe(true);
+    expect(canRestoreGuidedServerDraft({
+      draftId: 41,
+      baseDraftRevision: "12",
+    }, 41, "13")).toBe(false);
+  });
+
+  it("accepts a current revision regardless of which server child section is populated", () => {
+    expect(serverDraft.equipment).toHaveLength(1);
+    expect(serverDraft.labour).toHaveLength(1);
+    expect(canRestoreGuidedServerDraft({ draftId: 41, baseDraftRevision: "12" }, 41, "12")).toBe(true);
   });
 });

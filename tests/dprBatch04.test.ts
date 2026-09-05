@@ -18,6 +18,7 @@ import {
   formatDprDimensions,
   dprMeasurementSummary,
   formatDprMeasurement,
+  resolveDprPhysicalQuantity,
 } from "../shared/dprGeometry";
 import {
   splitGuidedEquipmentRow,
@@ -52,6 +53,21 @@ describe("Batch 04 — measurement & BOQ-unit conversion", () => {
 
   it("C — BOQ factor 0.0001 converts 225 SQM → 0.0225 Ha", () => {
     expect(boqProgressQty(225, CG)).toBeCloseTo(0.0225, 9);
+  });
+
+  it("geometry-complete rows materialize physical quantity before readiness without BOQ conversion", () => {
+    const physical = resolveDprPhysicalQuantity({
+      chainageFrom: "2.900",
+      chainageTo: "3.050",
+      width: 1.5,
+      quantity: null,
+    }, CG);
+    expect(physical).toBe(225);
+    const readiness = evaluateDprSubmitReadiness({
+      progress: [{ activity: "CLEARING AND GRUBBING", boqItemId: 13, quantity: physical }],
+    });
+    expect(readiness.ready).toBe(true);
+    expect(boqProgressQty(physical, CG)).toBeCloseTo(0.0225, 9);
   });
 
   it("D — dprConversionFactor is applied exactly once (summary uses raw stored qty)", () => {

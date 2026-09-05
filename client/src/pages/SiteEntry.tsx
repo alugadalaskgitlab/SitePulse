@@ -41,7 +41,7 @@ import { BillItemPicker } from "@/components/BillItemPicker";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
-import { checkQuantitySourceRow, dprMeasurementSummary, quantitiesMatch, MANUAL_QUANTITY_SOURCES } from "@shared/dprGeometry";
+import { checkQuantitySourceRow, dprMeasurementSummary, quantitiesMatch, MANUAL_QUANTITY_SOURCES, resolveDprPhysicalQuantity } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { applyEquipmentMasterSelection, computeTotalDiesel, computeTripTotalKm, OTHER_EQUIPMENT_VALUE } from "@shared/guidedEquipment";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
@@ -1158,6 +1158,8 @@ export default function SiteEntry() {
     mutationFn: async () => {
       const progressWithCalc = progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
+        const boqItem = p.boqItemId != null ? siteBoqItems.find((item) => item.id === p.boqItemId) : null;
+        const physicalQuantity = resolveDprPhysicalQuantity({ ...p, length: effectiveLength }, boqItem);
         if (p.noSiteWork) {
           return {
             ...p,
@@ -1172,13 +1174,13 @@ export default function SiteEntry() {
         return {
           ...p,
           length: effectiveLength,
-          quantity: p.quantity || calculateQuantity(p),
+          quantity: physicalQuantity,
           // 030A: numeric chainage (Km) alongside the display text
           chainageFromKm: parseChainageKm(p.chainageFrom),
           chainageToKm: parseChainageKm(p.chainageTo),
           // 031 Part E: an untouched quantity that came from geometry is
           // recorded as "Calculated from geometry" automatically.
-          quantitySource: p.quantitySource || (p.quantity == null && calculateQuantity(p) != null ? "calculated" : null),
+          quantitySource: p.quantitySource || (p.quantity == null && physicalQuantity != null ? "calculated" : null),
           quantitySourceNote: p.quantitySourceNote?.trim() || null,
           chainageOverrideReason: p.chainageOverrideReason || null,
           executedBy: p.executedBy || null,
@@ -1392,15 +1394,17 @@ export default function SiteEntry() {
     mutationFn: async () => {
       const progressWithCalc = progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
+        const boqItem = p.boqItemId != null ? siteBoqItems.find((item) => item.id === p.boqItemId) : null;
+        const physicalQuantity = resolveDprPhysicalQuantity({ ...p, length: effectiveLength }, boqItem);
         return {
           ...p,
           length: effectiveLength,
-          quantity: p.quantity || calculateQuantity(p),
+          quantity: physicalQuantity,
           chainageFromKm: parseChainageKm(p.chainageFrom),
           chainageToKm: parseChainageKm(p.chainageTo),
           // 031 Part E: an untouched quantity that came from geometry is
           // recorded as "Calculated from geometry" automatically.
-          quantitySource: p.quantitySource || (p.quantity == null && calculateQuantity(p) != null ? "calculated" : null),
+          quantitySource: p.quantitySource || (p.quantity == null && physicalQuantity != null ? "calculated" : null),
           quantitySourceNote: p.quantitySourceNote?.trim() || null,
           chainageOverrideReason: p.chainageOverrideReason || null,
           executedBy: p.executedBy || null,
@@ -1614,7 +1618,14 @@ export default function SiteEntry() {
     // Mandatory issues block; advisories only ask for confirmation.
     const r = evaluateDprSubmitReadiness({
       workType,
-      progress: workType === "structure" ? [] : progress,
+      progress: workType === "structure" ? [] : progress.map((p) => {
+        const boqItem = p.boqItemId != null ? siteBoqItems.find((item) => item.id === p.boqItemId) : null;
+        return {
+          ...p,
+          length: getEffectiveLength(p),
+          quantity: resolveDprPhysicalQuantity({ ...p, length: getEffectiveLength(p) }, boqItem),
+        };
+      }),
       equipment,
       labour,
       materials,
@@ -1650,7 +1661,7 @@ export default function SiteEntry() {
       progress: progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
         const boqItem = p.boqItemId != null ? siteBoqItems.find((item) => item.id === p.boqItemId) : null;
-        const quantity = p.quantity || calculateQuantity(p);
+        const quantity = resolveDprPhysicalQuantity({ ...p, length: effectiveLength }, boqItem);
         return {
           ...p,
           length: effectiveLength,

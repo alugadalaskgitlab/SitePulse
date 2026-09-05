@@ -143,6 +143,20 @@ export function geometryQtyForRow(
   return calculateDprQuantity(length, row.width, row.thickness, boqItem);
 }
 
+/**
+ * Materialize the physical DPR quantity used for persistence and submit
+ * readiness. An entered quantity wins; otherwise geometry is calculated.
+ * This deliberately does NOT apply dprConversionFactor — conversion belongs
+ * only to BOQ progress/reporting after the physical measurement is stored.
+ */
+export function resolveDprPhysicalQuantity(
+  row: GeometryRowInput,
+  boqItem: { unit?: string | null; dprMeasurementMethod?: string | null } | null | undefined,
+): number | null {
+  if (row.quantity != null && Number.isFinite(Number(row.quantity))) return Number(row.quantity);
+  return geometryQtyForRow(row, boqItem);
+}
+
 /** Tolerance for "is this the system-calculated value?" (rounding-safe). */
 export function quantitiesMatch(entered: number, calc: number): boolean {
   return Math.abs(entered - calc) <= Math.max(0.005, Math.abs(calc) * 0.001);

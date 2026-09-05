@@ -374,6 +374,10 @@ export default function SiteEdit() {
     return false;
   });
   const { data: dpr, isLoading } = useDpr(id);
+  const draftRevisionRef = useRef<string | null>(null);
+  useEffect(() => {
+    draftRevisionRef.current = (dpr as any)?.draftRevision ?? null;
+  }, [dpr]);
 
   // Auto-grant for draft DPRs, admins, and Permission-Panel direct editors
   // when DPR/auth data arrives (permissions may load after mount).
@@ -1118,11 +1122,14 @@ export default function SiteEdit() {
   const draftSaveMutation = useMutation({
     mutationFn: async (payload: any) => {
       const response = await apiRequest("PATCH", `/api/dprs/${id}/draft`, {
-        ...payload, equipment: await prepareBreakdownAttachments(payload.equipment),
+        ...payload,
+        equipment: await prepareBreakdownAttachments(payload.equipment),
+        ...(draftRevisionRef.current ? { baseDraftRevision: draftRevisionRef.current } : {}),
       });
       return response.json();
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      draftRevisionRef.current = data.draftRevision ?? draftRevisionRef.current;
       sessionStorage.removeItem(DRAFT_KEY);
       // Batch 06C §22: draft saves keep the same DPR id — upload staged
       // per-activity photos now so they survive close/reopen.
@@ -1172,7 +1179,10 @@ export default function SiteEdit() {
     mutationFn: async (payload: any) => {
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       const response = await apiRequest("POST", `/api/dprs/${id}/submit`, {
-        ...payload, equipment: await prepareBreakdownAttachments(payload.equipment), clientTimestamp,
+        ...payload,
+        equipment: await prepareBreakdownAttachments(payload.equipment),
+        clientTimestamp,
+        ...(draftRevisionRef.current ? { baseDraftRevision: draftRevisionRef.current } : {}),
       });
       return response.json();
     },

@@ -5,6 +5,7 @@ const fx = vi.hoisted(() => ({
   queue: [] as any[][],
   writes: [] as any[],
   selectCalls: 0,
+  dprRow: null as any,
 }));
 
 function query(rows: any[] = []) {
@@ -14,13 +15,18 @@ function query(rows: any[] = []) {
     returning: () => Promise.resolve(rows),
     then: (resolve: any) => resolve(rows),
     values: (value: any) => { fx.writes.push(value); return query([{ id: 91, ...value }]); },
-    set: (value: any) => { fx.writes.push(value); return query([{ id: 7, ...value }]); },
+    set: (value: any) => { fx.writes.push(value); return query([{ id: 7, ...value, draftRevision: "revision-from-update" }]); },
   };
   return q;
 }
 
 const tx: any = {
   select: vi.fn(() => { fx.selectCalls++; return query(fx.queue.shift() ?? []); }),
+  query: {
+    dprs: {
+      findFirst: vi.fn(async () => fx.dprRow),
+    },
+  },
   insert: vi.fn(() => query()),
   update: vi.fn(() => query()),
   delete: vi.fn(() => query()),
@@ -51,6 +57,7 @@ beforeEach(() => {
   fx.queue = [];
   fx.writes = [];
   fx.selectCalls = 0;
+  fx.dprRow = null;
   vi.clearAllMocks();
 });
 
@@ -209,6 +216,38 @@ describe("DPR draft operational side-effect boundary", () => {
     expect(effects.canonicalUsage).not.toHaveBeenCalled();
   });
 
+  it("reads the DPR revision, header, and children in one repeatable-read snapshot", async () => {
+    const storage = new DatabaseStorage();
+    fx.dprRow = {
+      id: 7,
+      date: "2026-09-01",
+      site: "SITE A",
+      engineer: "ENGINEER",
+      dprStatus: "draft",
+      progress: [{ id: 101, activity: "GSB LAYING" }],
+      equipment: [],
+      labour: [],
+      materials: [],
+      sitePurchases: [],
+      structureItems: [],
+    };
+    fx.queue.push(
+      [{ draftRevision: "snapshot-revision" }],
+      [{ progressEntryId: 101, personnelId: 55 }],
+      [],
+    );
+    await expect(storage.getDpr(7)).resolves.toMatchObject({
+      id: 7,
+      draftRevision: "snapshot-revision",
+      progress: [{ id: 101, personnelIds: [55] }],
+      equipment: [],
+    });
+    const getCall = fakeDb.transaction.mock.calls.find((call: any[]) =>
+      call[1]?.isolationLevel === "repeatable read"
+    );
+    expect(getCall).toBeTruthy();
+  });
+
   it("repeatedly replaces the same canonical draft id with zero operational effects", async () => {
     const storage = new DatabaseStorage();
     storage.getDpr = vi.fn().mockResolvedValue({ id: 7, dprStatus: "draft" });
@@ -219,7 +258,10 @@ describe("DPR draft operational side-effect boundary", () => {
         [], // old progress rows
         [{ id: 4, meterType: "hour_meter", consumptionNorm: 4 }],
       );
-      await expect(storage.updateDraftDpr(7, payload() as any)).resolves.toMatchObject({ id: 7 });
+      await expect(storage.updateDraftDpr(7, payload() as any, "test-revision")).resolves.toMatchObject({
+        id: 7,
+        draftRevision: "revision-from-update",
+      });
     }
     expect(storage.getDpr).toHaveBeenCalledTimes(2);
     expect(effects.diesel).not.toHaveBeenCalled();
@@ -249,13 +291,13 @@ describe("DPR draft operational side-effect boundary", () => {
     );
     queueSubmitReads();
     const before = [...fx.writes];
-    await expect(storage.submitDraftDpr(7, payload("submitted") as any)).rejects.toBe(insufficient);
+    await expect(storage.submitDraftDpr(7, payload("submitted") as any, undefined, undefined, "test-revision")).rejects.toBe(insufficient);
     expect(fx.writes).toEqual(before);
     expect(effects.maintenance).not.toHaveBeenCalled();
     expect(effects.canonicalUsage).not.toHaveBeenCalled();
 
     queueSubmitReads();
-    await expect(storage.submitDraftDpr(7, payload("submitted") as any)).resolves.toMatchObject({
+    await expect(storage.submitDraftDpr(7, payload("submitted") as any, undefined, undefined, "test-revision")).resolves.toMatchObject({
       id: 7,
       dprStatus: "submitted",
     });
@@ -307,6 +349,8 @@ describe("all DPR write paths and route authorization remain wired", () => {
 
   it("keeps start identity and draft state transitions inside transaction guards", () => {
     expect(source).toContain("pg_advisory_xact_lock(1437");
-    expect(source).toContain('and(eq(dprs.id, id), eq(dprs.dprStatus, "draft"))');
+    expect(source).toContain('eq(dprs.dprStatus, "draft")');
+    expect(source).toContain("xmin::text = ${expectedDraftRevision}");
+    expect(source).toContain('draftRevision: sql<string>`xmin::text`');
   });
 });

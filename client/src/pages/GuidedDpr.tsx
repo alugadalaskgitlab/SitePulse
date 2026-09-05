@@ -41,7 +41,7 @@ import { format, subDays } from "date-fns";
 import type { Site, Personnel, DprWithDetails } from "@shared/schema";
 import { barSideLabel, parseChainageKm, QUANTITY_SOURCE_LABELS, allowedDprSides, dprSideOptionsForBar, isDprSideCompatible, isBarSide } from "@shared/barSide";
 import { chainageOutsideBar, suggestGuidedBars, emptySuggestionsReason, normalizeDprSideKey } from "@shared/dprProgrammeLink";
-import { resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage } from "@shared/dprGeometry";
+import { resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage, resolveDprPhysicalQuantity } from "@shared/dprGeometry";
 import { requiredDims, applyGeometryChange, applyQuantityEdit, overrideMismatch, deriveOverridden, computedQty } from "@/lib/guidedEntryGeometry";
 import { ProgrammeBarPicker, BarLinkFeedback, type PickerBar } from "@/components/ProgrammeBarPicker";
 import { useAutosave } from "@/hooks/use-autosave";
@@ -67,11 +67,13 @@ import { flattenCutFillConsumptions, hydrateCutFillConsumptions, validateCutFill
 import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
+import { canRestoreGuidedServerDraft } from "@/lib/guidedDraftReconcile";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
 type SiteBoqItem = {
   id: number; description: string; itemCode: string | null; itemName: string | null;
+  displayName?: string | null;
   unit: string; dprConversionFactor: number | null; dprMeasurementMethod?: string | null;
 };
 
@@ -270,6 +272,8 @@ export default function GuidedDpr() {
   });
   // Batch 04: consolidated submit-readiness panel (one dialog, not N toasts).
   const [readiness, setReadiness] = useState<DprReadinessResult | null>(null);
+  const [draftHydrationComplete, setDraftHydrationComplete] = useState(urlDraftId == null);
+  const [baseDraftRevision, setBaseDraftRevision] = useState<string | null>(null);
 
   // Part A: local autosave so accidental navigation/refresh loses nothing
   // (same mechanism as the Detailed DPR, guided-specific key).
@@ -277,12 +281,13 @@ export default function GuidedDpr() {
     date: string; siteName: string; engineer: string;
     entries: GuidedEntry[]; equipment: SimpleEquipmentRow[]; labour: SimpleLabourRow[];
     remarks: string; draftId: number | null;
+    baseDraftRevision?: string | null;
     step?: number;
   };
   // Set true by every restore/hydration generation; consumed by the
   // override-derivation effect once BOQ items are available.
   const deriveNeededRef = useRef(false);
-  const autosaveData: GuidedFormState = { date, siteName, engineer, entries, equipment, labour, remarks, draftId, step };
+  const autosaveData: GuidedFormState = { date, siteName, engineer, entries, equipment, labour, remarks, draftId, baseDraftRevision, step };
   const autosave = useAutosave<GuidedFormState>({
     // A draft with a server id autosaves under its own key so it never
     // collides with (or duplicates into) the fresh-DPR autosave blob.
@@ -291,6 +296,11 @@ export default function GuidedDpr() {
     // key and can never recreate a stale "guided-dpr-new" blob.
     formKey: (urlDraftId ?? draftId) != null ? `guided-dpr-${urlDraftId ?? draftId}` : "guided-dpr-new",
     data: autosaveData,
+    // Existing server drafts hydrate first. A browser overlay is offered only
+    // when it names this draft and was based on this exact server snapshot.
+    enabled: draftHydrationComplete,
+    saveInitialData: (urlDraftId ?? draftId) == null,
+    validateRestore: (d) => urlDraftId == null || canRestoreGuidedServerDraft(d, urlDraftId, baseDraftRevision),
     onRestore: (d) => {
       setDate(d.date); setSiteName(d.siteName); setEngineer(d.engineer);
       // Legacy blobs predate entryKey / No Work — normalise so old rows keep
@@ -317,14 +327,15 @@ export default function GuidedDpr() {
       // Legacy autosave blobs predate gender/work-item fields — normalise.
       setLabour((d.labour ?? []).map((l: any) => ({ ...newLabourRow(), ...l })));
       setRemarks(d.remarks ?? ""); setDraftId(d.draftId ?? null);
+      setBaseDraftRevision(d.baseDraftRevision ?? null);
       // Restored rows (incl. legacy blobs without the flag) get their override
       // state re-derived from geometry once BOQ items are available.
       deriveNeededRef.current = true;
     },
   });
 
-  // Hydrate from an existing server draft (Classic → Guided switch). Only
-  // once, and only if the autosave restore hasn't already loaded this draft.
+  // Hydrate from an existing server draft (Classic → Guided switch) first.
+  // Browser recovery is checked only after this authoritative snapshot lands.
   const hydratedRef = useRef(false);
   const { data: urlDraftDpr } = useQuery<any>({
     queryKey: ["/api/dprs", urlDraftId],
@@ -338,6 +349,7 @@ export default function GuidedDpr() {
   useEffect(() => {
     if (!urlDraftDpr || hydratedRef.current) return;
     hydratedRef.current = true;
+    setBaseDraftRevision(urlDraftDpr.draftRevision ?? null);
     setDraftId(urlDraftDpr.id);
     setDate(urlDraftDpr.date ?? today);
     setSiteName(String(urlDraftDpr.site ?? "").replace(/ – (Edited by|Copy by) .+$/, "").trim());
@@ -416,6 +428,7 @@ export default function GuidedDpr() {
     } else if (hubStep != null) {
       setStep(hubStep);
     }
+    setDraftHydrationComplete(true);
   }, [urlDraftDpr, completeIntent, hubStep]);
 
   // ── Batch 05: Equipment & Fleet linkage (same mechanism as Detailed DPR) ──
@@ -546,13 +559,14 @@ export default function GuidedDpr() {
   });
   // Same project-resolution priority as the Detailed DPR.
   const boqProjectId = useMemo(() => {
+    if (urlDraftDpr?.boqProjectId != null) return Number(urlDraftDpr.boqProjectId);
     if (siteBoqProjects.length === 0) return null;
     return (
       siteBoqProjects.find((p) => p.status === "active" && (p.barCount ?? 0) > 0)?.id ??
       siteBoqProjects.find((p) => p.status === "active")?.id ??
       siteBoqProjects[0].id
     );
-  }, [siteBoqProjects]);
+  }, [siteBoqProjects, urlDraftDpr?.boqProjectId]);
 
   const { data: boqItems = [] } = useQuery<SiteBoqItem[]>({
     queryKey: ["/api/boq/projects", boqProjectId, "items"],
@@ -971,7 +985,13 @@ export default function GuidedDpr() {
   };
 
   // ── Save / submit ─────────────────────────────────────────────────────────
-  const entriesComplete = entries.length > 0 && entries.every(guidedEntryComplete);
+  const entriesComplete = entries.length > 0 && entries.every((entry) => {
+    const item = entry.boqItemId != null ? itemById.get(entry.boqItemId) : null;
+    return guidedEntryComplete({
+      ...entry,
+      quantity: resolveDprPhysicalQuantity(entry, item),
+    });
+  });
 
   /**
    * Quantity-source state for a guided entry, recomputed from geometry —
@@ -1014,6 +1034,8 @@ export default function GuidedDpr() {
       }
       const fromKm = parseChainageKm(e.chainageFrom);
       const toKm = parseChainageKm(e.chainageTo);
+      const boqItem = e.boqItemId != null ? itemById.get(e.boqItemId) : null;
+      const physicalQuantity = resolveDprPhysicalQuantity(e, boqItem);
       // Instruction 031 Part B: the server is now draft-lenient — a draft row
       // with incomplete chainage KEEPS its programmeBarId (no more dropping
       // the link to survive validation).
@@ -1028,7 +1050,7 @@ export default function GuidedDpr() {
         length: calculateLengthFromChainage(e.chainageFrom, e.chainageTo),
         width: e.width,
         thickness: e.thickness,
-        quantity: e.quantity,
+        quantity: physicalQuantity,
         uom: e.uom,
         noSiteWork: false,
         noSiteWorkDescription: "",
@@ -1043,7 +1065,7 @@ export default function GuidedDpr() {
         chainageToKm: toKm,
         // Source is real state: "calculated" only when geometry recomputation
         // matches; otherwise the engineer's explicit pick (or null on drafts).
-        quantitySource: entrySourceState(e) ?? (e.quantitySource || null),
+        quantitySource: resolveQuantitySource({ ...e, quantity: physicalQuantity }, boqItem) ?? (e.quantitySource || null),
         quantitySourceNote: e.quantitySourceNote.trim() || null,
         chainageOverrideReason: e.chainageOverrideReason.trim() || null,
         executedBy: e.executedBy || null,
@@ -1099,6 +1121,7 @@ export default function GuidedDpr() {
       sitePurchases: unmanagedSectionsRef.current.sitePurchases,
       remarks: allRemarks || undefined,
       clientTimestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+      ...(draftId != null && baseDraftRevision != null ? { baseDraftRevision } : {}),
     };
   };
 
@@ -1144,6 +1167,7 @@ export default function GuidedDpr() {
       if (asDraft) {
         const savedId = data.id ?? draftId;
         setDraftId(savedId);
+        setBaseDraftRevision(data.draftRevision ?? null);
         // Batch 05 (spec §10): once the server draft holds this work, the
         // server is authoritative — clear this screen's local blob and any
         // stale new-DPR blob (either silo) for the same draft/site/date.
@@ -1261,9 +1285,12 @@ export default function GuidedDpr() {
       }
       {
         const boqItem = e.boqItemId != null ? itemById.get(e.boqItemId) : null;
+        const physicalQuantity = resolveDprPhysicalQuantity(e, boqItem);
         const qtyErr = checkQuantitySourceRow(
           { length: null, chainageFrom: e.chainageFrom, chainageTo: e.chainageTo, width: e.width, thickness: e.thickness,
-            quantity: e.quantity, quantitySource: entrySourceState(e) ?? (e.quantitySource || null), quantitySourceNote: e.quantitySourceNote },
+            quantity: physicalQuantity,
+            quantitySource: resolveQuantitySource({ ...e, quantity: physicalQuantity }, boqItem) ?? (e.quantitySource || null),
+            quantitySourceNote: e.quantitySourceNote },
           boqItem as any,
         );
         if (qtyErr) {
@@ -2582,7 +2609,18 @@ export default function GuidedDpr() {
               // Batch 04: one consolidated readiness panel before Final Submit.
               const r = evaluateDprSubmitReadiness({
                 workType: "road",
-                progress: entries.map((e) => ({ activity: e.activity, boqItemId: e.boqItemId, noSiteWork: e.noSiteWork, chainageFrom: e.chainageFrom, chainageTo: e.chainageTo, quantity: e.quantity })),
+                progress: entries.map((e) => {
+                  const item = e.boqItemId != null ? itemById.get(e.boqItemId) : null;
+                  return {
+                    activity: e.activity,
+                    boqItemId: e.boqItemId,
+                    noSiteWork: e.noSiteWork,
+                    noSiteWorkDescription: e.noSiteWorkDescription,
+                    chainageFrom: e.chainageFrom,
+                    chainageTo: e.chainageTo,
+                    quantity: resolveDprPhysicalQuantity(e, item),
+                  };
+                }),
                 equipment: equipment.filter((e) => e.machine).map((e) => buildGuidedEquipmentPayload(e)) as any[],
                 labour: labour as any[],
                 materials: unmanagedSectionsRef.current.materials as any[],

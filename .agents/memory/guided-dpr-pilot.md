@@ -15,6 +15,10 @@ description: Programme-driven Guided DPR screen — routing, entry-mode preferen
 **Rule:** after uploading staged photos on save, prune the staged list to only the FAILED files (keep for retry).
 **Why:** clearing nothing re-uploads duplicates on every draft save; clearing everything loses failed photos with no retry.
 
+**Rule:** existing-draft saves and submits must carry the opaque revision of the exact server snapshot the editor hydrated. Check that revision in the same transaction before replacing any child rows. The next revision must come directly from the successful update, never from a post-commit reread; GET must read revision and all child sections in one repeatable snapshot.
+**Why:** whole-child replacement otherwise lets a stale tab overwrite a newer save. Separate revision/detail reads or a post-commit revision lookup can pair one editor's in-memory form with another editor's revision, re-opening the lost-update hole or invalidating genuine browser recovery.
+**How to apply:** treat a missing or stale revision as a hard conflict that preserves both server children and the local recovery copy. Any new DPR child section must participate in the same snapshot/guarded replacement protocol.
+
 - Shared reliability plumbing (both DPR screens): `ProgrammeBarPicker` (auto-match single candidate + "Linked automatically" note), `BarLinkFeedback` (bar-scoped Planned/Done/Balance + optional BOQ-item totals, out-of-range modal via `OutOfRangeChainageModal`, executedBy select for partly-outsourced arrangements — mode matched by `/part/i`). Out-of-range submitted rows get `chainageReviewStatus="review_required"` and are excluded from bar actuals until approved.
 - Local autosave (`use-autosave`, key `guided-dpr-new`) restores the whole form incl. draftId via a banner; server draft lifecycle is POST → PATCH `/api/dprs/:id/draft` → POST `/api/dprs/:id/submit` (one record, never duplicates).
 - Tests: `tests/guidedDprReliability.test.ts` (route-level lifecycle, real handlers + mocked storage, 030A scaffolding pattern).

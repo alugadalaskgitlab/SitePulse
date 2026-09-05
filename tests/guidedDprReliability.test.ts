@@ -75,20 +75,24 @@ vi.mock("../server/storage", () => {
   methods.createDpr = vi.fn(async (input: any) => {
     calls.createdDprs.push(input);
     const id = fx.nextId++; // unique per created DPR — no cross-test collisions
-    const dpr = { id, ...input };
+    const dpr = { id, ...input, draftRevision: "test-revision" };
     fx.drafts.set(id, dpr);
     return dpr;
   });
   methods.getDpr = vi.fn(async (id: number) => fx.drafts.get(id));
-  methods.updateDraftDpr = vi.fn(async (id: number, input: any) => {
+  methods.updateDraftDpr = vi.fn(async (id: number, input: any, expectedRevision: string) => {
+    const current = fx.drafts.get(id);
+    if (!current || expectedRevision !== current.draftRevision) return undefined;
     calls.draftUpdates.push({ id, input });
-    const updated = { ...(fx.drafts.get(id) ?? {}), ...input, id };
+    const updated = { ...current, ...input, id, draftRevision: `revision-${calls.draftUpdates.length}` };
     fx.drafts.set(id, updated);
     return updated;
   });
-  methods.submitDraftDpr = vi.fn(async (id: number, input: any) => {
+  methods.submitDraftDpr = vi.fn(async (id: number, input: any, _timestamp: string | undefined, _audit: any, expectedRevision: string) => {
+    const current = fx.drafts.get(id);
+    if (!current || expectedRevision !== current.draftRevision) return undefined;
     calls.submits.push({ id, input });
-    const submitted = { ...(fx.drafts.get(id) ?? {}), ...input, id, dprStatus: "submitted" };
+    const submitted = { ...current, ...input, id, dprStatus: "submitted", draftRevision: "submitted-revision" };
     fx.drafts.set(id, submitted);
     return submitted;
   });
@@ -129,6 +133,7 @@ function roadBar(overrides: Record<string, unknown> = {}) {
 function guidedPayload(opts: {
   asDraft: boolean;
   progressOverrides?: Record<string, unknown>;
+  baseDraftRevision?: string;
 }) {
   return {
     date: "2026-08-05",
@@ -137,6 +142,7 @@ function guidedPayload(opts: {
     role: "engineer",
     workType: "road",
     boqProjectId: PROJECT_ID,
+    baseDraftRevision: opts.baseDraftRevision ?? "test-revision",
     ...(opts.asDraft ? { dprStatus: "draft" } : {}),
     progress: [{
       activity: "GSB LAYING",
@@ -241,14 +247,16 @@ describe("Part B — programmeBarId survives draft → update → submit (real r
     const create = await request(app).post("/api/dprs").send(guidedPayload({ asDraft: true }));
     expect(create.status).toBe(201);
     const id = create.body.id;
+    let revision = create.body.draftRevision;
     expect(id).toBeGreaterThanOrEqual(DRAFT_ID);
 
     // 2. two more autosaves — PATCH the SAME record, never a new POST
     for (const qty of [1200, 1250]) {
       const patch = await request(app).patch(`/api/dprs/${id}/draft`).send(guidedPayload({
-        asDraft: true, progressOverrides: { quantity: qty },
+        asDraft: true, progressOverrides: { quantity: qty }, baseDraftRevision: revision,
       }));
       expect(patch.status).toBe(200);
+      revision = patch.body.draftRevision;
     }
     expect(calls.createdDprs).toHaveLength(1);          // no duplicate DPR
     expect(calls.draftUpdates).toHaveLength(2);
@@ -256,13 +264,37 @@ describe("Part B — programmeBarId survives draft → update → submit (real r
     expect(calls.draftUpdates[1].input.progress[0].programmeBarId).toBe(BAR_ID);
 
     // 3. submit — strict validation passes, link + side reach storage intact
-    const submit = await request(app).post(`/api/dprs/${id}/submit`).send(guidedPayload({ asDraft: false }));
+    const submit = await request(app).post(`/api/dprs/${id}/submit`).send(guidedPayload({
+      asDraft: false,
+      baseDraftRevision: revision,
+    }));
     expect(submit.status).toBe(200);
     expect(calls.submits).toHaveLength(1);
     const row = calls.submits[0].input.progress[0];
     expect(row.programmeBarId).toBe(BAR_ID);
     expect(row.side).toBe("LHS");
     expect(row.chainageReviewStatus ?? null).toBeNull(); // in-range: counts toward the bar
+  });
+
+  it("rejects missing and stale draft revisions without replacing saved child rows", async () => {
+    const create = await request(app).post("/api/dprs").send(guidedPayload({ asDraft: true }));
+    const id = create.body.id;
+    const originalProgress = structuredClone(fx.drafts.get(id).progress);
+    const withRevision = guidedPayload({
+      asDraft: true,
+      progressOverrides: { quantity: 9999 },
+      baseDraftRevision: "stale-revision",
+    });
+    const stale = await request(app).patch(`/api/dprs/${id}/draft`).send(withRevision);
+    expect(stale.status).toBe(409);
+    expect(stale.body.code).toBe("DPR_DRAFT_STALE");
+    expect(fx.drafts.get(id).progress).toEqual(originalProgress);
+
+    const { baseDraftRevision: _removed, ...withoutRevision } = withRevision;
+    const missing = await request(app).patch(`/api/dprs/${id}/draft`).send(withoutRevision);
+    expect(missing.status).toBe(400);
+    expect(missing.body.code).toBe("DPR_DRAFT_REVISION_REQUIRED");
+    expect(fx.drafts.get(id).progress).toEqual(originalProgress);
   });
 
   it("submit strictly blocks a linked row with missing chainage (no silent link drop)", async () => {
