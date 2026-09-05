@@ -41,7 +41,7 @@ import { format, subDays } from "date-fns";
 import type { Site, Personnel, DprWithDetails } from "@shared/schema";
 import { barSideLabel, parseChainageKm, QUANTITY_SOURCE_LABELS, allowedDprSides, dprSideOptionsForBar, isDprSideCompatible, isBarSide } from "@shared/barSide";
 import { chainageOutsideBar, suggestGuidedBars, emptySuggestionsReason, normalizeDprSideKey } from "@shared/dprProgrammeLink";
-import { resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage } from "@shared/dprGeometry";
+import { resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage, resolveBoqUomProfile, boqProgressQty, dprMeasurementSummary } from "@shared/dprGeometry";
 import { requiredDims, applyGeometryChange, applyQuantityEdit, overrideMismatch, deriveOverridden, computedQty } from "@/lib/guidedEntryGeometry";
 import { ProgrammeBarPicker, BarLinkFeedback, type PickerBar } from "@/components/ProgrammeBarPicker";
 import { useAutosave } from "@/hooks/use-autosave";
@@ -72,6 +72,7 @@ import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 
 type SiteBoqItem = {
   id: number; description: string; itemCode: string | null; itemName: string | null;
+  displayName?: string | null;
   unit: string; dprConversionFactor: number | null; dprMeasurementMethod?: string | null;
 };
 
@@ -681,7 +682,7 @@ export default function GuidedDpr() {
       chainageFrom: bar.chainageFrom != null ? fmtCh(bar.chainageFrom) : "",
       chainageTo: "",
       quantity: null,
-      uom: item?.unit ?? "",
+      uom: item ? resolveBoqUomProfile(item).uom : "",
       expanded: false,
       width: null,
       thickness: null,
@@ -736,7 +737,7 @@ export default function GuidedDpr() {
       ...e,
       boqItemId: item.id,
       activity: boqItemDisplayName(item),
-      uom: item.unit ?? "",
+      uom: resolveBoqUomProfile(item).uom,
       programmeBarId: null,
       // 06T §3: deliberate BOQ-item change — the persisted arrangement no
       // longer describes this row's context, so it re-resolves.
@@ -1029,7 +1030,12 @@ export default function GuidedDpr() {
         width: e.width,
         thickness: e.thickness,
         quantity: e.quantity,
-        uom: e.uom,
+        // DPR quantity is the physical measurement. For geometry-backed BOQ
+        // items persist its physical profile UOM (e.g. SQM), never the BOQ UOM
+        // (e.g. Ha). BOQ credit is derived separately via the factor.
+        uom: e.boqItemId != null && itemById.get(e.boqItemId)
+          ? resolveBoqUomProfile(itemById.get(e.boqItemId)!).uom
+          : e.uom,
         noSiteWork: false,
         noSiteWorkDescription: "",
         isIncidental: e.isIncidental,
@@ -1518,6 +1524,19 @@ export default function GuidedDpr() {
               : undefined)
             ?? null
           : null;
+        const boqItem = e.boqItemId != null ? itemById.get(e.boqItemId) ?? null : null;
+        const measurement = dprMeasurementSummary(
+          {
+            length: null,
+            chainageFrom: e.chainageFrom,
+            chainageTo: e.chainageTo,
+            width: e.width,
+            thickness: e.thickness,
+            quantity: e.quantity,
+            uom: e.uom,
+          },
+          boqItem,
+        );
         return (
         <Card key={idx} className="mb-3 transition-all duration-500" data-testid={`card-entry-${idx}`} data-dpr-row-key={dprRowKey("activities", idx)}>
           <CardContent className="pt-4 space-y-3">
@@ -1557,7 +1576,7 @@ export default function GuidedDpr() {
                     const item = e.boqItemId != null ? itemById.get(e.boqItemId) : null;
                     const creditedQty = e.quantity ?? computedQty(e, item);
                     if (willCheck && creditedQty != null && creditedQty > 0 && !e.isIncidental) {
-                      setIncidentalConfirm({ idx, qty: creditedQty, uom: e.uom });
+                      setIncidentalConfirm({ idx, qty: creditedQty, uom: measurement.measuredUom ?? e.uom });
                     } else {
                       setIncidental(idx, willCheck);
                     }
@@ -1736,13 +1755,18 @@ export default function GuidedDpr() {
                     </div>
                     )}
                     <div>
-                      <Label>Qty {e.uom ? `(${e.uom})` : ""}</Label>
+                      <Label>Physical Qty {measurement.measuredUom ? `(${measurement.measuredUom})` : ""}</Label>
                       <Input type="number" inputMode="decimal" value={e.quantity ?? ""} onChange={(ev) => updateQuantity(idx, ev.target.value === "" ? null : Number(ev.target.value))} data-testid={`input-qty-${idx}`} />
+                      {measurement.boqQty != null && measurement.boqUom && (
+                        <p className="text-xs font-medium text-teal-700 mt-1" data-testid={`text-boq-qty-${idx}`}>
+                          BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom}
+                        </p>
+                      )}
                     </div>
                   </div>
                   {mismatchCalc != null && (
                     <p className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded px-2 py-1" data-testid={`text-override-mismatch-${idx}`}>
-                      Geometry now computes {mismatchCalc.toFixed(2)} {e.uom} but your entered quantity ({e.quantity}) is kept — it was manually overridden. Update it deliberately if the dimensions changed.
+                      Geometry now computes {mismatchCalc.toFixed(2)} {measurement.measuredUom ?? e.uom} but your entered quantity ({e.quantity}) is kept — it was manually overridden. Update it deliberately if the dimensions changed.
                     </p>
                   )}
                   <div data-testid={`qty-source-block-${idx}`}>
@@ -1796,7 +1820,7 @@ export default function GuidedDpr() {
                   programmeBarId={e.programmeBarId} sideKey={sideKeyOf(e.side)} sideLabel={e.side}
                   fromKm={parseChainageKm(e.chainageFrom)} toKm={parseChainageKm(e.chainageTo)}
                   overrideReason={e.chainageOverrideReason} onOverrideReason={(v) => updateEntry(idx, { chainageOverrideReason: v })}
-                  qty={e.quantity} warnOverBalance itemTotals={itemTotals(e.boqItemId)}
+                  boqQty={boqProgressQty(e.quantity, boqItem)} warnOverBalance itemTotals={itemTotals(e.boqItemId)}
                   executedBy={e.executedBy || null} onExecutedBy={(v) => updateEntry(idx, { executedBy: v })}
                   testidPrefix={`guided-${idx}`} />
               )}
@@ -1819,8 +1843,7 @@ export default function GuidedDpr() {
                 onOutcomeChange={() => undefined} onAllocationsChange={allocations => updateEntry(idx, { allocations: allocations as any })} />
             ) : e.boqItemId != null && boqProjectId != null && siteName && (() => {
               const item = itemById.get(e.boqItemId);
-              const factor = item?.dprConversionFactor ?? 1;
-              const executedQty = e.quantity != null ? e.quantity * factor : null;
+              const executedQty = boqProgressQty(e.quantity, item);
               const loc = [e.side ? barSideLabel(e.side) : null, e.chainageFrom && e.chainageTo ? `Ch. ${e.chainageFrom}–${e.chainageTo}` : null].filter(Boolean).join(" ");
               return (
                 <ActivityReceiptStrip
@@ -2450,6 +2473,27 @@ export default function GuidedDpr() {
               {entries.map((e, idx) => {
                 const complete = guidedEntryComplete(e);
                 const photoCount = (entryPhotos[e.entryKey] ?? []).length;
+                const item = e.boqItemId != null ? itemById.get(e.boqItemId) ?? null : null;
+                const measurement = dprMeasurementSummary(
+                  {
+                    length: null,
+                    chainageFrom: e.chainageFrom,
+                    chainageTo: e.chainageTo,
+                    width: e.width,
+                    thickness: e.thickness,
+                    quantity: e.quantity,
+                    uom: e.uom,
+                  },
+                  item,
+                );
+                const quantityText = measurement.measuredQty != null
+                  ? [
+                      `Physical ${measurement.measuredQty.toLocaleString(undefined, { maximumFractionDigits: 6 })}${measurement.measuredUom ? ` ${measurement.measuredUom}` : ""}`,
+                      measurement.boqQty != null && measurement.boqUom
+                        ? `BOQ ${measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${measurement.boqUom}`
+                        : null,
+                    ].filter(Boolean).join(" · ")
+                  : "No quantity";
                 return (
                   <div key={e.entryKey} className="border rounded-md px-3 py-2" data-testid={`review-entry-${idx}`}>
                     <div className="flex items-center justify-between gap-2">
@@ -2466,7 +2510,7 @@ export default function GuidedDpr() {
                             e.side || null,
                             e.chainageFrom && e.chainageTo ? `Ch ${e.chainageFrom}–${e.chainageTo}` : "No chainage",
                             e.layerNo != null ? layerDisplayName(e.activity, e.layerNo) : null,
-                            e.quantity != null ? `${e.quantity} ${e.uom || ""}`.trim() : "No quantity",
+                            quantityText,
                           ].filter(Boolean).join(" · ")}
                       {photoCount > 0 ? ` · ${photoCount} photo${photoCount > 1 ? "s" : ""}` : ""}
                     </p>

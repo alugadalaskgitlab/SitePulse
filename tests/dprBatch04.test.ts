@@ -9,6 +9,7 @@
  *       cannot disagree on mandatory/advisory classification)
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   calculateLengthFromChainage,
   calculateDprQuantity,
@@ -40,6 +41,43 @@ describe("Batch 04 — measurement & BOQ-unit conversion", () => {
 
   it("C — BOQ factor 0.0001 converts 225 SQM → 0.0225 Ha", () => {
     expect(boqProgressQty(225, CG)).toBeCloseTo(0.0225, 9);
+  });
+
+  it("C&G live case — 200 × 1.75 = 350 SQM and exactly one conversion gives 0.035 Ha", () => {
+    const physicalQty = calculateDprQuantity(200, 1.75, null, CG);
+    expect(physicalQty).toBe(350);
+    expect(boqProgressQty(physicalQty, CG)).toBeCloseTo(0.035, 12);
+
+    const summary = dprMeasurementSummary(
+      { chainageFrom: "1.9", chainageTo: "2.1", width: 1.75, quantity: physicalQty, uom: "Ha" },
+      CG,
+    );
+    expect(summary.measuredQty).toBe(350);
+    expect(summary.measuredUom).toBe("SQM");
+    expect(summary.boqQty).toBeCloseTo(0.035, 12);
+    expect(summary.boqUom).toBe("Ha");
+    expect(formatDprMeasurement(summary)).toBe("200 × 1.75 m = 350 SQM → 0.035 Ha");
+    expect(summary.boqQty! < 1.468).toBe(true);
+    expect(summary.boqQty).toBeCloseTo(summary.measuredQty! * summary.factor, 12);
+  });
+
+  it("reach balance and Plan-vs-Actual aggregate stored physical quantity in BOQ units", () => {
+    const storage = readFileSync(new URL("../server/storage.ts", import.meta.url), "utf8");
+    const reachAggregator = storage.slice(
+      storage.indexOf("async getReportedQtyByBar"),
+      storage.indexOf("async getWorkProgrammeExecutionEvidence"),
+    );
+    const planAggregator = storage.slice(
+      storage.indexOf("async getPlanVsActual"),
+      storage.indexOf("// --- Site Requirements"),
+    );
+
+    expect(reachAggregator).toContain(
+      "sum(${progressEntries.quantity} * coalesce(${boqItems.dprConversionFactor}, 1.0))",
+    );
+    expect(planAggregator).toContain(
+      "SUM(pe.quantity * COALESCE(bi.dpr_conversion_factor, 1.0))",
+    );
   });
 
   it("D — dprConversionFactor is applied exactly once (summary uses raw stored qty)", () => {

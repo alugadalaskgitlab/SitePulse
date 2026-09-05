@@ -6,7 +6,9 @@ description: Conversion-factor contract, measurement display rules, submit-readi
 ## Conversion factor contract
 - Stored DPR progress quantities are ALWAYS physical (e.g. 225 SQM), never BOQ-unit. `dprConversionFactor ?? 1` (0/blank → 1) is applied exactly ONCE — either at display or by the cumulative SQL (`COALESCE(bi.dpr_conversion_factor,1)` in storage aggregation). Never convert stored values, never backfill history.
 - `shared/dprGeometry.ts` Batch 04 section (`resolveDprConversionFactor`, `boqProgressQty`, `formatDprDimensions`, `dprMeasurementSummary`, `formatDprMeasurement`) is the ONLY measurement/display seam. Summary (SiteDashboard), Detail (DprDetails), and exports must all use it — no local L×W×T string building (`0 × 1.5 × 0` bug came from `p.length || 0` substitution).
-- Known gap (out of scope, unfixed): programme-bar progress sum in storage sums raw qty WITHOUT the factor.
+- Geometry-backed rows persist the profile’s physical UOM (Ha/acre BOQ items persist SQM). The BOQ UOM belongs only to converted credit; legacy row UOM must not relabel physical quantity.
+- Programme-bar reach totals and Plan-vs-Actual both aggregate stored physical quantity × factor exactly once. Client reach warnings pass `boqProgressQty`, never raw physical quantity.
+- **Why:** comparing 350 SQM directly with a 1.468 Ha balance produced false over-balance warnings and displayed 350 as Ha; the correct BOQ credit is 0.035 Ha.
 
 ## Submit readiness contract
 - `shared/dprSubmitReadiness.ts` is the single validator, consumed identically by Guided DPR, SiteEntry, SiteEdit, AND server (POST /api/dprs non-draft + POST /:id/submit → 422 `DPR_NOT_READY` with `{mandatory, advisories}`). Drafts are never gated.

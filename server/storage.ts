@@ -26725,14 +26725,19 @@ export class DatabaseStorage implements IStorage {
     return rows.map(r => r.id);
   }
 
-  // Sum of reported quantity per bar from submitted, current DPRs — used by
-  // the DPR bar selector to show "remaining reported quantity".
+  // Sum BOQ-unit credit per bar from submitted, current DPRs — used by the DPR
+  // bar selector to show a BOQ-to-BOQ remaining balance. Stored progress
+  // quantity remains physical; apply the item's DPR factor exactly once here.
   async getReportedQtyByBar(barIds: number[]): Promise<Map<number, number>> {
     if (barIds.length === 0) return new Map();
     const rows = await db
-      .select({ barId: progressEntries.programmeBarId, total: sql<number>`coalesce(sum(${progressEntries.quantity}), 0)` })
+      .select({
+        barId: progressEntries.programmeBarId,
+        total: sql<number>`coalesce(sum(${progressEntries.quantity} * coalesce(${boqItems.dprConversionFactor}, 1.0)), 0)`,
+      })
       .from(progressEntries)
       .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+      .leftJoin(boqItems, eq(progressEntries.boqItemId, boqItems.id))
       .where(and(
         inArray(progressEntries.programmeBarId, barIds),
         eq(dprs.dprStatus, "submitted"),

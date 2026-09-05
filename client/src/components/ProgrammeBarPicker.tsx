@@ -333,7 +333,7 @@ export function BarLinkFeedback({
   overrideReason,
   onOverrideReason,
   testidPrefix,
-  qty,
+  boqQty,
   itemTotals,
   executedBy,
   onExecutedBy,
@@ -349,9 +349,9 @@ export function BarLinkFeedback({
   overrideReason: string;
   onOverrideReason: (v: string) => void;
   testidPrefix: string;
-  /** Today's reported quantity for this row (for over-balance hinting). */
-  qty?: number | null;
-  /** Guided correction item 7: warn (review, non-blocking) when qty exceeds the selected reach balance. */
+  /** Today's BOQ-unit credit for this row (for over-balance hinting). */
+  boqQty?: number | null;
+  /** Warn (review, non-blocking) when BOQ-unit credit exceeds the selected reach balance. */
   warnOverBalance?: boolean;
   /** Whole-BOQ-item totals, shown smaller/separate from the reach figures. */
   itemTotals?: { currentQty: number; totalActual: number; balance: number; unit: string } | null;
@@ -410,10 +410,10 @@ export function BarLinkFeedback({
           </p>
         )
       )}
-      {warnOverBalance && scoped && qty != null && qty > scoped.balance + 1e-9 && (
+      {warnOverBalance && scoped && boqQty != null && boqQty > scoped.balance + 1e-9 && (
         <p className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-700" data-testid={`${testidPrefix}-warn-over-balance`}>
           <AlertTriangle className="w-3 h-3" />
-          Reported {qty}{scoped.unit ? ` ${scoped.unit}` : ""} exceeds this reach's balance ({scoped.balance}) — review before submitting. BOQ-item totals are shown separately.
+          Reported BOQ quantity {boqQty}{scoped.unit ? ` ${scoped.unit}` : ""} exceeds this reach's balance ({scoped.balance}) — review before submitting. BOQ-item totals are shown separately.
         </p>
       )}
       {!sideOk && (

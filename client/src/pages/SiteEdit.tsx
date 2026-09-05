@@ -24,7 +24,7 @@ import { useDpr } from "@/hooks/use-dprs";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
-import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage } from "@shared/dprGeometry";
+import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage, resolveBoqUomProfile, boqProgressQty, dprMeasurementSummary } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
@@ -441,7 +441,16 @@ export default function SiteEdit() {
   const siteBoqProjectId = siteBoqProjects[0]?.id ?? null;
 
   // Items of that BOQ project
-  const { data: siteBoqItems = [] } = useQuery<Array<{ id: number; description: string; itemCode: string | null; unit: string }>>({
+  const { data: siteBoqItems = [] } = useQuery<Array<{
+    id: number;
+    description: string;
+    displayName?: string | null;
+    itemName?: string | null;
+    itemCode: string | null;
+    unit: string;
+    dprConversionFactor?: number | null;
+    dprMeasurementMethod?: string | null;
+  }>>({
     queryKey: ["/api/boq/projects", siteBoqProjectId, "items"],
     enabled: !!siteBoqProjectId,
   });
@@ -903,12 +912,19 @@ export default function SiteEdit() {
   const entryBoqItem = (entry: ProgressEntry) =>
     entry.boqItemId != null ? (siteBoqItems.find(i => i.id === entry.boqItemId) as any) ?? null : null;
 
+  const progressUom = (entry: ProgressEntry): string =>
+    entryBoqItem(entry)
+      ? resolveBoqUomProfile(entryBoqItem(entry)).uom
+      : (deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness) ?? entry.uom);
+
   const calculateQuantity = (entry: ProgressEntry): number | null => {
     const length = getEffectiveLength(entry);
     const boqItem = entryBoqItem(entry);
     const geo = calculateDprQuantity(length, entry.width, entry.thickness, boqItem);
     if (geo != null) {
-      entry.uom = boqItem ? entry.uom : (deriveDprUom(length, entry.width, entry.thickness) ?? entry.uom);
+      entry.uom = boqItem
+        ? resolveBoqUomProfile(boqItem).uom
+        : (deriveDprUom(length, entry.width, entry.thickness) ?? entry.uom);
       return geo;
     }
     return entry.quantity ?? null;
@@ -921,7 +937,9 @@ export default function SiteEdit() {
     const boqItem = entryBoqItem(entry);
     const geo = calculateDprQuantity(length, entry.width, entry.thickness, boqItem);
     if (geo != null) {
-      if (!boqItem) entry.uom = deriveDprUom(length, entry.width, entry.thickness) ?? entry.uom;
+      entry.uom = boqItem
+        ? resolveBoqUomProfile(boqItem).uom
+        : (deriveDprUom(length, entry.width, entry.thickness) ?? entry.uom);
       entry.quantity = geo;
       entry.quantitySource = "calculated";
       entry.quantitySourceNote = "";
@@ -1063,6 +1081,7 @@ export default function SiteEdit() {
         ...persisted,
         length: effectiveLength,
         quantity: p.quantity ?? calculateQuantity(p),
+        uom: progressUom(p),
         // 030A: numeric chainage (Km) alongside the display text
         chainageFromKm: parseChainageKm(p.chainageFrom),
         chainageToKm: parseChainageKm(p.chainageTo),
@@ -1747,6 +1766,7 @@ export default function SiteEdit() {
                             const boqItem = siteBoqItems.find((i) => i.id === parseInt(val));
                             updated[idx].boqItemId = parseInt(val);
                             updated[idx].activity = boqItem ? boqItemDisplayName(boqItem).toUpperCase() : "";
+                            if (boqItem) updated[idx].uom = resolveBoqUomProfile(boqItem).uom;
                           }
                           // 06T §3: deliberate BOQ-item change — the old
                           // arrangement and bar link no longer describe this
@@ -1778,6 +1798,7 @@ export default function SiteEdit() {
                             const boqItem = siteBoqItems.find((i) => i.id === parseInt(val));
                             updated[idx].boqItemId = parseInt(val);
                             updated[idx].activity = boqItem ? boqItemDisplayName(boqItem).toUpperCase() : "";
+                            if (boqItem) updated[idx].uom = resolveBoqUomProfile(boqItem).uom;
                             // 06T §3: BOQ context change — arrangement/bar re-resolve.
                             updated[idx].earthworkArrangementId = null;
                             updated[idx].programmeBarId = null;
@@ -1887,7 +1908,8 @@ export default function SiteEdit() {
                             updated[idx].chainageOverrideReason = v;
                             setProgress(updated);
                           }}
-                          qty={entry.quantity}
+                          boqQty={boqProgressQty(entry.quantity ?? calculateQuantity(entry), entryBoqItem(entry))}
+                          warnOverBalance
                           executedBy={entry.executedBy || null}
                           onExecutedBy={(v) => {
                             const updated = [...progress];
@@ -2023,8 +2045,8 @@ export default function SiteEdit() {
                       )}
                     </Label>
                     <Select
-                      value={entry.uom}
-                      disabled={!!deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness)}
+                      value={progressUom(entry)}
+                      disabled={!!entryBoqItem(entry) || !!deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness)}
                       onValueChange={(val) => {
                         const updated = [...progress];
                         updated[idx].uom = val;
@@ -2041,7 +2063,7 @@ export default function SiteEdit() {
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-sm">Qty</Label>
+                    <Label className="text-sm">Physical Qty ({progressUom(entry)})</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -2064,6 +2086,29 @@ export default function SiteEdit() {
                       }}
                       data-testid={`input-qty-${idx}`}
                     />
+                    {(() => {
+                      const boqItem = entryBoqItem(entry);
+                      if (!boqItem) return null;
+                      const physicalQty = entry.quantity ?? calculateQuantity(entry);
+                      const measurement = dprMeasurementSummary(
+                        {
+                          length: getEffectiveLength(entry),
+                          chainageFrom: entry.chainageFrom,
+                          chainageTo: entry.chainageTo,
+                          width: entry.width,
+                          thickness: entry.thickness,
+                          quantity: physicalQty,
+                          uom: progressUom(entry),
+                        },
+                        boqItem,
+                      );
+                      if (measurement.boqQty == null || !measurement.boqUom) return null;
+                      return (
+                        <p className="text-[11px] font-medium text-teal-700 mt-1" data-testid={`text-boq-qty-${idx}`}>
+                          BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom}
+                        </p>
+                      );
+                    })()}
                     {/* Calculated quantities are labelled read-only; only a manual
                         or overridden quantity asks for a real source. */}
                     {entry.quantitySource === "calculated" ? (
@@ -2119,7 +2164,10 @@ export default function SiteEdit() {
                     ) : siteBoqProjectId != null && header.site ? (
                       <ActivityReceiptStrip siteName={header.site} date={header.date} boqProjectId={siteBoqProjectId}
                         boqItemId={entry.boqItemId} programmeBarId={entry.programmeBarId}
-                        executedQty={(() => { const q = entry.quantity ?? calculateQuantity(entry); const f = (siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.dprConversionFactor ?? 1; return q != null ? q * f : null; })()}
+                        executedQty={boqProgressQty(
+                          entry.quantity ?? calculateQuantity(entry),
+                          entryBoqItem(entry),
+                        )}
                         executedUom={(siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.unit ?? entry.uom ?? null}
                         readOnly persistedArrangementId={entry.earthworkArrangementId}
                         onArrangementResolved={(id) => setProgress((prev) => prev.map((p, i) => (i === idx ? { ...p, earthworkArrangementId: id } : p)))}

@@ -274,7 +274,11 @@ export function dprMeasurementSummary(
 ): DprMeasurementSummary {
   const prof = boqItem ? resolveBoqUomProfile(boqItem) : boqUomProfile(row.uom);
   const measuredQty = row.quantity != null && Number.isFinite(Number(row.quantity)) ? Number(row.quantity) : null;
-  const measuredUom = (row.uom || (prof.dims.length ? prof.uom : null)) ?? null;
+  // When a BOQ profile exists it is authoritative for the PHYSICAL DPR unit.
+  // Legacy/new Guided rows may carry the BOQ unit in row.uom (for example Ha)
+  // even though their geometry quantity is SQM. Never relabel that physical
+  // number with the BOQ unit; the BOQ unit belongs only to boqQty below.
+  const measuredUom = (boqItem ? prof.uom : (row.uom || (prof.dims.length ? prof.uom : null))) ?? null;
   const factor = resolveDprConversionFactor(boqItem);
   const converted = boqItem != null && factor !== 1;
   return {

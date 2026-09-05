@@ -174,9 +174,9 @@ describe("side-specific coverage over a shared quantity (tests 17-20, Part E)", 
   });
 
   it("test 20 (shared quantity): coverage math never splits or duplicates qty — quantity accounting has no side dimension", () => {
-    // remainingQty derives from plannedQty - sum(all entries' qty) regardless
-    // of side (server getReportedQtyByBar groups by bar only). Coverage output
-    // deliberately contains NO quantity figures to split.
+    // remainingQty derives from planned BOQ qty minus the converted BOQ credit
+    // of all entries regardless of side (server getReportedQtyByBar groups by
+    // bar only). Coverage output contains NO quantity figures to split.
     const cov = barSideCoverage(B, [
       { side: "LHS", fromKm: 2.0, toKm: 2.5 },
       { side: "RHS", fromKm: 2.5, toKm: 3.0 },
