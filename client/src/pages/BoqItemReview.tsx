@@ -17,7 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { shortItemName } from "@/lib/itemName";
+import { shortItemName, boqItemDisplayName } from "@/lib/itemName";
 import { BOQ_WORK_CATEGORIES } from "@shared/boqWorkCategories";
 import { isShoulderDesc, classifyShoulderLayer } from "@shared/workTypeRecipes";
 import { buildBoqDisplayHierarchy } from "@shared/boqDisplayOrder";
@@ -110,7 +110,7 @@ function ItemEditRow({
     >
       <td className="py-2 px-3 text-xs text-slate-500 font-mono whitespace-nowrap">{item.itemCode ?? "—"}</td>
       <td className="py-2 px-3 max-w-[220px]">
-        <p className="text-xs text-slate-500 truncate" title={item.description}>{item.description}</p>
+        <p className="text-xs text-slate-500 truncate" title={item.description}>{boqItemDisplayName(item)}</p>
       </td>
       <td className="py-2 px-3 min-w-[180px]">
         <input

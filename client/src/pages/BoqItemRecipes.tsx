@@ -37,6 +37,7 @@ import type {
   InsertBoqItemMaterials,
   BoqMixTemplateLink,
 } from "@shared/schema";
+import { boqItemDisplayName } from "@shared/boqItemName";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -1334,7 +1335,7 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
           <DialogTitle className="text-base flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-teal-600" />
             Map to Standard Norm
-            <span className="text-sm font-normal text-muted-foreground truncate max-w-[220px]">— {item.description}</span>
+            <span className="text-sm font-normal text-muted-foreground truncate max-w-[220px]">— {boqItemDisplayName(item)}</span>
           </DialogTitle>
         </DialogHeader>
 
@@ -1533,7 +1534,7 @@ export function BoqItemRecipeDialog({
     },
   });
 
-  const itemLabel = (currentItem as any).itemName || currentItem.description.slice(0, 50);
+  const itemLabel = boqItemDisplayName(currentItem);
 
   return (
     <>

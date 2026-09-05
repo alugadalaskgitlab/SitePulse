@@ -23,6 +23,7 @@ import { apiRequest } from "@/lib/queryClient";
 import type { BoqProject, ProjectScopeSegment } from "@shared/schema";
 import { SCOPE_SEGMENT_TYPE_LABELS, type ScopeSegmentType } from "@shared/projectScope";
 import { emptyScopeForm, scopeFormFromSegment, type SegFormState } from "@/lib/scopeForm";
+import { boqItemDisplayName } from "@shared/boqItemName";
 
 const SIDE_OPTIONS = [
   { value: "", label: "Both / full width" },
@@ -412,7 +413,7 @@ export default function ScopeSetup() {
                   <label key={it.id} className="flex items-center gap-2 text-sm cursor-pointer">
                     <input type="checkbox" checked={form.itemIds.includes(it.id)}
                       onChange={e => set({ itemIds: e.target.checked ? [...form.itemIds, it.id] : form.itemIds.filter(x => x !== it.id) })} />
-                    <span className="truncate">{it.itemNo ? `${it.itemNo} — ` : ""}{(it.displayName ?? it.description ?? "").slice(0, 90)}</span>
+                    <span className="truncate">{it.itemNo ? `${it.itemNo} — ` : ""}{boqItemDisplayName(it).slice(0, 90)}</span>
                   </label>
                 ))}
                 {(items as any[]).length === 0 && <span className="text-sm text-muted-foreground">No items found.</span>}

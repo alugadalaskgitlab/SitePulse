@@ -1528,7 +1528,7 @@ export default function SiteEntry() {
       const convFactor = boqItem?.dprConversionFactor ?? 1;
       const convertedQty = r.qty * convFactor;
       if (convertedQty > info.balance + 0.0001) {
-        const label = boqItem?.itemCode || boqItem?.itemName || boqItem?.description || "This item";
+        const label = boqItem ? boqItemDisplayName(boqItem) : "This item";
         const scope = r.structureId ? ` at ${r.structureId}` : "";
         const qtyStr = convFactor !== 1
           ? `${convertedQty.toFixed(3)} ${info.unit} (entered: ${r.qty})`

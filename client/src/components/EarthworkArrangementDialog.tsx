@@ -42,6 +42,7 @@ import {
   bituminousDefaultComponents,
   getCategoryDescriptor,
 } from "@shared/executionArrangementCategories";
+import { boqItemDisplayName } from "@shared/boqItemName";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1020,7 +1021,10 @@ export function EarthworkArrangementDialog({
               <Label className="text-xs font-semibold text-blue-900">Source roadway excavation BOQ item <span className="text-red-600">*</span></Label>
               <Select value={sourceExcavationBoqItemId == null ? "" : String(sourceExcavationBoqItemId)} onValueChange={value => setSourceExcavationBoqItemId(Number(value))}>
                 <SelectTrigger className="h-8 text-[12px] bg-white"><SelectValue placeholder={cutFillCandidates.length ? "Select source item" : "No roadway excavation items found"} /></SelectTrigger>
-                <SelectContent>{cutFillCandidates.map(item => <SelectItem key={item.id} value={String(item.id)} className="text-[12px]">{item.description}</SelectItem>)}</SelectContent>
+                <SelectContent>{cutFillCandidates.map(item => {
+                  const boqItem = projectBoqItems.find(candidate => Number(candidate.id) === item.id);
+                  return <SelectItem key={item.id} value={String(item.id)} className="text-[12px]">{boqItemDisplayName(boqItem ?? item)}</SelectItem>;
+                })}</SelectContent>
               </Select>
               <p className="text-[10px] text-blue-800">Proximity only ranks this list; it does not prove that material moved. Confirm the source explicitly.</p>
               {cutFillCandidates.length === 1 && sourceExcavationBoqItemId === cutFillCandidates[0].id && <p className="text-[10px] text-emerald-700">One candidate preselected — review or change before saving.</p>}

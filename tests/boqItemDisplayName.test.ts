@@ -3,7 +3,6 @@ import { readFileSync } from "fs";
 import {
   shortItemName,
   boqItemDisplayName,
-  cleanBoqDisplayFallback,
   trustedCanonicalBoqName,
 } from "../shared/boqItemName";
 
@@ -19,20 +18,20 @@ describe("boqItemDisplayName priority rules", () => {
     })).toBe("Embankment — Borrow Earth");
   });
 
-  it("lightly cleans the original description when no trusted name exists", () => {
+  it("uses the BOQ item's own description when no saved short name exists", () => {
     const noSaved = boqItemDisplayName({ displayName: null, itemName: null, description: EMBANKMENT_DESC });
-    expect(noSaved).toBe(cleanBoqDisplayFallback(EMBANKMENT_DESC));
+    expect(noSaved).toBe(EMBANKMENT_DESC);
     expect(noSaved.toLowerCase()).toContain("embankment");
     expect(noSaved.toLowerCase()).toContain("technical specification");
   });
 
   it("ignores whitespace-only displayName", () => {
     expect(boqItemDisplayName({ displayName: "   ", itemName: null, description: EMBANKMENT_DESC }))
-      .toBe(cleanBoqDisplayFallback(EMBANKMENT_DESC));
+      .toBe(EMBANKMENT_DESC);
   });
 
-  it("falls back to the raw value when short-naming can't produce a label", () => {
-    expect(boqItemDisplayName({ displayName: null, itemName: "GSB", description: null })).toBe("GSB");
+  it("falls back to the BOQ item name before its description", () => {
+    expect(boqItemDisplayName({ displayName: null, itemName: "GSB", description: "Long imported GSB description" })).toBe("GSB");
     expect(boqItemDisplayName(null)).toBe("");
     expect(boqItemDisplayName({})).toBe("");
   });
@@ -44,13 +43,13 @@ describe("boqItemDisplayName priority rules", () => {
       .toContain("Granular Sub-Base");
   });
 
-  it("preserves technical abbreviations and only capitalizes the first meaningful character", () => {
+  it("preserves the BOQ item's own casing and technical abbreviations", () => {
     expect(boqItemDisplayName({
       description: "   providing RCC M25 PCC NP4 DBM BC WMM GSB M15 complete   ",
-    })).toBe("Providing RCC M25 PCC NP4 DBM BC WMM GSB M15 complete");
+    })).toBe("providing RCC M25 PCC NP4 DBM BC WMM GSB M15 complete");
   });
 
-  it("uses deterministic and manually confirmed canonical mappings", () => {
+  it("keeps canonical mappings available internally but never uses them as the BOQ display name", () => {
     expect(boqItemDisplayName({
       description: EMBANKMENT_DESC,
       mappingStatus: "mapped",
@@ -58,7 +57,7 @@ describe("boqItemDisplayName priority rules", () => {
       snlMappedBy: "rule",
       snlMappingIsAuto: true,
       snlConfidence: 1,
-    })).toBe("Embankment Construction");
+    })).toBe(EMBANKMENT_DESC);
     expect(trustedCanonicalBoqName({
       mappingStatus: "mapped",
       snlShortLabel: "RCC Pipe NP4 1000mm — single row",
@@ -76,15 +75,36 @@ describe("boqItemDisplayName priority rules", () => {
       snlMappedBy: "auto",
       snlMappingIsAuto: true,
       snlConfidence: 0.92,
-    })).toBe("Providing RCC NP4 pipe 1200mm");
+    })).toBe("providing RCC NP4 pipe 1200mm");
   });
 
-  it("ignores legacy generated display names but preserves distinct manual overrides", () => {
+  it("honours every saved BOQ display name, including previously generated short names", () => {
     const generated = shortItemName(EMBANKMENT_DESC);
     expect(boqItemDisplayName({ displayName: generated, description: EMBANKMENT_DESC }))
-      .toBe(cleanBoqDisplayFallback(EMBANKMENT_DESC));
+      .toBe(generated);
     expect(boqItemDisplayName({ displayName: "Borrow Earth Embankment", description: EMBANKMENT_DESC }))
       .toBe("Borrow Earth Embankment");
+  });
+
+  it("keeps Takkadpally's saved names even when production SNL labels are unrelated", () => {
+    const rows = [
+      ["Clearing and grubbing", "DBM Grading-II (26.5mm)"],
+      ["Scarifying the existing B.T", "Extra over item No( v ) A and( v ) B for cutting rivets."],
+      ["roadway excavation", "RCC M25 (Structural Concrete)"],
+      ["embankment - excavated earth", null],
+      ["Embankment - Borrow earth", "Clearing & Grubbing"],
+      ["Construction of Sub grade", null],
+      ["Construction of earthen shoulders", null],
+      ["Construction of Granular sub-base", "Dismantling Existing Pavement"],
+      ["Wet Mix macadem", "WMM — Plant Mix Method"],
+      ["Providing and applying prime", "Earthen Shoulders"],
+      ["Providing and applying tack", "Loading and Unloading of Stone Boulder/Stone aggregates/Sand"],
+      ["Providing 40 mm thick Bituminous Concrete", "Sub-grade Preparation"],
+    ] as const;
+
+    expect(rows.map(([displayName, canonicalDisplayName]) =>
+      boqItemDisplayName({ displayName, canonicalDisplayName, description: "Unrelated full description" }),
+    )).toEqual(rows.map(([displayName]) => displayName));
   });
 });
 

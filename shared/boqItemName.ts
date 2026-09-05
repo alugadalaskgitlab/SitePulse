@@ -1,14 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // BOQ item display naming — SINGLE SOURCE OF TRUTH for client and server.
 //
-// Business rule: operational labels use a manually saved override or a
-// trustworthy canonical SNL label. Without either, lightly clean the imported
-// description without rewriting its technical meaning or abbreviations.
+// Business rule: operational labels belong to the BOQ item itself. Use its
+// saved display name, then its own item name, then its imported description.
+// SNL/SDB labels are classification metadata and must never rename a BOQ item
+// in user-facing selectors, reports, or programme views.
 //
 // Priority for the operational label (boqItemDisplayName):
-//   1. Saved manual short-name override (`displayName` column on boq_items)
-//   2. Canonical SNL label from a deterministic or manually confirmed mapping
-//   3. Lightly cleaned original description
+//   1. Saved short-name override (`displayName` column on boq_items)
+//   2. Saved/imported BOQ item name (`itemName`)
+//   3. Original BOQ description
 //
 // Do NOT re-implement short-name logic locally in pages/components — import
 // from here so naming cannot drift.
@@ -138,31 +139,16 @@ export function trustedCanonicalBoqName(item?: BoqItemNameFields | null): string
   return manual || deterministic ? cleanCanonicalLabel(item.snlShortLabel) : "";
 }
 
-function manualDisplayOverride(item: BoqItemNameFields): string {
-  const saved = item.displayName?.replace(/\s+/g, " ").trim() ?? "";
-  if (!saved) return "";
-
-  // The old bulk classifier populated display_name with shortItemName(). Those
-  // values have no manual provenance, so do not let them masquerade as a saved
-  // override. Distinct values remain valid admin-entered names.
-  const generatedCandidates = [item.itemName, item.description]
-    .map(source => shortItemName(source))
-    .filter(Boolean);
-  if (generatedCandidates.some(candidate => candidate.toLocaleLowerCase() === saved.toLocaleLowerCase())) {
-    return "";
-  }
-  return saved;
-}
-
 /**
- * The authoritative OPERATIONAL display label for a BOQ item.
- * Never treats an unconfirmed fuzzy SNL suggestion as a canonical name.
+ * The authoritative user-facing display label for a BOQ item.
+ * Canonical/SNL fields are deliberately ignored: they remain available to
+ * planning, recipes, norms, and classification, but never rename the BOQ row.
  */
 export function boqItemDisplayName(item?: BoqItemNameFields | null): string {
   if (!item) return "";
-  const saved = manualDisplayOverride(item);
-  if (saved) return saved;
-  const canonical = cleanCanonicalLabel(item.canonicalDisplayName) || trustedCanonicalBoqName(item);
-  if (canonical) return canonical;
-  return cleanBoqDisplayFallback(item.description ?? item.itemName);
+  for (const ownLabel of [item.displayName, item.itemName, item.description]) {
+    const cleaned = String(ownLabel ?? "").replace(/\s+/g, " ").trim();
+    if (cleaned) return cleaned;
+  }
+  return "";
 }

@@ -23,6 +23,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BoqImportWizard } from "@/components/BoqImportWizard";
 import { BoqItemRecipeDialog } from "@/pages/BoqItemRecipes";
 import type { BoqProject, BoqItemWithCategory, BoqRevisionWithItems } from "@shared/schema";
+import { boqItemDisplayName } from "@shared/boqItemName";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -447,7 +448,7 @@ function CategorySection({
                       {item.itemCode ?? "—"}
                     </td>
                     <td className="px-3 py-1.5 text-slate-700 max-w-[460px]" title={item.description}>
-                       <span className="block whitespace-normal leading-snug text-justify">{item.description}</span>
+                       <span className="block whitespace-normal leading-snug">{boqItemDisplayName(item)}</span>
                        {(() => {
                          const status = programmeStatus[item.id]?.status ?? "not_programmed";
                          const info: Record<string, { label: string; cls: string }> = {
@@ -547,7 +548,7 @@ function CategorySection({
                         </button>
                         <button
                           onClick={() => {
-                            if (window.confirm(`Delete "${(item as any).itemName || item.description.slice(0, 50)}"?\nThis removes the item and its Gantt stretches. This cannot be undone.`)) {
+                            if (window.confirm(`Delete "${boqItemDisplayName(item)}"?\nThis removes the item and its Gantt stretches. This cannot be undone.`)) {
                               deleteItemMutation.mutate(item.id);
                             }
                           }}
@@ -706,7 +707,7 @@ function NewRevisionDialog({
                         >
                           <td className="px-3 py-1.5 font-mono text-slate-500">{item.itemCode ?? "—"}</td>
                           <td className="px-3 py-1.5 text-slate-700 max-w-[400px]" title={item.description}>
-                            <span className="block whitespace-normal leading-snug text-justify">{item.description}</span>
+                            <span className="block whitespace-normal leading-snug">{boqItemDisplayName(item)}</span>
                           </td>
                           <td className="px-3 py-1.5 text-right text-slate-500">{(item as any).canonicalUnit ?? item.unit}</td>
                           <td className="px-3 py-1.5 text-right text-slate-700 font-medium">
@@ -857,7 +858,7 @@ function CompositeReviewCard({
         <Layers className="w-3.5 h-3.5 text-purple-600 flex-shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
           <p className="text-[11px] font-mono text-slate-400 leading-tight">{item.itemCode ?? "—"} · boq#{item.id}</p>
-          <p className="text-[12px] text-slate-700 leading-snug line-clamp-2 mt-0.5" title={item.description}>{item.description}</p>
+          <p className="text-[12px] text-slate-700 leading-snug line-clamp-2 mt-0.5" title={item.description}>{boqItemDisplayName(item)}</p>
           <div className="flex items-center gap-1.5 mt-1">
             <span className="text-[11px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-semibold">
               COMPOSITE
@@ -1235,9 +1236,9 @@ function SnlMappingPanel({
                     data-testid={`card-review-item-${item.id}`}>
                     <div className="flex items-start gap-2">
                       <div className="flex-1 min-w-0">
-                        {/* BOQ identity — show itemCode + full description so the exact row is clear */}
+                        {/* BOQ identity — saved BOQ name is primary; full description remains in the title tooltip. */}
                         <p className="text-[11px] font-mono text-slate-400 leading-tight">{item.itemCode ?? "—"} · boq#{item.id}</p>
-                        <p className="text-[12px] text-slate-700 leading-snug line-clamp-2 mt-0.5" title={item.description}>{item.description}</p>
+                        <p className="text-[12px] text-slate-700 leading-snug line-clamp-2 mt-0.5" title={item.description}>{boqItemDisplayName(item)}</p>
                         {item.snlItemCode && (
                           <div className="mt-1">
                             <p className={`text-[11px] font-semibold ${lowConf ? "text-orange-700" : "text-amber-700"}`}>
@@ -1318,7 +1319,7 @@ function SnlMappingPanel({
                     data-testid={`row-unmapped-${item.id}`}>
                     <div className="flex-1 min-w-0">
                       <p className="text-[12px] font-mono text-muted-foreground">{item.itemCode ?? "—"}</p>
-                      <p className="text-sm text-slate-600 line-clamp-1" title={item.description}>{(item as any).itemName || item.description.slice(0, 40)}</p>
+                      <p className="text-sm text-slate-600 line-clamp-1" title={item.description}>{boqItemDisplayName(item)}</p>
                     </div>
                     <button
                       onClick={() => { setSearchItem(item); setSearchQ(item.description.slice(0, 30)); }}

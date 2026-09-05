@@ -22,6 +22,7 @@ import {
   defaultLayerWidthM, applicableLayerWidthM, computeGeometryPreview, suggestedFormationWidthM,
   type GeometryLayerConfig, type RoadGeometryProfileInput, type GeometryItemResult,
 } from "@shared/roadGeometry";
+import { boqItemDisplayName } from "@shared/boqItemName";
 
 const fmtQty = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
@@ -112,7 +113,7 @@ export default function RoadGeometry() {
     (items as any[]).map(it => ({
       id: it.id, description: it.description ?? "", unit: it.unit ?? "",
       canonicalUnit: it.canonicalUnit ?? null, workCategory: it.workCategory ?? null,
-      displayName: it.displayName ?? null, layerConfig: it.layerConfig ?? null,
+      displayName: it.displayName ?? null, itemName: it.itemName ?? null, layerConfig: it.layerConfig ?? null,
     })),
   ), [project, profileInput, items]);
 
@@ -312,7 +313,7 @@ export default function RoadGeometry() {
                         const pct = boqQty > 0 ? (diff / boqQty) * 100 : null;
                         return (
                           <tr key={r.boqItemId} className="border-t align-top">
-                            <td className="px-3 py-1.5 max-w-[280px]"><span className="line-clamp-2">{it?.displayName ?? it?.description}</span></td>
+                            <td className="px-3 py-1.5 max-w-[280px]"><span className="line-clamp-2">{boqItemDisplayName(it)}</span></td>
                             <td className="px-3 py-1.5 whitespace-nowrap">
                               <Badge variant="outline">{r.basis.calcLabel}</Badge>
                               <span className="ml-1 text-[10px] text-muted-foreground uppercase">{r.basis.calcType === "area" ? "area" : "volume"}</span>
@@ -339,7 +340,7 @@ export default function RoadGeometry() {
                     return (
                       <div key={r.boqItemId} className="flex items-start gap-2 text-xs text-muted-foreground">
                         <p className="flex-1">
-                          <b>{(it?.displayName ?? it?.description ?? "").slice(0, 70)}</b> — {(r as any).reason}
+                          <b>{boqItemDisplayName(it).slice(0, 70)}</b> — {(r as any).reason}
                         </p>
                         {/* 01B: single source of item configuration — reuse the EXISTING
                             BOQ Layer Config dialog via its ?recipeItem deep-link. */}
