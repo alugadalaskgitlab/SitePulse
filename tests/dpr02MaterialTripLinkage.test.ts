@@ -140,6 +140,16 @@ describe("DPR-02 Parts 1-3 material trip safeguards", () => {
     expect(dprDetail).toContain("readOnly");
   });
 
+  it("ensures incidental DPR columns before startup queries can reload a draft", async () => {
+    const fs = await import("node:fs/promises");
+    const routes = await fs.readFile("server/routes.ts", "utf8");
+    expect(routes).toContain("await ensureProgressIncidentalColumns()");
+    expect(routes).toContain("ADD COLUMN IF NOT EXISTS is_incidental boolean NOT NULL DEFAULT false");
+    expect(routes).toContain("ADD COLUMN IF NOT EXISTS incidental_description text");
+    expect(routes).toContain('console.error("GET /api/dprs/:id failed:", err)');
+    expect(routes).toContain('res.status(500).json({ message: "Failed to fetch DPR details" })');
+  });
+
   it.each(["approved", "draft", "submitted"])(
     "D/E/F/G: %s reused-excavated destination hard-blocks external receipts",
     (status) => {

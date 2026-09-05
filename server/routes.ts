@@ -1627,31 +1627,38 @@ export async function registerRoutes(
 
   // Get single DPR details
   app.get(api.dprs.get.path, async (req, res) => {
-    // Batch 06B: require DPR view permission — this endpoint returns full DPR
-    // contents (and now backs the read-only overlap preview), so it must not
-    // be readable by authenticated users without site_dprs access.
-    if (!assertView(req, res, "site_dprs")) return;
-    // Guard: a non-numeric id must 400, not crash the pg driver with NaN.
-    const dprIdNum = Number(req.params.id);
-    if (!Number.isInteger(dprIdNum) || dprIdNum <= 0) {
-      return res.status(400).json({ message: "Invalid DPR id" });
+    try {
+      // Batch 06B: require DPR view permission — this endpoint returns full DPR
+      // contents (and now backs the read-only overlap preview), so it must not
+      // be readable by authenticated users without site_dprs access.
+      if (!assertView(req, res, "site_dprs")) return;
+      // Guard: a non-numeric id must 400, not crash the pg driver with NaN.
+      const dprIdNum = Number(req.params.id);
+      if (!Number.isInteger(dprIdNum) || dprIdNum <= 0) {
+        return res.status(400).json({ message: "Invalid DPR id" });
+      }
+      const dpr = await storage.getDpr(dprIdNum);
+      if (!dpr) {
+        return res.status(404).json({ message: 'DPR not found' });
+      }
+      // Permission System v2: check that the requesting user can access this DPR's site
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      if (permittedSiteNames !== null && !siteMatchesPermitted(dpr.site, permittedSiteNames)) {
+        return res.status(403).json({ message: 'Access denied for this site' });
+      }
+      const progressIds = dpr.progress?.map(p => p.id) || [];
+      const actPersonnel = progressIds.length > 0 ? await storage.getActivityPersonnel(progressIds) : [];
+      const enrichedProgress = dpr.progress?.map(p => ({
+        ...p,
+        personnelIds: actPersonnel.filter(ap => ap.progressEntryId === p.id).map(ap => ap.personnelId),
+      }));
+      res.json({ ...dpr, progress: enrichedProgress });
+    } catch (err) {
+      console.error("GET /api/dprs/:id failed:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to fetch DPR details" });
+      }
     }
-    const dpr = await storage.getDpr(dprIdNum);
-    if (!dpr) {
-      return res.status(404).json({ message: 'DPR not found' });
-    }
-    // Permission System v2: check that the requesting user can access this DPR's site
-    const permittedSiteNames = await getPermittedSiteNames(req);
-    if (permittedSiteNames !== null && !siteMatchesPermitted(dpr.site, permittedSiteNames)) {
-      return res.status(403).json({ message: 'Access denied for this site' });
-    }
-    const progressIds = dpr.progress?.map(p => p.id) || [];
-    const actPersonnel = progressIds.length > 0 ? await storage.getActivityPersonnel(progressIds) : [];
-    const enrichedProgress = dpr.progress?.map(p => ({
-      ...p,
-      personnelIds: actPersonnel.filter(ap => ap.progressEntryId === p.id).map(ap => ap.personnelId),
-    }));
-    res.json({ ...dpr, progress: enrichedProgress });
   });
 
   // ── Instruction 030A Part F: server-side validation of DPR → programme-bar
@@ -20417,6 +20424,7 @@ export async function registerRoutes(
     await ensureBoqItemNameColumn();
     await ensureDprEntryKeyColumns();
     await ensureProgressLayerNoColumn();
+    await ensureProgressIncidentalColumns();
     await ensureBoqDprConversionFactor();
     seedDatabase();
     seedPlantMasterData();
@@ -20897,6 +20905,18 @@ async function ensureProgressLayerNoColumn() {
     console.log("progress_entries.layer_no ensured");
   } catch (err) {
     console.error("ensureProgressLayerNoColumn failed:", err);
+  }
+}
+
+// Batch 06V: older per-customer databases may predate incidental/non-BOQ
+// progress fields. Ensure both columns exist before any DPR query runs.
+async function ensureProgressIncidentalColumns() {
+  try {
+    await db.execute(sql.raw(`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS is_incidental boolean NOT NULL DEFAULT false`));
+    await db.execute(sql.raw(`ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS incidental_description text`));
+    console.log("progress_entries incidental columns ensured");
+  } catch (err) {
+    console.error("ensureProgressIncidentalColumns failed:", err);
   }
 }
 
