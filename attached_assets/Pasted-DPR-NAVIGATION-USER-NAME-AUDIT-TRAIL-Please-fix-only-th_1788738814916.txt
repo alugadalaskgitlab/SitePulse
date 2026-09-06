@@ -1,0 +1,105 @@
+DPR NAVIGATION + USER-NAME AUDIT TRAIL
+
+Please fix only these two DPR usability/audit issues.
+
+1. CONSISTENT DPR BACK NAVIGATION
+
+Current issue:
+Different DPR views/edit screens return to different pages when the user presses Back.
+
+Please inspect all DPR entry/view/edit flows including:
+- Guided DPR
+- Detailed / Classic DPR
+- Edit DPR
+- Draft DPR
+- Submitted DPR
+
+Required behavior:
+- Back should return the user to the DPR list/register/view they came from.
+- Do not hard-code different unrelated fallback destinations in different DPR screens.
+- Preserve the originating DPR list/filter/tab where reasonably possible.
+- If no origin is available, use one consistent DPR register fallback.
+
+Do not send users unexpectedly to Dashboard, Site Hub, Settings or another unrelated page.
+
+2. SHOW ACTUAL USER NAMES IN DPR AUDIT TIMESTAMPS
+
+Current issue:
+DPR timestamps do not clearly show who created/edited the DPR.
+Some places show only Submitted date/time.
+Some edited timestamps show generic “Admin” rather than the actual logged-in user name.
+
+Required visible audit wording:
+
+For a draft:
+- Draft created by <actual user name> — <date/time>
+- Last edited by <actual user name> — <date/time>   [only when edited]
+
+For a submitted DPR:
+- Draft created by <actual user name> — <date/time>
+- Last edited by <actual user name> — <date/time>   [if applicable]
+- Submitted by <actual user name> — <date/time>
+
+Wherever DPR created/edited/submitted timestamps are already displayed, use the actual user display name rather than generic role labels such as:
+- Admin
+- User
+- Engineer
+
+A person with Admin role who edits a DPR should still display their actual name.
+
+3. IMPORTANT AUDIT RULE
+
+Do not infer the name from the current viewer.
+
+The displayed name must come from the user who actually performed that event.
+
+Check whether existing DPR records already store:
+- createdBy / createdByUserId
+- updatedBy / editedBy
+- submittedBy
+or equivalent audit/history fields.
+
+Reuse existing user IDs/audit history and resolve them to the user’s display name.
+
+Do not overwrite historical creator/submission information merely because another user later opens or edits the DPR.
+
+4. LEGACY RECORDS
+
+If an older DPR genuinely has no stored user identity for an old event:
+- do not fabricate a user name;
+- show a neutral fallback such as “User unavailable” or preserve the existing historical value.
+
+Do not backfill historical names by guessing from role.
+
+5. DO NOT TOUCH
+
+- DPR quantities
+- BOQ linkage
+- execution arrangement linkage
+- equipment/material/labour entries
+- diesel
+- programme logic
+- submitted DPR factual data
+- schema or migrations unless absolutely necessary
+
+FIRST inspect whether the required audit user IDs/history already exist.
+
+If a schema change appears necessary, STOP and report before applying it.
+
+6. VERIFY
+
+Test:
+A. User A creates draft -> shows “Draft created by User A”.
+B. User B edits same draft -> creator remains User A; “Last edited by User B”.
+C. User C submits -> shows “Submitted by User C”.
+D. Admin edits -> shows Admin person's actual name, not word “Admin”.
+E. Back from Draft/Edit/Submitted DPR returns consistently to originating DPR register/view.
+
+STOP after this batch and report:
+- root cause of inconsistent Back navigation
+- existing audit fields found
+- files changed
+- whether any schema change was required
+- exact display behavior verified
+
+Do not publish.
