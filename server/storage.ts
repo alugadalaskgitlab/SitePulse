@@ -15154,18 +15154,19 @@ export class DatabaseStorage implements IStorage {
       name: string; vendorName: string | null; hireBillingBasis: string | null;
       hireRate: number | null; hireMonthlyDivisorType: string | null;
       hireMonthlyDivisor: number | null; hireStartDate: string | null;
-      hireEndDate: string | null; consumptionNorm: number | null;
+      hireEndDate: string | null; consumptionNorm: number | null; meterType: string | null;
     }>(equipment.map(row => [row.id, {
       name: row.name, vendorName: row.vendorName, hireBillingBasis: row.hireBillingBasis,
       hireRate: row.hireRate, hireMonthlyDivisorType: row.hireMonthlyDivisorType,
       hireMonthlyDivisor: row.hireMonthlyDivisor, hireStartDate: row.hireStartDate,
-      hireEndDate: row.hireEndDate, consumptionNorm: row.consumptionNorm,
+      hireEndDate: row.hireEndDate, consumptionNorm: row.consumptionNorm, meterType: row.meterType,
     }]));
     const dprRows: any[] = await executor.select({
       id: equipmentLogs.id, equipmentId: equipmentLogs.equipmentId, date: dprs.date,
       entryType: equipmentLogs.entryType, numberOfTrips: equipmentLogs.numberOfTrips,
       hoursOrKmRun: equipmentLogs.hoursWorked, openingReading: equipmentLogs.openingReading,
       closingReading: equipmentLogs.closingReading, status: dprs.dprStatus, plantUsageId: equipmentLogs.plantUsageId,
+      startTime: equipmentLogs.startTime, endTime: equipmentLogs.endTime, tripDistance: equipmentLogs.tripDistance,
       actualDiesel: equipmentLogs.diesel, expectedDiesel: equipmentLogs.expectedDiesel,
       dieselNorm: equipmentLogs.dieselNorm, task: equipmentLogs.task, site: dprs.site,
     }).from(equipmentLogs).innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId)).where(and(
@@ -15199,21 +15200,39 @@ export class DatabaseStorage implements IStorage {
       // calculateHireGroup explicitly ignores this source.
       ...equipment.map((row: EquipmentMasterType) => ({ source: "equipment_default", sourceId: row.id, equipmentId: row.id,
         businessDate: periodFrom, equipment: defaults.get(row.id) })),
-      ...dprRows.map((row: any) => ({ source: "dpr_log", sourceId: row.id, equipmentId: row.equipmentId,
-        businessDate: isoDate(row.date), entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
-        hoursOrKmRun: row.hoursOrKmRun, openingReading: row.openingReading, closingReading: row.closingReading,
-        plantUsageId: row.plantUsageId, actualDiesel: row.actualDiesel,
-        expectedDiesel: row.expectedDiesel, consumptionNorm: row.dieselNorm ?? defaults.get(row.equipmentId!)?.consumptionNorm,
-        normBasis: "L/hour", task: row.task, site: row.site, equipmentName: defaults.get(row.equipmentId!)?.name,
-        equipment: defaults.get(row.equipmentId!) })),
-      ...usageRows.map((row: EquipmentUsage) => ({ source: "plant_usage", sourceId: row.id, equipmentId: row.equipmentId,
-        businessDate: isoDate(row.date), entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
-        hoursOrKmRun: row.hoursOrKmRun, openingReading: row.openingReading, closingReading: row.closingReading,
-        actualDiesel: row.dieselIssued, expectedDiesel: row.expectedDiesel,
-        consumptionNorm: defaults.get(row.equipmentId)?.consumptionNorm, normBasis: "L/hour",
-        task: row.task, site: row.siteName, equipmentName: defaults.get(row.equipmentId)?.name,
-        movementReference: [row.shiftFrom && `FROM ${row.shiftFrom}`, row.shiftTo && `TO ${row.shiftTo}`, row.destinationSite && `DESTINATION ${row.destinationSite}`].filter(Boolean).join(" · ") || null,
-        equipment: defaults.get(row.equipmentId) })),
+      ...dprRows.map((row: any) => {
+        const equipmentDefault = defaults.get(row.equipmentId!);
+        const calculated = computeEquipmentUsage(
+          { ...equipmentDefault, consumptionNorm: row.dieselNorm ?? equipmentDefault?.consumptionNorm },
+          row,
+        );
+        const expectedDiesel = Number(row.expectedDiesel) > 0
+          ? Number(row.expectedDiesel)
+          : calculated.expectedDiesel;
+        return { source: "dpr_log", sourceId: row.id, equipmentId: row.equipmentId,
+          businessDate: isoDate(row.date), entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
+          hoursOrKmRun: (row.hoursOrKmRun ?? calculated.runtime) || null, openingReading: row.openingReading, closingReading: row.closingReading,
+          plantUsageId: row.plantUsageId, actualDiesel: row.actualDiesel,
+          expectedDiesel, expectedDieselAvailable: expectedDiesel != null,
+          consumptionNorm: row.dieselNorm ?? equipmentDefault?.consumptionNorm,
+          normBasis: calculated.efficiencyUnit, task: row.task, site: row.site, equipmentName: equipmentDefault?.name,
+          equipment: equipmentDefault };
+      }),
+      ...usageRows.map((row: EquipmentUsage) => {
+        const equipmentDefault = defaults.get(row.equipmentId);
+        const calculated = computeEquipmentUsage(equipmentDefault, row);
+        const expectedDiesel = Number(row.expectedDiesel) > 0
+          ? Number(row.expectedDiesel)
+          : calculated.expectedDiesel;
+        return { source: "plant_usage", sourceId: row.id, equipmentId: row.equipmentId,
+          businessDate: isoDate(row.date), entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
+          hoursOrKmRun: (row.hoursOrKmRun ?? calculated.runtime) || null, openingReading: row.openingReading, closingReading: row.closingReading,
+          actualDiesel: row.dieselIssued, expectedDiesel, expectedDieselAvailable: expectedDiesel != null,
+          consumptionNorm: equipmentDefault?.consumptionNorm, normBasis: calculated.efficiencyUnit,
+          task: row.task, site: row.siteName, equipmentName: equipmentDefault?.name,
+          movementReference: [row.shiftFrom && `FROM ${row.shiftFrom}`, row.shiftTo && `TO ${row.shiftTo}`, row.destinationSite && `DESTINATION ${row.destinationSite}`].filter(Boolean).join(" · ") || null,
+          equipment: equipmentDefault };
+      }),
       ...maintenance.map((row: EquipmentMaintenanceLog) => ({ source: "maintenance", sourceId: row.id, equipmentId: row.equipmentId,
         businessDate: isoDate(row.date), eventType: row.eventType, description: row.description,
         downtimeHours: row.downtimeHours, equipment: defaults.get(row.equipmentId) })),

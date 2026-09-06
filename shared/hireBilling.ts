@@ -283,6 +283,8 @@ export interface HireActivity {
   plantUsageId?: number | null;
   actualDiesel?: number | null;
   expectedDiesel?: number | null;
+  /** False when actual diesel exists but the activity/norm basis cannot derive expected diesel. */
+  expectedDieselAvailable?: boolean;
   consumptionNorm?: number | null;
   normBasis?: string | null;
   task?: string | null;
@@ -316,6 +318,7 @@ export interface HireDailyDieselPricing {
   date: string;
   actualDiesel: number;
   expectedDiesel: number;
+  expectedDieselAvailable: boolean;
   /** Signed audit variance. Negative values offset positive values period-wide. */
   variance: number;
   /** Backward-compatible alias for variance; no longer positive-only. */
@@ -338,6 +341,7 @@ export interface HireActivityDay {
   trips: number;
   actualDiesel: number;
   expectedDiesel: number;
+  expectedDieselAvailable: boolean;
   dieselVariance: number;
   downtimeHours: number;
   activityCount: number;
@@ -382,6 +386,8 @@ export interface HireGroupCalculationResult extends HireBillingResult {
   diesel: {
     actualDiesel: number;
     expectedDiesel: number;
+    expectedDieselAvailable: boolean;
+    expectedDieselUnavailableDates: readonly string[];
     consumptionNorm?: number;
     normBasis?: string;
     suggestedExcess: number;
@@ -550,6 +556,10 @@ export function buildHireActivityDays(
       trips: money(dayActivities.reduce((sum, row) => sum + (Number(row.numberOfTrips) || 0), 0)),
       actualDiesel: money(dayActivities.reduce((sum, row) => sum + (Number(row.actualDiesel) || 0), 0)),
       expectedDiesel: money(dayActivities.reduce((sum, row) => sum + (Number(row.expectedDiesel) || 0), 0)),
+      expectedDieselAvailable: !dayActivities.some(row =>
+        Number(row.actualDiesel || 0) > 0 &&
+        (row.expectedDieselAvailable === false || row.expectedDiesel == null)
+      ),
       dieselVariance: money(
         dayActivities.reduce((sum, row) => sum + (Number(row.actualDiesel) || 0), 0) -
         dayActivities.reduce((sum, row) => sum + (Number(row.expectedDiesel) || 0), 0)
@@ -579,6 +589,8 @@ export function calculateHireDieselPricing(
 ): {
   actualDiesel: number;
   expectedDiesel: number;
+  expectedDieselAvailable: boolean;
+  expectedDieselUnavailableDates: string[];
   suggestedExcess: number;
   applicableRate?: number;
   rateUnavailable: boolean;
@@ -606,6 +618,10 @@ export function calculateHireDieselPricing(
   const dailyPricing = Array.from(byActivityDate.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([date, rows]) => {
     const actualDiesel = money(rows.reduce((sum, row) => sum + (Number(row.actualDiesel) || 0), 0));
     const expectedDiesel = money(rows.reduce((sum, row) => sum + (Number(row.expectedDiesel) || 0), 0));
+    const expectedDieselAvailable = !rows.some(row =>
+      Number(row.actualDiesel || 0) > 0 &&
+      (row.expectedDieselAvailable === false || row.expectedDiesel == null)
+    );
     const variance = money(actualDiesel - expectedDiesel);
     const excessLitres = variance;
     const rateDate = purchaseDates.filter(purchaseDate => purchaseDate <= date).at(-1);
@@ -626,6 +642,7 @@ export function calculateHireDieselPricing(
       date,
       actualDiesel,
       expectedDiesel,
+      expectedDieselAvailable,
       variance,
       excessLitres,
       applicableRate,
@@ -636,7 +653,11 @@ export function calculateHireDieselPricing(
   });
   const actualDiesel = money(dailyPricing.reduce((sum, day) => sum + day.actualDiesel, 0));
   const expectedDiesel = money(dailyPricing.reduce((sum, day) => sum + day.expectedDiesel, 0));
-  const suggestedExcess = money(Math.max(0, actualDiesel - expectedDiesel));
+  const expectedDieselUnavailableDates = dailyPricing
+    .filter(day => !day.expectedDieselAvailable)
+    .map(day => day.date);
+  const expectedDieselAvailable = expectedDieselUnavailableDates.length === 0;
+  const suggestedExcess = expectedDieselAvailable ? money(Math.max(0, actualDiesel - expectedDiesel)) : 0;
   const actualDays = dailyPricing.filter(day => day.actualDiesel > 0);
   const pricedActualDays = actualDays.filter(day => day.applicableRate !== undefined);
   const unpricedActualDates = actualDays.filter(day => day.applicableRate === undefined).map(day => day.date);
@@ -652,10 +673,15 @@ export function calculateHireDieselPricing(
   return {
     actualDiesel,
     expectedDiesel,
+    expectedDieselAvailable,
+    expectedDieselUnavailableDates,
     suggestedExcess,
     applicableRate,
     rateUnavailable,
-    suggestedRecoveryAmount: suggestedExcess === 0 ? 0 : applicableRate === undefined ? undefined : money(suggestedExcess * applicableRate),
+    suggestedRecoveryAmount: !expectedDieselAvailable ? undefined
+      : suggestedExcess === 0 ? 0
+      : applicableRate === undefined ? undefined
+      : money(suggestedExcess * applicableRate),
     dailyPricing,
     unpricedActualDates,
   };

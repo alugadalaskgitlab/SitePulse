@@ -53,6 +53,12 @@ HSD recovery uses period-net excess: max(0, total actual minus total expected). 
 
 **How to apply:** Resolve a same-day/latest-prior rate for every actual-HSD date, never a future rate. Weight resolved rates by actual litres; partial gaps do not invalidate priced dates. Freeze daily evidence, rate sources, decisions, and results.
 
+Stored positive expected HSD remains authoritative; blank or zero expected HSD may be derived read-only through the canonical equipment-usage calculator. If the activity or norm basis is unavailable, do not suggest automatic excess recovery.
+
+**Why:** Legacy usage rows can retain valid meter readings and actual HSD while derived runtime and expected HSD are blank. Treating missing expected HSD as zero incorrectly recovers the entire actual quantity.
+
+**How to apply:** Derive runtime and expected HSD without updating source operational records. Track expected-HSD availability separately, show a review warning when unavailable, and disable automatic recovery acceptance for that evidence.
+
 Daily Diesel Requirement is the only purchase source with both quantity and rate. Equipment activity lacks a dependable site FK, so pricing scope remains company-wide rather than inferred from free-text labels.
 
 Monthly equipment activity is evidence only and must never become a standalone ordinary Vendor Bill auto-line.

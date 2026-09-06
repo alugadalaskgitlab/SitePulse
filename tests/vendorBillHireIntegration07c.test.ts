@@ -98,6 +98,17 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain("dieselRecoveryFinalAmount: calc.diesel.finalRecoveryAmount");
   });
 
+  it("surfaces hire equipment directly and derives missing expected diesel from existing activity norms", () => {
+    expect(client).toContain("Monthly Hire Available");
+    expect(client).toContain("ADD TO BILL");
+    expect(client).toContain("ADD HIRE ITEM");
+    expect(client).not.toContain("> ADD GROUP");
+    expect(storage).toContain("computeEquipmentUsage(equipmentDefault, row)");
+    expect(storage).toContain("? Number(row.expectedDiesel)");
+    expect(storage).toContain(": calculated.expectedDiesel");
+    expect(client).toContain("Expected diesel unavailable — review norm/activity");
+  });
+
   it("serializes draft reconciliation against lifecycle transitions", () => {
     expect(storage.match(/from\(vendorBills\).*?for\("update"\)/gs)?.length).toBeGreaterThanOrEqual(3);
     expect(storage.match(/from\(hireStatements\).*?for\("update"\)/gs)?.length).toBeGreaterThanOrEqual(3);

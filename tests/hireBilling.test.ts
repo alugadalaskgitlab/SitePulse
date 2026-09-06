@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { availableOtherBillItems, buildHireActivityDays, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, getHireReviewGaps, mergeOtherBillItems, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup } from "../shared/hireBilling";
+import { computeEquipmentUsage } from "../shared/equipmentUsage";
 
 describe("hire billing calculator", () => {
   it("appends Pull Other Items without replacing hire-group or manual lines", () => {
@@ -565,6 +566,51 @@ describe("normalized vendor-bill hire groups", () => {
       suggestedRecoveryAmount: 900,
       finalRecoveryAmount: 900,
       dailyPricing: [{ rateDate: "2025-04-01", purchaseSources: [{ id: 1 }] }],
+    });
+  });
+
+  it("does not treat actual diesel as excess when expected diesel cannot be derived", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "monthly", rate: 160_000 },
+      periodFrom: "2026-08-26",
+      periodTo: "2026-08-26",
+      activities: [{
+        source: "plant_usage", sourceId: 163, equipmentId: 49, businessDate: "2026-08-26",
+        actualDiesel: 80, expectedDiesel: null, expectedDieselAvailable: false,
+      }],
+      dieselPurchases: [{ id: 1, date: "2026-08-26", rate: 90, qtyPurchased: 1_000 }],
+    });
+    expect(result.diesel).toMatchObject({
+      actualDiesel: 80,
+      expectedDieselAvailable: false,
+      expectedDieselUnavailableDates: ["2026-08-26"],
+      suggestedExcess: 0,
+      suggestedRecoveryAmount: undefined,
+    });
+  });
+
+  it("applies recovery only to canonical expected-diesel excess for the excavator-shaped case", () => {
+    const usage = computeEquipmentUsage(
+      { meterType: "hour_meter", consumptionNorm: 12 },
+      { openingReading: 1326.2, closingReading: 1332.3, entryType: "monthly" },
+    );
+    const result = calculateHireGroup({
+      terms: { billingBasis: "monthly", rate: 160_000 },
+      periodFrom: "2026-08-26",
+      periodTo: "2026-08-26",
+      activities: [{
+        source: "plant_usage", sourceId: 163, equipmentId: 49, businessDate: "2026-08-26",
+        hoursOrKmRun: usage.runtime, actualDiesel: 80, expectedDiesel: usage.expectedDiesel,
+        expectedDieselAvailable: true,
+      }],
+      dieselPurchases: [{ id: 35, date: "2026-08-26", rate: 104.61, qtyPurchased: 145 }],
+    });
+    expect(result.diesel).toMatchObject({
+      actualDiesel: 80,
+      expectedDiesel: 73.2,
+      expectedDieselAvailable: true,
+      suggestedExcess: 6.8,
+      suggestedRecoveryAmount: 711.35,
     });
   });
 

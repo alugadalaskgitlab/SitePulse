@@ -1,0 +1,126 @@
+MONTHLY HIRE BILL — SIMPLE UX + EXPECTED DIESEL / EXCESS RECOVERY FIX
+
+Please keep this batch focused only on monthly/daily equipment hire Vendor Bills.
+
+1. Make the hire item obvious to a new user.
+
+Current issue:
+After selecting Vendor + Bill Period, the relevant excavator/hired equipment does not immediately appear as something to bill.
+The user has to know to click “Add Group”, which is unclear.
+
+Required UX:
+- When Vendor + Period are selected and monthly/daily hire activity is available, show it clearly as:
+  “Monthly Hire Available”
+  [Excavator / Equipment Name]
+  [Add to Bill]
+
+- Rename/remove vague “Add Group” wording.
+Use plain wording such as:
+  “Add to Bill”
+or
+  “Add Hire Item”
+
+Do not require the user to understand what a “group” is.
+
+2. Keep the existing Working Sheet mechanism.
+
+Once the hire item is added:
+- show the existing activity/day details
+- show gross hire calculation
+- show diesel actual
+- show diesel expected
+- show excess diesel
+- show suggested recovery
+
+Do not rebuild the hire billing engine.
+
+3. FIX EXPECTED DIESEL.
+
+Current problem:
+Actual diesel issued is shown correctly, but Expected Diesel is blank/zero.
+Because of that, the system treats the entire Actual quantity as excess and proposes recovery for all diesel issued.
+
+This is incorrect.
+
+Expected Diesel must come from the EXISTING hire activity + diesel norm logic already present in the system.
+
+Examples:
+- L/hour × operating hours
+- km/L or L/km × distance, depending on existing norm basis
+- L/trip × trips
+- any existing supported basis already used by hire billing
+
+Do NOT invent a new diesel norm.
+Do NOT default Expected to zero when a valid norm/activity exists.
+
+4. Correct recovery logic:
+
+Actual Diesel = diesel actually issued to that equipment/vendor for the billing period.
+
+Expected Diesel = activity × applicable existing diesel norm.
+
+Excess Diesel =
+max(Actual Diesel - Expected Diesel, 0)
+
+Suggested Recovery must apply ONLY to Excess Diesel.
+
+Example:
+Actual = 41.12 L
+Expected = 30.00 L
+Excess = 11.12 L
+
+Recovery must be based on 11.12 L,
+NOT on 41.12 L.
+
+5. If Expected Diesel cannot be calculated because required data is genuinely missing:
+
+Do NOT treat all Actual Diesel as excess.
+
+Instead show clearly:
+“Expected diesel unavailable — review norm/activity”
+
+and do not automatically propose recovery until the missing basis is resolved.
+
+6. First inspect and report why Expected Diesel is currently blank for the excavator case.
+
+Check:
+- equipment hire type
+- vendor association
+- billing period
+- activity records
+- diesel norm
+- norm basis
+- whether the Working Sheet is receiving the same activity/norm data used by the calculation
+
+Then make only the minimum correction.
+
+7. Do NOT touch:
+- material trip billing
+- Vendor Bill Vehicle/Receipt display
+- Execution Arrangements
+- DPRs
+- BOQ
+- diesel issue/receipt entry workflow
+- schema
+- migrations
+- unrelated Vendor Bill types
+
+8. Verify:
+- vendor + period clearly surfaces eligible hired equipment
+- user can add it without understanding “Add Group”
+- activity data appears correctly
+- Actual Diesel is correct
+- Expected Diesel is calculated when norm/activity exist
+- Excess = Actual - Expected, minimum zero
+- recovery is only on Excess
+- if Expected cannot be derived, no false full-diesel recovery is suggested
+- totals remain correct
+
+STOP after this batch and report:
+- root cause
+- files changed
+- what was changed in the UX
+- why Expected Diesel was missing
+- one worked example showing Actual / Expected / Excess / Recovery
+
+Do not publish.

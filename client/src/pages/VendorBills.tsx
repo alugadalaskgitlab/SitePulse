@@ -467,8 +467,8 @@ function HireWorkingSheet({ group, result, activities, maintenance, patchHireGro
                   {group.basis === "trip" && billableDayActs.filter(a => a.entryType === "trip_based").length > 0 && <div className="mt-1 space-y-1">{billableDayActs.filter(a => a.entryType === "trip_based").map(a => { const d = group.tripDecisions.find(x => x.source === a.source && x.sourceId === a.sourceId); const selected = d?.selected !== false; return <div key={`${a.source}:${a.sourceId}`} className="flex items-center gap-1"><Button type="button" variant="outline" className="h-6 px-1 text-[9px]" onClick={() => setTrip(a, selected ? "exclude" : "include")}>{selected ? "INCLUDE" : "EXCLUDE"}</Button><Input aria-label="Correct trips" className="h-6 w-14 px-1 text-[10px]" type="number" min="0" placeholder="CORRECT" value={d?.correctedTrips ?? ""} onChange={e => setTrip(a, "correct", e.target.value === "" ? undefined : Number(e.target.value))} /></div>; })}</div>}</td>
                 <td className="whitespace-nowrap px-2 py-1.5">{day.openingReadings?.length ? day.openingReadings.join(" · ") : "—"} / {day.closingReadings?.length ? day.closingReadings.join(" · ") : "—"}</td>
                 <td className="whitespace-nowrap px-2 py-1.5 font-semibold">{day.actualDiesel ? `${Number(day.actualDiesel).toFixed(2)} L` : "—"}</td>
-                <td className="whitespace-nowrap px-2 py-1.5">{day.expectedDiesel ? `${Number(day.expectedDiesel).toFixed(2)} L` : "—"}</td>
-                <td className={`whitespace-nowrap px-2 py-1.5 font-semibold ${day.dieselVariance > 0 ? "text-amber-700" : "text-emerald-700"}`}>{day.dieselVariance ? `${day.dieselVariance > 0 ? "+" : ""}${Number(day.dieselVariance).toFixed(2)} L` : "0.00 L"}<span className="block text-[9px] font-normal text-muted-foreground">{pricing?.applicableRate != null ? `RATE ₹${formatCurrency(pricing.applicableRate)}/L` : day.actualDiesel ? "RATE UNPRICED" : ""}</span></td>
+                <td className="whitespace-nowrap px-2 py-1.5">{day.expectedDieselAvailable === false ? <span className="font-semibold text-amber-700">UNAVAILABLE</span> : day.expectedDiesel ? `${Number(day.expectedDiesel).toFixed(2)} L` : "—"}</td>
+                <td className={`whitespace-nowrap px-2 py-1.5 font-semibold ${day.expectedDieselAvailable === false ? "text-muted-foreground" : day.dieselVariance > 0 ? "text-amber-700" : "text-emerald-700"}`}>{day.expectedDieselAvailable === false ? "REVIEW" : day.dieselVariance ? `${day.dieselVariance > 0 ? "+" : ""}${Number(day.dieselVariance).toFixed(2)} L` : "0.00 L"}<span className="block text-[9px] font-normal text-muted-foreground">{day.expectedDieselAvailable === false ? "NORM / ACTIVITY MISSING" : pricing?.applicableRate != null ? `RATE ₹${formatCurrency(pricing.applicableRate)}/L` : day.actualDiesel ? "RATE UNPRICED" : ""}</span></td>
                 <td className="min-w-[250px] px-2 py-1.5">{dayBreakdowns.length ? dayBreakdowns.map(m => { const current = group.exceptionDecisions.find(d => d.sourceType === "maintenance" && d.sourceId === m.sourceId); return <div key={m.sourceId} className="mb-1"><div className="font-semibold text-amber-700">{formatEvidenceValue(m.description)} · {m.downtimeHours ?? 0} H</div><div className="flex items-center gap-1"><Select value={current?.decision || ""} onValueChange={v => setBreakdown(m, v)}><SelectTrigger className="h-6 w-[125px] text-[9px]"><SelectValue placeholder="DECISION" /></SelectTrigger><SelectContent><SelectItem value="none">NO DEDUCTION</SelectItem><SelectItem value="half_day">HALF DAY</SelectItem><SelectItem value="full_day">FULL DAY</SelectItem><SelectItem value="manual">MANUAL ₹</SelectItem></SelectContent></Select>{current?.decision === "manual" && <Input className="h-6 w-16 px-1 text-[10px]" type="number" min="0" value={current.manualDeductionAmount ?? ""} onChange={e => setBreakdown(m, "manual", { manualDeductionAmount: e.target.value === "" ? undefined : Number(e.target.value) })} />}</div></div>; }) : "—"}</td>
                 <td className="min-w-[180px] px-2 py-1.5">{dayBreakdowns.length ? dayBreakdowns.map(m => { const current = group.exceptionDecisions.find(d => d.sourceType === "maintenance" && d.sourceId === m.sourceId); return <Input key={m.sourceId} className="mb-1 h-6 w-full px-1 text-[9px]" placeholder="REVIEWER REMARKS" value={current?.remarks || ""} onChange={e => setBreakdown(m, current?.decision || "none", { remarks: e.target.value.toUpperCase() })} />; }) : <span className="text-muted-foreground">—</span>}</td>
               </tr>;
@@ -1000,30 +1000,33 @@ export default function VendorBills() {
     ]);
   };
 
-  const addHireGroup = () => {
-    if (!periodFrom || !periodTo) {
-      toast({ title: "SET THE BILL PERIOD BEFORE ADDING A HIRE GROUP", variant: "destructive" }); return;
-    }
+  const nextAvailableHirePeriod = (equipmentId: number) => {
     const shiftDate = (date: string, days: number) => {
       const value = new Date(`${date}T00:00:00Z`);
       value.setUTCDate(value.getUTCDate() + days);
       return value.toISOString().slice(0, 10);
     };
-    let available: { eq: any; from: string; to: string } | undefined;
-    for (const eq of hireEquipment) {
-      let cursor = periodFrom;
-      const occupied = hireGroups.filter(group => group.equipmentId === Number(eq.id))
-        .sort((a, b) => a.periodFrom.localeCompare(b.periodFrom));
-      for (const group of occupied) {
-        if (cursor < group.periodFrom) {
-          available = { eq, from: cursor, to: shiftDate(group.periodFrom, -1) };
-          break;
-        }
-        if (cursor <= group.periodTo) cursor = shiftDate(group.periodTo, 1);
-      }
-      if (!available && cursor <= periodTo) available = { eq, from: cursor, to: periodTo };
-      if (available) break;
+    let cursor = periodFrom;
+    const occupied = hireGroups.filter(group => group.equipmentId === equipmentId)
+      .sort((a, b) => a.periodFrom.localeCompare(b.periodFrom));
+    for (const group of occupied) {
+      if (cursor < group.periodFrom) return { from: cursor, to: shiftDate(group.periodFrom, -1) };
+      if (cursor <= group.periodTo) cursor = shiftDate(group.periodTo, 1);
     }
+    return cursor <= periodTo ? { from: cursor, to: periodTo } : null;
+  };
+  const availableHireEquipment = hireEquipment
+    .map(eq => ({ eq, period: nextAvailableHirePeriod(Number(eq.id)) }))
+    .filter((entry): entry is { eq: any; period: { from: string; to: string } } => !!entry.period);
+
+  const addHireGroup = (preferredEquipmentId?: number) => {
+    if (!periodFrom || !periodTo) {
+      toast({ title: "SET THE BILL PERIOD BEFORE ADDING A HIRE ITEM", variant: "destructive" }); return;
+    }
+    const candidate = preferredEquipmentId
+      ? availableHireEquipment.find(entry => Number(entry.eq.id) === preferredEquipmentId)
+      : availableHireEquipment[0];
+    const available = candidate ? { eq: candidate.eq, ...candidate.period } : undefined;
     if (!available) {
       toast({ title: "NO HIRED EQUIPMENT FOUND FOR THIS VENDOR", variant: "destructive" }); return;
     }
@@ -2105,13 +2108,27 @@ export default function VendorBills() {
           <Card className="border-orange-200 dark:border-orange-800">
             <CardHeader className="py-3 flex flex-row items-center justify-between">
               <CardTitle className="text-sm uppercase tracking-wider flex items-center gap-2"><Calculator className="w-4 h-4 text-orange-600" /> Equipment Hire Calculation</CardTitle>
-              <Button variant="outline" size="sm" onClick={addHireGroup} disabled={!vendorName || !periodFrom || !periodTo || hireActivitiesLoading}>
-                <Plus className="w-3 h-3 mr-1" /> ADD GROUP
+              <Button variant="outline" size="sm" onClick={() => addHireGroup()} disabled={!vendorName || !periodFrom || !periodTo || hireActivitiesLoading || !availableHireEquipment.length}>
+                <Plus className="w-3 h-3 mr-1" /> ADD HIRE ITEM
               </Button>
             </CardHeader>
             <CardContent className="pt-0 space-y-3">
               {hireActivitiesLoading && <div className="text-xs text-muted-foreground border rounded p-3">LOADING HIRE ACTIVITY REVIEW…</div>}
               {!hireActivitiesLoading && vendorName && periodFrom && periodTo && !hireActivityRows.length && <div className="text-xs text-muted-foreground border rounded p-3">NO LINKED ACTIVITY FOUND. MONTHLY GROUPS MAY STILL BE ADDED.</div>}
+              {!hireActivitiesLoading && vendorName && periodFrom && periodTo && availableHireEquipment.map(({ eq, period }) => (
+                <div key={eq.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-orange-300 bg-orange-50 px-3 py-2 dark:border-orange-800 dark:bg-orange-950/30" data-testid={`hire-available-${eq.id}`}>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-orange-700 dark:text-orange-300">
+                      {eq.hireBillingBasis === "daily" ? "Daily Hire Available" : "Monthly Hire Available"}
+                    </p>
+                    <p className="font-semibold">{String(eq.name || "EQUIPMENT").toUpperCase()}</p>
+                    <p className="text-[11px] text-muted-foreground">{formatDate(period.from)}–{formatDate(period.to)}</p>
+                  </div>
+                  <Button type="button" size="sm" onClick={() => addHireGroup(Number(eq.id))} data-testid={`button-add-hire-${eq.id}`}>
+                    <Plus className="mr-1 h-3 w-3" /> ADD TO BILL
+                  </Button>
+                </div>
+              ))}
               {hireGroups.map((group, index) => {
                 const eq = hireEquipmentFor(group.equipmentId);
                 const result = hireCalculated[index]?.result;
@@ -2148,6 +2165,7 @@ export default function VendorBills() {
                   .map((day: any) => day.applicableRate).filter((rate: any) => rate != null))) as number[];
                 const applicableRate = diesel.applicableRate == null ? null : Number(diesel.applicableRate);
                 const rateUnavailable = Boolean(diesel.rateUnavailable);
+                const expectedDieselUnavailable = diesel.expectedDieselAvailable === false;
                 const rateLabel = rateUnavailable ? "RATE UNAVAILABLE" : applicableRate != null ? `₹${formatCurrency(applicableRate)} / L` : "—";
                 const formatEvidenceValue = (value: any) => value == null || value === "" ? "—" : String(value);
                 return (
@@ -2301,7 +2319,7 @@ export default function VendorBills() {
                              dieselRecoveryFinalAmount: decision === "accept" ? suggestedRecoveryAmount : decision === "ignore" ? 0 : group.dieselRecoveryFinalAmount,
                            });
                          }}><SelectTrigger><SelectValue placeholder="CHOOSE" /></SelectTrigger><SelectContent>
-                            <SelectItem value="accept" disabled={rateUnavailable}>{rateUnavailable ? "ACCEPT SUGGESTED" : `ACCEPT SUGGESTED ₹${formatCurrency(suggestedRecoveryAmount)}`}</SelectItem>
+                            <SelectItem value="accept" disabled={rateUnavailable || expectedDieselUnavailable}>{expectedDieselUnavailable ? "EXPECTED HSD UNAVAILABLE" : rateUnavailable ? "ACCEPT SUGGESTED" : `ACCEPT SUGGESTED ₹${formatCurrency(suggestedRecoveryAmount)}`}</SelectItem>
                            <SelectItem value="edit">EDIT FINAL AMOUNT</SelectItem>
                            <SelectItem value="ignore">IGNORE</SelectItem>
                            </SelectContent></Select>{rateUnavailable && <p className="mt-1 text-[10px] text-amber-700">ACCEPT DISABLED — NO ACTUAL-HSD DATE HAS A RELIABLE HISTORICAL RATE.</p>}</div>
@@ -2309,7 +2327,8 @@ export default function VendorBills() {
                          <div><Label className="text-[11px] uppercase">Recovery Remarks</Label><Input value={group.dieselRecoveryRemarks || ""} onChange={e => patchHireGroup(group.id, { dieselRecoveryRemarks: e.target.value.toUpperCase() })} /></div>
                        </div>}
                      </div>}
-                     {result && <div className="border-t pt-2 grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs">{group.basis !== "monthly" && <div><span className="text-muted-foreground uppercase">Suggested Qty</span><strong className="block">{result.quantity.toFixed(2)} {group.basis === "daily" ? "DAYS" : "TRIPS"}</strong></div>}<div><span className="text-muted-foreground uppercase">Gross</span><strong className="block">₹{formatCurrency(result.grossAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Breakdown deduction</span><strong className="block">₹{formatCurrency(result.deductionAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Net Excess</span><strong className="block">{result.diesel.suggestedExcess.toFixed(2)} L</strong></div><div><span className="text-muted-foreground uppercase">Suggested / Final recovery</span><strong className="block">₹{formatCurrency(result.diesel.suggestedRecoveryAmount)} / ₹{formatCurrency(result.diesel.finalRecoveryAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Net Hire</span><strong className="block text-orange-700">₹{formatCurrency(result.netAmount)}</strong></div></div>}
+                     {expectedDieselUnavailable && <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">Expected diesel unavailable — review norm/activity. No automatic recovery has been proposed.</div>}
+                     {result && <div className="border-t pt-2 grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs">{group.basis !== "monthly" && <div><span className="text-muted-foreground uppercase">Suggested Qty</span><strong className="block">{result.quantity.toFixed(2)} {group.basis === "daily" ? "DAYS" : "TRIPS"}</strong></div>}<div><span className="text-muted-foreground uppercase">Gross</span><strong className="block">₹{formatCurrency(result.grossAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Breakdown deduction</span><strong className="block">₹{formatCurrency(result.deductionAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Net Excess</span><strong className="block">{expectedDieselUnavailable ? "—" : `${result.diesel.suggestedExcess.toFixed(2)} L`}</strong></div><div><span className="text-muted-foreground uppercase">Suggested / Final recovery</span><strong className="block">{expectedDieselUnavailable ? "—" : `₹${formatCurrency(result.diesel.suggestedRecoveryAmount)} / ₹${formatCurrency(result.diesel.finalRecoveryAmount)}`}</strong></div><div><span className="text-muted-foreground uppercase">Net Hire</span><strong className="block text-orange-700">₹{formatCurrency(result.netAmount)}</strong></div></div>}
                     <div className="flex justify-end"><Button type="button" variant="ghost" size="sm" onClick={() => removeHireGroup(group.id)}><Trash2 className="w-3 h-3 mr-1" /> REMOVE</Button></div>
                   </div>
                 );
