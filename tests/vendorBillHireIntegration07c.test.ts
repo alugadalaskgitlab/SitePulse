@@ -62,7 +62,8 @@ describe("07C vendor-bill hire transaction wiring", () => {
 
   it("keeps Pull Other Items additive and derives its count from final eligibility", () => {
     expect(client).toContain("availableOtherBillItems(mappedAutoItems, lineItems, hireGroups)");
-    expect(client).toContain("setLineItems(prev => mergeOtherBillItems(prev, mapped))");
+    expect(client).toContain("setLineItems(prev => mergeOtherBillItems(");
+    expect(client).toContain("mapped,");
     expect(client).not.toContain("setLineItems(uncovered)");
     expect(client).toContain("PULL ${availableOtherItems.length} OTHER ITEM");
   });

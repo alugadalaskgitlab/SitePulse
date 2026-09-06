@@ -1376,7 +1376,7 @@ export interface IStorage {
   ensureMaterialReceiptDieselLinkColumn(): Promise<void>;
   getDieselRequirementReceipts(requirementIds: number[]): Promise<MaterialReceipt[]>;
   deleteVendorBill(id: number): Promise<boolean>;
-  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string })[]>;
+  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; vehicleNumber?: string | null; receiptNumber?: string | null })[]>;
   getVendorBillHireActivities(vendorName: string, periodFrom: string, periodTo: string): Promise<any[]>;
   // Hired equipment billing
   getHireStatements(): Promise<HireStatement[]>;
@@ -15222,10 +15222,10 @@ export class DatabaseStorage implements IStorage {
     ];
   }
 
-  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string })[]> {
+  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; vehicleNumber?: string | null; receiptNumber?: string | null })[]> {
     const vendorVariants = await this.resolveVendorAliases(vendorName);
     const bt = billType.toLowerCase();
-    const items: (Partial<InsertVendorBillItem> & { sourceId?: number | string })[] = [];
+    const items: (Partial<InsertVendorBillItem> & { sourceId?: number | string; vehicleNumber?: string | null; receiptNumber?: string | null })[] = [];
 
     const entryTypeLabel = (entryType: string | null) => {
       switch ((entryType || "").toLowerCase()) {
@@ -15474,6 +15474,8 @@ export class DatabaseStorage implements IStorage {
         quantity: materialLogs.quantity,
         uom: materialLogs.uom,
         supplier: materialLogs.supplier,
+        vehicleNumber: materialLogs.vehicleNumber,
+        receiptNumber: materialLogs.receiptNumber,
         site: dprs.site,
       })
       .from(materialLogs)
@@ -15499,6 +15501,8 @@ export class DatabaseStorage implements IStorage {
             source: "auto",
             sourceId: `dpr_material:${row.id}`,
             siteName: siteLabel,
+            vehicleNumber: row.vehicleNumber ?? null,
+            receiptNumber: row.receiptNumber ?? null,
           });
         }
       }
@@ -15522,6 +15526,8 @@ export class DatabaseStorage implements IStorage {
             source: "auto",
             sourceId: `site_material_trip:${row.id}`,
             siteName: `SITE: ${(row.site || "").toUpperCase()}`,
+            vehicleNumber: row.vehicleNumber ?? null,
+            receiptNumber: row.receiptNumber ?? null,
           });
         }
       }
@@ -15535,6 +15541,8 @@ export class DatabaseStorage implements IStorage {
         materialName: plantMaterials.name,
         partyName: parties.name,
         receiptTransporter: materialReceipts.transporter,
+        vehicleNumber: materialReceipts.vehicleNumber,
+        receiptNumber: materialReceipts.receiptNo,
       })
       .from(materialReceipts)
       .innerJoin(plantMaterials, eq(plantMaterials.id, materialReceipts.materialId))
@@ -15558,6 +15566,8 @@ export class DatabaseStorage implements IStorage {
             siteName: "PLANT",
             suppliedTo: row.partyName ?? null,
             transporter: row.receiptTransporter ?? null,
+            vehicleNumber: row.vehicleNumber ?? null,
+            receiptNumber: row.receiptNumber ?? null,
           });
         }
       }

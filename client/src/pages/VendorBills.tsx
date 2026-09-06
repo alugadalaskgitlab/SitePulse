@@ -62,6 +62,9 @@ interface LineItem {
   billedIn?: { billNo: string; billStatus: string } | null;
   suppliedTo?: string | null;
   transporter?: string | null;
+  vehicleNumber?: string | null;
+  receiptNumber?: string | null;
+  initialBlank?: boolean;
 }
 
 const isAutoLineSource = (source: string) => source === "auto" || source.startsWith("auto:");
@@ -84,6 +87,8 @@ function mapAutoBillItem(item: any): LineItem {
     siteName: item.siteName || null,
     suppliedTo: item.suppliedTo ?? null,
     transporter: item.transporter ?? null,
+    vehicleNumber: item.vehicleNumber ?? null,
+    receiptNumber: item.receiptNumber ?? null,
   };
 }
 
@@ -570,7 +575,7 @@ export default function VendorBills() {
   const [periodFrom, setPeriodFrom] = useState("");
   const [periodTo, setPeriodTo] = useState("");
   const [notes, setNotes] = useState("");
-  const defaultManualItem: LineItem = { date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null, suppliedTo: null, transporter: null };
+  const defaultManualItem: LineItem = { date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null, suppliedTo: null, transporter: null, initialBlank: true };
   const [lineItems, setLineItems] = useState<LineItem[]>(isAdmin ? [defaultManualItem] : []);
   const [adjustmentLabel, setAdjustmentLabel] = useState("");
   const [adjustmentAmount, setAdjustmentAmount] = useState<number>(0);
@@ -968,7 +973,11 @@ export default function VendorBills() {
         return (a.date || "").localeCompare(b.date || "");
       });
 
-      setLineItems(prev => mergeOtherBillItems(prev, mapped));
+      const pulledMaterialRows = mapped.some(item => item.category === "material");
+      setLineItems(prev => mergeOtherBillItems(
+        pulledMaterialRows ? prev.filter(item => !item.initialBlank) : prev,
+        mapped,
+      ));
       toast({ title: `${mapped.length} items added from records` });
     }
   };
@@ -1127,7 +1136,7 @@ export default function VendorBills() {
   const updateLineItem = (index: number, field: keyof LineItem, value: any) => {
     setLineItems(prev => {
       const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
+      updated[index] = { ...updated[index], [field]: value, initialBlank: false };
       if (field === "category" && value !== "transport") {
         updated[index].leadDistance = null;
       }
@@ -2426,6 +2435,13 @@ export default function VendorBills() {
                     {isGeneratedEvidenceLine(item.source) ? (
                       <div className="space-y-1">
                         <span className="text-sm" data-testid={`text-item-desc-${idx}`}>{item.description}</span>
+                        {(item.vehicleNumber || item.receiptNumber) && (
+                          <div className="text-[11px] text-muted-foreground" data-testid={`text-item-trip-reference-${idx}`}>
+                            {item.vehicleNumber ? `Vehicle: ${item.vehicleNumber}` : null}
+                            {item.vehicleNumber && item.receiptNumber ? " · " : null}
+                            {item.receiptNumber ? `Receipt: ${item.receiptNumber}` : null}
+                          </div>
+                        )}
                         <div className="flex items-center gap-1 flex-wrap">
                           {(() => {
                             const badge = parseSiteBadge(item);
