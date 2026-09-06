@@ -23,11 +23,25 @@ export function hasRecordedArrangementStatusChange(
   history: unknown,
   status: string,
 ): boolean {
-  return Array.isArray(history) && history.some((event: any) =>
-    event?.eventType === "status_change"
-    && event?.status === status
-    && isValidArrangementEffectiveDate(event?.effectiveFrom),
-  );
+  return latestRecordedArrangementStatusChange(history, status) != null;
+}
+
+export function latestRecordedArrangementStatusChange(
+  history: unknown,
+  status: string,
+): ArrangementStatusChangeEvent | null {
+  if (!Array.isArray(history)) return null;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const event = history[index] as any;
+    if (
+      event?.eventType === "status_change"
+      && event?.status === status
+      && isValidArrangementEffectiveDate(event?.effectiveFrom)
+    ) {
+      return event as ArrangementStatusChangeEvent;
+    }
+  }
+  return null;
 }
 
 export function appendArrangementStatusChange(

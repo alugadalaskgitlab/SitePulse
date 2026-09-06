@@ -19,7 +19,7 @@ import { ArrowLeft, Check, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { executionArrangementCategoryForItem, bituminousItemTypeOf } from "@shared/planningEngine";
 import { boqItemDisplayName } from "@shared/boqItemName";
-import { hasRecordedArrangementStatusChange } from "@shared/arrangementStatusHistory";
+import { hasRecordedArrangementStatusChange, latestRecordedArrangementStatusChange } from "@shared/arrangementStatusHistory";
 import {
   deriveExecutionState,
   EXECUTION_STATE_COLORS,
@@ -271,8 +271,9 @@ export default function ExecutionArrangements() {
         const rate = a.agreedRate != null ? Number(a.agreedRate) : null;
         const value = rate != null ? qty * rate : null;
         const completed = Number(a.completedQty ?? 0);
+        const lifecycleStatusEvent = latestRecordedArrangementStatusChange(a.revisionHistory, a.status);
         return {
-          arr: a, allocs, linkedQty, stretchLabels, state,
+          arr: a, allocs, linkedQty, stretchLabels, state, lifecycleStatusEvent,
           qty, rate, value, completed, balance: Math.max(0, qty - completed),
         };
       })
@@ -425,7 +426,14 @@ export default function ExecutionArrangements() {
                   <TableCell className="text-right font-mono">{r.qty.toLocaleString()} {uom}</TableCell>
                   <TableCell className="text-right font-mono">{r.rate != null ? `₹${r.rate.toLocaleString()}` : "—"}</TableCell>
                   <TableCell className="text-right font-mono">{r.value != null ? `₹${(r.value / 100000).toFixed(2)} L` : "—"}</TableCell>
-                  <TableCell><ArrangementStatusBadge status={r.arr.status} /></TableCell>
+                  <TableCell>
+                    <ArrangementStatusBadge status={r.arr.status} />
+                    {r.lifecycleStatusEvent && (
+                      <div className="mt-0.5 text-[10px] text-slate-500" data-testid={`register-status-effective-from-${r.arr.id}`}>
+                        from {r.lifecycleStatusEvent.effectiveFrom}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell>{r.arr.mobilisationDate ?? r.arr.plannedStartDate ?? "—"}</TableCell>
                   <TableCell className="text-right font-mono">{r.completed > 0 ? r.completed.toLocaleString() : "—"}</TableCell>
                   <TableCell className="text-right font-mono">{r.balance.toLocaleString()}</TableCell>
@@ -457,9 +465,7 @@ export default function ExecutionArrangements() {
         if (!r) return null;
         const a = r.arr as RegisterArrangement;
         const uom = a.uom ?? "CUM";
-        const statusEvents = (Array.isArray(a.revisionHistory) ? a.revisionHistory : [])
-          .filter((event: any) => event?.eventType === "status_change");
-        const latestStatusEvent = statusEvents[statusEvents.length - 1] as any;
+        const latestStatusEvent = latestRecordedArrangementStatusChange(a.revisionHistory, a.status);
         return (
           <Dialog open onOpenChange={o => { if (!o) setDetailTargetId(null); }}>
             <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="arrangement-detail">
@@ -542,7 +548,7 @@ export default function ExecutionArrangements() {
                                   <span className="font-semibold text-slate-700">{label}</span>
                                   {b?.side && <span className="rounded bg-slate-100 border border-slate-200 px-1 text-[10px] uppercase">{b.side}</span>}
                                   {b?.chainageFrom != null && <span className="text-slate-500 font-mono text-[10px]">Ch. {b.chainageFrom}–{b.chainageTo}</span>}
-                                  <span className="rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">Current: {a.status}</span>
+                                  <span className="rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">Arrangement: {a.status.replace(/_/g, " ")}</span>
                                 </div>
                                 <div className="mt-1 grid grid-cols-2 md:grid-cols-5 gap-x-3 gap-y-1 text-[11px]">
                                   <span><b className="text-slate-500">Allocated</b><br /><strong className="font-mono">{Number(evidence?.allocatedQty ?? al.allocatedQty).toLocaleString()} {evidence?.allocationUom ?? uom}</strong></span>

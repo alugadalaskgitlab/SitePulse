@@ -34,7 +34,7 @@ describe("execution arrangement reach-card presentation", () => {
     const page = source("pages/ExecutionArrangements.tsx");
     const barPanel = source("components/BarArrangementPanel.tsx");
     const executionState = source("components/ExecutionStateBadge.tsx");
-    expect(page).toContain("Current: {a.status}");
+    expect(page).toContain("Arrangement: {a.status.replace");
     expect(page).not.toContain("Current: {al.arrangementStatus}");
     expect(barPanel).toContain("const currentStatus = liveArrangementById.get(allocation.arrangementId)?.status");
     expect(barPanel).toContain('new Set(["approved", "mobilisation_pending", "in_progress"])');

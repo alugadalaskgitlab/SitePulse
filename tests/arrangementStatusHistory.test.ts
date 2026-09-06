@@ -4,6 +4,7 @@ import {
   appendArrangementStatusChange,
   hasRecordedArrangementStatusChange,
   isValidArrangementEffectiveDate,
+  latestRecordedArrangementStatusChange,
 } from "../shared/arrangementStatusHistory";
 
 describe("execution arrangement status history foundation", () => {
@@ -58,6 +59,7 @@ describe("execution arrangement status history foundation", () => {
     });
     expect(hasRecordedArrangementStatusChange(confirmed, "cancelled")).toBe(true);
     expect(hasRecordedArrangementStatusChange(confirmed, "approved")).toBe(false);
+    expect(latestRecordedArrangementStatusChange(confirmed, "cancelled")?.effectiveFrom).toBe("2026-08-20");
   });
 
   it("enforces the foundation at the canonical lifecycle routes and legacy PM/Admin control", () => {
@@ -87,6 +89,21 @@ describe("execution arrangement status history foundation", () => {
     expect(register).toContain('data-testid="legacy-status-effective-date"');
     expect(register).toContain("confirmExistingStatus: true");
     expect(register).toContain('!hasRecordedArrangementStatusChange(a.revisionHistory, "cancelled")');
+    expect(register).toContain("latestRecordedArrangementStatusChange(a.revisionHistory, a.status)");
+    expect(register).toContain("from {r.lifecycleStatusEvent.effectiveFrom}");
+    expect(register).toContain("Arrangement: {a.status.replace");
     expect(register).not.toContain('.filter(a => !["cancelled"].includes(a.status))');
+
+    const lifecycleForm = readFileSync("client/src/components/EarthworkArrangementDialog.tsx", "utf8");
+    const inProgressControls = lifecycleForm.slice(
+      lifecycleForm.indexOf('{arr.status === "in_progress"'),
+      lifecycleForm.indexOf('{arr.status === "on_hold"'),
+    );
+    const onHoldControls = lifecycleForm.slice(
+      lifecycleForm.indexOf('{arr.status === "on_hold"'),
+      lifecycleForm.indexOf("</div>", lifecycleForm.indexOf('{arr.status === "on_hold"')),
+    );
+    expect(inProgressControls).toContain('requestStatusChange("cancelled")');
+    expect(onHoldControls).toContain('requestStatusChange("cancelled")');
   });
 });

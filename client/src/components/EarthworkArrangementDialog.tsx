@@ -557,17 +557,25 @@ export function ArrangementSummaryCard({
               {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
               Mark Completed
             </Button>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={() => requestStatusChange("cancelled")}>
+              <Trash2 className="w-3 h-3 mr-1" /> Cancel
+            </Button>
           </>
         )}
         {arr.status === "on_hold" && (
-          <Button
-            variant="outline" size="sm" className="h-6 text-[11px] px-2 text-blue-600 hover:bg-blue-50"
-            disabled={statusMutation.isPending}
-            onClick={() => requestStatusChange("in_progress")}
-          >
-            {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
-            Resume
-          </Button>
+          <>
+            <Button
+              variant="outline" size="sm" className="h-6 text-[11px] px-2 text-blue-600 hover:bg-blue-50"
+              disabled={statusMutation.isPending}
+              onClick={() => requestStatusChange("in_progress")}
+            >
+              {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+              Resume
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={() => requestStatusChange("cancelled")}>
+              <Trash2 className="w-3 h-3 mr-1" /> Cancel
+            </Button>
+          </>
         )}
       </div>
     </div>
