@@ -108,7 +108,7 @@ describe("scope linkage persistence (B3)", () => {
     expect(routes).toMatch(/scopeSegmentIds:\s*scopeSegmentIdsValue/);
     // PATCH whitelists the field and re-validates it
     const patchIdx = routes.indexOf('app.patch("/api/earthwork-arrangements/:id"');
-    const patchBody = routes.slice(patchIdx, patchIdx + 6000);
+    const patchBody = routes.slice(patchIdx, routes.indexOf('app.delete("/api/earthwork-arrangements/:id"', patchIdx));
     expect(patchBody).toContain('"scopeSegmentIds"');
     expect(patchBody).toContain("validateArrangementScopeSegments(current.boqProjectId");
     // Only confirmed working reaches are linkable

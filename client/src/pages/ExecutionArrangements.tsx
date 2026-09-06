@@ -92,6 +92,7 @@ type RegisterArrangement = ProjectArrangement & {
   uom?: string | null;
   workCategory?: string | null;
   bituminousItemType?: string | null;
+  revisionHistory?: unknown[] | null;
 };
 
 const CATEGORY_LABELS: Record<string, string> = { earthwork: "Earthwork", bituminous: "Bituminous" };
@@ -123,10 +124,17 @@ export default function ExecutionArrangements() {
   // Instruction 030: the register is now where arrangements are CREATED too.
   const [showCreatePicker, setShowCreatePicker] = useState(false);
   const [createItemId, setCreateItemId] = useState<number | null>(null);
+  const [approvalEffectiveFrom, setApprovalEffectiveFrom] = useState(() => {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+  });
+  const [legacyEffectiveFrom, setLegacyEffectiveFrom] = useState("");
+  const [legacyEffectiveReason, setLegacyEffectiveReason] = useState("");
 
   const { arrangements, allocations } = useProjectArrangements(projectId, projectId > 0);
   const approvalMutation = useMutation({
-    mutationFn: approveExecutionArrangement,
+    mutationFn: ({ arrangementId, effectiveFrom }: { arrangementId: number; effectiveFrom: string }) =>
+      approveExecutionArrangement(arrangementId, effectiveFrom),
     onSuccess: async () => {
       await invalidateArrangementQueries(queryClient, projectId);
       toast({ title: "Arrangement approved" });
@@ -134,6 +142,31 @@ export default function ExecutionArrangements() {
     onError: (err: Error) => {
       toast({ title: "Approval failed", description: err.message, variant: "destructive" });
     },
+  });
+  const legacyStatusMutation = useMutation({
+    mutationFn: async ({ arrangementId, status }: { arrangementId: number; status: string }) => {
+      const response = await fetch(`/api/earthwork-arrangements/${arrangementId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status,
+          effectiveFrom: legacyEffectiveFrom,
+          statusReason: legacyEffectiveReason || undefined,
+          confirmExistingStatus: true,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? data.error ?? `Error ${response.status}`);
+      return data;
+    },
+    onSuccess: async () => {
+      await invalidateArrangementQueries(queryClient, projectId);
+      toast({ title: "Effective status date confirmed" });
+      setLegacyEffectiveFrom("");
+      setLegacyEffectiveReason("");
+    },
+    onError: (err: Error) => toast({ title: "Confirmation failed", description: err.message, variant: "destructive" }),
   });
   const { data: bars = [], isLoading: barsLoading } = useQuery<ProgrammeBar[]>({
     queryKey: ["/api/boq/projects", projectId, "programme"],
@@ -216,7 +249,6 @@ export default function ExecutionArrangements() {
 
   const rows = useMemo(() => {
     return (arrangements as RegisterArrangement[])
-      .filter(a => !["cancelled"].includes(a.status))
       .map(a => {
         const allocs = allocations.filter(al => al.arrangementId === a.id);
         const linkedQty = allocs.reduce((s, al) => s + Number(al.allocatedQty), 0);
@@ -424,6 +456,9 @@ export default function ExecutionArrangements() {
         if (!r) return null;
         const a = r.arr as RegisterArrangement;
         const uom = a.uom ?? "CUM";
+        const statusEvents = (Array.isArray(a.revisionHistory) ? a.revisionHistory : [])
+          .filter((event: any) => event?.eventType === "status_change");
+        const latestStatusEvent = statusEvents[statusEvents.length - 1] as any;
         return (
           <Dialog open onOpenChange={o => { if (!o) setDetailTargetId(null); }}>
             <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="arrangement-detail">
@@ -440,7 +475,40 @@ export default function ExecutionArrangements() {
                   <div><span className="text-slate-500">Agency:</span> {a.agencyName ?? "—"}</div>
                   <div><span className="text-slate-500">Allocated:</span> <span className="font-mono">{Number(a.allocatedQty).toLocaleString()} {uom}</span></div>
                   <div className="col-span-2"><span className="text-slate-500">Applicable Scope:</span> {applicableScopeLabel(a)}</div>
+                  {latestStatusEvent && (
+                    <div className="col-span-2" data-testid="latest-arrangement-status-event">
+                      <span className="text-slate-500">Effective status:</span>{" "}
+                      {String(latestStatusEvent.status).replace(/_/g, " ")} from {latestStatusEvent.effectiveFrom}
+                      <span className="text-slate-400"> · recorded {String(latestStatusEvent.recordedAt ?? "").slice(0, 10)}</span>
+                    </div>
+                  )}
                 </div>
+                {canSetArrangementOutcome && a.status === "cancelled" && (
+                  <div className="rounded border border-amber-300 bg-amber-50 p-2.5 space-y-2" data-testid="legacy-status-effective-date">
+                    <p className="font-semibold text-amber-900">Confirm historical effective date</p>
+                    <p className="text-[11px] text-amber-800">Adds an append-only status event. It does not edit or remove earlier history.</p>
+                    <div className="flex gap-2 flex-wrap items-end">
+                      <div>
+                        <label className="block text-[11px] text-slate-600 mb-1">Effective from</label>
+                        <Input type="date" className="h-8 w-40" value={legacyEffectiveFrom} onChange={e => setLegacyEffectiveFrom(e.target.value)} data-testid="input-legacy-status-effective-from" />
+                      </div>
+                      <div className="flex-1 min-w-[220px]">
+                        <label className="block text-[11px] text-slate-600 mb-1">Reason / reference</label>
+                        <Input className="h-8" value={legacyEffectiveReason} onChange={e => setLegacyEffectiveReason(e.target.value)} placeholder={a.status === "cancelled" ? "Cancellation reason or reference" : "Status reason or reference"} data-testid="input-legacy-status-reason" />
+                      </div>
+                      <Button
+                        size="sm"
+                        className="h-8"
+                        disabled={!legacyEffectiveFrom || legacyStatusMutation.isPending}
+                        onClick={() => legacyStatusMutation.mutate({ arrangementId: a.id, status: a.status })}
+                        data-testid="button-confirm-legacy-status-effective-date"
+                      >
+                        {legacyStatusMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                        Confirm date
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-1">
                   <p className="font-semibold text-slate-700">
@@ -500,19 +568,22 @@ export default function ExecutionArrangements() {
                     </Button>
                   )}
                   {canShowExecutionArrangementApprove(a.status, canEditArrangements) && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-[11px] text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-                      disabled={approvalMutation.isPending}
-                      onClick={() => approvalMutation.mutate(a.id)}
-                      data-testid="button-approve-arrangement"
-                    >
-                      {approvalMutation.isPending
-                        ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        : <Check className="w-3 h-3 mr-1" />}
-                      Approve
-                    </Button>
+                    <>
+                      <Input type="date" className="h-7 w-36 text-[11px]" value={approvalEffectiveFrom} onChange={e => setApprovalEffectiveFrom(e.target.value)} aria-label="Approval effective from" />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[11px] text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                        disabled={approvalMutation.isPending || !approvalEffectiveFrom}
+                        onClick={() => approvalMutation.mutate({ arrangementId: a.id, effectiveFrom: approvalEffectiveFrom })}
+                        data-testid="button-approve-arrangement"
+                      >
+                        {approvalMutation.isPending
+                          ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          : <Check className="w-3 h-3 mr-1" />}
+                        Approve
+                      </Button>
+                    </>
                   )}
                   <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => setDetailTargetId(null)}>Close</Button>
                 </div>

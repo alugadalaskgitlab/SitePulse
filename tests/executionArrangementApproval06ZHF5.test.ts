@@ -32,7 +32,7 @@ describe("06Z-HF5 execution arrangement approval", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(approveExecutionArrangement(17)).resolves.toMatchObject({
+    await expect(approveExecutionArrangement(17, "2026-08-20")).resolves.toMatchObject({
       id: 17,
       arrangementType: "reused_excavated",
       status: "approved",
@@ -41,7 +41,7 @@ describe("06Z-HF5 execution arrangement approval", () => {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "approved" }),
+      body: JSON.stringify({ status: "approved", effectiveFrom: "2026-08-20" }),
     });
   });
 
@@ -52,6 +52,6 @@ describe("06Z-HF5 execution arrangement approval", () => {
       json: async () => ({ error: "Forbidden" }),
     }));
 
-    await expect(approveExecutionArrangement(17)).rejects.toThrow("Forbidden");
+    await expect(approveExecutionArrangement(17, "2026-08-20")).rejects.toThrow("Forbidden");
   });
 });

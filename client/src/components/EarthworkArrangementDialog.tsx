@@ -278,19 +278,19 @@ export function ArrangementSummaryCard({
   const completedPct = arr.allocatedQty > 0 ? Math.round((completedQty / arr.allocatedQty) * 100) : 0;
 
   const statusMutation = useMutation({
-    mutationFn: async (newStatus: string) => {
+    mutationFn: async ({ newStatus, effectiveFrom, reason }: { newStatus: string; effectiveFrom: string; reason?: string }) => {
       const res = await fetch(`/api/earthwork-arrangements/${arr.id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, effectiveFrom, statusReason: reason || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
       return data;
     },
-    onSuccess: (_, newStatus) => {
-      toast({ title: `Status updated to ${newStatus.replace(/_/g, " ")}` });
+    onSuccess: (_, variables) => {
+      toast({ title: `Status updated to ${variables.newStatus.replace(/_/g, " ")}` });
       // Instruction 026 A2: demand must refresh immediately on status change
       if (projectId != null) invalidateArrangementQueries(queryClient, projectId);
       onSaved();
@@ -299,6 +299,16 @@ export function ArrangementSummaryCard({
       toast({ title: "Status update failed", description: err.message, variant: "destructive" });
     },
   });
+  const requestStatusChange = (newStatus: string) => {
+    const now = new Date();
+    const today = new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+    const effectiveFrom = window.prompt("Effective from date (YYYY-MM-DD)", today);
+    if (!effectiveFrom) return;
+    const reason = ["cancelled", "rejected", "on_hold", "returned", "completed"].includes(newStatus)
+      ? window.prompt(`Reason for ${newStatus.replace(/_/g, " ")}`, "") ?? undefined
+      : undefined;
+    statusMutation.mutate({ newStatus, effectiveFrom, reason });
+  };
 
   return (
     <div className="rounded border border-slate-200 bg-white p-3 space-y-1.5 text-[12px]">
@@ -430,14 +440,18 @@ export function ArrangementSummaryCard({
                 <div key={i} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px]">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold text-slate-700">
-                      {h.type === "operational" ? "Operational edit" : `Revision${h.version ? ` v${h.version}` : ""}`}
+                      {h.eventType === "status_change"
+                        ? `${String(h.previousStatus).replace(/_/g, " ")} → ${String(h.status).replace(/_/g, " ")}`
+                        : h.type === "operational" ? "Operational edit" : `Revision${h.version ? ` v${h.version}` : ""}`}
                       {" · "}
-                      <span className={
+                      {h.eventType === "status_change" ? (
+                        <span className="text-blue-700">effective {h.effectiveFrom}</span>
+                      ) : <span className={
                         h.outcome === "approved" || h.outcome === "applied" ? "text-emerald-700"
                         : h.outcome === "rejected" ? "text-red-700" : "text-slate-500"
-                      }>{h.outcome}{h.appliedNow ? " (applied now)" : ""}</span>
+                      }>{h.outcome}{h.appliedNow ? " (applied now)" : ""}</span>}
                     </span>
-                    <span className="text-slate-400">{String(h.approvedAt ?? h.decidedAt ?? h.changedAt ?? h.appliedAt ?? "").slice(0, 10)}</span>
+                    <span className="text-slate-400">{String(h.recordedAt ?? h.approvedAt ?? h.decidedAt ?? h.changedAt ?? h.appliedAt ?? "").slice(0, 10)}</span>
                   </div>
                   {h.reason && <div className="text-slate-500 italic">"{h.reason}"</div>}
                   {h.changes && (
@@ -464,12 +478,12 @@ export function ArrangementSummaryCard({
             <Button
               variant="outline" size="sm" className="h-6 text-[11px] px-2 text-blue-600 hover:bg-blue-50"
               disabled={statusMutation.isPending}
-              onClick={() => statusMutation.mutate("submitted")}
+              onClick={() => requestStatusChange("submitted")}
             >
               {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
               Submit for Approval
             </Button>
-            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={onCancel}>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={() => requestStatusChange("cancelled")}>
               <Trash2 className="w-3 h-3 mr-1" /> Cancel
             </Button>
           </>
@@ -480,7 +494,7 @@ export function ArrangementSummaryCard({
             <Button
               variant="outline" size="sm" className="h-6 text-[11px] px-2 text-emerald-600 hover:bg-emerald-50"
               disabled={statusMutation.isPending}
-              onClick={() => statusMutation.mutate("approved")}
+              onClick={() => requestStatusChange("approved")}
             >
               {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
               Approve
@@ -493,18 +507,18 @@ export function ArrangementSummaryCard({
             <Button
               variant="outline" size="sm" className="h-6 text-[11px] px-2 text-amber-600 hover:bg-amber-50"
               disabled={statusMutation.isPending}
-              onClick={() => statusMutation.mutate("mobilisation_pending")}
+              onClick={() => requestStatusChange("mobilisation_pending")}
             >
               Record Mobilisation
             </Button>
             <Button
               variant="outline" size="sm" className="h-6 text-[11px] px-2 text-orange-600 hover:bg-orange-50"
               disabled={statusMutation.isPending}
-              onClick={() => statusMutation.mutate("on_hold")}
+              onClick={() => requestStatusChange("on_hold")}
             >
               Put On Hold
             </Button>
-            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={onCancel}>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={() => requestStatusChange("cancelled")}>
               <Trash2 className="w-3 h-3 mr-1" /> Cancel
             </Button>
           </>
@@ -515,12 +529,12 @@ export function ArrangementSummaryCard({
             <Button
               variant="outline" size="sm" className="h-6 text-[11px] px-2 text-blue-600 hover:bg-blue-50"
               disabled={statusMutation.isPending}
-              onClick={() => statusMutation.mutate("in_progress")}
+              onClick={() => requestStatusChange("in_progress")}
             >
               {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
               Mark In Progress
             </Button>
-            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={onCancel}>
+            <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 text-red-600 hover:bg-red-50" onClick={() => requestStatusChange("cancelled")}>
               <Trash2 className="w-3 h-3 mr-1" /> Cancel
             </Button>
           </>
@@ -531,14 +545,14 @@ export function ArrangementSummaryCard({
             <Button
               variant="outline" size="sm" className="h-6 text-[11px] px-2 text-orange-600 hover:bg-orange-50"
               disabled={statusMutation.isPending}
-              onClick={() => statusMutation.mutate("on_hold")}
+              onClick={() => requestStatusChange("on_hold")}
             >
               Put On Hold
             </Button>
             <Button
               variant="outline" size="sm" className="h-6 text-[11px] px-2 text-emerald-600 hover:bg-emerald-50"
               disabled={statusMutation.isPending}
-              onClick={() => statusMutation.mutate("completed")}
+              onClick={() => requestStatusChange("completed")}
             >
               {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
               Mark Completed
@@ -549,7 +563,7 @@ export function ArrangementSummaryCard({
           <Button
             variant="outline" size="sm" className="h-6 text-[11px] px-2 text-blue-600 hover:bg-blue-50"
             disabled={statusMutation.isPending}
-            onClick={() => statusMutation.mutate("in_progress")}
+            onClick={() => requestStatusChange("in_progress")}
           >
             {statusMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
             Resume

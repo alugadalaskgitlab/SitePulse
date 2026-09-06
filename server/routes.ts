@@ -27,6 +27,7 @@ import { isLayerCapableItem } from "@shared/layerDisplay";
 import { boqItemDisplayName, shortItemName as sharedShortItemName, trustedCanonicalBoqName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
+import { appendArrangementStatusChange, isValidArrangementEffectiveDate } from "@shared/arrangementStatusHistory";
 import { computeDieselReceiptState } from "@shared/dieselReceiptStatus";
 import { validateFulfilment } from "@shared/requirementFulfilment";
 import { validateOutcomeInput, resolveCarryTargetDate, buildCarryForwardPlan, buildOutcomeRecord, computeExecutionComparison, businessToday } from "@shared/planOutcome";
@@ -17048,6 +17049,59 @@ export async function registerRoutes(
 
       const current = await storage.getEarthworkArrangementById(id);
       if (!current) return res.status(404).json({ error: "Arrangement not found" });
+      const requestedStatus = typeof patch.status === "string" ? patch.status : null;
+      const statusChanged = requestedStatus != null && requestedStatus !== current.status;
+      const confirmExistingStatus = body.confirmExistingStatus === true
+        && current.status === "cancelled"
+        && requestedStatus === current.status;
+      if (body.confirmExistingStatus === true && !confirmExistingStatus) {
+        return res.status(409).json({
+          error: "STATUS_CONFIRMATION_NOT_ALLOWED",
+          message: "Historical effective-date confirmation is only available for an existing cancelled arrangement.",
+        });
+      }
+      if ((statusChanged || confirmExistingStatus) && !isValidArrangementEffectiveDate(body.effectiveFrom)) {
+        return res.status(400).json({
+          error: "STATUS_EFFECTIVE_FROM_REQUIRED",
+          message: "Choose the date from which this arrangement status became effective.",
+        });
+      }
+      if (statusChanged && typeof body.statusReason === "string") {
+        if (requestedStatus === "cancelled") patch.cancellationReason = body.statusReason.trim() || null;
+        if (requestedStatus === "rejected") patch.rejectionReason = body.statusReason.trim() || null;
+        if (requestedStatus === "on_hold") patch.onHoldReason = body.statusReason.trim() || null;
+      }
+      if (confirmExistingStatus) {
+        if (!assertOutcomeManagerAuthority(req, res)) return;
+        const confirmed: any = await db.transaction(async (tx) => {
+          const [row] = await tx.select().from(earthworkArrangementsTable)
+            .where(eq(earthworkArrangementsTable.id, id)).for("update");
+          if (!row) return null;
+          const revisionHistory = appendArrangementStatusChange((row as any).revisionHistory, {
+            previousStatus: row.status,
+            status: row.status,
+            effectiveFrom: body.effectiveFrom,
+            recordedAt: now,
+            changedBy: user?.id ?? null,
+            reason: typeof body.statusReason === "string"
+              ? body.statusReason
+              : (row.cancellationReason ?? row.rejectionReason ?? row.onHoldReason ?? null),
+          });
+          const [updatedRow] = await tx.update(earthworkArrangementsTable)
+            .set({ revisionHistory } as any)
+            .where(eq(earthworkArrangementsTable.id, id))
+            .returning();
+          return updatedRow;
+        });
+        if (!confirmed) return res.status(404).json({ error: "Arrangement not found" });
+        await (storage as any).logAudit({
+          userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null,
+          module: "earthwork_arrangements", transactionId: Number(id),
+          action: "status_effective_date_confirmed", userId: user?.id ?? null,
+          newValues: { status: current.status, effectiveFrom: body.effectiveFrom },
+        }).catch(() => {});
+        return res.json(confirmed);
+      }
       const nextArrangementType = patch.arrangementType ?? current.arrangementType;
       const nextSourceId = "sourceExcavationBoqItemId" in patch
         ? patch.sourceExcavationBoqItemId
@@ -17477,6 +17531,25 @@ export async function registerRoutes(
       if (newStatus === "returned") patch.returnedAt = new Date();
       if (newStatus === "completed") patch.completedAt = new Date();
       if (newStatus === "in_progress" && !body.actualStartDate) patch.actualStartDate = now.split("T")[0];
+      if (statusChanged) {
+        const statusReason = typeof body.statusReason === "string"
+          ? body.statusReason
+          : newStatus === "cancelled" ? patch.cancellationReason
+          : newStatus === "rejected" ? patch.rejectionReason
+          : newStatus === "on_hold" ? patch.onHoldReason
+          : null;
+        patch.revisionHistory = appendArrangementStatusChange(
+          patch.revisionHistory ?? (current as any).revisionHistory,
+          {
+            previousStatus: current.status,
+            status: newStatus!,
+            effectiveFrom: body.effectiveFrom,
+            recordedAt: now,
+            changedBy: user?.id ?? null,
+            reason: typeof statusReason === "string" ? statusReason : null,
+          },
+        );
+      }
 
       const updated = await storage.updateEarthworkArrangement(id, patch as any);
       if (!updated) return res.status(404).json({ error: "Arrangement not found" });
@@ -17530,20 +17603,47 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "qto_boq")) return;
       const id = parseInt(req.params.id);
       const user = (req as any).authUser ?? (req as any).user;
-      const { reason } = req.body ?? {};
-
-      const updated = await storage.updateEarthworkArrangement(id, {
-        status: "cancelled",
-        cancellationReason: reason?.trim() || null,
+      const { reason, effectiveFrom } = req.body ?? {};
+      if (!isValidArrangementEffectiveDate(effectiveFrom)) {
+        return res.status(400).json({
+          error: "STATUS_EFFECTIVE_FROM_REQUIRED",
+          message: "Choose the date from which this cancellation became effective.",
+        });
+      }
+      const recordedAt = new Date().toISOString();
+      const result: any = await db.transaction(async (tx) => {
+        const [row] = await tx.select().from(earthworkArrangementsTable)
+          .where(eq(earthworkArrangementsTable.id, id)).for("update");
+        if (!row) return { status: 404, body: { error: "Arrangement not found" } };
+        if (row.status === "cancelled") {
+          return { status: 409, body: { error: "ARRANGEMENT_ALREADY_CANCELLED", message: "This arrangement is already cancelled. Confirm its historical effective date from the arrangement register if needed." } };
+        }
+        if (row.status === "rejected" || row.status === "completed") {
+          return { status: 409, body: { error: "INVALID_STATUS_TRANSITION", message: `An arrangement in status "${row.status}" cannot be cancelled.` } };
+        }
+        const revisionHistory = appendArrangementStatusChange((row as any).revisionHistory, {
+          previousStatus: row.status,
+          status: "cancelled",
+          effectiveFrom,
+          recordedAt,
+          changedBy: user?.id ?? null,
+          reason: typeof reason === "string" ? reason : null,
+        });
+        const [updatedRow] = await tx.update(earthworkArrangementsTable).set({
+          status: "cancelled",
+          cancellationReason: reason?.trim() || null,
+          revisionHistory,
+        } as any).where(eq(earthworkArrangementsTable.id, id)).returning();
+        return { status: 200, body: updatedRow };
       });
-      if (!updated) return res.status(404).json({ error: "Arrangement not found" });
+      if (result.status !== 200) return res.status(result.status).json(result.body);
 
       await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null,
         module: "earthwork_arrangements",
         transactionId: Number(id),
         action: "cancel",
         userId: user?.id ?? null,
-        newValues: { status: "cancelled", reason },
+        newValues: { status: "cancelled", reason, effectiveFrom },
       }).catch(() => {});
 
       res.json({ ok: true });

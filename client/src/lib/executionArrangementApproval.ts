@@ -5,12 +5,12 @@ export function canShowExecutionArrangementApprove(
   return status === "submitted" && canEditArrangements;
 }
 
-export async function approveExecutionArrangement(arrangementId: number): Promise<unknown> {
+export async function approveExecutionArrangement(arrangementId: number, effectiveFrom: string): Promise<unknown> {
   const res = await fetch(`/api/earthwork-arrangements/${arrangementId}`, {
     method: "PATCH",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "approved" }),
+    body: JSON.stringify({ status: "approved", effectiveFrom }),
   });
   const data = await res.json();
   if (!res.ok) {
