@@ -35,6 +35,12 @@ Integrated Vendor Bills may contain adjacent non-overlapping Month, Day, and Tri
 
 **How to apply:** Recalculate only draft groups from server-loaded operational facts. Before verification, require explicit treatment for every generated exception and any positive HSD-recovery suggestion.
 
+New Vendor Bill hire groups must start from an exact valid Equipment Master basis: monthly, daily, hourly, or trip. Missing or unsupported terms are never relabeled or defaulted.
+
+**Why:** A two-way display label and daily fallback made incomplete and hourly equipment appear monthly before changing behavior when added.
+
+**How to apply:** Show incomplete linked equipment as disabled, constrain eligible periods to configured hire dates, and reject new groups whose basis differs from Equipment Master.
+
 Vendor Bill edit, lifecycle transition, and deletion paths must all lock the bill row first and linked hire-statement rows second, then re-read and validate state.
 
 **Why:** A preflight check outside the transaction allows concurrent edit/verify/delete requests to overwrite a frozen snapshot or remove a newly approved liability.

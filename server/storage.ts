@@ -14657,6 +14657,22 @@ export class DatabaseStorage implements IStorage {
         : undefined;
       if (existingById && existingById.vendorBillId !== bill.id) throw Object.assign(new Error("A hire group cannot claim another bill's statement"), { code: "CONFLICT" });
       if (existingById && existingById.equipmentId !== group.equipmentId) throw Object.assign(new Error("hireStatementId belongs to a different equipment"), { code: "BAD_REQUEST" });
+      if (!existingById) {
+        const validBasis = ["monthly", "daily", "hourly", "trip"];
+        const monthlyDivisorType = equipment.hireMonthlyDivisorType || "30";
+        const validTerms = validBasis.includes(equipment.hireBillingBasis || "") &&
+          !!equipment.hireStartDate &&
+          Number.isFinite(Number(equipment.hireRate)) && Number(equipment.hireRate) > 0 &&
+          (!equipment.hireEndDate || equipment.hireStartDate <= equipment.hireEndDate) &&
+          equipment.hireStartDate <= group.periodFrom &&
+          (!equipment.hireEndDate || equipment.hireEndDate >= group.periodTo) &&
+          (equipment.hireBillingBasis !== "monthly" || ["calendar", "30", "custom"].includes(monthlyDivisorType)) &&
+          (equipment.hireBillingBasis !== "monthly" || monthlyDivisorType !== "custom" || Number(equipment.hireMonthlyDivisor) > 0);
+        if (!validTerms) throw Object.assign(new Error("Hire terms incomplete; correct the Equipment Master hire terms first"), { code: "BAD_REQUEST" });
+        if (group.basis !== equipment.hireBillingBasis) {
+          throw Object.assign(new Error("Hire group basis must match the Equipment Master hire billing basis"), { code: "BAD_REQUEST" });
+        }
+      }
       let statement = existingById;
       if (!statement) {
         statement = (await tx.select().from(hireStatements).where(and(eq(hireStatements.equipmentId, group.equipmentId),
@@ -14719,7 +14735,7 @@ export class DatabaseStorage implements IStorage {
         exceptionDate: d.date || null, description: d.remarks || "Hire billing decision.", decision: d.decision || null,
         manualDeductionAmount: d.manualDeductionAmount ?? null, remarks: d.remarks ?? null,
       })));
-      const unit = group.basis === "monthly" ? "MONTHS" : group.basis === "daily" ? "DAYS" : "TRIPS";
+      const unit = group.basis === "monthly" ? "MONTHS" : group.basis === "daily" ? "DAYS" : group.basis === "hourly" ? "HRS" : "TRIPS";
       const [item] = await tx.insert(vendorBillItems).values({ billId: bill.id, hireStatementId: statement.id,
         date: group.periodTo, category: "equipment", description: `HIRE - ${equipment.name} (${group.periodFrom} TO ${group.periodTo})`,
         qty: calc.quantity, unit, rate: group.rate, amount: calc.netAmount, source: "hire_statement", equipmentId: group.equipmentId }).returning();

@@ -100,6 +100,9 @@ describe("07C vendor-bill hire transaction wiring", () => {
 
   it("surfaces hire equipment directly and derives missing expected diesel from existing activity norms", () => {
     expect(client).toContain("Monthly Hire Available");
+    expect(client).toContain("Daily Hire Available");
+    expect(client).toContain("Trip Hire Available");
+    expect(client).toContain("Hourly Hire Available");
     expect(client).toContain("ADD TO BILL");
     expect(client).toContain("ADD HIRE ITEM");
     expect(client).not.toContain("> ADD GROUP");
@@ -107,6 +110,25 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain("? Number(row.expectedDiesel)");
     expect(storage).toContain(": calculated.expectedDiesel");
     expect(client).toContain("Expected diesel unavailable — review norm/activity");
+  });
+
+  it("never guesses a missing hire basis and blocks incomplete commercial terms", () => {
+    expect(client).toContain('const configuredHireBasis = (value: unknown): HireBillingBasis | null');
+    expect(client).not.toContain('["monthly", "daily", "trip"].includes(eq.hireBillingBasis) ? eq.hireBillingBasis : "daily"');
+    expect(client).not.toContain('eq.hireBillingBasis === "daily" ? "Daily Hire Available" : "Monthly Hire Available"');
+    expect(client).toContain("Hire terms incomplete");
+    expect(client).toContain("Correct the Equipment Master hire terms first.");
+    expect(storage).toContain("Hire group basis must match the Equipment Master hire billing basis");
+  });
+
+  it("supports hourly hire end-to-end and prevents duplicate overlapping groups", () => {
+    expect(schema).toContain('basis: z.enum(["monthly", "daily", "hourly", "trip"])');
+    expect(client).toContain('group.basis === "hourly" ? "HRS" : "TRIPS"');
+    expect(storage).toContain('group.basis === "hourly" ? "HRS" : "TRIPS"');
+    expect(client).toContain("prev.some(existing =>");
+    expect(storage).toContain("Hire groups for the same equipment cannot overlap");
+    expect(storage).toContain('source: "hire_statement"');
+    expect(storage).toContain("is already covered by a hire group for this bill");
   });
 
   it("serializes draft reconciliation against lifecycle transitions", () => {

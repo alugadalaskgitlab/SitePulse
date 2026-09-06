@@ -2278,7 +2278,7 @@ export const hireGroupRequestSchema = z.object({
   equipmentId: z.number().int().positive(),
   periodFrom: hireGroupDate,
   periodTo: hireGroupDate,
-  basis: z.enum(["monthly", "daily", "trip"]),
+  basis: z.enum(["monthly", "daily", "hourly", "trip"]),
   rate: z.number().finite().nonnegative(),
   dailyDecisions: z.array(z.object({
     date: hireGroupDate,
