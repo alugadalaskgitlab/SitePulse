@@ -19,6 +19,17 @@ export function isValidArrangementEffectiveDate(value: unknown): value is string
     && parsed.getUTCDate() === day;
 }
 
+export function hasRecordedArrangementStatusChange(
+  history: unknown,
+  status: string,
+): boolean {
+  return Array.isArray(history) && history.some((event: any) =>
+    event?.eventType === "status_change"
+    && event?.status === status
+    && isValidArrangementEffectiveDate(event?.effectiveFrom),
+  );
+}
+
 export function appendArrangementStatusChange(
   history: unknown,
   event: Omit<ArrangementStatusChangeEvent, "eventType">,

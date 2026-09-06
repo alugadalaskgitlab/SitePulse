@@ -27,7 +27,7 @@ import { isLayerCapableItem } from "@shared/layerDisplay";
 import { boqItemDisplayName, shortItemName as sharedShortItemName, trustedCanonicalBoqName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
-import { appendArrangementStatusChange, isValidArrangementEffectiveDate } from "@shared/arrangementStatusHistory";
+import { appendArrangementStatusChange, hasRecordedArrangementStatusChange, isValidArrangementEffectiveDate } from "@shared/arrangementStatusHistory";
 import { computeDieselReceiptState } from "@shared/dieselReceiptStatus";
 import { validateFulfilment } from "@shared/requirementFulfilment";
 import { validateOutcomeInput, resolveCarryTargetDate, buildCarryForwardPlan, buildOutcomeRecord, computeExecutionComparison, businessToday } from "@shared/planOutcome";
@@ -17051,13 +17051,20 @@ export async function registerRoutes(
       if (!current) return res.status(404).json({ error: "Arrangement not found" });
       const requestedStatus = typeof patch.status === "string" ? patch.status : null;
       const statusChanged = requestedStatus != null && requestedStatus !== current.status;
+      const currentStatusDateRecorded = hasRecordedArrangementStatusChange(
+        (current as any).revisionHistory,
+        current.status,
+      );
       const confirmExistingStatus = body.confirmExistingStatus === true
         && current.status === "cancelled"
-        && requestedStatus === current.status;
+        && requestedStatus === current.status
+        && !currentStatusDateRecorded;
       if (body.confirmExistingStatus === true && !confirmExistingStatus) {
         return res.status(409).json({
           error: "STATUS_CONFIRMATION_NOT_ALLOWED",
-          message: "Historical effective-date confirmation is only available for an existing cancelled arrangement.",
+          message: currentStatusDateRecorded
+            ? "This cancelled arrangement already has a confirmed effective date."
+            : "Historical effective-date confirmation is only available for an existing cancelled arrangement.",
         });
       }
       if ((statusChanged || confirmExistingStatus) && !isValidArrangementEffectiveDate(body.effectiveFrom)) {
@@ -17077,6 +17084,9 @@ export async function registerRoutes(
           const [row] = await tx.select().from(earthworkArrangementsTable)
             .where(eq(earthworkArrangementsTable.id, id)).for("update");
           if (!row) return null;
+          if (hasRecordedArrangementStatusChange((row as any).revisionHistory, "cancelled")) {
+            return { alreadyConfirmed: true };
+          }
           const revisionHistory = appendArrangementStatusChange((row as any).revisionHistory, {
             previousStatus: row.status,
             status: row.status,
@@ -17091,16 +17101,22 @@ export async function registerRoutes(
             .set({ revisionHistory } as any)
             .where(eq(earthworkArrangementsTable.id, id))
             .returning();
-          return updatedRow;
+          return { updatedRow };
         });
         if (!confirmed) return res.status(404).json({ error: "Arrangement not found" });
+        if (confirmed.alreadyConfirmed) {
+          return res.status(409).json({
+            error: "STATUS_CONFIRMATION_NOT_ALLOWED",
+            message: "This cancelled arrangement already has a confirmed effective date.",
+          });
+        }
         await (storage as any).logAudit({
           userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null,
           module: "earthwork_arrangements", transactionId: Number(id),
           action: "status_effective_date_confirmed", userId: user?.id ?? null,
           newValues: { status: current.status, effectiveFrom: body.effectiveFrom },
         }).catch(() => {});
-        return res.json(confirmed);
+        return res.json(confirmed.updatedRow);
       }
       const nextArrangementType = patch.arrangementType ?? current.arrangementType;
       const nextSourceId = "sourceExcavationBoqItemId" in patch

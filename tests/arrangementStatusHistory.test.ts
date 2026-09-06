@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   appendArrangementStatusChange,
+  hasRecordedArrangementStatusChange,
   isValidArrangementEffectiveDate,
 } from "../shared/arrangementStatusHistory";
 
@@ -45,8 +46,9 @@ describe("execution arrangement status history foundation", () => {
     })).toThrow("INVALID_ARRANGEMENT_STATUS_EFFECTIVE_DATE");
   });
 
-  it("keeps repeated legacy confirmations append-only", () => {
-    const first = appendArrangementStatusChange([], {
+  it("marks legacy confirmation complete after the first dated cancellation event", () => {
+    expect(hasRecordedArrangementStatusChange([], "cancelled")).toBe(false);
+    const confirmed = appendArrangementStatusChange([], {
       previousStatus: "cancelled",
       status: "cancelled",
       effectiveFrom: "2026-08-20",
@@ -54,17 +56,8 @@ describe("execution arrangement status history foundation", () => {
       changedBy: 42,
       reason: "Confirmed from vendor cancellation letter",
     });
-    const second = appendArrangementStatusChange(first, {
-      previousStatus: "cancelled",
-      status: "cancelled",
-      effectiveFrom: "2026-08-20",
-      recordedAt: "2026-09-07T10:00:00.000Z",
-      changedBy: 7,
-      reason: "PM reconfirmed",
-    });
-    expect(second).toHaveLength(2);
-    expect((second[0] as any).recordedAt).toBe("2026-09-06T10:00:00.000Z");
-    expect((second[1] as any).recordedAt).toBe("2026-09-07T10:00:00.000Z");
+    expect(hasRecordedArrangementStatusChange(confirmed, "cancelled")).toBe(true);
+    expect(hasRecordedArrangementStatusChange(confirmed, "approved")).toBe(false);
   });
 
   it("enforces the foundation at the canonical lifecycle routes and legacy PM/Admin control", () => {
@@ -81,6 +74,8 @@ describe("execution arrangement status history foundation", () => {
     expect(patch).toContain("confirmExistingStatus");
     expect(patch).toContain('current.status === "cancelled"');
     expect(patch).toContain("STATUS_CONFIRMATION_NOT_ALLOWED");
+    expect(patch).toContain("currentStatusDateRecorded");
+    expect(patch).toContain('hasRecordedArrangementStatusChange((row as any).revisionHistory, "cancelled")');
     expect(patch).toContain("assertOutcomeManagerAuthority");
     expect(patch).toContain("appendArrangementStatusChange");
     expect(remove).toContain("STATUS_EFFECTIVE_FROM_REQUIRED");
@@ -91,6 +86,7 @@ describe("execution arrangement status history foundation", () => {
     const register = readFileSync("client/src/pages/ExecutionArrangements.tsx", "utf8");
     expect(register).toContain('data-testid="legacy-status-effective-date"');
     expect(register).toContain("confirmExistingStatus: true");
+    expect(register).toContain('!hasRecordedArrangementStatusChange(a.revisionHistory, "cancelled")');
     expect(register).not.toContain('.filter(a => !["cancelled"].includes(a.status))');
   });
 });

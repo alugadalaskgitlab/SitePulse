@@ -19,6 +19,7 @@ import { ArrowLeft, Check, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { executionArrangementCategoryForItem, bituminousItemTypeOf } from "@shared/planningEngine";
 import { boqItemDisplayName } from "@shared/boqItemName";
+import { hasRecordedArrangementStatusChange } from "@shared/arrangementStatusHistory";
 import {
   deriveExecutionState,
   EXECUTION_STATE_COLORS,
@@ -483,7 +484,10 @@ export default function ExecutionArrangements() {
                     </div>
                   )}
                 </div>
-                {canSetArrangementOutcome && a.status === "cancelled" && (
+                {canSetArrangementOutcome
+                  && a.status === "cancelled"
+                  && !hasRecordedArrangementStatusChange(a.revisionHistory, "cancelled")
+                  && (
                   <div className="rounded border border-amber-300 bg-amber-50 p-2.5 space-y-2" data-testid="legacy-status-effective-date">
                     <p className="font-semibold text-amber-900">Confirm historical effective date</p>
                     <p className="text-[11px] text-amber-800">Adds an append-only status event. It does not edit or remove earlier history.</p>
@@ -508,7 +512,7 @@ export default function ExecutionArrangements() {
                       </Button>
                     </div>
                   </div>
-                )}
+                  )}
 
                 <div className="space-y-1">
                   <p className="font-semibold text-slate-700">
