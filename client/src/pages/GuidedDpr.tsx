@@ -70,6 +70,7 @@ import { flattenCutFillConsumptions, hydrateCutFillConsumptions, validateCutFill
 import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
+import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
@@ -205,7 +206,7 @@ export default function GuidedDpr() {
       },
     };
   }));
-  const returnTo = new URLSearchParams(searchStr).get("returnTo") ?? "/site";
+  const returnTo = resolveReturnTo(searchStr, DPR_REGISTER_PATH);
   // Pre-deployment Part A: Classic → Guided keeps the SAME server draft.
   // `?draftId=` loads that draft here instead of starting a fresh one.
   const urlDraftId = (() => {

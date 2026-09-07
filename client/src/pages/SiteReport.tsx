@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation, useSearch } from "wouter";
-import { useOrigin } from "@/hooks/use-origin";
-import { resolveReturnTo } from "@/lib/progressReportNav";
+import { DPR_REGISTER_PATH, resolveReturnTo, withReturnTo } from "@/lib/progressReportNav";
 import { ChevronLeft, Loader2, Printer, Trash2, Fuel, Home, ShoppingCart, History, Ban } from "lucide-react";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import CancelDialog from "@/components/CancelDialog";
@@ -51,15 +50,15 @@ export default function SiteReport() {
     if (!ids?.length || !personnelList) return null;
     return ids.map(id => personnelList.find(p => p.id === id)?.name).filter(Boolean).join(", ");
   };
-  const { appendOrigin } = useOrigin();
   const searchString = useSearch();
   // Batch 06A — context-aware Back: honour a validated in-app `returnTo`
   // (e.g. from the Progress Report drill-down); otherwise keep the existing
   // default destination so all other entry contexts behave exactly as before.
   const backLink = resolveReturnTo(
     searchString || (typeof window !== "undefined" ? window.location.search : ""),
-    appendOrigin("/site/dashboard"),
+    DPR_REGISTER_PATH,
   );
+  const reportHref = withReturnTo(`/site/report/${id}`, backLink);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
@@ -199,7 +198,7 @@ export default function SiteReport() {
       const role = user?.isAdmin ? "admin" : "manager";
       sessionStorage.setItem(`edit_pin_${id}`, role);
       sessionStorage.setItem(`auth_role_${id}`, role);
-      setLocation(appendOrigin(`/site/edit/${id}`));
+      setLocation(withReturnTo(`/site/edit/${id}`, reportHref));
     }
   };
 
@@ -346,6 +345,12 @@ export default function SiteReport() {
         site={dpr.site} 
         engineer={dpr.engineer} 
         submittedAt={dpr.submittedAt || undefined}
+        dprStatus={(dpr as any).dprStatus}
+        createdAt={(dpr as any).createdAt}
+        authorName={(dpr as any).authorName}
+        lastEditedAt={(dpr as any).lastEditedAt}
+        lastEditedByName={(dpr as any).lastEditedByName}
+        submittedByName={(dpr as any).submittedByName}
         workType={(dpr as any).workType}
       />
 

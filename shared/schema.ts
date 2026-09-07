@@ -71,6 +71,9 @@ export const dprs = pgTable("dprs", {
   // with site_dprs.edit + can_unlock_records can unlock with reason. Next
   // save atomically re-locks the record.
   authorUserId: integer("author_user_id"),
+  lastEditedByUserId: integer("last_edited_by_user_id"),
+  lastEditedAt: timestamp("last_edited_at"),
+  submittedByUserId: integer("submitted_by_user_id"),
   lockStatus: text("lock_status").notNull().default("locked"), // "locked" | "unlocked"
   unlockedByUserId: integer("unlocked_by_user_id"),
   unlockedAt: timestamp("unlocked_at"),
@@ -973,6 +976,9 @@ export const createDprRequestSchema = insertDprSchema.extend({
 export type CreateDprRequest = z.infer<typeof createDprRequestSchema>;
 
 export type DprWithDetails = Dpr & {
+  authorName?: string;
+  lastEditedByName?: string;
+  submittedByName?: string;
   progress: ProgressEntry[];
   equipment: EquipmentLog[];
   labour: LabourLog[];

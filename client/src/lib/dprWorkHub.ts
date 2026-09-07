@@ -1,3 +1,5 @@
+import { withReturnTo } from "./progressReportNav";
+
 export type WorkHubSection = "activities" | "equipment" | "labour" | "materials" | "review";
 export type FieldDprPhase = "not-started" | "draft-own" | "submitted-own" | "submitted-other";
 
@@ -5,12 +7,13 @@ export const WORK_HUB_SECTIONS: WorkHubSection[] = [
   "activities", "equipment", "labour", "materials", "review",
 ];
 
-export function dprWorkHubHref(draftId: number): string {
-  return `/site/work/${draftId}`;
+export function dprWorkHubHref(draftId: number, returnTo?: string): string {
+  const path = `/site/work/${draftId}`;
+  return returnTo ? withReturnTo(path, returnTo) : path;
 }
 
-export function dprWorkSectionHref(draftId: number, section: WorkHubSection): string {
-  const hub = dprWorkHubHref(draftId);
+export function dprWorkSectionHref(draftId: number, section: WorkHubSection, hubReturnTo?: string): string {
+  const hub = dprWorkHubHref(draftId, hubReturnTo);
   if (section === "materials") {
     return `/site/edit/${draftId}?draft&rowSection=materials&returnTo=${encodeURIComponent(hub)}`;
   }

@@ -7,12 +7,27 @@ interface ReportHeaderProps {
   site: string;
   engineer: string;
   submittedAt?: string;
+  dprStatus?: string;
+  createdAt?: string | Date | null;
+  authorName?: string;
+  lastEditedAt?: string | Date | null;
+  lastEditedByName?: string;
+  submittedByName?: string;
   showLogo?: boolean;
   workType?: string;
 }
 
-export function ReportHeader({ date, site, engineer, submittedAt, showLogo = true, workType }: ReportHeaderProps) {
+export function ReportHeader({
+  date, site, engineer, submittedAt, dprStatus, createdAt, authorName,
+  lastEditedAt, lastEditedByName, submittedByName, showLogo = true, workType,
+}: ReportHeaderProps) {
   const { companyName, logoFile } = useFeatureFlags();
+  const formatAuditTimestamp = (value: string | Date) => {
+    const parsed = value instanceof Date
+      ? value
+      : new Date(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(value) ? value.replace(" ", "T") : value);
+    return Number.isNaN(parsed.getTime()) ? String(value) : format(parsed, "PPp");
+  };
   return (
     <div className="bg-card border rounded-xl p-6 shadow-sm print:shadow-none print:border-gray-300">
       {showLogo && (
@@ -43,7 +58,7 @@ export function ReportHeader({ date, site, engineer, submittedAt, showLogo = tru
           </div>
         </div>
       )}
-      <div className={`grid grid-cols-1 md:grid-cols-3 ${submittedAt ? 'lg:grid-cols-4' : ''} gap-6`}>
+      <div className={`grid grid-cols-1 md:grid-cols-3 ${(submittedAt || createdAt) ? 'lg:grid-cols-4' : ''} gap-6`}>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 print:bg-blue-50">
             <Calendar className="w-5 h-5" />
@@ -71,14 +86,39 @@ export function ReportHeader({ date, site, engineer, submittedAt, showLogo = tru
             <p className="font-semibold print:text-black" data-testid="text-report-engineer">{engineer}</p>
           </div>
         </div>
-        {submittedAt && (
+        {createdAt && (
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 print:bg-purple-50">
               <Clock className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground print:text-gray-500">Submitted At</p>
-              <p className="font-semibold text-sm print:text-black" data-testid="text-report-submitted">{submittedAt}</p>
+              <p className="font-semibold text-sm print:text-black" data-testid="text-report-created">
+                Draft created by {authorName || "User unavailable"} — {formatAuditTimestamp(createdAt)}
+              </p>
+            </div>
+          </div>
+        )}
+        {lastEditedAt && (
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 print:bg-purple-50">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-sm print:text-black" data-testid="text-report-last-edited">
+                Last edited by {lastEditedByName || "User unavailable"} — {formatAuditTimestamp(lastEditedAt)}
+              </p>
+            </div>
+          </div>
+        )}
+        {dprStatus !== "draft" && submittedAt && (
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 print:bg-purple-50">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-sm print:text-black" data-testid="text-report-submitted">
+                Submitted by {submittedByName || "User unavailable"} — {formatAuditTimestamp(submittedAt)}
+              </p>
             </div>
           </div>
         )}

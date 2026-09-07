@@ -1,0 +1,177 @@
+IMPLEMENT DPR NAVIGATION + RELIABLE USER AUDIT TRAIL
+
+You already inspected this batch and correctly found that a small additive schema change is required for reliable actor identity.
+
+Please now implement the minimum safe solution.
+
+1. DPR NAVIGATION
+
+Fix all DPR entry/view/edit flows so Back consistently returns to the originating DPR register/list/view.
+
+Reuse the existing validated returnTo mechanism.
+
+Cover:
+- Guided DPR
+- Detailed / Classic DPR
+- Draft DPR
+- Edit DPR
+- Submitted DPR view/edit
+- transitions between Guided/Detailed/Edit where returnTo currently gets dropped
+
+Rules:
+- preserve returnTo through DPR transitions
+- if no valid origin exists, use ONE consistent DPR-register fallback
+- do not send users unexpectedly to Dashboard, Site Hub, Settings, or /
+
+Do not redesign navigation.
+
+2. MINIMUM ADDITIVE AUDIT STORAGE
+
+Add only the minimum fields needed to reliably persist authenticated DPR lifecycle actors.
+
+Use authenticated USER IDs, not role text.
+
+Required concepts:
+- creatorUserId
+- lastEditedByUserId
+- lastEditedAt
+- submittedByUserId
+
+Reuse existing:
+- createdAt
+- submittedAt
+where they are already reliable.
+
+If existing authorUserId can safely serve as creatorUserId, reuse it rather than duplicating the concept — but only if its meaning is clear and consistent.
+
+Do NOT use:
+- engineer free text
+- role labels such as admin/manager/engineer
+- current viewer identity
+as substitutes for event actor identity.
+
+3. WRITE RULES
+
+On DPR creation:
+- persist authenticated creator user ID
+- do not later overwrite creator identity
+
+On draft edit/save:
+- persist authenticated last editor user ID
+- persist lastEditedAt
+
+On submit:
+- persist authenticated submitter user ID
+- persist submittedAt
+- preserve original creator and previous editor identity
+
+On submitted-DPR edit/version action:
+- preserve original creator/submission facts
+- record the authenticated user responsible for the new edit/version using the existing version/audit mechanism where appropriate
+
+Do not overwrite historical actor information just because another user opens or edits the DPR.
+
+4. DISPLAY ACTUAL USER NAMES
+
+Where DPR audit timestamps are shown, resolve stored user IDs to actual user display names.
+
+Use wording:
+
+For draft:
+Draft created by <name> — <date/time>
+Last edited by <name> — <date/time>   [only if edited]
+
+For submitted DPR:
+Draft created by <name> — <date/time>
+Last edited by <name> — <date/time>   [if applicable]
+Submitted by <name> — <date/time>
+
+A user with Admin role must display their actual name, not “Admin”.
+
+5. LEGACY DPRs
+
+For historical DPRs where an actor ID genuinely does not exist:
+- do not guess
+- do not infer from engineer/role/current viewer
+- show “User unavailable” for that event
+
+Do not backfill historical actor IDs by guessing.
+
+6. SCHEMA / MIGRATION SAFETY
+
+This migration must be additive only.
+
+Allowed:
+- ADD nullable audit columns / equivalent minimum additive structure
+- indexes only if genuinely needed
+
+NOT ALLOWED:
+- DROP TABLE
+- DROP COLUMN
+- destructive rename
+- data rewrite
+- backfill by guessing
+- change existing DPR quantities/content
+
+Before applying migration, verify the generated SQL contains only the expected additive changes.
+
+7. DO NOT TOUCH
+
+- DPR quantities
+- BOQ linkage
+- programme linkage
+- execution arrangement linkage
+- materials
+- equipment
+- labour
+- diesel
+- submitted DPR factual data
+- Vendor Bills
+- unrelated modules
+
+8. VERIFY
+
+Test these exact cases:
+
+A. User A creates draft
+Expected:
+Draft created by User A
+
+B. User B edits same draft
+Expected:
+creator remains User A
+Last edited by User B
+
+C. User C submits
+Expected:
+creator remains User A
+last editor remains User B
+Submitted by User C
+
+D. Admin-role user edits
+Expected:
+actual person name shown, not “Admin”
+
+E. Legacy DPR with no actor identity
+Expected:
+User unavailable
+No guessed name
+
+F. Back from Guided / Detailed / Draft / Edit / Submitted DPR
+Expected:
+returns to originating DPR register/view when returnTo exists
+otherwise uses one consistent DPR-register fallback
+
+9. REPORT BACK
+
+Report:
+- exact schema fields added/reused
+- migration SQL summary
+- files changed
+- navigation root cause fixed
+- how user names are resolved
+- legacy behavior
+- tests/build checks run
+
+STOP after this batch.
+Do not publish.

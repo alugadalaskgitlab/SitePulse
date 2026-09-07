@@ -13,6 +13,7 @@ import {
   DEFAULT_STATE, parseReportState, buildReportSearch, progressReportUrl,
   dprLinkWithReturn, resolveReturnTo, editActivityLink,
   isOverlapReviewOpen, overlapReviewTargetId, type ProgressReportState,
+  DPR_REGISTER_PATH, withReturnTo,
 } from "../client/src/lib/progressReportNav";
 
 const state = (p: Partial<ProgressReportState> = {}): ProgressReportState => ({ ...DEFAULT_STATE, ...p });
@@ -92,6 +93,30 @@ describe("Back from DPR resolves the originating context (E, I, J)", () => {
     expect(resolveReturnTo("?returnTo=%2F%5Cevil.example", "/site/dashboard")).toBe("/site/dashboard"); // "/\evil.example"
     expect(resolveReturnTo("?returnTo=%2F%5C%2Fevil.example", "/site/dashboard")).toBe("/site/dashboard"); // "/\/evil.example"
     expect(resolveReturnTo("?returnTo=%2Fjavascript%3Aalert(1)", "/site/dashboard")).toBe("/site/dashboard"); // "/javascript:alert(1)"
+  });
+});
+
+describe("shared DPR navigation context", () => {
+  it("uses the routed DPR register as the single fallback", () => {
+    expect(DPR_REGISTER_PATH).toBe("/site/dashboard");
+    expect(resolveReturnTo("", DPR_REGISTER_PATH)).toBe(DPR_REGISTER_PATH);
+    expect(resolveReturnTo("?returnTo=https%3A%2F%2Fevil.example", DPR_REGISTER_PATH))
+      .toBe(DPR_REGISTER_PATH);
+  });
+
+  it("encodes the complete origin URL, including filters and tabs", () => {
+    const origin = "/site/dashboard?origin=portal&site=North%20Reach&status=draft&tab=reports";
+    const href = withReturnTo("/site/report/42?view=compact", origin);
+    expect(href).toContain("view=compact&returnTo=");
+    expect(resolveReturnTo(`?${href.split("?")[1]}`, DPR_REGISTER_PATH)).toBe(origin);
+  });
+
+  it("supports nested report/edit returns without dropping register state", () => {
+    const register = "/site/dashboard?site=North%20Reach&status=submitted&tab=reports";
+    const report = withReturnTo("/site/report/42", register);
+    const edit = withReturnTo("/site/edit/42", report);
+    expect(resolveReturnTo(`?${edit.split("?")[1]}`, DPR_REGISTER_PATH)).toBe(report);
+    expect(resolveReturnTo(`?${report.split("?")[1]}`, DPR_REGISTER_PATH)).toBe(register);
   });
 });
 

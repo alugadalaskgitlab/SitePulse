@@ -16,6 +16,15 @@ describe("DPR work hub navigation", () => {
     }
   });
 
+  it("round-trips the outer register context through the draft hub", () => {
+    const origin = "/site/dashboard?site=North%20Reach&status=draft&tab=reports";
+    const href = dprWorkSectionHref(418, "activities", origin);
+    const sectionReturn = new URLSearchParams(href.split("?")[1]).get("returnTo");
+    expect(sectionReturn).toBe(`/site/work/418?returnTo=${encodeURIComponent(origin)}`);
+    const hubReturn = new URLSearchParams(sectionReturn!.split("?")[1]).get("returnTo");
+    expect(hubReturn).toBe(origin);
+  });
+
   it("derives summaries without introducing persisted workflow statuses", () => {
     expect(dprSectionCounts({ progress: [{}, {}], equipment: [{}], labour: [], materials: [{}, {}, {}] }))
       .toEqual({ activities: 2, equipment: 1, labour: 0, materials: 3 });

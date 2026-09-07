@@ -51,6 +51,9 @@ export const DEFAULT_STATE: ProgressReportState = {
   overlapAnchor: "",
 };
 
+/** Canonical register containing the complete DPR list. */
+export const DPR_REGISTER_PATH = "/site/dashboard";
+
 const TABS: ReadonlySet<string> = new Set(["item", "chainage", "date"]);
 const VIEWS: ReadonlySet<string> = new Set(["measurement", "abstract"]);
 const SORTS: ReadonlySet<string> = new Set(["chainage_date", "date_chainage"]);
@@ -138,4 +141,10 @@ export function resolveReturnTo(search: string, fallback: string): string {
   // "//evil.com" — a scheme-relative external redirect) or a scheme.
   if (rt && rt.startsWith("/") && !rt.startsWith("//") && !rt.includes("\\") && !rt.includes(":")) return rt;
   return fallback;
+}
+
+/** Encode a navigation destination without losing query state on either URL. */
+export function withReturnTo(path: string, returnTo: string): string {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}returnTo=${encodeURIComponent(returnTo)}`;
 }

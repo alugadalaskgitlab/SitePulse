@@ -75,3 +75,4 @@
 - [DPR equipment canonicalization](dpr-equipment-canonicalization.md) — DPR and standalone usage share one calculator; reports keep snapshots; clones never repost the same Diesel.
 - [Material receipt date semantics](material-receipt-date-semantics.md) — entry timestamp is audit history; invoice date drives receipt and stock chronology with legacy fallback.
 - [Equipment performance integrity](equipment-performance-integrity.md) — explicit project/source links govern history, deduplication, review authority, and hire-window metrics.
+- [DPR navigation and actor audit](dpr-navigation-actor-audit.md) — validated nested return paths restore register context; actor facts come only from authenticated IDs and survive versions.

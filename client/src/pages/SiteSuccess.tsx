@@ -3,17 +3,18 @@ import { CheckCircle, Plus, Home, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useOrigin } from "@/hooks/use-origin";
+import { DPR_REGISTER_PATH, resolveReturnTo, withReturnTo } from "@/lib/progressReportNav";
 
 export default function SiteSuccess() {
   const [, params] = useRoute("/site/success/:id");
   const reportId = params?.id;
-  const { appendOrigin, getBackLink } = useOrigin();
-  // getBackLink honors ?returnTo= so we land back on whoever opened the DPR form.
-  const backLink = getBackLink("/site/dashboard");
+  const { appendOrigin } = useOrigin();
+  const search = typeof window !== "undefined" ? window.location.search : "";
+  const backLink = resolveReturnTo(search, DPR_REGISTER_PATH);
   const sp = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   const newReportType = sp.get("type");
   // Forward returnTo into "Create New Report" so the next DPR also comes back here.
-  const returnTo = sp.get("returnTo");
+  const returnTo = sp.get("returnTo") ? backLink : null;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -36,7 +37,7 @@ export default function SiteSuccess() {
           
           <div className="flex flex-col gap-3">
             {reportId && (
-              <Link href={appendOrigin(`/site/report/${reportId}`)}>
+              <Link href={withReturnTo(`/site/report/${reportId}`, backLink)}>
                 <Button variant="outline" className="w-full gap-2" data-testid="button-view-report">
                   <Eye className="w-4 h-4" />
                   View Report
@@ -56,7 +57,7 @@ export default function SiteSuccess() {
             <Link href={backLink}>
               <Button variant="ghost" className="w-full gap-2" data-testid="button-back-home">
                 <Home className="w-4 h-4" />
-                Back to Home
+                Back to DPR Register
               </Button>
             </Link>
           </div>

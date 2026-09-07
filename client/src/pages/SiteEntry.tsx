@@ -66,6 +66,7 @@ import { classifyWorkType } from "@shared/workTypeRecipes";
 import { flattenCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
 import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
 
 interface ProgressEntry {
   // Batch 06C §22: stable client key so photos can link to this activity row
@@ -270,8 +271,9 @@ export default function SiteEntry() {
   // Honor ?returnTo= so SiteHome/FieldHome/SiteDashboard each get their own
   // landing back.  Fall back to appendOrigin for portal (estimator) users.
   const _urlParams = new URLSearchParams(searchStr);
-  const returnTo = _urlParams.get("returnTo") ?? null;
-  const backLink = returnTo ?? appendOrigin("/site/dashboard");
+  const requestedReturnTo = _urlParams.get("returnTo");
+  const backLink = resolveReturnTo(searchStr, DPR_REGISTER_PATH);
+  const returnTo = requestedReturnTo ? backLink : null;
   const [showPreview, setShowPreview] = useState(false);
   // 06M-B: structured shortage from the server's plant-stock diesel guard
   const [dieselShortage, setDieselShortage] = useState<InsufficientPlantStockPayload | null>(null);
@@ -1461,7 +1463,7 @@ export default function SiteEntry() {
       // originating context (returnTo when the caller provided one — e.g.
       // Field Home — otherwise the screen's normal back destination). The
       // draft reopens later via /site/edit/:id?draft from Field Home.
-      setLocation(returnTo ?? "/site/dashboard");
+      setLocation(returnTo ?? DPR_REGISTER_PATH);
     },
     onError: (err: any) => {
       const shortage = parseInsufficientPlantStock(err);

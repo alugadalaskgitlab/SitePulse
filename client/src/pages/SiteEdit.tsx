@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation, useRoute, Link } from "wouter";
-import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
 import { ChevronLeft, Plus, Trash2, Save, Loader2, UserPlus, X, Shield, Check, Send, Camera, Image as ImageIcon, Paperclip } from "lucide-react";
 import { useUpload } from "@/hooks/use-upload";
@@ -39,7 +38,7 @@ import { layerFieldLabel } from "@shared/layerDisplay";
 import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { parseDprError } from "@/lib/dprErrors";
-import { resolveReturnTo } from "@/lib/progressReportNav";
+import { DPR_REGISTER_PATH, resolveReturnTo, withReturnTo } from "@/lib/progressReportNav";
 import { BillItemPicker, type BillItem } from "@/components/BillItemPicker";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { dprBoqItemDisplayName } from "@shared/dprBoqSelection";
@@ -323,10 +322,9 @@ export default function SiteEdit() {
   const [, params] = useRoute("/site/edit/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { getBackLink, appendOrigin } = useOrigin();
   const { sectionCan, user: authUser } = useAuth();
   const id = parseInt(params?.id || "0");
-  const backToReport = appendOrigin(`/site/report/${id}`);
+  const backToReport = withReturnTo(`/site/report/${id}`, DPR_REGISTER_PATH);
   const DRAFT_KEY = `dpr_draft_${id}`;
   const _searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   const _returnTo = _searchParams.get("returnTo");
@@ -861,7 +859,7 @@ export default function SiteEdit() {
         description: "Your edited version has been saved successfully.",
       });
       // Redirect to the new version's report
-      setLocation(appendOrigin(`/site/report/${newVersion.id}`));
+      setLocation(withReturnTo(`/site/report/${newVersion.id}`, _validatedReturnTo));
     },
     onError: (error: any) => {
       const shortage = parseInsufficientPlantStock(error);
@@ -1144,7 +1142,7 @@ export default function SiteEdit() {
       {
         setLocation(resolveReturnTo(
           typeof window !== "undefined" ? window.location.search : "",
-          appendOrigin("/"),
+          DPR_REGISTER_PATH,
         ));
       }
     },
@@ -1183,7 +1181,7 @@ export default function SiteEdit() {
       toast({ title: "DPR Submitted", description: "Your daily progress report has been submitted successfully." });
       setLocation(resolveReturnTo(
         typeof window !== "undefined" ? window.location.search : "",
-        appendOrigin(`/site/report/${data.id}`),
+        DPR_REGISTER_PATH,
       ));
     },
     onError: (error: any) => {
@@ -1276,7 +1274,7 @@ export default function SiteEdit() {
     return (
       <div className="max-w-4xl mx-auto space-y-6 pb-20">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => setLocation(backToReport)} data-testid="button-back-to-report">
+          <Button variant="ghost" size="icon" onClick={() => setLocation(editBackHref)} data-testid="button-back-to-report">
             <ChevronLeft className="w-5 h-5" />
           </Button>
           <div>
@@ -1308,7 +1306,7 @@ export default function SiteEdit() {
     );
   }
 
-  const draftBackHref = _returnTo ? _validatedReturnTo : appendOrigin("/");
+  const draftBackHref = _returnTo ? _validatedReturnTo : DPR_REGISTER_PATH;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300">
@@ -1348,7 +1346,7 @@ export default function SiteEdit() {
                 onClick={() => {
                   // Batch 05 (spec §4): view switch only — never changes the
                   // persistent default entry mode.
-                  setLocation(`/site/guided?draftId=${id}${_returnTo ? `&returnTo=${encodeURIComponent(_returnTo)}` : ""}`);
+                  setLocation(`/site/guided?draftId=${id}${_returnTo ? `&returnTo=${encodeURIComponent(_validatedReturnTo)}` : ""}`);
                 }}
                 className="gap-2"
                 data-testid="button-switch-guided"

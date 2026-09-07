@@ -2243,7 +2243,7 @@ export async function registerRoutes(
       if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, code: "MATERIAL_OUTCOME_INVALID" });
       const scopeError = await validateProgressScope(input, req, { draft: true });
       if (scopeError) return res.status(422).json({ message: scopeError.error, code: scopeError.code });
-      const updated = await storage.updateDraftDpr(id, input);
+      const updated = await storage.updateDraftDpr(id, input, req.authUser?.id ?? null);
       if (!updated) return res.status(404).json({ message: "DPR not found or not a draft" });
       res.json(updated);
     } catch (err) {
@@ -2618,7 +2618,7 @@ export async function registerRoutes(
         }
       }
 
-      const cloned = await storage.cloneDpr(id, editedBy, input.clientTimestamp);
+      const cloned = await storage.cloneDpr(id, editedBy, input.clientTimestamp, req.authUser?.id ?? null);
       if (!cloned) {
         return res.status(404).json({ message: "Original DPR not found" });
       }

@@ -33,9 +33,10 @@ const DRAFT_ID = 6001;
 
 const fx = { bars: [] as any[], drafts: new Map<number, any>(), nextId: DRAFT_ID };
 const calls = {
-  createdDprs: [] as any[],
-  draftUpdates: [] as Array<{ id: number; input: any }>,
-  submits: [] as Array<{ id: number; input: any }>,
+  createdDprs: [] as Array<{ input: any; audit: any }>,
+  draftUpdates: [] as Array<{ id: number; input: any; actorUserId: number | null }>,
+  submits: [] as Array<{ id: number; input: any; audit: any }>,
+  versions: [] as Array<{ originalId: number; audit: any }>,
 };
 
 vi.mock("../server/push", () => ({
@@ -72,27 +73,31 @@ vi.mock("../server/storage", () => {
   methods.getBoqItem = vi.fn(async () => null);
   methods.getWorkProgramBar = vi.fn(async (id: number) => fx.bars.find(b => b.id === id) ?? undefined);
   methods.getWorkProgramBars = vi.fn(async (projectId: number) => fx.bars.filter(b => b.boqProjectId === projectId));
-  methods.createDpr = vi.fn(async (input: any) => {
-    calls.createdDprs.push(input);
+  methods.createDpr = vi.fn(async (input: any, _timestamp: any, audit: any) => {
+    calls.createdDprs.push({ input, audit });
     const id = fx.nextId++; // unique per created DPR — no cross-test collisions
     const dpr = { id, ...input };
     fx.drafts.set(id, dpr);
     return dpr;
   });
   methods.getDpr = vi.fn(async (id: number) => fx.drafts.get(id));
-  methods.updateDraftDpr = vi.fn(async (id: number, input: any) => {
-    calls.draftUpdates.push({ id, input });
+  methods.updateDraftDpr = vi.fn(async (id: number, input: any, actorUserId: number | null) => {
+    calls.draftUpdates.push({ id, input, actorUserId });
     const updated = { ...(fx.drafts.get(id) ?? {}), ...input, id };
     fx.drafts.set(id, updated);
     return updated;
   });
-  methods.submitDraftDpr = vi.fn(async (id: number, input: any) => {
-    calls.submits.push({ id, input });
+  methods.submitDraftDpr = vi.fn(async (id: number, input: any, _timestamp: any, audit: any) => {
+    calls.submits.push({ id, input, audit });
     const submitted = { ...(fx.drafts.get(id) ?? {}), ...input, id, dprStatus: "submitted" };
     fx.drafts.set(id, submitted);
     return submitted;
   });
   methods.createNotification = vi.fn(async () => ({}));
+  methods.createVersionDpr = vi.fn(async (originalId: number, input: any, _editedBy: any, _timestamp: any, audit: any) => {
+    calls.versions.push({ originalId, audit });
+    return { id: fx.nextId++, ...input, dprStatus: "submitted" };
+  });
   methods.getReportedQtyByBar = vi.fn(async () => new Map());
 
   return { storage: storageProxy };
@@ -175,6 +180,7 @@ function resetFx() {
   calls.createdDprs = [];
   calls.draftUpdates = [];
   calls.submits = [];
+  calls.versions = [];
 }
 beforeEach(resetFx);
 
@@ -233,7 +239,7 @@ describe("Part B — programmeBarId survives draft → update → submit (real r
     }));
     expect(res.status).toBe(201);
     expect(calls.createdDprs).toHaveLength(1);
-    expect(calls.createdDprs[0].progress[0].programmeBarId).toBe(BAR_ID);
+    expect(calls.createdDprs[0].input.progress[0].programmeBarId).toBe(BAR_ID);
   });
 
   it("full lifecycle: create draft → PATCH draft twice → submit — link intact at every step, exactly one DPR record", async () => {
@@ -324,12 +330,53 @@ describe("Part E — executedBy attribution persists through the lifecycle", () 
     const withExecutor = { executedBy: "agency" };
     const create = await request(app).post("/api/dprs").send(guidedPayload({ asDraft: true, progressOverrides: withExecutor }));
     expect(create.status).toBe(201);
-    expect(calls.createdDprs[0].progress[0].executedBy).toBe("agency");
+    expect(calls.createdDprs[0].input.progress[0].executedBy).toBe("agency");
     const submit = await request(app).post(`/api/dprs/${create.body.id}/submit`).send(guidedPayload({
       asDraft: false, progressOverrides: withExecutor,
     }));
     expect(submit.status).toBe(200);
     expect(calls.submits[0].input.progress[0].executedBy).toBe("agency");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DPR actor audit trail — authenticated IDs only, across A-E lifecycle actions
+// ---------------------------------------------------------------------------
+
+describe("DPR actor audit trail A-E", () => {
+  it("A — passes the authenticated actor when creating a draft", async () => {
+    const response = await request(app).post("/api/dprs").send(guidedPayload({ asDraft: true }));
+    expect(response.status).toBe(201);
+    expect(calls.createdDprs[0].audit.userId).toBe(1);
+  });
+
+  it("B — passes the authenticated actor on every draft save", async () => {
+    const created = await request(app).post("/api/dprs").send(guidedPayload({ asDraft: true }));
+    const response = await request(app).patch(`/api/dprs/${created.body.id}/draft`).send(guidedPayload({ asDraft: true }));
+    expect(response.status).toBe(200);
+    expect(calls.draftUpdates[0].actorUserId).toBe(1);
+  });
+
+  it("C — passes the authenticated submitter when submitting a draft", async () => {
+    const created = await request(app).post("/api/dprs").send(guidedPayload({ asDraft: true }));
+    const response = await request(app).post(`/api/dprs/${created.body.id}/submit`).send(guidedPayload({ asDraft: false }));
+    expect(response.status).toBe(200);
+    expect(calls.submits[0].audit.userId).toBe(1);
+  });
+
+  it("D — passes the authenticated creator and submitter on direct submit", async () => {
+    const response = await request(app).post("/api/dprs").send(guidedPayload({ asDraft: false }));
+    expect(response.status).toBe(201);
+    expect(calls.createdDprs[0].audit.userId).toBe(1);
+  });
+
+  it("E — passes the authenticated editor on a submitted version", async () => {
+    const created = await request(app).post("/api/dprs").send(guidedPayload({ asDraft: false }));
+    const response = await request(app)
+      .post(`/api/dprs/${created.body.id}/version`)
+      .send({ editedBy: "manager", data: guidedPayload({ asDraft: false }) });
+    expect(response.status).toBe(201);
+    expect(calls.versions[0]).toEqual({ originalId: created.body.id, audit: expect.objectContaining({ userId: 1 }) });
   });
 });
 

@@ -542,10 +542,10 @@ export interface IStorage {
     audit?: DprEquipmentClosureAudit,
     options?: { reuseExistingDraft?: boolean },
   ): Promise<Dpr>;
-  updateDraftDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
+  updateDraftDpr(id: number, dpr: CreateDprRequest, actorUserId?: number | null): Promise<Dpr | undefined>;
   submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit): Promise<Dpr | undefined>;
   updateDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
-  cloneDpr(id: number, editedBy: string, clientTimestamp?: string): Promise<Dpr | undefined>;
+  cloneDpr(id: number, editedBy: string, clientTimestamp?: string, actorUserId?: number | null): Promise<Dpr | undefined>;
   createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string, audit?: DprEquipmentClosureAudit): Promise<Dpr>;
   deleteDpr(id: number): Promise<boolean>;
   /**
@@ -2455,6 +2455,17 @@ export class DatabaseStorage implements IStorage {
       }
     });
     if (!dpr) return undefined;
+    const actorIds = Array.from(new Set([
+      dpr.authorUserId,
+      dpr.lastEditedByUserId,
+      dpr.submittedByUserId,
+    ].filter((actorId): actorId is number => actorId != null)));
+    const actorRows = actorIds.length
+      ? await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, actorIds))
+      : [];
+    const actorNames = new Map(actorRows.map((actor) => [actor.id, actor.fullName]));
+    const actorName = (actorId: number | null | undefined) =>
+      actorId == null ? "User unavailable" : (actorNames.get(actorId) ?? "User unavailable");
     const fillIds = (dpr.progress ?? []).map(p => p.id);
     const links = fillIds.length ? await db.select({
       fillEntryKey: progressEntries.entryKey,
@@ -2493,6 +2504,9 @@ export class DatabaseStorage implements IStorage {
     }
     return {
       ...dpr,
+      authorName: actorName(dpr.authorUserId),
+      lastEditedByName: actorName(dpr.lastEditedByUserId),
+      submittedByName: actorName(dpr.submittedByUserId),
       equipment: (dpr.equipment ?? []).map(row => ({ ...row, breakdowns: breakdownsByEquipmentLog.get(row.id) ?? [] })),
       cutFillConsumptions: links,
     } as DprWithDetails;
@@ -2850,6 +2864,8 @@ export class DatabaseStorage implements IStorage {
         workType: dprData.workType ?? "road",
         boqProjectId: (dprData as any).boqProjectId ?? null,
         remarks: (dprData as any).remarks ?? null,
+        authorUserId: audit?.userId ?? null,
+        submittedByUserId: dprStatusVal === "draft" ? null : (audit?.userId ?? null),
       }).returning();
 
       const dprId = newDpr.id;
@@ -2948,14 +2964,17 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async updateDraftDpr(id: number, dprData: CreateDprRequest): Promise<Dpr | undefined> {
+  async updateDraftDpr(id: number, dprData: CreateDprRequest, actorUserId?: number | null): Promise<Dpr | undefined> {
     // Canonical draft identity rule (intentionally unchanged): the id returned
     // by the initial POST is the draft's sole identity. Every autosave replaces
     // children under that same dprs.id; there is no site/date/user deduplication
     // and no new DPR/version row until the explicit version/clone workflows.
     const existing = await this.getDpr(id);
     if (!existing || (existing as any).dprStatus !== "draft") return undefined;
-    return await this._replaceDprChildRecords(id, dprData, {});
+    return await this._replaceDprChildRecords(id, dprData, {
+      lastEditedByUserId: actorUserId ?? null,
+      lastEditedAt: new Date(),
+    });
   }
 
   async submitDraftDpr(
@@ -2970,7 +2989,12 @@ export class DatabaseStorage implements IStorage {
     return await this._replaceDprChildRecords(
       id,
       dprData,
-      { dprStatus: "submitted", submittedAt, lockStatus: "locked" },
+      {
+        dprStatus: "submitted",
+        submittedAt,
+        submittedByUserId: audit?.userId ?? null,
+        lockStatus: "locked",
+      },
       audit,
     );
   }
@@ -3191,7 +3215,7 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async cloneDpr(id: number, editedBy: string, clientTimestamp?: string): Promise<Dpr | undefined> {
+  async cloneDpr(id: number, editedBy: string, clientTimestamp?: string, actorUserId?: number | null): Promise<Dpr | undefined> {
     const original = await this.getDpr(id);
     if (!original) return undefined;
 
@@ -3211,10 +3235,15 @@ export class DatabaseStorage implements IStorage {
         site: newSiteName,
         engineer: original.engineer.toUpperCase(),
         role: editedBy,
-        submittedAt: dateTime,
+        submittedAt: original.submittedAt,
+        createdAt: original.createdAt,
         workType: (original as any).workType ?? "road",
         boqProjectId: (original as any).boqProjectId ?? null,
         remarks: (original as any).remarks ?? null,
+        authorUserId: original.authorUserId ?? null,
+        lastEditedByUserId: actorUserId ?? null,
+        lastEditedAt: new Date(),
+        submittedByUserId: original.submittedByUserId ?? null,
       }).returning();
 
       const dprId = newDpr.id;
@@ -3460,6 +3489,13 @@ export class DatabaseStorage implements IStorage {
     const newSiteName = `${baseSite.toUpperCase()} – Edited by ${roleName} – ${dateTime}`;
 
     return await db.transaction(async (tx) => {
+      const [originalAudit] = await tx.select({
+        authorUserId: dprs.authorUserId,
+        submittedByUserId: dprs.submittedByUserId,
+        createdAt: dprs.createdAt,
+        submittedAt: dprs.submittedAt,
+      }).from(dprs).where(eq(dprs.id, originalId)).limit(1);
+
       // Clean up original DPR's diesel ledger entries before creating new version
       await this.cleanupDprEquipmentDieselLedger(tx, originalId);
 
@@ -3470,10 +3506,15 @@ export class DatabaseStorage implements IStorage {
         site: newSiteName,
         engineer: dprData.engineer.toUpperCase(),
         role: editedBy,
-        submittedAt: dateTime,
+        submittedAt: originalAudit?.submittedAt ?? dateTime,
+        createdAt: originalAudit?.createdAt ?? undefined,
         workType: dprData.workType ?? "road",
         boqProjectId: (dprData as any).boqProjectId ?? null,
         remarks: (dprData as any).remarks ?? null,
+        authorUserId: originalAudit?.authorUserId ?? null,
+        lastEditedByUserId: audit?.userId ?? null,
+        lastEditedAt: new Date(),
+        submittedByUserId: originalAudit?.submittedByUserId ?? null,
       }).returning();
 
       const dprId = newDpr.id;
