@@ -1,0 +1,192 @@
+IMPORTANT: THIS BATCH IS AUDIT / DESIGN REVIEW ONLY.
+
+Do not change code.
+Do not change permissions.
+Do not change role templates.
+Do not change schema.
+Do not add migrations.
+Do not change route guards.
+Do not change server authorization.
+Do not change UI grouping yet.
+
+Inspect, verify, and report only.
+
+The purpose of this batch is to produce one reliable permission-map and UX recommendation before implementation.
+
+--------------------------------------------------
+CONFIRMED AREAS THAT MUST BE EXPLICITLY VERIFIED
+--------------------------------------------------
+
+The following possible gaps have already been identified and must be checked directly in the current code.
+
+1. RMC GRANULAR PERMISSIONS
+
+The UI exposes separate permission rows for:
+- RMC Batch Records
+- RMC Mix Designs
+- RMC Cube Tests
+- RMC Raw Materials
+- RMC Delivery Challans
+- RMC Daily Report
+
+Verify whether each underlying route/API actually enforces its own specific RMC permission.
+
+There is concern that the server may instead be using one broader plant-production permission for multiple/all RMC functions.
+
+Report for every RMC feature:
+- UI permission key
+- frontend guard
+- server/API guard
+- actual permission currently enforced
+- whether the displayed checkbox is genuinely authoritative
+
+If the UI presents fine-grained permissions that are not actually enforced, classify this as a HIGH-PRIORITY permission trust gap.
+
+Do not fix it in this audit batch.
+
+2. TOMORROW'S PROGRAM / SITE REQUIREMENTS
+
+Audit the complete Tomorrow's Program / Site Requirements flow.
+
+Check:
+- list/view
+- create/raise
+- edit
+- review
+- status/outcome actions
+- labour allocation
+- any related endpoints
+
+Verify both:
+- frontend visibility
+- server/API authorization
+
+There is concern that current access may only be hidden in the UI while server endpoints lack an equivalent permission check.
+
+If authenticated users can directly call the endpoint without the intended permission, classify it as a HIGH-PRIORITY server authorization gap.
+
+Also recommend the minimum sensible permission model for this module.
+
+Do not implement it in this audit batch.
+
+3. DIESEL REQUIREMENT PERMISSION CONSISTENCY
+
+Trace the entire Diesel Requirement workflow:
+
+- view
+- raise
+- edit
+- submit
+- approve/reject
+- any related list/detail endpoints
+
+Compare use of:
+- legacy site_diesel
+- diesel_req_view
+- diesel_req_raise
+- diesel_req_approve
+
+There is concern that raise/edit may still depend on the old broad permission while approval uses the newer granular permission.
+
+Report the exact current behavior and recommend one consistent model.
+
+Do not change it in this audit batch.
+
+4. GRANT ALL / REVOKE ALL / NOTIFY BEHAVIOR
+
+Inspect all of these separately:
+
+- Section "All"
+- Group "Grant all"
+- Global "Grant all"
+- Global "Revoke all"
+
+For each, report whether Notify:
+- remains unchanged
+- becomes enabled
+- becomes disabled
+
+The intended principle is that Notify is a separate explicit opt-in and bulk access changes should not silently alter notification choices unless deliberately designed that way.
+
+There is concern that global Grant All may currently rebuild the permission matrix with Notify=false and therefore silently remove existing Notify selections.
+
+Confirm from code and report the exact behavior.
+
+Do not fix it in this audit batch.
+
+--------------------------------------------------
+ROLE TEMPLATE PERSISTENCE
+--------------------------------------------------
+
+Confirm whether the selected business role template is actually persisted on the user record.
+
+If it is not persisted:
+- report that clearly;
+- do not infer a user's role from their current permission matrix;
+- do not add a schema field in this batch.
+
+Explain the consequence for:
+- User Management Role column
+- Edit User
+- Review screen
+- later permission customisation
+
+Recommend whether storing roleTemplateId separately from the effective permission matrix is worthwhile.
+
+--------------------------------------------------
+PERMISSION PANEL TRUST AUDIT
+--------------------------------------------------
+
+For every permission row shown to an Admin, verify:
+
+1. What screen/feature it represents
+2. Frontend access guard
+3. Server/API authorization guard
+4. Which action columns actually have meaning
+5. Whether a checked box genuinely changes access
+6. Whether any checkbox is cosmetic or ineffective
+7. Whether two different rows ultimately control the same backend authority
+8. Whether one broad permission unintentionally grants multiple unrelated functions
+
+Any checkbox shown to an Admin that does not correspond to real enforced authority must be explicitly listed.
+
+--------------------------------------------------
+FINAL REPORT FORMAT
+--------------------------------------------------
+
+Return one structured report with:
+
+A. Current New User wizard assessment
+B. Current role-template behavior
+C. Current role-template permission matrix by role
+D. Site Access behavior
+E. Permission groups currently shown
+F. Feature-to-permission map
+G. Frontend vs server enforcement gaps
+H. Cosmetic / misleading permission checkboxes
+I. Missing permission seams
+J. Over-broad permission seams
+K. Duplicate / legacy permission overlaps
+L. Grant All / Revoke All / Notify behavior
+M. Role-template persistence finding
+N. Recommended future visible grouping
+O. Recommended changes ranked:
+   - Critical security / enforcement
+   - Important permission correctness
+   - UX clarity
+   - Nice-to-have
+
+For every recommended change, state whether it requires:
+- frontend only
+- server authorization
+- shared permissions.ts
+- role-template change
+- schema/migration
+- no schema
+
+STOP after the report.
+
+Do not implement anything.
+Do not publish.
+Do not create a migration.
+Do not start another feature.
