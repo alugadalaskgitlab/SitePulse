@@ -1,0 +1,555 @@
+EQUIPMENT LOG — MULTIPLE BOQ ACTIVITY TIME ALLOCATION
+CONSISTENT ACROSS ALL DPR VIEWS / PERMITTED USERS
+
+Implement only the equipment-usage enhancement described below.
+
+Goal:
+Allow one equipment usage/day record to be linked to multiple BOQ activities through separate time segments, without duplicating equipment hours, diesel, hire attendance, or equipment-day records.
+
+This must remain simple for field users and consistent across all relevant DPR views.
+
+--------------------------------------------------
+1. KEEP ONE PARENT EQUIPMENT USAGE RECORD
+--------------------------------------------------
+
+The existing equipment row remains the single physical machine usage record for the day.
+
+Keep existing parent-level fields such as:
+
+- Equipment / machine
+- Vehicle / registration number
+- Operator
+- Entry type
+- Opening / closing meter
+- Overall start / end time where currently used
+- Total operating hours
+- Diesel
+- Opening / closing diesel tank
+- Diesel norm
+- Expected diesel
+- Trips / distance where applicable
+- Breakdowns
+- Existing equipment master link
+- Existing plantUsageId / continuity links
+- Existing hire-billing source behavior
+
+Do NOT create duplicate equipment rows merely because the machine worked on multiple BOQ items.
+
+--------------------------------------------------
+2. ADD MULTIPLE BOQ ACTIVITY ALLOCATIONS UNDER THE EQUIPMENT ROW
+--------------------------------------------------
+
+Under each equipment row, allow one or more activity-allocation rows.
+
+Each allocation needs only:
+
+- BOQ Item
+- Start Time
+- End Time
+- Hours — AUTO-CALCULATED, read-only
+
+Do NOT add a separate Task field.
+
+The BOQ item already identifies the work/activity and must remain the business source of truth.
+
+Do NOT add a “Related BOQ Item” field.
+
+Excavation-to-embankment reuse is already handled by the existing cut/fill material reconciliation flow and must not be duplicated in equipment allocation.
+
+--------------------------------------------------
+3. PROGRAMME BAR / REACH LINKING
+--------------------------------------------------
+
+Inspect the existing DPR BOQ/programme-bar linkage.
+
+Where the selected BOQ item and current DPR context allow an exact programme bar / reach to be resolved, preserve that link in the allocation.
+
+Prefer:
+- boqItemId
+- programmeBarId where applicable
+
+Do not force the field engineer to manually choose a programme bar if the correct one can already be derived from the DPR/progress context.
+
+If there are multiple valid bars/reaches and the system cannot determine one safely, allow a focused picker or leave it null according to existing DPR behavior.
+
+Do not guess.
+
+--------------------------------------------------
+4. START / END TIME IS THE PRIMARY ALLOCATION INPUT
+--------------------------------------------------
+
+For each allocation:
+
+Example:
+
+Roadway Excavation
+08:00 → 12:00
+4.0 h
+
+Borrow Earth Cutting / Loading BOQ Item
+12:00 → 16:00
+4.0 h
+
+Hours must be automatically calculated from Start Time and End Time.
+
+Do not ask the user to manually type Hours when both times are provided.
+
+If the current app supports overnight or cross-midnight equipment usage, preserve current semantics.
+Otherwise do not invent new overnight behavior in this batch.
+
+--------------------------------------------------
+5. VALIDATE TIME SEGMENTS
+--------------------------------------------------
+
+For the same parent equipment usage record:
+
+- allocation time segments must not overlap
+- End Time must be after Start Time
+- calculated Hours must be positive
+- duplicate identical time segments should not be accepted
+- total allocated hours must not exceed the machine's actual operating hours
+
+Show a clear field-level or summary warning.
+
+Example:
+
+Machine total operating time: 8.0 h
+Allocated: 8.0 / 8.0 h ✓
+
+If only 6 hours are allocated:
+
+Allocated: 6.0 / 8.0 h
+Unallocated: 2.0 h
+
+Allow unallocated time.
+
+Do NOT force allocations to equal total machine hours.
+
+--------------------------------------------------
+6. DO NOT DOUBLE COUNT EXCAVATION + EMBANKMENT REUSE
+--------------------------------------------------
+
+Important business rule:
+
+If an excavator performs Roadway Excavation and that excavated material is fully/partly reused in Embankment, the equipment time belongs to the physical excavation activity unless the excavator separately performs another embankment operation.
+
+Example:
+
+Roadway Excavation
+08:00–12:00
+4.0 h
+
+The existing cut/fill flow separately records:
+- fully reusable
+- partly reusable
+- unsuitable
+- reusable quantity
+- fill consumption from excavation source
+
+Do NOT create a second 4-hour equipment allocation to Embankment merely because the excavated earth is reused there.
+
+That would double-count machine time.
+
+Only create a separate Embankment allocation if the machine actually performs a separate embankment-related operation during a distinct time period.
+
+--------------------------------------------------
+7. ONE BOQ ITEM PER ALLOCATION ROW
+--------------------------------------------------
+
+Each time-allocation row links to one BOQ item.
+
+Example:
+
+08:00–11:00 → Roadway Excavation
+11:00–13:00 → Embankment Spreading
+14:00–17:00 → Borrow Earth Cutting / Loading
+
+The same parent equipment record can therefore support multiple BOQ items.
+
+Do not store an array of BOQ IDs in one field.
+
+Use a proper child allocation structure.
+
+--------------------------------------------------
+8. BACKWARD COMPATIBILITY
+--------------------------------------------------
+
+Existing historical DPR equipment rows currently have one boqItemId.
+
+Do not break or rewrite them.
+
+Treat an existing single boqItemId as legacy single-activity linkage for reporting.
+
+For new/edited DPR equipment rows using the new allocation model:
+- use child allocations as the authoritative activity split
+
+Do not destructively migrate old DPRs.
+
+If a parent boqItemId must remain temporarily for compatibility, define exactly how it behaves and avoid conflicting sources of truth.
+
+Prefer:
+- child allocations authoritative when present
+- legacy parent boqItemId only when no child allocations exist
+
+--------------------------------------------------
+9. ANALYTICS / WORK DEMAND
+--------------------------------------------------
+
+Current Work Demand / plan-vs-actual logic uses equipment.boqItemId and accumulates equipment hours against that BOQ item.
+
+Update this logic so:
+
+If activity allocations exist:
+- aggregate allocated hours by allocation boqItemId
+- do NOT also count the parent legacy boqItemId
+
+If no allocations exist:
+- preserve current legacy behavior using parent boqItemId
+
+Example:
+
+Parent equipment total = 8 h
+
+Allocations:
+- BOQ A = 3 h
+- BOQ B = 5 h
+
+Work Demand must show:
+- BOQ A actual equipment = 3 h
+- BOQ B actual equipment = 5 h
+
+Not:
+- 8 h + 3 h + 5 h
+
+--------------------------------------------------
+10. DIESEL MUST REMAIN PARENT-LEVEL
+--------------------------------------------------
+
+Do NOT split or duplicate diesel transactions across activity rows.
+
+Actual diesel remains attached once to the parent machine usage record.
+
+Expected diesel remains based on the existing machine usage / norm logic.
+
+Do not change current diesel calculations in this batch.
+
+If later BOQ-wise diesel analysis is needed, it may derive a proportional analytical allocation from activity hours, but do not persist duplicated diesel usage now.
+
+--------------------------------------------------
+11. HIRE BILLING MUST REMAIN PARENT-LEVEL
+--------------------------------------------------
+
+Do NOT make each activity allocation a separate hire attendance / billing record.
+
+Monthly / daily / hourly hire billing must continue to read the actual parent equipment usage record.
+
+Example:
+
+Excavator total worked = 8 h
+
+Even if there are 3 BOQ activity allocations, hire billing still sees one 8-hour machine-day usage.
+
+Do not multiply attendance, hire charge, diesel entitlement, or recoveries.
+
+--------------------------------------------------
+12. DPR UX
+--------------------------------------------------
+
+Keep the field UI compact.
+
+Recommended presentation:
+
+EXCAVATOR EX-01
+Meter 1326.2 → 1334.2
+Total: 8.0 h
+
+Work Allocation
+
+[ Roadway Excavation ] [08:00] [12:00] [4.0 h]
+
+[ Borrow Earth Cutting / Loading ] [12:00] [16:00] [4.0 h]
+
++ Add another activity
+
+Allocated: 8.0 / 8.0 h ✓
+
+If only one BOQ item is selected:
+- show one allocation row
+- allow the user to add another only when needed
+
+Do not turn this into a large spreadsheet.
+
+--------------------------------------------------
+13. CONSISTENCY ACROSS ALL DPR VIEWS / PERMITTED USERS
+--------------------------------------------------
+
+This enhancement must work consistently across all relevant DPR experiences and for all users who already have permission to use those experiences.
+
+At minimum verify and implement consistently in:
+
+- Guided / Field DPR
+- Detailed / Classic DPR
+- Edit DPR
+- Draft DPR view
+- Submitted DPR view
+- DPR Report
+- Printable / report rendering where equipment usage is shown
+- Manager/Admin review views that render DPR equipment
+- Any Equipment Hub / reporting screen that consumes DPR equipment activity data
+- Work Demand / plan-vs-actual analysis
+- Any other current consumer of DPR equipment BOQ linkage
+
+Do not create one implementation for field users and another for managers/admins.
+
+Respect the existing permission model:
+- users should see/edit only where their current DPR permissions allow it
+- this batch must not broaden anyone’s access
+- do not add new permission rules in this batch
+
+Use shared components/helpers where practical so the same allocation behavior, validation, calculation, and display rules are reused across views.
+
+Also verify that legacy DPRs remain readable in every one of these views.
+
+--------------------------------------------------
+14. GUIDED DPR / CLASSIC / EDIT BEHAVIOR
+--------------------------------------------------
+
+The user experience must be functionally equivalent across:
+
+- Guided DPR
+- Detailed / Classic DPR
+- Edit DPR
+
+Do not leave the new allocation available only in one entry mode.
+
+If one shared equipment component can safely be reused across these views, prefer that.
+
+Do not duplicate business rules in three separate implementations unless unavoidable.
+
+--------------------------------------------------
+15. REPORT / VIEW DPR
+--------------------------------------------------
+
+Display the activity allocations under the equipment row in DPR view/report.
+
+Example:
+
+Excavator EX-01 — 8.0 h
+
+Activities:
+- Roadway Excavation — 08:00–12:00 — 4.0 h
+- Borrow Earth Cutting / Loading — 12:00–16:00 — 4.0 h
+
+Do not duplicate diesel or meter values on each child row.
+
+Parent-level machine facts should remain shown once.
+
+--------------------------------------------------
+16. DATA MODEL
+--------------------------------------------------
+
+Inspect the current equipment_logs / DPR equipment persistence model first.
+
+Preferred normalized structure:
+
+equipment_activity_allocations
+
+Conceptually:
+
+- id
+- equipmentLogId
+- boqItemId
+- programmeBarId nullable
+- startTime
+- endTime
+- hoursWorked
+- createdAt / updatedAt if consistent with existing patterns
+
+Use exact existing FK types and naming conventions.
+
+Do not invent redundant fields.
+
+Do not store BOQ label text when boqItemId already identifies it.
+
+If schema change is required for this normalized child table:
+STOP and show the exact additive migration before applying it.
+
+No DROP.
+No DELETE.
+No RENAME.
+No destructive rewrite.
+
+--------------------------------------------------
+17. SERVER / API CONSISTENCY
+--------------------------------------------------
+
+Inspect every current DPR create/edit/version/submit path that persists equipment rows.
+
+Ensure activity allocations survive:
+
+- initial draft creation
+- autosave if relevant
+- normal save
+- edit
+- draft reopen
+- submitted DPR rendering
+- revision/version creation where DPR versioning applies
+- copy/replace flows used by existing DPR editing
+
+Do not allow allocations to disappear when an equipment row is replaced during DPR update/versioning.
+
+Use the parent equipment-log identity and stable relationships correctly.
+
+--------------------------------------------------
+18. DO NOT TOUCH
+--------------------------------------------------
+
+Do NOT change:
+
+- DPR quantity calculations
+- BOQ progress quantities
+- cut/fill reuse logic
+- reusableQty logic
+- cutFillConsumptions
+- Work Programme calculations
+- Execution Arrangements
+- diesel calculations
+- hire-billing formulas
+- maintenance
+- breakdown logic
+- material receipts/trips
+- labour
+- Vendor Bills
+- permissions
+- Site Requirements / Tomorrow’s Program
+- RMC
+- authentication/session behavior
+
+--------------------------------------------------
+19. TESTS
+--------------------------------------------------
+
+Verify at minimum:
+
+A. One equipment / one activity
+8 h parent
+08:00–16:00 BOQ A
+Expected:
+BOQ A = 8 h
+
+B. One equipment / two activities
+08:00–12:00 BOQ A
+12:00–16:00 BOQ B
+Expected:
+A = 4 h
+B = 4 h
+parent total = 8 h
+
+C. Three activities
+Total child hours must aggregate correctly.
+
+D. Overlapping times
+08:00–12:00
+11:00–14:00
+Expected:
+blocked / clear validation
+
+E. Allocation exceeds parent operating hours
+Expected:
+blocked or prevented according to final-save validation
+
+F. Partial allocation
+Parent = 8 h
+Allocated = 6 h
+Expected:
+allowed
+show 2 h unallocated
+
+G. Legacy DPR
+Existing equipment row with parent boqItemId and no allocations
+Expected:
+reports/Work Demand behave exactly as before
+
+H. New allocation DPR
+Parent boqItemId plus child allocations if compatibility field still exists
+Expected:
+child allocations are authoritative
+no double counting
+
+I. Excavation reuse case
+Excavation allocation 4 h
+Reusable material linked through existing cut/fill flow
+Expected:
+equipment hours counted once only
+no automatic duplicate Embankment equipment hours
+
+J. Hire billing
+One parent 8 h with multiple allocations
+Expected:
+hire attendance remains one 8 h usage
+
+K. Diesel
+One parent diesel quantity
+Expected:
+not duplicated across allocations
+
+L. Guided DPR
+Create and save allocations
+Expected:
+reopen correctly
+
+M. Detailed / Classic DPR
+Create and save same allocation structure
+Expected:
+same behavior as Guided
+
+N. Edit DPR
+Edit allocation times / BOQ item
+Expected:
+persists correctly without losing other machine data
+
+O. Submitted DPR view/report
+Expected:
+allocations display correctly and parent machine facts are not duplicated
+
+P. Manager/Admin review view
+Expected:
+same allocation information visible according to existing permissions
+
+Q. Permissions
+Expected:
+no user's access is broadened by this batch
+
+--------------------------------------------------
+20. REPORT AND STOP
+--------------------------------------------------
+
+Before implementing any schema change, report:
+
+1. Current equipment_logs / DPR equipment persistence structure
+2. Existing parent boqItemId behavior
+3. Exact proposed child-allocation schema
+4. Exact additive migration
+5. Files expected to change
+6. All current DPR/equipment views and consumers that will need updating
+
+STOP for approval if migration is required.
+
+If no migration is required, implement the focused batch and then report:
+
+1. files changed
+2. data model used
+3. Guided DPR changes
+4. Detailed / Classic DPR changes
+5. Edit DPR changes
+6. Draft / submitted DPR view changes
+7. report / printable changes
+8. manager/admin review changes
+9. Equipment Hub / reporting consumer changes
+10. Work Demand / analytics changes
+11. legacy compatibility behavior
+12. tests run and results
+13. schema/migration: yes/no
+
+Do not publish.
+Do not start another feature.
