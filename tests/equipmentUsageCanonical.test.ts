@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { computeEquipmentUsage } from "../shared/equipmentUsage";
+import {
+  computeEquipmentFuelSummary,
+  computeEquipmentUsage,
+  currentLocalEquipmentTime,
+  withEquipmentCreationStartTime,
+} from "../shared/equipmentUsage";
 
 describe("canonical equipment usage calculation", () => {
   it("uses hour meter before time and applies the hourly norm", () => {
@@ -32,5 +37,42 @@ describe("canonical equipment usage calculation", () => {
       { entryType: "trip_based", numberOfTrips: 2, tripDistance: 10 },
     );
     expect(result).toMatchObject({ basis: "trip_based", hoursWorked: null, totalKm: 40, expectedDiesel: 8, efficiencyValue: 0.2 });
+  });
+
+  it("computes true physical fuel, variance and an actual hourly rate", () => {
+    const usage = computeEquipmentUsage(
+      { meterType: "hour_meter", consumptionNorm: 4.75 },
+      { openingReading: 1002, closingReading: 1009.5 },
+    );
+    expect(computeEquipmentFuelSummary(usage, {
+      openingTank: 5,
+      dieselIssued: 30,
+      closingTank: 7,
+    })).toMatchObject({
+      actualConsumed: 28,
+      expectedDiesel: 35.625,
+      variance: -7.625,
+      actualRate: 28 / 7.5,
+      actualRateUnit: "L/hr",
+    });
+  });
+
+  it("never treats issued or expected diesel as actual consumption without both tank readings", () => {
+    const usage = computeEquipmentUsage(
+      { meterType: "hour_meter", consumptionNorm: 4 },
+      { openingReading: 10, closingReading: 12 },
+    );
+    expect(computeEquipmentFuelSummary(usage, {
+      openingTank: 5,
+      dieselIssued: 30,
+      closingTank: null,
+    })).toMatchObject({ actualConsumed: null, variance: null, actualRate: null, expectedDiesel: 8 });
+  });
+
+  it("defaults local time only when a new row explicitly requests it", () => {
+    const now = new Date(2026, 8, 8, 9, 15);
+    expect(currentLocalEquipmentTime(now)).toBe("09:15");
+    expect(withEquipmentCreationStartTime({ startTime: "" }, now).startTime).toBe("09:15");
+    expect(withEquipmentCreationStartTime({ startTime: "07:40" }, now).startTime).toBe("07:40");
   });
 });

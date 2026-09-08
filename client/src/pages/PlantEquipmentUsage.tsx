@@ -33,6 +33,7 @@ import { plantDestinationType } from "@/lib/equipmentLifecycle";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { useUpload } from "@/hooks/use-upload";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
+import { computeEquipmentFuelSummary } from "@shared/equipmentUsage";
 
 // 06X-HF2: extract the server's `message` field from apiRequest errors.
 // apiRequest throws "STATUS: {json}" — parse the JSON and return the
@@ -994,20 +995,23 @@ export default function PlantEquipmentUsage() {
       const runtimeUnit = isTripBased ? "km" : meterType === "hour_meter" ? "hrs" : "km";
       const runtimeLabel = runtime != null ? `${runtime.toFixed(3)} ${runtimeUnit}` : "-";
 
-      const openingDieselVal = (entry as any).openingDiesel ?? 0;
       const dieselIssuedVal = entry.dieselIssued ?? 0;
       const isDieselIncluded = (entry as any).dieselIncluded;
-      // Match inline view: actual consumption = opening + issued - closing when closing is tracked
-      const closingDieselEntry = (entry as any).closingDiesel;
-      const consumed = closingDieselEntry != null
-        ? Math.max(0, openingDieselVal + dieselIssuedVal - closingDieselEntry)
-        : (entry.expectedDiesel ?? 0);
+      const fuel = computeEquipmentFuelSummary({
+        runtime: Number(runtime ?? 0),
+        expectedDiesel: entry.expectedDiesel ?? null,
+        efficiencyUnit: isTripBased || meterType !== "hour_meter" ? "L/km" : "L/hr",
+      }, {
+        openingTank: (entry as any).openingDiesel,
+        dieselIssued: entry.dieselIssued,
+        closingTank: (entry as any).closingDiesel,
+        expectedDiesel: entry.expectedDiesel,
+      });
+      const consumed = fuel.actualConsumed;
 
       let efficiencyLabel = "-";
-      if (!isPartialEntry(entry) && !isDieselIncluded && runtime && runtime > 0 && consumed > 0) {
-        const effVal = consumed / runtime;
-        const effUnit = isTripBased ? "L/km" : meterType === "hour_meter" ? "L/hr" : "L/km";
-        efficiencyLabel = `${effVal.toFixed(3)} ${effUnit}`;
+      if (!isPartialEntry(entry) && !isDieselIncluded && fuel.actualRate != null) {
+        efficiencyLabel = `${fuel.actualRate.toFixed(3)} ${fuel.actualRateUnit}`;
       }
 
       const entryTypeLabel = ((entry as any).entryType || "time_meter").replace(/_/g, " ").toUpperCase();
@@ -1021,7 +1025,7 @@ export default function PlantEquipmentUsage() {
         "Time / Meter": timeMeterCell,
         "Runtime": runtimeLabel,
         "Diesel Issued (L)": dieselIssuedVal > 0 ? dieselIssuedVal.toFixed(3) : ((entry as any).dieselIncluded ? "CONTRACTOR" : "-"),
-        "Consumed (L)": consumed > 0 ? consumed.toFixed(3) : "-",
+        "Consumed (L)": consumed != null ? consumed.toFixed(3) : "-",
         "Efficiency": efficiencyLabel,
         "Norm": normLabel,
         "Transport Vehicle (Mobilization)": "-",
@@ -1722,7 +1726,7 @@ export default function PlantEquipmentUsage() {
                               onCheckedChange={(checked) => setDieselBalanceConfirmed(checked === true)}
                               data-testid="checkbox-diesel-balance-confirmed"
                             />
-                            <Label htmlFor="diesel-balance-confirmed" className="text-sm cursor-pointer">Balance Confirmed</Label>
+                            <Label htmlFor="diesel-balance-confirmed" className="text-sm cursor-pointer">Physical tank balance confirmed</Label>
                           </div>
                         </div>
                       </div>
@@ -2104,18 +2108,23 @@ export default function PlantEquipmentUsage() {
                     if (entry.entryType === "shifting") return;
                     const equip = equipment?.find(e => e.id === entry.equipmentId);
                     if (!equip) return;
-                    const openingDieselVal = entry.openingDiesel ?? 0;
-                    const dieselIssuedVal = entry.dieselIssued ?? 0;
-                    const closingDieselEntry = entry.closingDiesel ?? entry.dieselBalanceInTank;
                     const expected = entry.expectedDiesel ?? 0;
-                    const consumed = closingDieselEntry != null
-                      ? Math.max(0, openingDieselVal + dieselIssuedVal - closingDieselEntry)
-                      : expected;
                     const totalKmVal = entry.totalKm ?? 0;
                     const runtime = entry.hoursOrKmRun || totalKmVal || 0;
-                    if (runtime <= 0 && consumed <= 0 && expected <= 0) return;
                     const isTripBased = !entry.hoursOrKmRun && totalKmVal > 0;
                     const meterUnit = isTripBased ? "km" : (equip.meterType === "hour_meter" ? "hrs" : "km");
+                    const fuel = computeEquipmentFuelSummary({
+                      runtime,
+                      expectedDiesel: expected,
+                      efficiencyUnit: meterUnit === "hrs" ? "L/hr" : "L/km",
+                    }, {
+                      openingTank: entry.openingDiesel,
+                      dieselIssued: entry.dieselIssued,
+                      closingTank: entry.closingDiesel ?? entry.dieselBalanceInTank,
+                      expectedDiesel: expected,
+                    });
+                    if (fuel.actualConsumed == null) return;
+                    const consumed = fuel.actualConsumed;
                     const key = entry.equipmentId;
                     const existing = map.get(key);
                     if (existing) {
@@ -2143,13 +2152,7 @@ export default function PlantEquipmentUsage() {
                       {dayUsage.map((entry) => {
                         const equip = equipment?.find(e => e.id === entry.equipmentId);
                         const isDieselIncluded = (entry as any).dieselIncluded === true;
-                        const openingDieselVal = (entry as any).openingDiesel ?? 0;
                         const dieselIssuedVal = entry.dieselIssued ?? 0;
-                        const closingDieselEntry = (entry as any).closingDiesel;
-                        // Actual consumed = opening + issued - closing; fallback to expected if closing not tracked
-                        const consumed = closingDieselEntry != null 
-                          ? Math.max(0, openingDieselVal + dieselIssuedVal - closingDieselEntry)
-                          : (entry.expectedDiesel ?? 0);
                         const isExpanded = expandedIds.has(entry.id);
                         const equipmentLabel = equip ? formatEquipmentOptionLabel(equip) : "Unknown equipment";
                         const runtimeDisplay = isPartialEntry(entry) ? "Pending"
@@ -2159,8 +2162,18 @@ export default function PlantEquipmentUsage() {
                         const norm = equip?.consumptionNorm || 0;
                         const isTripBased = !entry.hoursOrKmRun && (entry as any).totalKm > 0;
                         const effUnit = isTripBased ? "L/km" : (equip?.meterType === "hour_meter" ? "L/hr" : "L/km");
-                        const efficiencyValue = (!isPartialEntry(entry) && !isDieselIncluded && runtime > 0 && consumed > 0)
-                          ? consumed / runtime : null;
+                        const fuel = computeEquipmentFuelSummary({
+                          runtime,
+                          expectedDiesel: entry.expectedDiesel ?? null,
+                          efficiencyUnit: effUnit,
+                        }, {
+                          openingTank: (entry as any).openingDiesel,
+                          dieselIssued: entry.dieselIssued,
+                          closingTank: (entry as any).closingDiesel ?? (entry as any).dieselBalanceInTank,
+                          expectedDiesel: entry.expectedDiesel,
+                        });
+                        const consumed = fuel.actualConsumed;
+                        const efficiencyValue = !isPartialEntry(entry) && !isDieselIncluded ? fuel.actualRate : null;
                         const efficiencyIsGood = norm > 0 ? (efficiencyValue != null ? efficiencyValue <= norm : true) : true;
                         const needsExpand = !!(entry.remarks?.trim()) || (entry as any).dieselSource === "direct_purchase";
                         return (
@@ -2222,7 +2235,7 @@ export default function PlantEquipmentUsage() {
                                     )}
                                     {/* Diesel issued + consumed */}
                                     {!isDieselIncluded && !isPartialEntry(entry) && (
-                                      <span>Issued: {dieselIssuedVal.toFixed(1)} L · Consumed: {consumed.toFixed(1)} L</span>
+                                      <span>Issued: {dieselIssuedVal.toFixed(1)} L · Consumed: {consumed == null ? "—" : `${consumed.toFixed(1)} L`}</span>
                                     )}
                                     {/* Efficiency */}
                                     {efficiencyValue != null && (

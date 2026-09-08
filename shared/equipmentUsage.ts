@@ -15,6 +15,19 @@ export interface EquipmentUsageResult {
   efficiencyValue: number | null; efficiencyLabel: string | null;
   efficiencyUnit: "L/hr" | "L/km"; warning: string | null;
 }
+export interface EquipmentFuelSummaryInput {
+  openingTank?: number | null;
+  dieselIssued?: number | null;
+  closingTank?: number | null;
+  expectedDiesel?: number | null;
+}
+export interface EquipmentFuelSummary {
+  actualConsumed: number | null;
+  expectedDiesel: number | null;
+  variance: number | null;
+  actualRate: number | null;
+  actualRateUnit: "L/hr" | "L/km";
+}
 export const AVERAGE_SPEED_KMPH = 25;
 
 function timeToHours(start?: string | null, end?: string | null): number | null {
@@ -60,6 +73,51 @@ export function computeEquipmentUsage(equipment: EquipmentUsageEquipment | null 
   if (time != null) return build("time_fallback", null, time * AVERAGE_SPEED_KMPH, time * AVERAGE_SPEED_KMPH, norm, "L/km", `KM not entered — using time fallback (assumed ${AVERAGE_SPEED_KMPH} km/hr).`);
   return build("none", null, null, 0, null, "L/km", "No odometer reading, trips, or start/end time entered.");
 }
+
+function finiteValue(value: number | null | undefined): number | null {
+  if (value == null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * One physical-fuel contract for Site DPR, Plant Usage and reports.
+ * Diesel issued alone is not actual consumption: both tank readings are
+ * required before the physical balance can be calculated.
+ */
+export function computeEquipmentFuelSummary(
+  usage: Pick<EquipmentUsageResult, "runtime" | "expectedDiesel" | "efficiencyUnit">,
+  input: EquipmentFuelSummaryInput,
+): EquipmentFuelSummary {
+  const openingTank = finiteValue(input.openingTank);
+  const dieselIssued = finiteValue(input.dieselIssued);
+  const closingTank = finiteValue(input.closingTank);
+  const expectedDiesel = finiteValue(input.expectedDiesel) ?? finiteValue(usage.expectedDiesel);
+  const actualConsumed = openingTank != null && dieselIssued != null && closingTank != null
+    ? openingTank + dieselIssued - closingTank
+    : null;
+  return {
+    actualConsumed,
+    expectedDiesel,
+    variance: actualConsumed != null && expectedDiesel != null ? actualConsumed - expectedDiesel : null,
+    actualRate: actualConsumed != null && usage.runtime > 0 ? actualConsumed / usage.runtime : null,
+    actualRateUnit: usage.efficiencyUnit,
+  };
+}
+
+export function currentLocalEquipmentTime(now = new Date()): string {
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+/** Creation-only convenience. Callers must not apply this during hydration. */
+export function withEquipmentCreationStartTime<T extends { startTime?: string | null }>(
+  row: T,
+  now = new Date(),
+): T {
+  if (row.startTime) return row;
+  return { ...row, startTime: currentLocalEquipmentTime(now) };
+}
+
 export function meterTypeLabel(meterType?: string | null): string {
   return meterType === "odometer" ? "Odometer (km)" : "Hour Meter (hrs)";
 }

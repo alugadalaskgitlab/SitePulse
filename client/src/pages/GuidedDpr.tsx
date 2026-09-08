@@ -49,7 +49,7 @@ import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { reconcileNewDprAutosaves } from "@/lib/dprAutosaveReconcile";
 import { unlinkedOpenUsages, usageToGuidedRow, duplicateUsageAdvisory, openUsageHandoffContext, type OpenUsageLike } from "@shared/dprPlantLink";
 import { extractYesterdayStructure } from "@/lib/sameAsYesterday";
-import { applyGuidedEquipmentMasterSelection, splitGuidedEquipmentRow, buildGuidedEquipmentPayload, newGuidedEquipmentRow, computeTotalDiesel, computeTripTotalKm, isWaterTankerName, OTHER_EQUIPMENT_VALUE, type GuidedEquipmentRow } from "@shared/guidedEquipment";
+import { applyGuidedEquipmentMasterSelection, splitGuidedEquipmentRow, buildGuidedEquipmentPayload, newGuidedEquipmentRow, newGuidedEquipmentRowForCreation, computeTotalDiesel, computeTripTotalKm, isWaterTankerName, OTHER_EQUIPMENT_VALUE, type GuidedEquipmentRow } from "@shared/guidedEquipment";
 import { evaluateDprSubmitReadiness, type DprReadinessIssue, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
@@ -2378,7 +2378,7 @@ export default function GuidedDpr() {
                     Total Diesel: {computeTotalDiesel(equipment.map((e) => e.passthrough)).toFixed(3)} L
                   </p>
                 )}
-                <Button variant="outline" size="sm" onClick={() => setEquipment((p) => [...p, newGuidedEquipmentRow()])} data-testid="button-add-equipment">
+                <Button variant="outline" size="sm" onClick={() => setEquipment((p) => [...p, newGuidedEquipmentRowForCreation()])} data-testid="button-add-equipment">
                   <Plus className="w-3.5 h-3.5 mr-1" />Add Equipment
                 </Button>
               </div>

@@ -19,6 +19,7 @@ import { boqItemDisplayName } from "@shared/boqItemName";
 import { dprMeasurementSummary } from "@shared/dprGeometry";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { layerDisplayName } from "@shared/layerDisplay";
+import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
@@ -379,71 +380,24 @@ export default function DprDetails() {
               <p className="text-muted-foreground italic">No equipment usage recorded.</p>
             ) : (
               <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Machine</TableHead>
-                      <TableHead>Operator</TableHead>
-                      <TableHead>Task</TableHead>
-                      <TableHead>Start</TableHead>
-                      <TableHead>End</TableHead>
-                      <TableHead className="text-right">Hours</TableHead>
-                      <TableHead className="text-right">Diesel (L)</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dpr.equipment.map((item: any, i: number) => {
-                      const calculateHours = (startTime?: string, endTime?: string) => {
-                        if (!startTime || !endTime) return '-';
-                        try {
-                          const [startHour, startMin] = startTime.split(':').map(Number);
-                          const [endHour, endMin] = endTime.split(':').map(Number);
-                          const startMins = startHour * 60 + startMin;
-                          const endMins = endHour * 60 + endMin;
-                          const diff = endMins - startMins;
-                          if (diff < 0) return '-';
-                          return (diff / 60).toFixed(3);
-                        } catch {
-                          return '-';
-                        }
-                      };
-                      const hours = calculateHours(item.startTime, item.endTime);
-                      
-                      const masterEquip = item.equipmentId ? equipmentList.find((e: EquipmentMasterType) => e.id === item.equipmentId) : null;
-                      const ownerLabel = masterEquip
-                        ? masterEquip.ownership === "hired"
-                          ? `HIRED: ${masterEquip.vendorName || "Unknown Vendor"}`
-                          : "HLC OWN"
-                        : null;
-                      
-                      return (
-                        <TableRow key={i} data-testid={`row-equipment-${i}`}>
-                          <TableCell className="font-medium">
-                            <div>
-                              <span>{item.machine}</span>
-                              {item.vehicleNo && (
-                                <p className="text-sm text-muted-foreground" data-testid={`text-vehicle-no-${i}`}>
-                                  Reg: {item.vehicleNo}
-                                </p>
-                              )}
-                              {ownerLabel && (
-                                <p className="text-sm text-muted-foreground" data-testid={`text-owner-info-${i}`}>
-                                  {ownerLabel}
-                                </p>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>{item.operator || '-'}</TableCell>
-                          <TableCell className="text-sm">{item.task || '-'}</TableCell>
-                          <TableCell>{item.startTime || '-'}</TableCell>
-                          <TableCell>{item.endTime || '-'}</TableCell>
-                          <TableCell className="text-right">{hours}</TableCell>
-                          <TableCell className="text-right">{item.diesel || '-'}</TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                <div className="space-y-3">
+                  {dpr.equipment.map((item: any, i: number) => (
+                    <DprEquipmentCompact
+                      key={item.id ?? i}
+                      row={item}
+                      equipment={item.equipmentId ? equipmentList.find((entry) => entry.id === item.equipmentId) : null}
+                      editable={false}
+                      index={i}
+                      boqItems={siteBoqItems}
+                      programmeBars={(dpr.progress ?? []).flatMap((entry: any) => entry.programmeBarId != null && entry.boqItemId != null ? [{
+                        id: Number(entry.programmeBarId),
+                        boqItemId: Number(entry.boqItemId),
+                        reachLabel: [entry.chainageFrom, entry.chainageTo].filter(Boolean).join("–") || null,
+                        side: entry.side || null,
+                      }] : [])}
+                    />
+                  ))}
+                </div>
                 <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
                   <p className="text-sm text-muted-foreground">Total Diesel Issued</p>
                   <p className="text-2xl font-bold text-primary">

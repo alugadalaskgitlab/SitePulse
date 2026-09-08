@@ -1,0 +1,700 @@
+EQUIPMENT USAGE FORM REORGANISATION + TRUE FUEL CONSUMPTION
++ SMART BOQ ACTIVITY TIMING
+ALL RELEVANT DPR VIEWS / PERMITTED USERS
+
+Implement only the focused equipment-entry UX and calculation improvements below.
+
+Goal:
+1. Reorganise Site DPR equipment usage so it follows the real machine-day workflow.
+2. Auto-populate opening meter and opening tank from prior reliable closing values.
+3. Default usage Start Time intelligently.
+4. Make BOQ work allocation simple and avoid duplicate time entry.
+5. Show actual fuel consumed, expected fuel, and variance.
+6. Apply consistently across all relevant DPR views and permitted users.
+7. Do NOT add BOQ/activity splitting to Plant Equipment Usage in this batch.
+
+--------------------------------------------------
+1. SITE DPR EQUIPMENT FORM — NEW LOGICAL ORDER
+--------------------------------------------------
+
+Reorganise the Site DPR equipment card into these sections:
+
+A. EQUIPMENT
+- Equipment / machine
+- Vehicle / registration
+- Operator
+- Existing hire / entry type
+
+B. USAGE START
+- Opening Meter
+- Start Time
+
+C. USAGE END
+- Closing Meter
+- End Time
+
+D. FUEL
+- Diesel Issued / Added
+- Diesel Source
+- Opening Tank
+- Closing Tank / Physical Dip
+- Physical Tank Balance Confirmed
+
+E. CALCULATED SUMMARY
+- Total operating hours
+- Actual diesel consumed
+- Expected diesel
+- Variance
+- Actual consumption rate where meaningful
+
+F. WORK ALLOCATION
+- BOQ Item
+- Start Time
+- End Time
+- Auto Hours
+- + Add another activity
+
+Keep Breakdown / Stoppage below this according to existing structure.
+
+Do not turn this into a large spreadsheet.
+
+--------------------------------------------------
+2. OPENING METER — AUTO FROM PREVIOUS CLOSING
+--------------------------------------------------
+
+Reuse the existing equipment continuity mechanism.
+
+When a real equipment master item is selected and Opening Meter is blank:
+
+- fetch the latest valid prior closing reading for that equipment
+- auto-populate Opening Meter
+- keep it editable
+
+Preserve current same-day/open Plant Usage precedence where already implemented.
+
+Do not overwrite a value the user has already entered.
+
+Do not fabricate a reading if no valid prior closing exists.
+
+This must behave consistently in:
+- Guided / Field DPR
+- Detailed / Classic DPR
+- Edit DPR
+
+--------------------------------------------------
+3. USAGE START TIME — DEFAULT TO CURRENT TIME
+--------------------------------------------------
+
+When a new equipment usage row is first started/created and Start Time is blank:
+
+- default Start Time to the current local time
+- keep it editable
+
+Important:
+This should represent the time the machine usage is opened for the day/shift.
+
+Do NOT keep resetting it on:
+- autosave
+- draft reopen
+- Edit DPR
+- page refresh
+- later field changes
+
+Once persisted/restored, preserve the recorded Start Time.
+
+If a same-day open Plant Usage handoff already carries a valid start time, preserve that instead of replacing it.
+
+--------------------------------------------------
+4. USAGE END
+--------------------------------------------------
+
+Closing Meter and End Time remain end-of-usage facts.
+
+Do not auto-fill End Time with current time merely on page load.
+
+The user records End Time when the machine/day/shift usage closes.
+
+Existing hoursWorked calculation should continue to use current canonical equipment usage logic.
+
+--------------------------------------------------
+5. OPENING TANK — AUTO FROM PREVIOUS CONFIRMED CLOSING
+--------------------------------------------------
+
+Current code already exposes latest confirmed diesel tank continuity.
+
+Change the UX from optional suggestion-only behavior to:
+
+When:
+- equipmentId is known
+- Opening Tank is blank
+- a prior confirmed closing tank exists
+
+Then:
+- auto-populate Opening Tank with that prior confirmed closing tank balance
+- keep it editable
+
+Do not overwrite an existing user-entered Opening Tank.
+
+If no prior confirmed tank exists:
+- leave blank
+- do not guess
+
+Preserve site/date/equipment scope and existing permission checks.
+
+--------------------------------------------------
+6. PHYSICAL TANK BALANCE CONFIRMED
+--------------------------------------------------
+
+Rename the visible checkbox/label from generic:
+
+"Balance confirmed"
+
+to:
+
+"Physical tank balance confirmed"
+
+Meaning:
+The Closing Tank / Physical Dip value was physically checked and is trusted as a continuity value.
+
+Only a confirmed closing tank may become the next reliable auto-populated Opening Tank.
+
+Do not change the underlying stored flag semantics unless a real mismatch is discovered.
+
+--------------------------------------------------
+7. TRUE ACTUAL DIESEL CONSUMPTION
+--------------------------------------------------
+
+Where all required values are available:
+
+Actual Diesel Consumed =
+Opening Tank
++ Diesel Issued
+− Closing Tank
+
+Example:
+Opening Tank = 5 L
+Diesel Issued = 30 L
+Closing Tank = 7 L
+
+Actual Consumed = 28 L
+
+Show this clearly in the Site DPR equipment card.
+
+Use the existing shared/canonical diesel-consumption logic if available.
+Do not create a second competing formula.
+
+Do not treat Diesel Issued alone as Actual Consumption.
+
+--------------------------------------------------
+8. EXPECTED DIESEL + VARIANCE
+--------------------------------------------------
+
+Preserve the existing expected diesel logic based on:
+- hours / meter / distance
+- equipment norm
+- current canonical computeEquipmentUsage behavior
+
+Show together:
+
+Actual consumed: XX.XX L
+Expected: XX.XX L
+Variance: ±XX.XX L
+
+Recommended variance:
+
+Variance = Actual Consumed − Expected
+
+Examples:
+
+Actual 28.00 L
+Expected 35.63 L
+Variance −7.63 L
+
+or
+
+Actual 40.00 L
+Expected 35.63 L
+Variance +4.37 L
+
+Positive means more fuel consumed than expected.
+
+Do not change hire-recovery/commercial formulas in this batch.
+
+--------------------------------------------------
+9. ACTUAL CONSUMPTION RATE
+--------------------------------------------------
+
+Where a meaningful denominator exists, show read-only efficiency:
+
+For hour-meter equipment:
+Actual L/hr = Actual Consumed / Hours Worked
+
+For odometer equipment:
+Actual L/km = Actual Consumed / Total Km
+
+Only show when the denominator is valid and > 0.
+
+Do not invent a rate if operating quantity is unavailable.
+
+--------------------------------------------------
+10. WORK ALLOCATION — KEEP THE VISIBLE ROW SIMPLE
+--------------------------------------------------
+
+Normal visible allocation row:
+
+- BOQ Item
+- Start Time
+- End Time
+- Hours — auto-calculated/read-only
+
+Remove visible Task field from the Site DPR equipment allocation.
+
+The BOQ Item already identifies the work/activity.
+
+Do not add Related BOQ Item.
+
+Cut/fill reuse remains handled by the existing cut/fill reconciliation flow.
+
+--------------------------------------------------
+11. PROGRAMME BAR — HIDE FROM NORMAL FIELD ENTRY
+--------------------------------------------------
+
+Programme Bar should not normally be shown as a dropdown to the field engineer.
+
+Keep programmeBarId available in the data model.
+
+Resolve it in the background where safe:
+
+- if the selected BOQ item + DPR/progress context resolves exactly one applicable programme bar, store it automatically
+- if an existing linked progress row already provides the exact bar, reuse it
+- if multiple possible bars remain, do not guess
+
+Only show a focused programme-bar picker if the distinction is genuinely required and cannot be resolved safely.
+
+Do not show the current large "Programme bar (optional)" dropdown by default.
+
+--------------------------------------------------
+12. FIRST WORK ALLOCATION — DO NOT ASK FOR START TIME TWICE
+--------------------------------------------------
+
+The parent Usage Start Time defines the machine-day start.
+
+For the FIRST work allocation row:
+
+If:
+- parent Start Time exists
+- allocation Start Time is blank
+
+Then:
+- default allocation Start Time to the parent Usage Start Time
+
+Example:
+
+Usage Start = 09:15
+
+First allocation:
+Roadway Excavation
+Start = 09:15 automatically
+
+The engineer should only need to:
+- select BOQ Item
+- enter/change End Time
+
+Keep allocation Start Time editable.
+
+--------------------------------------------------
+13. SINGLE-ACTIVITY DAY — MINIMUM ENTRY
+--------------------------------------------------
+
+If the machine worked on only one BOQ item for the entire usage period:
+
+When:
+- one allocation exists
+- parent Start Time exists
+- parent End Time exists
+
+Default:
+- allocation Start Time = parent Start Time
+- allocation End Time = parent End Time
+
+Therefore the engineer mainly chooses the BOQ Item.
+
+Do not force duplicate time entry.
+
+If the user changes the allocation times manually, preserve their values.
+
+--------------------------------------------------
+14. ADD ANOTHER ACTIVITY — CHAIN TIMES AUTOMATICALLY
+--------------------------------------------------
+
+When the user presses:
+
++ Add another activity
+
+For the new allocation:
+
+- Start Time should default to the previous allocation's End Time
+- BOQ Item remains for the user to select
+- End Time remains blank until entered
+
+Example:
+
+Parent Usage:
+09:15 → 17:21
+
+Allocation 1:
+Roadway Excavation
+09:15 → 12:30
+
+Press + Add another activity
+
+Allocation 2 defaults:
+Start = 12:30
+End = blank
+
+Then engineer selects next BOQ Item.
+
+This should reduce repetitive time entry and prevent accidental overlaps.
+
+--------------------------------------------------
+15. LAST ACTIVITY — OPTIONAL END-TIME ASSIST
+--------------------------------------------------
+
+If:
+- parent End Time is known
+- the current allocation is the final/only incomplete allocation
+- allocation End Time is blank
+
+It is acceptable to offer/default the parent End Time.
+
+Do not forcibly overwrite an existing allocation End Time.
+
+If this creates an overlap with an earlier allocation, do not auto-apply it.
+
+--------------------------------------------------
+16. ALLOCATION VALIDATION
+--------------------------------------------------
+
+Preserve/strengthen:
+
+- End Time > Start Time
+- no overlapping allocations under one parent equipment usage
+- duplicate identical time ranges blocked
+- hours auto-calculated
+- allocated hours cannot exceed parent operating hours
+- gaps are allowed
+- partial allocation is allowed
+
+Show:
+
+Allocated: X.XX / Y.YY h
+Unallocated: Z.ZZ h
+
+Do not force 100% allocation.
+
+--------------------------------------------------
+17. MACHINE DAY VS BOQ ALLOCATION
+--------------------------------------------------
+
+Keep this distinction strict:
+
+PARENT MACHINE RECORD:
+- opening/closing meter
+- parent start/end time
+- hours
+- diesel issued
+- opening/closing tank
+- actual fuel consumed
+- expected fuel
+- breakdowns
+- hire attendance
+- meter continuity
+
+CHILD WORK ALLOCATIONS:
+- BOQ item
+- start/end time
+- hours
+- programmeBarId where safely resolved
+
+Never duplicate:
+- diesel
+- tank values
+- meter values
+- hire attendance
+- breakdowns
+
+onto child rows.
+
+--------------------------------------------------
+18. ALL DPR VIEWS / PERMITTED USERS
+--------------------------------------------------
+
+Apply consistently across all appropriate current DPR experiences:
+
+- Guided / Field DPR
+- Detailed / Classic DPR
+- Edit DPR
+- Draft reopen
+- Autosave restore
+- Submitted DPR view
+- DPR Report / printable
+- Manager/Admin review views
+- Equipment-related DPR reporting/analytics where this data is rendered
+
+Respect existing permissions.
+
+Do not broaden access.
+
+Field users, managers and admins should see the same factual equipment usage data according to their existing allowed view/edit rights.
+
+Use shared components/helpers where practical.
+
+--------------------------------------------------
+19. DISPLAY / REPORT SUMMARY
+--------------------------------------------------
+
+In submitted/read-only views show one compact parent summary such as:
+
+JCB-SITE · TS07EV930
+09:15–17:21
+Meter 1002 → 1009.5
+Hours 7.50 h
+
+Fuel:
+Issued 30.00 L
+Tank 5.00 → 7.00 L
+Actual 28.00 L
+Expected 35.63 L
+Variance −7.63 L
+Actual rate 3.73 L/hr
+
+Work Allocation:
+Roadway Excavation · 09:15–12:30 · 3.25 h
+Borrow Earth Cutting · 12:30–17:21 · 4.85 h
+
+Do not repeat fuel or meter data under each activity.
+
+--------------------------------------------------
+20. PLANT EQUIPMENT USAGE — DO NOT ADD BOQ ACTIVITY SPLITTING
+--------------------------------------------------
+
+Do NOT implement multi-BOQ activity allocations in Plant Equipment Usage in this batch.
+
+Reason:
+Plant/yard equipment can support shared operational resources and multiple plant processes simultaneously, making forced BOQ/activity time splitting misleading.
+
+Leave current Plant Equipment Usage operational structure intact.
+
+However:
+where Plant Equipment Usage already records:
+- opening tank
+- diesel issued
+- closing tank
+- confirmed balance
+- expected diesel
+
+ensure its displayed fuel efficiency uses the same canonical calculations/labels where appropriate.
+
+Do not reorganise Plant Equipment Usage into BOQ allocations.
+
+Do not change plant material/production attribution.
+
+--------------------------------------------------
+21. SHARED FUEL CALCULATION
+--------------------------------------------------
+
+Avoid separate formulas in:
+
+- Site DPR equipment
+- Plant Equipment Usage
+- Equipment Performance
+- reports
+
+Use/reuse one canonical shared calculation for:
+
+Actual Consumption =
+Opening + Issued − Closing
+
+and current expected consumption logic.
+
+If multiple existing implementations differ:
+report the difference and consolidate only where safe within this focused scope.
+
+--------------------------------------------------
+22. EDIT / RESTORE SAFETY
+--------------------------------------------------
+
+Auto-defaults must be creation-time conveniences only.
+
+Do NOT overwrite persisted values during:
+- reopen
+- Edit DPR
+- autosave restore
+- submitted view
+- version/revision hydration
+
+Existing historical values remain authoritative.
+
+--------------------------------------------------
+23. TESTS
+--------------------------------------------------
+
+Verify at minimum:
+
+A. Opening meter continuity
+Previous closing = 1002
+New usage selected
+Expected:
+Opening Meter = 1002 automatically
+editable
+
+B. No previous meter
+Expected:
+blank, no guessed value
+
+C. New usage start
+Current local time = 09:15
+Expected:
+parent Start Time defaults 09:15
+editable
+
+D. Reopen draft later
+Expected:
+still 09:15
+not reset to current time
+
+E. Opening tank continuity
+Previous confirmed closing tank = 5 L
+Expected:
+Opening Tank = 5 L automatically
+editable
+
+F. Prior closing tank not confirmed
+Expected:
+do not use as trusted opening automatically
+
+G. Actual fuel
+Opening 5
+Issued 30
+Closing 7
+Expected:
+Actual = 28 L
+
+H. Expected / variance
+Expected fuel = 35.63
+Actual = 28
+Expected:
+Variance = −7.63
+
+I. Actual rate
+Actual 28
+Hours 7.5
+Expected:
+3.733... L/hr displayed appropriately
+
+J. First allocation
+Parent Start = 09:15
+Expected:
+first allocation Start = 09:15 automatically
+
+K. Single activity
+Parent 09:15–17:21
+one allocation
+Expected:
+allocation can inherit 09:15–17:21
+
+L. Add another activity
+first End = 12:30
+Expected:
+second Start = 12:30
+
+M. Overlap
+Expected:
+blocked/clear validation
+
+N. Programme bar
+exactly one safe match
+Expected:
+linked in background
+not shown as normal dropdown
+
+O. Multiple ambiguous bars
+Expected:
+no guessing
+
+P. Guided / Classic / Edit
+Expected:
+same behavior
+
+Q. Submitted/report
+Expected:
+same factual summary
+
+R. Plant Equipment Usage
+Expected:
+no BOQ multi-activity allocation added
+
+--------------------------------------------------
+24. DO NOT TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- DPR quantity calculations
+- BOQ progress quantities
+- cut/fill reconciliation
+- Work Programme calculations
+- Execution Arrangements
+- material trips
+- Stores
+- Vendor Bills
+- hire billing formulas
+- permissions
+- Site Requirements
+- RMC
+- plant production/material allocation logic
+- equipment movement logic
+
+--------------------------------------------------
+25. SCHEMA / MIGRATION
+--------------------------------------------------
+
+Use the already-approved equipment activity allocation structure.
+
+This UX/calculation batch should not require another unrelated schema change.
+
+If any additional schema/migration is proposed:
+STOP and report before applying it.
+
+No DROP.
+No DELETE.
+No RENAME.
+No destructive migration.
+
+--------------------------------------------------
+26. REPORT AND STOP
+--------------------------------------------------
+
+Report:
+
+1. Equipment form reorganisation made
+2. Opening meter continuity behavior
+3. Start-time default behavior
+4. Opening tank continuity behavior
+5. Meaning/handling of Physical tank balance confirmed
+6. Actual fuel consumption calculation
+7. Expected/variance/rate display
+8. BOQ allocation timing defaults
+9. Programme-bar background resolution
+10. Guided DPR changes
+11. Detailed / Classic changes
+12. Edit DPR changes
+13. Submitted/report changes
+14. Plant Equipment Usage alignment, if any
+15. Tests run/results
+16. Schema/migration needed: yes/no
+
+STOP after this batch.
+
+Do not publish.
+Do not start another feature.
