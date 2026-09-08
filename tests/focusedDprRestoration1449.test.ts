@@ -41,8 +41,11 @@ describe("focused DPR restoration", () => {
     expect(siteEdit).toMatch(/<Input[\s\S]{0,350}?readOnly[\s\S]{0,350}?data-testid=\{`input-length-\$\{idx\}`\}/);
   });
 
-  it("preserves and exposes exact equipment and labour BOQ identities during edit", async () => {
-    const siteEdit = await readSource("client/src/pages/SiteEdit.tsx");
+  it("preserves equipment fallback identity while exposing child allocations and labour BOQ links", async () => {
+    const [siteEdit, allocationEditor] = await Promise.all([
+      readSource("client/src/pages/SiteEdit.tsx"),
+      readSource("client/src/components/EquipmentActivityAllocationEditor.tsx"),
+    ]);
     const hydration = siteEdit.slice(
       siteEdit.indexOf("function mapDprToFormState"),
       siteEdit.indexOf("export default function"),
@@ -50,9 +53,11 @@ describe("focused DPR restoration", () => {
 
     expect(hydration).toContain("boqItemId: e.boqItemId ?? null");
     expect(hydration).toContain("structureId: e.structureId ?? null");
+    expect(hydration).toContain("activityAllocations:");
     expect(hydration).toContain("boqItemId: l.boqItemId ?? null");
     expect(hydration).toContain("structureId: l.structureId ?? null");
-    expect(siteEdit).toContain("select-equipment-boqitem-${idx}");
+    expect(siteEdit).toContain("<DprEquipmentCompact");
+    expect(allocationEditor).toContain("Select BOQ item");
     expect(siteEdit).toContain("select-labour-boqitem-${idx}");
     expect(siteEdit).toContain("<SelectItem value=\"__none__\">Not linked</SelectItem>");
   });

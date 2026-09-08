@@ -52,6 +52,7 @@ interface DateGroupedData {
     endTime: string;
     hours: number;
     diesel: number;
+    activityAllocations: Array<{ boqItemId: number; programmeBarId?: number | null; startTime: string; endTime: string; hoursWorked?: number }>;
     site: string;
     date: string;
   }>;
@@ -236,6 +237,7 @@ export default function AdminReports() {
               endTime: e.endTime || '-',
               hours,
               diesel,
+              activityAllocations: Array.isArray((e as any).activityAllocations) ? (e as any).activityAllocations : [],
               site: cleanSite,
               date: formattedRowDate,
             });
@@ -820,7 +822,9 @@ export default function AdminReports() {
                                   <TableRow key={i} data-testid={`row-equipment-${group.date}-${i}`}>
                                     <TableCell>{e.date}</TableCell>
                                     <TableCell>{e.site}</TableCell>
-                                    <TableCell className="font-medium">{e.machine}</TableCell>
+                                    <TableCell className="font-medium">{e.machine}
+                                      {e.activityAllocations.length > 0 && <div className="mt-1 text-[11px] font-normal text-muted-foreground">BOQ time: {e.activityAllocations.map((a) => `#${a.boqItemId} ${a.startTime}–${a.endTime} (${Number(a.hoursWorked ?? 0).toFixed(2)} h)`).join(" · ")}</div>}
+                                    </TableCell>
                                     <TableCell>{e.operator}</TableCell>
                                     <TableCell>{e.startTime}</TableCell>
                                     <TableCell>{e.endTime}</TableCell>

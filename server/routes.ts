@@ -4,6 +4,7 @@ import { storage, StockShortageError, EquipmentIncomingConflictError, Insufficie
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import { EquipmentActivityAllocationError } from "@shared/equipmentActivityAllocations";
 import * as xlsx from 'xlsx';
 import multer from 'multer';
 import { importSdbXlsx, buildImportTemplate } from './snlImporter';
@@ -2157,6 +2158,12 @@ export async function registerRoutes(
     return false;
   };
 
+  const handleEquipmentActivityAllocationError = (err: unknown, res: Response): boolean => {
+    if (!(err instanceof EquipmentActivityAllocationError)) return false;
+    res.status(422).json({ code: err.code, message: err.message });
+    return true;
+  };
+
   app.post(api.dprs.create.path, async (req, res) => {
     try {
       if (!assertCreate(req, res, "site_dprs")) return;
@@ -2214,6 +2221,7 @@ export async function registerRoutes(
       if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message, availableQty: err.availableQty, alreadyUsedQty: err.alreadyUsedQty });
       if (err instanceof CutFillValidationError) return res.status(422).json({ code: err.code, message: err.message });
+      if (handleEquipmentActivityAllocationError(err, res)) return;
       if (handleEquipmentLifecycleConflict(err, res)) return;
       res.status(500).json({ message: "Failed to create DPR" });
     }
@@ -2252,6 +2260,7 @@ export async function registerRoutes(
       if (handleInsufficientPlantStock(err, res)) return;
       if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message, availableQty: err.availableQty, alreadyUsedQty: err.alreadyUsedQty });
       if (err instanceof CutFillValidationError) return res.status(422).json({ code: err.code, message: err.message });
+      if (handleEquipmentActivityAllocationError(err, res)) return;
       res.status(500).json({ message: "Failed to update draft DPR" });
     }
   });
@@ -2312,6 +2321,7 @@ export async function registerRoutes(
       if (handleInsufficientPlantStock(err, res)) return;
       if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message, availableQty: err.availableQty, alreadyUsedQty: err.alreadyUsedQty });
       if (err instanceof CutFillValidationError) return res.status(422).json({ code: err.code, message: err.message });
+      if (handleEquipmentActivityAllocationError(err, res)) return;
       if (handleEquipmentLifecycleConflict(err, res)) return;
       res.status(500).json({ message: "Failed to submit DPR" });
     }
@@ -2586,6 +2596,7 @@ export async function registerRoutes(
       if (handleInsufficientPlantStock(err, res)) return;
       if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message, availableQty: err.availableQty, alreadyUsedQty: err.alreadyUsedQty });
       if (err instanceof CutFillValidationError) return res.status(422).json({ code: err.code, message: err.message });
+      if (handleEquipmentActivityAllocationError(err, res)) return;
       if (handleEquipmentLifecycleConflict(err, res)) return;
       res.status(500).json({ message: "Failed to create version" });
     }
@@ -2642,6 +2653,7 @@ export async function registerRoutes(
         });
       }
       if (handleInsufficientPlantStock(err, res)) return;
+      if (handleEquipmentActivityAllocationError(err, res)) return;
       res.status(500).json({ message: "Failed to clone DPR" });
     }
   });

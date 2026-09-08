@@ -2188,32 +2188,6 @@ export default function GuidedDpr() {
                           <Input placeholder="Task" value={eq.task} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, task: ev.target.value } : r))} data-testid={`input-eq-task-${i}`} />
                         </div>
                       </div>
-                      {/* Batch 06C §11: optional Work Item linkage (same fields as
-                          Detailed — boqItemId; structure link is preserved on
-                          round-trip and cleared when the item changes). */}
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Work item (optional)</Label>
-                        <Select
-                          value={pt.boqItemId != null ? String(pt.boqItemId) : "none"}
-                          onValueChange={(v) => {
-                            setEquipment((p) => p.map((r, j) => {
-                              if (j !== i) return r;
-                              const nextPt = { ...r.passthrough } as Record<string, any>;
-                              if (v === "none") { delete nextPt.boqItemId; nextPt.structureId = null; }
-                              else { nextPt.boqItemId = Number(v); nextPt.structureId = null; }
-                              return { ...r, passthrough: nextPt };
-                            }));
-                          }}
-                        >
-                          <SelectTrigger data-testid={`select-eq-workitem-${i}`}><SelectValue placeholder="None" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">None</SelectItem>
-                            {boqItems.map((item) => (
-                              <SelectItem key={item.id} value={String(item.id)}>{boqItemDisplayName(item)}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
                       {/* C. Usage — time/meter fields hidden for Trip Based rows
                           (type-driven presentation); any previously entered
                           values stay preserved in the passthrough bag. */}
@@ -2361,6 +2335,8 @@ export default function GuidedDpr() {
                         index={i}
                         beforeDate={date}
                         site={siteName}
+                        boqItems={boqItems}
+                        programmeBars={programmeBars}
                         onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === i
                           ? { ...row, passthrough: { ...row.passthrough, ...patch } } : row))}
                       />

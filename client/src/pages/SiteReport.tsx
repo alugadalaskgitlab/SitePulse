@@ -29,6 +29,7 @@ import {
 } from "@/lib/equipmentLifecycle";
 import { ProgrammeBarOutcomeHistory } from "@/components/ProgrammeBarOutcomeHistory";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -44,6 +45,11 @@ export default function SiteReport() {
   });
   const { data: sites = [] } = useQuery<Site[]>({
     queryKey: ["/api/sites"],
+  });
+  const { items: reportBoqItems } = useDprBoqItems<any>({
+    siteName: dpr?.site ?? "",
+    sites,
+    preferredProjectId: dpr?.boqProjectId ?? null,
   });
 
   const getPersonnelNames = (ids: number[] | undefined) => {
@@ -578,6 +584,13 @@ export default function SiteReport() {
                     equipment={equipmentById.get(item.equipmentId)}
                     editable={false}
                     index={i}
+                    boqItems={reportBoqItems}
+                    programmeBars={(dpr.progress ?? []).flatMap((entry: any) => entry.programmeBarId != null && entry.boqItemId != null ? [{
+                      id: Number(entry.programmeBarId),
+                      boqItemId: Number(entry.boqItemId),
+                      reachLabel: [entry.chainageFrom, entry.chainageTo].filter(Boolean).join("–") || null,
+                      side: entry.side || null,
+                    }] : [])}
                   />
                 ))}
               </div>

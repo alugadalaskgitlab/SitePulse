@@ -73,6 +73,7 @@
 - [Startup ledger backfill race](startup-ledger-backfill-race.md) — rapid workflow restarts can collide in a legacy stock-ledger backfill even while the app serves; verify a settled restart before diagnosing new work.
 - [Hired Equipment Billing](hired-equipment-billing.md) — billing derives from operational records; exception decisions, immutable snapshots, overlap locks, and idempotent bill creation preserve auditability.
 - [DPR equipment canonicalization](dpr-equipment-canonicalization.md) — DPR and standalone usage share one calculator; reports keep snapshots; clones never repost the same Diesel.
+- [Equipment activity attribution](equipment-activity-attribution.md) — one physical equipment-day may split BOQ hours into authoritative child allocations without multiplying operational facts.
 - [Material receipt date semantics](material-receipt-date-semantics.md) — entry timestamp is audit history; invoice date drives receipt and stock chronology with legacy fallback.
 - [Equipment performance integrity](equipment-performance-integrity.md) — explicit project/source links govern history, deduplication, review authority, and hire-window metrics.
 - [DPR navigation and actor audit](dpr-navigation-actor-audit.md) — validated nested return paths restore register context; actor facts come only from authenticated IDs and survive versions.

@@ -31,6 +31,7 @@ import {
 } from "@shared/planningEngine";
 import { boqItemDisplayName } from "@/lib/itemName";
 import { canonicalizeUnit } from "@shared/boqNormalise";
+import { resolveEquipmentBoqHours } from "@shared/equipmentActivityAllocations";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
 import type { BoqProject } from "@shared/schema";
@@ -570,7 +571,21 @@ interface ProgrammeBarLite {
 
 interface DprLogsLite {
   boqProjectId: number | null;
-  equipment: Array<{ boqItemId: number | null; structureId: string | null; machine: string; openingReading: number | null; closingReading: number | null; startTime: string | null; endTime: string | null; totalKm: number | null }>;
+  equipment: Array<{
+    boqItemId: number | null;
+    structureId: string | null;
+    machine: string;
+    openingReading: number | null;
+    closingReading: number | null;
+    startTime: string | null;
+    endTime: string | null;
+    totalKm: number | null;
+    activityAllocations?: Array<{
+      boqItemId: number;
+      programmeBarId: number | null;
+      hoursWorked: number;
+    }>;
+  }>;
   labour: Array<{ boqItemId: number | null; structureId: string | null; category: string; count: number }>;
   materials: Array<{ boqItemId: number | null; structureId: string | null; material: string; quantity: number | null; uom: string | null }>;
 }
@@ -675,18 +690,35 @@ function computePlanVsActual(
     let actualLabourDays = 0;
     for (const dpr of relevantDprs) {
       for (const eq of dpr.equipment) {
-        if (eq.boqItemId !== item.id) continue;
-        const hrs = actualEquipmentHours(eq);
-        const km = eq.totalKm ?? 0;
-        actualEquipHours += hrs;
-        actualEquipKm += km;
-        const key = eq.machine?.toUpperCase().trim() || "UNKNOWN";
-        const existing = [...equipBreakdown.entries()].find(([name]) => name.toUpperCase().trim() === key);
-        if (existing) { existing[1].actual += hrs; existing[1].actualKm += km; }
-        else equipBreakdown.set(eq.machine || "Unknown", { planned: 0, actual: hrs, actualKm: km });
-        const se = getStructureEntry(eq.structureId);
-        se.actualEquipHours += hrs;
-        se.actualEquipKm += km;
+        // Activity allocations are the authoritative BOQ consumption when
+        // present. The legacy parent BOQ link is used only for equipment rows
+        // with no allocations, so a partially allocated shift leaves its
+        // remaining hours unattributed rather than charging the parent item.
+        const hoursByBoq = resolveEquipmentBoqHours({
+          boqItemId: eq.boqItemId,
+          hoursWorked: actualEquipmentHours(eq),
+          activityAllocations: eq.activityAllocations,
+        });
+        for (const allocation of hoursByBoq) {
+          if (allocation.boqItemId !== item.id) continue;
+          const hrs = allocation.hoursWorked;
+          // Distance is a physical equipment measurement and cannot be
+          // apportioned across activity allocations. Retain it solely for
+          // legacy parent-linked rows.
+          const km = allocation.source === "legacy_parent" ? eq.totalKm ?? 0 : 0;
+          actualEquipHours += hrs;
+          actualEquipKm += km;
+          const key = eq.machine?.toUpperCase().trim() || "UNKNOWN";
+          const existing = [...equipBreakdown.entries()].find(([name]) => name.toUpperCase().trim() === key);
+          if (existing) { existing[1].actual += hrs; existing[1].actualKm += km; }
+          else equipBreakdown.set(eq.machine || "Unknown", { planned: 0, actual: hrs, actualKm: km });
+          const structureId = allocation.programmeBarId != null
+            ? programmeBars.find((bar) => bar.id === allocation.programmeBarId)?.structureId ?? eq.structureId
+            : eq.structureId;
+          const se = getStructureEntry(structureId);
+          se.actualEquipHours += hrs;
+          se.actualEquipKm += km;
+        }
       }
       for (const lb of dpr.labour) {
         if (lb.boqItemId !== item.id) continue;

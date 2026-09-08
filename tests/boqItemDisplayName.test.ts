@@ -113,11 +113,14 @@ describe("operational screens use the shared helper (source regression scan)", (
 
   it("classic DPR (SiteEntry) no longer stores the full description as activity", () => {
     const src = read("client/src/pages/SiteEntry.tsx");
+    const allocationEditor = read("client/src/components/EquipmentActivityAllocationEditor.tsx");
     expect(src).not.toMatch(/activity = it \? it\.description\.toUpperCase/);
     expect(src).toContain('from "@shared/boqItemName"');
-    // BOQ link selectors (equipment/labour/material) use the shared label
+    // Parent equipment attribution moved to the child-allocation editor;
+    // equipment, labour, and material selectors all keep canonical labels.
     expect(src).not.toContain("{bi.itemName || bi.description}");
-    expect(src.match(/boqItemDisplayName\(bi\)/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(src.match(/boqItemDisplayName\(bi\)/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(allocationEditor).toContain("dprBoqItemDisplayName(item)");
   });
 
   it("SiteEdit no longer stores/lists full descriptions for BOQ activity", () => {

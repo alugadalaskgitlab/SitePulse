@@ -5,6 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
+import { EquipmentActivityAllocationEditor, type EquipmentActivityAllocation } from "@/components/EquipmentActivityAllocationEditor";
+import { resolveEquipmentAllocationParentHours } from "@shared/equipmentActivityAllocations";
 
 export type DprEquipmentFields = {
   machine?: string; vehicleNo?: string; entryType?: string; startTime?: string; endTime?: string;
@@ -13,18 +15,21 @@ export type DprEquipmentFields = {
   dieselBalanceInTank?: number | null; dieselBalanceConfirmed?: boolean | null; dieselNorm?: number | null;
   expectedDiesel?: number | null; hoursWorked?: number | null; totalKm?: number | null;
   equipmentId?: number | null; breakdowns?: Array<{ description?: string }>;
+  activityAllocations?: EquipmentActivityAllocation[];
 };
 export type DprEquipmentTankPatch = Pick<
   DprEquipmentFields,
   "openingDiesel" | "dieselBalanceInTank" | "dieselBalanceConfirmed"
->;
+> & { activityAllocations?: EquipmentActivityAllocation[] };
 const dash = (value: unknown) => value === null || value === undefined || value === "" ? "—" : String(value);
 
-export function DprEquipmentCompact({ row, equipment, onChange, editable = true, index = 0, beforeDate, site }: {
+export function DprEquipmentCompact({ row, equipment, onChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars }: {
   row: DprEquipmentFields;
   equipment?: { meterType?: string | null; consumptionNorm?: number | null } | null;
   onChange?: (patch: Partial<DprEquipmentTankPatch>) => void;
   editable?: boolean; index?: number; beforeDate?: string; site?: string;
+  boqItems?: Array<{ id: number; description?: string | null; itemCode?: string | null; itemName?: string | null; displayName?: string | null; unit?: string | null }>;
+  programmeBars?: Array<{ id: number; boqItemId: number; reachLabel?: string | null; side?: string | null }>;
 }) {
   const [suggestedTank, setSuggestedTank] = useState<{ value: number; date?: string } | null>(null);
   const preview = useMemo(
@@ -63,6 +68,18 @@ export function DprEquipmentCompact({ row, equipment, onChange, editable = true,
       </div>}
       {suggestedTank && row.openingDiesel == null && <button type="button" className="mt-1 text-left text-[11px] text-primary underline underline-offset-2" onClick={() => { if (row.openingDiesel == null) onChange?.({ openingDiesel: suggestedTank.value }); setSuggestedTank(null); }}>Use last confirmed tank: {suggestedTank.value.toFixed(2)} L{suggestedTank.date ? ` · ${suggestedTank.date}` : ""}</button>}
       {!editable && tankKnown && !row.dieselBalanceConfirmed && <span className="mt-1 block text-[11px] text-amber-700">Physical balance not confirmed</span>}
+      <EquipmentActivityAllocationEditor
+        value={row.activityAllocations ?? []}
+        onChange={editable && onChange ? (activityAllocations) => onChange({ activityAllocations }) : undefined}
+        parentHours={resolveEquipmentAllocationParentHours({
+          hoursWorked: row.hoursWorked ?? preview?.hoursWorked ?? null,
+          startTime: row.startTime,
+          endTime: row.endTime,
+        })}
+        boqItems={boqItems}
+        programmeBars={programmeBars}
+        editable={editable}
+      />
     </div>
   );
 }

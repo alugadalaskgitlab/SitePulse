@@ -125,6 +125,7 @@ interface EquipmentEntry {
   boqItemId: number | null;
   structureId: string | null;
   breakdowns?: StagedBreakdown[];
+  activityAllocations?: Array<{ boqItemId: number; programmeBarId?: number | null; startTime: string; endTime: string; hoursWorked?: number }>;
   // 06Q (client-only, stripped from the payload): true for rows added during
   // this edit session — only those get opening-reading continuity. Rows
   // loaded from the stored DPR NEVER have their opening recalculated on load.
@@ -275,6 +276,10 @@ function mapDprToFormState(dpr: any) {
         waterQuantity: e.waterQuantity ?? null,
         boqItemId: e.boqItemId ?? null,
         structureId: e.structureId ?? null,
+        activityAllocations: Array.isArray(e.activityAllocations) && e.activityAllocations.length > 0 ? e.activityAllocations.map((a: any) => ({
+          boqItemId: Number(a.boqItemId), programmeBarId: a.programmeBarId != null ? Number(a.programmeBarId) : null,
+          startTime: a.startTime || "", endTime: a.endTime || "", hoursWorked: a.hoursWorked != null ? Number(a.hoursWorked) : undefined,
+        })) : undefined,
         breakdowns: e.breakdowns ?? [],
       }))
     : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true }];
@@ -1042,6 +1047,7 @@ export default function SiteEdit() {
 
   const buildPayload = () => ({
     ...header,
+    boqProjectId: siteBoqProjectId ?? dpr?.boqProjectId ?? undefined,
     workType,
     structureItems: workType === "structure" ? structureItems.filter(s => s.itemOfWork) : [],
     progress: workType === "road" ? progress.filter(p => p.activity).map(p => {
@@ -2470,33 +2476,6 @@ export default function SiteEdit() {
                 />
               </div>
               </div>
-              {siteBoqItems.length > 0 && (
-                <div>
-                  <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
-                  <Select
-                    value={entry.boqItemId != null ? String(entry.boqItemId) : "__none__"}
-                    onValueChange={(val) => {
-                      const updated = [...equipment];
-                      updated[idx].boqItemId = val === "__none__" ? null : Number(val);
-                      updated[idx].structureId = null;
-                      setEquipment(updated);
-                    }}
-                  >
-                    <SelectTrigger data-testid={`select-equipment-boqitem-${idx}`}>
-                      <SelectValue placeholder="Not linked" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Not linked</SelectItem>
-                      {siteBoqItems.map((item) => (
-                        <SelectItem key={item.id} value={String(item.id)}>
-                          {item.itemCode ? `[${item.itemCode}] ` : ""}{boqItemDisplayName(item)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
               <>
                   <p className="text-sm font-semibold text-muted-foreground border-b pb-1">
                     {entry.entryType === "hourly" ? "Hourly Hire — Time Entry" : "Time / Meter Entry"}
@@ -2772,6 +2751,13 @@ export default function SiteEdit() {
                   index={idx}
                   beforeDate={header.date}
                   site={header.site}
+                  boqItems={siteBoqItems}
+                  programmeBars={progress.flatMap((entry) => entry.programmeBarId != null && entry.boqItemId != null ? [{
+                    id: entry.programmeBarId,
+                    boqItemId: entry.boqItemId,
+                    reachLabel: [entry.chainageFrom, entry.chainageTo].filter(Boolean).join("–") || null,
+                    side: entry.side || null,
+                  }] : [])}
                   onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } : row))}
                 />
                 <BreakdownStoppageEditor

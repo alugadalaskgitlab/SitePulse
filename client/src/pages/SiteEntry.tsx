@@ -136,6 +136,7 @@ interface EquipmentEntry {
   expectedDiesel?: number | null;
   dieselNorm?: number | null;
   breakdowns?: StagedBreakdown[];
+  activityAllocations?: Array<{ boqItemId: number; programmeBarId?: number | null; startTime: string; endTime: string; hoursWorked?: number }>;
 }
 
 interface LabourEntry {
@@ -233,7 +234,7 @@ const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 type SiteBoqItem = { id: number; description: string; displayName?: string | null; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; planningWorkType?: string | null; dprMeasurementMethod?: string | null };
 
 interface SiteEntryFormData {
-  header: { date: string; site: string; engineer: string };
+  header: { date: string; site: string; engineer: string; boqProjectId?: number | null };
   workType: string;
   progress: ProgressEntry[];
   structureItems: StructureItem[];
@@ -909,7 +910,7 @@ export default function SiteEntry() {
   }), [header, workType, progress, structureItems, equipment, labour, materials, sitePurchases]);
 
   const handleRestoreDraft = useCallback((data: SiteEntryFormData) => {
-    setHeader(data.header);
+    setHeader({ ...data.header, boqProjectId: data.header.boqProjectId ?? null });
     if (data.workType) setWorkType(data.workType);
     setProgress(data.progress);
     if (data.structureItems) setStructureItems(data.structureItems);
@@ -2882,79 +2883,6 @@ export default function SiteEntry() {
                   <p className="text-xs text-blue-700 dark:text-blue-300" data-testid={`text-equipment-handoff-${idx}`}>{handoffContext}</p>
                 )}
 
-                {siteBoqItems.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
-                      <Select
-                        value={entry.boqItemId ? String(entry.boqItemId) : "__none__"}
-                        onValueChange={(val) => {
-                          const updated = [...equipment];
-                          updated[idx].boqItemId = val === "__none__" ? null : Number(val);
-                          updated[idx].structureId = null;
-                          setEquipment(updated);
-                        }}
-                      >
-                        <SelectTrigger data-testid={`select-equipment-boqitem-${idx}`}>
-                          <SelectValue placeholder="Not linked" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Not linked</SelectItem>
-                          {siteBoqItems.map((bi) => (
-                            <SelectItem key={bi.id} value={String(bi.id)}>
-                              {bi.itemCode ? `[${bi.itemCode}] ` : ""}{boqItemDisplayName(bi)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {(() => {
-                      if (entry.boqItemId == null) return null;
-                      const structuresForItem = structureLocations.filter((s) =>
-                        s.bars.some((b) => b.boqItemId === entry.boqItemId),
-                      );
-                      if (structuresForItem.length === 0) return null;
-                      return (
-                        <div>
-                          <Label className="text-sm text-muted-foreground">Structure / Reach (optional)</Label>
-                          <Select
-                            value={entry.structureId ?? "__none__"}
-                            onValueChange={(val) => {
-                              const updated = [...equipment];
-                              updated[idx].structureId = val === "__none__" ? null : val;
-                              setEquipment(updated);
-                            }}
-                          >
-                            <SelectTrigger data-testid={`select-equipment-structure-${idx}`}>
-                              <SelectValue placeholder="All / not specified" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__none__">All / not specified</SelectItem>
-                              {structuresForItem.map((s) => (
-                                <SelectItem key={s.structureId} value={s.structureId}>
-                                  {s.structureId}{s.structureLocType ? ` (${s.structureLocType})` : ""}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      );
-                    })()}
-                    {entry.boqItemId != null && (() => {
-                      const plan = getPlannedDemandForItem(entry.boqItemId, entry.structureId);
-                      const planRow = plan?.equipment.find((e) => e.equipmentName.toUpperCase() === (entry.machine || "").toUpperCase());
-                      if (!planRow) return null;
-                      return (
-                        <div className="flex items-end">
-                          <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1.5" data-testid={`text-planned-equipment-${idx}`}>
-                            Planned: {fmtQty(planRow.totalHours, 1)} hrs total for {planRow.equipmentName}
-                          </p>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-
                 <>
                     <p className="text-sm font-semibold text-muted-foreground border-b pb-1">
                       {entry.entryType === "hourly" ? "Hourly Hire — Time Entry" : "Time / Meter Entry"}
@@ -3261,6 +3189,8 @@ export default function SiteEntry() {
                   index={idx}
                   beforeDate={header.date}
                   site={header.site}
+                  boqItems={siteBoqItems}
+                  programmeBars={programmeBars}
                   onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } : row))}
                 />
                 <BreakdownStoppageEditor

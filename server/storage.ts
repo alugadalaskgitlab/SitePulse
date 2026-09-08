@@ -8,6 +8,7 @@ import {
   progressEntries,
   dprStructureItems,
   equipmentLogs,
+  equipmentActivityAllocations,
   labourLogs,
   materialLogs,
   plantReports,
@@ -140,6 +141,11 @@ import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITE
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { trustedCanonicalBoqName } from "@shared/boqItemName";
+import {
+  EquipmentActivityAllocationError,
+  resolveEquipmentAllocationParentHours,
+  validateEquipmentActivityAllocations,
+} from "@shared/equipmentActivityAllocations";
 import { sendPushToAll } from "./push";
 import {
   type CreateDprRequest,
@@ -2432,7 +2438,7 @@ export class DatabaseStorage implements IStorage {
       ),
       with: {
         progress: true,
-        equipment: true,
+        equipment: { with: { activityAllocations: true } },
         labour: true,
         materials: true,
         sitePurchases: true,
@@ -2447,7 +2453,7 @@ export class DatabaseStorage implements IStorage {
       where: eq(dprs.id, id),
       with: {
         progress: true,
-        equipment: true,
+        equipment: { with: { activityAllocations: true } },
         labour: true,
         materials: true,
         sitePurchases: true,
@@ -2895,7 +2901,7 @@ export class DatabaseStorage implements IStorage {
       // 3. Insert Equipment Logs with uppercase text fields
       if (dprData.equipment?.length) {
         this.assertValidDprEquipmentDieselSources(dprData.equipment);
-        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, dprData.equipment as any[]);
+        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, dprData.equipment as any[], newDpr.boqProjectId);
         insertedEquipLogs = await tx.insert(equipmentLogs).values(
           normalisedEquipment.map((e: any) => ({
             ...e,
@@ -2905,6 +2911,7 @@ export class DatabaseStorage implements IStorage {
             task: e.task?.toUpperCase() || e.task,
           }))
         ).returning();
+        await this.persistEquipmentActivityAllocationsTx(tx, insertedEquipLogs, dprData.equipment as any[]);
         if (dprStatusVal !== "draft") {
           // Operational effects start only on Final Submit. Keep the stock
           // sufficiency check first so an expected rejection does not even
@@ -3029,6 +3036,7 @@ export class DatabaseStorage implements IStorage {
       // historical drafts created before this invariant).
       if (isSubmitting) await this.cleanupDprEquipmentDieselLedger(tx, id);
       const oldEquipmentRows = await tx.select().from(equipmentLogs).where(eq(equipmentLogs.dprId, id));
+      const equipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, oldEquipmentRows, dprData.equipment as any[] | undefined);
       const oldProgressRows = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey }).from(progressEntries).where(eq(progressEntries.dprId, id));
       const oldProgressIds = oldProgressRows.map(p => p.id);
       const externalSourceLinks = oldProgressIds.length ? await tx.select().from(cutFillConsumptions)
@@ -3073,10 +3081,11 @@ export class DatabaseStorage implements IStorage {
       let insertedEquipLogs: any[] = [];
       if (dprData.equipment?.length) {
         this.assertValidDprEquipmentDieselSources(dprData.equipment);
-        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, dprData.equipment as any[]);
+        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, equipmentInputs, updated.boqProjectId);
         insertedEquipLogs = await tx.insert(equipmentLogs).values(
           normalisedEquipment.map((e: any) => ({ ...e, dprId: id, machine: e.machine?.toUpperCase() || e.machine, operator: e.operator?.toUpperCase() || e.operator, task: e.task?.toUpperCase() || e.task }))
         ).returning();
+        await this.persistEquipmentActivityAllocationsTx(tx, insertedEquipLogs, equipmentInputs);
         if (isSubmitting) {
           await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
         }
@@ -3122,6 +3131,7 @@ export class DatabaseStorage implements IStorage {
       // Clean up old DPR equipment diesel ledger entries before deleting equipment logs
       await this.cleanupDprEquipmentDieselLedger(tx, id);
       const oldEquipmentRows = await tx.select().from(equipmentLogs).where(eq(equipmentLogs.dprId, id));
+      const equipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, oldEquipmentRows, dprData.equipment as any[] | undefined);
 
       // Clean up old activity personnel before deleting progress entries
       const oldProgressRows = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey }).from(progressEntries).where(eq(progressEntries.dprId, id));
@@ -3172,10 +3182,11 @@ export class DatabaseStorage implements IStorage {
       let insertedEquipLogs: any[] = [];
       if (dprData.equipment?.length) {
         this.assertValidDprEquipmentDieselSources(dprData.equipment);
-        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, dprData.equipment as any[]);
+        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, equipmentInputs, updated.boqProjectId);
         insertedEquipLogs = await tx.insert(equipmentLogs).values(
           normalisedEquipment.map((e: any) => ({ ...e, dprId: id }))
         ).returning();
+        await this.persistEquipmentActivityAllocationsTx(tx, insertedEquipLogs, equipmentInputs);
         await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
       }
       await this.reconcileDprBreakdownsTx(tx, oldEquipmentRows, insertedEquipLogs, dprData.equipment as any[], dprData.date);
@@ -3343,8 +3354,15 @@ export class DatabaseStorage implements IStorage {
 
       // Copy equipment logs with uppercase
       if (original.equipment?.length) {
-        this.assertValidDprEquipmentDieselSources(original.equipment);
-        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, original.equipment as any[]);
+        const cloneEquipmentInputs = (original.equipment as any[]).map((row) => {
+          if (Array.isArray(row.activityAllocations) && row.activityAllocations.length === 0) {
+            const { activityAllocations: _emptyAllocations, ...legacyRow } = row;
+            return legacyRow;
+          }
+          return row;
+        });
+        this.assertValidDprEquipmentDieselSources(cloneEquipmentInputs);
+        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, cloneEquipmentInputs, newDpr.boqProjectId);
         const insertedEquipLogs = await tx.insert(equipmentLogs).values(
           normalisedEquipment.map((e: any) => ({
             dprId,
@@ -3372,10 +3390,12 @@ export class DatabaseStorage implements IStorage {
             numberOfTrips: (e as any).numberOfTrips ?? null,
             tripDistance: (e as any).tripDistance ?? null,
             totalKm: (e as any).totalKm ?? null,
+            boqItemId: e.boqItemId ?? null,
             // Preserve the dispatch linkage across clone/version chains.
             plantUsageId: (e as any).plantUsageId ?? null,
           }))
         ).returning();
+        await this.persistEquipmentActivityAllocationsTx(tx, insertedEquipLogs, cloneEquipmentInputs);
         await this.reconcileDprBreakdownsTx(tx, original.equipment, insertedEquipLogs, original.equipment, original.date);
         // A clone is another document view of the same physical event. It
         // neither posts fuel again nor creates a second canonical usage.
@@ -3522,6 +3542,7 @@ export class DatabaseStorage implements IStorage {
       let insertedProgress: any[] = [];
       const originalEquipmentRows = await tx.select().from(equipmentLogs)
         .where(eq(equipmentLogs.dprId, originalId));
+      const equipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, originalEquipmentRows, dprData.equipment as any[] | undefined);
       const originalProgressForRemap = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey })
         .from(progressEntries).where(eq(progressEntries.dprId, originalId));
 
@@ -3551,7 +3572,7 @@ export class DatabaseStorage implements IStorage {
       // Insert edited equipment logs with uppercase text fields
       if (dprData.equipment?.length) {
         this.assertValidDprEquipmentDieselSources(dprData.equipment);
-        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, dprData.equipment as any[]);
+        const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, equipmentInputs, newDpr.boqProjectId);
         insertedEquipLogs = await tx.insert(equipmentLogs).values(
           normalisedEquipment.map((e: any) => ({
             ...e,
@@ -3561,6 +3582,7 @@ export class DatabaseStorage implements IStorage {
             task: e.task?.toUpperCase() || e.task,
           }))
         ).returning();
+        await this.persistEquipmentActivityAllocationsTx(tx, insertedEquipLogs, equipmentInputs);
         await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
       }
       await this.reconcileDprBreakdownsTx(tx, originalEquipmentRows, insertedEquipLogs, dprData.equipment as any[], dprData.date);
@@ -5528,29 +5550,46 @@ export class DatabaseStorage implements IStorage {
    * or kilometres. Raw readings, times, trip inputs and tank observations are
    * deliberately retained unchanged.
    */
-  private async normaliseDprEquipmentRowsTx(tx: any, rows: any[]): Promise<any[]> {
+  private async normaliseDprEquipmentRowsTx(tx: any, rows: any[], boqProjectId?: number | null): Promise<any[]> {
     const ids = Array.from(new Set(rows.map(r => Number(r?.equipmentId)).filter(Number.isFinite)));
     const masters = ids.length
       ? await tx.select().from(equipmentMaster).where(inArray(equipmentMaster.id, ids))
       : [];
     const masterById = new Map<number, any>(masters.map((master: any) => [master.id, master] as [number, any]));
+    const allocationInputs = rows.flatMap(row => Array.isArray(row?.activityAllocations) ? row.activityAllocations : []);
+    const boqIds = Array.from(new Set(allocationInputs.map((row: any) => Number(row.boqItemId)).filter(Number.isFinite)));
+    const barIds = Array.from(new Set(allocationInputs.map((row: any) => Number(row.programmeBarId)).filter(Number.isFinite)));
+    const boqRows = boqIds.length ? await tx.select().from(boqItems).where(inArray(boqItems.id, boqIds)) : [];
+    const barRows = barIds.length ? await tx.select().from(workProgramBars).where(inArray(workProgramBars.id, barIds)) : [];
+    const boqById = new Map(boqRows.map((row: any) => [Number(row.id), row]));
+    const barById = new Map(barRows.map((row: any) => [Number(row.id), row]));
     return rows.map((input: any) => {
-      const { breakdowns: _breakdowns, persistedId: _persistedId, ...row } = input;
+      const { breakdowns: _breakdowns, persistedId: _persistedId, activityAllocations, ...row } = input;
       const master = masterById.get(Number(row.equipmentId));
       // A deleted/unavailable master makes the unit ambiguous. Never guess
       // hour-meter semantics and overwrite historical derived evidence.
       if (!master) {
         const persisted = input.persistedId != null || input.id != null;
-        return {
+        const normalised = {
           ...row,
           hoursWorked: persisted ? row.hoursWorked ?? null : null,
           totalKm: persisted ? row.totalKm ?? null : null,
           expectedDiesel: persisted ? row.expectedDiesel ?? null : null,
           dieselNorm: persisted ? row.dieselNorm ?? null : null,
         };
+        const validated = validateEquipmentActivityAllocations(
+          activityAllocations,
+          resolveEquipmentAllocationParentHours(normalised),
+        );
+        this.assertEquipmentAllocationReferences(validated.allocations, boqById, barById, boqProjectId);
+        return this.withEquipmentAllocationBoqMirror(
+          normalised,
+          validated.allocations,
+          Array.isArray(activityAllocations),
+        );
       }
       const result = computeEquipmentUsage(master, row);
-      return {
+      const normalised = {
         ...row,
         // Never put km into hours_worked. Explicit trip rows operate in km.
         hoursWorked: result.hoursWorked,
@@ -5559,6 +5598,106 @@ export class DatabaseStorage implements IStorage {
         // Actual applied norm (L/hr or L/km, including trip conversion).
         dieselNorm: result.efficiencyValue,
       };
+      const validated = validateEquipmentActivityAllocations(
+        activityAllocations,
+        resolveEquipmentAllocationParentHours(normalised),
+      );
+      this.assertEquipmentAllocationReferences(validated.allocations, boqById, barById, boqProjectId);
+      return this.withEquipmentAllocationBoqMirror(
+        normalised,
+        validated.allocations,
+        Array.isArray(activityAllocations),
+      );
+    });
+  }
+
+  private withEquipmentAllocationBoqMirror(
+    row: any,
+    allocations: Array<{ boqItemId: number }>,
+    allocationsWereExplicit: boolean,
+  ): any {
+    // Legacy single-BOQ rows remain untouched when no allocation payload exists.
+    return allocations.length === 1 ? { ...row, boqItemId: allocations[0].boqItemId }
+      : allocations.length > 1 || allocationsWereExplicit ? { ...row, boqItemId: null } : row;
+  }
+
+  private assertEquipmentAllocationReferences(
+    allocations: Array<{ boqItemId: number; programmeBarId: number | null }>,
+    boqById: Map<number, any>,
+    barById: Map<number, any>,
+    boqProjectId?: number | null,
+  ): void {
+    if (!allocations.length) return;
+    if (!Number.isInteger(boqProjectId) || Number(boqProjectId) <= 0) {
+      throw new Error("Equipment activity allocations require the DPR to have a BOQ project.");
+    }
+    for (let index = 0; index < allocations.length; index += 1) {
+      const allocation = allocations[index];
+      const boq = boqById.get(allocation.boqItemId);
+      if (!boq || Number(boq.boqProjectId) !== Number(boqProjectId)) {
+        throw new EquipmentActivityAllocationError(
+          `Allocation ${index + 1}: BOQ item does not belong to this DPR's BOQ project.`,
+        );
+      }
+      if (allocation.programmeBarId != null) {
+        const bar = barById.get(allocation.programmeBarId);
+        if (!bar || Number(bar.boqProjectId) !== Number(boqProjectId) || Number(bar.boqItemId) !== allocation.boqItemId) {
+          throw new EquipmentActivityAllocationError(
+            `Allocation ${index + 1}: programme bar does not belong to the selected BOQ item and project.`,
+          );
+        }
+      }
+    }
+  }
+
+  private async persistEquipmentActivityAllocationsTx(tx: any, logs: any[], inputs: any[]): Promise<void> {
+    const rows: any[] = [];
+    for (let index = 0; index < logs.length; index++) {
+      const input = inputs[index];
+      if (!Array.isArray(input?.activityAllocations)) continue;
+      const allocations = validateEquipmentActivityAllocations(
+        input.activityAllocations,
+        resolveEquipmentAllocationParentHours(logs[index]),
+      ).allocations;
+      rows.push(...allocations.map(allocation => ({ ...allocation, equipmentLogId: logs[index].id })));
+    }
+    if (rows.length) await tx.insert(equipmentActivityAllocations).values(rows);
+  }
+
+  /**
+   * Replacement deletes equipment_logs (and cascade-deletes allocations), so an
+   * omitted allocation field means "retain" only for the explicitly matched
+   * persisted row. An explicit [] deliberately reaches the insert as empty.
+   */
+  private async preserveOmittedEquipmentAllocationsTx(tx: any, oldLogs: any[], inputs: any[] | undefined): Promise<any[]> {
+    if (!inputs?.length || !oldLogs.length) return inputs ?? [];
+    const oldById = new Map(oldLogs.map(row => [Number(row.id), row]));
+    const seenPersistedIds = new Set<number>();
+    for (const input of inputs) {
+      if (input?.persistedId == null && input?.id == null) continue;
+      const persistedId = Number(input.persistedId ?? input.id);
+      if (!Number.isInteger(persistedId) || !oldById.has(persistedId)) {
+        throw new EquipmentActivityAllocationError("Equipment row identity does not belong to the DPR being updated.");
+      }
+      if (seenPersistedIds.has(persistedId)) {
+        throw new EquipmentActivityAllocationError("Duplicate equipment row identity in DPR update.");
+      }
+      seenPersistedIds.add(persistedId);
+    }
+    const allocationRows = await tx.select().from(equipmentActivityAllocations)
+      .where(inArray(equipmentActivityAllocations.equipmentLogId, oldLogs.map(row => row.id)));
+    const allocationsByLogId = new Map<number, any[]>();
+    for (const allocation of allocationRows) {
+      const list = allocationsByLogId.get(Number(allocation.equipmentLogId)) ?? [];
+      list.push(allocation);
+      allocationsByLogId.set(Number(allocation.equipmentLogId), list);
+    }
+    return inputs.map(input => {
+      if (Array.isArray(input?.activityAllocations)) return input;
+      const persistedId = Number(input?.persistedId ?? input?.id);
+      if (!Number.isFinite(persistedId) || !oldById.has(persistedId)) return input;
+      const preserved = allocationsByLogId.get(persistedId);
+      return preserved?.length ? { ...input, activityAllocations: preserved } : input;
     });
   }
 
