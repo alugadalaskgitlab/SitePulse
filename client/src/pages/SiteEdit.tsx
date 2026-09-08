@@ -54,7 +54,13 @@ import {
 import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
-import { flattenCutFillConsumptions, hydrateCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
+import {
+  flattenCutFillConsumptions,
+  hydrateCutFillConsumptions,
+  validateCutFillForm,
+  withCutFillReadinessContext,
+} from "@/lib/cutFillLedger";
+import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
 import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
@@ -239,8 +245,7 @@ function mapDprToFormState(dpr: any) {
         layerNo: p.layerNo != null ? Number(p.layerNo) : null,
         isIncidental: !!p.isIncidental,
         incidentalDescription: p.incidentalDescription || "",
-        materialOutcome: p.materialOutcome ?? null,
-        reusableQty: p.reusableQty != null ? Number(p.reusableQty) : null,
+        ...normalizeExcavationMaterialOutcome(p.quantity, p.materialOutcome, p.reusableQty),
         allocations: [],
       }))
      : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "", materialOutcome: null, reusableQty: null, allocations: [] }];
@@ -639,6 +644,7 @@ export default function SiteEdit() {
               noSiteWorkDescription: p.noSiteWorkDescription ?? "",
               isIncidental: p.isIncidental ?? false,
               incidentalDescription: p.incidentalDescription ?? "",
+              ...normalizeExcavationMaterialOutcome(p.quantity, p.materialOutcome, p.reusableQty),
             })),
           );
           if (draft.equipment?.length) setEquipment(draft.equipment);
@@ -936,6 +942,10 @@ export default function SiteEdit() {
       entry.quantitySource = "";
       entry.quantitySourceNote = "";
     }
+    Object.assign(
+      entry,
+      normalizeExcavationMaterialOutcome(entry.quantity, entry.materialOutcome, entry.reusableQty),
+    );
   };
 
   const calculateHours = (start: string, end: string): number => {
@@ -1064,10 +1074,11 @@ export default function SiteEdit() {
         };
       }
       const effectiveLength = getEffectiveLength(p);
+      const effectiveQuantity = p.quantity ?? calculateQuantity(p);
       return {
         ...persisted,
         length: effectiveLength,
-        quantity: p.quantity ?? calculateQuantity(p),
+        quantity: effectiveQuantity,
         uom: progressUom(p),
         // 030A: numeric chainage (Km) alongside the display text
         chainageFromKm: parseChainageKm(p.chainageFrom),
@@ -1079,8 +1090,7 @@ export default function SiteEdit() {
         // Batch 06V: incidental fields
         isIncidental: p.isIncidental,
         incidentalDescription: p.isIncidental ? (p.incidentalDescription?.trim() || null) : null,
-        materialOutcome: p.materialOutcome || null,
-        reusableQty: p.materialOutcome == null ? null : p.reusableQty,
+        ...normalizeExcavationMaterialOutcome(effectiveQuantity, p.materialOutcome, p.reusableQty),
       };
     }) : [],
     cutFillConsumptions: flattenCutFillConsumptions(progress),
@@ -1235,11 +1245,18 @@ export default function SiteEdit() {
         return;
       }
     }
-    if (!validateCutFillForFinal()) return;
     // Batch 04: same shared readiness rule as Guided/Detailed/server.
     const payload = buildPayload();
-    const r = evaluateDprSubmitReadiness(payload as any);
-    if (r.mandatory.length > 0 || r.advisories.length > 0) {
+    const r = evaluateDprSubmitReadiness({
+      ...payload,
+      progress: withCutFillReadinessContext(payload.progress as any, siteBoqItems),
+    } as any);
+    if (r.mandatory.length > 0) {
+      setReadiness(r);
+      return;
+    }
+    if (!validateCutFillForFinal()) return;
+    if (r.advisories.length > 0) {
       setReadiness(r);
       return;
     }
@@ -2024,6 +2041,14 @@ export default function SiteEdit() {
                           updated[idx].quantitySource = "calculated";
                           updated[idx].quantitySourceNote = "";
                         }
+                        Object.assign(
+                          updated[idx],
+                          normalizeExcavationMaterialOutcome(
+                            updated[idx].quantity,
+                            updated[idx].materialOutcome,
+                            updated[idx].reusableQty,
+                          ),
+                        );
                         setProgress(updated);
                       }}
                       data-testid={`input-qty-${idx}`}
@@ -2094,7 +2119,7 @@ export default function SiteEdit() {
                 {entry.boqItemId != null && (
                   <div className="space-y-2 border-t pt-2" data-testid={`activity-material-source-block-${idx}`}>
                     {entry.boqItemId != null && classifyWorkType(String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? ""), String(siteBoqItems.find(i => i.id === entry.boqItemId)?.unit ?? "")) === "roadway_excavation" ? (
-                      <CutFillOutcomeControls quantity={entry.quantity} outcome={entry.materialOutcome ?? null} reusableQty={entry.reusableQty ?? null}
+                      <CutFillOutcomeControls quantity={entry.quantity} uom={progressUom(entry)} outcome={entry.materialOutcome ?? null} reusableQty={entry.reusableQty ?? null}
                         onOutcomeChange={(materialOutcome, reusableQty) => { const updated = [...progress]; updated[idx] = { ...updated[idx], materialOutcome, reusableQty }; setProgress(updated); }} />
                     ) : usesCutMaterialSource(entry.boqItemId) ? (
                     <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={entry.earthworkArrangementId}

@@ -1,0 +1,479 @@
+DPR CUT/FILL SUBMIT RELIABILITY + TRIP UOM CONSISTENCY
+FOCUSED FIX ONLY
+
+Implement only the focused corrections below.
+
+Goal:
+1. Prevent valid cut/fill DPRs from failing only at final submit because materialOutcome and reusableQty became inconsistent during restore/edit/recalculation.
+2. Make DPR readiness detect the same cut/fill issue before final submit.
+3. Verify and consistently use the existing safe receipt-UOM conversion logic across all relevant DPR views.
+4. Do not redesign cut/fill business logic or material conversion rules.
+
+--------------------------------------------------
+1. ROOT CAUSE TO FIX
+--------------------------------------------------
+
+Current validation correctly requires reusableQty whenever materialOutcome is recorded.
+
+Current intended semantics are:
+
+- fully_reusable
+  reusableQty must equal the current excavation progress quantity
+
+- partly_reusable
+  reusableQty must be > 0 and < current excavation progress quantity
+
+- unsuitable
+  reusableQty must equal 0
+
+The current failure mode appears when a restored/edited DPR retains materialOutcome but reusableQty is missing/stale after restore or quantity recalculation.
+
+This causes:
+- activity preview/readiness may show Ready
+- final submit then fails with:
+  "reusableQty is required when recording material outcome"
+
+Fix the state consistency, not the validation rule.
+
+--------------------------------------------------
+2. NORMALIZE CUT/FILL STATE AFTER RESTORE / EDIT / QUANTITY CHANGE
+--------------------------------------------------
+
+Create/reuse one shared normalization helper for excavation material outcome.
+
+For an excavation row:
+
+A. fully_reusable
+- reusableQty must automatically equal the CURRENT progress quantity
+
+B. unsuitable
+- reusableQty must automatically equal 0
+
+C. partly_reusable
+- preserve the entered reusableQty only if still valid
+- if missing or no longer valid after quantity change, mark the row incomplete and require user correction
+- do not invent a partial reusable quantity
+
+D. no materialOutcome
+- reusableQty should remain null unless existing logic requires otherwise
+
+Run this normalization where appropriate after:
+- draft restore
+- autosave restore
+- DPR reopen
+- Edit DPR hydration
+- quantity recalculation
+- BOQ/geometry change that changes excavation quantity
+- same-as-yesterday / copy flows if they restore materialOutcome
+- any other current hydration path for progress rows
+
+Do not silently alter a partly-reusable user-entered quantity unless it is invalid.
+
+--------------------------------------------------
+3. FULLY REUSABLE MUST TRACK CURRENT QUANTITY
+--------------------------------------------------
+
+Important:
+
+If the excavation quantity changes after "Fully reusable" was selected:
+
+Example:
+Old quantity = 300 CUM
+reusableQty = 300
+
+Then geometry/quantity changes to:
+375 CUM
+
+Expected:
+reusableQty automatically becomes 375 CUM
+
+Do not leave stale 300 CUM.
+
+The same principle applies after draft restore.
+
+--------------------------------------------------
+4. UNSUITABLE MUST ALWAYS NORMALIZE TO ZERO
+--------------------------------------------------
+
+If materialOutcome = unsuitable:
+
+Expected:
+reusableQty = 0
+
+This should survive:
+- restore
+- edit
+- reopen
+- resave
+
+Do not require the user to manually enter zero.
+
+--------------------------------------------------
+5. PARTLY REUSABLE VALIDATION
+--------------------------------------------------
+
+If materialOutcome = partly_reusable:
+
+Require:
+0 < reusableQty < current excavation quantity
+
+If restored value is missing or outside the valid range:
+- show the row as incomplete
+- highlight the reusable quantity field
+- prevent final submit
+- give a clear message such as:
+  "Enter reusable excavation quantity between 0 and 375 CUM."
+
+Do not convert partly_reusable into fully_reusable or unsuitable automatically.
+
+--------------------------------------------------
+6. READINESS MUST USE THE SAME CUT/FILL VALIDATION
+--------------------------------------------------
+
+The DPR readiness/preview must call the SAME shared cut/fill validation used by final submit.
+
+Do not maintain two different interpretations.
+
+If a row has:
+- materialOutcome but invalid/missing reusableQty
+- fill consumption exceeding available reusable quantity
+- other existing cut/fill reconciliation invalidity
+
+the activity must NOT show "Ready".
+
+Instead show a focused incomplete reason.
+
+Example:
+
+ROADWAY EXCAVATION
+Needs attention:
+Reusable excavation quantity is missing.
+
+The user should discover this before pressing Submit DPR.
+
+--------------------------------------------------
+7. FINAL SUBMIT MUST REMAIN AUTHORITATIVE
+--------------------------------------------------
+
+Do not weaken server-side final-submit validation.
+
+The server must still reject invalid cut/fill data.
+
+The fix is:
+- consistent normalization
+- earlier readiness detection
+- clearer UI guidance
+
+Do not bypass or remove validateExcavationMaterialOutcome().
+
+--------------------------------------------------
+8. DO NOT CHANGE CUT/FILL BUSINESS LOGIC
+--------------------------------------------------
+
+Do NOT change:
+
+- fully_reusable / partly_reusable / unsuitable meanings
+- reusableQty semantics
+- cutFillConsumptions
+- cut/fill source ledger
+- opening balance behavior
+- source excavation linkage
+- Execution Arrangement reused_excavated logic
+- BOQ progress credit
+- embankment progress calculation
+- percentage completion
+
+This is a reliability/consistency fix only.
+
+--------------------------------------------------
+9. VERIFY CUT/FILL FLOW ACROSS ALL DPR VIEWS
+--------------------------------------------------
+
+Apply and verify consistently in:
+
+- Guided / Field DPR
+- Detailed / Classic DPR
+- Edit DPR
+- Draft reopen
+- Autosave restore
+- Submitted DPR view
+- DPR Report / printable rendering where outcome is displayed
+- Manager/Admin review view if it shows cut/fill state
+
+Do not leave normalization in only one DPR mode.
+
+Use shared helpers where practical.
+
+--------------------------------------------------
+10. TRIP / RECEIPT UOM — VERIFY EXISTING SAFE CONVERSION
+--------------------------------------------------
+
+Inspect the current shared material receipt comparison logic.
+
+Current intended safe conversion:
+- CFT ↔ CUM
+
+Preserve that.
+
+Do NOT invent:
+- MT ↔ CUM
+- density-based conversion
+- loose ↔ compacted conversion
+- material-specific mass/volume conversion
+
+unless explicit material-specific evidence/configuration already exists.
+
+--------------------------------------------------
+11. USE ONE COMMON RECEIPT COMPARISON HELPER
+--------------------------------------------------
+
+Verify that the same shared conversion/comparison logic is used for:
+
+- Guided DPR receipt strip
+- Detailed / Classic DPR
+- Edit DPR
+- DPR view/report
+- any manager/admin review showing Required / Received / Executed
+- any relevant Materials Received / trip context summary
+
+Do not create separate CFT↔CUM formulas in individual pages.
+
+If any view bypasses shared/materialReceiptSummary.ts or equivalent shared helper, route it through the shared helper.
+
+--------------------------------------------------
+12. REQUIRED / RECEIVED / EXECUTED BASIS
+--------------------------------------------------
+
+Preserve current meaning:
+
+- Required = existing approved source logic
+- Received = actual active material trips
+- Executed = existing DPR BOQ-credit quantity
+
+When one basis is CFT and another is CUM:
+- convert to one volume basis using the existing safe conversion
+- then calculate variance
+
+If conversion is unsupported:
+- show quantities separately
+- show "Comparison only — receipt and BOQ measurement bases differ."
+- do not fabricate a conversion
+
+--------------------------------------------------
+13. MIXED UOM RECEIPTS
+--------------------------------------------------
+
+If the same activity has mixed receipt UOMs that cannot safely be reduced to one common volume basis:
+
+Do not silently add unlike quantities.
+
+Preserve the existing mixed-UOM protection.
+
+If all mixed receipt rows are only CFT/CUM and the existing helper can safely normalize them, inspect whether current aggregation already supports that.
+
+If current aggregateReceived() prevents conversion because it aggregates before conversion, REPORT this explicitly before broadening behavior.
+
+Do not redesign aggregation unless needed for a proven current bug.
+
+--------------------------------------------------
+14. LEGACY / HISTORICAL DPR SAFETY
+--------------------------------------------------
+
+Do not rewrite historical DPRs.
+
+Existing submitted DPRs must remain readable.
+
+If historical rows contain:
+- fully_reusable + stale/missing reusableQty
+
+do not mutate submitted history merely on view.
+
+Normalization should apply to editable/draft state.
+
+Submitted historical data should be displayed as recorded unless an explicit revision/edit flow is used.
+
+--------------------------------------------------
+15. USER MESSAGE QUALITY
+--------------------------------------------------
+
+Replace raw/internal wording where user-facing.
+
+Avoid messages like:
+"reusableQty is required when recording material outcome"
+
+Prefer:
+"Reusable excavation quantity is required."
+
+For partly reusable:
+"Enter the reusable excavation quantity."
+
+For fully reusable:
+the app should auto-fill and normally not need to show an error.
+
+For unsuitable:
+the app should auto-set zero and normally not need to show an error.
+
+Keep server/internal diagnostics available for logs if needed.
+
+--------------------------------------------------
+16. TESTS — CUT/FILL
+--------------------------------------------------
+
+Verify at minimum:
+
+A. Fully reusable fresh entry
+Excavation = 375 CUM
+Select Fully reusable
+Expected:
+reusableQty = 375
+Ready
+submit succeeds
+
+B. Fully reusable after quantity change
+375 → 420 CUM
+Expected:
+reusableQty updates to 420
+
+C. Fully reusable restored draft
+materialOutcome exists
+reusableQty missing
+quantity = 375
+Expected:
+restore normalizes to 375
+no final-submit surprise
+
+D. Unsuitable fresh/restored
+Expected:
+reusableQty = 0
+submit succeeds
+
+E. Partly reusable valid
+quantity 375
+reusableQty 250
+Expected:
+Ready
+
+F. Partly reusable missing
+Expected:
+Not Ready
+focused reusable-quantity message
+
+G. Partly reusable stale after quantity reduction
+old quantity 500
+reusableQty 400
+new quantity 350
+Expected:
+Not Ready
+user must correct value
+
+H. Readiness and server validation
+Same invalid row
+Expected:
+both report the same underlying issue
+
+I. Guided DPR
+Expected:
+same behavior
+
+J. Detailed / Classic DPR
+Expected:
+same behavior
+
+K. Edit DPR
+Expected:
+same behavior
+
+L. Autosave restored draft
+Expected:
+same behavior
+
+--------------------------------------------------
+17. TESTS — RECEIPT UOM
+--------------------------------------------------
+
+Verify:
+
+A. Received 1,000 CFT
+BOQ/Executed CUM
+Expected:
+safe CFT→CUM conversion used
+
+B. Received CUM
+Required CFT
+Expected:
+safe conversion used
+
+C. Same UOM
+Expected:
+no unnecessary conversion
+
+D. MT vs CUM
+Expected:
+not numerically compared without supported material-specific conversion
+
+E. Mixed unsupported UOM
+Expected:
+shown separately / non-comparable
+
+F. Guided / Classic / Edit / Report
+Expected:
+same shared comparison result
+
+--------------------------------------------------
+18. DO NOT TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- equipment multi-activity allocation
+- equipment activity schema
+- equipment hire billing
+- diesel calculations
+- Vendor Bills
+- Work Programme
+- Execution Arrangements
+- Site Requirements
+- permissions
+- RMC
+- Stores transaction logic
+- material trip persistence
+- BOQ quantity formulas
+- labour
+
+--------------------------------------------------
+19. SCHEMA / MIGRATION
+--------------------------------------------------
+
+This batch should not require a schema migration.
+
+If Replit believes a schema change is necessary:
+STOP and report before applying anything.
+
+No DROP.
+No DELETE.
+No RENAME.
+No destructive migration.
+
+--------------------------------------------------
+20. REPORT AND STOP
+--------------------------------------------------
+
+Report:
+
+1. Exact root cause found for restored/edited reusableQty inconsistency
+2. Shared normalization helper used/added
+3. Guided DPR changes
+4. Detailed / Classic changes
+5. Edit DPR changes
+6. Readiness changes
+7. Server final-submit validation changes, if any
+8. User-facing error message changes
+9. Trip UOM conversion paths verified
+10. Any view that was bypassing shared receipt conversion
+11. Tests run and results
+12. Schema/migration needed: yes/no
+
+STOP after this batch.
+
+Do not publish.
+Do not start equipment multi-activity work.

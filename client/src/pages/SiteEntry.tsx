@@ -63,7 +63,12 @@ import { openUsageHandoffContext, type OpenUsageLike } from "@shared/dprPlantLin
 import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
-import { flattenCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
+import {
+  flattenCutFillConsumptions,
+  validateCutFillForm,
+  withCutFillReadinessContext,
+} from "@/lib/cutFillLedger";
+import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
 import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
@@ -912,7 +917,10 @@ export default function SiteEntry() {
   const handleRestoreDraft = useCallback((data: SiteEntryFormData) => {
     setHeader({ ...data.header, boqProjectId: data.header.boqProjectId ?? null });
     if (data.workType) setWorkType(data.workType);
-    setProgress(data.progress);
+    setProgress(data.progress.map((row) => ({
+      ...row,
+      ...normalizeExcavationMaterialOutcome(row.quantity, row.materialOutcome, row.reusableQty),
+    })));
     if (data.structureItems) setStructureItems(data.structureItems);
     setEquipment(data.equipment);
     setLabour(data.labour);
@@ -989,6 +997,10 @@ export default function SiteEntry() {
       entry.quantitySource = "";
       entry.quantitySourceNote = "";
     }
+    Object.assign(
+      entry,
+      normalizeExcavationMaterialOutcome(entry.quantity, entry.materialOutcome, entry.reusableQty),
+    );
   };
 
   // Thin wrapper — delegates to shared entryBoqProfile in @/lib/dprCalculations.
@@ -1148,10 +1160,11 @@ export default function SiteEntry() {
             isIncidental: false, incidentalDescription: null,
           };
         }
+        const effectiveQuantity = p.quantity ?? calculateQuantity(p);
         return {
           ...p,
           length: effectiveLength,
-          quantity: p.quantity || calculateQuantity(p),
+          quantity: effectiveQuantity,
           uom: progressUom(p) ?? p.uom,
           // 030A: numeric chainage (Km) alongside the display text
           chainageFromKm: parseChainageKm(p.chainageFrom),
@@ -1162,6 +1175,7 @@ export default function SiteEntry() {
           quantitySourceNote: p.quantitySourceNote?.trim() || null,
           chainageOverrideReason: p.chainageOverrideReason || null,
           executedBy: p.executedBy || null,
+          ...normalizeExcavationMaterialOutcome(effectiveQuantity, p.materialOutcome, p.reusableQty),
           // 031 Part G handled server-side via chainageReviewStatus stamping.
         };
       });
@@ -1372,10 +1386,11 @@ export default function SiteEntry() {
     mutationFn: async () => {
       const progressWithCalc = progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
+        const effectiveQuantity = p.quantity ?? calculateQuantity(p);
         return {
           ...p,
           length: effectiveLength,
-          quantity: p.quantity || calculateQuantity(p),
+          quantity: effectiveQuantity,
           uom: progressUom(p) ?? p.uom,
           chainageFromKm: parseChainageKm(p.chainageFrom),
           chainageToKm: parseChainageKm(p.chainageTo),
@@ -1385,6 +1400,7 @@ export default function SiteEntry() {
           quantitySourceNote: p.quantitySourceNote?.trim() || null,
           chainageOverrideReason: p.chainageOverrideReason || null,
           executedBy: p.executedBy || null,
+          ...normalizeExcavationMaterialOutcome(effectiveQuantity, p.materialOutcome, p.reusableQty),
           // 031 Part G handled server-side via chainageReviewStatus stamping.
         };
       });
@@ -1586,21 +1602,25 @@ export default function SiteEntry() {
         }
       }
     }
+    // Batch 04: one consolidated readiness check before Final Submit.
+    // Mandatory issues block; advisories only ask for confirmation.
+    const r = evaluateDprSubmitReadiness({
+      workType,
+      progress: workType === "structure" ? [] : withCutFillReadinessContext(progress, siteBoqItems),
+      equipment,
+      labour,
+      materials,
+    });
+    if (r.mandatory.length > 0) {
+      setReadiness(r);
+      return;
+    }
     const cutFillIssues = validateCutFillForm(progress as any, siteBoqItems, cutFillArrangements, [], true);
     if (cutFillIssues.length > 0) {
       toast({ title: "Cut / fill reconciliation needed", description: cutFillIssues[0], variant: "destructive" });
       return;
     }
-    // Batch 04: one consolidated readiness check before Final Submit.
-    // Mandatory issues block; advisories only ask for confirmation.
-    const r = evaluateDprSubmitReadiness({
-      workType,
-      progress: workType === "structure" ? [] : progress,
-      equipment,
-      labour,
-      materials,
-    });
-    if (r.mandatory.length > 0 || r.advisories.length > 0) {
+    if (r.advisories.length > 0) {
       setReadiness(r);
       return;
     }
@@ -1629,11 +1649,13 @@ export default function SiteEntry() {
       engineer: header.engineer,
       progress: progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
+        const effectiveQuantity = p.quantity ?? calculateQuantity(p);
         return {
           ...p,
           length: effectiveLength,
-          quantity: p.quantity || calculateQuantity(p),
+          quantity: effectiveQuantity,
           uom: progressUom(p) ?? p.uom,
+          ...normalizeExcavationMaterialOutcome(effectiveQuantity, p.materialOutcome, p.reusableQty),
         };
       }),
       equipment,
@@ -2482,6 +2504,14 @@ export default function SiteEntry() {
                           // manually overridden → a real source must be picked
                           updated[idx].quantitySource = "";
                         }
+                        Object.assign(
+                          updated[idx],
+                          normalizeExcavationMaterialOutcome(
+                            updated[idx].quantity,
+                            updated[idx].materialOutcome,
+                            updated[idx].reusableQty,
+                          ),
+                        );
                         setProgress(updated);
                       }}
                       data-testid={`input-progress-qty-${idx}`}
@@ -2574,7 +2604,7 @@ export default function SiteEntry() {
                 </div>
                 <div className="space-y-2 border-t pt-2" data-testid={`activity-material-source-block-${idx}`}>
                   {entry.boqItemId != null && classifyWorkType(String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? ""), String(siteBoqItems.find(i => i.id === entry.boqItemId)?.unit ?? "")) === "roadway_excavation" ? (
-                    <CutFillOutcomeControls quantity={entry.quantity} outcome={entry.materialOutcome ?? null} reusableQty={entry.reusableQty ?? null}
+                    <CutFillOutcomeControls quantity={entry.quantity} uom={progressUom(entry)} outcome={entry.materialOutcome ?? null} reusableQty={entry.reusableQty ?? null}
                       onOutcomeChange={(materialOutcome, reusableQty) => { const updated = [...progress]; updated[idx] = { ...updated[idx], materialOutcome, reusableQty }; setProgress(updated); }} />
                   ) : usesCutMaterialSource(entry.boqItemId) ? (
                     <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={entry.earthworkArrangementId}

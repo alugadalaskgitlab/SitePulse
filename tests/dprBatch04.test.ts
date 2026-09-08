@@ -211,6 +211,33 @@ describe("Batch 04 — submit readiness (K–V)", () => {
     expect(r2.mandatory.some((m) => /chainage is incomplete/i.test(m.message))).toBe(true);
   });
 
+  it("flags the same strict cut/fill tuple issues before final submit", () => {
+    const base = {
+      activity: "ROADWAY EXCAVATION",
+      boqItemId: 7,
+      chainageFrom: "1+000",
+      chainageTo: "1+100",
+      quantity: 100,
+      uom: "CUM",
+      isRoadwayExcavation: true,
+    };
+    const missing = evaluateDprSubmitReadiness({
+      progress: [{ ...base, materialOutcome: null, reusableQty: null }],
+    });
+    expect(missing.ready).toBe(false);
+    expect(missing.mandatory.some(issue => /fully reusable, partly reusable, or unsuitable/i.test(issue.message))).toBe(true);
+
+    const stalePartial = evaluateDprSubmitReadiness({
+      progress: [{ ...base, quantity: 30, materialOutcome: "partly_reusable", reusableQty: 40 }],
+    });
+    expect(stalePartial.mandatory.some(issue => /between 0 and 30 CUM/i.test(issue.message))).toBe(true);
+
+    const valid = evaluateDprSubmitReadiness({
+      progress: [{ ...base, materialOutcome: "fully_reusable", reusableQty: 100 }],
+    });
+    expect(valid.mandatory).toHaveLength(0);
+  });
+
   it("06V — incidental work requires its own description and still requires physical quantity", () => {
     const bad = evaluateDprSubmitReadiness({
       progress: [{ activity: "DRAIN CLEANING", isIncidental: true, incidentalDescription: "", quantity: null }],

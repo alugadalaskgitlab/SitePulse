@@ -1,5 +1,8 @@
 import { classifyWorkType } from "@shared/workTypeRecipes";
-import { validateExcavationMaterialOutcome, type CutFillConsumptionInput } from "@shared/cutFillReconciliation";
+import {
+  excavationMaterialOutcomeIssue,
+  type CutFillConsumptionInput,
+} from "@shared/cutFillReconciliation";
 
 export type ChainageCandidate = {
   id: number;
@@ -63,11 +66,38 @@ export type CutFillFormRow = {
   materialOutcome?: string | null; reusableQty?: number | null;
   earthworkArrangementId?: number | null; allocations?: LedgerAllocation[];
 };
+export type CutFillOutcomeRow = Pick<
+  CutFillFormRow,
+  "entryKey" | "boqItemId" | "quantity" | "materialOutcome" | "reusableQty"
+>;
 export type CutFillArrangement = { id: number; arrangementType: string; sourceExcavationBoqItemId?: number | null };
 export type CutFillFormContext = {
   sources: CutFillSourceOption[];
   rowLedger: Record<string, ReturnType<typeof projectFormLedger>[number]>;
 };
+
+export function isRoadwayExcavationRow(row: CutFillOutcomeRow, boqItems: any[]): boolean {
+  const item = boqItems.find(candidate => Number(candidate.id) === Number(row.boqItemId));
+  return !!item
+    && classifyWorkType(String(item.description ?? item.itemName ?? ""), String(item.unit ?? "")) === "roadway_excavation";
+}
+
+export function cutFillOutcomeReadinessIssue(row: CutFillOutcomeRow, boqItems: any[]): string | null {
+  if (!isRoadwayExcavationRow(row, boqItems)) return null;
+  const item = boqItems.find(candidate => Number(candidate.id) === Number(row.boqItemId));
+  return excavationMaterialOutcomeIssue(row.quantity, row.materialOutcome, row.reusableQty, item?.unit);
+}
+
+export function withCutFillReadinessContext<T extends CutFillOutcomeRow>(rows: T[], boqItems: any[]) {
+  return rows.map(row => {
+    const item = boqItems.find(candidate => Number(candidate.id) === Number(row.boqItemId));
+    return {
+      ...row,
+      isRoadwayExcavation: isRoadwayExcavationRow(row, boqItems),
+      uom: item?.unit ?? (row as any).uom ?? null,
+    };
+  });
+}
 
 export function buildCutFillFormContext(
   rows: CutFillFormRow[], boqItems: any[], priorSources: any[], openingBalances: any[],
@@ -101,9 +131,12 @@ export function validateCutFillForm(rows: CutFillFormRow[], boqItems: any[], arr
     const item = items.get(Number(row.boqItemId));
     const workType = item ? classifyWorkType(String(item.description ?? item.itemName ?? ""), String(item.unit ?? "")) : null;
     if (workType === "roadway_excavation") {
-      const issue = row.materialOutcome == null
-        ? "record whether the excavated material is fully reusable, partly reusable, or unsuitable."
-        : validateExcavationMaterialOutcome(row.quantity, row.materialOutcome, row.reusableQty);
+      const issue = excavationMaterialOutcomeIssue(
+        row.quantity,
+        row.materialOutcome,
+        row.reusableQty,
+        item?.unit,
+      );
       if (issue) issues.push(`${item.description ?? item.itemName}: ${issue}`);
     }
     const arrangement = row.earthworkArrangementId != null ? byId.get(Number(row.earthworkArrangementId)) : undefined;
@@ -160,7 +193,7 @@ export function flattenCutFillConsumptions(
   })));
 }
 
-export function hydrateCutFillConsumptions<T extends { entryKey: string; allocations?: Array<{ sourceEntryKey?: string | null; openingBalanceId?: number | null; quantity: number }> }>(
+export function hydrateCutFillConsumptions<T extends { entryKey: string; allocations?: Array<{ sourceKey?: string; sourceEntryKey?: string | null; openingBalanceId?: number | null; quantity: number }> }>(
   rows: T[],
   consumptions: CutFillConsumptionInput[] | null | undefined,
 ): T[] {

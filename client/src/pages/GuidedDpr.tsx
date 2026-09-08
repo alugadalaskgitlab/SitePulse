@@ -66,7 +66,14 @@ import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { dprBoqItemDisplayName } from "@shared/dprBoqSelection";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
-import { flattenCutFillConsumptions, hydrateCutFillConsumptions, validateCutFillForm } from "@/lib/cutFillLedger";
+import {
+  cutFillOutcomeReadinessIssue,
+  flattenCutFillConsumptions,
+  hydrateCutFillConsumptions,
+  validateCutFillForm,
+  withCutFillReadinessContext,
+} from "@/lib/cutFillLedger";
+import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
 import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
@@ -309,8 +316,7 @@ export default function GuidedDpr() {
         noSiteWorkDescription: e.noSiteWorkDescription ?? "",
         isIncidental: e.isIncidental ?? false,
         incidentalDescription: e.incidentalDescription ?? "",
-         materialOutcome: e.materialOutcome ?? null,
-         reusableQty: e.reusableQty != null ? Number(e.reusableQty) : null,
+         ...normalizeExcavationMaterialOutcome(e.quantity, e.materialOutcome, e.reusableQty),
          allocations: e.allocations ?? [],
       })));
       // Normal restore keeps the stored step; a deliberate Complete entry
@@ -378,8 +384,7 @@ export default function GuidedDpr() {
         layerNo: p.layerNo != null ? Number(p.layerNo) : null,
         isIncidental: !!p.isIncidental,
         incidentalDescription: p.incidentalDescription || "",
-         materialOutcome: p.materialOutcome ?? null,
-         reusableQty: p.reusableQty != null ? Number(p.reusableQty) : null,
+         ...normalizeExcavationMaterialOutcome(p.quantity, p.materialOutcome, p.reusableQty),
          allocations: [],
       })), urlDraftDpr.cutFillConsumptions));
     deriveNeededRef.current = true;
@@ -726,7 +731,14 @@ export default function GuidedDpr() {
     } : e)));
 
   const updateEntry = (idx: number, patch: Partial<GuidedEntry>) =>
-    setEntries((prev) => prev.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
+    setEntries((prev) => prev.map((e, i) => {
+      if (i !== idx) return e;
+      const after = { ...e, ...patch };
+      return {
+        ...after,
+        ...normalizeExcavationMaterialOutcome(after.quantity, after.materialOutcome, after.reusableQty),
+      };
+    }));
 
   // Geometry-field change (chainage / width / thickness): auto-recalculate the
   // quantity immediately — unless the engineer overrode it, in which case the
@@ -736,7 +748,11 @@ export default function GuidedDpr() {
       if (i !== idx) return e;
       const after = { ...e, ...patch };
       const item = after.boqItemId != null ? itemById.get(after.boqItemId) : null;
-      return { ...after, ...applyGeometryChange(after, item) };
+      const changed = { ...after, ...applyGeometryChange(after, item) };
+      return {
+        ...changed,
+        ...normalizeExcavationMaterialOutcome(changed.quantity, changed.materialOutcome, changed.reusableQty),
+      };
     }));
 
   // Manual quantity edit: differs from geometry → overridden (real source
@@ -747,7 +763,11 @@ export default function GuidedDpr() {
       const after = { ...e, quantity };
       const item = after.boqItemId != null ? itemById.get(after.boqItemId) : null;
       const res = applyQuantityEdit(after, item);
-      return { ...after, ...res, ...(res.qtyOverridden ? {} : { quantitySource: "", quantitySourceNote: "" }) };
+      const changed = { ...after, ...res, ...(res.qtyOverridden ? {} : { quantitySource: "", quantitySourceNote: "" }) };
+      return {
+        ...changed,
+        ...normalizeExcavationMaterialOutcome(changed.quantity, changed.materialOutcome, changed.reusableQty),
+      };
     }));
 
   // Whenever a restore/hydration generation lands (autosave OR ?draftId — in
@@ -953,7 +973,9 @@ export default function GuidedDpr() {
   };
 
   // ── Save / submit ─────────────────────────────────────────────────────────
-  const entriesComplete = entries.length > 0 && entries.every(guidedEntryComplete);
+  const entriesComplete = entries.length > 0 && entries.every((entry) =>
+    guidedEntryComplete(entry) && !cutFillOutcomeReadinessIssue(entry, boqItems)
+  );
 
   /**
    * Quantity-source state for a guided entry, recomputed from geometry —
@@ -1035,8 +1057,7 @@ export default function GuidedDpr() {
         chainageOverrideReason: e.chainageOverrideReason.trim() || null,
         executedBy: e.executedBy || null,
         layerNo: e.layerNo,
-        materialOutcome: e.materialOutcome || null,
-        reusableQty: e.materialOutcome == null ? null : e.reusableQty,
+        ...normalizeExcavationMaterialOutcome(e.quantity, e.materialOutcome, e.reusableQty),
       };
     });
     const entryRemarks = entries.filter((e) => !e.noSiteWork && e.remark.trim()).map((e) => `${e.activity}: ${e.remark.trim()}`);
@@ -1214,7 +1235,7 @@ export default function GuidedDpr() {
 
   // Friendly pre-check before submit so programme-linked rows don't bounce off
   // the server's chainage validation with a raw error.
-  const validateForSubmit = (): boolean => {
+  const validateForSubmit = (options: { skipCutFill?: boolean } = {}): boolean => {
     for (const e of entries) {
       // Task #1409: a No Site Work row needs only its activity text — no
       // chainage/side/quantity/programme rules apply (excluded from BOQ math).
@@ -1290,10 +1311,12 @@ export default function GuidedDpr() {
         }
       }
     }
-    const cutFillIssues = validateCutFillForm(entries as any, boqItems, cutFillArrangements, [], true);
-    if (cutFillIssues.length > 0) {
-      toast({ title: "Cut / fill reconciliation needed", description: cutFillIssues[0], variant: "destructive" });
-      return false;
+    if (!options.skipCutFill) {
+      const cutFillIssues = validateCutFillForm(entries as any, boqItems, cutFillArrangements, [], true);
+      if (cutFillIssues.length > 0) {
+        toast({ title: "Cut / fill reconciliation needed", description: cutFillIssues[0], variant: "destructive" });
+        return false;
+      }
     }
     return true;
   };
@@ -1816,7 +1839,7 @@ export default function GuidedDpr() {
                 where it has meaning (arrangement exists or receipts linked). */}
             <div className="space-y-2 border-t pt-2" data-testid={`activity-material-source-block-${idx}`}>
             {e.boqItemId != null && classifyWorkType(String(itemById.get(e.boqItemId)?.description ?? ""), String(itemById.get(e.boqItemId)?.unit ?? "")) === "roadway_excavation" ? (
-              <CutFillOutcomeControls quantity={e.quantity} outcome={e.materialOutcome ?? null} reusableQty={e.reusableQty ?? null}
+              <CutFillOutcomeControls quantity={e.quantity} uom={e.uom} outcome={e.materialOutcome ?? null} reusableQty={e.reusableQty ?? null}
                 onOutcomeChange={(materialOutcome, reusableQty) => updateEntry(idx, { materialOutcome, reusableQty })} />
             ) : usesCutMaterialSource(e.boqItemId) ? (
               <CutFillOutcomeControls fillMode projectId={boqProjectId} arrangementId={e.earthworkArrangementId}
@@ -2430,7 +2453,8 @@ export default function GuidedDpr() {
             {entries.length === 0 && <p className="text-muted-foreground">None — go back to add today's work.</p>}
             <div className="space-y-1.5">
               {entries.map((e, idx) => {
-                const complete = guidedEntryComplete(e);
+                const cutFillIssue = cutFillOutcomeReadinessIssue(e, boqItems);
+                const complete = guidedEntryComplete(e) && !cutFillIssue;
                 const photoCount = (entryPhotos[e.entryKey] ?? []).length;
                 const item = e.boqItemId != null ? itemById.get(e.boqItemId) ?? null : null;
                 const measurement = dprMeasurementSummary(
@@ -2473,6 +2497,11 @@ export default function GuidedDpr() {
                           ].filter(Boolean).join(" · ")}
                       {photoCount > 0 ? ` · ${photoCount} photo${photoCount > 1 ? "s" : ""}` : ""}
                     </p>
+                    {cutFillIssue && (
+                      <p className="text-xs text-destructive mt-1" data-testid={`text-review-cut-fill-issue-${idx}`}>
+                        {cutFillIssue}
+                      </p>
+                    )}
                   </div>
                 );
               })}
@@ -2587,16 +2616,22 @@ export default function GuidedDpr() {
             className="flex-1"
             disabled={saveMutation.isPending || !entriesComplete}
             onClick={() => {
-              if (!validateHeader() || !validateForSubmit()) return;
+              if (!validateHeader() || !validateForSubmit({ skipCutFill: true })) return;
               // Batch 04: one consolidated readiness panel before Final Submit.
               const r = evaluateDprSubmitReadiness({
                 workType: "road",
-                progress: entries.map((e) => ({ activity: e.activity, boqItemId: e.boqItemId, noSiteWork: e.noSiteWork, chainageFrom: e.chainageFrom, chainageTo: e.chainageTo, quantity: e.quantity })),
+                progress: withCutFillReadinessContext(entries, boqItems),
                 equipment: equipment.filter((e) => e.machine).map((e) => buildGuidedEquipmentPayload(e)) as any[],
                 labour: labour as any[],
                 materials: unmanagedSectionsRef.current.materials as any[],
               });
-              if (r.mandatory.length > 0 || r.advisories.length > 0) { setReadiness(r); return; }
+              if (r.mandatory.length > 0) { setReadiness(r); return; }
+              const cutFillIssues = validateCutFillForm(entries as any, boqItems, cutFillArrangements, [], true);
+              if (cutFillIssues.length > 0) {
+                toast({ title: "Cut / fill reconciliation needed", description: cutFillIssues[0], variant: "destructive" });
+                return;
+              }
+              if (r.advisories.length > 0) { setReadiness(r); return; }
               saveMutation.mutate(false);
             }}
             data-testid="button-submit"

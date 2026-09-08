@@ -72,7 +72,7 @@ import { checkQuantitySourceRow, resolveQuantitySource } from "@shared/dprGeomet
 import { evaluateDprSubmitReadiness, type DprReadinessIssue } from "@shared/dprSubmitReadiness";
 import { chainageOverlapReadinessIssues, isChainageGuardRow, unchangedChainageRowKeys, type CandidateChainageRow } from "@shared/chainageOverlap";
 import { blocksExternalReceiptsForBoqItem, mergeMaterialTripLinkage, reusedExcavationConfigurationIssue } from "@shared/materialReceiptSummary";
-import { validateExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
+import { excavationMaterialOutcomeIssue } from "@shared/cutFillReconciliation";
 import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import {
@@ -1753,10 +1753,12 @@ export async function registerRoutes(
       // validation happens only when the DPR is submitted or versioned.
       if (opts.draft) continue;
       if (!isRoadwayExcavation) continue;
-      if (p?.materialOutcome == null) {
-        return `Progress entry "${p?.activity ?? ""}": record whether the excavated material is fully reusable, partly reusable, or unsuitable.`;
-      }
-      const issue = validateExcavationMaterialOutcome(p?.quantity, p?.materialOutcome, p?.reusableQty);
+       const issue = excavationMaterialOutcomeIssue(
+         p?.quantity,
+         p?.materialOutcome,
+         p?.reusableQty,
+         (item as any)?.unit,
+       );
       if (issue) return `Progress entry "${p?.activity ?? ""}": ${issue}`;
     }
     return null;

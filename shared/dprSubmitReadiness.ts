@@ -18,6 +18,7 @@
  *    advisory until a proper "Not used / Released" outcome workflow exists.
  *  - Fully blank placeholder rows are ignored entirely (no false positives).
  */
+import { excavationMaterialOutcomeIssue } from "./cutFillReconciliation";
 
 export type DprReadinessSection = "activities" | "equipment" | "labour" | "materials";
 
@@ -58,6 +59,11 @@ type ProgressRowLike = {
   chainageFrom?: string | null;
   chainageTo?: string | null;
   quantity?: number | null;
+  uom?: string | null;
+  materialOutcome?: string | null;
+  reusableQty?: number | null;
+  /** Set by callers that resolved this row to a roadway-excavation BOQ item. */
+  isRoadwayExcavation?: boolean;
 };
 
 type EquipmentRowLike = {
@@ -148,6 +154,22 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
         message: "quantity missing — enter the measured quantity (or remove the activity if no work was done)",
         rowIndex: i,
       });
+    }
+    if (p.isRoadwayExcavation) {
+      const cutFillIssue = excavationMaterialOutcomeIssue(
+        p.quantity,
+        p.materialOutcome,
+        p.reusableQty,
+        p.uom,
+      );
+      if (cutFillIssue) {
+        mandatory.push({
+          section: "activities",
+          label,
+          message: cutFillIssue,
+          rowIndex: i,
+        });
+      }
     }
     // Half-filled chainage is unambiguous incompleteness; both blank is left
     // to the existing screen-specific rules (structure DPRs have no chainage).

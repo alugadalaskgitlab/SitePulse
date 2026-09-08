@@ -13,6 +13,42 @@ export type ExcavationMaterialOutcome = typeof excavationMaterialOutcomes[number
 
 const EPSILON = 0.0001;
 
+export type ExcavationMaterialOutcomeState = {
+  materialOutcome: string | null;
+  reusableQty: number | null;
+};
+
+/**
+ * Normalizes editable cut/fill form state without weakening submit validation.
+ * Partly-reusable values are never invented; invalid values remain invalid so
+ * readiness can require an explicit correction.
+ */
+export function normalizeExcavationMaterialOutcome(
+  quantity: unknown,
+  materialOutcome: unknown,
+  reusableQty: unknown,
+): ExcavationMaterialOutcomeState {
+  const outcome = materialOutcome == null || materialOutcome === "" ? null : String(materialOutcome);
+  if (outcome == null) return { materialOutcome: null, reusableQty: null };
+
+  const total = quantity == null || quantity === "" ? null : Number(quantity);
+  if (outcome === "fully_reusable") {
+    return {
+      materialOutcome: outcome,
+      reusableQty: total != null && Number.isFinite(total) && total >= 0 ? total : null,
+    };
+  }
+  if (outcome === "unsuitable") {
+    return { materialOutcome: outcome, reusableQty: 0 };
+  }
+
+  const reusable = reusableQty == null || reusableQty === "" ? null : Number(reusableQty);
+  return {
+    materialOutcome: outcome,
+    reusableQty: reusable != null && Number.isFinite(reusable) ? reusable : null,
+  };
+}
+
 export function validateExcavationMaterialOutcome(
   quantity: unknown,
   materialOutcome: unknown,
@@ -46,6 +82,40 @@ export function validateExcavationMaterialOutcome(
     return "An unsuitable excavation outcome must have reusableQty of zero.";
   }
   return null;
+}
+
+/** User-facing wording backed by the same authoritative tuple validator. */
+export function excavationMaterialOutcomeIssue(
+  quantity: unknown,
+  materialOutcome: unknown,
+  reusableQty: unknown,
+  uom?: unknown,
+): string | null {
+  if (materialOutcome == null || materialOutcome === "") {
+    return "record whether the excavated material is fully reusable, partly reusable, or unsuitable.";
+  }
+  const issue = validateExcavationMaterialOutcome(quantity, materialOutcome, reusableQty);
+  if (!issue) return null;
+
+  const total = Number(quantity);
+  const unit = typeof uom === "string" && uom.trim() ? ` ${uom.trim().toUpperCase()}` : "";
+  const totalLabel = Number.isFinite(total)
+    ? `${Number.isInteger(total) ? total : Number(total.toFixed(6))}${unit}`
+    : null;
+
+  if (!Number.isFinite(total) || total < 0) {
+    return "Enter the excavation progress quantity before recording its material outcome.";
+  }
+  if (materialOutcome === "partly_reusable") {
+    return `Enter reusable excavation quantity between 0 and ${totalLabel}.`;
+  }
+  if (materialOutcome === "fully_reusable") {
+    return `Reusable excavation quantity must match the current excavation quantity of ${totalLabel}.`;
+  }
+  if (materialOutcome === "unsuitable") {
+    return "Reusable excavation quantity must be 0.";
+  }
+  return "Select a valid excavated material outcome.";
 }
 
 export const cutFillConsumptionSchema = z.object({

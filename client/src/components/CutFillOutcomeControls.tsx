@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,11 +11,16 @@ import {
   type CutFillSourceOption,
   type LedgerAllocation,
 } from "@/lib/cutFillLedger";
-import type { CutFillConsumptionInput } from "@shared/cutFillReconciliation";
+import {
+  excavationMaterialOutcomeIssue,
+  normalizeExcavationMaterialOutcome,
+  type CutFillConsumptionInput,
+} from "@shared/cutFillReconciliation";
 import { isExplicitCutMaterialConsumerDescription } from "@shared/materialReceiptSummary";
 
 type Props = {
   quantity: number | null;
+  uom?: string | null;
   outcome: string | null;
   reusableQty: number | null;
   onOutcomeChange: (value: string | null, reusableQty: number | null) => void;
@@ -35,6 +40,7 @@ type Props = {
 
 export function CutFillOutcomeControls({
   quantity,
+  uom,
   outcome,
   reusableQty,
   onOutcomeChange,
@@ -83,6 +89,22 @@ export function CutFillOutcomeControls({
       && (effectiveSourceBoqItemId == null || source.sourceBoqItemId === effectiveSourceBoqItemId),
     ), [providedSources, formContext.sources, effectiveSourceBoqItemId]);
   const isExcavation = !fillMode;
+  const normalizedOutcome = useMemo(
+    () => normalizeExcavationMaterialOutcome(quantity, outcome, reusableQty),
+    [quantity, outcome, reusableQty],
+  );
+  useEffect(() => {
+    if (!isExcavation) return;
+    if (
+      normalizedOutcome.materialOutcome !== outcome
+      || normalizedOutcome.reusableQty !== reusableQty
+    ) {
+      onOutcomeChange(normalizedOutcome.materialOutcome, normalizedOutcome.reusableQty);
+    }
+  }, [isExcavation, normalizedOutcome, onOutcomeChange, outcome, reusableQty]);
+  const outcomeIssue = isExcavation
+    ? excavationMaterialOutcomeIssue(quantity, outcome, reusableQty, uom)
+    : null;
   const rowLedger = useMemo(
     () => Object.fromEntries(projectFormLedger(effectiveRows, sources).map(result => [result.entryKey, result])),
     [effectiveRows, sources],
@@ -109,7 +131,8 @@ export function CutFillOutcomeControls({
       {isExcavation && (
         <Select value={outcome ?? "unset"} onValueChange={value => {
           const next = value === "unset" ? null : value;
-          onOutcomeChange(next, next === "fully_reusable" ? quantity : next === "unsuitable" ? 0 : reusableQty);
+          const normalized = normalizeExcavationMaterialOutcome(quantity, next, reusableQty);
+          onOutcomeChange(normalized.materialOutcome, normalized.reusableQty);
         }}>
           <SelectTrigger className="h-8 text-[11px] bg-white"><SelectValue placeholder="Select outcome" /></SelectTrigger>
           <SelectContent>
@@ -121,9 +144,24 @@ export function CutFillOutcomeControls({
         </Select>
       )}
       {outcome === "partly_reusable" && (
-        <Input className="h-8 text-[11px] bg-white" type="number" min={0} max={quantity ?? undefined}
-          value={reusableQty ?? ""} placeholder={`Reusable quantity (0–${quantity ?? 0})`}
-          onChange={event => onOutcomeChange(outcome, event.target.value === "" ? null : Number(event.target.value))} />
+        <div className="space-y-1">
+          <Input
+            className={`h-8 text-[11px] bg-white ${outcomeIssue ? "border-destructive focus-visible:ring-destructive" : ""}`}
+            type="number"
+            min={0}
+            max={quantity ?? undefined}
+            value={reusableQty ?? ""}
+            placeholder={`Reusable quantity (0–${quantity ?? 0})`}
+            onChange={event => onOutcomeChange(outcome, event.target.value === "" ? null : Number(event.target.value))}
+            aria-invalid={!!outcomeIssue}
+            data-testid="input-reusable-qty"
+          />
+          {outcomeIssue && (
+            <p className="text-[11px] text-destructive" data-testid="text-reusable-qty-error">
+              {outcomeIssue}
+            </p>
+          )}
+        </div>
       )}
       {onAllocationsChange && (
         <div className="border-t border-amber-200 pt-2 space-y-1">

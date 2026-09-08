@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   cutFillAvailability,
+  excavationMaterialOutcomeIssue,
   insufficientCutFillMessage,
+  normalizeExcavationMaterialOutcome,
   validateExcavationMaterialOutcome,
   cutFillCapacityExceeded,
 } from "../shared/cutFillReconciliation";
@@ -32,6 +34,57 @@ describe("cut/fill outcome validation", () => {
       expect(validateExcavationMaterialOutcome(undefined, outcome, 0)).toContain("progress quantity");
     }
     expect(validateExcavationMaterialOutcome(0, "unsuitable", null)).toContain("reusableQty is required");
+  });
+});
+
+describe("editable excavation outcome normalization", () => {
+  it("keeps fully reusable quantity equal to the current excavation quantity", () => {
+    expect(normalizeExcavationMaterialOutcome(100, "fully_reusable", null)).toEqual({
+      materialOutcome: "fully_reusable",
+      reusableQty: 100,
+    });
+    expect(normalizeExcavationMaterialOutcome(375, "fully_reusable", 100)).toEqual({
+      materialOutcome: "fully_reusable",
+      reusableQty: 375,
+    });
+    expect(normalizeExcavationMaterialOutcome(null, "fully_reusable", 100)).toEqual({
+      materialOutcome: "fully_reusable",
+      reusableQty: null,
+    });
+  });
+
+  it("keeps unsuitable at zero and clears stale reusable quantity when no outcome is selected", () => {
+    expect(normalizeExcavationMaterialOutcome(100, "unsuitable", 40)).toEqual({
+      materialOutcome: "unsuitable",
+      reusableQty: 0,
+    });
+    expect(normalizeExcavationMaterialOutcome(100, null, 40)).toEqual({
+      materialOutcome: null,
+      reusableQty: null,
+    });
+  });
+
+  it("preserves partly reusable user input and never invents a partial quantity", () => {
+    expect(normalizeExcavationMaterialOutcome(100, "partly_reusable", 40)).toEqual({
+      materialOutcome: "partly_reusable",
+      reusableQty: 40,
+    });
+    expect(normalizeExcavationMaterialOutcome(100, "partly_reusable", null)).toEqual({
+      materialOutcome: "partly_reusable",
+      reusableQty: null,
+    });
+    expect(normalizeExcavationMaterialOutcome(30, "partly_reusable", 40)).toEqual({
+      materialOutcome: "partly_reusable",
+      reusableQty: 40,
+    });
+  });
+
+  it("uses focused user-facing wording backed by strict tuple validation", () => {
+    expect(excavationMaterialOutcomeIssue(375, "partly_reusable", null, "Cum"))
+      .toBe("Enter reusable excavation quantity between 0 and 375 CUM.");
+    expect(excavationMaterialOutcomeIssue(30, "partly_reusable", 40, "Cum"))
+      .toBe("Enter reusable excavation quantity between 0 and 30 CUM.");
+    expect(excavationMaterialOutcomeIssue(100, "fully_reusable", 100, "Cum")).toBeNull();
   });
 });
 
@@ -158,8 +211,41 @@ describe("route outcome lifecycle regression", () => {
     const end = routes.indexOf("/**", start + 20);
     const block = routes.slice(start, end);
     expect(block).toContain("if (opts.draft) continue");
-    expect(block.indexOf("if (opts.draft) continue")).toBeLessThan(block.indexOf("validateExcavationMaterialOutcome"));
+    expect(block.indexOf("if (opts.draft) continue")).toBeLessThan(block.indexOf("excavationMaterialOutcomeIssue"));
     expect(block).not.toContain("p?.quantity == null");
+  });
+});
+
+describe("editable DPR cut/fill wiring regression", () => {
+  const guided = readFileSync("client/src/pages/GuidedDpr.tsx", "utf8");
+  const detailed = readFileSync("client/src/pages/SiteEntry.tsx", "utf8");
+  const edit = readFileSync("client/src/pages/SiteEdit.tsx", "utf8");
+  const controls = readFileSync("client/src/components/CutFillOutcomeControls.tsx", "utf8");
+  const submittedView = readFileSync("client/src/pages/DprDetails.tsx", "utf8");
+
+  it("normalizes autosave/draft/edit hydration without mutating submitted history views", () => {
+    expect(guided.match(/normalizeExcavationMaterialOutcome/g)?.length).toBeGreaterThanOrEqual(5);
+    expect(detailed).toContain("setProgress(data.progress.map");
+    expect(detailed).toContain("normalizeExcavationMaterialOutcome(row.quantity");
+    expect(edit.match(/normalizeExcavationMaterialOutcome/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(submittedView).not.toContain("normalizeExcavationMaterialOutcome");
+  });
+
+  it("keeps forced outcomes synchronized after quantity changes in every editable flow", () => {
+    expect(controls).toContain("useEffect");
+    expect(controls).toContain("normalizeExcavationMaterialOutcome(quantity, outcome, reusableQty)");
+    expect(guided).toContain("normalizeExcavationMaterialOutcome(changed.quantity");
+    expect(detailed).toContain("normalizeExcavationMaterialOutcome(entry.quantity");
+    expect(edit).toContain("normalizeExcavationMaterialOutcome(entry.quantity");
+  });
+
+  it("feeds explicit BOQ classification into shared readiness and shows partial-range errors inline", () => {
+    for (const source of [guided, detailed, edit]) {
+      expect(source).toContain("withCutFillReadinessContext");
+    }
+    expect(guided).toContain("cutFillOutcomeReadinessIssue");
+    expect(controls).toContain("text-reusable-qty-error");
+    expect(controls).toContain("aria-invalid");
   });
 });
 
