@@ -17,7 +17,9 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
   parentHours?: number | null; parentBasis?: EquipmentAllocationParentBasis; parentStartTime?: string | null; parentEndTime?: string | null; editable?: boolean;
 }) {
   const itemName = (id: number) => dprBoqItemDisplayName(boqItems.find(item => item.id === id));
-  const barsFor = (id: number) => programmeBars.filter(bar => bar.boqItemId === id);
+  const barsFor = (id: number) => Array.from(
+    new Map(programmeBars.filter(bar => bar.boqItemId === id).map(bar => [bar.id, bar])).values(),
+  );
   const result = useMemo(() => { try { return validateEquipmentActivityAllocations(value, parentHours); } catch { return null; } }, [value, parentHours]);
   const errors = useMemo(() => {
     const list: string[] = [];
@@ -43,11 +45,6 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
     onChange?.([...value, { boqItemId: 0, programmeBarId: null, startTime: previous?.endTime || (value.length === 0 ? parentStartTime ?? "" : ""), endTime: value.length === 0 ? parentEndTime ?? "" : "" }]);
   };
   const remove = (index: number) => onChange?.(value.filter((_, i) => i !== index));
-  const workReachName = (bar: ProgrammeBar, index: number) => {
-    const reach = bar.reachLabel?.replace(/#\d+/g, "").replace(/^[\s·\-–—]+|[\s·\-–—]+$/g, "").trim();
-    const side = bar.side?.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
-    return [reach || `Reach ${index + 1}`, side].filter(Boolean).join(" · ");
-  };
   const totals = result ?? { allocatedHours: value.reduce((sum, row) => sum + (calculateEquipmentAllocationHours(row.startTime, row.endTime) ?? 0), 0), unallocatedHours: parentHours == null ? null : Math.max(0, parentHours - value.reduce((sum, row) => sum + (calculateEquipmentAllocationHours(row.startTime, row.endTime) ?? 0), 0)) };
 
   useEffect(() => {
@@ -67,19 +64,15 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
   }, [editable, onChange, value, parentStartTime, parentEndTime, programmeBars]);
 
   if (!editable) {
-    return <section className="border-t border-slate-200 p-4 dark:border-slate-700"><div className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200"><Clock3 className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Work Allocation</div>{value.length ? <div className="grid gap-3 sm:grid-cols-2">{value.map((row, i) => {
-      const bars = barsFor(row.boqItemId);
-      const selectedBar = row.programmeBarId == null ? null : bars.find(bar => bar.id === row.programmeBarId) ?? null;
-      return <div key={i} className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950/25"><div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{itemName(row.boqItemId) || "BOQ activity unavailable"}</div>{selectedBar && <div className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-300">{workReachName(selectedBar, bars.indexOf(selectedBar))}</div>}<div className="mt-2 text-sm tabular-nums text-slate-600 dark:text-slate-300">{formatEquipmentTime(row.startTime)} → {formatEquipmentTime(row.endTime)}</div><div className="mt-1 text-base font-bold tabular-nums">{formatEquipmentDuration(row.hoursWorked ?? calculateEquipmentAllocationHours(row.startTime, row.endTime))}</div></div>;
-    })}</div> : <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/50 px-4 py-3 text-sm text-muted-foreground dark:border-slate-700 dark:bg-slate-950/20">No BOQ work allocated.</div>}<AllocationTotals allocated={totals.allocatedHours} unallocated={totals.unallocatedHours} parentHours={parentHours} parentBasis={parentBasis} /></section>;
+    return <section className="border-t border-slate-200 p-4 dark:border-slate-700"><div className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200"><Clock3 className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Work Allocation</div>{value.length ? <div className="grid gap-3 sm:grid-cols-2">{value.map((row, i) => (
+      <div key={i} className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950/25"><div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{itemName(row.boqItemId) || "BOQ activity unavailable"}</div><div className="mt-2 text-sm tabular-nums text-slate-600 dark:text-slate-300">{formatEquipmentTime(row.startTime)} → {formatEquipmentTime(row.endTime)}</div><div className="mt-1 text-base font-bold tabular-nums">{formatEquipmentDuration(row.hoursWorked ?? calculateEquipmentAllocationHours(row.startTime, row.endTime))}</div></div>
+    ))}</div> : <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/50 px-4 py-3 text-sm text-muted-foreground dark:border-slate-700 dark:bg-slate-950/20">No BOQ work allocated.</div>}<AllocationTotals allocated={totals.allocatedHours} unallocated={totals.unallocatedHours} parentHours={parentHours} parentBasis={parentBasis} /></section>;
   }
   return <section className="border-t border-slate-200 p-4 dark:border-slate-700" data-testid="equipment-activity-allocations">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><div className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200"><Clock3 className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Work Allocation</div><div className="mt-1 text-sm text-muted-foreground">Split the machine day across BOQ work. Partial allocation is allowed.</div></div><Button type="button" size="sm" variant="outline" className="min-h-10 gap-2 border-amber-300 bg-amber-50 px-3 text-sm text-amber-900 hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-200" onClick={add}><Plus className="h-4 w-4" /> Add another activity</Button></div>
     <div className="space-y-3">{value.map((row, i) => {
-      const bars = barsFor(row.boqItemId); const needsBarPicker = bars.length > 1;
       return <div key={i} className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-950/25">
         <div><Label className="text-xs font-semibold text-slate-600 dark:text-slate-300">BOQ Activity</Label><Select value={row.boqItemId ? String(row.boqItemId) : ""} onValueChange={v => { const boqItemId = Number(v); const matches = barsFor(boqItemId); patch(i, { boqItemId, programmeBarId: matches.length === 1 ? matches[0].id : null }); }}><SelectTrigger className="mt-1 h-11 bg-white text-sm dark:bg-slate-900"><SelectValue placeholder="Select BOQ item / activity" /></SelectTrigger><SelectContent>{boqItems.map(item => <SelectItem key={item.id} value={String(item.id)}>{dprBoqItemDisplayName(item)}</SelectItem>)}</SelectContent></Select></div>
-        {needsBarPicker && <div className="mt-3"><Label className="text-xs font-semibold text-amber-800 dark:text-amber-300">Which work reach?</Label><Select value={row.programmeBarId ? String(row.programmeBarId) : ""} onValueChange={v => patch(i, { programmeBarId: Number(v) })}><SelectTrigger className="mt-1 h-11 bg-amber-50 text-sm dark:bg-amber-950/30"><SelectValue placeholder="Choose the work reach" /></SelectTrigger><SelectContent>{bars.map((bar, barIndex) => <SelectItem key={bar.id} value={String(bar.id)}>{workReachName(bar, barIndex)}</SelectItem>)}</SelectContent></Select></div>}
         <div className="mt-3 grid grid-cols-1 gap-3 min-[380px]:grid-cols-2">
           <div><Label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Start Time</Label><div className="relative"><Input className="mt-1 h-12 min-w-0 bg-white px-3 pr-10 text-base tabular-nums dark:bg-slate-900 [&::-webkit-calendar-picker-indicator]:opacity-0" type="time" value={row.startTime} onChange={e => patch(i, { startTime: e.target.value })} /><Clock3 className="pointer-events-none absolute right-3 top-4 h-4 w-4 text-slate-500" aria-hidden="true" /></div></div>
           <div><Label className="text-xs font-semibold text-slate-600 dark:text-slate-300">End Time</Label><div className="relative"><Input className="mt-1 h-12 min-w-0 bg-white px-3 pr-10 text-base tabular-nums dark:bg-slate-900 [&::-webkit-calendar-picker-indicator]:opacity-0" type="time" value={row.endTime} onChange={e => patch(i, { endTime: e.target.value })} /><Clock3 className="pointer-events-none absolute right-3 top-4 h-4 w-4 text-slate-500" aria-hidden="true" /></div></div>

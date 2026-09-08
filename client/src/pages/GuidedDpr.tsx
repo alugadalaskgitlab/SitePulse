@@ -2370,7 +2370,10 @@ export default function GuidedDpr() {
                         beforeDate={date}
                         site={siteName}
                         boqItems={boqItems}
-                        programmeBars={programmeBars}
+                        programmeBars={entries.flatMap((entry) => entry.programmeBarId != null && entry.boqItemId != null ? [{
+                          id: entry.programmeBarId,
+                          boqItemId: entry.boqItemId,
+                        }] : [])}
                         onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === i
                           ? { ...row, passthrough: { ...row.passthrough, ...patch } } : row))}
                       />

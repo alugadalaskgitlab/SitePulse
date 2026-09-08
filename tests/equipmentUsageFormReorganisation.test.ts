@@ -38,17 +38,24 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(plant).toContain("const consumed = fuel.actualConsumed");
   });
 
-  it("keeps allocation rows simple, chains time defaults, and hides programme bars unless ambiguous", () => {
+  it("keeps allocation rows simple, chains time defaults, and never asks for a work reach", () => {
     expect(allocation).toContain("previous?.endTime");
     expect(allocation).toContain("parentStartTime");
     expect(allocation).toContain("parentEndTime");
-    expect(allocation).toContain('const needsBarPicker = bars.length > 1');
     expect(allocation).toContain("bars.length === 1");
-    expect(allocation).toContain("Which work reach?");
+    expect(allocation).not.toContain("Which work reach?");
+    expect(allocation).not.toContain("Choose the work reach");
+    expect(allocation).not.toContain("workReachName");
     expect(allocation).not.toContain("Programme distinction");
     expect(allocation).toContain("formatEquipmentAllocationDuration");
     expect(allocation).toContain("Add another activity");
     expect(allocation).not.toContain(">Task<");
+    for (const source of [guided, detailed, edit, submitted, report]) {
+      expect(source).toContain("programmeBarId");
+    }
+    expect(guided).toContain("programmeBars={entries.flatMap");
+    expect(detailed).toContain("programmeBars={progress.flatMap");
+    expect(edit).toContain("programmeBars={progress.flatMap");
   });
 
   it("shows separate readable usage and fuel performance blocks", () => {

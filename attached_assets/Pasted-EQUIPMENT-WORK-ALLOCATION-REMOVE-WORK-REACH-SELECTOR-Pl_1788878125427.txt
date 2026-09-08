@@ -1,0 +1,83 @@
+EQUIPMENT WORK ALLOCATION — REMOVE WORK REACH SELECTOR
+
+Please make this one focused correction only.
+
+The current Equipment Work Allocation still shows:
+
+"Which work reach?"
+
+when multiple programme bars exist for the selected BOQ item.
+
+Remove this visible work-reach/programme-bar selector entirely from normal Equipment Work Allocation.
+
+Reason:
+The DPR activity/progress row already captures the relevant reach/chainage and is linked to the appropriate programme bar / BOM context.
+
+Equipment allocation should reuse that existing activity context, not ask the field engineer to select the reach again.
+
+Required behavior:
+
+1. Visible equipment allocation fields remain only:
+   - BOQ Activity
+   - Start Time
+   - End Time
+   - Duration
+   - Remove
+   - + Add another activity
+
+2. Do NOT show:
+   - Which work reach?
+   - Programme distinction
+   - Programme bar
+   - Programme bar ID
+   - Reach selector
+   - Side selector
+   - internal programme identifiers
+
+3. programmeBarId may remain in the underlying allocation data model.
+
+4. Resolve programmeBarId from the already-existing DPR activity/progress context wherever that exact relationship is available.
+
+5. If the DPR activity context already carries the programme bar/reach linkage, reuse that exact linkage.
+
+6. If a safe programmeBarId cannot be resolved:
+   - leave programmeBarId null
+   - do NOT ask the equipment user to choose
+   - do NOT guess
+
+7. BOQ Item remains the visible equipment activity selector.
+
+8. Do not change:
+   - DPR activity/reach capture
+   - programme-bar logic
+   - BOM logic
+   - Work Programme
+   - BOQ progress
+   - equipment time-allocation calculations
+   - diesel
+   - hire billing
+   - cut/fill
+   - permissions
+   - schema
+
+9. Apply consistently in:
+   - Guided / Field DPR
+   - Detailed / Classic DPR
+   - Edit DPR
+   - Draft reopen
+   - read-only/submitted DPR
+   - DPR report / manager review where work allocations are displayed
+
+10. Legacy allocations with programmeBarId must remain readable.
+
+11. No migration should be required.
+
+Report:
+- files changed
+- how programmeBarId is now resolved/reused
+- confirmation that no work-reach selector remains in equipment entry
+- tests run/results
+
+STOP after this correction.
+Do not publish.
+Do not start another feature.

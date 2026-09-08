@@ -3228,7 +3228,10 @@ export default function SiteEntry() {
                   beforeDate={header.date}
                   site={header.site}
                   boqItems={siteBoqItems}
-                  programmeBars={programmeBars}
+                  programmeBars={progress.flatMap((entry) => entry.programmeBarId != null && entry.boqItemId != null ? [{
+                    id: entry.programmeBarId,
+                    boqItemId: entry.boqItemId,
+                  }] : [])}
                   onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } : row))}
                 />
                 <BreakdownStoppageEditor
