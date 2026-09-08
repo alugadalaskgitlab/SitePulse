@@ -141,7 +141,7 @@ describe("equipment activity allocations", () => {
     expect(calculateEquipmentAllocationHours("8:00", "09:00")).toBeNull();
     expect(resolveEquipmentAllocationParentHours({ hoursWorked: null, startTime: "08:00", endTime: "16:00" })).toBe(8);
     expect(resolveEquipmentAllocationParentDuration({ hoursWorked: 7.5, startTime: "09:15", endTime: "17:21" }))
-      .toEqual({ hours: 7.5, basis: "meter_working_hours" });
+      .toEqual({ hours: 8.1, basis: "clock_duration" });
     expect(resolveEquipmentAllocationParentDuration({ hoursWorked: null, startTime: "09:15", endTime: "17:21" }))
       .toEqual({ hours: 8.1, basis: "clock_duration" });
     expect(formatEquipmentAllocationDuration("09:15", "12:30")).toBe("3 h 15 min");
@@ -153,5 +153,25 @@ describe("equipment activity allocations", () => {
     expect(() => validateEquipmentActivityAllocations([
       { ...allocation(11, "08:00", "09:00"), programmeBarId: -1 },
     ], 8)).toThrow(/work reach is invalid/i);
+  });
+
+  it("uses the parent clock window rather than meter working hours", () => {
+    const result = validateEquipmentActivityAllocations(
+      [allocation(11, "09:30", "18:10")],
+      resolveEquipmentAllocationParentHours({ hoursWorked: 7.4, startTime: "09:30", endTime: "18:10" }),
+      { startTime: "09:30", endTime: "18:10" },
+    );
+    expect(result.allocatedHours).toBeCloseTo(8.666667);
+    expect(result.unallocatedHours).toBe(0);
+    expect(() => validateEquipmentActivityAllocations(
+      [allocation(11, "09:00", "12:00")],
+      8.666667,
+      { startTime: "09:30", endTime: "18:10" },
+    )).toThrow(/before the machine-day Start Time/i);
+    expect(() => validateEquipmentActivityAllocations(
+      [allocation(11, "16:00", "18:30")],
+      8.666667,
+      { startTime: "09:30", endTime: "18:10" },
+    )).toThrow(/after the machine-day End Time/i);
   });
 });

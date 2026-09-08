@@ -2900,20 +2900,6 @@ export default function SiteEntry() {
                       data-testid={`input-equipment-operator-${idx}`}
                     />
                   </div>
-                  <div>
-                    <Label className="text-sm">Task</Label>
-                    <Input
-                      placeholder="Task performed"
-                      value={entry.task}
-                      onChange={(e) => {
-                        const updated = [...equipment];
-                        updated[idx].task = e.target.value.toUpperCase();
-                        setEquipment(updated);
-                      }}
-                      className="uppercase"
-                      data-testid={`input-equipment-task-${idx}`}
-                    />
-                  </div>
                 </div>
                 {handoffContext && (
                   <p className="text-xs text-blue-700 dark:text-blue-300" data-testid={`text-equipment-handoff-${idx}`}>{handoffContext}</p>

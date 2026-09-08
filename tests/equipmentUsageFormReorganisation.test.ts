@@ -48,7 +48,11 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(allocation).not.toContain("workReachName");
     expect(allocation).not.toContain("Programme distinction");
     expect(allocation).toContain("formatEquipmentAllocationDuration");
-    expect(allocation).toContain("Add another activity");
+    expect(allocation).not.toContain("Add another activity");
+    expect(allocation).toContain("Assign Item");
+    expect(allocation).toContain("Add Item");
+    expect(allocation).toContain("Work Assignment");
+    expect(allocation).toContain("BOQ Item");
     expect(allocation).not.toContain(">Task<");
     for (const source of [guided, detailed, edit, submitted, report]) {
       expect(source).toContain("programmeBarId");
@@ -64,7 +68,11 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(compact).toContain("Usage Summary");
     expect(compact).toContain("Fuel Performance");
     expect(compact).not.toContain('label={preview.totalKm != null ? "Distance" : "Operating time"}');
-    expect(allocation).toContain("Allocation validation limit uses");
+    expect(allocation).toContain("Assignment validation uses the machine-day Clock Duration");
+    expect(compact).not.toContain("hoursWorked: preview.basis");
+    expect(guided).not.toContain("input-eq-task-");
+    expect(detailed).not.toContain("input-equipment-task-");
+    expect(edit).not.toContain("input-equipment-task-");
     expect(allocation).not.toMatch(/text-\[(?:9|10)px\]/);
   });
 

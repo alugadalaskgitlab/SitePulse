@@ -2492,20 +2492,6 @@ export default function SiteEdit() {
                   data-testid={`input-operator-${idx}`}
                 />
               </div>
-              <div>
-                <Label className="text-sm">Task</Label>
-                <Input
-                  placeholder="Task performed"
-                  value={entry.task}
-                  onChange={(e) => {
-                    const updated = [...equipment];
-                    updated[idx].task = e.target.value.toUpperCase();
-                    setEquipment(updated);
-                  }}
-                  className="uppercase"
-                  data-testid={`input-equipment-task-${idx}`}
-                />
-              </div>
               </div>
               <>
                   <p className="text-sm font-semibold text-muted-foreground border-b pb-1">

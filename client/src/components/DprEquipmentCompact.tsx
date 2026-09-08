@@ -61,10 +61,9 @@ export function DprEquipmentCompact({ row, equipment, onChange, editable = true,
   const tankKnown = row.openingDiesel != null || row.dieselBalanceInTank != null;
   const clockHours = useMemo(() => calculateEquipmentClockDuration(row.startTime, row.endTime), [row.startTime, row.endTime]);
   const allocationParent = useMemo(() => resolveEquipmentAllocationParentDuration({
-    hoursWorked: preview.basis === "hour_meter" ? row.hoursWorked ?? preview.hoursWorked : null,
     startTime: row.startTime,
     endTime: row.endTime,
-  }), [equipment?.meterType, row.hoursWorked, row.startTime, row.endTime, preview.basis, preview.hoursWorked]);
+  }), [row.startTime, row.endTime]);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,7 +137,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, editable = true,
         <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">Variance is actual consumed minus expected; a positive value means more fuel was consumed than expected.</p>
       </section>
       {!editable && tankKnown && !row.dieselBalanceConfirmed && <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-300">Physical tank balance has not been confirmed.</div>}
-      <EquipmentActivityAllocationEditor value={row.activityAllocations ?? []} onChange={editable && onChange ? activityAllocations => onChange({ activityAllocations }) : undefined} parentHours={allocationParent.hours} parentBasis={allocationParent.basis} parentStartTime={row.startTime} parentEndTime={row.endTime} boqItems={boqItems} programmeBars={programmeBars} editable={editable} />
+      <EquipmentActivityAllocationEditor value={row.activityAllocations ?? []} onChange={editable && onChange ? activityAllocations => onChange({ activityAllocations }) : undefined} parentHours={allocationParent.hours} parentStartTime={row.startTime} parentEndTime={row.endTime} boqItems={boqItems} programmeBars={programmeBars} editable={editable} />
     </article>
   );
 }

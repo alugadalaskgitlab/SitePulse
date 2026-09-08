@@ -57,10 +57,6 @@ export function resolveEquipmentAllocationParentDuration(row: {
   startTime?: string | null;
   endTime?: string | null;
 }): { hours: number | null; basis: EquipmentAllocationParentBasis } {
-  const stored = Number(row.hoursWorked);
-  if (row.hoursWorked != null && Number.isFinite(stored) && stored > 0) {
-    return { hours: stored, basis: "meter_working_hours" };
-  }
   const clockHours = row.startTime && row.endTime
     ? calculateEquipmentAllocationHours(row.startTime, row.endTime)
     : null;
@@ -81,6 +77,7 @@ export function resolveEquipmentAllocationParentHours(row: {
 export function validateEquipmentActivityAllocations(
   inputs: EquipmentActivityAllocationInput[] | undefined,
   parentHours: number | null | undefined,
+  parentTimeRange?: { startTime?: string | null; endTime?: string | null },
 ): EquipmentAllocationValidation {
   const allocations: NormalizedEquipmentActivityAllocation[] = [];
   const segments = new Set<string>();
@@ -97,6 +94,12 @@ export function validateEquipmentActivityAllocations(
     const hoursWorked = calculateEquipmentAllocationHours(input.startTime, input.endTime);
     if (hoursWorked == null) {
       throw new EquipmentActivityAllocationError(`Allocation ${index + 1}: End Time must be later than Start Time on the same day.`);
+    }
+    if (parentTimeRange?.startTime && input.startTime < parentTimeRange.startTime) {
+      throw new EquipmentActivityAllocationError(`Allocation ${index + 1}: Start Time cannot be before the machine-day Start Time.`);
+    }
+    if (parentTimeRange?.endTime && input.endTime > parentTimeRange.endTime) {
+      throw new EquipmentActivityAllocationError(`Allocation ${index + 1}: End Time cannot be after the machine-day End Time.`);
     }
     const segmentKey = `${input.startTime}|${input.endTime}`;
     if (segments.has(segmentKey)) {

@@ -15,4 +15,4 @@ Omitted allocation data means “preserve existing children” during replacemen
 
 **Why:** Drizzle hydrates absent child relations as empty arrays, while clients also need an intentional clear operation. Treating both identically silently removes legacy attribution during ordinary edits.
 
-**How to apply:** Preserve omission separately from explicit clearing. The server recalculates every child duration from same-day start/end times, validates overlap and parent capacity, and accepts programme links only when explicitly selected or uniquely safe to derive.
+**How to apply:** Preserve omission separately from explicit clearing. The server recalculates every child duration from same-day clock start/end times and validates overlap plus the parent clock window. Meter working hours are display-only and must never cap these clock segments. Programme links are silently reused only when the DPR progress context gives one unique match; otherwise retain null without prompting or guessing.

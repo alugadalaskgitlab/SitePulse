@@ -1,0 +1,598 @@
+EQUIPMENT WORK ASSIGNMENT UX CORRECTION
+FIRST ITEM + ADD ITEM BUTTON + CLOCK-TIME VALIDATION
+
+Implement only this focused correction/reorganisation.
+
+Goal:
+1. Keep machine-day meter/time facts separate from BOQ work assignments.
+2. Rename the first work-allocation interaction so it does not say "Add another activity" before any item exists.
+3. Use "Assign Item" for the first BOQ work item.
+4. Use a compact + Add Item control after the last assignment row.
+5. Keep that + Add Item control immediately below the current last row as more assignments are added.
+6. Validate assignment time against machine-day CLOCK duration, not meter working hours.
+7. Preserve all existing equipment, diesel, hire, reporting and persistence logic.
+
+--------------------------------------------------
+1. MACHINE DAY REMAINS THE PARENT RECORD
+--------------------------------------------------
+
+The existing parent equipment record continues to represent the full machine day / shift.
+
+Parent machine-day facts include:
+
+- Equipment
+- Registration / equipment number
+- Operator
+- Hire / entry type
+- Opening Meter
+- Closing Meter
+- Parent Start Time
+- Parent End Time
+- Meter Working Hours / Distance
+- Clock Duration
+- Diesel issued
+- Opening / Closing Tank
+- Fuel performance
+- Breakdown / Stoppage
+- hire attendance / commercial source behavior
+
+Do not move BOQ assignment logic into these parent facts.
+
+--------------------------------------------------
+2. WORK ASSIGNMENT — CHANGE THE USER LANGUAGE
+--------------------------------------------------
+
+Rename the visible section from generic activity wording to:
+
+WORK ASSIGNMENT
+
+The field engineer is assigning BOQ items to the machine-day.
+
+Avoid "Activity" terminology where possible in this UI.
+
+Use:
+
+- Assign Item
+- Add Item
+- BOQ Item
+
+Do NOT use:
+
+- Add another activity
+- Programme distinction
+- Work reach
+- Task
+- Related BOQ Item
+
+--------------------------------------------------
+3. FIRST ITEM — "ASSIGN ITEM"
+--------------------------------------------------
+
+When there are NO BOQ assignment rows yet:
+
+show a clear first action:
+
+[ Assign Item ]
+
+This action creates the first assignment row.
+
+Do not show:
+
+"+ Add another activity"
+
+before the first row exists.
+
+Expected empty state:
+
+WORK ASSIGNMENT
+
+No BOQ item assigned to this machine day.
+
+[ Assign Item ]
+
+--------------------------------------------------
+4. FIRST ASSIGNMENT ROW
+--------------------------------------------------
+
+After pressing Assign Item:
+
+show one assignment card/row containing only:
+
+- BOQ Item
+- Start Time
+- End Time
+- Duration
+- Remove
+
+Example:
+
+BOQ Item
+[ Roadway Excavation ]
+
+Start Time        End Time
+[ 09:30 AM ]      [ 01:00 PM ]
+
+Duration
+3 h 30 min
+
+[ Remove ]
+
+--------------------------------------------------
+5. FIRST ROW SMART DEFAULTS
+--------------------------------------------------
+
+For the FIRST assignment:
+
+If parent Start Time exists:
+default assignment Start Time = parent Start Time
+
+If this is the only assignment and parent End Time exists:
+it may default assignment End Time = parent End Time
+
+Keep both editable.
+
+Do not overwrite existing manually entered values.
+
+--------------------------------------------------
+6. "+ ADD ITEM" POSITION
+--------------------------------------------------
+
+Once at least one assignment exists:
+
+show:
+
+[ + Add Item ]
+
+IMMEDIATELY AFTER THE LAST ASSIGNMENT ROW.
+
+Do not keep the Add Item button in the section heading.
+
+Do not require the user to scroll upward to add another BOQ item.
+
+Example:
+
+Assignment 1
+...
+
+Assignment 2
+...
+
+[ + Add Item ]
+
+If Assignment 3 is added:
+the button moves below Assignment 3.
+
+The button should always follow the current final row.
+
+--------------------------------------------------
+7. ADD ITEM DEFAULT START
+--------------------------------------------------
+
+When + Add Item is pressed:
+
+New row:
+- BOQ Item = blank
+- Start Time = previous assignment End Time, if available
+- End Time = blank
+- Duration = auto-calculated once times are complete
+
+Example:
+
+Assignment 1
+09:30 → 12:15
+
+Press + Add Item
+
+Assignment 2 defaults:
+Start = 12:15
+End = blank
+
+--------------------------------------------------
+8. ASSIGNMENT TIME IS CLOCK TIME
+--------------------------------------------------
+
+Assignment Start / End are CLOCK-TIME segments.
+
+They describe during which part of the parent machine-day that BOQ item was being worked on.
+
+They are NOT meter-hour values.
+
+Therefore:
+
+assignment duration =
+End Time − Start Time
+
+--------------------------------------------------
+9. VALIDATION LIMIT MUST USE PARENT CLOCK DURATION
+--------------------------------------------------
+
+Correct the current validation behavior.
+
+Do NOT use Meter Working Hours as the assignment-time ceiling.
+
+Use:
+
+Parent Clock Duration =
+Parent End Time − Parent Start Time
+
+Example:
+
+Parent:
+09:30 → 18:10
+Clock Duration = 8 h 40 min
+
+Meter:
+1388.8 → 1396.2
+Meter Working Hours = 7 h 24 min
+
+One assignment:
+Roadway Excavation
+09:30 → 18:10
+Duration = 8 h 40 min
+
+Expected:
+VALID
+
+Do NOT show:
+"Allocated time exceeds Meter Working Hours limit."
+
+--------------------------------------------------
+10. METER WORKING HOURS REMAIN A SEPARATE FACT
+--------------------------------------------------
+
+Continue to show:
+
+Meter Working Hours: 7 h 24 min
+Clock Duration: 8 h 40 min
+
+These have different meanings.
+
+Meter Working Hours:
+actual meter/engine utilisation
+
+Clock Duration:
+overall machine-day elapsed time
+
+Do not compare assignment clock segments directly against meter working hours.
+
+--------------------------------------------------
+11. ASSIGNMENT VALIDATION RULES
+--------------------------------------------------
+
+Assignments must satisfy:
+
+- Start Time exists
+- End Time exists
+- End > Start
+- assignment times lie within parent machine-day Start/End where parent times are known
+- no overlaps between assignment rows
+- duplicate identical segments blocked
+- total assigned clock duration cannot exceed parent Clock Duration
+- gaps are allowed
+- partial assignment is allowed
+
+Do not force assignments to cover the whole machine day.
+
+--------------------------------------------------
+12. ASSIGNMENT SUMMARY
+--------------------------------------------------
+
+At the bottom of Work Assignment show:
+
+Assigned: X h Y min
+Unassigned: X h Y min
+Machine Day: X h Y min
+
+This summary must use CLOCK duration.
+
+Example:
+
+Machine Day: 8 h 40 min
+Assigned: 6 h 30 min
+Unassigned: 2 h 10 min
+
+Do not label this as meter hours.
+
+--------------------------------------------------
+13. METER UTILISATION DISPLAY
+--------------------------------------------------
+
+Separately, the equipment Usage Summary may continue to show:
+
+Meter Working Hours: 7 h 24 min
+Clock Duration: 8 h 40 min
+
+Optional read-only utilisation percentage may be derived later, but do NOT add new analytics in this batch unless already present.
+
+Do not change meter-hour formulas.
+
+--------------------------------------------------
+14. BOQ ITEM IS THE BUSINESS WORK LINK
+--------------------------------------------------
+
+Each assignment links to one BOQ Item.
+
+Visible field:
+BOQ Item
+
+Do not show:
+- Task
+- Programme Bar
+- Work Reach
+- Side
+- Programme ID
+- Related BOQ Item
+
+Reuse existing programmeBarId silently from DPR activity/progress context where safely available.
+
+If not safely resolvable:
+leave programmeBarId null.
+
+Do not ask the user.
+
+--------------------------------------------------
+15. REMOVE OLD TOP-LEVEL TASK FIELD IF STILL PRESENT
+--------------------------------------------------
+
+The current equipment form still shows a visible parent:
+
+Task
+
+Example:
+EXCAVATION
+COMPACTION
+
+Remove this visible Task field from the equipment form.
+
+Reason:
+BOQ Work Assignment is now the operational source for what the machine worked on.
+
+Do not remove underlying legacy data if historical compatibility requires it.
+
+Historical records may still render legacy Task where needed for old data, but new editable equipment entry should not ask for it.
+
+--------------------------------------------------
+16. MOBILE UX
+--------------------------------------------------
+
+Keep mobile-first layout.
+
+Assignment card:
+
+BOQ Item
+[ Select BOQ Item ]
+
+Start Time       End Time
+[ 09:30 AM ]     [ 12:15 PM ]
+
+Duration
+2 h 45 min
+
+[ Remove ]
+
+[ + Add Item ]
+
+Do not squeeze everything into a narrow single row.
+
+--------------------------------------------------
+17. READ-ONLY / SUBMITTED DISPLAY
+--------------------------------------------------
+
+Submitted/read-only equipment view should show:
+
+WORK ASSIGNMENT
+
+Roadway Excavation
+09:30 AM → 12:15 PM
+2 h 45 min
+
+Borrow Earth Cutting
+12:15 PM → 03:30 PM
+3 h 15 min
+
+No programme bar / reach line should appear.
+
+Parent machine facts remain shown once.
+
+--------------------------------------------------
+18. WORK DEMAND / ANALYTICS
+--------------------------------------------------
+
+Do not change the existing authoritative rule:
+
+If child equipment assignments exist:
+- aggregate equipment activity hours by assignment BOQ Item
+- do not also count legacy parent boqItemId
+
+If no assignment rows exist:
+- preserve legacy parent BOQ linkage fallback
+
+However, note:
+
+assignment duration is CLOCK duration.
+
+Do not silently reinterpret assignment clock duration as meter working hours unless existing analytics explicitly define that behavior.
+
+If Work Demand currently expects equipment operating hours rather than elapsed assignment time:
+report the existing behavior and preserve it unless a safe already-defined mapping exists.
+
+Do not invent a new proportional meter-hour allocation in this batch.
+
+--------------------------------------------------
+19. DIESEL / HIRE / BREAKDOWN — DO NOT CHANGE
+--------------------------------------------------
+
+Keep parent-level:
+
+- diesel
+- opening/closing tank
+- actual/expected consumption
+- hire billing
+- breakdowns
+- stoppages
+- meter continuity
+- attendance
+
+Do not duplicate any of these per BOQ assignment.
+
+--------------------------------------------------
+20. APPLY CONSISTENTLY
+--------------------------------------------------
+
+Apply in all relevant equipment entry/view surfaces:
+
+- Guided / Field DPR
+- Detailed / Classic DPR
+- Edit DPR
+- Draft reopen
+- Autosave restore
+- Submitted DPR
+- DPR report / printable
+- Manager/Admin review
+- Equipment-related DPR views
+
+Use shared component/helper behavior where practical.
+
+Respect existing permissions.
+
+--------------------------------------------------
+21. TESTS
+--------------------------------------------------
+
+Verify at minimum:
+
+A. No assignment rows
+Expected:
+[ Assign Item ]
+No "+ Add another activity"
+
+B. First assignment
+Parent Start = 09:30
+Expected:
+first assignment Start = 09:30
+
+C. Single assignment
+Parent 09:30–18:10
+Expected:
+End may default 18:10
+Duration 8 h 40 min
+
+D. Meter difference
+1388.8 → 1396.2
+Expected:
+Meter Working Hours 7 h 24 min
+
+E. Same single assignment 09:30–18:10
+Expected:
+VALID
+No meter-hours-limit warning
+
+F. Second item
+First End = 12:15
+Press + Add Item
+Expected:
+new Start = 12:15
+
+G. Add Item position
+Expected:
+button immediately below last row
+after adding another, button moves below new last row
+
+H. Overlap
+09:30–12:00
+11:30–14:00
+Expected:
+blocked / clear warning
+
+I. Outside parent day
+Parent starts 09:30
+assignment starts 09:00
+Expected:
+invalid
+
+J. Partial assignment
+Parent 8 h 40 min
+Assigned 6 h 30 min
+Expected:
+allowed
+Unassigned 2 h 10 min
+
+K. Task field
+Expected:
+no editable parent Task field
+
+L. Work reach
+Expected:
+no visible work-reach/programme selector
+
+M. Guided / Classic / Edit
+Expected:
+same behavior
+
+N. Submitted/read-only
+Expected:
+same assignment facts displayed clearly
+
+--------------------------------------------------
+22. SCHEMA / MIGRATION
+--------------------------------------------------
+
+No schema change should be required.
+
+Use the existing:
+equipment_activity_allocations
+
+If any migration/schema change is proposed:
+STOP and report before applying.
+
+No DROP.
+No DELETE.
+No RENAME.
+
+--------------------------------------------------
+23. DO NOT TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- BOQ progress quantity logic
+- Work Programme calculations
+- BOM logic
+- cut/fill reconciliation
+- Execution Arrangements
+- material trips
+- Stores
+- Site Requirements
+- Vendor Bills
+- plant production
+- equipment hire formulas
+- diesel recovery formulas
+- permissions
+- authentication/session logic
+
+--------------------------------------------------
+24. REPORT AND STOP
+--------------------------------------------------
+
+Report:
+
+1. Work Assignment wording changes
+2. First Assign Item behavior
+3. + Add Item placement
+4. Smart Start/End defaults
+5. Parent Clock Duration validation change
+6. Confirmation Meter Working Hours no longer limits assignment clock segments
+7. Assignment summary behavior
+8. Parent Task field handling
+9. Programme/reach visibility
+10. Guided DPR changes
+11. Detailed / Classic changes
+12. Edit DPR changes
+13. Submitted/report changes
+14. Tests run/results
+15. Schema/migration needed: yes/no
+
+STOP after this correction.
+
+Do not publish.
+Do not start another feature.

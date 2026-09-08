@@ -2212,14 +2212,10 @@ export default function GuidedDpr() {
                         </div>
                       )}
                       {/* B. Work */}
-                      <div className="grid grid-cols-2 gap-2">
+                      <div>
                         <div>
                           <Label className="text-xs text-muted-foreground">Operator</Label>
                           <Input placeholder="Operator name" value={eq.operator} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, operator: ev.target.value } : r))} data-testid={`input-eq-operator-${i}`} />
-                        </div>
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Task</Label>
-                          <Input placeholder="Task" value={eq.task} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, task: ev.target.value } : r))} data-testid={`input-eq-task-${i}`} />
                         </div>
                       </div>
                       {/* C. Usage — time/meter fields hidden for Trip Based rows

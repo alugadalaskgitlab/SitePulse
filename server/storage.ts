@@ -5580,6 +5580,7 @@ export class DatabaseStorage implements IStorage {
         const validated = validateEquipmentActivityAllocations(
           activityAllocations,
           resolveEquipmentAllocationParentHours(normalised),
+          normalised,
         );
         this.assertEquipmentAllocationReferences(validated.allocations, boqById, barById, boqProjectId);
         return this.withEquipmentAllocationBoqMirror(
@@ -5601,6 +5602,7 @@ export class DatabaseStorage implements IStorage {
       const validated = validateEquipmentActivityAllocations(
         activityAllocations,
         resolveEquipmentAllocationParentHours(normalised),
+        normalised,
       );
       this.assertEquipmentAllocationReferences(validated.allocations, boqById, barById, boqProjectId);
       return this.withEquipmentAllocationBoqMirror(
@@ -5658,6 +5660,7 @@ export class DatabaseStorage implements IStorage {
       const allocations = validateEquipmentActivityAllocations(
         input.activityAllocations,
         resolveEquipmentAllocationParentHours(logs[index]),
+        logs[index],
       ).allocations;
       rows.push(...allocations.map(allocation => ({ ...allocation, equipmentLogId: logs[index].id })));
     }
