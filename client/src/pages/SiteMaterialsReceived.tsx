@@ -578,6 +578,7 @@ export default function SiteMaterialsReceived() {
                   </div>
                   <ReceiptWorkContext
                     siteName={editForm.site}
+                    operationalDate={editForm.date}
                     sitesList={sitesList}
                     value={editForm.workContext}
                     onChange={(workContext) => setEditForm((form) => form && ({ ...form, workContext }))}

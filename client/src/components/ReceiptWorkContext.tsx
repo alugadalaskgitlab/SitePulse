@@ -22,6 +22,8 @@ import {
   type ArrangementBarAllocation,
 } from "@shared/materialReceiptSummary";
 import type { Site } from "@shared/schema";
+import { arrangementStatusAsOf, cancelledEffectiveFromAsOf } from "@shared/arrangementStatusHistory";
+import { format } from "date-fns";
 
 export interface TripWorkContext {
   boqProjectId: number | null;
@@ -131,6 +133,7 @@ export function ReceiptWorkContext({
   onArrangementPrefill,
   required = false,
   testIdPrefix = "work-ctx",
+  operationalDate,
 }: {
   siteName: string;
   sitesList: Site[];
@@ -142,6 +145,7 @@ export function ReceiptWorkContext({
   /** Standalone trip entry requires a project and intended BOQ activity. */
   required?: boolean;
   testIdPrefix?: string;
+  operationalDate: string;
 }) {
   const siteId = useMemo(() => sitesList.find((s) => s.name === siteName)?.id ?? null, [sitesList, siteName]);
   const { data: projects = [] } = useQuery<Array<{ id: number; name: string }>>({
@@ -180,18 +184,19 @@ export function ReceiptWorkContext({
             reachLabel: selectedBar?.reachLabel ?? null,
             chainageFrom: selectedBar?.chainageFrom ?? null,
             chainageTo: selectedBar?.chainageTo ?? null,
+            operationalDate,
           }, allocations)
         : null,
-    [arrangements, allocations, value.boqProjectId, value.boqItemId, value.programmeBarId, selectedBar],
+    [arrangements, allocations, value.boqProjectId, value.boqItemId, value.programmeBarId, selectedBar, operationalDate],
   );
   const historicalInactiveArrangement = useMemo(() => {
     if (value.earthworkArrangementId == null) return null;
     const linked = arrangements.find((arrangement) => arrangement.id === value.earthworkArrangementId) ?? null;
     if (!linked || resolution?.applicable.some((arrangement) => arrangement.id === linked.id)) return null;
-    return ["cancelled", "rejected", "on_hold", "completed", "returned"].includes(String(linked.status).toLowerCase())
+    return ["cancelled", "rejected", "on_hold", "completed", "returned"].includes(arrangementStatusAsOf(linked, operationalDate))
       ? linked
       : null;
-  }, [arrangements, resolution, value.earthworkArrangementId]);
+  }, [arrangements, resolution, value.earthworkArrangementId, operationalDate]);
 
   // Auto-preselect when exactly one arrangement applies; fire prefill hook.
   useEffect(() => {
@@ -268,7 +273,10 @@ export function ReceiptWorkContext({
             <Label className="text-xs">Execution Arrangement</Label>
             {historicalInactiveArrangement ? (
               <p className="text-xs mt-1.5 font-medium text-muted-foreground" data-testid={`${testIdPrefix}-arrangement-historical`}>
-                {arrangementLabel(historicalInactiveArrangement)} · {historicalInactiveArrangement.status}
+                Historical arrangement: {arrangementLabel(historicalInactiveArrangement)}
+                {cancelledEffectiveFromAsOf(historicalInactiveArrangement, operationalDate)
+                  ? ` · Cancelled effective ${format(new Date(`${cancelledEffectiveFromAsOf(historicalInactiveArrangement, operationalDate)}T00:00:00`), "dd-MMM-yyyy")}`
+                  : ` · ${arrangementStatusAsOf(historicalInactiveArrangement, operationalDate)}`}
               </p>
             ) : resolution.applicable.length === 1 ? (
               <p className="text-xs mt-1.5 font-medium" data-testid={`${testIdPrefix}-arrangement-single`}>
@@ -338,7 +346,7 @@ export function ReceiptWorkContext({
 
 /** Read-only "Linked Work / Arrangement / Reach" context under a saved trip. */
 export function TripWorkContextSummary({ trip, testIdPrefix = "trip-ctx" }: {
-  trip: { id: number; boqProjectId?: number | null; boqItemId?: number | null; programmeBarId?: number | null; earthworkArrangementId?: number | null };
+  trip: { id: number; date?: string | null; boqProjectId?: number | null; boqItemId?: number | null; programmeBarId?: number | null; earthworkArrangementId?: number | null };
   testIdPrefix?: string;
 }) {
   const hasAny = trip.boqProjectId != null || trip.boqItemId != null || trip.programmeBarId != null || trip.earthworkArrangementId != null;
@@ -352,7 +360,10 @@ export function TripWorkContextSummary({ trip, testIdPrefix = "trip-ctx" }: {
       {item && <div><span className="font-medium text-foreground">Linked Work:</span> {boqItemDisplayName(item)}</div>}
       {arrangement && (
         <div>
-          <span className="font-medium text-foreground">Arrangement:</span> {arrangementLabel(arrangement)}
+          <span className="font-medium text-foreground">
+            {trip.earthworkArrangementId != null && !["approved", "mobilisation_pending", "in_progress"].includes(arrangementStatusAsOf(arrangement, trip.date)) ? "Historical arrangement:" : "Arrangement:"}
+          </span> {arrangementLabel(arrangement)}
+          {cancelledEffectiveFromAsOf(arrangement, trip.date) && ` · Cancelled effective ${format(new Date(`${cancelledEffectiveFromAsOf(arrangement, trip.date)}T00:00:00`), "dd-MMM-yyyy")}`}
           {arrangement.arrangementType === "client_supplied" && <Badge variant="outline" className="ml-1 text-[10px]">Client supplied</Badge>}
         </div>
       )}

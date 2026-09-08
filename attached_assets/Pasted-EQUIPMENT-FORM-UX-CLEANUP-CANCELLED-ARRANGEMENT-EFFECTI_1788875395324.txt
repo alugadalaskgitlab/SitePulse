@@ -1,0 +1,790 @@
+EQUIPMENT FORM UX CLEANUP + CANCELLED ARRANGEMENT EFFECTIVE-DATE FIX
+ALL RELEVANT DPR VIEWS / PERMITTED USERS
+
+Implement only the focused corrections below.
+
+Goal:
+1. Make the Site DPR equipment form readable and practical on mobile/desktop.
+2. Clearly separate machine-day usage facts from BOQ work allocation.
+3. Show meter working hours and clock duration distinctly.
+4. Make fuel consumption/efficiency information prominent and understandable.
+5. Remove technical programme-bar clutter from normal field entry.
+6. Preserve smart activity-time defaults.
+7. Ensure cancelled Execution Arrangements do not continue to drive current DPR workflow after their effective cancellation date.
+8. Apply consistently across Guided / Classic / Edit / review/report views and all appropriately permitted users.
+
+Do not redesign unrelated DPR or arrangement logic.
+
+--------------------------------------------------
+1. EQUIPMENT CARD — PRIORITISE READABILITY OVER COMPACTNESS
+--------------------------------------------------
+
+Current equipment card is too dense and uses very small labels/value text.
+
+Increase normal field-entry readability.
+
+Do NOT use 9px / 10px text for ordinary labels or operational values.
+
+Preferred minimums:
+- normal labels: approximately 12–13px
+- entered/calculated values: approximately 14–16px
+- section headings: approximately 13–14px, semibold/bold
+- important calculated values may be larger/bolder
+
+Keep mobile readability as the primary design constraint.
+
+Do not squeeze five operational controls into one narrow row.
+
+--------------------------------------------------
+2. EQUIPMENT CARD — REQUIRED VISUAL STRUCTURE
+--------------------------------------------------
+
+Use these clear blocks:
+
+A. EQUIPMENT
+- Machine
+- Registration / equipment number
+- Operator
+- Entry / Hire Type
+
+B. USAGE START
+- Opening Meter
+- Start Time
+
+C. USAGE END
+- Closing Meter
+- End Time
+
+D. USAGE SUMMARY
+- Meter Working Hours / Distance
+- Clock Duration
+
+E. FUEL
+- Diesel Issued / Added
+- Diesel Source
+- Opening Tank
+- Closing Tank / Physical Dip
+- Physical Tank Balance Confirmed
+
+F. FUEL PERFORMANCE
+- Actual Consumed
+- Expected
+- Variance
+- Actual Consumption Rate
+
+G. WORK ALLOCATION
+- BOQ Activity
+- Start Time
+- End Time
+- Duration
+- + Add another activity
+
+Keep Breakdown / Stoppage below the above according to existing behavior.
+
+--------------------------------------------------
+3. SHOW METER WORKING HOURS CLEARLY
+--------------------------------------------------
+
+For hour-meter equipment:
+
+Meter Working Hours =
+Closing Meter − Opening Meter
+
+Example:
+Opening = 1002
+Closing = 1009.5
+
+Display:
+Meter Working Hours: 7.50 h
+
+For odometer equipment:
+show Distance instead.
+
+Use existing canonical equipment-usage calculation.
+
+Do not create a competing formula.
+
+--------------------------------------------------
+4. SHOW CLOCK DURATION SEPARATELY
+--------------------------------------------------
+
+Clock Duration =
+Parent End Time − Parent Start Time
+
+Example:
+09:15 AM → 05:21 PM
+
+Display:
+Clock Duration: 8 h 06 min
+
+This must be shown separately from meter working hours.
+
+Do not label clock duration as operating hours.
+
+Reason:
+Meter working time and elapsed clock time can legitimately differ because of idle time, stoppages, breaks, non-metered activity, etc.
+
+--------------------------------------------------
+5. DO NOT HIDE THE DIFFERENCE
+--------------------------------------------------
+
+If both are available, show together:
+
+Meter Working Hours: 7.50 h
+Clock Duration: 8 h 06 min
+
+Do not collapse them into one generic "Operating time" value.
+
+Do not treat them as interchangeable.
+
+--------------------------------------------------
+6. TIME ENTRY CONTROLS MUST BE OBVIOUS
+--------------------------------------------------
+
+Current Start / End time inputs are technically type="time" but visually too compressed.
+
+Make the time entry obvious and easy to tap.
+
+Each time field should visibly show:
+- label
+- current selected time
+- clear clock/time-picker affordance where supported by browser/device
+
+Do not hide time controls in a very narrow 80–90px cell.
+
+On mobile:
+prefer stacked or two-column layout.
+
+Example:
+
+Start Time
+[ 09:15 AM ]
+
+End Time
+[ 12:30 PM ]
+
+--------------------------------------------------
+7. HUMAN-READABLE DURATION
+--------------------------------------------------
+
+For field entry, display allocation duration as:
+
+3 h 15 min
+
+rather than only:
+3.25 h
+
+Internally keep decimal hours for:
+- analytics
+- Work Demand
+- reporting
+- validation
+- diesel/equipment calculations
+
+Where useful in detailed reports, it may show:
+
+3 h 15 min (3.25 h)
+
+but field entry should prioritise human-readable duration.
+
+--------------------------------------------------
+8. FUEL PERFORMANCE MUST BE PROMINENT
+--------------------------------------------------
+
+Keep the existing canonical formula:
+
+Actual Consumed =
+Opening Tank + Diesel Issued − Closing Tank
+
+Example:
+Opening Tank 5 L
+Issued 30 L
+Closing Tank 7 L
+
+Actual Consumed = 28 L
+
+Display clearly:
+
+Actual Consumed: 28.00 L
+Expected: 35.63 L
+Variance: −7.63 L
+Actual Rate: 3.73 L/hr
+
+Do not bury these inside tiny summary cells.
+
+--------------------------------------------------
+9. EXPECTED / VARIANCE MEANING
+--------------------------------------------------
+
+Variance =
+Actual Consumed − Expected
+
+Positive:
+consumed more than expected
+
+Negative:
+consumed less than expected
+
+Keep the value neutral/informational.
+
+Do not change commercial HSD recovery logic in this batch.
+
+--------------------------------------------------
+10. WORK ALLOCATION — SIMPLIFY NORMAL VISIBLE FIELDS
+--------------------------------------------------
+
+Normal visible allocation row should contain only:
+
+- BOQ Activity
+- Start Time
+- End Time
+- Duration
+- Remove
+
+Do not show:
+- Task
+- Related BOQ item
+- technical programme IDs
+- programme-bar IDs
+- internal reach/bar numbers unless absolutely necessary
+
+Use BOQ short/display name priority already established:
+displayName → itemName → description
+
+Never display SNL/SDB/canonical replacement labels to users.
+
+--------------------------------------------------
+11. REMOVE NORMAL "PROGRAMME DISTINCTION" FIELD
+--------------------------------------------------
+
+The current UI still shows:
+
+"Programme distinction"
+
+when multiple programme bars exist.
+
+Remove this from normal equipment field entry.
+
+programmeBarId may remain in the data model.
+
+Resolve it silently using available context where safe:
+
+Priority:
+1. exact linked DPR progress row / programme bar context
+2. selected BOQ item + exact current reach/chainage/side
+3. selected BOQ item with exactly one valid programme bar
+
+If exactly one safe bar resolves:
+store it automatically.
+
+If multiple valid bars remain:
+do not guess.
+
+--------------------------------------------------
+12. IF USER CHOICE IS GENUINELY REQUIRED
+--------------------------------------------------
+
+Only if the system cannot safely resolve which reach/programme bar applies AND the distinction materially affects analytics:
+
+show a human-readable focused selector.
+
+Use wording such as:
+
+Which work reach?
+
+Options:
+Reach 1
+Reach 2
+Ch. 10+200–10+500 LHS
+etc.
+
+Do NOT show technical wording such as:
+
+Programme distinction
+#26467 · reach 3 · both_sides
+
+Do not expose internal IDs.
+
+--------------------------------------------------
+13. FIRST ALLOCATION SMART DEFAULT
+--------------------------------------------------
+
+Parent Usage Start defines machine-day start.
+
+For first allocation:
+
+If Start is blank:
+Start = Parent Usage Start
+
+Example:
+Parent Start = 09:15
+
+First allocation:
+Roadway Excavation
+Start automatically = 09:15
+
+Engineer should not type the same starting time twice.
+
+Keep editable.
+
+--------------------------------------------------
+14. SINGLE-ACTIVITY SMART DEFAULT
+--------------------------------------------------
+
+If there is only one activity allocation and parent Start + End are known:
+
+default:
+Allocation Start = Parent Start
+Allocation End = Parent End
+
+Therefore the engineer mainly selects the BOQ Activity.
+
+Do not overwrite manually changed allocation times.
+
+--------------------------------------------------
+15. ADD ANOTHER ACTIVITY
+--------------------------------------------------
+
+When user presses:
+
++ Add another activity
+
+New allocation defaults:
+
+Start Time = previous allocation End Time
+End Time = blank
+BOQ Activity = blank
+
+Example:
+
+Allocation 1
+09:15 → 12:30
+
+New Allocation 2:
+Start = 12:30
+End = blank
+
+This must remain editable.
+
+--------------------------------------------------
+16. LAST ACTIVITY END-TIME ASSIST
+--------------------------------------------------
+
+If parent End Time is known and the last activity End is blank:
+
+it is acceptable to suggest/default parent End Time when this does not create overlap.
+
+Do not force overwrite.
+
+--------------------------------------------------
+17. MOBILE LAYOUT
+--------------------------------------------------
+
+On mobile, each allocation should be easy to scan.
+
+Recommended:
+
+BOQ Activity
+[ Roadway Excavation ]
+
+Start Time        End Time
+[09:15 AM]        [12:30 PM]
+
+Duration
+3 h 15 min
+
+[Remove]
+
+Do not squeeze:
+BOQ + programme selector + Start + End + Hours + Delete
+into one narrow horizontal row.
+
+--------------------------------------------------
+18. ALLOCATION TOTALS
+--------------------------------------------------
+
+Keep a clear summary:
+
+Allocated: 7 h 30 min
+Unallocated: 36 min
+Machine Day: 8 h 06 min
+
+If parent validation uses meter working hours rather than clock duration, clearly distinguish which basis is being used.
+
+Do not ambiguously compare activity clock segments against a different hidden parent basis.
+
+Inspect current validator and use the correct operational basis consistently.
+
+Report which parent basis is authoritative for allocation validation.
+
+--------------------------------------------------
+19. VALIDATION
+--------------------------------------------------
+
+Preserve:
+
+- Start required
+- End required
+- End > Start
+- no overlaps
+- duplicate identical segment blocked
+- allocation total cannot exceed permitted parent duration
+- partial/unallocated time allowed
+
+Messages should be human-readable.
+
+Example:
+
+"Roadway Excavation overlaps another equipment activity."
+
+Not:
+"Allocation 2 invalid."
+
+--------------------------------------------------
+20. CANCELLED ARRANGEMENT — EFFECTIVE-DATE RULE
+--------------------------------------------------
+
+Fix the issue where a cancelled Execution Arrangement continues to appear in current DPR operational context.
+
+Important distinction:
+
+A cancelled arrangement may remain visible as historical evidence for records dated BEFORE its effective cancellation.
+
+But it must NOT behave as active after the effective cancellation date.
+
+Use the existing arrangement status-history / effectiveFrom foundation.
+
+--------------------------------------------------
+21. CURRENT DPR ARRANGEMENT APPLICABILITY
+--------------------------------------------------
+
+For any DPR activity dated on/after an arrangement's effective cancellation date:
+
+that arrangement must NOT:
+
+- prefill as current arrangement
+- appear as active selection
+- drive "Required Today"
+- drive receipt prompting
+- drive cut/fill operational context
+- drive vendor/material source context
+- appear as current arrangement badge
+- affect current programme/activity execution logic
+
+It may appear only where historical context is intentionally shown.
+
+--------------------------------------------------
+22. HISTORICAL ARRANGEMENT DISPLAY
+--------------------------------------------------
+
+Example:
+
+Arrangement cancelled effective:
+20-Aug-2026
+
+DPR dated:
+18-Aug-2026
+→ arrangement may be operationally valid
+
+DPR dated:
+20-Aug-2026 or later
+→ arrangement must be inactive
+
+If an old persisted DPR or receipt explicitly linked the arrangement before cancellation:
+preserve that historical link.
+
+Display where appropriate:
+
+Historical arrangement
+Cancelled effective 20-Aug-2026
+
+Do not erase history.
+
+--------------------------------------------------
+23. DO NOT USE CURRENT MUTABLE STATUS ALONE
+--------------------------------------------------
+
+Use date-effective status resolution where available.
+
+Do not simply check:
+
+arrangement.status === "cancelled"
+
+because historical pre-cancellation records must remain valid.
+
+Likewise do not treat an arrangement as operational merely because a persisted arrangementId exists.
+
+Resolve status as of:
+- DPR date
+- trip/receipt date
+- relevant operational date
+
+depending on the consumer.
+
+--------------------------------------------------
+24. APPLY ARRANGEMENT FIX CONSISTENTLY
+--------------------------------------------------
+
+Review all relevant consumers, including:
+
+- Guided DPR
+- Detailed / Classic DPR
+- Edit DPR
+- cut/fill controls
+- receipt work context
+- ActivityReceiptStrip
+- Materials Received context
+- arrangement prefill/selection
+- DPR review/report where current vs historical distinction is shown
+
+Do not leave one screen using mutable status and another using effective-date status.
+
+Use a shared resolver where practical.
+
+--------------------------------------------------
+25. DO NOT DELETE CANCELLED ARRANGEMENTS
+--------------------------------------------------
+
+Cancelled arrangements remain part of audit/history.
+
+Do NOT:
+- delete them
+- rewrite historical DPRs
+- clear legitimate historical arrangement IDs
+- backfill guessed dates
+
+Only correct current operational applicability.
+
+--------------------------------------------------
+26. ALL DPR VIEWS / PERMITTED USERS
+--------------------------------------------------
+
+Apply the equipment UX consistently in:
+
+- Guided / Field DPR
+- Detailed / Classic DPR
+- Edit DPR
+- Draft reopen
+- Autosave restore
+- Submitted DPR view
+- DPR Report / printable
+- Manager/Admin review view
+- Equipment-related DPR reports
+
+Respect existing permissions.
+
+Do not create separate field-user and manager formulas.
+
+--------------------------------------------------
+27. READ-ONLY / REPORT DISPLAY
+--------------------------------------------------
+
+Submitted/read-only display should be clean and complete.
+
+Example:
+
+JCB-SITE · TS07EV930
+Operator: Mahesh · Daily Hire
+
+Usage
+09:15 AM → 05:21 PM
+Opening meter 1002.0
+Closing meter 1009.5
+Meter Working Hours 7.50 h
+Clock Duration 8 h 06 min
+
+Fuel
+Issued 30.00 L
+Opening tank 5.00 L
+Closing dip 7.00 L
+Physical balance confirmed
+
+Actual 28.00 L
+Expected 35.63 L
+Variance −7.63 L
+Actual rate 3.73 L/hr
+
+Work Allocation
+Roadway Excavation
+09:15 AM → 12:30 PM
+3 h 15 min
+
+Borrow Earth Cutting
+12:30 PM → 05:21 PM
+4 h 51 min
+
+Do not repeat machine/fuel facts per allocation.
+
+--------------------------------------------------
+28. TESTS — EQUIPMENT UX / LOGIC
+--------------------------------------------------
+
+Verify:
+
+A. Hour-meter machine
+1002 → 1009.5
+Expected:
+Meter Working Hours 7.50 h
+
+B. Clock duration
+09:15 → 17:21
+Expected:
+8 h 06 min
+
+C. Difference visible
+Expected:
+both shown distinctly
+
+D. Fuel
+5 + 30 − 7
+Expected:
+28.00 L
+
+E. First allocation
+Parent Start 09:15
+Expected:
+first allocation defaults 09:15
+
+F. Single activity
+Parent 09:15–17:21
+Expected:
+single allocation can inherit both times
+
+G. Second activity
+first End 12:30
+Expected:
+next Start 12:30
+
+H. Human-readable duration
+09:15–12:30
+Expected:
+3 h 15 min
+
+I. Programme bar exact one
+Expected:
+resolved silently
+
+J. Multiple ambiguous bars
+Expected:
+no guessing
+show human-readable reach selector only if genuinely necessary
+
+K. Mobile layout
+Expected:
+no five-field compressed row
+readable labels and tappable time controls
+
+--------------------------------------------------
+29. TESTS — CANCELLED ARRANGEMENT
+--------------------------------------------------
+
+Arrangement:
+effective cancellation 20-Aug-2026
+
+A. DPR 19-Aug
+Expected:
+arrangement may apply
+
+B. DPR 20-Aug
+Expected:
+does not apply operationally
+
+C. DPR 21-Aug
+Expected:
+does not apply operationally
+
+D. Old saved DPR linked before cancellation
+Expected:
+historical link preserved
+
+E. Current Guided DPR
+Expected:
+cancelled arrangement not prefilled
+
+F. Current Detailed DPR
+Expected:
+same
+
+G. Edit of historical pre-cancellation DPR
+Expected:
+historical context preserved according to existing edit/version rules
+
+H. Receipt/material context after cancellation
+Expected:
+cancelled arrangement does not drive current operational receipt context
+
+I. Historical report
+Expected:
+may show arrangement with cancelled-effective date
+
+--------------------------------------------------
+30. DO NOT TOUCH
+--------------------------------------------------
+
+Do NOT modify:
+
+- DPR quantity calculations
+- BOQ credit
+- cut/fill quantity formulas
+- equipment hire billing formulas
+- diesel recovery formulas
+- material trip quantities
+- Work Programme calculations
+- arrangement commercial terms
+- arrangement cancellation business action itself
+- Site Requirements
+- permissions
+- Vendor Bills
+- RMC
+- Stores
+- equipment multi-activity data schema unless strictly needed for existing implementation
+
+--------------------------------------------------
+31. SCHEMA / MIGRATION
+--------------------------------------------------
+
+This batch should normally require no new schema migration.
+
+Use:
+- existing equipment activity allocation table
+- existing arrangement effective-date/status history foundation
+
+If Replit believes another schema/migration is necessary:
+STOP and report first.
+
+No DROP.
+No DELETE.
+No RENAME.
+No destructive rewrite.
+
+--------------------------------------------------
+32. REPORT AND STOP
+--------------------------------------------------
+
+Report:
+
+1. Equipment form UX changes
+2. Font/readability changes
+3. Meter Working Hours display
+4. Clock Duration display
+5. Fuel performance display
+6. Mobile allocation layout
+7. Time-picker/input behavior
+8. Programme-bar visibility/resolution behavior
+9. Human-readable duration behavior
+10. Allocation validation basis
+11. Cancelled-arrangement root cause
+12. Effective-date resolver used
+13. Guided DPR arrangement changes
+14. Detailed / Classic changes
+15. Edit DPR changes
+16. Receipt/cut-fill context changes
+17. Historical arrangement behavior
+18. Files changed
+19. Tests run/results
+20. Schema/migration needed: yes/no
+
+STOP after this batch.
+
+Do not publish.
+Do not start another feature.

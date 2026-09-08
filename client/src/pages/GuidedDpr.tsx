@@ -74,10 +74,11 @@ import {
   withCutFillReadinessContext,
 } from "@/lib/cutFillLedger";
 import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
-import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
+import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
+import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
@@ -559,8 +560,18 @@ export default function GuidedDpr() {
     },
     enabled: !!boqProjectId,
   });
+  const dateEffectiveCutFillArrangements = useMemo(
+    () => cutFillArrangements
+      .filter((arrangement) => isArrangementOperationalAsOf(arrangement, date, APPLICABLE_ARRANGEMENT_STATUSES))
+      .map((arrangement) => ({ ...arrangement, status: arrangementStatusAsOf(arrangement, date) })),
+    [cutFillArrangements, date],
+  );
   const usesCutMaterialSource = (boqItemId: number | null) =>
-    boqItemId != null && blocksExternalReceiptsForBoqItem(cutFillArrangements, boqItemId);
+    boqItemId != null && blocksExternalReceiptsForBoqItem(dateEffectiveCutFillArrangements, boqItemId, date);
+  const operationalCutFillArrangementId = (arrangementId: number | null) =>
+    arrangementId != null && dateEffectiveCutFillArrangements.some((arrangement) => arrangement.id === arrangementId)
+      ? arrangementId
+      : null;
   const itemById = useMemo(() => {
     const m = new Map<number, SiteBoqItem>();
     boqItems.forEach((i) => m.set(i.id, i));
@@ -1312,7 +1323,7 @@ export default function GuidedDpr() {
       }
     }
     if (!options.skipCutFill) {
-      const cutFillIssues = validateCutFillForm(entries as any, boqItems, cutFillArrangements, [], true);
+      const cutFillIssues = validateCutFillForm(entries as any, boqItems, dateEffectiveCutFillArrangements, [], true);
       if (cutFillIssues.length > 0) {
         toast({ title: "Cut / fill reconciliation needed", description: cutFillIssues[0], variant: "destructive" });
         return false;
@@ -1842,7 +1853,7 @@ export default function GuidedDpr() {
               <CutFillOutcomeControls quantity={e.quantity} uom={e.uom} outcome={e.materialOutcome ?? null} reusableQty={e.reusableQty ?? null}
                 onOutcomeChange={(materialOutcome, reusableQty) => updateEntry(idx, { materialOutcome, reusableQty })} />
             ) : usesCutMaterialSource(e.boqItemId) ? (
-              <CutFillOutcomeControls fillMode projectId={boqProjectId} arrangementId={e.earthworkArrangementId}
+              <CutFillOutcomeControls fillMode projectId={boqProjectId} arrangementId={operationalCutFillArrangementId(e.earthworkArrangementId)}
                 boqItemDescription={e.boqItemId != null ? String(itemById.get(e.boqItemId)?.description ?? itemById.get(e.boqItemId)?.displayName ?? "") : ""}
                 quantity={e.quantity} outcome={null} reusableQty={null} allocations={e.allocations as any}
                 currentEntryKey={e.entryKey} formRows={entries as any} boqItems={boqItems}
@@ -2215,7 +2226,7 @@ export default function GuidedDpr() {
                           (type-driven presentation); any previously entered
                           values stay preserved in the passthrough bag. */}
                       {!isTripBased && (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
                           <Label className="text-xs text-muted-foreground">Opening{linked ? " (from plant — locked)" : ""}</Label>
                           <Input type="number" inputMode="decimal" placeholder="Reading" value={pt.openingReading ?? ""} readOnly={linked}
@@ -2231,13 +2242,13 @@ export default function GuidedDpr() {
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground">Start time</Label>
-                          <Input type="time" value={pt.startTime ?? ""}
+                          <Input type="time" value={pt.startTime ?? ""} className="h-12 text-base"
                             onChange={(ev) => setPassthroughField(i, "startTime", ev.target.value, false)}
                             data-testid={`input-eq-start-${i}`} />
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground">End time</Label>
-                          <Input type="time" value={pt.endTime ?? ""}
+                          <Input type="time" value={pt.endTime ?? ""} className="h-12 text-base"
                             onChange={(ev) => setPassthroughField(i, "endTime", ev.target.value, false)}
                             data-testid={`input-eq-end-${i}`} />
                         </div>
@@ -2626,7 +2637,7 @@ export default function GuidedDpr() {
                 materials: unmanagedSectionsRef.current.materials as any[],
               });
               if (r.mandatory.length > 0) { setReadiness(r); return; }
-              const cutFillIssues = validateCutFillForm(entries as any, boqItems, cutFillArrangements, [], true);
+              const cutFillIssues = validateCutFillForm(entries as any, boqItems, dateEffectiveCutFillArrangements, [], true);
               if (cutFillIssues.length > 0) {
                 toast({ title: "Cut / fill reconciliation needed", description: cutFillIssues[0], variant: "destructive" });
                 return;

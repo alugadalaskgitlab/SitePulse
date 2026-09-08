@@ -80,6 +80,22 @@ describe("06E arrangement resolution (spec §5/E)", () => {
     }
   });
 
+  it("uses the DPR/receipt date at the cancellation boundary", () => {
+    const cancelled = arr({
+      status: "cancelled",
+      revisionHistory: [{
+        eventType: "status_change",
+        previousStatus: "in_progress",
+        status: "cancelled",
+        effectiveFrom: "2026-08-20",
+        recordedAt: "2026-08-25T00:00:00.000Z",
+      }],
+    });
+    expect(resolveApplicableArrangements([cancelled], { ...ctx, operationalDate: "2026-08-19" }).prefill?.id).toBe(1);
+    expect(resolveApplicableArrangements([cancelled], { ...ctx, operationalDate: "2026-08-20" }).none).toBe(true);
+    expect(resolveApplicableArrangements([cancelled], { ...ctx, operationalDate: "2026-08-21" }).none).toBe(true);
+  });
+
   it("multi-item arrangement matches via boqItemAllocations; empty allocations never guess", () => {
     const multi = arr({ boqItemId: null, boqItemAllocations: [{ boqItemId: 100 }, { boqItemId: 101 }] });
     expect(resolveApplicableArrangements([multi], ctx).prefill?.id).toBe(1);
@@ -231,15 +247,34 @@ describe("06X-HF2 reused-excavated context", () => {
   it("cancelled/rejected persisted arrangements reopen as inactive while active persisted arrangements are unchanged", () => {
     for (const status of ["cancelled", "rejected"]) {
       const html = renderStrip([arr({ status })], 1);
-      expect(html).toBe("");
+      expect(html).toContain("Historical arrangement");
       expect(html).not.toContain('data-testid="hf2-arrangement-badge"');
       expect(html).not.toContain('data-testid="hf2-arranged-tag"');
+      expect(html).not.toContain("Required today");
     }
 
     const activeHtml = renderStrip([arr({ status: "in_progress" })], 1);
     expect(activeHtml).toContain('data-testid="hf2-arrangement-badge"');
     expect(activeHtml).toContain('data-testid="hf2-arranged-tag"');
     expect(activeHtml).not.toContain('data-testid="hf2-arrangement-unset"');
+  });
+
+  it("shows a persisted post-cancellation link as historical without operational receipt context", () => {
+    const cancelled = arr({
+      status: "cancelled",
+      revisionHistory: [{
+        eventType: "status_change",
+        previousStatus: "in_progress",
+        status: "cancelled",
+        effectiveFrom: "2026-08-10",
+        recordedAt: "2026-08-12T00:00:00.000Z",
+      }],
+    });
+    const html = renderStrip([cancelled], cancelled.id);
+    expect(html).toContain("Historical arrangement");
+    expect(html).toContain("Cancelled effective 10-Aug-2026");
+    expect(html).not.toContain("Required today");
+    expect(html).not.toContain('data-testid="hf2-arranged-tag"');
   });
 
   it("create and PATCH routes both enforce the shared explicit-source invariant", async () => {

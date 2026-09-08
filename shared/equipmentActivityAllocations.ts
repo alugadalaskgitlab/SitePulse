@@ -1,3 +1,5 @@
+import { formatEquipmentDuration } from "./equipmentUsage";
+
 export const EQUIPMENT_ALLOCATION_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export type EquipmentActivityAllocationInput = {
@@ -44,16 +46,36 @@ export function calculateEquipmentAllocationHours(startTime: string, endTime: st
   return Math.round(((end - start) / 60) * 1_000_000) / 1_000_000;
 }
 
+export function formatEquipmentAllocationDuration(startTime: string, endTime: string): string {
+  return formatEquipmentDuration(calculateEquipmentAllocationHours(startTime, endTime));
+}
+
+export type EquipmentAllocationParentBasis = "meter_working_hours" | "clock_duration" | "none";
+
+export function resolveEquipmentAllocationParentDuration(row: {
+  hoursWorked?: number | null;
+  startTime?: string | null;
+  endTime?: string | null;
+}): { hours: number | null; basis: EquipmentAllocationParentBasis } {
+  const stored = Number(row.hoursWorked);
+  if (row.hoursWorked != null && Number.isFinite(stored) && stored > 0) {
+    return { hours: stored, basis: "meter_working_hours" };
+  }
+  const clockHours = row.startTime && row.endTime
+    ? calculateEquipmentAllocationHours(row.startTime, row.endTime)
+    : null;
+  return {
+    hours: clockHours,
+    basis: clockHours == null ? "none" : "clock_duration",
+  };
+}
+
 export function resolveEquipmentAllocationParentHours(row: {
   hoursWorked?: number | null;
   startTime?: string | null;
   endTime?: string | null;
 }): number | null {
-  const stored = Number(row.hoursWorked);
-  if (row.hoursWorked != null && Number.isFinite(stored) && stored > 0) return stored;
-  return row.startTime && row.endTime
-    ? calculateEquipmentAllocationHours(row.startTime, row.endTime)
-    : null;
+  return resolveEquipmentAllocationParentDuration(row).hours;
 }
 
 export function validateEquipmentActivityAllocations(
@@ -70,7 +92,7 @@ export function validateEquipmentActivityAllocations(
       throw new EquipmentActivityAllocationError(`Allocation ${index + 1}: select a valid BOQ item.`);
     }
     if (input.programmeBarId != null && (!Number.isInteger(input.programmeBarId) || input.programmeBarId <= 0)) {
-      throw new EquipmentActivityAllocationError(`Allocation ${index + 1}: invalid programme bar.`);
+      throw new EquipmentActivityAllocationError(`Allocation ${index + 1}: the selected work reach is invalid.`);
     }
     const hoursWorked = calculateEquipmentAllocationHours(input.startTime, input.endTime);
     if (hoursWorked == null) {
@@ -101,7 +123,7 @@ export function validateEquipmentActivityAllocations(
   const finiteParentHours = parentHours == null ? null : Number(parentHours);
   if (finiteParentHours != null && Number.isFinite(finiteParentHours) && allocatedHours > finiteParentHours + 0.000001) {
     throw new EquipmentActivityAllocationError(
-      `Allocated time (${allocatedHours.toFixed(2)} h) exceeds parent operating time (${finiteParentHours.toFixed(2)} h).`,
+      `Allocated time (${formatEquipmentDuration(allocatedHours)}) exceeds the machine-day limit (${formatEquipmentDuration(finiteParentHours)}).`,
     );
   }
   return {

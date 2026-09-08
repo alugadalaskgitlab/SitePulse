@@ -30,10 +30,10 @@ describe("equipment usage form reorganisation contracts", () => {
 
   it("renders true fuel facts from one shared formula and labels physical confirmation clearly", () => {
     expect(compact).toContain("computeEquipmentFuelSummary");
-    expect(compact).toContain("Physical tank balance confirmed");
-    expect(compact).toContain("Actual consumed");
+    expect(compact).toContain("Physical Tank Balance Confirmed");
+    expect(compact).toContain("Actual Consumed");
     expect(compact).toContain("Variance");
-    expect(compact).toContain("Actual rate");
+    expect(compact).toContain("Actual Consumption Rate");
     expect(plant).toContain("computeEquipmentFuelSummary");
     expect(plant).toContain("const consumed = fuel.actualConsumed");
   });
@@ -44,7 +44,21 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(allocation).toContain("parentEndTime");
     expect(allocation).toContain('const needsBarPicker = bars.length > 1');
     expect(allocation).toContain("bars.length === 1");
+    expect(allocation).toContain("Which work reach?");
+    expect(allocation).not.toContain("Programme distinction");
+    expect(allocation).toContain("formatEquipmentAllocationDuration");
+    expect(allocation).toContain("Add another activity");
     expect(allocation).not.toContain(">Task<");
+  });
+
+  it("shows separate readable usage and fuel performance blocks", () => {
+    expect(compact).toContain("Meter Working Hours");
+    expect(compact).toContain("Clock Duration");
+    expect(compact).toContain("Usage Summary");
+    expect(compact).toContain("Fuel Performance");
+    expect(compact).not.toContain('label={preview.totalKm != null ? "Distance" : "Operating time"}');
+    expect(allocation).toContain("Allocation validation limit uses");
+    expect(allocation).not.toMatch(/text-\[(?:9|10)px\]/);
   });
 
   it("shows the same parent equipment summary in both submitted DPR views", () => {

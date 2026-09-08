@@ -30,12 +30,30 @@ export interface EquipmentFuelSummary {
 }
 export const AVERAGE_SPEED_KMPH = 25;
 
-function timeToHours(start?: string | null, end?: string | null): number | null {
+export function calculateEquipmentClockDuration(start?: string | null, end?: string | null): number | null {
   if (!start || !end) return null;
   const s = start.split(":").map(Number), e = end.split(":").map(Number);
-  if (s.some(Number.isNaN) || e.some(Number.isNaN)) return null;
+  if (s.length < 2 || e.length < 2 || s.some(Number.isNaN) || e.some(Number.isNaN)) return null;
   const minutes = (e[0] * 60 + e[1]) - (s[0] * 60 + s[1]);
   return minutes > 0 ? minutes / 60 : null;
+}
+
+/** Formats decimal hours for field users without changing the stored value. */
+export function formatEquipmentDuration(hours?: number | null): string {
+  if (hours == null || !Number.isFinite(Number(hours)) || Number(hours) < 0) return "—";
+  const totalMinutes = Math.round(Number(hours) * 60);
+  const wholeHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (wholeHours === 0) return `${minutes} min`;
+  if (minutes === 0) return `${wholeHours} h`;
+  return `${wholeHours} h ${String(minutes).padStart(2, "0")} min`;
+}
+
+export function formatEquipmentTime(value?: string | null): string {
+  if (!value || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return "—";
+  const [hourText, minute] = value.split(":");
+  const hour = Number(hourText);
+  return `${hour % 12 || 12}:${minute} ${hour < 12 ? "AM" : "PM"}`;
 }
 function meterDiff(opening?: number | null, closing?: number | null): number | null {
   if (opening == null || closing == null) return null;
@@ -51,7 +69,7 @@ export function computeEquipmentUsage(equipment: EquipmentUsageEquipment | null 
   const norm = equipment?.consumptionNorm ?? null;
   const explicitTrip = entry.entryType === "trip_based" || !!entry.tripBasedEntry;
   const meters = meterDiff(entry.openingReading, entry.closingReading);
-  const time = timeToHours(entry.startTime, entry.endTime);
+  const time = calculateEquipmentClockDuration(entry.startTime, entry.endTime);
   const trips = tripKm(entry.numberOfTrips, entry.tripDistance);
   const build = (basis: UsageBasis, hoursWorked: number | null, totalKm: number | null, runtime: number, appliedNorm: number | null, unit: "L/hr" | "L/km", warning: string | null): EquipmentUsageResult => ({
     meterType, basis, hoursWorked, totalKm, runtime,

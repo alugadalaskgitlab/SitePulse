@@ -16,6 +16,7 @@
 // execution formula.
 
 import { convertSolidQty, normalizeUom as normalizeConvertibleUom } from "./uomConvert";
+import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "./arrangementStatusHistory";
 
 // ---------- Arrangement types ----------
 
@@ -131,6 +132,7 @@ export interface ApplicableArrangementInput {
   reachLabel?: string | null;
   chainageFrom?: number | null;
   chainageTo?: number | null;
+  revisionHistory?: unknown;
 }
 
 export interface ArrangementBarAllocation {
@@ -167,11 +169,12 @@ export function arrangementCoveredBoqItemIds(a: ApplicableArrangementInput): num
 export function blocksExternalReceiptsForBoqItem(
   arrangements: ApplicableArrangementInput[],
   boqItemId: number,
+  operationalDate?: string | null,
 ): boolean {
   return arrangements.some(
     (arrangement) =>
       arrangement.arrangementType === "reused_excavated" &&
-      ["draft", "submitted", "approved"].includes(arrangement.status) &&
+      ["draft", "submitted", "approved"].includes(arrangementStatusAsOf(arrangement, operationalDate)) &&
       arrangementCoveredBoqItemIds(arrangement).includes(Number(boqItemId)),
   );
 }
@@ -254,6 +257,7 @@ export function resolveApplicableArrangements<T extends ApplicableArrangementInp
     reachLabel?: string | null;
     chainageFrom?: number | null;
     chainageTo?: number | null;
+    operationalDate?: string | null;
   },
   barAllocations?: ArrangementBarAllocation[],
 ): ArrangementResolution<T> {
@@ -280,7 +284,7 @@ export function resolveApplicableArrangements<T extends ApplicableArrangementInp
   let applicable = arrangements.filter(
     (a) =>
       a.boqProjectId === ctx.boqProjectId &&
-      (APPLICABLE_ARRANGEMENT_STATUSES as readonly string[]).includes(a.status) &&
+      isArrangementOperationalAsOf(a, ctx.operationalDate, APPLICABLE_ARRANGEMENT_STATUSES) &&
       reusedExcavationConfigurationIssue(a) == null &&
       arrangementCoversItem(a, ctx.boqItemId) &&
       scopeMatches(a),

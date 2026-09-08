@@ -650,6 +650,7 @@ export default function SiteMaterialTrips() {
               {newTrip.site && (
                 <ReceiptWorkContext
                   siteName={newTrip.site}
+                  operationalDate={newTrip.date}
                   sitesList={sitesList}
                   value={workCtx}
                   onChange={setWorkCtx}

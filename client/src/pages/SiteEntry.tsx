@@ -69,10 +69,11 @@ import {
   withCutFillReadinessContext,
 } from "@/lib/cutFillLedger";
 import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
-import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
+import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
-import { withEquipmentCreationStartTime } from "@shared/equipmentUsage";
+import { calculateEquipmentClockDuration, formatEquipmentDuration, withEquipmentCreationStartTime } from "@shared/equipmentUsage";
+import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 
 interface ProgressEntry {
   // Batch 06C §22: stable client key so photos can link to this activity row
@@ -254,14 +255,8 @@ interface SiteEntryFormData {
 // Do not re-implement here — the shared module is the single source of truth.
 
 function formatTimeDuration(start: string, end: string): string | null {
-  if (!start || !end) return null;
-  try {
-    const [sh, sm] = start.split(':').map(Number);
-    const [eh, em] = end.split(':').map(Number);
-    const diff = (eh * 60 + em) - (sh * 60 + sm);
-    if (diff <= 0) return null;
-    return `${String(Math.floor(diff / 60)).padStart(2, '0')}:${String(diff % 60).padStart(2, '0')}`;
-  } catch { return null; }
+  const hours = calculateEquipmentClockDuration(start, end);
+  return hours == null ? null : formatEquipmentDuration(hours);
 }
 
 // BOQ item display naming — shared single source of truth (shared/boqItemName.ts).
@@ -491,8 +486,18 @@ export default function SiteEntry() {
     },
     enabled: !!siteBoqProjectId,
   });
+  const dateEffectiveCutFillArrangements = useMemo(
+    () => cutFillArrangements
+      .filter((arrangement) => isArrangementOperationalAsOf(arrangement, header.date, APPLICABLE_ARRANGEMENT_STATUSES))
+      .map((arrangement) => ({ ...arrangement, status: arrangementStatusAsOf(arrangement, header.date) })),
+    [cutFillArrangements, header.date],
+  );
   const usesCutMaterialSource = (boqItemId: number | null) =>
-    boqItemId != null && blocksExternalReceiptsForBoqItem(cutFillArrangements, boqItemId);
+    boqItemId != null && blocksExternalReceiptsForBoqItem(dateEffectiveCutFillArrangements, boqItemId, header.date);
+  const operationalCutFillArrangementId = (arrangementId: number | null) =>
+    arrangementId != null && dateEffectiveCutFillArrangements.some((arrangement) => arrangement.id === arrangementId)
+      ? arrangementId
+      : null;
 
   // ── Phase 2: Programme-linked DPR entry ────────────────────────────────
   // Reuses the existing Work Programme + Plan vs Actual read endpoints (no new
@@ -1616,7 +1621,7 @@ export default function SiteEntry() {
       setReadiness(r);
       return;
     }
-    const cutFillIssues = validateCutFillForm(progress as any, siteBoqItems, cutFillArrangements, [], true);
+    const cutFillIssues = validateCutFillForm(progress as any, siteBoqItems, dateEffectiveCutFillArrangements, [], true);
     if (cutFillIssues.length > 0) {
       toast({ title: "Cut / fill reconciliation needed", description: cutFillIssues[0], variant: "destructive" });
       return;
@@ -1630,7 +1635,7 @@ export default function SiteEntry() {
 
   // Over-balance confirmation runs AFTER readiness (both are confirm steps).
   const continueSubmitAfterReadiness = () => {
-    const cutFillIssues = validateCutFillForm(progress as any, siteBoqItems, cutFillArrangements, [], true);
+    const cutFillIssues = validateCutFillForm(progress as any, siteBoqItems, dateEffectiveCutFillArrangements, [], true);
     if (cutFillIssues.length > 0) {
       toast({ title: "Cut / fill reconciliation needed", description: cutFillIssues[0], variant: "destructive" });
       return;
@@ -2608,7 +2613,7 @@ export default function SiteEntry() {
                     <CutFillOutcomeControls quantity={entry.quantity} uom={progressUom(entry)} outcome={entry.materialOutcome ?? null} reusableQty={entry.reusableQty ?? null}
                       onOutcomeChange={(materialOutcome, reusableQty) => { const updated = [...progress]; updated[idx] = { ...updated[idx], materialOutcome, reusableQty }; setProgress(updated); }} />
                   ) : usesCutMaterialSource(entry.boqItemId) ? (
-                    <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={entry.earthworkArrangementId}
+                    <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={operationalCutFillArrangementId(entry.earthworkArrangementId)}
                       boqItemDescription={entry.boqItemId != null ? String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? siteBoqItems.find(i => i.id === entry.boqItemId)?.displayName ?? "") : ""}
                       quantity={entry.quantity} outcome={null} reusableQty={null} allocations={entry.allocations as any}
                       currentEntryKey={entry.entryKey} formRows={progress as any} boqItems={siteBoqItems}
@@ -2920,7 +2925,7 @@ export default function SiteEntry() {
                     </p>
                     <p className="text-sm text-muted-foreground italic">Enter opening reading and diesel in the morning. Closing reading and end time can be added later.</p>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       <div>
                         <Label className="text-sm">Start Time</Label>
                         <Input
@@ -2931,6 +2936,7 @@ export default function SiteEntry() {
                             updated[idx].startTime = e.target.value;
                             setEquipment(updated);
                           }}
+                          className="h-12 text-base"
                           data-testid={`input-equipment-start-${idx}`}
                         />
                       </div>
@@ -2944,6 +2950,7 @@ export default function SiteEntry() {
                             updated[idx].endTime = e.target.value;
                             setEquipment(updated);
                           }}
+                          className="h-12 text-base"
                           data-testid={`input-equipment-end-${idx}`}
                         />
                       </div>

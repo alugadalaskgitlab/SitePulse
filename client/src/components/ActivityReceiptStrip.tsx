@@ -43,6 +43,11 @@ import {
   type SuggestableTrip,
 } from "@shared/materialReceiptSummary";
 import { findDailyFulfilmentForItem, fulfilmentLabel } from "@shared/requirementFulfilment";
+import {
+  arrangementStatusAsOf,
+  cancelledEffectiveFromAsOf,
+  isArrangementOperationalAsOf,
+} from "@shared/arrangementStatusHistory";
 
 const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 const ACTIVE_ARRANGEMENT_STATUSES = new Set(["approved", "mobilisation_pending", "in_progress"]);
@@ -67,6 +72,7 @@ interface ArrangementRow {
   reachLabel?: string | null;
   chainageFrom?: number | null;
   chainageTo?: number | null;
+  revisionHistory?: unknown;
 }
 
 // 06T-HF §3: plain operational label for the compact execution tag.
@@ -178,8 +184,8 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
   );
 
   const resolution = useMemo(
-    () => resolveApplicableArrangements(arrangements, { boqProjectId, boqItemId, programmeBarId }, allocations),
-    [arrangements, boqProjectId, boqItemId, programmeBarId, allocations],
+    () => resolveApplicableArrangements(arrangements, { boqProjectId, boqItemId, programmeBarId, operationalDate: date }, allocations),
+    [arrangements, boqProjectId, boqItemId, programmeBarId, date, allocations],
   );
   const sourceReuseContexts = useMemo(
     () => resolveReusedExcavationSourceContexts(arrangements, boqItemId),
@@ -188,19 +194,19 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
   const validSourceReuseContexts = useMemo(
     () => sourceReuseContexts.filter(
       (candidate) =>
-        ACTIVE_ARRANGEMENT_STATUSES.has(String(candidate.status).toLowerCase()) &&
+        isArrangementOperationalAsOf(candidate, date, Array.from(ACTIVE_ARRANGEMENT_STATUSES)) &&
         reusedExcavationConfigurationIssue(candidate) == null,
     ),
-    [sourceReuseContexts],
+    [sourceReuseContexts, date],
   );
   const invalidReuseArrangement = useMemo(
     () => arrangements.find(
       (candidate) =>
-        ACTIVE_ARRANGEMENT_STATUSES.has(String(candidate.status).toLowerCase()) &&
+        isArrangementOperationalAsOf(candidate, date, Array.from(ACTIVE_ARRANGEMENT_STATUSES)) &&
         reusedExcavationConfigurationIssue(candidate) != null &&
         arrangementCoveredBoqItemIds(candidate).includes(boqItemId),
     ) ?? null,
-    [arrangements, boqItemId],
+    [arrangements, boqItemId, date],
   );
   // Operational resolution priority (06G §3):
   //  1. today's daily fulfilment naming a specific arrangement;
@@ -228,12 +234,21 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
   // Preserve the stored ID as historical DPR data, but an invalid legacy reuse
   // configuration must not drive "no receipt" semantics. The generic strip
   // below reports the configuration warning without rewriting the row.
-  const persistedArrangement =
+  const persistedArrangementIsOperational =
     persistedArrangementCandidate != null &&
-    ACTIVE_ARRANGEMENT_STATUSES.has(String(persistedArrangementCandidate.status).toLowerCase()) &&
+    isArrangementOperationalAsOf(persistedArrangementCandidate, date, Array.from(ACTIVE_ARRANGEMENT_STATUSES));
+  const persistedArrangement =
+    persistedArrangementIsOperational &&
     reusedExcavationConfigurationIssue(persistedArrangementCandidate) == null
       ? persistedArrangementCandidate
       : null;
+  const historicalPersistedArrangement =
+    persistedArrangementCandidate != null && !persistedArrangementIsOperational
+      ? persistedArrangementCandidate
+      : null;
+  const historicalCancellationDate = historicalPersistedArrangement
+    ? cancelledEffectiveFromAsOf(historicalPersistedArrangement, date)
+    : null;
   const arrangement =
     persistedArrangement ??
     dailyArrangement ??
@@ -249,8 +264,8 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
   }, [arrangement?.id, props.persistedArrangementId, onArrangementResolved]);
   const relevance = receiptRelevanceForType(arrangement?.arrangementType);
   const externalReceiptsBlocked = useMemo(
-    () => blocksExternalReceiptsForBoqItem(arrangements, boqItemId),
-    [arrangements, boqItemId],
+    () => blocksExternalReceiptsForBoqItem(arrangements, boqItemId, date),
+    [arrangements, boqItemId, date],
   );
   // Non-arrangement daily overrides for TODAY's supplier display:
   const dailyOverride =
@@ -391,11 +406,12 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
       <div className="rounded-md border bg-muted/30 p-3 space-y-1 text-xs" data-testid={`${testIdPrefix}-source-reuse-context`}>
         {validSourceReuseContexts.map((context) => {
           const destinations = context.destinationBoqItemLabels?.filter(Boolean).join(", ") || context.materialLabel || "configured fill item";
-          const operational = ["approved", "mobilisation_pending", "in_progress"].includes(context.status);
+          const statusAsOfDate = arrangementStatusAsOf(context, date);
+          const operational = ["approved", "mobilisation_pending", "in_progress"].includes(statusAsOfDate);
           return (
             <p key={context.id} className={operational ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400"}>
               Cut-to-fill reuse: excavated material supplies {destinations} · {arrangementScopeLabel(context)}
-              {!operational ? ` · ${context.status === "submitted" ? "awaiting approval" : context.status}` : ""}
+              {!operational ? ` · ${statusAsOfDate === "submitted" ? "awaiting approval" : statusAsOfDate}` : ""}
             </p>
           );
         })}
@@ -445,7 +461,15 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     invalidReuseArrangement == null &&
     linkedTrips.length === 0 &&
     suggestedTrips.length === 0
-  ) return null;
+  ) {
+    if (!historicalPersistedArrangement) return null;
+    return (
+      <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground" data-testid={`${testIdPrefix}-historical-arrangement`}>
+        Historical arrangement: {historicalPersistedArrangement.agencyName || `Arrangement #${historicalPersistedArrangement.id}`}
+        {historicalCancellationDate ? ` · Cancelled effective ${format(new Date(`${historicalCancellationDate}T00:00:00`), "dd-MMM-yyyy")}` : ` · ${arrangementStatusAsOf(historicalPersistedArrangement, date)}`}
+      </div>
+    );
+  }
   if (relevance === "none" && !arrangement && linkedTrips.length === 0 && suggestedTrips.length === 0) return null;
 
   return (
@@ -472,6 +496,12 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
           <Badge variant="outline">Client supplied — not an HLC payable</Badge>
         )}
       </div>
+      {historicalPersistedArrangement && (
+        <p className="text-xs text-muted-foreground" data-testid={`${testIdPrefix}-historical-arrangement`}>
+          Historical arrangement: {historicalPersistedArrangement.agencyName || `Arrangement #${historicalPersistedArrangement.id}`}
+          {historicalCancellationDate ? ` · Cancelled effective ${format(new Date(`${historicalCancellationDate}T00:00:00`), "dd-MMM-yyyy")}` : ` · ${arrangementStatusAsOf(historicalPersistedArrangement, date)}`}
+        </p>
+      )}
 
       {/* 06T-HF §3: compact operational tag — Arranged / Supplied / Balance
           from the resolved arrangement + cumulative linked-trip aggregation. */}

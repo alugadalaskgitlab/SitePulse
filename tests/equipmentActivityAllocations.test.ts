@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   EquipmentActivityAllocationError,
   calculateEquipmentAllocationHours,
+  formatEquipmentAllocationDuration,
+  resolveEquipmentAllocationParentDuration,
   resolveEquipmentAllocationParentHours,
   resolveEquipmentBoqHours,
   validateEquipmentActivityAllocations,
@@ -65,7 +67,7 @@ describe("equipment activity allocations", () => {
     expect(() => validateEquipmentActivityAllocations([
       allocation(11, "08:00", "13:00"),
       allocation(22, "13:00", "17:00"),
-    ], 8)).toThrow(/exceeds parent operating time/i);
+    ], 8)).toThrow(/exceeds the machine-day limit/i);
   });
 
   it("F: allows partial allocation and reports unallocated time", () => {
@@ -138,6 +140,11 @@ describe("equipment activity allocations", () => {
     expect(calculateEquipmentAllocationHours("23:00", "01:00")).toBeNull();
     expect(calculateEquipmentAllocationHours("8:00", "09:00")).toBeNull();
     expect(resolveEquipmentAllocationParentHours({ hoursWorked: null, startTime: "08:00", endTime: "16:00" })).toBe(8);
+    expect(resolveEquipmentAllocationParentDuration({ hoursWorked: 7.5, startTime: "09:15", endTime: "17:21" }))
+      .toEqual({ hours: 7.5, basis: "meter_working_hours" });
+    expect(resolveEquipmentAllocationParentDuration({ hoursWorked: null, startTime: "09:15", endTime: "17:21" }))
+      .toEqual({ hours: 8.1, basis: "clock_duration" });
+    expect(formatEquipmentAllocationDuration("09:15", "12:30")).toBe("3 h 15 min");
   });
 
   it("rejects invalid BOQ and programme identities before persistence", () => {
@@ -145,6 +152,6 @@ describe("equipment activity allocations", () => {
       .toThrow(EquipmentActivityAllocationError);
     expect(() => validateEquipmentActivityAllocations([
       { ...allocation(11, "08:00", "09:00"), programmeBarId: -1 },
-    ], 8)).toThrow(/invalid programme bar/i);
+    ], 8)).toThrow(/work reach is invalid/i);
   });
 });

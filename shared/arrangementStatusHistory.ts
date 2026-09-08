@@ -8,6 +8,11 @@ export interface ArrangementStatusChangeEvent {
   reason: string | null;
 }
 
+export interface ArrangementStatusAsOfInput {
+  status: string;
+  revisionHistory?: unknown;
+}
+
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function isValidArrangementEffectiveDate(value: unknown): value is string {
@@ -42,6 +47,63 @@ export function latestRecordedArrangementStatusChange(
     }
   }
   return null;
+}
+
+/**
+ * Resolve the arrangement's lifecycle status on a calendar date. Events are
+ * ordered by their business-effective date (not by when they were recorded).
+ * Before the first recorded transition, that transition's previousStatus is
+ * the best persisted evidence; after it, the latest effective event wins.
+ */
+export function arrangementStatusAsOf(
+  arrangement: ArrangementStatusAsOfInput,
+  asOf: string | null | undefined,
+): string {
+  if (!isValidArrangementEffectiveDate(asOf)) return arrangement.status;
+  if (!Array.isArray(arrangement.revisionHistory)) return arrangement.status;
+
+  const events = arrangement.revisionHistory
+    .map((value, index) => ({ value: value as any, index }))
+    .filter(({ value }) =>
+      value?.eventType === "status_change"
+      && typeof value?.status === "string"
+      && typeof value?.previousStatus === "string"
+      && isValidArrangementEffectiveDate(value?.effectiveFrom))
+    .sort((a, b) =>
+      a.value.effectiveFrom.localeCompare(b.value.effectiveFrom)
+      || String(a.value.recordedAt ?? "").localeCompare(String(b.value.recordedAt ?? ""))
+      || a.index - b.index);
+
+  if (events.length === 0) return arrangement.status;
+  const effective = events.filter(({ value }) => value.effectiveFrom <= asOf);
+  if (effective.length > 0) return effective[effective.length - 1].value.status;
+  return events[0].value.previousStatus;
+}
+
+export function isArrangementOperationalAsOf(
+  arrangement: ArrangementStatusAsOfInput,
+  asOf: string | null | undefined,
+  operationalStatuses: readonly string[],
+): boolean {
+  return operationalStatuses.includes(arrangementStatusAsOf(arrangement, asOf));
+}
+
+export function cancelledEffectiveFromAsOf(
+  arrangement: ArrangementStatusAsOfInput,
+  asOf: string | null | undefined,
+): string | null {
+  if (!isValidArrangementEffectiveDate(asOf) || !Array.isArray(arrangement.revisionHistory)) return null;
+  const dates = arrangement.revisionHistory
+    .filter((event: any) =>
+      event?.eventType === "status_change"
+      && event?.status === "cancelled"
+      && isValidArrangementEffectiveDate(event?.effectiveFrom)
+      && event.effectiveFrom <= asOf)
+    .map((event: any) => event.effectiveFrom as string)
+    .sort();
+  return arrangementStatusAsOf(arrangement, asOf) === "cancelled"
+    ? dates[dates.length - 1] ?? null
+    : null;
 }
 
 export function appendArrangementStatusChange(

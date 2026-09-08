@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   computeEquipmentFuelSummary,
   computeEquipmentUsage,
+  calculateEquipmentClockDuration,
   currentLocalEquipmentTime,
+  formatEquipmentDuration,
+  formatEquipmentTime,
   withEquipmentCreationStartTime,
 } from "../shared/equipmentUsage";
 
@@ -74,5 +77,12 @@ describe("canonical equipment usage calculation", () => {
     expect(currentLocalEquipmentTime(now)).toBe("09:15");
     expect(withEquipmentCreationStartTime({ startTime: "" }, now).startTime).toBe("09:15");
     expect(withEquipmentCreationStartTime({ startTime: "07:40" }, now).startTime).toBe("07:40");
+  });
+
+  it("formats clock duration and field times without changing decimal-hour data", () => {
+    expect(calculateEquipmentClockDuration("09:15", "17:21")).toBe(8.1);
+    expect(formatEquipmentDuration(8.1)).toBe("8 h 06 min");
+    expect(formatEquipmentDuration(3.25)).toBe("3 h 15 min");
+    expect(formatEquipmentTime("17:21")).toBe("5:21 PM");
   });
 });

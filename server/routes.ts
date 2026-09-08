@@ -28,7 +28,7 @@ import { isLayerCapableItem } from "@shared/layerDisplay";
 import { boqItemDisplayName, shortItemName as sharedShortItemName, trustedCanonicalBoqName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
-import { appendArrangementStatusChange, hasRecordedArrangementStatusChange, isValidArrangementEffectiveDate } from "@shared/arrangementStatusHistory";
+import { appendArrangementStatusChange, arrangementStatusAsOf, hasRecordedArrangementStatusChange, isValidArrangementEffectiveDate } from "@shared/arrangementStatusHistory";
 import { computeDieselReceiptState } from "@shared/dieselReceiptStatus";
 import { validateFulfilment } from "@shared/requirementFulfilment";
 import { validateOutcomeInput, resolveCarryTargetDate, buildCarryForwardPlan, buildOutcomeRecord, computeExecutionComparison, businessToday } from "@shared/planOutcome";
@@ -647,9 +647,11 @@ export async function registerRoutes(
     programmeBarId?: number | null;
     earthworkArrangementId?: number | null;
     site?: string | null;
+    operationalDate?: string | null;
+    allowHistoricalArrangementId?: number | null;
     requireProjectItemPair?: boolean;
   }): Promise<string | null> => {
-    const { boqProjectId, boqItemId, programmeBarId, earthworkArrangementId, site, requireProjectItemPair } = input;
+    const { boqProjectId, boqItemId, programmeBarId, earthworkArrangementId, site, operationalDate, allowHistoricalArrangementId, requireProjectItemPair } = input;
     if (requireProjectItemPair && (boqProjectId == null || boqItemId == null)) {
       return "boqProjectId and boqItemId are required for a material trip";
     }
@@ -693,6 +695,12 @@ export async function registerRoutes(
       if (boqProjectId != null && arrangement.boqProjectId !== boqProjectId) {
         return `Arrangement ${earthworkArrangementId} does not belong to project ${boqProjectId}`;
       }
+      if (
+        earthworkArrangementId !== allowHistoricalArrangementId
+        && !["approved", "mobilisation_pending", "in_progress"].includes(arrangementStatusAsOf(arrangement, operationalDate))
+      ) {
+        return `Arrangement ${earthworkArrangementId} is not operational on ${operationalDate ?? "the receipt date"}`;
+      }
       // Single-item arrangements must match the receipt's BOQ item; multi-item
       // arrangements (boqItemId null + jsonb allocations) are checked against
       // their allocation list when present.
@@ -708,7 +716,7 @@ export async function registerRoutes(
     }
     if (boqProjectId != null && boqItemId != null) {
       const itemArrangements = await storage.getEarthworkArrangementsForItem(boqProjectId, boqItemId);
-      if (blocksExternalReceiptsForBoqItem(itemArrangements, boqItemId)) {
+      if (blocksExternalReceiptsForBoqItem(itemArrangements, boqItemId, operationalDate)) {
         return "This BOQ item's material comes from the Roadway Excavation cut-fill ledger and cannot accept an external material trip";
       }
     }
@@ -730,7 +738,7 @@ export async function registerRoutes(
       if (input.internalEquipmentId != null && input.transportType !== "in_house") {
         return res.status(400).json({ message: "internalEquipmentId is only allowed for in-house transport" });
       }
-      const linkageError = await validateTripLinkage({ ...input, requireProjectItemPair: true });
+      const linkageError = await validateTripLinkage({ ...input, operationalDate: input.date, requireProjectItemPair: true });
       if (linkageError) return res.status(400).json({ message: linkageError });
       const trip = await storage.createSiteMaterialTrip(input);
       sendPushToSection("site_materials", "Site Material Trip Added", `${input.material || 'Material'} - ${input.site || ''}`, "/site-reports").catch(() => {});
@@ -771,6 +779,8 @@ export async function registerRoutes(
           const linkageError = await validateTripLinkage({
             ...merged,
             site: ("site" in input ? input.site : existing.site) ?? null,
+            operationalDate: ("date" in input ? input.date : existing.date) ?? null,
+            allowHistoricalArrangementId: existing.earthworkArrangementId,
             requireProjectItemPair: true,
           });
           if (linkageError) return res.status(400).json({ message: linkageError });

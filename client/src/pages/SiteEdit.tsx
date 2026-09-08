@@ -61,10 +61,11 @@ import {
   withCutFillReadinessContext,
 } from "@/lib/cutFillLedger";
 import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
-import { blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
+import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
-import { withEquipmentCreationStartTime } from "@shared/equipmentUsage";
+import { calculateEquipmentClockDuration, formatEquipmentDuration, withEquipmentCreationStartTime } from "@shared/equipmentUsage";
+import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 
 interface ProgressEntry {
   /** Client-only database id for exact-row report deep links; stripped on save. */
@@ -175,14 +176,8 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
 
 function formatTimeDuration(start: string, end: string): string | null {
-  if (!start || !end) return null;
-  try {
-    const [sh, sm] = start.split(':').map(Number);
-    const [eh, em] = end.split(':').map(Number);
-    const diff = (eh * 60 + em) - (sh * 60 + sm);
-    if (diff <= 0) return null;
-    return `${String(Math.floor(diff / 60)).padStart(2, '0')}:${String(diff % 60).padStart(2, '0')}`;
-  } catch { return null; }
+  const hours = calculateEquipmentClockDuration(start, end);
+  return hours == null ? null : formatEquipmentDuration(hours);
 }
 
 interface StructureItem {
@@ -456,8 +451,18 @@ export default function SiteEdit() {
     },
     enabled: !!siteBoqProjectId,
   });
+  const dateEffectiveCutFillArrangements = useMemo(
+    () => cutFillArrangements
+      .filter((arrangement) => isArrangementOperationalAsOf(arrangement, header.date, APPLICABLE_ARRANGEMENT_STATUSES))
+      .map((arrangement) => ({ ...arrangement, status: arrangementStatusAsOf(arrangement, header.date) })),
+    [cutFillArrangements, header.date],
+  );
   const usesCutMaterialSource = (boqItemId: number | null) =>
-    boqItemId != null && blocksExternalReceiptsForBoqItem(cutFillArrangements, boqItemId);
+    boqItemId != null && blocksExternalReceiptsForBoqItem(dateEffectiveCutFillArrangements, boqItemId, header.date);
+  const operationalCutFillArrangementId = (arrangementId: number | null) =>
+    arrangementId != null && dateEffectiveCutFillArrangements.some((arrangement) => arrangement.id === arrangementId)
+      ? arrangementId
+      : null;
 
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
@@ -1221,7 +1226,7 @@ export default function SiteEdit() {
   };
 
   const validateCutFillForFinal = () => {
-    const issues = validateCutFillForm(progress as any, siteBoqItems, cutFillArrangements, [], true);
+    const issues = validateCutFillForm(progress as any, siteBoqItems, dateEffectiveCutFillArrangements, [], true);
     if (issues.length === 0) return true;
     toast({ title: "Cut / fill reconciliation needed", description: issues[0], variant: "destructive" });
     return false;
@@ -2123,7 +2128,7 @@ export default function SiteEdit() {
                       <CutFillOutcomeControls quantity={entry.quantity} uom={progressUom(entry)} outcome={entry.materialOutcome ?? null} reusableQty={entry.reusableQty ?? null}
                         onOutcomeChange={(materialOutcome, reusableQty) => { const updated = [...progress]; updated[idx] = { ...updated[idx], materialOutcome, reusableQty }; setProgress(updated); }} />
                     ) : usesCutMaterialSource(entry.boqItemId) ? (
-                    <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={entry.earthworkArrangementId}
+                    <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={operationalCutFillArrangementId(entry.earthworkArrangementId)}
                       boqItemDescription={entry.boqItemId != null ? String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? siteBoqItems.find(i => i.id === entry.boqItemId)?.displayName ?? "") : ""}
                       quantity={entry.quantity} outcome={null} reusableQty={null} allocations={entry.allocations as any}
                       currentEntryKey={entry.entryKey} formRows={progress as any} boqItems={siteBoqItems}
@@ -2506,7 +2511,7 @@ export default function SiteEdit() {
                   <p className="text-sm font-semibold text-muted-foreground border-b pb-1">
                     {entry.entryType === "hourly" ? "Hourly Hire — Time Entry" : "Time / Meter Entry"}
                   </p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     <div>
                       <Label className="text-sm">Start</Label>
                       <Input
@@ -2518,6 +2523,7 @@ export default function SiteEdit() {
                           updated[idx].startTime = e.target.value;
                           setEquipment(updated);
                         }}
+                        className="h-12 text-base"
                         data-testid={`input-equipment-start-${idx}`}
                       />
                     </div>
@@ -2531,6 +2537,7 @@ export default function SiteEdit() {
                           updated[idx].endTime = e.target.value;
                           setEquipment(updated);
                         }}
+                        className="h-12 text-base"
                         data-testid={`input-equipment-end-${idx}`}
                       />
                     </div>

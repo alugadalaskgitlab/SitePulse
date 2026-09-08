@@ -5,6 +5,9 @@ import {
   hasRecordedArrangementStatusChange,
   isValidArrangementEffectiveDate,
   latestRecordedArrangementStatusChange,
+  arrangementStatusAsOf,
+  cancelledEffectiveFromAsOf,
+  isArrangementOperationalAsOf,
 } from "../shared/arrangementStatusHistory";
 
 describe("execution arrangement status history foundation", () => {
@@ -60,6 +63,55 @@ describe("execution arrangement status history foundation", () => {
     expect(hasRecordedArrangementStatusChange(confirmed, "cancelled")).toBe(true);
     expect(hasRecordedArrangementStatusChange(confirmed, "approved")).toBe(false);
     expect(latestRecordedArrangementStatusChange(confirmed, "cancelled")?.effectiveFrom).toBe("2026-08-20");
+  });
+
+  it("resolves the cancellation boundary by effective date, not mutable status", () => {
+    const arrangement = {
+      status: "cancelled",
+      revisionHistory: [{
+        eventType: "status_change",
+        previousStatus: "in_progress",
+        status: "cancelled",
+        effectiveFrom: "2026-08-20",
+        recordedAt: "2026-09-06T10:00:00.000Z",
+        changedBy: 42,
+        reason: null,
+      }],
+    };
+    expect(arrangementStatusAsOf(arrangement, "2026-08-19")).toBe("in_progress");
+    expect(arrangementStatusAsOf(arrangement, "2026-08-20")).toBe("cancelled");
+    expect(arrangementStatusAsOf(arrangement, "2026-08-21")).toBe("cancelled");
+    expect(isArrangementOperationalAsOf(arrangement, "2026-08-19", ["in_progress"])).toBe(true);
+    expect(isArrangementOperationalAsOf(arrangement, "2026-08-20", ["in_progress"])).toBe(false);
+    expect(cancelledEffectiveFromAsOf(arrangement, "2026-08-19")).toBeNull();
+    expect(cancelledEffectiveFromAsOf(arrangement, "2026-08-20")).toBe("2026-08-20");
+  });
+
+  it("orders status events by effectiveFrom and supports a later reactivation", () => {
+    const arrangement = {
+      status: "in_progress",
+      revisionHistory: [
+        { eventType: "status_change", previousStatus: "cancelled", status: "in_progress", effectiveFrom: "2026-09-01", recordedAt: "2026-08-25" },
+        { eventType: "status_change", previousStatus: "approved", status: "cancelled", effectiveFrom: "2026-08-20", recordedAt: "2026-08-26" },
+      ],
+    };
+    expect(arrangementStatusAsOf(arrangement, "2026-08-19")).toBe("approved");
+    expect(arrangementStatusAsOf(arrangement, "2026-08-20")).toBe("cancelled");
+    expect(arrangementStatusAsOf(arrangement, "2026-09-01")).toBe("in_progress");
+    expect(cancelledEffectiveFromAsOf(arrangement, "2026-09-01")).toBeNull();
+  });
+
+  it("keeps inactive persisted cut-fill IDs out of operational controls in every DPR flow", () => {
+    for (const path of [
+      "client/src/pages/GuidedDpr.tsx",
+      "client/src/pages/SiteEntry.tsx",
+      "client/src/pages/SiteEdit.tsx",
+    ]) {
+      const source = readFileSync(path, "utf8");
+      expect(source).toMatch(/\.filter\(\(arrangement\) => isArrangementOperationalAsOf\(arrangement, [^)]+, APPLICABLE_ARRANGEMENT_STATUSES\)\)/);
+      expect(source).toContain("const operationalCutFillArrangementId =");
+      expect(source).toMatch(/arrangementId=\{operationalCutFillArrangementId\((?:e|entry)\.earthworkArrangementId\)\}/);
+    }
   });
 
   it("enforces the foundation at the canonical lifecycle routes and legacy PM/Admin control", () => {
