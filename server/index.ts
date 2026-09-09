@@ -166,6 +166,11 @@ app.use((req, res, next) => {
   await (storage as any).ensureEquipmentUsageAuditColumns();
   console.log("Startup: ensureEquipmentUsageAuditColumns — audit columns verified before serving");
 
+  const uppercaseBackfill = await storage.backfillUppercaseBusinessText();
+  if (uppercaseBackfill.boqProjects > 0) {
+    console.log(`Startup: backfillUppercaseBusinessText — normalized BOQ projects: ${uppercaseBackfill.boqProjects}`);
+  }
+
   await registerRoutes(httpServer, app);
 
   // ── Start serving immediately — background migrations run after listen ─────

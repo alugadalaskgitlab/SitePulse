@@ -1,3 +1,5 @@
+import { normalizeBoqProjectBusinessText } from "@shared/businessText";
+
 export interface BoqProjectEditForm {
   name: string;
   contractNo: string;
@@ -25,13 +27,19 @@ export function prepareBoqProjectUpdate(
     return { ok: false, message: PROGRAM_SETTINGS_START_DATE_MESSAGE };
   }
 
+  const businessText = normalizeBoqProjectBusinessText({
+    name: form.name,
+    client: form.client,
+    contractor: form.contractor,
+  });
+
   return {
     ok: true,
     payload: {
-      name: form.name.trim(),
+      name: businessText.name,
       contractNo: form.contractNo.trim() || null,
-      client: form.client.trim() || null,
-      contractor: form.contractor.trim() || null,
+      client: businessText.client || null,
+      contractor: businessText.contractor || null,
       siteId: form.siteId ? parseInt(form.siteId) : null,
       roadLengthKm: form.roadLengthKm ? parseFloat(form.roadLengthKm) : null,
       totalMonths: form.totalMonths ? parseInt(form.totalMonths) : null,

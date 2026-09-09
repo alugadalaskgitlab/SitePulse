@@ -418,6 +418,11 @@ import { suggestWorkCategory, suggestWorkCategoryFromDescription } from "@shared
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { creditExecutedEntries } from "@shared/planOutcome";
 import {
+  normalizeBoqProjectBusinessText,
+  uppercaseBusinessText,
+  uppercaseOptionalBusinessText,
+} from "@shared/businessText";
+import {
   HEATING_TRENDS_HOT_OIL_END_TEMP_MIN_C,
   HEATING_TRENDS_HOT_OIL_DELTA_MIN_C,
   HEATING_TRENDS_MISMATCH_THRESHOLD_L,
@@ -1553,6 +1558,7 @@ export interface IStorage {
   clearCompositeComponents(boqItemId: number): Promise<void>;
   // Task #1186 — BOQ planning include/exclude flag
   backfillBoqPlanningInclude(): Promise<{ set: number; excluded: number }>;
+  backfillUppercaseBusinessText(): Promise<{ boqProjects: number }>;
   updateBoqItemPlanningInclude(id: number, includedInPlanning: boolean): Promise<void>;
   bulkUpdateCategoryPlanningInclude(projectId: number, categoryId: number | null, includedInPlanning: boolean): Promise<number>;
   // Task #1193 — structure-aware planning work type
@@ -4011,7 +4017,7 @@ export class DatabaseStorage implements IStorage {
     return await db.transaction(async (tx) => {
       const [newReport] = await tx.insert(plantReports).values({
         date: reportData.date,
-        siteName: reportData.siteName,
+        siteName: uppercaseBusinessText(reportData.siteName),
         role: reportData.role || "engineer",
       }).returning();
 
@@ -4038,7 +4044,7 @@ export class DatabaseStorage implements IStorage {
     return await db.transaction(async (tx) => {
       const [newReport] = await tx.insert(plantReports).values({
         date: original.date,
-        siteName: `${original.siteName} – Copy by ${roleName} – ${dateTime}`,
+        siteName: uppercaseBusinessText(`${original.siteName} – Copy by ${roleName} – ${dateTime}`),
         role: editedBy,
       }).returning();
 
@@ -4074,7 +4080,7 @@ export class DatabaseStorage implements IStorage {
       const [updated] = await tx.update(plantReports)
         .set({
           date: reportData.date,
-          siteName: reportData.siteName,
+          siteName: uppercaseBusinessText(reportData.siteName),
           role: reportData.role || existing.role,
         })
         .where(eq(plantReports.id, id))
@@ -4198,14 +4204,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createParty(party: InsertParty): Promise<Party> {
-    const uppercased = { ...party, name: party.name.toUpperCase() };
+    const uppercased = { ...party, name: uppercaseBusinessText(party.name) };
     const [result] = await db.insert(parties).values(uppercased).returning();
     return result;
   }
 
   async updateParty(id: number, party: Partial<InsertParty>): Promise<Party | undefined> {
     const updates = { ...party };
-    if (updates.name) updates.name = updates.name.toUpperCase();
+    if (updates.name) updates.name = uppercaseBusinessText(updates.name);
     const [result] = await db.update(parties).set(updates).where(eq(parties.id, id)).returning();
     return result;
   }
@@ -4275,7 +4281,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPlantMaterial(material: InsertPlantMaterial): Promise<PlantMaterial> {
-    const raw = this._deriveBulkDensityConversion({ ...material, name: material.name.toUpperCase().trim() });
+    const raw = this._deriveBulkDensityConversion({ ...material, name: uppercaseBusinessText(material.name) });
     const uppercased = raw as InsertPlantMaterial;
     
     // Check for existing material with same name and category to prevent duplicates
@@ -4293,7 +4299,7 @@ export class DatabaseStorage implements IStorage {
 
   async updatePlantMaterial(id: number, material: Partial<InsertPlantMaterial>): Promise<PlantMaterial | undefined> {
     const updates = this._deriveBulkDensityConversion({ ...material });
-    if (updates.name) updates.name = updates.name.toUpperCase();
+    if (updates.name) updates.name = uppercaseBusinessText(updates.name);
     const [result] = await db.update(plantMaterials).set(updates).where(eq(plantMaterials.id, id)).returning();
     return result;
   }
@@ -4309,14 +4315,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createMixType(mixType: InsertMixType): Promise<MixType> {
-    const uppercased = { ...mixType, name: mixType.name.toUpperCase() };
+    const uppercased = { ...mixType, name: uppercaseBusinessText(mixType.name) };
     const [result] = await db.insert(mixTypes).values(uppercased).returning();
     return result;
   }
 
   async updateMixType(id: number, mixType: Partial<InsertMixType>): Promise<MixType | undefined> {
     const updates = { ...mixType };
-    if (updates.name) updates.name = updates.name.toUpperCase();
+    if (updates.name) updates.name = uppercaseBusinessText(updates.name);
     const [result] = await db.update(mixTypes).set(updates).where(eq(mixTypes.id, id)).returning();
     return result;
   }
@@ -4495,14 +4501,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createEquipment(equipment: InsertEquipmentMaster): Promise<EquipmentMasterType> {
-    const uppercased = { ...equipment, name: equipment.name.toUpperCase() };
+    const uppercased = { ...equipment, name: uppercaseBusinessText(equipment.name) };
     const [result] = await db.insert(equipmentMaster).values(uppercased).returning();
     return result;
   }
 
   async updateEquipment(id: number, equipment: Partial<InsertEquipmentMaster>): Promise<EquipmentMasterType | undefined> {
     const updates = { ...equipment };
-    if (updates.name) updates.name = updates.name.toUpperCase();
+    if (updates.name) updates.name = uppercaseBusinessText(updates.name);
     const [result] = await db.update(equipmentMaster).set(updates).where(eq(equipmentMaster.id, id)).returning();
     return result;
   }
@@ -11462,14 +11468,14 @@ export class DatabaseStorage implements IStorage {
   async createSite(site: InsertSite): Promise<Site> {
     const [result] = await db.insert(sites).values({
       ...site,
-      name: site.name.toUpperCase().trim(),
+      name: uppercaseBusinessText(site.name),
     }).returning();
     return result;
   }
 
   async updateSite(id: number, data: Partial<InsertSite>): Promise<Site | undefined> {
     const updates: any = { ...data };
-    if (updates.name) updates.name = updates.name.toUpperCase().trim();
+    if (updates.name) updates.name = uppercaseBusinessText(updates.name);
     const [result] = await db.update(sites).set(updates).where(eq(sites.id, id)).returning();
     return result;
   }
@@ -12331,7 +12337,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPersonnel(data: InsertPersonnel): Promise<Personnel> {
-    const uppercased = { ...data, name: data.name.toUpperCase() };
+    const uppercased = { ...data, name: uppercaseBusinessText(data.name) };
     const [result] = await db.insert(personnel).values(uppercased).returning();
     return result;
   }
@@ -12496,7 +12502,7 @@ export class DatabaseStorage implements IStorage {
 
   async updatePersonnel(id: number, data: Partial<InsertPersonnel>): Promise<Personnel | undefined> {
     const updates = { ...data };
-    if (updates.name) updates.name = updates.name.toUpperCase();
+    if (updates.name) updates.name = uppercaseBusinessText(updates.name);
     const [result] = await db.update(personnel).set(updates).where(eq(personnel.id, id)).returning();
     return result;
   }
@@ -12886,8 +12892,8 @@ export class DatabaseStorage implements IStorage {
       const [indent] = await tx.insert(purchaseIndents).values({
         date: data.date,
         indentNo,
-        proposedBy: data.proposedBy.toUpperCase(),
-        raisedBy: data.raisedBy.toUpperCase(),
+        proposedBy: uppercaseBusinessText(data.proposedBy),
+        raisedBy: uppercaseBusinessText(data.raisedBy),
         status: piType === "material" ? "pending" : "stores_check",
         remarks: data.remarks?.toUpperCase() || data.remarks,
         siteId: (data as any).siteId ?? null,
@@ -13427,7 +13433,7 @@ export class DatabaseStorage implements IStorage {
     // Find or create a store_item for each PI item (match by name, case-insensitive)
     const grnItemsData: Omit<InsertStoreGrnItem, "grnId">[] = [];
     for (const item of items) {
-      const descUpper = (item.description || "").trim().toUpperCase();
+      const descUpper = item.description ? uppercaseBusinessText(item.description) : "";
       let storeItemId: number | null = null;
 
       if (descUpper) {
@@ -13441,7 +13447,7 @@ export class DatabaseStorage implements IStorage {
         } else {
           // Auto-create store item so GRN can reference it in stock ledger
           const [created] = await db.insert(storeItems).values({
-            name: item.description.trim(),
+            name: uppercaseBusinessText(item.description),
             category: "General",
             uom: item.uom,
             isActive: 1,
@@ -14681,8 +14687,8 @@ export class DatabaseStorage implements IStorage {
     return await db.transaction(async (tx) => {
       const updateFields: any = {
         date: data.date,
-        proposedBy: data.proposedBy.toUpperCase(),
-        raisedBy: data.raisedBy.toUpperCase(),
+        proposedBy: uppercaseBusinessText(data.proposedBy),
+        raisedBy: uppercaseBusinessText(data.raisedBy),
         remarks: data.remarks?.toUpperCase() || data.remarks,
         siteId: (data as any).siteId ?? null,
         raisedFrom: (data as any).raisedFrom ?? null,
@@ -15034,7 +15040,7 @@ export class DatabaseStorage implements IStorage {
         billDate: data.billDate,
         billNo,
         billType: data.billType.toUpperCase(),
-        vendorName: data.vendorName.toUpperCase(),
+        vendorName: uppercaseBusinessText(data.vendorName),
         periodFrom: data.periodFrom,
         periodTo: data.periodTo,
         status: data.status || "draft",
@@ -15187,7 +15193,7 @@ export class DatabaseStorage implements IStorage {
       if (statement.status !== "approved") throw Object.assign(new Error("Only approved statements can create a vendor bill"), { code: "CONFLICT" });
       const billNo = await this.generateVendorBillNo();
       const [bill] = await tx.insert(vendorBills).values({
-        billDate: data.billDate, billNo, billType: data.billType.toUpperCase(), vendorName: data.vendorName.toUpperCase(),
+        billDate: data.billDate, billNo, billType: data.billType.toUpperCase(), vendorName: uppercaseBusinessText(data.vendorName),
         periodFrom: data.periodFrom, periodTo: data.periodTo, status: "draft", notes: data.notes, totalAmount: data.totalAmount,
       }).returning();
       const items = await tx.insert(vendorBillItems).values(data.items.map(item => ({
@@ -15225,7 +15231,7 @@ export class DatabaseStorage implements IStorage {
       const setData: any = {
           billDate: data.billDate,
           billType: data.billType.toUpperCase(),
-          vendorName: data.vendorName.toUpperCase(),
+          vendorName: uppercaseBusinessText(data.vendorName),
           periodFrom: data.periodFrom,
           periodTo: data.periodTo,
           notes: data.notes?.toUpperCase() || data.notes,
@@ -23685,12 +23691,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createStoreItem(data: InsertStoreItem): Promise<StoreItem> {
-    const [item] = await db.insert(storeItems).values(data).returning();
+    const [item] = await db.insert(storeItems).values({
+      ...data,
+      name: uppercaseBusinessText(data.name),
+    }).returning();
     return item;
   }
 
   async updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined> {
-    const [updated] = await db.update(storeItems).set(data).where(eq(storeItems.id, id)).returning();
+    const [updated] = await db.update(storeItems).set({
+      ...data,
+      ...(data.name !== undefined ? { name: uppercaseBusinessText(data.name) } : {}),
+    }).where(eq(storeItems.id, id)).returning();
     return updated;
   }
 
@@ -25793,13 +25805,36 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBoqProject(data: InsertBoqProject): Promise<BoqProject> {
-    const [row] = await db.insert(boqProjects).values(data).returning();
+    const [row] = await db.insert(boqProjects)
+      .values(normalizeBoqProjectBusinessText(data))
+      .returning();
     return row;
   }
 
   async updateBoqProject(id: number, data: Partial<InsertBoqProject>): Promise<BoqProject | null> {
-    const [row] = await db.update(boqProjects).set(data).where(eq(boqProjects.id, id)).returning();
+    const [row] = await db.update(boqProjects)
+      .set(normalizeBoqProjectBusinessText(data))
+      .where(eq(boqProjects.id, id))
+      .returning();
     return row ?? null;
+  }
+
+  /**
+   * Idempotent legacy-data normalization for the explicit business-text
+   * allowlist. Contract numbers and all BOQ descriptions remain untouched.
+   */
+  async backfillUppercaseBusinessText(): Promise<{ boqProjects: number }> {
+    const result = await db.execute(sql`
+      UPDATE boq_projects
+      SET
+        name = UPPER(REGEXP_REPLACE(BTRIM(name), '[[:space:]]+', ' ', 'g')),
+        client = CASE WHEN client IS NULL THEN NULL ELSE UPPER(REGEXP_REPLACE(BTRIM(client), '[[:space:]]+', ' ', 'g')) END,
+        contractor = CASE WHEN contractor IS NULL THEN NULL ELSE UPPER(REGEXP_REPLACE(BTRIM(contractor), '[[:space:]]+', ' ', 'g')) END
+      WHERE name IS DISTINCT FROM UPPER(REGEXP_REPLACE(BTRIM(name), '[[:space:]]+', ' ', 'g'))
+         OR client IS DISTINCT FROM CASE WHEN client IS NULL THEN NULL ELSE UPPER(REGEXP_REPLACE(BTRIM(client), '[[:space:]]+', ' ', 'g')) END
+         OR contractor IS DISTINCT FROM CASE WHEN contractor IS NULL THEN NULL ELSE UPPER(REGEXP_REPLACE(BTRIM(contractor), '[[:space:]]+', ' ', 'g')) END
+    `);
+    return { boqProjects: execDmlRowCount(result, "backfillUppercaseBusinessText") };
   }
 
   async publishProgrammeBaseline(id: number): Promise<BoqProject | null> {
@@ -25972,10 +26007,10 @@ export class DatabaseStorage implements IStorage {
 
       const [newProject] = await tx.insert(boqProjects).values({
         siteId: src.siteId,
-        name: `Copy of ${src.name}`,
+        name: uppercaseBusinessText(`Copy of ${src.name}`),
         contractNo: src.contractNo,
-        client: src.client,
-        contractor: src.contractor,
+        client: uppercaseOptionalBusinessText(src.client),
+        contractor: uppercaseOptionalBusinessText(src.contractor),
         roadLengthKm: src.roadLengthKm,
         startDate: src.startDate,
         totalMonths: src.totalMonths,

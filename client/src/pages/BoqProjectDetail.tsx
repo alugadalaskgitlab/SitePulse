@@ -24,6 +24,7 @@ import { BoqImportWizard } from "@/components/BoqImportWizard";
 import { BoqItemRecipeDialog } from "@/pages/BoqItemRecipes";
 import type { BoqProject, BoqItemWithCategory, BoqRevisionWithItems } from "@shared/schema";
 import { boqItemDisplayName } from "@shared/boqItemName";
+import { uppercaseBusinessText } from "@shared/businessText";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ export function ProjectHeader({ project, activeRevision, children }: {
     <div className="flex flex-wrap items-start gap-3" data-testid="project-header">
       <div className="flex-1 min-w-[min(280px,100%)]" data-testid="project-header-titleblock">
         <div className="flex items-center gap-2 flex-wrap">
-          <h1 className="text-xl font-bold text-slate-800 truncate" data-testid="text-project-title">{project.name}</h1>
+          <h1 className="text-xl font-bold text-slate-800 truncate" data-testid="text-project-title">{uppercaseBusinessText(project.name)}</h1>
           <Badge variant="outline"
             className={`text-sm flex-shrink-0 ${PROJ_STATUS[project.status] ?? PROJ_STATUS.draft}`}>
             {project.status.toUpperCase()}
@@ -86,8 +87,8 @@ export function ProjectHeader({ project, activeRevision, children }: {
         </div>
         <div className="flex items-center gap-3 mt-0.5 text-sm text-muted-foreground flex-wrap" data-testid="text-project-summary">
           {project.contractNo && <span>Contract: {oneLine(project.contractNo)}</span>}
-          {project.client && <span>· {oneLine(project.client)}</span>}
-          {project.contractor && <span>· {oneLine(project.contractor)}</span>}
+          {project.client && <span>· {uppercaseBusinessText(oneLine(project.client))}</span>}
+          {project.contractor && <span>· {uppercaseBusinessText(oneLine(project.contractor))}</span>}
           {project.roadLengthKm != null && <span>· {project.roadLengthKm} km</span>}
           {project.startDate && <span>· Start: {project.startDate}</span>}
         </div>

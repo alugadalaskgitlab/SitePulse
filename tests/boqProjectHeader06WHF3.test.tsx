@@ -27,7 +27,7 @@ describe("06W-HF3 BOQ project header display", () => {
     render(<ProjectHeader project={{ ...BASE_PROJECT, name: longName }} />);
     const title = screen.getByTestId("text-project-title");
     // Full name present — any shortening is CSS ellipsis, never a hard cut.
-    expect(title.textContent).toBe(longName);
+    expect(title.textContent).toBe(longName.toUpperCase());
     expect(title.className).toContain("truncate");
     // The title column keeps a readable minimum width instead of collapsing to 0.
     expect(screen.getByTestId("project-header-titleblock").className).toContain("min-w-[min(280px,100%)]");
@@ -42,8 +42,8 @@ describe("06W-HF3 BOQ project header display", () => {
     }} />);
     const summary = screen.getByTestId("text-project-summary").textContent ?? "";
     expect(summary).toContain("Contract: C-2026/ NH/ 037");
-    expect(summary).toContain("National Highways Authority of India");
-    expect(summary).toContain("ABC Constructions Pvt Ltd");
+    expect(summary).toContain("NATIONAL HIGHWAYS AUTHORITY OF INDIA");
+    expect(summary).toContain("ABC CONSTRUCTIONS PVT LTD");
     expect(summary).not.toMatch(/[\r\n]/);
   });
 
@@ -72,15 +72,15 @@ describe("06W-HF3 BOQ project header display", () => {
     expect(screen.getByText("Import BOQ")).toBeTruthy();
   });
 
-  it("J: a project with short, clean values renders exactly as before", () => {
+  it("J: legacy mixed-case project labels render in uppercase", () => {
     render(<ProjectHeader project={BASE_PROJECT} activeRevision={{ label: "R1" }} />);
-    expect(screen.getByTestId("text-project-title").textContent).toBe("Takkadpally-sirur");
+    expect(screen.getByTestId("text-project-title").textContent).toBe("TAKKADPALLY-SIRUR");
     expect(screen.getByText("ACTIVE")).toBeTruthy();
     expect(screen.getByText("R1")).toBeTruthy();
     const summary = screen.getByTestId("text-project-summary").textContent ?? "";
     expect(summary).toContain("Contract: C-2026/NH/037");
-    expect(summary).toContain("· NHAI PIU Hyderabad");
-    expect(summary).toContain("· ABC Constructions Pvt Ltd");
+    expect(summary).toContain("· NHAI PIU HYDERABAD");
+    expect(summary).toContain("· ABC CONSTRUCTIONS PVT LTD");
     expect(summary).toContain("· 12.5 km");
     expect(summary).toContain("· Start: 2026-05-25");
   });

@@ -24,6 +24,10 @@ import { boqProjectUpdateErrorMessage, prepareBoqProjectUpdate } from "@/lib/boq
 import { Link } from "wouter";
 import { BoqImportWizard } from "@/components/BoqImportWizard";
 import type { BoqProjectWithCounts } from "@shared/schema";
+import {
+  normalizeBoqProjectBusinessText,
+  uppercaseBusinessText,
+} from "@shared/businessText";
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
 
@@ -67,11 +71,17 @@ function ProjectFormFields({
   set: (k: string, v: string) => void;
   sites: { id: number; name: string }[];
 }) {
+  const uppercaseOnBlur = (key: "name" | "client" | "contractor", value: string) => {
+    set(key, uppercaseBusinessText(value));
+  };
+
   return (
     <div className="space-y-3">
       <div>
         <Label className="text-sm">PROJECT NAME <span className="text-red-500">*</span></Label>
         <Input value={form.name} onChange={e => set("name", e.target.value)}
+          onBlur={e => uppercaseOnBlur("name", e.target.value)}
+          className="uppercase"
           placeholder="e.g. NH-44 Widening — Package 3" data-testid="input-project-name" />
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -83,11 +93,15 @@ function ProjectFormFields({
         <div>
           <Label className="text-sm">CLIENT / AUTHORITY</Label>
           <Input value={form.client} onChange={e => set("client", e.target.value)}
+            onBlur={e => uppercaseOnBlur("client", e.target.value)}
+            className="uppercase"
             placeholder="e.g. NHAI" data-testid="input-client" />
         </div>
         <div>
           <Label className="text-sm">CONTRACTOR</Label>
           <Input value={form.contractor} onChange={e => set("contractor", e.target.value)}
+            onBlur={e => uppercaseOnBlur("contractor", e.target.value)}
+            className="uppercase"
             placeholder="e.g. HLC" data-testid="input-contractor" />
         </div>
         <div>
@@ -171,11 +185,16 @@ function NewProjectDialog({ open, onClose }: { open: boolean; onClose: () => voi
       toast({ title: "Project name is required", variant: "destructive" });
       return;
     }
+    const businessText = normalizeBoqProjectBusinessText({
+      name: form.name,
+      client: form.client,
+      contractor: form.contractor,
+    });
     createMutation.mutate({
-      name: form.name.trim(),
+      name: businessText.name,
       contractNo: form.contractNo.trim() || null,
-      client: form.client.trim() || null,
-      contractor: form.contractor.trim() || null,
+      client: businessText.client || null,
+      contractor: businessText.contractor || null,
       siteId: form.siteId ? parseInt(form.siteId) : null,
       roadLengthKm: form.roadLengthKm ? parseFloat(form.roadLengthKm) : null,
       startDate: form.startDate || null,
@@ -302,7 +321,7 @@ function ProjectCard({
       <CardHeader className="pb-2 px-4 pt-4">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-slate-800 truncate">{project.name}</h3>
+            <h3 className="font-semibold text-slate-800 truncate">{uppercaseBusinessText(project.name)}</h3>
             {project.contractNo && (
               <p className="text-sm text-muted-foreground mt-0.5 truncate">Contract: {project.contractNo}</p>
             )}
@@ -317,13 +336,13 @@ function ProjectCard({
           {project.client && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Building2 className="w-3 h-3 flex-shrink-0" />
-              <span className="truncate">{project.client}</span>
+              <span className="truncate">{uppercaseBusinessText(project.client)}</span>
             </div>
           )}
           {project.siteName && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Tag className="w-3 h-3 flex-shrink-0" />
-              <span className="truncate">{project.siteName}</span>
+              <span className="truncate">{uppercaseBusinessText(project.siteName)}</span>
             </div>
           )}
           {project.startDate && (

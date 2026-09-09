@@ -19,11 +19,21 @@ const form = {
 
 describe("BOQ Project edit payload", () => {
   it("saves ordinary changes without sending the protected startDate property", () => {
-    const result = prepareBoqProjectUpdate("2026-08-24", form);
+    const result = prepareBoqProjectUpdate("2026-08-24", {
+      ...form,
+      name: "Upgradation from Alladurg",
+      client: "Nhai piu Hyderabad",
+      contractor: "Abc Constructions",
+      contractNo: "Case-Sensitive/Ref-a",
+    });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
     expect(result.payload.totalMonths).toBe(3);
+    expect(result.payload.name).toBe("UPGRADATION FROM ALLADURG");
+    expect(result.payload.client).toBe("NHAI PIU HYDERABAD");
+    expect(result.payload.contractor).toBe("ABC CONSTRUCTIONS");
+    expect(result.payload.contractNo).toBe("Case-Sensitive/Ref-a");
     expect(result.payload).not.toHaveProperty("startDate");
   });
 
