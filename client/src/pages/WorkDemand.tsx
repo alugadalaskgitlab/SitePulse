@@ -580,6 +580,15 @@ interface DprLogsLite {
     startTime: string | null;
     endTime: string | null;
     totalKm: number | null;
+    activitySegments?: Array<{
+      startTime: string;
+      endTime: string;
+      hoursWorked: number;
+      boqItems: Array<{
+        boqItemId: number;
+        programmeBarId: number | null;
+      }>;
+    }>;
     activityAllocations?: Array<{
       boqItemId: number;
       programmeBarId: number | null;
@@ -697,6 +706,7 @@ function computePlanVsActual(
         const hoursByBoq = resolveEquipmentBoqHours({
           boqItemId: eq.boqItemId,
           hoursWorked: actualEquipmentHours(eq),
+          activitySegments: eq.activitySegments,
           activityAllocations: eq.activityAllocations,
         });
         for (const allocation of hoursByBoq) {

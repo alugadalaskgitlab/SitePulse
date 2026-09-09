@@ -133,6 +133,7 @@ interface EquipmentEntry {
   boqItemId: number | null;
   structureId: string | null;
   breakdowns?: StagedBreakdown[];
+  activitySegments?: Array<{ startTime: string; endTime: string; hoursWorked?: number; boqItems: Array<{ boqItemId: number; programmeBarId?: number | null }> }>;
   activityAllocations?: Array<{ boqItemId: number; programmeBarId?: number | null; startTime: string; endTime: string; hoursWorked?: number }>;
   // 06Q (client-only, stripped from the payload): true for rows added during
   // this edit session — only those get opening-reading continuity. Rows
@@ -277,7 +278,17 @@ function mapDprToFormState(dpr: any) {
         waterQuantity: e.waterQuantity ?? null,
         boqItemId: e.boqItemId ?? null,
         structureId: e.structureId ?? null,
-        activityAllocations: Array.isArray(e.activityAllocations) && e.activityAllocations.length > 0 ? e.activityAllocations.map((a: any) => ({
+        activitySegments: Array.isArray(e.activitySegments)
+          && (e.activitySegments.length > 0 || !Array.isArray(e.activityAllocations) || e.activityAllocations.length === 0)
+          ? e.activitySegments.map((segment: any) => ({
+          startTime: segment.startTime || "", endTime: segment.endTime || "",
+          hoursWorked: segment.hoursWorked != null ? Number(segment.hoursWorked) : undefined,
+          boqItems: Array.isArray(segment.boqItems) ? segment.boqItems.map((item: any) => ({
+            boqItemId: Number(item.boqItemId), programmeBarId: item.programmeBarId != null ? Number(item.programmeBarId) : null,
+          })) : [],
+        })) : undefined,
+        activityAllocations: (!Array.isArray(e.activitySegments) || e.activitySegments.length === 0)
+          && Array.isArray(e.activityAllocations) && e.activityAllocations.length > 0 ? e.activityAllocations.map((a: any) => ({
           boqItemId: Number(a.boqItemId), programmeBarId: a.programmeBarId != null ? Number(a.programmeBarId) : null,
           startTime: a.startTime || "", endTime: a.endTime || "", hoursWorked: a.hoursWorked != null ? Number(a.hoursWorked) : undefined,
         })) : undefined,

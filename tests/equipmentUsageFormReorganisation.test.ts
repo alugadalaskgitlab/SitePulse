@@ -38,7 +38,7 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(plant).toContain("const consumed = fuel.actualConsumed");
   });
 
-  it("keeps allocation rows simple, chains time defaults, and never asks for a work reach", () => {
+  it("renders physical activity segments once with one or more BOQ items", () => {
     expect(allocation).toContain("previous?.endTime");
     expect(allocation).toContain("parentStartTime");
     expect(allocation).toContain("parentEndTime");
@@ -51,9 +51,16 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(allocation).not.toContain("Add another activity");
     expect(allocation).toContain("Assign Item");
     expect(allocation).toContain("Add Item");
+    expect(allocation).toContain("Add BOQ Item");
+    expect(allocation).toContain("Segment Duration");
+    expect(allocation).toContain("boqItems:");
     expect(allocation).toContain("Work Assignment");
     expect(allocation).toContain("BOQ Item");
     expect(allocation).not.toContain(">Task<");
+    expect(allocation).not.toContain("calendar-picker-indicator");
+    expect(compact).toContain("row.activitySegments");
+    expect(compact).toContain("row.activityAllocations");
+    expect(compact).toContain("onChange({ activitySegments, activityAllocations: undefined })");
     for (const source of [guided, detailed, edit, submitted, report]) {
       expect(source).toContain("programmeBarId");
     }

@@ -53,7 +53,9 @@ describe("focused DPR restoration", () => {
 
     expect(hydration).toContain("boqItemId: e.boqItemId ?? null");
     expect(hydration).toContain("structureId: e.structureId ?? null");
+    expect(hydration).toContain("activitySegments:");
     expect(hydration).toContain("activityAllocations:");
+    expect(hydration).toContain("boqItems:");
     expect(hydration).toContain("boqItemId: l.boqItemId ?? null");
     expect(hydration).toContain("structureId: l.structureId ?? null");
     expect(siteEdit).toContain("<DprEquipmentCompact");

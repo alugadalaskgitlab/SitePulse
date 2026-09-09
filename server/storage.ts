@@ -9,6 +9,8 @@ import {
   dprStructureItems,
   equipmentLogs,
   equipmentActivityAllocations,
+  equipmentActivitySegments,
+  equipmentActivitySegmentBoqItems,
   labourLogs,
   materialLogs,
   plantReports,
@@ -145,6 +147,7 @@ import {
   EquipmentActivityAllocationError,
   resolveEquipmentAllocationParentHours,
   validateEquipmentActivityAllocations,
+  validateEquipmentActivitySegments,
 } from "@shared/equipmentActivityAllocations";
 import { sendPushToAll } from "./push";
 import {
@@ -2430,7 +2433,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDprsWithDetails(opts?: { dateFrom?: string; dateTo?: string }): Promise<DprWithDetails[]> {
-    return await db.query.dprs.findMany({
+    const rows = await db.query.dprs.findMany({
       where: and(
         eq(dprs.isSuperseded, false),
         opts?.dateFrom ? gte(dprs.date, opts.dateFrom) : undefined,
@@ -2438,7 +2441,7 @@ export class DatabaseStorage implements IStorage {
       ),
       with: {
         progress: true,
-        equipment: { with: { activityAllocations: true } },
+        equipment: { with: { activitySegments: { with: { boqItems: true } }, activityAllocations: true } },
         labour: true,
         materials: true,
         sitePurchases: true,
@@ -2446,6 +2449,14 @@ export class DatabaseStorage implements IStorage {
       },
       orderBy: desc(dprs.date),
     });
+    return rows.map((dpr: any) => ({
+      ...dpr,
+      equipment: dpr.equipment.map((row: any) => {
+        if (row.activitySegments?.length) return { ...row, activityAllocations: undefined };
+        if (row.activityAllocations?.length) return { ...row, activitySegments: undefined };
+        return { ...row, activitySegments: undefined, activityAllocations: undefined };
+      }),
+    })) as DprWithDetails[];
   }
 
   async getDpr(id: number): Promise<DprWithDetails | undefined> {
@@ -2453,7 +2464,7 @@ export class DatabaseStorage implements IStorage {
       where: eq(dprs.id, id),
       with: {
         progress: true,
-        equipment: { with: { activityAllocations: true } },
+        equipment: { with: { activitySegments: { with: { boqItems: true } }, activityAllocations: true } },
         labour: true,
         materials: true,
         sitePurchases: true,
@@ -2461,6 +2472,11 @@ export class DatabaseStorage implements IStorage {
       }
     });
     if (!dpr) return undefined;
+    dpr.equipment = dpr.equipment.map((row: any) => {
+      if (row.activitySegments?.length) return { ...row, activityAllocations: undefined };
+      if (row.activityAllocations?.length) return { ...row, activitySegments: undefined };
+      return { ...row, activitySegments: undefined, activityAllocations: undefined };
+    }) as any;
     const actorIds = Array.from(new Set([
       dpr.authorUserId,
       dpr.lastEditedByUserId,
@@ -5556,7 +5572,9 @@ export class DatabaseStorage implements IStorage {
       ? await tx.select().from(equipmentMaster).where(inArray(equipmentMaster.id, ids))
       : [];
     const masterById = new Map<number, any>(masters.map((master: any) => [master.id, master] as [number, any]));
-    const allocationInputs = rows.flatMap(row => Array.isArray(row?.activityAllocations) ? row.activityAllocations : []);
+    const allocationInputs = rows.flatMap(row => Array.isArray(row?.activitySegments)
+      ? row.activitySegments.flatMap((segment: any) => Array.isArray(segment?.boqItems) ? segment.boqItems : [])
+      : Array.isArray(row?.activityAllocations) ? row.activityAllocations : []);
     const boqIds = Array.from(new Set(allocationInputs.map((row: any) => Number(row.boqItemId)).filter(Number.isFinite)));
     const barIds = Array.from(new Set(allocationInputs.map((row: any) => Number(row.programmeBarId)).filter(Number.isFinite)));
     const boqRows = boqIds.length ? await tx.select().from(boqItems).where(inArray(boqItems.id, boqIds)) : [];
@@ -5564,7 +5582,9 @@ export class DatabaseStorage implements IStorage {
     const boqById = new Map(boqRows.map((row: any) => [Number(row.id), row]));
     const barById = new Map(barRows.map((row: any) => [Number(row.id), row]));
     return rows.map((input: any) => {
-      const { breakdowns: _breakdowns, persistedId: _persistedId, activityAllocations, ...row } = input;
+      const { breakdowns: _breakdowns, persistedId: _persistedId, activityAllocations, activitySegments, ...row } = input;
+      const normalizedSegmentsAreExplicit = Array.isArray(activitySegments)
+        && (activitySegments.length > 0 || !Array.isArray(activityAllocations));
       const master = masterById.get(Number(row.equipmentId));
       // A deleted/unavailable master makes the unit ambiguous. Never guess
       // hour-meter semantics and overwrite historical derived evidence.
@@ -5577,16 +5597,15 @@ export class DatabaseStorage implements IStorage {
           expectedDiesel: persisted ? row.expectedDiesel ?? null : null,
           dieselNorm: persisted ? row.dieselNorm ?? null : null,
         };
-        const validated = validateEquipmentActivityAllocations(
-          activityAllocations,
-          resolveEquipmentAllocationParentHours(normalised),
-          normalised,
-        );
-        this.assertEquipmentAllocationReferences(validated.allocations, boqById, barById, boqProjectId);
+        const references = normalizedSegmentsAreExplicit
+          ? validateEquipmentActivitySegments(activitySegments, resolveEquipmentAllocationParentHours(normalised), normalised)
+            .segments.flatMap(segment => segment.boqItems)
+          : validateEquipmentActivityAllocations(activityAllocations, resolveEquipmentAllocationParentHours(normalised), normalised).allocations;
+        this.assertEquipmentAllocationReferences(references, boqById, barById, boqProjectId);
         return this.withEquipmentAllocationBoqMirror(
           normalised,
-          validated.allocations,
-          Array.isArray(activityAllocations),
+          references,
+          normalizedSegmentsAreExplicit || Array.isArray(activityAllocations),
         );
       }
       const result = computeEquipmentUsage(master, row);
@@ -5599,16 +5618,15 @@ export class DatabaseStorage implements IStorage {
         // Actual applied norm (L/hr or L/km, including trip conversion).
         dieselNorm: result.efficiencyValue,
       };
-      const validated = validateEquipmentActivityAllocations(
-        activityAllocations,
-        resolveEquipmentAllocationParentHours(normalised),
-        normalised,
-      );
-      this.assertEquipmentAllocationReferences(validated.allocations, boqById, barById, boqProjectId);
+      const references = normalizedSegmentsAreExplicit
+        ? validateEquipmentActivitySegments(activitySegments, resolveEquipmentAllocationParentHours(normalised), normalised)
+          .segments.flatMap(segment => segment.boqItems)
+        : validateEquipmentActivityAllocations(activityAllocations, resolveEquipmentAllocationParentHours(normalised), normalised).allocations;
+      this.assertEquipmentAllocationReferences(references, boqById, barById, boqProjectId);
       return this.withEquipmentAllocationBoqMirror(
         normalised,
-        validated.allocations,
-        Array.isArray(activityAllocations),
+        references,
+        normalizedSegmentsAreExplicit || Array.isArray(activityAllocations),
       );
     });
   }
@@ -5653,18 +5671,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async persistEquipmentActivityAllocationsTx(tx: any, logs: any[], inputs: any[]): Promise<void> {
-    const rows: any[] = [];
+    const legacyRows: any[] = [];
     for (let index = 0; index < logs.length; index++) {
       const input = inputs[index];
+      const normalizedSegmentsAreExplicit = Array.isArray(input?.activitySegments)
+        && (input.activitySegments.length > 0 || !Array.isArray(input?.activityAllocations));
+      if (normalizedSegmentsAreExplicit) {
+        const segments = validateEquipmentActivitySegments(
+          input.activitySegments,
+          resolveEquipmentAllocationParentHours(logs[index]),
+          logs[index],
+        ).segments;
+        if (segments.length) {
+          const insertedSegments = await tx.insert(equipmentActivitySegments).values(
+            segments.map(segment => ({
+              equipmentLogId: logs[index].id,
+              startTime: segment.startTime,
+              endTime: segment.endTime,
+              hoursWorked: segment.hoursWorked,
+            })),
+          ).returning();
+          const links = insertedSegments.flatMap((segmentRow: any, segmentIndex: number) =>
+            segments[segmentIndex].boqItems.map(link => ({ ...link, segmentId: segmentRow.id })));
+          if (links.length) await tx.insert(equipmentActivitySegmentBoqItems).values(links);
+        }
+        continue;
+      }
       if (!Array.isArray(input?.activityAllocations)) continue;
       const allocations = validateEquipmentActivityAllocations(
         input.activityAllocations,
         resolveEquipmentAllocationParentHours(logs[index]),
         logs[index],
       ).allocations;
-      rows.push(...allocations.map(allocation => ({ ...allocation, equipmentLogId: logs[index].id })));
+      legacyRows.push(...allocations.map(allocation => ({ ...allocation, equipmentLogId: logs[index].id })));
     }
-    if (rows.length) await tx.insert(equipmentActivityAllocations).values(rows);
+    if (legacyRows.length) await tx.insert(equipmentActivityAllocations).values(legacyRows);
   }
 
   /**
@@ -5687,6 +5728,22 @@ export class DatabaseStorage implements IStorage {
       }
       seenPersistedIds.add(persistedId);
     }
+    const segmentRows = await tx.select().from(equipmentActivitySegments)
+      .where(inArray(equipmentActivitySegments.equipmentLogId, oldLogs.map(row => row.id)));
+    const segmentLinks = segmentRows.length ? await tx.select().from(equipmentActivitySegmentBoqItems)
+      .where(inArray(equipmentActivitySegmentBoqItems.segmentId, segmentRows.map(row => row.id))) : [];
+    const linksBySegmentId = new Map<number, any[]>();
+    for (const link of segmentLinks) {
+      const list = linksBySegmentId.get(Number(link.segmentId)) ?? [];
+      list.push(link);
+      linksBySegmentId.set(Number(link.segmentId), list);
+    }
+    const segmentsByLogId = new Map<number, any[]>();
+    for (const segment of segmentRows) {
+      const list = segmentsByLogId.get(Number(segment.equipmentLogId)) ?? [];
+      list.push({ ...segment, boqItems: linksBySegmentId.get(Number(segment.id)) ?? [] });
+      segmentsByLogId.set(Number(segment.equipmentLogId), list);
+    }
     const allocationRows = await tx.select().from(equipmentActivityAllocations)
       .where(inArray(equipmentActivityAllocations.equipmentLogId, oldLogs.map(row => row.id)));
     const allocationsByLogId = new Map<number, any[]>();
@@ -5696,9 +5753,11 @@ export class DatabaseStorage implements IStorage {
       allocationsByLogId.set(Number(allocation.equipmentLogId), list);
     }
     return inputs.map(input => {
-      if (Array.isArray(input?.activityAllocations)) return input;
+      if (Array.isArray(input?.activitySegments) || Array.isArray(input?.activityAllocations)) return input;
       const persistedId = Number(input?.persistedId ?? input?.id);
       if (!Number.isFinite(persistedId) || !oldById.has(persistedId)) return input;
+      const preservedSegments = segmentsByLogId.get(persistedId);
+      if (preservedSegments?.length) return { ...input, activitySegments: preservedSegments };
       const preserved = allocationsByLogId.get(persistedId);
       return preserved?.length ? { ...input, activityAllocations: preserved } : input;
     });

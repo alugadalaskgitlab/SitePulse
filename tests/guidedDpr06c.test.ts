@@ -119,4 +119,23 @@ describe("Batch 06C — equipment master identity + work-item link", () => {
     expect(payload).not.toHaveProperty("id");
     expect(payload).not.toHaveProperty("dprId");
   });
+
+  it("does not let empty normalized relations erase legacy allocations", () => {
+    const legacyAllocations = [{
+      boqItemId: 11,
+      programmeBarId: null,
+      startTime: "09:30",
+      endTime: "13:00",
+      hoursWorked: 3.5,
+    }];
+    const row = splitGuidedEquipmentRow({
+      id: 5,
+      machine: "JCB",
+      activitySegments: [],
+      activityAllocations: legacyAllocations,
+    });
+    const payload = buildGuidedEquipmentPayload(row) as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("activitySegments");
+    expect(payload.activityAllocations).toEqual(legacyAllocations);
+  });
 });

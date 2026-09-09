@@ -143,6 +143,7 @@ interface EquipmentEntry {
   expectedDiesel?: number | null;
   dieselNorm?: number | null;
   breakdowns?: StagedBreakdown[];
+  activitySegments?: Array<{ startTime: string; endTime: string; hoursWorked?: number; boqItems: Array<{ boqItemId: number; programmeBarId?: number | null }> }>;
   activityAllocations?: Array<{ boqItemId: number; programmeBarId?: number | null; startTime: string; endTime: string; hoursWorked?: number }>;
 }
 

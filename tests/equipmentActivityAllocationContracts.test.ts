@@ -10,7 +10,8 @@ describe("equipment allocation lifecycle and view contracts", () => {
     expect(storage.match(/persistEquipmentActivityAllocationsTx\(/g)?.length).toBeGreaterThanOrEqual(6);
     expect(storage).toContain("preserveOmittedEquipmentAllocationsTx");
     expect(storage).toContain("equipmentLogId: logs[index].id");
-    expect(storage).toContain("equipment: { with: { activityAllocations: true } }");
+    expect(storage).toContain("activitySegments: { with: { boqItems: true } }");
+    expect(storage).toContain("activityAllocations: true");
   });
 
   it("keeps the DPR BOQ project in submitted edit/version payloads", () => {
@@ -48,7 +49,14 @@ describe("equipment allocation lifecycle and view contracts", () => {
   it("Work Demand uses child-authoritative/legacy-fallback resolution", () => {
     const source = read("client/src/pages/WorkDemand.tsx");
     expect(source).toContain("resolveEquipmentBoqHours");
+    expect(source).toContain("activitySegments: eq.activitySegments");
     expect(source).toContain("allocation.source === \"legacy_parent\"");
+  });
+
+  it("does not let empty normalized relation arrays override legacy allocations", () => {
+    expect(storage).toContain("if (row.activityAllocations?.length) return { ...row, activitySegments: undefined }");
+    expect(storage).toContain("activitySegments.length > 0 || !Array.isArray(activityAllocations)");
+    expect(storage).toContain("input.activitySegments.length > 0 || !Array.isArray(input?.activityAllocations)");
   });
 
   it("Q: does not add permission or authentication handling to allocation code", () => {

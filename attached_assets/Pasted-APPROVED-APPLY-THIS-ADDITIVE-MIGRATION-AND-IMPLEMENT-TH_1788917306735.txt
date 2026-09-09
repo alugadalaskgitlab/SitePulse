@@ -1,0 +1,69 @@
+APPROVED — APPLY THIS ADDITIVE MIGRATION AND IMPLEMENT THE APPROVED EQUIPMENT BATCH
+
+The final migration SQL you showed is approved.
+
+Proceed with exactly these two new tables:
+
+1. equipment_activity_segments
+2. equipment_activity_segment_boq_items
+
+and the listed indexes.
+
+Safety conditions remain mandatory:
+
+- No DROP
+- No DELETE
+- No RENAME
+- No destructive ALTER
+- No bulk backfill
+- No historical DPR rewrite
+- Keep equipment_activity_allocations unchanged as legacy fallback
+
+Apply the migration and then implement the already-approved focused batch:
+
+1. One physical segment can link to multiple BOQ items.
+2. Physical time counts once per segment.
+3. Each linked BOQ receives the full segment duration for Work Demand/BOM-SNL equipment requirement matching.
+4. Diesel, hire, meter, breakdown and actual physical cost remain counted once.
+5. Do not invent BOQ-wise actual cost splitting.
+6. Keep legacy DPR allocations readable.
+7. New/edited normalized assignments use the new segment + BOQ-link model.
+8. Remove report-style Usage Summary, Fuel Performance and AssignmentTotals from editable equipment entry.
+9. Keep only compact inline meter hours, clock duration and segment duration where useful.
+10. Fix all equipment time inputs so the native/mobile time picker opens normally.
+11. Keep overlap validation at physical-segment level only.
+12. Allow multiple BOQ links within one physical segment.
+13. Prevent duplicate BOQ links within the same segment.
+14. Keep segment times inside the parent machine-day clock window.
+15. Keep Meter Working Hours separate and do not use them as the segment-time ceiling.
+16. Submitted/report views should show one physical segment once with all linked BOQ items beneath it.
+17. Work Demand must credit each linked BOQ correctly without doubling physical machine totals.
+
+Do not change:
+- BOQ rates or quantities
+- Work Programme calculations
+- BOM/SNL norms
+- cut/fill
+- Execution Arrangements
+- Stores
+- Tomorrow's Program
+- Site Requirements
+- Vendor Bills
+- plant production
+- hire formulas
+- diesel commercial recovery
+- permissions/authentication
+
+After implementation, report:
+- migration applied
+- files changed
+- segment persistence behavior
+- legacy fallback behavior
+- Work Demand behavior
+- editable-form UX changes
+- time-picker fix
+- tests run/results
+
+STOP after this equipment batch.
+Do not publish.
+Do not start Work Programme analysis.

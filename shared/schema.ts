@@ -264,6 +264,37 @@ export const equipmentActivityAllocations = pgTable("equipment_activity_allocati
   positiveHoursCheck: check("equipment_activity_allocations_hours_positive_ck", sql`${table.hoursWorked} > 0`),
 }));
 
+// Normalized activity timing: one physical interval is stored once here and
+// may be attributed to multiple BOQ items through the link table below.
+export const equipmentActivitySegments = pgTable("equipment_activity_segments", {
+  id: serial("id").primaryKey(),
+  equipmentLogId: integer("equipment_log_id").notNull().references(() => equipmentLogs.id, { onDelete: "cascade" }),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  hoursWorked: real("hours_worked").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  segmentUnique: unique("equipment_activity_segments_physical_uq").on(table.equipmentLogId, table.startTime, table.endTime),
+  equipmentLogIdx: index("equipment_activity_segments_equipment_log_idx").on(table.equipmentLogId),
+  startTimeCheck: check("equipment_activity_segments_start_time_ck", sql`${table.startTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  endTimeCheck: check("equipment_activity_segments_end_time_ck", sql`${table.endTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  timeOrderCheck: check("equipment_activity_segments_time_order_ck", sql`${table.endTime} > ${table.startTime}`),
+  positiveHoursCheck: check("equipment_activity_segments_hours_positive_ck", sql`${table.hoursWorked} > 0`),
+}));
+
+export const equipmentActivitySegmentBoqItems = pgTable("equipment_activity_segment_boq_items", {
+  id: serial("id").primaryKey(),
+  segmentId: integer("segment_id").notNull().references(() => equipmentActivitySegments.id, { onDelete: "cascade" }),
+  boqItemId: integer("boq_item_id").notNull(),
+  programmeBarId: integer("programme_bar_id").references(() => workProgramBars.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  segmentBoqUnique: unique("equipment_activity_segment_boq_item_uq").on(table.segmentId, table.boqItemId),
+  segmentIdx: index("equipment_activity_segment_boq_items_segment_idx").on(table.segmentId),
+  boqItemIdx: index("equipment_activity_segment_boq_items_boq_item_idx").on(table.boqItemId),
+  programmeBarIdx: index("equipment_activity_segment_boq_items_programme_bar_idx").on(table.programmeBarId),
+}));
+
 // Labour Log
 export const labourLogs = pgTable("labour_logs", {
   id: serial("id").primaryKey(),
@@ -915,7 +946,18 @@ export const progressRelations = relations(progressEntries, ({ one }) => ({
 
 export const equipmentRelations = relations(equipmentLogs, ({ one, many }) => ({
   dpr: one(dprs, { fields: [equipmentLogs.dprId], references: [dprs.id] }),
+  activitySegments: many(equipmentActivitySegments),
   activityAllocations: many(equipmentActivityAllocations),
+}));
+
+export const equipmentActivitySegmentRelations = relations(equipmentActivitySegments, ({ one, many }) => ({
+  equipmentLog: one(equipmentLogs, { fields: [equipmentActivitySegments.equipmentLogId], references: [equipmentLogs.id] }),
+  boqItems: many(equipmentActivitySegmentBoqItems),
+}));
+
+export const equipmentActivitySegmentBoqItemRelations = relations(equipmentActivitySegmentBoqItems, ({ one }) => ({
+  segment: one(equipmentActivitySegments, { fields: [equipmentActivitySegmentBoqItems.segmentId], references: [equipmentActivitySegments.id] }),
+  programmeBar: one(workProgramBars, { fields: [equipmentActivitySegmentBoqItems.programmeBarId], references: [workProgramBars.id] }),
 }));
 
 export const equipmentActivityAllocationRelations = relations(equipmentActivityAllocations, ({ one }) => ({
@@ -942,6 +984,8 @@ export const insertProgressSchema = createInsertSchema(progressEntries).omit({ i
 export const insertDprStructureItemSchema = createInsertSchema(dprStructureItems).omit({ id: true, dprId: true });
 export const insertEquipmentSchema = createInsertSchema(equipmentLogs).omit({ id: true, dprId: true });
 export const insertEquipmentActivityAllocationSchema = createInsertSchema(equipmentActivityAllocations).omit({ id: true, equipmentLogId: true, createdAt: true });
+export const insertEquipmentActivitySegmentSchema = createInsertSchema(equipmentActivitySegments).omit({ id: true, equipmentLogId: true, createdAt: true });
+export const insertEquipmentActivitySegmentBoqItemSchema = createInsertSchema(equipmentActivitySegmentBoqItems).omit({ id: true, segmentId: true, createdAt: true });
 export const insertLabourSchema = createInsertSchema(labourLogs).omit({ id: true, dprId: true });
 export const insertMaterialSchema = createInsertSchema(materialLogs).omit({ id: true, dprId: true });
 export const insertSitePurchaseSchema = createInsertSchema(sitePurchases).omit({ id: true, dprId: true, documentStatus: true, finalSubmittedAt: true, finalSubmittedBy: true });
@@ -953,6 +997,8 @@ export type ProgressEntry = typeof progressEntries.$inferSelect;
 export type DprStructureItem = typeof dprStructureItems.$inferSelect;
 export type EquipmentLog = typeof equipmentLogs.$inferSelect;
 export type EquipmentActivityAllocation = typeof equipmentActivityAllocations.$inferSelect;
+export type EquipmentActivitySegment = typeof equipmentActivitySegments.$inferSelect;
+export type EquipmentActivitySegmentBoqItem = typeof equipmentActivitySegmentBoqItems.$inferSelect;
 export type LabourLog = typeof labourLogs.$inferSelect;
 export type MaterialLog = typeof materialLogs.$inferSelect;
 export type SitePurchase = typeof sitePurchases.$inferSelect;
@@ -978,6 +1024,16 @@ export const createDprRequestSchema = insertDprSchema.extend({
       programmeBarId: z.number().int().positive().nullable().optional(),
       startTime: z.string(),
       endTime: z.string(),
+      // Display-only client calculation. Storage always recomputes this value.
+      hoursWorked: z.number().finite().positive().optional(),
+    })).optional(),
+    activitySegments: z.array(z.object({
+      startTime: z.string(),
+      endTime: z.string(),
+      boqItems: z.array(z.object({
+        boqItemId: z.number().int().positive(),
+        programmeBarId: z.number().int().positive().nullable().optional(),
+      })).min(1),
       // Display-only client calculation. Storage always recomputes this value.
       hoursWorked: z.number().finite().positive().optional(),
     })).optional(),
@@ -1023,7 +1079,10 @@ export type DprWithDetails = Dpr & {
   lastEditedByName?: string;
   submittedByName?: string;
   progress: ProgressEntry[];
-  equipment: Array<EquipmentLog & { activityAllocations?: EquipmentActivityAllocation[] }>;
+  equipment: Array<EquipmentLog & {
+    activitySegments?: Array<EquipmentActivitySegment & { boqItems: EquipmentActivitySegmentBoqItem[] }>;
+    activityAllocations?: EquipmentActivityAllocation[];
+  }>;
   labour: LabourLog[];
   materials: MaterialLog[];
   sitePurchases: SitePurchase[];

@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   EquipmentActivityAllocationError,
   calculateEquipmentAllocationHours,
+  attributeEquipmentActivitySegmentBoqHours,
   formatEquipmentAllocationDuration,
   resolveEquipmentAllocationParentDuration,
   resolveEquipmentAllocationParentHours,
   resolveEquipmentBoqHours,
   validateEquipmentActivityAllocations,
+  validateEquipmentActivitySegments,
 } from "../shared/equipmentActivityAllocations";
 
 const allocation = (
@@ -173,5 +175,59 @@ describe("equipment activity allocations", () => {
       8.666667,
       { startTime: "09:30", endTime: "18:10" },
     )).toThrow(/after the machine-day End Time/i);
+  });
+
+  it("normalizes one physical segment with several unique BOQ links", () => {
+    const result = validateEquipmentActivitySegments([{
+      startTime: "08:00",
+      endTime: "12:00",
+      boqItems: [
+        { boqItemId: 11, programmeBarId: 101 },
+        { boqItemId: 22 },
+      ],
+      hoursWorked: 999,
+    }], 8, { startTime: "08:00", endTime: "16:00" });
+
+    expect(result.physicalHours).toBe(4);
+    expect(result.unallocatedHours).toBe(4);
+    expect(result.segments[0].hoursWorked).toBe(4);
+    expect(result.segments[0].boqItems).toEqual([
+      { boqItemId: 11, programmeBarId: 101 },
+      { boqItemId: 22, programmeBarId: null },
+    ]);
+  });
+
+  it("rejects duplicate links and overlapping distinct segments", () => {
+    expect(() => validateEquipmentActivitySegments([{
+      startTime: "08:00",
+      endTime: "10:00",
+      boqItems: [{ boqItemId: 11 }, { boqItemId: 11, programmeBarId: 101 }],
+    }], 8)).toThrow(/linked only once/i);
+
+    expect(() => validateEquipmentActivitySegments([
+      { startTime: "08:00", endTime: "11:00", boqItems: [{ boqItemId: 11 }] },
+      { startTime: "10:00", endTime: "12:00", boqItems: [{ boqItemId: 22 }] },
+    ], 8)).toThrow(/cannot overlap/i);
+  });
+
+  it("attributes full duration to every BOQ while counting physical time once", () => {
+    const validated = validateEquipmentActivitySegments([{
+      startTime: "08:00",
+      endTime: "12:00",
+      boqItems: [{ boqItemId: 11 }, { boqItemId: 22 }],
+    }], 8);
+    expect(attributeEquipmentActivitySegmentBoqHours(validated.segments)).toEqual({
+      boqHours: [
+        { boqItemId: 11, programmeBarId: null, hoursWorked: 4 },
+        { boqItemId: 22, programmeBarId: null, hoursWorked: 4 },
+      ],
+      physicalHours: 4,
+    });
+    expect(resolveEquipmentBoqHours({
+      boqItemId: 99,
+      hoursWorked: 8,
+      activityAllocations: [{ boqItemId: 99, hoursWorked: 8 }],
+      activitySegments: validated.segments,
+    }).map(row => row.source)).toEqual(["activity_segment", "activity_segment"]);
   });
 });

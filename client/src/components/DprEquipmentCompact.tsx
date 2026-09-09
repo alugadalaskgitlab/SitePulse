@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { calculateEquipmentClockDuration, computeEquipmentFuelSummary, formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
-import { EquipmentActivityAllocationEditor, type EquipmentActivityAllocation } from "@/components/EquipmentActivityAllocationEditor";
+import { EquipmentActivityAllocationEditor, type EquipmentActivitySegment } from "@/components/EquipmentActivityAllocationEditor";
 import { resolveEquipmentAllocationParentDuration } from "@shared/equipmentActivityAllocations";
 
 export type DprEquipmentFields = {
@@ -16,12 +16,13 @@ export type DprEquipmentFields = {
   dieselBalanceInTank?: number | null; dieselBalanceConfirmed?: boolean | null; dieselNorm?: number | null;
   expectedDiesel?: number | null; hoursWorked?: number | null; totalKm?: number | null;
   equipmentId?: number | null; dieselSource?: string | null; breakdowns?: Array<{ description?: string }>;
-  activityAllocations?: EquipmentActivityAllocation[];
+  activitySegments?: EquipmentActivitySegment[];
+  activityAllocations?: Array<{ boqItemId: number; programmeBarId?: number | null; startTime: string; endTime: string; hoursWorked?: number }>;
 };
 export type DprEquipmentTankPatch = Pick<
   DprEquipmentFields,
   "openingDiesel" | "dieselBalanceInTank" | "dieselBalanceConfirmed"
-> & { activityAllocations?: EquipmentActivityAllocation[] };
+> & { activitySegments?: EquipmentActivitySegment[] };
 
 const dash = (value: unknown) => value === null || value === undefined || value === "" ? "—" : String(value);
 const number = (value: number | null | undefined, decimals = 2) => value == null || !Number.isFinite(Number(value)) ? "—" : Number(value).toFixed(decimals);
@@ -32,6 +33,7 @@ function Detail({ label, value, emphasis = false }: { label: string; value: stri
     <div className={`text-sm tabular-nums sm:text-[15px] ${emphasis ? "font-bold text-slate-950 dark:text-slate-50" : "font-medium text-slate-700 dark:text-slate-200"}`}>{value}</div>
   </div>;
 }
+
 
 function SectionHeading({ children }: { children: ReactNode }) {
   return <div className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">{children}</div>;
@@ -64,6 +66,23 @@ export function DprEquipmentCompact({ row, equipment, onChange, editable = true,
     startTime: row.startTime,
     endTime: row.endTime,
   }), [row.startTime, row.endTime]);
+  const activitySegments = useMemo<EquipmentActivitySegment[]>(() => {
+    if (Array.isArray(row.activitySegments) && (row.activitySegments.length > 0 || !row.activityAllocations?.length)) return row.activitySegments;
+    const grouped = new Map<string, EquipmentActivitySegment>();
+    for (const allocation of row.activityAllocations ?? []) {
+      const key = `${allocation.startTime}\u0000${allocation.endTime}`;
+      const existing = grouped.get(key);
+      const boqItem = { boqItemId: allocation.boqItemId, programmeBarId: allocation.programmeBarId ?? null };
+      if (existing) existing.boqItems.push(boqItem);
+      else grouped.set(key, {
+        startTime: allocation.startTime,
+        endTime: allocation.endTime,
+        hoursWorked: allocation.hoursWorked,
+        boqItems: [boqItem],
+      });
+    }
+    return Array.from(grouped.values());
+  }, [row.activitySegments, row.activityAllocations]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,10 +118,10 @@ export function DprEquipmentCompact({ row, equipment, onChange, editable = true,
       <div className="grid divide-y divide-slate-200 dark:divide-slate-700 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
         <section className="p-4"><SectionHeading>Equipment</SectionHeading><div className="grid grid-cols-2 gap-4"><Detail label="Machine" value={dash(row.machine)} emphasis /><Detail label="Registration / equipment no." value={dash(row.vehicleNo)} /><Detail label="Operator" value={dash(row.operator)} /><Detail label="Entry / Hire Type" value={dash(row.entryType).replaceAll("_", " ")} /></div></section>
         <section className="p-4"><SectionHeading>Usage Start</SectionHeading><div className="grid grid-cols-2 gap-4"><Detail label="Opening Meter" value={dash(row.openingReading)} /><Detail label="Start Time" value={formatEquipmentTime(row.startTime)} emphasis /></div></section>
-        <section className="p-4"><SectionHeading>Usage End</SectionHeading><div className="grid grid-cols-2 gap-4"><Detail label="Closing Meter" value={dash(row.closingReading)} /><Detail label="End Time" value={formatEquipmentTime(row.endTime)} emphasis /></div></section>
+        <section className="p-4"><SectionHeading>Usage End</SectionHeading><div className="grid grid-cols-2 gap-4"><Detail label={equipment?.meterType === "odometer" ? "Closing Odometer" : "Closing Meter"} value={dash(row.closingReading)} /><Detail label="End Time" value={formatEquipmentTime(row.endTime)} emphasis /><Detail label={equipment?.meterType === "odometer" || preview.totalKm != null ? "Distance" : "Meter Working Hours"} value={equipment?.meterType === "odometer" || preview.totalKm != null ? (preview.totalKm == null ? "—" : `${number(preview.totalKm, 2)} km`) : (preview.basis === "hour_meter" && preview.hoursWorked != null ? `${number(preview.hoursWorked)} h` : "—")} emphasis /><Detail label="Clock Duration" value={formatEquipmentDuration(clockHours)} emphasis /></div></section>
       </div>
 
-      <section className="border-t border-slate-200 bg-blue-50/40 p-4 dark:border-slate-700 dark:bg-blue-950/10">
+      {!editable && <section className="border-t border-slate-200 bg-blue-50/40 p-4 dark:border-slate-700 dark:bg-blue-950/10">
         <SectionHeading>Usage Summary</SectionHeading>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Detail label={equipment?.meterType === "odometer" ? "Distance" : "Meter Working Hours"} value={equipment?.meterType === "odometer" ? (preview.totalKm == null ? "—" : `${number(preview.totalKm, 2)} km`) : (preview.basis === "hour_meter" && preview.hoursWorked != null ? `${number(preview.hoursWorked)} h` : "—")} emphasis />
@@ -115,7 +134,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, editable = true,
               ? "Meter Working Hours come from the opening and closing meter difference. Clock duration is shown separately."
               : "No hour-meter difference is available. Clock duration is shown separately and is not labelled as meter working time."}
         </p>
-      </section>
+      </section>}
 
       <section className="border-t border-slate-200 p-4 dark:border-slate-700">
         <SectionHeading><span className="flex items-center gap-2"><Fuel className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel</span></SectionHeading>
@@ -126,7 +145,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, editable = true,
         </div></> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"><Detail label="Opening Tank (L)" value={`${number(row.openingDiesel)} L`} /><Detail label="Diesel Issued / Added" value={`${number(row.diesel)} L`} /><Detail label="Diesel Source" value={dash(row.dieselSource).replace("_", " ")} /><Detail label="Closing Tank / Physical Dip (L)" value={`${number(row.dieselBalanceInTank)} L`} /><Detail label="Physical Tank Balance" value={row.dieselBalanceConfirmed ? "Confirmed" : tankKnown ? "Pending confirmation" : "—"} emphasis /></div>}
       </section>
 
-      <section className="border-t border-slate-200 bg-amber-50/40 p-4 dark:border-slate-700 dark:bg-amber-950/10">
+      {!editable && <section className="border-t border-slate-200 bg-amber-50/40 p-4 dark:border-slate-700 dark:bg-amber-950/10">
         <SectionHeading><span className="flex items-center gap-2"><Droplets className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel Performance</span></SectionHeading>
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Detail label="Actual Consumed" value={fuel.actualConsumed == null ? "Awaiting tank dip" : `${number(fuel.actualConsumed)} L`} emphasis />
@@ -135,9 +154,9 @@ export function DprEquipmentCompact({ row, equipment, onChange, editable = true,
           <Detail label="Actual Consumption Rate" value={fuel.actualRate == null ? "—" : `${number(fuel.actualRate)} ${fuel.actualRateUnit}`} emphasis />
         </div>
         <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">Variance is actual consumed minus expected; a positive value means more fuel was consumed than expected.</p>
-      </section>
+      </section>}
       {!editable && tankKnown && !row.dieselBalanceConfirmed && <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-300">Physical tank balance has not been confirmed.</div>}
-      <EquipmentActivityAllocationEditor value={row.activityAllocations ?? []} onChange={editable && onChange ? activityAllocations => onChange({ activityAllocations }) : undefined} parentHours={allocationParent.hours} parentStartTime={row.startTime} parentEndTime={row.endTime} boqItems={boqItems} programmeBars={programmeBars} editable={editable} />
+      <EquipmentActivityAllocationEditor value={activitySegments} onChange={editable && onChange ? activitySegments => onChange({ activitySegments, activityAllocations: undefined }) : undefined} parentHours={allocationParent.hours} parentStartTime={row.startTime} parentEndTime={row.endTime} boqItems={boqItems} programmeBars={programmeBars} editable={editable} />
     </article>
   );
 }

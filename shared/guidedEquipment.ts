@@ -80,7 +80,7 @@ export function splitGuidedEquipmentRow(dbRow: Record<string, unknown> | null | 
     // Drizzle relations hydrate missing children as []. Keep that equivalent
     // to an omitted field so a Guided save preserves a legacy parent boqItemId.
     // A non-empty allocation array remains explicit and round-trips normally.
-    if (k === "activityAllocations" && Array.isArray(v) && v.length === 0) continue;
+    if ((k === "activityAllocations" || k === "activitySegments") && Array.isArray(v) && v.length === 0) continue;
     passthrough[k] = v;
   }
   return {
