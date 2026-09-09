@@ -1,0 +1,114 @@
+EDIT DPR — LEGACY EQUIPMENT ASSIGNMENT PRESERVE UNTIL INTENTIONAL CONVERSION
+
+Important clarification:
+
+We DO need to correct some historical DPR equipment assignments.
+
+Business case:
+Earlier, JCB/Excavator used simultaneously for:
+- Roadway Excavation
+- Embankment with Excavated Material
+
+was often linked only to Roadway Excavation.
+
+We now need to open those previous DPRs and intentionally edit the equipment Work Assignment so the SAME physical time segment can link to BOTH BOQ items.
+
+Required behavior:
+
+1. Untouched legacy equipment assignment:
+- preserve as-is
+- do not revalidate/rewrite during unrelated DPR edits
+
+2. Once the user intentionally edits that equipment Work Assignment:
+- convert only that equipment log to normalized activitySegments
+- allow one physical segment with multiple BOQ links
+- persist normalized segment + BOQ-link records
+- legacy allocation rows remain historical fallback only and must not also be counted
+
+3. Typical conversion example:
+
+Existing legacy:
+09:30–13:00
+Roadway Excavation
+
+User edits and adds:
+Embankment with Excavated Material
+
+Expected normalized result:
+Physical segment:
+09:30–13:00
+BOQ Items:
+- Roadway Excavation
+- Embankment with Excavated Material
+
+Physical time = 3.5 h once
+BOQ attribution:
+- Roadway Excavation = 3.5 h
+- Embankment = 3.5 h
+
+4. Do NOT force the user to create a second overlapping physical segment.
+
+The user should add the second BOQ item INSIDE the same existing segment.
+
+5. If the legacy allocation being edited has one BOQ item and one time range:
+- hydrate it as one editable normalized segment
+- preserve its Start/End
+- preserve existing BOQ item
+- allow + Add BOQ Item within that same segment
+
+6. If multiple legacy rows have identical Start/End:
+- group them into one editable physical segment with multiple BOQ links
+- only for the explicit edit/conversion UI
+- do not bulk-migrate untouched historical records
+
+7. If legacy rows have partially overlapping but non-identical times:
+- do not silently merge
+- show them as separate legacy-derived segments
+- if the user edits that equipment assignment, require the user to correct the overlap before saving normalized data
+
+8. After successful conversion/save:
+- normalized activitySegments become authoritative for that equipment log
+- do not double-count legacy activityAllocations
+- Work Demand must use normalized segment BOQ attribution
+- physical machine totals remain counted once
+
+9. Per-equipment dirty state remains required:
+- only equipment logs whose Work Assignment was intentionally changed should be converted
+- untouched equipment logs remain preserved
+
+10. Apply this in:
+- Edit DPR
+- draft reopen/edit
+- version/revision flow where applicable
+
+11. Do not change:
+- schema
+- BOM/SNL norms
+- Work Programme
+- BOQ progress quantities
+- cut/fill
+- diesel
+- hire
+- permissions
+
+Tests:
+
+A. Old DPR, excavation-only legacy assignment
+Open Edit
+Add Embankment to same segment
+Save
+Expected: success; one physical segment, two BOQ links
+
+B. Unrelated edit
+Do not touch equipment assignment
+Save
+Expected: success; legacy assignment preserved
+
+C. Old identical-time legacy rows
+Expected: editable grouped segment with both BOQs
+
+D. Old partially overlapping legacy rows
+Expected: no silent merge; user correction required if assignment is edited
+
+STOP after this compatibility/conversion correction.
+Do not publish automatically.

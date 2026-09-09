@@ -4,6 +4,7 @@ import {
   calculateEquipmentAllocationHours,
   attributeEquipmentActivitySegmentBoqHours,
   formatEquipmentAllocationDuration,
+  groupLegacyEquipmentActivityAllocations,
   resolveEquipmentAllocationParentDuration,
   resolveEquipmentAllocationParentHours,
   resolveEquipmentBoqHours,
@@ -229,5 +230,35 @@ describe("equipment activity allocations", () => {
       activityAllocations: [{ boqItemId: 99, hoursWorked: 8 }],
       activitySegments: validated.segments,
     }).map(row => row.source)).toEqual(["activity_segment", "activity_segment"]);
+  });
+
+  it("groups only identical legacy time ranges for explicit conversion editing", () => {
+    const grouped = groupLegacyEquipmentActivityAllocations([
+      allocation(11, "09:30", "13:00"),
+      allocation(22, "09:30", "13:00"),
+      allocation(33, "12:30", "14:00"),
+    ]);
+    expect(grouped).toEqual([
+      {
+        startTime: "09:30",
+        endTime: "13:00",
+        hoursWorked: undefined,
+        boqItems: [
+          { boqItemId: 11, programmeBarId: null },
+          { boqItemId: 22, programmeBarId: null },
+        ],
+      },
+      {
+        startTime: "12:30",
+        endTime: "14:00",
+        hoursWorked: undefined,
+        boqItems: [{ boqItemId: 33, programmeBarId: null }],
+      },
+    ]);
+    expect(() => validateEquipmentActivitySegments(
+      grouped,
+      4.5,
+      { startTime: "09:30", endTime: "14:00" },
+    )).toThrow(/cannot overlap/i);
   });
 });

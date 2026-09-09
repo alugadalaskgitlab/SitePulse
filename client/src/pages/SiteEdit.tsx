@@ -135,6 +135,7 @@ interface EquipmentEntry {
   breakdowns?: StagedBreakdown[];
   activitySegments?: Array<{ startTime: string; endTime: string; hoursWorked?: number; boqItems: Array<{ boqItemId: number; programmeBarId?: number | null }> }>;
   activityAllocations?: Array<{ boqItemId: number; programmeBarId?: number | null; startTime: string; endTime: string; hoursWorked?: number }>;
+  workAssignmentEdited?: boolean;
   // 06Q (client-only, stripped from the payload): true for rows added during
   // this edit session — only those get opening-reading continuity. Rows
   // loaded from the stored DPR NEVER have their opening recalculated on load.
@@ -1113,7 +1114,13 @@ export default function SiteEdit() {
     cutFillConsumptions: flattenCutFillConsumptions(progress),
     equipment: equipment.filter(e => e.machine).map(eq => {
       // 06Q: isNew is client-session state only — never sent to the server.
-      const { isNew: _isNew, ...rest } = eq;
+      const {
+        isNew: _isNew,
+        workAssignmentEdited,
+        activitySegments,
+        activityAllocations,
+        ...rest
+      } = eq;
       const preview = computeEquipmentUsage(
         activeEquipment.find((item) => item.id === eq.equipmentId) ??
           (eq.dieselNorm != null ? { consumptionNorm: eq.dieselNorm } : null),
@@ -1121,6 +1128,9 @@ export default function SiteEdit() {
       );
       return {
         ...rest,
+        ...(workAssignmentEdited || eq.persistedId == null
+          ? { activitySegments, activityAllocations }
+          : {}),
         totalKm: preview.totalKm ?? (eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
           ? Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2 : eq.totalKm || null),
         hoursWorked: preview.hoursWorked,
@@ -2789,6 +2799,12 @@ export default function SiteEdit() {
                     side: entry.side || null,
                   }] : [])}
                   onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } : row))}
+                  onWorkAssignmentChange={(activitySegments) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? {
+                    ...row,
+                    activitySegments,
+                    activityAllocations: undefined,
+                    workAssignmentEdited: true,
+                  } : row))}
                 />
                 <BreakdownStoppageEditor
                 value={entry.breakdowns ?? []}

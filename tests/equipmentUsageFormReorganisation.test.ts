@@ -60,7 +60,7 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(allocation).not.toContain("calendar-picker-indicator");
     expect(compact).toContain("row.activitySegments");
     expect(compact).toContain("row.activityAllocations");
-    expect(compact).toContain("onChange({ activitySegments, activityAllocations: undefined })");
+    expect(compact).toContain("onChange?.({ activitySegments, activityAllocations: undefined })");
     for (const source of [guided, detailed, edit, submitted, report]) {
       expect(source).toContain("programmeBarId");
     }

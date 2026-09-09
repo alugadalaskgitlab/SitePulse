@@ -2372,6 +2372,17 @@ export default function GuidedDpr() {
                         }] : [])}
                         onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === i
                           ? { ...row, passthrough: { ...row.passthrough, ...patch } } : row))}
+                        onWorkAssignmentChange={(activitySegments) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === i
+                          ? {
+                              ...row,
+                              passthrough: {
+                                ...row.passthrough,
+                                activitySegments,
+                                activityAllocations: undefined,
+                                workAssignmentEdited: true,
+                              },
+                            }
+                          : row))}
                       />
                       <BreakdownStoppageEditor
                         value={(pt.breakdowns ?? []) as StagedBreakdown[]}

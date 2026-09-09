@@ -23,9 +23,10 @@ export type EquipmentActivitySegment = {
 type BoqItem = { id: number; description?: string | null; itemCode?: string | null; itemName?: string | null; displayName?: string | null; unit?: string | null };
 type ProgrammeBar = { id: number; boqItemId: number; reachLabel?: string | null; side?: string | null };
 
-export function EquipmentActivityAllocationEditor({ value = [], onChange, boqItems = [], programmeBars = [], parentHours, parentStartTime, parentEndTime, editable = true }: {
+export function EquipmentActivityAllocationEditor({ value = [], onChange, boqItems = [], programmeBars = [], parentHours, parentStartTime, parentEndTime, editable = true, preserveInitialValueUntilChange = false }: {
   value?: EquipmentActivitySegment[]; onChange?: (value: EquipmentActivitySegment[]) => void; boqItems?: BoqItem[]; programmeBars?: ProgrammeBar[];
   parentHours?: number | null; parentStartTime?: string | null; parentEndTime?: string | null; editable?: boolean;
+  preserveInitialValueUntilChange?: boolean;
 }) {
   const itemName = (id: number) => {
     const item = boqItems.find(candidate => candidate.id === id);
@@ -88,7 +89,7 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
   const removeSegment = (index: number) => onChange?.(value.filter((_, i) => i !== index));
 
   useEffect(() => {
-    if (!editable || !onChange || !value.length) return;
+    if (!editable || !onChange || !value.length || preserveInitialValueUntilChange) return;
     let changed = false;
     const next = value.map((segment, index) => {
       const nextSegment = { ...segment, boqItems: segment.boqItems.map(item => {
@@ -110,7 +111,7 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
       return nextSegment;
     });
     if (changed) onChange(next);
-  }, [editable, onChange, value, parentStartTime, parentEndTime, programmeBars]);
+  }, [editable, onChange, value, parentStartTime, parentEndTime, programmeBars, preserveInitialValueUntilChange]);
 
   if (!editable) {
     return <section className="border-t border-slate-200 p-4 dark:border-slate-700">

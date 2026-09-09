@@ -106,9 +106,22 @@ export function newGuidedEquipmentRowForCreation(now = new Date()): GuidedEquipm
 }
 
 export function buildGuidedEquipmentPayload(row: GuidedEquipmentRow): Record<string, unknown> {
+  const {
+    workAssignmentEdited,
+    activitySegments,
+    activityAllocations,
+    ...passthrough
+  } = row.passthrough;
+  const includeAssignment = row.persistedId == null || workAssignmentEdited === true;
   return {
     ...(row.persistedId != null ? { persistedId: row.persistedId } : {}),
-    ...row.passthrough,
+    ...passthrough,
+    ...(includeAssignment && Object.prototype.hasOwnProperty.call(row.passthrough, "activitySegments")
+      ? { activitySegments }
+      : {}),
+    ...(includeAssignment && Object.prototype.hasOwnProperty.call(row.passthrough, "activityAllocations")
+      ? { activityAllocations }
+      : {}),
     machine: row.machine,
     vehicleNo: row.vehicleNo,
     operator: row.operator,

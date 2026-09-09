@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { calculateEquipmentClockDuration, computeEquipmentFuelSummary, formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
 import { EquipmentActivityAllocationEditor, type EquipmentActivitySegment } from "@/components/EquipmentActivityAllocationEditor";
-import { resolveEquipmentAllocationParentDuration } from "@shared/equipmentActivityAllocations";
+import { groupLegacyEquipmentActivityAllocations, resolveEquipmentAllocationParentDuration } from "@shared/equipmentActivityAllocations";
 
 export type DprEquipmentFields = {
   machine?: string; vehicleNo?: string; operator?: string; task?: string; entryType?: string; startTime?: string; endTime?: string;
@@ -39,10 +39,11 @@ function SectionHeading({ children }: { children: ReactNode }) {
   return <div className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">{children}</div>;
 }
 
-export function DprEquipmentCompact({ row, equipment, onChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars }: {
+export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars }: {
   row: DprEquipmentFields;
   equipment?: { meterType?: string | null; consumptionNorm?: number | null } | null;
   onChange?: (patch: Partial<DprEquipmentFields>) => void;
+  onWorkAssignmentChange?: (activitySegments: EquipmentActivitySegment[]) => void;
   editable?: boolean; index?: number; beforeDate?: string; site?: string;
   boqItems?: Array<{ id: number; description?: string | null; itemCode?: string | null; itemName?: string | null; displayName?: string | null; unit?: string | null }>;
   programmeBars?: Array<{ id: number; boqItemId: number; reachLabel?: string | null; side?: string | null }>;
@@ -66,22 +67,10 @@ export function DprEquipmentCompact({ row, equipment, onChange, editable = true,
     startTime: row.startTime,
     endTime: row.endTime,
   }), [row.startTime, row.endTime]);
+  const usingLegacyActivityAssignment = !row.activitySegments?.length && !!row.activityAllocations?.length;
   const activitySegments = useMemo<EquipmentActivitySegment[]>(() => {
     if (Array.isArray(row.activitySegments) && (row.activitySegments.length > 0 || !row.activityAllocations?.length)) return row.activitySegments;
-    const grouped = new Map<string, EquipmentActivitySegment>();
-    for (const allocation of row.activityAllocations ?? []) {
-      const key = `${allocation.startTime}\u0000${allocation.endTime}`;
-      const existing = grouped.get(key);
-      const boqItem = { boqItemId: allocation.boqItemId, programmeBarId: allocation.programmeBarId ?? null };
-      if (existing) existing.boqItems.push(boqItem);
-      else grouped.set(key, {
-        startTime: allocation.startTime,
-        endTime: allocation.endTime,
-        hoursWorked: allocation.hoursWorked,
-        boqItems: [boqItem],
-      });
-    }
-    return Array.from(grouped.values());
+    return groupLegacyEquipmentActivityAllocations(row.activityAllocations);
   }, [row.activitySegments, row.activityAllocations]);
 
   useEffect(() => {
@@ -156,7 +145,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, editable = true,
         <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">Variance is actual consumed minus expected; a positive value means more fuel was consumed than expected.</p>
       </section>}
       {!editable && tankKnown && !row.dieselBalanceConfirmed && <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-300">Physical tank balance has not been confirmed.</div>}
-      <EquipmentActivityAllocationEditor value={activitySegments} onChange={editable && onChange ? activitySegments => onChange({ activitySegments, activityAllocations: undefined }) : undefined} parentHours={allocationParent.hours} parentStartTime={row.startTime} parentEndTime={row.endTime} boqItems={boqItems} programmeBars={programmeBars} editable={editable} />
+      <EquipmentActivityAllocationEditor value={activitySegments} onChange={editable && (onWorkAssignmentChange || onChange) ? activitySegments => onWorkAssignmentChange ? onWorkAssignmentChange(activitySegments) : onChange?.({ activitySegments, activityAllocations: undefined }) : undefined} parentHours={allocationParent.hours} parentStartTime={row.startTime} parentEndTime={row.endTime} boqItems={boqItems} programmeBars={programmeBars} editable={editable} preserveInitialValueUntilChange={usingLegacyActivityAssignment} />
     </article>
   );
 }

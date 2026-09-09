@@ -59,6 +59,22 @@ describe("equipment allocation lifecycle and view contracts", () => {
     expect(storage).toContain("input.activitySegments.length > 0 || !Array.isArray(input?.activityAllocations)");
   });
 
+  it("preserves untouched legacy assignments and converts only intentionally edited equipment", () => {
+    const edit = read("client/src/pages/SiteEdit.tsx");
+    const compact = read("client/src/components/DprEquipmentCompact.tsx");
+    const editor = read("client/src/components/EquipmentActivityAllocationEditor.tsx");
+    const guided = read("client/src/pages/GuidedDpr.tsx");
+    const guidedEquipment = read("shared/guidedEquipment.ts");
+    expect(edit).toContain("workAssignmentEdited: true");
+    expect(edit).toContain("workAssignmentEdited || eq.persistedId == null");
+    expect(compact).toContain("preserveInitialValueUntilChange={usingLegacyActivityAssignment}");
+    expect(editor).toContain("|| preserveInitialValueUntilChange");
+    expect(guided).toContain("workAssignmentEdited: true");
+    expect(guidedEquipment).toContain("const includeAssignment = row.persistedId == null || workAssignmentEdited === true");
+    expect(storage).toContain("_preserveActivityAssignment: true");
+    expect(storage).toContain("if (_preserveActivityAssignment) return normalised");
+  });
+
   it("Q: does not add permission or authentication handling to allocation code", () => {
     for (const path of [
       "shared/equipmentActivityAllocations.ts",

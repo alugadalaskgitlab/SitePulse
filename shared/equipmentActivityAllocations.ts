@@ -36,6 +36,31 @@ export type EquipmentActivitySegmentValidation = {
   unallocatedHours: number | null;
 };
 
+export function groupLegacyEquipmentActivityAllocations(
+  allocations: EquipmentActivityAllocationInput[] = [],
+): EquipmentActivitySegmentInput[] {
+  const grouped = new Map<string, EquipmentActivitySegmentInput>();
+  for (const allocation of allocations) {
+    const key = `${allocation.startTime}\u0000${allocation.endTime}`;
+    const boqItem = {
+      boqItemId: allocation.boqItemId,
+      programmeBarId: allocation.programmeBarId ?? null,
+    };
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.boqItems.push(boqItem);
+    } else {
+      grouped.set(key, {
+        startTime: allocation.startTime,
+        endTime: allocation.endTime,
+        hoursWorked: allocation.hoursWorked,
+        boqItems: [boqItem],
+      });
+    }
+  }
+  return Array.from(grouped.values());
+}
+
 export type NormalizedEquipmentActivityAllocation = {
   boqItemId: number;
   programmeBarId: number | null;
