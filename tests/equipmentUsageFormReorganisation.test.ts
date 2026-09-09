@@ -86,6 +86,7 @@ describe("equipment usage form reorganisation contracts", () => {
   it("shows the same parent equipment summary in both submitted DPR views", () => {
     expect(submitted).toContain("<DprEquipmentCompact");
     expect(report).toContain("<DprEquipmentCompact");
+    expect(compact).toContain('!editable && <div className="grid divide-y');
     expect(compact).toContain("<EquipmentActivityAllocationEditor");
     expect(compact).toContain("editable={editable}");
   });

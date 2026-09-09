@@ -1,0 +1,84 @@
+EQUIPMENT EDITABLE FORM — REMOVE DUPLICATE READ-ONLY SUMMARY BLOCK
+
+Please make this one small UX correction only.
+
+Current problem:
+In editable DPR equipment entry, the large read-only block is still shown:
+
+- EQUIPMENT
+- USAGE START
+- USAGE END
+
+with:
+- Machine
+- Registration/equipment no.
+- Operator
+- Entry/Hire Type
+- Opening Meter
+- Start Time
+- Closing Meter
+- End Time
+- Meter Working Hours
+- Clock Duration
+
+This duplicates information already entered in the actual equipment input fields above and makes the field form unnecessarily long.
+
+Required change:
+
+1. In EDITABLE mode, do NOT render the entire read-only:
+
+   EQUIPMENT | USAGE START | USAGE END
+
+   summary/detail grid.
+
+2. Keep that grid available in READ-ONLY / SUBMITTED / REPORT / MANAGER REVIEW mode.
+
+3. Editable equipment entry should contain only the fields/actions the engineer needs to enter or correct.
+
+4. Keep compact inline calculated values only where they help entry:
+   - Meter Working Hours next to/near Opening + Closing Meter inputs
+   - Clock Duration next to/near Start + End Time inputs
+   - Segment Duration inside Work Assignment
+
+5. Do not create another summary card for these calculations.
+
+6. Keep editable Fuel inputs and Work Assignment inputs.
+   Do not remove required data-entry fields.
+
+7. Continue to hide in editable mode:
+   - Usage Summary
+   - Fuel Performance
+   - AssignmentTotals
+   - report-style explanatory text
+
+8. Do not change:
+   - equipment persistence
+   - activity segment / multi-BOQ logic
+   - meter calculations
+   - clock calculations
+   - diesel calculations
+   - hire logic
+   - Work Demand
+   - schema/migrations
+   - permissions
+   - any other module
+
+9. Verify Guided DPR, Detailed/Classic DPR and Edit DPR.
+
+Expected editable flow:
+
+Equipment input fields
+→ compact inline meter/time calculations
+→ Fuel entry
+→ Work Assignment
+→ Breakdown/Stoppage
+
+No duplicate read-only equipment summary card in between.
+
+Read-only/submitted DPR may still show the full Equipment / Usage Start / Usage End summary.
+
+Run the focused tests and report files changed.
+
+STOP after this correction.
+Do not publish.
+Do not start another feature.
