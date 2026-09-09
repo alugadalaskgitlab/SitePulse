@@ -1,0 +1,854 @@
+EQUIPMENT WORK ASSIGNMENT — SIMULTANEOUS MULTI-BOQ OPERATION SUPPORT
+PLUS COMPACT FIELD-ENTRY UX AND TIME-PICKER FIX
+
+Implement only this focused correction.
+
+GOAL
+
+1. Support one physical equipment work segment being linked to multiple BOQ items when one operation simultaneously contributes to more than one payable BOQ item.
+2. Keep physical machine time counted only once.
+3. Credit each linked BOQ item with the same equipment contribution for BOM/SNL requirement matching.
+4. Keep actual machine cost/diesel/hire counted only once.
+5. Keep the editable field form compact: capture data, not analysis.
+6. Remove nonessential equipment summary/analysis blocks from the editable form.
+7. Fix all time fields so the native/mobile time picker opens properly.
+8. Preserve current machine-day parent logic and existing persistence wherever possible.
+
+--------------------------------------------------
+1. BUSINESS CASE
+--------------------------------------------------
+
+In road works, one physical excavator operation can legitimately contribute to more than one separately payable BOQ item at the same time.
+
+Example:
+
+An excavator performs Roadway Excavation and, in the same physical bucket operation at the same location, cuts and spreads/adjusts that excavated earth into Embankment with Excavated Material.
+
+This is:
+
+- one physical machine operation
+- one clock-time segment
+- one actual machine usage/cost event
+
+but it contributes to two separate BOQ items:
+
+- Roadway Excavation
+- Embankment with Excavated Material
+
+Both BOQ items may independently carry excavator requirement in BOM/SNL.
+
+If SitePulse allows only one BOQ item:
+- the second BOQ item keeps showing excavator requirement as unmet
+- Work Demand becomes wrong
+- plan-vs-actual resource analysis becomes wrong
+- BOQ-wise resource/cost analysis becomes misleading
+
+Therefore:
+
+ONE physical segment must support ONE OR MORE linked BOQ items.
+
+--------------------------------------------------
+2. PHYSICAL SEGMENT MODEL
+--------------------------------------------------
+
+Change the conceptual model from:
+
+one allocation row
+=
+one BOQ item
++
+one start time
++
+one end time
+
+to:
+
+one PHYSICAL WORK SEGMENT
+=
+one start time
++
+one end time
++
+one duration
++
+one or more BOQ item links
+
+Example:
+
+09:30–13:00
+3 h 30 min
+
+Linked BOQ Items:
+- Roadway Excavation
+- Embankment with Excavated Material
+
+Physical machine time:
+3 h 30 min
+
+Do NOT count:
+7 h
+
+--------------------------------------------------
+3. PHYSICAL MACHINE TIME COUNTS ONCE
+--------------------------------------------------
+
+For each physical segment:
+
+physical duration =
+End Time − Start Time
+
+No matter how many BOQ items are linked, machine physical time is counted once.
+
+Example:
+
+09:30–13:00
+BOQ A + BOQ B
+
+Expected:
+physical machine time = 3 h 30 min
+
+NOT:
+3 h 30 + 3 h 30 = 7 h
+
+This single physical duration is used for:
+
+- machine-day time
+- hire attendance
+- diesel
+- meter utilisation context
+- breakdown/stoppage context
+- physical equipment usage
+
+--------------------------------------------------
+4. BOQ RESOURCE ATTRIBUTION
+--------------------------------------------------
+
+Each linked BOQ item receives the full segment duration for equipment requirement matching.
+
+Example:
+
+Segment:
+09:30–13:00
+Excavator
+BOQ A + BOQ B
+Duration = 3.5 h
+
+Expected:
+
+BOQ A actual excavator contribution = 3.5 h
+BOQ B actual excavator contribution = 3.5 h
+
+But:
+
+overall physical excavator usage = 3.5 h
+
+This distinction is intentional.
+
+--------------------------------------------------
+5. UI — WORK ASSIGNMENT
+--------------------------------------------------
+
+Keep the section name:
+
+WORK ASSIGNMENT
+
+For a physical segment show:
+
+BOQ Items
+[ Select BOQ Item ]
+
+[ + Add BOQ Item ]
+
+Start Time
+End Time
+Duration
+
+Example:
+
+WORK ASSIGNMENT
+
+BOQ Items
+Roadway Excavation
+Embankment with Excavated Material
+
+Start Time: 09:30
+End Time: 13:00
+Duration: 3 h 30 min
+
+Inside a segment:
+
+[ + Add BOQ Item ]
+adds another BOQ link to the SAME physical segment.
+
+Below the last segment:
+
+[ + Add Item ]
+adds another physical time segment.
+
+Do not confuse these two actions.
+
+--------------------------------------------------
+6. FIRST ASSIGNMENT
+--------------------------------------------------
+
+When there are no physical segments:
+
+show:
+
+[ Assign Item ]
+
+This creates the first physical segment.
+
+The first segment requires at least one BOQ Item.
+
+Do NOT show:
+"+ Add another activity"
+
+--------------------------------------------------
+7. ADD ITEM POSITION
+--------------------------------------------------
+
+The:
+
+[ + Add Item ]
+
+button must sit immediately after the LAST physical segment.
+
+As more segments are added, it moves down with the last segment.
+
+Do not keep it at the section heading.
+
+--------------------------------------------------
+8. SMART TIME DEFAULTS
+--------------------------------------------------
+
+First segment:
+
+If parent machine-day Start Time exists:
+default segment Start Time = parent Start Time
+
+If this is the only segment and parent End Time exists:
+segment End Time may default = parent End Time
+
+When adding a new physical segment:
+
+default Start Time =
+previous segment End Time
+
+End Time =
+blank
+
+Do not overwrite manually entered values.
+
+--------------------------------------------------
+9. TIME PICKER FIX — IMPORTANT
+--------------------------------------------------
+
+Current time inputs use type="time" but hide the native picker indicator and overlay a non-clickable decorative clock icon.
+
+Fix this.
+
+For ALL relevant equipment time inputs:
+
+- keep type="time"
+- do NOT hide the browser/native time picker indicator
+- remove CSS like:
+  [&::-webkit-calendar-picker-indicator]:opacity-0
+- remove decorative overlaid clock icon if it interferes with interaction
+- ensure tapping/clicking the time field opens the native browser/mobile time picker where supported
+- keep manual typing/editing allowed
+- keep current value formatting/persistence semantics
+
+Apply to:
+
+- parent machine-day Start Time
+- parent machine-day End Time
+- physical assignment segment Start Time
+- physical assignment segment End Time
+- any other equipment-entry time field using the same hidden-picker pattern
+
+Do not replace this with a complex custom time-picker library unless absolutely necessary.
+
+Prefer native mobile/browser picker behavior.
+
+--------------------------------------------------
+10. CLOCK-TIME VALIDATION
+--------------------------------------------------
+
+Assignment segments are CLOCK-TIME segments.
+
+Do NOT validate against Meter Working Hours.
+
+Use:
+
+Parent Clock Duration =
+Parent End Time − Parent Start Time
+
+Each physical segment must lie within the parent machine-day time window.
+
+Example:
+
+Parent:
+09:30–18:10
+
+Clock Duration:
+8 h 40 min
+
+Meter:
+1388.8 → 1396.2
+Meter Working Hours:
+7 h 24 min
+
+Segment:
+09:30–18:10
+
+Expected:
+VALID
+
+Do NOT show:
+"Allocated time exceeds Meter Working Hours limit."
+
+--------------------------------------------------
+11. OVERLAP RULE
+--------------------------------------------------
+
+Overlap validation applies between PHYSICAL SEGMENTS only.
+
+Allowed:
+
+Segment 1
+09:30–13:00
+BOQ A + BOQ B
+
+This is valid.
+
+Not allowed:
+
+Segment 1
+09:30–13:00
+
+Segment 2
+12:30–15:00
+
+for the same machine/day.
+
+Multiple BOQ links within the same segment are not overlaps.
+
+--------------------------------------------------
+12. DUPLICATE BOQ LINKS
+--------------------------------------------------
+
+Within one physical segment:
+
+do not allow the same BOQ item to be linked twice.
+
+Example:
+
+Roadway Excavation
+Roadway Excavation
+
+Expected:
+prevent duplicate BOQ link.
+
+--------------------------------------------------
+13. EDITABLE FORM MUST BE COMPACT
+--------------------------------------------------
+
+The editable equipment form is a FIELD DATA-ENTRY FORM.
+
+It should capture data only.
+
+Do NOT make the engineer scroll through report-style analysis.
+
+Keep visible input sections compact.
+
+Show only fields needed to enter/correct data, such as:
+
+- Equipment
+- Registration/equipment no. where relevant
+- Operator
+- Hire/Entry Type
+- Opening Meter
+- Closing Meter
+- Parent Start Time
+- Parent End Time
+- Work Assignment
+- Diesel Issued/Added
+- Diesel Source if required
+- Opening Tank
+- Closing Tank
+- Physical Tank Balance Confirmed
+- Breakdown/Stoppage if applicable
+
+--------------------------------------------------
+14. REMOVE EQUIPMENT SUMMARY FROM EDITABLE FORM
+--------------------------------------------------
+
+Remove dedicated summary/analysis blocks from the normal editable equipment entry flow.
+
+Do NOT show large sections such as:
+
+- Equipment Summary
+- Usage Summary block
+- Fuel Performance block
+- Expected Consumption
+- Variance
+- Consumption Rate
+- Assigned / Unassigned / Machine Day summary block
+- explanatory analysis paragraphs
+
+in the normal editable field-entry form.
+
+The form should not behave like a report.
+
+--------------------------------------------------
+15. KEEP ONLY IMMEDIATE HELPFUL CALCULATIONS
+--------------------------------------------------
+
+Small inline calculations that help the user enter/check data may remain.
+
+Examples:
+
+Beside Opening/Closing Meter:
+Meter Working Hours
+
+Beside Start/End:
+Clock Duration
+
+Inside each Work Assignment segment:
+Duration
+
+These should be compact and adjacent to the relevant input.
+
+Do NOT create separate vertical summary sections for them.
+
+--------------------------------------------------
+16. REMOVE ASSIGNMENT TOTALS FROM EDITABLE FORM
+--------------------------------------------------
+
+The current editable Work Assignment section shows:
+
+- Assigned
+- Unassigned
+- Machine Day
+- explanatory text
+
+Remove this AssignmentTotals block from editable mode.
+
+Keep validation logic internally.
+
+If something is wrong:
+show a concise warning next to/under the relevant segment or section.
+
+Do not show routine analysis when there is no error.
+
+--------------------------------------------------
+17. VALIDATION UX
+--------------------------------------------------
+
+Validation should be concise and local.
+
+Examples:
+
+- Select at least one BOQ Item
+- End Time must be later than Start Time
+- Start Time cannot be before machine-day Start Time
+- End Time cannot be after machine-day End Time
+- This segment overlaps another machine segment
+- This BOQ Item is already linked to this segment
+
+Do not require the user to scroll to a summary block to find the error.
+
+--------------------------------------------------
+18. READ-ONLY / SUBMITTED / MANAGER VIEW
+--------------------------------------------------
+
+The analysis removed from editable entry may still be shown where it belongs:
+
+- Submitted DPR
+- DPR Report
+- Manager/Admin review
+- Equipment Hub
+- analytics/reporting views
+
+These views may show:
+
+- Meter Working Hours
+- Clock Duration
+- Actual Diesel Consumed
+- Expected Consumption
+- Variance
+- Consumption Rate
+- physical segment totals
+- BOQ resource attribution
+- other management analysis
+
+Do not remove calculations from backend logic.
+
+Only remove unnecessary analysis from editable field entry.
+
+--------------------------------------------------
+19. READ-ONLY WORK ASSIGNMENT DISPLAY
+--------------------------------------------------
+
+Display one physical segment once.
+
+Example:
+
+09:30 AM → 01:00 PM
+3 h 30 min
+
+BOQ Items:
+- Roadway Excavation
+- Embankment with Excavated Material
+
+Do not duplicate the same segment twice merely because it has two BOQ links.
+
+--------------------------------------------------
+20. WORK DEMAND / BOM-SNL REQUIREMENT MATCHING
+--------------------------------------------------
+
+For each physical segment:
+
+for every linked BOQ item:
+credit the full segment duration against that BOQ item's equipment requirement.
+
+Example:
+
+BOQ A required Excavator = 5 h
+BOQ B required Excavator = 4 h
+
+Shared segment:
+3.5 h
+
+Expected:
+
+BOQ A remaining = 1.5 h
+BOQ B remaining = 0.5 h
+
+Physical excavator usage remains:
+3.5 h
+
+Do not double physical machine totals.
+
+--------------------------------------------------
+21. COSTING — DO NOT DOUBLE ACTUAL COST
+--------------------------------------------------
+
+Do NOT duplicate actual machine cost across each linked BOQ item.
+
+One physical segment has one real cost.
+
+If:
+3.5 h physical segment costs ₹X
+
+Do NOT automatically show:
+₹X against BOQ A
++
+₹X against BOQ B
+
+For this batch:
+
+- preserve one physical actual cost
+- allow multiple BOQ resource attributions
+- do not invent BOQ-wise cost split
+
+If current cost analysis requires one BOQ cost assignment:
+report current behavior and STOP before inventing a new formula.
+
+--------------------------------------------------
+22. DIESEL / HIRE / METER / BREAKDOWN
+--------------------------------------------------
+
+Remain physical parent-level facts.
+
+Do NOT duplicate:
+
+- diesel
+- fuel consumption
+- opening/closing tank
+- meter working hours
+- hire billing
+- hire attendance
+- breakdowns
+- stoppages
+
+per BOQ link.
+
+--------------------------------------------------
+23. BOQ PROGRESS REMAINS SEPARATE
+--------------------------------------------------
+
+Do not change DPR quantity/progress logic.
+
+The engineer may separately record progress for:
+
+Roadway Excavation
+and
+Embankment with Excavated Material
+
+Equipment Work Assignment only records resource attribution.
+
+Do not derive BOQ quantity from equipment time.
+
+--------------------------------------------------
+24. PROGRAMME BAR LINKING
+--------------------------------------------------
+
+Each BOQ link may retain its own:
+
+programmeBarId
+
+because linked BOQ items may map to different programme bars.
+
+Resolve silently from existing DPR progress/activity context where safely possible.
+
+If not uniquely resolvable:
+leave null.
+
+Do not show:
+- Work Reach
+- Programme Bar
+- Programme ID
+- Side selector
+
+--------------------------------------------------
+25. DATA MODEL — INSPECT FIRST
+--------------------------------------------------
+
+Inspect current:
+
+equipment_activity_allocations
+
+Current structure appears to assume one allocation row = one BOQ item.
+
+Preferred normalized model:
+
+A. equipment_activity_segments
+
+- id
+- equipmentLogId
+- startTime
+- endTime
+- hoursWorked
+- createdAt
+
+B. equipment_activity_segment_boq_items
+
+- segmentId
+- boqItemId
+- programmeBarId nullable
+
+This is conceptually preferred.
+
+But do NOT implement schema changes immediately.
+
+--------------------------------------------------
+26. MIGRATION SAFETY
+--------------------------------------------------
+
+If schema change is required:
+
+STOP and report:
+
+1. current allocation schema
+2. proposed new normalized schema
+3. exact additive migration
+4. backward compatibility plan
+5. files/API paths affected
+
+No DROP.
+No DELETE.
+No RENAME.
+No destructive rewrite.
+No historical data loss.
+
+Do not apply migration without approval.
+
+--------------------------------------------------
+27. BACKWARD COMPATIBILITY
+--------------------------------------------------
+
+Existing historical allocation rows must remain readable.
+
+Current legacy concept:
+one allocation row = one BOQ item + one time segment
+
+Treat each existing row as one legacy physical segment with one BOQ link.
+
+Do not silently merge historical records.
+
+Do not rewrite old submitted DPRs destructively.
+
+--------------------------------------------------
+28. APPLY CONSISTENTLY
+--------------------------------------------------
+
+Verify/update all relevant consumers:
+
+- Guided / Field DPR
+- Detailed / Classic DPR
+- Edit DPR
+- Draft reopen
+- Autosave/local recovery
+- Submitted DPR
+- DPR report
+- printable DPR
+- Manager/Admin review
+- Equipment Hub
+- Work Demand
+- Planned vs Actual
+- resource requirement analysis
+- any BOQ-wise equipment analytics
+- any current cost analysis consuming equipment BOQ linkage
+
+Use shared helpers/components where practical.
+
+--------------------------------------------------
+29. TESTS
+--------------------------------------------------
+
+A. Empty work assignment
+Expected:
+Assign Item
+
+B. First segment
+Parent Start = 09:30
+Expected:
+segment Start defaults 09:30
+
+C. Add second BOQ to same segment
+09:30–13:00
+BOQ A + BOQ B
+Expected:
+valid
+
+D. Physical total
+Expected:
+3.5 h
+not 7 h
+
+E. Work Demand
+Expected:
+A receives 3.5 h
+B receives 3.5 h
+
+F. Add second physical segment
+13:00–16:00
+BOQ C
+Expected:
+physical total = 6.5 h
+
+G. Overlap
+09:30–13:00
+12:30–15:00
+Expected:
+blocked
+
+H. Duplicate BOQ in same segment
+Expected:
+blocked
+
+I. Meter vs clock
+Parent 09:30–18:10
+Meter hours 7 h 24 min
+Segment 09:30–18:10
+Expected:
+valid
+
+J. Native time picker
+Tap/click Start Time
+Expected:
+browser/mobile time picker opens where supported
+
+K. Native time picker
+Tap/click End Time
+Expected:
+same
+
+L. Parent time fields
+Expected:
+native picker also works
+
+M. Editable form length
+Expected:
+no Equipment Summary block
+no Fuel Performance block
+no AssignmentTotals block
+
+N. Inline duration
+Expected:
+still visible beside/inside relevant entry area
+
+O. Submitted/report view
+Expected:
+management calculations still available where appropriate
+
+P. Hire billing
+Expected:
+one physical usage only
+
+Q. Diesel
+Expected:
+not duplicated
+
+R. Costing
+Expected:
+physical actual cost counted once
+
+S. Legacy DPR
+Expected:
+renders correctly
+
+--------------------------------------------------
+30. DO NOT TOUCH
+--------------------------------------------------
+
+Do NOT change:
+
+- BOQ rates
+- BOQ quantities
+- Work Programme dates/calculations
+- BOM norms
+- SNL norms
+- cut/fill reconciliation
+- reusableQty
+- Execution Arrangements
+- Stores
+- material receipts/trips
+- Tomorrow's Program
+- Site Requirements
+- Vendor Bills
+- plant production
+- hire formulas
+- diesel commercial recovery
+- permissions
+- authentication/session logic
+
+--------------------------------------------------
+31. REPORT AND STOP
+--------------------------------------------------
+
+Report:
+
+1. current allocation model
+2. whether schema change is required
+3. proposed physical-segment + multi-BOQ-link model
+4. exact migration if required
+5. editable form sections removed
+6. inline calculations retained
+7. time-picker fix
+8. Work Demand behavior
+9. physical-hour aggregation behavior
+10. BOQ attribution behavior
+11. cost behavior
+12. backward compatibility
+13. Guided/Classic/Edit changes
+14. Submitted/report changes
+15. tests run/results
+
+If schema change is required:
+STOP before applying migration.
+
+Do not publish.
+Do not start Work Programme analysis yet.
