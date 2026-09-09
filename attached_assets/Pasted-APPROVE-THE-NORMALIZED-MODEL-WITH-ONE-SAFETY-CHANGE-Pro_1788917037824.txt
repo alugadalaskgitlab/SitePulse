@@ -1,0 +1,116 @@
+APPROVE THE NORMALIZED MODEL, WITH ONE SAFETY CHANGE
+
+Proceed with the normalized design:
+
+1. equipment_activity_segments
+2. equipment_activity_segment_boq_items
+
+The proposed schema direction is approved because one physical equipment time segment must support multiple BOQ links.
+
+However, change the migration/backward-compatibility approach as follows:
+
+DO NOT bulk-backfill or rewrite historical equipment_activity_allocations unless technically necessary.
+
+Preferred compatibility model:
+
+- Keep existing equipment_activity_allocations completely unchanged.
+- Existing historical DPRs continue to read from the legacy table.
+- New/edited equipment assignments after this change use:
+  - equipment_activity_segments
+  - equipment_activity_segment_boq_items
+- Read normalized segments first when present.
+- Fall back to legacy equipment_activity_allocations only when normalized segments are absent.
+- Do not silently migrate, merge, duplicate, or rewrite old submitted DPR records.
+- If an existing editable DPR is opened and then saved using the new editor, convert only that equipment log safely as part of that explicit edit/save flow if required.
+
+Before applying migration, show the exact final SQL.
+
+Migration must remain additive only:
+- CREATE TABLE
+- CREATE INDEX
+- no DROP
+- no DELETE
+- no RENAME
+- no destructive ALTER
+- no historical data rewrite
+
+After migration approval, implement the already-approved UX/behavior in the same focused batch:
+
+A. Multi-BOQ physical segment
+- One physical segment = Start + End + Duration
+- One or more BOQ links inside the segment
+- + Add BOQ Item adds BOQ link inside same segment
+- + Add Item adds another physical segment
+
+B. Physical time
+- Count once per segment
+- Same segment may credit full duration to each linked BOQ for Work Demand / BOM-SNL requirement matching
+- Do not double physical equipment hours
+
+C. Cost / diesel / hire
+- Count once at physical parent/machine level
+- Do not duplicate actual cost
+- do not invent BOQ cost split
+
+D. Compact editable form
+Remove from editable equipment form:
+- Usage Summary block
+- Fuel Performance block
+- Assignment totals block
+- report-style explanatory summaries
+
+Keep only compact inline calculations near relevant fields:
+- meter working hours near meter fields
+- clock duration near parent time fields
+- segment duration inside each assignment segment
+
+E. Time picker fix
+For all equipment time inputs:
+- keep type="time"
+- remove hidden native picker CSS
+- remove/interfere less with decorative overlay icons
+- ensure native/mobile time picker opens when tapping/clicking
+- apply to parent Start/End and assignment Start/End
+
+F. Validation
+- physical segment overlap validation only
+- multiple BOQ links inside same segment are allowed
+- duplicate BOQ link inside same segment blocked
+- segment must remain within parent machine-day clock window
+- meter working hours must not cap segment clock duration
+
+G. Read-only/reporting
+- submitted/report view shows one physical segment once
+- list all linked BOQ items beneath it
+- management/report views may still show detailed calculated summaries
+
+H. Work Demand
+Example:
+Shared segment 09:30–13:00 = 3.5 h
+BOQ A + BOQ B
+
+Expected:
+- BOQ A equipment contribution = 3.5 h
+- BOQ B equipment contribution = 3.5 h
+- physical machine usage = 3.5 h
+
+I. Do not touch
+- BOQ rates/quantities
+- Work Programme calculations
+- BOM/SNL norms
+- cut/fill
+- Execution Arrangements
+- Stores
+- Tomorrow's Program
+- Site Requirements
+- Vendor Bills
+- plant production
+- hire formulas
+- diesel commercial recovery
+- permissions/authentication
+
+First show the exact final additive migration SQL and STOP for approval.
+
+Do not apply migration yet.
+Do not publish.
+Do not start Work Programme analysis.
