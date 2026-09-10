@@ -90,4 +90,11 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(compact).toContain("<EquipmentActivityAllocationEditor");
     expect(compact).toContain("editable={editable}");
   });
+
+  it("keeps collapsed editable rows mounted so assignment behavior cannot change", () => {
+    expect(compact).toContain('editable && !expanded ? "hidden" : undefined');
+    expect(compact).toContain("<EquipmentActivityAllocationEditor");
+    expect(edit).toContain('<details className="group">');
+    expect(guided).toContain('<details className="group">');
+  });
 });

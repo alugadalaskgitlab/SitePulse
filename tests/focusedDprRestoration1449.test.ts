@@ -25,7 +25,7 @@ describe("focused DPR restoration", () => {
     expect(calculateLengthFromChainage("bad", "2.100")).toBeNull();
   });
 
-  it("keeps length read-only, removes the reconciliation prompt, and opens DPR equipment details", async () => {
+  it("keeps length read-only, removes the reconciliation prompt, and keeps compact DPR equipment details deliberate", async () => {
     const [siteEntry, siteEdit, guided] = await Promise.all([
       readSource("client/src/pages/SiteEntry.tsx"),
       readSource("client/src/pages/SiteEdit.tsx"),
@@ -34,8 +34,10 @@ describe("focused DPR restoration", () => {
 
     for (const source of [siteEntry, siteEdit, guided]) {
       expect(source).not.toContain("Chainage changed — recalculated length");
-      expect(source).toContain("<details open className=\"group\">");
     }
+    expect(siteEntry).toContain("<details open className=\"group\">");
+    expect(siteEdit).toContain("<details className=\"group\">");
+    expect(guided).toContain("<details className=\"group\">");
     expect(siteEntry).toMatch(/data-testid=\{`input-progress-length-\$\{idx\}`\}[\s\S]{0,500}?\/>/);
     expect(siteEntry).toMatch(/<Input[\s\S]{0,350}?readOnly[\s\S]{0,350}?data-testid=\{`input-progress-length-\$\{idx\}`\}/);
     expect(siteEdit).toMatch(/<Input[\s\S]{0,350}?readOnly[\s\S]{0,350}?data-testid=\{`input-length-\$\{idx\}`\}/);

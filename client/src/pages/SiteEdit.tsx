@@ -2371,8 +2371,8 @@ export default function SiteEdit() {
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
-              <details open className="group">
-              <summary className="mb-2 cursor-pointer list-none text-xs font-semibold text-muted-foreground after:ml-2 after:content-['Edit_Usage_Details'] group-open:after:content-['Close_Usage_Details']" />
+              <details className="group">
+              <summary className="mb-2 min-h-11 cursor-pointer list-none py-3 text-xs font-semibold text-muted-foreground sm:min-h-0 sm:py-1">Equipment setup and additional usage details</summary>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="col-span-2">
                 <Label className="text-sm">Equipment</Label>

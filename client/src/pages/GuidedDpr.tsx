@@ -2054,8 +2054,8 @@ export default function GuidedDpr() {
                   const isDirectPurchase = pt.dieselSource === "direct_purchase";
                   return (
                     <div key={i} className="mb-3 p-3 border rounded-lg bg-muted/20 space-y-2 transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", i)} data-testid={"equipment-row-" + String(i)}>
-                      <details open className="group">
-                      <summary className="cursor-pointer list-none text-xs font-semibold text-muted-foreground after:ml-2 after:content-['Edit_Usage_Details'] group-open:after:content-['Close_Usage_Details']" />
+                      <details className="group">
+                      <summary className="min-h-11 cursor-pointer list-none py-3 text-xs font-semibold text-muted-foreground sm:min-h-0 sm:py-1">Equipment setup and additional usage details</summary>
                       {/* A. Identity */}
                       <div className="grid grid-cols-[1fr_auto] gap-2">
                         {/* Batch 06C §8: machine comes from the Equipment & Fleet

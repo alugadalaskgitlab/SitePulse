@@ -127,25 +127,25 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
     </section>;
   }
 
-  return <section className="border-t border-slate-200 p-4 dark:border-slate-700" data-testid="equipment-activity-allocations">
-    <div className="mb-4"><div className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200"><Clock3 className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Work Assignment</div><div className="mt-1 text-sm text-muted-foreground">Assign one or more BOQ items to each physical work segment.</div></div>
-    <div className="space-y-3">{value.map((segment, segmentIndex) => (
-      <div key={segmentIndex} className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-950/25" data-testid={`equipment-activity-segment-${segmentIndex}`}>
-        <div className="space-y-3">{segment.boqItems.map((item, itemIndex) => (
-          <div key={itemIndex}>
-            <div className="flex items-end gap-2">
-              <div className="min-w-0 flex-1"><Label className="text-xs font-semibold text-slate-600 dark:text-slate-300">BOQ Item</Label><Select value={item.boqItemId ? String(item.boqItemId) : ""} onValueChange={v => patchBoqItem(segmentIndex, itemIndex, Number(v))}><SelectTrigger className="mt-1 h-11 bg-white text-sm dark:bg-slate-900"><SelectValue placeholder="Select BOQ Item" /></SelectTrigger><SelectContent>{boqItems.map(option => <SelectItem key={option.id} value={String(option.id)}>{dprBoqItemDisplayName(option)}</SelectItem>)}</SelectContent></Select></div>
-              <Button type="button" variant="ghost" size="icon" className="h-11 w-11 shrink-0 text-slate-600 hover:text-destructive" onClick={() => removeBoqItem(segmentIndex, itemIndex)} aria-label={`Remove ${itemName(item.boqItemId) || "BOQ item"}`}><Trash2 className="h-4 w-4" /></Button>
-            </div>
-          </div>
-        ))}</div>
-        <Button type="button" size="sm" variant="ghost" className="mt-2 min-h-9 gap-2 text-amber-800 dark:text-amber-300" onClick={() => addBoqItem(segmentIndex)}><Plus className="h-4 w-4" /> Add BOQ Item</Button>
-        <div className="mt-3 grid grid-cols-1 gap-3 min-[380px]:grid-cols-2">
-          <div><Label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Start Time</Label><Input className="mt-1 h-12 min-w-0 bg-white px-3 text-base tabular-nums dark:bg-slate-900" type="time" value={segment.startTime} onChange={e => patchSegment(segmentIndex, { startTime: e.target.value, hoursWorked: undefined })} /></div>
-          <div><Label className="text-xs font-semibold text-slate-600 dark:text-slate-300">End Time</Label><Input className="mt-1 h-12 min-w-0 bg-white px-3 text-base tabular-nums dark:bg-slate-900" type="time" value={segment.endTime} onChange={e => patchSegment(segmentIndex, { endTime: e.target.value, hoursWorked: undefined })} /></div>
+  return <section className="border-t border-slate-200 px-3 py-3 sm:px-4 dark:border-slate-700" data-testid="equipment-activity-allocations">
+    <div className="mb-2 flex flex-wrap items-start justify-between gap-2"><div><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-700 dark:text-slate-200"><Clock3 className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Work Assignment</div><div className="mt-0.5 text-xs text-muted-foreground">Physical work segments · BOQ only</div></div><AssignmentTotals assigned={allocatedHours} unassigned={unallocatedHours} parentHours={parentHours} compact /></div>
+    <div className="space-y-2">{value.map((segment, segmentIndex) => (
+      <div key={segmentIndex} className="rounded-md border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-700 dark:bg-slate-950/25" data-testid={`equipment-activity-segment-${segmentIndex}`}>
+        <div className="relative grid grid-cols-2 items-end gap-2 sm:flex">
+          <div className="col-span-2 min-w-0 pr-12 sm:flex-1 sm:pr-0"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">BOQ Item</Label><Select value={segment.boqItems[0]?.boqItemId ? String(segment.boqItems[0].boqItemId) : ""} onValueChange={v => patchBoqItem(segmentIndex, 0, Number(v))}><SelectTrigger className="mt-1 h-11 bg-white text-sm sm:h-9 dark:bg-slate-900"><SelectValue placeholder="Select BOQ Item" /></SelectTrigger><SelectContent>{boqItems.map(option => <SelectItem key={option.id} value={String(option.id)}>{dprBoqItemDisplayName(option)}</SelectItem>)}</SelectContent></Select></div>
+          <div className="sm:w-[140px] sm:flex-none"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Start Time</Label><Input className="mt-1 h-11 min-w-0 bg-white px-2 text-sm tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={segment.startTime} onChange={e => patchSegment(segmentIndex, { startTime: e.target.value, hoursWorked: undefined })} /></div>
+          <div className="sm:w-[140px] sm:flex-none"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">End Time</Label><Input className="mt-1 h-11 min-w-0 bg-white px-2 text-sm tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={segment.endTime} onChange={e => patchSegment(segmentIndex, { endTime: e.target.value, hoursWorked: undefined })} /></div>
+          <div className="sm:w-[78px] sm:flex-none"><div className="text-xs font-bold uppercase tracking-wide text-slate-500">Segment Duration</div><div className="mt-2 text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100">{formatEquipmentAllocationDuration(segment.startTime, segment.endTime)}</div></div>
+          <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-[18px] h-11 w-11 text-slate-600 hover:text-destructive sm:static sm:h-9 sm:w-9 sm:flex-none" onClick={() => removeSegment(segmentIndex)} aria-label={`Remove segment ${segmentIndex + 1}`}><Trash2 className="h-4 w-4" /></Button>
         </div>
-        <div className="mt-3 flex items-end justify-between gap-3"><div><div className="text-xs font-semibold text-slate-600 dark:text-slate-300">Segment Duration</div><div className="mt-1 text-base font-bold tabular-nums text-slate-900 dark:text-slate-100">{formatEquipmentAllocationDuration(segment.startTime, segment.endTime)}</div></div>
-          <Button type="button" variant="ghost" className="min-h-10 gap-2 px-3 text-sm text-slate-600 hover:text-destructive" onClick={() => removeSegment(segmentIndex)} aria-label={`Remove segment ${segmentIndex + 1}`}><Trash2 className="h-4 w-4" /> Remove Segment</Button></div>
+        {segment.boqItems.slice(1).map((item, additionalIndex) => {
+          const itemIndex = additionalIndex + 1;
+          return <div key={itemIndex} className="mt-2 flex items-end gap-2">
+            <div className="min-w-0 flex-1"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Additional BOQ Item</Label><Select value={item.boqItemId ? String(item.boqItemId) : ""} onValueChange={v => patchBoqItem(segmentIndex, itemIndex, Number(v))}><SelectTrigger className="mt-1 h-11 bg-white text-sm sm:h-9 dark:bg-slate-900"><SelectValue placeholder="Select BOQ Item" /></SelectTrigger><SelectContent>{boqItems.map(option => <SelectItem key={option.id} value={String(option.id)}>{dprBoqItemDisplayName(option)}</SelectItem>)}</SelectContent></Select></div>
+            <Button type="button" variant="ghost" size="icon" className="h-11 w-11 shrink-0 text-slate-600 hover:text-destructive sm:h-9 sm:w-9" onClick={() => removeBoqItem(segmentIndex, itemIndex)} aria-label={`Remove ${itemName(item.boqItemId) || "BOQ item"}`}><Trash2 className="h-4 w-4" /></Button>
+          </div>;
+        })}
+        <Button type="button" size="sm" variant="ghost" className="mt-2 min-h-9 gap-2 text-amber-800 dark:text-amber-300" onClick={() => addBoqItem(segmentIndex)}><Plus className="h-4 w-4" /> Add BOQ Item</Button>
         {warnings[segmentIndex]?.length > 0 && <div className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/25 dark:text-amber-300">{warnings[segmentIndex].map(warning => <div key={warning} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{warning}</div>)}</div>}
       </div>
     ))}</div>
@@ -155,6 +155,7 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
 }
 
 
-function AssignmentTotals({ assigned, unassigned, parentHours }: { assigned: number; unassigned: number | null; parentHours?: number | null }) {
+function AssignmentTotals({ assigned, unassigned, parentHours, compact = false }: { assigned: number; unassigned: number | null; parentHours?: number | null; compact?: boolean }) {
+  if (compact) return <div className="rounded bg-slate-100 px-2 py-1 text-[11px] tabular-nums text-slate-600 dark:bg-slate-800 dark:text-slate-300"><strong className="text-slate-800 dark:text-slate-100">{formatEquipmentDuration(assigned)}</strong> assigned{parentHours != null ? ` / ${formatEquipmentDuration(parentHours)}` : ""}{unassigned != null && unassigned > 0 ? <span className="ml-1 font-semibold text-amber-700 dark:text-amber-300">· {formatEquipmentDuration(unassigned)} unassigned</span> : null}</div>;
   return <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700"><div className="flex flex-wrap gap-x-5 gap-y-2 text-sm tabular-nums"><span className="font-bold text-slate-900 dark:text-slate-100">Assigned: {formatEquipmentDuration(assigned)}</span>{parentHours != null && <><span className={unassigned === 0 ? "font-medium text-emerald-700 dark:text-emerald-300" : "text-slate-700 dark:text-slate-300"}>Unassigned: {formatEquipmentDuration(unassigned ?? 0)}</span><span className="text-slate-700 dark:text-slate-300">Machine Day: {formatEquipmentDuration(parentHours)}</span></>}</div>{parentHours != null && <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">Assignment validation uses the machine-day Clock Duration ({formatEquipmentDuration(parentHours)}). Assignment segments are clock times; gaps and partial assignment are allowed.</p>}</div>;
 }
