@@ -1,0 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root {
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --primary: 32 95% 44%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222 47% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 20%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 32 95% 44%;
+  --radius: .5rem;
+}
+
+.equipment-entry-preview {
+  font-family: Inter, sans-serif;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+}
+
+.equipment-entry-preview h1,
+.equipment-entry-preview h2,
+.equipment-entry-preview h3 {
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.equipment-entry-preview input,
+.equipment-entry-preview select,
+.equipment-entry-preview button {
+  font: inherit;
+}

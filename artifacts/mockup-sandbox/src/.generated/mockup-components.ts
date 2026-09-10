@@ -2,6 +2,8 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/app-home/AppHome.tsx": () => import("../components/mockups/app-home/AppHome.tsx"),
+  "./components/mockups/equipment-entry/Compact.tsx": () => import("../components/mockups/equipment-entry/Compact.tsx"),
+  "./components/mockups/equipment-entry/Current.tsx": () => import("../components/mockups/equipment-entry/Current.tsx"),
   "./components/mockups/concrete-calc/ConcreteCalcBottom.tsx": () => import("../components/mockups/concrete-calc/ConcreteCalcBottom.tsx"),
   "./components/mockups/concrete-calc/ConcreteCalcTop.tsx": () => import("../components/mockups/concrete-calc/ConcreteCalcTop.tsx"),
   "./components/mockups/concrete-calc/ConcreteEstimatesList.tsx": () => import("../components/mockups/concrete-calc/ConcreteEstimatesList.tsx"),
@@ -31,11 +33,11 @@ export const modules: ModuleMap = {
   "./components/mockups/pi-purchase-indent/StoresVerifyView.tsx": () => import("../components/mockups/pi-purchase-indent/StoresVerifyView.tsx"),
   "./components/mockups/pi-purchase-indent/TableForm.tsx": () => import("../components/mockups/pi-purchase-indent/TableForm.tsx"),
   "./components/mockups/plant-home/PlantHome.tsx": () => import("../components/mockups/plant-home/PlantHome.tsx"),
+  "./components/mockups/rmc-dispatch/RmcDispatch.tsx": () => import("../components/mockups/rmc-dispatch/RmcDispatch.tsx"),
   "./components/mockups/plant-reorganise/EquipmentFleet.tsx": () => import("../components/mockups/plant-reorganise/EquipmentFleet.tsx"),
   "./components/mockups/plant-reorganise/HMPOperations.tsx": () => import("../components/mockups/plant-reorganise/HMPOperations.tsx"),
   "./components/mockups/plant-reorganise/HomeReorganised.tsx": () => import("../components/mockups/plant-reorganise/HomeReorganised.tsx"),
   "./components/mockups/plant-reorganise/ReportsAnalysis.tsx": () => import("../components/mockups/plant-reorganise/ReportsAnalysis.tsx"),
-  "./components/mockups/rmc-dispatch/RmcDispatch.tsx": () => import("../components/mockups/rmc-dispatch/RmcDispatch.tsx"),
   "./components/mockups/rmc-mix-designs/RmcMixDesigns.tsx": () => import("../components/mockups/rmc-mix-designs/RmcMixDesigns.tsx"),
   "./components/mockups/role-dashboards/Management.tsx": () => import("../components/mockups/role-dashboards/Management.tsx"),
   "./components/mockups/role-dashboards/ProjectIncharge.tsx": () => import("../components/mockups/role-dashboards/ProjectIncharge.tsx"),
