@@ -51,23 +51,21 @@ function Segment({ second = false, onRemove }: { second?: boolean; onRemove?: ()
   const [extra, setExtra] = useState(false);
   return (
     <div className="rounded-md border border-[#d1dcd4] bg-[#f7f8f2] p-2.5">
-      <div className="flex gap-2">
-        <label className="min-w-0 flex-1"><span className={label}>BOQ item</span>
+      <div className="relative grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2 sm:flex sm:gap-2">
+        <label className="col-span-3 min-w-0 pr-12 sm:flex-1 sm:pr-0"><span className={label}>BOQ item</span>
           <select className={field} defaultValue={second ? "gsb" : "excavation"}>
             <option value="excavation">01.02 Excavation in ordinary soil</option>
             <option value="gsb">04.01 Granular Sub-Base — Grading II</option>
             <option>05.03 Wet Mix Macadam</option>
           </select>
         </label>
-        <button type="button" onClick={onRemove} className="mt-[18px] grid h-11 w-11 shrink-0 place-items-center rounded text-[#667a72] transition hover:bg-[#f5e5dd] hover:text-[#9b3c25] sm:h-9 sm:w-9" aria-label="Remove BOQ item"><Trash2 className="h-4 w-4" /></button>
+        <button type="button" onClick={onRemove} className="absolute right-0 top-[18px] grid h-11 w-11 place-items-center rounded text-[#667a72] transition hover:bg-[#f5e5dd] hover:text-[#9b3c25] sm:static sm:h-9 sm:w-9 sm:flex-none" aria-label="Remove BOQ item"><Trash2 className="h-4 w-4" /></button>
+        <label className="sm:w-[150px] sm:flex-none"><span className={label}>Start</span><input className={field} type="time" defaultValue={second ? "12:50" : "08:10"} /></label>
+        <label className="sm:w-[150px] sm:flex-none"><span className={label}>End</span><input className={field} type="time" defaultValue={second ? "17:10" : "12:30"} /></label>
+        <div className="pb-1 sm:w-[72px] sm:flex-none"><span className={label}>Duration</span><strong className="block pt-1 text-sm tabular-nums text-[#1f3d33]">{second ? "4h 20m" : "4h 20m"}</strong></div>
       </div>
       {extra && <label className="mt-2 block"><span className={label}>Additional BOQ item</span><select className={field} defaultValue="gsb"><option>04.01 Granular Sub-Base — Grading II</option><option>05.03 Wet Mix Macadam</option></select></label>}
       <button type="button" onClick={() => setExtra(!extra)} className="mt-1.5 inline-flex min-h-11 items-center gap-1 rounded px-1 py-1 text-[11px] font-bold text-[#936019] hover:bg-[#fff0d4] sm:min-h-0"><Plus className="h-3.5 w-3.5" /> {extra ? "Hide additional BOQ" : "Add BOQ item"}</button>
-      <div className="mt-1 grid grid-cols-[1fr_1fr_auto] items-end gap-2">
-        <label><span className={label}>Start</span><input className={field} type="time" defaultValue={second ? "12:50" : "08:10"} /></label>
-        <label><span className={label}>End</span><input className={field} type="time" defaultValue={second ? "17:10" : "12:30"} /></label>
-        <div className="pb-1"><span className={label}>Duration</span><strong className="block pt-1 text-sm tabular-nums text-[#1f3d33]">{second ? "4h 20m" : "4h 20m"}</strong></div>
-      </div>
     </div>
   );
 }
