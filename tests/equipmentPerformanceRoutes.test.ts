@@ -129,7 +129,9 @@ describe("EQUIP-01 routes", () => {
     expect(spies.confirm).toHaveBeenCalledWith(91, 4, expect.objectContaining({
       userId: 7, userName: "Route Tester",
     }));
+    expect(spies.confirm).toHaveBeenCalledTimes(1);
     expect(spies.createUsage).not.toHaveBeenCalled();
+    expect(spies.report).not.toHaveBeenCalled();
   });
 
   it("requires an owner or administrator for historical classification", async () => {

@@ -15,6 +15,12 @@ Historical Equipment Master attribution is review-first. Only owners/admins may 
 
 **How to apply:** Suggestions may assist review but never write automatically. Scope candidate lists to what the viewer may see. Attach breakdown notes only through exact source-type and source-record links.
 
+Identity review belongs in Equipment Master, not inside Fleet Performance filters. Pending identification and corrections of previously identified DPR rows are separate surfaces; resolving the final pending item must not remove the historical correction capability.
+
+**Why:** A pending-only card cannot also be the sole access point for correcting historical identities. Creating a master and confirming its source identity are separate operations and can partially succeed.
+
+**How to apply:** Share the unfiltered pending query between the master section and report notice. On create-success/link-failure, retain the created ID and retry only confirmation rather than creating another master.
+
 Hired utilization exists only when both real hire-window bounds exist. Owned equipment reports time since last use and is never labeled idle. Project history starts at the first attributed event even when the current display window is narrower.
 
 **Why:** Missing hire dates and filtered event windows otherwise fabricate commercial or operational conclusions.

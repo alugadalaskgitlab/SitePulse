@@ -203,7 +203,17 @@ export interface EquipmentPerformanceReport {
     activeDays: number; efficiencyPercent: number | null; dieselBasis: DieselPerformanceBasis;
     dieselComparedActual: number; dieselComparisonIncomplete: boolean;
   };
-  reviewRows: Array<{ logId: number; date: string; machine: string; project: string; site: string | null; usageValue: number; suggestions: EquipmentSuggestion[] }>;
+  reviewRows: Array<{
+    logId: number;
+    date: string;
+    machine: string;
+    project: string;
+    site: string | null;
+    usageValue: number;
+    source: EquipmentEventSource;
+    dprId: number | null;
+    suggestions: EquipmentSuggestion[];
+  }>;
   events: EquipmentPerformanceEvent[];
   fleet: EquipmentPerformanceFleetRow[];
   projects: Array<{
@@ -629,7 +639,8 @@ export function buildEquipmentPerformanceReport(input: {
     },
     reviewRows: filtered.filter((e) => e.confidence === "unclassified").map((e) => ({
       logId: e.reference.equipmentLogId!, date: e.date, machine: e.machine, project: e.project,
-      site: e.site, usageValue: e.usageValue, suggestions: e.suggestions,
+      site: e.site, usageValue: e.usageValue, source: e.source, dprId: e.reference.dprId,
+      suggestions: e.suggestions,
     })),
     events: filtered, fleet, projects: projectRows,
   };

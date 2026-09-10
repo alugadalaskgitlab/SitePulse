@@ -48,7 +48,13 @@ describe("EQUIP-01 pure equipment performance report", () => {
     expect(report.events.map((event) => event.confidence)).toEqual(["confirmed_legacy_match", "unclassified"]);
     expect(report.projects[0]).toMatchObject({ eventCount: 2, linkedCount: 0, confirmedLegacyCount: 1, unclassifiedCount: 1 });
     expect(report.events[1].suggestions[0]).toMatchObject({ equipmentId: 2, match: "exact" });
-    expect(report.reviewRows).toEqual([expect.objectContaining({ logId: 902, machine: "Water---Tanker", usageValue: 20 })]);
+    expect(report.reviewRows).toEqual([expect.objectContaining({
+      logId: 902,
+      machine: "Water---Tanker",
+      usageValue: 20,
+      source: "dpr_log",
+      dprId: 100,
+    })]);
     expect(report.fleet.find((row) => row.equipmentId === null)).toMatchObject({
       key: "unclassified:water tanker", confidence: "unclassified", eventCount: 1, activeDays: 1,
     });

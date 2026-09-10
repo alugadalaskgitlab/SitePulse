@@ -1,0 +1,105 @@
+INSTRUCTION EQUIP-05: Move equipment identity review into Equipment Master, add View Source, Link Existing / Add New flow, synced pending badge, and Fleet Performance filter memory
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. If you notice something else broken while doing this, write it down in your report and WAIT for instructions. This batch is ONLY: (A) identity review relocation, (B) View Source navigation, (C) Link Existing / Add New flow, (D) synchronized pending badge/count, (E) Fleet Performance filter-memory fix. Do not publish automatically. STOP after this fix and report back.
+
+GOAL
+Simplify equipment identity correction and make it part of Equipment Master, while keeping Fleet Performance as a clean management report. Also preserve Fleet Performance filters when the user opens another page and comes back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+The existing "Owner Review Queue" and "Legacy Identity Corrections" panels on Fleet Performance (client/src/pages/EquipmentPerformanceReport.tsx) already share a single underlying mechanism: POST /api/reports/equipment-performance/logs/:id/confirm → server/storage.ts confirmEquipmentPerformanceLog. This endpoint is Admin/Owner-only (assertAdmin) and today only accepts linking to an EXISTING equipmentId — it validates the id against equipmentMaster and does not create new equipment records. There is no merging work needed between the two existing panels; they already drive the same action.
+
+CONFIRMED SCOPE NOTE ON SOURCES — READ BEFORE BUILDING PART 3
+Tracing shared/equipmentPerformance.ts: the "pending identification" (unclassified / free-text machine name, no confirmed equipmentId) state can currently only arise from DPR-sourced equipment logs (dpr_log source, equipmentId nullable, "Other / Unlisted equipment" option in Guided DPR/Classic DPR). Plant Equipment Usage entries always require a real equipmentId selected from Equipment Master at entry time (PlantEquipmentUsage.tsx blocks submit without one) and are always emitted at "linked" confidence — there is currently no code path that produces a pending-identification row sourced from Plant Equipment Usage. Build View Source (Part 3) generically — handle "source type" as a field so future source types can be added — but implement and test it against DPR sources only, since that is the only real case in the current data model. Do not spend effort building a dedicated Plant Equipment Usage detail/view screen for this batch unless you discover a real pending row sourced from it (if you do, stop and report it before building a whole new viewer).
+
+PART 1 — MOVE EQUIPMENT IDENTITY REVIEW OUT OF FLEET PERFORMANCE
+1. Remove the "Owner Review Queue" and "Legacy Identity Corrections" panels from Fleet Performance (client/src/pages/EquipmentPerformanceReport.tsx). Do NOT remove the underlying confirmEquipmentPerformanceLog capability or its data-fetching logic — relocate the UI that calls it.
+2. Add a new section to Equipment Master (client/src/pages/Plant.tsx, inside MastersTab / EquipmentMasterSection or as a new adjacent Card) called "Equipment Needing Identification."
+3. This section is Admin/Owner-only (same gating as the existing confirm action — see Part 10) and should only render when pending items exist.
+
+PART 2 — EQUIPMENT MASTER: PENDING IDENTIFICATION SECTION
+1. Each pending row must show, in plain business language (no "attribution," "confidence," "legacy match," "linked/unlinked," or similar technical terms in the visible UI):
+   - Date
+   - Project / Site
+   - Source type (DPR today; keep this as a labeled field so it extends cleanly if another source type is added later)
+   - Entered equipment name / free-text name
+   - Existing suggested master match, if one can be safely suggested (reuse the existing suggestion logic already used by the current Owner Review Queue — do not build new fuzzy-matching)
+   - Actions: View Source, Link to Existing Equipment, Add as New Equipment
+2. Technical terms may exist in code/data but must not appear in this UI.
+
+PART 3 — VIEW SOURCE
+1. Add a "View Source" action on every pending row.
+2. For a DPR-sourced item: open the exact DPR record in the existing read-only/view mode (reuse /site/edit/:id and its existing permission behavior, the same pattern already used elsewhere on Fleet Performance's event ledger — do not invent a new route).
+3. Do not show only a plain-text reference like "DPR LOG #244" — it must be a working navigation action.
+4. Per the scope note above: implement this for DPR sources now. If you encounter a genuine non-DPR pending source during implementation, stop and describe it before building new view UI for it.
+
+PART 4 — RETURN NAVIGATION
+1. When View Source is opened from Equipment Master and the reviewer returns, they must land back on Equipment Master, in the Equipment Needing Identification section — not an unrelated default page.
+2. Preserve the previous page state (e.g., which section was expanded/scrolled) where practical.
+
+PART 5 — LINK TO EXISTING EQUIPMENT
+1. Admin/Owner selects an existing Equipment Master record and confirms, reusing the existing confirmEquipmentPerformanceLog endpoint/mechanism.
+2. On confirmation: permanently link the source log to that equipment ID; refresh affected data; remove the pending item automatically; update the pending count/badge immediately; ensure Fleet Performance subsequently treats the log as belonging to that equipment.
+3. Do not duplicate the equipment log or create a second activity record.
+
+PART 6 — ADD AS NEW EQUIPMENT
+1. Provide "Add as New Equipment" for typed equipment that doesn't exist in Equipment Master.
+2. Reuse the existing Equipment Master creation form/fields as the basis for this — note for the implementer: this form is not currently a standalone, prop-driven component (it's built inline inside EquipmentMasterSection in Plant.tsx, and PlantEquipmentUsage.tsx separately has its own, slightly different inline "Add New Equipment" dialog). Extracting a shared, reusable creation component (accepting an initial pre-filled name and an onCreated callback) is an expected and acceptable part of this task, not a shortcut to skip — do this extraction rather than writing a third separate inline form.
+3. Pre-fill the entered equipment name where safe. Admin/Owner completes the normal required master fields (equipment type, owned/hired, owner/vendor if hired, registration/identifier where applicable, other existing required fields).
+4. After the new Equipment Master record is created, automatically link the pending source log to the new equipment ID and remove the pending item. Note for the implementer: the existing confirm endpoint currently only accepts linking to an ALREADY-EXISTING equipmentId — "create the record, then immediately link the pending log to the id just created" is new orchestration you need to build (e.g., call create, then call the existing confirm/link step with the returned id), not something that already exists. Test this sequence explicitly (see Test D).
+5. Do not build a second, separate equipment-master creation form beyond the one shared/extracted component from step 2.
+
+PART 7 — OTHER / UNLISTED EQUIPMENT IN DPR
+1. Do NOT remove "Other / Unlisted Equipment" from Guided DPR or Classic DPR in this batch. Field staff must not be blocked from recording work when a new/unlisted machine reaches site.
+2. When Other / Unlisted Equipment is used: keep the free-text name, save the DPR normally, ensure the resulting equipment log appears in Equipment Needing Identification for Admin/Owner review.
+3. Do not force the field engineer to complete Equipment Master while entering the DPR.
+
+PART 8 — SMALL NOTICE IN FLEET PERFORMANCE
+1. Fleet Performance should no longer contain the full identity-correction workflow. If pending unidentified logs exist, show only a compact notice, e.g. "3 equipment logs need identification" with a link/button "Review in Equipment Master."
+2. This count must use the same source of truth as the Equipment Needing Identification section — do not compute it separately. Reuse the existing small-badge pattern already used elsewhere in this app for a similar pending-count notice (e.g. the open-maintenance-items badge on the Plant home tiles) rather than inventing new badge UI.
+3. When an item is confirmed, the count must reduce immediately; when it reaches zero, hide the notice.
+
+PART 9 — FLEET PERFORMANCE FILTER MEMORY
+1. Fix the current problem where Fleet Performance loses all filters (From date, To date, Project, Scope, Ownership, Machine type, Specific machine) after the user opens a DPR/source page and returns.
+2. Use the existing reusable filter-persistence mechanism already used elsewhere in this codebase (the same hook/pattern already applied to at least one other report/list page) rather than building a new one or a parallel global state system.
+3. Where practical, also restore the selected/open machine and scroll position.
+4. A normal, explicit Reset button must still fully clear the filters.
+
+PART 10 — PERMISSIONS
+1. Equipment identity confirmation (Link to Existing, Add as New + auto-link) remains Admin/Owner only — same gating as the existing confirm endpoint today. Do not broaden this as part of this batch.
+2. Regular field users/managers may continue to see equipment data per their existing permissions but must not be able to permanently reassign a log's equipment identity.
+
+PART 11 — DATA INTEGRITY (HARD CONSTRAINTS)
+A confirmed identity correction must update the equipment identity/source-of-truth linkage only. It must NOT: duplicate the source log; duplicate diesel; duplicate working hours; duplicate DPR activity; rewrite unrelated DPR fields; alter equipment activity segments/BOQ assignment; alter hire billing; alter maintenance records; alter plant production/material attribution.
+
+WHAT NOT TO DO (PART 12 — DO NOT TOUCH IN THIS BATCH)
+Do NOT redesign Fleet Performance's report content itself. Specifically do not change in this batch: report columns; diesel date-range calculation; Working Hours/Clock Duration presentation; diesel efficiency calculation; graphs; event ledger; equipment naming cleanup; equipment type cleanup; hire billing; Work Programme/Programme Analysis; BOM/SNL; DPR progress logic.
+Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change is expected for this batch — this reuses the existing equipment_logs.equipmentId linkage and the existing confirm mechanism, plus new UI/orchestration around existing data. If you find you need any schema change, stop and show us the exact proposed change before writing any migration, per our usual rule.
+
+TESTS
+A. DPR Other/Unlisted — create/save an Other/Unlisted equipment entry; confirm the DPR saves normally; confirm the pending item appears under Equipment Master → Equipment Needing Identification.
+B. View Source — a pending DPR item's View Source opens the exact DPR in view mode; confirm returning brings the user back to the identification review context in Equipment Master (not a default page).
+C. Link Existing — confirm an existing master machine; confirm the source log gets the equipment ID; confirm the pending row disappears; confirm the count decreases; confirm Fleet Performance now includes this log under that machine; confirm no duplicate hours/diesel/activity was created.
+D. Add New — create a new Equipment Master record from a pending item; confirm the typed name is prefilled; confirm that after save, the original source log is automatically linked to the new equipment (this is the new create-then-link orchestration — test it explicitly, do not assume it works because Link Existing works); confirm the pending item disappears.
+E. Permissions — confirm Admin/Owner can correct identity; confirm an unauthorized user cannot.
+F. Fleet Performance filter memory — set date/project/scope/ownership/type/machine filters; open a machine drill-down or a source DPR; return; confirm all filters remain exactly as selected; confirm the explicit Reset button still clears them.
+G. Confirm existing Equipment Master records and existing linked DPR/plant logs remain completely unchanged by this batch.
+
+Please inspect existing routes/helpers before implementing and reuse current identity-confirmation and source-navigation logic wherever available — specifically the existing confirmEquipmentPerformanceLog endpoint, the existing DPR view route, and the existing filter-persistence hook already used on another report page, rather than rebuilding any of these from scratch.
+
+REPORT BACK
+1. Confirm Part 1-2: relocation complete, section only visible to Admin/Owner and only when pending items exist, no technical terminology visible.
+2. Confirm Part 3-4 with Test B evidence; state clearly whether any non-DPR pending source was encountered.
+3. Confirm Part 5 with Test C evidence, including confirmation of no duplication.
+4. Confirm Part 6 with Test D evidence, and describe how the create-then-link orchestration was implemented.
+5. Confirm Part 7 — Other/Unlisted still works unblocked in DPR, still feeds the pending queue.
+6. Confirm Part 8 — badge/notice synced, same source of truth, disappears at zero.
+7. Confirm Part 9 with Test F evidence, and name which existing mechanism was reused.
+8. Confirm Part 10/11 — permissions unchanged, no data-integrity issue found (Test G).
+9. Confirm no schema change was needed; if one was, stop and show it before applying.
+10. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

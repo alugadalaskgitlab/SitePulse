@@ -28,6 +28,14 @@ import { EQUIPMENT_TYPES, METER_TYPES, PERSONNEL_ROLES } from "@shared/schema";
 import { computeTankStock } from "@/lib/ldoStock";
 import { format } from "date-fns";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
+import { EquipmentMasterCreateDialog } from "@/components/EquipmentMasterCreateDialog";
+import {
+  EQUIPMENT_IDENTIFICATION_QUERY_KEY,
+  equipmentIdentificationSourceHref,
+  fetchEquipmentIdentification,
+  linkCreatedEquipment,
+} from "@/lib/equipmentIdentification";
+import type { EquipmentPerformanceEvent, EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 
 export default function Plant() {
   const searchString = useSearch();
@@ -4028,6 +4036,231 @@ export function MixTemplateMaster() {
   );
 }
 
+type IdentificationRow = EquipmentPerformanceReport["reviewRows"][number];
+
+function PendingIdentificationRow({
+  row,
+  equipmentOptions,
+  busy,
+  onLink,
+  onAdd,
+}: {
+  row: IdentificationRow;
+  equipmentOptions: EquipmentPerformanceReport["filterOptions"]["equipment"];
+  busy: boolean;
+  onLink: (row: IdentificationRow, equipmentId: number) => void;
+  onAdd: (row: IdentificationRow) => void;
+}) {
+  const [selectedId, setSelectedId] = useState(row.suggestions[0]?.equipmentId ? String(row.suggestions[0].equipmentId) : "");
+  const suggested = row.suggestions[0];
+  const sourceHref = equipmentIdentificationSourceHref(row);
+
+  return (
+    <div className="rounded-md border bg-background p-4 space-y-3" data-testid={`identification-row-${row.logId}`}>
+      <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <div><span className="block text-xs font-medium text-muted-foreground">Date</span>{format(new Date(row.date), "dd MMM yyyy")}</div>
+        <div><span className="block text-xs font-medium text-muted-foreground">Project / Site</span>{row.project}{row.site ? ` / ${row.site}` : ""}</div>
+        <div><span className="block text-xs font-medium text-muted-foreground">Source type</span>{row.source === "dpr_log" ? "DPR" : "Plant Equipment Usage"}</div>
+        <div><span className="block text-xs font-medium text-muted-foreground">Entered equipment name</span><strong>{row.machine}</strong></div>
+      </div>
+      {suggested && (
+        <p className="rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-900" data-testid={`suggestion-${row.logId}`}>
+          Suggested master match: <strong>{suggested.name}{suggested.registrationNumber ? ` (${suggested.registrationNumber})` : ""}</strong>
+        </p>
+      )}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+        <label className="min-w-0 flex-1">
+          <span className="mb-1 block text-xs font-medium">Existing Equipment Master record</span>
+          <select
+            value={selectedId}
+            onChange={(event) => setSelectedId(event.target.value)}
+            className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+            data-testid={`select-existing-equipment-${row.logId}`}
+          >
+            <option value="">Select equipment…</option>
+            {equipmentOptions.map(option => (
+              <option key={option.id} value={option.id}>
+                {option.name}{option.registrationNumber ? ` (${option.registrationNumber})` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        {sourceHref && (
+          <a href={sourceHref}>
+            <Button size="sm" variant="outline" className="w-full gap-1 sm:w-auto" data-testid={`view-source-${row.logId}`}>
+              <ArrowUpRight className="h-4 w-4" /> View Source
+            </Button>
+          </a>
+        )}
+        <Button size="sm" disabled={!selectedId || busy} onClick={() => onLink(row, Number(selectedId))} data-testid={`link-existing-${row.logId}`}>
+          Link to Existing Equipment
+        </Button>
+        <Button size="sm" variant="secondary" disabled={busy} onClick={() => onAdd(row)} data-testid={`add-new-${row.logId}`}>
+          Add as New Equipment
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PreviouslyIdentifiedRow({
+  event,
+  equipmentOptions,
+  busy,
+  onLink,
+}: {
+  event: EquipmentPerformanceEvent;
+  equipmentOptions: EquipmentPerformanceReport["filterOptions"]["equipment"];
+  busy: boolean;
+  onLink: (logId: number, equipmentId: number) => void;
+}) {
+  const [selectedId, setSelectedId] = useState(String(event.equipmentId ?? ""));
+  const logId = event.reference.equipmentLogId!;
+  return (
+    <div className="flex flex-col gap-2 rounded border bg-background p-3 text-sm md:flex-row md:items-center">
+      <div className="min-w-0 flex-1">
+        <strong>{event.machine}</strong>
+        <span className="ml-2 text-muted-foreground">{format(new Date(event.date), "dd MMM yyyy")} · {event.project}{event.site ? ` / ${event.site}` : ""}</span>
+      </div>
+      <select value={selectedId} onChange={e => setSelectedId(e.target.value)} className="h-8 rounded border bg-background px-2 text-sm">
+        {equipmentOptions.map(option => <option key={option.id} value={option.id}>{option.name}{option.registrationNumber ? ` (${option.registrationNumber})` : ""}</option>)}
+      </select>
+      <Button size="sm" variant="outline" disabled={busy || !selectedId || Number(selectedId) === event.equipmentId} onClick={() => onLink(logId, Number(selectedId))}>
+        Change Equipment
+      </Button>
+    </div>
+  );
+}
+
+export function EquipmentIdentificationSection() {
+  const { isAdmin, isOwner } = useAuth();
+  const { toast } = useToast();
+  const canReview = isAdmin || isOwner;
+  const [addRow, setAddRow] = useState<IdentificationRow | null>(null);
+  const [partialLink, setPartialLink] = useState<{ row: IdentificationRow; equipment: EquipmentMasterType } | null>(null);
+  const { data } = useQuery<EquipmentPerformanceReport>({
+    queryKey: EQUIPMENT_IDENTIFICATION_QUERY_KEY,
+    queryFn: fetchEquipmentIdentification,
+    enabled: canReview,
+  });
+  const rows = data?.reviewRows ?? [];
+  const previousRows = (data?.events ?? []).filter(event =>
+    event.source === "dpr_log" &&
+    event.confidence === "confirmed_legacy_match" &&
+    event.reference.equipmentLogId != null,
+  );
+
+  const linkMutation = useMutation({
+    mutationFn: async ({ logId, equipmentId }: { logId: number; equipmentId: number; created?: { row: IdentificationRow; equipment: EquipmentMasterType } }) => {
+      const response = await apiRequest("POST", `/api/reports/equipment-performance/logs/${logId}/confirm`, { equipmentId });
+      return response.json();
+    },
+    onSuccess: (_result, variables) => {
+      queryClient.setQueryData<EquipmentPerformanceReport>(EQUIPMENT_IDENTIFICATION_QUERY_KEY, current => {
+        if (!current) return current;
+        return { ...current, reviewRows: current.reviewRows.filter(row => row.logId !== variables.logId) };
+      });
+      setPartialLink(null);
+      setAddRow(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/equipment-performance"] });
+      toast({ title: "Equipment identified", description: "The original equipment entry now uses the selected Equipment Master record." });
+    },
+    onError: (error: any, variables) => {
+      if (variables.created) setPartialLink(variables.created);
+      toast({
+        title: variables.created ? "Equipment created, but the original entry was not linked" : "Could not identify equipment",
+        description: variables.created
+          ? "The new Equipment Master record is safe. Use Retry linking below; do not create it again."
+          : error?.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (!rows.length || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (window.location.hash === "#equipment-needing-identification" || params.get("review") === "identification") {
+      requestAnimationFrame(() => document.getElementById("equipment-needing-identification")?.scrollIntoView({ block: "start" }));
+    }
+  }, [rows.length]);
+
+  if (!canReview || (rows.length === 0 && previousRows.length === 0)) return null;
+
+  const linkNewlyCreated = (row: IdentificationRow, equipment: EquipmentMasterType) => {
+    const created = { row, equipment };
+    void linkCreatedEquipment(row.logId, equipment.id, async (logId, equipmentId) => {
+      await linkMutation.mutateAsync({ logId, equipmentId, created });
+    }).catch(() => {
+      // The mutation presents the partial-success recovery UI.
+    });
+  };
+
+  return (
+    <>
+      {rows.length > 0 && (
+        <Card id="equipment-needing-identification" className="border-amber-300" data-testid="equipment-needing-identification">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-600" />Equipment Needing Identification <Badge variant="secondary">{rows.length}</Badge></CardTitle>
+            <CardDescription>Review equipment names entered in DPRs and connect each one to Equipment Master.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {partialLink && (
+              <div className="flex flex-col gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm sm:flex-row sm:items-center" data-testid="partial-link-error">
+                <p className="flex-1"><strong>{partialLink.equipment.name}</strong> was created, but “{partialLink.row.machine}” still needs to be connected. Retry linking without creating another record.</p>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={linkMutation.isPending}
+                  onClick={() => linkMutation.mutate({ logId: partialLink.row.logId, equipmentId: partialLink.equipment.id, created: partialLink })}
+                  data-testid="retry-created-equipment-link"
+                >
+                  Retry linking
+                </Button>
+              </div>
+            )}
+            {rows.map(row => (
+              <PendingIdentificationRow
+                key={row.logId}
+                row={row}
+                equipmentOptions={data?.filterOptions.equipment ?? []}
+                busy={linkMutation.isPending}
+                onLink={(selectedRow, equipmentId) => linkMutation.mutate({ logId: selectedRow.logId, equipmentId })}
+                onAdd={setAddRow}
+              />
+            ))}
+          </CardContent>
+          <EquipmentMasterCreateDialog
+            open={!!addRow}
+            onOpenChange={open => { if (!open) setAddRow(null); }}
+            initialName={addRow?.machine ?? ""}
+            onCreated={equipment => { if (addRow) linkNewlyCreated(addRow, equipment); }}
+          />
+        </Card>
+      )}
+      {previousRows.length > 0 && (
+        <Card data-testid="previously-identified-equipment-corrections">
+          <CardHeader>
+            <CardTitle>Previously Identified DPR Equipment</CardTitle>
+            <CardDescription>Correct a DPR entry that was assigned to the wrong Equipment Master record.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {previousRows.map(event => (
+              <PreviouslyIdentifiedRow
+                key={event.key}
+                event={event}
+                equipmentOptions={data?.filterOptions.equipment ?? []}
+                busy={linkMutation.isPending}
+                onLink={(logId, equipmentId) => linkMutation.mutate({ logId, equipmentId })}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      )}
+    </>
+  );
+}
+
 export function EquipmentMasterSection() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
@@ -4082,23 +4315,6 @@ export function EquipmentMasterSection() {
     if (filterPlantName === "__shared__") return equipment.filter(e => !(e as any).plantName);
     return equipment.filter(e => (e as any).plantName === filterPlantName);
   }, [equipment, filterPlantName]);
-
-  const createMutation = useMutation({
-    mutationFn: (data: { name: string; registrationNumber?: string; ownership?: string; vendorName?: string; meterType: string; consumptionNorm?: number }) =>
-      apiRequest("POST", "/api/plant-module/equipment", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
-      resetForm();
-      toast({ title: "Equipment created successfully" });
-    },
-    onError: (error: any) => {
-      if (isForbiddenError(error)) {
-        toast({ title: "Permission denied", description: NO_CREATE_PERMISSION_DESCRIPTION, variant: "destructive" });
-      } else {
-        toast({ title: "Error", description: error.message, variant: "destructive" });
-      }
-    },
-  });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; registrationNumber?: string; ownership?: string; vendorName?: string; meterType: string; consumptionNorm?: number }> }) =>
@@ -4264,15 +4480,13 @@ export function EquipmentMasterSection() {
       standardOutputs: stdOutputsArr.length > 0 ? stdOutputsArr : null,
       outputEfficiency: outputEfficiency ? parseFloat(outputEfficiency) : null,
     };
-    if (editingEquipment) {
-      updateMutation.mutate({ id: editingEquipment.id, data });
-    } else {
-      createMutation.mutate(data as any);
-    }
+    if (editingEquipment) updateMutation.mutate({ id: editingEquipment.id, data });
   };
 
   return (
-    <Card>
+    <div className="space-y-6">
+      <EquipmentIdentificationSection />
+      <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
         <CardTitle className="flex items-center gap-2">
           <Gauge className="w-5 h-5" />
@@ -4300,17 +4514,15 @@ export function EquipmentMasterSection() {
             />
             <Label htmlFor="show-inactive" className="text-sm cursor-pointer">Show Inactive</Label>
           </div>
-        <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); else setDialogOpen(true); }}>
-          {canCreate && (
-            <DialogTrigger asChild>
-              <Button size="sm" className="gap-1" data-testid="button-add-equipment">
-                <Plus className="w-4 h-4" /> Add Equipment
-              </Button>
-            </DialogTrigger>
-          )}
+        {canCreate && (
+          <EquipmentMasterCreateDialog
+            trigger={<Button size="sm" className="gap-1" data-testid="button-add-equipment"><Plus className="w-4 h-4" /> Add Equipment</Button>}
+          />
+        )}
+        <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); }}>
           <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingEquipment ? "Edit Equipment" : "Add Equipment"}</DialogTitle>
+              <DialogTitle>Edit Equipment</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
@@ -4473,10 +4685,10 @@ export function EquipmentMasterSection() {
               <Button 
                 onClick={handleSubmit}
                 className="w-full" 
-                disabled={createMutation.isPending || updateMutation.isPending || !name.trim()}
+                disabled={updateMutation.isPending || !name.trim()}
                 data-testid="button-save-equipment"
               >
-                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingEquipment ? "Update" : "Create"}
+                {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Update"}
               </Button>
             </div>
           </DialogContent>
@@ -4573,7 +4785,8 @@ export function EquipmentMasterSection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+      </Card>
+    </div>
   );
 }
 
