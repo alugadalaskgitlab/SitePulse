@@ -32,11 +32,12 @@ function FuelBlock() {
     <section className="border-t border-[#d7dfd9] px-3 py-3 sm:px-4">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-[.12em] text-[#314940]"><Fuel className="h-3.5 w-3.5 text-[#b96f17]" /> Fuel</div>
-        <div className="text-[11px] text-[#667a72]">Plant stock · <strong className="text-[#263c34]">58.00 L issued</strong></div>
+        <div className="text-[11px] text-[#667a72]">Plant stock · <strong className="text-[#263c34]">daily fuel record</strong></div>
       </div>
-      <div className="grid grid-cols-[1fr_1fr] gap-2 sm:grid-cols-[140px_160px_auto] sm:items-end">
+      <div className="grid grid-cols-[1fr_1fr] gap-2 sm:grid-cols-[140px_160px_140px_auto] sm:items-end">
         <label><span className={label}>Opening tank (L)</span><input className={field} defaultValue="82.0" type="number" /></label>
         <label><span className={label}>Closing / physical dip (L)</span><input className={field} defaultValue="55.0" type="number" /></label>
+        <label><span className={label}>Diesel issued / added (L)</span><input className={field} defaultValue="58.0" type="number" /></label>
         <button type="button" onClick={() => setConfirmed(!confirmed)} className={`col-span-2 mt-1 flex h-11 items-center gap-2 rounded border px-2.5 text-left text-xs font-semibold transition sm:col-span-1 sm:mt-0 sm:h-9 ${confirmed ? "border-[#afd1bd] bg-[#eff8f1] text-[#296247]" : "border-[#e4c276] bg-[#fff5df] text-[#805d1d]"}`}>
           <span className={`grid h-4 w-4 place-items-center rounded-sm border ${confirmed ? "border-[#4d9870] bg-[#4d9870] text-[#fffdf7]" : "border-[#c08a28] bg-[#fffdf7]"}`}>{confirmed && <Check className="h-3 w-3" />}</span>
           Physical tank balance {confirmed ? "confirmed" : "pending"}
@@ -106,8 +107,8 @@ function ActiveMachine() {
       <div className="flex min-w-0 items-center gap-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#e7c36b] text-[#644714]"><Gauge className="h-4 w-4" /></span><div className="min-w-0"><h2 className="truncate text-sm font-bold tracking-[.03em] text-[#1e352c]">HYDRAULIC EXCAVATOR</h2><p className="text-[11px] font-semibold text-[#64776e]">HR-55-AB-2194 <span className="mx-1 text-[#a4b0a9]">|</span> Operator: R. Mehta</p></div></div>
       <div className="flex items-center gap-1.5"><Tag>Operating</Tag><Tag tone="amber">1 review</Tag></div>
     </header>
-    <div className="grid grid-cols-2 border-b border-[#d7dfd9] bg-[#f9faf6] text-xs sm:grid-cols-4">
-      {[["Opening meter", "4,182.6 h"], ["Start", "08:00"], ["End", "16:50"], ["Clock duration", "8h 50m"]].map(([a, b]) => <div key={a} className="border-b border-[#e1e7e1] px-3 py-2 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"><span className={label}>{a}</span><strong className="mt-0.5 block tabular-nums text-[#263c34]">{b}</strong></div>)}
+    <div className="grid grid-cols-2 border-b border-[#d7dfd9] bg-[#f9faf6] text-xs sm:grid-cols-5">
+      {[["Opening meter", "4,182.6 h"], ["Closing meter", "4,191.4 h"], ["Start", "08:00"], ["End", "16:50"], ["Clock duration", "8h 50m"]].map(([a, b]) => <div key={a} className="border-b border-[#e1e7e1] px-3 py-2 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"><span className={label}>{a}</span><strong className="mt-0.5 block tabular-nums text-[#263c34]">{b}</strong></div>)}
     </div>
     <FuelBlock /><WorkAssignment /><Breakdown />
   </article>;
