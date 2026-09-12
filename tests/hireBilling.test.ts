@@ -153,7 +153,7 @@ describe("hire billing calculator", () => {
       periodFrom: "2025-04-01",
       periodTo: "2025-04-01",
       usage: [{ date: "2025-04-01" }],
-      exceptionDecisions: [{ sourceType: "manual", date: "2025-04-01", decision: "manual", manualDeductionAmount: 5000 }],
+      exceptionDecisions: [{ sourceType: "manual", date: "2025-04-01", decision: "manual", manualDeductionAmount: 5000, remarks: "CONTRACTUAL ADJUSTMENT" }],
     });
     expect(result).toMatchObject({ grossAmount: 1000, deductionAmount: 1000, netAmount: 0 });
   });
@@ -164,6 +164,137 @@ describe("hire billing calculator", () => {
 });
 
 describe("normalized vendor-bill hire groups", () => {
+  it("keeps a delivery candidate out of payable trips until an explicit review decision is frozen", () => {
+    const base = {
+      terms: { billingBasis: "trip" as const, rate: 100 },
+      periodFrom: "2026-09-01",
+      periodTo: "2026-09-01",
+      activities: [{
+        source: "site_material_trip" as const, sourceId: 44, equipmentId: 2,
+        businessDate: "2026-09-01", entryType: "trip_based", numberOfTrips: 1,
+        requiresTripReview: true,
+        deliveryEvidence: { material: "AGGREGATE", quantity: 18, uom: "MT", destination: "SITE A", receiptNumber: "DC-44" },
+      }],
+    };
+    const pending = calculateHireGroup(base);
+    expect(pending.quantity).toBe(0);
+    expect(pending.decisions.trip[0]).toMatchObject({ requiresReview: true, reviewed: false, acceptedTrips: 0 });
+    expect(getHireReviewGaps(pending)).toContain("delivery-trip match on 2026-09-01");
+
+    const confirmed = calculateHireGroup({ ...base, tripDecisions: [{ source: "site_material_trip", sourceId: 44, selected: true, remarks: "DC-44 MATCHED TO HIRE VEHICLE" }] });
+    expect(confirmed.quantity).toBe(1); // one delivery record, never material quantity
+    expect(confirmed.decisions.trip[0]).toMatchObject({ reviewed: true, acceptedTrips: 1 });
+    expect(getHireReviewGaps(confirmed)).toEqual([]);
+  });
+
+  it("treats a bulk transport dispatch as separate review-only delivery evidence", () => {
+    const base = {
+      terms: { billingBasis: "trip" as const, rate: 100 },
+      periodFrom: "2026-09-01", periodTo: "2026-09-01",
+      activities: [{ source: "bulk_transport_trip" as const, sourceId: 88, equipmentId: 2, businessDate: "2026-09-01",
+        entryType: "trip_based", numberOfTrips: 1, requiresTripReview: true,
+        deliveryEvidence: { material: "BULK PLANT DISPATCH", quantity: 27.5, uom: "MT", receiptNumber: "DISPATCH-88" } }],
+    };
+    expect(calculateHireGroup(base).quantity).toBe(0);
+    const reviewed = calculateHireGroup({ ...base, tripDecisions: [{ source: "bulk_transport_trip", sourceId: 88, selected: false, remarks: "DISPATCH CANCELLED" }] });
+    expect(reviewed.quantity).toBe(0);
+    expect(getHireReviewGaps(reviewed)).toEqual([]);
+  });
+
+  it("removes an explicitly excluded DPR/plant source before the trip engine, without an invalid-trip exception", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "trip", rate: 100 },
+      periodFrom: "2026-09-01", periodTo: "2026-09-01",
+      activities: [{ source: "dpr_log", sourceId: 5, equipmentId: 2, businessDate: "2026-09-01", entryType: "trip_based", numberOfTrips: 3 }],
+      tripDecisions: [{ source: "dpr_log", sourceId: 5, selected: false, remarks: "DPR DUPLICATES PLANT ENTRY" }],
+    });
+    expect(result.quantity).toBe(0);
+    expect(result.exceptions).toEqual([]);
+  });
+
+  it("does not double-bill a reviewed Site Trip beside a same-day DPR trip without explicit separation evidence", () => {
+    const base = {
+      terms: { billingBasis: "trip" as const, rate: 100 },
+      periodFrom: "2026-09-01", periodTo: "2026-09-01",
+      activities: [
+        { source: "dpr_log" as const, sourceId: 5, equipmentId: 2, businessDate: "2026-09-01", entryType: "trip_based", numberOfTrips: 2 },
+        { source: "site_material_trip" as const, sourceId: 6, equipmentId: 2, businessDate: "2026-09-01", entryType: "trip_based", numberOfTrips: 1, requiresTripReview: true },
+      ],
+      tripDecisions: [{ source: "site_material_trip" as const, sourceId: 6, selected: true, remarks: "DC PRESENT" }],
+    };
+    const unresolved = calculateHireGroup(base);
+    expect(unresolved.quantity).toBe(2);
+    expect(getHireReviewGaps(unresolved)).toContain("delivery-trip separation evidence on 2026-09-01");
+
+    const separate = calculateHireGroup({ ...base, tripDecisions: [{
+      source: "site_material_trip", sourceId: 6, selected: true, separateFromOperational: true,
+      remarks: "DC-6 IS A SEPARATE VERIFIED LOAD AFTER DPR TRIPS",
+    }] });
+    expect(separate.quantity).toBe(3);
+    expect(getHireReviewGaps(separate)).toEqual([]);
+
+    const deliveryBasis = calculateHireGroup({ ...base, tripDecisions: [
+      { source: "dpr_log", sourceId: 5, selected: false, remarks: "DPR IS NOT THE PAYABLE SOURCE" },
+      { source: "site_material_trip", sourceId: 6, selected: true, remarks: "DC-6 IS THE REVIEWED PAYABLE DELIVERY" },
+    ] });
+    expect(deliveryBasis.quantity).toBe(1);
+    expect(getHireReviewGaps(deliveryBasis)).toEqual([]);
+  });
+
+  it("uses actual breakdown hours only with an explicit 10–12 hour divisor", () => {
+    const base = {
+      terms: { billingBasis: "monthly" as const, rate: 30_000, monthlyDivisorType: "30" as const, breakdownDeductionEnabled: true },
+      periodFrom: "2026-09-01", periodTo: "2026-09-30",
+      maintenance: [{ id: 7, date: "2026-09-10", eventType: "breakdown", downtimeHours: 5 }],
+      exceptionDecisions: [{ sourceType: "maintenance" as const, sourceId: 7, exceptionType: "breakdown", date: "2026-09-10", decision: "hours" as const }],
+    };
+    expect(calculateHireBilling(base).deductionAmount).toBe(0);
+    expect(calculateHireBilling({ ...base, terms: { ...base.terms, breakdownHoursPerDay: 10 } }).deductionAmount).toBe(500);
+  });
+
+  it("rejects an HSD recovery when the master assigns diesel to the vendor", () => {
+    expect(() => calculateHireGroup({
+      terms: { billingBasis: "daily", rate: 1000, dieselResponsibility: "vendor" },
+      periodFrom: "2026-09-01", periodTo: "2026-09-01",
+      activities: [{ source: "plant_usage", sourceId: 1, equipmentId: 2, businessDate: "2026-09-01", actualDiesel: 10, expectedDiesel: 5 }],
+      dieselRecovery: { decision: "ignore" },
+    })).toThrow("diesel responsibility to HLC");
+  });
+
+  it("uses a reliable canonical period tank delta instead of issued-fuel activity totals", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "daily", rate: 1000, dieselResponsibility: "hlc" },
+      periodFrom: "2026-09-01", periodTo: "2026-09-02",
+      // These issued values deliberately disagree with the performance period.
+      activities: [
+        { source: "plant_usage", sourceId: 1, equipmentId: 2, businessDate: "2026-09-01", actualDiesel: 90, expectedDiesel: 5 },
+        { source: "plant_usage", sourceId: 2, equipmentId: 2, businessDate: "2026-09-02", actualDiesel: 90, expectedDiesel: 5 },
+      ],
+      authoritativeDieselPeriod: { actualDiesel: 30, expectedDiesel: 20, difference: 10, reliable: true },
+      dieselPurchases: [{ id: 1, date: "2026-09-02", rate: 100, qtyPurchased: 100 }],
+      dieselRecovery: { decision: "accept" },
+    });
+    expect(result.diesel).toMatchObject({ actualDiesel: 30, expectedDiesel: 20, suggestedExcess: 10, suggestedRecoveryAmount: 1000 });
+    expect(result.netAmount).toBe(1000);
+  });
+
+  it("requires a reliable period measurement and one unambiguous relevant HSD rate for acceptance", () => {
+    const base = {
+      terms: { billingBasis: "daily" as const, rate: 1000, dieselResponsibility: "hlc" },
+      periodFrom: "2026-09-01", periodTo: "2026-09-02",
+      activities: [],
+      authoritativeDieselPeriod: { actualDiesel: 30, expectedDiesel: 20, difference: 10, reliable: true },
+      dieselRecovery: { decision: "accept" as const },
+    };
+    expect(() => calculateHireGroup({ ...base, dieselPurchases: [
+      { id: 1, date: "2026-09-02", rate: 90, qtyPurchased: 10 },
+      { id: 2, date: "2026-09-02", rate: 100, qtyPurchased: 10 },
+    ] })).toThrow("rate is unavailable");
+    expect(() => calculateHireGroup({ ...base, authoritativeDieselPeriod: { ...base.authoritativeDieselPeriod, reliable: false },
+      dieselPurchases: [{ id: 1, date: "2026-09-02", rate: 90, qtyPurchased: 10 }],
+    })).toThrow("rate is unavailable");
+  });
+
   it("collapses daily dates across sources but drops DPR only for an explicit mirrored plant usage", () => {
     const rows = normalizeHireActivities([
       { source: "dpr_log", sourceId: 1, equipmentId: 9, businessDate: "2025-04-01", plantUsageId: 8 },

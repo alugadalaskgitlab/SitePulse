@@ -20,6 +20,7 @@ const fx: { role: string } = { role: "admin" };
 
 vi.mock("../server/push", () => ({
   sendPushToAll: vi.fn().mockResolvedValue(undefined),
+  sendPushToSection: vi.fn().mockResolvedValue(undefined),
   sendTestPush: vi.fn().mockResolvedValue(undefined),
   sendPushToAudience: vi.fn().mockResolvedValue(undefined),
   initPush: vi.fn(),
@@ -86,12 +87,75 @@ describe("06M-A vendor bill payment details", () => {
     expect(storage.updateVendorBillPaymentDetails.mock.calls.at(-1)[1].paidBy).toBe("SURESH");
   });
 
+  it("permits clearing a previously selected company account when payment is personal", async () => {
+    const res = await request(app)
+      .patch("/api/vendor-bills/7/payment-details")
+      .send({ paymentMode: "upi", paidBy: "SURESH", amountPaid: 250, paymentAccountKey: null });
+    expect(res.status).toBe(200);
+    expect(storage.updateVendorBillPaymentDetails.mock.calls.at(-1)[1]).toMatchObject({
+      paidBy: "SURESH", amountPaid: 250, paymentAccountKey: null,
+    });
+  });
+
   it("K: partial payload (only one field) and explicit nulls are valid — NULL bills stay valid", async () => {
     const res1 = await request(app).patch("/api/vendor-bills/7/payment-details").send({ paymentMode: "cash" });
     expect(res1.status).toBe(200);
     expect("paidBy" in storage.updateVendorBillPaymentDetails.mock.calls.at(-1)[1]).toBe(false);
     const res2 = await request(app).patch("/api/vendor-bills/7/payment-details").send({ paymentMode: null, paidBy: null });
     expect(res2.status).toBe(200);
+  });
+
+  it("accepts the bounded equipment-hire payment snapshot fields without any lifecycle field", async () => {
+    const res = await request(app).patch("/api/vendor-bills/7/payment-details").send({
+      amountPaid: 1250.5,
+      paymentAccountKey: "hdfc_ca",
+      paymentMode: "rtgs",
+      paidBy: "company",
+    });
+    expect(res.status).toBe(200);
+    const [, details] = storage.updateVendorBillPaymentDetails.mock.calls.at(-1);
+    expect(details).toEqual({
+      amountPaid: 1250.5,
+      paymentAccountKey: "hdfc_ca",
+      paymentMode: "rtgs",
+      paidBy: "company",
+    });
+    expect("status" in details).toBe(false);
+    expect("paidAt" in details).toBe(false);
+  });
+
+  it("retains an optional equipment project/site only inside the existing hire snapshot payload", async () => {
+    storage.createVendorBill = vi.fn(async (data: any) => ({ id: 11, billNo: data.billNo, vendorName: data.vendorName, ...data, items: [] }));
+    const res = await request(app).post("/api/vendor-bills").send({
+      billDate: "2026-01-10",
+      billNo: "VB-EH-011",
+      billType: "equipment",
+      vendorName: "ACME HIRE",
+      periodFrom: "2026-01-10",
+      periodTo: "2026-01-11",
+      totalAmount: 10000,
+      items: [],
+      hireGroups: [{
+        equipmentId: 9, periodFrom: "2026-01-10", periodTo: "2026-01-11",
+        basis: "daily", rate: 5000, projectSite: "North Site",
+      }],
+    });
+    expect(res.status).toBe(201);
+    const [input] = storage.createVendorBill.mock.calls.at(-1);
+    expect(input.hireGroups[0].projectSite).toBe("North Site");
+    expect(input).not.toHaveProperty("projectSite");
+  });
+
+  it("rejects an equipment bill without one hire group or with client amount overrides before storage", async () => {
+    const base = {
+      billDate: "2026-01-10", billType: "equipment", vendorName: "ACME HIRE",
+      periodFrom: "2026-01-10", periodTo: "2026-01-11", totalAmount: 10000, items: [],
+    };
+    expect((await request(app).post("/api/vendor-bills").send(base)).status).toBe(400);
+    expect((await request(app).post("/api/vendor-bills").send({
+      ...base, hireGroups: [{ equipmentId: 9, periodFrom: "2026-01-10", periodTo: "2026-01-11",
+        basis: "daily", rate: 5000, grossAmountOverride: 1 }],
+    })).status).toBe(400);
   });
 
   it("M: rejects payment modes outside the PI/diesel option set", async () => {

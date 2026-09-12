@@ -5,7 +5,7 @@
  */
 export type HireBillingBasis = "monthly" | "daily" | "hourly" | "trip";
 export type MonthlyDivisorType = "calendar" | "30" | "custom";
-export type HireExceptionDecision = "full_day" | "half_day" | "none" | "manual";
+export type HireExceptionDecision = "full_day" | "half_day" | "hours" | "none" | "manual";
 
 export interface HireTerms {
   billingBasis: HireBillingBasis;
@@ -15,6 +15,13 @@ export interface HireTerms {
   monthlyDivisorType?: MonthlyDivisorType | null;
   monthlyDivisor?: number | null;
   breakdownDeductionEnabled?: boolean | null;
+  dieselResponsibility?: "hlc" | "vendor" | string | null;
+  /**
+   * An expressly chosen commercial day length for a breakdown calculation.
+   * It is deliberately never defaulted: a bill reviewer must select 10–12
+   * hours when using an actual downtime-hours deduction.
+   */
+  breakdownHoursPerDay?: number | null;
 }
 
 export interface HireUsage {
@@ -60,6 +67,7 @@ export interface HireBillingException {
   downtimeHours?: number;
   decision?: HireExceptionDecision;
   manualDeductionAmount?: number;
+  suggestedDeductionAmount?: number;
   deductionAmount: number;
 }
 
@@ -166,6 +174,11 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
   if (!isValidDate(input.periodFrom) || !isValidDate(input.periodTo)) throw new Error("A valid statement period is required.");
   if (dateAtUtc(input.periodFrom) > dateAtUtc(input.periodTo)) throw new Error("Statement periodFrom must be on or before periodTo.");
   if (!Number.isFinite(terms.rate) || terms.rate < 0) throw new Error("Hire rate must be a non-negative number.");
+  for (const decision of input.exceptionDecisions ?? []) {
+    if (decision.decision === "hours" && (decision.sourceType !== "maintenance" || !decision.sourceId)) {
+      throw new Error("Actual downtime hours can be applied only to an identified maintenance breakdown.");
+    }
+  }
 
   if ((terms.hireStartDate && !isValidDate(terms.hireStartDate)) || (terms.hireEndDate && !isValidDate(terms.hireEndDate))) throw new Error("Hire dates must be valid ISO dates.");
   const constrainedFrom = Math.max(dateAtUtc(input.periodFrom), terms.hireStartDate ? dateAtUtc(terms.hireStartDate) : -Infinity);
@@ -231,6 +244,9 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
       if (!decision.date || !overlap(decision.date, constrainedFrom, constrainedTo)) {
         throw Object.assign(new Error("Manual exception dates must fall within the active billed period."), { code: "BAD_REQUEST" });
       }
+      if (decision.decision === "manual" && !decision.remarks?.trim()) {
+        throw Object.assign(new Error("A manual hire deduction needs a reason/reference."), { code: "BAD_REQUEST" });
+      }
       exceptions.push({
         sourceType: "manual",
         sourceId: decision.sourceId ?? undefined,
@@ -254,9 +270,17 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
     item.manualDeductionAmount = decision.manualDeductionAmount ?? undefined;
     const breakdownBlocked = item.exceptionType === "breakdown" && !terms.breakdownDeductionEnabled;
     const dailyDeduction = breakdownBlocked ? 0 : terms.billingBasis === "monthly" ? monthlyDailyRate(item.date, terms) : terms.rate;
+    const hourBasedDeduction = item.exceptionType === "breakdown" &&
+      item.downtimeHours != null &&
+      terms.breakdownHoursPerDay != null &&
+      terms.breakdownHoursPerDay >= 10 &&
+      terms.breakdownHoursPerDay <= 12
+      ? money(dailyDeduction * item.downtimeHours / terms.breakdownHoursPerDay)
+      : undefined;
+    item.suggestedDeductionAmount = breakdownBlocked ? 0 : hourBasedDeduction;
     item.deductionAmount = breakdownBlocked
       ? 0
-      : money(decision.decision === "full_day" ? dailyDeduction : decision.decision === "half_day" ? dailyDeduction / 2 : decision.decision === "manual" ? Math.max(0, decision.manualDeductionAmount ?? 0) : 0);
+      : money(decision.decision === "full_day" ? dailyDeduction : decision.decision === "half_day" ? dailyDeduction / 2 : decision.decision === "hours" ? (hourBasedDeduction ?? 0) : decision.decision === "manual" ? Math.max(0, decision.manualDeductionAmount ?? 0) : 0);
     deductionAmount += item.deductionAmount;
   }
   deductionAmount = money(Math.min(grossAmount, deductionAmount));
@@ -269,7 +293,7 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
 }
 
 /** A stable, source-qualified activity contract for Vendor Bill hire groups. */
-export type HireActivitySource = "dpr_log" | "plant_usage" | "equipment_default";
+export type HireActivitySource = "dpr_log" | "plant_usage" | "site_material_trip" | "bulk_transport_trip" | "equipment_default";
 export interface HireActivity {
   source: HireActivitySource;
   sourceId: number;
@@ -293,12 +317,17 @@ export interface HireActivity {
   openingReading?: number | null;
   closingReading?: number | null;
   movementReference?: string | null;
+  /** Vehicle/text matched delivery evidence always requires bill-review selection. */
+  requiresTripReview?: boolean;
+  deliveryEvidence?: { material?: string | null; quantity?: number | null; uom?: string | null; source?: string | null; destination?: string | null; receiptNumber?: string | null } | null;
 }
 export interface HireTripDecision {
   source: HireActivitySource;
   sourceId: number;
   selected?: boolean;
   correctedTrips?: number;
+  /** Required to bill a delivery candidate beside same-day operational trips. */
+  separateFromOperational?: boolean;
   remarks?: string | null;
 }
 export interface HireDieselRecoveryDecision {
@@ -313,6 +342,19 @@ export interface HireDieselPurchasePrice {
   rate: number;
   qtyPurchased: number;
   purchasedAt?: string | null;
+}
+/**
+ * The Equipment Performance report's period-boundary tank calculation.
+ * When present it supersedes per-activity issued-fuel arithmetic for an HSD
+ * recovery. `reliable` is false unless its first/last tank boundaries and all
+ * intervening issues were confirmed by that canonical report.
+ */
+export interface HireAuthoritativeDieselPeriod {
+  actualDiesel: number | null;
+  expectedDiesel: number | null;
+  difference: number | null;
+  reliable: boolean;
+  dailyRows?: readonly unknown[];
 }
 export interface HireDailyDieselPricing {
   date: string;
@@ -369,6 +411,7 @@ export interface HireGroupCalculationInput {
   dieselNormOverride?: number | null;
   dieselNormBasisOverride?: string | null;
   dieselPurchases?: readonly HireDieselPurchasePrice[];
+  authoritativeDieselPeriod?: HireAuthoritativeDieselPeriod;
   dieselRecovery?: HireDieselRecoveryDecision;
 }
 export interface HireGroupCalculationResult extends HireBillingResult {
@@ -381,6 +424,10 @@ export interface HireGroupCalculationResult extends HireBillingResult {
       businessDate: string;
       recordedTrips: number;
       acceptedTrips: number;
+      requiresReview?: boolean;
+      reviewed?: boolean;
+      hasOperationalCounterpart?: boolean;
+      separateFromOperational?: boolean;
     })[];
   };
   diesel: {
@@ -504,8 +551,19 @@ export function getHireReviewGaps(snapshot: Partial<HireGroupCalculationResult> 
   const gaps = (snapshot.exceptions ?? [])
     .filter(exception => !exception.decision)
     .map(exception => `${exception.exceptionType} on ${exception.date || "unknown date"}`);
-  if ((snapshot.diesel?.suggestedExcess ?? 0) > 0 && !snapshot.diesel?.recoveryDecision) {
+  if ((snapshot.diesel?.suggestedExcess ?? 0) > 0 &&
+      String((snapshot as any).terms?.dieselResponsibility || "").toLowerCase() !== "vendor" &&
+      !snapshot.diesel?.recoveryDecision) {
     gaps.push("HSD recovery disposition");
+  }
+  for (const decision of snapshot.decisions?.trip ?? []) {
+    if (decision.requiresReview && !decision.reviewed) gaps.push(`delivery-trip match on ${decision.businessDate}`);
+    if (decision.requiresReview && decision.reviewed && !decision.remarks?.trim()) {
+      gaps.push(`delivery-trip reconciliation reason on ${decision.businessDate}`);
+    }
+    if (decision.requiresReview && decision.selected !== false && decision.hasOperationalCounterpart && !decision.separateFromOperational) {
+      gaps.push(`delivery-trip separation evidence on ${decision.businessDate}`);
+    }
   }
   return gaps;
 }
@@ -539,7 +597,7 @@ export function buildHireActivityDays(
 ): HireActivityDay[] {
   if (!isValidDate(periodFrom) || !isValidDate(periodTo) || dateAtUtc(periodFrom) > dateAtUtc(periodTo)) return [];
   const normalized = normalizeHireActivities(activities).filter(activity =>
-    (activity.source === "dpr_log" || activity.source === "plant_usage") &&
+    (activity.source === "dpr_log" || activity.source === "plant_usage" || activity.source === "site_material_trip" || activity.source === "bulk_transport_trip") &&
     activity.businessDate >= periodFrom && activity.businessDate <= periodTo
   );
   const days: HireActivityDay[] = [];
@@ -599,7 +657,7 @@ export function calculateHireDieselPricing(
   unpricedActualDates: string[];
 } {
   const activityRows = normalizeHireActivities(activities).filter(activity =>
-    (activity.source === "dpr_log" || activity.source === "plant_usage") &&
+    (activity.source === "dpr_log" || activity.source === "plant_usage" || activity.source === "site_material_trip" || activity.source === "bulk_transport_trip") &&
     (!periodFrom || activity.businessDate >= periodFrom) &&
     (!periodTo || activity.businessDate <= periodTo)
   );
@@ -687,22 +745,74 @@ export function calculateHireDieselPricing(
   };
 }
 
+function applyAuthoritativeDieselPeriod(
+  pricing: ReturnType<typeof calculateHireDieselPricing>,
+  period: HireAuthoritativeDieselPeriod,
+  purchases: readonly HireDieselPurchasePrice[],
+  periodTo: string,
+) {
+  const actualDiesel = Number.isFinite(period.actualDiesel) && (period.actualDiesel ?? 0) >= 0 ? money(period.actualDiesel!) : 0;
+  const expectedDiesel = Number.isFinite(period.expectedDiesel) && (period.expectedDiesel ?? 0) >= 0 ? money(period.expectedDiesel!) : 0;
+  const expectedDieselAvailable = !!period.reliable && period.expectedDiesel != null && period.actualDiesel != null && period.difference != null;
+  const suggestedExcess = expectedDieselAvailable ? money(Math.max(0, period.difference!)) : 0;
+  // A report-period recovery uses one unambiguous, contemporaneous rate. We
+  // deliberately do not blend per-activity rates or fabricate coverage from
+  // an issued-fuel event. Multiple prices on the latest relevant purchase date
+  // must be resolved manually.
+  const validPurchases = purchases.filter(p => isValidDate(p.date) && p.date <= periodTo &&
+    Number.isFinite(p.rate) && p.rate > 0 && Number.isFinite(p.qtyPurchased) && p.qtyPurchased > 0);
+  const rateDate = validPurchases.map(p => p.date.slice(0, 10)).sort().at(-1);
+  const rateSources = rateDate ? validPurchases.filter(p => p.date.slice(0, 10) === rateDate) : [];
+  const rates = Array.from(new Set(rateSources.map(p => Number(p.rate))));
+  const applicableRate = expectedDieselAvailable && rates.length === 1 ? rates[0] : undefined;
+  return {
+    ...pricing,
+    actualDiesel,
+    expectedDiesel,
+    expectedDieselAvailable,
+    expectedDieselUnavailableDates: expectedDieselAvailable ? [] : ["PERIOD PERFORMANCE MEASUREMENT"],
+    suggestedExcess,
+    applicableRate,
+    rateUnavailable: applicableRate === undefined,
+    suggestedRecoveryAmount: !expectedDieselAvailable ? undefined
+      : suggestedExcess === 0 ? 0
+      : applicableRate === undefined ? undefined
+      : money(suggestedExcess * applicableRate),
+    unpricedActualDates: applicableRate === undefined && actualDiesel > 0 ? [periodTo] : [],
+  };
+}
+
 /** Calculates a bill-group snapshot using the existing statement calculator. */
 export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupCalculationResult {
   const periodActivities = normalizeHireActivities(input.activities).filter(a =>
-    (a.source === "dpr_log" || a.source === "plant_usage") &&
+    (a.source === "dpr_log" || a.source === "plant_usage" ||
+      ((a.source === "site_material_trip" || a.source === "bulk_transport_trip") && input.terms.billingBasis === "trip")) &&
     a.businessDate >= input.periodFrom && a.businessDate <= input.periodTo
   );
   const decisionMap = new Map((input.tripDecisions ?? []).map(d => [`${d.source}:${d.sourceId}`, d]));
-  const usage: HireUsage[] = periodActivities.map(activity => {
+  const usage: HireUsage[] = periodActivities.flatMap(activity => {
     const decision = decisionMap.get(hireActivityIdentity(activity));
+    const hasOperationalCounterpart = activity.requiresTripReview && periodActivities.some(other =>
+      other.equipmentId === activity.equipmentId && other.businessDate === activity.businessDate &&
+      (other.source === "dpr_log" || other.source === "plant_usage") && other.entryType === "trip_based" &&
+      decisionMap.get(hireActivityIdentity(other))?.selected !== false
+    );
+    // An explicitly excluded source is reconciled evidence, not
+    // an invalid equipment-usage row requiring a second exception decision.
+    if (decision?.selected === false) return [];
+    // A delivery matched to an operational trip can only add another payable
+    // trip when the reviewer expressly records it as separately verified.
+    if (activity.requiresTripReview && (!decision || (hasOperationalCounterpart && !decision.separateFromOperational))) return [];
     // No inferred trips: only selected positive stored/corrected values reach
     // the shared trip calculator.
-    const trips = decision?.selected === false ? 0
+    const trips = activity.requiresTripReview && !decision ? 0
+      : decision?.selected === false ? 0
       : decision?.correctedTrips !== undefined ? decision.correctedTrips
       : activity.numberOfTrips;
-    return { id: activity.sourceId, date: activity.businessDate, entryType: activity.entryType,
-      status: activity.status, hoursOrKmRun: activity.hoursOrKmRun, numberOfTrips: trips };
+    return [{
+      id: activity.sourceId, date: activity.businessDate, entryType: activity.entryType,
+      status: activity.status, hoursOrKmRun: activity.hoursOrKmRun, numberOfTrips: trips,
+    }];
   });
   const calculated = calculateHireBilling({ terms: input.terms, periodFrom: input.periodFrom, periodTo: input.periodTo,
     usage, maintenance: input.maintenance, dailyDecisions: input.dailyDecisions, exceptionDecisions: input.exceptionDecisions });
@@ -718,15 +828,26 @@ export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupC
   const grossAmount = input.grossAmountOverride !== undefined ? input.grossAmountOverride
     : input.quantityOverride !== undefined ? money(quantity * input.terms.rate) : calculated.grossAmount;
   const deductionAmount = money(Math.min(grossAmount, calculated.deductionAmount));
-  const dieselPricing = calculateHireDieselPricing(
+  const activityDieselPricing = calculateHireDieselPricing(
     activities, input.dieselPurchases,
     hasMeasurementPeriod ? measurementPeriodFrom : input.periodFrom,
     hasMeasurementPeriod ? measurementPeriodTo : input.periodTo,
   );
+  const dieselPricing = input.authoritativeDieselPeriod
+    ? applyAuthoritativeDieselPeriod(
+        activityDieselPricing,
+        input.authoritativeDieselPeriod,
+        input.dieselPurchases ?? [],
+        hasMeasurementPeriod ? measurementPeriodTo : input.periodTo,
+      )
+    : activityDieselPricing;
   const workingSheet = hasMeasurementPeriod
     ? buildHireActivityDays(measurementPeriodFrom, measurementPeriodTo, activities, input.maintenance)
     : [];
   const recovery = input.dieselRecovery;
+  if (recovery?.decision && String(input.terms.dieselResponsibility || "").toLowerCase() === "vendor") {
+    throw new Error("HSD recovery is available only where the Equipment Master assigns diesel responsibility to HLC.");
+  }
   if (recovery?.decision === "accept" && dieselPricing.suggestedRecoveryAmount === undefined) {
     throw new Error("A suggested diesel recovery cannot be accepted because the applicable HSD rate is unavailable.");
   }
@@ -752,8 +873,14 @@ export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupC
       })),
       trip: activities.filter(activity => activity.entryType === "trip_based").map(activity => {
         const decision = decisionMap.get(hireActivityIdentity(activity));
+        const hasOperationalCounterpart = activity.requiresTripReview && activities.some(other =>
+          other.equipmentId === activity.equipmentId && other.businessDate === activity.businessDate &&
+          (other.source === "dpr_log" || other.source === "plant_usage") && other.entryType === "trip_based" &&
+          decisionMap.get(hireActivityIdentity(other))?.selected !== false
+        );
         const recordedTrips = Number(activity.numberOfTrips) || 0;
-        const acceptedTrips = decision?.selected === false ? 0 : Number(decision?.correctedTrips ?? recordedTrips) || 0;
+        const acceptedTrips = activity.requiresTripReview && (!decision || (hasOperationalCounterpart && !decision.separateFromOperational)) ? 0
+          : decision?.selected === false ? 0 : Number(decision?.correctedTrips ?? recordedTrips) || 0;
         return {
           source: activity.source,
           sourceId: activity.sourceId,
@@ -763,6 +890,10 @@ export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupC
           remarks: decision?.remarks,
           recordedTrips,
           acceptedTrips,
+          ...(activity.requiresTripReview ? {
+            requiresReview: true, reviewed: !!decision, hasOperationalCounterpart,
+            separateFromOperational: !!decision?.separateFromOperational,
+          } : {}),
         };
       }),
     },

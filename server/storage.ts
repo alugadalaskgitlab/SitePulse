@@ -1456,7 +1456,8 @@ export interface IStorage {
   createVendorBill(data: CreateVendorBillRequest): Promise<VendorBillWithItems>;
   updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined>;
   updateVendorBillStatus(id: number, status: string, actor: string): Promise<VendorBillWithItems | undefined>;
-  updateVendorBillPaymentDetails(id: number, details: { paymentMode?: string | null; paidBy?: string | null }): Promise<VendorBillWithItems | undefined>;
+  updateVendorBillPaymentDetails(id: number, details: { paymentMode?: string | null; paidBy?: string | null; amountPaid?: number | null; paymentAccountKey?: string | null }): Promise<VendorBillWithItems | undefined>;
+  getVendorBillCompanyAccounts(): Promise<{ id: string; name: string; type: string }[]>;
   // 06M-A: ensures nullable payment_mode/paid_by columns on vendor_bills.
   // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
   ensureVendorBillPaymentColumns(): Promise<void>;
@@ -15227,6 +15228,8 @@ export class DatabaseStorage implements IStorage {
     if (data.hireGroups === undefined) return [];
     if (bill.status !== "draft") throw Object.assign(new Error("Hire groups can only be recalculated on a draft bill"), { code: "CONFLICT" });
     const groups = data.hireGroups;
+    if (groups.length === 0) throw Object.assign(new Error("Select exactly one hired equipment item before creating an equipment-hire bill."), { code: "BAD_REQUEST" });
+    if (groups.length > 1) throw Object.assign(new Error("An equipment hire bill can contain one selected equipment item"), { code: "BAD_REQUEST" });
     if (!bill.periodFrom || !bill.periodTo) throw Object.assign(new Error("Hire groups require a bill period"), { code: "BAD_REQUEST" });
     for (const group of groups) {
       if (group.periodFrom < bill.periodFrom || group.periodTo > bill.periodTo) {
@@ -15243,6 +15246,9 @@ export class DatabaseStorage implements IStorage {
     const desiredStatementIds = new Set<number>();
     const generated: VendorBillItem[] = [];
     for (const group of groups) {
+      if (group.quantityOverride !== undefined || group.grossAmountOverride !== undefined) {
+        throw Object.assign(new Error("Quantity and gross-amount overrides are not allowed for new equipment-hire bills."), { code: "BAD_REQUEST" });
+      }
       await tx.execute(sql`SELECT pg_advisory_xact_lock(1426, ${group.equipmentId})`);
       const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, group.equipmentId)).limit(1);
       if (!equipment || equipment.ownership !== "hired") throw Object.assign(new Error("Hire group equipment must be hired equipment"), { code: "BAD_REQUEST" });
@@ -15254,12 +15260,14 @@ export class DatabaseStorage implements IStorage {
         : undefined;
       if (existingById && existingById.vendorBillId !== bill.id) throw Object.assign(new Error("A hire group cannot claim another bill's statement"), { code: "CONFLICT" });
       if (existingById && existingById.equipmentId !== group.equipmentId) throw Object.assign(new Error("hireStatementId belongs to a different equipment"), { code: "BAD_REQUEST" });
-      if (!existingById) {
+      {
         const validBasis = ["monthly", "daily", "hourly", "trip"];
         const monthlyDivisorType = equipment.hireMonthlyDivisorType || "30";
         const validTerms = validBasis.includes(equipment.hireBillingBasis || "") &&
           !!equipment.hireStartDate &&
           Number.isFinite(Number(equipment.hireRate)) && Number(equipment.hireRate) > 0 &&
+          ["hlc", "vendor"].includes(String(equipment.hireDieselResponsibility || "").toLowerCase()) &&
+          ["hlc", "vendor"].includes(String(equipment.hireOperatorResponsibility || "").toLowerCase()) &&
           (!equipment.hireEndDate || equipment.hireStartDate <= equipment.hireEndDate) &&
           equipment.hireStartDate <= group.periodFrom &&
           (!equipment.hireEndDate || equipment.hireEndDate >= group.periodTo) &&
@@ -15283,12 +15291,14 @@ export class DatabaseStorage implements IStorage {
         ...(statement ? [sql`${hireStatements.id} <> ${statement.id}`] : []),
       )).limit(1);
       if (overlap) throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
-      const terms = { billingBasis: group.basis, rate: group.rate, hireStartDate: equipment.hireStartDate, hireEndDate: equipment.hireEndDate,
+      const terms = { billingBasis: equipment.hireBillingBasis as any, rate: Number(equipment.hireRate), hireStartDate: equipment.hireStartDate, hireEndDate: equipment.hireEndDate,
         monthlyDivisorType: equipment.hireMonthlyDivisorType as any || "30", monthlyDivisor: equipment.hireMonthlyDivisor,
-        // An explicit group breakdown decision is the vendor-bill workflow's
-        // authorization; do not suppress it merely because a master default
-        // was blank/false.
-        breakdownDeductionEnabled: (group.exceptionDecisions ?? []).some(d => d.sourceType === "maintenance" && d.decision && d.decision !== "none") || !!equipment.hireBreakdownDeductionEnabled };
+        dieselResponsibility: equipment.hireDieselResponsibility,
+        // The Equipment Master flag is authoritative. A bill reviewer cannot
+        // turn a disabled contractual breakdown deduction on by choosing a
+        // decision in this form.
+        breakdownDeductionEnabled: !!equipment.hireBreakdownDeductionEnabled,
+        breakdownHoursPerDay: group.breakdownHoursPerDay ?? undefined };
       const decisions = (group.exceptionDecisions ?? []).map(d => ({ sourceType: d.sourceType, sourceId: d.sourceId ?? undefined,
         exceptionType: d.exceptionType, date: d.date, decision: d.decision, manualDeductionAmount: d.manualDeductionAmount ?? undefined, remarks: d.remarks })) as HireExceptionDecisionInput[];
       const activities = canonical.filter(row => row.source !== "maintenance" && row.equipmentId === group.equipmentId);
@@ -15297,17 +15307,41 @@ export class DatabaseStorage implements IStorage {
       }));
       const maintenance: HireMaintenance[] = canonical.filter(row => row.source === "maintenance" && row.equipmentId === group.equipmentId)
         .map(row => ({ id: row.sourceId, date: row.businessDate, eventType: row.eventType, description: row.description, downtimeHours: row.downtimeHours }));
+      // Reuse the Equipment Performance report's exact period-boundary tank
+      // calculation. It rejects unreliable boundaries, omitted intervening
+      // events, and ambiguous same-day ordering; issued fuel is never used as
+      // a substitute for actual consumption in an HSD recovery.
+      const performanceReport = await this.getEquipmentPerformanceReport({
+        dateFrom: group.periodFrom, dateTo: group.periodTo, equipmentId: group.equipmentId,
+      });
+      const performance = performanceReport.fleet.find(row => row.equipmentId === group.equipmentId);
+      const authoritativeDieselPeriod = performance ? {
+        actualDiesel: performance.dieselConsumed,
+        expectedDiesel: performance.expectedDiesel,
+        difference: performance.difference,
+        reliable: !performance.consumptionIncomplete && performance.dieselConsumed != null &&
+          performance.expectedDiesel != null && performance.difference != null,
+        dailyRows: performance.dailyRows,
+      } : { actualDiesel: null, expectedDiesel: null, difference: null, reliable: false, dailyRows: [] };
       const calc = calculateHireGroup({ terms, periodFrom: group.periodFrom, periodTo: group.periodTo, activities, maintenance,
         dailyDecisions: group.dailyDecisions, tripDecisions: group.tripDecisions, exceptionDecisions: decisions,
         quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,
         dieselNormOverride: group.dieselNormOverride, dieselNormBasisOverride: group.dieselNormBasisOverride,
-        dieselPurchases,
+        dieselPurchases, authoritativeDieselPeriod,
         dieselRecovery: { decision: group.dieselRecoveryDecision, finalAmount: group.dieselRecoveryFinalAmount, remarks: group.dieselRecoveryRemarks } });
-      const patch: any = { equipmentId: group.equipmentId, vendorName: bill.vendorName, billingBasis: group.basis, rate: group.rate,
+      const adjustments = group.adjustments ?? {};
+      const otherDebit = Number(adjustments.otherDebit || 0);
+      const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
+      const otherCredit = Number(adjustments.otherCredit || 0);
+      const breakdownDeduction = Math.round((calc.exceptions
+        .filter(exception => exception.exceptionType === "breakdown")
+        .reduce((sum, exception) => sum + Number(exception.deductionAmount || 0), 0) + Number.EPSILON) * 100) / 100;
+      const netAfterBillAdjustments = Math.round((Math.max(0, calc.netAmount - otherDebit - advanceAdjustment + otherCredit) + Number.EPSILON) * 100) / 100;
+      const patch: any = { equipmentId: group.equipmentId, vendorName: bill.vendorName, billingBasis: terms.billingBasis, rate: terms.rate,
         monthlyDivisorType: terms.monthlyDivisorType, monthlyDivisor: terms.monthlyDivisor, hireStartDate: terms.hireStartDate,
         hireEndDate: terms.hireEndDate, dieselResponsibility: equipment.hireDieselResponsibility, operatorResponsibility: equipment.hireOperatorResponsibility,
         agreementRemarks: equipment.hireAgreementRemarks, periodFrom: group.periodFrom, periodTo: group.periodTo, quantity: calc.quantity,
-        grossAmount: calc.grossAmount, deductionAmount: calc.deductionAmount + calc.diesel.finalRecoveryAmount, netAmount: calc.netAmount,
+        grossAmount: calc.grossAmount, deductionAmount: calc.deductionAmount + calc.diesel.finalRecoveryAmount + otherDebit + advanceAdjustment - otherCredit, netAmount: netAfterBillAdjustments,
         status: "draft", vendorBillId: bill.id, calculationSnapshot: {
           terms,
           ...calc,
@@ -15321,6 +15355,21 @@ export class DatabaseStorage implements IStorage {
           dieselRecoveryDecision: group.dieselRecoveryDecision,
           dieselRecoveryFinalAmount: calc.diesel.finalRecoveryAmount,
           dieselRecoveryRemarks: group.dieselRecoveryRemarks,
+           projectSite: typeof (group as any).projectSite === "string" ? (group as any).projectSite : null,
+            performanceDailyRows: authoritativeDieselPeriod.dailyRows,
+            sourceEvidence: { activities, maintenance },
+           breakdownHoursPerDay: group.breakdownHoursPerDay ?? null,
+           adjustments: {
+              breakdownDeduction,
+             hsdRecovery: calc.diesel.finalRecoveryAmount,
+             hsdRecoveryReason: group.dieselRecoveryRemarks ?? null,
+             otherDebit,
+             otherDebitReason: adjustments.otherDebitReason ?? null,
+             advanceAdjustment,
+             advanceAdjustmentReason: adjustments.advanceAdjustmentReason ?? null,
+             otherCredit,
+             otherCreditReason: adjustments.otherCreditReason ?? null,
+           },
         } };
       if (statement) {
         await tx.delete(hireStatementExceptions).where(eq(hireStatementExceptions.statementId, statement.id));
@@ -15335,7 +15384,7 @@ export class DatabaseStorage implements IStorage {
       const unit = group.basis === "monthly" ? "MONTHS" : group.basis === "daily" ? "DAYS" : group.basis === "hourly" ? "HRS" : "TRIPS";
       const [item] = await tx.insert(vendorBillItems).values({ billId: bill.id, hireStatementId: statement.id,
         date: group.periodTo, category: "equipment", description: `HIRE - ${equipment.name} (${group.periodFrom} TO ${group.periodTo})`,
-        qty: calc.quantity, unit, rate: group.rate, amount: calc.netAmount, source: "hire_statement", equipmentId: group.equipmentId }).returning();
+        qty: calc.quantity, unit, rate: terms.rate, amount: netAfterBillAdjustments, source: "hire_statement", equipmentId: group.equipmentId }).returning();
       generated.push(item);
     }
     const previous = await tx.select({ id: hireStatements.id, status: hireStatements.status }).from(hireStatements).where(eq(hireStatements.vendorBillId, bill.id));
@@ -15354,6 +15403,9 @@ export class DatabaseStorage implements IStorage {
     const billNo = await this.generateVendorBillNo();
 
     return await db.transaction(async (tx) => {
+      if (data.billType.toLowerCase() === "equipment" && data.hireGroups === undefined) {
+        throw Object.assign(new Error("Equipment-hire bills require one selected hire group or an already-approved hire statement."), { code: "BAD_REQUEST" });
+      }
       const [bill] = await tx.insert(vendorBills).values({
         billDate: data.billDate,
         billNo,
@@ -15376,6 +15428,8 @@ export class DatabaseStorage implements IStorage {
         approvedBy: data.approvedBy?.toUpperCase() || data.approvedBy,
         approvedAt: data.approvedAt,
         paidAt: data.paidAt,
+        amountPaid: data.billType.toLowerCase() === "equipment" ? 0 : null,
+        paymentAccountKey: (data as any).paymentAccountKey ?? null,
         paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,
       }).returning();
 
@@ -15512,21 +15566,20 @@ export class DatabaseStorage implements IStorage {
       const billNo = await this.generateVendorBillNo();
       const [bill] = await tx.insert(vendorBills).values({
         billDate: data.billDate, billNo, billType: data.billType.toUpperCase(), vendorName: uppercaseBusinessText(data.vendorName),
-        periodFrom: data.periodFrom, periodTo: data.periodTo, status: "draft", notes: data.notes, totalAmount: data.totalAmount,
+        periodFrom: statement.periodFrom, periodTo: statement.periodTo, status: "draft", notes: data.notes, totalAmount: statement.netAmount,
+        amountPaid: 0,
       }).returning();
+      // The standalone statement was approved before this route was reached.
+      // Freeze that exact approved snapshot/amount into the linked bill rather
+      // than accepting recalculable client line figures.
       const items = await tx.insert(vendorBillItems).values(data.items.map(item => ({
         ...item, billId: bill.id, hireStatementId: item.equipmentId === statement.equipmentId ? statement.id : null,
+        date: statement.periodTo, qty: statement.quantity,
+        unit: statement.billingBasis === "monthly" ? "MONTHS" : statement.billingBasis === "daily" ? "DAYS" : statement.billingBasis === "hourly" ? "HRS" : "TRIPS",
+        rate: statement.rate, amount: statement.netAmount,
       }))).returning();
-      // The linked Vendor Bill is still a draft, so the statement enters the
-      // same draft → reviewed → approved → billed lifecycle as integrated groups.
       const [updated] = await tx.update(hireStatements).set({
         vendorBillId: bill.id,
-        status: "draft",
-        reviewedBy: null,
-        reviewedAt: null,
-        approvedBy: null,
-        approvedAt: null,
-        billedAt: null,
         revision: statement.revision + 1,
       })
         .where(eq(hireStatements.id, statementId)).returning();
@@ -15635,6 +15688,14 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS paid_by text`));
     // 06M-F §7A: who marked the bill paid (additive, nullable, never backfilled).
     await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS payment_recorded_by text`));
+    await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS net_payable_amount numeric(14,2)`));
+    await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS amount_paid numeric(14,2)`));
+    await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS payment_account_key text`));
+    // This compact JSON setting is intentionally the entire company-account
+    // model for VB-01; no banking or reconciliation records are created.
+    await db.execute(sql.raw(`INSERT INTO app_settings (key, value)
+      VALUES ('vendor_bill_company_accounts', '[{"id":"bank_of_baroda_od","name":"Bank of Baroda - OD","type":"OD"},{"id":"hdfc_ca","name":"HDFC - CA","type":"CA"}]')
+      ON CONFLICT (key) DO NOTHING`));
     // 06M-F §3: explicit diesel purchase payment status (default pending) +
     // server-set paid timestamp and recorder. Additive, idempotent.
     await db.execute(sql.raw(`ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS payment_status text DEFAULT 'pending'`));
@@ -15665,17 +15726,64 @@ export class DatabaseStorage implements IStorage {
       );
   }
 
-  // 06M-A: retrospective payment details on a bill — touches ONLY
-  // payment_mode/paid_by; never status, paidAt, or any lifecycle timestamp.
-  async updateVendorBillPaymentDetails(id: number, details: { paymentMode?: string | null; paidBy?: string | null }): Promise<VendorBillWithItems | undefined> {
-    const existing = await this.getVendorBill(id);
-    if (!existing) return undefined;
-    const setData: any = {};
-    if (details.paymentMode !== undefined) setData.paymentMode = details.paymentMode;
-    if (details.paidBy !== undefined) setData.paidBy = details.paidBy;
-    if (Object.keys(setData).length > 0) {
-      await db.update(vendorBills).set(setData).where(eq(vendorBills.id, id));
+  // Payment detail corrections never alter a lifecycle status or timestamp.
+  // Equipment-hire bills additionally retain their bounded paid-total/account.
+  async getVendorBillCompanyAccounts(): Promise<{ id: string; name: string; type: string }[]> {
+    const [setting] = await db.select().from(appSettings).where(eq(appSettings.key, "vendor_bill_company_accounts")).limit(1);
+    if (!setting) return [];
+    try {
+      const parsed = JSON.parse(setting.value);
+      return Array.isArray(parsed) && parsed.every(row => typeof row?.id === "string" && typeof row?.name === "string" && typeof row?.type === "string")
+        ? parsed : [];
+    } catch {
+      throw new Error("Vendor bill company account setting is invalid JSON.");
     }
+  }
+
+  async updateVendorBillPaymentDetails(id: number, details: { paymentMode?: string | null; paidBy?: string | null; amountPaid?: number | null; paymentAccountKey?: string | null }): Promise<VendorBillWithItems | undefined> {
+    const changed = await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
+      if (!existing) return false;
+      const setData: any = {};
+      if (details.paymentMode !== undefined) setData.paymentMode = details.paymentMode;
+      if (details.paidBy !== undefined) setData.paidBy = details.paidBy;
+      if (details.amountPaid !== undefined) {
+        if (existing.billType.toLowerCase() !== "equipment") {
+          throw Object.assign(new Error("Partial-payment amounts are available only on equipment hire bills."), { code: "BAD_REQUEST" });
+        }
+        if (!["approved", "paid"].includes(existing.status)) {
+          throw Object.assign(new Error("Record a partial payment only after the equipment hire bill is approved."), { code: "CONFLICT" });
+        }
+        const ceiling = existing.netPayableAmount ?? existing.totalAmount ?? 0;
+        if (details.amountPaid == null && existing.netPayableAmount != null) {
+          throw Object.assign(new Error("A frozen equipment-hire bill requires a cumulative paid amount; use zero for no payment."), { code: "BAD_REQUEST" });
+        }
+        if (details.amountPaid != null && (details.amountPaid < 0 || details.amountPaid > ceiling)) {
+          throw Object.assign(new Error("Paid amount must be between zero and this bill's net payable amount."), { code: "BAD_REQUEST" });
+        }
+        if (existing.status === "paid" && details.amountPaid != null && Number(details.amountPaid) !== Number(existing.amountPaid ?? ceiling)) {
+          throw Object.assign(new Error("A paid bill's cumulative amount is locked."), { code: "CONFLICT" });
+        }
+        setData.amountPaid = details.amountPaid;
+      }
+      if (details.paymentAccountKey !== undefined) {
+        if (details.paymentAccountKey != null && (details.paidBy ?? existing.paidBy) !== "company") {
+          throw Object.assign(new Error("A company account can be selected only when paid by company."), { code: "BAD_REQUEST" });
+        }
+        if (details.paymentAccountKey != null) {
+          const accounts = await this.getVendorBillCompanyAccounts();
+          if (!accounts.some(account => account.id === details.paymentAccountKey)) {
+            throw Object.assign(new Error("Select a configured company bank account."), { code: "BAD_REQUEST" });
+          }
+        }
+        setData.paymentAccountKey = details.paymentAccountKey;
+      }
+      if (Object.keys(setData).length > 0) {
+        await tx.update(vendorBills).set(setData).where(eq(vendorBills.id, id));
+      }
+      return true;
+    });
+    if (!changed) return undefined;
     return this.getVendorBill(id);
   }
 
@@ -15714,21 +15822,69 @@ export class DatabaseStorage implements IStorage {
       } else if (status === "approved") {
         updates.approvedBy = actorUpper;
         updates.approvedAt = now;
+        if (existing.billType.toLowerCase() === "equipment") {
+          // Freeze the commercial sequence as the payable snapshot:
+          // reconciled hire/adjustment subtotal → category GST → TDS.
+          // `totalAmount` deliberately remains the line-item subtotal and
+          // therefore cannot by itself stand in for the approved net amount.
+          const itemRows = await tx.select({ category: vendorBillItems.category, amount: vendorBillItems.amount })
+            .from(vendorBillItems).where(eq(vendorBillItems.billId, id));
+          const categorySubtotals = itemRows.reduce((totals: Record<string, number>, item) => {
+            const category = String(item.category || "other").toLowerCase();
+            totals[category] = (totals[category] || 0) + Number(item.amount || 0);
+            return totals;
+          }, {});
+          const gst = (
+            (categorySubtotals.equipment || 0) * Number(existing.gstRateEquipment || 0) / 100 +
+            (categorySubtotals.material || 0) * Number(existing.gstRateMaterial || 0) / 100 +
+            (categorySubtotals.transport || 0) * Number(existing.gstRateTransport || 0) / 100 +
+            (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100
+          );
+          const taxableTotal = itemRows.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+            + gst + Number(existing.adjustmentAmount || 0);
+          const tds = Number(existing.tdsRate || 0);
+          updates.netPayableAmount = Math.round((taxableTotal * (1 - tds / 100) + Number.EPSILON) * 100) / 100;
+          // A new hire bill starts with no payment. Historical paid records
+          // remain nullable and are interpreted as fully paid in the UI.
+          updates.amountPaid = existing.amountPaid ?? 0;
+        }
       } else if (status === "paid") {
         updates.paidAt = now;
         // 06M-F §7A: record WHO marked it paid, same actor convention as
         // verifiedBy/approvedBy above. Purely additive display data.
         updates.paymentRecordedBy = actorUpper;
+        if (existing.billType.toLowerCase() === "equipment") {
+          const netPayable = Number(existing.netPayableAmount ?? existing.totalAmount ?? 0);
+          // Legacy paid records have a NULL paid amount and remain interpreted
+          // as fully paid; newly approved hires must settle the recorded
+          // balance before the terminal paid transition.
+          if (existing.netPayableAmount != null && existing.amountPaid == null) {
+            throw Object.assign(new Error("Record the cumulative equipment hire payment before marking this bill paid."), { code: "CONFLICT" });
+          }
+          if (existing.amountPaid != null && Number(existing.amountPaid) < netPayable) {
+            throw Object.assign(new Error("Record the remaining equipment hire balance before marking this bill paid."), { code: "CONFLICT" });
+          }
+          updates.amountPaid = existing.amountPaid ?? netPayable;
+        }
       }
       await tx.update(vendorBills).set(updates).where(eq(vendorBills.id, id));
-      // Integrated and legacy 07B-linked statements follow the existing bill
-      // lifecycle. Their approved/billed snapshots are not recalculated here.
-      const statementStatus = status === "verified" ? "reviewed" : status === "approved" ? "approved" : status === "paid" ? "billed" : "draft";
-      await tx.update(hireStatements)
-        .set({ status: statementStatus, revision: sql`${hireStatements.revision} + 1`, ...(status === "verified" ? { reviewedBy: actorUpper, reviewedAt: new Date() } :
-          status === "approved" ? { approvedBy: actorUpper, approvedAt: new Date() } :
-          status === "paid" ? { billedAt: new Date() } : {}) })
-        .where(and(eq(hireStatements.vendorBillId, id), ne(hireStatements.status, "billed")));
+      // An independently approved statement is already a frozen commercial
+      // approval when it is linked to a draft bill. Do not regress it to
+      // reviewed on the bill's verification or reopen its exception editor.
+      // Integrated draft statements still follow draft → reviewed → approved.
+      for (const statement of linkedStatements) {
+        if (statement.status === "billed") continue;
+        const statementStatus = status === "paid" ? "billed"
+          : statement.status === "approved" ? "approved"
+          : status === "verified" ? "reviewed"
+          : status === "approved" ? "approved" : statement.status;
+        if (statementStatus === statement.status && status !== "paid") continue;
+        await tx.update(hireStatements)
+          .set({ status: statementStatus, revision: sql`${hireStatements.revision} + 1`, ...(status === "verified" && statementStatus === "reviewed" ? { reviewedBy: actorUpper, reviewedAt: new Date() } :
+            status === "approved" && statementStatus === "approved" && statement.status !== "approved" ? { approvedBy: actorUpper, approvedAt: new Date() } :
+            status === "paid" ? { billedAt: new Date() } : {}) })
+          .where(eq(hireStatements.id, statement.id));
+      }
       return true;
     });
     if (!changed) return undefined;
@@ -15767,12 +15923,12 @@ export class DatabaseStorage implements IStorage {
       name: string; vendorName: string | null; hireBillingBasis: string | null;
       hireRate: number | null; hireMonthlyDivisorType: string | null;
       hireMonthlyDivisor: number | null; hireStartDate: string | null;
-      hireEndDate: string | null; consumptionNorm: number | null; meterType: string | null;
+       hireEndDate: string | null; consumptionNorm: number | null; meterType: string | null; registrationNumber: string | null;
     }>(equipment.map(row => [row.id, {
       name: row.name, vendorName: row.vendorName, hireBillingBasis: row.hireBillingBasis,
       hireRate: row.hireRate, hireMonthlyDivisorType: row.hireMonthlyDivisorType,
       hireMonthlyDivisor: row.hireMonthlyDivisor, hireStartDate: row.hireStartDate,
-      hireEndDate: row.hireEndDate, consumptionNorm: row.consumptionNorm, meterType: row.meterType,
+       hireEndDate: row.hireEndDate, consumptionNorm: row.consumptionNorm, meterType: row.meterType, registrationNumber: row.registrationNumber,
     }]));
     const dprRows: any[] = await executor.select({
       id: equipmentLogs.id, equipmentId: equipmentLogs.equipmentId, date: dprs.date,
@@ -15787,6 +15943,30 @@ export class DatabaseStorage implements IStorage {
     ));
     const usageRows: EquipmentUsage[] = await executor.select().from(equipmentUsage).where(and(
       inArray(equipmentUsage.equipmentId, ids), gte(equipmentUsage.date, periodFrom), lte(equipmentUsage.date, periodTo),
+    ));
+    // Site Material Trips do not have a DPR/usage foreign key. A vehicle
+    // number can identify a possible hired vehicle, but it is never treated
+    // as an automatic payable match: every such delivery remains a reviewed
+    // candidate in the bill's frozen source/decision snapshot.
+    const materialTripRows: any[] = await executor.select({
+      id: siteMaterialTrips.id, date: siteMaterialTrips.date, site: siteMaterialTrips.site,
+      vehicleNumber: siteMaterialTrips.vehicleNumber, internalEquipmentId: siteMaterialTrips.internalEquipmentId,
+      material: siteMaterialTrips.material, quantity: siteMaterialTrips.quantity, uom: siteMaterialTrips.uom,
+      location: siteMaterialTrips.location, receiptNumber: siteMaterialTrips.receiptNumber, supplier: siteMaterialTrips.supplier,
+    }).from(siteMaterialTrips).where(and(
+      gte(siteMaterialTrips.date, periodFrom), lte(siteMaterialTrips.date, periodTo),
+      eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false),
+    ));
+    // Bulk plant dispatches are delivery evidence, not an inferred payable
+    // trip. Their transport-equipment link/vehicle text can nominate a hired
+    // vehicle, but every candidate requires an explicit reconciliation choice.
+    const bulkTransportRows: any[] = await executor.select({
+      id: truckDispatches.id, date: truckDispatches.date, truckNumber: truckDispatches.truckNumber,
+      transportEquipmentId: truckDispatches.transportEquipmentId, loadWeight: truckDispatches.loadWeight,
+      deliveryLocation: truckDispatches.deliveryLocation, ownerName: truckDispatches.ownerName,
+      driverName: truckDispatches.driverName,
+    }).from(truckDispatches).where(and(
+      gte(truckDispatches.date, periodFrom), lte(truckDispatches.date, periodTo),
     ));
     const maintenance: EquipmentMaintenanceLog[] = await executor.select().from(equipmentMaintenanceLogs).where(and(
       inArray(equipmentMaintenanceLogs.equipmentId, ids), gte(equipmentMaintenanceLogs.date, periodFrom),
@@ -15808,6 +15988,10 @@ export class DatabaseStorage implements IStorage {
       sql`${dieselRequirements.qtyPurchased} IS NOT NULL AND ${dieselRequirements.qtyPurchased} > 0`,
     ));
     const isoDate = (date: any) => typeof date === "string" ? date.slice(0, 10) : date.toISOString().slice(0, 10);
+    const cleanRegistration = (value: unknown) => String(value || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    const equipmentByRegistration = new Map(equipment
+      .filter(row => cleanRegistration(row.registrationNumber))
+      .map(row => [cleanRegistration(row.registrationNumber), row.id]));
     return [
       // Metadata-only rows make zero-activity monthly equipment discoverable.
       // calculateHireGroup explicitly ignores this source.
@@ -15846,6 +16030,40 @@ export class DatabaseStorage implements IStorage {
           movementReference: [row.shiftFrom && `FROM ${row.shiftFrom}`, row.shiftTo && `TO ${row.shiftTo}`, row.destinationSite && `DESTINATION ${row.destinationSite}`].filter(Boolean).join(" · ") || null,
           equipment: equipmentDefault };
       }),
+       ...materialTripRows.map(row => {
+         const exactEquipmentId = ids.includes(Number(row.internalEquipmentId)) ? Number(row.internalEquipmentId) : undefined;
+         const vehicleMatchedEquipmentId = equipmentByRegistration.get(cleanRegistration(row.vehicleNumber));
+         const equipmentId = exactEquipmentId ?? vehicleMatchedEquipmentId;
+         if (!equipmentId) return null;
+         const equipmentDefault = defaults.get(equipmentId);
+         return {
+           source: "site_material_trip", sourceId: row.id, equipmentId, businessDate: isoDate(row.date),
+           entryType: "trip_based", numberOfTrips: 1, status: "closed", site: row.site,
+            task: `DELIVERY: ${row.material || "MATERIAL"} · ${row.quantity ?? "—"} ${row.uom || ""}${row.supplier ? ` · FROM ${row.supplier}` : ""}`,
+           equipmentName: equipmentDefault?.name, movementReference: row.location || row.receiptNumber || null,
+           // A site delivery can be strong evidence after a user confirms it,
+           // but has no join key to DPR/plant usage, so this stays review-only.
+           requiresTripReview: true,
+           deliveryEvidence: { material: row.material, quantity: row.quantity, uom: row.uom, source: row.supplier, destination: row.site, receiptNumber: row.receiptNumber },
+           equipment: equipmentDefault,
+         };
+       }).filter(Boolean),
+       ...bulkTransportRows.map(row => {
+         const exactEquipmentId = ids.includes(Number(row.transportEquipmentId)) ? Number(row.transportEquipmentId) : undefined;
+         const vehicleMatchedEquipmentId = equipmentByRegistration.get(cleanRegistration(row.truckNumber));
+         const equipmentId = exactEquipmentId ?? vehicleMatchedEquipmentId;
+         if (!equipmentId) return null;
+         const equipmentDefault = defaults.get(equipmentId);
+         return {
+           source: "bulk_transport_trip", sourceId: row.id, equipmentId, businessDate: isoDate(row.date),
+           entryType: "trip_based", numberOfTrips: 1, status: "closed", site: row.deliveryLocation,
+           task: `BULK DISPATCH · ${row.loadWeight ?? "—"} MT${row.ownerName ? ` · ${row.ownerName}` : ""}`,
+           equipmentName: equipmentDefault?.name, movementReference: row.deliveryLocation || row.truckNumber || null,
+           requiresTripReview: true,
+           deliveryEvidence: { material: "BULK PLANT DISPATCH", quantity: row.loadWeight, uom: "MT", source: "PLANT", destination: row.deliveryLocation, receiptNumber: `DISPATCH-${row.id}` },
+           equipment: equipmentDefault,
+         };
+       }).filter(Boolean),
       ...maintenance.map((row: EquipmentMaintenanceLog) => ({ source: "maintenance", sourceId: row.id, equipmentId: row.equipmentId,
         businessDate: isoDate(row.date), eventType: row.eventType, description: row.description,
         downtimeHours: row.downtimeHours, equipment: defaults.get(row.equipmentId) })),

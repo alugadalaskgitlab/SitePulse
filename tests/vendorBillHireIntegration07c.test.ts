@@ -33,7 +33,7 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain('status === "verified" ? "reviewed"');
     expect(storage).toContain('status === "approved" ? "approved"');
     expect(storage).toContain('status === "paid" ? "billed"');
-    expect(storage).toContain('ne(hireStatements.status, "billed")');
+    expect(storage).toContain("const statementStatus = status === \"paid\" ? \"billed\"");
     expect(storage).toContain('filter(statement => statement.status !== "billed")');
     expect(storage).not.toContain('status === "paid"\n          ? eq(hireStatements.vendorBillId, id)');
     expect(storage).toContain("getHireReviewGaps");
@@ -57,7 +57,7 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain('if ((entryType || "").toLowerCase() === "monthly") return false');
     expect(storage).toContain('if (entryTypeFilter === "daily_hourly") return ["daily", "hourly", "time_meter"].includes(et)');
     expect(storage).toContain('if (entryTypeFilter === "trip_based") return et === "trip_based"');
-    expect(client).toContain("WORKING / MEASUREMENT SHEET — {activityDays.length} DAYS");
+    expect(client).toContain("Equipment Hire Working / Measurement Sheet");
   });
 
   it("keeps Pull Other Items additive and derives its count from final eligibility", () => {
@@ -83,8 +83,8 @@ describe("07C vendor-bill hire transaction wiring", () => {
   });
 
   it("shows recorded descriptions as primary evidence and computed no-activity separately", () => {
-    expect(client).toContain("RECORDED ACTIVITY");
-    expect(client).toContain('<span className="font-semibold text-muted-foreground">NO ACTIVITY</span>');
+    expect(client).toContain('"WORKED"');
+    expect(client).toContain('<span className="font-semibold text-muted-foreground">NO WORK / NO ACTIVITY</span>');
     expect(client).toContain('Number(day.activityCount || 0) > 0');
     expect(client).toContain("TOTAL TRIPS");
     expect(client).toContain("NET HSD VARIANCE");
@@ -98,18 +98,18 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain("dieselRecoveryFinalAmount: calc.diesel.finalRecoveryAmount");
   });
 
-  it("surfaces hire equipment directly and derives missing expected diesel from existing activity norms", () => {
-    expect(client).toContain("Monthly Hire Available");
-    expect(client).toContain("Daily Hire Available");
-    expect(client).toContain("Trip Hire Available");
-    expect(client).toContain("Hourly Hire Available");
-    expect(client).toContain("ADD TO BILL");
-    expect(client).toContain("ADD HIRE ITEM");
-    expect(client).not.toContain("> ADD GROUP");
+  it("uses the single-equipment hire workflow and derives missing expected diesel from existing activity norms", () => {
+    expect(client).toContain('data-testid="equipment-hire-straight-form"');
+    expect(client).toContain('data-testid="select-equipment-hire"');
+    expect(client).toContain('data-testid="select-equipment-hire-project"');
+    expect(client).toContain("selectHireEquipment");
+    expect(client).toContain("View Daily Activity");
+    expect(client).toContain("EquipmentHireExportButtons");
+    expect(client).toContain("Trip Candidate Review");
     expect(storage).toContain("computeEquipmentUsage(equipmentDefault, row)");
     expect(storage).toContain("? Number(row.expectedDiesel)");
     expect(storage).toContain(": calculated.expectedDiesel");
-    expect(client).toContain("Expected diesel unavailable — review norm/activity");
+    expect(client).toContain("Measured consumption unavailable; enter manually only.");
   });
 
   it("never guesses a missing hire basis and blocks incomplete commercial terms", () => {

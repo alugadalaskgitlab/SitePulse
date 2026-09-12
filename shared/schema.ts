@@ -2226,6 +2226,11 @@ export const vendorBills = pgTable("vendor_bills", {
   gstRateTransport: real("gst_rate_transport"),
   gstRateLabour: real("gst_rate_labour"),
   tdsRate: real("tds_rate"),
+  // Equipment Hire bills freeze this value at approval and can record a
+  // cumulative payment against the individual bill.
+  netPayableAmount: numeric("net_payable_amount", { precision: 14, scale: 2, mode: "number" }),
+  amountPaid: numeric("amount_paid", { precision: 14, scale: 2, mode: "number" }),
+  paymentAccountKey: text("payment_account_key"),
   createdAt: timestamp("created_at").defaultNow(),
   // Per-user record locking (Task #229).
   authorUserId: integer("author_user_id"),
@@ -2394,10 +2399,11 @@ export const hireGroupRequestSchema = z.object({
     reason: z.string().max(2000).nullable().optional(),
   })).optional(),
   tripDecisions: z.array(z.object({
-    source: z.enum(["dpr_log", "plant_usage"]),
+    source: z.enum(["dpr_log", "plant_usage", "site_material_trip", "bulk_transport_trip"]),
     sourceId: z.number().int().positive(),
     selected: z.boolean().optional(),
     correctedTrips: z.number().finite().nonnegative().optional(),
+    separateFromOperational: z.boolean().optional(),
     remarks: z.string().max(2000).nullable().optional(),
   })).optional(),
   exceptionDecisions: z.array(z.object({
@@ -2405,7 +2411,7 @@ export const hireGroupRequestSchema = z.object({
     sourceId: z.number().int().positive().nullable().optional(),
     exceptionType: z.string().max(60).optional(),
     date: hireGroupDate.optional(),
-    decision: z.enum(["full_day", "half_day", "none", "manual"]).optional(),
+    decision: z.enum(["full_day", "half_day", "hours", "none", "manual"]).optional(),
     manualDeductionAmount: z.number().finite().nonnegative().nullable().optional(),
     remarks: z.string().max(2000).nullable().optional(),
   })).optional(),
@@ -2416,7 +2422,51 @@ export const hireGroupRequestSchema = z.object({
   dieselRecoveryDecision: z.enum(["accept", "edit", "ignore"]).optional(),
   dieselRecoveryFinalAmount: z.number().finite().nonnegative().nullable().optional(),
   dieselRecoveryRemarks: z.string().max(2000).nullable().optional(),
-}).refine(value => value.periodFrom <= value.periodTo, { message: "periodFrom must be on or before periodTo" });
+  // Stored in the existing hire statement calculation snapshot. The hour
+  // divisor is a conscious per-bill commercial choice, never a hidden
+  // assumed contract term.
+  breakdownHoursPerDay: z.number().finite().min(10).max(12).nullable().optional(),
+  adjustments: z.object({
+    otherDebit: z.number().finite().nonnegative().optional(),
+    otherDebitReason: z.string().max(2000).nullable().optional(),
+    advanceAdjustment: z.number().finite().nonnegative().optional(),
+    advanceAdjustmentReason: z.string().max(2000).nullable().optional(),
+    otherCredit: z.number().finite().nonnegative().optional(),
+    otherCreditReason: z.string().max(2000).nullable().optional(),
+  }).optional(),
+}).refine(value => value.periodFrom <= value.periodTo, { message: "periodFrom must be on or before periodTo" })
+  .superRefine((value, ctx) => {
+    if (value.dieselRecoveryDecision === "edit" && !value.dieselRecoveryRemarks?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["dieselRecoveryRemarks"], message: "A manual HSD recovery needs a reason/reference." });
+    }
+    const adjustments = value.adjustments;
+    ([
+      ["otherDebit", "otherDebitReason"],
+      ["advanceAdjustment", "advanceAdjustmentReason"],
+      ["otherCredit", "otherCreditReason"],
+    ] as const).forEach(([amountKey, reasonKey]) => {
+      if (Number(adjustments?.[amountKey] || 0) > 0 && !adjustments?.[reasonKey]?.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["adjustments", reasonKey], message: "Every manual adjustment needs a reason/reference." });
+      }
+    });
+    if (value.exceptionDecisions?.some(decision => decision.decision === "hours") &&
+        !(value.breakdownHoursPerDay && value.breakdownHoursPerDay >= 10 && value.breakdownHoursPerDay <= 12)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["breakdownHoursPerDay"], message: "Choose a 10–12 hour breakdown divisor for actual downtime." });
+    }
+    value.tripDecisions?.forEach((decision, index) => {
+      if (["site_material_trip", "bulk_transport_trip"].includes(decision.source) && !decision.remarks?.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["tripDecisions", index, "remarks"], message: "A reviewed delivery/transport trip needs a reconciliation reason/reference." });
+      }
+      if (["site_material_trip", "bulk_transport_trip"].includes(decision.source) && decision.separateFromOperational && !decision.remarks?.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["tripDecisions", index, "remarks"], message: "Separately verified delivery trips need evidence/reference." });
+      }
+    });
+    value.exceptionDecisions?.forEach((decision, index) => {
+      if (decision.decision === "manual" && !decision.remarks?.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["exceptionDecisions", index, "remarks"], message: "A manual hire deduction needs a reason/reference." });
+      }
+    });
+  });
 export type HireGroupRequest = z.infer<typeof hireGroupRequestSchema>;
 
 export const createVendorBillRequestSchema = insertVendorBillSchema.extend({

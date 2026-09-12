@@ -3257,18 +3257,25 @@ export async function registerRoutes(
   const hirePeriod = hirePeriodFields.refine(v => v.billingFrom <= v.billingTo, { message: "billingFrom must be on or before billingTo" });
   const hireCreate = hirePeriodFields.extend({ equipmentId: z.number().int().positive() }).refine(v => v.billingFrom <= v.billingTo, { message: "billingFrom must be on or before billingTo" });
   const hireRevisionBody = z.object({ expectedRevision: z.number().int().nonnegative() });
-  const hireExceptionsBody = hireRevisionBody.extend({ exceptions: z.array(z.object({
+   const hireExceptionsBody = hireRevisionBody.extend({ exceptions: z.array(z.object({
     id: z.number().int().positive().optional(), date: hireDate.optional().default(""),
     reason: z.string().max(1000).optional(), source: z.enum(["usage", "maintenance", "manual"]).optional(),
     sourceId: z.number().int().positive().optional(), exceptionType: z.string().max(60).optional(),
     downtimeHours: z.number().finite().min(0).optional(), decision: z.enum(["full_day", "half_day", "none", "manual"]).optional(),
     finalDeduction: z.number().finite().min(0).optional(), manualDeductionAmount: z.number().finite().min(0).optional(),
-    remarks: z.string().max(2000).optional(),
-  })) });
+     remarks: z.string().max(2000).optional(),
+   })) }).superRefine((value, ctx) => value.exceptions.forEach((exception, index) => {
+     if ((exception.source === "manual" || exception.decision === "manual") &&
+         !(exception.remarks || exception.reason)?.trim()) {
+       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["exceptions", index, "remarks"], message: "A manual hire deduction needs a reason/reference." });
+     }
+   }));
   const hireTermsFor = (equipment: any) => {
     const validBasis = ["monthly", "daily", "hourly", "trip"];
     if (equipment.ownership !== "hired" || !equipment.vendorName?.trim() || !equipment.hireStartDate || !validBasis.includes(equipment.hireBillingBasis) ||
       !Number.isFinite(equipment.hireRate) || equipment.hireRate <= 0 ||
+       !["hlc", "vendor"].includes(String(equipment.hireDieselResponsibility || "").toLowerCase()) ||
+       !["hlc", "vendor"].includes(String(equipment.hireOperatorResponsibility || "").toLowerCase()) ||
       (equipment.hireStartDate && equipment.hireEndDate && equipment.hireStartDate > equipment.hireEndDate) ||
       (equipment.hireBillingBasis === "monthly" && !["calendar", "30", "custom"].includes(equipment.hireMonthlyDivisorType || "30")) ||
       (equipment.hireMonthlyDivisorType === "custom" && !(equipment.hireMonthlyDivisor > 0))) {
@@ -3405,6 +3412,16 @@ export async function registerRoutes(
       const calc = await hireCalculation(statement, decisions);
       // Persist only decisions (derived facts remain sourced from operational rows).
       const derived = new Map(calc.exceptions.map((e: any) => [`${e.sourceType}:${e.sourceId ?? ""}:${e.exceptionType}:${e.date ?? ""}`, e]));
+       for (const decision of decisions) {
+         if (decision.sourceType === "manual") continue;
+         const fact = derived.get(`${decision.sourceType}:${decision.sourceId ?? ""}:${decision.exceptionType || "manual"}:${decision.date || ""}`);
+         if (!fact) {
+           throw Object.assign(new Error("Exception decisions must reference an existing operational usage or maintenance record."), { code: "BAD_REQUEST" });
+         }
+         if (decision.decision === "hours" && (decision.sourceType !== "maintenance" || fact.exceptionType !== "breakdown" || fact.downtimeHours == null)) {
+           throw Object.assign(new Error("Actual downtime can be deducted only from a recorded maintenance breakdown with downtime hours."), { code: "BAD_REQUEST" });
+         }
+       }
       const rows = decisions.map(d => {
         const fact: any = derived.get(`${d.sourceType}:${d.sourceId ?? ""}:${d.exceptionType || "manual"}:${d.date || ""}`);
         return { sourceType: d.sourceType, sourceId: d.sourceId ?? null, exceptionType: d.exceptionType || "manual", exceptionDate: d.date || null,
@@ -10138,6 +10155,17 @@ export async function registerRoutes(
     }
   });
 
+  // VB-01 deliberately uses one small, stable app setting rather than a
+  // banking/accounts-payable module. The client receives only selector data.
+  app.get("/api/vendor-bills/company-accounts", async (req, res) => {
+    try {
+      if (!assertView(req, res, "vendor_bills")) return;
+      res.json(await storage.getVendorBillCompanyAccounts());
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Failed to fetch company accounts" });
+    }
+  });
+
   app.get("/api/vendor-bills/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -10156,6 +10184,24 @@ export async function registerRoutes(
     try {
       if (!assertCreateEither(req, res, "vendor_bills_raise", "vendor_bills")) return;
       const input = createVendorBillRequestSchema.parse(req.body);
+      if (input.billType.toLowerCase() === "equipment") {
+        if (!input.hireGroups || input.hireGroups.length !== 1) {
+          return res.status(400).json({ message: "Equipment-hire bills require exactly one selected hire group." });
+        }
+        if (input.hireGroups[0].quantityOverride !== undefined || input.hireGroups[0].grossAmountOverride !== undefined) {
+          return res.status(400).json({ message: "Quantity and gross-amount overrides are not allowed for new equipment-hire bills." });
+        }
+      }
+      // Project/site is optional bill context, retained only in the existing
+      // immutable hire calculation snapshot (not a new vendor_bills column).
+      // The request schema intentionally remains strict for commercial data,
+      // so copy this bounded display/context field after validation.
+      if (Array.isArray(req.body?.hireGroups) && input.hireGroups) {
+        input.hireGroups.forEach((group, index) => {
+          const projectSite = req.body.hireGroups[index]?.projectSite;
+          if (typeof projectSite === "string" && projectSite.trim()) (group as any).projectSite = projectSite.trim().slice(0, 240);
+        });
+      }
       const bill = await storage.createVendorBill(input);
       sendPushToSection("vendor_bills_approve", "New Vendor Bill", `${bill.billNo} - ${bill.vendorName}`, "/plant/vendor-bills").catch(() => {});
       res.status(201).json(bill);
@@ -10175,6 +10221,12 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { pin: _pin, ...billData } = req.body;
       const input = createVendorBillRequestSchema.parse(billData);
+      if (Array.isArray(billData?.hireGroups) && input.hireGroups) {
+        input.hireGroups.forEach((group, index) => {
+          const projectSite = billData.hireGroups[index]?.projectSite;
+          if (typeof projectSite === "string" && projectSite.trim()) (group as any).projectSite = projectSite.trim().slice(0, 240);
+        });
+      }
 
       const existing = await storage.getVendorBill(id);
       if (!existing) {
@@ -10215,6 +10267,8 @@ export async function registerRoutes(
       const detailsSchema = z.object({
         paymentMode: z.enum(["cash", "credit", "advance", "upi", "cheque", "rtgs"]).nullable().optional(),
         paidBy: z.string().max(120).nullable().optional(),
+        amountPaid: z.number().finite().nonnegative().nullable().optional(),
+        paymentAccountKey: z.string().max(120).nullable().optional(),
       });
       const details = detailsSchema.parse(req.body);
       const bill = await storage.updateVendorBillPaymentDetails(id, details);
@@ -10224,6 +10278,8 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
+      if ((err as any)?.code === "BAD_REQUEST") return res.status(400).json({ message: (err as any).message });
+      if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
       console.error("Error updating vendor bill payment details:", err);
       res.status(500).json({ message: "Failed to update payment details" });
     }

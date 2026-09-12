@@ -29,11 +29,11 @@ Approved statements snapshot both terms and calculations and must not be recompu
 
 **How to apply:** Serialize overlapping creation per equipment with a database advisory lock, reject overlaps, use client-supplied revisions plus row locks for mutable lifecycle actions, and create at most one linked Vendor Bill under a statement row lock.
 
-Integrated Vendor Bills may contain adjacent non-overlapping Month, Day, and Trip groups, each with its own frozen basis and rate. Equipment Master values are defaults only.
+The normal Equipment Hire Vendor Bill form is now one vendor, one equipment, one period, with read-only master terms. Historical multi-part statements remain historical, not a normal creation option.
 
-**Why:** One commercial bill may span a contract-basis change, and later master edits must not rewrite historical liability.
+**Why:** The user explicitly chose a straight form over mid-period split flexibility. A rate/vendor change within the month is handled manually outside the simplified form for now; overlap protection remains mandatory.
 
-**How to apply:** Recalculate only draft groups from server-loaded operational facts. Before verification, require explicit treatment for every generated exception and any positive HSD-recovery suggestion.
+**How to apply:** Recalculate only drafts from server-loaded operational facts; freeze approved terms and evidence. Before verification, require explicit treatment for exceptions and positive HSD-recovery suggestions.
 
 New Vendor Bill hire groups must start from an exact valid Equipment Master basis: monthly, daily, hourly, or trip. Missing or unsupported terms are never relabeled or defaulted.
 
@@ -57,7 +57,7 @@ HSD recovery uses period-net excess: max(0, total actual minus total expected). 
 
 **Why:** Refuelling and tank measurement timing can shift apparent consumption between dates; summing positive daily variances overstates recovery.
 
-**How to apply:** Resolve a same-day/latest-prior rate for every actual-HSD date, never a future rate. Weight resolved rates by actual litres; partial gaps do not invalidate priced dates. Freeze daily evidence, rate sources, decisions, and results.
+**How to apply:** Use Equipment Performance's authoritative reliable period consumption and difference, not issued-fuel sums. Suggest recovery only with an unambiguous relevant purchase rate; otherwise require a manual amount/reason. Freeze daily evidence, rate sources, decisions, and results.
 
 Stored positive expected HSD remains authoritative; blank or zero expected HSD may be derived read-only through the canonical equipment-usage calculator. If the activity or norm basis is unavailable, do not suggest automatic excess recovery.
 
@@ -72,3 +72,21 @@ Monthly equipment activity is evidence only and must never become a standalone o
 **Why:** A single daily log cannot represent a monthly contractual liability; exposing one line per day invites invalid and duplicate monthly charges.
 
 **How to apply:** Review every calendar day inside the hire group as Worked, No activity, or Vendor breakdown. No activity is informational and never an automatic deduction; daily and trip ordinary auto-lines remain eligible.
+
+Partial-day breakdown suggestions use an explicit per-bill agreed hire day between 10 and 12 hours, not a universal assumed workday.
+
+**Why:** The user approved this range rather than a single fixed divisor. Actual downtime and the agreement's deduction-enabled flag govern any suggestion.
+
+**How to apply:** Persist the reviewed divisor and adjustments/reasons with the bill snapshot; label the event simply Breakdown.
+
+Unlinked delivery/operational trip matches require review. Excluding an operational duplicate must resolve it without forcing a false “separate trip” declaration.
+
+**Why:** Equipment/date/count similarity does not prove trip identity; delivery records and DPR/Plant entries can describe the same trip.
+
+**How to apply:** Match client review checks to the server's active trip-based counterpart predicate. Preserve source references and reasons, and require explicit evidence when both sources are claimed as separate payable trips.
+
+Paid and Balance are strictly per bill. Null payment compatibility is only for genuinely historical bills without a frozen net snapshot.
+
+**Why:** Treating a new bill's null paid amount as legacy full payment bypasses the outstanding-balance check. The user rejected running balances and advance ledgers.
+
+**How to apply:** Initialize modern bills to numeric zero, disallow clearing it to null, freeze net and supporting daily evidence, and keep other bills independent.

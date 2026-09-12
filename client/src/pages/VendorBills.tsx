@@ -20,6 +20,16 @@ import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
 import { availableOtherBillItems, calculateHireGroup, mergeOtherBillItems, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
+import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
+import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
+import { authoritativeDieselPeriodFromFleet, hasIncludedOperationalTripOnSameDay, initialVendorBillPaidAmount, isPerformanceReadyForHireSubmission } from "@/components/vendor-bills/equipmentHireUi";
+import {
+  buildBillingDailyRows,
+  EquipmentHireDailyActivity,
+  EquipmentHireBillDetailOutput,
+  EquipmentHireExportButtons,
+  type EquipmentHireExportData,
+} from "@/components/vendor-bills/EquipmentHireBillOutput";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -97,9 +107,12 @@ type HireGroup = {
   id: string; hireStatementId?: number; equipmentId: number; periodFrom: string; periodTo: string;
   basis: HireBillingBasis; rate: number; quantityOverride?: number;
   grossAmountOverride?: number; dailyDecisions: HireDecision[];
-  tripDecisions: { source: "dpr_log" | "plant_usage"; sourceId: number; selected?: boolean; correctedTrips?: number; remarks?: string }[];
+  tripDecisions: { source: "dpr_log" | "plant_usage" | "site_material_trip" | "bulk_transport_trip"; sourceId: number; selected?: boolean; correctedTrips?: number; remarks?: string; separateFromOperational?: boolean }[];
   exceptionDecisions: any[]; dieselNormOverride?: number; dieselNormBasisOverride?: string;
   dieselRecoveryDecision?: "accept" | "edit" | "ignore"; dieselRecoveryFinalAmount?: number; dieselRecoveryRemarks?: string;
+  breakdownHoursPerDay?: number;
+  projectSite?: string;
+  adjustments?: { otherDebit?: number; otherDebitReason?: string; advanceAdjustment?: number; advanceAdjustmentReason?: string; otherCredit?: number; otherCreditReason?: string };
 };
 
 const HIRE_BASIS_LABELS: Record<HireBillingBasis, string> = {
@@ -318,11 +331,29 @@ function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; canEdit
     !bill.paidBy ? "" : bill.paidBy === "company" ? "company" : "personal");
   const [payerName, setPayerName] = useState<string>(
     bill.paidBy && bill.paidBy !== "company" && bill.paidBy !== "PERSONAL" ? bill.paidBy : "");
+  const [amountPaid, setAmountPaid] = useState<string>(() => initialVendorBillPaidAmount(bill));
+  const [paymentAccountKey, setPaymentAccountKey] = useState<string>(bill.paymentAccountKey || "");
+  const accountsQuery = useQuery<{ id: string; name: string; type: string }[]>({
+    queryKey: ["/api/vendor-bills/company-accounts"],
+    queryFn: () => fetch("/api/vendor-bills/company-accounts", { credentials: "include" }).then(async response => {
+      if (!response.ok) throw new Error((await response.text()) || "Could not load company accounts");
+      return response.json();
+    }),
+    enabled: String(bill.billType || "").toLowerCase() === "equipment" && ((editing && paidByKind === "company") || !!bill.paymentAccountKey),
+  });
+  const isEquipmentHire = String(bill.billType || "").toLowerCase() === "equipment";
+  const netPayable = bill.netPayableAmount != null ? Number(bill.netPayableAmount) : Number(bill.totalAmount || 0);
+  // Historic all-or-nothing paid bills deliberately have no backfill; display
+  // them as fully paid without changing any source record.
+  const effectivePaid = bill.amountPaid != null ? Number(bill.amountPaid) : bill.status === "paid" ? netPayable : 0;
+  const selectedAccount = (accountsQuery.data || []).find(account => account.id === bill.paymentAccountKey);
 
   const saveMutation = useMutation({
     mutationFn: () => apiRequest("PATCH", `/api/vendor-bills/${bill.id}/payment-details`, {
       paymentMode: mode || null,
       paidBy: paidByKind === "" ? null : paidByKind === "company" ? "company" : (payerName.trim() ? payerName.trim().toUpperCase() : "PERSONAL"),
+      ...(isEquipmentHire ? { amountPaid: amountPaid === "" ? 0 : Number(amountPaid) } : {}),
+       ...(isEquipmentHire ? { paymentAccountKey: paidByKind === "company" ? paymentAccountKey || null : null } : {}),
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
@@ -357,6 +388,11 @@ function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; canEdit
           <Badge variant="outline" data-testid="badge-vb-paid-by">
             PAID BY: {!bill.paidBy ? "\u2014" : bill.paidBy === "company" ? "COMPANY ACCOUNT" : `PERSONAL${bill.paidBy !== "PERSONAL" ? ` \u2014 ${bill.paidBy}` : ""}`}
           </Badge>
+          {isEquipmentHire && <>
+            <Badge variant="outline">PAID: ₹{formatCurrency(effectivePaid)}</Badge>
+            <Badge variant="outline">BALANCE THIS BILL: ₹{formatCurrency(Math.max(0, netPayable - effectivePaid))}</Badge>
+          </>}
+          {selectedAccount && <Badge variant="outline">ACCOUNT: {selectedAccount.name}</Badge>}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -390,6 +426,24 @@ function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; canEdit
                 className="uppercase"
                 data-testid="input-vb-payer-name"
               />
+            </div>
+          )}
+          {paidByKind === "company" && isEquipmentHire && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Bank / Account</p>
+              <Select value={paymentAccountKey} onValueChange={setPaymentAccountKey}>
+                <SelectTrigger data-testid="select-vb-payment-account"><SelectValue placeholder="SELECT ACCOUNT" /></SelectTrigger>
+                <SelectContent>
+                  {(accountsQuery.data || []).map(account => <SelectItem key={account.id} value={account.id}>{account.name} · {account.type}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {isEquipmentHire && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Paid This Bill (cumulative ₹)</p>
+              <Input type="number" min="0" max={netPayable} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} data-testid="input-vb-amount-paid" />
+              <p className="mt-1 text-[10px] text-muted-foreground">Net payable ₹{formatCurrency(netPayable)} · balance ₹{formatCurrency(Math.max(0, netPayable - Number(amountPaid || 0)))}</p>
             </div>
           )}
           <div className="sm:col-span-3 flex gap-2 justify-end">
@@ -426,9 +480,13 @@ function HireWorkingSheet({ group, result, activities, maintenance, patchHireGro
   const setTrip = (activity: any, value: "include" | "exclude" | "correct", correctedTrips?: number) => {
     const without = group.tripDecisions.filter(d => !(d.source === activity.source && d.sourceId === activity.sourceId));
     const existing = group.tripDecisions.find(d => d.source === activity.source && d.sourceId === activity.sourceId);
+    const withoutException = group.exceptionDecisions.filter(d => !(d.sourceType === "usage" && d.sourceId === activity.sourceId && d.exceptionType === "invalid_trips" && d.date === activity.businessDate));
     patchHireGroup(group.id, {
       tripDecisions: [...without, { ...existing, source: activity.source, sourceId: activity.sourceId,
         selected: value !== "exclude", correctedTrips: value === "correct" ? correctedTrips : existing?.correctedTrips }],
+      // An explicit include/exclude resolves the review required for a
+      // delivery candidate and is frozen in the statement snapshot.
+      exceptionDecisions: [...withoutException, { sourceType: "usage", sourceId: activity.sourceId, exceptionType: "invalid_trips", date: activity.businessDate, decision: "none", remarks: value === "exclude" ? "DELIVERY EVIDENCE EXCLUDED" : "DELIVERY EVIDENCE CONFIRMED" }],
     });
   };
   const setBreakdown = (m: any, decision: string, patch: Record<string, any> = {}) => {
@@ -459,7 +517,7 @@ function HireWorkingSheet({ group, result, activities, maintenance, patchHireGro
     ? [["DAILY FULL / HALF / EXCLUDED", `${fullDays} / ${halfDays} / ${excludedDays}`], ["PAYABLE DAYS", payableDays.toFixed(2)]]
     : group.basis === "trip"
       ? [["TRIPS RECORDED / ADJUSTMENT / EXCLUDED", `${recordedTrips.toFixed(2)} / ${adjustmentQty.toFixed(2)} / ${excludedTripQty.toFixed(2)}`], ["PAYABLE TRIPS", Number(result?.quantity || 0).toFixed(2)]]
-      : [["PERIOD DAYS", `${days.length}`], ["ACTIVITY / RECORDED DAYS", `${workedDays}`], ["NO ACTIVITY DAYS", `${noActivityDays}`], ["VENDOR BREAKDOWN DAYS", `${breakdownDays}`]];
+      : [["PERIOD DAYS", `${days.length}`], ["ACTIVITY / RECORDED DAYS", `${workedDays}`], ["NO ACTIVITY DAYS", `${noActivityDays}`], ["BREAKDOWN DAYS", `${breakdownDays}`]];
   const financialTotals = [["GROSS", `₹${formatCurrency(result?.grossAmount || 0)}`], ["BREAKDOWN DEDUCTION", `₹${formatCurrency(result?.deductionAmount || 0)}`], ["NET HSD EXCESS", `${Number(result?.diesel?.suggestedExcess || 0).toFixed(2)} L`], ["SUGGESTED RECOVERY", `₹${formatCurrency(result?.diesel?.suggestedRecoveryAmount)}`], ["FINAL RECOVERY", `₹${formatCurrency(result?.diesel?.finalRecoveryAmount || 0)}`], ["NET HIRE", `₹${formatCurrency(result?.netAmount || 0)}`]];
   return (
     <div className="mt-2 rounded border border-slate-300 bg-slate-50/70 dark:bg-slate-950/30" data-testid="equipment-hire-working-sheet">
@@ -471,6 +529,16 @@ function HireWorkingSheet({ group, result, activities, maintenance, patchHireGro
           {result?.measurementPeriodFrom && result?.measurementPeriodTo ? ` · ${formatDate(result.measurementPeriodFrom)} TO ${formatDate(result.measurementPeriodTo)}` : ""}
         </span>
       </div>
+      {maintenance.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b px-2 py-2 text-[11px]">
+          <span className="font-semibold uppercase text-muted-foreground">Breakdown hours divisor</span>
+          <Select value={group.breakdownHoursPerDay ? String(group.breakdownHoursPerDay) : ""} onValueChange={value => patchHireGroup(group.id, { breakdownHoursPerDay: Number(value) })}>
+            <SelectTrigger className="h-7 w-[190px] text-[10px]"><SelectValue placeholder="Choose 10–12 hours / day" /></SelectTrigger>
+            <SelectContent><SelectItem value="10">10 HOURS / DAY</SelectItem><SelectItem value="11">11 HOURS / DAY</SelectItem><SelectItem value="12">12 HOURS / DAY</SelectItem></SelectContent>
+          </Select>
+          <span className="text-muted-foreground">Required only when applying actual downtime hours; never assumed from the agreement.</span>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="min-w-[1500px] w-full border-collapse text-[10px]">
           <thead className="bg-slate-200/70 text-left uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
@@ -487,7 +555,7 @@ function HireWorkingSheet({ group, result, activities, maintenance, patchHireGro
               return <tr key={date} className="align-top border-b border-slate-200 dark:border-slate-800">
                 <td className="whitespace-nowrap px-2 py-1.5 font-semibold">{formatDate(date)}<span className="block text-[9px] font-normal text-muted-foreground">{day.activityCount ? `${day.activityCount} MERGED ROW${day.activityCount === 1 ? "" : "S"}` : "CALENDAR DATE"}</span></td>
                 <td className="max-w-[250px] px-2 py-1.5"><div className="font-semibold">{formatEvidenceValue(day.equipmentNames?.join(" · "))}</div><div>{formatEvidenceValue(day.siteLocations?.join(" · "))}</div><div className="text-[9px] text-muted-foreground">{formatEvidenceValue(day.movementReferences?.join(" · "))}</div></td>
-                <td className="min-w-[190px] px-2 py-1.5">{Number(day.activityCount || 0) > 0 ? <><div className="max-w-[230px] font-bold text-emerald-700">{formatEvidenceValue(day.activityDescriptions?.join(" · "))}</div><span className="block text-[9px] font-semibold text-muted-foreground">{day.billableActivityCount === 0 && day.openActivityCount > 0 ? "RECORDED · OPEN — NOT BILLABLE" : "RECORDED ACTIVITY"}</span></> : <span className="font-semibold text-muted-foreground">NO ACTIVITY</span>}{day.activity === "breakdown" && <><span className="mt-1 block font-bold text-amber-700">VENDOR BREAKDOWN</span><div className="max-w-[230px] font-semibold">{formatEvidenceValue(day.maintenanceDescriptions?.join(" · "))}</div></>}{day.openActivityCount > 0 && day.billableActivityCount > 0 && <span className="block text-[9px] font-semibold text-amber-700">{day.openActivityCount} OPEN ROW{day.openActivityCount === 1 ? "" : "S"} EXCLUDED</span>}
+                <td className="min-w-[190px] px-2 py-1.5">{Number(day.activityCount || 0) > 0 ? <><div className="max-w-[230px] font-bold text-emerald-700">{formatEvidenceValue(day.activityDescriptions?.join(" · "))}</div><span className="block text-[9px] font-semibold text-muted-foreground">{day.billableActivityCount === 0 && day.openActivityCount > 0 ? "RECORDED · OPEN — NOT BILLABLE" : "WORKED"}</span></> : <span className="font-semibold text-muted-foreground">NO WORK / NO ACTIVITY</span>}{day.activity === "breakdown" && <><span className="mt-1 block font-bold text-amber-700">BREAKDOWN</span><div className="max-w-[230px] font-semibold">{formatEvidenceValue(day.maintenanceDescriptions?.join(" · "))}</div></>}{day.openActivityCount > 0 && day.billableActivityCount > 0 && <span className="block text-[9px] font-semibold text-amber-700">{day.openActivityCount} OPEN ROW{day.openActivityCount === 1 ? "" : "S"} EXCLUDED</span>}
                   {group.basis === "daily" && day.billableActivityCount > 0 && <Select value={daily} onValueChange={v => setDaily(date, v as HireDecision["decision"])}><SelectTrigger className="mt-1 h-7 w-[130px] text-[10px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="full_day">FULL DAY</SelectItem><SelectItem value="half_day">HALF DAY</SelectItem><SelectItem value="exclude">EXCLUDE</SelectItem></SelectContent></Select>}</td>
                 <td className="whitespace-nowrap px-2 py-1.5">{day.hours ? `${day.hours} H` : "—"} / {day.trips ? `${day.trips} T` : "—"}
                   {group.basis === "trip" && billableDayActs.filter(a => a.entryType === "trip_based").length > 0 && <div className="mt-1 space-y-1">{billableDayActs.filter(a => a.entryType === "trip_based").map(a => { const d = group.tripDecisions.find(x => x.source === a.source && x.sourceId === a.sourceId); const selected = d?.selected !== false; return <div key={`${a.source}:${a.sourceId}`} className="flex items-center gap-1"><Button type="button" variant="outline" className="h-6 px-1 text-[9px]" onClick={() => setTrip(a, selected ? "exclude" : "include")}>{selected ? "INCLUDE" : "EXCLUDE"}</Button><Input aria-label="Correct trips" className="h-6 w-14 px-1 text-[10px]" type="number" min="0" placeholder="CORRECT" value={d?.correctedTrips ?? ""} onChange={e => setTrip(a, "correct", e.target.value === "" ? undefined : Number(e.target.value))} /></div>; })}</div>}</td>
@@ -495,7 +563,7 @@ function HireWorkingSheet({ group, result, activities, maintenance, patchHireGro
                 <td className="whitespace-nowrap px-2 py-1.5 font-semibold">{day.actualDiesel ? `${Number(day.actualDiesel).toFixed(2)} L` : "—"}</td>
                 <td className="whitespace-nowrap px-2 py-1.5">{day.expectedDieselAvailable === false ? <span className="font-semibold text-amber-700">UNAVAILABLE</span> : day.expectedDiesel ? `${Number(day.expectedDiesel).toFixed(2)} L` : "—"}</td>
                 <td className={`whitespace-nowrap px-2 py-1.5 font-semibold ${day.expectedDieselAvailable === false ? "text-muted-foreground" : day.dieselVariance > 0 ? "text-amber-700" : "text-emerald-700"}`}>{day.expectedDieselAvailable === false ? "REVIEW" : day.dieselVariance ? `${day.dieselVariance > 0 ? "+" : ""}${Number(day.dieselVariance).toFixed(2)} L` : "0.00 L"}<span className="block text-[9px] font-normal text-muted-foreground">{day.expectedDieselAvailable === false ? "NORM / ACTIVITY MISSING" : pricing?.applicableRate != null ? `RATE ₹${formatCurrency(pricing.applicableRate)}/L` : day.actualDiesel ? "RATE UNPRICED" : ""}</span></td>
-                <td className="min-w-[250px] px-2 py-1.5">{dayBreakdowns.length ? dayBreakdowns.map(m => { const current = group.exceptionDecisions.find(d => d.sourceType === "maintenance" && d.sourceId === m.sourceId); return <div key={m.sourceId} className="mb-1"><div className="font-semibold text-amber-700">{formatEvidenceValue(m.description)} · {m.downtimeHours ?? 0} H</div><div className="flex items-center gap-1"><Select value={current?.decision || ""} onValueChange={v => setBreakdown(m, v)}><SelectTrigger className="h-6 w-[125px] text-[9px]"><SelectValue placeholder="DECISION" /></SelectTrigger><SelectContent><SelectItem value="none">NO DEDUCTION</SelectItem><SelectItem value="half_day">HALF DAY</SelectItem><SelectItem value="full_day">FULL DAY</SelectItem><SelectItem value="manual">MANUAL ₹</SelectItem></SelectContent></Select>{current?.decision === "manual" && <Input className="h-6 w-16 px-1 text-[10px]" type="number" min="0" value={current.manualDeductionAmount ?? ""} onChange={e => setBreakdown(m, "manual", { manualDeductionAmount: e.target.value === "" ? undefined : Number(e.target.value) })} />}</div></div>; }) : "—"}</td>
+                <td className="min-w-[250px] px-2 py-1.5">{dayBreakdowns.length ? dayBreakdowns.map(m => { const current = group.exceptionDecisions.find(d => d.sourceType === "maintenance" && d.sourceId === m.sourceId); const suggested = result?.exceptions?.find((e: any) => e.sourceType === "maintenance" && e.sourceId === m.sourceId)?.suggestedDeductionAmount; return <div key={m.sourceId} className="mb-1"><div className="font-semibold text-amber-700">{formatEvidenceValue(m.description)} · {m.downtimeHours ?? 0} H</div><div className="flex items-center gap-1"><Select value={current?.decision || ""} onValueChange={v => setBreakdown(m, v)}><SelectTrigger className="h-6 w-[125px] text-[9px]"><SelectValue placeholder="DECISION" /></SelectTrigger><SelectContent><SelectItem value="none">NO DEDUCTION</SelectItem><SelectItem value="hours" disabled={!group.breakdownHoursPerDay}>ACTUAL HOURS</SelectItem><SelectItem value="half_day">HALF DAY</SelectItem><SelectItem value="full_day">FULL DAY</SelectItem><SelectItem value="manual">MANUAL ₹</SelectItem></SelectContent></Select>{current?.decision === "manual" && <Input className="h-6 w-16 px-1 text-[10px]" type="number" min="0" value={current.manualDeductionAmount ?? ""} onChange={e => setBreakdown(m, "manual", { manualDeductionAmount: e.target.value === "" ? undefined : Number(e.target.value) })} />}</div>{current?.decision === "hours" && <span className="text-[9px] text-muted-foreground">Suggested ₹{formatCurrency(suggested || 0)} using {group.breakdownHoursPerDay}h/day</span>}</div>; }) : "—"}</td>
                 <td className="min-w-[180px] px-2 py-1.5">{dayBreakdowns.length ? dayBreakdowns.map(m => { const current = group.exceptionDecisions.find(d => d.sourceType === "maintenance" && d.sourceId === m.sourceId); return <Input key={m.sourceId} className="mb-1 h-6 w-full px-1 text-[9px]" placeholder="REVIEWER REMARKS" value={current?.remarks || ""} onChange={e => setBreakdown(m, current?.decision || "none", { remarks: e.target.value.toUpperCase() })} />; }) : <span className="text-muted-foreground">—</span>}</td>
               </tr>;
             })}
@@ -525,7 +593,7 @@ function HistoricalHireWorkingSheet({ snapshot }: { snapshot: any }) {
       <thead className="bg-muted/50 uppercase text-muted-foreground"><tr>{["Date","Equipment · site · movement","Activity","Hours / trips","Opening / closing","Actual HSD","Expected HSD","Signed variance","Breakdown / decision","Remarks"].map(h => <th key={h} className="border-b px-2 py-1 text-left">{h}</th>)}</tr></thead>
       <tbody>{rows.map((day: any) => { const p = pricing.find((x: any) => x.date === day.date); return <tr key={day.date} className="border-b align-top">
         <td className="whitespace-nowrap px-2 py-1 font-semibold">{formatDate(day.date)}</td><td className="px-2 py-1">{day.equipmentNames?.join(" · ") || "—"}<span className="block">{day.siteLocations?.join(" · ") || "—"}</span><span className="block text-muted-foreground">{day.movementReferences?.join(" · ") || "—"}</span></td>
-        <td className="px-2 py-1 uppercase">{day.activity === "breakdown" ? "VENDOR BREAKDOWN" : day.activity === "no_activity" ? "NO ACTIVITY" : day.billableActivityCount === 0 && day.openActivityCount > 0 ? "OPEN — NOT BILLABLE" : "WORKED"}<span className="block text-muted-foreground">{day.activityDescriptions?.join(" · ") || "—"}</span><span className="block font-semibold">{dailyDecisions.find((d: any) => d.date === day.date)?.decision?.replace("_", " ").toUpperCase() || ""}</span></td><td className="whitespace-nowrap px-2 py-1">{day.hours || "—"} H / {day.trips || "—"} T<span className="block">{tripDecisions.filter((d: any) => d.businessDate === day.date).map((d: any) => `${d.selected === false ? "EXCLUDED" : "INCLUDED"} ${d.acceptedTrips} / ${d.recordedTrips} TRIPS`).join(" · ")}</span></td><td className="whitespace-nowrap px-2 py-1">{day.openingReadings?.join(" · ") || "—"} / {day.closingReadings?.join(" · ") || "—"}</td><td className="px-2 py-1">{day.actualDiesel ? `${day.actualDiesel} L` : "—"}</td><td className="px-2 py-1">{day.expectedDiesel ? `${day.expectedDiesel} L` : "—"}</td><td className="px-2 py-1">{day.dieselVariance > 0 ? "+" : ""}{Number(day.dieselVariance || 0).toFixed(2)} L<span className="block text-muted-foreground">{p?.applicableRate != null ? `₹${formatCurrency(p.applicableRate)}/L` : ""}</span></td><td className="px-2 py-1">{day.maintenanceDescriptions?.join(" · ") || "—"}<span className="block">{frozenExceptions.filter((d: any) => d.date === day.date).map((d: any) => String(d.decision || "").toUpperCase()).join(" · ")}</span></td><td className="px-2 py-1">{[...frozenExceptions.filter((d: any) => d.date === day.date), ...dailyDecisions.filter((d: any) => d.date === day.date), ...tripDecisions.filter((d: any) => d.businessDate === day.date)].map((d: any) => d.remarks).filter(Boolean).join(" · ") || "—"}</td>
+        <td className="px-2 py-1 uppercase">{day.activity === "breakdown" ? "BREAKDOWN" : day.activity === "no_activity" ? "NO WORK / NO ACTIVITY" : day.billableActivityCount === 0 && day.openActivityCount > 0 ? "OPEN — NOT BILLABLE" : "WORKED"}<span className="block text-muted-foreground">{day.activityDescriptions?.join(" · ") || "—"}</span><span className="block font-semibold">{dailyDecisions.find((d: any) => d.date === day.date)?.decision?.replace("_", " ").toUpperCase() || ""}</span></td><td className="whitespace-nowrap px-2 py-1">{day.hours || "—"} H / {day.trips || "—"} T<span className="block">{tripDecisions.filter((d: any) => d.businessDate === day.date).map((d: any) => `${d.selected === false ? "EXCLUDED" : "INCLUDED"} ${d.acceptedTrips} / ${d.recordedTrips} TRIPS`).join(" · ")}</span></td><td className="whitespace-nowrap px-2 py-1">{day.openingReadings?.join(" · ") || "—"} / {day.closingReadings?.join(" · ") || "—"}</td><td className="px-2 py-1">{day.actualDiesel ? `${day.actualDiesel} L` : "—"}</td><td className="px-2 py-1">{day.expectedDiesel ? `${day.expectedDiesel} L` : "—"}</td><td className="px-2 py-1">{day.dieselVariance > 0 ? "+" : ""}{Number(day.dieselVariance || 0).toFixed(2)} L<span className="block text-muted-foreground">{p?.applicableRate != null ? `₹${formatCurrency(p.applicableRate)}/L` : ""}</span></td><td className="px-2 py-1">{day.maintenanceDescriptions?.join(" · ") || "—"}<span className="block">{frozenExceptions.filter((d: any) => d.date === day.date).map((d: any) => String(d.decision || "").toUpperCase()).join(" · ")}</span></td><td className="px-2 py-1">{[...frozenExceptions.filter((d: any) => d.date === day.date), ...dailyDecisions.filter((d: any) => d.date === day.date), ...tripDecisions.filter((d: any) => d.businessDate === day.date)].map((d: any) => d.remarks).filter(Boolean).join(" · ") || "—"}</td>
       </tr>; })}</tbody>
     </table></div>}
   </div>;
@@ -613,6 +681,7 @@ export default function VendorBills() {
   const [labourFilter, setLabourFilter] = useState<"all" | "site" | "plant">("all");
   const [hireGroups, setHireGroups] = useState<HireGroup[]>([]);
   const [expandedHireActivity, setExpandedHireActivity] = useState<Record<string, boolean>>({});
+  const [showEquipmentDailyActivity, setShowEquipmentDailyActivity] = useState(false);
 
 
   useEffect(() => {
@@ -748,9 +817,23 @@ export default function VendorBills() {
     });
     return Array.from(byId.values());
   }, [hireActivityRows]);
+  const selectedHireGroup = hireGroups[0];
+  const selectedHireEquipmentId = selectedHireGroup?.equipmentId;
+  const equipmentPerformanceUrl = selectedHireEquipmentId && selectedHireGroup?.periodFrom && selectedHireGroup?.periodTo
+    ? `/api/reports/equipment-performance?dateFrom=${encodeURIComponent(selectedHireGroup.periodFrom)}&dateTo=${encodeURIComponent(selectedHireGroup.periodTo)}&equipmentId=${selectedHireEquipmentId}`
+    : "";
+  const equipmentPerformance = useQuery<EquipmentPerformanceReport>({
+    queryKey: ["/api/reports/equipment-performance", selectedHireEquipmentId, selectedHireGroup?.periodFrom, selectedHireGroup?.periodTo],
+    queryFn: async () => {
+      const response = await fetch(equipmentPerformanceUrl, { credentials: "include" });
+      if (!response.ok) throw new Error((await response.text()) || "Could not load daily equipment activity");
+      return response.json();
+    },
+    enabled: !!equipmentPerformanceUrl,
+  });
   const normalizedHireActivities = useMemo(
     () => normalizeHireActivities(hireActivityRows.filter((row: any) =>
-      row.source === "dpr_log" || row.source === "plant_usage"
+      row.source === "dpr_log" || row.source === "plant_usage" || row.source === "site_material_trip" || row.source === "bulk_transport_trip"
     ) as HireActivity[]),
     [hireActivityRows],
   );
@@ -888,7 +971,10 @@ export default function VendorBills() {
         dieselNormOverride: snap.dieselNormOverride, dieselNormBasisOverride: snap.dieselNormBasisOverride,
         dieselRecoveryDecision: snap.dieselRecoveryDecision ?? snap.diesel?.recoveryDecision,
         dieselRecoveryFinalAmount: snap.dieselRecoveryFinalAmount ?? snap.diesel?.finalRecoveryAmount,
-        dieselRecoveryRemarks: snap.dieselRecoveryRemarks ?? snap.diesel?.remarks };
+         dieselRecoveryRemarks: snap.dieselRecoveryRemarks ?? snap.diesel?.remarks,
+         breakdownHoursPerDay: snap.breakdownHoursPerDay ?? undefined,
+         projectSite: snap.projectSite ?? undefined,
+         adjustments: snap.adjustments ?? undefined };
     });
     setHireGroups(persisted);
     setAdjustmentLabel((bill as any).adjustmentLabel || "");
@@ -1087,8 +1173,36 @@ export default function VendorBills() {
     const covered = lineItems.filter(item => rawAutoItemCoveredByHireGroup(item, [group]));
     if (covered.length) {
       setLineItems(prev => prev.filter(item => !rawAutoItemCoveredByHireGroup(item, [group])));
-      toast({ title: `Removed ${covered.length} raw activity row${covered.length === 1 ? "" : "s"} now covered by the ${eq.name || "equipment"} hire group` });
+      toast({ title: `Removed ${covered.length} raw activity row${covered.length === 1 ? "" : "s"} now covered by ${eq.name || "equipment"} hire` });
     }
+  };
+  // The simplified equipment bill has exactly one selected machine.  This
+  // prepares its existing calculation behind the scenes; users never have to
+  // add a second working item or configure commercial terms here.
+  const selectHireEquipment = (equipmentId: number) => {
+    if (!periodFrom || !periodTo) {
+      toast({ title: "Set the bill period before selecting equipment", variant: "destructive" });
+      return;
+    }
+    const eq = hireEquipmentFor(equipmentId);
+    const basis = configuredHireBasis(eq?.hireBillingBasis);
+    const issue = eq ? hireTermsIssue(eq) : "Equipment is not available for this vendor and period";
+    if (!eq || !basis || issue) {
+      toast({ title: "Hire terms incomplete", description: issue || "Correct the Equipment Master hire terms first.", variant: "destructive" });
+      return;
+    }
+    const from = eq.hireStartDate > periodFrom ? eq.hireStartDate : periodFrom;
+    const to = eq.hireEndDate && eq.hireEndDate < periodTo ? eq.hireEndDate : periodTo;
+    if (from > to) {
+      toast({ title: "The selected equipment is outside this bill period", variant: "destructive" });
+      return;
+    }
+    const selection: HireGroup = {
+      id: `hire-${Date.now()}`, equipmentId, periodFrom: from, periodTo: to,
+      basis, rate: Number(eq.hireRate) || 0, dailyDecisions: [], tripDecisions: [], exceptionDecisions: [],
+    };
+    setHireGroups([selection]);
+    setLineItems(previous => previous.filter(item => !rawAutoItemCoveredByHireGroup(item, [selection]) && !["hire_group", "hire_statement"].includes(item.source)));
   };
   const patchHireGroup = (id: string, patch: Partial<HireGroup>) => {
     const current = hireGroups.find(g => g.id === id);
@@ -1096,7 +1210,7 @@ export default function VendorBills() {
     const next = { ...current, ...patch };
     if (next.periodFrom && next.periodTo && next.periodFrom <= next.periodTo &&
         hireGroups.some(g => g.id !== id && g.equipmentId === next.equipmentId && next.periodFrom <= g.periodTo && next.periodTo >= g.periodFrom)) {
-      toast({ title: "HIRE GROUP OVERLAPS ANOTHER GROUP FOR THIS EQUIPMENT", variant: "destructive" });
+      toast({ title: "THIS EQUIPMENT HIRE PERIOD OVERLAPS ANOTHER SELECTION", variant: "destructive" });
       return;
     }
     const nextGroups = hireGroups.map(g => g.id === id ? next : g);
@@ -1105,7 +1219,7 @@ export default function VendorBills() {
     if (covered.length) {
       setLineItems(prev => prev.filter(item => !rawAutoItemCoveredByHireGroup(item, [next])));
       const equipment = hireEquipmentFor(next.equipmentId);
-      toast({ title: `Removed ${covered.length} raw activity row${covered.length === 1 ? "" : "s"} now covered by the ${equipment?.name || "equipment"} hire group` });
+      toast({ title: `Removed ${covered.length} raw activity row${covered.length === 1 ? "" : "s"} now covered by ${equipment?.name || "equipment"} hire` });
     }
   };
   const removeHireGroup = (id: string) => setHireGroups(prev => prev.filter(g => g.id !== id));
@@ -1147,7 +1261,9 @@ export default function VendorBills() {
         hireEndDate: eq.hireEndDate || undefined,
         monthlyDivisorType: eq.hireMonthlyDivisorType || "30",
         monthlyDivisor: eq.hireMonthlyDivisor,
-        breakdownDeductionEnabled: true,
+        dieselResponsibility: eq.hireDieselResponsibility,
+        breakdownDeductionEnabled: !!eq.hireBreakdownDeductionEnabled,
+        breakdownHoursPerDay: group.breakdownHoursPerDay,
       },
       periodFrom: group.periodFrom, periodTo: group.periodTo, activities: activityForGroup(group),
       maintenance: maintenanceForGroup(group).map((m: any) => ({ id: m.sourceId, date: m.businessDate, eventType: m.eventType, description: m.description, downtimeHours: m.downtimeHours })),
@@ -1155,12 +1271,18 @@ export default function VendorBills() {
       exceptionDecisions: group.exceptionDecisions, quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,
       dieselNormOverride: group.dieselNormOverride, dieselNormBasisOverride: group.dieselNormBasisOverride,
       dieselPurchases: dieselPurchasesForGroup(group),
+      authoritativeDieselPeriod: authoritativeDieselPeriodFromFleet(equipmentPerformance.data?.fleet, group.equipmentId),
       dieselRecovery: group.dieselRecoveryDecision ? { decision: group.dieselRecoveryDecision, finalAmount: group.dieselRecoveryFinalAmount, remarks: group.dieselRecoveryRemarks } : undefined,
     });
   };
   const hireCalculated = useMemo(() => hireGroups.map(group => {
-    try { return { group, result: hireResult(group) }; } catch { return { group, result: null }; }
-  }), [hireGroups, hireActivityRows, hireEquipment]);
+    try {
+      const calculated = hireResult(group);
+      const adjustments = group.adjustments;
+      const netAdjustment = Number(adjustments?.otherCredit || 0) - Number(adjustments?.otherDebit || 0) - Number(adjustments?.advanceAdjustment || 0);
+      return { group, result: { ...calculated, netAmount: Math.max(0, calculated.netAmount + netAdjustment) } };
+    } catch { return { group, result: null }; }
+  }), [hireGroups, hireActivityRows, hireEquipment, equipmentPerformance.data]);
   const availableOtherItems = useMemo(
     () => availableOtherBillItems(mappedAutoItems, lineItems, hireGroups),
     [mappedAutoItems, lineItems, hireGroups],
@@ -1215,6 +1337,8 @@ export default function VendorBills() {
   const gstAmountTransport = useMemo(() => gstRateTransport ? (categorySubtotals["transport"] || 0) * gstRateTransport / 100 : 0, [categorySubtotals, gstRateTransport]);
   const gstAmountLabour = useMemo(() => gstRateLabour ? (categorySubtotals["labour"] || 0) * gstRateLabour / 100 : 0, [categorySubtotals, gstRateLabour]);
   const totalGstAmount = useMemo(() => gstAmountEquipment + gstAmountMaterial + gstAmountTransport + gstAmountLabour, [gstAmountEquipment, gstAmountMaterial, gstAmountTransport, gstAmountLabour]);
+  // Standard vendor bills retain the established subtotal-only TDS basis.
+  // Equipment Hire has its own bill-chain calculation in its focused card.
   const tdsAmount = useMemo(() => tdsRate ? totalAmount * tdsRate / 100 : 0, [totalAmount, tdsRate]);
   const netTotal = useMemo(() => totalAmount + totalGstAmount + (adjustmentAmount || 0) - tdsAmount, [totalAmount, totalGstAmount, adjustmentAmount, tdsAmount]);
 
@@ -1460,23 +1584,78 @@ export default function VendorBills() {
       return;
     }
     if (hireGroups.some(group => !group.periodFrom || !group.periodTo || group.periodFrom > group.periodTo)) {
-      toast({ title: "Correct the invalid hire group date range", variant: "destructive" });
+      toast({ title: "Correct the equipment hire date range", variant: "destructive" });
+      return;
+    }
+    if (hireGroups.length > 0 && !isPerformanceReadyForHireSubmission(equipmentPerformance)) {
+      toast({ title: "Wait for authoritative Equipment Performance data before saving equipment hire", variant: "destructive" });
       return;
     }
     if (hireCalculated.some(({ result }) => !result)) {
-      toast({ title: "Complete every hire group review before saving", variant: "destructive" });
+      toast({ title: "Complete every equipment hire review before saving", variant: "destructive" });
       return;
     }
     for (let i = 0; i < hireGroups.length; i++) {
       const group = hireGroups[i];
       if (hireGroups.some((other, j) => j !== i && other.equipmentId === group.equipmentId &&
           group.periodFrom <= other.periodTo && group.periodTo >= other.periodFrom)) {
-        toast({ title: "Hire groups for the same equipment cannot overlap", variant: "destructive" });
+        toast({ title: "Equipment hire periods cannot overlap", variant: "destructive" });
         return;
       }
       if ((group.dieselRecoveryDecision === "accept" || group.dieselRecoveryDecision === "edit") &&
           (group.dieselRecoveryFinalAmount === undefined || group.dieselRecoveryFinalAmount < 0)) {
         toast({ title: "Enter the final HSD recovery amount for every accepted or edited recovery", variant: "destructive" });
+        return;
+      }
+      if (group.dieselRecoveryDecision === "edit" && !group.dieselRecoveryRemarks?.trim()) {
+        toast({ title: "Enter a reason/reference for the manually edited HSD recovery", variant: "destructive" });
+        return;
+      }
+      if (group.basis === "trip") {
+        const tripCandidates = activityForGroup(group).filter(activity => activity.entryType === "trip_based");
+        const unresolvedTripCandidate = tripCandidates.some(activity => {
+          const decision = group.tripDecisions.find(item => item.source === activity.source && item.sourceId === activity.sourceId);
+          return decision?.selected !== true && decision?.selected !== false;
+        });
+        if (unresolvedTripCandidate) {
+          toast({ title: "Accept or explicitly exclude every trip candidate before saving", variant: "destructive" });
+          return;
+        }
+        const unresolvedTripReason = tripCandidates.some(activity => {
+          const decision = group.tripDecisions.find(item => item.source === activity.source && item.sourceId === activity.sourceId);
+          const recorded = Number(activity.numberOfTrips || 0);
+          const deliveryCandidate = activity.source === "site_material_trip" || activity.source === "bulk_transport_trip";
+          return (deliveryCandidate || decision?.selected === false || (decision?.correctedTrips != null && Number(decision.correctedTrips) !== recorded)) && !decision?.remarks?.trim();
+        });
+        if (unresolvedTripReason) {
+          toast({ title: "Enter a reason/reference for every delivery trip decision and every excluded or corrected trip", variant: "destructive" });
+          return;
+        }
+        const unverifiedSeparateTrip = tripCandidates.some(activity => {
+          if (activity.source !== "site_material_trip" && activity.source !== "bulk_transport_trip") return false;
+          const operationalOnSameDay = hasIncludedOperationalTripOnSameDay(activityForGroup(group), group.tripDecisions, activity);
+          const decision = group.tripDecisions.find(item => item.source === activity.source && item.sourceId === activity.sourceId);
+          return operationalOnSameDay && decision?.selected === true && decision.separateFromOperational !== true;
+        });
+        if (unverifiedSeparateTrip) {
+          toast({ title: "Confirm each accepted delivery is a separate trip from same-day operational usage, or exclude the duplicate", variant: "destructive" });
+          return;
+        }
+      }
+      if (group.exceptionDecisions.some((decision: any) => decision.decision === "hours") &&
+          !(group.breakdownHoursPerDay && group.breakdownHoursPerDay >= 10 && group.breakdownHoursPerDay <= 12)) {
+        toast({ title: "Choose an explicit 10–12 hour breakdown divisor before applying actual downtime hours", variant: "destructive" });
+        return;
+      }
+      if (group.exceptionDecisions.some((decision: any) => decision.sourceType === "maintenance" && decision.decision === "manual" && !decision.remarks?.trim())) {
+        toast({ title: "Enter a reason/reference for every manual breakdown deduction", variant: "destructive" });
+        return;
+      }
+      const adjustments = group.adjustments;
+      if ((Number(adjustments?.otherDebit || 0) > 0 && !adjustments?.otherDebitReason?.trim()) ||
+          (Number(adjustments?.advanceAdjustment || 0) > 0 && !adjustments?.advanceAdjustmentReason?.trim()) ||
+          (Number(adjustments?.otherCredit || 0) > 0 && !adjustments?.otherCreditReason?.trim())) {
+        toast({ title: "Every manual adjustment needs a reason or reference", variant: "destructive" });
         return;
       }
     }
@@ -1505,7 +1684,9 @@ export default function VendorBills() {
         exceptionDecisions: group.exceptionDecisions, quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,
         dieselNormOverride: group.dieselNormOverride, dieselNormBasisOverride: group.dieselNormBasisOverride,
         dieselRecoveryDecision: group.dieselRecoveryDecision, dieselRecoveryFinalAmount: group.dieselRecoveryFinalAmount,
-        dieselRecoveryRemarks: group.dieselRecoveryRemarks, calculatedQuantity: result!.calculatedQuantity,
+         dieselRecoveryRemarks: group.dieselRecoveryRemarks, breakdownHoursPerDay: group.breakdownHoursPerDay,
+          projectSite: group.projectSite,
+         adjustments: group.adjustments, calculatedQuantity: result!.calculatedQuantity,
         calculatedGrossAmount: result!.calculatedGrossAmount, netAmount: result!.netAmount,
       })) } : {}),
       items: lineItems.filter(i => i.description).map(item => ({
@@ -1950,11 +2131,11 @@ export default function VendorBills() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <Label className="text-sm uppercase">Bill Date</Label>
+                <Label className="text-sm uppercase">{billType === "equipment" ? "Invoice Date" : "Bill Date"}</Label>
                 <Input type="date" value={billDate} onChange={e => setBillDate(e.target.value)} data-testid="input-bill-date" />
               </div>
               <div>
-                <Label className="text-sm uppercase">Bill Number</Label>
+                <Label className="text-sm uppercase">{billType === "equipment" ? "Vendor Invoice No." : "Bill Number"}</Label>
                 <Input value={billNo} onChange={e => setBillNo(e.target.value)} onBlur={e => setBillNo(e.target.value.toUpperCase())} placeholder="AUTO-GENERATED" className="uppercase" data-testid="input-bill-no" />
               </div>
               <div>
@@ -2153,12 +2334,12 @@ export default function VendorBills() {
           </Card>
         )}
 
-        {(billType === "equipment" || billType === "all") && (
+        {false && (billType === "equipment" || billType === "all") && (
           <Card className="border-orange-200 dark:border-orange-800">
             <CardHeader className="py-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm uppercase tracking-wider flex items-center gap-2"><Calculator className="w-4 h-4 text-orange-600" /> Equipment Hire Calculation</CardTitle>
-              <Button variant="outline" size="sm" onClick={() => addHireGroup()} disabled={!vendorName || !periodFrom || !periodTo || hireActivitiesLoading || !availableHireEquipment.length}>
-                <Plus className="w-3 h-3 mr-1" /> ADD HIRE ITEM
+              <CardTitle className="text-sm uppercase tracking-wider flex items-center gap-2"><Calculator className="w-4 h-4 text-orange-600" /> Equipment Hire Bill</CardTitle>
+              <Button variant="outline" size="sm" onClick={() => addHireGroup()} disabled={!vendorName || !periodFrom || !periodTo || hireActivitiesLoading || !availableHireEquipment.length || hireGroups.length > 0}>
+                <Plus className="w-3 h-3 mr-1" /> SELECT EQUIPMENT
               </Button>
             </CardHeader>
             <CardContent className="pt-0 space-y-3">
@@ -2168,13 +2349,13 @@ export default function VendorBills() {
                 <div key={eq.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-orange-300 bg-orange-50 px-3 py-2 dark:border-orange-800 dark:bg-orange-950/30" data-testid={`hire-available-${eq.id}`}>
                   <div>
                     <p className="text-[11px] font-bold uppercase tracking-wider text-orange-700 dark:text-orange-300">
-                      {HIRE_BASIS_LABELS[basis]}
+                      {basis.toUpperCase()} HIRE
                     </p>
                     <p className="font-semibold">{String(eq.name || "EQUIPMENT").toUpperCase()}</p>
                     <p className="text-[11px] text-muted-foreground">{formatDate(period.from)}–{formatDate(period.to)}</p>
                   </div>
-                  <Button type="button" size="sm" onClick={() => addHireGroup(Number(eq.id))} data-testid={`button-add-hire-${eq.id}`}>
-                    <Plus className="mr-1 h-3 w-3" /> ADD TO BILL
+                  <Button type="button" size="sm" disabled={hireGroups.length > 0} onClick={() => addHireGroup(Number(eq.id))} data-testid={`button-add-hire-${eq.id}`}>
+                    <Plus className="mr-1 h-3 w-3" /> SELECT EQUIPMENT
                   </Button>
                 </div>
               ))}
@@ -2186,7 +2367,7 @@ export default function VendorBills() {
                     <p className="text-[11px] text-muted-foreground">{issue}. Correct the Equipment Master hire terms first.</p>
                   </div>
                   <Button type="button" size="sm" disabled data-testid={`button-add-hire-${eq.id}`}>
-                    <Plus className="mr-1 h-3 w-3" /> ADD TO BILL
+                    <Plus className="mr-1 h-3 w-3" /> SELECT EQUIPMENT
                   </Button>
                 </div>
               ))}
@@ -2240,15 +2421,19 @@ export default function VendorBills() {
                              return;
                            }
                            patchHireGroup(group.id, { equipmentId: next, basis: nextBasis, rate: Number(nextEq.hireRate), dailyDecisions: [], tripDecisions: [] });
-                        }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
+                         }} disabled><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
                            {hireEquipment.filter((e: any) => eligibleHireEquipmentIds.has(Number(e.id)) || Number(e.id) === group.equipmentId)
                              .map((e: any) => <SelectItem key={e.id} value={String(e.id)}>{String(e.name).toUpperCase()}</SelectItem>)}
                         </SelectContent></Select>
                       </div>
-                      <div><Label className="text-[11px] uppercase">From</Label><Input type="date" min={periodFrom} max={periodTo} value={group.periodFrom} onChange={e => patchHireGroup(group.id, { periodFrom: e.target.value })} /></div>
-                      <div><Label className="text-[11px] uppercase">To</Label><Input type="date" min={periodFrom} max={periodTo} value={group.periodTo} onChange={e => patchHireGroup(group.id, { periodTo: e.target.value })} /></div>
-                      <div><Label className="text-[11px] uppercase">Basis</Label><Select value={group.basis} onValueChange={v => patchHireGroup(group.id, { basis: v as HireGroup["basis"], quantityOverride: undefined, grossAmountOverride: undefined })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="monthly">MONTH</SelectItem><SelectItem value="daily">DAY</SelectItem><SelectItem value="hourly">HOUR</SelectItem><SelectItem value="trip">TRIP</SelectItem></SelectContent></Select></div>
-                      <div><Label className="text-[11px] uppercase">Rate (₹)</Label><Input type="number" value={group.rate} onChange={e => patchHireGroup(group.id, { rate: Number(e.target.value) })} /></div>
+                      <div><Label className="text-[11px] uppercase">From</Label><Input type="date" value={group.periodFrom} disabled /></div>
+                      <div><Label className="text-[11px] uppercase">To</Label><Input type="date" value={group.periodTo} disabled /></div>
+                      <div><Label className="text-[11px] uppercase">Basis</Label><Select value={group.basis} disabled><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="monthly">MONTH</SelectItem><SelectItem value="daily">DAY</SelectItem><SelectItem value="hourly">HOUR</SelectItem><SelectItem value="trip">TRIP</SelectItem></SelectContent></Select></div>
+                      <div><Label className="text-[11px] uppercase">Rate (₹)</Label><Input type="number" value={group.rate} disabled /></div>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 rounded bg-muted/40 px-2 py-1.5 text-[10px] uppercase text-muted-foreground">
+                      <span>Master terms</span><span>Diesel: {String(eq?.hireDieselResponsibility || "NOT RECORDED")}</span><span>Operator: {String(eq?.hireOperatorResponsibility || "NOT RECORDED")}</span>
+                      {eq?.hireAgreementRemarks && <span>Agreement: {eq.hireAgreementRemarks}</span>}
                     </div>
                     {group.periodFrom > group.periodTo && <p className="text-xs text-red-600">INVALID RANGE: FROM DATE MUST PRECEDE TO DATE.</p>}
                      <div className="border-t pt-2">
@@ -2261,8 +2446,8 @@ export default function VendorBills() {
                          aria-expanded={Boolean(expandedHireActivity[group.id])}
                          data-testid={`button-view-activity-${index}`}
                        >
-                         <ChevronLeft className={`w-3 h-3 mr-1 transition-transform ${expandedHireActivity[group.id] ? "-rotate-90" : "rotate-180"}`} />
-                          {expandedHireActivity[group.id] ? "HIDE" : "OPEN"} WORKING / MEASUREMENT SHEET — {activityDays.length} DAYS
+                          <ChevronLeft className={`w-3 h-3 mr-1 transition-transform ${expandedHireActivity[group.id] ? "-rotate-90" : "rotate-180"}`} />
+                           {expandedHireActivity[group.id] ? "HIDE" : "VIEW"} DAILY ACTIVITY — {activityDays.length} DAYS
                        </Button>
                        {expandedHireActivity[group.id] && (
                          <HireWorkingSheet group={group} result={result} activities={acts} maintenance={maintenance} patchHireGroup={patchHireGroup} formatEvidenceValue={formatEvidenceValue} />
@@ -2277,19 +2462,19 @@ export default function VendorBills() {
                                const date = day.date || day.businessDate;
                                const dayActivities = day.activities || day.records || acts.filter((activity: any) => activity.businessDate === date);
                                const firstActivity = dayActivities[0] || {};
-                               const status = day.activity === "breakdown" ? "Vendor breakdown" : day.activity === "worked" ? "Worked" : "No activity";
-                                const hoursTrips = status === "Vendor breakdown" && Number(day.downtimeHours) > 0
+                                const status = day.activity === "breakdown" ? "Breakdown" : day.activity === "worked" ? "Worked" : "No Work";
+                                 const hoursTrips = status === "Breakdown" && Number(day.downtimeHours) > 0
                                   ? `${Number(day.downtimeHours).toFixed(2)} H DOWN`
-                                  : status === "No activity" ? "—" :
+                                  : status === "No Work" ? "—" :
                                  day.hoursOrTrips ?? (day.hours != null && day.trips != null
                                    ? `${day.hours} H / ${day.trips} T`
                                    : day.hours ?? day.trips ?? firstActivity.hoursOrKmRun ?? firstActivity.numberOfTrips);
                                const hsd = day.hsd ?? day.actualDiesel ?? firstActivity.actualDiesel;
                                const location = day.movementReferences?.join(", ") || day.locationReference || day.movementReference ||
                                  firstActivity.locationReference || firstActivity.site || firstActivity.siteName;
-                               const activity = status === "Vendor breakdown"
+                                const activity = status === "Breakdown"
                                  ? "BREAKDOWN"
-                                 : status === "No activity" ? "NO ACTIVITY"
+                                  : status === "No Work" ? "NO ACTIVITY"
                                  : (day.activityLabel || firstActivity.task || firstActivity.entryType || "ACTIVITY RECORDED");
                                const exception = day.maintenanceDescriptions?.join(", ") || "";
                                return (
@@ -2298,7 +2483,7 @@ export default function VendorBills() {
                                    <span className="min-w-0">{formatEvidenceValue(activity)}{location ? <span className="block text-[10px] text-muted-foreground">REF: {location}</span> : null}</span>
                                    <span>{formatEvidenceValue(hoursTrips)}</span>
                                    <span>{hsd == null ? "—" : `${Number(hsd).toFixed(2)} L`}</span>
-                                   <span className={status === "Vendor breakdown" ? "font-semibold text-amber-700" : status === "No activity" ? "text-muted-foreground" : "text-emerald-700"}>{status}{exception && status === "Vendor breakdown" ? <span className="block text-[10px] font-normal">{exception}</span> : null}</span>
+                                    <span className={status === "Breakdown" ? "font-semibold text-amber-700" : status === "No Work" ? "text-muted-foreground" : "text-emerald-700"}>{status}{exception && status === "Breakdown" ? <span className="block text-[10px] font-normal">{exception}</span> : null}</span>
                                  </div>
                                );
                              })}
@@ -2354,20 +2539,20 @@ export default function VendorBills() {
                          <div><span className="text-muted-foreground uppercase">Suggested hire</span><strong className="block">₹{formatCurrency(result.calculatedGrossAmount)}</strong></div>
                        </div>
                        {isPartMonth && <p className="mt-1 text-[11px] text-muted-foreground">{divisorHelper}</p>}
-                       <Button type="button" variant="ghost" size="sm" className="mt-1 h-7 px-0 text-[10px]" onClick={() => setEditingHireCommercial(prev => ({ ...prev, [group.id]: !prev[group.id] }))}>EDIT QTY / AMOUNT</Button>
+                        {false && <Button type="button" variant="ghost" size="sm" className="mt-1 h-7 px-0 text-[10px]" onClick={() => setEditingHireCommercial(prev => ({ ...prev, [group.id]: !prev[group.id] }))}>EDIT QTY / AMOUNT</Button>}
                      </div>}
-                     <div className="grid grid-cols-2 gap-2 border-t pt-2 sm:grid-cols-4">
-                       {(group.basis !== "monthly" || editingHireCommercial[group.id]) && <><div><Label className="text-[11px] uppercase">Agreed Qty</Label><Input type="number" placeholder={result ? result.quantity.toFixed(2) : "AUTO"} value={group.quantityOverride ?? ""} onChange={e => patchHireGroup(group.id, { quantityOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div>
-                       <div><Label className="text-[11px] uppercase">Agreed Gross Amount (₹)</Label><Input type="number" placeholder={result ? formatCurrency(result.grossAmount) : "AUTO"} value={group.grossAmountOverride ?? ""} onChange={e => patchHireGroup(group.id, { grossAmountOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div></>}
+                      {false && <div className="grid grid-cols-2 gap-2 border-t pt-2 sm:grid-cols-4">
+                        {(group.basis !== "monthly" || editingHireCommercial[group.id]) && <><div><Label className="text-[11px] uppercase">Agreed Qty</Label><Input type="number" placeholder={result?.quantity?.toFixed(2) || "AUTO"} value={group.quantityOverride ?? ""} onChange={e => patchHireGroup(group.id, { quantityOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div>
+                        <div><Label className="text-[11px] uppercase">Agreed Gross Amount (₹)</Label><Input type="number" placeholder={result ? formatCurrency(result?.grossAmount ?? 0) : "AUTO"} value={group.grossAmountOverride ?? ""} onChange={e => patchHireGroup(group.id, { grossAmountOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div></>}
                        <div><Label className="text-[11px] uppercase">Bill Norm</Label><Input type="number" placeholder={result?.diesel.consumptionNorm?.toString() || "NOT RECORDED"} value={group.dieselNormOverride ?? ""} onChange={e => patchHireGroup(group.id, { dieselNormOverride: e.target.value === "" ? undefined : Number(e.target.value) })} /></div>
                        <div><Label className="text-[11px] uppercase">Norm Basis</Label><Input placeholder={result?.diesel.normBasis || "L/HOUR OR KM/L"} value={group.dieselNormBasisOverride || ""} onChange={e => patchHireGroup(group.id, { dieselNormBasisOverride: e.target.value.toUpperCase() })} /></div>
-                     </div>
-                     {result && <div className="border-t pt-2 space-y-2">
+                      </div>}
+                      {result && String(eq?.hireDieselResponsibility || "").toLowerCase() === "hlc" && <div className="border-t pt-2 space-y-2">
                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                          <div><span className="text-muted-foreground uppercase">Actual</span><strong className="block">{diesel.actualDiesel?.toFixed(2) || "0.00"} L</strong></div>
                          <div><span className="text-muted-foreground uppercase">Expected</span><strong className="block">{diesel.expectedDiesel?.toFixed(2) || "0.00"} L</strong></div>
                          <div><span className="text-muted-foreground uppercase">Net Excess</span><strong className="block">{diesel.suggestedExcess?.toFixed(2) || "0.00"} L</strong></div>
-                         <div><span className="text-muted-foreground uppercase">Applicable Weighted HSD Rate</span><strong className="block">{rateLabel}</strong></div>
+                          <div><span className="text-muted-foreground uppercase">Applicable HSD Rate</span><strong className="block">{rateLabel}</strong></div>
                          {diesel.unpricedActualDates?.length > 0 && <div className="sm:col-span-2"><span className="text-muted-foreground uppercase">Partial rate gap dates</span><strong className="block text-amber-700">{diesel.unpricedActualDates.map((d: string) => formatDate(d)).join(", ")}</strong></div>}
                          <div><span className="text-muted-foreground uppercase">Suggested recovery</span><strong className="block">{diesel.suggestedRecoveryAmount == null ? "—" : `₹${formatCurrency(suggestedRecoveryAmount)}`}</strong></div>
                        </div>
@@ -2393,18 +2578,147 @@ export default function VendorBills() {
                          <div><Label className="text-[11px] uppercase">Recovery Remarks</Label><Input value={group.dieselRecoveryRemarks || ""} onChange={e => patchHireGroup(group.id, { dieselRecoveryRemarks: e.target.value.toUpperCase() })} /></div>
                        </div>}
                      </div>}
-                     {expectedDieselUnavailable && <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">Expected diesel unavailable — review norm/activity. No automatic recovery has been proposed.</div>}
+                      {String(eq?.hireDieselResponsibility || "").toLowerCase() === "hlc" && expectedDieselUnavailable && <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">Expected diesel unavailable — review norm/activity. No automatic recovery has been proposed.</div>}
+                     {result && <div className="border-t pt-3">
+                       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Adjustments / Recoveries</p>
+                       <div className="grid gap-2 sm:grid-cols-3">
+                         <div><Label className="text-[10px] uppercase">Other Debit / Recovery ₹</Label><Input type="number" min="0" step="0.01" value={group.adjustments?.otherDebit ?? ""} onChange={e => patchHireGroup(group.id, { adjustments: { ...group.adjustments, otherDebit: e.target.value === "" ? undefined : Number(e.target.value) } })} /><Input className="mt-1" placeholder="Reason / reference" value={group.adjustments?.otherDebitReason || ""} onChange={e => patchHireGroup(group.id, { adjustments: { ...group.adjustments, otherDebitReason: e.target.value.toUpperCase() } })} /></div>
+                         <div><Label className="text-[10px] uppercase">Advance Adjustment ₹</Label><Input type="number" min="0" step="0.01" value={group.adjustments?.advanceAdjustment ?? ""} onChange={e => patchHireGroup(group.id, { adjustments: { ...group.adjustments, advanceAdjustment: e.target.value === "" ? undefined : Number(e.target.value) } })} /><Input className="mt-1" placeholder="Reason / reference" value={group.adjustments?.advanceAdjustmentReason || ""} onChange={e => patchHireGroup(group.id, { adjustments: { ...group.adjustments, advanceAdjustmentReason: e.target.value.toUpperCase() } })} /></div>
+                         <div><Label className="text-[10px] uppercase">Other Credit ₹</Label><Input type="number" min="0" step="0.01" value={group.adjustments?.otherCredit ?? ""} onChange={e => patchHireGroup(group.id, { adjustments: { ...group.adjustments, otherCredit: e.target.value === "" ? undefined : Number(e.target.value) } })} /><Input className="mt-1" placeholder="Reason / reference" value={group.adjustments?.otherCreditReason || ""} onChange={e => patchHireGroup(group.id, { adjustments: { ...group.adjustments, otherCreditReason: e.target.value.toUpperCase() } })} /></div>
+                       </div>
+                     </div>}
                     {result && <div className="border-t pt-2 grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs">{group.basis !== "monthly" && <div><span className="text-muted-foreground uppercase">Suggested Qty</span><strong className="block">{result.quantity.toFixed(2)} {group.basis === "daily" ? "DAYS" : group.basis === "hourly" ? "HRS" : "TRIPS"}</strong></div>}<div><span className="text-muted-foreground uppercase">Gross</span><strong className="block">₹{formatCurrency(result.grossAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Breakdown deduction</span><strong className="block">₹{formatCurrency(result.deductionAmount)}</strong></div><div><span className="text-muted-foreground uppercase">Net Excess</span><strong className="block">{expectedDieselUnavailable ? "—" : `${result.diesel.suggestedExcess.toFixed(2)} L`}</strong></div><div><span className="text-muted-foreground uppercase">Suggested / Final recovery</span><strong className="block">{expectedDieselUnavailable ? "—" : `₹${formatCurrency(result.diesel.suggestedRecoveryAmount)} / ₹${formatCurrency(result.diesel.finalRecoveryAmount)}`}</strong></div><div><span className="text-muted-foreground uppercase">Net Hire</span><strong className="block text-orange-700">₹{formatCurrency(result.netAmount)}</strong></div></div>}
-                    <div className="flex justify-end"><Button type="button" variant="ghost" size="sm" onClick={() => removeHireGroup(group.id)}><Trash2 className="w-3 h-3 mr-1" /> REMOVE</Button></div>
+                    <div className="flex justify-end"><Button type="button" variant="ghost" size="sm" onClick={() => removeHireGroup(group.id)}><Trash2 className="w-3 h-3 mr-1" /> CLEAR EQUIPMENT</Button></div>
                   </div>
                 );
               })}
-              {!hireGroups.length && <p className="text-xs text-muted-foreground">ADD A GROUP TO AGGREGATE MONTH, DAY OR TRIP HIRE INTO THE BILL.</p>}
+              {!hireGroups.length && <p className="text-xs text-muted-foreground">SELECT ONE EQUIPMENT ITEM TO AUTO-FILL ITS STORED HIRE TERMS AND DAILY ACTIVITY.</p>}
+            </CardContent>
+          </Card>
+        )}
+        {billType === "equipment" && (
+          <Card className="border-orange-200 dark:border-orange-800" data-testid="equipment-hire-straight-form">
+            <CardHeader className="py-3">
+              <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wider"><Calculator className="h-4 w-4 text-orange-600" />Equipment Hire</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-0">
+              {!vendorName || !periodFrom || !periodTo ? (
+                <p className="rounded border border-dashed p-3 text-xs text-muted-foreground">Choose the vendor and bill period, then select one equipment item. Its stored hire terms will be prepared automatically.</p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <div>
+                    <Label className="text-xs uppercase">Equipment</Label>
+                    <Select value={selectedHireEquipmentId ? String(selectedHireEquipmentId) : ""} onValueChange={value => selectHireEquipment(Number(value))}>
+                      <SelectTrigger data-testid="select-equipment-hire"><SelectValue placeholder={hireActivitiesLoading ? "Loading equipment…" : "Select equipment"} /></SelectTrigger>
+                      <SelectContent>
+                        {hireEquipment.map((equipment: any) => {
+                          const issue = hireTermsIssue(equipment);
+                          const relevant = validHireDate(equipment.hireStartDate) && equipment.hireStartDate <= periodTo && (!equipment.hireEndDate || equipment.hireEndDate >= periodFrom);
+                          if (!relevant || issue) return null;
+                          return <SelectItem key={equipment.id} value={String(equipment.id)}>{formatEquipmentOptionLabel(equipment)}</SelectItem>;
+                        })}
+                      </SelectContent>
+                    </Select>
+                    {!hireActivitiesLoading && !hireEquipment.length && <p className="mt-1 text-xs text-muted-foreground">No hired equipment is linked to this vendor for the selected period.</p>}
+                  </div>
+                  {hireGroups.length > 0 && <Button type="button" variant="ghost" size="sm" onClick={() => setHireGroups([])} data-testid="button-clear-equipment-hire">Clear equipment</Button>}
+                </div>
+              )}
+              {hireGroups.map((selection, index) => {
+                const equipment = hireEquipmentFor(selection.equipmentId);
+                const result = hireCalculated[index]?.result;
+                const maintenance = maintenanceForGroup(selection);
+                const diesel = result?.diesel;
+                const recoveryAcceptUnavailable = diesel?.rateUnavailable || diesel?.expectedDieselAvailable === false;
+                const dailyRows = buildBillingDailyRows(
+                  equipmentPerformance.data?.fleet.find(row => row.equipmentId === selection.equipmentId)?.dailyRows || [],
+                  selection.periodFrom,
+                  selection.periodTo,
+                  maintenance,
+                );
+                const projectSites = Array.from(new Set(dailyRows.map(row => row.performance?.projectSite).filter((value): value is string => !!value)));
+                const adjustments = selection.adjustments || {};
+                const hsdRecovery = Number(selection.dieselRecoveryFinalAmount || 0);
+                const otherDebit = Number(adjustments.otherDebit || 0);
+                const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
+                const otherCredit = Number(adjustments.otherCredit || 0);
+                const taxableAmount = Math.max(0, Number(result?.grossAmount || 0) - Number(result?.deductionAmount || 0) - hsdRecovery - otherDebit - advanceAdjustment + otherCredit);
+                const equipmentTds = tdsRate ? taxableAmount * tdsRate / 100 : 0;
+                const netPayable = taxableAmount - equipmentTds;
+                const exportData: EquipmentHireExportData = {
+                  billNo, vendorName, equipmentName: formatEquipmentOptionLabel(equipment || {}), projectSite: selection.projectSite,
+                  periodFrom: selection.periodFrom, periodTo: selection.periodTo, hireBasis: HIRE_BASIS_LABELS[selection.basis],
+                  rate: selection.rate, grossHire: Number(result?.grossAmount || 0), breakdownDeduction: Number(result?.deductionAmount || 0),
+                  hsdRecovery, otherDebit, otherDebitReason: adjustments.otherDebitReason, advanceAdjustment,
+                  advanceAdjustmentReason: adjustments.advanceAdjustmentReason, otherCredit, otherCreditReason: adjustments.otherCreditReason,
+                  tdsRate, tdsAmount: equipmentTds, netPayable, paid: 0,
+                };
+                return <div key={selection.id} className="space-y-4 rounded border bg-muted/20 p-3">
+                  <div className="grid gap-3 text-sm sm:grid-cols-4">
+                    <div><p className="text-[10px] font-semibold uppercase text-muted-foreground">Hire Basis</p><p className="font-semibold">{HIRE_BASIS_LABELS[selection.basis]}</p></div>
+                    <div><p className="text-[10px] font-semibold uppercase text-muted-foreground">Rate</p><p className="font-semibold">₹{formatCurrency(selection.rate)}</p></div>
+                    <div><p className="text-[10px] font-semibold uppercase text-muted-foreground">Hire Period</p><p className="font-semibold">{formatDate(selection.periodFrom)} – {formatDate(selection.periodTo)}</p></div>
+                    <div><p className="text-[10px] font-semibold uppercase text-muted-foreground">Gross Hire</p><p className="font-semibold text-orange-700">₹{formatCurrency(result?.grossAmount || 0)}</p></div>
+                  </div>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="w-full sm:w-72"><Label className="text-[10px] uppercase">Project / Site (optional)</Label><Select value={selection.projectSite || "__all__"} onValueChange={value => patchHireGroup(selection.id, { projectSite: value === "__all__" ? undefined : value })}><SelectTrigger data-testid="select-equipment-hire-project"><SelectValue placeholder="All report sites" /></SelectTrigger><SelectContent><SelectItem value="__all__">All report sites</SelectItem>{projectSites.map(projectSite => <SelectItem key={projectSite} value={projectSite}>{projectSite}</SelectItem>)}</SelectContent></Select></div>
+                    {selection.projectSite && <Button type="button" variant="ghost" size="sm" onClick={() => patchHireGroup(selection.id, { projectSite: undefined })}>Clear site</Button>}
+                  </div>
+                  <div className="rounded bg-muted/50 px-3 py-2 text-xs text-muted-foreground">Master terms · Diesel: {String(equipment?.hireDieselResponsibility || "Not recorded")} · Breakdown deductions: {equipment?.hireBreakdownDeductionEnabled ? "Enabled" : "Not enabled"}</div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowEquipmentDailyActivity(true)} disabled={equipmentPerformance.isFetching} data-testid="button-view-daily-activity">{equipmentPerformance.isFetching ? "Loading daily activity…" : "View Daily Activity"}</Button>
+                    <EquipmentHireExportButtons data={exportData} rows={dailyRows} disabled={equipmentPerformance.isFetching} />
+                  </div>
+                  {selection.basis === "trip" && <div className="space-y-2 border-t pt-3">
+                    <div><p className="text-xs font-semibold uppercase tracking-wide">Trip Candidate Review</p><p className="text-xs text-muted-foreground">Confirm each recorded trip before it is billed. If you exclude or correct a trip count, enter the reason/reference.</p></div>
+                    {activityForGroup(selection).filter(activity => activity.entryType === "trip_based").map((activity: any) => {
+                      const current = selection.tripDecisions.find(decision => decision.source === activity.source && decision.sourceId === activity.sourceId);
+                      const without = selection.tripDecisions.filter(decision => !(decision.source === activity.source && decision.sourceId === activity.sourceId));
+                      const selected = current?.selected === true;
+                      const recordedTrips = Number(activity.numberOfTrips || 0);
+                      const operationalOnSameDay = (activity.source === "site_material_trip" || activity.source === "bulk_transport_trip") &&
+                        hasIncludedOperationalTripOnSameDay(activityForGroup(selection), selection.tripDecisions, activity);
+                      const update = (patch: Partial<HireGroup["tripDecisions"][number]>) => patchHireGroup(selection.id, {
+                        tripDecisions: [...without, { ...current, source: activity.source, sourceId: activity.sourceId, selected: current?.selected ?? false, ...patch }],
+                      });
+                      return <div key={`${activity.source}:${activity.sourceId}`} className="grid gap-2 rounded border p-2 text-xs sm:grid-cols-[minmax(0,1fr)_88px_80px_110px_minmax(160px,1fr)] sm:items-end">
+                        <label className="flex items-start gap-2"><input type="checkbox" checked={selected} onChange={event => update({ selected: event.target.checked })} data-testid={`checkbox-trip-candidate-${activity.sourceId}`} /><span><strong>{formatDate(activity.businessDate)} · {activity.description || "Recorded trip"}</strong><span className="block text-muted-foreground">Recorded: {recordedTrips} trip{recordedTrips === 1 ? "" : "s"} · {String(activity.source).replace(/_/g, " ")}</span><span className="block font-semibold">{current?.selected === true ? "Accepted for billing" : current?.selected === false ? "Explicitly excluded" : "Review required"}</span></span></label>
+                        <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => update({ selected: false })} disabled={current?.selected === false}>Exclude</Button>
+                        <div><Label className="text-[10px] uppercase">Recorded</Label><p className="h-9 pt-2 font-semibold">{recordedTrips}</p></div>
+                        <div><Label className="text-[10px] uppercase">Billable trips</Label><Input type="number" min="0" step="1" value={current?.correctedTrips ?? ""} placeholder={String(recordedTrips)} disabled={!selected} onChange={event => update({ correctedTrips: event.target.value === "" ? undefined : Number(event.target.value) })} /></div>
+                        <div><Label className="text-[10px] uppercase">Decision reason / reference</Label><Input value={current?.remarks || ""} placeholder={activity.source === "site_material_trip" || activity.source === "bulk_transport_trip" ? "Required for every decision" : selected ? "Required if corrected" : "Required if excluded"} onChange={event => update({ remarks: event.target.value.toUpperCase() })} />{operationalOnSameDay && <label className="mt-2 flex items-start gap-2 font-medium"><input type="checkbox" checked={current?.separateFromOperational === true} disabled={!selected} onChange={event => update({ separateFromOperational: event.target.checked })} data-testid={`checkbox-separate-trip-${activity.sourceId}`} /><span>Verified: this delivery is a separate trip from same-day operational usage</span></label>}</div>
+                      </div>;
+                    })}
+                  </div>}
+                  {maintenance.length > 0 && <div className="space-y-2 border-t pt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide">Breakdown Deduction Review</p>
+                    {equipment?.hireBreakdownDeductionEnabled && <div className="flex flex-wrap items-center gap-2 text-xs"><span>Actual downtime divisor</span><Select value={selection.breakdownHoursPerDay ? String(selection.breakdownHoursPerDay) : ""} onValueChange={value => patchHireGroup(selection.id, { breakdownHoursPerDay: Number(value) })}><SelectTrigger className="h-8 w-48"><SelectValue placeholder="Choose 10–12 hours / day" /></SelectTrigger><SelectContent><SelectItem value="10">10 hours / day</SelectItem><SelectItem value="11">11 hours / day</SelectItem><SelectItem value="12">12 hours / day</SelectItem></SelectContent></Select><span className="text-muted-foreground">Required before actual downtime deduction.</span></div>}
+                    {maintenance.map((item: any) => {
+                      const current = selection.exceptionDecisions.find((decision: any) => decision.sourceType === "maintenance" && decision.sourceId === item.sourceId);
+                      const without = selection.exceptionDecisions.filter((decision: any) => !(decision.sourceType === "maintenance" && decision.sourceId === item.sourceId));
+                      const setDecision = (decision: string, patch: Record<string, any> = {}) => patchHireGroup(selection.id, { exceptionDecisions: [...without, { sourceType: "maintenance", sourceId: item.sourceId, exceptionType: "breakdown", date: item.businessDate, ...current, ...patch, decision }] });
+                      const suggested = result?.exceptions.find((exception: any) => exception.sourceType === "maintenance" && exception.sourceId === item.sourceId)?.suggestedDeductionAmount;
+                      return <div key={item.sourceId} className="grid gap-2 rounded border p-2 text-xs sm:grid-cols-[1fr_180px_150px_minmax(160px,1fr)] sm:items-end"><div><strong>{formatDate(item.businessDate)} · {item.description || "Breakdown"}</strong><p className="text-muted-foreground">{Number(item.downtimeHours || 0)} actual downtime hours{item.fromTime || item.toTime ? ` · ${item.fromTime || "?"}–${item.toTime || "?"}` : ""}</p></div><Select value={current?.decision || "none"} onValueChange={value => setDecision(value)} disabled={!equipment?.hireBreakdownDeductionEnabled}><SelectTrigger className="h-8"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">No deduction</SelectItem><SelectItem value="hours" disabled={!selection.breakdownHoursPerDay}>Actual downtime</SelectItem><SelectItem value="half_day">Half day</SelectItem><SelectItem value="full_day">Full day</SelectItem><SelectItem value="manual">Manual amount</SelectItem></SelectContent></Select><div>{current?.decision === "manual" ? <Input type="number" min="0" placeholder="Deduction ₹" value={current.manualDeductionAmount ?? ""} onChange={event => setDecision("manual", { manualDeductionAmount: event.target.value === "" ? undefined : Number(event.target.value) })} /> : <span className="text-muted-foreground">{current?.decision === "hours" ? `Suggested ₹${formatCurrency(suggested)}` : ""}</span>}</div><div>{current?.decision === "manual" && <><Label className="text-[10px] uppercase">Manual deduction reason</Label><Input placeholder="Reason / reference" value={current.remarks || ""} onChange={event => setDecision("manual", { remarks: event.target.value.toUpperCase() })} /></>}</div></div>;
+                    })}
+                  </div>}
+                  <div className="space-y-3 border-t pt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide">Adjustments / Recoveries</p>
+                    {String(equipment?.hireDieselResponsibility || "").toLowerCase() === "hlc" && <div className="grid gap-2 rounded border p-2 text-xs sm:grid-cols-[180px_1fr_1fr] sm:items-end"><div><strong>HSD Recovery</strong><p className="text-muted-foreground">{diesel?.expectedDieselAvailable === false ? "Measured consumption unavailable; enter manually only." : diesel?.rateUnavailable ? "Applicable HSD rate unavailable; enter manually only." : diesel?.suggestedExcess && diesel.suggestedExcess > 0 ? `Suggested ₹${formatCurrency(diesel.suggestedRecoveryAmount)}` : "No positive over-consumption."}</p></div><Select value={selection.dieselRecoveryDecision || "ignore"} onValueChange={value => patchHireGroup(selection.id, { dieselRecoveryDecision: value as HireGroup["dieselRecoveryDecision"], dieselRecoveryFinalAmount: value === "accept" ? Number(diesel?.suggestedRecoveryAmount || 0) : value === "ignore" ? 0 : selection.dieselRecoveryFinalAmount })}><SelectTrigger className="h-8"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ignore">No recovery</SelectItem><SelectItem value="accept" disabled={recoveryAcceptUnavailable || !diesel?.suggestedRecoveryAmount}>Accept suggested recovery</SelectItem><SelectItem value="edit">Enter/edit recovery</SelectItem></SelectContent></Select><div className="flex gap-2"><Input type="number" min="0" placeholder="Recovery ₹" disabled={selection.dieselRecoveryDecision !== "edit"} value={selection.dieselRecoveryFinalAmount ?? ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryFinalAmount: event.target.value === "" ? undefined : Number(event.target.value) })} /><Input placeholder="Reason / reference" disabled={selection.dieselRecoveryDecision !== "edit"} value={selection.dieselRecoveryRemarks || ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryRemarks: event.target.value.toUpperCase() })} /></div></div>}
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {[["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Advance Adjustment", "advanceAdjustment", "advanceAdjustmentReason"], ["Other Credit", "otherCredit", "otherCreditReason"]].map(([label, amountKey, reasonKey]) => <div key={amountKey}><Label className="text-[10px] uppercase">{label} ₹</Label><Input type="number" min="0" step="0.01" value={(adjustments as any)[amountKey] ?? ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [amountKey]: event.target.value === "" ? undefined : Number(event.target.value) } })} /><Input className="mt-1" placeholder="Reason / reference" value={(adjustments as any)[reasonKey] || ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })} /></div>)}
+                    </div>
+                  </div>
+                  <div className="space-y-1 rounded border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20">
+                    {[["Gross Hire", result?.grossAmount || 0], ["− Breakdown Deduction", result?.deductionAmount || 0], ["− HSD Recovery", hsdRecovery], ["− Other Debit / Recovery", otherDebit], ["− Advance Adjustment", advanceAdjustment], ["= Taxable / Bill Amount", taxableAmount], [`− TDS @ ${tdsRate}%`, equipmentTds], ["= NET PAYABLE (this bill)", netPayable]].map(([label, amount]) => <div key={String(label)} className="flex justify-between"><span>{label}</span><strong>₹{formatCurrency(Number(amount))}</strong></div>)}
+                  </div>
+                  <EquipmentHireDailyActivity open={showEquipmentDailyActivity} onOpenChange={setShowEquipmentDailyActivity} rows={dailyRows} />
+                </div>;
+              })}
             </CardContent>
           </Card>
         )}
 
-        {vendorName && periodFrom && periodTo && billType !== "other" && (
+        {vendorName && periodFrom && periodTo && billType !== "other" && billType !== "equipment" && (
           <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20">
             <CardContent className="py-3 flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
@@ -2436,7 +2750,7 @@ export default function VendorBills() {
           </Card>
         )}
 
-        <Card>
+        {billType !== "equipment" && <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <div className="flex gap-2 flex-wrap">
               <Link href={`/plant/rate-cards?vendorName=${encodeURIComponent(vendorName)}`}>
@@ -2548,7 +2862,7 @@ export default function VendorBills() {
                             </Badge>
                           )}
                         </div>
-                      </div>
+                        </div>
                     ) : (
                       <Input
                         value={item.description}
@@ -2811,9 +3125,9 @@ export default function VendorBills() {
               );
             })()}
           </CardContent>
-        </Card>
+        </Card>}
 
-        <Card>
+        {billType !== "equipment" && <Card>
           <CardContent className="py-4 space-y-4">
             <div className="space-y-3">
               <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Adjustments</p>
@@ -2889,7 +3203,7 @@ export default function VendorBills() {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                       <div className="md:col-span-2">
                         <Label className="text-sm uppercase">IT TDS</Label>
-                        <p className="text-sm text-muted-foreground">On Rs. {formatCurrency(totalAmount)}</p>
+                          <p className="text-sm text-muted-foreground">On Rs. {formatCurrency(totalAmount)}</p>
                       </div>
                       <div>
                         <Label className="text-sm uppercase">Rate %</Label>
@@ -2965,7 +3279,19 @@ export default function VendorBills() {
               </Button>
             </div>
           </CardContent>
-        </Card>
+        </Card>}
+        {billType === "equipment" && (
+          <Card>
+            <CardContent className="space-y-4 py-4">
+              <div className="grid gap-3 sm:grid-cols-[1fr_180px] sm:items-end">
+                <div><Label className="text-sm uppercase">TDS</Label><p className="text-xs text-muted-foreground">Applied after the bill adjustments shown above.</p></div>
+                <div><Label className="text-xs uppercase">Rate %</Label><Input type="number" min="0" step="0.01" value={tdsRate || ""} onChange={event => setTdsRate(Number(event.target.value) || 0)} data-testid="input-equipment-tds-rate" /></div>
+              </div>
+              <div><Label className="text-sm uppercase">Notes / Remarks</Label><Textarea value={notes} onChange={event => setNotes(event.target.value)} onBlur={event => setNotes(event.target.value.toUpperCase())} placeholder="ENTER NOTES OR REMARKS" className="uppercase" data-testid="input-notes" /></div>
+              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => { resetForm(); setView("list"); }}>Cancel</Button><Button onClick={handleSubmit} disabled={!hireGroups.length || createMutation.isPending || updateMutation.isPending} data-testid="button-save-bill">{(createMutation.isPending || updateMutation.isPending) && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}{editingBillId ? "Update Bill" : "Save Bill"}</Button></div>
+            </CardContent>
+          </Card>
+        )}
 
         <Dialog open={showSetRatesDialog} onOpenChange={setShowSetRatesDialog}>
           <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
@@ -3066,7 +3392,8 @@ export default function VendorBills() {
             <h1 className="text-xl font-bold" data-testid="text-detail-title">BILL DETAIL</h1>
           </div>
           <div className="flex gap-2 flex-wrap items-center">
-            {canExport && ["verified", "approved", "paid"].includes(bill.status) && (
+            {canExport && String(bill.billType || "").toLowerCase() === "equipment" && <EquipmentHireBillDetailOutput bill={bill} />}
+            {canExport && String(bill.billType || "").toLowerCase() !== "equipment" && ["verified", "approved", "paid"].includes(bill.status) && (
               <Button
                 variant="outline"
                 size="sm"
@@ -3161,11 +3488,11 @@ export default function VendorBills() {
 
             {/* 06M-A: Payment Mode / Paid By — entry preferred once PAID, shown
                 whenever values exist. No payment evidence/QR upload here. */}
-            {(bill.status === "paid" || (bill as any).paymentMode || (bill as any).paidBy) && (
+            {(String(bill.billType || "").toLowerCase() === "equipment" || bill.status === "paid" || (bill as any).paymentMode || (bill as any).paidBy) && (
               <VendorBillPaymentDetails
                 key={bill.id}
                 bill={bill}
-                canEditPayment={canMarkPaid && bill.status === "paid"}
+                canEditPayment={canMarkPaid && ["approved", "paid"].includes(bill.status)}
               />
             )}
 
