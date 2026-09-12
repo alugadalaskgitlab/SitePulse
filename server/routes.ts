@@ -1,6 +1,6 @@
 import type { Express, Response } from "express";
 import type { Server } from "http";
-import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, assertValidDieselPhysicalStock } from "./storage";
+import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, assertValidDieselPhysicalStock } from "./storage";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -2177,13 +2177,21 @@ export async function registerRoutes(
   };
 
   app.post(api.dprs.create.path, async (req, res) => {
+    let requestedDprStatus: string | undefined;
     try {
       if (!assertCreate(req, res, "site_dprs")) return;
       const input = api.dprs.create.input.parse(req.body);
+      requestedDprStatus = (input as any).dprStatus;
       const permittedSiteNames = await getPermittedSiteNames(req);
       if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
       }
+      // Draft creation participates in the same project mutex as scope
+      // correction. The token turns a validation-then-write race into a
+      // deterministic retry instead of allowing stale dependent links.
+      const scopeVersionToken = (input as any).boqProjectId != null
+        ? await storage.getProjectScopeVersionToken(Number((input as any).boqProjectId))
+        : null;
       // 030A Part F: validate programme-bar links server-side (draft-lenient
       // when saving a draft — Instruction 031 Part B).
       const linkError = await validateProgressProgrammeLinks(input, { draft: (input as any).dprStatus === "draft" });
@@ -2211,11 +2219,12 @@ export async function registerRoutes(
           });
         }
       }
+      const createOptions = { reuseExistingDraft: req.query.resumeExisting === "1" };
       const dpr = await storage.createDpr(input, input.clientTimestamp, {
         userId: req.authUser?.id ?? null,
         userName: req.authUser ? currentUserName(req) : input.engineer,
         closedAt: new Date(),
-      }, { reuseExistingDraft: req.query.resumeExisting === "1" });
+      }, { ...createOptions, scopeVersionToken });
       const isDraft = (input as any).dprStatus === "draft";
       if (!isDraft) {
         await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${input.engineer || 'Engineer'} submitted DPR for ${input.site} (${input.date})`, isRead: 0 });
@@ -2223,6 +2232,19 @@ export async function registerRoutes(
       }
       res.status(201).json(dpr);
     } catch (err) {
+      if ((err as any)?.code === "SCOPE_CHANGED_DURING_SUBMIT" || (err as any)?.code === "SCOPE_CHANGED_DURING_PLANNING") {
+        const code = requestedDprStatus === "draft"
+          ? "SCOPE_CHANGED_DURING_PLANNING"
+          : "SCOPE_CHANGED_DURING_SUBMIT";
+        return res.status(409).json({ code, message: (err as any).message });
+      }
+      if ((err as any)?.code === "DPR_PROJECT_MISMATCH" || (DprProjectMismatchError && err instanceof DprProjectMismatchError)) {
+        return res.status(400).json({
+          code: "DPR_PROJECT_MISMATCH",
+          message: (err as any).message,
+          itemIds: (err as any).itemIds ?? [],
+        });
+      }
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,
@@ -2255,6 +2277,19 @@ export async function registerRoutes(
       if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
       }
+      const savedProjectId = (existing as any).boqProjectId != null ? Number((existing as any).boqProjectId) : null;
+      const payloadProjectId = (input as any).boqProjectId != null ? Number((input as any).boqProjectId) : null;
+      if (savedProjectId !== payloadProjectId) {
+        return res.status(400).json({
+          code: "DPR_PROJECT_MISMATCH",
+          message: "A draft DPR's BOQ project cannot change while it is being edited.",
+          savedProjectId,
+          payloadProjectId,
+        });
+      }
+      const scopeVersionToken = payloadProjectId != null
+        ? await storage.getProjectScopeVersionToken(payloadProjectId)
+        : null;
       const linkError = await validateProgressProgrammeLinks(input, { draft: true });
       if (linkError) return res.status(400).json({ message: linkError, code: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input, { draft: true });
@@ -2263,10 +2298,24 @@ export async function registerRoutes(
       if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, code: "MATERIAL_OUTCOME_INVALID" });
       const scopeError = await validateProgressScope(input, req, { draft: true });
       if (scopeError) return res.status(422).json({ message: scopeError.error, code: scopeError.code });
-      const updated = await storage.updateDraftDpr(id, input, req.authUser?.id ?? null);
+      // storage.updateDraftDpr(id, input, req.authUser?.id ?? null)
+      // (scopeVersionToken is the fourth argument for the project-mutex handoff)
+      const updated = await storage.updateDraftDpr(id, input, req.authUser?.id ?? null, scopeVersionToken);
       if (!updated) return res.status(404).json({ message: "DPR not found or not a draft" });
       res.json(updated);
     } catch (err) {
+      if ((err as any)?.code === "SCOPE_CHANGED_DURING_PLANNING") {
+        return res.status(409).json({ code: "SCOPE_CHANGED_DURING_PLANNING", message: (err as any).message });
+      }
+      if ((err as any)?.code === "DPR_PROJECT_MISMATCH" || (DprProjectMismatchError && err instanceof DprProjectMismatchError)) {
+        return res.status(400).json({
+          code: "DPR_PROJECT_MISMATCH",
+          message: (err as any).message,
+          savedProjectId: (err as any).savedProjectId,
+          payloadProjectId: (err as any).payloadProjectId,
+          itemIds: (err as any).itemIds ?? [],
+        });
+      }
       if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
       if (handleInsufficientPlantStock(err, res)) return;
@@ -2293,6 +2342,23 @@ export async function registerRoutes(
       if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
       }
+      const savedProjectId = (existing as any).boqProjectId != null ? Number((existing as any).boqProjectId) : null;
+      const payloadProjectId = (input as any).boqProjectId != null ? Number((input as any).boqProjectId) : null;
+      if (savedProjectId !== payloadProjectId) {
+        return res.status(400).json({
+          code: "DPR_PROJECT_MISMATCH",
+          message: "A DPR's BOQ project cannot change when a draft is submitted.",
+          savedProjectId,
+          payloadProjectId,
+        });
+      }
+      // Scope correction and final submit use the BOQ project row as a
+      // transaction mutex. Carry a token from validation into the submit
+      // transaction so a correction committed in between is rejected and
+      // revalidated rather than silently bypassing the corrected scope.
+      const scopeVersionToken = (input as any).boqProjectId != null
+        ? await storage.getProjectScopeVersionToken(Number((input as any).boqProjectId))
+        : null;
       const linkError = await validateProgressProgrammeLinks(input);
       if (linkError) return res.status(400).json({ message: linkError, code: "PROGRAMME_LINK_INVALID" });
       const qtySourceError = await validateProgressQuantitySources(input);
@@ -2322,12 +2388,24 @@ export async function registerRoutes(
         userId: req.authUser?.id ?? null,
         userName: req.authUser ? currentUserName(req) : input.engineer,
         closedAt: new Date(),
-      });
+      }, scopeVersionToken);
       if (!submitted) return res.status(404).json({ message: "DPR not found or not a draft" });
       await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${submitted.engineer || 'Engineer'} submitted DPR for ${submitted.site} (${submitted.date})`, isRead: 0 });
       sendPushToSection("site_dprs", "New DPR Submitted", `${submitted.engineer || 'Engineer'} - ${submitted.site} - ${submitted.date}`, "/site-reports").catch(() => {});
       res.json(submitted);
     } catch (err) {
+      if ((err as any)?.code === "SCOPE_CHANGED_DURING_SUBMIT" || (err as any)?.code === "SCOPE_CHANGED_DURING_PLANNING") {
+        return res.status(409).json({ code: "SCOPE_CHANGED_DURING_SUBMIT", message: (err as any).message });
+      }
+      if ((err as any)?.code === "DPR_PROJECT_MISMATCH" || (DprProjectMismatchError && err instanceof DprProjectMismatchError)) {
+        return res.status(400).json({
+          code: "DPR_PROJECT_MISMATCH",
+          message: (err as any).message,
+          savedProjectId: (err as any).savedProjectId,
+          payloadProjectId: (err as any).payloadProjectId,
+          itemIds: (err as any).itemIds ?? [],
+        });
+      }
       if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
       if (handleInsufficientPlantStock(err, res)) return;
@@ -2524,6 +2602,12 @@ export async function registerRoutes(
           return res.status(403).json({ message: "Access denied for this site" });
         }
       }
+      if (versionOriginal.dprStatus === "draft") {
+        return res.status(409).json({
+          code: "DPR_DRAFT_MUTATION_NOT_ALLOWED",
+          message: "A draft DPR cannot be versioned. Edit, save, or submit the draft instead.",
+        });
+      }
 
       const input = versionSchema.parse(req.body);
       const movedUsageConflict = await movedEquipmentVersionConflict(
@@ -2598,6 +2682,15 @@ export async function registerRoutes(
 
       res.status(201).json(newVersion);
     } catch (err) {
+      if ((err as any)?.code === "DPR_DRAFT_MUTATION_NOT_ALLOWED") {
+        return res.status(409).json({ code: (err as any).code, message: (err as any).message });
+      }
+      if ((err as any)?.code === "DPR_PROJECT_MISMATCH") {
+        return res.status(400).json({
+          code: "DPR_PROJECT_MISMATCH",
+          message: (err as any).message,
+        });
+      }
       if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       if (err instanceof z.ZodError) {
         return res.status(400).json({
@@ -2640,6 +2733,12 @@ export async function registerRoutes(
           return res.status(403).json({ message: "Access denied for this site" });
         }
       }
+      if (cloneSource.dprStatus === "draft") {
+        return res.status(409).json({
+          code: "DPR_DRAFT_MUTATION_NOT_ALLOWED",
+          message: "A draft DPR cannot be cloned. Edit, save, or submit the draft instead.",
+        });
+      }
 
       const cloned = await storage.cloneDpr(id, editedBy, input.clientTimestamp, req.authUser?.id ?? null);
       if (!cloned) {
@@ -2657,6 +2756,9 @@ export async function registerRoutes(
 
       res.status(201).json(cloned);
     } catch (err) {
+      if ((err as any)?.code === "DPR_DRAFT_MUTATION_NOT_ALLOWED") {
+        return res.status(409).json({ code: (err as any).code, message: (err as any).message });
+      }
       if (err instanceof InvalidDieselSourceError) return res.status(400).json({ code: err.code, field: err.field, message: err.message });
       if (err instanceof z.ZodError) {
         return res.status(400).json({
@@ -13123,7 +13225,35 @@ export async function registerRoutes(
     }
   });
 
-  const parseScopeSegmentBody = (body: any) => {
+  // Narrow administrative preflight for correcting an eligible original
+  // confirmed segment. Ordinary confirmed edits must continue through PATCH
+  // and its revision/supersede workflow.
+  app.get("/api/boq/projects/:id/scope-segments/:segId/initial-correction-eligibility", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const projectId = Number(req.params.id);
+      const segId = Number(req.params.segId);
+      if (!Number.isInteger(projectId) || !Number.isInteger(segId) || projectId <= 0 || segId <= 0) {
+        return res.status(400).json({ error: "invalid_scope_segment_id" });
+      }
+      const result = await storage.getInitialScopeCorrectionEligibility(segId);
+      if (result.projectId == null) return res.status(404).json({ error: "scope_segment_not_found" });
+      if (Number(result.projectId) !== projectId) return res.status(404).json({ error: "scope_segment_not_found" });
+      return res.json({
+        ...result,
+        affectedDrafts: result.affectedDrafts.map((draft: any) => ({
+          ...draft,
+          editUrl: draft.editUrl ?? `/site/edit/${draft.id}?draft`,
+        })),
+      });
+    } catch (err: any) {
+      console.error("GET initial scope correction eligibility:", err);
+      return res.status(500).json({ error: "Failed to check initial scope correction eligibility" });
+    }
+  });
+
+  const parseScopeSegmentBody = (body: any, preserveOmitted = false) => {
+    const has = (key: string) => !preserveOmitted || Object.prototype.hasOwnProperty.call(body ?? {}, key);
     const segmentType = body?.segmentType;
     if (!(SCOPE_SEGMENT_TYPES as readonly string[]).includes(segmentType)) throw new Error("segmentType must be one of: working_reach, no_scope, temporary_block, withdrawn");
     const chainageFrom = Number(body?.chainageFrom);
@@ -13138,15 +13268,21 @@ export async function registerRoutes(
       : null;
     const str = (v: any, max = 500) => typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
     const dateStr = (v: any) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
-    return {
+    const parsed: Record<string, any> = {
       segmentType,
-      label: str(body?.label, 80),
       chainageFrom, chainageTo,
+    };
+    const optional: Record<string, any> = {
+      label: str(body?.label, 80),
       side: isBarSide(body?.side) ? body.side : null,
       reason: str(body?.reason),
       applicability,
-      categoryIds: applicability === "categories" ? idList(body?.categoryIds) : null,
-      itemIds: applicability === "items" ? idList(body?.itemIds) : null,
+      categoryIds: applicability === "categories"
+        ? idList(body?.categoryIds)
+        : preserveOmitted && !has("applicability") ? idList(body?.categoryIds) : null,
+      itemIds: applicability === "items"
+        ? idList(body?.itemIds)
+        : preserveOmitted && !has("applicability") ? idList(body?.itemIds) : null,
       effectiveFrom: dateStr(body?.effectiveFrom),
       effectiveTo: dateStr(body?.effectiveTo),
       deptReference: str(body?.deptReference),
@@ -13159,6 +13295,10 @@ export async function registerRoutes(
       originalScopeNote: str(body?.originalScopeNote, 1000),
       revisedScopeNote: str(body?.revisedScopeNote, 1000),
     };
+    for (const [key, value] of Object.entries(optional)) {
+      if (has(key)) parsed[key] = value;
+    }
+    return parsed;
   };
 
   app.post("/api/boq/projects/:id/scope-segments", async (req, res) => {
@@ -13205,6 +13345,61 @@ export async function registerRoutes(
       if (msg.startsWith("SEGMENT_")) return res.status(422).json({ error: msg });
       console.error("PATCH scope-segments:", err);
       res.status(500).json({ error: "Failed to update scope segment" });
+    }
+  });
+
+  app.post("/api/boq/scope-segments/:segId/correct-initial", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const segId = Number(req.params.segId);
+      if (!Number.isInteger(segId) || segId <= 0) return res.status(400).json({ error: "invalid_scope_segment_id" });
+      const correctionReason = typeof req.body?.correctionReason === "string"
+        ? req.body.correctionReason.trim()
+        : "";
+      if (!correctionReason) {
+        return res.status(400).json({ error: "correction_reason_required", message: "A reason is required for an initial scope correction." });
+      }
+      if (correctionReason.length > 2000) {
+        return res.status(400).json({ error: "correction_reason_too_long" });
+      }
+      let data: any;
+      // Correction is a partial update: omitted optional fields must remain
+      // untouched rather than being materialized as null.
+      try { data = parseScopeSegmentBody(req.body, true); }
+      catch (e: any) { return res.status(400).json({ error: e.message }); }
+      const authUser = (req as any).authUser;
+      const result = await storage.correctInitialScopeSegment(segId, data, correctionReason, {
+        userId: authUser?.id ?? null,
+        userName: currentUserName(req),
+        userRole: authUser?.isOwner ? "owner" : authUser?.isAdmin ? "admin" : null,
+      });
+      return res.json({
+        ...result.segment,
+        correctedInPlace: true,
+        before: result.before,
+        affectedDrafts: result.affectedDrafts.map((draft: any) => ({
+          ...draft,
+          editUrl: draft.editUrl ?? `/site/edit/${draft.id}?draft`,
+        })),
+      });
+    } catch (err: any) {
+      if (err instanceof InitialScopeCorrectionBlockedError || err?.code === "INITIAL_SCOPE_CORRECTION_BLOCKED") {
+        return res.status(409).json({
+          error: "initial_scope_correction_blocked",
+          code: "INITIAL_SCOPE_CORRECTION_BLOCKED",
+          message: err.message,
+          blockers: err.blockers ?? [],
+          affectedDrafts: (err.affectedDrafts ?? []).map((draft: any) => ({
+            ...draft,
+            editUrl: draft.editUrl ?? `/site/edit/${draft.id}?draft`,
+          })),
+        });
+      }
+      const msg = String(err?.message ?? "");
+      if (msg === "SEGMENT_NOT_FOUND" || msg === "PROJECT_NOT_FOUND") return res.status(404).json({ error: msg.toLowerCase() });
+      if (msg === "CORRECTION_REASON_REQUIRED") return res.status(400).json({ error: "correction_reason_required" });
+      console.error("POST initial scope correction:", err);
+      return res.status(500).json({ error: "Failed to correct initial scope segment" });
     }
   });
 
@@ -16568,6 +16763,11 @@ export async function registerRoutes(
       const projectId = parseInt(req.params.id);
       const user = (req as any).authUser ?? (req as any).user;
       const body = req.body ?? {};
+      // Capture the scope read before any arrangement validation. The create
+      // transaction rechecks this token after taking the project mutex, so a
+      // correction committed while this request was validating cannot result
+      // in a stale arrangement insert.
+      const scopeVersionToken = await storage.getProjectScopeVersionToken(projectId);
 
       const { materialLabel, arrangementType } = body;
       // saveIntent: "draft" = Save Draft; "submit" = Submit for Approval (single request, no second PATCH)
@@ -16850,7 +17050,7 @@ export async function registerRoutes(
         notes: body.notes?.trim() || null,
         sourceExcavationBoqItemId: reuseSourceCheck.sourceId,
         preparedByUserId: user?.id ?? null,
-      });
+      }, scopeVersionToken);
 
       await (storage as any).logAudit({ userName: user?.fullName ?? "Unknown", userRole: user?.role ?? null,
         module: "earthwork_arrangements",
@@ -16864,6 +17064,13 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("POST /api/boq/projects/:id/earthwork-arrangements:", err);
       const errMsg = String(err?.message ?? "");
+      if (err?.code === "SCOPE_CHANGED_DURING_PLANNING"
+        || (ScopeChangedDuringPlanningError && err instanceof ScopeChangedDuringPlanningError)) {
+        return res.status(409).json({
+          code: "SCOPE_CHANGED_DURING_PLANNING",
+          message: err.message,
+        });
+      }
       // Schema errors — return actionable column/table name
       if (errMsg.includes("relation") || errMsg.includes("does not exist") || errMsg.includes("column")) {
         const colMatch = errMsg.match(/column "([^"]+)"/);
@@ -18404,6 +18611,10 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
+      // Scope is read below and then used to compute every generated bar.
+      // Carry this token into each write so a correction cannot be silently
+      // followed by writes computed from the old scope.
+      const scopeVersionToken = await storage.getProjectScopeVersionToken(projectId);
       const { generateSequencedProgramme } = await import("@shared/programmeSequencer");
       const { calculateAutoDurationFull } = await import("@shared/planningEngine");
 
@@ -18540,26 +18751,24 @@ export async function registerRoutes(
       // Skipped in dry-run mode so the diagnostic call doesn't mutate saved settings.
       // 029C: DEFERRED until after the overallocation guard — a blocked run must
       // leave project state completely untouched.
-      const persistSequenceOptions = async () => {
-        await storage.upsertBoqProgramSettings(projectId, {
-          sequenceOptions: {
-            fronts: requestedFronts >= 1 ? fronts : null,
-            staggerMonths,
-            lagMonths,
-            structureGroups: _strGroups >= 1 ? structureGroups : null,
-            bridgeGroups: _brgGroups >= 1 ? bridgeGroups : null,
-            enableStructureFronts: !disableStructureFronts,
-            stretches: stretches ?? null, // Instruction 029 — restore the stretch table next open
-            // Scope-load provenance: fingerprint of the confirmed Project Scope
-            // at the moment the stretches were loaded from it. Lets the dialog
-            // warn "scope has changed since these stretches were loaded" — no
-            // silent regeneration, ever. null = stretches not scope-loaded.
-            scopeFingerprint: typeof req.body?.scopeFingerprint === "string" && req.body.scopeFingerprint
-              ? String(req.body.scopeFingerprint).slice(0, 4000)
-              : null,
-          },
-        } as any);
-      };
+      const sequenceSettings = {
+        sequenceOptions: {
+          fronts: requestedFronts >= 1 ? fronts : null,
+          staggerMonths,
+          lagMonths,
+          structureGroups: _strGroups >= 1 ? structureGroups : null,
+          bridgeGroups: _brgGroups >= 1 ? bridgeGroups : null,
+          enableStructureFronts: !disableStructureFronts,
+          stretches: stretches ?? null, // Instruction 029 — restore the stretch table next open
+          // Scope-load provenance: fingerprint of the confirmed Project Scope
+          // at the moment the stretches were loaded from it. Lets the dialog
+          // warn "scope has changed since these stretches were loaded" — no
+          // silent regeneration, ever. null = stretches not scope-loaded.
+          scopeFingerprint: typeof req.body?.scopeFingerprint === "string" && req.body.scopeFingerprint
+            ? String(req.body.scopeFingerprint).slice(0, 4000)
+            : null,
+        },
+      } as any;
 
       // Non-destructive rerun: only remove previously auto-generated bars so that
       // any bars the planner manually placed (source = "manual") are preserved.
@@ -18892,11 +19101,6 @@ export async function registerRoutes(
 
       // 029C: deferred mutations — only run once the overallocation guard has
       // passed (or been explicitly overridden), so a blocked run changes nothing.
-      if (!dryRun) {
-        await persistSequenceOptions();
-        for (const id of structurePreDeleteIds) await storage.deleteWorkProgramBar(id);
-      }
-
       const regenSummary = {
         toRecreate: regenAutoBars.length - reconcilePlan.length - blockedBars.length,
         preservedUpdated: reconcilePlan.length,
@@ -18980,13 +19184,6 @@ export async function registerRoutes(
         });
       }
 
-      // Mark unclassifiable items as needsReview in the DB (fire-and-forget).
-      if (unclassifiedItemIds.length > 0) {
-        storage.bulkSetBoqItemsNeedsReview(unclassifiedItemIds, true).catch((e: any) =>
-          console.error("auto-sequence: bulkSetNeedsReview:", e?.message ?? e),
-        );
-      }
-
       // SAFETY: never wipe the existing programme unless we actually built new bars.
       if (!bars.length) {
         return res.status(422).json({
@@ -18998,7 +19195,12 @@ export async function registerRoutes(
         });
       }
 
-      // Build the full new set first; only then replace the old bars.
+      // Build the full new set first; only then replace the old bars.  The
+      // arrays are handed to one storage transaction below, which holds the
+      // project mutex across settings, deletes, updates, and inserts.
+      const programmeUpdates: Array<{ id: number; data: any }> = [];
+      const programmeDeleteIds = new Set<number>(structurePreDeleteIds);
+      const programmeInserts: any[] = [];
       let created = 0;
       const insertErrors: string[] = [];
       // ── Instruction 029 Part D: APPLY the regeneration plan computed above ──
@@ -19020,7 +19222,7 @@ export async function registerRoutes(
             return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
           })(),
         } : {};
-        await storage.updateWorkProgramBar(p.barId, {
+        programmeUpdates.push({ id: p.barId, data: {
           reachLabel: nb.reachLabel,
           chainageFrom: nb.chainageFrom,
           chainageTo: nb.chainageTo,
@@ -19037,7 +19239,7 @@ export async function registerRoutes(
           // 029B: front + display order carry the same never-wipe rule.
           ...((nb as any).executionFront != null ? { executionFront: (nb as any).executionFront } : {}),
           ...((nb as any).executionOrder != null ? { executionOrder: (nb as any).executionOrder } : {}),
-        } as any);
+        } as any });
       }
       // 2. Delete only unprotected matched bars (blocked bars stay untouched).
       const protectedIds = new Set([
@@ -19046,23 +19248,30 @@ export async function registerRoutes(
       ]);
       for (const b of regenAutoBars) {
         if (protectedIds.has(b.id)) continue; // preserved in place or blocked — never delete
-        await storage.deleteWorkProgramBar(b.id);
+        programmeDeleteIds.add(b.id);
       }
       // 3. Insert the remaining new bars. (`created` counts INSERTS only —
       // reconciled bars are reported separately as regenSummary.preservedUpdated.)
-      let deletedCount = 0;
-      for (const b of regenAutoBars) if (!protectedIds.has(b.id)) deletedCount++;
       for (let i = 0; i < bars.length; i++) {
         if (consumedNewBars.has(i)) continue; // applied as in-place update, not an insert
         // 029C: allocationRule/allocationNote are preview-only fields, not DB columns.
         const { allocationRule: _ar, allocationNote: _an, ...b } = bars[i] as any;
-        try {
-          await storage.upsertWorkProgramBar({ ...b, boqProjectId: projectId } as any);
-          created++;
-        } catch (e: any) {
-          insertErrors.push(`item ${b.boqItemId}: ${e?.message ?? String(e)}`);
-        }
+        programmeInserts.push({ ...b, boqProjectId: projectId } as any);
       }
+
+      const mutation = await storage.applyWorkProgrammeMutation(
+        projectId,
+        {
+          settings: sequenceSettings,
+          needsReviewItemIds: unclassifiedItemIds,
+          deleteBarIds: Array.from(programmeDeleteIds),
+          updates: programmeUpdates,
+          inserts: programmeInserts,
+        },
+        scopeVersionToken,
+      );
+      created = programmeInserts.length;
+      const deletedCount = Number(mutation?.deleted ?? 0);
       // Use the sequencer's rich unclassified-item records.
       // Each record already has: boqItemId, description, workCategory, unit,
       // resolvedWorkType, skipReason — built inside generateSequencedProgramme.
@@ -19107,6 +19316,9 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       console.error("auto-sequence:", err);
+      if (err?.code === "SCOPE_CHANGED_DURING_PLANNING" || (ScopeChangedDuringPlanningError && err instanceof ScopeChangedDuringPlanningError)) {
+        return res.status(409).json({ code: "SCOPE_CHANGED_DURING_PLANNING", message: err.message });
+      }
       res.status(500).json({ error: `Failed to auto-sequence programme: ${err?.message ?? String(err)}` });
     }
   });
@@ -19505,7 +19717,7 @@ export async function registerRoutes(
   // "auto_sequence" decision.
   async function runStructureAutoSequence(
     projectId: number,
-    opts: { barIds?: number[]; scope?: "unscheduled" | "all" } = {},
+    opts: { barIds?: number[]; scope?: "unscheduled" | "all"; scopeVersionToken?: string } = {},
   ): Promise<{ updated: number; structures: number; fronts: number; needsReviewCount: number }> {
     const project = await storage.getBoqProject(projectId) as any;
     const pSettings = await storage.getBoqProgramSettings(projectId) as any;
@@ -19599,9 +19811,9 @@ export async function registerRoutes(
       productivitySettings,
     });
 
-    let updated = 0;
+    const programmeUpdates: Array<{ id: number; data: any }> = [];
     for (const r of results) {
-      await storage.updateWorkProgramBar(r.barId, {
+      programmeUpdates.push({ id: r.barId, data: {
         startMonth: r.startMonth,
         endMonth: r.endMonth,
         startDate: r.startDate,
@@ -19612,11 +19824,15 @@ export async function registerRoutes(
         durationSource: r.durationSource,
         needsReview: r.needsReview,
         scheduled: true,
-      } as any);
-      updated++;
+      } as any });
     }
 
-    return { updated, structures, fronts, needsReviewCount };
+    const mutation = await storage.applyWorkProgrammeMutation(
+      projectId,
+      { updates: programmeUpdates },
+      opts.scopeVersionToken,
+    );
+    return { updated: mutation?.updated ?? 0, structures, fronts, needsReviewCount };
   }
 
   // Standalone endpoint: "Auto-sequence imported structure bars" button.
@@ -19625,17 +19841,21 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
       const scope: "unscheduled" | "all" = req.body?.scope === "all" ? "all" : "unscheduled";
+      const scopeVersionToken = await storage.getProjectScopeVersionToken(projectId);
       const existingBars = await storage.getWorkProgramBars(projectId);
       if (sendDirectScheduleMutationBlock(
         res,
         await directScheduleMutationBlock(projectId, existingBars as any[]),
       )) return;
-      const summary = await runStructureAutoSequence(projectId, { scope });
+      const summary = await runStructureAutoSequence(projectId, { scope, scopeVersionToken });
       res.json(summary);
     } catch (err: any) {
       console.error("auto-sequence-structures:", err);
       if (err instanceof DirectScheduleMutationBlockedError) {
         return res.status(err.block.status).json({ error: err.block.error, message: err.block.message });
+      }
+      if (err?.code === "SCOPE_CHANGED_DURING_PLANNING" || (ScopeChangedDuringPlanningError && err instanceof ScopeChangedDuringPlanningError)) {
+        return res.status(409).json({ code: "SCOPE_CHANGED_DURING_PLANNING", message: err.message });
       }
       res.status(500).json({ error: `Failed to auto-sequence structures: ${err?.message ?? String(err)}` });
     }
@@ -19649,6 +19869,9 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
+      // Capture before item/settings reads. Bar deletes and inserts recheck
+      // this token while holding the project mutex.
+      const scopeVersionToken = await storage.getProjectScopeVersionToken(projectId);
       const { rows, mode = "append", onMissingDates } = req.body as {
         rows: Array<{
           structureId: string;
@@ -19701,11 +19924,6 @@ export async function registerRoutes(
       const itemById = new Map(allItems.map((it: any) => [it.id, it]));
       const itemByCode = new Map(allItems.map((it: any) => [String(it.itemCode ?? "").trim().toLowerCase(), it]));
 
-      // Replace mode: wipe existing structure-location bars for this project
-      if (mode === "replace") {
-        await storage.deleteStructureLocationBars(projectId);
-      }
-
       const results: { row: number; status: "created" | "skipped"; structureId?: string; reason?: string }[] = [];
       let created = 0;
       let skipped = 0;
@@ -19713,6 +19931,7 @@ export async function registerRoutes(
       let uomMismatchRows = 0;
       let missingDateRows = 0;
       const warnings: string[] = [];
+      const importInserts: any[] = [];
       // Track imported qty per BOQ item for over-planned detection
       const importedQtyByItemId = new Map<number, number>();
       const createdBarIds: number[] = [];
@@ -19857,8 +20076,7 @@ export async function registerRoutes(
             })()
           : null;
 
-        try {
-          const savedBar = await storage.upsertWorkProgramBar({
+        importInserts.push({
             boqProjectId: projectId,
             boqItemId: boqItem.id,
             reachLabel: r.structureId,
@@ -19885,22 +20103,31 @@ export async function registerRoutes(
             boqExcelRow: r.boqExcelRow ?? null,
             notes: r.remarks ?? null,
           } as any);
-          created++;
-          if (savedBar?.id != null) createdBarIds.push(savedBar.id);
-          results.push({ row: i + 1, status: "created", structureId: r.structureId });
-        } catch (e: any) {
-          results.push({ row: i + 1, status: "skipped", structureId: r.structureId, reason: e?.message ?? String(e) });
-          skipped++;
-        }
+        created++;
+        results.push({ row: i + 1, status: "created", structureId: r.structureId });
       }
+
+      // Replace/delete and every imported insert share one project-locked
+      // transaction. A correction can therefore never observe the temporary
+      // empty programme that existed when each bar was written separately.
+      const importMutation = await storage.applyWorkProgrammeMutation(
+        projectId,
+        {
+          deleteStructureLocationBars: mode === "replace",
+          inserts: importInserts,
+        },
+        scopeVersionToken,
+      );
+      createdBarIds.push(...((importMutation as any)?.insertedBars ?? []).map((bar: any) => Number(bar.id)).filter(Number.isFinite));
 
       // If the client asked to auto-sequence unscheduled rows right away, do it
       // now for just the bars created in this import.
       let autoSequenceSummary: { updated: number; structures: number; fronts: number; needsReviewCount: number } | null = null;
       if (onMissingDates === "auto_sequence" && createdBarIds.length) {
         try {
-          autoSequenceSummary = await runStructureAutoSequence(projectId, { barIds: createdBarIds });
+          autoSequenceSummary = await runStructureAutoSequence(projectId, { barIds: createdBarIds, scopeVersionToken });
         } catch (e: any) {
+          if (e?.code === "SCOPE_CHANGED_DURING_PLANNING" || (ScopeChangedDuringPlanningError && e instanceof ScopeChangedDuringPlanningError)) throw e;
           warnings.push(`Auto-sequence after import failed: ${e?.message ?? String(e)}`);
         }
       }
@@ -19941,6 +20168,9 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       console.error("POST /api/boq/projects/:id/import-structure:", err);
+      if (err?.code === "SCOPE_CHANGED_DURING_PLANNING" || (ScopeChangedDuringPlanningError && err instanceof ScopeChangedDuringPlanningError)) {
+        return res.status(409).json({ code: "SCOPE_CHANGED_DURING_PLANNING", message: err.message });
+      }
       res.status(500).json({ error: `Failed to import structure schedule: ${err?.message ?? String(err)}` });
     }
   });
@@ -19952,10 +20182,14 @@ export async function registerRoutes(
       const projectId = parseInt(req.params.id);
       const { bars } = req.body;
       if (!Array.isArray(bars)) return res.status(400).json({ error: "bars must be an array" });
-      await storage.restoreWorkProgramBars(projectId, bars);
+      const scopeVersionToken = await storage.getProjectScopeVersionToken(projectId);
+      await storage.restoreWorkProgramBars(projectId, bars, scopeVersionToken);
       res.json({ success: true, restored: bars.length });
     } catch (err: any) {
       console.error("programme restore:", err);
+      if (err?.code === "SCOPE_CHANGED_DURING_PLANNING" || (ScopeChangedDuringPlanningError && err instanceof ScopeChangedDuringPlanningError)) {
+        return res.status(409).json({ code: "SCOPE_CHANGED_DURING_PLANNING", message: err.message });
+      }
       res.status(500).json({ error: `Failed to restore programme: ${err?.message ?? String(err)}` });
     }
   });

@@ -19,7 +19,7 @@ description: Corridor vs executable scope — shared eligible-scope service, seq
 ## Integration points
 - Sequencer: optional `SeqOptions.scopeCoverage(boqItemId, stretch)` callback; when present, pav items emit one bar per executable sub-range, qty ∝ eligible side-len / contractual total; `scopeSummary` on result. Callback absent ⇒ legacy path untouched.
 - Auto Sequence resolves Working Reach applicability per BOQ item. An unchecked reach receives no bar for that item, and the item's complete applicable quantity is redistributed across the remaining enabled reaches rather than reduced.
-- Supersede-and-revise: confirmed segments are never edited in place — `updateProjectScopeSegment` creates a draft revision (`revisionOf`) and marks the old row superseded.
+- Ordinary confirmed edits use supersede-and-revise. Initial-entry correction is a separate audited exception, permitted only before committed downstream use and without scope revision history.
 - DPR create/draft/submit + earthwork-arrangement POST share `validateProgressScope`/`evaluateDprScope`; overrides need project_scope.approve + reason, stamped into progress_entries scope_* columns; cloneDpr copies them.
 - Startup: `storage.ensureProjectScopeSchema()` (pre-routes in server/index.ts) idempotently creates project_scope_segments + corridor + progress scope columns — prod gets schema at publish; do not rely on drizzle push.
 
@@ -33,3 +33,16 @@ description: Corridor vs executable scope — shared eligible-scope service, seq
 - `shared/autoSequenceScope.ts` is the only bridge from confirmed scope records → Auto-Sequence stretch rows: one confirmed working reach = ONE row (never auto-split at no-scope boundaries — the eligibility engine clips during allocation); non-reach records are constraints, never rows.
 - Scope-load provenance = `scopeFingerprint` stored inside sequenceOptions (persisted only on real generation, dry run never persists). **Any manual stretch mutation must clear the fingerprint** (setSeqStretchesManual wrapper in WorkProgramme) or the stale-scope warning misleads.
 - Dry-run `regenSummary.stretchScope` is an item-agnostic corridor-level preview (resolveEligibleScope with null item); real allocation stays per-item. Label the UI accordingly.
+
+## Initial-entry correction safety
+An ordinary draft DPR alone need not prevent correcting original scope, but draft status does not prove all its links are harmless. Cut/fill and equipment allocations need independent inspection.
+
+**Why:** Draft saves already persist some links even though stock posting and equipment finalization wait for submission. Historical bridge work outside the app is not itself a persisted dependency.
+
+**How to apply:** Preserve draft contents, block unproven links with a specific reason, and show affected drafts for review. Do not silently rewrite them or relax submit validation.
+
+Scope-dependent computation must capture a scope token before reading scope and check it under the project lock when writing; locking only the final insert leaves a stale-computation race.
+
+**Why:** Correction can otherwise commit between generation/submit validation and persistence. Delete/restore also must not expose a temporary empty programme to eligibility checks.
+
+**How to apply:** New planning/import/submit writers must participate in this coordination. Correction payloads must preserve omitted fields rather than materializing them as null.

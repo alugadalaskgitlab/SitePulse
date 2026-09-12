@@ -256,8 +256,34 @@ vi.mock("../server/storage", () => {
     storageCalls.audits.push(entry);
     return { id: 1, ...entry };
   });
+  methods.applyWorkProgrammeMutation = vi.fn(async (_projectId: number, operation: any) => {
+    const deleted = [
+      ...(operation.deleteBarIds ?? []),
+      ...(operation.deleteStructureLocationBars
+        ? fx.bars.filter((bar: any) => bar.planningMode === "structure_location").map((bar: any) => bar.id)
+        : []),
+    ];
+    for (const id of deleted) storageCalls.deleted.push(Number(id));
+    for (const change of operation.updates ?? []) {
+      storageCalls.updated.push({ id: Number(change.id), data: change.data });
+    }
+    const insertedBars = (operation.inserts ?? []).map((data: any, index: number) => ({
+      id: 91000 + storageCalls.upserted.length + index + 1,
+      ...data,
+    }));
+    storageCalls.upserted.push(...(operation.inserts ?? []));
+    return {
+      created: insertedBars.length,
+      updated: (operation.updates ?? []).length,
+      deleted: deleted.length,
+      insertedBars,
+    };
+  });
 
-  return { storage: storageProxy };
+  class ScopeChangedDuringPlanningError extends Error {
+    readonly code = "SCOPE_CHANGED_DURING_PLANNING";
+  }
+  return { storage: storageProxy, ScopeChangedDuringPlanningError };
 });
 
 let app: express.Express;

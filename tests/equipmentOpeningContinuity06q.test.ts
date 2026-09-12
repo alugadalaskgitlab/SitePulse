@@ -139,7 +139,10 @@ describe("06Q resolver SQL — deterministic ordering & validity filters (source
   it("null closings skipped in BOTH sources (zero remains valid — no > 0 filter)", () => {
     expect(block).toContain("isNotNull(equipmentUsage.closingReading)");
     expect(block).toContain("isNotNull(equipmentLogs.closingReading)");
-    expect(block).not.toMatch(/closingReading[^,\n]*>\s*0/);
+    // The resolver uses an explicit SQL null predicate; do not couple this
+    // source pin to incidental whitespace or comments around a comparison.
+    expect(block).not.toContain("gt(equipmentUsage.closingReading");
+    expect(block).not.toContain("gt(equipmentLogs.closingReading");
   });
   it("DPR candidates only from live submitted DPRs (not deleted / superseded / draft)", () => {
     expect(block).toContain("eq(dprs.isDeleted, false)");
@@ -253,6 +256,6 @@ describe("06Q Test S — SiteEdit (source pins)", () => {
     expect(s).toMatch(/wasExistingWithReading[\s\S]{0,400}window\.confirm/);
   });
   it("isNew is client-only — stripped from the save payload", () => {
-    expect(s).toMatch(/const \{ isNew: _isNew, \.\.\.rest \} = eq;/);
+    expect(s).toMatch(/const \{\s*isNew: _isNew,\s*workAssignmentEdited,\s*activitySegments,\s*activityAllocations,\s*\.\.\.rest\s*\} = eq;/);
   });
 });

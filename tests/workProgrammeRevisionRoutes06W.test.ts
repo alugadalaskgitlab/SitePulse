@@ -102,6 +102,23 @@ vi.mock("../server/storage", () => {
     calls.barUpdates.push({ id, data });
     return { id, ...data };
   });
+  methods.applyWorkProgrammeMutation = vi.fn(async (_projectId: number, operation: any) => {
+    for (const change of operation.updates ?? []) {
+      calls.barUpdates.push({ id: Number(change.id), data: change.data });
+    }
+    for (const id of operation.deleteBarIds ?? []) calls.barDeletes.push(Number(id));
+    const insertedBars = (operation.inserts ?? []).map((data: any, index: number) => ({
+      id: 9900 + calls.barInserts.length + index + 1,
+      ...data,
+    }));
+    calls.barInserts.push(...(operation.inserts ?? []));
+    return {
+      created: insertedBars.length,
+      updated: (operation.updates ?? []).length,
+      deleted: (operation.deleteBarIds ?? []).length,
+      insertedBars,
+    };
+  });
   methods.upsertWorkProgramBar = vi.fn(async (data: any) => {
     calls.barInserts.push(data);
     return { id: 9900 + calls.barInserts.length, ...data };

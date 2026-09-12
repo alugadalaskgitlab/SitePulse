@@ -7,7 +7,7 @@
  * never be called.
  */
 
-import { vi, describe, it, expect, beforeAll } from "vitest";
+import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
 import type { Request, Response, NextFunction } from "express";
 import express from "express";
 import { createServer } from "http";
@@ -190,6 +190,42 @@ describe("DPR /clone site-scope enforcement", () => {
       .send({})
       .set("Content-Type", "application/json");
 
+    expect(cloneDprSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("DPR draft clone/version guard", () => {
+  beforeEach(() => {
+    getUserPermittedSiteIdsSpy.mockResolvedValue([PERMITTED_SITE_ID]);
+    getSitesSpy.mockResolvedValue([{ id: PERMITTED_SITE_ID, name: PERMITTED_SITE_NAME }]);
+    getDprSpy.mockResolvedValue({
+      ...DPR_OTHER_SITE,
+      site: PERMITTED_SITE_NAME,
+      dprStatus: "draft",
+    });
+    createVersionDprSpy.mockClear();
+    cloneDprSpy.mockClear();
+  });
+
+  it("rejects versioning a draft with 409 before storage mutation", async () => {
+    const res = await request(app)
+      .post("/api/dprs/99/version")
+      .send({})
+      .set("Content-Type", "application/json");
+
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({ code: "DPR_DRAFT_MUTATION_NOT_ALLOWED" });
+    expect(createVersionDprSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects cloning a draft with 409 before storage mutation", async () => {
+    const res = await request(app)
+      .post("/api/dprs/99/clone")
+      .send({})
+      .set("Content-Type", "application/json");
+
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({ code: "DPR_DRAFT_MUTATION_NOT_ALLOWED" });
     expect(cloneDprSpy).not.toHaveBeenCalled();
   });
 });

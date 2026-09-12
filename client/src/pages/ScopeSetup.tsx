@@ -65,6 +65,8 @@ export default function ScopeSetup() {
   const { data: recon } = useQuery<any>({ queryKey: recKey });
   const { data: categories = [] } = useQuery<any[]>({ queryKey: [`/api/boq/projects/${projectId}/categories`] });
   const { data: items = [] } = useQuery<any[]>({ queryKey: [`/api/boq/projects/${projectId}/items`] });
+  const { data: authMe } = useQuery<{ user?: { isAdmin?: boolean; isOwner?: boolean } } | null>({ queryKey: ["/api/auth/me"] });
+  const canCorrectInitialScope = !!authMe?.user && (authMe.user.isAdmin === true || authMe.user.isOwner === true);
 
   // ── corridor card state ────────────────────────────────────────────────────
   const [corridorEdit, setCorridorEdit] = useState(false);
@@ -89,16 +91,31 @@ export default function ScopeSetup() {
   // Status of the record being edited — drives the heading ("Edit draft…" vs
   // "Revise confirmed…") and the save button ("Save changes" vs "Create revision").
   const [editingStatus, setEditingStatus] = useState<"draft" | "confirmed" | null>(null);
+  const [correctionId, setCorrectionId] = useState<number | null>(null);
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correctionConfirmed, setCorrectionConfirmed] = useState(false);
+  const [correctionResultDrafts, setCorrectionResultDrafts] = useState<any[]>([]);
   const [form, setForm] = useState<SegFormState>(emptyScopeForm("working_reach"));
   const set = (patch: Partial<SegFormState>) => setForm(f => ({ ...f, ...patch }));
 
-  const closeForm = () => { setShowForm(false); setEditingId(null); setEditingStatus(null); };
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setEditingStatus(null);
+    setCorrectionId(null);
+    setCorrectionReason("");
+    setCorrectionConfirmed(false);
+  };
 
   const openQuickAdd = (t: ScopeSegmentType) => {
     // Truly blank form — never carries over state from a cancelled edit.
     setForm(emptyScopeForm(t));
     setEditingId(null);
     setEditingStatus(null);
+    setCorrectionId(null);
+    setCorrectionReason("");
+    setCorrectionConfirmed(false);
+    setCorrectionResultDrafts([]);
     setShowForm(true);
   };
 
@@ -106,8 +123,28 @@ export default function ScopeSetup() {
     setForm(scopeFormFromSegment(s));
     setEditingId(s.id);
     setEditingStatus((s as any).status === "confirmed" ? "confirmed" : "draft");
+    setCorrectionId(null);
+    setCorrectionReason("");
+    setCorrectionConfirmed(false);
+    setCorrectionResultDrafts([]);
     setShowForm(true);
   };
+
+  const openInitialCorrection = (s: ProjectScopeSegment) => {
+    setForm(scopeFormFromSegment(s));
+    setEditingId(s.id);
+    setEditingStatus("confirmed");
+    setCorrectionId(s.id);
+    setCorrectionReason("");
+    setCorrectionConfirmed(false);
+    setCorrectionResultDrafts([]);
+    setShowForm(true);
+  };
+
+  const correctionEligibilityQuery = useQuery<any>({
+    queryKey: [`/api/boq/projects/${projectId}/scope-segments/${correctionId}/initial-correction-eligibility`],
+    enabled: canCorrectInitialScope && correctionId != null,
+  });
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: segKey });
@@ -132,16 +169,29 @@ export default function ScopeSetup() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const body = buildBody();
-      const res = editingId
-        ? await apiRequest("PATCH", `/api/boq/scope-segments/${editingId}`, body)
-        : await apiRequest("POST", `/api/boq/projects/${projectId}/scope-segments`, body);
+      const body = {
+        ...buildBody(),
+        ...(correctionId != null ? { correctionReason } : {}),
+      };
+      const res = correctionId != null
+        ? await apiRequest("POST", `/api/boq/scope-segments/${correctionId}/correct-initial`, body)
+        : editingId
+          ? await apiRequest("PATCH", `/api/boq/scope-segments/${editingId}`, body)
+          : await apiRequest("POST", `/api/boq/projects/${projectId}/scope-segments`, body);
       return res.json();
     },
-    onSuccess: (row: any) => {
+     onSuccess: (row: any) => {
+       if (row?.correctedInPlace) setCorrectionResultDrafts(row.affectedDrafts ?? []);
       invalidateAll();
       closeForm();
-      toast({ title: row?.revised ? "Revision created (previous record kept as superseded)" : "Scope record saved as draft" });
+      toast({
+        title: row?.correctedInPlace
+          ? "Initial confirmed scope corrected in place"
+          : row?.revised ? "Revision created (previous record kept as superseded)" : "Scope record saved as draft",
+        description: row?.affectedDrafts?.length
+          ? `${row.affectedDrafts.length} draft DPR(s) may need review before submission.`
+          : undefined,
+      });
     },
     onError: (e: any) => toast({ title: "Could not save", description: String(e?.message ?? e), variant: "destructive" }),
   });
@@ -185,6 +235,16 @@ export default function ScopeSetup() {
         <ChevronRight className="h-4 w-4" />
         <span className="text-foreground font-medium">Project Scope</span>
       </div>
+      {correctionResultDrafts.length > 0 && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="pt-4 text-sm text-amber-950">
+            <p className="font-medium">Review affected draft DPRs before submission:</p>
+            {correctionResultDrafts.map((d: any) => (
+              <p key={d.id}>• <Link className="underline" href={d.editUrl ?? `/site/edit/${d.id}?draft`}>DPR #{d.id} — {d.site} ({d.date}), {d.affectedRows} affected row(s)</Link></p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-xl font-semibold flex items-center gap-2">
@@ -331,7 +391,9 @@ export default function ScopeSetup() {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center justify-between">
               <span data-testid="text-scope-form-heading">
-                {editingId
+                {correctionId != null
+                  ? "Correct initial confirmed scope"
+                  : editingId
                   ? (editingStatus === "confirmed" ? "Revise confirmed scope record" : "Edit draft scope record")
                   : `Add: ${SCOPE_SEGMENT_TYPE_LABELS[form.segmentType]}`}
               </span>
@@ -339,7 +401,36 @@ export default function ScopeSetup() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {editingStatus === "confirmed" && (
+            {correctionId != null ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2 text-sm text-amber-900">
+                <p className="font-medium">This keeps the same segment ID and confirmed status. It is available only before downstream planning or committed operational records exist.</p>
+                {correctionEligibilityQuery.isLoading && <p className="text-xs">Checking correction eligibility…</p>}
+                {correctionEligibilityQuery.data && !correctionEligibilityQuery.data.eligible && (
+                  <div className="space-y-1 text-xs">
+                    <p className="font-medium">Correction is blocked:</p>
+                    {(correctionEligibilityQuery.data.blockers ?? []).map((b: any, i: number) => (
+                      <p key={b.code ?? i}>• {b.message}</p>
+                    ))}
+                  </div>
+                )}
+                {correctionEligibilityQuery.data?.affectedDrafts?.length > 0 && (
+                  <div className="text-xs">
+                    <p className="font-medium">Draft DPRs to review after correction:</p>
+                    {correctionEligibilityQuery.data.affectedDrafts.map((d: any) => (
+                      <p key={d.id}>• <Link className="underline" href={d.editUrl ?? `/site/edit/${d.id}?draft`}>DPR #{d.id} — {d.site} ({d.date}), {d.affectedRows} affected row(s)</Link></p>
+                    ))}
+                  </div>
+                )}
+                <div>
+                  <Label className="text-xs">Correction reason (required)</Label>
+                  <Textarea rows={2} value={correctionReason} onChange={e => setCorrectionReason(e.target.value)} placeholder="Explain the verified initial-entry error and source of correction" />
+                </div>
+                <label className="flex items-start gap-2 text-xs">
+                  <input type="checkbox" checked={correctionConfirmed} onChange={e => setCorrectionConfirmed(e.target.checked)} />
+                  <span>I confirm this is a verified initial-entry correction and understand that the original row identity and confirmation status will be retained.</span>
+                </label>
+              </div>
+            ) : editingStatus === "confirmed" && (
               <p className="text-xs text-amber-700 dark:text-amber-400" data-testid="text-revision-note">
                 This record is confirmed. Saving creates a new draft revision — the confirmed record is kept as superseded history.
               </p>
@@ -442,10 +533,10 @@ export default function ScopeSetup() {
               <Textarea rows={2} value={form.notes} onChange={e => set({ notes: e.target.value })} />
             </div>
             <div className="flex gap-2">
-              <Button size="sm" disabled={saveMutation.isPending || !form.chainageFrom || !form.chainageTo}
+              <Button size="sm" disabled={saveMutation.isPending || !form.chainageFrom || !form.chainageTo || (correctionId != null && (!correctionReason.trim() || !correctionConfirmed || correctionEligibilityQuery.data?.eligible !== true))}
                 onClick={() => saveMutation.mutate()}>
                 {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                {editingId ? (editingStatus === "confirmed" ? "Create revision" : "Save changes") : "Save as draft"}
+                {correctionId != null ? "Apply correction" : editingId ? (editingStatus === "confirmed" ? "Create revision" : "Save changes") : "Save as draft"}
               </Button>
               <Button size="sm" variant="ghost" onClick={closeForm}>Cancel</Button>
             </div>
@@ -483,6 +574,11 @@ export default function ScopeSetup() {
                       <Button variant="ghost" size="icon" title={s.status === "confirmed" ? "Edit (creates a revision)" : "Edit draft"} onClick={() => openEdit(s)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
+                      {canCorrectInitialScope && s.status === "confirmed" && s.revisionOf == null && (
+                        <Button variant="ghost" size="icon" title="Correct initial confirmed scope (keeps this row)" onClick={() => openInitialCorrection(s)}>
+                          <AlertTriangle className="h-4 w-4 text-amber-600" />
+                        </Button>
+                      )}
                       {s.status === "draft" && (
                         <>
                           <Button variant="ghost" size="icon" title="Confirm" disabled={confirmMutation.isPending} onClick={() => confirmMutation.mutate(s.id)}>

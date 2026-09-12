@@ -114,7 +114,7 @@ import {
   type MovementRequest,
 } from "@shared/equipmentMovement";
 import { insufficientCutFillMessage, cutFillCapacityExceeded } from "@shared/cutFillReconciliation";
-import { classifyPlanningItem, classifyWorkType } from "@shared/workTypeRecipes";
+import { classifyPlanningItem, classifyWorkType, isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
 import {
   dateToMonthIndexCal,
   displayFinishDateCal,
@@ -124,6 +124,7 @@ import {
 import { chainageRangesOverlap } from "@shared/arrangementAutoAllocation";
 import { isDprSideCompatible } from "@shared/barSide";
 import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
+import { evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import { calculateArrangementExecutionEvidence, type ArrangementBarEvidence } from "@shared/arrangementExecutionEvidence";
 import {
   appendRevisionHistory,
@@ -404,7 +405,7 @@ import {
   type SnlSourceWithCounts,
   type SnlSearchResult,
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
+import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists, aliasedTable } from "drizzle-orm";
 import { materialReceiptTransactionDate } from "@shared/materialReceiptDates";
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -534,6 +535,58 @@ export type DprEquipmentClosureAudit = {
   cloneSourceLogIds?: Record<number, number>;
 };
 
+/** Raised when a draft's scope validation became stale before final submit. */
+export class ScopeChangedDuringDprSubmitError extends Error {
+  readonly code = "SCOPE_CHANGED_DURING_SUBMIT";
+  constructor() {
+    super("Project scope changed while this DPR was being submitted. Revalidate the DPR and try again.");
+    this.name = "ScopeChangedDuringDprSubmitError";
+  }
+}
+
+/** Raised when a scope-dependent planning write follows a stale scope read. */
+export class ScopeChangedDuringPlanningError extends Error {
+  readonly code = "SCOPE_CHANGED_DURING_PLANNING";
+  constructor() {
+    super("Project scope changed while this planning operation was running. Reload the scope and try again.");
+    this.name = "ScopeChangedDuringPlanningError";
+  }
+}
+
+/** Raised when a DPR submit attempts to move an existing DPR across projects. */
+export class DprProjectMismatchError extends Error {
+  readonly code = "DPR_PROJECT_MISMATCH";
+  constructor(
+    readonly dprId: number,
+    readonly savedProjectId: number | null,
+    readonly payloadProjectId: number | null,
+    readonly itemIds: number[] = [],
+  ) {
+    super("A DPR's BOQ project and BOQ-linked rows must match the saved draft project.");
+    this.name = "DprProjectMismatchError";
+  }
+}
+
+/** Draft DPRs must be edited/saved/submitted in place, never cloned/versioned. */
+export class DprDraftMutationError extends Error {
+  readonly code = "DPR_DRAFT_MUTATION_NOT_ALLOWED";
+  constructor(readonly operation: "clone" | "version") {
+    super(`A draft DPR cannot be ${operation === "clone" ? "cloned" : "versioned"}. Edit, save, or submit the draft instead.`);
+    this.name = "DprDraftMutationError";
+  }
+}
+
+export class InitialScopeCorrectionBlockedError extends Error {
+  readonly code = "INITIAL_SCOPE_CORRECTION_BLOCKED";
+  constructor(
+    readonly blockers: Array<{ code: string; message: string; count?: number; ids?: number[] }>,
+    readonly affectedDrafts: Array<{ id: number; date: string; site: string; affectedRows: number; editUrl: string }>,
+  ) {
+    super("Initial confirmed scope correction is not eligible");
+    this.name = "InitialScopeCorrectionBlockedError";
+  }
+}
+
 export interface IStorage {
   // Owner/Admin transaction controls & audit trail
   logAudit(entry: InsertAuditLog): Promise<AuditLog>;
@@ -554,10 +607,30 @@ export interface IStorage {
     dpr: CreateDprRequest,
     clientTimestamp?: string,
     audit?: DprEquipmentClosureAudit,
-    options?: { reuseExistingDraft?: boolean },
+    options?: { reuseExistingDraft?: boolean; scopeVersionToken?: string | null },
   ): Promise<Dpr>;
-  updateDraftDpr(id: number, dpr: CreateDprRequest, actorUserId?: number | null): Promise<Dpr | undefined>;
-  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit): Promise<Dpr | undefined>;
+  updateDraftDpr(id: number, dpr: CreateDprRequest, actorUserId?: number | null, scopeVersionToken?: string | null): Promise<Dpr | undefined>;
+  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit, scopeVersionToken?: string | null): Promise<Dpr | undefined>;
+  getProjectScopeVersionToken(boqProjectId: number): Promise<string>;
+  assertProjectScopeVersionToken(boqProjectId: number, expectedToken: string): Promise<void>;
+  getProjectScopeSegments(boqProjectId: number): Promise<ProjectScopeSegment[]>;
+  getInitialScopeCorrectionEligibility(segmentId: number): Promise<{
+    eligible: boolean;
+    projectId: number | null;
+    segment: ProjectScopeSegment | null;
+    blockers: Array<{ code: string; message: string; count?: number; ids?: number[] }>;
+    affectedDrafts: Array<{ id: number; date: string; site: string; affectedRows: number; editUrl: string }>;
+  }>;
+  correctInitialScopeSegment(
+    segmentId: number,
+    data: Partial<InsertProjectScopeSegment>,
+    reason: string,
+    audit: { userId?: number | null; userName: string; userRole?: string | null },
+  ): Promise<{
+    segment: ProjectScopeSegment;
+    before: ProjectScopeSegment;
+    affectedDrafts: Array<{ id: number; date: string; site: string; affectedRows: number; editUrl: string }>;
+  }>;
   updateDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
   cloneDpr(id: number, editedBy: string, clientTimestamp?: string, actorUserId?: number | null): Promise<Dpr | undefined>;
   createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string, audit?: DprEquipmentClosureAudit): Promise<Dpr>;
@@ -1530,7 +1603,7 @@ export interface IStorage {
   patchShiftLogDryerSource(id: number, dryerFedFrom: "TANK_1" | "TANK_2"): Promise<boolean>;
   // Task #1125 — SNL auto-mapping: update the mapping_status column on a BOQ item.
   updateBoqItemMappingStatus(boqItemId: number, status: string): Promise<void>;
-  bulkSetBoqItemsNeedsReview(itemIds: number[], needsReview: boolean): Promise<void>;
+  bulkSetBoqItemsNeedsReview(itemIds: number[], needsReview: boolean, boqProjectId?: number, expectedScopeVersionToken?: string | null): Promise<void>;
   // Delete all BOQ items for a project (replace-mode import). Child records cascade automatically.
   deleteAllBoqItemsForProject(projectId: number): Promise<number>;
   deleteZeroQtyBoqItemsForProject(projectId: number): Promise<number>;
@@ -1538,7 +1611,26 @@ export interface IStorage {
   ensureBoqProgramSettingsTables(): Promise<void>;
   ensureProgrammeBarOutcomeEventsTable(): Promise<void>;
   getBoqProgramSettings(projectId: number): Promise<BoqProgramSettings | null>;
-  upsertBoqProgramSettings(projectId: number, data: Partial<InsertBoqProgramSettings>): Promise<BoqProgramSettings>;
+  upsertBoqProgramSettings(projectId: number, data: Partial<InsertBoqProgramSettings>, expectedScopeVersionToken?: string | null): Promise<BoqProgramSettings>;
+  /**
+   * Apply one complete programme rewrite while holding the project row lock.
+   * Settings, bar deletes, in-place updates, BOQ review flags, and inserts are
+   * deliberately one transaction so an initial-scope correction can never see
+   * (or leave behind) a partially rewritten programme.
+   */
+  applyWorkProgrammeMutation(
+    projectId: number,
+    operation: {
+      settings?: Partial<InsertBoqProgramSettings>;
+      needsReviewItemIds?: number[];
+      deleteBarIds?: number[];
+      deleteStructureLocationBars?: boolean;
+      deleteAllBars?: boolean;
+      updates?: Array<{ id: number; data: Partial<InsertWorkProgramBar> }>;
+      inserts?: InsertWorkProgramBar[];
+    },
+    expectedScopeVersionToken?: string | null,
+  ): Promise<{ created: number; updated: number; deleted: number; insertedBars: WorkProgramBar[] }>;
   upsertBoqProgramSettingsWithCalendarRealignment(
     projectId: number,
     data: Partial<InsertBoqProgramSettings>,
@@ -1565,7 +1657,7 @@ export interface IStorage {
   backfillBoqWorkType(): Promise<{ set: number; structured: number }>;
   updateBoqItemWorkType(id: number, planningWorkType: string): Promise<void>;
   // Task #1206 — structure schedule import
-  deleteStructureLocationBars(boqProjectId: number): Promise<number>;
+  deleteStructureLocationBars(boqProjectId: number, expectedScopeVersionToken?: string | null): Promise<number>;
   // Instruction 017 — BOQ Material Mappings
   ensureBoqMaterialMappings(): Promise<void>;
   getMaterialMappings(boqProjectId: number): Promise<BoqMaterialMapping[]>;
@@ -1601,7 +1693,10 @@ export interface IStorage {
   /** Instruction 024: total allocated qty for a BOQ item, counting both direct and JSONB-split allocations. */
   getAllocatedQtyForBoqItem(boqProjectId: number, boqItemId: number): Promise<number>;
   getEarthworkArrangementById(id: number): Promise<EarthworkArrangement | undefined>;
-  createEarthworkArrangement(data: InsertEarthworkArrangement): Promise<EarthworkArrangement>;
+  createEarthworkArrangement(
+    data: InsertEarthworkArrangement,
+    expectedScopeVersionToken?: string | null,
+  ): Promise<EarthworkArrangement>;
   updateEarthworkArrangement(id: number, data: Partial<InsertEarthworkArrangement>): Promise<EarthworkArrangement | undefined>;
   // Instruction 026 §4: arrangement ↔ programme-bar allocations
   getArrangementProgrammeAllocationsForProject(projectId: number): Promise<Array<EarthworkArrangementProgrammeAllocation & { arrangementStatus: string }>>;
@@ -2855,7 +2950,7 @@ export class DatabaseStorage implements IStorage {
     dprData: CreateDprRequest,
     clientTimestamp?: string,
     audit?: DprEquipmentClosureAudit,
-    options?: { reuseExistingDraft?: boolean },
+    options?: { reuseExistingDraft?: boolean; scopeVersionToken?: string | null },
   ): Promise<Dpr> {
     // Transaction to insert DPR and all related nested data
     // Use client-provided timestamp for accurate local time, fall back to server time
@@ -2865,6 +2960,24 @@ export class DatabaseStorage implements IStorage {
       : (clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss"));
     
     return await db.transaction(async (tx) => {
+      const projectId = (dprData as any).boqProjectId != null
+        ? Number((dprData as any).boqProjectId)
+        : null;
+      if (projectId != null) {
+        try {
+          const project = await this.lockProjectAndCheckScopeTx(tx, projectId, options?.scopeVersionToken);
+          if (!project) throw new Error("PROJECT_NOT_FOUND");
+        } catch (err: any) {
+          if (dprStatusVal !== "draft" && err?.code === "SCOPE_CHANGED_DURING_PLANNING") {
+            throw new ScopeChangedDuringDprSubmitError();
+          }
+          throw err;
+        }
+      }
+      // Drafts may omit operational completeness, but a BOQ project/item
+      // relationship is never draft-lenient: accepting a cross-project item
+      // here would bypass the same project mutex used by correction.
+      await this.assertDprProjectLinksTx(tx, 0, projectId, dprData, dprData.equipment as any[] | undefined);
       if (dprStatusVal === "draft" && options?.reuseExistingDraft) {
         // Field Home's Start action is a transactional get-or-create. The
         // advisory lock closes the simultaneous-user/tab race without changing
@@ -2993,7 +3106,12 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async updateDraftDpr(id: number, dprData: CreateDprRequest, actorUserId?: number | null): Promise<Dpr | undefined> {
+  async updateDraftDpr(
+    id: number,
+    dprData: CreateDprRequest,
+    actorUserId?: number | null,
+    scopeVersionToken?: string | null,
+  ): Promise<Dpr | undefined> {
     // Canonical draft identity rule (intentionally unchanged): the id returned
     // by the initial POST is the draft's sole identity. Every autosave replaces
     // children under that same dprs.id; there is no site/date/user deduplication
@@ -3003,6 +3121,80 @@ export class DatabaseStorage implements IStorage {
     return await this._replaceDprChildRecords(id, dprData, {
       lastEditedByUserId: actorUserId ?? null,
       lastEditedAt: new Date(),
+    }, undefined, scopeVersionToken);
+  }
+
+  private async getProjectScopeVersionTokenTx(tx: any, boqProjectId: number): Promise<string> {
+    const result = await tx.execute(sql`
+      SELECT md5(COALESCE(string_agg(
+        concat_ws(':',
+          id::text,
+          COALESCE(status, ''),
+          COALESCE(revision_of::text, ''),
+          COALESCE(updated_at::text, ''),
+          COALESCE(chainage_from::text, ''),
+          COALESCE(chainage_to::text, ''),
+          COALESCE(side, ''),
+          COALESCE(segment_type, ''),
+          COALESCE(applicability, ''),
+          COALESCE(category_ids, ''),
+          COALESCE(item_ids, ''),
+          COALESCE(effective_from::text, ''),
+          COALESCE(effective_to::text, ''),
+          COALESCE(label, ''),
+          COALESCE(reason, ''),
+          COALESCE(dept_reference, ''),
+          COALESCE(document_ref, ''),
+          COALESCE(notes, ''),
+          COALESCE(withdrawal_order_ref, ''),
+          COALESCE(consent_ref, ''),
+          COALESCE(omitted_qty, ''),
+          COALESCE(omitted_amount, ''),
+          COALESCE(original_scope_note, ''),
+          COALESCE(revised_scope_note, '')
+        ), '|' ORDER BY id
+      ), '')) AS token
+      FROM project_scope_segments
+      WHERE boq_project_id = ${boqProjectId}
+    `);
+    return String((result.rows as any[])[0]?.token ?? "");
+  }
+
+  private async lockProjectAndCheckScopeTx(
+    tx: any,
+    boqProjectId: number,
+    expectedToken?: string | null,
+  ) {
+    const [project] = await tx.select().from(boqProjects)
+      .where(eq(boqProjects.id, Number(boqProjectId))).for("update").limit(1);
+    if (!project) return undefined;
+    if (expectedToken != null) {
+      const currentToken = await this.getProjectScopeVersionTokenTx(tx, Number(boqProjectId));
+      if (currentToken !== expectedToken) throw new ScopeChangedDuringPlanningError();
+    }
+    return project;
+  }
+
+  private async lockProjectsTx(tx: any, projectIds: Array<number | null | undefined>): Promise<void> {
+    const ids = Array.from(new Set(
+      projectIds
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    )).sort((a, b) => a - b);
+    for (const projectId of ids) {
+      const project = await this.lockProjectAndCheckScopeTx(tx, projectId);
+      if (!project) throw new Error("PROJECT_NOT_FOUND");
+    }
+  }
+
+  async getProjectScopeVersionToken(boqProjectId: number): Promise<string> {
+    return this.getProjectScopeVersionTokenTx(db, boqProjectId);
+  }
+
+  async assertProjectScopeVersionToken(boqProjectId: number, expectedToken: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      const project = await this.lockProjectAndCheckScopeTx(tx, boqProjectId, expectedToken);
+      if (!project) throw new Error("PROJECT_NOT_FOUND");
     });
   }
 
@@ -3011,6 +3203,7 @@ export class DatabaseStorage implements IStorage {
     dprData: CreateDprRequest,
     clientTimestamp?: string,
     audit?: DprEquipmentClosureAudit,
+    scopeVersionToken?: string | null,
   ): Promise<Dpr | undefined> {
     const existing = await this.getDpr(id);
     if (!existing || (existing as any).dprStatus !== "draft") return undefined;
@@ -3025,7 +3218,36 @@ export class DatabaseStorage implements IStorage {
         lockStatus: "locked",
       },
       audit,
+      scopeVersionToken,
     );
+  }
+
+  private async assertDprProjectLinksTx(
+    tx: any,
+    dprId: number,
+    projectId: number | null,
+    dprData: CreateDprRequest,
+    equipmentInputs?: any[],
+  ): Promise<void> {
+    const itemIds = Array.from(new Set([
+      ...(dprData.progress ?? []).map((row: any) => Number(row.boqItemId)),
+      ...(dprData.structureItems ?? []).map((row: any) => Number(row.boqItemId)),
+      ...(dprData.equipment ?? []).map((row: any) => Number(row.boqItemId)),
+      ...(dprData.labour ?? []).map((row: any) => Number(row.boqItemId)),
+      ...(dprData.materials ?? []).map((row: any) => Number(row.boqItemId)),
+      ...(dprData.sitePurchases ?? []).map((row: any) => Number(row.boqItemId)),
+      ...(equipmentInputs ?? []).map((row: any) => Number(row.boqItemId)),
+    ].filter(Number.isInteger).filter((id) => id > 0)));
+    if (!itemIds.length) return;
+    if (projectId == null) throw new DprProjectMismatchError(dprId, null, null, itemIds);
+    const rows = await tx.select({ id: boqItems.id, projectId: boqItems.boqProjectId })
+      .from(boqItems)
+      .where(inArray(boqItems.id, itemIds));
+    const byId = new Map(rows.map((row: any) => [Number(row.id), Number(row.projectId)]));
+    const mismatched = itemIds.filter((itemId) => byId.get(itemId) !== projectId);
+    if (mismatched.length) {
+      throw new DprProjectMismatchError(dprId, projectId, projectId, mismatched);
+    }
   }
 
   private async _replaceDprChildRecords(
@@ -3033,9 +3255,39 @@ export class DatabaseStorage implements IStorage {
     dprData: CreateDprRequest,
     headerOverrides: Record<string, any>,
     audit?: DprEquipmentClosureAudit,
+    scopeVersionToken?: string | null,
   ): Promise<Dpr | undefined> {
     return await db.transaction(async (tx) => {
       const isSubmitting = headerOverrides.dprStatus === "submitted";
+      // Initial-confirmed-scope correction and final DPR submission share the
+      // project row as a mutex. The route validates the draft before entering
+      // this transaction; re-check the scope token after acquiring the lock so
+      // a correction committed in that validation window cannot be bypassed.
+      const [savedHeader] = await tx.select({
+        id: dprs.id,
+        dprStatus: dprs.dprStatus,
+        boqProjectId: dprs.boqProjectId,
+      }).from(dprs).where(eq(dprs.id, id)).limit(1);
+      const savedProjectId = savedHeader?.boqProjectId != null ? Number(savedHeader.boqProjectId) : null;
+      const payloadProjectId = (dprData as any).boqProjectId != null ? Number((dprData as any).boqProjectId) : null;
+      if (savedProjectId !== payloadProjectId) {
+        throw new DprProjectMismatchError(id, savedProjectId, payloadProjectId);
+      }
+      if (savedProjectId != null) {
+        let project: any;
+        try {
+          project = await this.lockProjectAndCheckScopeTx(tx, savedProjectId, scopeVersionToken);
+        } catch (err: any) {
+          // A stale scope token during final submit is a submit race, not a
+          // planning failure. Preserve the submit-specific contract so the
+          // route can return 409 and the client can revalidate cleanly.
+          if (isSubmitting && err?.code === "SCOPE_CHANGED_DURING_PLANNING") {
+            throw new ScopeChangedDuringDprSubmitError();
+          }
+          throw err;
+        }
+        if (!project) throw new Error("PROJECT_NOT_FOUND");
+      }
       const [updated] = await tx.update(dprs)
         .set({
           date: dprData.date,
@@ -3059,6 +3311,13 @@ export class DatabaseStorage implements IStorage {
       if (isSubmitting) await this.cleanupDprEquipmentDieselLedger(tx, id);
       const oldEquipmentRows = await tx.select().from(equipmentLogs).where(eq(equipmentLogs.dprId, id));
       const equipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, oldEquipmentRows, dprData.equipment as any[] | undefined);
+      await this.assertDprProjectLinksTx(
+        tx,
+        id,
+        savedHeader?.boqProjectId != null ? Number(savedHeader.boqProjectId) : null,
+        dprData,
+        equipmentInputs,
+      );
       const oldProgressRows = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey }).from(progressEntries).where(eq(progressEntries.dprId, id));
       const oldProgressIds = oldProgressRows.map(p => p.id);
       const externalSourceLinks = oldProgressIds.length ? await tx.select().from(cutFillConsumptions)
@@ -3261,6 +3520,35 @@ export class DatabaseStorage implements IStorage {
     const newSiteName = `${baseSite.toUpperCase()} – Copy by ${roleName} – ${dateTime}`;
 
     return await db.transaction(async (tx) => {
+      // Scope correction and committed-DPR creation share the BOQ project
+      // mutex. Resolve the source project in the transaction, then lock the
+      // project before checking status under a source row lock so a correction
+      // cannot commit between validation and this INSERT.
+      const [sourceProjectRow] = await tx.select({
+        boqProjectId: dprs.boqProjectId,
+      }).from(dprs).where(eq(dprs.id, id)).limit(1);
+      if (!sourceProjectRow) return undefined;
+      const sourceProjectId = sourceProjectRow.boqProjectId != null
+        ? Number(sourceProjectRow.boqProjectId)
+        : null;
+      await this.lockProjectsTx(tx, [sourceProjectId]);
+      const [lockedSource] = await tx.select({
+        id: dprs.id,
+        dprStatus: dprs.dprStatus,
+        boqProjectId: dprs.boqProjectId,
+      }).from(dprs)
+        .where(eq(dprs.id, id)).for("update").limit(1);
+      if (!lockedSource) return undefined;
+      if (lockedSource.dprStatus === "draft") {
+        throw new DprDraftMutationError("clone");
+      }
+      const lockedProjectId = lockedSource.boqProjectId != null
+        ? Number(lockedSource.boqProjectId)
+        : null;
+      if (lockedProjectId !== sourceProjectId) {
+        await this.lockProjectsTx(tx, [lockedProjectId]);
+      }
+
       // Create a copy of the DPR with timestamp and role tag
       // IMPORTANT: Set submittedAt to ensure proper timestamp comparison for version deduplication
       const [newDpr] = await tx.insert(dprs).values({
@@ -3531,12 +3819,42 @@ export class DatabaseStorage implements IStorage {
     const newSiteName = `${baseSite.toUpperCase()} – Edited by ${roleName} – ${dateTime}`;
 
     return await db.transaction(async (tx) => {
+      // Read the source project first, then acquire every project mutex in a
+      // stable order before locking/validating the source row. This keeps
+      // version insertion in the same race domain as initial scope correction,
+      // including the (invalid) cross-project payload case.
+      const [sourceProjectRow] = await tx.select({
+        boqProjectId: dprs.boqProjectId,
+      }).from(dprs).where(eq(dprs.id, originalId)).limit(1);
+      if (!sourceProjectRow) throw new Error("DPR_NOT_FOUND");
+      const sourceProjectId = sourceProjectRow.boqProjectId != null
+        ? Number(sourceProjectRow.boqProjectId)
+        : null;
+      const requestedProjectId = (dprData as any).boqProjectId != null
+        ? Number((dprData as any).boqProjectId)
+        : null;
+      await this.lockProjectsTx(tx, [sourceProjectId, requestedProjectId]);
       const [originalAudit] = await tx.select({
         authorUserId: dprs.authorUserId,
         submittedByUserId: dprs.submittedByUserId,
         createdAt: dprs.createdAt,
         submittedAt: dprs.submittedAt,
-      }).from(dprs).where(eq(dprs.id, originalId)).limit(1);
+        dprStatus: dprs.dprStatus,
+        boqProjectId: dprs.boqProjectId,
+      }).from(dprs).where(eq(dprs.id, originalId)).for("update").limit(1);
+      if (!originalAudit) throw new Error("DPR_NOT_FOUND");
+      if (originalAudit.dprStatus === "draft") {
+        throw new DprDraftMutationError("version");
+      }
+      const lockedSourceProjectId = originalAudit.boqProjectId != null
+        ? Number(originalAudit.boqProjectId)
+        : null;
+      if (lockedSourceProjectId !== sourceProjectId) {
+        await this.lockProjectsTx(tx, [lockedSourceProjectId]);
+      }
+      if (lockedSourceProjectId !== requestedProjectId) {
+        throw new DprProjectMismatchError(originalId, lockedSourceProjectId, requestedProjectId);
+      }
 
       // Clean up original DPR's diesel ledger entries before creating new version
       await this.cleanupDprEquipmentDieselLedger(tx, originalId);
@@ -25910,9 +26228,612 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(projectScopeSegments.chainageFrom), asc(projectScopeSegments.id));
   }
 
+  /**
+   * Conservative preflight for the narrow "correct the initial confirmed
+   * scope" flow. This deliberately does not reuse the ordinary confirmed-edit
+   * path: the target row must remain the same row and every dependent
+   * operational record is checked before the mutation is allowed.
+   */
+  private async inspectInitialScopeCorrectionTx(tx: any, segmentId: number, proposed?: Partial<InsertProjectScopeSegment>) {
+    const blockers: Array<{ code: string; message: string; count?: number; ids?: number[] }> = [];
+    const affectedByDraft = new Map<number, { id: number; date: string; site: string; affectedRows: number; editUrl: string }>();
+    const [storedTarget] = await tx.select().from(projectScopeSegments)
+      .where(eq(projectScopeSegments.id, segmentId)).limit(1);
+    if (!storedTarget) {
+      return { eligible: false, projectId: null, segment: null, blockers: [{
+        code: "SEGMENT_NOT_FOUND", message: "Scope segment was not found.",
+      }], affectedDrafts: [] };
+    }
+    const projectId = Number(storedTarget.boqProjectId);
+    const target = proposed
+      ? {
+        ...storedTarget,
+        ...proposed,
+        // Proposed correction data can never change identity or project
+        // ownership, even when this storage method is called directly.
+        id: storedTarget.id,
+        boqProjectId: storedTarget.boqProjectId,
+        status: "confirmed",
+        revisionOf: null,
+      }
+      : storedTarget;
+    const [project] = await tx.select({ id: boqProjects.id }).from(boqProjects)
+      .where(eq(boqProjects.id, projectId)).limit(1);
+    if (!project) {
+      return { eligible: false, projectId, segment: target, blockers: [{
+        code: "PROJECT_NOT_FOUND", message: "The BOQ project for this scope segment no longer exists.",
+      }], affectedDrafts: [] };
+    }
+    if (storedTarget.status !== "confirmed" || storedTarget.revisionOf != null) {
+      blockers.push({
+        code: "SEGMENT_NOT_ORIGINAL_CONFIRMED",
+        message: "Only an original confirmed scope segment can be corrected in place.",
+      });
+    }
+
+    const historyRows = await tx.select({ id: projectScopeSegments.id })
+      .from(projectScopeSegments)
+      .where(and(
+        eq(projectScopeSegments.boqProjectId, projectId),
+        or(
+          isNotNull(projectScopeSegments.revisionOf),
+          eq(projectScopeSegments.status, "superseded"),
+        ),
+      ));
+    if (historyRows.length) {
+      blockers.push({
+        code: "SCOPE_REVISION_HISTORY",
+        message: "This project already has scope revision history; use the normal revision workflow instead.",
+        count: historyRows.length,
+        ids: historyRows.map((row: any) => Number(row.id)),
+      });
+    }
+
+    const bars = await tx.select({ id: workProgramBars.id }).from(workProgramBars)
+      .where(eq(workProgramBars.boqProjectId, projectId));
+    if (bars.length) {
+      blockers.push({
+        code: "PROGRAMME_BARS_EXIST",
+        message: "Programme/work-program bars already exist for this project.",
+        count: bars.length,
+        ids: bars.slice(0, 50).map((row: any) => Number(row.id)),
+      });
+    }
+    const arrangements = await tx.select({ id: earthworkArrangements.id }).from(earthworkArrangements)
+      .where(eq(earthworkArrangements.boqProjectId, projectId));
+    if (arrangements.length) {
+      blockers.push({
+        code: "ARRANGEMENTS_EXIST",
+        message: "Earthwork arrangements already exist for this project.",
+        count: arrangements.length,
+        ids: arrangements.slice(0, 50).map((row: any) => Number(row.id)),
+      });
+    }
+
+    // Include legacy DPRs that predate the explicit dprs.boq_project_id link
+    // when one of their BOQ-linked progress rows belongs to this project.
+    const committedDprs = await tx.select({ id: dprs.id }).from(dprs)
+      .leftJoin(progressEntries, eq(progressEntries.dprId, dprs.id))
+      .leftJoin(boqItems, eq(boqItems.id, progressEntries.boqItemId))
+      .where(and(
+        ne(dprs.dprStatus, "draft"),
+        or(eq(dprs.boqProjectId, projectId), eq(boqItems.boqProjectId, projectId)),
+      ))
+      .groupBy(dprs.id);
+    const committedStructureDprs = await tx.select({ id: dprs.id }).from(dprs)
+      .innerJoin(dprStructureItems, eq(dprStructureItems.dprId, dprs.id))
+      .innerJoin(boqItems, eq(boqItems.id, dprStructureItems.boqItemId))
+      .where(and(ne(dprs.dprStatus, "draft"), eq(boqItems.boqProjectId, projectId)))
+      .groupBy(dprs.id);
+    const committedEquipmentDprs = await tx.select({ id: dprs.id }).from(dprs)
+      .innerJoin(equipmentLogs, eq(equipmentLogs.dprId, dprs.id))
+      .innerJoin(boqItems, eq(boqItems.id, equipmentLogs.boqItemId))
+      .where(and(ne(dprs.dprStatus, "draft"), eq(boqItems.boqProjectId, projectId)))
+      .groupBy(dprs.id);
+    // Equipment BOQ attribution can live in either the legacy allocation
+    // table or the normalized segment/link tables.  The physical equipment
+    // log's own boq_item_id is nullable, so these links must participate in
+    // the committed-DPR blocker independently of that legacy header column.
+    const committedEquipmentAllocationDprs = await tx.select({ id: dprs.id }).from(dprs)
+      .innerJoin(equipmentLogs, eq(equipmentLogs.dprId, dprs.id))
+      .innerJoin(equipmentActivityAllocations, eq(equipmentActivityAllocations.equipmentLogId, equipmentLogs.id))
+      .innerJoin(boqItems, eq(boqItems.id, equipmentActivityAllocations.boqItemId))
+      .where(and(ne(dprs.dprStatus, "draft"), eq(boqItems.boqProjectId, projectId)))
+      .groupBy(dprs.id);
+    const committedEquipmentSegmentDprs = await tx.select({ id: dprs.id }).from(dprs)
+      .innerJoin(equipmentLogs, eq(equipmentLogs.dprId, dprs.id))
+      .innerJoin(equipmentActivitySegments, eq(equipmentActivitySegments.equipmentLogId, equipmentLogs.id))
+      .innerJoin(equipmentActivitySegmentBoqItems, eq(equipmentActivitySegmentBoqItems.segmentId, equipmentActivitySegments.id))
+      .innerJoin(boqItems, eq(boqItems.id, equipmentActivitySegmentBoqItems.boqItemId))
+      .where(and(ne(dprs.dprStatus, "draft"), eq(boqItems.boqProjectId, projectId)))
+      .groupBy(dprs.id);
+    const committedDprIds = Array.from(new Set([
+      ...committedDprs.map((row: any) => Number(row.id)),
+      ...committedStructureDprs.map((row: any) => Number(row.id)),
+      ...committedEquipmentDprs.map((row: any) => Number(row.id)),
+      ...committedEquipmentAllocationDprs.map((row: any) => Number(row.id)),
+      ...committedEquipmentSegmentDprs.map((row: any) => Number(row.id)),
+    ]));
+    if (committedDprIds.length) {
+      blockers.push({
+        code: "SUBMITTED_DPRS_EXIST",
+        message: "Submitted or otherwise committed DPR history exists for this project.",
+        count: committedDprIds.length,
+        ids: committedDprIds.slice(0, 50),
+      });
+    }
+
+    const scopeLike = (row: any): ScopeSegmentLike => ({
+      id: Number(row.id),
+      segmentType: row.segmentType,
+      chainageFrom: Number(row.chainageFrom),
+      chainageTo: Number(row.chainageTo),
+      side: row.side,
+      status: row.status,
+      applicability: row.applicability,
+      categoryIds: Array.isArray(row.categoryIds)
+        ? row.categoryIds.map(Number)
+        : typeof row.categoryIds === "string" ? (() => { try { return JSON.parse(row.categoryIds).map(Number); } catch { return []; } })() : [],
+      itemIds: Array.isArray(row.itemIds)
+        ? row.itemIds.map(Number)
+        : typeof row.itemIds === "string" ? (() => { try { return JSON.parse(row.itemIds).map(Number); } catch { return []; } })() : [],
+      effectiveFrom: row.effectiveFrom,
+      effectiveTo: row.effectiveTo,
+      label: row.label,
+      reason: row.reason,
+    });
+    const currentScopeRows = await tx.select().from(projectScopeSegments)
+      .where(eq(projectScopeSegments.boqProjectId, projectId))
+      .orderBy(asc(projectScopeSegments.id));
+    const currentScope = currentScopeRows.map(scopeLike);
+    const rangeOverlaps = (from: number | null, to: number | null, seg: any) => {
+      if (from == null || to == null || !Number.isFinite(from) || !Number.isFinite(to)) return false;
+      const a = Math.min(from, to);
+      const b = Math.max(from, to);
+      const c = Math.min(Number(seg.chainageFrom), Number(seg.chainageTo));
+      const d = Math.max(Number(seg.chainageFrom), Number(seg.chainageTo));
+      if (b < c || a > d) return false;
+      return true;
+    };
+    const sideTouches = (segmentSide: string | null | undefined, rowSide: string | null | undefined) =>
+      !segmentSide || segmentSide === "both_sides" || segmentSide === "full_width" ||
+      !rowSide || isDprSideCompatible(segmentSide, rowSide) || isDprSideCompatible(rowSide, segmentSide);
+    const nextScope = currentScope.map((row: ScopeSegmentLike) =>
+      row.id === Number(target.id) ? scopeLike(target) : row,
+    );
+    const dprScopeChanged = (row: any, replacement?: any): boolean => {
+      const from = row.chainageFromKm != null ? Number(row.chainageFromKm) : Number(row.chainageFrom);
+      const to = row.chainageToKm != null ? Number(row.chainageToKm) : Number(row.chainageTo);
+      if (!Number.isFinite(from) || !Number.isFinite(to) || row.boqItemId == null) return false;
+      const oldTarget = currentScope.find((scope: ScopeSegmentLike) => scope.id === Number(target.id));
+      const oldTouches = !!oldTarget && rangeOverlaps(from, to, oldTarget) && sideTouches(oldTarget.side, row.side);
+      const proposedTarget = replacement ?? target;
+      const newTouches = rangeOverlaps(from, to, proposedTarget) && sideTouches(proposedTarget.side, row.side);
+      if (!oldTouches && !newTouches) return false;
+      const itemProject = Number(row.itemProjectId ?? projectId);
+      if (itemProject !== projectId) return false;
+      const input = {
+        boqItemId: Number(row.boqItemId),
+        categoryId: row.categoryId != null ? Number(row.categoryId) : null,
+        isLinear: !isStructureOrLocationScheduledItem({
+          planningWorkType: row.planningWorkType ?? null,
+          categoryName: row.categoryName ?? null,
+          description: row.description ?? null,
+          unit: row.unit ?? null,
+          workCategory: row.workCategory ?? null,
+        }, { hasStructureImportBar: false }),
+        side: row.side ?? null,
+        chainageFromKm: from,
+        chainageToKm: to,
+        dprDate: row.date ?? null,
+      };
+      const before = evaluateDprScope(currentScope, input);
+      const after = evaluateDprScope(
+        replacement ? nextScope.map((scope: ScopeSegmentLike) => scope.id === Number(target.id) ? scopeLike(replacement) : scope) : nextScope,
+        input,
+      );
+      return before.status !== after.status || before.message !== after.message;
+    };
+
+    const draftRows = await tx.select({
+      dprId: dprs.id,
+      date: dprs.date,
+      site: dprs.site,
+      entryId: progressEntries.id,
+      boqItemId: progressEntries.boqItemId,
+      categoryId: boqItems.categoryId,
+      categoryName: boqCategories.name,
+      description: boqItems.description,
+      unit: boqItems.unit,
+      workCategory: boqItems.workCategory,
+      planningWorkType: boqItems.planningWorkType,
+      itemProjectId: boqItems.boqProjectId,
+      chainageFrom: progressEntries.chainageFrom,
+      chainageTo: progressEntries.chainageTo,
+      chainageFromKm: progressEntries.chainageFromKm,
+      chainageToKm: progressEntries.chainageToKm,
+      side: progressEntries.side,
+      entryKey: progressEntries.entryKey,
+    }).from(dprs)
+      .innerJoin(progressEntries, eq(progressEntries.dprId, dprs.id))
+      .leftJoin(boqItems, eq(boqItems.id, progressEntries.boqItemId))
+      .leftJoin(boqCategories, eq(boqCategories.id, boqItems.categoryId))
+      .where(and(
+        eq(dprs.dprStatus, "draft"),
+        or(eq(dprs.boqProjectId, projectId), eq(boqItems.boqProjectId, projectId)),
+      ));
+    const draftRowAffected = new Map<number, number>();
+    const mismatchedDraftRowIds: number[] = [];
+    for (const row of draftRows as any[]) {
+      if (
+        row.boqItemId != null &&
+        Number(row.itemProjectId) !== projectId
+      ) {
+        mismatchedDraftRowIds.push(Number(row.entryId));
+        const existing = affectedByDraft.get(Number(row.dprId));
+        affectedByDraft.set(Number(row.dprId), {
+          id: Number(row.dprId), date: String(row.date), site: String(row.site),
+          affectedRows: (existing?.affectedRows ?? 0) + 1,
+          editUrl: existing?.editUrl ?? `/site/edit/${Number(row.dprId)}?draft`,
+        });
+        continue;
+      }
+      if (dprScopeChanged(row)) {
+        draftRowAffected.set(Number(row.dprId), (draftRowAffected.get(Number(row.dprId)) ?? 0) + 1);
+        affectedByDraft.set(Number(row.dprId), {
+          id: Number(row.dprId), date: String(row.date), site: String(row.site),
+          affectedRows: draftRowAffected.get(Number(row.dprId))!,
+          editUrl: `/site/edit/${Number(row.dprId)}?draft`,
+        });
+      }
+    }
+    if (mismatchedDraftRowIds.length) {
+      blockers.push({
+        code: "DRAFT_ITEM_PROJECT_MISMATCH",
+        message: "A draft DPR contains BOQ-linked rows belonging to a different project; correct the project linkage before scope correction.",
+        count: mismatchedDraftRowIds.length,
+        ids: mismatchedDraftRowIds.slice(0, 50),
+      });
+    }
+
+    const sourceProgress = aliasedTable(progressEntries, "scope_cut_fill_source_progress");
+    const sourceDpr = aliasedTable(dprs, "scope_cut_fill_source_dpr");
+    const sourceItem = aliasedTable(boqItems, "scope_cut_fill_source_item");
+    const sourceCategory = aliasedTable(boqCategories, "scope_cut_fill_source_category");
+    const draftConsumptions = await tx.select({
+      id: cutFillConsumptions.id,
+      dprId: dprs.id,
+      date: dprs.date,
+      site: dprs.site,
+      openingBalanceId: cutFillConsumptions.openingBalanceId,
+      sourceProgressId: sourceProgress.id,
+      sourceDprId: sourceDpr.id,
+      sourceDprProjectId: sourceDpr.boqProjectId,
+      sourceDprStatus: sourceDpr.dprStatus,
+      sourceDate: sourceDpr.date,
+      sourceBoqItemId: sourceProgress.boqItemId,
+      sourceItemProjectId: sourceItem.boqProjectId,
+      sourceCategoryId: sourceItem.categoryId,
+      sourceCategoryName: sourceCategory.name,
+      sourceDescription: sourceItem.description,
+      sourceUnit: sourceItem.unit,
+      sourceWorkCategory: sourceItem.workCategory,
+      sourcePlanningWorkType: sourceItem.planningWorkType,
+      sourceChainageFrom: sourceProgress.chainageFrom,
+      sourceChainageTo: sourceProgress.chainageTo,
+      sourceChainageFromKm: sourceProgress.chainageFromKm,
+      sourceChainageToKm: sourceProgress.chainageToKm,
+      sourceSide: sourceProgress.side,
+      sourceOpeningProjectId: cutFillOpeningBalances.boqProjectId,
+      sourceOpeningItemId: cutFillOpeningBalances.sourceExcavationBoqItemId,
+      boqItemId: progressEntries.boqItemId,
+      categoryId: boqItems.categoryId,
+      categoryName: boqCategories.name,
+      description: boqItems.description,
+      unit: boqItems.unit,
+      workCategory: boqItems.workCategory,
+      planningWorkType: boqItems.planningWorkType,
+      itemProjectId: boqItems.boqProjectId,
+      chainageFrom: progressEntries.chainageFrom,
+      chainageTo: progressEntries.chainageTo,
+      chainageFromKm: progressEntries.chainageFromKm,
+      chainageToKm: progressEntries.chainageToKm,
+      side: progressEntries.side,
+    }).from(cutFillConsumptions)
+      .innerJoin(progressEntries, eq(progressEntries.id, cutFillConsumptions.fillProgressEntryId))
+      .innerJoin(dprs, eq(dprs.id, progressEntries.dprId))
+      .leftJoin(boqItems, eq(boqItems.id, progressEntries.boqItemId))
+      .leftJoin(boqCategories, eq(boqCategories.id, boqItems.categoryId))
+      .leftJoin(sourceProgress, eq(sourceProgress.id, cutFillConsumptions.sourceProgressEntryId))
+      .leftJoin(sourceDpr, eq(sourceDpr.id, sourceProgress.dprId))
+      .leftJoin(sourceItem, eq(sourceItem.id, sourceProgress.boqItemId))
+      .leftJoin(sourceCategory, eq(sourceCategory.id, sourceItem.categoryId))
+      .leftJoin(cutFillOpeningBalances, eq(cutFillOpeningBalances.id, cutFillConsumptions.openingBalanceId))
+      .where(and(
+        eq(dprs.dprStatus, "draft"),
+        or(eq(dprs.boqProjectId, projectId), eq(boqItems.boqProjectId, projectId)),
+      ));
+    const unsafeCutFillIds: number[] = [];
+    for (const row of draftConsumptions as any[]) {
+      const fillUnsafe = row.boqItemId == null || Number(row.itemProjectId) !== projectId || dprScopeChanged(row);
+      const sourceRow = row.sourceProgressId != null
+        ? {
+          boqItemId: row.sourceBoqItemId,
+          categoryId: row.sourceCategoryId,
+           categoryName: row.sourceCategoryName,
+           description: row.sourceDescription,
+           unit: row.sourceUnit,
+           workCategory: row.sourceWorkCategory,
+           planningWorkType: row.sourcePlanningWorkType,
+          itemProjectId: row.sourceItemProjectId,
+          itemProjectDprId: row.sourceDprProjectId,
+          date: row.sourceDate,
+          chainageFrom: row.sourceChainageFrom,
+          chainageTo: row.sourceChainageTo,
+          chainageFromKm: row.sourceChainageFromKm,
+          chainageToKm: row.sourceChainageToKm,
+          side: row.sourceSide,
+        }
+        : null;
+      // A cut/fill dependency is safe only when both endpoints can be proven
+      // unaffected.  The fill row was historically the sole inspected endpoint;
+      // source rows are equally scope-sensitive (and may belong to another
+      // project or have no chainage evidence at all).
+      const sourceHasChainage = sourceRow
+        ? Number.isFinite(Number(sourceRow.chainageFromKm ?? sourceRow.chainageFrom))
+          && Number.isFinite(Number(sourceRow.chainageToKm ?? sourceRow.chainageTo))
+        // Opening balances identify an excavation item but carry no endpoint
+        // chainage/provenance.  They are therefore intentionally conservative:
+        // correction must stop until the source is re-established explicitly.
+        : false;
+      const sourceUnsafe = sourceRow
+        ? sourceRow.boqItemId == null
+          || Number(sourceRow.itemProjectId) !== projectId
+          || sourceRow.itemProjectDprId == null
+          || Number(sourceRow.itemProjectDprId) !== projectId
+          || !sourceHasChainage
+          || dprScopeChanged(sourceRow)
+        : !sourceHasChainage;
+      const unsafe = fillUnsafe || sourceUnsafe;
+      if (!unsafe) continue;
+      unsafeCutFillIds.push(Number(row.id));
+      const affectedEndpoints = [
+        { id: row.dprId, date: row.date, site: row.site },
+        ...(row.sourceDprId != null && row.sourceDprStatus === "draft"
+          ? [{ id: row.sourceDprId, date: row.sourceDate, site: row.site }]
+          : []),
+      ];
+      for (const endpoint of affectedEndpoints) {
+        const existing = affectedByDraft.get(Number(endpoint.id));
+        affectedByDraft.set(Number(endpoint.id), {
+          id: Number(endpoint.id),
+          date: String(endpoint.date ?? row.date),
+          site: String(endpoint.site ?? row.site),
+          affectedRows: (existing?.affectedRows ?? 0) + 1,
+          editUrl: existing?.editUrl ?? `/site/edit/${Number(endpoint.id)}?draft`,
+        });
+      }
+    }
+    if (unsafeCutFillIds.length) {
+      blockers.push({
+        code: "DRAFT_CUT_FILL_LINK_UNSAFE",
+        message: "A draft DPR has cut/fill consumption links whose scope impact cannot be proven unaffected; submit or remove those provisional links before correction.",
+        count: unsafeCutFillIds.length,
+        ids: unsafeCutFillIds.slice(0, 50),
+      });
+    }
+
+    const draftEquipmentLinks = await tx.select({
+      id: equipmentActivityAllocations.id,
+      programmeBarId: equipmentActivityAllocations.programmeBarId,
+      dprId: dprs.id,
+      date: dprs.date,
+      site: dprs.site,
+      boqItemId: equipmentActivityAllocations.boqItemId,
+    }).from(equipmentActivityAllocations)
+      .innerJoin(equipmentLogs, eq(equipmentLogs.id, equipmentActivityAllocations.equipmentLogId))
+      .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
+      .leftJoin(boqItems, eq(boqItems.id, equipmentActivityAllocations.boqItemId))
+      .where(and(
+        eq(dprs.dprStatus, "draft"),
+        or(eq(dprs.boqProjectId, projectId), eq(boqItems.boqProjectId, projectId)),
+      ));
+    const draftEquipmentSegments = await tx.select({
+      id: equipmentActivitySegmentBoqItems.id,
+      programmeBarId: equipmentActivitySegmentBoqItems.programmeBarId,
+      dprId: dprs.id,
+      date: dprs.date,
+      site: dprs.site,
+      boqItemId: equipmentActivitySegmentBoqItems.boqItemId,
+    }).from(equipmentActivitySegmentBoqItems)
+      .innerJoin(equipmentActivitySegments, eq(equipmentActivitySegments.id, equipmentActivitySegmentBoqItems.segmentId))
+      .innerJoin(equipmentLogs, eq(equipmentLogs.id, equipmentActivitySegments.equipmentLogId))
+      .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
+      .leftJoin(boqItems, eq(boqItems.id, equipmentActivitySegmentBoqItems.boqItemId))
+      .where(and(
+        eq(dprs.dprStatus, "draft"),
+        or(eq(dprs.boqProjectId, projectId), eq(boqItems.boqProjectId, projectId)),
+      ));
+    const unsafeEquipmentIds = [...draftEquipmentLinks, ...draftEquipmentSegments]
+      .filter((row: any) => row.programmeBarId != null)
+      .map((row: any) => Number(row.id));
+    for (const row of [...draftEquipmentLinks, ...draftEquipmentSegments] as any[]) {
+      const existing = affectedByDraft.get(Number(row.dprId));
+      affectedByDraft.set(Number(row.dprId), {
+        id: Number(row.dprId),
+        date: String(row.date),
+        site: String(row.site),
+        affectedRows: (existing?.affectedRows ?? 0) + 1,
+        editUrl: existing?.editUrl ?? `/site/edit/${Number(row.dprId)}?draft`,
+      });
+    }
+    if (unsafeEquipmentIds.length) {
+      blockers.push({
+        code: "DRAFT_EQUIPMENT_LINK_UNSAFE",
+        message: "A draft DPR contains equipment allocation links to programme bars; those links are not demonstrably provisional and unaffected.",
+        count: unsafeEquipmentIds.length,
+        ids: unsafeEquipmentIds.slice(0, 50),
+      });
+    }
+    const unsafeEquipmentBoqOnlyIds = [...draftEquipmentLinks, ...draftEquipmentSegments]
+      .filter((row: any) => row.programmeBarId == null)
+      .map((row: any) => Number(row.id));
+    if (unsafeEquipmentBoqOnlyIds.length) {
+      blockers.push({
+        code: "DRAFT_EQUIPMENT_BOQ_LINK_UNSAFE",
+        message: "A draft DPR contains BOQ-only equipment allocation links without a programme bar; their scope impact cannot be proven unaffected.",
+        count: unsafeEquipmentBoqOnlyIds.length,
+        ids: unsafeEquipmentBoqOnlyIds.slice(0, 50),
+      });
+    }
+
+    return {
+      eligible: blockers.length === 0,
+      projectId,
+      segment: target,
+      blockers,
+      affectedDrafts: Array.from(affectedByDraft.values()),
+    };
+  }
+
+  async getInitialScopeCorrectionEligibility(segmentId: number) {
+    return await db.transaction(async (tx) => this.inspectInitialScopeCorrectionTx(tx, segmentId));
+  }
+
+  async correctInitialScopeSegment(
+    segmentId: number,
+    data: Partial<InsertProjectScopeSegment>,
+    reason: string,
+    audit: { userId?: number | null; userName: string; userRole?: string | null },
+  ) {
+    const trimmedReason = String(reason ?? "").trim();
+    if (!trimmedReason) throw new Error("CORRECTION_REASON_REQUIRED");
+    return await db.transaction(async (tx) => {
+      const [unlockedTarget] = await tx.select().from(projectScopeSegments)
+        .where(eq(projectScopeSegments.id, segmentId)).limit(1);
+      if (!unlockedTarget) throw new Error("SEGMENT_NOT_FOUND");
+      // Every producer of a scope-dependent operational record uses this row
+      // as its project mutex. Acquire it before rechecking dependencies.
+      const [project] = await tx.select({ id: boqProjects.id }).from(boqProjects)
+        .where(eq(boqProjects.id, Number(unlockedTarget.boqProjectId)))
+        .for("update").limit(1);
+      if (!project) throw new Error("PROJECT_NOT_FOUND");
+      const [existing] = await tx.select().from(projectScopeSegments)
+        .where(eq(projectScopeSegments.id, segmentId)).for("update").limit(1);
+      if (!existing) throw new Error("SEGMENT_NOT_FOUND");
+
+      const inspection = await this.inspectInitialScopeCorrectionTx(tx, segmentId, data);
+      if (!inspection.eligible) {
+        throw new InitialScopeCorrectionBlockedError(inspection.blockers, inspection.affectedDrafts);
+      }
+      const allowed = [
+        "segmentType", "chainageFrom", "chainageTo", "side", "label", "reason",
+        "applicability", "categoryIds", "itemIds", "effectiveFrom", "effectiveTo",
+        "deptReference", "documentRef", "notes", "withdrawalOrderRef", "consentRef",
+        "omittedQty", "omittedAmount", "originalScopeNote", "revisedScopeNote",
+      ] as const;
+      const editable: Record<string, any> = {};
+      for (const key of allowed) if (Object.prototype.hasOwnProperty.call(data, key)) editable[key] = (data as any)[key];
+      const oldValues = {
+        id: existing.id,
+        boqProjectId: existing.boqProjectId,
+        segmentType: existing.segmentType,
+        chainageFrom: existing.chainageFrom,
+        chainageTo: existing.chainageTo,
+        side: existing.side,
+        label: existing.label,
+        reason: existing.reason,
+        applicability: existing.applicability,
+        categoryIds: existing.categoryIds,
+        itemIds: existing.itemIds,
+        effectiveFrom: existing.effectiveFrom,
+        effectiveTo: existing.effectiveTo,
+        deptReference: existing.deptReference,
+        documentRef: existing.documentRef,
+        notes: existing.notes,
+        withdrawalOrderRef: existing.withdrawalOrderRef,
+        consentRef: existing.consentRef,
+        omittedQty: existing.omittedQty,
+        omittedAmount: existing.omittedAmount,
+        originalScopeNote: existing.originalScopeNote,
+        revisedScopeNote: existing.revisedScopeNote,
+        status: existing.status,
+        revisionOf: existing.revisionOf,
+        approvedBy: existing.approvedBy,
+        approvedAt: existing.approvedAt,
+        createdBy: existing.createdBy,
+        createdAt: existing.createdAt,
+        updatedAt: existing.updatedAt,
+      };
+      const [segment] = await tx.update(projectScopeSegments).set({
+        ...editable,
+        // Preserve identity and confirmed lifecycle; this is deliberately not
+        // the normal revision/supersede workflow.
+        status: "confirmed",
+        revisionOf: null,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(projectScopeSegments.id, segmentId),
+        eq(projectScopeSegments.status, "confirmed"),
+        isNull(projectScopeSegments.revisionOf),
+      )).returning();
+      if (!segment) throw new InitialScopeCorrectionBlockedError([{
+        code: "SEGMENT_CHANGED_CONCURRENTLY",
+        message: "The scope segment changed while correction was being prepared. Reload and try again.",
+      }], inspection.affectedDrafts);
+      const newValues = {
+        id: segment.id,
+        boqProjectId: segment.boqProjectId,
+        segmentType: segment.segmentType,
+        chainageFrom: segment.chainageFrom,
+        chainageTo: segment.chainageTo,
+        side: segment.side,
+        label: segment.label,
+        reason: segment.reason,
+        applicability: segment.applicability,
+        categoryIds: segment.categoryIds,
+        itemIds: segment.itemIds,
+        effectiveFrom: segment.effectiveFrom,
+        effectiveTo: segment.effectiveTo,
+        deptReference: segment.deptReference,
+        documentRef: segment.documentRef,
+        notes: segment.notes,
+        withdrawalOrderRef: segment.withdrawalOrderRef,
+        consentRef: segment.consentRef,
+        omittedQty: segment.omittedQty,
+        omittedAmount: segment.omittedAmount,
+        originalScopeNote: segment.originalScopeNote,
+        revisedScopeNote: segment.revisedScopeNote,
+        status: segment.status,
+        revisionOf: segment.revisionOf,
+        approvedBy: segment.approvedBy,
+        approvedAt: segment.approvedAt,
+        createdBy: segment.createdBy,
+        createdAt: segment.createdAt,
+        updatedAt: segment.updatedAt,
+      };
+      await tx.insert(auditLogs).values({
+        module: "project_scope",
+        transactionId: Number(segment.boqProjectId),
+        action: "initial_scope_corrected",
+        userId: audit.userId ?? null,
+        userName: audit.userName,
+        userRole: audit.userRole ?? null,
+        oldValues,
+        newValues,
+        reason: trimmedReason,
+      });
+      return { segment, before: existing, affectedDrafts: inspection.affectedDrafts };
+    });
+  }
+
   async createProjectScopeSegment(data: InsertProjectScopeSegment): Promise<ProjectScopeSegment> {
-    const [row] = await db.insert(projectScopeSegments).values(data).returning();
-    return row;
+    return await db.transaction(async (tx) => {
+      await tx.select({ id: boqProjects.id }).from(boqProjects)
+        .where(eq(boqProjects.id, Number(data.boqProjectId))).for("update");
+      const [row] = await tx.insert(projectScopeSegments).values(data).returning();
+      return row;
+    });
   }
 
   /**
@@ -25926,6 +26847,13 @@ export class DatabaseStorage implements IStorage {
     userId: number | null,
   ): Promise<{ segment: ProjectScopeSegment; revised: boolean }> {
     return await db.transaction(async (tx) => {
+      const [projectForLock] = await tx.select({ projectId: projectScopeSegments.boqProjectId })
+        .from(projectScopeSegments)
+        .where(eq(projectScopeSegments.id, id)).limit(1);
+      if (projectForLock) {
+        await tx.select({ id: boqProjects.id }).from(boqProjects)
+          .where(eq(boqProjects.id, Number(projectForLock.projectId))).for("update");
+      }
       const [existing] = await tx.select().from(projectScopeSegments)
         .where(eq(projectScopeSegments.id, id)).for("update");
       if (!existing) throw new Error("SEGMENT_NOT_FOUND");
@@ -25952,20 +26880,46 @@ export class DatabaseStorage implements IStorage {
   }
 
   async confirmProjectScopeSegment(id: number, userId: number | null): Promise<ProjectScopeSegment> {
-    const [row] = await db.update(projectScopeSegments)
-      .set({ status: "confirmed", approvedBy: userId, approvedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(projectScopeSegments.id, id), eq(projectScopeSegments.status, "draft")))
-      .returning();
-    if (!row) throw new Error("SEGMENT_NOT_DRAFT: only draft segments can be confirmed");
-    return row;
+    return await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(projectScopeSegments).where(eq(projectScopeSegments.id, id)).limit(1);
+      if (existing) await tx.select({ id: boqProjects.id }).from(boqProjects)
+        .where(eq(boqProjects.id, Number(existing.boqProjectId))).for("update");
+      const [row] = await tx.update(projectScopeSegments)
+        .set({ status: "confirmed", approvedBy: userId, approvedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(projectScopeSegments.id, id), eq(projectScopeSegments.status, "draft")))
+        .returning();
+      if (!row) throw new Error("SEGMENT_NOT_DRAFT: only draft segments can be confirmed");
+      return row;
+    });
   }
 
   /** Draft segments may be deleted; confirmed ones must be superseded via edit. */
   async deleteProjectScopeSegment(id: number): Promise<void> {
-    const [existing] = await db.select().from(projectScopeSegments).where(eq(projectScopeSegments.id, id));
-    if (!existing) return;
-    if (existing.status !== "draft") throw new Error("SEGMENT_NOT_DRAFT: confirmed scope records cannot be deleted — revise them instead");
-    await db.delete(projectScopeSegments).where(eq(projectScopeSegments.id, id));
+    await db.transaction(async (tx) => {
+      const [projectForLock] = await tx.select({
+        projectId: projectScopeSegments.boqProjectId,
+      }).from(projectScopeSegments)
+        .where(eq(projectScopeSegments.id, id)).limit(1);
+      if (!projectForLock) return;
+      await tx.select({ id: boqProjects.id }).from(boqProjects)
+        .where(eq(boqProjects.id, Number(projectForLock.projectId))).for("update");
+
+      // Confirmation and deletion share the project mutex. Re-read the
+      // segment after acquiring it so a stale pre-lock draft read cannot
+      // delete a row that was confirmed concurrently.
+      const [existing] = await tx.select().from(projectScopeSegments)
+        .where(eq(projectScopeSegments.id, id)).for("update").limit(1);
+      if (!existing) return;
+      if (existing.status !== "draft") {
+        throw new Error("SEGMENT_NOT_DRAFT: confirmed scope records cannot be deleted — revise them instead");
+      }
+      const [deleted] = await tx.delete(projectScopeSegments)
+        .where(and(eq(projectScopeSegments.id, id), eq(projectScopeSegments.status, "draft")))
+        .returning();
+      if (!deleted) {
+        throw new Error("SEGMENT_NOT_DRAFT: confirmed scope records cannot be deleted — revise them instead");
+      }
+    });
   }
 
   // ── Geometry Batch 01: project road geometry profile ───────────────────────
@@ -26367,9 +27321,17 @@ export class DatabaseStorage implements IStorage {
     await db.update(boqItems).set({ mappingStatus: status }).where(eq(boqItems.id, boqItemId));
   }
 
-  async bulkSetBoqItemsNeedsReview(itemIds: number[], needsReview: boolean): Promise<void> {
+  async bulkSetBoqItemsNeedsReview(itemIds: number[], needsReview: boolean, boqProjectId?: number, expectedScopeVersionToken?: string | null): Promise<void> {
     if (!itemIds.length) return;
-    await db.update(boqItems).set({ needsReview }).where(inArray(boqItems.id, itemIds));
+    if (boqProjectId == null && expectedScopeVersionToken == null) {
+      await db.update(boqItems).set({ needsReview }).where(inArray(boqItems.id, itemIds));
+      return;
+    }
+    await db.transaction(async (tx) => {
+      const project = await this.lockProjectAndCheckScopeTx(tx, Number(boqProjectId), expectedScopeVersionToken);
+      if (!project) throw new Error("PROJECT_NOT_FOUND");
+      await tx.update(boqItems).set({ needsReview }).where(inArray(boqItems.id, itemIds));
+    });
   }
 
   // ─── BOQ Program Settings ─────────────────────────────────────────────────
@@ -26542,16 +27504,144 @@ export class DatabaseStorage implements IStorage {
     return row ?? null;
   }
 
-  async upsertBoqProgramSettings(projectId: number, data: Partial<InsertBoqProgramSettings>): Promise<BoqProgramSettings> {
-    const [row] = await db
-      .insert(boqProgramSettings)
-      .values({ ...data, projectId, updatedAt: new Date() } as any)
-      .onConflictDoUpdate({
-        target: boqProgramSettings.projectId,
-        set: { ...data, updatedAt: new Date() },
-      })
-      .returning();
-    return row;
+  async upsertBoqProgramSettings(projectId: number, data: Partial<InsertBoqProgramSettings>, expectedScopeVersionToken?: string | null): Promise<BoqProgramSettings> {
+    return await db.transaction(async (tx) => {
+      const project = await this.lockProjectAndCheckScopeTx(tx, projectId, expectedScopeVersionToken);
+      if (!project) throw new Error("PROJECT_NOT_FOUND");
+      const [row] = await tx
+        .insert(boqProgramSettings)
+        .values({ ...data, projectId, updatedAt: new Date() } as any)
+        .onConflictDoUpdate({
+          target: boqProgramSettings.projectId,
+          set: { ...data, updatedAt: new Date() },
+        })
+        .returning();
+      return row;
+    });
+  }
+
+  async applyWorkProgrammeMutation(
+    projectId: number,
+    operation: {
+      settings?: Partial<InsertBoqProgramSettings>;
+      needsReviewItemIds?: number[];
+      deleteBarIds?: number[];
+      deleteStructureLocationBars?: boolean;
+      deleteAllBars?: boolean;
+      updates?: Array<{ id: number; data: Partial<InsertWorkProgramBar> }>;
+      inserts?: InsertWorkProgramBar[];
+    },
+    expectedScopeVersionToken?: string | null,
+  ): Promise<{ created: number; updated: number; deleted: number; insertedBars: WorkProgramBar[] }> {
+    return await db.transaction(async (tx) => {
+      const project = await this.lockProjectAndCheckScopeTx(tx, projectId, expectedScopeVersionToken);
+      if (!project) throw new Error("PROJECT_NOT_FOUND");
+
+      if (operation.settings) {
+        await tx.insert(boqProgramSettings)
+          .values({ ...operation.settings, projectId, updatedAt: new Date() } as any)
+          .onConflictDoUpdate({
+            target: boqProgramSettings.projectId,
+            set: { ...operation.settings, updatedAt: new Date() },
+          });
+      }
+
+      const reviewIds = Array.from(new Set(
+        (operation.needsReviewItemIds ?? []).map(Number).filter(Number.isFinite),
+      ));
+      if (reviewIds.length) {
+        await tx.update(boqItems)
+          .set({ needsReview: true })
+          .where(and(eq(boqItems.boqProjectId, projectId), inArray(boqItems.id, reviewIds)));
+      }
+
+      let deleted = 0;
+      const deleteIds = Array.from(new Set(
+        (operation.deleteBarIds ?? []).map(Number).filter(Number.isFinite),
+      ));
+      if (operation.deleteAllBars) {
+        const result = await tx.delete(workProgramBars)
+          .where(eq(workProgramBars.boqProjectId, projectId));
+        deleted += execDmlRowCount(result, "applyWorkProgrammeMutation.deleteAllBars");
+      } else if (operation.deleteStructureLocationBars) {
+        const result = await tx.delete(workProgramBars).where(and(
+          eq(workProgramBars.boqProjectId, projectId),
+          eq(workProgramBars.planningMode as any, "structure_location"),
+        ));
+        deleted += execDmlRowCount(result, "applyWorkProgrammeMutation.deleteStructureLocationBars");
+      }
+      if (deleteIds.length) {
+        const result = await tx.delete(workProgramBars).where(and(
+          eq(workProgramBars.boqProjectId, projectId),
+          inArray(workProgramBars.id, deleteIds),
+        ));
+        deleted += execDmlRowCount(result, "applyWorkProgrammeMutation.deleteBarIds");
+      }
+
+      let updated = 0;
+      for (const change of operation.updates ?? []) {
+        const [current] = await tx.select().from(workProgramBars).where(and(
+          eq(workProgramBars.id, Number(change.id)),
+          eq(workProgramBars.boqProjectId, projectId),
+        )).limit(1);
+        if (!current) continue;
+        const {
+          baselineStartDate: _ignoredBaselineStart,
+          baselineEndDate: _ignoredBaselineEnd,
+          revisionHistory: _ignoredHistory,
+          ...safeData
+        } = change.data as any;
+        const nextStartDate = safeData.startDate !== undefined ? safeData.startDate : current.startDate;
+        const nextEndDate = safeData.endDate !== undefined ? safeData.endDate : current.endDate;
+        const [row] = await tx.update(workProgramBars).set({
+          ...safeData,
+          ...(current.baselineStartDate == null && nextStartDate != null
+            ? { baselineStartDate: captureInitialBaseline(current.baselineStartDate, nextStartDate) }
+            : {}),
+          ...(current.baselineEndDate == null && nextEndDate != null
+            ? { baselineEndDate: captureInitialBaseline(current.baselineEndDate, nextEndDate) }
+            : {}),
+        }).where(and(
+          eq(workProgramBars.id, Number(change.id)),
+          eq(workProgramBars.boqProjectId, projectId),
+        )).returning();
+        if (row) updated++;
+      }
+
+      const projectStart = (project as any).startDate ?? null;
+      const insertedBars: WorkProgramBar[] = [];
+      for (const data of operation.inserts ?? []) {
+        let startDate = data.startDate ?? null;
+        let endDate = data.endDate ?? null;
+        if (projectStart) {
+          if (!startDate && Number.isFinite(Number(data.startMonth))) {
+            const d = monthIndexToDateCal(Number(data.startMonth), projectStart);
+            startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          }
+          if (!endDate && Number.isFinite(Number(data.endMonth))) {
+            const d = displayFinishDateCal(Number(data.endMonth), projectStart, Number(data.startMonth));
+            endDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          }
+        }
+        const [row] = await tx.insert(workProgramBars).values({
+          ...data,
+          boqProjectId: projectId,
+          startDate,
+          endDate,
+          baselineStartDate: startDate,
+          baselineEndDate: endDate,
+          revisionHistory: [],
+        } as InsertWorkProgramBar).returning();
+        if (row) insertedBars.push(row);
+      }
+
+      return {
+        created: insertedBars.length,
+        updated,
+        deleted,
+        insertedBars,
+      };
+    });
   }
 
   /**
@@ -26961,45 +28051,53 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async upsertWorkProgramBar(data: InsertWorkProgramBar): Promise<WorkProgramBar> {
-    const project = await this.getBoqProject(data.boqProjectId);
-    const projectStart = project?.startDate ?? null;
-    let startDate = data.startDate ?? null;
-    let endDate = data.endDate ?? null;
-    if (projectStart) {
-      if (!startDate && Number.isFinite(Number(data.startMonth))) {
-        const d = monthIndexToDateCal(Number(data.startMonth), projectStart);
-        startDate = [
-          d.getFullYear(),
-          String(d.getMonth() + 1).padStart(2, "0"),
-          String(d.getDate()).padStart(2, "0"),
-        ].join("-");
+  async upsertWorkProgramBar(data: InsertWorkProgramBar, expectedScopeVersionToken?: string | null): Promise<WorkProgramBar> {
+    return await db.transaction(async (tx) => {
+      const [project] = await tx.select().from(boqProjects)
+        .where(eq(boqProjects.id, Number(data.boqProjectId))).for("update").limit(1);
+      if (expectedScopeVersionToken != null) {
+        const currentToken = await this.getProjectScopeVersionTokenTx(tx, Number(data.boqProjectId));
+        if (currentToken !== expectedScopeVersionToken) throw new ScopeChangedDuringPlanningError();
       }
-      if (!endDate && Number.isFinite(Number(data.endMonth))) {
-        const d = displayFinishDateCal(Number(data.endMonth), projectStart, Number(data.startMonth));
-        endDate = [
-          d.getFullYear(),
-          String(d.getMonth() + 1).padStart(2, "0"),
-          String(d.getDate()).padStart(2, "0"),
-        ].join("-");
+      const projectStart = project?.startDate ?? null;
+      let startDate = data.startDate ?? null;
+      let endDate = data.endDate ?? null;
+      if (projectStart) {
+        if (!startDate && Number.isFinite(Number(data.startMonth))) {
+          const d = monthIndexToDateCal(Number(data.startMonth), projectStart);
+          startDate = [
+            d.getFullYear(),
+            String(d.getMonth() + 1).padStart(2, "0"),
+            String(d.getDate()).padStart(2, "0"),
+          ].join("-");
+        }
+        if (!endDate && Number.isFinite(Number(data.endMonth))) {
+          const d = displayFinishDateCal(Number(data.endMonth), projectStart, Number(data.startMonth));
+          endDate = [
+            d.getFullYear(),
+            String(d.getMonth() + 1).padStart(2, "0"),
+            String(d.getDate()).padStart(2, "0"),
+          ].join("-");
+        }
       }
-    }
-    const initial = {
-      ...data,
-      startDate,
-      endDate,
-      baselineStartDate: startDate,
-      baselineEndDate: endDate,
-      revisionHistory: [],
-    } as InsertWorkProgramBar;
-    const [row] = await db.insert(workProgramBars).values(initial).returning();
-    return row;
+      const initial = {
+        ...data,
+        startDate,
+        endDate,
+        baselineStartDate: startDate,
+        baselineEndDate: endDate,
+        revisionHistory: [],
+      } as InsertWorkProgramBar;
+      const [row] = await tx.insert(workProgramBars).values(initial).returning();
+      return row;
+    });
   }
 
-  async updateWorkProgramBar(id: number, data: Partial<InsertWorkProgramBar>): Promise<WorkProgramBar | null> {
+  async updateWorkProgramBar(id: number, data: Partial<InsertWorkProgramBar>, expectedScopeVersionToken?: string | null): Promise<WorkProgramBar | null> {
     return db.transaction(async (tx) => {
       const [current] = await tx.select().from(workProgramBars).where(eq(workProgramBars.id, id)).limit(1);
       if (!current) return null;
+      await this.lockProjectAndCheckScopeTx(tx, Number(current.boqProjectId), expectedScopeVersionToken);
       // Baselines and revision history are controlled only by the dedicated
       // revision transaction below; generic PATCH callers cannot overwrite them.
       const {
@@ -27023,8 +28121,13 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async deleteWorkProgramBar(id: number): Promise<void> {
-    await db.delete(workProgramBars).where(eq(workProgramBars.id, id));
+  async deleteWorkProgramBar(id: number, expectedScopeVersionToken?: string | null): Promise<void> {
+    await db.transaction(async (tx) => {
+      const [current] = await tx.select().from(workProgramBars).where(eq(workProgramBars.id, id)).limit(1);
+      if (!current) return;
+      await this.lockProjectAndCheckScopeTx(tx, Number(current.boqProjectId), expectedScopeVersionToken);
+      await tx.delete(workProgramBars).where(eq(workProgramBars.id, id));
+    });
   }
 
   // ── Instruction 030A: DPR progress ↔ programme-bar linkage ────────────────
@@ -27702,11 +28805,15 @@ export class DatabaseStorage implements IStorage {
     ];
   }
 
-  async deleteStructureLocationBars(boqProjectId: number): Promise<number> {
-    const result = await db.delete(workProgramBars).where(
-      and(eq(workProgramBars.boqProjectId, boqProjectId), eq(workProgramBars.planningMode as any, "structure_location"))
-    );
-    return execDmlRowCount(result, "deleteStructureLocationBars");
+  async deleteStructureLocationBars(boqProjectId: number, expectedScopeVersionToken?: string | null): Promise<number> {
+    return await db.transaction(async (tx) => {
+      const project = await this.lockProjectAndCheckScopeTx(tx, boqProjectId, expectedScopeVersionToken);
+      if (!project) throw new Error("PROJECT_NOT_FOUND");
+      const result = await tx.delete(workProgramBars).where(
+        and(eq(workProgramBars.boqProjectId, boqProjectId), eq(workProgramBars.planningMode as any, "structure_location"))
+      );
+      return execDmlRowCount(result, "deleteStructureLocationBars");
+    });
   }
 
   async restoreWorkProgramBars(boqProjectId: number, bars: Array<{
@@ -27722,11 +28829,36 @@ export class DatabaseStorage implements IStorage {
     isDurationOverride?: boolean;
     notes?: string | null;
     source?: string | null;
-  }>): Promise<void> {
-    await db.delete(workProgramBars).where(eq(workProgramBars.boqProjectId, boqProjectId));
-    for (const b of bars) {
-      await this.upsertWorkProgramBar({ ...b, boqProjectId } as any);
-    }
+  }>, expectedScopeVersionToken?: string | null): Promise<void> {
+    await db.transaction(async (tx) => {
+      const project = await this.lockProjectAndCheckScopeTx(tx, boqProjectId, expectedScopeVersionToken);
+      if (!project) throw new Error("PROJECT_NOT_FOUND");
+      await tx.delete(workProgramBars).where(eq(workProgramBars.boqProjectId, boqProjectId));
+      const projectStart = (project as any).startDate ?? null;
+      for (const b of bars) {
+        let startDate = (b as any).startDate ?? null;
+        let endDate = (b as any).endDate ?? null;
+        if (projectStart) {
+          if (!startDate && Number.isFinite(Number(b.startMonth))) {
+            const d = monthIndexToDateCal(Number(b.startMonth), projectStart);
+            startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          }
+          if (!endDate && Number.isFinite(Number(b.endMonth))) {
+            const d = displayFinishDateCal(Number(b.endMonth), projectStart, Number(b.startMonth));
+            endDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          }
+        }
+        await tx.insert(workProgramBars).values({
+          ...b,
+          boqProjectId,
+          startDate,
+          endDate,
+          baselineStartDate: startDate,
+          baselineEndDate: endDate,
+          revisionHistory: [],
+        } as InsertWorkProgramBar);
+      }
+    });
   }
 
   // --- Monthly Targets (derived from work programme bars, fractional overlap formula) ---
@@ -29827,23 +30959,45 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async createEarthworkArrangement(data: InsertEarthworkArrangement): Promise<EarthworkArrangement> {
-    const [row] = await db.insert(earthworkArrangements).values(data).returning();
-    return row;
+  async createEarthworkArrangement(
+    data: InsertEarthworkArrangement,
+    expectedScopeVersionToken?: string | null,
+  ): Promise<EarthworkArrangement> {
+    return await db.transaction(async (tx) => {
+      const project = await this.lockProjectAndCheckScopeTx(
+        tx,
+        Number(data.boqProjectId),
+        expectedScopeVersionToken,
+      );
+      if (!project) throw new Error("PROJECT_NOT_FOUND");
+      const [row] = await tx.insert(earthworkArrangements).values(data).returning();
+      return row;
+    });
   }
 
   async updateEarthworkArrangement(id: number, data: Partial<InsertEarthworkArrangement>): Promise<EarthworkArrangement | undefined> {
-    const [updated] = await db.update(earthworkArrangements)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(earthworkArrangements.id, id))
-      .returning();
-    return updated;
+    return await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(earthworkArrangements).where(eq(earthworkArrangements.id, id)).limit(1);
+      if (!existing) return undefined;
+      await tx.select({ id: boqProjects.id }).from(boqProjects)
+        .where(eq(boqProjects.id, Number(existing.boqProjectId))).for("update");
+      const [updated] = await tx.update(earthworkArrangements)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(earthworkArrangements.id, id))
+        .returning();
+      return updated;
+    });
   }
 
   async deleteEarthworkArrangement(id: number): Promise<boolean> {
-    const result = await db.delete(earthworkArrangements)
-      .where(eq(earthworkArrangements.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(earthworkArrangements).where(eq(earthworkArrangements.id, id)).limit(1);
+      if (!existing) return false;
+      await tx.select({ id: boqProjects.id }).from(boqProjects)
+        .where(eq(boqProjects.id, Number(existing.boqProjectId))).for("update");
+      const result = await tx.delete(earthworkArrangements).where(eq(earthworkArrangements.id, id));
+      return (result.rowCount ?? 0) > 0;
+    });
   }
 
   // ── Instruction 026 §4: arrangement ↔ programme-bar allocations ────────────
