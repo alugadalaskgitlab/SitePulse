@@ -324,7 +324,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
       </aside>
 
       {/* Main content — offset for desktop sidebar */}
-      <div className="flex-1 flex flex-col md:pl-56 min-h-screen">
+      <div className="flex-1 flex min-w-0 flex-col md:pl-56 min-h-screen">
         {/* Top header */}
         <header className="h-14 bg-white border-b border-slate-200 flex items-center px-4 md:px-6 gap-3 sticky top-0 z-20 shadow-sm">
           {/* Mobile menu button */}
@@ -374,7 +374,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
         </header>
 
         {/* Page content */}
-        <main ref={mainRef} className="flex-1 overflow-auto relative">
+        <main ref={mainRef} className="relative min-w-0 flex-1 overflow-auto">
           {children}
           {showScrollTop && (
             <button

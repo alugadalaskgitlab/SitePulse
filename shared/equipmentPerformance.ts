@@ -245,7 +245,14 @@ export interface EquipmentPerformanceReport {
     projects: Array<{ id: number; name: string }>;
     ownership: string[];
     equipmentTypes: string[];
-    equipment: Array<{ id: number; name: string; registrationNumber: string | null }>;
+    equipment: Array<{
+      id: number;
+      name: string;
+      registrationNumber: string | null;
+      ownership?: string | null;
+      vendorName?: string | null;
+      meterType?: string | null;
+    }>;
     scopes: Array<{ value: EquipmentScope; label: string }>;
   };
   totals: {
@@ -814,7 +821,14 @@ export function buildEquipmentPerformanceReport(input: {
       projects: Array.from(projects.values()).map(({ id, name }) => ({ id, name })),
       ownership: Array.from(new Set((input.filterMasters ?? input.masters).map((m) => m.ownership).filter((v): v is string => !!v))).sort(),
       equipmentTypes: Array.from(new Set((input.filterMasters ?? input.masters).map((m) => m.equipmentType).filter((v): v is string => !!v))).sort(),
-      equipment: (input.filterMasters ?? input.masters).map((m) => ({ id: m.id, name: m.name, registrationNumber: m.registrationNumber ?? null })),
+      equipment: (input.filterMasters ?? input.masters).map((m) => ({
+        id: m.id,
+        name: m.name,
+        registrationNumber: m.registrationNumber ?? null,
+        ownership: m.ownership ?? null,
+        vendorName: m.vendorName ?? null,
+        meterType: m.meterType ?? null,
+      })),
       scopes: [
         { value: "site", label: "Site / road operations" },
         { value: "plant", label: "Plant / HMP / RMC operations" },

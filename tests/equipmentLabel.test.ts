@@ -39,6 +39,17 @@ describe("canonical equipment option labels", () => {
     expect(label).not.toMatch(/undefined|null/i);
   });
 
+  it("keeps duplicate equipment names distinguishable with master identity fields", () => {
+    const labels = [
+      formatEquipmentOptionLabel({ name: "TIPPER", registrationNumber: "TS15UF4308", ownership: "hired", vendorName: "Narasimulu" }),
+      formatEquipmentOptionLabel({ name: "TIPPER", registrationNumber: "TS15UF4309", ownership: "hired", vendorName: "Narasimulu" }),
+      formatEquipmentOptionLabel({ name: "TIPPER", registrationNumber: "TS15UF4310", ownership: "owned" }),
+    ];
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels[0]).toContain("TS15UF4308");
+    expect(labels[1]).toContain("TS15UF4309");
+  });
+
   it("uses the shared helper throughout the scoped usage and master screens", () => {
     const usage = readFileSync("client/src/pages/PlantEquipmentUsage.tsx", "utf8");
     const master = readFileSync("client/src/pages/Plant.tsx", "utf8");

@@ -15,9 +15,9 @@ Historical Equipment Master attribution is review-first. Only owners/admins may 
 
 **How to apply:** Suggestions may assist review but never write automatically. Scope candidate lists to what the viewer may see. Attach breakdown notes only through exact source-type and source-record links.
 
-Identity review belongs in Equipment Master, not inside Fleet Performance filters. Pending identification and corrections of previously identified DPR rows are separate surfaces; resolving the final pending item must not remove the historical correction capability.
+Identity review belongs in Equipment Master, not inside Equipment Performance filters. The normal master page should show only actionable pending identification, not a permanent historical-identification register.
 
-**Why:** A pending-only card cannot also be the sole access point for correcting historical identities. Creating a master and confirming its source identity are separate operations and can partially succeed.
+**Why:** The user explicitly rejected the historical card as clutter. Removing that UI must not delete audit history, confirmed links, or identity-confirmation backend capability. Creating a master and confirming its source identity remain separate operations and can partially succeed.
 
 **How to apply:** Share the unfiltered pending query between the master section and report notice. On create-success/link-failure, retain the created ID and retry only confirmation rather than creating another master.
 

@@ -28,6 +28,7 @@ import {
   type EquipmentPerformanceReport,
 } from "@shared/equipmentPerformance";
 import { formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
+import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
 
 type AnyRow = Record<string, any>;
 type Filters = EquipmentPerformanceFilters;
@@ -93,6 +94,7 @@ export default function EquipmentPerformanceReport() {
   });
   const rows = report.data?.fleet ?? [];
   const events = report.data?.events ?? [];
+  const equipmentOptions = selectOptions(report.data, "equipment");
   const pendingIdentificationCount = identification.data?.reviewRows.length ?? 0;
   const machineEvents = useMemo(
     () => openMachine?.equipmentId == null ? [] : events.filter(event => event.equipmentId === openMachine.equipmentId),
@@ -143,8 +145,8 @@ export default function EquipmentPerformanceReport() {
   }, []);
 
   return (
-    <div className="equip-shell -mx-4 -mt-6 min-h-[100dvh] px-4 py-7 md:-mx-8 md:px-8" data-testid="page-equipment-performance">
-      <div className="mx-auto max-w-[1700px] space-y-5">
+    <div className="equip-shell -mt-6 min-h-[100dvh] min-w-0 max-w-full overflow-x-hidden px-4 py-7 md:px-8" data-testid="page-equipment-performance">
+      <div className="mx-auto min-w-0 max-w-[1700px] space-y-5">
         <header className="border-b-2 border-[#173f49] pb-5">
           <h1 className="text-3xl font-bold tracking-[-.045em] text-[#173f49] md:text-4xl">EQUIPMENT PERFORMANCE</h1>
           <p className="mt-1 text-sm text-slate-600">Usage, working hours and diesel consumption by equipment</p>
@@ -158,7 +160,7 @@ export default function EquipmentPerformanceReport() {
             <Filter label="Scope"><NativeSelect value={filters.scope} onChange={value => set("scope", value)} placeholder="All" items={selectOptions(report.data, "scopes")} fallback={["site", "plant"]} /></Filter>
             <Filter label="Ownership"><NativeSelect value={filters.ownership} onChange={value => set("ownership", value)} placeholder="All" items={selectOptions(report.data, "ownership")} fallback={["owned", "hired"]} /></Filter>
             <Filter label="Equipment Type"><NativeSelect value={filters.equipmentType} onChange={value => set("equipmentType", value)} placeholder="All types" items={selectOptions(report.data, "equipmentTypes")} /></Filter>
-            <Filter label="Equipment"><NativeSelect value={filters.equipmentId} onChange={value => set("equipmentId", value)} placeholder="All equipment" items={selectOptions(report.data, "equipment")} /></Filter>
+            <Filter label="Equipment"><NativeSelect value={filters.equipmentId} onChange={value => set("equipmentId", value)} placeholder="All equipment" items={equipmentOptions.map(item => ({ ...item, label: formatEquipmentOptionLabel(item) }))} /></Filter>
           </div>
           <div className="mt-3"><Button variant="outline" className="h-9 border-[#9fb4b8] bg-transparent" onClick={reset}><RotateCcw className="mr-1.5 h-3.5 w-3.5" />Reset</Button></div>
         </section>
@@ -170,12 +172,12 @@ export default function EquipmentPerformanceReport() {
               <Link href={EQUIPMENT_IDENTIFICATION_RETURN_TO}><Button size="sm" variant="outline">Review</Button></Link>
             </div>
           )}
-          <section className="equip-panel overflow-hidden rounded-md border border-[#cfc8b8] bg-[#fffdf6]">
+           <section className="equip-panel min-w-0 max-w-full overflow-hidden rounded-md border border-[#cfc8b8] bg-[#fffdf6]">
             <div className="flex items-center justify-between border-b border-[#d9d2c2] px-4 py-3">
               <div><h2 className="font-bold text-[#173f49]">Equipment</h2><p className="text-xs text-slate-600">Select a machine to see daily details.</p></div>
               <span className="text-xs text-slate-500">{rows.length} machine{rows.length === 1 ? "" : "s"}</span>
             </div>
-            <div className="overflow-x-auto">
+             <div className="min-w-0 max-w-full overflow-x-auto" data-testid="equipment-performance-table-scroll">
               <table className="w-full min-w-[1550px] text-left text-xs">
                 <thead className="bg-[#e8e2d3] text-[10px] uppercase tracking-wider text-[#43575a]"><tr>
                   <th className="px-4 py-2.5">Equipment</th><th>Owned / Hired</th><th>Owner / Vendor</th>
@@ -235,7 +237,7 @@ function DailyTableRow({ row, meterUnit }: { row: EquipmentPerformanceDailyRow; 
 }
 
 function Filter({ label, children }: { label: string; children: ReactNode }) { return <label className="block"><span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#536568]">{label}</span>{children}</label>; }
-function NativeSelect({ value, onChange, placeholder, items, fallback = [] }: { value: string; onChange: (value: string) => void; placeholder: string; items: any[]; fallback?: string[] }) { const options = items.length ? items : fallback; return <select value={value} onChange={event => onChange(event.target.value)} className="h-9 w-full rounded-md border border-[#c8c3b6] bg-[#fffdf6] px-2 text-xs outline-none focus:border-[#1d7183]"><option value="">{placeholder}</option>{options.map((item: any) => <option key={String(item.id ?? item.value ?? item)} value={String(item.id ?? item.value ?? item)}>{item.name ?? item.label ?? item}</option>)}</select>; }
+function NativeSelect({ value, onChange, placeholder, items, fallback = [] }: { value: string; onChange: (value: string) => void; placeholder: string; items: any[]; fallback?: string[] }) { const options = items.length ? items : fallback; return <select value={value} onChange={event => onChange(event.target.value)} className="h-9 w-full rounded-md border border-[#c8c3b6] bg-[#fffdf6] px-2 text-xs outline-none focus:border-[#1d7183]"><option value="">{placeholder}</option>{options.map((item: any) => <option key={String(item.id ?? item.value ?? item)} value={String(item.id ?? item.value ?? item)}>{item.label ?? item.name ?? item}</option>)}</select>; }
 function Numeric({ children, className = "" }: { children: ReactNode; className?: string }) { return <td className={`px-2 py-2 text-right font-mono ${className}`}>{children}</td>; }
 function partialDuration(value: number | null | undefined, incomplete: boolean) { if (value == null) return "—"; return `${incomplete ? "Partial · " : ""}${formatEquipmentDuration(value)}`; }
 function consumptionValue(value: number | null | undefined, incomplete: boolean) { return incomplete || value == null ? "Incomplete" : litres(value); }

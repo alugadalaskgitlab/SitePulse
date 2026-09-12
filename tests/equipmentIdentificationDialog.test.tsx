@@ -133,7 +133,7 @@ describe("Equipment identification dialog orchestration", () => {
     ]);
   });
 
-  it("keeps previously identified correction available when there are no pending rows", async () => {
+  it("does not render a historical correction card when there are no pending rows", async () => {
     const prior = {
       key: "dpr_log:20",
       date: "2026-01-09",
@@ -153,8 +153,8 @@ describe("Equipment identification dialog orchestration", () => {
     }));
 
     render(<QueryClientProvider client={queryClient}><EquipmentIdentificationSection /></QueryClientProvider>);
-    expect(await screen.findByTestId("previously-identified-equipment-corrections")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByTestId("previously-identified-equipment-corrections")).toBeNull());
     expect(screen.queryByTestId("equipment-needing-identification")).toBeNull();
-    expect(screen.getByText("ROLLER 5")).toBeTruthy();
+    expect(screen.queryByText("ROLLER 5")).toBeNull();
   });
 });

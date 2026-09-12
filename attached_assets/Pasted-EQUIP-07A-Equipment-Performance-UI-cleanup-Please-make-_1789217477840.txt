@@ -1,0 +1,139 @@
+EQUIP-07A — Equipment Performance UI cleanup
+
+Please make these THREE focused corrections to the Equipment Performance / Equipment Master work just completed.
+
+Do not redesign calculations again and do not start Vendor Bills.
+
+1. EQUIPMENT FILTER — USE THE SAME EQUIPMENT MASTER DISPLAY USED ELSEWHERE
+
+The Equipment dropdown on Equipment Performance currently shows plain duplicate names such as:
+
+TIPPER
+TIPPER
+TIPPER
+
+This is not acceptable because the user cannot identify which actual machine is being selected.
+
+Use the SAME shared Equipment Master option-label formatting already used in the normal Equipment entry dropdowns.
+
+The report Equipment filter must display, for example:
+
+40-30 KVA GENERATOR — HLC OWN
+CAMPER (TS07UP0505) — HLC OWN
+JCB-SITE (TS07EV930) — HIRED: VISHWANATHAM - BODAPALLY
+TANDEM ROLLER-JAYRAM — HIRED: NEMALI JAYRAM
+TIPPER (TS15UF 4308) — HIRED: NARASIMULU
+
+Display priority:
+
+Equipment Name
++ Registration / Vehicle / Equipment No. in brackets where available
++ ownership
++ owner/vendor for hired equipment
+
+Reuse the existing shared `formatEquipmentOptionLabel` or the same canonical formatter used by the Equipment entry dropdown.
+
+Do NOT write another separate formatter for Equipment Performance.
+
+The selected value/query must still use equipmentId; this is only the human-readable label.
+
+Use Equipment Master as the source. Do not build these labels from DPR free text.
+
+If the exact punctuation/format of the existing shared formatter differs slightly from the examples above (e.g. pipe-separated instead of em-dash-separated), that is fine — the requirement is that Equipment Performance uses the SAME formatter and SAME output as every other equipment dropdown in the app, not that it matches these exact example strings character-for-character. Consistency across the app matters more than the exact punctuation.
+
+2. REMOVE "PREVIOUSLY IDENTIFIED DPR EQUIPMENT" FROM NORMAL EQUIPMENT MASTER
+
+Remove the entire visible card/section:
+
+"Previously Identified DPR Equipment"
+
+from the normal Equipment Master page.
+
+The user does NOT want a permanent list of every historical DPR equipment identity correction above Equipment Master.
+
+Do NOT delete:
+- historical data
+- audit records
+- confirmed equipmentId links
+- the underlying identity-confirmation backend
+
+This is a UI removal only.
+
+KEEP the conditional:
+
+"Equipment Needing Identification"
+
+section for genuinely pending/unidentified DPR equipment.
+
+That pending section should appear only when there is something requiring action.
+
+Therefore:
+
+No pending identification
+→ Equipment Master opens directly to the normal Equipment Master list.
+
+Pending identification exists
+→ show the small actionable pending-identification section, then Equipment Master.
+
+Do not replace the removed historical list with another card or register.
+
+3. FIX EQUIPMENT PERFORMANCE PAGE BEING HIDDEN UNDER SIDEBAR
+
+On desktop, the left side of Equipment Performance is currently extending underneath the fixed application sidebar.
+
+The first columns/headings are partly hidden.
+
+Fix the page/container layout so the ENTIRE report begins inside the application's normal content area, to the right of the sidebar.
+
+Inspect the current `equip-shell` wrapper.
+
+In particular, the current negative horizontal margins such as:
+- `-mx-4`
+- `md:-mx-8`
+
+must not cause the report to escape its parent content area.
+
+The report should:
+
+- respect the existing main-content/sidebar offset
+- start at the visible left edge of the content area
+- never render underneath the sidebar
+- keep the Equipment column fully visible at the initial scroll position
+- keep horizontal scrolling INSIDE the table container for the wide 14-column report
+- not cause the whole browser/page to horizontally scroll
+
+Do not solve this by reducing/removing required columns.
+
+Do not hide Equipment / Owned-Hired / Owner columns.
+
+The user must first see:
+
+Equipment | Owned/Hired | Owner/Vendor | Opening Meter ...
+
+and then horizontally scroll the table for later columns if necessary.
+
+4. VERIFY
+
+A. Equipment Performance dropdown:
+Confirm every option uses the same Equipment Master label style as Equipment entry, including registration/equipment number and owner/vendor.
+
+B. Duplicate-name test:
+If there are 8 different Tippers, each must be distinguishable by registration/equipment number and/or owner.
+
+C. Equipment Master:
+Confirm "Previously Identified DPR Equipment" is completely absent from normal UI.
+
+D. Pending identity:
+Confirm "Equipment Needing Identification" still appears only when genuine pending items exist.
+
+E. Desktop sidebar:
+At normal desktop width, Equipment Performance starts entirely to the right of the sidebar and the Equipment column is fully visible.
+
+F. Horizontal table scroll:
+The table itself can scroll horizontally without moving under the sidebar or moving the whole application page.
+
+Do NOT change Equipment Performance calculation logic in this correction.
+Do NOT touch Vendor Bills.
+Do NOT start another feature.
+
+STOP AND REPORT BACK.

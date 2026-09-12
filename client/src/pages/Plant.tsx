@@ -35,7 +35,7 @@ import {
   fetchEquipmentIdentification,
   linkCreatedEquipment,
 } from "@/lib/equipmentIdentification";
-import type { EquipmentPerformanceEvent, EquipmentPerformanceReport } from "@shared/equipmentPerformance";
+import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 
 export default function Plant() {
   const searchString = useSearch();
@@ -4080,7 +4080,7 @@ function PendingIdentificationRow({
             <option value="">Select equipment…</option>
             {equipmentOptions.map(option => (
               <option key={option.id} value={option.id}>
-                {option.name}{option.registrationNumber ? ` (${option.registrationNumber})` : ""}
+                {formatEquipmentOptionLabel(option)}
               </option>
             ))}
           </select>
@@ -4103,35 +4103,6 @@ function PendingIdentificationRow({
   );
 }
 
-function PreviouslyIdentifiedRow({
-  event,
-  equipmentOptions,
-  busy,
-  onLink,
-}: {
-  event: EquipmentPerformanceEvent;
-  equipmentOptions: EquipmentPerformanceReport["filterOptions"]["equipment"];
-  busy: boolean;
-  onLink: (logId: number, equipmentId: number) => void;
-}) {
-  const [selectedId, setSelectedId] = useState(String(event.equipmentId ?? ""));
-  const logId = event.reference.equipmentLogId!;
-  return (
-    <div className="flex flex-col gap-2 rounded border bg-background p-3 text-sm md:flex-row md:items-center">
-      <div className="min-w-0 flex-1">
-        <strong>{event.machine}</strong>
-        <span className="ml-2 text-muted-foreground">{format(new Date(event.date), "dd MMM yyyy")} · {event.project}{event.site ? ` / ${event.site}` : ""}</span>
-      </div>
-      <select value={selectedId} onChange={e => setSelectedId(e.target.value)} className="h-8 rounded border bg-background px-2 text-sm">
-        {equipmentOptions.map(option => <option key={option.id} value={option.id}>{option.name}{option.registrationNumber ? ` (${option.registrationNumber})` : ""}</option>)}
-      </select>
-      <Button size="sm" variant="outline" disabled={busy || !selectedId || Number(selectedId) === event.equipmentId} onClick={() => onLink(logId, Number(selectedId))}>
-        Change Equipment
-      </Button>
-    </div>
-  );
-}
-
 export function EquipmentIdentificationSection() {
   const { isAdmin, isOwner } = useAuth();
   const { toast } = useToast();
@@ -4144,11 +4115,6 @@ export function EquipmentIdentificationSection() {
     enabled: canReview,
   });
   const rows = data?.reviewRows ?? [];
-  const previousRows = (data?.events ?? []).filter(event =>
-    event.source === "dpr_log" &&
-    event.confidence === "confirmed_legacy_match" &&
-    event.reference.equipmentLogId != null,
-  );
 
   const linkMutation = useMutation({
     mutationFn: async ({ logId, equipmentId }: { logId: number; equipmentId: number; created?: { row: IdentificationRow; equipment: EquipmentMasterType } }) => {
@@ -4185,7 +4151,7 @@ export function EquipmentIdentificationSection() {
     }
   }, [rows.length]);
 
-  if (!canReview || (rows.length === 0 && previousRows.length === 0)) return null;
+  if (!canReview || rows.length === 0) return null;
 
   const linkNewlyCreated = (row: IdentificationRow, equipment: EquipmentMasterType) => {
     const created = { row, equipment };
@@ -4236,25 +4202,6 @@ export function EquipmentIdentificationSection() {
             initialName={addRow?.machine ?? ""}
             onCreated={equipment => { if (addRow) linkNewlyCreated(addRow, equipment); }}
           />
-        </Card>
-      )}
-      {previousRows.length > 0 && (
-        <Card data-testid="previously-identified-equipment-corrections">
-          <CardHeader>
-            <CardTitle>Previously Identified DPR Equipment</CardTitle>
-            <CardDescription>Correct a DPR entry that was assigned to the wrong Equipment Master record.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {previousRows.map(event => (
-              <PreviouslyIdentifiedRow
-                key={event.key}
-                event={event}
-                equipmentOptions={data?.filterOptions.equipment ?? []}
-                busy={linkMutation.isPending}
-                onLink={(logId, equipmentId) => linkMutation.mutate({ logId, equipmentId })}
-              />
-            ))}
-          </CardContent>
         </Card>
       )}
     </>

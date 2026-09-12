@@ -265,7 +265,14 @@ describe("EQUIP-01 pure equipment performance report", () => {
       projects: [{ id: 10, name: "Live Road" }],
       ownership: ["hired", "owned"],
       equipmentTypes: ["Excavator", "Tanker"],
-      equipment: expect.arrayContaining([{ id: 1, name: "JCB 3DX", registrationNumber: "TS-01 AB 1000" }]),
+      equipment: expect.arrayContaining([expect.objectContaining({
+        id: 1,
+        name: "JCB 3DX",
+        registrationNumber: "TS-01 AB 1000",
+        ownership: "owned",
+        vendorName: null,
+        meterType: "hour_meter",
+      })]),
       scopes: [
         { value: "site", label: "Site / road operations" },
         { value: "plant", label: "Plant / HMP / RMC operations" },
@@ -281,7 +288,14 @@ describe("EQUIP-01 pure equipment performance report", () => {
       logs: [{ id: 909, dprId: 100, machine: "Water Tanker", equipmentId: null }],
     });
     expect(report.filterOptions.equipment).toEqual([
-      { id: 1, name: "JCB 3DX", registrationNumber: "TS-01 AB 1000" },
+      {
+        id: 1,
+        name: "JCB 3DX",
+        registrationNumber: "TS-01 AB 1000",
+        ownership: "owned",
+        vendorName: null,
+        meterType: "hour_meter",
+      },
     ]);
     expect(report.reviewRows[0].suggestions).toEqual([]);
   });
