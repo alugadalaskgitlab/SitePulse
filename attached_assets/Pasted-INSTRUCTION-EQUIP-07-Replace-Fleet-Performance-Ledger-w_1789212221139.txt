@@ -1,0 +1,91 @@
+INSTRUCTION EQUIP-07: Replace Fleet Performance Ledger with a simple Equipment Performance report
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. Do not touch Vendor Bills, Equipment Hire Billing, diesel receipt/reconciliation, Work Programme/BOQ, or the Equipment Needing Identification workflow (already fixed separately) — this batch is only the report itself: client/src/pages/EquipmentPerformanceReport.tsx and the calculation it reads from in shared/equipmentPerformance.ts / shared/equipmentUsage.ts. Do not publish automatically. STOP after this fix and report back.
+
+GOAL
+The current "Fleet Performance Ledger" report tries to show too much at once — variance percentages, a trend graph, "basis"/"confidence" terminology, and per-event diesel math that doesn't match how the owner actually reviews equipment (a simple monthly/period statement per machine, the way it was tracked before this app existed). Replace it with a plain, one-row-per-machine report a non-technical manager can read at a glance.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+- Working hours today: `hoursWorked`/`runtimeHours` (meter-based, shared/equipmentUsage.ts, shared/equipmentPerformance.ts).
+- Clock duration today: `calculateEquipmentClockDuration()` (shared/equipmentUsage.ts) — currently only used as a fallback when meter reading is missing, not shown as its own column.
+- Diesel issued: `dieselIssued`.
+- Opening/closing tank: `openingDiesel`/`openingTank` and `dieselBalanceInTank`/`closingDiesel`/`closingTank` (field names vary slightly between the two files — use whichever is authoritative per record, confirm in your report which you used).
+- Expected diesel: `dieselExpected`/`expectedDiesel`.
+- Diesel Consumed today is calculated PER EVENT (each usage record gets its own opening+issued−closing) and then summed — there is no single whole-date-range calculation. This batch requires building that whole-range calculation (see Part 1).
+- The report currently still contains "confidence"/"basis"/"attribution" terminology throughout (ConfidenceState badges, "Basis" column headers, dieselBasis/usageBasis labels) — this file was not touched by the earlier identity-review cleanup, so it still needs that terminology removed here specifically.
+
+PART 1 — NEW DIESEL CONSUMED CALCULATION (WHOLE DATE RANGE, NOT PER EVENT)
+1. For each machine, within the selected date range (or, if no range is selected, from that machine's first-ever recorded usage to today — do not default to an arbitrary recent window):
+   - Opening Tank = the opening tank reading from that machine's FIRST applicable usage record in the range.
+   - Closing Tank = the closing tank reading from that machine's LAST applicable usage record in the range.
+   - Diesel Issued = the SUM of diesel issued across every usage record in the range.
+   - Diesel Consumed = Opening Tank + Diesel Issued − Closing Tank.
+2. This is a new calculation — the existing per-event resolveDieselPerformance() logic (opening+issued−closing computed per individual record) should remain available for the day-by-day drill-down (Part 4) but must NOT be summed to produce the top-level Diesel Consumed figure. Compute the range-level figure directly as described above.
+3. If opening or closing tank readings are missing/unreliable for the range (use the same reliability judgment already established in the earlier diesel-consumption work — describe your threshold in your report), fall back to showing Diesel Issued only, clearly labeled "Diesel Issued (measured consumption not available)" — do not label it as if it were true consumption.
+4. Expected Diesel stays as currently calculated (from the equipment's consumption norm × working hours or distance, whichever this machine's norm uses) — do not change how the norm itself is calculated, only how it's displayed (Part 2).
+
+PART 2 — NEW REPORT LAYOUT: ONE ROW PER MACHINE
+Replace the current KPI cards + Machine register table + Chronological event ledger + Trend chart with a single table, one row per machine, columns exactly:
+Equipment | Owned/Hired | Owner | Working Hours | Clock Duration | Diesel Issued | Opening Tank | Closing Tank | Diesel Consumed | Expected Diesel | Difference (L) | Consumption Rate
+
+1. Equipment: machine name (reuse the existing clean equipment-label formatting already used in the Equipment Master / dropdown standardization work, if available — do not reinvent label formatting).
+2. Owned/Hired: from equipment_master.ownership.
+3. Owner: for owned machines show "HLC" (or "Owned" — pick one consistent word and use it everywhere); for hired machines show the vendor name already stored on the equipment master record (the same vendor name already shown in Equipment Master and equipment dropdowns) — do not require re-entering it here.
+4. Working Hours: sum of meter-based working hours in range (existing `hoursWorked`/`runtimeHours`).
+5. Clock Duration: sum of each day's actual start-time-to-end-time duration in range — this needs to be computed and shown as its OWN column now, not only used as a fallback when meter data is missing. Reuse `calculateEquipmentClockDuration()` for the per-day figure and sum it across the range.
+6. Diesel Issued, Opening Tank, Closing Tank, Diesel Consumed: per Part 1.
+7. Expected Diesel: existing calculation, shown plainly.
+8. Difference (L): Diesel Consumed − Expected Diesel, in litres, with a +/− sign. Do NOT show a percentage variance anywhere on this page.
+9. Consumption Rate: Diesel Consumed ÷ Working Hours (or ÷ distance/trips for odometer/trip-based machines, matching whichever unit that machine's norm already uses), shown as e.g. "8.3 L/hr" — plain, not labeled "efficiency" and not shown as a percentage.
+10. Do not show "confidence," "basis," "attribution," "linked/unlinked," or any similar internal terminology anywhere on this page. If a machine's identity is still pending review, it should not appear as a normal row here at all — pending items live entirely in the Equipment Needing Identification section on Equipment Master (already built in a separate batch); this report should only ever show resolved/identified equipment.
+
+PART 3 — REMOVE
+1. Remove the trend/graph chart entirely (both the main-page version and the one inside the drill-down).
+2. Remove the "N data-quality warning(s)" indicator, the KPI summary cards, and the separate Chronological Event Ledger table as top-level page elements — their useful content moves into the per-machine drill-down (Part 4) instead of sitting on the main page.
+3. Remove the "Equipment Needing Identification" notice/badge from this page's redesign scope only if it duplicates what's already on Equipment Master — check first: if the small synced notice from EQUIP-05/EQUIP-06 already exists and works, LEAVE IT AS IS, do not remove or rebuild it. It is out of scope for this batch either way.
+
+PART 4 — PER-MACHINE DRILL-DOWN (CLICK A ROW)
+1. Clicking a machine row opens a day-by-day breakdown for that machine across the same selected range, one row per day it has activity, columns:
+Date | Project/Site | Opening Meter | Closing Meter | Working Hours | Start Time | End Time | Clock Duration | Diesel Issued | Opening Tank | Closing Tank | Diesel Consumed (per day) | Expected (per day) | Difference (L) | Consumption Rate
+2. This drill-down MAY use the existing per-event resolveDieselPerformance() calculation for each day's own Diesel Consumed figure (per-day math is fine and expected here — only the top-level range summary must use the new whole-range formula from Part 1).
+3. No graph in the drill-down either.
+4. If a DPR or plant-usage record exists as the source for a given day's row, keep it as a working link out to that source record (reuse whatever link pattern already exists in the current file/EQUIP-05/06 work) — do not remove existing working navigation.
+
+PART 5 — FILTERS AND HEADER
+1. Keep the existing filter bar (From/To date, Project, Scope, Ownership, Machine type, Specific machine) and its filter-memory behavior exactly as already fixed in the prior correction batch — do not touch that logic.
+2. If no From/To date is set, default the visible range to each machine's own first-ever record through today (per Part 1.1) rather than a fixed recent window.
+3. Rename the page from "Fleet performance ledger" to "Equipment Performance," with a subtitle such as "Usage, working hours and diesel consumption by equipment." Update the sidebar/nav label to match if it currently says "Fleet Performance Ledger" or similar.
+
+WHAT NOT TO DO
+- Do not touch Vendor Bills, Equipment Hire Billing, diesel receipt/reconciliation, Work Programme/BOQ.
+- Do not touch the Equipment Needing Identification section/notice already delivered and fixed separately — only leave its existing small notice in place if already present, do not modify its logic.
+- Do not change how openingDiesel/closingDiesel/dieselIssued/meter readings are entered or stored anywhere in the app — this is a report calculation and display change only.
+- Do not remove the ability to drill into a specific machine's day-by-day detail.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change is expected — this reads existing fields and adds a new range-level aggregation calculation, plus a new Clock Duration column derived from an existing helper function. If you find you need any schema change, stop and show us the exact proposed change before writing any migration, per our usual rule.
+
+TESTS
+A. Pick a machine with real opening/closing tank readings spanning several usage records within a date range — confirm Diesel Consumed = (first record's Opening Tank) + (sum of all Diesel Issued in range) − (last record's Closing Tank), and that this is NOT simply the sum of each individual event's own consumption.
+B. Pick a machine with no reliable tank readings in range — confirm it shows "Diesel Issued (measured consumption not available)" instead of a fabricated consumption figure.
+C. Confirm every one of the twelve specified columns appears on the main table, in the specified order, with plain labels — no "basis," "confidence," or similar jargon anywhere on the page.
+D. Confirm Difference is shown in litres with a sign, not as a percentage, anywhere on the page.
+E. Click a machine row — confirm the day-by-day drill-down shows the specified per-day columns, with per-day diesel math still using the existing per-event calculation.
+F. Confirm no graph/chart appears anywhere on the page (main table or drill-down).
+G. Confirm the page and nav are relabeled "Equipment Performance."
+H. Confirm the existing filter-memory behavior (from the prior correction batch) still works unchanged.
+I. Confirm a machine with a pending identity-review item (per Equipment Needing Identification) does not appear as a normal row on this report.
+
+REPORT BACK
+1. Confirm Part 1 with Test A/B evidence, including exactly which opening/closing tank field names you used and what reliability threshold you applied.
+2. Confirm Part 2 with a real before/after example showing the full 12-column row for one owned and one hired machine.
+3. Confirm Part 3 — graph, KPI cards, and old event ledger removed from the main page.
+4. Confirm Part 4 with Test E evidence, including confirmation that source links (DPR/plant usage) still work.
+5. Confirm Part 5 — filters/memory unchanged (Test H), default range behavior, and the page/nav rename (Test G).
+6. Confirm Test I — pending-identity machines excluded from this report.
+7. Confirm no schema change was needed; if one was, stop and show it before applying.
+8. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
