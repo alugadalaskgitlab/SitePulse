@@ -93,7 +93,11 @@ export default function DataSync() {
       });
       const result = await response.json();
       setResults(result);
-      toast({ title: "Import completed" });
+      if (result.errors?.length) {
+        toast({ title: "Import completed with errors", description: "Review the import results before retrying.", variant: "destructive" });
+      } else {
+        toast({ title: "Import completed" });
+      }
     } catch (err: any) {
       toast({ title: "Import failed", description: err.message, variant: "destructive" });
     } finally {
@@ -156,7 +160,7 @@ export default function DataSync() {
                   <Upload className="w-8 h-8 text-blue-600" />
                 </div>
                 <h2 className="text-xl font-bold">Import Data</h2>
-                <p className="text-muted-foreground">Upload a previously exported JSON file to update records. Existing records will be updated, new ones added.</p>
+                <p className="text-muted-foreground">Upload a previously exported JSON file to update records. Vendor-bill retries retain only matching existing IDs; conflicting records are rejected rather than overwritten.</p>
               </CardContent>
             </Card>
           )}

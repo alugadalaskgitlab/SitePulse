@@ -19449,7 +19449,29 @@ export class DatabaseStorage implements IStorage {
       case "vendor_bills": {
         const bills = await db.select().from(vendorBills);
         const items = await db.select().from(vendorBillItems);
-        return { bills, items };
+        // A linked hire line cannot be restored correctly without its statement
+        // (and its review decisions). Keep this as one self-contained export
+        // bundle; dropping the link would make the imported bill look manual.
+        const billIds = bills.map((bill) => bill.id);
+        const linkedStatementIds = items
+          .map((item) => item.hireStatementId)
+          .filter((id): id is number => id != null);
+        const statements = billIds.length > 0 || linkedStatementIds.length > 0
+          ? await db.select().from(hireStatements).where(or(
+            billIds.length > 0 ? inArray(hireStatements.vendorBillId, billIds) : sql`false`,
+            linkedStatementIds.length > 0 ? inArray(hireStatements.id, linkedStatementIds) : sql`false`,
+          ))
+          : [];
+        const statementIds = statements.map((statement) => statement.id);
+        const exceptions = statementIds.length > 0
+          ? await db.select().from(hireStatementExceptions).where(inArray(hireStatementExceptions.statementId, statementIds))
+          : [];
+        return {
+          bills,
+          items,
+          hireStatements: statements,
+          hireStatementExceptions: exceptions,
+        };
       }
       case "purchase_indents": {
         const indents = await db.select().from(purchaseIndents);
@@ -19474,14 +19496,178 @@ export class DatabaseStorage implements IStorage {
     const skipped: string[] = [];
     const errors: string[] = [];
 
-    const convertDateStrings = (obj: any) => {
+    // Do not coerce every ISO-looking value. Several audit fields (for
+    // example vendorBills.verifiedAt) are deliberately text columns and a
+    // Date object would make an otherwise identical retry look different.
+    // Drizzle's table metadata keeps this conversion limited to real timestamp
+    // columns; date-only strings and JSON values remain byte-for-byte JSON data.
+    const convertTimestampStrings = (obj: any, table: any) => {
       const result = { ...obj };
+      const columns = getTableColumns(table);
       for (const key of Object.keys(result)) {
-        if (typeof result[key] === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(result[key])) {
+        if (
+          columns[key]?.columnType === "PgTimestamp" &&
+          typeof result[key] === "string" &&
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(result[key])
+        ) {
           result[key] = new Date(result[key]);
         }
       }
       return result;
+    };
+
+    const hasOwn = (obj: Record<string, unknown>, key: string) =>
+      Object.prototype.hasOwnProperty.call(obj, key);
+
+    // JSON exports contain dates, numeric values, and snapshots. This stable
+    // representation lets a retry prove that an ID already in Preview is the
+    // same record, rather than overwriting a different Preview record.
+    const stableValue = (value: any): string => {
+      if (value === undefined || value === null) return "null";
+      if (value instanceof Date) return `date:${value.toISOString()}`;
+      if (Array.isArray(value)) return `[${value.map(stableValue).join(",")}]`;
+      if (typeof value === "object") {
+        return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableValue(value[key])}`).join(",")}}`;
+      }
+      return `${typeof value}:${String(value)}`;
+    };
+
+    const assertRows = (value: unknown, table: any, tableName: string, fields: readonly string[]): any[] => {
+      if (value === undefined) return [];
+      if (!Array.isArray(value)) throw new Error(`${tableName} must be an array`);
+
+      const allowed = new Set(fields);
+      const ids = new Set<number>();
+      return value.map((raw, index) => {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+          throw new Error(`${tableName}[${index}] must be an object`);
+        }
+        const row = raw as Record<string, any>;
+        const unknown = Object.keys(row).filter((key) => !allowed.has(key));
+        if (unknown.length > 0) {
+          throw new Error(`${tableName}[${index}] has unsupported field(s): ${unknown.join(", ")}`);
+        }
+        if (!Number.isSafeInteger(row.id) || row.id < 1) {
+          throw new Error(`${tableName}[${index}] requires a positive integer id for a safe retry`);
+        }
+        if (ids.has(row.id)) throw new Error(`${tableName} contains duplicate id ${row.id}`);
+        ids.add(row.id);
+        return convertTimestampStrings(row, table);
+      });
+    };
+
+    const importVendorBillBundle = async (payload: unknown) => {
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        throw new Error("vendor_bills must be an object containing bills and items");
+      }
+
+      const bundle = payload as Record<string, unknown>;
+      const bundleFields = new Set(["bills", "items", "hireStatements", "hireStatementExceptions"]);
+      const unsupportedBundleFields = Object.keys(bundle).filter((key) => !bundleFields.has(key));
+      if (unsupportedBundleFields.length > 0) {
+        throw new Error(`vendor_bills has unsupported field(s): ${unsupportedBundleFields.join(", ")}`);
+      }
+
+      const bills = assertRows(bundle.bills, vendorBills, "vendor_bills.bills", [
+        "id", "billDate", "billNo", "billType", "vendorName", "periodFrom", "periodTo", "status",
+        "notes", "totalAmount", "verifiedBy", "verifiedAt", "approvedBy", "approvedAt", "paidAt",
+        "paymentRecordedBy", "paymentRemarks", "paymentMode", "paidBy", "adjustmentLabel",
+        "adjustmentAmount", "gstRateEquipment", "gstRateMaterial", "gstRateTransport", "gstRateLabour",
+        "tdsRate", "netPayableAmount", "amountPaid", "paymentAccountKey", "createdAt", "authorUserId",
+        "lockStatus", "unlockedByUserId", "unlockedAt", "unlockReason",
+      ]);
+      const items = assertRows(bundle.items, vendorBillItems, "vendor_bills.items", [
+        "id", "billId", "date", "category", "description", "qty", "unit", "rate", "amount", "source",
+        "equipmentId", "leadDistance", "siteName", "suppliedTo", "transporter", "hireStatementId",
+      ]);
+      const statements = assertRows(bundle.hireStatements, hireStatements, "vendor_bills.hireStatements", [
+        "id", "equipmentId", "vendorName", "billingBasis", "rate", "monthlyDivisorType", "monthlyDivisor",
+        "hireStartDate", "hireEndDate", "dieselResponsibility", "operatorResponsibility", "agreementRemarks",
+        "periodFrom", "periodTo", "quantity", "grossAmount", "deductionAmount", "netAmount", "status",
+        "revision", "vendorBillId", "calculationSnapshot", "reviewedBy", "reviewedAt", "approvedBy",
+        "approvedAt", "billedAt", "createdAt",
+      ]);
+      const exceptions = assertRows(bundle.hireStatementExceptions, hireStatementExceptions, "vendor_bills.hireStatementExceptions", [
+        "id", "statementId", "sourceType", "sourceId", "exceptionType", "exceptionDate", "description",
+        "downtimeHours", "decision", "manualDeductionAmount", "remarks", "resolvedBy", "resolvedAt", "createdAt",
+      ]);
+
+      const billIds = new Set(bills.map((row) => row.id));
+      const statementById = new Map(statements.map((row) => [row.id, row]));
+      for (const item of items) {
+        if (!billIds.has(item.billId)) {
+          throw new Error(`vendor_bills.items id ${item.id} references bill ${item.billId}, which is not in this export`);
+        }
+        if (item.hireStatementId != null) {
+          const statement = statementById.get(item.hireStatementId);
+          if (!statement) {
+            throw new Error(`vendor_bills.items id ${item.id} has hireStatementId ${item.hireStatementId}, but that statement is not in this export`);
+          }
+          if (statement.vendorBillId !== item.billId) {
+            throw new Error(`vendor_bills.items id ${item.id} has a hire statement linked to a different bill`);
+          }
+        }
+      }
+      for (const statement of statements) {
+        if (!billIds.has(statement.vendorBillId)) {
+          throw new Error(`vendor_bills.hireStatements id ${statement.id} references bill ${statement.vendorBillId}, which is not in this export`);
+        }
+      }
+      for (const exception of exceptions) {
+        if (!statementById.has(exception.statementId)) {
+          throw new Error(`vendor_bills.hireStatementExceptions id ${exception.id} references statement ${exception.statementId}, which is not in this export`);
+        }
+      }
+
+      const retryMatchesExisting = (row: Record<string, any>, existing: Record<string, any>) =>
+        Object.keys(row).every((key) => key === "id" || !hasOwn(row, key) || stableValue(row[key]) === stableValue(existing[key]));
+
+      await db.transaction(async (tx) => {
+        // Serializes concurrent import attempts. Existing rows are locked below;
+        // a race on a previously absent ID is still protected by the primary key
+        // and rolls the complete bundle back instead of silently overwriting it.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(1427, 1)`);
+
+        const checkRows = async (table: any, rows: any[], tableName: string) => {
+          const fresh: any[] = [];
+          for (const row of rows) {
+            const [existing] = await tx.select().from(table).where(eq(table.id, row.id)).limit(1).for("update");
+            if (!existing) {
+              fresh.push(row);
+            } else if (!retryMatchesExisting(row, existing)) {
+              throw new Error(`${tableName} id ${row.id} already exists with different data; refusing to overwrite it`);
+            }
+          }
+          return fresh;
+        };
+
+        const freshBills = await checkRows(vendorBills, bills, "vendor_bills.bills");
+        const freshStatements = await checkRows(hireStatements, statements, "vendor_bills.hireStatements");
+        const freshItems = await checkRows(vendorBillItems, items, "vendor_bills.items");
+        const freshExceptions = await checkRows(hireStatementExceptions, exceptions, "vendor_bills.hireStatementExceptions");
+
+        const equipmentIds = [...new Set(statements.map((statement) => statement.equipmentId))];
+        if (equipmentIds.length > 0) {
+          const existingEquipment = await tx.select({ id: equipmentMaster.id }).from(equipmentMaster)
+            .where(inArray(equipmentMaster.id, equipmentIds));
+          const existingEquipmentIds = new Set(existingEquipment.map((equipment) => equipment.id));
+          const missingEquipment = equipmentIds.filter((id) => !existingEquipmentIds.has(id));
+          if (missingEquipment.length > 0) {
+            throw new Error(`vendor_bills.hireStatements references ${missingEquipment.length} equipment record(s) not present in Preview; import Equipment Master first`);
+          }
+        }
+
+        // Parent-to-child order satisfies both explicit foreign keys and the
+        // ID-preserving retry contract: bill -> hire statement -> bill item -> exception.
+        if (freshBills.length > 0) await tx.insert(vendorBills).values(freshBills);
+        if (freshStatements.length > 0) await tx.insert(hireStatements).values(freshStatements);
+        if (freshItems.length > 0) await tx.insert(vendorBillItems).values(freshItems);
+        if (freshExceptions.length > 0) await tx.insert(hireStatementExceptions).values(freshExceptions);
+
+        imported.push(
+          `vendor_bills (${freshBills.length} new bills, ${freshItems.length} new items, ${freshStatements.length} new hire statements, ${freshExceptions.length} new hire statement exceptions; existing matching rows retained)`,
+        );
+      });
     };
 
     const upsertRows = async (table: any, rows: any[], tableName: string) => {
@@ -19491,7 +19677,7 @@ export class DatabaseStorage implements IStorage {
       }
       try {
         for (const rawRow of rows) {
-          const row = convertDateStrings(rawRow);
+          const row = convertTimestampStrings(rawRow, table);
           const { id, ...rest } = row;
           if (id) {
             const existing = await db.select().from(table).where(eq(table.id, id)).limit(1);
@@ -19538,8 +19724,14 @@ export class DatabaseStorage implements IStorage {
     if (data.stock_balances) await upsertRows(stockBalances, data.stock_balances, "stock_balances");
 
     if (data.vendor_bills) {
-      if (data.vendor_bills.bills) await upsertRows(vendorBills, data.vendor_bills.bills, "vendor_bills");
-      if (data.vendor_bills.items) await upsertRows(vendorBillItems, data.vendor_bills.items, "vendor_bill_items");
+      try {
+        await importVendorBillBundle(data.vendor_bills);
+      } catch (err: any) {
+        // The vendor-bill bundle is atomic. Do not continue into dependent
+        // sections after a rejected/colliding bill import and imply a safe retry.
+        errors.push(`vendor_bills: ${err.message}`);
+        return { imported, skipped, errors };
+      }
     }
 
     if (data.purchase_indents) {
@@ -19567,6 +19759,7 @@ export class DatabaseStorage implements IStorage {
       "equipment_usage", "generator_logs", "ldo_logs",
       "stock_ledger", "material_issues", "material_returns", "site_material_trips",
       "stock_balances", "vendor_bills", "vendor_bill_items", "vendor_aliases",
+       "hire_statements", "hire_statement_exceptions",
       "notifications", "push_subscriptions", "app_settings", "personnel", "personnel_assignments",
       "purchase_indents", "purchase_indent_items", "purchase_indent_item_history",
       "diesel_requirements", "diesel_requirement_items", "sites",
