@@ -1,0 +1,113 @@
+INSTRUCTION VB-01: Simplify the Equipment Hire Vendor Bill into one straight form, remove the "Add Group" concept, add Daily Activity view, Advances/Debits, per-bill Paid/Balance, and PDF/Excel export
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Do NOT start any follow-up task, feature, or improvement on your own initiative. This batch is ONLY the Equipment Hire Vendor Bill flow (client/src/pages/VendorBills.tsx, client/src/pages/EquipmentHireBilling.tsx, shared/hireBilling.ts, and the vendorBills schema). Do not touch Equipment Performance (already redesigned separately — reuse it, don't rebuild it), Work Programme/BOQ, Diesel Requirements/receipts, Equipment Master structure, or any other Vendor Bill type (Material Supply, Transport, Labour, Other/Misc) beyond what's explicitly described below. Do not build a vendor ledger, accounts-payable module, or cross-bill balance carry-forward — see Part 8. Do not publish automatically. STOP after this fix and report back.
+
+GOAL
+The current Equipment Hire Vendor Bill flow is confusing because it duplicates logic across two places (a clean, already-automated "statement" flow in EquipmentHireBilling.tsx, and a separate, more manual "Add Hire Item"/"Add Group" builder embedded inside VendorBills.tsx) and shows internal working concepts ("groups") to the user instead of a plain bill. Replace this with ONE straight form per bill: Vendor → Equipment → Period → auto-filled hire details → daily activity (on request) → adjustments/recoveries → TDS → Net Payable → Paid → Balance This Bill → PDF/Excel.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+- `shared/hireBilling.ts` `HireTerms` (billingBasis, rate, hireStartDate/hireEndDate, monthlyDivisorType/monthlyDivisor) are already stored per equipment on Equipment Master (shared/schema.ts, `hireBillingBasis`/`hireRate`/etc.) — not re-entered per bill. `calculateHireBilling()` already derives payableDays/quantity/exceptions from DPR equipment logs and Plant Equipment Usage automatically — the user is not meant to manually mark which days worked.
+- `client/src/pages/EquipmentHireBilling.tsx` is the cleaner of the two existing flows (auto-creates a draft statement from equipment+period, no "Add Group" concept) but `client/src/pages/VendorBills.tsx` has its OWN separate, parallel "Equipment Hire Calculation" builder (`addHireGroup`/`calculateHireGroup`, the "ADD HIRE ITEM" button) that can bypass the statement flow entirely (`hireStatementId` is optional on submit) — this is the source of the confusion. The "group" concept exists only to handle a genuine but rare edge case: a rate or vendor change mid-period, requiring the month to be billed in two pieces.
+- `equipmentMaintenanceLogs` (shared/schema.ts) already stores `downtimeHours` (real) plus `fromTime`/`toTime` per breakdown event — partial-day breakdown hours are real, already-captured data, not something new to build.
+- `dieselRequirements.rate` (₹/L) is already stored and already used elsewhere to price diesel — this can be reused to auto-suggest an HSD recovery amount from the Equipment Performance report's existing "Difference (L)" figure.
+- `siteMaterialTrips` has no foreign key to `equipmentLogs`/`equipmentUsage` — a hired tipper's trip can currently be recorded in BOTH Site Material Trips AND a DPR/Plant Usage record with no shared identifier connecting them. Any matching between these must be heuristic (equipment + date + count), not a clean join — see Part 5.
+- `vendorBills` today has `status`, `totalAmount`, `paidAt`, `paymentRecordedBy`, `paymentRemarks`, `paymentMode` (already a fixed set client-side: cash/credit/advance/upi/cheque/rtgs — reuse this, do not invent a new set), `paidBy` (already company-vs-personal-name) — but NO partial-amount-paid field and NO stored Net Payable. Payment today is all-or-nothing (a status flip), not a real amount. This needs new schema — see Part 8.
+- There is no bank/company-account concept anywhere in this app today — this is genuinely new, not an extension of something existing. The closest existing pattern to hang it off is `appSettings` (simple key/value config table) or a small new table shaped like `plantSettings` — see Part 8.
+- jspdf/jspdf-autotable and xlsx are already installed and already used for multi-sheet Excel and formatted PDF export on over a dozen other report pages (e.g. AdminReports.tsx, ManagementReport.tsx, SiteDashboard.tsx) — reuse this established pattern, do not introduce a new export library.
+
+PART 1 — ONE STRAIGHT BILL FORM (NO VISIBLE "GROUP"/"HIRE ITEM" CONCEPT)
+1. For an Equipment Hire vendor bill, the user flow is: pick Vendor → pick Equipment → pick Bill Period (from/to dates) → the form auto-fills from there. Do not require the user to click "Add Group" or "Add Hire Item," and do not show the word "group" anywhere in this UI.
+2. Auto-filled Hire Details section shows: Hire Basis, Rate, Hire Period, Gross Hire — all pulled from Equipment Master's stored hire terms and the calculation engine, matching the bill period. This is read-only display, sourced automatically, not re-entered.
+3. Vendor Invoice No., Invoice Date, and Project/Site (optional) remain manually entered fields, as today.
+4. The underlying calculation engine (HireGroup/calculateHireGroup logic) may remain in the codebase and run behind the scenes exactly as today — only the user-facing "Add Group"/"Add Hire Item" UI and terminology must be removed. Do not remove or weaken the overlap-guard logic that currently prevents double-billing the same days.
+5. Known, accepted limitation: removing the visible "Add Group" step means this form no longer supports splitting one bill across a mid-period rate/vendor change in the normal flow. Document this limitation clearly in your report. If a genuine mid-period change occurs, the current workaround is: update the rate on Equipment Master once the new rate starts, and handle that one month's split manually/outside this simplified form for now. Do not silently drop overlap protection — if two bills for the same equipment/period are attempted, the existing guard must still prevent double-billing.
+
+PART 2 — VIEW DAILY ACTIVITY (SEPARATE BUTTON, REUSES EQUIPMENT PERFORMANCE'S DAILY VIEW)
+1. Add a "View Daily Activity" button/action on the bill form. It opens a day-wise breakdown for the SAME equipment and SAME bill period, using the same underlying data sources (DPR equipment logs, Plant Equipment Usage) already assembled by the billing calculation.
+2. Reuse the same presentation/calculation logic already built for the Equipment Performance report's per-day drill-down (the redesigned report from the prior batch) rather than building a second, different version of daily equipment history. Match its columns: Date | Project/Site | Opening Meter | Closing Meter | Working Hours | Start | End | Clock Duration | Diesel Issued | Opening Tank | Closing Tank | Diesel Consumed | Expected | Difference | Consumption Rate.
+3. Additionally, for billing review purposes only, add a Status/Remarks column showing Worked / Breakdown / No Work for that day (see Part 3) — this addition is specific to the billing view and does not need to be added back to the Equipment Performance report itself.
+4. If a genuinely shared component/data-fetching function can be reused for both screens, do so. If not practical, at minimum reuse the same underlying query/calculation functions so the numbers are guaranteed identical between the two screens — do not build a second, independently-calculated version of the same figures.
+
+PART 3 — BREAKDOWN WORDING AND PARTIAL-DAY HOURS
+1. Remove the term "Vendor Breakdown." Each day's status is simply one of: Worked, Breakdown, or No Work / No Activity.
+2. Pull actual partial-day breakdown hours from `equipmentMaintenanceLogs.downtimeHours`/`fromTime`/`toTime` where available, rather than collapsing every breakdown into a half-day/full-day estimate. Example: a day with 5.5 hours worked and 2.5 hours breakdown should show both figures, not just "breakdown."
+3. Whether a Breakdown day/hours produces a suggested deduction depends on the hire terms' existing `breakdownDeductionEnabled` setting — reuse this existing flag, do not invent a new one. When enabled, calculate a suggested deduction from the actual downtime hours/days at the agreed rate; the user reviews and can adjust before finalizing.
+4. No Work / No Activity days are informational only for monthly hire and are not automatically deducted.
+
+PART 4 — HSD (DIESEL) RECOVERY, AUTO-SUGGESTED
+1. Where the Equipment Performance report's existing "Difference (L)" figure (actual diesel consumed vs. expected, for this equipment/period) is a positive value (over-consumption) and the hire terms indicate diesel recovery applies, auto-suggest an HSD Recovery ₹ amount by multiplying that litres figure by the diesel rate already stored in `dieselRequirements.rate` for the relevant period/purchase.
+2. This is a suggested, editable starting value — the user must be able to review and adjust it, not have it silently applied.
+3. If Difference (L) is "Incomplete"/unavailable for that equipment/period (per the Equipment Performance report's own reliability rules), do not fabricate an HSD Recovery suggestion — leave it blank/manual for the user to fill in, with a note that measured consumption wasn't available for this period.
+
+PART 5 — TRIP-BASED HIRE: COMBINE SOURCES, INVESTIGATE DEDUP BEFORE BUILDING
+1. For trip-based hire billing, combine relevant records from DPR equipment logs, Plant Equipment Usage, Site Material Trips, and Bulk Material/transport records for that equipment and period.
+2. Because Site Material Trips has no existing shared identifier with DPR/Plant Usage records, DO NOT silently guess a matching/dedup approach. First investigate the realistic patterns in this codebase (e.g. equipment + date + trip count matching, or any other reasonably reliable signal) and describe your proposed matching/dedup approach to us BEFORE implementing it, so we can confirm it's sound.
+3. When a Site Material Trip record clearly represents an actual delivery trip (has material, quantity, source/destination), give it greater evidentiary weight than a DPR/Plant Usage entry for the same apparent trip — a Material Trip record must not be double-counted as a second payable trip alongside its DPR/Usage counterpart.
+4. Report your proposed approach clearly before building the final dedup logic, per our usual rule for anything with meaningful judgment calls.
+
+PART 6 — ADJUSTMENTS / RECOVERIES (NOT A LEDGER)
+1. Add a compact Adjustments/Recoveries section on the bill with these line items: Breakdown Deduction, HSD Recovery, Other Debit/Recovery, Advance Adjustment, and (only if genuinely needed) Other Credit.
+2. Each manually-entered or manually-adjusted amount must have a short Reason/Reference text field.
+3. "Advance Adjustment ₹X" means: an amount from an earlier advance is being adjusted against THIS bill. This is a single adjustment line on this bill only — do not build a running advance register, opening/closing advance balances, or cross-bill advance tracking. If a proper vendor advance register is wanted later, that is an explicitly separate, future, finance-focused feature — do not build any part of it now.
+
+PART 7 — GROSS TO NET CALCULATION
+Gross Hire
+− Breakdown Deduction
+− HSD Recovery
+− Other Debit/Recovery
+− Advance Adjustment
+= Taxable/Bill Amount
+− TDS
+= NET PAYABLE (this bill)
+
+Keep this calculation chain visible and in this order on the bill.
+
+PART 8 — PAID / BALANCE THIS BILL (NEW, SMALL SCHEMA ADDITION — PER-BILL ONLY, NOT A LEDGER)
+1. Add a real, stored partial-payment amount to a vendor bill — today `vendorBills` only has an all-or-nothing `status` flip to "paid," with no amount-paid field. Add whatever field(s) are needed to store: amount paid so far against this specific bill, and the bill's own Net Payable (computed at approval time and stored, not just calculated on the fly, so it doesn't silently change if underlying data changes later). Propose the exact column names/types and show them to us before writing the migration, per our usual rule — this is a new, real schema change, not a display-only tweak.
+2. Show on the bill: "Paid" (amount paid against this bill so far) and "Balance This Bill" = Net Payable − Paid. This is scoped to THIS bill only.
+3. Do NOT carry this balance into the next month's/next period's bill for the same vendor/equipment, and do NOT net it against other bills. If a prior bill for the same vendor is still unpaid, it may be shown separately as an informational note (e.g. "Previous unpaid bills: ₹X") when viewing that vendor, but this must never be mixed into or subtracted from the current bill's own calculation. This is intentional and matches the owner's explicit instruction — do not build a running/cross-bill balance.
+4. Reuse the EXISTING `paymentMode` set (cash/credit/advance/upi/cheque/rtgs) and the existing `paidBy` (company vs. personal payer name) fields — do not invent a new payment-mode list.
+5. Add a Bank/Account selector, shown when `paidBy` = company, offering at minimum: "Bank of Baroda - OD" and "HDFC - CA". This is a genuinely new concept in this app — there is no existing bank-account table anywhere. Follow the existing `appSettings` (simple key/value config) pattern, or a small new table shaped like `plantSettings`, for storing this short list of company bank accounts — propose which approach you're using and show us the exact schema before writing any migration. Keep this list simple (name + optional short type label) — do not build a full banking/reconciliation feature.
+6. Confirm existing vendor bills (already marked "paid" under the old all-or-nothing status) are not broken or misrepresented by this change — decide and describe a sensible default (e.g. treat existing "paid" bills as fully paid = amountPaid equals their totalAmount) so historical bills still display sensibly.
+
+PART 9 — PDF AND EXCEL EXPORT
+1. Every Equipment Hire vendor bill must be exportable as both PDF and Excel, reusing the existing jspdf/jspdf-autotable and xlsx patterns already used elsewhere in this app (e.g. AdminReports.tsx, ManagementReport.tsx) — do not introduce a new export library.
+2. PDF: print-ready, structured as Page 1 = Bill Summary (vendor, equipment, period, hire basis/rate, gross, all adjustment lines, TDS, Net Payable, Paid, Balance This Bill), then Page 2 onward = Daily Activity (the same day-wise table from Part 2), continuing across pages as needed. The summary must stay on one clean page — do not let daily activity rows push the summary onto multiple pages.
+3. Excel: two sheets — "Bill Summary" and "Daily Activity" — mirroring the same content as the PDF's two sections.
+
+PART 10 — SCOPE BOUNDARY (WHAT NOT TO BUILD)
+- Do not build a vendor ledger, accounts-payable module, running/cross-bill balance, credit notes, payment allocation across multiple bills, or opening/closing advance balances.
+- Do not build a full banking/reconciliation feature — the bank/account selector from Part 8.5 is a short, simple list only.
+- Do not touch any other Vendor Bill type (Material Supply, Transport, Labour, Other/Misc) — this batch is Equipment Hire bills only.
+- Do not touch Equipment Performance, Diesel Requirements, Work Programme/BOQ, or Equipment Master's structure beyond reading its existing hire-term fields.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+Part 8 requires new schema (a stored amount-paid field, a stored Net Payable, and a new small bank-account list) — propose the exact fields/table(s) and show them to us before writing any migration, per our usual rule. No other part of this batch should need schema changes; if you find otherwise, stop and show us the exact proposed change first.
+
+TESTS
+A. Create a normal single-vendor, single-equipment, single-month Equipment Hire bill — confirm the form never shows "Add Group"/"Add Hire Item"/"group" anywhere, and Hire Basis/Rate/Gross Hire are correctly auto-filled from Equipment Master.
+B. Click "View Daily Activity" — confirm it shows the same day-wise figures as the Equipment Performance report for that equipment/period, plus the Worked/Breakdown/No Work status column.
+C. Find or create a day with partial breakdown hours (e.g. 2.5 hours) — confirm it displays as actual hours, not collapsed into half/full day, and confirm the suggested deduction (if breakdownDeductionEnabled) is calculated from those real hours.
+D. Find or create a machine with a positive Difference (L) for the period — confirm HSD Recovery is auto-suggested using the existing diesel rate, and confirm it's editable. Confirm a machine with Incomplete/unavailable Difference does NOT get a fabricated suggestion.
+E. For a trip-based hired vehicle with both a DPR/Usage entry and a Site Material Trip for what appears to be the same trip — confirm your reported dedup approach was shown to us before being built, and confirm the final bill does not double-count that trip.
+F. Enter a partial payment against a bill — confirm Paid and Balance This Bill display correctly, and confirm this bill's Balance does NOT appear on or affect any other bill for the same vendor/equipment.
+G. Mark a payment as company-paid — confirm the Bank/Account dropdown appears with at least "Bank of Baroda - OD" and "HDFC - CA," and the selection is saved with the bill.
+H. Export a bill to PDF — confirm Page 1 is a clean one-page summary and Daily Activity starts on Page 2 onward. Export to Excel — confirm two sheets, Bill Summary and Daily Activity, with matching content.
+I. Confirm an existing, already-"paid" historical bill still displays sensibly after this change (per your Part 8.6 default).
+J. Attempt to create two overlapping-period bills for the same equipment — confirm the existing overlap guard still prevents double-billing.
+
+REPORT BACK
+1. Confirm Part 1-2 with Test A/B evidence, and confirm the known mid-period-split limitation is documented as accepted.
+2. Confirm Part 3 with Test C evidence.
+3. Confirm Part 4 with Test D evidence.
+4. Confirm Part 5 — show us your proposed dedup approach BEFORE final implementation, then confirm Test E evidence after we sign off.
+5. Confirm Part 6-7 — adjustments section and calculation chain match the specified order.
+6. Confirm Part 8 — show us the exact proposed schema (paid amount, stored Net Payable, bank-account list) BEFORE writing any migration; after approval, confirm with Test F/G/I evidence.
+7. Confirm Part 9 with Test H evidence.
+8. Confirm Test J — no regression to the existing overlap guard.
+9. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
+STOP AND REPORT BACK — and specifically STOP before writing the Part 8 migration or finalizing the Part 5 dedup approach until we've confirmed both.
