@@ -1,0 +1,420 @@
+Please implement this as ONE focused batch.
+
+OBJECTIVE
+
+Replace the present Fleet Performance report with a very simple, practical
+EQUIPMENT PERFORMANCE report.
+
+This is a management report, not a technical audit screen.
+
+The user should be able to look at one row and understand:
+
+- which machine
+- whether owned or hired
+- who owns it if hired
+- how much it worked
+- how long it was on duty
+- how much diesel was issued
+- how much diesel was actually consumed
+- how that consumption compares with the machine norm
+
+Keep all backend deduplication/source handling intact, but hide technical
+complexity from the normal report.
+
+1. PAGE NAME AND PURPOSE
+
+Rename:
+
+Fleet Performance Ledger
+
+to:
+
+EQUIPMENT PERFORMANCE
+
+Subtitle:
+
+Usage, working hours and diesel consumption by equipment
+
+Remove technical wording such as:
+- attributable record
+- confidence
+- basis
+- linked/unlinked
+- source confidence
+- legacy match
+- fleet intelligence
+
+2. KEEP THE FILTERS SIMPLE
+
+Keep only useful filters:
+
+- From Date
+- To Date
+- Project / Site
+- Scope: All / Site / Plant
+- Ownership: All / Owned / Hired
+- Equipment Type
+- Equipment
+
+Keep the filter-memory fix already implemented.
+
+If From Date is blank:
+use the first available equipment record up to To Date.
+
+Reset must intentionally clear the filters.
+
+Do not add more filters.
+
+3. MAIN REPORT — ONE EQUIPMENT = ONE ROW
+
+Show one row per equipment.
+
+Columns:
+
+Equipment
+Owned / Hired
+Owner / Vendor
+Opening Meter
+Closing Meter
+Working Hours
+Clock Duration
+Diesel Issued
+Opening Tank
+Closing Tank
+Diesel Consumed
+Expected Diesel
+Difference
+Consumption Rate
+
+For OWNED equipment:
+Owner/Vendor may show HLC / OWNED.
+
+For HIRED equipment:
+show the owner/vendor from Equipment Master.
+
+Do not mix units in one number.
+
+For example, never show:
+618 h · 406 km · 1 trip
+
+Each equipment must show only the measurements relevant to that equipment.
+
+4. PERIOD CALCULATIONS
+
+For the selected date range:
+
+Opening Meter
+= first valid log's opening meter (`openingReading`) in that period
+
+Closing Meter
+= last valid log's closing meter (`closingReading`) in that period
+
+Working Hours
+= total actual working/meter hours recorded for that equipment in the period
+
+Clock Duration
+= sum of each usage log's Start Time → End Time duration
+
+Do NOT calculate Clock Duration as elapsed calendar time between first and last date.
+
+If any included usage record lacks a valid Start/End duration (the existing
+calculateEquipmentClockDuration() already correctly returns null rather than
+0 for a missing/malformed pair — do not lose that distinction when summing
+across the period), do not silently count that record as zero when totaling
+the period figure. Show the period Clock Duration as partial/incomplete, or
+otherwise visibly indicate that some duration data is missing, rather than
+presenting a neat-looking but understated total.
+
+Diesel Issued
+= total diesel added/issued to that equipment during the selected period
+
+Opening Tank
+= opening tank balance from the first valid equipment log in the period
+
+Closing Tank
+= closing tank balance from the last valid equipment log in the period
+
+Diesel Consumed
+= Opening Tank + Diesel Issued - Closing Tank
+
+IMPORTANT:
+Only calculate Diesel Consumed when the required first Opening Tank and last
+Closing Tank are reliably available.
+
+Use the existing tank-measured reliability rule, exactly as already coded in
+resolveDieselPerformance() (shared/equipmentPerformance.ts): a reading only
+counts as reliable when `dieselBalanceConfirmed === true` on that record AND
+opening, closing, and issued are all valid non-negative finite numbers AND
+the computed (opening + issued - closing) is >= 0 — this is what the
+existing code labels basis "tank_measured", as opposed to "issued_only" or
+"unavailable". For the period-level figure, BOTH the first applicable
+boundary record's opening reading AND the last applicable boundary record's
+closing reading must individually satisfy this same reliability rule.
+
+If either boundary record fails this check:
+show "Incomplete" or "—".
+Do not invent a value. Do not substitute Diesel Issued into this cell as if
+it were consumption — Diesel Issued stays visible in its own column
+regardless, but the Diesel Consumed cell itself must read Incomplete/— when
+the tank data doesn't support a real figure.
+
+Expected Diesel
+= existing equipment consumption norm applied to actual activity using the
+existing correct norm logic (already unit-aware per machine — hour-meter
+machines use L/hr, odometer machines use L/km, trip-based entries convert
+accordingly; do not rewrite this, reuse it as-is).
+
+Difference
+= Actual Diesel Consumed - Expected Diesel
+
+Show this as litres, e.g.:
+
++12 L
+-8 L
+
+Do NOT show percentage variance.
+
+If Diesel Consumed is Incomplete/—, Difference must also show Incomplete/—
+rather than being computed against Expected Diesel from a missing actual
+figure.
+
+Consumption Rate
+= actual consumption in the machine's existing canonical norm unit only:
+L/hr for hour-meter equipment, or L/km for odometer/trip-distance equipment
+(trip-based activity is already converted to an L/km-equivalent by the
+existing norm logic — do not invent a separate L/trip unit; no such unit
+exists anywhere in this codebase today and none should be created).
+
+Do not combine incompatible units.
+
+If Diesel Consumed is Incomplete/—, Consumption Rate must ALSO show
+Incomplete/— — do not fall back to calculating a rate from Diesel Issued
+instead of true consumption. The rate must only ever be computed from a real
+Diesel Consumed figure, never from Diesel Issued.
+
+5. MACHINE DRILLDOWN
+
+Clicking an equipment row should open a simple daily detail view.
+
+Show:
+
+Date
+Project / Site
+Opening Meter
+Closing Meter
+Working Hours
+Start Time
+End Time
+Clock Duration
+Diesel Issued
+Opening Tank
+Closing Tank
+Diesel Consumed
+Expected Diesel
+Difference
+Consumption Rate
+
+Each date should be understandable on its own. The same Incomplete/— rule
+from Part 4 applies per day here too — do not fabricate a daily consumption
+or rate figure when that day's tank readings don't support one.
+
+Where more than one usage segment exists on the same date:
+show the day's properly aggregated operational totals where safe,
+but retain access to the underlying source records if needed.
+
+Do not double-count DPR and Plant activity representing the same real usage.
+
+6. REMOVE THE PRESENT CLUTTER
+
+Remove from the normal Equipment Performance page:
+
+- Fleet Usage KPI
+- Diesel Variance KPI
+- generic Diesel Efficiency KPI
+- graphs
+- diesel trend graphs
+- confidence badges
+- Basis terminology
+- event ledger as a prominent report section
+- legacy / attribution / linkage terminology
+
+Do not delete useful backend/audit information.
+
+If source-level audit is still needed internally, keep it behind a small
+"View Source Records" action inside the equipment drilldown, not as the main
+management report.
+
+7. EQUIPMENT NEEDING IDENTIFICATION
+
+Keep only one compact notice at the top when unidentified DPR equipment exists:
+
+"1 equipment log needs identification"
+or
+"3 equipment logs need identification"
+
+Action:
+Review
+
+When clicked, it must take the Admin/Owner DIRECTLY to:
+
+Equipment Master → Equipment Needing Identification
+
+The pending section must be immediately visible, not require searching or
+scrolling through the full Equipment Master.
+
+Each pending row must clearly show:
+
+Date
+Project / Site
+Entered equipment name
+Source: DPR
+View Source
+Link to Existing
+Add as New
+
+The reviewer must immediately know WHICH equipment/log needs confirmation.
+
+If there are no pending rows:
+do not show the notice.
+
+Fix singular/plural grammar correctly.
+
+Do not change the identity-confirmation backend already implemented.
+
+8. OWNED / HIRED INFORMATION
+
+The report must use Equipment Master as the source for:
+
+- Equipment Name
+- Equipment Type
+- Owned / Hired
+- Owner / Vendor
+- Registration / Equipment identifier
+- consumption norm where applicable
+
+Do not derive owner/vendor from typed DPR text when a valid Equipment Master
+link exists.
+
+9. SIMPLE MANAGEMENT PRESENTATION
+
+Do not build cards, dashboards or analytical graphics.
+
+Preferred structure:
+
+EQUIPMENT PERFORMANCE
+
+[Filters]
+
+Equipment | Owned/Hired | Owner | Working Hours | Clock Duration |
+Diesel Issued | Diesel Consumed | Expected | Difference | Rate
+
+Then row click → Daily Details.
+
+Opening/Closing meter and tank values may remain visible in the main table if
+screen width permits; otherwise use a compact expandable "Readings" area for
+those four values.
+
+Do not hide any required information purely for visual compactness.
+
+Desktop must remain readable without excessive horizontal clutter.
+Mobile/tablet may use a stacked row/card presentation.
+
+10. CORRECTNESS RULES
+
+Do not:
+
+- double-count Site DPR + Plant usage
+- mix hours, km and trips into one total
+- treat Diesel Issued as Diesel Consumed
+- calculate diesel consumption without valid opening/closing tank balances
+- infer missing meter readings
+- infer missing clock times
+- fabricate an owner/vendor
+- convert no activity into zero working hours if source data is incomplete
+
+Use "—" / "Incomplete" where the data genuinely cannot support a number.
+
+11. DO NOT TOUCH IN THIS BATCH
+
+Do NOT modify:
+
+- Equipment Usage entry form
+- Guided DPR
+- Detailed DPR
+- Plant Equipment Usage
+- Equipment Movement
+- Maintenance / Breakdown entry
+- Equipment Hire billing
+- Vendor Bills
+- Hire terms
+- diesel stock/accounting
+- Work Programme
+- programme analysis
+- BOQ
+- project scope
+- equipment master structure except the existing identification navigation
+needed in Part 7
+
+This batch is ONLY the Equipment Performance report and the broken
+identification navigation/display associated with it.
+
+12. ACCEPTANCE TESTS
+
+A. One owned hour-meter machine:
+report shows one row with correct opening/closing meter, working hours,
+clock duration and diesel figures.
+
+B. One hired machine:
+shows Hired + correct owner/vendor from Equipment Master.
+
+C. Diesel:
+Opening Tank 40 L + Issued 100 L - Closing Tank 25 L
+= Diesel Consumed 115 L.
+
+D. Missing closing tank:
+Diesel Consumed shows Incomplete / —, not a fabricated number, and
+Difference and Consumption Rate for that same row also show Incomplete / —
+rather than being computed from Diesel Issued.
+
+E. Norm:
+Expected diesel uses the existing valid equipment norm and Difference is
+shown in litres, not percentage.
+
+F. Multiple days:
+Working Hours and Clock Duration are summed per individual usage day/record,
+not calculated as elapsed calendar time.
+
+G. Mixed DPR + Plant sources:
+one physical usage event must not be counted twice.
+
+H. Equipment row click:
+opens daily detail with all specified readings and durations.
+
+I. Identification:
+if one DPR equipment log is unidentified, the notice says
+"1 equipment log needs identification".
+Click Review and land directly on the visible pending row in Equipment Master.
+Confirm the exclusion rule is precise: exclude events where confidence is
+"unclassified" (i.e. log.equipmentId == null, per the existing code) from
+the main Equipment Performance rows. Do NOT hide an otherwise valid,
+identified Equipment Master machine just because a separate, unlinked
+free-text DPR entry happens to resemble its name — the exclusion is per
+EVENT (the unidentified log itself), not per machine name.
+
+J. Zero pending:
+identification notice does not appear.
+
+K. Filter memory:
+set filters, open machine / DPR source, return — filters remain unchanged.
+
+L. No graphs, Fleet Usage KPI, Diesel Variance KPI, generic Diesel Efficiency
+KPI, confidence/basis terminology, or prominent event ledger remain on the
+normal report.
+
+Please inspect the existing report/service calculations first and reuse
+existing correct deduplication and equipment-master linkage logic.
+
+Do not rewrite working backend logic merely to achieve the new presentation.
+
+DO NOT START VENDOR BILLS OR ANY OTHER FEATURE AFTER THIS BATCH.
+STOP AND REPORT BACK.

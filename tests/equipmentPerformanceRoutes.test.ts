@@ -121,6 +121,36 @@ describe("EQUIP-01 routes", () => {
     expect(spies.report).toHaveBeenCalledWith(expect.any(Object), { permittedSiteNames: ["Site B"] });
   });
 
+  it("returns precomputed daily incompleteness with the filtered A/B/A equipment summary", async () => {
+    spies.report.mockResolvedValue({
+      events: [
+        { key: "plant_usage:801", date: "2026-01-08", scope: "site" },
+        { key: "plant_usage:803", date: "2026-01-12", scope: "site" },
+      ],
+      fleet: [{
+        key: "equipment:1",
+        dieselConsumed: null,
+        difference: null,
+        consumptionRate: null,
+        consumptionIncomplete: true,
+        dailyRows: [
+          { date: "2026-01-08", dieselConsumed: null, difference: null, consumptionRate: null, consumptionIncomplete: true },
+          { date: "2026-01-12", dieselConsumed: null, difference: null, consumptionRate: null, consumptionIncomplete: true },
+        ],
+      }],
+      projects: [],
+    });
+    const response = await request(app).get("/api/reports/equipment-performance?scope=site");
+    expect(response.status).toBe(200);
+    expect(response.body.fleet[0]).toMatchObject({
+      dieselConsumed: null, difference: null, consumptionRate: null, consumptionIncomplete: true,
+    });
+    expect(response.body.fleet[0].dailyRows).toEqual([
+      expect.objectContaining({ date: "2026-01-08", dieselConsumed: null, difference: null, consumptionRate: null, consumptionIncomplete: true }),
+      expect.objectContaining({ date: "2026-01-12", dieselConsumed: null, difference: null, consumptionRate: null, consumptionIncomplete: true }),
+    ]);
+  });
+
   it("confirms only the selected log identity and never creates usage", async () => {
     const response = await request(app)
       .post("/api/reports/equipment-performance/logs/91/confirm")

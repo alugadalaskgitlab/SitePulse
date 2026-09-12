@@ -60,7 +60,7 @@ describe("EQUIP-05 identification review orchestration", () => {
     expect(fleet).not.toContain("Owner review queue");
     expect(fleet).not.toContain("Legacy identity corrections");
     expect(fleet).toContain("notice-equipment-identification");
-    expect(fleet).toContain("Review in Equipment Master");
+    expect(fleet).toContain(">Review</Button>");
   });
 
   it("keeps confirmation on the unchanged endpoint and invalidates report caches", () => {

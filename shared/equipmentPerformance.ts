@@ -1,4 +1,4 @@
-import { computeEquipmentUsage, type UsageBasis } from "./equipmentUsage";
+import { calculateEquipmentClockDuration, computeEquipmentUsage, type UsageBasis } from "./equipmentUsage";
 
 export type EquipmentConfidence = "linked" | "confirmed_legacy_match" | "unclassified";
 export type EquipmentEventSource = "plant_usage" | "dpr_log";
@@ -120,6 +120,12 @@ export interface EquipmentPerformanceEvent {
   usageValue: number;
   runtimeHours: number | null;
   totalKm: number | null;
+  /** Fuel issued/added on this source record; never a consumption fallback. */
+  dieselIssued: number | null;
+  openingTank: number | null;
+  closingTank: number | null;
+  /** Individual start-to-end duration; null means the record cannot supply one. */
+  clockDuration: number | null;
   dieselActual: number | null;
   /** Whether dieselActual is physical tank consumption or only fuel issued. */
   dieselBasis: Exclude<DieselPerformanceBasis, "mixed">;
@@ -187,6 +193,51 @@ export interface EquipmentPerformanceFleetRow {
     utilizationPercent: number | null;
   };
   owned?: { daysSinceLastUse: number };
+  /** Management-facing period readings and calculations. */
+  ownerVendor: string;
+  meterUnit: "h" | "km";
+  openingMeter: number | null;
+  closingMeter: number | null;
+  workingHours: number | null;
+  workingHoursIncomplete: boolean;
+  clockDuration: number | null;
+  clockDurationIncomplete: boolean;
+  dieselIssued: number | null;
+  openingTank: number | null;
+  closingTank: number | null;
+  dieselConsumed: number | null;
+  expectedDiesel: number | null;
+  difference: number | null;
+  consumptionRate: number | null;
+  consumptionRateUnit: "L/hr" | "L/km" | null;
+  consumptionIncomplete: boolean;
+  /** Precomputed from the full canonical stream; contains selected rows only. */
+  dailyRows: EquipmentPerformanceDailyRow[];
+}
+
+export interface EquipmentPerformanceDailyRow {
+  key: string;
+  date: string;
+  projectSite: string;
+  openingMeter: number | null;
+  closingMeter: number | null;
+  workingHours: number | null;
+  workingHoursIncomplete: boolean;
+  startTime: string | null;
+  endTime: string | null;
+  multipleTimeSegments: boolean;
+  clockDuration: number | null;
+  clockDurationIncomplete: boolean;
+  dieselIssued: number | null;
+  openingTank: number | null;
+  closingTank: number | null;
+  dieselConsumed: number | null;
+  expectedDiesel: number | null;
+  difference: number | null;
+  consumptionRate: number | null;
+  consumptionRateUnit: "L/hr" | "L/km" | null;
+  consumptionIncomplete: boolean;
+  events: EquipmentPerformanceEvent[];
 }
 
 export interface EquipmentPerformanceReport {
@@ -277,6 +328,42 @@ function finiteNonnegative(value: unknown): number | null {
   return value != null && Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function validOperationalTime(value: string | null): value is string {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value ?? "");
+}
+
+/** Date first, then an actual recorded start time.  Record ids never imply order. */
+function sortOperationalEvents(rows: EquipmentPerformanceEvent[]): EquipmentPerformanceEvent[] {
+  return [...rows].sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    if (validOperationalTime(a.startTime) && validOperationalTime(b.startTime) && a.startTime !== b.startTime) {
+      return a.startTime.localeCompare(b.startTime);
+    }
+    return a.key.localeCompare(b.key);
+  });
+}
+
+function hasAmbiguousSameDayOrdering(rows: EquipmentPerformanceEvent[]): boolean {
+  const perDay = new Map<string, EquipmentPerformanceEvent[]>();
+  for (const row of rows) perDay.set(row.date, [...(perDay.get(row.date) ?? []), row]);
+  return Array.from(perDay.values()).some((dayRows) => {
+    if (dayRows.length < 2) return false;
+    const times = dayRows.map((row) => row.startTime);
+    return times.some((time) => !validOperationalTime(time)) || new Set(times).size !== times.length;
+  });
+}
+
+function hasOmittedInterveningEvent(
+  rows: EquipmentPerformanceEvent[],
+  fullEquipmentEvents: EquipmentPerformanceEvent[],
+): boolean {
+  const orderedRows = sortOperationalEvents(rows);
+  const selectedKeys = new Set(orderedRows.map((row) => row.key));
+  return fullEquipmentEvents.some((row) =>
+    row.date >= orderedRows[0].date && row.date <= orderedRows.at(-1)!.date && !selectedKeys.has(row.key),
+  );
+}
+
 /**
  * Tank consumption is trustworthy only when the operator explicitly confirmed
  * the physical closing balance and all inputs produce a non-negative result.
@@ -289,7 +376,7 @@ export function resolveDieselPerformance(
   if (usage?.dieselBalanceConfirmed === true) {
     const opening = finiteNonnegative(usage.openingDiesel);
     const closing = finiteNonnegative(usage.dieselBalanceInTank ?? usage.closingDiesel);
-    const issued = usage.dieselIssued == null ? 0 : finiteNonnegative(usage.dieselIssued);
+    const issued = finiteNonnegative(usage.dieselIssued);
     if (opening != null && closing != null && issued != null) {
       const consumed = opening + issued - closing;
       if (consumed >= 0) return { diesel: consumed, basis: "tank_measured" };
@@ -306,6 +393,125 @@ function aggregateDieselBasis(rows: EquipmentPerformanceEvent[]): DieselPerforma
   if (available.size === 0) return "unavailable";
   if (available.size > 1) return "mixed";
   return Array.from(available)[0];
+}
+
+function firstFinite(rows: EquipmentPerformanceEvent[], field: "openingReading" | "openingTank"): number | null {
+  for (const row of rows) {
+    const value = finiteNonnegative(row[field]);
+    if (value != null) return value;
+  }
+  return null;
+}
+
+function lastFinite(rows: EquipmentPerformanceEvent[], field: "closingReading" | "closingTank"): number | null {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const value = finiteNonnegative(rows[index][field]);
+    if (value != null) return value;
+  }
+  return null;
+}
+
+/**
+ * Period tank consumption deliberately uses the opening balance from the first
+ * included record, every recorded issue in the window, and the closing balance
+ * from the last included record.  The two boundary records must each pass the
+ * existing confirmed-tank rule; issued fuel is never substituted as actual
+ * consumption when they do not.
+ */
+function managementMetrics(
+  rows: EquipmentPerformanceEvent[],
+  master: Pick<EquipmentPerformanceMaster, "meterType"> | undefined,
+  fullEquipmentEvents: EquipmentPerformanceEvent[] = rows,
+  forceConsumptionIncomplete = false,
+) {
+  const orderedRows = sortOperationalEvents(rows);
+  const first = orderedRows[0];
+  const last = orderedRows.at(-1)!;
+  const hourMeter = master?.meterType !== "odometer";
+  const meterUnit: "h" | "km" = hourMeter ? "h" : "km";
+  // Working hours are meter-derived. Start/end time is reported separately as
+  // clock duration and must never be silently presented as meter working time.
+  const hourRows = orderedRows.filter((row) => row.usageBasis === "hour_meter" && row.runtimeHours != null);
+  const workingHours = hourMeter && hourRows.length
+    ? hourRows.reduce((sum, row) => sum + row.runtimeHours!, 0)
+    : null;
+  const workingHoursIncomplete = hourMeter && orderedRows.some((row) => row.usageBasis !== "hour_meter" || row.runtimeHours == null);
+  const durationRows = orderedRows.filter((row) => row.clockDuration != null);
+  const clockDuration = durationRows.length
+    ? durationRows.reduce((sum, row) => sum + row.clockDuration!, 0)
+    : null;
+  const clockDurationIncomplete = durationRows.length > 0 && durationRows.length !== orderedRows.length;
+  const issuedValues = orderedRows.map((row) => finiteNonnegative(row.dieselIssued));
+  const everyIssuedValid = issuedValues.every((value) => value != null);
+  const dieselIssued = everyIssuedValid
+    ? issuedValues.reduce((sum, value) => sum + value!, 0)
+    : null;
+  const firstBoundaryReliable = first.dieselBasis === "tank_measured" && finiteNonnegative(first.openingTank) != null;
+  const lastBoundaryReliable = last.dieselBasis === "tank_measured" && finiteNonnegative(last.closingTank) != null;
+  const omittedInterveningEvent = hasOmittedInterveningEvent(orderedRows, fullEquipmentEvents);
+  const ambiguousOrdering = hasAmbiguousSameDayOrdering(orderedRows);
+  const candidateConsumption = firstBoundaryReliable && lastBoundaryReliable && everyIssuedValid && !omittedInterveningEvent && !ambiguousOrdering && !forceConsumptionIncomplete
+    ? first.openingTank! + dieselIssued! - last.closingTank!
+    : null;
+  const dieselConsumed = candidateConsumption != null && candidateConsumption >= 0 ? candidateConsumption : null;
+  const expectedDiesel = orderedRows.length && orderedRows.every((row) => row.dieselExpected != null)
+    ? orderedRows.reduce((sum, row) => sum + row.dieselExpected!, 0)
+    : null;
+  const rateUnits = new Set(orderedRows.filter((row) => row.usageValue > 0).map((row) => row.dieselEfficiencyUnit));
+  const rateUnit = rateUnits.size === 1 ? Array.from(rateUnits)[0] : null;
+  const rateRuntime = rateUnit == null
+    ? null
+    : orderedRows.filter((row) => row.dieselEfficiencyUnit === rateUnit).reduce((sum, row) => sum + row.usageValue, 0);
+  const consumptionRate = dieselConsumed != null && rateUnit != null && rateRuntime != null && rateRuntime > 0
+    ? dieselConsumed / rateRuntime
+    : null;
+  return {
+    meterUnit,
+    openingMeter: ambiguousOrdering ? null : firstFinite(orderedRows, "openingReading"),
+    closingMeter: ambiguousOrdering ? null : lastFinite(orderedRows, "closingReading"),
+    workingHours,
+    workingHoursIncomplete,
+    clockDuration,
+    clockDurationIncomplete,
+    dieselIssued,
+    // Display the same boundary records evaluated for consumption.  Do not
+    // jump over an unreliable boundary to make a later tank reading look valid.
+    openingTank: ambiguousOrdering ? null : finiteNonnegative(first.openingTank),
+    closingTank: ambiguousOrdering ? null : finiteNonnegative(last.closingTank),
+    dieselConsumed,
+    expectedDiesel,
+    difference: dieselConsumed != null && expectedDiesel != null ? dieselConsumed - expectedDiesel : null,
+    consumptionRate,
+    consumptionRateUnit: consumptionRate == null ? null : rateUnit,
+    consumptionIncomplete: dieselConsumed == null,
+  };
+}
+
+/** Builds daily management rows from an already de-duplicated event list. */
+export function buildEquipmentPerformanceDailyRows(
+  events: EquipmentPerformanceEvent[],
+  master?: Pick<EquipmentPerformanceMaster, "meterType">,
+  fullEquipmentEvents: EquipmentPerformanceEvent[] = events,
+  forceConsumptionIncomplete = false,
+): EquipmentPerformanceDailyRow[] {
+  const byDate = new Map<string, EquipmentPerformanceEvent[]>();
+  for (const event of events) byDate.set(event.date, [...(byDate.get(event.date) ?? []), event]);
+  return Array.from(byDate.entries()).map(([date, rows]) => {
+    const orderedRows = sortOperationalEvents(rows);
+    const metrics = managementMetrics(orderedRows, master, fullEquipmentEvents, forceConsumptionIncomplete);
+    const ambiguousOrdering = hasAmbiguousSameDayOrdering(orderedRows);
+    const locations = Array.from(new Set(orderedRows.map((row) => [row.project, row.site ?? row.plant].filter(Boolean).join(" / "))));
+    return {
+      key: `${orderedRows[0].equipmentId ?? "unclassified"}:${date}`,
+      date,
+      projectSite: locations.join(" · "),
+      ...metrics,
+      startTime: !ambiguousOrdering && validOperationalTime(orderedRows[0].startTime) ? orderedRows[0].startTime : null,
+      endTime: !ambiguousOrdering && validOperationalTime(orderedRows.at(-1)!.endTime) ? orderedRows.at(-1)!.endTime : null,
+      multipleTimeSegments: orderedRows.length > 1,
+      events: orderedRows,
+    };
+  });
 }
 
 function isClearlyPlantLocation(value: unknown): boolean {
@@ -409,6 +615,10 @@ export function buildEquipmentPerformanceReport(input: {
       usageValue: calculated.runtime,
       runtimeHours: calculated.hoursWorked,
       totalKm: calculated.totalKm,
+      dieselIssued: finiteNonnegative(usage?.dieselIssued ?? log?.diesel),
+      openingTank: finiteNonnegative(usage?.openingDiesel),
+      closingTank: finiteNonnegative(usage?.dieselBalanceInTank ?? usage?.closingDiesel),
+      clockDuration: calculateEquipmentClockDuration(row.startTime, row.endTime),
       dieselActual: actual,
       dieselBasis: diesel.basis,
       dieselExpected: expected,
@@ -460,19 +670,31 @@ export function buildEquipmentPerformanceReport(input: {
     if (!current || event.date < current) projectHistoryFrom.set(event.projectId, event.date);
   }
   const normalizedMachine = normalizeEquipmentLabel(filters.machine);
-  const filtered = events.filter((event) =>
+  const dateWindowEvents = events.filter((event) =>
     (!filters.dateFrom || event.date >= filters.dateFrom) &&
-    (!filters.dateTo || event.date <= filters.dateTo) &&
+    (!filters.dateTo || event.date <= filters.dateTo),
+  );
+  // Keep the complete, already de-duplicated identified stream for each
+  // equipment in this date window. Project/scope filters must not conceal an
+  // intervening event while presenting a tank balance as complete.
+  const fullEventsByEquipment = new Map<number, EquipmentPerformanceEvent[]>();
+  for (const event of dateWindowEvents) {
+    if (event.equipmentId != null) {
+      fullEventsByEquipment.set(event.equipmentId, [...(fullEventsByEquipment.get(event.equipmentId) ?? []), event]);
+    }
+  }
+  const filtered = dateWindowEvents.filter((event) =>
     (!filters.projectId || event.projectId === filters.projectId) &&
     (!filters.scope || event.scope === filters.scope) &&
     (!filters.ownership || event.ownership === filters.ownership) &&
     (!filters.equipmentType || event.equipmentType === filters.equipmentType) &&
     (!filters.equipmentId || event.equipmentId === filters.equipmentId) &&
     (!normalizedMachine || normalizeEquipmentLabel(event.machine).includes(normalizedMachine))
-  ).sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key));
+  );
+  const orderedFiltered = sortOperationalEvents(filtered);
 
   const projectGroups = new Map<number | null, EquipmentPerformanceEvent[]>();
-  for (const event of filtered) projectGroups.set(event.projectId, [...(projectGroups.get(event.projectId) ?? []), event]);
+  for (const event of orderedFiltered) projectGroups.set(event.projectId, [...(projectGroups.get(event.projectId) ?? []), event]);
   const projectRows = Array.from(projectGroups.entries()).map(([projectId, rows]) => ({
     ...(() => {
       const dieselRows = rows.filter((row) => row.dieselActual != null);
@@ -497,8 +719,8 @@ export function buildEquipmentPerformanceReport(input: {
   }));
 
   const byEquipment = new Map<number, EquipmentPerformanceEvent[]>();
-  for (const event of filtered) if (event.equipmentId != null) byEquipment.set(event.equipmentId, [...(byEquipment.get(event.equipmentId) ?? []), event]);
-  const asOf = input.asOfDate ?? filters.dateTo ?? filtered.at(-1)?.date;
+  for (const event of orderedFiltered) if (event.equipmentId != null) byEquipment.set(event.equipmentId, [...(byEquipment.get(event.equipmentId) ?? []), event]);
+  const asOf = input.asOfDate ?? filters.dateTo ?? orderedFiltered.at(-1)?.date;
   const sumNullable = (rows: EquipmentPerformanceEvent[], field: "dieselActual" | "dieselExpected" | "dieselVariance"): number | null => {
     const values = rows.map((row) => row[field]).filter((value): value is number => value != null);
     return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
@@ -512,11 +734,14 @@ export function buildEquipmentPerformanceReport(input: {
     if (!master || !asOf) return [];
     const first = rows[0].date;
     const last = rows.at(-1)!;
+    const fullEquipmentRows = fullEventsByEquipment.get(equipmentId) ?? rows;
+    const periodHasFilteredGap = hasOmittedInterveningEvent(rows, fullEquipmentRows);
     const dieselRows = rows.filter((row) => row.dieselActual != null);
     const comparableDieselRows = dieselRows.filter((row) => row.dieselExpected != null);
     const base: EquipmentPerformanceFleetRow = {
       key: `equipment:${equipmentId}`, equipmentId, machine: master.name, registrationNumber: master.registrationNumber ?? null,
-      equipmentType: master.equipmentType ?? null, ownership: master.ownership === "hired" ? "hired" : "owned",
+      equipmentType: master.equipmentType ?? null,
+      ownership: master.ownership === "hired" ? "hired" : master.ownership === "owned" ? "owned" : "—",
       confidence: rows.some((row) => row.confidence === "linked") ? "linked" : "confirmed_legacy_match",
       usageBasis: new Set(rows.map((row) => row.usageBasis)).size === 1 ? rows[0].usageBasis : "mixed",
       currentLocation: last.site ?? last.plant,
@@ -542,6 +767,11 @@ export function buildEquipmentPerformanceReport(input: {
         return actual > 0 ? expected / actual * 100 : null;
       })(),
       dataQualityWarnings: rowWarnings(rows),
+      ownerVendor: master.ownership === "hired"
+        ? master.vendorName?.trim() || "—"
+        : master.ownership === "owned" ? master.vendorName?.trim() || "HLC / OWNED" : "—",
+      ...managementMetrics(rows, master, fullEquipmentRows),
+      dailyRows: buildEquipmentPerformanceDailyRows(rows, master, fullEquipmentRows, periodHasFilteredGap),
     };
     if (base.ownership === "hired") {
       if (master.hireStartDate && master.hireEndDate) {
@@ -568,47 +798,13 @@ export function buildEquipmentPerformanceReport(input: {
           utilizationPercent: null,
         };
       }
-    } else {
+    } else if (base.ownership === "owned") {
       base.owned = { daysSinceLastUse: dayDifference(last.date, asOf) };
     }
     return [base];
   });
-  // Unclassified DPR logs are intentionally represented in fleet as a
-  // non-master group, rather than disappearing because equipmentId is null.
-  const unclassifiedGroups = new Map<string, EquipmentPerformanceEvent[]>();
-  for (const event of filtered.filter((event) => event.confidence === "unclassified")) {
-    const key = normalizeEquipmentLabel(event.machine) || "unknown";
-    unclassifiedGroups.set(key, [...(unclassifiedGroups.get(key) ?? []), event]);
-  }
-  for (const [key, rows] of Array.from(unclassifiedGroups.entries())) {
-    const last = rows.at(-1)!;
-    const dieselRows = rows.filter((row) => row.dieselActual != null);
-    const comparableDieselRows = dieselRows.filter((row) => row.dieselExpected != null);
-    fleet.push({
-      key: `unclassified:${key}`, equipmentId: null, machine: last.machine, registrationNumber: null,
-      equipmentType: null, ownership: "unclassified", confidence: "unclassified",
-      usageBasis: new Set(rows.map((row) => row.usageBasis)).size === 1 ? rows[0].usageBasis : "mixed",
-      currentLocation: last.site ?? last.plant, currentStatus: null,
-      firstIncludedDate: rows[0].date, lastUsedDate: last.date, eventCount: rows.length,
-      activeDays: new Set(rows.map((row) => row.date)).size,
-      runtimeHours: rows.reduce((n, row) => n + (row.runtimeHours ?? 0), 0),
-      totalKm: rows.reduce((n, row) => n + (row.totalKm ?? 0), 0),
-      trips: rows.reduce((n, row) => n + (row.trips ?? 0), 0),
-      dieselActual: sumNullable(dieselRows, "dieselActual"),
-      dieselBasis: aggregateDieselBasis(dieselRows),
-      dieselComparedActual: sumNullable(comparableDieselRows, "dieselActual"),
-      dieselComparisonIncomplete: comparableDieselRows.length !== dieselRows.length,
-      dieselExpected: sumNullable(comparableDieselRows, "dieselExpected"),
-      dieselVariance: sumNullable(comparableDieselRows, "dieselVariance"),
-      efficiencyPercent: (() => {
-        const actual = comparableDieselRows.reduce((n, row) => n + row.dieselActual!, 0);
-        return actual > 0 ? comparableDieselRows.reduce((n, row) => n + row.dieselExpected!, 0) / actual * 100 : null;
-      })(),
-      dataQualityWarnings: rowWarnings(rows),
-    });
-  }
-  const total = (field: keyof EquipmentPerformanceEvent) => filtered.reduce((sum, event) => sum + (Number(event[field]) || 0), 0);
-  const dieselRows = filtered.filter((event) => event.dieselActual != null);
+  const total = (field: keyof EquipmentPerformanceEvent) => orderedFiltered.reduce((sum, event) => sum + (Number(event[field]) || 0), 0);
+  const dieselRows = orderedFiltered.filter((event) => event.dieselActual != null);
   const comparableDieselRows = dieselRows.filter((event) => event.dieselExpected != null);
   const totalDieselActual = dieselRows.reduce((sum, event) => sum + event.dieselActual!, 0);
   const totalDieselComparedActual = comparableDieselRows.reduce((sum, event) => sum + event.dieselActual!, 0);
@@ -625,9 +821,9 @@ export function buildEquipmentPerformanceReport(input: {
       ],
     },
     totals: {
-      eventCount: filtered.length, linkedCount: filtered.filter((e) => e.confidence === "linked").length,
-      confirmedLegacyCount: filtered.filter((e) => e.confidence === "confirmed_legacy_match").length,
-      unclassifiedCount: filtered.filter((e) => e.confidence === "unclassified").length,
+      eventCount: orderedFiltered.length, linkedCount: orderedFiltered.filter((e) => e.confidence === "linked").length,
+      confirmedLegacyCount: orderedFiltered.filter((e) => e.confidence === "confirmed_legacy_match").length,
+      unclassifiedCount: orderedFiltered.filter((e) => e.confidence === "unclassified").length,
       runtimeHours: total("runtimeHours"), totalKm: total("totalKm"), trips: total("trips"),
       dieselActual: totalDieselActual, dieselExpected: totalDieselExpected,
       dieselComparedActual: totalDieselComparedActual,
@@ -637,11 +833,11 @@ export function buildEquipmentPerformanceReport(input: {
       efficiencyPercent: totalDieselComparedActual > 0 ? totalDieselExpected / totalDieselComparedActual * 100 : null,
       dieselBasis: aggregateDieselBasis(dieselRows),
     },
-    reviewRows: filtered.filter((e) => e.confidence === "unclassified").map((e) => ({
+    reviewRows: orderedFiltered.filter((e) => e.confidence === "unclassified").map((e) => ({
       logId: e.reference.equipmentLogId!, date: e.date, machine: e.machine, project: e.project,
       site: e.site, usageValue: e.usageValue, source: e.source, dprId: e.reference.dprId,
       suggestions: e.suggestions,
     })),
-    events: filtered, fleet, projects: projectRows,
+    events: orderedFiltered, fleet, projects: projectRows,
   };
 }

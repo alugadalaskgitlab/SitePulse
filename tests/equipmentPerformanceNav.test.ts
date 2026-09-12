@@ -74,8 +74,9 @@ describe("Fleet Performance URL and source navigation", () => {
     expect(source).toMatch(/onClick=\{reset\}/);
   });
 
-  it("both ledger surfaces use the generic source helper", () => {
+  it("the drilldown source action uses the generic source helper", () => {
     const source = readFileSync("client/src/pages/EquipmentPerformanceReport.tsx", "utf8");
-    expect(source.match(/equipmentSourceHref\(e, returnTo\)/g)).toHaveLength(2);
+    expect(source.match(/equipmentSourceHref\(event, returnTo\)/g)).toHaveLength(1);
+    expect(source).toContain("View Source Records");
   });
 });

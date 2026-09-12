@@ -38,3 +38,9 @@ No-DPR usage may enter the fleet report only as clearly identified Plant/HMP/RMC
 **Why:** Free-text locations are not project linkage, and unscoped plant rows can expose fleet, operator, and fuel data outside a restricted viewer's sites.
 
 **How to apply:** DPR-linked canonical usage inherits the DPR's site scope regardless of record source. Admit standalone rows only from explicit plant location evidence; never infer a project from names or dates.
+
+Management period and daily consumption must not bridge events omitted by Project/Scope filters. Daily detail must retain the server's gap assessment, not reconstruct consumption from only the visible events.
+
+**Why:** A Site → Plant → Site sequence can have reliable boundary tanks but a false Site-only fuel total. Filtering away the middle event destroys the evidence needed to detect that gap.
+
+**How to apply:** Assess continuity against the authorized canonical stream, expose only visible records, and show unavailable consumption, difference, and rate when incomplete. Meter working hours must stay separate from canonical runtime's clock fallback. Keep explanatory detail out of the main management table.

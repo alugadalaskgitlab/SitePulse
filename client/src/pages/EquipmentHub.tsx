@@ -138,8 +138,8 @@ export default function EquipmentHub() {
             <HubActionTile
               href="/reports/equipment-performance"
               icon={BarChart3}
-              title="Fleet Performance Ledger"
-              description="Review attributed machine hours, diesel efficiency and unresolved legacy usage"
+              title="Equipment Performance"
+              description="Usage, working hours and diesel consumption by equipment"
               accent="amber"
               iconBg="bg-amber-100"
               enabled={canSeePerformanceReport}

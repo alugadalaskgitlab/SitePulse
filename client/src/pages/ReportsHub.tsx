@@ -107,8 +107,8 @@ export default function ReportsHub() {
               <HubActionTile
                 href="/reports/equipment-performance"
                 icon={Construction}
-                title="Fleet Performance Ledger"
-                description="Attributable machine usage, operating efficiency and owner review queue"
+                title="Equipment Performance"
+                description="Usage, working hours and diesel consumption by equipment"
                 accent="amber"
                 iconBg="bg-amber-100"
                 enabled={canEquipment}
