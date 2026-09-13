@@ -71,9 +71,11 @@ import {
 import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { EquipmentTankBalanceInputs } from "@/components/EquipmentTankBalanceInputs";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
 import { calculateEquipmentClockDuration, formatEquipmentDuration, withEquipmentCreationStartTime, meaningfulEquipmentRows } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
+import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
 
 interface ProgressEntry {
   // Batch 06C §22: stable client key so photos can link to this activity row
@@ -146,6 +148,16 @@ interface EquipmentEntry {
   activitySegments?: Array<{ startTime: string; endTime: string; hoursWorked?: number; boqItems: Array<{ boqItemId: number; programmeBarId?: number | null }> }>;
   activityAllocations?: Array<{ boqItemId: number; programmeBarId?: number | null; startTime: string; endTime: string; hoursWorked?: number }>;
 }
+
+const contractorDieselTankFieldsCleared = (row: EquipmentEntry): EquipmentEntry =>
+  row.dieselSource === "contractor"
+    ? {
+        ...row,
+        openingDiesel: null,
+        dieselBalanceInTank: null,
+        dieselBalanceConfirmed: null,
+      }
+    : row;
 
 interface LabourEntry {
   category: string;
@@ -862,7 +874,7 @@ export default function SiteEntry() {
 
   const [openPlantMap, setOpenPlantMap] = useState<Record<number, any>>({});
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }
   ]);
   const [otherEquipmentRows, setOtherEquipmentRows] = useState<Set<number>>(() => new Set());
 
@@ -1047,6 +1059,27 @@ export default function SiteEntry() {
   // Batch 06C-Q: shared helper — same total the Guided wizard displays.
   const getTotalDiesel = (): number => computeTotalDiesel(equipment);
 
+  const dieselTankValidationError = (): string | null => {
+    for (let index = 0; index < equipment.length; index += 1) {
+      const row = equipment[index];
+      const label = row.machine?.trim() || `Equipment row ${index + 1}`;
+      const error = validateDieselTankBalance(row, label);
+      if (error) return error;
+    }
+    return null;
+  };
+
+  const validateDieselBeforeSave = (): boolean => {
+    const error = dieselTankValidationError();
+    if (!error) return true;
+    toast({
+      title: "Diesel tank balance required",
+      description: error,
+      variant: "destructive",
+    });
+    return false;
+  };
+
   const getMaterialsAbstract = () => {
     const grouped: Record<string, { material: string; uom: string; trips: number; total: number }> = {};
     materials.forEach(m => {
@@ -1065,7 +1098,7 @@ export default function SiteEntry() {
     if (section === 'progress') {
       setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
     } else if (section === 'materials') {
@@ -1144,7 +1177,7 @@ export default function SiteEntry() {
       isIncidental: false,
       incidentalDescription: "",
     })));
-    const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] as StagedBreakdown[] };
+    const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] as StagedBreakdown[] };
     if (st.equipment.length > 0) setEquipment(st.equipment.map(e => ({ ...blankEq, ...e })) as any);
     if (st.labour.length > 0) setLabour(st.labour.map(l => ({ category: l.category, gender: "", count: l.count, task: l.task, contractor: l.contractor, boqItemId: null, structureId: null })) as any);
     setShowYesterdayPreview(false);
@@ -1190,7 +1223,9 @@ export default function SiteEntry() {
       // Send client's local timestamp for accurate time display
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
 
-      const normalizedEquipment = meaningfulEquipmentRows(await prepareBreakdownAttachments(equipment)).map(eq => {
+      const normalizedEquipment = meaningfulEquipmentRows(
+        (await prepareBreakdownAttachments(equipment)).map(contractorDieselTankFieldsCleared),
+      ).map(eq => {
         const preview = computeEquipmentUsage(
           activeEquipment.find((item) => item.id === eq.equipmentId) ??
             (eq.dieselNorm != null ? { consumptionNorm: eq.dieselNorm } : null),
@@ -1412,7 +1447,9 @@ export default function SiteEntry() {
         };
       });
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
-      const normalizedEquipment = meaningfulEquipmentRows(equipment).map(eq => {
+       const normalizedEquipment = meaningfulEquipmentRows(
+         equipment.map(contractorDieselTankFieldsCleared),
+       ).map(eq => {
         const preview = computeEquipmentUsage(
           activeEquipment.find((item) => item.id === eq.equipmentId) ??
             (eq.dieselNorm != null ? { consumptionNorm: eq.dieselNorm } : null), eq);
@@ -1505,6 +1542,7 @@ export default function SiteEntry() {
       toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
       return;
     }
+    if (!validateDieselBeforeSave()) return;
     if (!header.site || !header.engineer) {
       toast({
         title: "Missing Information",
@@ -1548,6 +1586,7 @@ export default function SiteEntry() {
       toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
       return;
     }
+    if (!validateDieselBeforeSave()) return;
     if (workType !== "structure") {
       for (let i = 0; i < progress.length; i++) {
         const p = progress[i];
@@ -1636,6 +1675,7 @@ export default function SiteEntry() {
 
   // Over-balance confirmation runs AFTER readiness (both are confirm steps).
   const continueSubmitAfterReadiness = () => {
+    if (!validateDieselBeforeSave()) return;
     const cutFillIssues = validateCutFillForm(progress as any, siteBoqItems, dateEffectiveCutFillArrangements, [], true);
     if (cutFillIssues.length > 0) {
       toast({ title: "Cut / fill reconciliation needed", description: cutFillIssues[0], variant: "destructive" });
@@ -1665,7 +1705,7 @@ export default function SiteEntry() {
           ...normalizeExcavationMaterialOutcome(effectiveQuantity, p.materialOutcome, p.reusableQty),
         };
       }),
-      equipment,
+      equipment: equipment.map(contractorDieselTankFieldsCleared),
       labour,
       materials,
       sitePurchases,
@@ -1707,6 +1747,7 @@ export default function SiteEntry() {
           <Button
             onClick={() => {
               setOverBalanceWarnings(null);
+              if (!validateDieselBeforeSave()) return;
               createMutation.mutate();
             }}
             data-testid="button-confirm-over-balance"
@@ -3147,7 +3188,7 @@ export default function SiteEntry() {
                       value={entry.dieselSource ?? ""}
                       onValueChange={(value) => {
                         const updated = [...equipment];
-                        updated[idx].dieselSource = value;
+                        updated[idx] = transitionDieselSource(updated[idx], value);
                         setEquipment(updated);
                       }}
                     >
@@ -3208,6 +3249,22 @@ export default function SiteEntry() {
                       </div>
                     </>
                   )}
+                  {entry.dieselSource === "plant_stock" && (
+                    <EquipmentTankBalanceInputs
+                      index={idx}
+                      openingDiesel={entry.openingDiesel}
+                      dieselBalanceInTank={entry.dieselBalanceInTank}
+                      dieselBalanceConfirmed={entry.dieselBalanceConfirmed}
+                      dieselIssued={entry.diesel}
+                      expectedDiesel={usage.expectedDiesel}
+                      runtime={usage.runtime}
+                      onChange={(patch) => {
+                        const updated = [...equipment];
+                        updated[idx] = { ...updated[idx], ...patch };
+                        setEquipment(updated);
+                      }}
+                    />
+                  )}
                 </div>
                 </details>
                 <DprEquipmentCompact
@@ -3221,6 +3278,8 @@ export default function SiteEntry() {
                     id: entry.programmeBarId,
                     boqItemId: entry.boqItemId,
                   }] : [])}
+                   showTankBalance={false}
+                   enableTankContinuity={entry.dieselSource === "plant_stock"}
                   onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } : row))}
                 />
                 <BreakdownStoppageEditor

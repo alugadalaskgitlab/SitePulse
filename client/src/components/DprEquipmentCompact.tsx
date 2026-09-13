@@ -40,7 +40,7 @@ function SectionHeading({ children }: { children: ReactNode }) {
   return <div className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-700 dark:text-slate-200">{children}</div>;
 }
 
-export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars }: {
+export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true }: {
   row: DprEquipmentFields;
   equipment?: { meterType?: string | null; consumptionNorm?: number | null } | null;
   onChange?: (patch: Partial<DprEquipmentFields>) => void;
@@ -48,6 +48,15 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
   editable?: boolean; index?: number; beforeDate?: string; site?: string;
   boqItems?: Array<{ id: number; description?: string | null; itemCode?: string | null; itemName?: string | null; displayName?: string | null; unit?: string | null }>;
   programmeBars?: Array<{ id: number; boqItemId: number; reachLabel?: string | null; side?: string | null }>;
+  /** Form owners can render source-specific tank controls in their source block. */
+  showTankBalance?: boolean;
+  /**
+   * Whether this form row may suggest a prior confirmed tank balance. The
+   * default keeps the existing behavior for report/legacy callers; source-
+   * aware DPR forms disable it for direct-purchase and contractor rows so a
+   * hidden control cannot receive an invisible value.
+   */
+  enableTankContinuity?: boolean;
 }) {
   const visibleRow = isVisibleEquipmentRow(row);
   const continuityAppliedFor = useRef<string | null>(null);
@@ -80,7 +89,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
 
   useEffect(() => {
     let cancelled = false;
-    if (!editable || !onChange || row.openingDiesel != null || row.equipmentId == null || !beforeDate || !site) return;
+    if (!editable || !onChange || !enableTankContinuity || row.openingDiesel != null || row.equipmentId == null || !beforeDate || !site) return;
     const requestKey = `${row.equipmentId}:${beforeDate}:${site}`;
     fetch(`/api/equipment/${row.equipmentId}/latest-confirmed-diesel-tank?beforeDate=${encodeURIComponent(beforeDate)}&site=${encodeURIComponent(site)}`, { credentials: "include" })
       .then(res => res.ok ? res.json() : null)
@@ -91,7 +100,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [editable, onChange, row.equipmentId, row.openingDiesel, beforeDate, site]);
+  }, [editable, onChange, enableTankContinuity, row.equipmentId, row.openingDiesel, beforeDate, site]);
 
   const setNumber = (key: keyof DprEquipmentFields, value: string) =>
     onChange?.({ [key]: value === "" ? null : Number(value) } as Partial<DprEquipmentFields>);
@@ -157,7 +166,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
         </p>
       </section>}
 
-      <section className="border-t border-slate-200 px-3 py-3 sm:px-4 dark:border-slate-700">
+      {showTankBalance && <section className="border-t border-slate-200 px-3 py-3 sm:px-4 dark:border-slate-700">
         <SectionHeading><span className="flex items-center gap-2"><Fuel className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel</span></SectionHeading>
         {editable && onChange ? <><div className="mb-2 text-[11px] text-slate-500">Diesel source: <strong className="text-slate-700 dark:text-slate-200">{dash(row.dieselSource).replaceAll("_", " ")}</strong></div><div className="grid grid-cols-2 gap-2 lg:grid-cols-[140px_160px_140px_minmax(190px,1fr)] lg:items-end">
           <div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Opening Tank (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.openingDiesel ?? ""} onChange={e => setNumber("openingDiesel", e.target.value)} placeholder="Not recorded" /></div>
@@ -165,7 +174,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
           <div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Diesel Issued / Added (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.diesel ?? ""} disabled={row.plantUsageId != null} onChange={e => setNumber("diesel", e.target.value)} placeholder="0" /></div>
           <label className={`col-span-2 flex h-11 items-center gap-2 rounded-md border px-2.5 text-xs font-semibold sm:h-9 lg:col-span-1 ${row.dieselBalanceConfirmed ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300"}`}><Checkbox checked={!!row.dieselBalanceConfirmed} onCheckedChange={checked => onChange({ dieselBalanceConfirmed: checked === true })} /><span>{row.dieselBalanceConfirmed && <Check className="mr-1 inline h-4 w-4 text-emerald-600" />}Physical Tank Balance Confirmed</span></label>
         </div></> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"><Detail label="Opening Tank (L)" value={`${number(row.openingDiesel)} L`} /><Detail label="Diesel Issued / Added" value={`${number(row.diesel)} L`} /><Detail label="Diesel Source" value={dash(row.dieselSource).replace("_", " ")} /><Detail label="Closing Tank / Physical Dip (L)" value={`${number(row.dieselBalanceInTank)} L`} /><Detail label="Physical Tank Balance" value={row.dieselBalanceConfirmed ? "Confirmed" : tankKnown ? "Pending confirmation" : "—"} emphasis /></div>}
-      </section>
+       </section>}
 
       {!editable && <section className="border-t border-slate-200 bg-amber-50/40 p-4 dark:border-slate-700 dark:bg-amber-950/10">
         <SectionHeading><span className="flex items-center gap-2"><Droplets className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel Performance</span></SectionHeading>

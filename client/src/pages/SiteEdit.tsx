@@ -63,9 +63,11 @@ import {
 import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { EquipmentTankBalanceInputs } from "@/components/EquipmentTankBalanceInputs";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { calculateEquipmentClockDuration, formatEquipmentDuration, withEquipmentCreationStartTime, meaningfulEquipmentRows } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
+import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
 
 interface ProgressEntry {
   /** Client-only database id for exact-row report deep links; stripped on save. */
@@ -141,6 +143,16 @@ interface EquipmentEntry {
   // loaded from the stored DPR NEVER have their opening recalculated on load.
   isNew?: boolean;
 }
+
+const contractorDieselTankFieldsCleared = (row: EquipmentEntry): EquipmentEntry =>
+  row.dieselSource === "contractor"
+    ? {
+        ...row,
+        openingDiesel: null,
+        dieselBalanceInTank: null,
+        dieselBalanceConfirmed: null,
+      }
+    : row;
 
 interface LabourEntry {
   category: string;
@@ -260,7 +272,7 @@ function mapDprToFormState(dpr: any) {
         endTime: e.endTime || "",
         openingReading: e.openingReading ?? null,
         closingReading: e.closingReading ?? null,
-        diesel: e.diesel,
+        diesel: e.diesel ?? null,
         openingDiesel: e.openingDiesel ?? null,
         dieselBalanceInTank: e.dieselBalanceInTank ?? null,
         dieselBalanceConfirmed: e.dieselBalanceConfirmed ?? null,
@@ -295,7 +307,7 @@ function mapDprToFormState(dpr: any) {
         })) : undefined,
         breakdowns: e.breakdowns ?? [],
       }))
-    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true }];
+    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true }];
 
   const labour: LabourEntry[] = dpr.labour?.length
     ? dpr.labour.map((l: any) => ({
@@ -542,7 +554,7 @@ export default function SiteEdit() {
   const overlapHits = useChainageOverlapHits(overlapCandidateRows, overlapPriors, unchangedOverlapRowKeys);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null }
   ]);
   // 06X-HF6: submitted DPRs can pre-date a later dispatch to the same
   // site/date. Reuse the Guided/Detailed open-today discovery contract.
@@ -990,13 +1002,34 @@ export default function SiteEdit() {
     return equipment.reduce((sum, e) => sum + (e.diesel || 0), 0);
   };
 
+  const dieselTankValidationError = (): string | null => {
+    for (let index = 0; index < equipment.length; index += 1) {
+      const row = equipment[index];
+      const label = row.machine?.trim() || `Equipment row ${index + 1}`;
+      const error = validateDieselTankBalance(row, label);
+      if (error) return error;
+    }
+    return null;
+  };
+
+  const validateDieselBeforeSave = (): boolean => {
+    const error = dieselTankValidationError();
+    if (!error) return true;
+    toast({
+      title: "Diesel tank balance required",
+      description: error,
+      variant: "destructive",
+    });
+    return false;
+  };
+
   const addRow = (section: 'progress' | 'equipment' | 'labour') => {
     if (section === 'progress') {
       setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }]);
     } else if (section === 'equipment') {
       // 06Q: rows added during the edit session are flagged isNew — they get
       // opening-reading continuity when equipment is selected.
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
     }
@@ -1112,7 +1145,9 @@ export default function SiteEdit() {
       };
     }) : [],
     cutFillConsumptions: flattenCutFillConsumptions(progress),
-    equipment: meaningfulEquipmentRows(equipment).map(eq => {
+    equipment: meaningfulEquipmentRows(
+      equipment.map(contractorDieselTankFieldsCleared),
+    ).map(eq => {
       // 06Q: isNew is client-session state only — never sent to the server.
       const {
         isNew: _isNew,
@@ -1239,6 +1274,11 @@ export default function SiteEdit() {
   });
 
   const handleDraftSave = () => {
+    if (equipment.some((row) => Number(row.diesel || 0) > 0 && !row.dieselSource)) {
+      toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
+      return;
+    }
+    if (!validateDieselBeforeSave()) return;
     if (!header.date || !header.site || !header.engineer) {
       toast({ title: "Missing Fields", description: "Please fill in date, site name, and engineer name.", variant: "destructive" });
       return;
@@ -1258,6 +1298,7 @@ export default function SiteEdit() {
       toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
       return;
     }
+    if (!validateDieselBeforeSave()) return;
     if (!header.date || !header.site || !header.engineer) {
       toast({ title: "Missing Fields", description: "Please fill in date, site name, and engineer name.", variant: "destructive" });
       return;
@@ -1295,6 +1336,7 @@ export default function SiteEdit() {
       toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
       return;
     }
+    if (!validateDieselBeforeSave()) return;
     if (!header.date || !header.site || !header.engineer) {
       toast({
         title: "Missing Fields",
@@ -2353,6 +2395,11 @@ export default function SiteEdit() {
           )}
           {equipment.map((entry, idx) => {
             const workingHours = getWorkingHours(entry);
+             const usage = computeEquipmentUsage(
+               activeEquipment.find((item) => item.id === entry.equipmentId) ??
+                 (entry.dieselNorm != null ? { consumptionNorm: entry.dieselNorm } : null),
+               entry,
+             );
             const isTimeMeter = !entry.entryType || entry.entryType === "time_meter" || entry.entryType === "hourly";
             const isTripBased = entry.entryType === "trip_based";
             const isDailyOrMonthly = entry.entryType === "daily" || entry.entryType === "monthly";
@@ -2723,7 +2770,7 @@ export default function SiteEdit() {
                     disabled={entry.plantUsageId != null}
                     onValueChange={(value) => {
                       const updated = [...equipment];
-                      updated[idx].dieselSource = value;
+                      updated[idx] = transitionDieselSource(updated[idx], value);
                       setEquipment(updated);
                     }}
                   >
@@ -2784,6 +2831,22 @@ export default function SiteEdit() {
                     </div>
                   </>
                 )}
+                {entry.dieselSource === "plant_stock" && (
+                  <EquipmentTankBalanceInputs
+                    index={idx}
+                    openingDiesel={entry.openingDiesel}
+                    dieselBalanceInTank={entry.dieselBalanceInTank}
+                    dieselBalanceConfirmed={entry.dieselBalanceConfirmed}
+                    dieselIssued={entry.diesel}
+                    expectedDiesel={usage.expectedDiesel}
+                    runtime={usage.runtime}
+                    onChange={(patch) => {
+                      const updated = [...equipment];
+                      updated[idx] = { ...updated[idx], ...patch };
+                      setEquipment(updated);
+                    }}
+                  />
+                )}
               </div>
                 </details>
                 <DprEquipmentCompact
@@ -2799,6 +2862,8 @@ export default function SiteEdit() {
                     reachLabel: [entry.chainageFrom, entry.chainageTo].filter(Boolean).join("–") || null,
                     side: entry.side || null,
                   }] : [])}
+                   showTankBalance={false}
+                   enableTankContinuity={entry.dieselSource === "plant_stock"}
                   onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } : row))}
                   onWorkAssignmentChange={(activitySegments) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? {
                     ...row,
@@ -3152,7 +3217,10 @@ export default function SiteEdit() {
       <DprReadinessDialog
         readiness={readiness}
         onClose={() => setReadiness(null)}
-        onSubmitAnyway={() => { if (validateCutFillForFinal()) submitDraftMutation.mutate(buildPayload()); }}
+        onSubmitAnyway={() => {
+          if (!validateDieselBeforeSave()) return;
+          if (validateCutFillForFinal()) submitDraftMutation.mutate(buildPayload());
+        }}
         onSaveDraft={handleDraftSave}
       />
 

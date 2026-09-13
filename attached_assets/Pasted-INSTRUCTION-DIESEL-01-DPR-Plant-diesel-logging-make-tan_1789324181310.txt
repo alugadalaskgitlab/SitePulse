@@ -1,0 +1,67 @@
+INSTRUCTION DIESEL-01: DPR + Plant diesel logging — make tank balance mandatory for HLC-supplied fuel, hide it for contractor scope, and stop blocking a contractor-scope fuel advance from being logged
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a data-capture fix in two equipment-usage entry forms: client/src/pages/SiteEntry.tsx (DPR — also mirror into client/src/pages/SiteEdit.tsx, the edit counterpart of the same entry) and client/src/pages/PlantEquipmentUsage.tsx (Plant). This is a prerequisite for VB-10 (Monthly Hire billing) — VB-10 depends on tank-balance data being reliably captured, so this batch must land and be verified first. Do not touch Vendor Bills in this batch — that's VB-10, separate. Do not touch Equipment Performance, EQUIP-10, or any report page. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review of the latest zip — do not re-derive)
+
+Both DPR and Plant equipment entries already have a "Diesel Source" concept with three values: plant_stock, direct_purchase, contractor (schema: equipmentLogs.dieselSource, shared/schema.ts). Both already capture breakdowns per equipment row via BreakdownStoppageEditor / the equivalent Plant UI, feeding the maintenance log — that part is already correct and not in scope here.
+
+Confirmed gaps:
+1. client/src/pages/SiteEntry.tsx (~lines 3138-3208, the Diesel Source block): shows Diesel Source, and — only when dieselSource === "direct_purchase" — Fuel Station / Bill No. / Amount fields. There is NO opening/closing tank balance UI anywhere in this file at all, for any diesel source. The underlying fields (openingDiesel, dieselBalanceInTank, dieselBalanceConfirmed) exist on the equipmentLogs schema and are already used by the Plant module, but DPR never surfaces them. client/src/pages/SiteEdit.tsx has the same gap (it shares the same row shape but doesn't render tank balance either).
+2. client/src/pages/PlantEquipmentUsage.tsx already has opening/closing tank balance UI and a dieselIncluded (contractor-scope) toggle that correctly nulls out tank balance fields when contractor scope is selected (~line 637-651). This part works and should not be changed.
+3. Also in PlantEquipmentUsage.tsx (~line 644, ~676, ~762): when effectiveDieselSource === "contractor", dieselIssued itself is forced to null — `dieselIssued: effectiveDieselSource === "contractor" ? null : (dieselIssued ? parseFloat(dieselIssued) : 0)`. This means there is currently NO way to log any diesel issued at all against a contractor-scope machine, even as an occasional advance. This is the actual bug: contractor-scope equipment sometimes still needs HLC to advance fuel (e.g. vendor's own supply ran short), and that advance needs to be recoverable from the vendor's hire bill later — but the form currently makes this impossible to record.
+4. Neither form currently requires opening/closing tank balance when diesel source is plant_stock — it's optional today (dieselBalanceInTank !== "" ? ... : null in the submit payload, no required-field check). This means an HLC-supplied diesel entry can be saved with no tank reading, which breaks any later reconciliation.
+
+DECISIONS CONFIRMED BEFORE BUILDING
+- Both DPR and Plant should capture opening/closing tank balance directly — this is not staying Plant-only. Bring DPR up to the same standard Plant already has, then fix both together.
+- When diesel source indicates HLC/plant stock is supplying the fuel (dieselSource === "plant_stock" — the direct_purchase case is a separate, already-distinct one-off purchase path and is unaffected by this instruction), opening AND closing tank balance become mandatory before the entry can be saved (draft or submit).
+- When the diesel responsibility is contractor scope, tank balance fields should not be shown at all (Plant already does this correctly via dieselIncluded; DPR needs the same suppression).
+- Even under contractor scope, diesel-issued must remain an optional field — loggable when HLC advances fuel to a contractor-responsible machine, so it can be recovered later. This applies regardless of whether that machine's hire is billed daily, hourly, or monthly.
+
+FIX 1 — ADD TANK BALANCE FIELDS TO DPR (SiteEntry.tsx, mirror into SiteEdit.tsx)
+a. In the Diesel Source block (~line 3138-3208), when dieselSource === "plant_stock", show Opening Tank Balance (L) and Closing Tank Balance (L) input fields, matching the same fields/behavior already built in PlantEquipmentUsage.tsx (openingDiesel, dieselBalanceInTank, plus the dieselBalanceConfirmed checkbox if that's part of the existing Plant UX — check what Plant actually renders and mirror it exactly, don't invent new UI for the same concept).
+b. When dieselSource === "contractor", do not show tank balance fields at all — same suppression Plant already applies.
+c. When dieselSource === "direct_purchase", tank balance fields stay hidden (unaffected by this instruction — direct purchase already has its own Fuel Station/Bill No./Amount fields and doesn't touch plant stock).
+d. Apply the identical logic to SiteEdit.tsx so editing an existing DPR entry has the same fields available, not just creating a new one.
+
+FIX 2 — MAKE TANK BALANCE MANDATORY FOR PLANT-STOCK DIESEL (both DPR and Plant)
+a. In SiteEntry.tsx's handleSaveDraft and handleSubmit (~lines 1503-1504, ~1546-1547 — currently only checking "select diesel source for every row with positive diesel"), add a check: for any equipment row where dieselSource === "plant_stock" and diesel > 0, opening AND closing tank balance must both be filled in before the DPR can be saved as draft or submitted. Show a clear toast naming which equipment row is missing it, same style as the existing diesel-source check.
+b. Apply the equivalent mandatory check in PlantEquipmentUsage.tsx's handleSubmit (~line 625 onward) — today dieselBalanceInTank is silently optional even for plant_stock; make it required there too, with the same clear validation message.
+c. This requirement applies ONLY when dieselSource === "plant_stock". Do not require tank balance for direct_purchase or contractor scope.
+
+FIX 3 — STOP BLOCKING A DIESEL ADVANCE UNDER CONTRACTOR SCOPE
+a. In PlantEquipmentUsage.tsx (~lines 644, 676, 762 and wherever else effectiveDieselSource === "contractor" currently forces dieselIssued to null), change this so dieselIssued remains a normal, optional numeric field under contractor scope — the user can enter it if HLC actually advanced fuel that day, or leave it blank/zero if they didn't, exactly like any other optional field. Tank balance stays hidden/null for contractor scope as today (Fix 1b/2c) — only the diesel-issued block is being un-gated here.
+b. Do the same in SiteEntry.tsx once Fix 1 adds the Diesel Source UI's full behavior — contractor scope should hide tank balance but must not block the diesel quantity field itself.
+c. Any diesel logged under contractor scope (dieselSource === "contractor" and diesel > 0) must be clearly distinguishable in the stored record as an advance to a contractor-responsible machine — confirm the existing dieselSource="contractor" value on the row is sufficient for VB-10 to later find and treat these as a recoverable advance (VB-10 will read this field; you do not need to add a new field unless dieselSource alone isn't enough to distinguish "advance" from anything else — if you think a new flag or remarks field is needed to make this unambiguous, propose it before building rather than guessing).
+
+WHAT NOT TO DO
+- Do not touch Vendor Bills in this batch — that's VB-10, a separate instruction that depends on this one landing first.
+- Do not change how breakdowns are logged (BreakdownStoppageEditor / equivalent) — already correct, out of scope.
+- Do not change direct_purchase behavior (Fuel Station/Bill No./Amount) — unaffected, leave as-is.
+- Do not make tank balance mandatory for contractor or direct_purchase sources.
+- Do not remove or weaken the existing "select diesel source before positive diesel" validation — add to it, don't replace it.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — openingDiesel, dieselBalanceInTank, dieselBalanceConfirmed, dieselSource, and diesel already exist on equipmentLogs and are already used by the Plant module; this batch only extends where DPR surfaces them and tightens validation. If you find the "advance" case in Fix 3c genuinely needs a new field to be unambiguous, stop and show the exact proposed schema change before writing a migration — do not add it silently.
+
+TESTS
+A. Log a new DPR entry with Diesel Source = Plant Stock and diesel > 0: confirm opening and closing tank balance fields appear and are required — saving without them shows a clear error naming the row.
+B. Log a new DPR entry with Diesel Source = Contractor and diesel > 0: confirm tank balance fields do not appear, and the entry saves successfully with the diesel amount recorded (this used to be impossible on the Plant side — confirm it's now possible on both DPR and Plant).
+C. Repeat A and B in the Plant module (PlantEquipmentUsage.tsx): confirm the same mandatory/hidden/optional behavior.
+D. Log a DPR entry with Diesel Source = Direct Purchase: confirm nothing about this path changed — no tank balance shown, Fuel Station/Bill No./Amount work exactly as before.
+E. Edit an existing DPR entry via SiteEdit.tsx with Diesel Source = Plant Stock: confirm tank balance fields are editable there too, with the same mandatory check.
+F. Confirm a DPR/Plant entry with Diesel Source = Plant Stock and zero diesel does NOT force tank balance entry (the requirement is tied to diesel > 0, not merely the source selection) — confirm this matches the existing "select diesel source" check's own condition for consistency.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/E evidence (DPR now has tank balance UI, mirrored into edit).
+2. Confirm Fix 2 with Test A/C evidence (mandatory enforcement in both DPR and Plant).
+3. Confirm Fix 3 with Test B/C evidence (contractor-scope advance now loggable in both places).
+4. Confirm Test D — direct purchase path completely unaffected.
+5. Confirm Test F — requirement correctly tied to diesel > 0, not just source selection.
+6. Confirm whether Fix 3c needed a new field to disambiguate an "advance" — if so, show the proposed schema change and stop before applying it.
+7. Confirm no other schema change was needed.
+8. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch. Do not begin VB-10 until this batch is verified working — VB-10 depends on this data being reliable.

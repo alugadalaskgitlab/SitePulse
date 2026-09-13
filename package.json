@@ -10,7 +10,9 @@
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "fixture:dpr:serve": "vite --config tests/fixtures/dpr-site-entry/vite.config.ts --host 127.0.0.1 --port 4178 --strictPort",
+    "fixture:dpr:verify": "node tests/fixtures/dpr-site-entry/verify.mjs"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.21.0",

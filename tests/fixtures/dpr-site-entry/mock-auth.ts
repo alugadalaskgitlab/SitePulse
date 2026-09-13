@@ -1,0 +1,30 @@
+export function useAuth() {
+  return {
+    isAdmin: true,
+    sectionCan: () => true,
+    sectionVisible: () => true,
+    canApprove: () => true,
+    isAuthenticated: true,
+    isLoading: false,
+    isOwner: true,
+    isManager: false,
+    isFieldEngineer: true,
+    canManagePermissions: true,
+    permissionManagerScope: "full" as const,
+    user: {
+      id: 606,
+      email: "dpr-fixture@example.invalid",
+      fullName: "DPR Fixture Engineer",
+      isAdmin: true,
+      isOwner: true,
+      isActive: true,
+      isFieldEngineer: true,
+      sessionPolicy: "sticky" as const,
+      canManagePermissions: true,
+      permissionManagerScope: "full" as const,
+    },
+    permissions: {},
+    refresh: async () => undefined,
+    logout: async () => undefined,
+  };
+}

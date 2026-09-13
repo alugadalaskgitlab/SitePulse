@@ -34,6 +34,7 @@ import { useUpload } from "@/hooks/use-upload";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
 import { computeEquipmentFuelSummary } from "@shared/equipmentUsage";
 import { EquipmentMasterCreateDialog } from "@/components/EquipmentMasterCreateDialog";
+import { validateDieselTankBalance } from "@shared/dieselEntryValidation";
 
 // 06X-HF2: extract the server's `message` field from apiRequest errors.
 // apiRequest throws "STATUS: {json}" — parse the JSON and return the
@@ -629,6 +630,23 @@ export default function PlantEquipmentUsage() {
       toast({ title: "Select diesel source before submitting positive diesel", variant: "destructive" });
       return;
     }
+    const effectiveDieselSource = dieselIncluded ? "contractor" : dieselSource;
+    const selectedEquipmentForValidation = equipment?.find(e => e.id === parseInt(equipmentId));
+    const equipmentLabel = selectedEquipmentForValidation
+      ? formatEquipmentOptionLabel(selectedEquipmentForValidation)
+      : equipmentId
+        ? `Equipment #${equipmentId}`
+        : "Equipment";
+    const dieselTankValidation = validateDieselTankBalance({
+      diesel: dieselIssued,
+      dieselSource: effectiveDieselSource,
+      openingDiesel,
+      dieselBalanceInTank,
+    }, equipmentLabel);
+    if (dieselTankValidation) {
+      toast({ title: dieselTankValidation, variant: "destructive" });
+      return;
+    }
     if (receivingUsage) {
       if (!equipmentId || !openingReading || !closingReading) {
         toast({ title: "Enter the Plant closing meter reading to complete this incoming entry", variant: "destructive" });
@@ -642,7 +660,7 @@ export default function PlantEquipmentUsage() {
           openingReading: parseFloat(openingReading), closingReading: parseFloat(closingReading),
           startTime: startTime || null, endTime: endTime || null,
           openingDiesel: effectiveDieselSource === "contractor" ? null : (openingDiesel ? parseFloat(openingDiesel) : 0),
-          dieselIssued: effectiveDieselSource === "contractor" ? null : (dieselIssued ? parseFloat(dieselIssued) : 0),
+          dieselIssued: dieselIssued ? parseFloat(dieselIssued) : 0,
           dieselIncluded, dieselSource: effectiveDieselSource,
           fuelStation: effectiveDieselSource === "direct_purchase" ? fuelStation.toUpperCase() : null,
           billNumber: effectiveDieselSource === "direct_purchase" ? billNumber.toUpperCase() : null,
@@ -664,7 +682,6 @@ export default function PlantEquipmentUsage() {
         toast({ title: "Please select a destination site before dispatching", variant: "destructive" });
         return;
       }
-      const effectiveDieselSource = dieselIncluded ? "contractor" : dieselSource;
       const data = {
         date,
         equipmentId: parseInt(equipmentId),
@@ -674,9 +691,11 @@ export default function PlantEquipmentUsage() {
         startTime: startTime || null,
         endTime: null,
         openingDiesel: effectiveDieselSource === "contractor" ? null : (openingDiesel ? parseFloat(openingDiesel) : 0),
-        dieselIssued: effectiveDieselSource === "contractor" ? null : (dieselIssued ? parseFloat(dieselIssued) : 0),
+        dieselIssued: dieselIssued ? parseFloat(dieselIssued) : 0,
         dieselIncluded,
         dieselSource: effectiveDieselSource,
+        dieselBalanceInTank: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? parseFloat(dieselBalanceInTank) : null,
+        dieselBalanceConfirmed: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? dieselBalanceConfirmed : false,
         siteName: workingPlant === "OTHER" ? (siteName.toUpperCase() || null) : workingPlant,
         remarks: remarks ? remarks.toUpperCase() : null,
         status: "open",
@@ -746,8 +765,6 @@ export default function PlantEquipmentUsage() {
       return;
     }
     
-    const effectiveDieselSource = dieselIncluded ? "contractor" : dieselSource;
-    
     const data = {
       date,
       equipmentId: parseInt(equipmentId),
@@ -760,7 +777,7 @@ export default function PlantEquipmentUsage() {
       tripDistance: (entryType === "trip_based" || tripBasedEntry) && tripDistance ? parseFloat(tripDistance) : null,
       tripBasedEntry: entryType === "trip_based" || tripBasedEntry,
       openingDiesel: effectiveDieselSource === "contractor" ? null : (openingDiesel ? parseFloat(openingDiesel) : 0),
-      dieselIssued: effectiveDieselSource === "contractor" ? null : (dieselIssued ? parseFloat(dieselIssued) : 0),
+      dieselIssued: dieselIssued ? parseFloat(dieselIssued) : 0,
       dieselIncluded,
       dieselSource: effectiveDieselSource,
       fuelStation: effectiveDieselSource === "direct_purchase" ? fuelStation.toUpperCase() : null,
@@ -813,6 +830,7 @@ export default function PlantEquipmentUsage() {
   };
 
   const selectedEquipment = equipment?.find(e => e.id === parseInt(equipmentId));
+  const effectiveDieselSource = dieselIncluded ? "contractor" : dieselSource;
   const hasConfiguredHireTerms = selectedEquipment != null &&
     (selectedEquipment as any).ownership === "hired" &&
     ["monthly", "daily", "hourly", "trip"].includes((selectedEquipment as any).hireBillingBasis) &&
@@ -1554,7 +1572,7 @@ export default function PlantEquipmentUsage() {
                   ) : tripTotalKm > 0 ? (
                     <p>Distance: <strong>{tripTotalKm.toFixed(3)} km</strong> (from trips)</p>
                   ) : null}
-                  {!dieselIncluded && <p>Expected Diesel: <strong>{expectedDiesel.toFixed(3)} L</strong></p>}
+                  {effectiveDieselSource !== "contractor" && <p>Expected Diesel: <strong>{expectedDiesel.toFixed(3)} L</strong></p>}
                 </div>
               )}
 
@@ -1585,9 +1603,16 @@ export default function PlantEquipmentUsage() {
                 </p>
               </div>
 
-              {!dieselIncluded && dieselSource !== "contractor" && (
+              {effectiveDieselSource === "contractor" ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Diesel Issued (L)</Label>
+                    <Input type="number" step="0.1" value={dieselIssued} onChange={(e) => setDieselIssued(e.target.value)} placeholder="0" data-testid="input-diesel-issued" />
+                  </div>
+                </div>
+              ) : (
                 <>
-                  {dieselSource === "direct_purchase" && (
+                  {effectiveDieselSource === "direct_purchase" && (
                     <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800 space-y-3">
                       <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Direct Site Purchase Details</p>
                       <div className="grid grid-cols-2 gap-3">
@@ -1668,7 +1693,7 @@ export default function PlantEquipmentUsage() {
                     </div>
                   )}
 
-                  {(dieselIncluded ? "contractor" : dieselSource) !== "contractor" && (
+                  {effectiveDieselSource !== "contractor" && (
                     <div className="border rounded-md p-3 space-y-3 bg-blue-50/50 dark:bg-blue-900/10">
                       <div className="grid grid-cols-2 gap-4">
                         <div>

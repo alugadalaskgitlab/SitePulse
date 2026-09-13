@@ -56,6 +56,7 @@
 - [Material Receipt Reversal](material-receipt-reversal.md) — cancel/delete reverse stock once via guarded tx; cancelled receipts are terminal (no edit); sufficiency block, compensating ledger row.
 - [Diesel Receipt Pending](diesel-receipt-pending.md) — purchase never adds stock; linked receipts derive status, reuse evidence by reference, and stay canonical Diesel/Liters.
 - [Diesel Stock Guard](diesel-stock-guard.md) — all Diesel/HSD writers, including rebuild jobs, must floor stock at zero; direct purchases never consume Plant Stock.
+- [Diesel entry capture](diesel-entry-capture.md) — positive Plant Stock needs tanks; contractor advances retain quantity; source changes must not leave hidden continuity evidence.
 - [Multi-layer Lift](multi-layer-lift.md) — layerNo overlap exemption only when both non-null AND different; null never coerced; report breakdown display-only, sums to total.
 - [Equipment Opening Continuity](equipment-opening-continuity.md) — one cross-source resolver for prior closing readings; tie-breaks, linkage-first priority, manual/stale guards.
 - [Equipment Movement Lifecycle](equipment-movement-lifecycle.md) — each onward move creates one successor segment; DPR closure, materialization, and diesel ownership commit atomically.

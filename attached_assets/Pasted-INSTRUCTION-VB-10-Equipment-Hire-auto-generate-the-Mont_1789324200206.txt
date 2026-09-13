@@ -1,0 +1,76 @@
+INSTRUCTION VB-10: Equipment Hire — auto-generate the Monthly Hire line from Equipment Master + DPR/Plant activity, no manual entry step
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This depends on two earlier batches landing and being verified first, in this order: (1) VB-09 (revert Equipment Hire bill creation to the shared itemized flow used by every other bill type), (2) DIESEL-01 (DPR/Plant tank-balance capture and the contractor-scope advance fix). Do not start this batch until both are confirmed working — this batch reads data DIESEL-01 makes reliable, and adds to the flow VB-09 restores. Do not touch Equipment Performance, EQUIP-10, or the separate Hire billing register page (client/src/pages/EquipmentHireBilling.tsx — always out of scope). Do not publish automatically. STOP after this and report back.
+
+BACKGROUND / DESIGN DECISIONS CONFIRMED BEFORE BUILDING
+
+After VB-09 lands, creating any vendor bill — Equipment Hire included — works the same simple way: pick vendor + period, the app pulls what was actually logged, you review it, done. This batch adds exactly one thing on top of that, for monthly-basis equipment only, and it is fully automatic — no button, no manual calendar-marking step, no separate flow to choose between.
+
+The rule: Equipment Master's hireBillingBasis is the single source of truth for how a machine is billed. If it says "monthly", the machine's entire hire is billed as monthly for the bill period — there is no mid-period splitting between monthly and daily/hourly in this batch (explicitly descoped — if a machine's basis genuinely changes mid-hire, that's handled by editing Equipment Master's hire terms for future bills, not by the bill itself detecting a split). If a vendor has one monthly machine and one daily/hourly machine, the bill produces one auto-generated Monthly Hire line for the first and ordinary itemized lines for the second, in the same bill, automatically — because each machine's own Master record determines which path it takes, with no manual sorting by the person creating the bill.
+
+The data this pulls from, already confirmed to exist:
+- client/src/pages/SiteEntry.tsx and PlantEquipmentUsage.tsx already tag every equipment log entry with an entryType (time_meter/hourly/daily/trip_based/monthly) and already capture breakdowns per entry via BreakdownStoppageEditor (feeding the maintenance log, eventType "breakdown"). This is real, logged activity — use it as the activity calendar, do not have the bill re-ask the user to mark days.
+- shared/hireBilling.ts already has the monthly proration math (monthlyGross, monthlyDailyRate, using hireMonthlyDivisorType/hireMonthlyDivisor from Equipment Master) and the breakdown-deduction logic (breakdownHoursPerDay, hireBreakdownDeductionEnabled) — reuse this engine as-is, do not rewrite the math. The earlier "hire groups" UI that called this engine is what VB-09 removes; the engine itself stays in the codebase untouched, per VB-09's Fix 2a.
+- DIESEL-01 makes opening/closing tank balance mandatory for plant_stock diesel and keeps diesel-issued loggable (as a recoverable advance) under contractor scope. This batch is what actually uses that data.
+
+An unresolved day, for a monthly machine, still counts as billable by default. Monthly hire means "the machine was available to you," not "the machine was used that specific day" — so days inside the machine's active hire dates within the bill period are billable unless there's a positive record saying otherwise (a logged breakdown). A missing DPR entry on a monthly machine must NOT silently reduce the bill, unlike daily/hourly billing where an unlogged day naturally isn't billed.
+
+FIX 1 — AUTO-DETECT AND SPLIT BY BILLING BASIS WHEN A VENDOR IS SELECTED
+a. When vendorName + periodFrom + periodTo are set on an Equipment Hire (or All Types) bill, for each of that vendor's hired equipment (ownership === "hired", vendorName matches): read hireBillingBasis from Equipment Master.
+b. If hireBillingBasis === "monthly": route this machine into Fix 2 below (auto-generate one Monthly Hire line). Do not surface it in the itemized pull as individual daily/hourly rows.
+c. If hireBillingBasis is daily/hourly/trip: this machine's usage flows through the itemized pull exactly as VB-09 restores it — no change from that batch's behavior.
+d. This must work per-machine, independent of what other machines from the same vendor are doing — a vendor with 3 machines (1 monthly, 2 hourly) produces 1 auto-generated line + itemized rows for the other 2, all in the same bill, automatically.
+
+FIX 2 — AUTO-GENERATE THE MONTHLY HIRE LINE
+For each monthly-basis machine identified in Fix 1:
+a. Determine the billable date range: the overlap between the machine's active hire dates (hireStartDate/hireEndDate) and the bill's periodFrom/periodTo.
+b. Build the activity calendar for that range from equipmentLogs entries (any entryType) plus the maintenance log's breakdown entries for this equipment in that range — this is a read-only summary showing which days were logged as active and which had a breakdown, for transparency and audit, not something the user builds by hand.
+c. Every day in the billable range counts as billable by default. Only days with a linked breakdown event reduce the bill, and only for the portion beyond whatever grace period / breakdownHoursPerDay rule is already configured (hireBreakdownDeductionEnabled must be on for this machine, same as today's gating).
+d. Compute Gross using the existing monthlyGross function (full rate for a complete period, prorated via hireMonthlyDivisorType/hireMonthlyDivisor for a partial one). Compute the breakdown deduction using the existing monthlyDailyRate-based logic. Do not reimplement this math — call the existing shared/hireBilling.ts functions.
+e. Render the result as one line item in the same bill (category "equipment", same table every other item sits in), with the underlying calendar available to expand/inspect (so the person preparing the bill can see and, if genuinely necessary, override an individual day's breakdown status before finalizing — this is a correction mechanism for exceptions, not the primary way of entering data).
+
+FIX 3 — DIESEL RECONCILIATION FOR HLC-SUPPLIED MONTHLY MACHINES
+a. Only when this machine's hireDieselResponsibility === "hlc": compute Expected = consumptionNorm (in the machine's own unit, L/hr or L/km per meterType, same figure Equipment Performance already shows) × total hours/km actually logged across the billable range (from equipmentLogs entries, any entryType — this reflects real usage regardless of billing basis).
+b. Compute Actual using the DIESEL-01 data: opening tank balance at the start of the billable range + diesel issued (dieselSource === "plant_stock") during the range − closing tank balance at the end of the range. Use this proper reconciliation, not a plain sum of diesel-issued entries, now that DIESEL-01 makes tank balance mandatory for plant_stock entries.
+c. Surface Expected vs Actual and the resulting suggested recovery using the same Accept/Edit/No-Recovery mechanism already built for diesel recovery elsewhere in this file — reuse it, do not build a second one.
+d. When hireDieselResponsibility === "vendor" (contractor scope): no Expected/Actual reconciliation block (there's nothing for HLC to reconcile against its own stock). Instead, per Fix 4.
+
+FIX 4 — SURFACE CONTRACTOR-SCOPE DIESEL ADVANCES AS A RECOVERABLE DEBIT
+a. For ANY hired equipment belonging to the selected vendor in the bill period — monthly or daily/hourly/trip, this is not limited to monthly machines — check for equipmentLogs entries where dieselSource === "contractor" and diesel > 0 (these are the advances DIESEL-01 makes possible to log). If any exist in the bill period, surface them as a suggested "Other Debit / Recovery" adjustment on this vendor's bill (using the existing adjustments.otherDebit field already in the hire calculation structure), with a clear reason string identifying it as a diesel advance (e.g. dates and quantities), pre-filled but editable/removable by the person preparing the bill — never silently applied without them seeing it.
+b. This must appear regardless of whether the equipment it was logged against is billed monthly (Fix 2) or itemized (VB-09's flow) — the advance recovery is about the vendor's bill as a whole, not tied to one billing basis.
+
+WHAT NOT TO DO
+- Do not handle a mid-period basis change (part of the month monthly, part hourly) — explicitly descoped for this batch, per the decision above.
+- Do not require the user to manually build or mark the activity calendar — it must be fully derived from existing DPR/Plant/maintenance-log data.
+- Do not let a missing DPR entry on a monthly machine reduce the bill — only a logged breakdown should.
+- Do not rebuild the monthly proration or diesel-recovery math — reuse shared/hireBilling.ts and the existing recovery-decision UI as-is.
+- Do not touch Equipment Performance, EQUIP-10, or the Hire billing register page.
+- Do not touch Material/Transport/Labour/Other bill types.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — this reuses hireBillingBasis, hireMonthlyDivisorType/hireMonthlyDivisor, hireBreakdownDeductionEnabled, breakdownHoursPerDay, hireDieselResponsibility, consumptionNorm, meterType (all already on equipmentMaster), plus equipmentLogs' entryType/dieselSource/diesel/openingDiesel/dieselBalanceInTank (already there, now reliable per DIESEL-01), and the maintenance log's breakdown events. If you find you need any schema change, stop and show the exact proposed change before writing a migration.
+
+TESTS
+A. Select a vendor with one monthly-basis machine and one hourly-basis machine, for a period covering a full calendar month. Confirm the bill auto-generates one Monthly Hire line for the first and itemized rows for the second, with no manual step required for either.
+B. Same vendor, but the machine's hire started mid-month. Confirm the Monthly Hire line is correctly prorated to the overlap between hire dates and bill period.
+C. Log a breakdown for that machine for 3 days within the period, with breakdown deduction enabled and a 1-day grace period configured. Confirm the deduction applies only to the 2 days beyond the grace period, computed via the existing monthlyDailyRate logic.
+D. Confirm a monthly machine with zero DPR/Plant entries logged that period, but no breakdown either, still bills its full (or prorated) amount — a missing log must not reduce it.
+E. For an HLC-diesel-responsibility monthly machine with tank balance data now present (post DIESEL-01), confirm Expected vs Actual computes correctly using opening + issued − closing, and the recovery suggestion appears using the existing decision UI.
+F. Log a contractor-scope diesel advance (per DIESEL-01) against a daily/hourly machine for this vendor. Confirm it surfaces as a suggested Other Debit on the bill, editable/removable, not silently applied.
+G. Repeat F for a monthly-basis machine — confirm the same advance-recovery surfacing works there too.
+H. Confirm Material/Transport/Labour/Other bill types are completely unaffected.
+I. Confirm the activity calendar behind a Monthly Hire line is viewable/expandable for audit, and that overriding an individual day (for a genuine exception) is possible without breaking the auto-computed default for every other day.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A evidence (per-machine auto-split working).
+2. Confirm Fix 2 with Test B/C/D evidence (proration, breakdown deduction, no-log-doesn't-reduce).
+3. Confirm Fix 3 with Test E evidence (diesel reconciliation for HLC-scope monthly machines).
+4. Confirm Fix 4 with Test F/G evidence (contractor advance recovery, both billing bases).
+5. Confirm Test H — no regression to other bill types.
+6. Confirm Test I — calendar is auditable and exception-editable.
+7. Confirm no schema change was needed; if one was, stop and show it before applying.
+8. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
