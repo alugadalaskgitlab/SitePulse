@@ -147,7 +147,13 @@ function realisticVendorBundle() {
 function existingRowsFrom(bundle = realisticVendorBundle()) {
   const vendor = bundle.vendor_bills;
   return [
-    [{ ...vendor.bills[0], createdAt: new Date(timestamp) }],
+    [{
+      ...vendor.bills[0],
+      billDate: new Date("2026-04-01T00:00:00.000Z"),
+      periodFrom: new Date("2026-04-01T00:00:00.000Z"),
+      periodTo: new Date("2026-04-01T00:00:00.000Z"),
+      createdAt: new Date(timestamp),
+    }],
     [{ ...vendor.hireStatements[0], createdAt: new Date(timestamp) }],
     [{ ...vendor.items[0] }],
     [{ ...vendor.hireStatementExceptions[0], createdAt: new Date(timestamp) }],

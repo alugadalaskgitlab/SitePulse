@@ -19522,10 +19522,21 @@ export class DatabaseStorage implements IStorage {
     // JSON exports contain dates, numeric values, and snapshots. This stable
     // representation lets a retry prove that an ID already in Preview is the
     // same record, rather than overwriting a different Preview record.
-    const stableValue = (value: any): string => {
+    const stableValue = (value: any, columnType?: string): string => {
       if (value === undefined || value === null) return "null";
-      if (value instanceof Date) return `date:${value.toISOString()}`;
-      if (Array.isArray(value)) return `[${value.map(stableValue).join(",")}]`;
+      // node-postgres can materialize a PostgreSQL `date` as a Date even
+      // though this schema deliberately accepts/exports date-only strings.
+      // Canonicalize it only for retry comparison; leave the incoming value
+      // untouched for insertion and never apply this to text audit columns.
+      if (columnType === "PgDateString" && typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return `date-only:${value}`;
+      }
+      if (value instanceof Date) {
+        return columnType === "PgDateString"
+          ? `date-only:${value.toISOString().slice(0, 10)}`
+          : `timestamp:${value.toISOString()}`;
+      }
+      if (Array.isArray(value)) return `[${value.map((entry) => stableValue(entry)).join(",")}]`;
       if (typeof value === "object") {
         return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableValue(value[key])}`).join(",")}}`;
       }
@@ -19619,8 +19630,14 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      const retryMatchesExisting = (row: Record<string, any>, existing: Record<string, any>) =>
-        Object.keys(row).every((key) => key === "id" || !hasOwn(row, key) || stableValue(row[key]) === stableValue(existing[key]));
+      const retryMatchesExisting = (table: any, row: Record<string, any>, existing: Record<string, any>) => {
+        const columns = getTableColumns(table);
+        return Object.keys(row).every((key) =>
+          key === "id" ||
+          !hasOwn(row, key) ||
+          stableValue(row[key], columns[key]?.columnType) === stableValue(existing[key], columns[key]?.columnType)
+        );
+      };
 
       await db.transaction(async (tx) => {
         // Serializes concurrent import attempts. Existing rows are locked below;
@@ -19634,7 +19651,7 @@ export class DatabaseStorage implements IStorage {
             const [existing] = await tx.select().from(table).where(eq(table.id, row.id)).limit(1).for("update");
             if (!existing) {
               fresh.push(row);
-            } else if (!retryMatchesExisting(row, existing)) {
+            } else if (!retryMatchesExisting(table, row, existing)) {
               throw new Error(`${tableName} id ${row.id} already exists with different data; refusing to overwrite it`);
             }
           }
