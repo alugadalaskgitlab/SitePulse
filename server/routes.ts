@@ -10074,6 +10074,26 @@ export async function registerRoutes(
     }
   });
 
+  // Equipment Hire has master-agreement eligibility, not activity-row
+  // eligibility.  Keep the generic discovery endpoint below unchanged for
+  // every other vendor-bill type.
+  app.get("/api/vendor-bills/equipment-hire-discovery", async (req, res) => {
+    try {
+      if (!assertView(req, res, "vendor_bills")) return;
+      const query = z.object({
+        periodFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        periodTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      }).refine(value => value.periodFrom <= value.periodTo, {
+        message: "periodFrom must be on or before periodTo",
+      }).parse(req.query);
+      res.json(await storage.getEquipmentHireVendors(query.periodFrom, query.periodTo));
+    } catch (err: any) {
+      res.status(err instanceof z.ZodError ? 400 : 500).json({
+        message: err?.message || "Failed to discover equipment-hire vendors",
+      });
+    }
+  });
+
   app.get("/api/vendor-bills/discover-vendors", async (req, res) => {
     try {
       const billType = req.query.billType as string;

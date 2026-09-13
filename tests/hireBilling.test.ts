@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availableOtherBillItems, buildHireActivityDays, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, getHireReviewGaps, mergeOtherBillItems, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup } from "../shared/hireBilling";
+import { availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, mergeOtherBillItems, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup } from "../shared/hireBilling";
 import { computeEquipmentUsage } from "../shared/equipmentUsage";
 
 describe("hire billing calculator", () => {
@@ -801,5 +801,80 @@ describe("hire billing register", () => {
 
     const existing = { equipmentId: 7, periodFrom: "2025-05-15", periodTo: "2025-05-31" };
     expect(planHireRegisterRows([existing], [equipment], "2025-05-01", "2025-05-31").transientEquipment).toEqual([]);
+  });
+});
+
+describe("07B equipment-hire discovery and commercial parity", () => {
+  const hiredRoller = {
+    ownership: "hired",
+    vendorName: "NEMALI JAYARAM",
+    hireBillingBasis: "monthly",
+    hireRate: 90_000,
+    hireStartDate: "2026-07-01",
+    hireEndDate: null,
+  };
+
+  it("requires a configured start date, accepts an open end, and ignores activity gaps for discovery", () => {
+    expect(isEquipmentHireBillEligible(hiredRoller, "2026-09-01", "2026-09-30")).toBe(true);
+    expect(isEquipmentHireBillEligible({ ...hiredRoller, hireStartDate: null }, "2026-09-01", "2026-09-30")).toBe(false);
+    expect(isEquipmentHireBillEligible({ ...hiredRoller, hireEndDate: "2026-06-30" }, "2026-09-01", "2026-09-30")).toBe(false);
+    expect(isEquipmentHireBillEligible({ ...hiredRoller, hireEndDate: "2026-06-01" }, "2026-05-01", "2026-09-30")).toBe(false);
+    expect(isEquipmentHireBillEligible({ ...hiredRoller, hireBillingBasis: null }, "2026-09-01", "2026-09-30")).toBe(false);
+    expect(isEquipmentHireBillEligible({ ...hiredRoller, hireRate: 0 }, "2026-09-01", "2026-09-30")).toBe(false);
+    // No activity data is part of this pure master-agreement eligibility seam.
+    expect(calculateHireGroup({
+      terms: { billingBasis: "monthly", rate: 90_000, hireStartDate: "2026-07-01" },
+      periodFrom: "2026-09-01", periodTo: "2026-09-30", activities: [],
+    }).grossAmount).toBe(90_000);
+  });
+
+  it("uses one rounded taxable/GST/TDS sequence and preserves the pre-GST TDS rule", () => {
+    const withoutGst = calculateEquipmentHireFinancials({
+      grossHire: 100_000, breakdownDeduction: 5_000, hsdRecovery: 2_000,
+      otherDebit: 1_000, advanceAdjustment: 3_000, otherCredit: 500, tdsRate: 2,
+    });
+    expect(withoutGst).toMatchObject({
+      taxableAmount: 89_500, gstAmount: 0, invoiceTotal: 89_500,
+      tdsAmount: 1_790, netPayable: 87_710,
+    });
+    const withGst = calculateEquipmentHireFinancials({
+      grossHire: 100_000, breakdownDeduction: 5_000, hsdRecovery: 2_000,
+      otherDebit: 1_000, advanceAdjustment: 3_000, otherCredit: 500, gstRate: 18, tdsRate: 2,
+    });
+    expect(withGst).toMatchObject({
+      taxableAmount: 89_500, gstAmount: 16_110, invoiceTotal: 105_610,
+      // TDS remains on taxable amount, as in the established itemized flow.
+      tdsAmount: 1_790, netPayable: 103_820,
+    });
+  });
+
+  it("reproduces the exact saved commercial snapshot at approval, including GST", () => {
+    const saved = calculateEquipmentHireFinancials({
+      grossHire: 31_000, breakdownDeduction: 1_000, hsdRecovery: 600,
+      otherDebit: 200, advanceAdjustment: 1_500, otherCredit: 50,
+      gstRate: 18, tdsRate: 1,
+    });
+    const approved = calculateEquipmentHireFinancials({
+      grossHire: saved.grossHire, breakdownDeduction: saved.breakdownDeduction,
+      hsdRecovery: saved.hsdRecovery, otherDebit: saved.otherDebit,
+      advanceAdjustment: saved.advanceAdjustment, otherCredit: saved.otherCredit,
+      gstRate: saved.gstRate, tdsRate: saved.tdsRate,
+    });
+    expect(approved).toMatchObject({
+      taxableAmount: saved.taxableAmount,
+      gstAmount: saved.gstAmount,
+      invoiceTotal: saved.invoiceTotal,
+      tdsAmount: saved.tdsAmount,
+      netPayable: saved.netPayable,
+    });
+  });
+
+  it("can freeze the master fuel norm/unit in a zero-activity calculation", () => {
+    const result = calculateHireGroup({
+      terms: { billingBasis: "monthly", rate: 90_000, hireStartDate: "2026-09-01" },
+      periodFrom: "2026-09-01", periodTo: "2026-09-30", activities: [],
+      dieselNormOverride: 3.5, dieselNormBasisOverride: "L/hr",
+    });
+    expect(result.diesel).toMatchObject({ consumptionNorm: 3.5, normBasis: "L/hr" });
   });
 });

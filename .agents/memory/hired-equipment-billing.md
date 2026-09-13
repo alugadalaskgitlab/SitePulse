@@ -90,3 +90,15 @@ Paid and Balance are strictly per bill. Null payment compatibility is only for g
 **Why:** Treating a new bill's null paid amount as legacy full payment bypasses the outstanding-balance check. The user rejected running balances and advance ledgers.
 
 **How to apply:** Initialize modern bills to numeric zero, disallow clearing it to null, freeze net and supporting daily evidence, and keep other bills independent.
+
+Normal hire-bill eligibility is contractual, not activity-based: require a genuine hire start date but allow an open end date.
+
+**Why:** Monthly hire remains billable during no-work periods; a missing start date must not make equipment eligible for every historical month.
+
+**How to apply:** Discover vendors from eligible Equipment Master records for the selected period. Do not change generic vendor discovery or the separate hire register's legacy behavior.
+
+Bill-facing unavailable consumption is labelled “Tank Readings N/A”. Contractor-scope fuel hides the billing fuel section and columns, not the underlying records.
+
+**Why:** The user chose this wording and a definite contractor-scope presentation; Equipment Performance remains a separate display contract.
+
+**How to apply:** Freeze the actual Master norm/unit even with no usage, and use identical financial snapshot values for approval and exports. With built-in PDF fonts, serialize rupee/minus symbols as supported ASCII rather than emitting corrupted glyphs.

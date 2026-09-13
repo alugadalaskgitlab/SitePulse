@@ -199,3 +199,31 @@ mtime_ms = 1788355111323
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8a613709-0670-42a1-b743-78a5db9ffa2e/e8d70931-7108-49a7-ab79-b04df6e5fa9e"
 storage_version_token = "1788355560806733"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "LwWN5N3qUdv2D5iDyZXNc"
+uri = "file://reports/vb07b/DEMO-VB07B-001.pdf"
+type = "pdf"
+title = "Equipment Hire Bill — Sample PDF"
+description = "Demo data only. Bill summary on page 1 and daily activity on page 2."
+logical_id = "7a8eaf4a-b98b-40b5-8f71-abb05ba428f9"
+content_hash = "sha256:a94f92f826f4bca39c577d156a957e71e3cecdc99fe5ff22d9797211482dfa68"
+size = 24606
+mtime_ms = 1789277370540
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7a8eaf4a-b98b-40b5-8f71-abb05ba428f9/ad824a71-5b93-45af-8230-4f0f70fab6b4"
+storage_version_token = "1789277454073478"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "Ix1p1xG1xVnmzCWznWb0q"
+uri = "file://reports/vb07b/DEMO-VB07B-001.xlsx"
+type = "table"
+title = "Equipment Hire Bill — Sample Excel"
+description = "Demo data only. Bill Summary and Daily Activity sheets."
+logical_id = "5fda07a4-fbfe-43b1-890a-2adff98c9f5d"
+content_hash = "sha256:837fc33dee8766adfae4b2fe87e5a21f4ae24708b4b1a429f3e4b646434dd572"
+size = 20796
+mtime_ms = 1789276537823
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5fda07a4-fbfe-43b1-890a-2adff98c9f5d/9e2141da-f9e7-4793-830b-7b1bfb82cc9e"
+storage_version_token = "1789277455428039"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

@@ -109,7 +109,7 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain("computeEquipmentUsage(equipmentDefault, row)");
     expect(storage).toContain("? Number(row.expectedDiesel)");
     expect(storage).toContain(": calculated.expectedDiesel");
-    expect(client).toContain("Measured consumption unavailable; enter manually only.");
+    expect(client).toContain("Tank Readings N/A");
   });
 
   it("never guesses a missing hire basis and blocks incomplete commercial terms", () => {

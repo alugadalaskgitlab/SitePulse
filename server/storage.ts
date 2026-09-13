@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { calculateHireGroup, getHireReviewGaps, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
+import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import {
   auditLogs,
   type AuditLog,
@@ -1465,6 +1465,19 @@ export interface IStorage {
   getDieselRequirementReceipts(requirementIds: number[]): Promise<MaterialReceipt[]>;
   deleteVendorBill(id: number): Promise<boolean>;
   getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; vehicleNumber?: string | null; receiptNumber?: string | null })[]>;
+  getEquipmentHireVendors(periodFrom: string, periodTo: string): Promise<{
+    vendorName: string;
+    equipmentCount: number;
+    equipment: {
+      id: number; name: string; registrationNumber: string | null;
+      hireBillingBasis: string | null; hireRate: number | null;
+      hireStartDate: string | null; hireEndDate: string | null;
+      hireDieselResponsibility: string | null; hireOperatorResponsibility: string | null;
+      hireAgreementRemarks: string | null; hireBreakdownDeductionEnabled: boolean | null;
+      hireMonthlyDivisorType: string | null; hireMonthlyDivisor: number | null;
+      meterType: string; consumptionNorm: number | null;
+    }[];
+  }[]>;
   getVendorBillHireActivities(vendorName: string, periodFrom: string, periodTo: string): Promise<any[]>;
   // Hired equipment billing
   getHireStatements(): Promise<HireStatement[]>;
@@ -15252,6 +15265,9 @@ export class DatabaseStorage implements IStorage {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(1426, ${group.equipmentId})`);
       const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, group.equipmentId)).limit(1);
       if (!equipment || equipment.ownership !== "hired") throw Object.assign(new Error("Hire group equipment must be hired equipment"), { code: "BAD_REQUEST" });
+      if (!isEquipmentHireBillEligible(equipment, bill.periodFrom, bill.periodTo)) {
+        throw Object.assign(new Error("Hire group equipment is not eligible for the selected bill period; correct the Equipment Master hire terms first"), { code: "BAD_REQUEST" });
+      }
       if (!canonical.some(row => row.source === "equipment_default" && row.equipmentId === group.equipmentId)) {
         throw Object.assign(new Error("Hire group equipment does not belong to the selected vendor"), { code: "BAD_REQUEST" });
       }
@@ -15266,11 +15282,9 @@ export class DatabaseStorage implements IStorage {
         const validTerms = validBasis.includes(equipment.hireBillingBasis || "") &&
           !!equipment.hireStartDate &&
           Number.isFinite(Number(equipment.hireRate)) && Number(equipment.hireRate) > 0 &&
-          ["hlc", "vendor"].includes(String(equipment.hireDieselResponsibility || "").toLowerCase()) &&
-          ["hlc", "vendor"].includes(String(equipment.hireOperatorResponsibility || "").toLowerCase()) &&
           (!equipment.hireEndDate || equipment.hireStartDate <= equipment.hireEndDate) &&
-          equipment.hireStartDate <= group.periodFrom &&
-          (!equipment.hireEndDate || equipment.hireEndDate >= group.periodTo) &&
+          equipment.hireStartDate <= bill.periodTo &&
+          (!equipment.hireEndDate || equipment.hireEndDate >= bill.periodFrom) &&
           (equipment.hireBillingBasis !== "monthly" || ["calendar", "30", "custom"].includes(monthlyDivisorType)) &&
           (equipment.hireBillingBasis !== "monthly" || monthlyDivisorType !== "custom" || Number(equipment.hireMonthlyDivisor) > 0);
         if (!validTerms) throw Object.assign(new Error("Hire terms incomplete; correct the Equipment Master hire terms first"), { code: "BAD_REQUEST" });
@@ -15291,9 +15305,16 @@ export class DatabaseStorage implements IStorage {
         ...(statement ? [sql`${hireStatements.id} <> ${statement.id}`] : []),
       )).limit(1);
       if (overlap) throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
+      // Freeze the master fuel basis even for a zero-activity period.  A bill
+      // must never infer its norm/unit from whatever activity happened to be
+      // present while the draft was saved.
+      const masterConsumptionUnit = equipment.meterType === "odometer" ? "L/km" : "L/hr";
       const terms = { billingBasis: equipment.hireBillingBasis as any, rate: Number(equipment.hireRate), hireStartDate: equipment.hireStartDate, hireEndDate: equipment.hireEndDate,
         monthlyDivisorType: equipment.hireMonthlyDivisorType as any || "30", monthlyDivisor: equipment.hireMonthlyDivisor,
         dieselResponsibility: equipment.hireDieselResponsibility,
+        meterType: equipment.meterType,
+        consumptionNorm: equipment.consumptionNorm,
+        consumptionRateUnit: masterConsumptionUnit,
         // The Equipment Master flag is authoritative. A bill reviewer cannot
         // turn a disabled contractual breakdown deduction on by choosing a
         // decision in this form.
@@ -15326,17 +15347,30 @@ export class DatabaseStorage implements IStorage {
       const calc = calculateHireGroup({ terms, periodFrom: group.periodFrom, periodTo: group.periodTo, activities, maintenance,
         dailyDecisions: group.dailyDecisions, tripDecisions: group.tripDecisions, exceptionDecisions: decisions,
         quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,
-        dieselNormOverride: group.dieselNormOverride, dieselNormBasisOverride: group.dieselNormBasisOverride,
+        // The Equipment Master, not client-submitted activity/override data,
+        // is the authoritative norm and its canonical L/hr or L/km basis.
+        dieselNormOverride: equipment.consumptionNorm, dieselNormBasisOverride: masterConsumptionUnit,
         dieselPurchases, authoritativeDieselPeriod,
         dieselRecovery: { decision: group.dieselRecoveryDecision, finalAmount: group.dieselRecoveryFinalAmount, remarks: group.dieselRecoveryRemarks } });
       const adjustments = group.adjustments ?? {};
       const otherDebit = Number(adjustments.otherDebit || 0);
       const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
       const otherCredit = Number(adjustments.otherCredit || 0);
-      const breakdownDeduction = Math.round((calc.exceptions
-        .filter(exception => exception.exceptionType === "breakdown")
-        .reduce((sum, exception) => sum + Number(exception.deductionAmount || 0), 0) + Number.EPSILON) * 100) / 100;
-      const netAfterBillAdjustments = Math.round((Math.max(0, calc.netAmount - otherDebit - advanceAdjustment + otherCredit) + Number.EPSILON) * 100) / 100;
+      // Every figure is derived from the just-reloaded operational facts and
+      // saved in the immutable statement JSON.  Client totals/items are never
+      // an authority for the straight equipment-hire form.
+      const breakdownDeduction = calc.deductionAmount;
+      const financials = calculateEquipmentHireFinancials({
+        grossHire: calc.grossAmount,
+        breakdownDeduction,
+        hsdRecovery: calc.diesel.finalRecoveryAmount,
+        otherDebit,
+        advanceAdjustment,
+        otherCredit,
+        gstRate: bill.gstRateEquipment,
+        tdsRate: bill.tdsRate,
+      });
+      const netAfterBillAdjustments = financials.taxableAmount;
       const patch: any = { equipmentId: group.equipmentId, vendorName: bill.vendorName, billingBasis: terms.billingBasis, rate: terms.rate,
         monthlyDivisorType: terms.monthlyDivisorType, monthlyDivisor: terms.monthlyDivisor, hireStartDate: terms.hireStartDate,
         hireEndDate: terms.hireEndDate, dieselResponsibility: equipment.hireDieselResponsibility, operatorResponsibility: equipment.hireOperatorResponsibility,
@@ -15370,6 +15404,7 @@ export class DatabaseStorage implements IStorage {
              otherCredit,
              otherCreditReason: adjustments.otherCreditReason ?? null,
            },
+            financials,
         } };
       if (statement) {
         await tx.delete(hireStatementExceptions).where(eq(hireStatementExceptions.statementId, statement.id));
@@ -15823,27 +15858,45 @@ export class DatabaseStorage implements IStorage {
         updates.approvedBy = actorUpper;
         updates.approvedAt = now;
         if (existing.billType.toLowerCase() === "equipment") {
-          // Freeze the commercial sequence as the payable snapshot:
-          // reconciled hire/adjustment subtotal → category GST → TDS.
-          // `totalAmount` deliberately remains the line-item subtotal and
-          // therefore cannot by itself stand in for the approved net amount.
-          const itemRows = await tx.select({ category: vendorBillItems.category, amount: vendorBillItems.amount })
-            .from(vendorBillItems).where(eq(vendorBillItems.billId, id));
-          const categorySubtotals = itemRows.reduce((totals: Record<string, number>, item) => {
-            const category = String(item.category || "other").toLowerCase();
-            totals[category] = (totals[category] || 0) + Number(item.amount || 0);
-            return totals;
-          }, {});
-          const gst = (
-            (categorySubtotals.equipment || 0) * Number(existing.gstRateEquipment || 0) / 100 +
-            (categorySubtotals.material || 0) * Number(existing.gstRateMaterial || 0) / 100 +
-            (categorySubtotals.transport || 0) * Number(existing.gstRateTransport || 0) / 100 +
-            (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100
-          );
-          const taxableTotal = itemRows.reduce((sum, item) => sum + Number(item.amount || 0), 0)
-            + gst + Number(existing.adjustmentAmount || 0);
-          const tds = Number(existing.tdsRate || 0);
-          updates.netPayableAmount = Math.round((taxableTotal * (1 - tds / 100) + Number.EPSILON) * 100) / 100;
+          // Integrated straight-form bills freeze their server-derived JSON
+          // snapshot, never a re-grouping of display item rows.  This keeps
+          // taxable → GST → TDS → net identical to draft UI and exports.
+          const savedFinancials = linkedStatements
+            .map(statement => (statement.calculationSnapshot as any)?.financials)
+            .filter((financials: any) => financials && Number.isFinite(Number(financials.grossHire)));
+          if (savedFinancials.length) {
+            updates.netPayableAmount = Math.round((savedFinancials.reduce((sum: number, financials: any) =>
+              sum + calculateEquipmentHireFinancials({
+                grossHire: financials.grossHire,
+                breakdownDeduction: financials.breakdownDeduction,
+                hsdRecovery: financials.hsdRecovery,
+                otherDebit: financials.otherDebit,
+                advanceAdjustment: financials.advanceAdjustment,
+                otherCredit: financials.otherCredit,
+                gstRate: financials.gstRate,
+                tdsRate: financials.tdsRate,
+              }).netPayable, 0) + Number.EPSILON) * 100) / 100;
+          } else {
+            // Historical/legacy equipment bills predate the authoritative
+            // straight-form snapshot. Preserve their established item path.
+            const itemRows = await tx.select({ category: vendorBillItems.category, amount: vendorBillItems.amount })
+              .from(vendorBillItems).where(eq(vendorBillItems.billId, id));
+            const categorySubtotals = itemRows.reduce((totals: Record<string, number>, item) => {
+              const category = String(item.category || "other").toLowerCase();
+              totals[category] = (totals[category] || 0) + Number(item.amount || 0);
+              return totals;
+            }, {});
+            const gst = (
+              (categorySubtotals.equipment || 0) * Number(existing.gstRateEquipment || 0) / 100 +
+              (categorySubtotals.material || 0) * Number(existing.gstRateMaterial || 0) / 100 +
+              (categorySubtotals.transport || 0) * Number(existing.gstRateTransport || 0) / 100 +
+              (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100
+            );
+            const taxableTotal = itemRows.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+              + gst + Number(existing.adjustmentAmount || 0);
+            const tds = Number(existing.tdsRate || 0);
+            updates.netPayableAmount = Math.round((taxableTotal * (1 - tds / 100) + Number.EPSILON) * 100) / 100;
+          }
           // A new hire bill starts with no payment. Historical paid records
           // remain nullable and are interpreted as fully paid in the UI.
           updates.amountPaid = existing.amountPaid ?? 0;
@@ -19186,6 +19239,56 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return [...names];
+  }
+
+  /**
+   * Dedicated Equipment Hire discovery.  This deliberately does not inspect
+   * DPR/plant activity: an active monthly hire remains billable during a
+   * zero-activity period.  Its payload includes only master-authoritative
+   * fields needed by the equipment-hire straight form.
+   */
+  async getEquipmentHireVendors(periodFrom: string, periodTo: string): Promise<{
+    vendorName: string;
+    equipmentCount: number;
+    equipment: {
+      id: number; name: string; registrationNumber: string | null;
+      hireBillingBasis: string | null; hireRate: number | null;
+      hireStartDate: string | null; hireEndDate: string | null;
+      hireDieselResponsibility: string | null; hireOperatorResponsibility: string | null;
+      hireAgreementRemarks: string | null; hireBreakdownDeductionEnabled: boolean | null;
+      hireMonthlyDivisorType: string | null; hireMonthlyDivisor: number | null;
+      meterType: string; consumptionNorm: number | null;
+    }[];
+  }[]> {
+    const aliases = await db.select().from(vendorAliases);
+    const canonicalByAlias = new Map<string, string>();
+    for (const alias of aliases) canonicalByAlias.set(alias.alias.toUpperCase().trim(), alias.canonicalName.toUpperCase().trim());
+    const canonicalVendor = (name: string) => canonicalByAlias.get(name.toUpperCase().trim()) || name.toUpperCase().trim();
+    const eligible = (await db.select().from(equipmentMaster)
+      .where(and(eq(equipmentMaster.ownership, "hired"), sql`${equipmentMaster.vendorName} IS NOT NULL AND TRIM(${equipmentMaster.vendorName}) != ''`)))
+      .filter(equipment => isEquipmentHireBillEligible(equipment, periodFrom, periodTo));
+    const vendors = new Map<string, EquipmentMasterType[]>();
+    for (const equipment of eligible) {
+      const vendorName = canonicalVendor(equipment.vendorName!);
+      const rows = vendors.get(vendorName) ?? [];
+      rows.push(equipment);
+      vendors.set(vendorName, rows);
+    }
+    return Array.from(vendors.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([vendorName, rows]) => ({
+        vendorName,
+        equipmentCount: rows.length,
+        equipment: rows.sort((a, b) => a.name.localeCompare(b.name)).map(row => ({
+          id: row.id, name: row.name, registrationNumber: row.registrationNumber,
+          hireBillingBasis: row.hireBillingBasis, hireRate: row.hireRate,
+          hireStartDate: row.hireStartDate, hireEndDate: row.hireEndDate,
+          hireDieselResponsibility: row.hireDieselResponsibility, hireOperatorResponsibility: row.hireOperatorResponsibility,
+          hireAgreementRemarks: row.hireAgreementRemarks, hireBreakdownDeductionEnabled: row.hireBreakdownDeductionEnabled,
+          hireMonthlyDivisorType: row.hireMonthlyDivisorType, hireMonthlyDivisor: row.hireMonthlyDivisor,
+          meterType: row.meterType, consumptionNorm: row.consumptionNorm,
+        })),
+      }));
   }
 
   async discoverVendors(billType: string, periodFrom: string, periodTo: string): Promise<{

@@ -64,4 +64,17 @@ describe("07B hired equipment billing lifecycle wiring", () => {
     expect(routes).toContain("storage.getMaintenanceLogs({ equipmentId: statement.equipmentId");
     expect(schema).not.toContain('pgTable("hire_attendance"');
   });
+
+  it("keeps equipment-hire discovery separate from generic activity discovery and freezes saved financial snapshots", () => {
+    expect(routes).toContain('"/api/vendor-bills/equipment-hire-discovery"');
+    expect(routes).toContain('storage.getEquipmentHireVendors(query.periodFrom, query.periodTo)');
+    expect(storage).toContain("async getEquipmentHireVendors(periodFrom: string, periodTo: string)");
+    expect(storage).toContain("isEquipmentHireBillEligible(equipment, periodFrom, periodTo)");
+    expect(storage).toContain("financials,");
+    expect(storage).toContain("calculateEquipmentHireFinancials({");
+    expect(storage).toContain("meterType: equipment.meterType");
+    expect(storage).toContain("consumptionNorm: equipment.consumptionNorm");
+    expect(storage).toContain("dieselNormOverride: equipment.consumptionNorm");
+    expect(storage).toContain("Historical/legacy equipment bills predate the authoritative");
+  });
 });

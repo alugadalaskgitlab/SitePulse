@@ -19,7 +19,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
-import { availableOtherBillItems, calculateHireGroup, mergeOtherBillItems, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
+import { availableOtherBillItems, calculateEquipmentHireFinancials, calculateHireGroup, mergeOtherBillItems, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
 import { authoritativeDieselPeriodFromFleet, hasIncludedOperationalTripOnSameDay, initialVendorBillPaidAmount, isPerformanceReadyForHireSubmission } from "@/components/vendor-bills/equipmentHireUi";
@@ -776,19 +776,27 @@ export default function VendorBills() {
 
   interface DiscoveredVendor {
     vendorName: string;
-    recordCount: number;
-    categories: string[];
-    existingBill: { id: number; billNo: string; status: string } | null;
+    recordCount?: number;
+    categories?: string[];
+    existingBill?: { id: number; billNo: string; status: string } | null;
+    equipmentCount?: number;
+    equipment?: any[];
   }
 
-  const discoverUrl = periodFrom && periodTo && billType !== "other"
-    ? `/api/vendor-bills/discover-vendors?billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}`
+  const hasValidBillPeriod = validHireDate(periodFrom) && validHireDate(periodTo) && periodFrom <= periodTo;
+  const discoveryPeriodReady = billType === "equipment" ? hasValidBillPeriod : !!periodFrom && !!periodTo;
+  const discoverUrl = discoveryPeriodReady && billType !== "other"
+    ? billType === "equipment"
+      ? `/api/vendor-bills/equipment-hire-discovery?periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}`
+      : `/api/vendor-bills/discover-vendors?billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}`
     : null;
 
   const { data: discoveredVendors, isFetching: discoveryLoading } = useQuery<DiscoveredVendor[]>({
-    queryKey: ["/api/vendor-bills/discover-vendors", billType, periodFrom, periodTo],
+    queryKey: [billType === "equipment" ? "/api/vendor-bills/equipment-hire-discovery" : "/api/vendor-bills/discover-vendors", billType, periodFrom, periodTo],
     queryFn: () => discoverUrl ? fetch(discoverUrl).then(r => r.json()) : Promise.resolve([]),
-    enabled: !!discoverUrl && showVendorDiscovery,
+    // Keep the authoritative master payload after vendor selection so the
+    // equipment picker remains valid even when the discovery panel closes.
+    enabled: !!discoverUrl && (showVendorDiscovery || billType === "equipment"),
   });
 
   const autoItemsUrl = vendorName && periodFrom && periodTo && billType !== "other"
@@ -811,12 +819,15 @@ export default function VendorBills() {
     enabled: (billType === "equipment" || billType === "all") && !!hireActivitiesUrl,
   });
   const hireEquipment = useMemo(() => {
+    if (billType === "equipment") {
+      return discoveredVendors?.find(v => v.vendorName === vendorName)?.equipment || [];
+    }
     const byId = new Map<number, any>();
     hireActivityRows.filter((row: any) => row.source === "equipment_default").forEach((row: any) => {
       byId.set(Number(row.equipmentId), { id: Number(row.equipmentId), ...(row.equipment || {}) });
     });
     return Array.from(byId.values());
-  }, [hireActivityRows]);
+  }, [billType, discoveredVendors, hireActivityRows, vendorName]);
   const selectedHireGroup = hireGroups[0];
   const selectedHireEquipmentId = selectedHireGroup?.equipmentId;
   const equipmentPerformanceUrl = selectedHireEquipmentId && selectedHireGroup?.periodFrom && selectedHireGroup?.periodTo
@@ -2171,6 +2182,7 @@ export default function VendorBills() {
                 <Label className="text-sm uppercase">Vendor / Supplier Name</Label>
                 <Input
                   value={vendorName || vendorSearch}
+                  disabled={billType === "equipment"}
                   onChange={e => {
                     const v = e.target.value.toUpperCase();
                     setVendorSearch(v);
@@ -2190,7 +2202,7 @@ export default function VendorBills() {
                       setShowVendorDropdown(false);
                     }
                   }}
-                  placeholder="SEARCH VENDOR..."
+                  placeholder={billType === "equipment" ? (hasValidBillPeriod ? "SELECT FROM AVAILABLE VENDORS" : "SET BILL PERIOD FIRST") : "SEARCH VENDOR..."}
                   className="uppercase"
                   data-testid="input-vendor-name"
                 />
@@ -2216,14 +2228,20 @@ export default function VendorBills() {
               </div>
               <div>
                 <Label className="text-sm uppercase">Period From</Label>
-                <Input type="date" value={periodFrom} onChange={e => setPeriodFrom(e.target.value)} data-testid="input-period-from" />
+                <Input type="date" value={periodFrom} onChange={e => {
+                  setPeriodFrom(e.target.value);
+                  if (billType === "equipment") { setVendorName(""); setVendorSearch(""); setHireGroups([]); }
+                }} data-testid="input-period-from" />
               </div>
               <div>
                 <Label className="text-sm uppercase">Period To</Label>
-                <Input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} data-testid="input-period-to" />
+                <Input type="date" value={periodTo} onChange={e => {
+                  setPeriodTo(e.target.value);
+                  if (billType === "equipment") { setVendorName(""); setVendorSearch(""); setHireGroups([]); }
+                }} data-testid="input-period-to" />
               </div>
             </div>
-            {periodFrom && periodTo && billType !== "other" && !vendorName && (
+             {discoveryPeriodReady && billType !== "other" && !vendorName && (
               <div className="border-t pt-4">
                 <Button
                   variant="default"
@@ -2245,7 +2263,7 @@ export default function VendorBills() {
           </CardContent>
         </Card>
 
-        {showVendorDiscovery && periodFrom && periodTo && billType !== "other" && (
+        {showVendorDiscovery && discoveryPeriodReady && billType !== "other" && (
           <Card data-testid="card-vendor-discovery">
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle className="text-base">AVAILABLE VENDORS</CardTitle>
@@ -2273,13 +2291,13 @@ export default function VendorBills() {
                     >
                       <div className="flex flex-col gap-1 min-w-0 flex-1">
                         <span className="font-semibold text-sm truncate" data-testid={`text-vendor-name-${vendor.vendorName}`}>
-                          {vendor.vendorName}
+                          {billType === "equipment" ? `${vendor.vendorName} — ${vendor.equipmentCount || 0} EQUIPMENT` : vendor.vendorName}
                         </span>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm text-muted-foreground" data-testid={`text-record-count-${vendor.vendorName}`}>
-                            {vendor.recordCount} record{vendor.recordCount !== 1 ? "s" : ""}
-                          </span>
-                          {vendor.categories.map(cat => (
+                          {billType !== "equipment" && <span className="text-sm text-muted-foreground" data-testid={`text-record-count-${vendor.vendorName}`}>
+                            {`${vendor.recordCount || 0} record${vendor.recordCount !== 1 ? "s" : ""}`}
+                          </span>}
+                          {(vendor.categories || []).map(cat => (
                             <Badge
                               key={cat}
                               variant="outline"
@@ -2642,16 +2660,22 @@ export default function VendorBills() {
                 const otherDebit = Number(adjustments.otherDebit || 0);
                 const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
                 const otherCredit = Number(adjustments.otherCredit || 0);
-                const taxableAmount = Math.max(0, Number(result?.grossAmount || 0) - Number(result?.deductionAmount || 0) - hsdRecovery - otherDebit - advanceAdjustment + otherCredit);
-                const equipmentTds = tdsRate ? taxableAmount * tdsRate / 100 : 0;
-                const netPayable = taxableAmount - equipmentTds;
+                 const financials = calculateEquipmentHireFinancials({
+                   grossHire: Number(result?.grossAmount || 0),
+                   breakdownDeduction: Number(result?.deductionAmount || 0),
+                   hsdRecovery, otherDebit, advanceAdjustment, otherCredit,
+                   gstRate: gstRateEquipment, tdsRate, paid: 0,
+                 });
                 const exportData: EquipmentHireExportData = {
                   billNo, vendorName, equipmentName: formatEquipmentOptionLabel(equipment || {}), projectSite: selection.projectSite,
                   periodFrom: selection.periodFrom, periodTo: selection.periodTo, hireBasis: HIRE_BASIS_LABELS[selection.basis],
                   rate: selection.rate, grossHire: Number(result?.grossAmount || 0), breakdownDeduction: Number(result?.deductionAmount || 0),
                   hsdRecovery, otherDebit, otherDebitReason: adjustments.otherDebitReason, advanceAdjustment,
                   advanceAdjustmentReason: adjustments.advanceAdjustmentReason, otherCredit, otherCreditReason: adjustments.otherCreditReason,
-                  tdsRate, tdsAmount: equipmentTds, netPayable, paid: 0,
+                   gstRate: financials.gstRate, gstAmount: financials.gstAmount, taxableAmount: financials.taxableAmount,
+                   invoiceTotal: financials.invoiceTotal, tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
+                   netPayable: financials.netPayable, paid: financials.paid,
+                   dieselResponsibility: equipment?.hireDieselResponsibility, consumptionNorm: equipment?.consumptionNorm,
                 };
                 return <div key={selection.id} className="space-y-4 rounded border bg-muted/20 p-3">
                   <div className="grid gap-3 text-sm sm:grid-cols-4">
@@ -2664,7 +2688,9 @@ export default function VendorBills() {
                     <div className="w-full sm:w-72"><Label className="text-[10px] uppercase">Project / Site (optional)</Label><Select value={selection.projectSite || "__all__"} onValueChange={value => patchHireGroup(selection.id, { projectSite: value === "__all__" ? undefined : value })}><SelectTrigger data-testid="select-equipment-hire-project"><SelectValue placeholder="All report sites" /></SelectTrigger><SelectContent><SelectItem value="__all__">All report sites</SelectItem>{projectSites.map(projectSite => <SelectItem key={projectSite} value={projectSite}>{projectSite}</SelectItem>)}</SelectContent></Select></div>
                     {selection.projectSite && <Button type="button" variant="ghost" size="sm" onClick={() => patchHireGroup(selection.id, { projectSite: undefined })}>Clear site</Button>}
                   </div>
-                  <div className="rounded bg-muted/50 px-3 py-2 text-xs text-muted-foreground">Master terms · Diesel: {String(equipment?.hireDieselResponsibility || "Not recorded")} · Breakdown deductions: {equipment?.hireBreakdownDeductionEnabled ? "Enabled" : "Not enabled"}</div>
+                  <div className="rounded bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                    Master terms · {String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor" ? "Fuel / Diesel: Contractor Scope" : `Diesel: ${String(equipment?.hireDieselResponsibility || "Not recorded")}`} · Breakdown deductions: {equipment?.hireBreakdownDeductionEnabled ? "Enabled" : "Not enabled"}
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={() => setShowEquipmentDailyActivity(true)} disabled={equipmentPerformance.isFetching} data-testid="button-view-daily-activity">{equipmentPerformance.isFetching ? "Loading daily activity…" : "View Daily Activity"}</Button>
                     <EquipmentHireExportButtons data={exportData} rows={dailyRows} disabled={equipmentPerformance.isFetching} />
@@ -2703,15 +2729,36 @@ export default function VendorBills() {
                   </div>}
                   <div className="space-y-3 border-t pt-3">
                     <p className="text-xs font-semibold uppercase tracking-wide">Adjustments / Recoveries</p>
-                    {String(equipment?.hireDieselResponsibility || "").toLowerCase() === "hlc" && <div className="grid gap-2 rounded border p-2 text-xs sm:grid-cols-[180px_1fr_1fr] sm:items-end"><div><strong>HSD Recovery</strong><p className="text-muted-foreground">{diesel?.expectedDieselAvailable === false ? "Measured consumption unavailable; enter manually only." : diesel?.rateUnavailable ? "Applicable HSD rate unavailable; enter manually only." : diesel?.suggestedExcess && diesel.suggestedExcess > 0 ? `Suggested ₹${formatCurrency(diesel.suggestedRecoveryAmount)}` : "No positive over-consumption."}</p></div><Select value={selection.dieselRecoveryDecision || "ignore"} onValueChange={value => patchHireGroup(selection.id, { dieselRecoveryDecision: value as HireGroup["dieselRecoveryDecision"], dieselRecoveryFinalAmount: value === "accept" ? Number(diesel?.suggestedRecoveryAmount || 0) : value === "ignore" ? 0 : selection.dieselRecoveryFinalAmount })}><SelectTrigger className="h-8"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ignore">No recovery</SelectItem><SelectItem value="accept" disabled={recoveryAcceptUnavailable || !diesel?.suggestedRecoveryAmount}>Accept suggested recovery</SelectItem><SelectItem value="edit">Enter/edit recovery</SelectItem></SelectContent></Select><div className="flex gap-2"><Input type="number" min="0" placeholder="Recovery ₹" disabled={selection.dieselRecoveryDecision !== "edit"} value={selection.dieselRecoveryFinalAmount ?? ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryFinalAmount: event.target.value === "" ? undefined : Number(event.target.value) })} /><Input placeholder="Reason / reference" disabled={selection.dieselRecoveryDecision !== "edit"} value={selection.dieselRecoveryRemarks || ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryRemarks: event.target.value.toUpperCase() })} /></div></div>}
+                    {String(equipment?.hireDieselResponsibility || "").toLowerCase() === "hlc" && <div className="space-y-3 rounded border p-3 text-xs">
+                      <strong>HSD supplied by HLC</strong>
+                      <div className="grid gap-2 sm:grid-cols-5">
+                        <div><span className="text-muted-foreground">Actual Diesel Consumed</span><strong className="block">{diesel?.actualDiesel == null ? "Tank Readings N/A" : `${Number(diesel.actualDiesel).toFixed(2)} L`}</strong></div>
+                        <div><span className="text-muted-foreground">Expected Diesel</span><strong className="block">{diesel?.expectedDieselAvailable === false || diesel?.expectedDiesel == null ? "Tank Readings N/A" : `${Number(diesel.expectedDiesel).toFixed(2)} L`}</strong></div>
+                        <div><span className="text-muted-foreground">Net Excess</span><strong className="block">{diesel?.expectedDieselAvailable === false ? "Tank Readings N/A" : `${Number(diesel?.suggestedExcess || 0).toFixed(2)} L`}</strong></div>
+                        <div><span className="text-muted-foreground">Applicable HSD Rate</span><strong className="block">{diesel?.rateUnavailable ? "Rate unavailable" : diesel?.applicableRate == null ? "Rate unavailable" : `₹${formatCurrency(diesel.applicableRate)} / L`}</strong></div>
+                        <div><span className="text-muted-foreground">Suggested HSD Recovery</span><strong className="block">{diesel?.expectedDieselAvailable === false ? "Tank Readings N/A" : diesel?.rateUnavailable ? "Rate unavailable" : `₹${formatCurrency(diesel?.suggestedRecoveryAmount || 0)}`}</strong></div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" size="sm" variant={selection.dieselRecoveryDecision === "accept" ? "default" : "outline"} disabled={recoveryAcceptUnavailable || !diesel?.suggestedRecoveryAmount} onClick={() => patchHireGroup(selection.id, { dieselRecoveryDecision: "accept", dieselRecoveryFinalAmount: Number(diesel?.suggestedRecoveryAmount || 0) })}>Accept Suggested</Button>
+                        <Button type="button" size="sm" variant={selection.dieselRecoveryDecision === "edit" ? "default" : "outline"} onClick={() => patchHireGroup(selection.id, { dieselRecoveryDecision: "edit" })}>Edit</Button>
+                        <Button type="button" size="sm" variant={selection.dieselRecoveryDecision === "ignore" || !selection.dieselRecoveryDecision ? "default" : "outline"} onClick={() => patchHireGroup(selection.id, { dieselRecoveryDecision: "ignore", dieselRecoveryFinalAmount: 0 })}>No Recovery</Button>
+                      </div>
+                      {selection.dieselRecoveryDecision === "edit" && <div className="grid gap-2 sm:grid-cols-2"><div><Label className="text-[10px] uppercase">Final Recovery ₹</Label><Input type="number" min="0" placeholder="Enter agreed ₹ amount" value={selection.dieselRecoveryFinalAmount ?? ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryFinalAmount: event.target.value === "" ? undefined : Number(event.target.value) })} /></div><div><Label className="text-[10px] uppercase">Reason / reference (required)</Label><Input value={selection.dieselRecoveryRemarks || ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryRemarks: event.target.value.toUpperCase() })} /></div></div>}
+                    </div>}
                     <div className="grid gap-2 sm:grid-cols-3">
                       {[["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Advance Adjustment", "advanceAdjustment", "advanceAdjustmentReason"], ["Other Credit", "otherCredit", "otherCreditReason"]].map(([label, amountKey, reasonKey]) => <div key={amountKey}><Label className="text-[10px] uppercase">{label} ₹</Label><Input type="number" min="0" step="0.01" value={(adjustments as any)[amountKey] ?? ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [amountKey]: event.target.value === "" ? undefined : Number(event.target.value) } })} /><Input className="mt-1" placeholder="Reason / reference" value={(adjustments as any)[reasonKey] || ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })} /></div>)}
                     </div>
                   </div>
-                  <div className="space-y-1 rounded border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20">
-                    {[["Gross Hire", result?.grossAmount || 0], ["− Breakdown Deduction", result?.deductionAmount || 0], ["− HSD Recovery", hsdRecovery], ["− Other Debit / Recovery", otherDebit], ["− Advance Adjustment", advanceAdjustment], ["= Taxable / Bill Amount", taxableAmount], [`− TDS @ ${tdsRate}%`, equipmentTds], ["= NET PAYABLE (this bill)", netPayable]].map(([label, amount]) => <div key={String(label)} className="flex justify-between"><span>{label}</span><strong>₹{formatCurrency(Number(amount))}</strong></div>)}
+                  <div className="grid gap-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      {[["Gross Hire", financials.grossHire], ["− Breakdown Deduction", financials.breakdownDeduction], ...(String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor" ? [] : [["− HSD Recovery", financials.hsdRecovery]]), ["− Other Debit / Recovery", financials.otherDebit], ["− Advance Adjustment", financials.advanceAdjustment], ["+ Other Credit", financials.otherCredit], ["= Taxable / Bill Amount", financials.taxableAmount], [`+ GST @ ${financials.gstRate}%`, financials.gstAmount], ["= Invoice Total", financials.invoiceTotal], [`− TDS @ ${financials.tdsRate}%`, financials.tdsAmount], ["= NET PAYABLE", financials.netPayable], ["Paid", financials.paid], ["= BALANCE THIS BILL", financials.balanceThisBill]].map(([label, amount]) => <div key={String(label)} className="flex justify-between"><span>{label}</span><strong>₹{formatCurrency(Number(amount))}</strong></div>)}
+                    </div>
+                    <div className="space-y-3">
+                      <div><Label className="text-[10px] uppercase">GST Rate %</Label><Input type="number" min="0" step="0.01" value={gstRateEquipment || ""} placeholder="0" onChange={event => setGstRateEquipment(Number(event.target.value) || 0)} data-testid="input-gst-equipment-rate" /></div>
+                      <div><Label className="text-[10px] uppercase">TDS Rate %</Label><Input type="number" min="0" step="0.01" value={tdsRate || ""} placeholder="0" onChange={event => setTdsRate(Number(event.target.value) || 0)} data-testid="input-tds-rate" /></div>
+                    </div>
                   </div>
-                  <EquipmentHireDailyActivity open={showEquipmentDailyActivity} onOpenChange={setShowEquipmentDailyActivity} rows={dailyRows} />
+                  <EquipmentHireDailyActivity open={showEquipmentDailyActivity} onOpenChange={setShowEquipmentDailyActivity} rows={dailyRows} dieselResponsibility={equipment?.hireDieselResponsibility} consumptionNorm={equipment?.consumptionNorm} />
                 </div>;
               })}
             </CardContent>

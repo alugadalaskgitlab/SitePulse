@@ -98,6 +98,42 @@ export interface HireBillingResult {
   workflow: readonly ("draft" | "reviewed" | "approved" | "billed")[];
 }
 
+/** The common date-overlap rule for an existing hire agreement. */
+export function hirePeriodOverlaps(
+  equipment: { hireStartDate?: string | null; hireEndDate?: string | null },
+  periodFrom: string,
+  periodTo: string,
+): boolean {
+  return (!equipment.hireStartDate || equipment.hireStartDate <= periodTo) &&
+    (!equipment.hireEndDate || equipment.hireEndDate >= periodFrom);
+}
+
+/**
+ * Normal vendor-bill discovery is intentionally stricter than the register:
+ * a hire must have actually started, and must have a usable commercial basis
+ * and rate.  The register retains its legacy treatment of a blank start date.
+ */
+export function isEquipmentHireBillEligible(
+  equipment: {
+    ownership?: string | null;
+    vendorName?: string | null;
+    hireBillingBasis?: string | null;
+    hireRate?: number | null;
+    hireStartDate?: string | null;
+    hireEndDate?: string | null;
+  },
+  periodFrom: string,
+  periodTo: string,
+): boolean {
+  return equipment.ownership === "hired" &&
+    !!equipment.vendorName?.trim() &&
+    ["monthly", "daily", "hourly", "trip"].includes(String(equipment.hireBillingBasis || "").toLowerCase()) &&
+    Number.isFinite(Number(equipment.hireRate)) && Number(equipment.hireRate) > 0 &&
+    !!equipment.hireStartDate &&
+    (!equipment.hireEndDate || equipment.hireStartDate <= equipment.hireEndDate) &&
+    hirePeriodOverlaps(equipment, periodFrom, periodTo);
+}
+
 export function planHireRegisterRows<
   TStatement extends { equipmentId: number; periodFrom: string; periodTo: string },
   TEquipment extends { id: number; hireStartDate?: string | null; hireEndDate?: string | null },
@@ -113,14 +149,73 @@ export function planHireRegisterRows<
   const equipmentWithStatement = new Set(persistedStatements.map(statement => statement.equipmentId));
   const transientEquipment = configuredEquipment.filter(equipment =>
     !equipmentWithStatement.has(equipment.id) &&
-    (!equipment.hireStartDate || equipment.hireStartDate <= periodTo) &&
-    (!equipment.hireEndDate || equipment.hireEndDate >= periodFrom)
+    hirePeriodOverlaps(equipment, periodFrom, periodTo)
   );
   return { persistedStatements, transientEquipment };
 }
 
 const DAY_MS = 86_400_000;
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+/**
+ * The one commercial sequence for the equipment-hire straight form.  It is
+ * deliberately independent of vendor-bill item rows: those are presentation
+ * lines, while these saved figures are the approval/export source of truth.
+ * TDS remains on the pre-GST taxable amount, matching the established vendor
+ * bill calculation.
+ */
+export interface EquipmentHireFinancialInput {
+  grossHire: number;
+  breakdownDeduction?: number | null;
+  hsdRecovery?: number | null;
+  otherDebit?: number | null;
+  advanceAdjustment?: number | null;
+  otherCredit?: number | null;
+  gstRate?: number | null;
+  tdsRate?: number | null;
+  paid?: number | null;
+}
+
+export interface EquipmentHireFinancials {
+  grossHire: number;
+  breakdownDeduction: number;
+  hsdRecovery: number;
+  otherDebit: number;
+  advanceAdjustment: number;
+  otherCredit: number;
+  taxableAmount: number;
+  gstRate: number;
+  gstAmount: number;
+  invoiceTotal: number;
+  tdsRate: number;
+  tdsAmount: number;
+  netPayable: number;
+  paid: number;
+  balanceThisBill: number;
+}
+
+export function calculateEquipmentHireFinancials(input: EquipmentHireFinancialInput): EquipmentHireFinancials {
+  const nonNegative = (value: number | null | undefined) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
+  const grossHire = money(nonNegative(input.grossHire));
+  const breakdownDeduction = money(nonNegative(input.breakdownDeduction));
+  const hsdRecovery = money(nonNegative(input.hsdRecovery));
+  const otherDebit = money(nonNegative(input.otherDebit));
+  const advanceAdjustment = money(nonNegative(input.advanceAdjustment));
+  const otherCredit = money(nonNegative(input.otherCredit));
+  const gstRate = money(nonNegative(input.gstRate));
+  const tdsRate = money(nonNegative(input.tdsRate));
+  const taxableAmount = money(Math.max(0, grossHire - breakdownDeduction - hsdRecovery - otherDebit - advanceAdjustment + otherCredit));
+  const gstAmount = money(taxableAmount * gstRate / 100);
+  const invoiceTotal = money(taxableAmount + gstAmount);
+  const tdsAmount = money(taxableAmount * tdsRate / 100);
+  const netPayable = money(invoiceTotal - tdsAmount);
+  const paid = money(nonNegative(input.paid));
+  return {
+    grossHire, breakdownDeduction, hsdRecovery, otherDebit, advanceAdjustment, otherCredit,
+    taxableAmount, gstRate, gstAmount, invoiceTotal, tdsRate, tdsAmount, netPayable, paid,
+    balanceThisBill: money(Math.max(0, netPayable - paid)),
+  };
+}
 const dateAtUtc = (value: string) => Date.parse(`${value.slice(0, 10)}T00:00:00.000Z`);
 const iso = (value: number) => new Date(value).toISOString().slice(0, 10);
 const isValidDate = (value: string | null | undefined) =>
