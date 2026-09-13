@@ -1,0 +1,170 @@
+INSTRUCTION VB-07B: Equipment Hire Vendor Bill — complete/correct the simplified form in one batch
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This supersedes the earlier VB-02 draft — do not build that one, build this one instead; it folds the same underlying defects into a single coherent correction, per Sunil/Krishna's review. This is a correction to the Equipment Hire bill type only, primarily inside client/src/pages/VendorBills.tsx (the "New Vendor Bill" flow) and its two helper files (shared/hireBilling.ts, client/src/components/vendor-bills/EquipmentHireBillOutput.tsx). server/routes.ts and server/storage.ts may ALSO be touched, but ONLY for the two specific server-side needs called out in FINAL CLARIFICATIONS §1 below (equipment-hire vendor discovery, and server-side net-payable parity) — not for anything else. Do NOT touch: Equipment Performance or anything covered by EQUIP-10 (separate batch, in progress), the separate Hire billing register page (client/src/pages/EquipmentHireBilling.tsx — not in scope), Material/Transport/Labour/All/Other bill types except where they already share the GST mechanism you're reusing, or anything else. No vendor ledger, no previous-bill balance carry-forward, no chart of accounts, no bank reconciliation, no accounting entries. Do not publish automatically. STOP after this and report back.
+
+WHY ONE BATCH, NOT SEVERAL
+Every change below answers the same question: "I selected this vendor, this machine, and this bill period — prepare the correct hire bill from information SitePulse already has." Splitting GST, HSD recovery, and vendor discovery into separate batches risks rebuilding the same form repeatedly. Fix it once.
+
+BACKGROUND (confirmed by direct code review of the latest zip and a 6-minute recording of the actual New Vendor Bill → Equipment Hire flow)
+
+- The vendor picker for Equipment Hire currently comes from a generic discovery endpoint (`/api/vendor-bills/discover-vendors` → `storage.discoverVendors`, server/storage.ts ~line 19191) that counts real DPR/Plant equipment-usage log ROWS per vendor inside the period and shows "N records". This is wrong for equipment hire specifically: a monthly-hire machine can have zero activity on some or all days and still be legitimately under hire and billable, so activity-count is the wrong eligibility test in both directions — it can hide a vendor whose machine simply didn't work that period, and it says nothing about whether the vendor has hired equipment at all versus just a stray DPR mention.
+- The equipment-hire GST mechanism already exists in this file but is switched off for this bill type. Line 3130: `{billType !== "equipment" && <Card>...` wraps the entire Adjustments/GST card, so it never renders when `billType === "equipment"`. Inside that same (currently unreachable-for-this-case) code, there's already a `billType === "equipment"` branch (lines ~3148-3149) reading `gstRateEquipment`/`gstAmountEquipment`, but its basis (`categorySubtotals["equipment"]`, line 1335) reflects the OLDER itemized-equipment composer, not the current hire-groups straight-form composer (`data-testid="equipment-hire-straight-form"`, lines ~2600-2720), which computes its own independent `taxableAmount`/`netPayable` per hire group and never applies GST.
+- HSD recovery computation already works correctly (`calculateHireDieselPricing` / `HireDieselRecoveryDecision` in shared/hireBilling.ts; the Select/Input UI at VendorBills.tsx lines ~2705-2711 gated on `equipment?.hireDieselResponsibility === "hlc"`), it just needs to be presented more clearly and consistently, and hidden entirely (not shown as blank/incomplete) when responsibility is "vendor".
+- `hireDieselResponsibility` is a plain text column already storing exactly `"hlc"` or `"vendor"` (shared/schema.ts line 516). Reuse these two values directly — do not invent new ones.
+- `shared/hireBilling.ts`, `planHireRegisterRows` (~lines 101-120) already implements exactly the open-ended-hire eligibility rule needed here: `(!equipment.hireStartDate || equipment.hireStartDate <= periodTo) && (!equipment.hireEndDate || equipment.hireEndDate >= periodFrom)`. Reuse/mirror this exact logic for the new equipment-hire vendor discovery below — do not write a second, slightly different version of the same date-overlap check.
+- The daily consumption rate and its unit are already computed per day and carried through this exact bill pipeline: `EquipmentPerformanceDailyRow.consumptionRate` / `.consumptionRateUnit` ("L/hr" or "L/km", derived from Equipment Master's `meterType`: "hour_meter" vs "odometer" — shared/equipmentPerformance.ts lines 430-492), and these rows already flow into `BillingDailyRow.performance` via `buildBillingDailyRows` (EquipmentHireBillOutput.tsx). Nothing new needs to be computed for outcome B below — only displayed.
+- There are currently two separate entry points that both populate the same `hireGroups` state: the vendor-discovery panel's own inline "Add Hire" buttons (lines ~2341, ~2357, already disabled once `hireGroups.length > 0`) and the straight-form's own "Select equipment" dropdown (`onValueChange={value => selectHireEquipment(...)}`, ~line 2610). Consolidate to one clear path (see Outcome 2) — a reviewer should not have two different ways to start the same action.
+
+OUTCOME 1 — EQUIPMENT-HIRE VENDOR DISCOVERY, BASED ON EQUIPMENT MASTER HIRE ELIGIBILITY
+For Bill Type = EQUIPMENT HIRE specifically (leave discovery for Material/Transport/Labour/All exactly as it is today — this is not a change to the shared discoverVendors behavior for those types):
+1. Do not populate this vendor list from `discoverVendors`'s activity-record counting. Add a dedicated equipment-hire discovery path (new server function or a new branch that bypasses the record-counting logic entirely for this bill type) whose eligibility rule is: `ownership === "hired"` AND a valid vendor/owner name AND a valid hire basis/rate configured AND hire period overlapping the selected bill period, using the exact open-ended-safe overlap rule already in `planHireRegisterRows` (see Background) — a blank `hireEndDate` means still under hire, not ineligible. See FINAL CLARIFICATIONS §3 for the exact rule including the Hire Start Date requirement.
+2. Show each eligible vendor as: `VENDOR NAME — N EQUIPMENT` (e.g. "NEMALI JAYARAM — 1 EQUIPMENT", "NARASIMULU — 3 EQUIPMENT"), replacing "N records" for this bill type only.
+3. A vendor with zero hired equipment whose hire period overlaps the selected bill period must not appear at all for Equipment Hire discovery.
+4. After a vendor is selected, list only that vendor's eligible hired equipment (same overlap rule) for the equipment picker.
+5. Vendor eligibility depends on the selected bill period, so the functional sequence must be Bill Type = Equipment Hire → Bill Period → Vendor → Equipment (see FINAL CLARIFICATIONS §2) — do not run or show Equipment Hire vendor discovery until both Period From and Period To are entered. The visible form layout can stay as-is; only the ordering/gating of when discovery activates changes.
+
+OUTCOME 2 — ONE SIMPLE FORM FLOW, NO REPEATED ENTRY
+1. Flow: Bill Period → Vendor → Equipment → auto-filled from Equipment Master (Hire Basis, Rate, Hire Start/End, Vendor, relevant hire terms) → activity evidence pulled automatically from existing canonical sources (DPR/Plant/Equipment Performance data), exactly as the straight-form composer already does. (This corrects the sequence from an earlier draft of this instruction — period must be known before vendor discovery can run correctly; see FINAL CLARIFICATIONS §2.)
+2. Consolidate the two existing entry points identified in Background into one: selecting equipment should be the only action needed to populate the hire panel — remove the separate "Add Hire" buttons in the discovery panel if they duplicate what the equipment dropdown already does, or vice versa; there must be exactly one way to start.
+3. No "Add Group" / "Add Hire Item" control, and no re-entry of basis/rate once equipment is selected — these come from Equipment Master and should not be manually retyped.
+
+OUTCOME 3 — DAILY ACTIVITY
+1. Keep a separate "View Daily Activity" button/dialog, showing the same style of daily evidence as Equipment Performance for that equipment and the selected bill period: Date, Project/Site, Opening/Closing Meter, Working Hours, Start/End, Clock Duration, Diesel Issued, Opening/Closing Tank, Diesel Consumed, Expected, Difference, Status, Remarks.
+2. Status values are exactly: Worked / Breakdown / No Work. Do not use "Vendor Breakdown" anywhere.
+3. "No Work" is informational only and must never automatically trigger a monthly-hire deduction on its own.
+4. Where a part-day breakdown has recorded actual downtime hours, keep and show those actual hours rather than rounding to a full/half day automatically.
+5. See Outcome 9 (consumption rate display) and Outcome 10 (contractor-scope fuel) for how the diesel-related columns in this same dialog should actually render.
+6. This is also where the EQUIP-10-equivalent display fix applies: the daily-activity table (`EquipmentHireDailyActivity`, EquipmentHireBillOutput.tsx ~line 134) must open already scrolled to the left (Date/Project-Site visible immediately, no manual scrolling) — add a ref on the scroll container and reset `scrollLeft = 0` whenever the dialog opens.
+
+OUTCOME 4 — HSD RECOVERY, PRESENTED CLEARLY, NOT REBUILT
+1. Reuse the existing calculation entirely (`calculateHireDieselPricing`, `HireDieselRecoveryDecision`, `suggestedExcess`, `suggestedRecoveryAmount`, `expectedDieselAvailable`, `rateUnavailable` — all already in shared/hireBilling.ts and already wired at VendorBills.tsx ~2705-2711). Do not recompute this differently.
+2. When `hireDieselResponsibility === "hlc"`, show, clearly labeled:
+   HSD supplied by HLC
+   Actual Diesel Consumed    ___ L
+   Expected Diesel           ___ L
+   Net Excess                ___ L
+   Applicable HSD Rate       ₹___ / L
+   Suggested HSD Recovery    ₹___
+   followed by three explicit actions: [ Accept Suggested ] [ Edit ] [ No Recovery ] — this is the same three-way decision the existing Select already offers (ignore/accept/edit), just presented as clear labeled controls rather than a single generic dropdown.
+3. Period-net-excess must remain `max(0, Actual Period Consumption − Expected Period Consumption)` — never the sum of individual positive daily excesses. Confirm the existing calculation already does this (it should, per shared/hireBilling.ts) and do not change the math, only the presentation.
+4. If actual or expected consumption is not reliably available, show "Not measurable" rather than a fabricated figure (this is new bill-facing wording — if it conflicts with the "Incomplete"/"—" wording Equipment Performance already uses for the same underlying condition, ask us which term to standardize on rather than picking silently).
+5. If litres are known but no applicable HSD rate is available, show the litres figure but do not fabricate a rupee recovery amount.
+6. A manually edited recovery amount must require a reason/reference before it can be saved — this already exists for the "edit" path (`dieselRecoveryRemarks`); keep it required.
+7. See Outcome 10 — when `hireDieselResponsibility === "vendor"`, none of this section (1-6) should render at all.
+
+OUTCOME 5 — BILL ADJUSTMENTS
+Show, in this order: Breakdown Deduction, HSD Recovery, Other Debit / Recovery, Advance Adjustment, Other Credit. Keep the reason/reference requirement for manual debit/advance/credit entries exactly as it exists today. No running ledger of any kind.
+
+OUTCOME 6 — RESTORE GST ON THE EQUIPMENT-HIRE BILL, REUSING THE EXISTING MECHANISM
+1. Fix the root cause identified in Background: change the line-3130 condition so the GST control also renders for `billType === "equipment"` when the hire-groups straight-form is in use (do not show unrelated Adjustments-card content that doesn't apply to hire billing if any exists alongside it — only the GST row needs to appear here).
+2. When the hire-groups composer is active, compute the GST basis from the sum of each hire group's own `taxableAmount` (already computed at line ~2636), not `categorySubtotals["equipment"]` — the latter reflects a different, older composer and would be the wrong number here.
+3. Reuse the existing `gstRateEquipment` field and its persistence exactly as-is (line 1676) — do not create a second GST field or a second calculator for this same concept.
+4. The financial summary must read, in this exact order:
+   Gross Hire
+   − Breakdown Deduction
+   − HSD Recovery
+   − Other Debit / Recovery
+   − Advance Adjustment
+   + Other Credit
+   = Taxable / Bill Amount
+   + GST @ __%              ₹____
+   = Invoice Total          ₹____
+   − TDS @ __%              ₹____
+   = NET PAYABLE            ₹____
+   Paid                     ₹____
+   = BALANCE THIS BILL      ₹____
+   Use the app's existing GST/TDS calculation rules for the tax bases (GST on the taxable/bill amount, TDS applied the same way the existing itemized-bill flow already applies it) — do not invent a new tax basis or rounding rule inside this UI.
+5. Default GST to 0% for every bill unless set otherwise — this must be purely additive; a bill left at 0% GST must produce the exact same Net Payable as before this change.
+
+OUTCOME 7 — EXPORT
+PDF: page 1 is the Bill Summary (print-ready), page 2 onward is Daily Activity / Measurement Sheet.
+Excel: sheet 1 is Bill Summary, sheet 2 is Daily Activity.
+Both must include: GST rate and amount, TDS rate and amount, HSD recovery, breakdown deduction, debits/advance/credits, Net Payable, Paid, Balance This Bill — matching the on-screen summary from Outcome 6 exactly, in the same order. Add the missing fields to `EquipmentHireExportData` (EquipmentHireBillOutput.tsx ~line 29-47) and to `exportEquipmentHireBill` (~lines 150-165) as needed.
+
+OUTCOME 8 — OPEN-ENDED HIRE (no artificial end date)
+A blank Hire End Date means the equipment is still under hire. Eligibility (used both in Outcome 1's discovery and anywhere else hire-period overlap is evaluated for this bill type) is:
+  hireStartDate <= periodTo AND (hireEndDate is blank OR hireEndDate >= periodFrom)
+Reuse the exact logic already in `planHireRegisterRows` (see Background) rather than writing a new version. Do not require or default in an artificial end date for active equipment.
+
+OUTCOME 9 — CONSUMPTION RATE SHOWN WITH ITS ACTUAL MASTER BASIS (CURRENT CANONICAL UNITS ONLY)
+In Daily Activity, show the machine's actual consumption rate together with its applicable norm/unit from Equipment Master — do not show a bare number with no unit, and do not convert between units. Equipment Master today only supports two bases (see FINAL CLARIFICATIONS §4) — do not invent or display any other unit:
+  meterType = hour_meter → L/hr
+  meterType = odometer   → L/km
+Use the existing fields directly: `consumptionRate` + `consumptionRateUnit` for the actual, and the corresponding Master `consumptionNorm` value for comparison, shown as "Actual Consumption | Master Norm" in that same canonical unit, e.g.:
+  Consumption: 3.8 L/hr   Norm: 3.5 L/hr
+  Consumption: 4.2 L/km   Norm: 4.5 L/km
+Do NOT convert to or display km/L or hr/L in this batch — Equipment Master does not store a selectable norm basis today, only `hour_meter`/`odometer` with `consumptionNorm` in L/hr or L/km respectively. If a reciprocal/selectable-basis display is wanted later, that is a separate Equipment Master enhancement, not part of VB-07B.
+
+OUTCOME 10 — CONTRACTOR-SCOPE FUEL: ONE DEFINITE UI, NOT A CHOICE
+When `hireDieselResponsibility === "vendor"`:
+- In the bill summary, show only: "Fuel / Diesel: Contractor Scope" — no HSD Recovery section, no decision control at all (not even a disabled one).
+- In Daily Activity, HIDE all diesel-performance columns for that machine entirely (Actual/Expected/Excess/Rate) and show one compact banner instead: "Fuel / Diesel: Contractor Scope". Do not show "—"/"Incomplete" values for fuel data on this machine, and do not leave this as a choice between hiding columns or showing a status inline — hide the columns AND show the banner, both.
+- This is a presentation rule only. Do not delete, blank out, or otherwise touch the underlying operational fuel/diesel records — Equipment Performance and all other reports continue exactly as today. Only what the billing user sees on this bill changes.
+- When `hireDieselResponsibility === "hlc"`, show the full HSD performance/recovery block from Outcome 4 as already designed, including Actual Consumption + Master Norm from Outcome 9 — this rule only suppresses fuel display for vendor-scope fuel.
+
+WHAT NOT TO DO
+- Do not touch Equipment Performance or the EQUIP-10 batch.
+- Do not touch the separate Hire billing register page (EquipmentHireBilling.tsx).
+- Do not change discoverVendors's existing behavior for Material/Transport/Labour/All bill types.
+- Do not build a vendor ledger, previous-bill balance carry-forward, chart of accounts, bank reconciliation, or accounting entries.
+- Do not change the underlying HSD recovery math — only its presentation and visibility rules.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No new schema/migration is expected — every field referenced here (`hireDieselResponsibility`, `hireBreakdownDeductionEnabled`, `hireStartDate`, `hireEndDate`, `meterType`, `consumptionNorm`, `gstRateEquipment`) already exists. If you find you genuinely need a new field, STOP and show the exact proposed schema change before writing a migration.
+
+TESTS
+A. Select bill period = September. A vendor whose only hired machine ran January–June must not appear in Equipment Hire vendor discovery for September.
+B. A vendor whose roller is under a September hire contract but has zero DPR entries on one or several days in September must still appear, and that roller must still be selectable and billable for September — activity gaps must not remove eligibility.
+C. A hired machine with hireStartDate set and hireEndDate left blank continues to appear correctly for every subsequent bill period (e.g. July, August, September) without needing an end date entered.
+D. Select a vendor and equipment: confirm Hire Basis/Rate/Hire Start-End/Vendor auto-fill from Equipment Master with no manual re-entry, and confirm there is exactly one way to select equipment (no duplicate Add-Hire path).
+E. Open Daily Activity for an hour-meter machine: confirm consumption shows as "X L/hr" next to the Master norm in the same unit; repeat for an odometer machine and confirm "X L/km" (or whatever unit Equipment Master actually stores) is used, with no invented conversion.
+F. Open Daily Activity / bill summary for a machine where `hireDieselResponsibility === "vendor"`: confirm it shows only "Fuel / Diesel: Contractor Scope", no HSD recovery section or control, and no Incomplete/— diesel clutter.
+G. Open the bill summary/HSD section for a machine where `hireDieselResponsibility === "hlc"`: confirm Actual/Expected/Net Excess/Applicable Rate/Suggested Recovery all display correctly, Accept/Edit/No Recovery all work, period-net-excess equals max(0, actual − expected) and not a sum of daily positives, and that editing requires a reason/reference.
+H. Set GST to a non-zero rate on an Equipment Hire bill: confirm the summary reads Gross Hire → deductions → Taxable/Bill Amount → + GST = Invoice Total → − TDS = Net Payable → Paid → Balance, in that exact order, and that PDF/Excel exports match it exactly.
+I. Leave GST at 0% (or on an older existing bill): confirm Net Payable is unchanged from before this batch.
+J. Open Daily Activity: confirm it opens scrolled fully left with Date/Project-Site immediately visible.
+K. Confirm Material/Transport/Labour/All/Other bill types are completely unaffected by every change above.
+
+REPORT BACK
+1. Confirm Outcome 1 with Test A/B/C evidence.
+2. Confirm Outcome 2 with Test D evidence.
+3. Confirm Outcomes 3 & 9 with Test E/J evidence.
+4. Confirm Outcomes 4 & 10 with Test F/G evidence.
+5. Confirm Outcomes 5, 6 & 7 with Test H/I evidence, including a real PDF/Excel export attached or described.
+6. Confirm Outcome 8 with Test C evidence (already listed above).
+7. Confirm Test K — no regression to other bill types.
+8. Confirm no schema change was needed; if one was, stop and show it before applying.
+9. Flag which wording you used for "data not reliable" (Outcome 4.4) — "Not measurable" as specified, or the app's existing "Incomplete" — and why.
+10. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
+
+FINAL CLARIFICATIONS BEFORE BUILDING (read these alongside the Outcomes above — they refine sequencing, scope, and two places where an earlier draft of this instruction was imprecise)
+
+1. PERMITTED SERVER SCOPE, AND WHY IT'S NEEDED
+Outcome 1 necessarily requires server-side Equipment Hire vendor discovery — this cannot be done client-side only. Accordingly, server/routes.ts and server/storage.ts may also be changed, but ONLY for this dedicated Equipment Hire discovery requirement and for server-side net-payable parity (below). Do not change generic `discoverVendors` behavior for other bill types.
+Net-payable parity is a real, already-confirmed risk, not a hypothetical: server/storage.ts, `updateVendorBillStatus` (~lines 15790-1861), on the "approved" transition for `billType === "equipment"` (~lines 15823-1848), freezes `netPayableAmount` by reading `vendorBillItems` rows, grouping them into `categorySubtotals`, and applying `gstRateEquipment`/etc. to that itemized subtotal — this is the OLDER itemized-composer path, not the hire-groups straight-form's own per-group Gross Hire → Breakdown Deduction → HSD Recovery → Other Debit → Advance Adjustment → Other Credit → Taxable Amount → GST → TDS sequence from Outcome 6. If a bill was built via the straight-form composer, this freeze step will not reflect the same figures shown on screen unless it is corrected to source its numbers from what the straight-form actually computed and saved for that bill, not re-derive them from `vendorBillItems`/`categorySubtotals`.
+The saved/approved bill, the on-screen summary, and the PDF/Excel export must all produce the same: Taxable Amount → GST → Invoice Total → TDS → Net Payable. Whatever the straight-form computes and lets the user review must be exactly what gets persisted and frozen at approval — persist those final per-hire-group figures (or their bill-level total) at save time so the approval step can reuse them directly instead of recomputing from a different source of truth.
+
+2. FORM DEPENDENCY / ORDER
+Equipment Hire vendor eligibility depends on the selected bill period. Therefore the functional flow is:
+  Bill Type = Equipment Hire → Bill Period → Vendor → Equipment → auto-filled hire terms/activity/recoveries.
+Do not run or show Equipment Hire vendor discovery until a valid Period From and Period To are available. (This corrects Outcome 2's original wording, which listed Vendor before Bill Period — period must be known first for discovery to even be meaningful.)
+
+3. HIRE DATES
+A valid Hire Start Date is required for normal Equipment Hire billing. A blank Hire End Date means ACTIVE / STILL UNDER HIRE. Eligibility:
+  hireStartDate <= periodTo AND (hireEndDate is blank OR hireEndDate >= periodFrom)
+Do not treat a blank Hire Start Date as proof the machine was under hire for every historical period — the start date must genuinely be set and on-or-before the period end; only the END date is allowed to be blank-meaning-active.
+
+4. CONSUMPTION UNIT — CURRENT CANONICAL MASTER ONLY
+For this batch, do not invent reciprocal fuel-efficiency units. Current Equipment Master supports only: hour_meter → L/hr, odometer → L/km. Daily Activity must show "Actual Consumption | Master Norm" in that same canonical unit. Do not convert to km/L or hr/L in VB-07B — any future selectable norm-basis enhancement belongs to Equipment Master as a separate decision. (This replaces Outcome 9's earlier hedge about a possible km/L display — there is no such stored basis today.)
+
+5. CONTRACTOR-SCOPE FUEL — ONE DEFINITE UI
+When `hireDieselResponsibility = vendor`: bill summary shows "Fuel / Diesel: Contractor Scope"; Daily Activity shows the same compact Contractor Scope status AND hides the diesel-performance columns for this machine — both, not a choice between them. Do not show "—"/"Incomplete" values for fuel data, and do not show an HSD recovery control at all. Underlying operational diesel data remains untouched. (This replaces Outcome 10's earlier either/or wording.)
+
+6. EXPORT PARITY
+The Daily Activity section of PDF/Excel must mirror the bill dialog exactly: include Actual Consumption + Master Norm with their unit for HLC-scope fuel; show "Contractor Scope" instead of empty diesel-performance data for vendor-scope fuel.
+
+No schema change unless explicitly stopped and reported first.
