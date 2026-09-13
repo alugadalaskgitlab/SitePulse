@@ -80,3 +80,4 @@
 - [DPR navigation and actor audit](dpr-navigation-actor-audit.md) — validated nested return paths restore register context; actor facts come only from authenticated IDs and survive versions.
 - [DPR cut/fill editable normalization](dpr-cut-fill-editable-normalization.md) — forced outcomes normalize in editable state; partial stays user-owned; readiness and submit share strict tuple rules.
 - [Compact DPR equipment entry](compact-dpr-equipment-entry.md) — approved pattern keeps one active machine expanded, completed rows concise, and hidden editors mounted.
+- [Empty equipment evidence](equipment-empty-evidence.md) — distinguish defaults from real and child-only evidence; keep clone source/input pairs aligned when filtering.

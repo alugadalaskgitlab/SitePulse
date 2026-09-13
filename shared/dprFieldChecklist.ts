@@ -15,6 +15,7 @@
  */
 
 import { evaluateDprSubmitReadiness, type DprReadinessIssue } from "./dprSubmitReadiness";
+import { visibleEquipmentRows } from "./equipmentUsage";
 
 export type DprChecklistItem = {
   id: string;
@@ -56,7 +57,10 @@ function sub(count: number, unit: string, details: string[], emptyMsg: string, d
 
 export function deriveDprChecklist(dpr: DprLike, submitted: boolean): DprChecklistResult {
   const progress = (dpr?.progress ?? []).filter((p: any) => !p?.noSiteWork);
-  const equipment = dpr?.equipment ?? [];
+  // Field Home is a read-side summary. Unlike final-submit validation, it
+  // must not warn about the old SiteEntry start-time auto-prefill shape.
+  // Keep child-backed rows so allocations/segments/breakdowns still surface.
+  const equipment = visibleEquipmentRows(dpr?.equipment);
   const labour = dpr?.labour ?? [];
   const materials = dpr?.materials ?? [];
 
@@ -68,9 +72,11 @@ export function deriveDprChecklist(dpr: DprLike, submitted: boolean): DprCheckli
     materials,
   });
 
-  // Real (non-placeholder) row counts — mirror the readiness placeholder rules.
+  // Real visible row counts. Submit readiness intentionally keeps its broader
+  // write-side retention rule; this checklist deliberately reflects read-side
+  // reporting visibility instead.
   const actCount = progress.filter((p: any) => hasText(p?.activity) || p?.boqItemId != null).length;
-  const eqCount = equipment.filter((e: any) => hasText(e?.machine)).length;
+  const eqCount = equipment.length;
   const labCount = labour.filter((l: any) => hasText(l?.category) || l?.count != null || hasText(l?.task) || hasText(l?.contractor)).length;
   const matCount = materials.filter((m: any) => hasText(m?.material)).length;
 

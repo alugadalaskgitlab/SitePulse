@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import type { DprWithDetails } from "@shared/schema";
 import MixEstimates from "@/pages/MixEstimates";
+import { visibleEquipmentRows } from "@shared/equipmentUsage";
 
 function getCleanSiteName(site: string): string {
   const editMarkerIndex = site.indexOf(' – Edited by');
@@ -83,6 +84,14 @@ export default function AdminReports() {
     enabled: authenticated,
   });
 
+  // Report filters, grouped totals, tables, and export all use this one
+  // child-aware collection rather than treating retained legacy placeholders
+  // as real Operating equipment.
+  const detailedDprs = useMemo(() => dprs.map((dpr) => ({
+    ...dpr,
+    visibleEquipment: visibleEquipmentRows(dpr.equipment),
+  })), [dprs]);
+
   const uniqueSites = useMemo(() => {
     const sites = new Set<string>();
     dprs.forEach(d => sites.add(getCleanSiteName(d.site)));
@@ -103,9 +112,9 @@ export default function AdminReports() {
 
   const uniqueEquipment = useMemo(() => {
     const equipment = new Set<string>();
-    dprs.forEach(d => d.equipment?.forEach(e => e.machine && equipment.add(e.machine)));
+    detailedDprs.forEach(d => d.visibleEquipment.forEach((e: any) => e.machine && equipment.add(e.machine)));
     return Array.from(equipment).sort();
-  }, [dprs]);
+  }, [detailedDprs]);
 
   const uniqueSuppliers = useMemo(() => {
     const suppliers = new Set<string>();
@@ -114,7 +123,7 @@ export default function AdminReports() {
   }, [dprs]);
 
   const filteredDprs = useMemo(() => {
-    return dprs.filter(dpr => {
+    return detailedDprs.filter(dpr => {
       if (dateFrom && dpr.date < dateFrom) return false;
       if (dateTo && dpr.date > dateTo) return false;
       if (selectedSite !== "all" && getCleanSiteName(dpr.site) !== selectedSite) return false;
@@ -125,7 +134,7 @@ export default function AdminReports() {
       }
       
       if (selectedEquipment !== "all") {
-        const hasMatchingEquipment = dpr.equipment?.some(e => e.machine === selectedEquipment);
+        const hasMatchingEquipment = dpr.visibleEquipment.some((e: any) => e.machine === selectedEquipment);
         if (!hasMatchingEquipment) return false;
       }
       
@@ -143,7 +152,7 @@ export default function AdminReports() {
       
       return true;
     });
-  }, [dprs, dateFrom, dateTo, selectedSite, selectedActivity, selectedMaterial, selectedEquipment, selectedSupplier]);
+  }, [detailedDprs, dateFrom, dateTo, selectedSite, selectedActivity, selectedMaterial, selectedEquipment, selectedSupplier]);
 
   const showActivities = selectedActivity !== "all" || (selectedMaterial === "all" && selectedSupplier === "all" && selectedEquipment === "all");
   const showMaterials = selectedMaterial !== "all" || selectedSupplier !== "all" || (selectedActivity === "all" && selectedEquipment === "all");
@@ -212,7 +221,7 @@ export default function AdminReports() {
       }
       
       if (showEquipment) {
-        dpr.equipment?.forEach(e => {
+        dpr.visibleEquipment.forEach((e: any) => {
           if (selectedSite !== "all" && cleanSite !== selectedSite) return;
           if (selectedEquipment !== "all" && e.machine !== selectedEquipment) return;
           const diesel = e.diesel || 0;

@@ -1,19 +1,27 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
+import { meaningfulEquipmentRows, visibleEquipmentRows } from "../shared/equipmentUsage";
 
 const fx = vi.hoisted(() => ({
   queue: [] as any[][],
   writes: [] as any[],
   selectCalls: 0,
+  dprListRows: [] as any[],
 }));
 
 function query(rows: any[] = []) {
   const q: any = {
     from: () => q, where: () => q, limit: () => q, orderBy: () => q,
     innerJoin: () => q, leftJoin: () => q,
+    for: () => q,
     returning: () => Promise.resolve(rows),
     then: (resolve: any) => resolve(rows),
-    values: (value: any) => { fx.writes.push(value); return query([{ id: 91, ...value }]); },
+    values: (value: any) => {
+      fx.writes.push(value);
+      return query(Array.isArray(value)
+        ? value.map((row, index) => ({ id: 91 + index, ...row }))
+        : [{ id: 91, ...value }]);
+    },
     set: (value: any) => { fx.writes.push(value); return query([{ id: 7, ...value }]); },
   };
   return q;
@@ -39,6 +47,11 @@ const fakeDb: any = {
     }
   }),
   select: tx.select,
+  query: {
+    dprs: {
+      findMany: vi.fn(async () => fx.dprListRows),
+    },
+  },
 };
 vi.mock("../server/db", () => ({ db: fakeDb }));
 
@@ -51,10 +64,110 @@ beforeEach(() => {
   fx.queue = [];
   fx.writes = [];
   fx.selectCalls = 0;
+  fx.dprListRows = [];
   vi.clearAllMocks();
 });
 
 describe("equipment consistency storage runtime", () => {
+  it("create drops only untouched defaults but retains a legacy start-only timestamp", async () => {
+    const storage = new DatabaseStorage();
+    await storage.createDpr({
+      date: "2026-08-21", site: "NoSiteWork", engineer: "Engineer", dprStatus: "draft",
+      equipment: [{ machine: "", operator: "Operator name", entryType: "time_meter", diesel: 0 }],
+    } as any);
+    expect(fx.writes.some((write) => Array.isArray(write))).toBe(false);
+
+    fx.writes = [];
+    await storage.createDpr({
+      date: "2026-08-21", site: "NoSiteWork", engineer: "Engineer", dprStatus: "draft",
+      equipment: [{ machine: "", operator: "Operator name", entryType: "time_meter", startTime: "08:00", diesel: 0 }],
+    } as any);
+    const equipmentInsert = fx.writes.find((write) => Array.isArray(write));
+    expect(equipmentInsert).toEqual([expect.objectContaining({ startTime: "08:00", machine: "" })]);
+  });
+
+  it("replacement keeps a persisted blank row when omitted active child evidence is discovered", async () => {
+    fx.queue.push(
+      [], // equipment_activity_segments
+      [], // equipment_activity_allocations
+      [{ sourceRecordId: 17 }], // active linked DPR breakdowns
+    );
+    const storage = new DatabaseStorage();
+    const preserved = await (storage as any).preserveOmittedEquipmentAllocationsTx(
+      tx,
+      [{ id: 17 }],
+      [{ persistedId: 17, machine: "", operator: "Operator name", entryType: "time_meter", diesel: 0 }],
+    );
+    expect(preserved[0]).toMatchObject({ _preserveLinkedChildren: true });
+    expect(meaningfulEquipmentRows(preserved)).toHaveLength(1);
+  });
+
+  it("list hydration attaches active breakdown evidence before read visibility", async () => {
+    fx.dprListRows = [{
+      id: 55, date: "2026-08-21", site: "NoSiteWork", engineer: "Engineer",
+      equipment: [{
+        id: 17, machine: "Operating", vehicleNo: "", operator: "Operator name",
+        entryType: "time_meter", startTime: "08:00", endTime: "", hoursWorked: 0, diesel: 0,
+        activityAllocations: [], activitySegments: [],
+      }],
+      progress: [], labour: [], materials: [], sitePurchases: [], structureItems: [],
+    }];
+    fx.queue.push([{
+      id: 71, sourceRecordId: 17, fromTime: "08:15", toTime: "09:00",
+      description: "Hydraulic leak", responsibility: "vendor", repairScope: "hose",
+      debitableToVendor: true, remarks: "Recorded",
+    }]);
+    const storage = new DatabaseStorage();
+    const [listed] = await storage.getDprsWithDetails();
+    expect(listed.equipment[0]).toMatchObject({
+      breakdowns: [expect.objectContaining({ maintenanceLogId: 71, description: "Hydraulic leak" })],
+    });
+    expect(visibleEquipmentRows(listed.equipment)).toHaveLength(1);
+  });
+
+  it("clone retains source pairing across leading/interspersed placeholders and child-only evidence", async () => {
+    fx.queue.push(
+      [{ boqProjectId: 3 }], // source DPR project
+      [{ id: 3 }], // locked project
+      [{ id: 55, dprStatus: "submitted", boqProjectId: 3 }], // locked DPR
+    );
+    const storage = new DatabaseStorage();
+    vi.spyOn(storage, "getDpr").mockResolvedValue({
+      id: 55, date: "2026-08-21", site: "NoSiteWork", engineer: "Engineer",
+      dprStatus: "submitted", boqProjectId: 3, progress: [], labour: [], materials: [], sitePurchases: [],
+      equipment: [
+        { id: 1, machine: "", operator: "Operator name", entryType: "time_meter", diesel: 0 },
+        { id: 2, machine: "", operator: "Operator name", entryType: "time_meter", diesel: 0, activityAllocations: [{ boqItemId: 9 }] },
+        { id: 3, machine: "", operator: "Operator name", entryType: "time_meter", diesel: 0 },
+        { id: 4, machine: "", operator: "Operator name", entryType: "time_meter", diesel: 0, breakdowns: [{ description: "Leak" }] },
+      ],
+    } as any);
+    const normalise = vi.spyOn(storage as any, "normaliseDprEquipmentRowsTx").mockImplementation(async (_tx, rows) => rows);
+    vi.spyOn(storage as any, "persistEquipmentActivityAllocationsTx").mockResolvedValue(undefined);
+    const reconcile = vi.spyOn(storage as any, "reconcileDprBreakdownsTx").mockResolvedValue(undefined);
+    const finalize = vi.spyOn(storage as any, "finalizeDprEquipmentUsageTx").mockResolvedValue(undefined);
+
+    await storage.cloneDpr(55, "manager");
+
+    expect(normalise).toHaveBeenCalledWith(expect.anything(), [
+      expect.objectContaining({ id: 2, activityAllocations: [{ boqItemId: 9 }] }),
+      expect.objectContaining({ id: 4, breakdowns: [{ description: "Leak" }] }),
+    ], 3);
+    expect(reconcile).toHaveBeenCalledWith(
+      expect.anything(),
+      [expect.objectContaining({ id: 2 }), expect.objectContaining({ id: 4 })],
+      [expect.objectContaining({ id: 91 }), expect.objectContaining({ id: 92 })],
+      [expect.objectContaining({ id: 2 }), expect.objectContaining({ id: 4 })],
+      "2026-08-21",
+    );
+    expect(finalize).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ cloneSourceLogIds: { 91: 2, 92: 4 } }),
+    );
+  });
+
   it("standalone create uses invalid-meter time fallback and persists its physical tank", async () => {
     fx.queue.push([{ id: 2, meterType: "hour_meter", consumptionNorm: 4 }]);
     const storage = new DatabaseStorage();

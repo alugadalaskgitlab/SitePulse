@@ -64,7 +64,7 @@ import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliatio
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
-import { calculateEquipmentClockDuration, formatEquipmentDuration, withEquipmentCreationStartTime } from "@shared/equipmentUsage";
+import { calculateEquipmentClockDuration, formatEquipmentDuration, withEquipmentCreationStartTime, meaningfulEquipmentRows } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 
 interface ProgressEntry {
@@ -996,7 +996,7 @@ export default function SiteEdit() {
     } else if (section === 'equipment') {
       // 06Q: rows added during the edit session are flagged isNew — they get
       // opening-reading continuity when equipment is selected.
-      setEquipment([...equipment, withEquipmentCreationStartTime({ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true })]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
     }
@@ -1112,7 +1112,7 @@ export default function SiteEdit() {
       };
     }) : [],
     cutFillConsumptions: flattenCutFillConsumptions(progress),
-    equipment: equipment.filter(e => e.machine).map(eq => {
+    equipment: meaningfulEquipmentRows(equipment).map(eq => {
       // 06Q: isNew is client-session state only — never sent to the server.
       const {
         isNew: _isNew,
@@ -2388,6 +2388,7 @@ export default function SiteEdit() {
                       updated[idx].equipmentId = selectedEquip.id;
                       updated[idx].machine = selectedEquip.name;
                       updated[idx].vehicleNo = selectedEquip.registrationNumber || "";
+                      if (updated[idx].isNew) updated[idx] = withEquipmentCreationStartTime(updated[idx]);
                       if (selectedEquip.ownership !== "hired") {
                         updated[idx].entryType = "time_meter";
                         updated[idx].numberOfTrips = null;

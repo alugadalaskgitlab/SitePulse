@@ -1,4 +1,5 @@
 import { calculateEquipmentClockDuration, computeEquipmentUsage, type UsageBasis } from "./equipmentUsage";
+import { isVisibleEquipmentRow } from "./equipmentUsage";
 
 export type EquipmentConfidence = "linked" | "confirmed_legacy_match" | "unclassified";
 export type EquipmentEventSource = "plant_usage" | "dpr_log";
@@ -80,6 +81,9 @@ export interface EquipmentPerformanceLog {
   diesel?: number | null;
   operator?: string | null;
   task?: string | null;
+  /** Child evidence can be supplied by storage when the log itself is blank. */
+  activityAllocations?: unknown[];
+  activitySegments?: unknown[];
 }
 
 export interface EquipmentPerformanceBreakdown {
@@ -565,6 +569,14 @@ export function buildEquipmentPerformanceReport(input: {
   const dprs = new Map(input.dprs.filter((d) => liveDpr(d) && d.boqProjectId != null && projects.has(d.boqProjectId)).map((d) => [d.id, d]));
   const masters = new Map(input.masters.map((m) => [m.id, m]));
   const usages = new Map(input.usages.map((u) => [u.id, u]));
+  const breakdownsByDprLogId = new Map<number, EquipmentPerformanceBreakdown[]>();
+  for (const breakdown of input.breakdowns ?? []) {
+    if (breakdown.sourceType !== "dpr_log" || breakdown.sourceRecordId == null) continue;
+    const logId = Number(breakdown.sourceRecordId);
+    const rows = breakdownsByDprLogId.get(logId) ?? [];
+    rows.push(breakdown);
+    breakdownsByDprLogId.set(logId, rows);
+  }
   const representedUsageIds = new Set<number>();
   const events: EquipmentPerformanceEvent[] = [];
 
@@ -655,6 +667,14 @@ export function buildEquipmentPerformanceReport(input: {
   // Linked DPR rows own project attribution and are represented by canonical
   // usage. Invalid plantUsageId values deliberately fall through as log rows.
   for (const log of input.logs) {
+    // Old clients persisted a default, identity-less row on untouched forms.
+    // Keep this read-side only: no historical data is deleted here. A blank
+    // parent with linked stoppage/allocation evidence is an operational row,
+    // so assess associated children before deciding to suppress it.
+    if (!isVisibleEquipmentRow({
+      ...log,
+      breakdowns: breakdownsByDprLogId.get(Number(log.id)) ?? [],
+    })) continue;
     const dpr = dprs.get(log.dprId);
     if (!dpr) continue;
     const usage = log.plantUsageId == null ? undefined : usages.get(log.plantUsageId);

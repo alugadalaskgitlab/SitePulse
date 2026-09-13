@@ -151,7 +151,12 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
           </Button>
         )}
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="end">
+      <PopoverContent
+        className="flex w-[calc(100vw-1rem)] max-w-80 flex-col overflow-hidden p-0"
+        style={{ height: "min(32rem, calc(100dvh - 1rem), calc(var(--radix-popover-content-available-height) - 0.5rem))" }}
+        align="end"
+        data-testid="notification-popover-panel"
+      >
         <div className="flex items-center justify-between p-3 border-b">
           <h3 className="font-semibold">Notifications</h3>
           {unreadCount > 0 && (
@@ -167,7 +172,7 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
             </Button>
           )}
         </div>
-        <ScrollArea className="max-h-80">
+        <ScrollArea className="min-h-0 flex-1 touch-pan-y" data-testid="notification-scroll-area">
           {notifications.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               <Bell className="w-8 h-8 mx-auto mb-2 opacity-50" />

@@ -23,6 +23,18 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+function isNotificationsDisabledError(error: unknown): boolean {
+  return error instanceof Error
+    && error.message.startsWith("403:")
+    && error.message.includes("notifications_disabled");
+}
+
+function isSubscriptionOwnershipError(error: unknown): boolean {
+  return error instanceof Error
+    && error.message.startsWith("403:")
+    && error.message.includes("subscription_not_owned");
+}
+
 export function PushNotificationSetup() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -53,7 +65,8 @@ export function PushNotificationSetup() {
 
   // Checks local browser subscription and silently re-registers it with the
   // server so the DB stays in sync even if server rows were lost (e.g. after
-  // an admin toggle). The server endpoint is idempotent (upsert on endpoint).
+  // an admin toggle). This is deliberately a sync, never an activation: it
+  // must not prompt for permission or send an enabled confirmation.
   async function checkSubscriptionStatus(iosDevice: boolean) {
     try {
       const registration = await navigator.serviceWorker.ready;
@@ -66,21 +79,25 @@ export function PushNotificationSetup() {
 
       try {
         const subJson = subscription.toJSON();
-        const res = await apiRequest("POST", "/api/push/subscribe", {
+        await apiRequest("POST", "/api/push/subscribe", {
           subscription: { endpoint: subJson.endpoint, keys: subJson.keys },
           label: iosDevice ? "iOS Device" : "Device",
+          mode: "sync",
         });
-
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          if (body.message === "notifications_disabled") {
-            await subscription.unsubscribe().catch(() => {});
-            setNotAllowed(true);
-            setIsSubscribed(false);
-            return;
-          }
+      } catch (error) {
+        // apiRequest throws for non-2xx responses, so inspect the thrown
+        // response text rather than an unreachable Response#ok branch.
+        if (isNotificationsDisabledError(error)) {
+          await subscription.unsubscribe().catch(() => {});
+          setNotAllowed(true);
+          setIsSubscribed(false);
+          return;
         }
-      } catch {
+        if (isSubscriptionOwnershipError(error)) {
+          await subscription.unsubscribe().catch(() => {});
+          setIsSubscribed(false);
+          return;
+        }
         // Network error — browser subscription still valid, retry on next load.
       }
 
@@ -119,24 +136,20 @@ export function PushNotificationSetup() {
 
       const subJson = subscription.toJSON();
       try {
-        const res = await apiRequest("POST", "/api/push/subscribe", {
+        await apiRequest("POST", "/api/push/subscribe", {
           subscription: {
             endpoint: subJson.endpoint,
             keys: subJson.keys,
           },
           label: isIos ? "iOS Device" : "Device",
+          mode: "activate",
         });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          await subscription.unsubscribe();
-          if (body.message === "notifications_disabled") {
-            setNotAllowed(true);
-            return;
-          }
-          throw new Error(body.message || "Failed to register subscription");
-        }
       } catch (serverErr: any) {
-        await subscription.unsubscribe();
+        await subscription.unsubscribe().catch(() => {});
+        if (isNotificationsDisabledError(serverErr)) {
+          setNotAllowed(true);
+          return;
+        }
         throw serverErr;
       }
 

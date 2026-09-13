@@ -13,4 +13,12 @@ describe("SiteReport historical equipment audit rendering", () => {
     expect(source).toContain("item.expectedDiesel != null");
     expect(source).toContain("item.dieselNorm != null");
   });
+
+  it("drives the count, diesel card, compact cards, and audit table from one meaningful collection", () => {
+    expect(source).toContain("const visibleEquipment = dpr.equipment.filter");
+    expect(source).toContain("breakdowns: item.breakdowns ?? breakdownsBySourceId.get(Number(item.id)) ?? []");
+    expect(source).toContain("visibleEquipment.length");
+    expect(source).toContain("visibleEquipment.reduce");
+    expect((source.match(/visibleEquipment\.map/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
 });

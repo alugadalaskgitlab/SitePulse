@@ -18,6 +18,18 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+function isNotificationsDisabledError(error: unknown): boolean {
+  return error instanceof Error
+    && error.message.startsWith("403:")
+    && error.message.includes("notifications_disabled");
+}
+
+function isSubscriptionOwnershipError(error: unknown): boolean {
+  return error instanceof Error
+    && error.message.startsWith("403:")
+    && error.message.includes("subscription_not_owned");
+}
+
 function usePushNotifications() {
   const { toast } = useToast();
   const [status, setStatus] = useState<"checking" | "active" | "inactive" | "not_allowed" | "unsupported">("checking");
@@ -43,20 +55,23 @@ function usePushNotifications() {
           return;
         }
         const subJson = subscription.toJSON();
-        const res = await apiRequest("POST", "/api/push/subscribe", {
-          subscription: { endpoint: subJson.endpoint, keys: subJson.keys },
-          label: "Device",
-        });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          if (body.message === "notifications_disabled") {
-            setStatus("not_allowed");
-          } else {
-            setStatus("inactive");
+        try {
+          await apiRequest("POST", "/api/push/subscribe", {
+            subscription: { endpoint: subJson.endpoint, keys: subJson.keys },
+            label: "Device",
+            mode: "sync",
+          });
+          setStatus("active");
+        } catch (error) {
+          // apiRequest throws on non-2xx responses. A disabled account or a
+          // device bound to another account cannot use this local token.
+          if (isNotificationsDisabledError(error) || isSubscriptionOwnershipError(error)) {
+            await subscription.unsubscribe().catch(() => {});
+            setStatus(isNotificationsDisabledError(error) ? "not_allowed" : "inactive");
+            return;
           }
-          return;
+          setStatus("inactive");
         }
-        setStatus("active");
       } catch {
         setStatus("inactive");
       }
@@ -86,19 +101,22 @@ function usePushNotifications() {
       });
 
       const subJson = subscription.toJSON();
-      const res = await apiRequest("POST", "/api/push/subscribe", {
-        subscription: { endpoint: subJson.endpoint, keys: subJson.keys },
-        label: "Device",
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        await subscription.unsubscribe();
-        if (body.message === "notifications_disabled") {
+      try {
+        await apiRequest("POST", "/api/push/subscribe", {
+          subscription: { endpoint: subJson.endpoint, keys: subJson.keys },
+          label: "Device",
+          mode: "activate",
+        });
+      } catch (error) {
+        await subscription.unsubscribe().catch(() => {});
+        if (isNotificationsDisabledError(error)) {
           setStatus("not_allowed");
           return;
         }
-        throw new Error(body.message || "Failed to register subscription");
+        if (isSubscriptionOwnershipError(error)) {
+          setStatus("inactive");
+        }
+        throw error;
       }
 
       setStatus("active");

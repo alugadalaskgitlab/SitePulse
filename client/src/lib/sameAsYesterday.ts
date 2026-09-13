@@ -8,6 +8,7 @@
  * Never copies: chainage, quantities, measurements, photos, readings, remarks,
  * or submit status — today's actuals are always entered fresh.
  */
+import { visibleEquipmentRows } from "@shared/equipmentUsage";
 
 export type YesterdayProgressSeed = {
   activity: string;
@@ -40,7 +41,7 @@ export function extractYesterdayStructure(dpr: {
         side: p.side ?? "",
         uom: p.uom ?? "",
       })),
-    equipment: (dpr.equipment ?? [])
+    equipment: visibleEquipmentRows(dpr.equipment)
       .filter((e: any) => e.machine)
       .map((e: any) => ({
         machine: e.machine,

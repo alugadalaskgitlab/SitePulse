@@ -30,6 +30,7 @@ import {
 import { ProgrammeBarOutcomeHistory } from "@/components/ProgrammeBarOutcomeHistory";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
+import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -240,8 +241,16 @@ export default function SiteReport() {
     return acc;
   }, []);
 
-  // Total Diesel
-  const totalDiesel = dpr.equipment.reduce((sum: number, e: any) => sum + (e.diesel || 0), 0);
+  // One child-aware collection drives every report count/card/table. Legacy
+  // untouched placeholder logs never appear as a resource, while a blank
+  // parent with a linked stoppage remains visible.
+  const visibleEquipment = dpr.equipment.filter((item: any) =>
+    isVisibleEquipmentRow({
+      ...item,
+      breakdowns: item.breakdowns ?? breakdownsBySourceId.get(Number(item.id)) ?? [],
+    }),
+  );
+  const totalDiesel = visibleEquipment.reduce((sum: number, e: any) => sum + (e.diesel || 0), 0);
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-300 print:p-0">
@@ -381,7 +390,7 @@ export default function SiteReport() {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-primary">{dpr.equipment.length}</p>
+            <p className="text-2xl font-bold text-primary">{visibleEquipment.length}</p>
             <p className="text-sm text-muted-foreground">Equipment</p>
           </CardContent>
         </Card>
@@ -572,12 +581,12 @@ export default function SiteReport() {
             <CardTitle>Equipment Log</CardTitle>
           </CardHeader>
           <CardContent>
-            {dpr.equipment.length === 0 ? (
+            {visibleEquipment.length === 0 ? (
               <p className="text-muted-foreground italic">No equipment usage recorded.</p>
             ) : (
               <div className="space-y-2">
               <div className="space-y-2">
-                {dpr.equipment.map((item: any, i: number) => (
+                {visibleEquipment.map((item: any, i: number) => (
                   <DprEquipmentCompact
                     key={i}
                     row={item}
@@ -612,7 +621,7 @@ export default function SiteReport() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {dpr.equipment.map((item: any, i: number) => {
+                  {visibleEquipment.map((item: any, i: number) => {
                     const et = item.entryType || "time_meter";
                     const isTripBased = et === "trip_based";
                     const operatingQuantity = item.hoursWorked != null

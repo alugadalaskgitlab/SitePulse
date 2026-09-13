@@ -61,6 +61,7 @@ import {
   activityFilterLabel,
   type ActivityFilterOption,
 } from "@/lib/activityFilter";
+import { visibleEquipmentRows } from "@shared/equipmentUsage";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -184,13 +185,21 @@ export default function SiteDashboard() {
       return res.json();
     },
   });
+
+  // All dashboard consumers (filters, counts, expanded tables, and exports)
+  // read this child-aware collection. Historical auto-prefill placeholders
+  // remain in storage/editing payloads but are not reported as Operating.
+  const detailedDprs = useMemo(() => (dprsWithDetails ?? []).map((dpr: any) => ({
+    ...dpr,
+    visibleEquipment: visibleEquipmentRows(dpr.equipment),
+  })), [dprsWithDetails]);
   
   // Client-side filtering for all filters (site, engineer, activity, equipment, diesel, material)
   // Date filters are applied server-side
   const dprs = useMemo(() => {
     if (!dprsWithDetails) return [];
     
-    return dprsWithDetails.filter((dpr: any) => {
+    return detailedDprs.filter((dpr: any) => {
       // Site filter - compare using base site name
       if (filters.site) {
         const dprBaseSite = getBaseSiteName(dpr.site);
@@ -208,13 +217,13 @@ export default function SiteDashboard() {
       
       // Equipment filter
       if (filters.equipment) {
-        const hasEquipment = dpr.equipment?.some((e: any) => e.machine === filters.equipment);
+        const hasEquipment = dpr.visibleEquipment.some((e: any) => e.machine === filters.equipment);
         if (!hasEquipment) return false;
       }
       
       // Diesel filter
       if (filters.hasDiesel) {
-        const hasDieselUsage = dpr.equipment?.some((e: any) => e.diesel && e.diesel > 0);
+        const hasDieselUsage = dpr.visibleEquipment.some((e: any) => e.diesel && e.diesel > 0);
         if (!hasDieselUsage) return false;
       }
       
@@ -237,7 +246,7 @@ export default function SiteDashboard() {
       
       return true;
     });
-  }, [dprsWithDetails, filters]);
+  }, [dprsWithDetails, detailedDprs, filters]);
 
   const dprIdsForPhotoCounts = useMemo(() => dprs.map((d: any) => d.id).sort((a: number, b: number) => a - b), [dprs]);
 
@@ -278,13 +287,13 @@ export default function SiteDashboard() {
   const uniqueEquipmentList = useMemo(() => {
     if (!dprsWithDetails) return [];
     const equipment = new Set<string>();
-    dprsWithDetails.forEach((dpr: any) => {
-      dpr.equipment?.forEach((e: any) => {
+    detailedDprs.forEach((dpr: any) => {
+      dpr.visibleEquipment.forEach((e: any) => {
         if (e.machine) equipment.add(e.machine);
       });
     });
     return Array.from(equipment).sort();
-  }, [dprsWithDetails]);
+  }, [dprsWithDetails, detailedDprs]);
 
   const uniqueMaterials = useMemo(() => {
     if (!dprsWithDetails) return [];
@@ -361,7 +370,7 @@ export default function SiteDashboard() {
       Role: dpr.role || "",
       "Work Type": (dpr as any).workType === "structure" ? "Structure" : "Road",
       "Progress Entries": (dpr as any).workType === "structure" ? ((dpr as any).structureItems?.length || 0) : (dpr.progress?.length || 0),
-      "Equipment Logs": dpr.equipment?.length || 0,
+      "Equipment Logs": dpr.visibleEquipment.length,
       "Labour Count": dpr.labour?.reduce((sum: number, l: any) => sum + (l.count || 0), 0) || 0,
       "Material Entries": dpr.materials?.length || 0,
     }));
@@ -423,7 +432,7 @@ export default function SiteDashboard() {
     // Equipment Details sheet
     const equipmentData: any[] = [];
     dprs.forEach((dpr: any) => {
-      dpr.equipment?.forEach((e: any) => {
+      dpr.visibleEquipment.forEach((e: any) => {
         const hours = e.hoursWorked || (e.closingReading && e.openingReading ? (e.closingReading - e.openingReading) : null);
         equipmentData.push({
           Date: format(new Date(dpr.date), "dd/MM/yyyy"),
@@ -605,7 +614,7 @@ export default function SiteDashboard() {
       }
       
       // Equipment Logs
-      if (dpr.equipment?.length > 0) {
+      if (dpr.visibleEquipment.length > 0) {
         if (yPos > 250) { doc.addPage(); yPos = 15; }
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
@@ -613,7 +622,7 @@ export default function SiteDashboard() {
         yPos += 4;
         doc.setFont("helvetica", "normal");
         
-        const equipRows = dpr.equipment.map((e: any) => {
+        const equipRows = dpr.visibleEquipment.map((e: any) => {
           const hours = e.hoursWorked || (e.closingReading && e.openingReading ? (e.closingReading - e.openingReading) : null);
           const readingSource = e.openingReading != null && e.closingReading != null 
             ? `Meter: ${e.openingReading}-${e.closingReading}`
@@ -803,13 +812,13 @@ export default function SiteDashboard() {
 
       // Equipment table
       let equipmentHtml = "";
-      if (dpr.equipment?.length > 0) {
+      if (dpr.visibleEquipment.length > 0) {
         equipmentHtml = `
           <div class="section">
             <div class="section-title">Equipment Log</div>
             <table>
               <tr><th>Machine</th><th>Vehicle No</th><th>Owner</th><th>Operator</th><th>Reading</th><th>Hours</th><th>Diesel</th></tr>
-              ${dpr.equipment.map((e: any) => {
+              ${dpr.visibleEquipment.map((e: any) => {
                 const hours = e.hoursWorked || (e.closingReading && e.openingReading ? (e.closingReading - e.openingReading) : null);
                 const readingSource = e.openingReading != null && e.closingReading != null 
                   ? `Meter: ${e.openingReading}-${e.closingReading}`
@@ -1200,7 +1209,7 @@ export default function SiteDashboard() {
                     });
                   };
                   
-                  const pendingClosingCount = (dpr.equipment || []).filter(
+                  const pendingClosingCount = dpr.visibleEquipment.filter(
                     (e: any) => e.machine && e.openingReading != null && e.closingReading == null
                   ).length;
                   
@@ -1315,7 +1324,7 @@ export default function SiteDashboard() {
                             )}
                             
                             {/* Equipment Log */}
-                            {dpr.equipment && dpr.equipment.length > 0 && (
+                            {dpr.visibleEquipment.length > 0 && (
                               <div>
                                 <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
                                   <Wrench className="w-4 h-4" /> Equipment Log
@@ -1334,7 +1343,7 @@ export default function SiteDashboard() {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {dpr.equipment.map((e: any, i: number) => {
+                                      {dpr.visibleEquipment.map((e: any, i: number) => {
                                         const hasMeter = e.openingReading != null && e.closingReading != null;
                                         const hasTime = e.startTime && e.endTime;
                                         const meterHours = hasMeter ? e.closingReading - e.openingReading : null;

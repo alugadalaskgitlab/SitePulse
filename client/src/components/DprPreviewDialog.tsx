@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatChainageKm } from "@shared/barSide";
 import { DprPhotoGroups } from "@/components/DprPhotoGroups";
 import { layerDisplayName } from "@shared/layerDisplay";
+import { visibleEquipmentRows } from "@shared/equipmentUsage";
 
 type PreviewDpr = {
   id: number;
@@ -67,6 +68,7 @@ export function DprPreviewDialog({
     enabled: dprId != null,
     staleTime: 60_000,
   });
+  const visibleEquipment = visibleEquipmentRows(dpr?.equipment);
 
   return (
     <Dialog open={dprId != null} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -125,11 +127,11 @@ export function DprPreviewDialog({
                 })}
               </div>
             </div>
-            {(dpr.equipment ?? []).length > 0 && (
+            {visibleEquipment.length > 0 && (
               <div>
                 <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">Equipment</p>
                 <div className="border rounded-md divide-y">
-                  {(dpr.equipment ?? []).map((e) => (
+                  {visibleEquipment.map((e) => (
                     <div key={e.id} className="px-3 py-1.5 text-slate-600 dark:text-slate-400">
                       <span className="font-medium text-slate-900 dark:text-slate-100">{e.machine ?? "—"}</span>
                       {e.hoursWorked != null ? ` · ${e.hoursWorked} hrs` : ""}

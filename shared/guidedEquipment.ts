@@ -14,7 +14,6 @@
  *    edited fields on top. New rows have an empty passthrough, so no fake
  *    ""/null values are fabricated for fields the user never saw.
  */
-import { currentLocalEquipmentTime } from "./equipmentUsage";
 
 export type GuidedEquipmentRow = {
   /** Existing equipment_logs id used by DPR replacement to relink stoppages. */
@@ -97,12 +96,14 @@ export function newGuidedEquipmentRow(): GuidedEquipmentRow {
   return { machine: "", vehicleNo: "", operator: "", task: "", passthrough: {} };
 }
 
-/** New-row convenience only; hydration must continue to use newGuidedEquipmentRow(). */
-export function newGuidedEquipmentRowForCreation(now = new Date()): GuidedEquipmentRow {
-  return {
-    ...newGuidedEquipmentRow(),
-    passthrough: { startTime: currentLocalEquipmentTime(now) },
-  };
+/**
+ * New-row convenience only; hydration must continue to use
+ * newGuidedEquipmentRow(). A timestamp is deliberately not prefilled here:
+ * start/end timestamps are evidence and are assigned after explicit identity
+ * selection by the entry screen.
+ */
+export function newGuidedEquipmentRowForCreation(): GuidedEquipmentRow {
+  return newGuidedEquipmentRow();
 }
 
 export function buildGuidedEquipmentPayload(row: GuidedEquipmentRow): Record<string, unknown> {

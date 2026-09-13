@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { calculateEquipmentClockDuration, computeEquipmentFuelSummary, formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
+import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { EquipmentActivityAllocationEditor, type EquipmentActivitySegment } from "@/components/EquipmentActivityAllocationEditor";
 import { groupLegacyEquipmentActivityAllocations, resolveEquipmentAllocationParentDuration } from "@shared/equipmentActivityAllocations";
 
@@ -48,6 +49,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
   boqItems?: Array<{ id: number; description?: string | null; itemCode?: string | null; itemName?: string | null; displayName?: string | null; unit?: string | null }>;
   programmeBars?: Array<{ id: number; boqItemId: number; reachLabel?: string | null; side?: string | null }>;
 }) {
+  const visibleRow = isVisibleEquipmentRow(row);
   const continuityAppliedFor = useRef<string | null>(null);
   const preview = useMemo(() => computeEquipmentUsage(equipment, row), [equipment, row]);
   const tankNeedsConfirmation = (row.openingDiesel != null || row.dieselBalanceInTank != null) && !row.dieselBalanceConfirmed;
@@ -93,6 +95,14 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
 
   const setNumber = (key: keyof DprEquipmentFields, value: string) =>
     onChange?.({ [key]: value === "" ? null : Number(value) } as Partial<DprEquipmentFields>);
+
+  if (!visibleRow) {
+    return editable ? (
+      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300" data-testid={`equipment-empty-${index}`}>
+        Select equipment above to add or correct a machine day. Default-only rows are not displayed as Operating.
+      </div>
+    ) : null;
+  }
 
   return (
     <article className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_8px_20px_rgba(15,23,42,.055)] dark:border-slate-700 dark:bg-slate-900/50" data-testid={`equipment-compact-${index}`}>

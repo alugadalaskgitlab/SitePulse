@@ -28,6 +28,143 @@ export interface EquipmentFuelSummary {
   actualRate: number | null;
   actualRateUnit: "L/hr" | "L/km";
 }
+
+/**
+ * Equipment rows are replace-written with a DPR.  This deliberately narrow
+ * predicate is the one boundary between an untouched form placeholder and a
+ * record that must survive.  In particular, it does not mistake the UI's
+ * time-meter / Operating defaults, a zero diesel default, or an operator
+ * prompt for an operating machine-day.
+ *
+ * Numeric readings use nullability rather than truthiness: an explicitly
+ * recorded zero is evidence. Start/end times are always meaningful evidence;
+ * creation surfaces must therefore leave start blank until equipment is
+ * deliberately selected. Linked children are evidence even when a compact
+ * editor did not include their fields in a later patch.
+ */
+export type MeaningfulEquipmentRow = {
+  machine?: unknown;
+  vehicleNo?: unknown;
+  operator?: unknown;
+  task?: unknown;
+  equipmentId?: unknown;
+  plantUsageId?: unknown;
+  activityAllocations?: unknown;
+  activitySegments?: unknown;
+  breakdowns?: unknown;
+  [key: string]: unknown;
+};
+
+const meaningfulText = (value: unknown): boolean => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized !== "" && ![
+    "operator", "operator name", "select operator", "not assigned",
+    "n/a", "na", "-", "operating", "time meter", "time_meter",
+  ].includes(normalized);
+};
+
+const explicitFiniteNumber = (value: unknown): boolean =>
+  value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+
+const positiveIdentifier = (value: unknown): boolean =>
+  Number.isInteger(Number(value)) && Number(value) > 0;
+
+const hasLinkedChildren = (value: unknown): boolean =>
+  Array.isArray(value) ? value.length > 0 : false;
+
+const defaultText = (value: unknown, accepted: string[]): boolean =>
+  accepted.includes(String(value ?? "").trim().toLowerCase());
+
+export function isMeaningfulEquipmentRow(row: MeaningfulEquipmentRow | null | undefined): boolean {
+  if (!row) return false;
+  if (positiveIdentifier(row.equipmentId) || positiveIdentifier(row.plantUsageId)) return true;
+  // Server-only marker added while replacing a persisted row whose linked
+  // children were omitted from a compact patch. It never reaches storage.
+  if (row._preserveLinkedChildren === true) return true;
+  if (hasLinkedChildren(row.activityAllocations) || hasLinkedChildren(row.activitySegments) || hasLinkedChildren(row.breakdowns)) return true;
+
+  if (meaningfulText(row.machine) || meaningfulText(row.vehicleNo) || meaningfulText(row.operator) || meaningfulText(row.task)) return true;
+  // `time_meter` is the blank-row default; an explicitly selected operational
+  // outcome such as idle, breakdown, daily hire, or trip-based work is not.
+  if (meaningfulText(row.entryType) || meaningfulText(row.status) || meaningfulText(row.activityStatus)) return true;
+  if (meaningfulText(row.dieselSource) || meaningfulText(row.fuelStation) || meaningfulText(row.billNumber)
+    || meaningfulText(row.structureId) || meaningfulText(row.remarks) || meaningfulText(row.notes)) return true;
+  if (positiveIdentifier(row.boqItemId)) return true;
+
+  // Meter and physical tank observations retain an explicit zero.  Derived
+  // values (norm/expected/hours/KM) are intentionally excluded: old clients
+  // could manufacture zeroes for them without the user recording an event.
+  if ([
+    row.openingReading, row.closingReading, row.openingDiesel,
+    row.dieselBalanceInTank,
+  ].some(explicitFiniteNumber)) return true;
+
+  // Fuel issued is evidence only when non-zero; diesel: 0 is a legacy/UI
+  // default and must not resurrect an empty placeholder.
+  if (explicitFiniteNumber(row.diesel) && Number(row.diesel) !== 0) return true;
+  if ([row.numberOfTrips, row.tripDistance, row.waterQuantity].some((value) =>
+    explicitFiniteNumber(value) && Number(value) !== 0,
+  )) return true;
+
+  return meaningfulText(row.startTime) || meaningfulText(row.endTime);
+}
+
+/**
+ * Read-side visibility is intentionally stricter than write-side retention.
+ * Early SiteEntry versions auto-filled a start time on an otherwise untouched
+ * default row.  Retaining that ambiguous history lets an editor correct it;
+ * showing it as an Operating machine-day does not.  Only that narrow, known
+ * auto-prefill shape is hidden. Any identity, child, reading/tank observation
+ * (including zero), fuel/detail, non-default outcome, or non-zero usage value
+ * remains visible.
+ */
+export function isVisibleEquipmentRow(row: MeaningfulEquipmentRow | null | undefined): boolean {
+  if (!isMeaningfulEquipmentRow(row) || !row) return false;
+  const noIdentity = !positiveIdentifier(row.equipmentId)
+    && !positiveIdentifier(row.plantUsageId)
+    && defaultText(row.machine, ["", "operating"])
+    && defaultText(row.vehicleNo, [""]);
+  const defaultOperator = defaultText(row.operator, [
+    "", "operator", "operator name", "select operator", "not assigned", "n/a", "na", "-",
+  ]);
+  const defaultOutcome = defaultText(row.entryType, ["", "time meter", "time_meter"])
+    && defaultText(row.status, ["", "operating"])
+    && defaultText(row.activityStatus, ["", "operating"]);
+  const noChildren = !hasLinkedChildren(row.activityAllocations)
+    && !hasLinkedChildren(row.activitySegments)
+    && !hasLinkedChildren(row.breakdowns);
+  const noObservation = ![
+    row.openingReading, row.closingReading, row.openingDiesel, row.dieselBalanceInTank,
+  ].some(explicitFiniteNumber);
+  const noFuelOrRuntime = ![
+    row.diesel, row.numberOfTrips, row.tripDistance, row.waterQuantity,
+    row.hoursWorked, row.totalKm, row.expectedDiesel,
+  ].some((value) => explicitFiniteNumber(value) && Number(value) !== 0);
+  const noOtherDetail = ![
+    row.task, row.dieselSource, row.fuelStation, row.billNumber, row.amountPaid,
+    row.structureId, row.boqItemId, row.remarks, row.notes,
+  ].some((value) => {
+    if (explicitFiniteNumber(value)) return Number(value) !== 0;
+    return meaningfulText(value);
+  });
+  return !(noIdentity
+    && defaultOperator
+    && defaultOutcome
+    && noChildren
+    && noObservation
+    && noFuelOrRuntime
+    && noOtherDetail
+    && !meaningfulText(row.endTime));
+}
+
+export function meaningfulEquipmentRows<T>(rows: T[] | null | undefined): T[] {
+  return (rows ?? []).filter((row) => isMeaningfulEquipmentRow({ ...(row as object) }));
+}
+
+/** Read-side counterpart to meaningfulEquipmentRows. */
+export function visibleEquipmentRows<T>(rows: T[] | null | undefined): T[] {
+  return (rows ?? []).filter((row) => isVisibleEquipmentRow({ ...(row as object) }));
+}
 export const AVERAGE_SPEED_KMPH = 25;
 
 export function calculateEquipmentClockDuration(start?: string | null, end?: string | null): number | null {

@@ -25,6 +25,7 @@ import { findOlderPendingDprs } from "@/lib/dprLifecycle";
 import { deriveDprChecklist } from "@shared/dprFieldChecklist";
 import { findAllocationEntry, fulfilmentLabel } from "@shared/requirementFulfilment";
 import { getPlannedActivities } from "@shared/plannedWork";
+import { visibleEquipmentRows } from "@shared/equipmentUsage";
 import type { PlanVsActualRow, BoqProjectWithCounts } from "@shared/schema";
 
 // ─── Short name extraction ────────────────────────────────────────────────────
@@ -856,6 +857,10 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   const myDpr = dprPhase === "draft-own" || dprPhase === "submitted-own" ? activeDpr : null;
   const otherDpr = dprPhase === "submitted-other" ? activeDpr : null;
   const dprId: number | null = activeDpr?.id ?? null;
+  // One read-side collection for focus/checklist context and Today's Activity.
+  // This hides only legacy start-time auto-prefills; child-backed evidence
+  // remains visible and actionable.
+  const visibleMyEquipment = visibleEquipmentRows(myDpr?.equipment);
 
   // ── Batch 06D §13–15: own unsubmitted DPRs BEFORE today (7-day window) ────
   // Warn-only: an older pending DPR never blocks starting today's DPR.
@@ -948,7 +953,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
     focusItems.push({ level: "ok", text: "DPR submitted. No pending submission items." });
   } else {
     // draft-own: show what's missing
-    const eq  = (myDpr?.equipment ?? []).length;
+    const eq  = visibleMyEquipment.length;
     const lab = (myDpr?.labour    ?? []).length;
     const mat = (myDpr?.materials ?? []).length;
     const prg = (myDpr?.progress  ?? []).length;
@@ -973,7 +978,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
   // ── Pending Before Submit checklist ────────────────────────────────────────
   // Only shown for draft-own (makes no sense for others' DPRs or not started)
-  const eq  = (myDpr?.equipment ?? []).length;
+  const eq  = visibleMyEquipment.length;
   const lab = (myDpr?.labour    ?? []).length;
   const mat = (myDpr?.materials ?? []).length;
   const prg = (myDpr?.progress  ?? []).length;
@@ -1108,7 +1113,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
   // ── Today's Activity derived state ───────────────────────────────────────
   // Equipment: count closed vs open from today's DPR
-  const eqEntries = myDpr?.equipment ?? [];
+  const eqEntries = visibleMyEquipment;
   const eqTotal  = eqEntries.length;
   const eqClosed = eqEntries.filter((e: any) =>
     e.closingReading !== null || (e.endTime && e.endTime !== "")

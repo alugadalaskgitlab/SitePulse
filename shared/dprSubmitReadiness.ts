@@ -19,6 +19,7 @@
  *  - Fully blank placeholder rows are ignored entirely (no false positives).
  */
 import { excavationMaterialOutcomeIssue } from "./cutFillReconciliation";
+import { isMeaningfulEquipmentRow } from "./equipmentUsage";
 
 export type DprReadinessSection = "activities" | "equipment" | "labour" | "materials";
 
@@ -68,6 +69,11 @@ type ProgressRowLike = {
 
 type EquipmentRowLike = {
   machine?: string | null;
+  vehicleNo?: string | null;
+  operator?: string | null;
+  task?: string | null;
+  equipmentId?: number | null;
+  plantUsageId?: number | null;
   entryType?: string | null;
   startTime?: string | null;
   endTime?: string | null;
@@ -80,6 +86,11 @@ type EquipmentRowLike = {
   diesel?: number | null;
   /** water tankers record delivery volume instead of trips/meter readings */
   waterQuantity?: number | null;
+  openingDiesel?: number | null;
+  dieselBalanceInTank?: number | null;
+  activityAllocations?: unknown[];
+  activitySegments?: unknown[];
+  breakdowns?: unknown[];
 };
 
 type LabourRowLike = {
@@ -183,9 +194,18 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
   // B — equipment closure.
   for (let i = 0; i < (input.equipment ?? []).length; i++) {
     const e = (input.equipment ?? [])[i];
-    if (!hasText(e?.machine)) continue; // blank placeholder row
-    const label = (e.machine as string).trim();
+    if (!isMeaningfulEquipmentRow({ ...e })) continue; // empty/default placeholder row
+    const hasIdentity = hasText(e?.machine) || hasText(e?.vehicleNo) || e?.equipmentId != null || e?.plantUsageId != null;
+    const label = hasText(e?.machine) ? (e.machine as string).trim() : "Equipment row";
     const usage = equipmentHasUsage(e);
+    if (!hasIdentity) {
+      mandatory.push({
+        section: "equipment",
+        label,
+        message: "equipment identity missing — select equipment or choose Other / Unlisted and enter its name",
+        rowIndex: i,
+      });
+    }
     if (e.openingReading != null && e.closingReading == null) {
       mandatory.push({ section: "equipment", label, message: "closing meter reading required", rowIndex: i });
     } else if (e.closingReading != null && e.openingReading == null) {

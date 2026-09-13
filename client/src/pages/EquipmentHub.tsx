@@ -6,6 +6,7 @@ import {
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
+import { visibleEquipmentRows } from "@shared/equipmentUsage";
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
 const HUB = "/equipment/hub";
@@ -64,7 +65,7 @@ export default function EquipmentHub() {
 
   // Combined "Active Today": standalone logs + DPR equipment entries
   // Batch 6: exclude plant records that were closed by a DPR — they're already counted in dprEqCount
-  const dprEquipmentToday = (todayDprs as any[]).flatMap((d: any) => d.equipment ?? []);
+  const dprEquipmentToday = (todayDprs as any[]).flatMap((d: any) => visibleEquipmentRows(d.equipment));
   const standaloneLogs    = (equipmentUsage as any[]).filter((u: any) => !u.closedByDprId);
   const standaloneCount   = standaloneLogs.length;
   const dprEqCount        = dprEquipmentToday.length;

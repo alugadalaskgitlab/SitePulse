@@ -26,7 +26,7 @@ describe("DPR work hub navigation", () => {
   });
 
   it("derives summaries without introducing persisted workflow statuses", () => {
-    expect(dprSectionCounts({ progress: [{}, {}], equipment: [{}], labour: [], materials: [{}, {}, {}] }))
+    expect(dprSectionCounts({ progress: [{}, {}], equipment: [{ machine: "Excavator" }], labour: [], materials: [{}, {}, {}] }))
       .toEqual({ activities: 2, equipment: 1, labour: 0, materials: 3 });
   });
 

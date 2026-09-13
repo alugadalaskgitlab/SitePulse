@@ -1,4 +1,5 @@
 import { withReturnTo } from "./progressReportNav";
+import { visibleEquipmentRows } from "@shared/equipmentUsage";
 
 export type WorkHubSection = "activities" | "equipment" | "labour" | "materials" | "review";
 export type FieldDprPhase = "not-started" | "draft-own" | "submitted-own" | "submitted-other";
@@ -61,7 +62,7 @@ export function resolveFieldSitePriority(
 export function dprSectionCounts(dpr: any) {
   return {
     activities: Array.isArray(dpr?.progress) ? dpr.progress.length : 0,
-    equipment: Array.isArray(dpr?.equipment) ? dpr.equipment.length : 0,
+    equipment: visibleEquipmentRows(dpr?.equipment).length,
     labour: Array.isArray(dpr?.labour) ? dpr.labour.length : 0,
     materials: Array.isArray(dpr?.materials) ? dpr.materials.length : 0,
   };

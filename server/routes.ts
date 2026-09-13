@@ -1,6 +1,6 @@
 import type { Express, Response } from "express";
 import type { Server } from "http";
-import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, assertValidDieselPhysicalStock } from "./storage";
+import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, assertValidDieselPhysicalStock } from "./storage";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -1547,7 +1547,7 @@ export async function registerRoutes(
       }
       // Role is derived from the authenticated session — cannot be spoofed.
       const role = user?.isAdmin ? "admin" : "manager";
-      const sub = await storage.createPushSubscription({
+      const result = await storage.createPushSubscription({
         endpoint: subscription.endpoint,
         p256dh: subscription.keys.p256dh,
         auth: subscription.keys.auth,
@@ -1555,22 +1555,32 @@ export async function registerRoutes(
         role,
         userId: user?.id ?? null,
       });
-      sendTestPush(subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth).catch(() => {});
-      res.status(201).json(sub);
+      // Mount/reopen synchronization is silent. An enabled confirmation is
+      // reserved for the one atomic insertion caused by explicit activation.
+      if (req.body.mode === "activate" && result.created) {
+        sendTestPush(subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth).catch(() => {});
+      }
+      res.status(result.created ? 201 : 200).json(result.subscription);
     } catch (err: any) {
+      if (err instanceof PushSubscriptionOwnershipError) {
+        return res.status(403).json({ message: "subscription_not_owned" });
+      }
       console.error("[Push] Subscribe error:", err);
       res.status(500).json({ message: err.message || "Failed to subscribe" });
     }
   });
 
-  app.delete("/api/push/unsubscribe", async (req, res) => {
+  app.delete("/api/push/unsubscribe", requireAuth, async (req, res) => {
     try {
       if (!assertEdit(req, res, "dashboard")) return;
       const { endpoint } = req.body;
       if (!endpoint) {
         return res.status(400).json({ message: "Endpoint required" });
       }
-      await storage.deletePushSubscriptionByEndpoint(endpoint);
+      const result = await storage.deletePushSubscriptionForUser(endpoint, req.authUser!.id);
+      if (result === "forbidden") {
+        return res.status(403).json({ message: "subscription_not_owned" });
+      }
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to unsubscribe" });

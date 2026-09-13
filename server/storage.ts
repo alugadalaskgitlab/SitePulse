@@ -411,6 +411,7 @@ import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { pickLatestClosing, type ResolvedClosing } from "@shared/equipmentContinuity";
 import { computeEquipmentUsage } from "@shared/equipmentUsage";
+import { isMeaningfulEquipmentRow, meaningfulEquipmentRows } from "@shared/equipmentUsage";
 import { shouldCreateDprEquipmentDieselLedger } from "@shared/dprPlantLink";
 import { normaliseUnit, computeRequirementStatus, isContractCutToFillDescription } from "@shared/planningEngine";
 import { convertSolidQty } from "@shared/uomConvert";
@@ -1275,8 +1276,9 @@ export interface IStorage {
   // Push Subscriptions
   getAllPushSubscriptions(): Promise<PushSubscription[]>;
   getActivePushSubscriptions(): Promise<PushSubscription[]>;
-  createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription>;
+  createPushSubscription(data: InsertPushSubscription): Promise<{ subscription: PushSubscription; created: boolean }>;
   deletePushSubscriptionByEndpoint(endpoint: string): Promise<void>;
+  deletePushSubscriptionForUser(endpoint: string, userId: number): Promise<"deleted" | "missing" | "forbidden">;
   deletePushSubscriptionsByUserId(userId: number): Promise<void>;
   getUsersToNotify(sectionKey: string): Promise<number[]>;
   
@@ -2330,6 +2332,13 @@ export class AttachmentReferenceError extends Error {
   }
 }
 
+export class PushSubscriptionOwnershipError extends Error {
+  constructor() {
+    super("This push subscription belongs to another account.");
+    this.name = "PushSubscriptionOwnershipError";
+  }
+}
+
 export class DatabaseStorage implements IStorage {
   // === Owner/Admin transaction controls & audit trail ===
   async logAudit(entry: InsertAuditLog): Promise<AuditLog> {
@@ -2564,12 +2573,43 @@ export class DatabaseStorage implements IStorage {
       },
       orderBy: desc(dprs.date),
     });
+    // The list endpoint feeds dashboard/report exports. Hydrate active
+    // maintenance children before any read-side visibility decision, so a
+    // blank parent with a genuine breakdown is never mistaken for a legacy
+    // start-time placeholder.
+    const equipmentIds = rows.flatMap((dpr: any) => (dpr.equipment ?? []).map((row: any) => row.id));
+    const breakdowns = equipmentIds.length
+      ? await db.select().from(equipmentMaintenanceLogs).where(and(
+        eq(equipmentMaintenanceLogs.sourceType, "dpr_log"),
+        inArray(equipmentMaintenanceLogs.sourceRecordId, equipmentIds),
+        eq(equipmentMaintenanceLogs.isCancelled, false),
+        eq(equipmentMaintenanceLogs.isDeleted, false),
+      ))
+      : [];
+    const breakdownsByEquipmentLog = new Map<number, any[]>();
+    for (const breakdown of breakdowns) {
+      const sourceId = Number(breakdown.sourceRecordId);
+      const sourceBreakdowns = breakdownsByEquipmentLog.get(sourceId) ?? [];
+      sourceBreakdowns.push({
+        clientKey: `maintenance-${breakdown.id}`,
+        maintenanceLogId: breakdown.id,
+        fromTime: breakdown.fromTime ?? "",
+        toTime: breakdown.toTime ?? "",
+        description: breakdown.description,
+        responsibility: breakdown.responsibility ?? "",
+        repairScope: breakdown.repairScope ?? "",
+        debitableToVendor: !!breakdown.debitableToVendor,
+        remarks: breakdown.remarks ?? "",
+      });
+      breakdownsByEquipmentLog.set(sourceId, sourceBreakdowns);
+    }
     return rows.map((dpr: any) => ({
       ...dpr,
       equipment: dpr.equipment.map((row: any) => {
-        if (row.activitySegments?.length) return { ...row, activityAllocations: undefined };
-        if (row.activityAllocations?.length) return { ...row, activitySegments: undefined };
-        return { ...row, activitySegments: undefined, activityAllocations: undefined };
+        const breakdowns = breakdownsByEquipmentLog.get(row.id) ?? [];
+        if (row.activitySegments?.length) return { ...row, activityAllocations: undefined, breakdowns };
+        if (row.activityAllocations?.length) return { ...row, activitySegments: undefined, breakdowns };
+        return { ...row, activitySegments: undefined, activityAllocations: undefined, breakdowns };
       }),
     })) as DprWithDetails[];
   }
@@ -2966,6 +3006,13 @@ export class DatabaseStorage implements IStorage {
     audit?: DprEquipmentClosureAudit,
     options?: { reuseExistingDraft?: boolean; scopeVersionToken?: string | null },
   ): Promise<Dpr> {
+    // A DPR always owns only meaningful equipment rows. This is intentionally
+    // a write-time filter, not a cleanup: existing untouched placeholders stay
+    // in history unless this DPR is explicitly saved again.
+    dprData = {
+      ...dprData,
+      equipment: meaningfulEquipmentRows(dprData.equipment as any[] | undefined) as any,
+    };
     // Transaction to insert DPR and all related nested data
     // Use client-provided timestamp for accurate local time, fall back to server time
     const dprStatusVal: string = (dprData as any).dprStatus ?? "submitted";
@@ -3324,7 +3371,12 @@ export class DatabaseStorage implements IStorage {
       // historical drafts created before this invariant).
       if (isSubmitting) await this.cleanupDprEquipmentDieselLedger(tx, id);
       const oldEquipmentRows = await tx.select().from(equipmentLogs).where(eq(equipmentLogs.dprId, id));
-      const equipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, oldEquipmentRows, dprData.equipment as any[] | undefined);
+      const preservedEquipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, oldEquipmentRows, dprData.equipment as any[] | undefined);
+      // Preserve linked children before applying the placeholder rule. A
+      // compact client patch may omit allocations, but that must never turn
+      // the persisted evidence row into a deletable placeholder.
+      const equipmentInputs = meaningfulEquipmentRows(preservedEquipmentInputs);
+      dprData = { ...dprData, equipment: equipmentInputs as any };
       await this.assertDprProjectLinksTx(
         tx,
         id,
@@ -3426,7 +3478,9 @@ export class DatabaseStorage implements IStorage {
       // Clean up old DPR equipment diesel ledger entries before deleting equipment logs
       await this.cleanupDprEquipmentDieselLedger(tx, id);
       const oldEquipmentRows = await tx.select().from(equipmentLogs).where(eq(equipmentLogs.dprId, id));
-      const equipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, oldEquipmentRows, dprData.equipment as any[] | undefined);
+      const preservedEquipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, oldEquipmentRows, dprData.equipment as any[] | undefined);
+      const equipmentInputs = meaningfulEquipmentRows(preservedEquipmentInputs);
+      dprData = { ...dprData, equipment: equipmentInputs as any };
 
       // Clean up old activity personnel before deleting progress entries
       const oldProgressRows = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey }).from(progressEntries).where(eq(progressEntries.dprId, id));
@@ -3678,13 +3732,21 @@ export class DatabaseStorage implements IStorage {
 
       // Copy equipment logs with uppercase
       if (original.equipment?.length) {
-        const cloneEquipmentInputs = (original.equipment as any[]).map((row) => {
-          if (Array.isArray(row.activityAllocations) && row.activityAllocations.length === 0) {
-            const { activityAllocations: _emptyAllocations, ...legacyRow } = row;
-            return legacyRow;
-          }
-          return row;
-        });
+        // Keep the original source row paired with its transformed clone input.
+        // Filtering historical placeholders changes indexes; using the raw
+        // original array after this point would attach/cancel breakdowns or
+        // canonical usage against the wrong source equipment log.
+        const clonePairs = (original.equipment as any[]).map((sourceRow) => {
+          const input = Array.isArray(sourceRow.activityAllocations) && sourceRow.activityAllocations.length === 0
+            ? (() => {
+              const { activityAllocations: _emptyAllocations, ...legacyRow } = sourceRow;
+              return legacyRow;
+            })()
+            : sourceRow;
+          return { sourceRow, input };
+        }).filter(({ input }) => isMeaningfulEquipmentRow(input));
+        const cloneEquipmentInputs = clonePairs.map(({ input }) => input);
+        const cloneSourceRows = clonePairs.map(({ sourceRow }) => sourceRow);
         this.assertValidDprEquipmentDieselSources(cloneEquipmentInputs);
         const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, cloneEquipmentInputs, newDpr.boqProjectId);
         const insertedEquipLogs = await tx.insert(equipmentLogs).values(
@@ -3720,7 +3782,7 @@ export class DatabaseStorage implements IStorage {
           }))
         ).returning();
         await this.persistEquipmentActivityAllocationsTx(tx, insertedEquipLogs, cloneEquipmentInputs);
-        await this.reconcileDprBreakdownsTx(tx, original.equipment, insertedEquipLogs, original.equipment, original.date);
+        await this.reconcileDprBreakdownsTx(tx, cloneSourceRows, insertedEquipLogs, cloneEquipmentInputs, original.date);
         // A clone is another document view of the same physical event. It
         // neither posts fuel again nor creates a second canonical usage.
         // Existing links remain authoritative; only genuinely legacy,
@@ -3730,7 +3792,7 @@ export class DatabaseStorage implements IStorage {
           allowMovedSourceReuse: true,
           preserveLinkedClone: true,
           cloneSourceLogIds: Object.fromEntries(
-            insertedEquipLogs.map((row: any, index: number) => [row.id, original.equipment![index].id]),
+            insertedEquipLogs.map((row: any, index: number) => [row.id, cloneSourceRows[index].id]),
           ),
         });
       }
@@ -3896,7 +3958,9 @@ export class DatabaseStorage implements IStorage {
       let insertedProgress: any[] = [];
       const originalEquipmentRows = await tx.select().from(equipmentLogs)
         .where(eq(equipmentLogs.dprId, originalId));
-      const equipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, originalEquipmentRows, dprData.equipment as any[] | undefined);
+      const preservedEquipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, originalEquipmentRows, dprData.equipment as any[] | undefined);
+      const equipmentInputs = meaningfulEquipmentRows(preservedEquipmentInputs);
+      dprData = { ...dprData, equipment: equipmentInputs as any };
       const originalProgressForRemap = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey })
         .from(progressEntries).where(eq(progressEntries.dprId, originalId));
 
@@ -5624,6 +5688,35 @@ export class DatabaseStorage implements IStorage {
     const logs = dprIds.length
       ? await db.select().from(equipmentLogs).where(inArray(equipmentLogs.dprId, dprIds))
       : [];
+    const logIds = logs.map((log) => log.id);
+    // A historical log can be blank while its allocation/segment is the
+    // actual record of work. Carry those children to the pure report builder
+    // before it applies the placeholder suppression rule.
+    const [activityAllocations, activitySegments] = logIds.length
+      ? await Promise.all([
+        db.select().from(equipmentActivityAllocations)
+          .where(inArray(equipmentActivityAllocations.equipmentLogId, logIds)),
+        db.select().from(equipmentActivitySegments)
+          .where(inArray(equipmentActivitySegments.equipmentLogId, logIds)),
+      ])
+      : [[], []];
+    const allocationsByLogId = new Map<number, any[]>();
+    for (const allocation of activityAllocations) {
+      const rows = allocationsByLogId.get(Number(allocation.equipmentLogId)) ?? [];
+      rows.push(allocation);
+      allocationsByLogId.set(Number(allocation.equipmentLogId), rows);
+    }
+    const segmentsByLogId = new Map<number, any[]>();
+    for (const segment of activitySegments) {
+      const rows = segmentsByLogId.get(Number(segment.equipmentLogId)) ?? [];
+      rows.push(segment);
+      segmentsByLogId.set(Number(segment.equipmentLogId), rows);
+    }
+    const reportLogs = logs.map((log) => ({
+      ...log,
+      activityAllocations: allocationsByLogId.get(Number(log.id)) ?? [],
+      activitySegments: segmentsByLogId.get(Number(log.id)) ?? [],
+    }));
     const linkedUsageIds = logs
       .map((log) => log.plantUsageId)
       .filter((id): id is number => id != null);
@@ -5644,7 +5737,6 @@ export class DatabaseStorage implements IStorage {
       ? loadedUsages
       : loadedUsages.filter((usage) => usage.dprId != null || linkedUsageIdSet.has(usage.id));
     const breakdownSourceConditions = [];
-    const logIds = logs.map((log) => log.id);
     const usageIds = usages.map((usage) => usage.id);
     if (logIds.length) {
       breakdownSourceConditions.push(and(
@@ -5693,7 +5785,7 @@ export class DatabaseStorage implements IStorage {
       masters,
       filterMasters,
       usages: usages as any,
-      logs: logs as any,
+      logs: reportLogs as any,
       breakdowns,
       filters,
       asOfDate: filters?.dateTo ?? new Date().toISOString().slice(0, 10),
@@ -5920,7 +6012,7 @@ export class DatabaseStorage implements IStorage {
     const boqById = new Map(boqRows.map((row: any) => [Number(row.id), row]));
     const barById = new Map(barRows.map((row: any) => [Number(row.id), row]));
     return rows.map((input: any) => {
-      const { breakdowns: _breakdowns, persistedId: _persistedId, activityAllocations, activitySegments, _preserveActivityAssignment, ...row } = input;
+      const { breakdowns: _breakdowns, persistedId: _persistedId, activityAllocations, activitySegments, _preserveActivityAssignment, _preserveLinkedChildren, ...row } = input;
       const normalizedSegmentsAreExplicit = Array.isArray(activitySegments)
         && (activitySegments.length > 0 || !Array.isArray(activityAllocations));
       const master = masterById.get(Number(row.equipmentId));
@@ -6115,6 +6207,15 @@ export class DatabaseStorage implements IStorage {
     }
     const allocationRows = await tx.select().from(equipmentActivityAllocations)
       .where(inArray(equipmentActivityAllocations.equipmentLogId, oldLogs.map(row => row.id)));
+    const linkedBreakdownRows = await tx.select({ sourceRecordId: equipmentMaintenanceLogs.sourceRecordId })
+      .from(equipmentMaintenanceLogs)
+      .where(and(
+        eq(equipmentMaintenanceLogs.sourceType, "dpr_log"),
+        inArray(equipmentMaintenanceLogs.sourceRecordId, oldLogs.map(row => row.id)),
+        eq(equipmentMaintenanceLogs.isCancelled, false),
+        eq(equipmentMaintenanceLogs.isDeleted, false),
+      ));
+    const breakdownLogIds = new Set(linkedBreakdownRows.map(row => Number(row.sourceRecordId)));
     const allocationsByLogId = new Map<number, any[]>();
     for (const allocation of allocationRows) {
       const list = allocationsByLogId.get(Number(allocation.equipmentLogId)) ?? [];
@@ -6122,13 +6223,27 @@ export class DatabaseStorage implements IStorage {
       allocationsByLogId.set(Number(allocation.equipmentLogId), list);
     }
     return inputs.map(input => {
-      if (Array.isArray(input?.activitySegments) || Array.isArray(input?.activityAllocations)) return input;
       const persistedId = Number(input?.persistedId ?? input?.id);
       if (!Number.isFinite(persistedId) || !oldById.has(persistedId)) return input;
+      const hasLinkedBreakdown = breakdownLogIds.has(persistedId) && !Array.isArray(input?.breakdowns);
       const preservedSegments = segmentsByLogId.get(persistedId);
-      if (preservedSegments?.length) return { ...input, activitySegments: preservedSegments, _preserveActivityAssignment: true };
+      if (Array.isArray(input?.activitySegments) || Array.isArray(input?.activityAllocations)) {
+        return hasLinkedBreakdown ? { ...input, _preserveLinkedChildren: true } : input;
+      }
+      if (preservedSegments?.length) return {
+        ...input,
+        activitySegments: preservedSegments,
+        _preserveActivityAssignment: true,
+        ...(hasLinkedBreakdown ? { _preserveLinkedChildren: true } : {}),
+      };
       const preserved = allocationsByLogId.get(persistedId);
-      return preserved?.length ? { ...input, activityAllocations: preserved, _preserveActivityAssignment: true } : input;
+      if (preserved?.length) return {
+        ...input,
+        activityAllocations: preserved,
+        _preserveActivityAssignment: true,
+        ...(hasLinkedBreakdown ? { _preserveLinkedChildren: true } : {}),
+      };
+      return hasLinkedBreakdown ? { ...input, _preserveLinkedChildren: true } : input;
     });
   }
 
@@ -10325,21 +10440,64 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(pushSubscriptions);
   }
 
-  async createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription> {
-    const [sub] = await db
+  async createPushSubscription(data: InsertPushSubscription): Promise<{ subscription: PushSubscription; created: boolean }> {
+    // INSERT ... ON CONFLICT DO NOTHING makes creation an atomic first-
+    // activation marker. Only that request may send the enabled confirmation.
+    const [created] = await db
       .insert(pushSubscriptions)
       .values(data)
-      .onConflictDoUpdate({
-        target: pushSubscriptions.endpoint,
-        // Refresh on every re-subscribe so role/userId stay current.
-        set: { p256dh: data.p256dh, auth: data.auth, label: data.label, role: data.role, userId: data.userId ?? null },
-      })
+      .onConflictDoNothing()
       .returning();
-    return sub;
+    if (created) return { subscription: created, created: true };
+
+    const [existing] = await db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, data.endpoint))
+      .limit(1);
+    if (!existing) {
+      // A concurrent unsubscribe removed it after our conflict. Retrying the
+      // request is safe and preserves the first-activation invariant.
+      return this.createPushSubscription(data);
+    }
+    if (existing.userId != null && existing.userId !== data.userId) {
+      throw new PushSubscriptionOwnershipError();
+    }
+
+    // Legacy anonymous rows can be claimed by the browser that holds their
+    // opaque endpoint. Once claimed, every refresh is constrained to its user.
+    const ownerCondition = existing.userId == null
+      ? isNull(pushSubscriptions.userId)
+      : eq(pushSubscriptions.userId, data.userId ?? -1);
+    const [updated] = await db
+      .update(pushSubscriptions)
+      .set({ p256dh: data.p256dh, auth: data.auth, label: data.label, role: data.role, userId: data.userId ?? null })
+      .where(and(eq(pushSubscriptions.endpoint, data.endpoint), ownerCondition))
+      .returning();
+    if (updated) return { subscription: updated, created: false };
+
+    // An anonymous row was claimed concurrently. Read it again to apply the
+    // same ownership check instead of ever reassigning another user's device.
+    return this.createPushSubscription(data);
   }
 
   async deletePushSubscriptionByEndpoint(endpoint: string): Promise<void> {
     await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+  }
+
+  async deletePushSubscriptionForUser(endpoint: string, userId: number): Promise<"deleted" | "missing" | "forbidden"> {
+    const [existing] = await db
+      .select({ userId: pushSubscriptions.userId })
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, endpoint))
+      .limit(1);
+    if (!existing) return "missing";
+    if (existing.userId !== userId) return "forbidden";
+
+    await db
+      .delete(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.endpoint, endpoint), eq(pushSubscriptions.userId, userId)));
+    return "deleted";
   }
 
   async deletePushSubscriptionsByUserId(userId: number): Promise<void> {

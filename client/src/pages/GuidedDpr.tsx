@@ -77,6 +77,7 @@ import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliatio
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
+import { currentLocalEquipmentTime, isMeaningfulEquipmentRow, isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 
@@ -1088,11 +1089,7 @@ export default function GuidedDpr() {
       // keep any row with ANY content (machine may be "" — column accepts it);
       // final submits still require a machine name.
       equipment: equipment
-        .filter((e) =>
-          asDraft
-            ? e.machine || e.vehicleNo || e.operator || e.task || Object.values(e.passthrough ?? {}).some((v) => v != null && v !== "")
-            : e.machine,
-        )
+        .filter((e) => isMeaningfulEquipmentRow({ ...e.passthrough, machine: e.machine, vehicleNo: e.vehicleNo, operator: e.operator, task: e.task }))
         .map((e) => {
           const pt = e.passthrough as any;
           const master = activeEquipmentMaster.find((m: any) => m.id === pt.equipmentId);
@@ -1132,9 +1129,7 @@ export default function GuidedDpr() {
       }
       const payload = buildPayload(asDraft);
       const payloadRows = equipment.filter((e) =>
-        asDraft
-          ? e.machine || e.vehicleNo || e.operator || e.task || Object.values(e.passthrough ?? {}).some((v) => v != null && v !== "")
-          : e.machine,
+        isMeaningfulEquipmentRow({ ...e.passthrough, machine: e.machine, vehicleNo: e.vehicleNo, operator: e.operator, task: e.task }),
       );
       payload.equipment = (await prepareBreakdownAttachments(payloadRows)).map((row) => buildGuidedEquipmentPayload(row)) as any[];
       // Part A: reuse the saved draft record instead of creating duplicates.
@@ -2054,7 +2049,10 @@ export default function GuidedDpr() {
                   const isDirectPurchase = pt.dieselSource === "direct_purchase";
                   return (
                     <div key={i} className="mb-3 p-3 border rounded-lg bg-muted/20 space-y-2 transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", i)} data-testid={"equipment-row-" + String(i)}>
-                      <details className="group">
+                      {/* The prior closed form was <details className="group">. Empty
+                          rows deliberately open now so the identity selector, not an
+                          Operating placeholder card, is the first visible control. */}
+                      <details className="group" open={!isMeaningfulEquipmentRow({ ...pt, machine: eq.machine, vehicleNo: eq.vehicleNo, operator: eq.operator, task: eq.task })}>
                       <summary className="min-h-11 cursor-pointer list-none py-3 text-xs font-semibold text-muted-foreground sm:min-h-0 sm:py-1">Equipment setup and additional usage details</summary>
                       {/* A. Identity */}
                       <div className="grid grid-cols-[1fr_auto] gap-2">
@@ -2082,6 +2080,10 @@ export default function GuidedDpr() {
                               if (j !== i) return r;
                               const selectedRow = applyGuidedEquipmentMasterSelection(r, sel);
                               const nextPt = { ...selectedRow.passthrough } as Record<string, any>;
+                              // New rows get their convenience start time only
+                              // after the engineer deliberately identifies a
+                              // machine. Hydrated history is never modified.
+                              if (r.persistedId == null && !nextPt.startTime) nextPt.startTime = currentLocalEquipmentTime();
                               // Same rule as Detailed: owned equipment is always
                               // Time / Meter — trip fields don't apply.
                               if (sel.ownership !== "hired") {
@@ -2538,7 +2540,7 @@ export default function GuidedDpr() {
           <div>
             <p className="font-semibold mb-0.5">Equipment</p>
             <p className="text-muted-foreground" data-testid="review-equipment">
-              {equipment.filter((e) => e.machine).length === 0 ? "No equipment recorded" : equipment.filter((e) => e.machine).map((e) => e.machine).join(" · ")}
+              {equipment.filter((e) => isVisibleEquipmentRow({ ...e.passthrough, machine: e.machine, vehicleNo: e.vehicleNo, operator: e.operator, task: e.task })).length === 0 ? "No equipment recorded" : equipment.filter((e) => isVisibleEquipmentRow({ ...e.passthrough, machine: e.machine, vehicleNo: e.vehicleNo, operator: e.operator, task: e.task })).map((e) => e.machine || "Unidentified equipment").join(" · ")}
             </p>
           </div>
           {unmanagedSectionsRef.current.materials.length > 0 && (
@@ -2642,7 +2644,7 @@ export default function GuidedDpr() {
               const r = evaluateDprSubmitReadiness({
                 workType: "road",
                 progress: withCutFillReadinessContext(entries, boqItems),
-                equipment: equipment.filter((e) => e.machine).map((e) => buildGuidedEquipmentPayload(e)) as any[],
+                equipment: equipment.filter((e) => isMeaningfulEquipmentRow({ ...e.passthrough, machine: e.machine, vehicleNo: e.vehicleNo, operator: e.operator, task: e.task })).map((e) => buildGuidedEquipmentPayload(e)) as any[],
                 labour: labour as any[],
                 materials: unmanagedSectionsRef.current.materials as any[],
               });
@@ -2728,11 +2730,11 @@ export default function GuidedDpr() {
                   ))}
                 </ul>
               </div>
-              {(yesterdayDpr.equipment ?? []).filter((e: any) => e.machine).length > 0 && (
+              {(yesterdayDpr.equipment ?? []).filter((e: any) => isVisibleEquipmentRow(e)).length > 0 && (
                 <div>
                   <p className="font-medium mb-1">Equipment</p>
                   <ul className="list-disc list-inside text-muted-foreground">
-                    {(yesterdayDpr.equipment ?? []).filter((e: any) => e.machine).map((e: any, i: number) => <li key={i}>{e.machine}</li>)}
+                    {(yesterdayDpr.equipment ?? []).filter((e: any) => isVisibleEquipmentRow(e)).map((e: any, i: number) => <li key={i}>{e.machine || "Unidentified equipment"}</li>)}
                   </ul>
                 </div>
               )}

@@ -32,6 +32,7 @@ import {
 import { boqItemDisplayName } from "@/lib/itemName";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { resolveEquipmentBoqHours } from "@shared/equipmentActivityAllocations";
+import { visibleEquipmentRows } from "@shared/equipmentUsage";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
 import type { BoqProject } from "@shared/schema";
@@ -698,7 +699,7 @@ function computePlanVsActual(
     let actualEquipKm = 0;
     let actualLabourDays = 0;
     for (const dpr of relevantDprs) {
-      for (const eq of dpr.equipment) {
+      for (const eq of visibleEquipmentRows(dpr.equipment)) {
         // Activity allocations are the authoritative BOQ consumption when
         // present. The legacy parent BOQ link is used only for equipment rows
         // with no allocations, so a partially allocated shift leaves its

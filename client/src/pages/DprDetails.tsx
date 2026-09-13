@@ -20,6 +20,7 @@ import { dprMeasurementSummary } from "@shared/dprGeometry";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { layerDisplayName } from "@shared/layerDisplay";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { visibleEquipmentRows } from "@shared/equipmentUsage";
 
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
@@ -38,6 +39,14 @@ export default function DprDetails() {
       return res.json();
     },
   });
+
+  // Keep persisted legacy rows editable, but do not turn the historical
+  // start-time auto-prefill shape into an Operating entry in this read view.
+  // Child evidence (allocations, segments, and breakdowns) remains visible.
+  const visibleEquipment = useMemo(
+    () => visibleEquipmentRows((dpr as any)?.equipment),
+    [dpr],
+  );
 
   // BOQ item lookup for progress entries — chain: sites → boq project → items
   const { data: sites = [] } = useQuery<Site[]>({
@@ -376,12 +385,12 @@ export default function DprDetails() {
             <CardTitle>Equipment Log</CardTitle>
           </CardHeader>
           <CardContent>
-            {dpr.equipment.length === 0 ? (
+            {visibleEquipment.length === 0 ? (
               <p className="text-muted-foreground italic">No equipment usage recorded.</p>
             ) : (
               <>
                 <div className="space-y-3">
-                  {dpr.equipment.map((item: any, i: number) => (
+                  {visibleEquipment.map((item: any, i: number) => (
                     <DprEquipmentCompact
                       key={item.id ?? i}
                       row={item}
@@ -401,7 +410,7 @@ export default function DprDetails() {
                 <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
                   <p className="text-sm text-muted-foreground">Total Diesel Issued</p>
                   <p className="text-2xl font-bold text-primary">
-                    {dpr.equipment.reduce((sum: number, e: any) => sum + (e.diesel || 0), 0).toFixed(3)} L
+                    {visibleEquipment.reduce((sum: number, e: any) => sum + (e.diesel || 0), 0).toFixed(3)} L
                   </p>
                 </div>
               </>

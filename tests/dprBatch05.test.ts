@@ -136,6 +136,26 @@ describe("deriveDprChecklist — real completeness, not row existence", () => {
     expect(c.items.find((i) => i.id === "c4")!.sub).toBe("No activities recorded yet");
     expect(c.items.find((i) => i.id === "c2")!.details).toHaveLength(0);
   });
+  it("hides only the legacy start-time auto-prefill from Field Home, while retaining genuine equipment evidence", () => {
+    const legacy = {
+      machine: "Operating", vehicleNo: "", operator: "Operator name",
+      entryType: "time_meter", startTime: "08:00", endTime: "", hoursWorked: 0, diesel: 0,
+    };
+    const hidden = deriveDprChecklist(draft({ equipment: [legacy] }), false);
+    const hiddenEquipment = hidden.items.find((i) => i.id === "c1")!;
+    expect(hiddenEquipment.sub).toBe("No equipment recorded yet");
+    expect(hidden.openEquipment).toBe(0);
+
+    const retained = deriveDprChecklist(draft({
+      equipment: [
+        { ...legacy, machine: "Roller" },
+        { ...legacy, machine: "", activityAllocations: [{ boqItemId: 4 }] },
+      ],
+    }), false);
+    const retainedEquipment = retained.items.find((i) => i.id === "c1")!;
+    expect(retainedEquipment.sub).not.toBe("No equipment recorded yet");
+    expect(retained.openEquipment).toBeGreaterThan(0);
+  });
   it("numeric strings from pg are handled (quantity '120' counts as entered)", () => {
     const c = deriveDprChecklist(draft({
       progress: [{ activity: "GSB", chainageFrom: "0+000", chainageTo: "0+100", quantity: "120" as any }],
