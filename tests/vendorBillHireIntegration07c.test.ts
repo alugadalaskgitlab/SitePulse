@@ -57,15 +57,18 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain('if ((entryType || "").toLowerCase() === "monthly") return false');
     expect(storage).toContain('if (entryTypeFilter === "daily_hourly") return ["daily", "hourly", "time_meter"].includes(et)');
     expect(storage).toContain('if (entryTypeFilter === "trip_based") return et === "trip_based"');
-    expect(client).toContain("Equipment Hire Working / Measurement Sheet");
+    expect(client).toContain("HistoricalHireWorkingSheet");
   });
 
-  it("keeps Pull Other Items additive and derives its count from final eligibility", () => {
+  it("keeps Pull Items additive and derives its count from final eligibility", () => {
     expect(client).toContain("availableOtherBillItems(mappedAutoItems, lineItems, hireGroups)");
     expect(client).toContain("setLineItems(prev => mergeOtherBillItems(");
     expect(client).toContain("mapped,");
     expect(client).not.toContain("setLineItems(uncovered)");
-    expect(client).toContain("PULL ${availableOtherItems.length} OTHER ITEM");
+    expect(client).toContain("PULL ${availableOtherItems.length}");
+    expect(client).toContain('billType === "equipment" ? " ITEM" : " OTHER ITEM"');
+    expect(client).toContain('const isGrouped = billType === "all" || billType === "equipment"');
+    expect(client).not.toContain('const singleType = billType === "equipment"');
   });
 
   it("keeps source-qualified auto evidence read-only and visibly marked as auto", () => {
@@ -74,20 +77,31 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(client).toContain("isAutoLineSource(item.source) ? \"AUTO\" : \"-\"");
   });
 
-  it("presents part-month monthly hire as calendar days rather than one month", () => {
-    expect(client).toContain("${periodDays}/${calendarDays} CALENDAR DAYS");
-    expect(client).toContain("CONTRACT DIVISOR: ${customDivisor} DAYS");
-    expect(client).toContain("CONTRACT DIVISOR: 30 DAYS");
-    expect(client).toContain("EDIT QTY / AMOUNT");
-    expect(client).not.toContain('result.quantity.toFixed(2)} MONTHS');
+  it("keeps historical hire snapshots readable without restoring the removed composer", () => {
+    expect(client).toContain("HistoricalHireWorkingSheet");
+    expect(client).toContain("EQUIPMENT HIRE CALCULATION SNAPSHOT");
+    expect(client).toContain('isHistoricalHireEdit && billType === "equipment"');
+    expect(client).not.toContain("false &&");
+    expect(client).not.toContain("EDIT QTY / AMOUNT");
+    expect(client).toContain("historicalHireBillId");
+    expect(client).toContain("setHistoricalHireBillId(persisted.length > 0 ? bill.id : null)");
+    expect(client).toContain("setHireGroups(prev => prev.map(group => ({ ...group, periodFrom: value })))");
+    expect(client).toContain("setHireGroups(prev => prev.map(group => ({ ...group, periodTo: value })))");
+    expect(client).not.toContain("setHireGroups([]); }\n                 }} data-testid=\"input-period-from\"");
+    expect(client).not.toContain("setHireGroups([]); }\n                 }} data-testid=\"input-period-to\"");
   });
 
-  it("shows recorded descriptions as primary evidence and computed no-activity separately", () => {
-    expect(client).toContain('"WORKED"');
-    expect(client).toContain('<span className="font-semibold text-muted-foreground">NO WORK / NO ACTIVITY</span>');
-    expect(client).toContain('Number(day.activityCount || 0) > 0');
-    expect(client).toContain("TOTAL TRIPS");
-    expect(client).toContain("NET HSD VARIANCE");
+  it("retains the historical working-sheet snapshot as read-only evidence", () => {
+    expect(client).toContain("HistoricalHireWorkingSheet");
+    expect(client).toContain("HSD ACTUAL / EXPECTED");
+    expect(client).toContain("FINAL RECOVERY");
+  });
+
+  it("routes itemized equipment details through the shared PDF action", () => {
+    expect(client).toContain("const hasPersistedHireStatements = Array.isArray");
+    expect(client).toContain("!hasPersistedHireStatements");
+    expect(client).toContain('data-testid="button-export-pdf"');
+    expect(client).toContain('href = `/api/vendor-bills/${bill.id}/pdf`');
   });
 
   it("loads authoritative diesel purchase evidence and freezes calculated recovery", () => {
@@ -98,11 +112,11 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain("dieselRecoveryFinalAmount: calc.diesel.finalRecoveryAmount");
   });
 
-  it("uses the single-equipment hire workflow and derives missing expected diesel from existing activity norms", () => {
+  it("keeps the historical equipment editor's terms, fuel, daily activity, and exports", () => {
     expect(client).toContain('data-testid="equipment-hire-straight-form"');
     expect(client).toContain('data-testid="select-equipment-hire"');
     expect(client).toContain('data-testid="select-equipment-hire-project"');
-    expect(client).toContain("selectHireEquipment");
+    expect(client).toContain("<Select value={selectedHireEquipmentId ? String(selectedHireEquipmentId) : \"\"} disabled>");
     expect(client).toContain("View Daily Activity");
     expect(client).toContain("EquipmentHireExportButtons");
     expect(client).toContain("Trip Candidate Review");
@@ -112,20 +126,20 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(client).toContain("Tank Readings N/A");
   });
 
-  it("never guesses a missing hire basis and blocks incomplete commercial terms", () => {
-    expect(client).toContain('const configuredHireBasis = (value: unknown): HireBillingBasis | null');
+  it("does not put Equipment Master hire-term validation on the shared new-bill flow", () => {
+    expect(client).not.toContain("const configuredHireBasis = (value: unknown): HireBillingBasis | null");
     expect(client).not.toContain('["monthly", "daily", "trip"].includes(eq.hireBillingBasis) ? eq.hireBillingBasis : "daily"');
     expect(client).not.toContain('eq.hireBillingBasis === "daily" ? "Daily Hire Available" : "Monthly Hire Available"');
-    expect(client).toContain("Hire terms incomplete");
-    expect(client).toContain("Correct the Equipment Master hire terms first.");
+    expect(client).not.toContain("Correct the Equipment Master hire terms first.");
     expect(storage).toContain("Hire group basis must match the Equipment Master hire billing basis");
   });
 
   it("supports hourly hire end-to-end and prevents duplicate overlapping groups", () => {
     expect(schema).toContain('basis: z.enum(["monthly", "daily", "hourly", "trip"])');
     expect(client).toContain('group.basis === "hourly" ? "HRS" : "TRIPS"');
+    expect(client).toContain("hireGroups.map(group =>");
+    expect(client).toContain("historicalHireBillId === editingBillId");
     expect(storage).toContain('group.basis === "hourly" ? "HRS" : "TRIPS"');
-    expect(client).toContain("prev.some(existing =>");
     expect(storage).toContain("Hire groups for the same equipment cannot overlap");
     expect(storage).toContain('source: "hire_statement"');
     expect(storage).toContain("is already covered by a hire group for this bill");

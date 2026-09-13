@@ -10215,14 +10215,11 @@ export async function registerRoutes(
     try {
       if (!assertCreateEither(req, res, "vendor_bills_raise", "vendor_bills")) return;
       const input = createVendorBillRequestSchema.parse(req.body);
-      if (input.billType.toLowerCase() === "equipment") {
-        if (!input.hireGroups || input.hireGroups.length !== 1) {
-          return res.status(400).json({ message: "Equipment-hire bills require exactly one selected hire group." });
-        }
-        if (input.hireGroups[0].quantityOverride !== undefined || input.hireGroups[0].grossAmountOverride !== undefined) {
-          return res.status(400).json({ message: "Quantity and gross-amount overrides are not allowed for new equipment-hire bills." });
-        }
-      }
+      // Equipment Hire uses the same itemized request contract as every other
+      // bill type.  The optional hireGroups payload remains available for
+      // historical/integrated hire statements, but a new shared-flow bill is
+      // intentionally allowed to omit it (including when Equipment Master
+      // hire terms are incomplete).
       // Project/site is optional bill context, retained only in the existing
       // immutable hire calculation snapshot (not a new vendor_bills column).
       // The request schema intentionally remains strict for commercial data,

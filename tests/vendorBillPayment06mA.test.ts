@@ -146,16 +146,24 @@ describe("06M-A vendor bill payment details", () => {
     expect(input).not.toHaveProperty("projectSite");
   });
 
-  it("rejects an equipment bill without one hire group or with client amount overrides before storage", async () => {
+  it("accepts a shared itemized equipment bill without hire groups or hire terms", async () => {
     const base = {
-      billDate: "2026-01-10", billType: "equipment", vendorName: "ACME HIRE",
-      periodFrom: "2026-01-10", periodTo: "2026-01-11", totalAmount: 10000, items: [],
+      billDate: "2026-01-10", billNo: "VB-EH-012", billType: "equipment", vendorName: "ACME HIRE",
+      periodFrom: "2026-01-10", periodTo: "2026-01-11", totalAmount: 10000,
+      gstRateEquipment: 18, tdsRate: 2,
+      items: [{
+        date: "2026-01-10", category: "equipment", description: "JCB MONTHLY HIRE",
+        qty: 1, unit: "MONTH", rate: 10000, amount: 10000, equipmentId: 9,
+      }],
     };
-    expect((await request(app).post("/api/vendor-bills").send(base)).status).toBe(400);
-    expect((await request(app).post("/api/vendor-bills").send({
-      ...base, hireGroups: [{ equipmentId: 9, periodFrom: "2026-01-10", periodTo: "2026-01-11",
-        basis: "daily", rate: 5000, grossAmountOverride: 1 }],
-    })).status).toBe(400);
+    const res = await request(app).post("/api/vendor-bills").send(base);
+    expect(res.status).toBe(201);
+    const [input] = storage.createVendorBill.mock.calls.at(-1);
+    expect(input).not.toHaveProperty("hireGroups");
+    expect(input).toMatchObject({
+      billType: "equipment", gstRateEquipment: 18, tdsRate: 2,
+      items: [expect.objectContaining({ description: "JCB MONTHLY HIRE", amount: 10000 })],
+    });
   });
 
   it("M: rejects payment modes outside the PI/diesel option set", async () => {

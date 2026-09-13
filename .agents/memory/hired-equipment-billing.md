@@ -29,13 +29,13 @@ Approved statements snapshot both terms and calculations and must not be recompu
 
 **How to apply:** Serialize overlapping creation per equipment with a database advisory lock, reject overlaps, use client-supplied revisions plus row locks for mutable lifecycle actions, and create at most one linked Vendor Bill under a statement row lock.
 
-The normal Equipment Hire Vendor Bill form is now one vendor, one equipment, one period, with read-only master terms. Historical multi-part statements remain historical, not a normal creation option.
+New Equipment Hire Vendor Bills use the shared itemized creation flow, not the monthly hire-group composer. Preserve the historical linked-statement editor and the separate Hire billing register.
 
-**Why:** The user explicitly chose a straight form over mid-period split flexibility. A rate/vendor change within the month is handled manually outside the simplified form for now; overlap protection remains mandatory.
+**Why:** The user deliberately withdrew the monthly creation redesign because incomplete master hire terms hid genuine logged billable activity. This supersedes the earlier one-machine straight-form product decision.
 
-**How to apply:** Recalculate only drafts from server-loaded operational facts; freeze approved terms and evidence. Before verification, require explicit treatment for exceptions and positive HSD-recovery suggestions.
+**How to apply:** Discover and pull ordinary items from existing DPR/Plant activity without hire-term eligibility gates. Monthly amounts can be entered manually. Do not delete or redesign the monthly engine, recompute historical snapshots, or change the separate register without a later explicit request.
 
-New Vendor Bill hire groups must start from an exact valid Equipment Master basis: monthly, daily, hourly, or trip. Missing or unsupported terms are never relabeled or defaulted.
+Where the retained linked-statement workflow uses hire groups, terms must have an exact valid Equipment Master basis: monthly, daily, hourly, or trip. This is not an eligibility gate for shared itemized bills.
 
 **Why:** A two-way display label and daily fallback made incomplete and hourly equipment appear monthly before changing behavior when added.
 
@@ -91,11 +91,11 @@ Paid and Balance are strictly per bill. Null payment compatibility is only for g
 
 **How to apply:** Initialize modern bills to numeric zero, disallow clearing it to null, freeze net and supporting daily evidence, and keep other bills independent.
 
-Normal hire-bill eligibility is contractual, not activity-based: require a genuine hire start date but allow an open end date.
+The retained linked-statement workflow has contractual eligibility: require a genuine hire start date but allow an open end date. This does not apply to new shared itemized Vendor Bills.
 
 **Why:** Monthly hire remains billable during no-work periods; a missing start date must not make equipment eligible for every historical month.
 
-**How to apply:** Discover vendors from eligible Equipment Master records for the selected period. Do not change generic vendor discovery or the separate hire register's legacy behavior.
+**How to apply:** Use eligible master terms only within retained historical hire-group editing. New itemized Vendor Bills use generic activity discovery. Keep the separate hire register's existing behavior.
 
 Bill-facing unavailable consumption is labelled “Tank Readings N/A”. Contractor-scope fuel hides the billing fuel section and columns, not the underlying records.
 

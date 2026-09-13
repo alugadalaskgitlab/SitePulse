@@ -1,0 +1,55 @@
+INSTRUCTION VB-09: Revert Equipment Hire billing to the shared itemized flow (drop the monthly hire-groups UI for now) — supersedes VB-08, do not send VB-08
+
+READ THIS FIRST — SCOPE DISCIPLINE
+VB-08 (equipment discovery diagnostic) is SUPERSEDED by this instruction — do not send VB-08, do not apply it. This is a deliberate product decision, not a bug patch: after reviewing the actual pre-monthly-hire version of this app, we've decided the "monthly hire billing" redesign (hire groups, the dedicated Equipment picker, per-group diesel recovery) is being pulled out of the "New Vendor Bill" creation flow for now, and Equipment Hire bills will again be created through the exact same shared itemized flow already used today for Material/Transport/Labour/Other. Monthly hire billing itself is NOT being deleted from the codebase — it will be redesigned properly and reintroduced later as a separate, later batch. Do not touch Equipment Performance, EQUIP-10, or the separate Hire billing register page (client/src/pages/EquipmentHireBilling.tsx — untouched, always out of scope). Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct comparison of the codebase before and after the monthly-hire redesign — do not re-derive)
+
+We compared the current build against the last build before the monthly hire feature existed (internally referenced snapshot "sp143", dated 28-Aug). In that version, Equipment Hire bills were created through the exact same unified flow as every other bill type: pick vendor + period, a banner reads "Equipment usage for [VENDOR] ([period]) from DPR & Plant records" with a "PULL N ITEMS" button, each pulled item becomes an editable line item (date, category badge, description, qty, unit, rate, amount), admins can also ADD ITEM manually, and one GST card at the bottom applies a rate per category actually present in the bill (including "GST ON EQUIPMENT"), computed off that category's subtotal. This never depended on Equipment Master's hire fields being complete — it billed off whatever was actually logged.
+
+Confirmed: this shared infrastructure was NEVER deleted. It is still fully intact and working today for Material/Transport/Labour/Other. What happened is Equipment was surgically carved OUT of it when the monthly-hire redesign shipped:
+- client/src/pages/VendorBills.tsx line 2768: the "PULL N ITEMS" banner condition now reads `billType !== "other" && billType !== "equipment"` — Equipment is explicitly excluded from the shared banner/pull mechanism.
+- Lines 787-795: vendor discovery routes billType==="equipment" to a separate `/api/vendor-bills/equipment-hire-discovery` endpoint (eligibility-gated on complete Equipment Master hire fields) instead of the shared `/api/vendor-bills/discover-vendors` endpoint every other bill type still uses.
+- Lines ~2355-2768 (the current build's numbering may have shifted slightly — verify against the live file): a separate `data-testid="equipment-hire-straight-form"` Card renders instead, built around selecting one piece of equipment from a dropdown fed only by hire-eligible equipment, auto-filling its stored hire terms, and a per-group diesel recovery calculator. A duplicate, already-dead entry point for the same system sits behind `{false && ...}` around line 2355 — this can now be deleted outright rather than kept as dead code.
+- Line 3196: a separate single-field GST branch (`singleType = billType === "equipment" ? ...`) exists alongside the multi-category GST card that already correctly handles "GST ON EQUIPMENT" for every other bill type (line 3190).
+
+This is why the vendor-discovery bug we found (video-traced, JCB hired by NARASIMHULU showing "No hired equipment is linked to this vendor for the selected period" despite genuine billable activity) exists: the new path requires complete Equipment Master hire terms (billing basis, rate, start date) before it will show equipment as billable at all, and gives no explanation when that data is incomplete. The old shared path never had this requirement. Reverting removes this entire class of bug, not just this one instance.
+
+DECISIONS CONFIRMED BEFORE BUILDING
+1. Existing bills already created under the current monthly-groups system (44 total bills in the register shown in our review, several tagged Equipment Hire, many already Paid) must be left completely untouched — their stored data, calculationSnapshot, and ability to be viewed/edited/exported must work exactly as they do today. Only the flow for CREATING NEW Equipment Hire bills changes. Do not migrate, recompute, or touch historical bills' data in any way.
+2. Any hired equipment currently marked hireBillingBasis === "monthly" in Equipment Master falls back to the same itemized flow as every other hire, for now — bill it via a manual ADD ITEM line entering the agreed monthly amount, exactly as any other manually-entered line item works today. Do not block or specially flag monthly-basis equipment; let it through the itemized flow like anything else. This is a deliberate, temporary state until the monthly engine is redesigned and reintroduced.
+
+FIX 1 — ROUTE EQUIPMENT HIRE THROUGH THE SAME SHARED ITEMIZED FLOW AS EVERY OTHER BILL TYPE
+a. Remove the `&& billType !== "equipment"` exclusion at line 2768 (and any other place with the same exclusion pattern) so the shared "PULL N ITEMS" banner, auto-items query, and itemized line-item table render for billType === "equipment" exactly as they do for material/transport/labour.
+b. Change vendor discovery for billType === "equipment" to use the same `/api/vendor-bills/discover-vendors` endpoint every other bill type uses (lines 787-795), instead of the eligibility-gated `/api/vendor-bills/equipment-hire-discovery`. The vendor list for Equipment Hire should now work exactly like the vendor list for Material/Transport/Labour — driven by real DPR/Plant activity, not Equipment Master hire-field completeness.
+c. Remove the dedicated `data-testid="equipment-hire-straight-form"` Card and its supporting single-equipment-picker UI entirely from the render path for billType === "equipment". Delete the already-dead duplicate `{false && ...}` block (~line 2355) outright — do not keep it as commented-out/dead code, we already have the real history if we need it.
+d. Remove the single-field GST branch at line 3196 for billType === "equipment"; let it use the same multi-category GST card (line 3184-3190) as every other bill type, which already correctly shows "GST ON EQUIPMENT" when equipment items are present.
+e. Any state/handlers that exist solely to serve the removed straight-form UI (hireGroups, addHireGroup, patchHireGroup, removeHireGroup, selectHireEquipment, editingHireCommercial, dieselRecovery-per-group fields, availableHireEquipment, and the hireActivityRows query used only by that UI) should be removed from VendorBills.tsx if nothing else references them — but verify each one first; some of this may still be read elsewhere (e.g. by the read-only historical bill detail view per Decision 1). Do not remove anything that historical bill viewing/export still depends on.
+
+FIX 2 — PRESERVE EVERYTHING THAT ISN'T PART OF THIS REVERT
+a. shared/hireBilling.ts (the monthly/breakdown/diesel-recovery calculation engine) must NOT be deleted or altered — leave it fully intact in the codebase for the future redesign.
+b. server/storage.ts's reconcileVendorBillHireGroups and the hire-group-aware branch inside updateVendorBillStatus must NOT be removed — they are what keeps historical Equipment Hire bills (created under the old flow) correctly readable, exportable, and correctly frozen at approval. Only the client-side creation UI changes; the server's ability to read and serve historical hire-group bills stays exactly as-is.
+c. Do not touch Material/Transport/Labour/Other bill types' behavior in any way — they already use the shared flow this reverts Equipment back to; confirm they are pixel-for-pixel unaffected.
+d. Do not remove gstRateEquipment, TDS, or any other schema field — they're used by both the shared itemized flow (going forward) and by historical bills (for reading).
+e. Do not touch the separate Hire billing register page (EquipmentHireBilling.tsx) — always out of scope, unaffected by this change.
+
+SCHEMA SAFETY
+No schema/migration change is expected — this is a client-side routing/UI revert plus one server routing change (discovery endpoint selection). All underlying tables and fields stay exactly as they are, for both the reverted flow and historical bill compatibility. If you find you need any schema change, stop and show the exact proposed change before writing a migration.
+
+TESTS
+A. Recreate the exact scenario from the video that surfaced this: vendor NARASIMHULU, period 01-Aug-2026 to 13-Sep-2026, Bill Type = Equipment Hire. Confirm the same "PULL N ITEMS" banner and itemized flow used for Material Supply now works identically for Equipment Hire, and the JCB's real hire activity is found and billable — with no dependency on Equipment Master's hire fields being complete.
+B. Set a GST rate on a new Equipment Hire bill created this way. Confirm it applies correctly via the shared multi-category GST card, same as Material/Transport/Labour.
+C. Add a manual line item for equipment whose Equipment Master hireBillingBasis is "monthly" (entering its agreed monthly amount as an ADD ITEM line). Confirm this works exactly like any other manual line item — no blocking, no special validation, no crash.
+D. Open, view, and export (PDF/Excel) at least 2 of the existing 44 bills that were created under the monthly-groups system (pick ones tagged Equipment Hire). Confirm they display and export exactly as they did before this change — completely unaffected.
+E. Confirm Material/Transport/Labour/Other bill types (creation, GST, TDS, export) are completely unaffected — pixel-for-pixel identical to before this change.
+F. Confirm the separate Hire billing register page is completely unaffected.
+G. Confirm no build errors or unused-import warnings are left behind from the removed straight-form UI and its handlers.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/C evidence.
+2. Confirm Fix 2 with Test D/E/F evidence — explicitly confirm historical bills are untouched and still readable.
+3. Confirm Test G — clean removal, no dead references left behind.
+4. Confirm no schema change was needed; if one was, stop and show it before applying.
+5. Anything else noticed but not touched, for a separate decision (we will scope the monthly-hire redesign as its own batch once this lands and is verified).
+
+DO NOT START ANOTHER FEATURE after completing this batch. Do not begin redesigning monthly hire billing yet — that will be scoped separately once this revert is verified working.

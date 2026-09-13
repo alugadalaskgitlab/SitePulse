@@ -15596,9 +15596,6 @@ export class DatabaseStorage implements IStorage {
     const billNo = await this.generateVendorBillNo();
 
     return await db.transaction(async (tx) => {
-      if (data.billType.toLowerCase() === "equipment" && data.hireGroups === undefined) {
-        throw Object.assign(new Error("Equipment-hire bills require one selected hire group or an already-approved hire statement."), { code: "BAD_REQUEST" });
-      }
       const [bill] = await tx.insert(vendorBills).values({
         billDate: data.billDate,
         billNo,
@@ -15656,6 +15653,8 @@ export class DatabaseStorage implements IStorage {
           }))
         ).returning();
       }
+      // No hireGroups means the shared itemized path; the reconciler remains
+      // responsible for the legacy/integrated hire-group path when supplied.
       const hireItems = await this.reconcileVendorBillHireGroups(tx, bill, data);
       items.push(...hireItems);
       if (data.hireGroups !== undefined) {
@@ -16019,6 +16018,28 @@ export class DatabaseStorage implements IStorage {
           // Integrated straight-form bills freeze their server-derived JSON
           // snapshot, never a re-grouping of display item rows.  This keeps
           // taxable → GST → TDS → net identical to draft UI and exports.
+          if (linkedStatements.length === 0) {
+            // Shared itemized bills calculate TDS from the pre-GST subtotal;
+            // GST and adjustment amounts are added afterward to match the UI.
+            const itemRows = await tx.select({ category: vendorBillItems.category, amount: vendorBillItems.amount })
+              .from(vendorBillItems).where(eq(vendorBillItems.billId, id));
+            const categorySubtotals = itemRows.reduce((totals: Record<string, number>, item) => {
+              const category = String(item.category || "other").toLowerCase();
+              totals[category] = (totals[category] || 0) + Number(item.amount || 0);
+              return totals;
+            }, {});
+            const gst = (
+              (categorySubtotals.equipment || 0) * Number(existing.gstRateEquipment || 0) / 100 +
+              (categorySubtotals.material || 0) * Number(existing.gstRateMaterial || 0) / 100 +
+              (categorySubtotals.transport || 0) * Number(existing.gstRateTransport || 0) / 100 +
+              (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100
+            );
+            const subtotal = itemRows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+            const tds = Number(existing.tdsRate || 0);
+            const tdsAmount = subtotal * tds / 100;
+            const netPayable = subtotal + gst + Number(existing.adjustmentAmount || 0) - tdsAmount;
+            updates.netPayableAmount = Math.round((netPayable + Number.EPSILON) * 100) / 100;
+          } else {
           const savedFinancials = linkedStatements
             .map(statement => (statement.calculationSnapshot as any)?.financials)
             .filter((financials: any) => financials && Number.isFinite(Number(financials.grossHire)));
@@ -16054,6 +16075,7 @@ export class DatabaseStorage implements IStorage {
               + gst + Number(existing.adjustmentAmount || 0);
             const tds = Number(existing.tdsRate || 0);
             updates.netPayableAmount = Math.round((taxableTotal * (1 - tds / 100) + Number.EPSILON) * 100) / 100;
+          }
           }
           // A new hire bill starts with no payment. Historical paid records
           // remain nullable and are interpreted as fully paid in the UI.
