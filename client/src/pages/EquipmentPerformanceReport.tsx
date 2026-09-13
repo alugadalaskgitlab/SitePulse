@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { AlertTriangle, ArrowUpRight, ChevronRight, RotateCcw, Search, Truck } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ChevronRight, ChevronRight as Crumb, RotateCcw, Search, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -145,20 +145,26 @@ export default function EquipmentPerformanceReport() {
   }, []);
 
   return (
-    <div className="equip-shell -mt-6 min-h-[100dvh] min-w-0 max-w-full overflow-x-hidden px-4 py-7 md:px-8" data-testid="page-equipment-performance">
+    <div className="space-y-6" data-testid="page-equipment-performance">
       <div className="mx-auto min-w-0 max-w-[1700px] space-y-5">
         <header className="border-b-2 border-[#173f49] pb-5">
+          <div className="flex items-center gap-1.5 text-sm text-slate-500">
+            <Link href="/reports/hub" className="hover:text-slate-800 hover:underline" data-testid="link-reports-hub">Reports Hub</Link>
+            <Crumb className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-slate-700 font-medium">Equipment Performance</span>
+          </div>
           <h1 className="text-3xl font-bold tracking-[-.045em] text-[#173f49] md:text-4xl">EQUIPMENT PERFORMANCE</h1>
           <p className="mt-1 text-sm text-slate-600">Usage, working hours and diesel consumption by equipment</p>
         </header>
 
         <section className="equip-panel rounded-md border border-[#cfc8b8] bg-[#faf7ed] p-3">
-          <div className="grid gap-2 md:grid-cols-4 xl:grid-cols-7">
+          <div className="grid gap-2 md:grid-cols-4 xl:grid-cols-8">
             <Filter label="From Date"><Input type="date" value={filters.dateFrom} onChange={event => set("dateFrom", event.target.value)} className="h-9 bg-[#fffdf6]" /></Filter>
             <Filter label="To Date"><Input type="date" value={filters.dateTo} onChange={event => set("dateTo", event.target.value)} className="h-9 bg-[#fffdf6]" /></Filter>
             <Filter label="Project / Site"><NativeSelect value={filters.projectId} onChange={value => set("projectId", value)} placeholder="All projects" items={selectOptions(report.data, "projects")} /></Filter>
             <Filter label="Scope"><NativeSelect value={filters.scope} onChange={value => set("scope", value)} placeholder="All" items={selectOptions(report.data, "scopes")} fallback={["site", "plant"]} /></Filter>
             <Filter label="Ownership"><NativeSelect value={filters.ownership} onChange={value => set("ownership", value)} placeholder="All" items={selectOptions(report.data, "ownership")} fallback={["owned", "hired"]} /></Filter>
+            <Filter label="Owner / Vendor"><NativeSelect value={filters.ownerVendor} onChange={value => set("ownerVendor", value)} placeholder="All owners / vendors" items={selectOptions(report.data, "owners")} /></Filter>
             <Filter label="Equipment Type"><NativeSelect value={filters.equipmentType} onChange={value => set("equipmentType", value)} placeholder="All types" items={selectOptions(report.data, "equipmentTypes")} /></Filter>
             <Filter label="Equipment"><NativeSelect value={filters.equipmentId} onChange={value => set("equipmentId", value)} placeholder="All equipment" items={equipmentOptions.map(item => ({ ...item, label: formatEquipmentOptionLabel(item) }))} /></Filter>
           </div>

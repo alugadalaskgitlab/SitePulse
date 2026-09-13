@@ -152,6 +152,7 @@ export interface EquipmentPerformanceFilters {
   projectId?: number;
   scope?: EquipmentScope;
   ownership?: string;
+  ownerVendor?: string;
   equipmentType?: string;
   equipmentId?: number;
   machine?: string;
@@ -244,6 +245,7 @@ export interface EquipmentPerformanceReport {
   filterOptions: {
     projects: Array<{ id: number; name: string }>;
     ownership: string[];
+    owners: string[];
     equipmentTypes: string[];
     equipment: Array<{
       id: number;
@@ -298,6 +300,12 @@ export function normalizeEquipmentLabel(value: unknown): string {
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, " ");
+}
+
+export function equipmentOwnerVendor(master: Pick<EquipmentPerformanceMaster, "ownership" | "vendorName"> | undefined): string {
+  return master?.ownership === "hired"
+    ? master?.vendorName?.trim() || "—"
+    : master?.ownership === "owned" ? master?.vendorName?.trim() || "HLC / OWNED" : "—";
 }
 
 export function suggestEquipment(machine: string, masters: EquipmentPerformanceMaster[]): EquipmentSuggestion[] {
@@ -694,6 +702,7 @@ export function buildEquipmentPerformanceReport(input: {
     (!filters.projectId || event.projectId === filters.projectId) &&
     (!filters.scope || event.scope === filters.scope) &&
     (!filters.ownership || event.ownership === filters.ownership) &&
+    (!filters.ownerVendor || (event.equipmentId != null && equipmentOwnerVendor(masters.get(event.equipmentId)) === filters.ownerVendor)) &&
     (!filters.equipmentType || event.equipmentType === filters.equipmentType) &&
     (!filters.equipmentId || event.equipmentId === filters.equipmentId) &&
     (!normalizedMachine || normalizeEquipmentLabel(event.machine).includes(normalizedMachine))
@@ -774,9 +783,7 @@ export function buildEquipmentPerformanceReport(input: {
         return actual > 0 ? expected / actual * 100 : null;
       })(),
       dataQualityWarnings: rowWarnings(rows),
-      ownerVendor: master.ownership === "hired"
-        ? master.vendorName?.trim() || "—"
-        : master.ownership === "owned" ? master.vendorName?.trim() || "HLC / OWNED" : "—",
+      ownerVendor: equipmentOwnerVendor(master),
       ...managementMetrics(rows, master, fullEquipmentRows),
       dailyRows: buildEquipmentPerformanceDailyRows(rows, master, fullEquipmentRows, periodHasFilteredGap),
     };
@@ -820,6 +827,7 @@ export function buildEquipmentPerformanceReport(input: {
     filterOptions: {
       projects: Array.from(projects.values()).map(({ id, name }) => ({ id, name })),
       ownership: Array.from(new Set((input.filterMasters ?? input.masters).map((m) => m.ownership).filter((v): v is string => !!v))).sort(),
+      owners: Array.from(new Set((input.filterMasters ?? input.masters).map((master) => equipmentOwnerVendor(master)))).sort(),
       equipmentTypes: Array.from(new Set((input.filterMasters ?? input.masters).map((m) => m.equipmentType).filter((v): v is string => !!v))).sort(),
       equipment: (input.filterMasters ?? input.masters).map((m) => ({
         id: m.id,

@@ -9,6 +9,7 @@ packages = ["imagemagick"]
 [[ports]]
 localPort = 4599
 externalPort = 5000
+exposeLocalhost = true
 
 [[ports]]
 localPort = 5000

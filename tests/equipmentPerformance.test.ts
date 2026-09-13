@@ -264,6 +264,7 @@ describe("EQUIP-01 pure equipment performance report", () => {
     expect(report.filterOptions).toMatchObject({
       projects: [{ id: 10, name: "Live Road" }],
       ownership: ["hired", "owned"],
+      owners: ["HLC / OWNED", "—"],
       equipmentTypes: ["Excavator", "Tanker"],
       equipment: expect.arrayContaining([expect.objectContaining({
         id: 1,
@@ -280,6 +281,50 @@ describe("EQUIP-01 pure equipment performance report", () => {
     });
     expect(report.projects).toEqual([]);
     expect(report.totals.eventCount).toBe(0);
+  });
+
+  it("filters multiple machines by the exact owner/vendor display value, including ownership combinations", () => {
+    const ownerMasters = [
+      ...masters.map((master) => master.id === 2 ? { ...master, vendorName: "Narasimulu" } : master),
+      { id: 3, name: "Hired Excavator", ownership: "hired", vendorName: "Narasimulu", equipmentType: "Excavator", meterType: "hour_meter", consumptionNorm: 5, hireStartDate: "2026-01-01", hireEndDate: "2026-01-05", isActive: 1 },
+      { id: 4, name: "Unknown Machine", ownership: null, equipmentType: "Loader", meterType: "hour_meter", consumptionNorm: 5, isActive: 1 },
+    ];
+    const usages = [
+      { id: 730, date: "2026-01-01", equipmentId: 2, dprId: 100 },
+      { id: 731, date: "2026-01-02", equipmentId: 3, dprId: 101 },
+      { id: 732, date: "2026-01-02", equipmentId: 1, dprId: 101 },
+      { id: 733, date: "2026-01-03", equipmentId: 4, dprId: 100 },
+    ];
+    const logs = [{ id: 934, dprId: 100, machine: "Unlinked machine", equipmentId: null }];
+
+    const all = buildEquipmentPerformanceReport({ projects, dprs, masters: ownerMasters, usages, logs });
+    expect(all.filterOptions.owners).toEqual(["HLC / OWNED", "Narasimulu", "—"]);
+
+    const vendor = buildEquipmentPerformanceReport({
+      projects, dprs, masters: ownerMasters, usages, logs,
+      filters: { ownerVendor: "Narasimulu" },
+    });
+    expect(vendor.events.map((event) => event.equipmentId)).toEqual([2, 3]);
+    expect(vendor.fleet.map((row) => row.equipmentId)).toEqual([2, 3]);
+
+    const hiredVendor = buildEquipmentPerformanceReport({
+      projects, dprs, masters: ownerMasters, usages, logs,
+      filters: { ownerVendor: "Narasimulu", ownership: "hired" },
+    });
+    expect(hiredVendor.fleet.map((row) => row.equipmentId)).toEqual([2, 3]);
+
+    const owned = buildEquipmentPerformanceReport({
+      projects, dprs, masters: ownerMasters, usages, logs,
+      filters: { ownerVendor: "HLC / OWNED", ownership: "owned" },
+    });
+    expect(owned.fleet.map((row) => row.equipmentId)).toEqual([1]);
+
+    const unknown = buildEquipmentPerformanceReport({
+      projects, dprs, masters: ownerMasters, usages, logs,
+      filters: { ownerVendor: "—" },
+    });
+    expect(unknown.events.map((event) => event.equipmentId)).toEqual([4]);
+    expect(unknown.events).not.toEqual(expect.arrayContaining([expect.objectContaining({ equipmentId: null })]));
   });
 
   it("limits suggestions and filter options to the caller-visible master subset", () => {

@@ -96,10 +96,10 @@ beforeEach(() => {
 
 describe("EQUIP-01 routes", () => {
   it("passes report filters through the read-only report route", async () => {
-    const response = await request(app).get("/api/reports/equipment-performance?projectId=10&scope=site&dateFrom=2026-01-01");
+    const response = await request(app).get("/api/reports/equipment-performance?projectId=10&scope=site&dateFrom=2026-01-01&ownerVendor=Narasimulu");
     expect(response.status).toBe(200);
     expect(spies.report).toHaveBeenCalledWith(expect.objectContaining({
-      projectId: 10, scope: "site", dateFrom: "2026-01-01",
+      projectId: 10, scope: "site", dateFrom: "2026-01-01", ownerVendor: "Narasimulu",
     }), { permittedSiteNames: ["Site A"] });
     expect(spies.confirm).not.toHaveBeenCalled();
     expect(spies.createUsage).not.toHaveBeenCalled();

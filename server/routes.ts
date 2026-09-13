@@ -4521,6 +4521,7 @@ export async function registerRoutes(
         equipmentId,
         scope,
         ownership: typeof req.query.ownership === "string" ? req.query.ownership : undefined,
+        ownerVendor: typeof req.query.ownerVendor === "string" ? req.query.ownerVendor : undefined,
         equipmentType: typeof req.query.equipmentType === "string" ? req.query.equipmentType : undefined,
         machine: typeof req.query.machine === "string" ? req.query.machine : undefined,
       }, { permittedSiteNames }));

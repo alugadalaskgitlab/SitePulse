@@ -6,6 +6,7 @@ export type EquipmentPerformanceFilters = {
   projectId: string;
   scope: string;
   ownership: string;
+  ownerVendor: string;
   equipmentType: string;
   equipmentId: string;
 };
@@ -17,6 +18,7 @@ export const EQUIPMENT_PERFORMANCE_FILTER_KEYS: ReadonlyArray<keyof EquipmentPer
   "projectId",
   "scope",
   "ownership",
+  "ownerVendor",
   "equipmentType",
   "equipmentId",
 ];
@@ -27,6 +29,7 @@ export const EMPTY_EQUIPMENT_PERFORMANCE_FILTERS: EquipmentPerformanceFilters = 
   projectId: "",
   scope: "",
   ownership: "",
+  ownerVendor: "",
   equipmentType: "",
   equipmentId: "",
 };

@@ -1,0 +1,105 @@
+INSTRUCTION EQUIP-09: Equipment Performance — layout escape (EQUIP-08 repeat), missing Reports Hub back-link, and new Owner/Vendor filter
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a correction + one small addition to the Equipment Performance report only. Do not touch calculations, column set, the identification review flow, Vendor Bills, or any other page. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review of the latest zip and a screen recording — do not re-derive)
+
+Three things were confirmed:
+
+1. THE EQUIP-08 LAYOUT FIX WAS NOT ACTUALLY APPLIED (or regressed back).
+client/src/pages/EquipmentPerformanceReport.tsx line 146 still reads:
+  <div className="equip-shell -mx-4 -mt-6 min-h-[100dvh] px-4 py-7 md:-mx-8 md:px-8" data-testid="page-equipment-performance">
+This is the exact negative-margin wrapper (`-mx-4` / `md:-mx-8`) that EQUIP-08 already asked to remove. It pulls the whole page outside its parent's sidebar-offset padding, so the entire page — header, filters, and table together — becomes wider than the viewport and the WHOLE PAGE scrolls horizontally, not just the table. The inner table container (line 178, `<div className="overflow-x-auto">`, table `min-w-[1550px]`) is fine on its own, but it's sitting inside the escaped wrapper, so scrolling right drags the filters and the "Equipment" column header off-screen with everything else, exactly as seen in the recording.
+
+2. NO WAY BACK TO REPORTS HUB.
+EquipmentPerformanceReport.tsx has no breadcrumb or link back to Reports Hub anywhere in the file. Every other report already has this. For example client/src/pages/ProgressReport.tsx (lines 136-146) does exactly this, and its outer wrapper is also the plain, correct pattern:
+  <div className="space-y-4" data-testid="page-progress-report">
+    <div>
+      <div className="flex items-center gap-1.5 text-sm text-slate-500">
+        <Link href="/reports/hub" className="hover:text-slate-800 hover:underline" data-testid="link-reports-hub">Reports Hub</Link>
+        <Crumb className="w-3.5 h-3.5 text-slate-400" />
+        <span className="text-slate-700 font-medium">Progress Report</span>
+      </div>
+      <h1 ...>Progress Report</h1>
+      <p ...>...</p>
+    </div>
+    ...
+Equipment Performance has no equivalent. `/reports/hub` (ReportsHub.tsx) is the correct target — same route ProgressReport.tsx and ManagementReport.tsx already link back to.
+
+3. NO OWNER/VENDOR FILTER.
+The filters row (EquipmentPerformanceReport.tsx lines ~163-169) only has From Date, To Date, Project/Site, Scope, Ownership, Equipment Type, Equipment. There is no way to select one vendor and see every machine (across ownership types) tied to that owner/vendor for the period. This is a real gap: today, if a vendor has 4 hired machines on site, the user has to recognize them one by one in the full unfiltered list.
+
+The data needed already exists. Every fleet row already computes a display-ready `ownerVendor` string (shared/equipmentPerformance.ts, lines ~770-772):
+  ownerVendor: master.ownership === "hired"
+    ? master.vendorName?.trim() || "—"
+    : master.ownership === "owned" ? master.vendorName?.trim() || "HLC / OWNED" : "—",
+This is exactly the value already shown in the table's "Owner / Vendor" column. The new filter should just let the user pick one of these values and narrow the list to it — same concept, values, and column the user already sees, nothing invented.
+
+FIX 1 — REMOVE THE ESCAPED WRAPPER (repeat of EQUIP-08, this time verify it actually lands)
+1. In EquipmentPerformanceReport.tsx, replace the current root wrapper:
+     <div className="equip-shell -mx-4 -mt-6 min-h-[100dvh] px-4 py-7 md:-mx-8 md:px-8" data-testid="page-equipment-performance">
+   with a plain wrapper matching the pattern already used by ProgressReport.tsx / PlantProjectReport.tsx — no negative margins, no custom positioning:
+     <div className="space-y-6" data-testid="page-equipment-performance">
+   Keep the inner `<div className="mx-auto max-w-[1700px] space-y-5">` (or fold its spacing into the outer div — either is fine) but the root div must not use `-mx-4`, `md:-mx-8`, or `min-h-[100dvh]`.
+2. Leave the table's own `overflow-x-auto` wrapper (line 178) and the daily-detail dialog's `overflow-x-auto` (line 214) exactly as they are — horizontal scroll should continue to happen only inside those table containers.
+3. Do not touch `equip-panel` styling or any other class unrelated to this root wrapper.
+
+FIX 2 — ADD A REPORTS HUB BREADCRUMB / BACK LINK
+1. Add the same breadcrumb block ProgressReport.tsx uses, above the existing `<h1>EQUIPMENT PERFORMANCE</h1>`:
+     <div className="flex items-center gap-1.5 text-sm text-slate-500">
+       <Link href="/reports/hub" className="hover:text-slate-800 hover:underline" data-testid="link-reports-hub">Reports Hub</Link>
+       <Crumb className="w-3.5 h-3.5 text-slate-400" />
+       <span className="text-slate-700 font-medium">Equipment Performance</span>
+     </div>
+   `Link` is already imported in this file (line 9, from "wouter"). Import whatever chevron/crumb icon component ProgressReport.tsx uses for `Crumb` (check its import — reuse the same icon, don't invent a new one; `ChevronRight` from lucide-react is already imported in this file at line 3 and can be reused for the crumb separator instead of importing a new icon, if that's what ProgressReport.tsx effectively uses).
+2. This is a link to `/reports/hub`, not a browser-back call — same convention as every other report page, so behavior is consistent app-wide.
+3. Do not add a second/duplicate "back" control (e.g. no separate arrow-back button) — one breadcrumb link is enough, matching the existing pattern exactly.
+
+FIX 3 — ADD OWNER / VENDOR FILTER
+Server side (shared/equipmentPerformance.ts):
+1. Add `ownerVendor?: string;` to the `EquipmentPerformanceFilters` interface (~line 149-158).
+2. Add an `owners: string[]` array to `filterOptions` (~line 244 type, ~line 813 built value), computed the same way `ownership`/`equipmentTypes` already are: derive the same ownerVendor string per master using the exact logic already used to build `base.ownerVendor` (lines 770-772) against `(input.filterMasters ?? input.masters)`, dedupe with a Set, sort. Do not duplicate this ownerVendor-string logic in two different places with the potential to drift — extract it into one small shared helper function used by both the filterOptions computation and the per-row `base.ownerVendor` assignment.
+3. In the event filter chain (~lines 686-692, the `filtered = dateWindowEvents.filter(...)` block), add a condition that only keeps events whose equipment's computed ownerVendor string equals `filters.ownerVendor` when that filter is set. Since `ownerVendor` is derived from the master record (not stored on the event), look up `masters.get(event.equipmentId)` and apply the same helper function from step 2 to get its ownerVendor string for comparison. Events with `equipmentId == null` should be excluded when this filter is active (nothing to match against), consistent with how `equipmentId`/`equipmentType` filters already behave for unlinked events.
+
+Server side (server/routes.ts, ~line 4500-4509, the `/api/reports/equipment-performance` handler):
+4. Add `ownerVendor: typeof req.query.ownerVendor === "string" ? req.query.ownerVendor : undefined,` to the object passed into `storage.getEquipmentPerformanceReport(...)`, alongside the existing `ownership`/`equipmentType`/`machine` lines.
+
+Client side (client/src/lib/equipmentPerformanceNav.ts):
+5. Add `ownerVendor: string;` to the `EquipmentPerformanceFilters` type, add `"ownerVendor"` to `EQUIPMENT_PERFORMANCE_FILTER_KEYS`, and add `ownerVendor: ""` to `EMPTY_EQUIPMENT_PERFORMANCE_FILTERS`. This automatically wires it into the existing URL-parsing, persistence, and Reset logic that all key off this shared key list — do not write separate persistence/reset handling for this one field.
+
+Client side (client/src/pages/EquipmentPerformanceReport.tsx):
+6. Add one more `<Filter>` in the filters grid (~line 163-169), labeled "Owner / Vendor", using the same `NativeSelect` component already used for Ownership/Equipment Type, reading its options from `selectOptions(report.data, "owners")` (matching the `filterOptions.owners` array added in step 2). Place it wherever fits best in the existing `md:grid-cols-4 xl:grid-cols-7` grid (this now has 8 filters total — widen to `xl:grid-cols-8`, or wrap to a second row; either is acceptable as long as no existing filter becomes cramped or hidden).
+7. Do not change the row-click / drilldown behavior. Selecting a vendor simply narrows the existing "one equipment = one row" table exactly as every other filter already does; clicking a row still opens the same daily-detail dialog (MachineDialog) exactly as today. This filter must combine with the existing Ownership filter normally (e.g. Ownership=Hired + Owner/Vendor=Narasimulu narrows correctly; Owner/Vendor=HLC / OWNED works the same way for owned equipment, since owned equipment already gets that exact string as its ownerVendor value).
+
+WHAT NOT TO DO
+- Do not touch Equipment Performance calculations, column set, Working Hours/Clock Duration logic, diesel logic, or the daily drilldown's contents.
+- Do not touch the Equipment Needing Identification notice/review flow.
+- Do not touch Vendor Bills, Work Programme, BOQ, or any other page.
+- Do not invent a new ownerVendor formatting convention — reuse the exact one already in shared/equipmentPerformance.ts lines 770-772.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — this is filter/query/display logic against existing data. If you find you need any schema change, stop and show the exact proposed change before writing a migration, per our usual rule.
+
+SEPARATE ITEM — NOT PART OF THIS BATCH, FLAGGING FOR A LATER DECISION
+While reviewing this file we noticed client/src/lib/equipmentPerformanceNav.ts (parseEquipmentPerformanceFilters, ~lines 39-45) still has the same all-or-nothing URL/localStorage gating that EQUIP-06 previously flagged and asked to fix (any filter key present in the URL blanks every other missing key to "" instead of falling back to the stored/default value), and EquipmentPerformanceReport.tsx still passes a single `shouldHydrate: !urlHasFilters` boolean into `usePersistedFilters` (~line 65), which is the same one-boolean-for-all-fields pattern EQUIP-06 also flagged. This looks like it was not actually fixed, or regressed back, independent of today's three fixes. Do not fix it in this batch — just confirm back to us whether you see the same thing, so we can scope a proper correction separately.
+
+TESTS
+A. Load Equipment Performance at normal desktop width: confirm the entire page (header, filters, table's Equipment column) renders to the right of the sidebar with no part hidden, and that scrolling the table horizontally moves only the table, not the header/filters/page.
+B. Confirm a "Reports Hub" breadcrumb link is visible at the top of the page, and clicking it navigates to /reports/hub.
+C. Confirm the new Owner/Vendor filter dropdown lists every distinct owner/vendor value exactly as shown in the table's Owner/Vendor column (including "HLC / OWNED" for owned equipment).
+D. Pick a vendor with multiple hired machines: confirm only that vendor's machines appear, and confirm combining it with the Ownership filter still works correctly.
+E. Click any resulting equipment row: confirm the same daily-detail dialog opens exactly as before, unaffected by this change.
+F. Confirm Reset clears the new Owner/Vendor filter along with the others.
+G. Confirm no other Equipment Performance behavior (identification notice, calculations, drilldown contents) changed.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A evidence, and confirm the exact wrapper class you ended up with (so we can verify no negative margin remains).
+2. Confirm Fix 2 with Test B evidence.
+3. Confirm Fix 3 with Test C/D/E/F evidence.
+4. Confirm no schema change was needed; if one was, stop and show it before applying.
+5. Answer the separate flagged item above — is the filter-memory all-or-nothing bug still present, yes or no.
+6. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

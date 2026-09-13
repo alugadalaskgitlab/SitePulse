@@ -17,12 +17,13 @@ describe("Fleet Performance URL and source navigation", () => {
     projectId: "17",
     scope: "site",
     ownership: "hired",
+    ownerVendor: "Narasimulu",
     equipmentType: "Excavator",
     equipmentId: "91",
   };
 
-  it("round-trips all seven filters and selected machine", () => {
-    expect(EQUIPMENT_PERFORMANCE_FILTER_KEYS).toHaveLength(7);
+  it("round-trips all eight filters and selected machine", () => {
+    expect(EQUIPMENT_PERFORMANCE_FILTER_KEYS).toHaveLength(8);
     const url = equipmentPerformanceUrl(filters, "master:91");
     expect(parseEquipmentPerformanceFilters(url.split("?")[1])).toEqual(filters);
     expect(new URLSearchParams(url.split("?")[1]).get("machine")).toBe("master:91");
@@ -69,6 +70,8 @@ describe("Fleet Performance URL and source navigation", () => {
 
   it("the explicit Reset clears persisted filters rather than only changing UI state", () => {
     const source = readFileSync("client/src/pages/EquipmentPerformanceReport.tsx", "utf8");
+    expect(EQUIPMENT_PERFORMANCE_FILTER_KEYS).toContain("ownerVendor");
+    expect(EMPTY_EQUIPMENT_PERFORMANCE_FILTERS.ownerVendor).toBe("");
     expect(source).toContain("usePersistedFilters(");
     expect(source).toMatch(/const reset = \(\) => \{[\s\S]*?resetPersistedFilters\(\)/);
     expect(source).toMatch(/onClick=\{reset\}/);
