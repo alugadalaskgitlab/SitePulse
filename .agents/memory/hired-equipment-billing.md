@@ -17,9 +17,9 @@ Monthly partial periods use the agreement's configured calendar-day, 30-day, or 
 
 **How to apply:** Constrain every statement to its hire dates and cap deductions at gross billing.
 
-Breakdown downtime is informational until a reviewer selects full-day, half-day, no deduction, or a manual amount. If the agreement disables breakdown deductions, every decision type must produce zero deduction.
+In historical statements and the separate register, breakdown downtime is informational until a reviewer selects full-day, half-day, no deduction, or a manual amount. Automatic monthly lines in shared Vendor Bills instead deduct recorded breakdown dates after the bill's grace allowance, with explicit day overrides. If the agreement disables breakdown deductions, every decision type must produce zero deduction.
 
-**Why:** Maintenance evidence does not by itself determine the commercial settlement, and a manual decision must not bypass the agreement.
+**Why:** The automatic monthly flow was explicitly approved later; it must not silently change historical/register settlements or let a manual decision bypass the agreement.
 
 **How to apply:** Manual exceptions must fall inside the active billed period. Statements with exceptions require review before approval; clean statements may go directly from draft to approved.
 
@@ -33,7 +33,13 @@ New Equipment Hire Vendor Bills use the shared itemized creation flow, not the m
 
 **Why:** The user deliberately withdrew the monthly creation redesign because incomplete master hire terms hid genuine logged billable activity. This supersedes the earlier one-machine straight-form product decision.
 
-**How to apply:** Discover and pull ordinary items from existing DPR/Plant activity without hire-term eligibility gates. Monthly amounts can be entered manually. Do not delete or redesign the monthly engine, recompute historical snapshots, or change the separate register without a later explicit request.
+**How to apply:** Ordinary non-monthly items come from existing DPR/Plant activity without hire-term eligibility gates. Monthly Master basis now generates one automatic availability line per eligible machine, even without activity; reuse the existing proration engine. Keep mixed machines in the shared table. Do not recompute historical snapshots or change the separate register.
+
+Grace is a per-bill, per-machine total allowance, default zero, frozen in the existing snapshot—not a new Equipment Master field. Contractor advance suggestions use period-bounded quantity-weighted diesel purchase rates; absent pricing requires manual review rather than an invented rate.
+
+**Why:** The user chose snapshot-only grace and existing purchase-rate suggestions to avoid a schema migration. Missing activity does not mean a monthly machine was unavailable.
+
+**How to apply:** Count duplicate maintenance records as one breakdown date, honour the explicit override regardless of which duplicate supplied it, and retain server-owned historical versus automatic integration identity through edits. Mixed-bill approval includes ordinary and generated lines exactly once. Context changes must remove generated evidence belonging to the previous vendor/period without discarding valid saved rows when switching Equipment ↔ All.
 
 Where the retained linked-statement workflow uses hire groups, terms must have an exact valid Equipment Master basis: monthly, daily, hourly, or trip. This is not an eligibility gate for shared itemized bills.
 

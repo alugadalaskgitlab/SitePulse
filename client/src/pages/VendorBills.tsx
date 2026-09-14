@@ -19,7 +19,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
-import { availableOtherBillItems, calculateEquipmentHireFinancials, calculateHireGroup, mergeOtherBillItems, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
+import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, mergeOtherBillItems, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
 import { authoritativeDieselPeriodFromFleet, hasIncludedOperationalTripOnSameDay, initialVendorBillPaidAmount, isPerformanceReadyForHireSubmission } from "@/components/vendor-bills/equipmentHireUi";
@@ -110,7 +110,7 @@ type HireGroup = {
   tripDecisions: { source: "dpr_log" | "plant_usage" | "site_material_trip" | "bulk_transport_trip"; sourceId: number; selected?: boolean; correctedTrips?: number; remarks?: string; separateFromOperational?: boolean }[];
   exceptionDecisions: any[]; dieselNormOverride?: number; dieselNormBasisOverride?: string;
   dieselRecoveryDecision?: "accept" | "edit" | "ignore"; dieselRecoveryFinalAmount?: number; dieselRecoveryRemarks?: string;
-  breakdownHoursPerDay?: number;
+  breakdownHoursPerDay?: number; breakdownGraceDays?: number;
   projectSite?: string;
   adjustments?: { otherDebit?: number; otherDebitReason?: string; advanceAdjustment?: number; advanceAdjustmentReason?: string; otherCredit?: number; otherCreditReason?: string };
 };
@@ -159,6 +159,27 @@ function getCategoryLabel(category: string) {
 function extractDiesel(description: string): number {
   const match = description.match(/DIESEL:\s*(\d+(?:\.\d+)?)L/i);
   return match ? parseFloat(match[1]) : 0;
+}
+
+/** Mirrors the server's period tank reconciliation for the review preview. */
+function hclMonthlyDieselPeriod(activities: readonly any[], equipment: any) {
+  const periodActivities = normalizeHireActivities(activities as HireActivity[])
+    .filter(row => (!equipment?.hireStartDate || row.businessDate >= equipment.hireStartDate) &&
+      (!equipment?.hireEndDate || row.businessDate <= equipment.hireEndDate))
+    .sort((a, b) =>
+    a.businessDate.localeCompare(b.businessDate) || String(a.occurredAt || "").localeCompare(String(b.occurredAt || "")));
+  const runtime = periodActivities.reduce((sum, row: any) => sum + Math.max(0, Number(row.hoursOrKmRun) || 0), 0);
+  const expectedDiesel = Number.isFinite(Number(equipment?.consumptionNorm))
+    ? Math.round(runtime * Number(equipment.consumptionNorm) * 100) / 100 : null;
+  const stockRows = periodActivities.filter((row: any) => String(row.dieselSource || "").toLowerCase() === "plant_stock");
+  const opening = stockRows.length ? Number((stockRows[0] as any).openingDiesel) : NaN;
+  const closing = stockRows.length ? Number((stockRows.at(-1) as any).closingDiesel) : NaN;
+  const actualDiesel = stockRows.length && Number.isFinite(opening) && opening >= 0 && Number.isFinite(closing) && closing >= 0 &&
+    stockRows.every((row: any) => Number.isFinite(Number(row.actualDiesel)))
+    ? Math.round(Math.max(0, opening + stockRows.reduce((sum, row: any) => sum + Number(row.actualDiesel || 0), 0) - closing) * 100) / 100
+    : null;
+  const reliable = String(equipment?.hireDieselResponsibility || "").toLowerCase() === "hlc" && actualDiesel != null && expectedDiesel != null;
+  return { actualDiesel, expectedDiesel, difference: reliable ? actualDiesel! - expectedDiesel! : null, reliable, dailyRows: [] };
 }
 
 function inferSiteNameFromDescription(description: string | undefined, existingSiteName: string | null | undefined): string | null {
@@ -543,6 +564,17 @@ export default function VendorBills() {
   const [tdsRate, setTdsRate] = useState<number>(0);
   const [labourFilter, setLabourFilter] = useState<"all" | "site" | "plant">("all");
   const [hireGroups, setHireGroups] = useState<HireGroup[]>([]);
+  const monthlyHireSeedRef = useRef("");
+  const contractorAdvanceSeedRef = useRef("");
+  const generatedBillAdjustmentRef = useRef("");
+  const suppressedAutoItemsRef = useRef(new Set<string>());
+  // Source rows are owned by the vendor/period/category query that inserted
+  // them. Keeping that context separately lets a changed form reconcile
+  // stale auto rows without touching manual evidence.
+  const autoItemsContextRef = useRef("");
+  // A persisted edit is not reseeded on load, but a genuine vendor/period
+  // change is allowed one fresh discovery pass.
+  const autoItemsReseedContextRef = useRef("");
   const [showEquipmentDailyActivity, setShowEquipmentDailyActivity] = useState(false);
   // This identity is pinned when a persisted bill with hire statements is
   // loaded. Do not derive it from mutable working groups: clearing or
@@ -684,10 +716,12 @@ export default function VendorBills() {
   const { data: hireActivityRows = [], isFetching: hireActivitiesLoading } = useQuery<any[]>({
     queryKey: ["/api/vendor-bills/hire-activities", vendorName, periodFrom, periodTo],
     queryFn: () => fetch(hireActivitiesUrl).then(r => r.ok ? r.json() : []),
-    enabled: isHistoricalHireEdit && !!hireActivitiesUrl,
+    // Monthly lines are generated in the shared itemized bill flow too.  This
+    // feed is evidence only; the server re-reads it before saving.
+    enabled: !!hireActivitiesUrl && (isHistoricalHireEdit || billType === "equipment" || billType === "all"),
   });
   const hireEquipment = useMemo(() => {
-    if (isHistoricalHireEdit && billType === "equipment") {
+    if (isHistoricalHireEdit && ["equipment", "all"].includes(billType)) {
       return discoveredVendors?.find(v => v.vendorName === vendorName)?.equipment || [];
     }
     const byId = new Map<number, any>();
@@ -708,7 +742,7 @@ export default function VendorBills() {
       if (!response.ok) throw new Error((await response.text()) || "Could not load daily equipment activity");
       return response.json();
     },
-    enabled: isHistoricalHireEdit && !!equipmentPerformanceUrl,
+    enabled: !!equipmentPerformanceUrl && (isHistoricalHireEdit || hireGroups.some(group => group.basis === "monthly")),
   });
   const normalizedHireActivities = useMemo(
     () => normalizeHireActivities(hireActivityRows.filter((row: any) =>
@@ -716,6 +750,99 @@ export default function VendorBills() {
     ) as HireActivity[]),
     [hireActivityRows],
   );
+
+  // A billing basis is master-authoritative.  Seed one monthly group per
+  // machine without a button or attendance calendar step; daily/hourly/trip
+  // machines remain ordinary auto-items. A changed vendor/period creates a
+  // fresh seed, while a reviewer override remains untouched for that seed.
+  useEffect(() => {
+    if (isHistoricalHireEdit || (editingBillId !== null && hireGroups.length > 0) || !vendorName || !periodFrom || !periodTo || !["equipment", "all"].includes(billType) || hireActivitiesLoading) return;
+    const monthly = hireEquipment.filter((equipment: any) =>
+      String(equipment.hireBillingBasis || "").toLowerCase() === "monthly" &&
+      validHireDate(equipment.hireStartDate) && equipment.hireStartDate <= periodTo &&
+      (!equipment.hireEndDate || equipment.hireEndDate >= periodFrom) &&
+      Number(equipment.hireRate) > 0 &&
+      (String(equipment.hireMonthlyDivisorType || "30").toLowerCase() !== "custom" || Number(equipment.hireMonthlyDivisor) > 0),
+    );
+    const seedKey = `${vendorName}|${periodFrom}|${periodTo}|${monthly.map((equipment: any) => `${equipment.id}:${equipment.hireRate}`).join(",")}`;
+    if (monthlyHireSeedRef.current === seedKey) return;
+    monthlyHireSeedRef.current = seedKey;
+    setHireGroups(monthly.map((equipment: any) => ({
+      id: `monthly-auto-${equipment.id}-${periodFrom}-${periodTo}`, equipmentId: Number(equipment.id),
+      periodFrom, periodTo, basis: "monthly" as const, rate: Number(equipment.hireRate),
+      dailyDecisions: [], tripDecisions: [], exceptionDecisions: [], breakdownGraceDays: 0,
+    })));
+  }, [billType, editingBillId, hireActivitiesLoading, hireEquipment, hireGroups.length, isHistoricalHireEdit, periodFrom, periodTo, vendorName]);
+
+  // A category switch must not leave invisible generated availability lines in
+  // an ordinary material/transport/labour bill.
+  useEffect(() => {
+    if (billType === "equipment" || billType === "all") return;
+    monthlyHireSeedRef.current = "";
+    // The monthly adjustment bucket is gone; revisiting Equipment/All must
+    // not suppress a contractor-diesel suggestion with a stale seed key.
+    contractorAdvanceSeedRef.current = "";
+    setHireGroups([]);
+    setLineItems(items => items.filter(item => !["hire_group", "hire_statement"].includes(item.source)));
+  }, [billType]);
+
+  const invalidMonthlyHireEquipment = useMemo(() => hireEquipment.filter((equipment: any) =>
+    String(equipment.hireBillingBasis || "").toLowerCase() === "monthly" &&
+    (!validHireDate(equipment.hireStartDate) || equipment.hireStartDate <= periodTo) &&
+    (!equipment.hireEndDate || equipment.hireEndDate >= periodFrom) && (
+      Number(equipment.hireRate) <= 0 ||
+      (String(equipment.hireMonthlyDivisorType || "30").toLowerCase() === "custom" && Number(equipment.hireMonthlyDivisor) <= 0)
+    ),
+  ), [hireEquipment, periodFrom, periodTo]);
+
+  const contractorAdvanceSuggestion = useMemo(() => {
+    if (!vendorName || !periodFrom || !periodTo || !["equipment", "all"].includes(billType)) return null;
+    const advances = normalizedHireActivities.filter((row: any) =>
+      String(row.dieselSource || "").toLowerCase() === "contractor" && Number(row.actualDiesel || 0) > 0,
+    );
+    if (!advances.length) return null;
+    const litres = advances.reduce((total, row: any) => total + Number(row.actualDiesel || 0), 0);
+    const purchases = hireActivityRows.filter((row: any) => row.source === "diesel_rate" && Number(row.rate) > 0 && Number(row.qtyPurchased) > 0);
+    const quantity = purchases.reduce((total: number, row: any) => total + Number(row.qtyPurchased), 0);
+    const rate = quantity > 0 ? purchases.reduce((total: number, row: any) => total + Number(row.rate) * Number(row.qtyPurchased), 0) / quantity : undefined;
+    const dates = Array.from(new Set(advances.map((row: any) => row.businessDate))).sort();
+    return { litres, rate, amount: rate == null ? undefined : Math.round(litres * rate * 100) / 100,
+      reason: `DIESEL ADVANCE · ${dates.join(", ")} · ${litres.toFixed(2)} L` };
+  }, [billType, hireActivityRows, normalizedHireActivities, periodFrom, periodTo, vendorName]);
+
+  useEffect(() => {
+    if (!contractorAdvanceSuggestion || isHistoricalHireEdit) return;
+    const key = `${vendorName}|${periodFrom}|${periodTo}|${contractorAdvanceSuggestion.reason}`;
+    if (contractorAdvanceSeedRef.current === key) return;
+    // Wait for the monthly availability groups to seed, then put the recovery
+    // in the existing per-hire snapshot adjustment bucket. A non-monthly
+    // ordinary bill retains the established bill-level adjustment seam.
+    const hasPendingMonthly = hireEquipment.some((equipment: any) => String(equipment.hireBillingBasis || "").toLowerCase() === "monthly");
+    if (hasPendingMonthly && hireGroups.length === 0) return;
+    contractorAdvanceSeedRef.current = key;
+    const reason = contractorAdvanceSuggestion.rate == null
+      ? `${contractorAdvanceSuggestion.reason} · MANUAL PRICE REQUIRED`
+      : `${contractorAdvanceSuggestion.reason} · SUGGESTED @ ₹${contractorAdvanceSuggestion.rate.toFixed(2)}/L`;
+    if (hireGroups.length) {
+      setHireGroups(groups => groups.map((group, index) => index === 0 ? {
+        ...group, adjustments: { ...(group.adjustments || {}), otherDebit: contractorAdvanceSuggestion.amount, otherDebitReason: reason },
+      } : group));
+    } else {
+      setAdjustmentLabel(reason);
+      setAdjustmentAmount(contractorAdvanceSuggestion.amount == null ? 0 : -contractorAdvanceSuggestion.amount);
+      generatedBillAdjustmentRef.current = key;
+    }
+  }, [contractorAdvanceSuggestion, hireEquipment, hireGroups.length, isHistoricalHireEdit, periodFrom, periodTo, vendorName]);
+
+  useEffect(() => {
+    if (!generatedBillAdjustmentRef.current) return;
+    const context = `${vendorName}|${periodFrom}|${periodTo}|`;
+    if (!generatedBillAdjustmentRef.current.startsWith(context) || !["equipment", "all"].includes(billType)) {
+      generatedBillAdjustmentRef.current = "";
+      setAdjustmentLabel("");
+      setAdjustmentAmount(0);
+    }
+  }, [billType, periodFrom, periodTo, vendorName]);
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/vendor-bills", data),
@@ -784,6 +911,12 @@ export default function VendorBills() {
     setNotes("");
     setLineItems(isAdmin ? [defaultManualItem] : []);
     setHireGroups([]);
+    monthlyHireSeedRef.current = "";
+    contractorAdvanceSeedRef.current = "";
+    generatedBillAdjustmentRef.current = "";
+    suppressedAutoItemsRef.current.clear();
+    autoItemsContextRef.current = "";
+    autoItemsReseedContextRef.current = "";
     setAdjustmentLabel("");
     setAdjustmentAmount(0);
     setGstRateEquipment(0);
@@ -853,13 +986,37 @@ export default function VendorBills() {
         dieselRecoveryFinalAmount: snap.dieselRecoveryFinalAmount ?? snap.diesel?.finalRecoveryAmount,
          dieselRecoveryRemarks: snap.dieselRecoveryRemarks ?? snap.diesel?.remarks,
          breakdownHoursPerDay: snap.breakdownHoursPerDay ?? undefined,
+          breakdownGraceDays: snap.breakdownGraceDays ?? snap.terms?.breakdownGraceDays ?? 0,
          projectSite: snap.projectSite ?? undefined,
          adjustments: snap.adjustments ?? undefined };
     });
     setHireGroups(persisted);
-    setHistoricalHireBillId(persisted.length > 0 ? bill.id : null);
-    setAdjustmentLabel((bill as any).adjustmentLabel || "");
-    setAdjustmentAmount((bill as any).adjustmentAmount || 0);
+    // VB10 integrated statements remain in the shared Equipment/All form on
+    // edit. Legacy statements alone use the historical straight-form editor.
+    const isVb10 = ((bill as any).hireStatements || []).some((statement: any) =>
+      statement.calculationSnapshot?.billingIntegration === "vb10_automatic");
+    // Legacy behavior was: setHistoricalHireBillId(persisted.length > 0 ? bill.id : null);
+    // VB10 markers deliberately keep their shared editor instead.
+    setHistoricalHireBillId(persisted.length > 0 && !isVb10 ? bill.id : null);
+    const savedAdjustmentLabel = (bill as any).adjustmentLabel || "";
+    const savedAdjustmentAmount = (bill as any).adjustmentAmount || 0;
+    // Itemized-only contractor diesel recovery has no hire-group snapshot.
+    // Its exact generated evidence suffix is the durable marker; do not
+    // classify a reviewer-written "diesel advance" label as generated.
+    const isGeneratedContractorAdvance = savedAdjustmentLabel.includes("DIESEL ADVANCE · ") &&
+      (savedAdjustmentLabel.includes(" · SUGGESTED @ ₹") || savedAdjustmentLabel.endsWith(" · MANUAL PRICE REQUIRED"));
+    const savedContext = `${bill.billType.toLowerCase()}|${bill.vendorName}|${bill.periodFrom || ""}|${bill.periodTo || ""}`;
+    const savedGeneratedReason = savedAdjustmentLabel
+      .replace(/ · SUGGESTED @ ₹[^·]+\/L$/, "")
+      .replace(/ · MANUAL PRICE REQUIRED$/, "");
+    contractorAdvanceSeedRef.current = isGeneratedContractorAdvance ? `${bill.vendorName}|${bill.periodFrom || ""}|${bill.periodTo || ""}|${savedGeneratedReason}` : "";
+    generatedBillAdjustmentRef.current = isGeneratedContractorAdvance ? `${bill.vendorName}|${bill.periodFrom || ""}|${bill.periodTo || ""}|${savedAdjustmentLabel}` : "";
+    // A persisted edit must not be reseeded merely because its activity query
+    // finishes after this form is populated.
+    autoItemsContextRef.current = savedContext;
+    autoItemsReseedContextRef.current = "";
+    setAdjustmentLabel(savedAdjustmentLabel);
+    setAdjustmentAmount(savedAdjustmentAmount);
     setGstRateEquipment((bill as any).gstRateEquipment || 0);
     setGstRateMaterial((bill as any).gstRateMaterial || 0);
     setGstRateTransport((bill as any).gstRateTransport || 0);
@@ -1013,7 +1170,13 @@ export default function VendorBills() {
   };
 
   const removeLineItem = (index: number) => {
-    setLineItems(prev => prev.filter((_, i) => i !== index));
+    setLineItems(prev => {
+      const item = prev[index];
+      if (item && String(item.source || "").toLowerCase().startsWith("auto")) {
+        suppressedAutoItemsRef.current.add(autoBillItemIdentity(item));
+      }
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const calcAmount = (item: LineItem) => {
@@ -1051,7 +1214,9 @@ export default function VendorBills() {
         monthlyDivisor: eq.hireMonthlyDivisor,
         dieselResponsibility: eq.hireDieselResponsibility,
         breakdownDeductionEnabled: !!eq.hireBreakdownDeductionEnabled,
+        automaticMonthlyBreakdownDeductions: !isHistoricalHireEdit,
         breakdownHoursPerDay: group.breakdownHoursPerDay,
+        breakdownGraceDays: group.breakdownGraceDays ?? 0,
       },
       periodFrom: group.periodFrom, periodTo: group.periodTo, activities: activityForGroup(group),
       maintenance: maintenanceForGroup(group).map((m: any) => ({ id: m.sourceId, date: m.businessDate, eventType: m.eventType, description: m.description, downtimeHours: m.downtimeHours })),
@@ -1059,7 +1224,11 @@ export default function VendorBills() {
       exceptionDecisions: group.exceptionDecisions, quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,
       dieselNormOverride: group.dieselNormOverride, dieselNormBasisOverride: group.dieselNormBasisOverride,
       dieselPurchases: dieselPurchasesForGroup(group),
-      authoritativeDieselPeriod: authoritativeDieselPeriodFromFleet(equipmentPerformance.data?.fleet, group.equipmentId),
+      // Keep preview and save on the same Plant Stock tank equation. The
+      // server independently re-reads these source records before persisting.
+      authoritativeDieselPeriod: String(eq.hireDieselResponsibility || "").toLowerCase() === "hlc"
+        ? hclMonthlyDieselPeriod(activityForGroup(group), eq)
+        : undefined,
       dieselRecovery: group.dieselRecoveryDecision ? { decision: group.dieselRecoveryDecision, finalAmount: group.dieselRecoveryFinalAmount, remarks: group.dieselRecoveryRemarks } : undefined,
     });
   };
@@ -1075,6 +1244,46 @@ export default function VendorBills() {
     () => availableOtherBillItems(mappedAutoItems, lineItems, hireGroups),
     [mappedAutoItems, lineItems, hireGroups],
   );
+
+  useEffect(() => {
+    if (!vendorName || !periodFrom || !periodTo) return;
+    const context = `${billType}|${vendorName}|${periodFrom}|${periodTo}`;
+    const priorContext = autoItemsContextRef.current;
+    const [priorType, priorVendor, priorFrom, priorTo] = priorContext.split("|");
+    const keepsSharedEvidence = !!priorContext &&
+      priorVendor === vendorName && priorFrom === periodFrom && priorTo === periodTo &&
+      ["equipment", "all"].includes(priorType) && ["equipment", "all"].includes(billType);
+    // Equipment and All present the same itemized evidence. A mode switch
+    // therefore preserves saved ordinary rows; vendor/period changes remain
+    // a genuine context change.
+    const contextChanged = !!priorContext && priorContext !== context && !keepsSharedEvidence;
+    autoItemsContextRef.current = context;
+    if (contextChanged) {
+      suppressedAutoItemsRef.current.clear();
+      autoItemsReseedContextRef.current = context;
+    }
+    const maySeed = editingBillId === null || autoItemsReseedContextRef.current === context;
+
+    setLineItems(previous => {
+      // Auto source rows belong to their discovery context, including the
+      // ordinary hourly/daily/trip rows which are not hire statements.
+      const reconciled = contextChanged
+        ? previous.filter(item => !isAutoLineSource(String(item.source || "").toLowerCase()))
+        : previous;
+      // Existing persisted bills remain exactly as saved on initial load. A
+      // changed vendor/period gets one fresh discovery pass.
+      if (!maySeed || isHistoricalHireEdit || !["equipment", "all"].includes(billType)) return reconciled;
+      const additions = mappedAutoItems.filter(item =>
+        !rawAutoItemCoveredByHireGroup(item, hireGroups) &&
+        !suppressedAutoItemsRef.current.has(autoBillItemIdentity(item)) &&
+        !reconciled.some(existing => autoBillItemIdentity(existing) === autoBillItemIdentity(item)));
+      return additions.length ? [...reconciled, ...additions.map(item => ({ ...item, initialBlank: false }))] : reconciled;
+    });
+    // Do not consume an edit reseed while the changed query is unresolved.
+    if (editingBillId !== null && maySeed && autoItems !== undefined) {
+      autoItemsReseedContextRef.current = "";
+    }
+  }, [autoItems, billType, editingBillId, hireGroups, isHistoricalHireEdit, mappedAutoItems, periodFrom, periodTo, vendorName]);
 
   useEffect(() => {
     const generated = hireCalculated.filter(x => x.result).map(({ group, result }) => {
@@ -1368,6 +1577,10 @@ export default function VendorBills() {
       toast({ title: "Please fill vendor name and bill date", variant: "destructive" });
       return;
     }
+    if ((billType === "equipment" || billType === "all") && invalidMonthlyHireEquipment.length) {
+      toast({ title: `Monthly hire terms are incomplete for ${invalidMonthlyHireEquipment.map((equipment: any) => equipment.name).join(", ")}. Correct Equipment Master rate/start/divisor before billing.`, variant: "destructive" });
+      return;
+    }
     // Historical hire edits are persisted through hireGroups/statements and
     // intentionally strip the generated hire line before those groups are
     // rehydrated. Only the shared itemized flow requires a description here.
@@ -1452,7 +1665,11 @@ export default function VendorBills() {
       }
     }
 
-    const includeHireGroups = isHistoricalHireEdit && (billType === "equipment" || billType === "all") && !!periodFrom && !!periodTo;
+    // Generated monthly lines use the same itemized bill payload, with the
+    // existing immutable hire-statement snapshot solely as their auditable
+    // calculation evidence. Historical non-monthly groups retain their flow.
+    const includeHireGroups = (isHistoricalHireEdit || (!isHistoricalHireEdit && hireGroups.every(group => group.basis === "monthly") && hireGroups.length > 0)) &&
+      (billType === "equipment" || billType === "all") && !!periodFrom && !!periodTo;
     const data = {
       billDate,
       billNo: billNo || `AUTO-${Date.now()}`,
@@ -1470,13 +1687,15 @@ export default function VendorBills() {
       gstRateTransport: gstRateTransport || null,
       gstRateLabour: gstRateLabour || null,
       tdsRate: tdsRate || null,
+      hireBillingMode: !isHistoricalHireEdit && hireGroups.length > 0 ? "vb10_automatic" : "historical",
       ...(includeHireGroups ? { hireGroups: hireCalculated.map(({ group, result }) => ({
         hireStatementId: group.hireStatementId, equipmentId: group.equipmentId, periodFrom: group.periodFrom, periodTo: group.periodTo, basis: group.basis,
         rate: group.rate, dailyDecisions: group.dailyDecisions, tripDecisions: group.tripDecisions,
         exceptionDecisions: group.exceptionDecisions, quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,
         dieselNormOverride: group.dieselNormOverride, dieselNormBasisOverride: group.dieselNormBasisOverride,
         dieselRecoveryDecision: group.dieselRecoveryDecision, dieselRecoveryFinalAmount: group.dieselRecoveryFinalAmount,
-         dieselRecoveryRemarks: group.dieselRecoveryRemarks, breakdownHoursPerDay: group.breakdownHoursPerDay,
+          dieselRecoveryRemarks: group.dieselRecoveryRemarks, breakdownHoursPerDay: group.breakdownHoursPerDay,
+          breakdownGraceDays: group.breakdownGraceDays ?? 0,
           projectSite: group.projectSite,
          adjustments: group.adjustments, calculatedQuantity: result!.calculatedQuantity,
         calculatedGrossAmount: result!.calculatedGrossAmount, netAmount: result!.netAmount,
@@ -2139,7 +2358,10 @@ export default function VendorBills() {
           </Card>
         )}
 
-        {isHistoricalHireEdit && billType === "equipment" && (
+        {/* The former equipment-only guard was
+            isHistoricalHireEdit && billType === "equipment"; ALL bills with
+            legacy hire statements must retain the same read-only evidence. */}
+        {isHistoricalHireEdit && ["equipment", "all"].includes(billType) && (
           <Card className="border-orange-200 dark:border-orange-800" data-testid="equipment-hire-straight-form">
             <CardHeader className="py-3">
               <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wider"><Calculator className="h-4 w-4 text-orange-600" />Equipment Hire</CardTitle>
@@ -2163,7 +2385,10 @@ export default function VendorBills() {
                     </Select>
                     {!hireActivitiesLoading && !hireEquipment.length && <p className="mt-1 text-xs text-muted-foreground">No hired equipment is linked to this vendor for the selected period.</p>}
                   </div>
-                  {hireGroups.length > 0 && !isHistoricalHireEdit && <Button type="button" variant="ghost" size="sm" onClick={() => setHireGroups([])} data-testid="button-clear-equipment-hire">Clear equipment</Button>}
+                  {hireGroups.length > 0 && !isHistoricalHireEdit && <Button type="button" variant="ghost" size="sm" onClick={() => {
+                    contractorAdvanceSeedRef.current = "";
+                    setHireGroups([]);
+                  }} data-testid="button-clear-equipment-hire">Clear equipment</Button>}
                 </div>
               )}
               {hireGroups.map((selection, index) => {
@@ -2284,6 +2509,107 @@ export default function VendorBills() {
                   </div>
                   <EquipmentHireDailyActivity open={showEquipmentDailyActivity} onOpenChange={setShowEquipmentDailyActivity} rows={dailyRows} dieselResponsibility={equipment?.hireDieselResponsibility} consumptionNorm={equipment?.consumptionNorm} />
                 </div>;
+              })}
+            </CardContent>
+          </Card>
+        )}
+
+        {!isHistoricalHireEdit && hireGroups.length > 0 && (
+          <Card className="border-orange-200 dark:border-orange-800" data-testid="monthly-hire-auto-summary">
+            <CardHeader className="py-3">
+              <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wider"><Calculator className="h-4 w-4 text-orange-600" />Auto-generated monthly hire</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-0">
+              <p className="text-xs text-muted-foreground">Monthly equipment is billed for its active hire-date overlap even with no DPR/Plant log. Only recorded breakdowns reduce the line; the server recalculates and freezes this evidence on save.</p>
+              {hireGroups.map((group, index) => {
+                const equipment = hireEquipmentFor(group.equipmentId);
+                const result = hireCalculated[index]?.result;
+                const maintenance = maintenanceForGroup(group);
+                const diesel = result?.diesel;
+                const activeFrom = result?.billablePeriodFrom || group.periodFrom;
+                const activeTo = result?.billablePeriodTo || group.periodTo;
+                const calendar = buildHireActivityDays(activeFrom, activeTo, activityForGroup(group), maintenance.map((row: any) => ({
+                  id: row.sourceId, date: row.businessDate, eventType: row.eventType, description: row.description, downtimeHours: row.downtimeHours,
+                })));
+                return (
+                  <div key={group.id} className="rounded border p-3 space-y-3" data-testid={`monthly-hire-${group.equipmentId}`}>
+                    <div className="grid gap-2 text-sm sm:grid-cols-4">
+                      <div><span className="block text-[10px] uppercase text-muted-foreground">Machine</span><strong>{formatEquipmentOptionLabel(equipment || {})}</strong></div>
+                      <div><span className="block text-[10px] uppercase text-muted-foreground">Active billable range</span><strong>{formatDate(activeFrom)} – {formatDate(activeTo)}</strong></div>
+                      <div><span className="block text-[10px] uppercase text-muted-foreground">Monthly rate</span><strong>₹{formatCurrency(group.rate)}</strong></div>
+                      <div><span className="block text-[10px] uppercase text-muted-foreground">Generated net line</span><strong className="text-orange-700">₹{formatCurrency(result?.netAmount || 0)}</strong></div>
+                    </div>
+                    <div className="max-w-xs">
+                      <Label className="text-[10px] uppercase">Breakdown grace days for this bill period</Label>
+                      <Input type="number" min="0" step="1" value={group.breakdownGraceDays ?? 0}
+                        onChange={event => patchHireGroup(group.id, { breakdownGraceDays: Math.max(0, Math.floor(Number(event.target.value) || 0)) })}
+                        data-testid={`input-monthly-grace-${group.equipmentId}`} />
+                      <p className="mt-1 text-[11px] text-muted-foreground">Total allowance per machine; default 0. Saved in this bill snapshot, not Equipment Master.</p>
+                    </div>
+                    {index === 0 && contractorAdvanceSuggestion && (
+                      <div className="rounded border border-amber-200 bg-amber-50/50 p-2 dark:border-amber-900 dark:bg-amber-950/20">
+                        <Label className="text-[10px] uppercase">Other Debit / Recovery — Contractor Diesel Advance</Label>
+                        <p className="text-[11px] text-muted-foreground">{contractorAdvanceSuggestion.amount == null
+                          ? `${contractorAdvanceSuggestion.litres.toFixed(2)} L recorded; purchased diesel rate unavailable. Enter an agreed recovery or remove it.`
+                          : `${contractorAdvanceSuggestion.litres.toFixed(2)} L at the period-weighted purchased diesel rate. This is an editable suggestion, not a silent deduction.`}</p>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          <Input type="number" min="0" step="0.01" value={group.adjustments?.otherDebit ?? ""}
+                            placeholder="Recovery amount ₹ (0 to remove)"
+                            onChange={event => patchHireGroup(group.id, { adjustments: { ...(group.adjustments || {}), otherDebit: event.target.value === "" ? undefined : Number(event.target.value) } })} />
+                          <Input value={group.adjustments?.otherDebitReason || ""} placeholder="Reason / reference"
+                            onChange={event => patchHireGroup(group.id, { adjustments: { ...(group.adjustments || {}), otherDebitReason: event.target.value.toUpperCase() } })} />
+                        </div>
+                      </div>
+                    )}
+                    {String(equipment?.hireDieselResponsibility || "").toLowerCase() === "hlc" && (
+                      <div className="rounded bg-muted/50 p-2 text-xs">
+                        <strong>HLC diesel reconciliation</strong>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-4">
+                          <span>Expected: <strong>{diesel?.expectedDieselAvailable === false ? "Tank Readings N/A" : `${Number(diesel?.expectedDiesel || 0).toFixed(2)} L`}</strong></span>
+                          <span>Actual: <strong>{diesel?.expectedDieselAvailable === false ? "Tank Readings N/A" : `${Number(diesel?.actualDiesel || 0).toFixed(2)} L`}</strong></span>
+                          <span>Excess: <strong>{diesel?.expectedDieselAvailable === false ? "Tank Readings N/A" : `${Number(diesel?.suggestedExcess || 0).toFixed(2)} L`}</strong></span>
+                          <span>Recovery: <strong>{diesel?.rateUnavailable ? "Manual pricing required" : `₹${formatCurrency(diesel?.suggestedRecoveryAmount || 0)}`}</strong></span>
+                        </div>
+                        <p className="mt-2 text-muted-foreground">Expected is norm × logged runtime/KM. Actual uses confirmed tank opening + Plant Stock issued − confirmed closing. The server repeats this reconciliation on save.</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button type="button" size="sm" variant={group.dieselRecoveryDecision === "accept" ? "default" : "outline"}
+                            disabled={diesel?.rateUnavailable || diesel?.expectedDieselAvailable === false || !diesel?.suggestedRecoveryAmount}
+                            onClick={() => patchHireGroup(group.id, { dieselRecoveryDecision: "accept", dieselRecoveryFinalAmount: Number(diesel?.suggestedRecoveryAmount || 0) })}>Accept Suggested</Button>
+                          <Button type="button" size="sm" variant={group.dieselRecoveryDecision === "edit" ? "default" : "outline"}
+                            onClick={() => patchHireGroup(group.id, { dieselRecoveryDecision: "edit" })}>Edit</Button>
+                          <Button type="button" size="sm" variant={group.dieselRecoveryDecision === "ignore" || !group.dieselRecoveryDecision ? "default" : "outline"}
+                            onClick={() => patchHireGroup(group.id, { dieselRecoveryDecision: "ignore", dieselRecoveryFinalAmount: 0 })}>No Recovery</Button>
+                        </div>
+                        {group.dieselRecoveryDecision === "edit" && <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          <Input type="number" min="0" placeholder="Final recovery ₹" value={group.dieselRecoveryFinalAmount ?? ""}
+                            onChange={event => patchHireGroup(group.id, { dieselRecoveryFinalAmount: event.target.value === "" ? undefined : Number(event.target.value) })} />
+                          <Input placeholder="Reason / reference (required)" value={group.dieselRecoveryRemarks || ""}
+                            onChange={event => patchHireGroup(group.id, { dieselRecoveryRemarks: event.target.value.toUpperCase() })} />
+                        </div>}
+                      </div>
+                    )}
+                    <details>
+                      <summary className="cursor-pointer text-xs font-semibold uppercase">View activity / breakdown calendar ({calendar.length} days)</summary>
+                      <div className="mt-2 max-h-64 overflow-auto space-y-1">
+                        {calendar.map(day => {
+                          const events = maintenance.filter((row: any) => row.businessDate === day.date && String(row.eventType).toLowerCase() === "breakdown");
+                          return <div key={day.date} className="grid grid-cols-[110px_1fr] gap-2 rounded border p-2 text-xs">
+                            <div><strong>{formatDate(day.date)}</strong><span className="block text-muted-foreground">{day.activity === "no_activity" ? "No activity (still billable)" : day.activity === "breakdown" ? "Breakdown" : "Logged active"}</span></div>
+                            <div>{events.length ? events.map((event: any) => {
+                              const current = group.exceptionDecisions.find((decision: any) => decision.sourceType === "maintenance" && Number(decision.sourceId) === Number(event.sourceId));
+                              const without = group.exceptionDecisions.filter((decision: any) => !(decision.sourceType === "maintenance" && Number(decision.sourceId) === Number(event.sourceId)));
+                              return <div key={event.sourceId} className="flex flex-wrap items-center gap-2"><span>{event.description || "Breakdown"}{event.downtimeHours ? ` · ${event.downtimeHours}h` : ""}</span>
+                                <Select value={current?.decision || "__automatic__"} onValueChange={decision => patchHireGroup(group.id, { exceptionDecisions: decision === "__automatic__" ? without : [...without, { sourceType: "maintenance", sourceId: event.sourceId, exceptionType: "breakdown", date: day.date, decision }] })}>
+                                  <SelectTrigger className="h-7 w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__automatic__">Automatic after grace</SelectItem><SelectItem value="none">No deduction</SelectItem><SelectItem value="half_day">Half day</SelectItem><SelectItem value="full_day">Full day</SelectItem></SelectContent>
+                                </Select>
+                              </div>;
+                            }) : <span>{day.hours ? `${day.hours} logged runtime/KM` : `${day.activityCount} activity record(s)`}</span>}</div>
+                          </div>;
+                        })}
+                      </div>
+                    </details>
+                  </div>
+                );
               })}
             </CardContent>
           </Card>
@@ -2758,9 +3084,19 @@ export default function VendorBills() {
 
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end border-t pt-3">
                       <div className="md:col-span-2">
-                        <Label className="text-sm uppercase">Advance Deduction</Label>
+                        <Label className="text-sm uppercase">{contractorAdvanceSuggestion && hireGroups.length === 0 ? "Other Debit / Recovery — Contractor Diesel Advance" : "Advance Deduction"}</Label>
+                        {contractorAdvanceSuggestion && hireGroups.length === 0 && <p className="text-xs text-muted-foreground">
+                          {contractorAdvanceSuggestion.amount == null
+                            ? `${contractorAdvanceSuggestion.litres.toFixed(2)} L recorded. No purchased diesel rate is available; enter an agreed manual recovery or remove it.`
+                            : `${contractorAdvanceSuggestion.litres.toFixed(2)} L × period-weighted purchased diesel rate ₹${contractorAdvanceSuggestion.rate!.toFixed(2)}/L. Review, edit, or remove before saving.`}
+                        </p>}
                       </div>
-                      <div className="md:col-span-2">
+                      <div>
+                        <Label className="text-sm uppercase">Reason / reference</Label>
+                        <Input value={adjustmentLabel} onChange={e => setAdjustmentLabel(e.target.value.toUpperCase())}
+                          placeholder="DIESEL ADVANCE / OTHER RECOVERY" data-testid="input-adjustment-label" />
+                      </div>
+                      <div>
                         <Label className="text-sm uppercase">Amount (negative to deduct)</Label>
                         <Input
                           type="number"

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
+import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import {
   auditLogs,
   type AuditLog,
@@ -15399,8 +15399,7 @@ export class DatabaseStorage implements IStorage {
     if (data.hireGroups === undefined) return [];
     if (bill.status !== "draft") throw Object.assign(new Error("Hire groups can only be recalculated on a draft bill"), { code: "CONFLICT" });
     const groups = data.hireGroups;
-    if (groups.length === 0) throw Object.assign(new Error("Select exactly one hired equipment item before creating an equipment-hire bill."), { code: "BAD_REQUEST" });
-    if (groups.length > 1) throw Object.assign(new Error("An equipment hire bill can contain one selected equipment item"), { code: "BAD_REQUEST" });
+    if (groups.length === 0) throw Object.assign(new Error("Select at least one hired equipment item before creating an equipment-hire bill."), { code: "BAD_REQUEST" });
     if (!bill.periodFrom || !bill.periodTo) throw Object.assign(new Error("Hire groups require a bill period"), { code: "BAD_REQUEST" });
     for (const group of groups) {
       if (group.periodFrom < bill.periodFrom || group.periodTo > bill.periodTo) {
@@ -15414,6 +15413,33 @@ export class DatabaseStorage implements IStorage {
       }
     }
     const canonical = await this.getVendorBillHireActivities(bill.vendorName, bill.periodFrom, bill.periodTo, tx);
+    // Availability-billed monthly hires are compulsory server-side bill
+    // members. The browser may not omit a no-log machine (or hide incomplete
+    // master terms) and save the remainder as an ordinary equipment bill.
+    const monthlyMasters = canonical
+      .filter((row: any) => row.source === "equipment_default" && String(row.equipment?.hireBillingBasis || "").toLowerCase() === "monthly")
+      .map((row: any) => row.equipment);
+    const invalidMonthly = monthlyMasters.find((equipment: any) =>
+      (!equipment.hireStartDate || !isEquipmentHireBillEligible({ ...equipment, ownership: "hired" }, bill.periodFrom!, bill.periodTo!)) &&
+      (!equipment.hireStartDate || equipment.hireStartDate <= bill.periodTo!) &&
+      (!equipment.hireEndDate || equipment.hireEndDate >= bill.periodFrom!));
+    if (invalidMonthly) {
+      throw Object.assign(new Error(`Monthly hire terms are incomplete for ${invalidMonthly.name}; correct its Equipment Master rate, start date, and monthly divisor before billing.`), { code: "BAD_REQUEST" });
+    }
+    const requiredMonthlyIds = new Set(monthlyMasters
+      .filter((equipment: any) => isEquipmentHireBillEligible({ ...equipment, ownership: "hired" }, bill.periodFrom!, bill.periodTo!))
+      .map((equipment: any) => Number(equipment.id)));
+    const submittedMonthlyIds = new Set(groups.filter(group => group.basis === "monthly").map(group => Number(group.equipmentId)));
+    const missingMonthly = Array.from(requiredMonthlyIds).filter(id => !submittedMonthlyIds.has(id));
+    if (missingMonthly.length) {
+      throw Object.assign(new Error("Every eligible monthly hired machine must be included for the selected vendor and bill period."), { code: "BAD_REQUEST" });
+    }
+    for (const equipmentId of Array.from(requiredMonthlyIds)) {
+      const matches = groups.filter(group => Number(group.equipmentId) === equipmentId && group.basis === "monthly");
+      if (matches.length !== 1 || matches[0].periodFrom !== bill.periodFrom || matches[0].periodTo !== bill.periodTo) {
+        throw Object.assign(new Error("Each eligible monthly machine requires exactly one full bill-period hire group; monthly sub-period splitting is not allowed."), { code: "BAD_REQUEST" });
+      }
+    }
     const desiredStatementIds = new Set<number>();
     const generated: VendorBillItem[] = [];
     for (const group of groups) {
@@ -15477,7 +15503,12 @@ export class DatabaseStorage implements IStorage {
         // turn a disabled contractual breakdown deduction on by choosing a
         // decision in this form.
         breakdownDeductionEnabled: !!equipment.hireBreakdownDeductionEnabled,
-        breakdownHoursPerDay: group.breakdownHoursPerDay ?? undefined };
+        automaticMonthlyBreakdownDeductions: !statement || (statement.calculationSnapshot as any)?.billingIntegration === "vb10_automatic",
+        breakdownHoursPerDay: group.breakdownHoursPerDay ?? undefined,
+        // Grace is a negotiated bill-period allowance.  It must never be read
+        // from mutable Equipment Master data, so it is persisted below in this
+        // statement's existing immutable JSON snapshot.
+        breakdownGraceDays: (group as any).breakdownGraceDays ?? 0 };
       const decisions = (group.exceptionDecisions ?? []).map(d => ({ sourceType: d.sourceType, sourceId: d.sourceId ?? undefined,
         exceptionType: d.exceptionType, date: d.date, decision: d.decision, manualDeductionAmount: d.manualDeductionAmount ?? undefined, remarks: d.remarks })) as HireExceptionDecisionInput[];
       const activities = canonical.filter(row => row.source !== "maintenance" && row.equipmentId === group.equipmentId);
@@ -15486,22 +15517,34 @@ export class DatabaseStorage implements IStorage {
       }));
       const maintenance: HireMaintenance[] = canonical.filter(row => row.source === "maintenance" && row.equipmentId === group.equipmentId)
         .map(row => ({ id: row.sourceId, date: row.businessDate, eventType: row.eventType, description: row.description, downtimeHours: row.downtimeHours }));
-      // Reuse the Equipment Performance report's exact period-boundary tank
-      // calculation. It rejects unreliable boundaries, omitted intervening
-      // events, and ambiguous same-day ordering; issued fuel is never used as
-      // a substitute for actual consumption in an HSD recovery.
-      const performanceReport = await this.getEquipmentPerformanceReport({
-        dateFrom: group.periodFrom, dateTo: group.periodTo, equipmentId: group.equipmentId,
-      });
-      const performance = performanceReport.fleet.find(row => row.equipmentId === group.equipmentId);
-      const authoritativeDieselPeriod = performance ? {
-        actualDiesel: performance.dieselConsumed,
-        expectedDiesel: performance.expectedDiesel,
-        difference: performance.difference,
-        reliable: !performance.consumptionIncomplete && performance.dieselConsumed != null &&
-          performance.expectedDiesel != null && performance.difference != null,
-        dailyRows: performance.dailyRows,
-      } : { actualDiesel: null, expectedDiesel: null, difference: null, reliable: false, dailyRows: [] };
+      // HLC fuel is reconciled as one period tank movement, never by summing
+      // per-row consumption. Only Plant Stock issues belong to HLC's stock;
+      // contractor/direct-purchase fuel cannot inflate an HLC recovery.
+      const activeFrom = equipment.hireStartDate && equipment.hireStartDate > group.periodFrom ? equipment.hireStartDate : group.periodFrom;
+      const activeTo = equipment.hireEndDate && equipment.hireEndDate < group.periodTo ? equipment.hireEndDate : group.periodTo;
+      const periodActivities = normalizeHireActivities(activities as any).filter((row: any) =>
+        row.businessDate >= activeFrom && row.businessDate <= activeTo);
+      const runtime = periodActivities.reduce((sum: number, row: any) => sum + Math.max(0, Number(row.hoursOrKmRun) || 0), 0);
+      const expectedDiesel = Number.isFinite(Number(equipment.consumptionNorm))
+        ? Math.round(runtime * Number(equipment.consumptionNorm) * 100) / 100 : null;
+      const stockRows = periodActivities.filter((row: any) =>
+        String(row.dieselSource || "").toLowerCase() === "plant_stock")
+        .sort((a: any, b: any) => a.businessDate.localeCompare(b.businessDate) ||
+          String(a.occurredAt || "").localeCompare(String(b.occurredAt || "")));
+      const opening = stockRows.length ? Number(stockRows[0].openingDiesel) : NaN;
+      const closing = stockRows.length ? Number(stockRows[stockRows.length - 1].closingDiesel) : NaN;
+      const issuedKnown = stockRows.length > 0 && stockRows.every((row: any) => Number.isFinite(Number(row.actualDiesel)));
+      const actualDiesel = Number.isFinite(opening) && opening >= 0 && Number.isFinite(closing) && closing >= 0 && issuedKnown
+        ? Math.round(Math.max(0, opening + stockRows.reduce((sum: number, row: any) => sum + Number(row.actualDiesel || 0), 0) - closing) * 100) / 100
+        : null;
+      const reliable = String(equipment.hireDieselResponsibility || "").toLowerCase() === "hlc" &&
+        actualDiesel != null && expectedDiesel != null;
+      const authoritativeDieselPeriod = {
+        actualDiesel, expectedDiesel,
+        difference: reliable ? Math.round((actualDiesel! - expectedDiesel!) * 100) / 100 : null,
+        reliable,
+        dailyRows: [],
+      };
       const calc = calculateHireGroup({ terms, periodFrom: group.periodFrom, periodTo: group.periodTo, activities, maintenance,
         dailyDecisions: group.dailyDecisions, tripDecisions: group.tripDecisions, exceptionDecisions: decisions,
         quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,
@@ -15535,6 +15578,12 @@ export class DatabaseStorage implements IStorage {
         agreementRemarks: equipment.hireAgreementRemarks, periodFrom: group.periodFrom, periodTo: group.periodTo, quantity: calc.quantity,
         grossAmount: calc.grossAmount, deductionAmount: calc.deductionAmount + calc.diesel.finalRecoveryAmount + otherDebit + advanceAdjustment - otherCredit, netAmount: netAfterBillAdjustments,
         status: "draft", vendorBillId: bill.id, calculationSnapshot: {
+          // Existing snapshots decide their own lineage. New groups are always
+          // integrated VB10 work; a client cannot downgrade one to historical
+          // merely by sending a different marker during an edit.
+          billingIntegration: statement
+            ? ((statement.calculationSnapshot as any)?.billingIntegration || "historical")
+            : "vb10_automatic",
           terms,
           ...calc,
           dailyDecisions: group.dailyDecisions ?? [],
@@ -15550,7 +15599,8 @@ export class DatabaseStorage implements IStorage {
            projectSite: typeof (group as any).projectSite === "string" ? (group as any).projectSite : null,
             performanceDailyRows: authoritativeDieselPeriod.dailyRows,
             sourceEvidence: { activities, maintenance },
-           breakdownHoursPerDay: group.breakdownHoursPerDay ?? null,
+            breakdownHoursPerDay: group.breakdownHoursPerDay ?? null,
+            breakdownGraceDays: (group as any).breakdownGraceDays ?? 0,
            adjustments: {
               breakdownDeduction,
              hsdRecovery: calc.diesel.finalRecoveryAmount,
@@ -15596,6 +15646,19 @@ export class DatabaseStorage implements IStorage {
     const billNo = await this.generateVendorBillNo();
 
     return await db.transaction(async (tx) => {
+      if (["equipment", "all"].includes(data.billType.toLowerCase()) && data.periodFrom && data.periodTo && data.hireGroups === undefined) {
+        const activityMetadata = await this.getVendorBillHireActivities(data.vendorName, data.periodFrom, data.periodTo, tx);
+        const monthly = activityMetadata.filter((row: any) => row.source === "equipment_default" &&
+          String(row.equipment?.hireBillingBasis || "").toLowerCase() === "monthly").map((row: any) => row.equipment);
+        const incomplete = monthly.find((equipment: any) => (!equipment.hireStartDate || equipment.hireStartDate <= data.periodTo!) &&
+          (!equipment.hireEndDate || equipment.hireEndDate >= data.periodFrom!) &&
+          (!equipment.hireStartDate || Number(equipment.hireRate) <= 0 ||
+            (String(equipment.hireMonthlyDivisorType || "30").toLowerCase() === "custom" && Number(equipment.hireMonthlyDivisor) <= 0)));
+        if (incomplete) throw Object.assign(new Error(`Monthly hire terms are incomplete for ${incomplete.name}; correct Equipment Master before billing.`), { code: "BAD_REQUEST" });
+        const required = monthly.some((equipment: any) =>
+          isEquipmentHireBillEligible({ ...equipment, ownership: "hired" }, data.periodFrom!, data.periodTo!));
+        if (required) throw Object.assign(new Error("Every eligible monthly hired machine must be included as a server-reconciled hire group."), { code: "BAD_REQUEST" });
+      }
       const [bill] = await tx.insert(vendorBills).values({
         billDate: data.billDate,
         billNo,
@@ -15618,7 +15681,7 @@ export class DatabaseStorage implements IStorage {
         approvedBy: data.approvedBy?.toUpperCase() || data.approvedBy,
         approvedAt: data.approvedAt,
         paidAt: data.paidAt,
-        amountPaid: data.billType.toLowerCase() === "equipment" ? 0 : null,
+        amountPaid: ["equipment", "all"].includes(data.billType.toLowerCase()) ? 0 : null,
         paymentAccountKey: (data as any).paymentAccountKey ?? null,
         paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,
       }).returning();
@@ -15791,6 +15854,19 @@ export class DatabaseStorage implements IStorage {
       if (data.hireGroups !== undefined && existing.status !== "draft") {
         throw Object.assign(new Error("Hire groups on verified, approved, or paid bills are frozen"), { code: "CONFLICT" });
       }
+      if (["equipment", "all"].includes(data.billType.toLowerCase()) && data.periodFrom && data.periodTo && data.hireGroups === undefined) {
+        const activityMetadata = await this.getVendorBillHireActivities(data.vendorName, data.periodFrom, data.periodTo, tx);
+        const monthly = activityMetadata.filter((row: any) => row.source === "equipment_default" &&
+          String(row.equipment?.hireBillingBasis || "").toLowerCase() === "monthly").map((row: any) => row.equipment);
+        const incomplete = monthly.find((equipment: any) => (!equipment.hireStartDate || equipment.hireStartDate <= data.periodTo!) &&
+          (!equipment.hireEndDate || equipment.hireEndDate >= data.periodFrom!) &&
+          (!equipment.hireStartDate || Number(equipment.hireRate) <= 0 ||
+            (String(equipment.hireMonthlyDivisorType || "30").toLowerCase() === "custom" && Number(equipment.hireMonthlyDivisor) <= 0)));
+        if (incomplete) throw Object.assign(new Error(`Monthly hire terms are incomplete for ${incomplete.name}; correct Equipment Master before billing.`), { code: "BAD_REQUEST" });
+        const required = monthly.some((equipment: any) =>
+          isEquipmentHireBillEligible({ ...equipment, ownership: "hired" }, data.periodFrom!, data.periodTo!));
+        if (required) throw Object.assign(new Error("Every eligible monthly hired machine must be included as a server-reconciled hire group."), { code: "BAD_REQUEST" });
+      }
       const setData: any = {
           billDate: data.billDate,
           billType: data.billType.toUpperCase(),
@@ -15946,7 +16022,7 @@ export class DatabaseStorage implements IStorage {
         if (!["approved", "paid"].includes(existing.status)) {
           throw Object.assign(new Error("Record a partial payment only after the equipment hire bill is approved."), { code: "CONFLICT" });
         }
-        const ceiling = existing.netPayableAmount ?? existing.totalAmount ?? 0;
+        const ceiling = Number(existing.netPayableAmount ?? existing.totalAmount ?? 0);
         if (details.amountPaid == null && existing.netPayableAmount != null) {
           throw Object.assign(new Error("A frozen equipment-hire bill requires a cumulative paid amount; use zero for no payment."), { code: "BAD_REQUEST" });
         }
@@ -16005,7 +16081,10 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      const updates: Partial<VendorBill> = { status };
+      // Drizzle numeric columns are represented as strings in the generated
+      // select type, while these approved values are intentionally rounded
+      // numeric accounting values before persistence.
+      const updates: any = { status };
       const now = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       const actorUpper = actor.toUpperCase();
       if (status === "verified") {
@@ -16014,68 +16093,48 @@ export class DatabaseStorage implements IStorage {
       } else if (status === "approved") {
         updates.approvedBy = actorUpper;
         updates.approvedAt = now;
-        if (existing.billType.toLowerCase() === "equipment") {
-          // Integrated straight-form bills freeze their server-derived JSON
-          // snapshot, never a re-grouping of display item rows.  This keeps
-          // taxable → GST → TDS → net identical to draft UI and exports.
-          if (linkedStatements.length === 0) {
-            // Shared itemized bills calculate TDS from the pre-GST subtotal;
-            // GST and adjustment amounts are added afterward to match the UI.
-            const itemRows = await tx.select({ category: vendorBillItems.category, amount: vendorBillItems.amount })
-              .from(vendorBillItems).where(eq(vendorBillItems.billId, id));
-            const categorySubtotals = itemRows.reduce((totals: Record<string, number>, item) => {
-              const category = String(item.category || "other").toLowerCase();
-              totals[category] = (totals[category] || 0) + Number(item.amount || 0);
-              return totals;
-            }, {});
-            const gst = (
-              (categorySubtotals.equipment || 0) * Number(existing.gstRateEquipment || 0) / 100 +
-              (categorySubtotals.material || 0) * Number(existing.gstRateMaterial || 0) / 100 +
-              (categorySubtotals.transport || 0) * Number(existing.gstRateTransport || 0) / 100 +
-              (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100
-            );
-            const subtotal = itemRows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-            const tds = Number(existing.tdsRate || 0);
-            const tdsAmount = subtotal * tds / 100;
-            const netPayable = subtotal + gst + Number(existing.adjustmentAmount || 0) - tdsAmount;
-            updates.netPayableAmount = Math.round((netPayable + Number.EPSILON) * 100) / 100;
+        if (["equipment", "all"].includes(existing.billType.toLowerCase())) {
+          // The saved items are the shared bill total: generated monthly
+          // statements, ordinary hourly/daily/trip items, and every other
+          // category participate once. Statement financials are evidence for
+          // their line only; summing their invoice totals here previously
+          // omitted ordinary/mixed lines and applied GST/TDS per statement.
+          const hasVb10AutomaticStatement = linkedStatements.some(statement =>
+            (statement.calculationSnapshot as any)?.billingIntegration === "vb10_automatic");
+          const itemRows = await tx.select({ category: vendorBillItems.category, amount: vendorBillItems.amount })
+            .from(vendorBillItems).where(eq(vendorBillItems.billId, id));
+          const categorySubtotals = itemRows.reduce((totals: Record<string, number>, item) => {
+            const category = String(item.category || "other").toLowerCase();
+            totals[category] = (totals[category] || 0) + Number(item.amount || 0);
+            return totals;
+          }, {});
+          const subtotal = itemRows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+          const gst = (
+            (categorySubtotals.equipment || 0) * Number(existing.gstRateEquipment || 0) / 100 +
+            (categorySubtotals.material || 0) * Number(existing.gstRateMaterial || 0) / 100 +
+            (categorySubtotals.transport || 0) * Number(existing.gstRateTransport || 0) / 100 +
+            (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100
+          );
+          if (linkedStatements.length && !hasVb10AutomaticStatement) {
+            // Pre-VB10 linked statements retain their approved straight-form
+            // financial snapshots exactly; they are not silently reinterpreted
+            // as a new shared automatic bill on a status change.
+            const savedFinancials = linkedStatements
+              .map(statement => (statement.calculationSnapshot as any)?.financials)
+              .filter((financials: any) => financials && Number.isFinite(Number(financials.grossHire)));
+            if (savedFinancials.length) {
+              const legacyNet = savedFinancials.reduce((sum: number, financials: any) => sum +
+                calculateEquipmentHireFinancials(financials).netPayable, 0);
+              updates.netPayableAmount = Math.round((legacyNet + Number.EPSILON) * 100) / 100;
+            } else {
+              // Legacy statements without a financial snapshot retain the old
+              // itemized tax treatment verbatim.
+              updates.netPayableAmount = Math.round(((subtotal + gst + Number(existing.adjustmentAmount || 0)) *
+                (1 - Number(existing.tdsRate || 0) / 100) + Number.EPSILON) * 100) / 100;
+            }
           } else {
-          const savedFinancials = linkedStatements
-            .map(statement => (statement.calculationSnapshot as any)?.financials)
-            .filter((financials: any) => financials && Number.isFinite(Number(financials.grossHire)));
-          if (savedFinancials.length) {
-            updates.netPayableAmount = Math.round((savedFinancials.reduce((sum: number, financials: any) =>
-              sum + calculateEquipmentHireFinancials({
-                grossHire: financials.grossHire,
-                breakdownDeduction: financials.breakdownDeduction,
-                hsdRecovery: financials.hsdRecovery,
-                otherDebit: financials.otherDebit,
-                advanceAdjustment: financials.advanceAdjustment,
-                otherCredit: financials.otherCredit,
-                gstRate: financials.gstRate,
-                tdsRate: financials.tdsRate,
-              }).netPayable, 0) + Number.EPSILON) * 100) / 100;
-          } else {
-            // Historical/legacy equipment bills predate the authoritative
-            // straight-form snapshot. Preserve their established item path.
-            const itemRows = await tx.select({ category: vendorBillItems.category, amount: vendorBillItems.amount })
-              .from(vendorBillItems).where(eq(vendorBillItems.billId, id));
-            const categorySubtotals = itemRows.reduce((totals: Record<string, number>, item) => {
-              const category = String(item.category || "other").toLowerCase();
-              totals[category] = (totals[category] || 0) + Number(item.amount || 0);
-              return totals;
-            }, {});
-            const gst = (
-              (categorySubtotals.equipment || 0) * Number(existing.gstRateEquipment || 0) / 100 +
-              (categorySubtotals.material || 0) * Number(existing.gstRateMaterial || 0) / 100 +
-              (categorySubtotals.transport || 0) * Number(existing.gstRateTransport || 0) / 100 +
-              (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100
-            );
-            const taxableTotal = itemRows.reduce((sum, item) => sum + Number(item.amount || 0), 0)
-              + gst + Number(existing.adjustmentAmount || 0);
-            const tds = Number(existing.tdsRate || 0);
-            updates.netPayableAmount = Math.round((taxableTotal * (1 - tds / 100) + Number.EPSILON) * 100) / 100;
-          }
+            const tdsAmount = subtotal * Number(existing.tdsRate || 0) / 100;
+            updates.netPayableAmount = Math.round((subtotal + gst + Number(existing.adjustmentAmount || 0) - tdsAmount + Number.EPSILON) * 100) / 100;
           }
           // A new hire bill starts with no payment. Historical paid records
           // remain nullable and are interpreted as fully paid in the UI.
@@ -16086,7 +16145,7 @@ export class DatabaseStorage implements IStorage {
         // 06M-F §7A: record WHO marked it paid, same actor convention as
         // verifiedBy/approvedBy above. Purely additive display data.
         updates.paymentRecordedBy = actorUpper;
-        if (existing.billType.toLowerCase() === "equipment") {
+        if (["equipment", "all"].includes(existing.billType.toLowerCase())) {
           const netPayable = Number(existing.netPayableAmount ?? existing.totalAmount ?? 0);
           // Legacy paid records have a NULL paid amount and remain interpreted
           // as fully paid; newly approved hires must settle the recorded
@@ -16153,15 +16212,17 @@ export class DatabaseStorage implements IStorage {
     if (!equipment.length) return [];
     const ids = equipment.map(row => row.id);
     const defaults = new Map<number, {
-      name: string; vendorName: string | null; hireBillingBasis: string | null;
+      id: number; name: string; vendorName: string | null; hireBillingBasis: string | null;
       hireRate: number | null; hireMonthlyDivisorType: string | null;
       hireMonthlyDivisor: number | null; hireStartDate: string | null;
        hireEndDate: string | null; consumptionNorm: number | null; meterType: string | null; registrationNumber: string | null;
+       hireDieselResponsibility: string | null; hireBreakdownDeductionEnabled: boolean | null;
     }>(equipment.map(row => [row.id, {
-      name: row.name, vendorName: row.vendorName, hireBillingBasis: row.hireBillingBasis,
+      id: row.id, name: row.name, vendorName: row.vendorName, hireBillingBasis: row.hireBillingBasis,
       hireRate: row.hireRate, hireMonthlyDivisorType: row.hireMonthlyDivisorType,
       hireMonthlyDivisor: row.hireMonthlyDivisor, hireStartDate: row.hireStartDate,
-       hireEndDate: row.hireEndDate, consumptionNorm: row.consumptionNorm, meterType: row.meterType, registrationNumber: row.registrationNumber,
+        hireEndDate: row.hireEndDate, consumptionNorm: row.consumptionNorm, meterType: row.meterType, registrationNumber: row.registrationNumber,
+        hireDieselResponsibility: row.hireDieselResponsibility, hireBreakdownDeductionEnabled: row.hireBreakdownDeductionEnabled,
     }]));
     const dprRows: any[] = await executor.select({
       id: equipmentLogs.id, equipmentId: equipmentLogs.equipmentId, date: dprs.date,
@@ -16169,7 +16230,9 @@ export class DatabaseStorage implements IStorage {
       hoursOrKmRun: equipmentLogs.hoursWorked, openingReading: equipmentLogs.openingReading,
       closingReading: equipmentLogs.closingReading, status: dprs.dprStatus, plantUsageId: equipmentLogs.plantUsageId,
       startTime: equipmentLogs.startTime, endTime: equipmentLogs.endTime, tripDistance: equipmentLogs.tripDistance,
-      actualDiesel: equipmentLogs.diesel, expectedDiesel: equipmentLogs.expectedDiesel,
+       actualDiesel: equipmentLogs.diesel, dieselSource: equipmentLogs.dieselSource,
+       openingDiesel: equipmentLogs.openingDiesel, closingDiesel: equipmentLogs.dieselBalanceInTank,
+       expectedDiesel: equipmentLogs.expectedDiesel,
       dieselNorm: equipmentLogs.dieselNorm, task: equipmentLogs.task, site: dprs.site,
     }).from(equipmentLogs).innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId)).where(and(
       inArray(equipmentLogs.equipmentId, ids), gte(dprs.date, periodFrom), lte(dprs.date, periodTo), eq(dprs.isSuperseded, false),
@@ -16216,6 +16279,7 @@ export class DatabaseStorage implements IStorage {
       purchasedAt: dieselRequirements.purchasedAt,
     }).from(dieselRequirements).where(and(
       eq(dieselRequirements.status, "purchased"),
+      gte(dieselRequirements.date, periodFrom),
       lte(dieselRequirements.date, periodTo),
       sql`${dieselRequirements.rate} IS NOT NULL AND ${dieselRequirements.rate} > 0`,
       sql`${dieselRequirements.qtyPurchased} IS NOT NULL AND ${dieselRequirements.qtyPurchased} > 0`,
@@ -16240,9 +16304,10 @@ export class DatabaseStorage implements IStorage {
           ? Number(row.expectedDiesel)
           : calculated.expectedDiesel;
         return { source: "dpr_log", sourceId: row.id, equipmentId: row.equipmentId,
-          businessDate: isoDate(row.date), entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
+          businessDate: isoDate(row.date), occurredAt: row.startTime ? `${isoDate(row.date)}T${row.startTime}` : null, entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
           hoursOrKmRun: (row.hoursOrKmRun ?? calculated.runtime) || null, openingReading: row.openingReading, closingReading: row.closingReading,
-          plantUsageId: row.plantUsageId, actualDiesel: row.actualDiesel,
+           plantUsageId: row.plantUsageId, actualDiesel: row.actualDiesel, dieselSource: row.dieselSource,
+           openingDiesel: row.openingDiesel, closingDiesel: row.closingDiesel,
           expectedDiesel, expectedDieselAvailable: expectedDiesel != null,
           consumptionNorm: row.dieselNorm ?? equipmentDefault?.consumptionNorm,
           normBasis: calculated.efficiencyUnit, task: row.task, site: row.site, equipmentName: equipmentDefault?.name,
@@ -16255,9 +16320,11 @@ export class DatabaseStorage implements IStorage {
           ? Number(row.expectedDiesel)
           : calculated.expectedDiesel;
         return { source: "plant_usage", sourceId: row.id, equipmentId: row.equipmentId,
-          businessDate: isoDate(row.date), entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
+          businessDate: isoDate(row.date), occurredAt: row.createdAt ? new Date(row.createdAt).toISOString() : null, entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
           hoursOrKmRun: (row.hoursOrKmRun ?? calculated.runtime) || null, openingReading: row.openingReading, closingReading: row.closingReading,
-          actualDiesel: row.dieselIssued, expectedDiesel, expectedDieselAvailable: expectedDiesel != null,
+           actualDiesel: row.dieselIssued, dieselSource: row.dieselSource,
+           openingDiesel: row.openingDiesel, closingDiesel: row.dieselBalanceInTank,
+           expectedDiesel, expectedDieselAvailable: expectedDiesel != null,
           consumptionNorm: equipmentDefault?.consumptionNorm, normBasis: calculated.efficiencyUnit,
           task: row.task, site: row.siteName, equipmentName: equipmentDefault?.name,
           movementReference: [row.shiftFrom && `FROM ${row.shiftFrom}`, row.shiftTo && `TO ${row.shiftTo}`, row.destinationSite && `DESTINATION ${row.destinationSite}`].filter(Boolean).join(" · ") || null,
@@ -16404,7 +16471,7 @@ export class DatabaseStorage implements IStorage {
 
       if (hiredEquipment.length > 0) {
         const eqIds = hiredEquipment.map(e => e.id);
-        const eqMap = new Map(hiredEquipment.map(e => [e.id, e.name]));
+        const eqMap = new Map(hiredEquipment.map(e => [e.id, e]));
 
         const dprLogs = await db.select({
           id: equipmentLogs.id,
@@ -16432,12 +16499,16 @@ export class DatabaseStorage implements IStorage {
         ));
 
         for (const row of dprLogs) {
+          // Billing basis belongs to the machine, not an individual DPR row.
+          // A monthly machine is represented once by its generated monthly
+          // line, even if a legacy row was tagged hourly/daily.
+          if ((eqMap.get(row.equipmentId!)?.hireBillingBasis || "").toLowerCase() === "monthly") continue;
           if (!matchesEntryTypeFilter(row.entryType)) continue;
           const qty = calcQty({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: row.entryType, openingReading: row.openingReading, closingReading: row.closingReading });
           const hours = calcHours({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, openingReading: row.openingReading, closingReading: row.closingReading });
           const dieselVal = row.diesel || 0;
           if (qty > 0) {
-            const machineName = eqMap.get(row.equipmentId!) || row.machine;
+            const machineName = eqMap.get(row.equipmentId!)?.name || row.machine;
             const label = entryTypeLabel(row.entryType);
             const taskPart = row.task ? ` - ${row.task.toUpperCase()}` : "";
             let desc = `${machineName}${taskPart} (SITE) - ${label} | ${hours} HRS`;
@@ -16467,13 +16538,14 @@ export class DatabaseStorage implements IStorage {
           ));
 
         for (const row of plantUsage) {
+          if ((eqMap.get(row.equipmentId)?.hireBillingBasis || "").toLowerCase() === "monthly") continue;
           const et = row.entryType || "time_meter";
           if (!matchesEntryTypeFilter(et)) continue;
           const qty = calcQty({ hoursOrKmRun: row.hoursOrKmRun, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: et, openingReading: row.openingReading, closingReading: row.closingReading });
           const hours = calcHours({ hoursOrKmRun: row.hoursOrKmRun, startTime: row.startTime, endTime: row.endTime, openingReading: row.openingReading, closingReading: row.closingReading });
           const dieselVal = row.dieselIssued || 0;
           if (qty > 0) {
-            const machineName = eqMap.get(row.equipmentId) || "EQUIPMENT";
+            const machineName = eqMap.get(row.equipmentId)?.name || "EQUIPMENT";
             const label = entryTypeLabel(et);
             const taskPart = row.task ? ` - ${row.task.toUpperCase()}` : "";
             let desc = `${machineName}${taskPart} (PLANT) - ${label} | ${hours} HRS`;
@@ -19511,6 +19583,14 @@ export class DatabaseStorage implements IStorage {
       if (hiredEquipment.length > 0) {
         const eqIdToVendor = new Map(hiredEquipment.map(e => [e.id, e.vendorName!]));
         const eqIds = hiredEquipment.map(e => e.id);
+        // Monthly hire is availability-based.  It must be discoverable even
+        // when no DPR/Plant activity exists in the selected period.
+        for (const equipment of hiredEquipment) {
+          if ((equipment.hireBillingBasis || "").toLowerCase() === "monthly" &&
+              isEquipmentHireBillEligible(equipment, periodFrom, periodTo) && equipment.vendorName) {
+            addRecord(equipment.vendorName, "equipment");
+          }
+        }
 
         const dprLogs = await db.select({
           equipmentId: equipmentLogs.equipmentId,

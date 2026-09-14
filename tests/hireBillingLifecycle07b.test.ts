@@ -75,6 +75,6 @@ describe("07B hired equipment billing lifecycle wiring", () => {
     expect(storage).toContain("meterType: equipment.meterType");
     expect(storage).toContain("consumptionNorm: equipment.consumptionNorm");
     expect(storage).toContain("dieselNormOverride: equipment.consumptionNorm");
-    expect(storage).toContain("Historical/legacy equipment bills predate the authoritative");
+    expect(storage).toContain('(statement.calculationSnapshot as any)?.billingIntegration === "vb10_automatic"');
   });
 });

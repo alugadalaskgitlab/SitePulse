@@ -22,6 +22,14 @@ export interface HireTerms {
    * hours when using an actual downtime-hours deduction.
    */
   breakdownHoursPerDay?: number | null;
+  /**
+   * A bill-specific allowance, not an Equipment Master setting.  It is counted
+   * once per breakdown date in the billed period and frozen in the bill
+   * snapshot with the reviewer decisions.
+   */
+  breakdownGraceDays?: number | null;
+  /** VB10 availability workflow only; legacy/register calculations retain review semantics. */
+  automaticMonthlyBreakdownDeductions?: boolean | null;
 }
 
 export interface HireUsage {
@@ -227,7 +235,7 @@ function exceptionKey(value: Pick<HireBillingException, "sourceType" | "sourceId
   return `${value.sourceType}:${value.sourceId ?? ""}:${value.exceptionType}:${value.date ?? ""}`;
 }
 
-function monthlyGross(from: number, to: number, terms: HireTerms): number {
+export function monthlyGross(from: number, to: number, terms: HireTerms): number {
   let result = 0;
   let cursor = from;
   while (cursor <= to) {
@@ -254,7 +262,7 @@ function monthlyGross(from: number, to: number, terms: HireTerms): number {
   return money(result);
 }
 
-function monthlyDailyRate(date: string | undefined, terms: HireTerms): number {
+export function monthlyDailyRate(date: string | undefined, terms: HireTerms): number {
   if (terms.monthlyDivisorType === "custom" && (terms.monthlyDivisor ?? 0) > 0) return terms.rate / terms.monthlyDivisor!;
   if (terms.monthlyDivisorType === "calendar" && date && isValidDate(date)) {
     const value = new Date(dateAtUtc(date));
@@ -357,9 +365,68 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
     exceptionKey({ sourceType: value.sourceType, sourceId: value.sourceId ?? undefined, exceptionType: (value.exceptionType ?? "manual") as HireBillingException["exceptionType"], date: value.date }),
     value,
   ]));
+  // Monthly availability is payable on every active hire day.  A positive
+  // breakdown is the one exception.  The agreed grace is deliberately
+  // per-bill (rather than a mutable master field) and is consumed by dates,
+  // not by duplicate maintenance records on the same date.
+  const automaticMonthlyBreakdown = terms.billingBasis === "monthly" && terms.automaticMonthlyBreakdownDeductions === true;
+  const graceDays = automaticMonthlyBreakdown && terms.breakdownDeductionEnabled
+    ? Math.max(0, Math.floor(Number(terms.breakdownGraceDays) || 0))
+    : 0;
+  const autoMonthlyBreakdownKeys = new Set(
+    Array.from(new Set(exceptions
+      .filter(item => item.exceptionType === "breakdown" && item.date)
+      .map(item => item.date!)))
+      .sort()
+      .slice(graceDays),
+  );
+  // A breakdown day is commercially one availability event even when several
+  // maintenance records describe it. Select the first submitted explicit
+  // source decision for that date, then mark every other source as a resolved
+  // zero deduction. This avoids both a double charge and an invisible review
+  // gap when the reviewer chose (for example) the second maintenance row.
+  const explicitBreakdownDecisionByDate = new Map<string, HireExceptionDecisionInput>();
+  for (const value of input.exceptionDecisions ?? []) {
+    if (value.exceptionType === "breakdown" && value.date && !explicitBreakdownDecisionByDate.has(value.date)) {
+      explicitBreakdownDecisionByDate.set(value.date, value);
+    }
+  }
+  const countedMonthlyBreakdownDates = new Set<string>();
   let deductionAmount = 0;
   for (const item of exceptions) {
-    const decision = decisionByKey.get(exceptionKey(item));
+    let decision = decisionByKey.get(exceptionKey(item));
+    if (automaticMonthlyBreakdown && item.exceptionType === "breakdown" && item.date) {
+      const chosen = explicitBreakdownDecisionByDate.get(item.date);
+      const isChosenSource = chosen && exceptionKey(item) === exceptionKey({
+        sourceType: chosen.sourceType, sourceId: chosen.sourceId ?? undefined,
+        exceptionType: (chosen.exceptionType ?? "manual") as HireBillingException["exceptionType"], date: chosen.date,
+      });
+      if (chosen) {
+        // Do not let source-record ordering discard a decision recorded against
+        // a later duplicate maintenance event.
+        decision = isChosenSource ? chosen : {
+          sourceType: item.sourceType, sourceId: item.sourceId, exceptionType: item.exceptionType, date: item.date,
+          decision: "none", remarks: "DUPLICATE BREAKDOWN SOURCE — DAY DECISION RECORDED ON LINKED EVENT",
+        };
+      } else if (countedMonthlyBreakdownDates.has(item.date)) {
+        decision = {
+          sourceType: item.sourceType, sourceId: item.sourceId, exceptionType: item.exceptionType, date: item.date,
+          decision: "none", remarks: "DUPLICATE BREAKDOWN SOURCE — DAY ALREADY RESOLVED",
+        };
+      } else {
+        // A grace date is still an explicit automatic no-deduction decision.
+        // This makes it auditable and prevents an undecided maintenance event
+        // passing bill verification merely because it is inside the allowance.
+        decision = {
+          sourceType: "maintenance", sourceId: item.sourceId, exceptionType: "breakdown", date: item.date,
+          decision: autoMonthlyBreakdownKeys.has(item.date) ? "full_day" : "none",
+          remarks: autoMonthlyBreakdownKeys.has(item.date)
+            ? "AUTOMATIC BREAKDOWN DEDUCTION AFTER BILL GRACE"
+            : "AUTOMATIC BILL BREAKDOWN GRACE — NO DEDUCTION",
+        };
+      }
+      countedMonthlyBreakdownDates.add(item.date);
+    }
     if (!decision) continue;
     item.decision = decision.decision;
     item.manualDeductionAmount = decision.manualDeductionAmount ?? undefined;
@@ -401,6 +468,13 @@ export interface HireActivity {
   /** A DPR row is a mirror only when this explicit link is present. */
   plantUsageId?: number | null;
   actualDiesel?: number | null;
+  /** Provenance is material for hire recovery: HLC stock only uses plant_stock. */
+  dieselSource?: "plant_stock" | "contractor" | "direct_purchase" | string | null;
+  /** Physical tank boundaries used for full-period reconciliation. */
+  openingDiesel?: number | null;
+  closingDiesel?: number | null;
+  /** Actual recorded chronology; serial/source ids are never chronological. */
+  occurredAt?: string | null;
   expectedDiesel?: number | null;
   /** False when actual diesel exists but the activity/norm basis cannot derive expected diesel. */
   expectedDieselAvailable?: boolean;
@@ -901,7 +975,6 @@ export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupC
     // No inferred trips: only selected positive stored/corrected values reach
     // the shared trip calculator.
     const trips = activity.requiresTripReview && !decision ? 0
-      : decision?.selected === false ? 0
       : decision?.correctedTrips !== undefined ? decision.correctedTrips
       : activity.numberOfTrips;
     return [{

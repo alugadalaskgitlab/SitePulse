@@ -196,6 +196,16 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     expect(screen.queryByTestId("button-export-equipment-hire-pdf")).toBeNull();
   });
 
+  it("preserves saved ordinary equipment evidence when an itemized edit switches to All", async () => {
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-82"));
+    fireEvent.click(await screen.findByTestId("button-edit-bill"));
+    expect(await screen.findByText(/ITEMIZED ROLLER · HOURLY HIRE/i)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("select-bill-type"));
+    fireEvent.click(await screen.findByText("All Types (Combined)"));
+    await waitFor(() => expect(screen.getByText(/ITEMIZED ROLLER · HOURLY HIRE/i)).toBeTruthy());
+  });
+
   it("keeps persisted historical hire groups through period edits and PUT save", async () => {
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-81"));

@@ -304,4 +304,88 @@ describe("VB-09 server itemized equipment hire", () => {
       amountPaid: 0,
     });
   });
+
+  it("runs an All-category itemized bill through create, edit, verify, and approve without dropping either category", async () => {
+    const storage = new DatabaseStorage();
+    const allMixed = itemizedEquipmentBill({
+      billType: "all",
+      totalAmount: 15_000,
+      adjustmentAmount: 100,
+      gstRateEquipment: 18,
+      gstRateMaterial: 5,
+      tdsRate: 2,
+      items: [
+        { date: "2026-09-13", category: "equipment", description: "JCB HOURLY HIRE", qty: 10, unit: "HRS", rate: 1_000, amount: 10_000, source: "auto:equipment-9", equipmentId: 9 },
+        { date: "2026-09-13", category: "material", description: "M-SAND", qty: 10, unit: "CUM", rate: 500, amount: 5_000, source: "auto:receipt-5" },
+      ],
+    });
+    const created = await storage.createVendorBill(allMixed as any);
+    expect(created.items.map(item => item.category)).toEqual(["equipment", "material"]);
+
+    const draft = { id: 101, billType: "ALL", vendorName: "NARASIMHULU", status: "draft", periodFrom: "2026-08-01", periodTo: "2026-09-13" };
+    fx.txRows.push([draft], []);
+    await storage.updateVendorBill(101, { ...allMixed, items: [
+      ...allMixed.items,
+      { date: "2026-09-13", category: "material", description: "CEMENT", qty: 1, unit: "BAG", rate: 400, amount: 400, source: "manual" },
+    ], totalAmount: 15_400 } as any);
+    expect(fx.writes.some(write => write.kind === "insert" && Array.isArray(write.value) &&
+      write.value.some((item: any) => item.category === "equipment") &&
+      write.value.some((item: any) => item.category === "material"))).toBe(true);
+
+    const verified = { ...draft, status: "verified", totalAmount: 15_400, amountPaid: null, adjustmentAmount: 100, gstRateEquipment: 18, gstRateMaterial: 5, gstRateTransport: null, gstRateLabour: null, tdsRate: 2 };
+    fx.txRows.push([draft], []);
+    fx.lastBill = verified;
+    await storage.updateVendorBillStatus(101, "verified", "reviewer");
+
+    fx.txRows.push(
+      [verified],
+      [{ id: 601, vendorBillId: 101, status: "billed", calculationSnapshot: { billingIntegration: "vb10_automatic" } }],
+      [{ category: "equipment", amount: 10_000 }, { category: "material", amount: 5_400 }],
+    );
+    fx.lastBill = { ...verified, status: "approved" };
+    await storage.updateVendorBillStatus(101, "approved", "reviewer");
+    const approval = fx.writes.filter(write => write.kind === "update").at(-1)?.value;
+    // (10,000 × 18%) + (5,400 × 5%) + 100 adjustment − (15,400 × 2%)
+    expect(approval).toMatchObject({ status: "approved", netPayableAmount: 17_262, amountPaid: 0 });
+  });
+
+  it("rejects a mixed All bill that omits an eligible monthly hire group", async () => {
+    const storage = new DatabaseStorage();
+    storage.getVendorBillHireActivities = vi.fn(async () => [{
+      source: "equipment_default",
+      equipment: {
+        id: 77, name: "MONTHLY EXCAVATOR", vendorName: "NARASIMHULU", hireBillingBasis: "monthly",
+        hireStartDate: "2026-01-01", hireRate: 90_000, hireMonthlyDivisorType: "30",
+      },
+    }]);
+    await expect(storage.createVendorBill(itemizedEquipmentBill({ billType: "all" }) as any))
+      .rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(fx.writes).toHaveLength(0);
+  });
+
+  it("calls the hire-group reconciler on both create and edit of a mixed All bill", async () => {
+    const storage = new DatabaseStorage();
+    const generatedHireLine = {
+      id: 990, billId: 101, category: "equipment", description: "MONTHLY EXCAVATOR HIRE",
+      qty: 1, unit: "MONTHS", rate: 90_000, amount: 90_000, source: "hire_statement", equipmentId: 77,
+    };
+    const reconcile = vi.spyOn(storage, "reconcileVendorBillHireGroups").mockResolvedValue([generatedHireLine] as any);
+    const withGroup = itemizedEquipmentBill({
+      billType: "all",
+      totalAmount: 15_000,
+      items: [
+        { date: "2026-09-13", category: "equipment", description: "JCB HOURLY HIRE", qty: 10, unit: "HRS", rate: 1_000, amount: 10_000, source: "auto:equipment-9", equipmentId: 9 },
+        { date: "2026-09-13", category: "material", description: "M-SAND", qty: 10, unit: "CUM", rate: 500, amount: 5_000, source: "auto:receipt-5" },
+      ],
+      hireGroups: [{ id: "monthly-77", equipmentId: 77, periodFrom: "2026-08-01", periodTo: "2026-09-13", basis: "monthly", rate: 90_000 }],
+    });
+    const created = await storage.createVendorBill(withGroup as any);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(created.items.map(item => item.category)).toEqual(["equipment", "material", "equipment"]);
+
+    fx.txRows.push([{ id: 101, billType: "ALL", vendorName: "NARASIMHULU", status: "draft" }], []);
+    await storage.updateVendorBill(101, withGroup as any);
+    expect(reconcile).toHaveBeenCalledTimes(2);
+    expect(fx.writes.some(write => write.kind === "update" && write.value.totalAmount === 105_000)).toBe(true);
+  });
 });

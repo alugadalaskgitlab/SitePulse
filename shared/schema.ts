@@ -2426,6 +2426,9 @@ export const hireGroupRequestSchema = z.object({
   // divisor is a conscious per-bill commercial choice, never a hidden
   // assumed contract term.
   breakdownHoursPerDay: z.number().finite().min(10).max(12).nullable().optional(),
+  // Per-bill commercial grace. It is stored only in the existing immutable
+  // hire calculation snapshot; no Equipment Master/database field is added.
+  breakdownGraceDays: z.number().int().min(0).max(366).optional(),
   adjustments: z.object({
     otherDebit: z.number().finite().nonnegative().optional(),
     otherDebitReason: z.string().max(2000).nullable().optional(),
@@ -2472,6 +2475,8 @@ export type HireGroupRequest = z.infer<typeof hireGroupRequestSchema>;
 export const createVendorBillRequestSchema = insertVendorBillSchema.extend({
   items: z.array(insertVendorBillItemSchema.omit({ billId: true })),
   hireGroups: z.array(hireGroupRequestSchema).optional(),
+  /** Explicit payload marker persisted in the existing statement snapshot. */
+  hireBillingMode: z.enum(["vb10_automatic", "historical"]).optional(),
 });
 export type CreateVendorBillRequest = z.infer<typeof createVendorBillRequestSchema>;
 
