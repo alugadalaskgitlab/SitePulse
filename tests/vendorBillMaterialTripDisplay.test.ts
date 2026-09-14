@@ -17,11 +17,11 @@ describe("vendor bill material-trip display", () => {
     expect(client).toContain("Receipt: ${item.receiptNumber}");
   });
 
-  it("removes only the untouched seeded blank when material rows are pulled", () => {
+  it("removes the untouched seeded blank when any nonempty activity group is pulled", () => {
     expect(client).toContain("initialBlank: true");
-    expect(client).toContain("initialBlank: false");
-    expect(client).toContain('const pulledMaterialRows = mapped.some(item => item.category === "material")');
     expect(client).toContain("prev.filter(item => !item.initialBlank)");
+    expect(client).toContain("Any");
+    expect(client).toContain("successful activity pull");
     expect(client).toContain("const addLineItem = () =>");
   });
 });

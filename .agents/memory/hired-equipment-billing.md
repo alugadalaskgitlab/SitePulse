@@ -33,7 +33,13 @@ New Equipment Hire Vendor Bills use the shared itemized creation flow, not the m
 
 **Why:** The user deliberately withdrew the monthly creation redesign because incomplete master hire terms hid genuine logged billable activity. This supersedes the earlier one-machine straight-form product decision.
 
-**How to apply:** Ordinary non-monthly items come from existing DPR/Plant activity without hire-term eligibility gates. Monthly Master basis now generates one automatic availability line per eligible machine, even without activity; reuse the existing proration engine. Keep mixed machines in the shared table. Do not recompute historical snapshots or change the separate register.
+**How to apply:** Ordinary non-monthly items come from existing DPR/Plant activity without hire-term eligibility gates, but enter the bill only through deliberate grouped Pull or Pull All. Monthly Master basis still generates one automatic availability line per eligible machine, even without activity; reuse the existing proration engine. Keep mixed machines in the shared table. Do not recompute historical snapshots or change the separate register.
+
+Grouped pulling must preserve the existing Set Rates identity rather than introduce a new commercial grouping.
+
+**Why:** The user asked for selective inclusion only, not changed rates. The instruction's background described entry-type grouping, but actual prior equipment grouping was canonical machine plus unit; exact reuse takes precedence.
+
+**How to apply:** Share the grouping implementation with Set Rates. Scope asynchronous pulls to a form instance as well as vendor/period, since distinct bills can share the same commercial context.
 
 Grace is a per-bill, per-machine total allowance, default zero, frozen in the existing snapshot—not a new Equipment Master field. Contractor advance suggestions use period-bounded quantity-weighted diesel purchase rates; absent pricing requires manual review rather than an invented rate.
 

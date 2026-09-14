@@ -51,10 +51,18 @@ const itemizedEquipmentBill = {
   }], hireStatements: [],
 };
 let vendorBillWrites: Array<{ method: string; body: any }> = [];
+let autoItemsForTest: any[] = [autoEquipmentItem];
+let rateCardsForTest: any[] = [];
+let duplicateRowsForTest: Array<{ index: number; billNo: string; billStatus: string }> = [];
+let deferredRateCards: Promise<Response> | null = null;
 
 beforeEach(() => {
   queryClient.clear();
   vendorBillWrites = [];
+  autoItemsForTest = [autoEquipmentItem];
+  rateCardsForTest = [];
+  duplicateRowsForTest = [];
+  deferredRateCards = null;
   Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn().mockReturnValue({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) });
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -78,8 +86,9 @@ beforeEach(() => {
     }
     if (url.includes("/api/vendor-bills/82")) return new Response(JSON.stringify(itemizedEquipmentBill), { status: 200 });
     if (url.includes("/api/vendor-bills/hire-activities")) return new Response(JSON.stringify([]));
-    if (url.includes("/api/vendor-bills/auto-items")) return new Response(JSON.stringify([autoEquipmentItem]));
-    if (url.includes("/api/vendor-rate-cards")) return new Response(JSON.stringify([]));
+    if (url.includes("/api/vendor-bills/auto-items")) return new Response(JSON.stringify(autoItemsForTest));
+    if (url.includes("/api/vendor-rate-cards")) return deferredRateCards || new Response(JSON.stringify(rateCardsForTest));
+    if (url.includes("/api/vendor-bills/check-duplicates")) return new Response(JSON.stringify(duplicateRowsForTest));
     if (url.includes("/api/reports/equipment-performance")) return new Response(JSON.stringify({ fleet: [{ equipmentId: 81, dieselConsumed: null, expectedDiesel: null, difference: null, consumptionIncomplete: true, dailyRows: [] }] }));
     throw new Error(`Unexpected request ${url}`);
   }));
@@ -99,7 +108,7 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/vendor-bills/discover-vendors"));
     fireEvent.click(screen.getByTestId("button-select-vendor-ABC EQUIPMENT"));
     const pull = await screen.findByTestId("button-auto-populate");
-    expect(pull.textContent).toContain("PULL 1 ITEM");
+    expect(pull.textContent).toContain("PULL ALL 1 ITEM");
     fireEvent.click(pull);
     expect(await screen.findByText(/ABC ROLLER · HOURLY HIRE/i)).toBeTruthy();
     expect(screen.queryByTestId("equipment-hire-straight-form")).toBeNull();
@@ -114,6 +123,7 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     fireEvent.click(await screen.findByTestId("button-show-vendors"));
     fireEvent.click(await screen.findByTestId("button-select-vendor-ABC EQUIPMENT"));
     fireEvent.click(await screen.findByTestId("button-auto-populate"));
+    await screen.findByText(/ABC ROLLER · HOURLY HIRE/i);
     const qtyInputs = screen.getAllByTestId(/input-item-qty-/);
     const rateInputs = screen.getAllByTestId(/input-item-rate-/);
     fireEvent.change(qtyInputs[qtyInputs.length - 1], { target: { value: "2" } });
@@ -134,12 +144,14 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     fireEvent.click(await screen.findByTestId("button-show-vendors"));
     fireEvent.click(await screen.findByTestId("button-select-vendor-ABC EQUIPMENT"));
     fireEvent.click(await screen.findByTestId("button-auto-populate"));
+    await screen.findByText(/ABC ROLLER · HOURLY HIRE/i);
+    fireEvent.click(screen.getByTestId("button-add-item"));
 
-    fireEvent.click(screen.getByTestId("select-item-category-0"));
+    fireEvent.click(screen.getByTestId("select-item-category-1"));
     fireEvent.click(await screen.findByText("MATL"));
-    fireEvent.change(screen.getByTestId("input-item-desc-0"), { target: { value: "STONE MATERIAL" } });
-    fireEvent.change(screen.getByTestId("input-item-qty-0"), { target: { value: "3" } });
-    fireEvent.change(screen.getByTestId("input-item-rate-0"), { target: { value: "100" } });
+    fireEvent.change(screen.getByTestId("input-item-desc-1"), { target: { value: "STONE MATERIAL" } });
+    fireEvent.change(screen.getByTestId("input-item-qty-1"), { target: { value: "3" } });
+    fireEvent.change(screen.getByTestId("input-item-rate-1"), { target: { value: "100" } });
     fireEvent.change(screen.getByTestId("input-gst-equipment-rate"), { target: { value: "18" } });
     fireEvent.change(screen.getByTestId("input-gst-material-rate"), { target: { value: "5" } });
 
@@ -225,5 +237,125 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
         periodTo: "2026-09-30",
       }),
     ]));
+  });
+});
+
+const vb11Items = [
+  { date: "2026-09-05", category: "equipment", description: "JCB-SITE - HOURLY HIRE", qty: 8, unit: "HRS", rate: 0, sourceId: "plant_usage:1", equipmentId: 100, siteName: "SITE" },
+  { date: "2026-09-06", category: "equipment", description: "JCB-SITE - HOURLY HIRE", qty: 7, unit: "HRS", rate: 0, sourceId: "plant_usage:2", equipmentId: 100, siteName: "SITE" },
+  { date: "2026-09-07", category: "equipment", description: "JCB-SITE - DAILY HIRE", qty: 1, unit: "HRS", rate: 0, sourceId: "plant_usage:3", equipmentId: 100, siteName: "SITE" },
+  { date: "2026-09-05", category: "material", description: "SOIL (SITE)", qty: 10, unit: "MT", rate: 0, sourceId: "material:1", equipmentId: null, siteName: "SITE" },
+  { date: "2026-09-06", category: "material", description: "SOIL (PLANT)", qty: 12, unit: "MT", rate: 0, sourceId: "material:2", equipmentId: null, siteName: "PLANT" },
+  { date: "2026-09-07", category: "material", description: "SAND (SITE)", qty: 8, unit: "MT", rate: 0, sourceId: "material:3", equipmentId: null, siteName: "SITE" },
+  { date: "2026-09-08", category: "transport", description: "TRUCK DISPATCH VIA EAST ROAD (SITE)", qty: 2, unit: "TRIP", rate: 0, sourceId: "transport:1", equipmentId: null, siteName: "SITE" },
+  { date: "2026-09-09", category: "labour", description: "LABOUR OPERATOR MALE - PLANT", qty: 2, unit: "HEAD-DAY", rate: 0, sourceId: "labour:1", equipmentId: null, siteName: "PLANT" },
+];
+
+const vb11GroupIds = {
+  equipment: "button-pull-group-eq_JCB_HRS",
+  soil: "button-pull-group-desc_material_SOIL_MT",
+  sand: "button-pull-group-desc_material_SAND_MT",
+  transport: "button-pull-group-transport_EAST_ROAD_TRIP",
+  labour: "button-pull-group-lab_LAB_OPERATOR_MALE_HEAD-DAY",
+};
+const groupRowId = (buttonId: string) => buttonId.replace(/^button-/, "");
+
+async function openVb11MixedBill() {
+  render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+  fireEvent.click(await screen.findByTestId("button-new-bill"));
+  fireEvent.click(screen.getByTestId("select-bill-type"));
+  fireEvent.click(await screen.findByText("All Types (Combined)"));
+  fireEvent.change(screen.getByTestId("input-period-from"), { target: { value: "2026-09-01" } });
+  fireEvent.change(screen.getByTestId("input-period-to"), { target: { value: "2026-09-30" } });
+  fireEvent.click(await screen.findByTestId("button-show-vendors"));
+  fireEvent.click(await screen.findByTestId("button-select-vendor-ABC EQUIPMENT"));
+  await screen.findByTestId(vb11GroupIds.equipment);
+}
+
+describe("VB-11 grouped ordinary activity pull", () => {
+  it("Test A/B/C: groups mixed activity, pulls equipment only, then adds one material group without disturbing it", async () => {
+    autoItemsForTest = vb11Items;
+    rateCardsForTest = [{ itemKey: "EQ_JCB_HRS", category: "equipment", rate: 250 }];
+    duplicateRowsForTest = [{ index: 1, billNo: "VB-OTHER-2", billStatus: "approved" }];
+    await openVb11MixedBill();
+
+    // The existing Set Rates key intentionally groups a machine/unit even
+    // when source labels call out different hire entry types.
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("3 ITEMS");
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.soil)).textContent).toContain("2 ITEMS");
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.sand)).textContent).toContain("1 ITEM");
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.transport))).toBeTruthy();
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.labour))).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(3));
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("✓ ADDED 3/3");
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.soil)).textContent).toContain("PULL 2");
+    expect(screen.getByTestId("badge-billed-1").textContent).toContain("VB-OTHER-2 - APPROVED");
+    expect((screen.getAllByTestId(/input-item-rate-/)[0] as HTMLInputElement).value).toBe("250");
+    expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
+
+    // A second action on an Added group is disabled and cannot duplicate rows.
+    fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
+    expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(3);
+
+    duplicateRowsForTest = [];
+    fireEvent.click(screen.getByTestId(vb11GroupIds.soil));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(5));
+    expect(screen.getAllByTestId(/text-item-desc-/).filter(node => node.textContent?.includes("JCB-SITE"))).toHaveLength(3);
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.sand)).textContent).toContain("PULL 1");
+
+    // Removing one source row makes that exact source-qualified candidate
+    // pullable again; the retained group is not permanently hidden.
+    fireEvent.click(screen.getByTestId("button-remove-item-0"));
+    await waitFor(() => expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("PULL 1"));
+    fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(5));
+  });
+
+  it("Test D/E/F: Pull All applies rates and duplicate flags, clears the blank row, and retains Added groups", async () => {
+    autoItemsForTest = vb11Items;
+    rateCardsForTest = [
+      { itemKey: "EQ_JCB_HRS", category: "equipment", rate: 250 },
+      { itemKey: "MAT_SOIL_MT", category: "material", rate: 80 },
+    ];
+    duplicateRowsForTest = [{ index: 2, billNo: "VB-OTHER-3", billStatus: "verified" }];
+    await openVb11MixedBill();
+
+    fireEvent.click(screen.getByTestId("button-auto-populate"));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(vb11Items.length));
+    expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
+    expect(screen.getAllByTestId(/input-item-rate-/).slice(0, 2).every(node => (node as HTMLInputElement).value === "250")).toBe(true);
+    expect(screen.getByTestId("badge-billed-2").textContent).toContain("VB-OTHER-3 - VERIFIED");
+    Object.values(vb11GroupIds).forEach(id => expect(screen.getByTestId(groupRowId(id)).textContent).toContain("✓ ADDED"));
+    expect(screen.queryByTestId("button-auto-populate")).toBeNull();
+  });
+
+  it("does not leak a deferred pull into a new bill with the same vendor, period, and type", async () => {
+    autoItemsForTest = [vb11Items[0]];
+    let releaseRateCards!: (response: Response) => void;
+    deferredRateCards = new Promise<Response>(resolve => { releaseRateCards = resolve; });
+    await openVb11MixedBill();
+    fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/vendor-rate-cards")));
+
+    // This deliberately recreates exactly the same fields. Context-string
+    // checks alone cannot distinguish it from the first bill instance.
+    fireEvent.click(screen.getByTestId("button-cancel"));
+    fireEvent.click(await screen.findByTestId("button-new-bill"));
+    fireEvent.click(screen.getByTestId("select-bill-type"));
+    fireEvent.click(await screen.findByText("All Types (Combined)"));
+    fireEvent.change(screen.getByTestId("input-period-from"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByTestId("input-period-to"), { target: { value: "2026-09-30" } });
+    fireEvent.click(await screen.findByTestId("button-show-vendors"));
+    fireEvent.click(await screen.findByTestId("button-select-vendor-ABC EQUIPMENT"));
+    await screen.findByTestId(vb11GroupIds.equipment);
+
+    releaseRateCards(new Response(JSON.stringify([])));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(
+      (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => String(url).includes("/api/vendor-bills/check-duplicates")),
+    ).toHaveLength(0);
+    expect(screen.queryAllByTestId(/text-item-desc-/)).toHaveLength(0);
   });
 });

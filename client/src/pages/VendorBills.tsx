@@ -77,6 +77,8 @@ interface LineItem {
   initialBlank?: boolean;
 }
 
+const categoryOrder: Record<string, number> = { equipment: 0, material: 1, transport: 2, labour: 3, other: 4 };
+
 const isAutoLineSource = (source: string) => source === "auto" || source.startsWith("auto:");
 const isGeneratedEvidenceLine = (source: string) =>
   isAutoLineSource(source) || ["hire_group", "hire_statement"].includes(source);
@@ -285,6 +287,67 @@ function deriveLabourKey(description: string): string {
   const category = parts[1];
   const gender = parts[2];
   return gender ? `LAB_${category}_${gender}` : `LAB_${category}`;
+}
+
+type RateGroup<T extends Pick<LineItem, "category" | "description" | "unit" | "equipmentId"> = LineItem> = {
+  key: string;
+  equipmentId: number | null;
+  groupName: string;
+  entryType: string;
+  category: string;
+  unit: string;
+  count: number;
+  items: T[];
+};
+
+/**
+ * One canonical grouping seam for both Set Rates and the pre-pull activity
+ * chooser. Keep rate selection and pull selection on exactly the same
+ * equipment/material/transport/labour identity.
+ */
+function groupRateItems<T extends Pick<LineItem, "category" | "description" | "unit" | "equipmentId">>(items: readonly T[]): RateGroup<T>[] {
+  const groups = new Map<string, RateGroup<T>>();
+  for (const item of items) {
+    let key: string;
+    let group: Omit<RateGroup<T>, "key" | "count" | "items">;
+    if (item.category === "transport") {
+      const canonical = canonicalTransportName(item.description);
+      const unit = (item.unit || "TRIP").toUpperCase();
+      key = `transport_${canonical}_${unit}`;
+      group = { equipmentId: null, groupName: canonical.replace(/_/g, " "), entryType: unit, category: "transport", unit };
+    } else if (item.equipmentId) {
+      const machineName = canonicalMachineName(item.description);
+      const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
+      const entryType = entryTypeMatch ? entryTypeMatch[1] : "OTHER";
+      const unit = (item.unit || "HRS").toUpperCase();
+      // Preserve the established Set Rates identity: equipment labels may
+      // differ by entry type, but the same canonical machine and unit share
+      // one rate group.
+      key = `eq_${machineName}_${unit}`;
+      group = { equipmentId: item.equipmentId, groupName: machineName.replace(/_/g, " "), entryType, category: item.category, unit };
+    } else if (item.category === "labour" && item.description.trim()) {
+      const labourKey = deriveLabourKey(item.description);
+      const labourLabel = deriveLabourLabel(item.description);
+      const unit = (item.unit || "HEAD-DAY").toUpperCase();
+      key = `lab_${labourKey}_${unit}`;
+      group = { equipmentId: null, groupName: labourLabel, entryType: item.unit || "HEAD-DAY", category: "labour", unit };
+    } else if (item.description.trim()) {
+      const cleanDescription = stripSourceSuffix(item.description.trim().toUpperCase());
+      const unit = (item.unit || "NOS").toUpperCase();
+      key = `desc_${item.category}_${cleanDescription.replace(/\s+/g, "_")}_${unit}`;
+      group = { equipmentId: null, groupName: cleanDescription, entryType: item.unit || "", category: item.category, unit };
+    } else {
+      continue;
+    }
+    const existing = groups.get(key);
+    if (existing) {
+      existing.count++;
+      existing.items.push(item);
+    } else {
+      groups.set(key, { key, ...group, count: 1, items: [item] });
+    }
+  }
+  return [...groups.values()];
 }
 
 const STATUS_ORDER = ["draft", "verified", "approved", "paid"] as const;
@@ -572,9 +635,6 @@ export default function VendorBills() {
   // them. Keeping that context separately lets a changed form reconcile
   // stale auto rows without touching manual evidence.
   const autoItemsContextRef = useRef("");
-  // A persisted edit is not reseeded on load, but a genuine vendor/period
-  // change is allowed one fresh discovery pass.
-  const autoItemsReseedContextRef = useRef("");
   const [showEquipmentDailyActivity, setShowEquipmentDailyActivity] = useState(false);
   // This identity is pinned when a persisted bill with hire statements is
   // loaded. Do not derive it from mutable working groups: clearing or
@@ -594,6 +654,17 @@ export default function VendorBills() {
   const [aliasValue, setAliasValue] = useState("");
   const [showSetRatesDialog, setShowSetRatesDialog] = useState(false);
   const [bulkRates, setBulkRates] = useState<Record<string, { rate: number; leadDistance: number }>>({});
+  const activePullContextRef = useRef("");
+  const formGenerationRef = useRef(0);
+  const activeEditingBillIdRef = useRef<number | null>(null);
+  const updateActivePullContext = (
+    type = billType,
+    vendor = vendorName,
+    from = periodFrom,
+    to = periodTo,
+  ) => {
+    activePullContextRef.current = `${type}|${vendor}|${from}|${to}`;
+  };
 
   const { data: bills, isLoading } = useQuery<VendorBillWithItems[]>({
     queryKey: ["/api/vendor-bills"],
@@ -902,6 +973,9 @@ export default function VendorBills() {
   });
 
   const resetForm = () => {
+    formGenerationRef.current++;
+    activeEditingBillIdRef.current = null;
+    activePullContextRef.current = "";
     setBillDate(format(new Date(), "yyyy-MM-dd"));
     setBillNo("");
     setBillType("equipment");
@@ -916,7 +990,6 @@ export default function VendorBills() {
     generatedBillAdjustmentRef.current = "";
     suppressedAutoItemsRef.current.clear();
     autoItemsContextRef.current = "";
-    autoItemsReseedContextRef.current = "";
     setAdjustmentLabel("");
     setAdjustmentAmount(0);
     setGstRateEquipment(0);
@@ -932,6 +1005,7 @@ export default function VendorBills() {
   };
 
   const handleSelectDiscoveredVendor = (vendor: DiscoveredVendor) => {
+    updateActivePullContext(billType, vendor.vendorName, periodFrom, periodTo);
     setVendorName(vendor.vendorName);
     setVendorSearch(vendor.vendorName);
     setShowVendorDiscovery(false);
@@ -950,6 +1024,9 @@ export default function VendorBills() {
   };
 
   const loadBillForEdit = (bill: VendorBillWithItems) => {
+    formGenerationRef.current++;
+    activeEditingBillIdRef.current = bill.id;
+    updateActivePullContext(bill.billType.toLowerCase(), bill.vendorName, bill.periodFrom || "", bill.periodTo || "");
     setBillDate(bill.billDate);
     setBillNo(bill.billNo);
     setBillType(bill.billType.toLowerCase());
@@ -1014,7 +1091,6 @@ export default function VendorBills() {
     // A persisted edit must not be reseeded merely because its activity query
     // finishes after this form is populated.
     autoItemsContextRef.current = savedContext;
-    autoItemsReseedContextRef.current = "";
     setAdjustmentLabel(savedAdjustmentLabel);
     setAdjustmentAmount(savedAdjustmentAmount);
     setGstRateEquipment((bill as any).gstRateEquipment || 0);
@@ -1026,14 +1102,23 @@ export default function VendorBills() {
     setView("form");
   };
 
-  const handleAutoPopulate = async () => {
-    if (availableOtherItems.length > 0) {
-      const mapped: LineItem[] = availableOtherItems.map(item => ({ ...item }));
+  const handleAutoPopulate = async (items = availableOtherItems) => {
+    if (items.length > 0) {
+      const pullContext = `${billType}|${vendorName}|${periodFrom}|${periodTo}`;
+      const pullGeneration = formGenerationRef.current;
+      const pullEditingBillId = editingBillId;
+      const isCurrentPull = () =>
+        formGenerationRef.current === pullGeneration &&
+        activeEditingBillIdRef.current === pullEditingBillId &&
+        activePullContextRef.current === pullContext;
+      const mapped: LineItem[] = items.map(item => ({ ...item }));
 
       try {
         const rcRes = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(vendorName)}`);
+        if (!isCurrentPull()) return;
         if (rcRes.ok) {
           const rateCards: any[] = await rcRes.json();
+          if (!isCurrentPull()) return;
           const cardByKey = new Map(rateCards.map((rc: any) => [`${rc.itemKey.toUpperCase()}_${rc.category}`, rc]));
           let appliedCount = 0;
           for (let i = 0; i < mapped.length; i++) {
@@ -1103,8 +1188,10 @@ export default function VendorBills() {
             items: mapped.map(m => ({ date: m.date, equipmentId: m.equipmentId, description: m.description, category: m.category, siteName: m.siteName || null })),
           }),
         });
+        if (!isCurrentPull()) return;
         if (dupRes.ok) {
           const dups: { index: number; billNo: string; billStatus: string }[] = await dupRes.json();
+          if (!isCurrentPull()) return;
           if (dups.length > 0) {
             for (const d of dups) {
               mapped[d.index] = { ...mapped[d.index], billedIn: { billNo: d.billNo, billStatus: d.billStatus } };
@@ -1115,7 +1202,11 @@ export default function VendorBills() {
       } catch (_e) {
       }
 
-      const categoryOrder: Record<string, number> = { equipment: 0, material: 1, transport: 2, labour: 3, other: 4 };
+      // A rate-card or duplicate response can resolve after the preparer has
+      // selected another vendor or period. Never let that stale response add
+      // source evidence into the new bill context.
+      if (!isCurrentPull()) return;
+
       mapped.sort((a, b) => {
         const catA = categoryOrder[a.category] ?? 3;
         const catB = categoryOrder[b.category] ?? 3;
@@ -1123,9 +1214,10 @@ export default function VendorBills() {
         return (a.date || "").localeCompare(b.date || "");
       });
 
-      const pulledMaterialRows = mapped.some(item => item.category === "material");
       setLineItems(prev => mergeOtherBillItems(
-        pulledMaterialRows ? prev.filter(item => !item.initialBlank) : prev,
+        // The initial manual row is only a blank editor affordance. Any
+        // successful activity pull, not only a material pull, replaces it.
+        prev.filter(item => !item.initialBlank),
         mapped,
       ));
       toast({ title: `${mapped.length} items added from records` });
@@ -1244,6 +1336,25 @@ export default function VendorBills() {
     () => availableOtherBillItems(mappedAutoItems, lineItems, hireGroups),
     [mappedAutoItems, lineItems, hireGroups],
   );
+  // Keep every eligible source group visible after it has been pulled. Its
+  // pending count is derived separately, so deleting a source-qualified row
+  // makes just that row available to pull again without disturbing edits to
+  // the remaining rows.
+  const candidatePullGroups = useMemo(() => {
+    const candidates = availableOtherBillItems(mappedAutoItems, [], hireGroups);
+    return groupRateItems(candidates).map(group => ({
+      ...group,
+      pendingItems: availableOtherBillItems(group.items, lineItems, hireGroups),
+    })).sort((a, b) => {
+      const categoryDifference = (categoryOrder[a.category] ?? 3) - (categoryOrder[b.category] ?? 3);
+      return categoryDifference || a.groupName.localeCompare(b.groupName) || a.entryType.localeCompare(b.entryType);
+    });
+  }, [hireGroups, lineItems, mappedAutoItems]);
+
+  // Keep asynchronous Pull work scoped to the form identity that started it.
+  useEffect(() => {
+    activePullContextRef.current = `${billType}|${vendorName}|${periodFrom}|${periodTo}`;
+  }, [billType, periodFrom, periodTo, vendorName]);
 
   useEffect(() => {
     if (!vendorName || !periodFrom || !periodTo) return;
@@ -1260,30 +1371,17 @@ export default function VendorBills() {
     autoItemsContextRef.current = context;
     if (contextChanged) {
       suppressedAutoItemsRef.current.clear();
-      autoItemsReseedContextRef.current = context;
     }
-    const maySeed = editingBillId === null || autoItemsReseedContextRef.current === context;
-
     setLineItems(previous => {
       // Auto source rows belong to their discovery context, including the
-      // ordinary hourly/daily/trip rows which are not hire statements.
-      const reconciled = contextChanged
+      // ordinary hourly/daily/trip rows which are not hire statements. VB-11
+      // deliberately does not seed ordinary activity: it remains selectable in
+      // the grouped Pull UI below.
+      return contextChanged
         ? previous.filter(item => !isAutoLineSource(String(item.source || "").toLowerCase()))
         : previous;
-      // Existing persisted bills remain exactly as saved on initial load. A
-      // changed vendor/period gets one fresh discovery pass.
-      if (!maySeed || isHistoricalHireEdit || !["equipment", "all"].includes(billType)) return reconciled;
-      const additions = mappedAutoItems.filter(item =>
-        !rawAutoItemCoveredByHireGroup(item, hireGroups) &&
-        !suppressedAutoItemsRef.current.has(autoBillItemIdentity(item)) &&
-        !reconciled.some(existing => autoBillItemIdentity(existing) === autoBillItemIdentity(item)));
-      return additions.length ? [...reconciled, ...additions.map(item => ({ ...item, initialBlank: false }))] : reconciled;
     });
-    // Do not consume an edit reseed while the changed query is unresolved.
-    if (editingBillId !== null && maySeed && autoItems !== undefined) {
-      autoItemsReseedContextRef.current = "";
-    }
-  }, [autoItems, billType, editingBillId, hireGroups, isHistoricalHireEdit, mappedAutoItems, periodFrom, periodTo, vendorName]);
+  }, [billType, periodFrom, periodTo, vendorName]);
 
   useEffect(() => {
     const generated = hireCalculated.filter(x => x.result).map(({ group, result }) => {
@@ -1382,46 +1480,7 @@ export default function VendorBills() {
   };
 
   const uniqueRateGroups = useMemo(() => {
-    const groups: Record<string, { equipmentId: number | null; groupName: string; entryType: string; category: string; unit: string; count: number }> = {};
-    lineItems.filter(item => !["hire_group", "hire_statement"].includes(item.source)).forEach(item => {
-      if (item.category === "transport") {
-        const canonical = canonicalTransportName(item.description);
-        const unit = (item.unit || "TRIP").toUpperCase();
-        const key = `transport_${canonical}_${unit}`;
-        if (!groups[key]) {
-          groups[key] = { equipmentId: null, groupName: canonical.replace(/_/g, " "), entryType: unit, category: "transport", unit, count: 0 };
-        }
-        groups[key].count++;
-      } else if (item.equipmentId) {
-        const mn = canonicalMachineName(item.description);
-        const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
-        const entryType = entryTypeMatch ? entryTypeMatch[1] : "OTHER";
-        const unit = (item.unit || "HRS").toUpperCase();
-        const key = `eq_${mn}_${unit}`;
-        if (!groups[key]) {
-          groups[key] = { equipmentId: item.equipmentId, groupName: mn.replace(/_/g, " "), entryType, category: item.category, unit, count: 0 };
-        }
-        groups[key].count++;
-      } else if (item.category === "labour" && item.description.trim()) {
-        const labKey = deriveLabourKey(item.description);
-        const labLabel = deriveLabourLabel(item.description);
-        const unit = (item.unit || "HEAD-DAY").toUpperCase();
-        const key = `lab_${labKey}_${unit}`;
-        if (!groups[key]) {
-          groups[key] = { equipmentId: null, groupName: labLabel, entryType: item.unit || "HEAD-DAY", category: "labour", unit, count: 0 };
-        }
-        groups[key].count++;
-      } else if (item.description.trim()) {
-        const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
-        const unit = (item.unit || "NOS").toUpperCase();
-        const key = `desc_${item.category}_${cleanDesc.replace(/\s+/g, "_")}_${unit}`;
-        if (!groups[key]) {
-          groups[key] = { equipmentId: null, groupName: cleanDesc, entryType: item.unit || "", category: item.category, unit, count: 0 };
-        }
-        groups[key].count++;
-      }
-    });
-    return Object.entries(groups).map(([key, val]) => ({ key, ...val }));
+    return groupRateItems(lineItems.filter(item => !["hire_group", "hire_statement"].includes(item.source)));
   }, [lineItems]);
 
   const openSetRatesDialog = async () => {
@@ -1498,24 +1557,8 @@ export default function VendorBills() {
       const updated = [...prev];
       for (let i = 0; i < updated.length; i++) {
         const item = updated[i];
-        let key: string;
-        if (item.category === "transport") {
-          const canonical = canonicalTransportName(item.description);
-          const unit = (item.unit || "TRIP").toUpperCase();
-          key = `transport_${canonical}_${unit}`;
-        } else if (item.equipmentId) {
-          const mn = canonicalMachineName(item.description);
-          const unit = (item.unit || "HRS").toUpperCase();
-          key = `eq_${mn}_${unit}`;
-        } else if (item.category === "labour") {
-          const labKey = deriveLabourKey(item.description);
-          const unit = (item.unit || "HEAD-DAY").toUpperCase();
-          key = `lab_${labKey}_${unit}`;
-        } else {
-          const cleanDesc = stripSourceSuffix(item.description.trim().toUpperCase());
-          const unit = (item.unit || "NOS").toUpperCase();
-          key = `desc_${item.category}_${cleanDesc.replace(/\s+/g, "_")}_${unit}`;
-        }
+        const key = groupRateItems([item])[0]?.key;
+        if (!key) continue;
         const rateData = bulkRates[key];
         if (rateData && rateData.rate > 0) {
           const newItem = { ...item, rate: rateData.rate };
@@ -2152,6 +2195,7 @@ export default function VendorBills() {
               <div>
                 <Label className="text-sm uppercase">Bill Type</Label>
                   <Select value={billType} disabled={isHistoricalHireEdit} onValueChange={(val) => {
+                  updateActivePullContext(val, vendorName, periodFrom, periodTo);
                   setBillType(val);
                   const newCat = (val === "transport" || val === "equipment" || val === "material" || val === "labour") ? val : "other";
                   const newUnit = val === "transport" ? "TRIP" : val === "labour" ? "HEAD-DAY" : undefined;
@@ -2185,6 +2229,7 @@ export default function VendorBills() {
                   disabled={isHistoricalHireEdit}
                   onChange={e => {
                     const v = e.target.value.toUpperCase();
+                    updateActivePullContext(billType, "", periodFrom, periodTo);
                     setVendorSearch(v);
                     setVendorName("");
                     setShowVendorDropdown(true);
@@ -2193,12 +2238,16 @@ export default function VendorBills() {
                   onBlur={() => {
                     setTimeout(() => setShowVendorDropdown(false), 200);
                     if (!vendorName && vendorSearch.trim()) {
-                      setVendorName(vendorSearch.trim().toUpperCase());
+                      const selectedVendor = vendorSearch.trim().toUpperCase();
+                      updateActivePullContext(billType, selectedVendor, periodFrom, periodTo);
+                      setVendorName(selectedVendor);
                     }
                   }}
                   onKeyDown={e => {
                     if (e.key === "Enter" && !vendorName && vendorSearch.trim()) {
-                      setVendorName(vendorSearch.trim().toUpperCase());
+                      const selectedVendor = vendorSearch.trim().toUpperCase();
+                      updateActivePullContext(billType, selectedVendor, periodFrom, periodTo);
+                      setVendorName(selectedVendor);
                       setShowVendorDropdown(false);
                     }
                   }}
@@ -2214,6 +2263,7 @@ export default function VendorBills() {
                         type="button"
                         className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 dark:hover:bg-amber-900/20 truncate"
                         onMouseDown={() => {
+                          updateActivePullContext(billType, name, periodFrom, periodTo);
                           setVendorName(name);
                           setVendorSearch(name);
                           setShowVendorDropdown(false);
@@ -2230,6 +2280,7 @@ export default function VendorBills() {
                 <Label className="text-sm uppercase">Period From</Label>
                 <Input type="date" value={periodFrom} onChange={e => {
                   const value = e.target.value;
+                   updateActivePullContext(billType, vendorName, value, periodTo);
                   setPeriodFrom(value);
                   if (isHistoricalHireEdit) {
                     setHireGroups(prev => prev.map(group => ({ ...group, periodFrom: value })));
@@ -2240,6 +2291,7 @@ export default function VendorBills() {
                 <Label className="text-sm uppercase">Period To</Label>
                 <Input type="date" value={periodTo} onChange={e => {
                   const value = e.target.value;
+                   updateActivePullContext(billType, vendorName, periodFrom, value);
                   setPeriodTo(value);
                   if (isHistoricalHireEdit) {
                     setHireGroups(prev => prev.map(group => ({ ...group, periodTo: value })));
@@ -2617,9 +2669,9 @@ export default function VendorBills() {
 
         {vendorName && periodFrom && periodTo && billType !== "other" && !isHistoricalHireEdit && (
           <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20">
-            <CardContent className="py-3 flex items-start gap-3">
+              <CardContent className="py-3 flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-blue-800 dark:text-blue-200 flex flex-wrap items-center gap-2">
+                <div className="min-w-0 flex-1 text-sm text-blue-800 dark:text-blue-200">
                 <span className="font-semibold">
                   {billType === "all"
                     ? `All billable records for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) — equipment, materials, transport & labour.`
@@ -2631,17 +2683,41 @@ export default function VendorBills() {
                     ? `Labour deployment for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) from DPR labour logs (grouped by date, site, category, gender).`
                     : `Transport dispatches for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) from truck dispatch records.`}
                 </span>
-                 {billType !== "equipment" && <span className="w-full text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Other billable activities for this vendor/period are shown here.</span>}
-                {availableOtherItems.length > 0 ? <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAutoPopulate}
-                  disabled={autoItemsLoading}
-                  data-testid="button-auto-populate"
-                >
-                  {autoItemsLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                   {`PULL ${availableOtherItems.length}${billType === "equipment" ? " ITEM" : " OTHER ITEM"}${availableOtherItems.length === 1 ? "" : "S"}`}
-                 </Button> : <span className="text-[11px] font-semibold uppercase">{billType === "equipment" ? "No billable activities available" : "No other billable activities available"}</span>}
+                  {billType !== "equipment" && <span className="mt-1 block text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Other billable activities for this vendor/period are shown here.</span>}
+                  <div className="mt-3 space-y-2">
+                    {candidatePullGroups.map(group => {
+                      const addedCount = group.count - group.pendingItems.length;
+                      const categoryLabel = group.category === "equipment" ? "EQUIPMENT" : group.category.toUpperCase();
+                      return <div key={group.key} className={`flex flex-wrap items-center gap-2 rounded border px-2 py-2 text-xs ${group.pendingItems.length ? "border-blue-200 bg-background/40 dark:border-blue-800" : "border-muted bg-muted/40 text-muted-foreground"}`} data-testid={`pull-group-${group.key}`}>
+                        <Badge variant="outline" className={getCategoryBadgeClass(group.category)}>{categoryLabel}</Badge>
+                        <span className="min-w-[12rem] flex-1 font-semibold uppercase">{group.groupName}{group.entryType && group.entryType !== group.unit ? ` · ${group.entryType}` : ""}</span>
+                        <span className="font-medium">{group.count} ITEM{group.count === 1 ? "" : "S"}</span>
+                        {addedCount > 0 && <span className="font-semibold text-emerald-700 dark:text-emerald-400">✓ ADDED {addedCount}/{group.count}</span>}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleAutoPopulate(group.pendingItems)}
+                          disabled={autoItemsLoading || group.pendingItems.length === 0}
+                          data-testid={`button-pull-group-${group.key}`}
+                        >
+                          {group.pendingItems.length ? `PULL ${group.pendingItems.length}` : "✓ ADDED"}
+                        </Button>
+                      </div>;
+                    })}
+                    {candidatePullGroups.length > 0 && availableOtherItems.length > 0 && <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleAutoPopulate()}
+                      disabled={autoItemsLoading}
+                      data-testid="button-auto-populate"
+                    >
+                      {autoItemsLoading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+                      {`PULL ALL ${availableOtherItems.length} ITEM${availableOtherItems.length === 1 ? "" : "S"}`}
+                    </Button>}
+                    {candidatePullGroups.length === 0 && <span className="text-[11px] font-semibold uppercase">{billType === "equipment" ? "No billable activities available" : "No other billable activities available"}</span>}
+                  </div>
               </div>
             </CardContent>
           </Card>

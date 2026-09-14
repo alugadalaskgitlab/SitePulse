@@ -7,6 +7,14 @@ channel = "stable-24_05"
 packages = ["imagemagick"]
 
 [[ports]]
+localPort = 4177
+externalPort = 5173
+
+[[ports]]
+localPort = 4178
+externalPort = 6000
+
+[[ports]]
 localPort = 4599
 externalPort = 5000
 exposeLocalhost = true

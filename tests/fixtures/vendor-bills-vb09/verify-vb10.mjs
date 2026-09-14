@@ -2,9 +2,8 @@
  * VB-10 browser evidence for the mounted VendorBills component.
  *
  * Start the fixture's Vite server and Chromium/CDP in the same way as
- * verify.mjs, then run this file.  The shared itemized flow now auto-loads
- * the hourly activity; this verifier requires that DOM evidence and never
- * falls back to the old manual Pull action.
+ * verify.mjs, then run this file. Monthly availability lines remain automatic,
+ * while VB-11 makes ordinary activity an explicit grouped Pull selection.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
@@ -169,8 +168,8 @@ const capture = async (name) => {
 const limitations = [];
 
 // New mixed-basis bill: 90k full month, 34k 17-day overlap, and a zero-log
-// monthly machine must all be present while the hourly ordinary line
-// auto-loads from the shared activity endpoint.
+// monthly machine must all be present. The hourly ordinary line remains a
+// grouped candidate until its explicit VB-11 Pull action.
 await navigate("vb10", "VB-10 mixed-basis");
 await clickTestId("button-new-bill");
 await waitFor("!!document.querySelector('[data-testid=\"text-form-title\"]')", "VB-10 form");
@@ -241,10 +240,11 @@ await evaluate(`(() => {
 })()`);
 await clickButtonText("No Recovery", hlcRoot);
 
-// Ordinary hourly activity must be present from the shared auto-items query;
-// invoking Pull would hide a regression in the no-manual-step contract.
-const hourlyAlreadyPresent = await evaluate("Array.from(document.querySelectorAll('[data-testid^=\"text-item-desc-\"]')).some(item => item.textContent?.includes('HOURLY CONTRACTOR LOADER'))");
-assert(hourlyAlreadyPresent, "hourly activity was not auto-loaded without Pull");
+const hourlyPullGroup = "button-pull-group-eq_HOURLY_CONTRACTOR_LOADER_HRS";
+await waitFor(`!!document.querySelector('[data-testid=${quote(hourlyPullGroup)}]')`, "VB-11 hourly pull group");
+assert(!(await evaluate("Array.from(document.querySelectorAll('[data-testid^=\"text-item-desc-\"]')).some(item => item.textContent?.includes('HOURLY CONTRACTOR LOADER'))")), "hourly activity was auto-loaded instead of remaining selectable");
+await clickTestId(hourlyPullGroup);
+await waitFor("Array.from(document.querySelectorAll('[data-testid^=\"text-item-desc-\"]')).some(item => item.textContent?.includes('HOURLY CONTRACTOR LOADER'))", "pulled hourly activity");
 
 // Category switch must remove generated groups and rows, and switching back
 // must reseed the current period without retaining stale monthly groups.

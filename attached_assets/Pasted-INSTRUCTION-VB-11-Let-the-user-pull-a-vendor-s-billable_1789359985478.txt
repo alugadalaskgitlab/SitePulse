@@ -1,0 +1,48 @@
+INSTRUCTION VB-11: Let the user pull a vendor's billable activity group by group, instead of all-or-nothing
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This builds on the shared itemized flow VB-09 restores — do not start this until VB-09 is confirmed working. This instruction only changes how items get INTO the bill (the pull step); it does not change GST, TDS, categories, exports, or anything else about the bill itself. Do not touch Equipment Performance, EQUIP-10, or the Hire billing register page. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+Today, once a vendor + period is set, one banner shows a single "PULL N ITEMS" button (handleAutoPopulate, VendorBills.tsx ~line 872) that adds every billable record found — equipment, material, transport, labour — into the bill in one shot. If the person preparing the bill only wants to bill part of that activity now (e.g. just the equipment hire, saving material for a separate bill later), there's no way to do that at the pull step — everything lands at once and unwanted rows have to be deleted one by one afterward.
+
+The grouping logic this needs already exists in this same file and is already proven: uniqueRateGroups (~line 1175-1212) groups line items by category plus a canonical identity — for equipment, by machine name + entry type (HOURLY HIRE / DAILY HIRE / TRIP BASED / MONTHLY HIRE) + unit; for transport, by canonical transport name + unit; for labour, by its derived labour key + unit; for material and other, by cleaned description + unit. This is currently only applied AFTER items are pulled, to power the "SET RATES" bulk-rate dialog. Reuse this exact grouping — do not invent a second grouping scheme — just apply it one step earlier, to the not-yet-pulled candidate list.
+
+FIX 1 — SHOW GROUPED, SELECTABLE ACTIVITY INSTEAD OF ONE FLAT PULL BUTTON
+a. Where the current single "PULL N ITEMS" banner/button sits, replace it with a breakdown: apply the same grouping function uniqueRateGroups already uses, but run it against the not-yet-pulled candidate items (autoItems / availableOtherItems, whichever the current handleAutoPopulate reads from) instead of lineItems.
+b. Render one row per group — e.g. "EQUIPMENT — JCB-SITE, HOURLY HIRE — 2 items", "MATERIAL — SOIL (SITE TRIP) — 118 items", "TRANSPORT — [canonical name] — N items", "LABOUR — [label] — N items" — each with its own count, and its own "Pull" button that adds only that group's items into the bill (same mapping/rate-card-lookup/duplicate-check logic handleAutoPopulate already runs, just scoped to the selected group's items instead of the full list).
+c. Keep one "Pull All" action alongside the grouped list, equivalent to today's single-button behavior, for the common case of billing everything at once — this must remain a single click, not a requirement to click every group individually.
+d. Once a group is pulled, mark it visibly as pulled (e.g. greyed out / "✓ Added" / item count now 0 remaining) so the person preparing the bill can see at a glance what's left to pull, without re-reading the whole list.
+e. Group order should follow the existing category order already used elsewhere in this file (equipment, material, transport, labour, other) — reuse categoryOrder (~line 961), don't invent a new ordering.
+
+FIX 2 — PRESERVE EVERYTHING THE CURRENT PULL ALREADY DOES CORRECTLY, JUST SCOPED PER GROUP
+a. Rate-card auto-apply (the logic in handleAutoPopulate that looks up vendor-rate-cards and fills in a rate automatically) must still run for whichever items are pulled, whether via a single group or Pull All — same lookup, same toast confirming how many rates were applied, just scoped to what was actually pulled in that click.
+b. Duplicate-in-another-bill detection (the check-duplicates call) must still run the same way, scoped to whatever's being pulled at that moment.
+c. The existing initialBlank row behavior (the default blank manual-entry row) should follow the same rule it does today for a full pull — do not regress this; if anything, since this batch changes how pulling works, take the opportunity to fix the narrow "only clears when material rows are in this pull" condition (line ~970: `pulledMaterialRows ? prev.filter(item => !item.initialBlank) : prev`) so the blank row clears whenever ANY group is pulled, material or not — this was a known small gap, fold the fix in here since you're already touching this code path.
+d. A group that's already fully billed in another bill (per the duplicate check) should still be pullable but flagged, exactly as an individual duplicate item is flagged today — don't hide or block a group just because part of it is a duplicate.
+
+WHAT NOT TO DO
+- Do not change what counts as billable, how rates are computed, GST/TDS, or exports — this batch only changes the pull step's UI/flow.
+- Do not remove the ability to pull everything in one click (Fix 1c) — the grouped view is an addition, not a replacement of the simple case.
+- Do not invent a new grouping scheme — reuse uniqueRateGroups' existing logic exactly.
+- Do not touch Equipment Performance, EQUIP-10, or the Hire billing register page.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — this is a client-side grouping/UI change over data that's already fetched. If you find you need any schema change, stop and show the exact proposed change before writing a migration.
+
+TESTS
+A. Select a vendor + period with mixed activity (equipment, multiple distinct materials, transport, labour). Confirm the breakdown shows one row per sub-group (not just per broad category) with correct counts.
+B. Pull only the Equipment group. Confirm only those items land in the bill, rate-card lookup and duplicate-check ran correctly for them, and every other group remains available to pull afterward (in the same bill or not at all).
+C. Pull a second group afterward (e.g. one specific Material sub-group). Confirm it adds correctly alongside the already-pulled Equipment items, without duplicating or disturbing them.
+D. Use "Pull All" on a fresh bill. Confirm it behaves exactly as today's single-button pull did — same items, same rates, same duplicate flags.
+E. Confirm the initialBlank row clears correctly regardless of which group (or Pull All) was used to bring in the first items.
+F. Confirm a group containing an item already billed in another bill still shows the existing duplicate-billed flag on that specific item after being pulled.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/C evidence.
+2. Confirm Fix 2 with Test D/E/F evidence.
+3. Confirm no schema change was needed; if one was, stop and show it before applying.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
