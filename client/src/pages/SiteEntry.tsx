@@ -42,7 +42,7 @@ import { dprBoqItemDisplayName } from "@shared/dprBoqSelection";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
-import { checkQuantitySourceRow, quantitiesMatch, MANUAL_QUANTITY_SOURCES, boqProgressQty, dprMeasurementSummary } from "@shared/dprGeometry";
+import { checkQuantitySourceRow, quantitiesMatch, MANUAL_QUANTITY_SOURCES, boqProgressQty, dprMeasurementSummary, resolveBoqDisplayUnit } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { applyEquipmentMasterSelection, computeTotalDiesel, computeTripTotalKm, OTHER_EQUIPMENT_VALUE } from "@shared/guidedEquipment";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
@@ -251,7 +251,7 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
 const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 
-type SiteBoqItem = { id: number; description: string; displayName?: string | null; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; planningWorkType?: string | null; dprMeasurementMethod?: string | null };
+type SiteBoqItem = { id: number; description: string; displayName?: string | null; itemCode: string | null; itemName: string | null; unit: string; canonicalUnit?: string | null; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; planningWorkType?: string | null; dprMeasurementMethod?: string | null };
 
 interface SiteEntryFormData {
   header: { date: string; site: string; engineer: string; boqProjectId?: number | null };
@@ -650,7 +650,7 @@ export default function SiteEntry() {
     const bar = loc?.bars.find((b) => b.boqItemId === boqItemId);
     if (!bar) return null;
     const boqItem = siteBoqItems.find((bi) => bi.id === boqItemId);
-    const unit = (boqItem as any)?.canonicalUnit ?? boqItem?.unit ?? "";
+    const unit = resolveBoqDisplayUnit(boqItem) ?? "";
     const totalActual = structureActualByKey.get(`${boqItemId}::${structureId}`) ?? 0;
     const balance = Math.round((bar.plannedQty - totalActual) * 1000) / 1000;
     return { currentQty: bar.plannedQty, totalActual, balance, unit };
@@ -1603,7 +1603,7 @@ export default function SiteEntry() {
         if (missing.length) {
           toast({
             title: `Row ${i + 1}: missing ${prof.uom} input`,
-            description: `${boqItem.itemCode ? boqItem.itemCode + " · " : ""}This item is measured in ${(boqItem as any).canonicalUnit ?? boqItem.unit}. Please enter ${missing.join(", ")} before saving.`,
+            description: `${boqItem.itemCode ? boqItem.itemCode + " · " : ""}This item is measured in ${resolveBoqDisplayUnit(boqItem) ?? "the saved BOQ unit"}. Please enter ${missing.join(", ")} before saving.`,
             variant: "destructive",
           });
           return;
@@ -2099,7 +2099,7 @@ export default function SiteEntry() {
                         setStructureItems((prev) =>
                           prev.map((s, i) =>
                             i === idx
-                              ? { ...s, boqItemId: id, uom: it ? ((it as any).canonicalUnit ?? it.unit) : s.uom }
+                              ? { ...s, boqItemId: id, uom: it ? (resolveBoqDisplayUnit(it) ?? s.uom) : s.uom }
                               : s,
                           ),
                         );
@@ -2582,10 +2582,10 @@ export default function SiteEntry() {
                         },
                         boqItem,
                       );
-                      if (measurement.boqQty == null || !measurement.boqUom) return null;
+                      if (measurement.boqQty == null) return null;
                       return (
                         <p className="text-[11px] font-medium text-teal-700 mt-1" data-testid={`text-progress-boq-qty-${idx}`}>
-                          BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom}
+                          BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom ?? "(BOQ unit unavailable)"}
                         </p>
                       );
                     })()}
@@ -2667,7 +2667,7 @@ export default function SiteEntry() {
                         entry.quantity ?? calculateQuantity(entry),
                         siteBoqItems.find((item) => item.id === entry.boqItemId),
                       )}
-                      executedUom={(siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.unit ?? entry.uom ?? null}
+                      executedUom={resolveBoqDisplayUnit(siteBoqItems.find((it) => it.id === entry.boqItemId))}
                       readOnly persistedArrangementId={entry.earthworkArrangementId}
                       onArrangementResolved={(id) => setProgress((prev) => prev.map((p, i) => (i === idx ? { ...p, earthworkArrangementId: id } : p)))}
                       activityMaterialHint={entry.activity || null} testIdPrefix={`detailed-receipt-${idx}`} />

@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { DprPhotoGroups } from "@/components/DprPhotoGroups";
 import type { EquipmentMasterType, Site } from "@shared/schema";
 import { boqItemDisplayName } from "@shared/boqItemName";
-import { dprMeasurementSummary } from "@shared/dprGeometry";
+import { dprMeasurementSummary, resolveBoqDisplayUnit } from "@shared/dprGeometry";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { layerDisplayName } from "@shared/layerDisplay";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
@@ -92,7 +92,7 @@ export default function DprDetails() {
   });
 
   const boqItemMap = useMemo(() => {
-    const map = new Map<number, { itemCode: string | null; description: string; displayName: string | null; itemName: string | null; canonicalDisplayName: string | null; unit: string | null; dprMeasurementMethod: string | null; dprConversionFactor: number | null }>();
+    const map = new Map<number, { itemCode: string | null; description: string; displayName: string | null; itemName: string | null; canonicalDisplayName: string | null; unit: string | null; canonicalUnit: string | null; dprMeasurementMethod: string | null; dprConversionFactor: number | null }>();
     for (const item of siteBoqItems) {
       map.set(item.id, {
         itemCode: item.itemCode ?? null,
@@ -102,6 +102,7 @@ export default function DprDetails() {
         canonicalDisplayName: (item as any).canonicalDisplayName ?? null,
         // Batch 04: measurement profile for the shared measurement summary
         unit: item.unit ?? null,
+        canonicalUnit: (item as any).canonicalUnit ?? null,
         dprMeasurementMethod: (item as any).dprMeasurementMethod ?? null,
         dprConversionFactor: (item as any).dprConversionFactor ?? null,
       });
@@ -346,7 +347,7 @@ export default function DprDetails() {
                         </TableCell>
                         <TableCell className="text-right whitespace-nowrap" data-testid={`text-boq-progress-${i}`}>
                           {m.converted && m.boqQty != null
-                            ? `${Number(m.boqQty.toFixed(4))} ${m.boqUom}`
+                             ? `${Number(m.boqQty.toFixed(4))} ${m.boqUom ?? "(BOQ unit unavailable)"}`
                             : m.boqQty != null ? `${Number(m.boqQty.toFixed(3))} ${m.boqUom ?? ''}`.trim() : '-'}
                         </TableCell>
                       </TableRow>
@@ -361,7 +362,7 @@ export default function DprDetails() {
                               programmeBarId={item.programmeBarId ?? null}
                               persistedArrangementId={item.earthworkArrangementId ?? null}
                               executedQty={m.boqQty ?? null}
-                              executedUom={m.boqUom ?? boqItem?.unit ?? null}
+                              executedUom={m.boqUom ?? resolveBoqDisplayUnit(boqItem) ?? null}
                               activityMaterialHint={boqItem ? boqItemDisplayName(boqItem) : item.activity}
                               readOnly
                               testIdPrefix={`dpr-detail-${item.entryKey ?? i}`}

@@ -3,6 +3,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import SiteEntry from "../../../client/src/pages/SiteEntry";
 import SiteEdit from "../../../client/src/pages/SiteEdit";
 import PlantEquipmentUsage from "../../../client/src/pages/PlantEquipmentUsage";
+import GuidedDpr from "../../../client/src/pages/GuidedDpr";
+import { DprEquipmentCompact } from "../../../client/src/components/DprEquipmentCompact";
 import { queryClient } from "../../../client/src/lib/queryClient";
 import "../../../client/src/index.css";
 
@@ -48,6 +50,32 @@ const equipment = [
     isActive: 1,
     fuelType: "Diesel",
     plantName: "Main Plant",
+  },
+  {
+    id: 7703,
+    name: "DAILY HIRE ROLLER",
+    registrationNumber: "FIX-HIRE-01",
+    equipmentType: "Road Roller",
+    ownership: "hired",
+    vendorName: "FASI UDDIN",
+    meterType: "hour_meter",
+    consumptionNorm: 3,
+    isActive: 1,
+    fuelType: "Diesel",
+    plantName: "Hired Fleet",
+  },
+  {
+    id: 7704,
+    name: "DAILY HIRE LOADER",
+    registrationNumber: "FIX-HIRE-02",
+    equipmentType: "Loader",
+    ownership: "hired",
+    vendorName: "FASI UDDIN",
+    meterType: "hour_meter",
+    consumptionNorm: 3,
+    isActive: 1,
+    fuelType: "Diesel",
+    plantName: "Hired Fleet",
   },
 ];
 
@@ -101,6 +129,23 @@ const boqItems = [
     planningWorkType: "structure",
     dprMeasurementMethod: "geometry",
   },
+  {
+    id: 8803,
+    itemCode: "4.2",
+    itemName: "CLEARING AND GRUBBING ROAD",
+    description: "Clearing and grubbing road",
+    displayName: "CLEARING AND GRUBBING ROAD",
+    // The DPR measurement profile is physical SQM, while the contract BOQ unit
+    // is Ha. Keeping both fields in the mock is important: browser evidence
+    // must prove that the displayed converted quantity uses canonical metadata.
+    unit: "Ha",
+    canonicalUnit: "Ha",
+    dprConversionFactor: 0.0001,
+    categoryName: "Road Work",
+    sortOrder: 3,
+    planningWorkType: "road",
+    dprMeasurementMethod: "SQM_LW",
+  },
 ];
 
 const programmeBars = [
@@ -120,6 +165,23 @@ const programmeBars = [
     side: "LHS",
     plannedWidthM: 7,
     plannedThicknessMm: 200,
+  },
+  {
+    id: 9902,
+    boqItemId: 8803,
+    reachLabel: "Clearing 0+000–1+600",
+    chainageFrom: 0,
+    chainageTo: 1.6,
+    startDate: "2026-01-01",
+    endDate: "2026-12-31",
+    plannedQty: 10000,
+    planningMode: "road",
+    structureId: null,
+    structureLocType: null,
+    boqSubItem: null,
+    side: "LHS",
+    plannedWidthM: 1.5,
+    plannedThicknessMm: null,
   },
 ];
 
@@ -228,6 +290,155 @@ const storedDpr = {
   createdAt: "2026-08-05T16:00:00.000Z",
 };
 
+/*
+ * Guided DPR records are deliberately fixture records.  They have complete
+ * activity/header data so the browser verifier can exercise the real Guided
+ * wizard's Save Draft and Submit buttons without inventing a production
+ * customer report.  The equipment rows retain the exact fields that Guided
+ * hydrates into DprEquipmentCompact's passthrough bag.
+ */
+const guidedContractorDpr = {
+  id: 6201,
+  date: "2026-08-05",
+  site: site.name,
+  engineer: "SURESH KUMAR - ENGINEER",
+  role: "engineer",
+  workType: "road",
+  boqProjectId: 5501,
+  dprStatus: "draft",
+  isSuperseded: false,
+  lockStatus: "unlocked",
+  progress: [{
+    id: 7201,
+    entryKey: "guided-fixture-contractor-progress",
+    activity: "CLEARING AND GRUBBING ROAD",
+    side: "LHS",
+    chainageFrom: "0+000",
+    chainageTo: "1+600",
+    length: 1600,
+    width: 1.5,
+    thickness: null,
+    quantity: 2400,
+    uom: "SQM",
+    noSiteWork: false,
+    noSiteWorkDescription: "",
+    personnelIds: [personnel[0].id],
+    boqItemId: 8803,
+    programmeBarId: 9902,
+    earthworkArrangementId: null,
+    quantitySource: "calculated",
+    quantitySourceNote: "",
+    chainageOverrideReason: "",
+    executedBy: "hlc",
+    layerNo: null,
+    isIncidental: false,
+    incidentalDescription: "",
+  }],
+  equipment: [
+    {
+      id: 7211,
+      machine: "DAILY HIRE ROLLER",
+      vehicleNo: "FIX-HIRE-01",
+      operator: "IMRAN",
+      task: "COMPACTION",
+      entryType: "daily",
+      startTime: "08:00",
+      endTime: "17:00",
+      openingReading: null,
+      closingReading: null,
+      hoursWorked: null,
+      diesel: 0,
+      dieselNorm: 3,
+      expectedDiesel: null,
+      equipmentId: 7703,
+      plantUsageId: null,
+      dieselSource: "contractor",
+      openingDiesel: null,
+      dieselBalanceInTank: null,
+      dieselBalanceConfirmed: false,
+      fuelStation: "",
+      billNumber: "",
+      amountPaid: null,
+      numberOfTrips: null,
+      tripDistance: null,
+      totalKm: null,
+      waterQuantity: null,
+      activitySegments: [],
+      activityAllocations: [],
+      breakdowns: [],
+    },
+    {
+      id: 7212,
+      machine: "DAILY HIRE LOADER",
+      vehicleNo: "FIX-HIRE-02",
+      operator: "KARIM",
+      task: "LOADING",
+      entryType: "daily",
+      startTime: "08:00",
+      endTime: "17:00",
+      openingReading: null,
+      closingReading: null,
+      hoursWorked: null,
+      diesel: 12,
+      dieselNorm: 3,
+      expectedDiesel: null,
+      equipmentId: 7704,
+      plantUsageId: null,
+      dieselSource: "contractor",
+      openingDiesel: null,
+      dieselBalanceInTank: null,
+      dieselBalanceConfirmed: false,
+      fuelStation: "",
+      billNumber: "",
+      amountPaid: null,
+      numberOfTrips: null,
+      tripDistance: null,
+      totalKm: null,
+      waterQuantity: null,
+      activitySegments: [],
+      activityAllocations: [],
+      breakdowns: [],
+    },
+  ],
+  labour: [],
+  materials: [],
+  sitePurchases: [],
+  remarks: "DIESEL-02 GUIDED CONTRACTOR FIXTURE — NOT A CUSTOMER DPR.",
+};
+
+const guidedPlantStockDpr = {
+  ...guidedContractorDpr,
+  id: 6202,
+  remarks: "DIESEL-02 GUIDED PLANT-STOCK FIXTURE — NOT A CUSTOMER DPR.",
+  equipment: [
+    {
+      ...guidedContractorDpr.equipment[0],
+      id: 7221,
+      machine: "DAILY HIRE ROLLER",
+      vehicleNo: "FIX-HIRE-01",
+      equipmentId: 7703,
+      diesel: 12,
+      dieselSource: "plant_stock",
+    },
+    {
+      ...guidedContractorDpr.equipment[1],
+      id: 7222,
+      machine: "DAILY HIRE LOADER",
+      vehicleNo: "FIX-HIRE-02",
+      equipmentId: 7704,
+      diesel: 0,
+      dieselSource: "plant_stock",
+    },
+  ],
+};
+
+const siteEditContractorDpr = {
+  ...guidedContractorDpr,
+  id: 6203,
+  dprStatus: "draft",
+  remarks: "DIESEL-02 SITE EDIT CONTRACTOR FIXTURE — NOT A CUSTOMER DPR.",
+};
+
 const fixtureState = {
   requests: [] as RequestRecord[],
   dprCreatePayloads: [] as any[],
@@ -250,6 +461,7 @@ const fixtureState = {
   createdPlantPayloads: [] as any[],
   updatedPlantPayloads: [] as any[],
   plantUsageRecords: [] as any[],
+  guidedSavedReportPayloads: [] as any[],
   toasts: [] as unknown[],
 };
 
@@ -264,6 +476,11 @@ window.__DprSiteFixture = fixtureState;
 let nextDprId = 6103;
 let nextPersonnelId = 6110;
 let currentDpr: any = { ...storedDpr };
+const guidedDprRecords: Record<number, any> = {
+  [guidedContractorDpr.id]: guidedContractorDpr,
+  [guidedPlantStockDpr.id]: guidedPlantStockDpr,
+  [siteEditContractorDpr.id]: siteEditContractorDpr,
+};
 let nextPlantUsageId = 8102;
 let plantUsageRecords: any[] = [{ ...initialPlantUsage }];
 fixtureState.plantUsageRecords = plantUsageRecords;
@@ -292,18 +509,22 @@ function parseBody(init?: RequestInit): any {
 }
 
 function copyDprWithPayload(id: number, payload: any, status: string) {
-  currentDpr = {
-    ...currentDpr,
+  const source = guidedDprRecords[id] ?? (id === 6101 ? storedDpr : currentDpr);
+  const updated = {
+    ...source,
     ...payload,
     id,
     dprStatus: status,
-    progress: payload.progress ?? currentDpr.progress,
-    equipment: payload.equipment ?? currentDpr.equipment,
-    labour: payload.labour ?? currentDpr.labour,
-    materials: payload.materials ?? currentDpr.materials,
-    sitePurchases: payload.sitePurchases ?? currentDpr.sitePurchases,
+    progress: payload.progress ?? source.progress,
+    equipment: payload.equipment ?? source.equipment,
+    labour: payload.labour ?? source.labour,
+    materials: payload.materials ?? source.materials,
+    sitePurchases: payload.sitePurchases ?? source.sitePurchases,
   };
-  return currentDpr;
+  if (guidedDprRecords[id]) guidedDprRecords[id] = updated;
+  else currentDpr = updated;
+  fixtureState.guidedSavedReportPayloads.push({ id, status, payload: updated });
+  return updated;
 }
 
 const originalFetch = window.fetch.bind(window);
@@ -400,6 +621,9 @@ window.fetch = async (input, init) => {
   if (/^\/api\/equipment\/\d+\/latest-closing$/.test(pathname) && method === "GET") {
     return json({ closingReading: null, sourceDate: null, source: null });
   }
+  if (/^\/api\/equipment\/\d+\/latest-confirmed-diesel-tank$/.test(pathname) && method === "GET") {
+    return json({ dieselBalanceInTank: null, sourceDate: null, source: null });
+  }
   if (pathname === "/api/plant-module/equipment-usage/open-today" && method === "GET") return json([]);
   if (pathname === "/api/boq/projects" && method === "GET") {
     return json([{ id: 5501, name: "NARASIMHULU ROAD BOQ", siteId: site.id, itemCount: boqItems.length }]);
@@ -411,6 +635,26 @@ window.fetch = async (input, init) => {
   if (projectEarthworkMatch && method === "GET") return json([]);
   const projectProgrammeMatch = pathname.match(/^\/api\/boq\/projects\/(\d+)\/programme$/);
   if (projectProgrammeMatch && method === "GET") return json(programmeBars);
+  if (pathname === "/api/dpr/programme-bars" && method === "GET") {
+    const projectId = Number(url.searchParams.get("projectId"));
+    const boqItemId = Number(url.searchParams.get("boqItemId"));
+    return json(programmeBars
+      .filter((bar) => Number(bar.boqItemId) === boqItemId)
+      .map((bar) => ({
+        ...bar,
+        reportedQty: 0,
+        remainingQty: bar.plannedQty,
+        unit: boqItems.find((item) => item.id === bar.boqItemId)?.canonicalUnit
+          ?? boqItems.find((item) => item.id === bar.boqItemId)?.unit
+          ?? null,
+        sequenceOrder: null,
+        sideCoverage: null,
+        arrangement: null,
+        latestOutcome: null,
+        outcomeHistory: [],
+        projectId,
+      })));
+  }
   const projectBomMatch = pathname.match(/^\/api\/boq\/projects\/(\d+)\/bom$/);
   if (projectBomMatch && method === "GET") {
     return json({
@@ -436,6 +680,7 @@ window.fetch = async (input, init) => {
   if (dprGetMatch && method === "GET") {
     const requestedId = Number(dprGetMatch[1]);
     if (requestedId === 6101) return json({ ...storedDpr, id: 6101 });
+    if (guidedDprRecords[requestedId]) return json(guidedDprRecords[requestedId]);
     return requestedId === currentDpr.id ? json(currentDpr) : json({}, 404);
   }
   if (pathname === "/api/dprs" && method === "GET") return json([currentDpr]);
@@ -494,15 +739,62 @@ window.fetch = async (input, init) => {
 };
 
 let appRoot: ReturnType<typeof createRoot> | null = null;
+
+function FixtureSavedReport() {
+  const source = new URLSearchParams(window.location.search).get("source") || "contractor";
+  const snapshot = [...fixtureState.guidedSavedReportPayloads]
+    .reverse()
+    .find((entry) => source === "plant"
+      ? (entry.payload?.equipment ?? []).some((row: any) => row.dieselSource === "plant_stock")
+      : (entry.payload?.equipment ?? []).some((row: any) => row.dieselSource === "contractor"));
+  const fallback = source === "plant" ? guidedPlantStockDpr : guidedContractorDpr;
+  const report = snapshot?.payload ?? fallback;
+  const rows = Array.isArray(report.equipment) ? report.equipment : [];
+  return (
+    <main className="mx-auto w-full max-w-4xl space-y-4 p-6 pb-12">
+      <header className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
+        <h1 className="text-xl font-bold" data-testid="text-fixture-report-title">Fixture saved report — read-only</h1>
+        <p className="mt-1 text-sm">
+          Browser evidence only. This is not a customer DPR and does not write to a production database.
+        </p>
+        <p className="mt-1 text-xs font-semibold uppercase tracking-wide">
+          Source: {source === "plant" ? "Plant Stock" : "Contractor"} · DPR fixture #{report.id}
+        </p>
+      </header>
+      <section className="space-y-3" data-testid="fixture-readonly-equipment">
+        {rows.map((row: any, index: number) => (
+          <DprEquipmentCompact
+            key={`${row.equipmentId ?? row.machine}-${index}`}
+            row={row}
+            equipment={equipment.find((master) => Number(master.id) === Number(row.equipmentId))}
+            index={index}
+            editable={false}
+          />
+        ))}
+      </section>
+    </main>
+  );
+}
+
 const mount = () => {
   queryClient.clear();
   const isEdit = window.location.pathname.startsWith("/site/edit/");
   const isPlantEquipmentUsage = window.location.pathname.startsWith("/plant/equipment-usage");
+  const isGuidedReport = window.location.pathname.startsWith("/guided/report");
+  const isGuided = window.location.pathname.startsWith("/guided");
   appRoot?.unmount();
   appRoot = createRoot(document.getElementById("root")!);
   appRoot.render(
     <QueryClientProvider client={queryClient}>
-      {isPlantEquipmentUsage ? <PlantEquipmentUsage /> : isEdit ? <SiteEdit /> : <SiteEntry />}
+      {isGuidedReport
+        ? <FixtureSavedReport />
+        : isGuided
+          ? <GuidedDpr />
+          : isPlantEquipmentUsage
+            ? <PlantEquipmentUsage />
+            : isEdit
+              ? <SiteEdit />
+              : <SiteEntry />}
     </QueryClientProvider>,
   );
 };

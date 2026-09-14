@@ -133,6 +133,19 @@ const capture = async (name) => {
   return target;
 };
 
+const captureEquipmentEvidence = async (name, index = 0) => {
+  const visible = await evaluate(`(() => {
+    const node = document.querySelector('[data-testid="equipment-compact-${index}"]')
+      || document.querySelector('[data-testid="equipment-row-${index}"]');
+    if (!node) return false;
+    node.scrollIntoView({ block: "start", inline: "nearest" });
+    return true;
+  })()`);
+  assert(visible, `Could not position equipment row ${index} for ${name}`);
+  await sleep(120);
+  return capture(name);
+};
+
 const fixtureState = () => evaluate("window.__DprSiteFixture || null");
 
 const navigate = async (pathName, width = 1440, height = 900, mobile = false) => {
@@ -251,7 +264,7 @@ const verifyDprDieselDraft = async () => {
 const verifySiteEdit = async () => {
   await navigate("/site/edit/6101?complete=1", 1440, 900, false);
   await waitFor("!!document.querySelector('[data-testid=\"button-save\"]')", "DPR edit form");
-  await waitFor("!!document.querySelector('[data-testid=\"input-opening-diesel-0\"]')", "seed DPR tank controls");
+  await waitFor("!!document.querySelector('[data-testid=\"equipment-compact-opening-tank-0\"]')", "seed DPR tank controls");
   await evaluate(`(() => {
     const summary = document.querySelector('[data-testid="equipment-row-0"] details summary');
     if (!summary) return false;
@@ -260,11 +273,11 @@ const verifySiteEdit = async () => {
   })()`);
   await waitFor("document.querySelector('[data-testid=\"equipment-row-0\"] details')?.open === true", "SiteEdit tank fields");
   assert(
-    await evaluate("document.querySelector('[data-testid=\"input-opening-diesel-0\"]')?.disabled === false"),
+    await evaluate("document.querySelector('[data-testid=\"equipment-compact-opening-tank-0\"]')?.disabled === false"),
     "SiteEdit linked plant row incorrectly locked its opening tank balance",
   );
-  await setInput("input-opening-diesel-0", "32");
-  const image = await capture("dpr-edit");
+  await setInput("equipment-compact-opening-tank-0", "32");
+  const linkedImage = await captureEquipmentEvidence("diesel02-siteedit-linked-legacy-tank");
   await clickTestId("button-save");
   await waitFor("window.__DprSiteFixture?.dprVersionPayloads.length >= 1", "DPR version mutation");
   const version = (await fixtureState()).dprVersionPayloads.at(-1);
@@ -272,7 +285,52 @@ const verifySiteEdit = async () => {
   assert(version.payload?.data?.equipment?.[0]?.plantUsageId === 8101, "SiteEdit dropped the linked plant usage id");
   assert(version.payload?.data?.equipment?.[0]?.openingReading === 100 && version.payload?.data?.equipment?.[0]?.closingReading === 108, "SiteEdit changed the existing meter readings");
   assert(version.payload?.data?.equipment?.[0]?.openingDiesel === 32, "SiteEdit opening tank balance was not saved");
-  return { image, sourceId: version.id, payload: version.payload };
+
+  // Primary SiteEdit evidence: an unlinked draft with two hired Daily Hire
+  // rows exercises the actual Save Progress and Submit DPR buttons.  It is
+  // intentionally separate from the linked legacy row above, whose tank
+  // continuity remains covered without making contractor rows look linked.
+  await navigate("/site/edit/6203?returnTo=%2Fsite%2Fedit%2F6203", 1440, 1000, false);
+  await waitFor("!!document.querySelector('[data-testid=\"button-save-draft-progress\"]')", "SiteEdit draft actions");
+  await waitFor("!!document.querySelector('[data-testid=\"equipment-compact-0\"]') && !!document.querySelector('[data-testid=\"equipment-compact-1\"]')", "SiteEdit contractor compact rows");
+  await expandGuidedCompact(0);
+  await expandGuidedCompact(1);
+  assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-opening-tank-\"]').length === 0 && document.querySelectorAll('[data-testid^=\"equipment-compact-closing-tank-\"]').length === 0"), "SiteEdit contractor rows exposed hidden tank controls");
+  assert(await evaluate("document.body.innerText.includes('Hired: FASI UDDIN')"), "SiteEdit contractor vendor was not displayed");
+  assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-start-\"]').length === 2 && document.querySelectorAll('[data-testid^=\"equipment-compact-end-\"]').length === 2 && document.querySelectorAll('[data-testid^=\"equipment-compact-diesel-\"]').length === 2"), "SiteEdit contractor compact inputs were not rendered once per row");
+  const contractorImage = await captureEquipmentEvidence("diesel02-A-siteedit-contractor-daily");
+  const beforeDraft = (await fixtureState()).dprDraftPayloads.length;
+  await clickTestId("button-save-draft-progress");
+  await waitFor(`window.__DprSiteFixture?.dprDraftPayloads.length >= ${beforeDraft + 1}`, "SiteEdit contractor draft mutation");
+  const draft = (await fixtureState()).dprDraftPayloads.at(-1);
+  assert(draft.id === 6203, `SiteEdit draft source id was ${draft.id}`);
+  const draftRows = draft.payload?.equipment || [];
+  assert(draftRows.filter((row) => row.dieselSource === "contractor").length === 2, "SiteEdit draft did not retain both contractor rows");
+  assert(draftRows.some((row) => row.dieselSource === "contractor" && Number(row.diesel) === 0), "SiteEdit draft lost zero-diesel contractor row");
+  assert(draftRows.some((row) => row.dieselSource === "contractor" && Number(row.diesel) === 12), "SiteEdit draft lost positive-diesel contractor row");
+  assert(draftRows.every((row) => row.dieselSource !== "contractor" || (row.openingDiesel == null && row.dieselBalanceInTank == null)), "SiteEdit contractor draft retained hidden tank values");
+
+  // Save Progress navigates away by design; reopen the same fixture draft so
+  // Submit DPR is also a real rendered action against the persisted mock row.
+  await navigate("/site/edit/6203?returnTo=%2Fsite%2Fedit%2F6203", 1440, 1000, false);
+  await waitFor("!!document.querySelector('[data-testid=\"button-submit-dpr\"]')", "SiteEdit contractor submit action");
+  assert(await evaluate("!document.querySelector('[data-testid=\"button-submit-dpr\"]').disabled"), "SiteEdit contractor submit button was disabled for no-meter Daily Hire rows");
+  const submitImage = await captureEquipmentEvidence("diesel02-D-siteedit-contractor-submit");
+  const beforeSubmit = (await fixtureState()).dprSubmitPayloads.length;
+  await clickTestId("button-submit-dpr");
+  try {
+    await waitFor(`window.__DprSiteFixture?.dprSubmitPayloads.length >= ${beforeSubmit + 1}`, "SiteEdit contractor submit mutation");
+  } catch (error) {
+    const blocked = await fixtureState();
+    throw new Error(`${error.message}; SiteEdit contractor submission blocked by toast ${JSON.stringify(blocked.toasts.at(-1) || {})}; captured payloads=${blocked.dprSubmitPayloads.length}`);
+  }
+  const submitted = (await fixtureState()).dprSubmitPayloads.at(-1);
+  assert(submitted.id === 6203, `SiteEdit submit source id was ${submitted.id}`);
+  const submittedRows = submitted.payload?.equipment || [];
+  assert(submittedRows.some((row) => row.dieselSource === "contractor" && Number(row.diesel) === 0), "SiteEdit zero-diesel contractor row was not submitted");
+  assert(submittedRows.some((row) => row.dieselSource === "contractor" && Number(row.diesel) === 12), "SiteEdit positive-diesel contractor row was not submitted");
+  assert(submittedRows.every((row) => row.dieselSource !== "contractor" || (row.openingDiesel == null && row.dieselBalanceInTank == null)), "SiteEdit contractor submit retained hidden tank values");
+  return { linkedImage, contractorImage, submitImage, sourceId: version.id, payload: version.payload, draft, submitted };
 };
 
 const openPlantEntry = async () => {
@@ -364,15 +422,161 @@ const verifyPlantCStockZero = async () => {
   return payload;
 };
 
+const expandGuidedCompact = async (index) => {
+  const expanded = await evaluate(`(() => {
+    const row = document.querySelector('[data-testid="equipment-compact-${index}"]');
+    const button = row?.querySelector('button[aria-expanded]');
+    if (!button) return false;
+    if (button.getAttribute("aria-expanded") === "false") button.click();
+    return true;
+  })()`);
+  assert(expanded, `Could not expand Guided compact equipment row ${index}`);
+  await waitFor(
+    `document.querySelector('[data-testid="equipment-compact-${index}"] input[data-testid="equipment-compact-diesel-${index}"]') !== null`,
+    `Guided compact equipment row ${index} inputs`,
+  );
+};
+
+const guidedRows = async () => evaluate(`Array.from(document.querySelectorAll('[data-testid^="equipment-compact-"]')).length`);
+
+const verifyGuidedContractor = async () => {
+  await navigate("/guided?draftId=6201&section=equipment", 1440, 1000, false);
+  await waitFor("!!document.querySelector('[data-testid=\"text-guided-title\"]')", "Guided DPR title");
+  await waitFor("!!document.querySelector('[data-testid=\"card-equipment-step\"]')", "Guided equipment step");
+  await waitFor("!!document.querySelector('[data-testid=\"equipment-row-0\"] [data-testid=\"select-eq-machine-0\"]')", "Guided contractor row");
+  await waitFor("!!document.querySelector('[data-testid=\"equipment-compact-0\"]') && !!document.querySelector('[data-testid=\"equipment-compact-1\"]')", "Guided contractor compact rows");
+
+  // A: both Daily Hire rows have one compact time/fuel surface, no meter
+  // controls, no tank controls, and the old setup details remain collapsed.
+  assert(await evaluate("Array.from(document.querySelectorAll('[data-testid^=\"equipment-row-\"] details')).every(node => !node.open)"), "Guided contractor setup details unexpectedly open");
+  const duplicateSelectors = [
+    '[data-testid^="input-eq-start-"]',
+    '[data-testid^="input-eq-end-"]',
+    '[data-testid^="input-eq-opening-"]',
+    '[data-testid^="input-eq-closing-"]',
+    '[data-testid^="input-eq-diesel-"]',
+    '[data-testid^="input-equipment-start-"]',
+    '[data-testid^="input-equipment-end-"]',
+    '[data-testid^="input-equipment-opening-"]',
+    '[data-testid^="input-equipment-closing-"]',
+    '[data-testid^="input-equipment-diesel-"]',
+  ];
+  for (const selector of duplicateSelectors) {
+    assert(await evaluate(`document.querySelectorAll(${quote(selector)}).length === 0`), `Guided retained old duplicate selector ${selector}`);
+  }
+  await expandGuidedCompact(0);
+  await expandGuidedCompact(1);
+  assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-start-\"]').length === 2"), "Guided did not render one start input per Daily Hire row");
+  assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-end-\"]').length === 2"), "Guided did not render one end input per Daily Hire row");
+  assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-diesel-\"]').length === 2"), "Guided did not render one diesel input per Daily Hire row");
+  assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-opening-meter-\"]').length === 0 && document.querySelectorAll('[data-testid^=\"equipment-compact-closing-meter-\"]').length === 0"), "Guided Daily Hire unexpectedly rendered meter controls");
+  assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-opening-tank-\"]').length === 0 && document.querySelectorAll('[data-testid^=\"equipment-compact-closing-tank-\"]').length === 0 && document.querySelectorAll('[data-testid^=\"equipment-compact-tank-confirmed-\"]').length === 0"), "Guided contractor unexpectedly rendered tank controls");
+  assert(await evaluate("document.body.innerText.includes('Hired: FASI UDDIN')"), "Guided editable hired vendor label was not visible");
+  const contractorImage = await captureEquipmentEvidence("diesel02-A-guided-contractor-no-duplicate");
+
+  const beforeDraft = (await fixtureState()).dprDraftPayloads.length;
+  await clickTestId("button-save-draft");
+  await waitFor(`window.__DprSiteFixture?.dprDraftPayloads.length >= ${beforeDraft + 1}`, "Guided contractor draft mutation");
+  const draft = (await fixtureState()).dprDraftPayloads.at(-1);
+  const draftRows = draft.payload?.equipment || [];
+  const zero = draftRows.find((row) => row.dieselSource === "contractor" && Number(row.diesel) === 0);
+  const positive = draftRows.find((row) => row.dieselSource === "contractor" && Number(row.diesel) === 12);
+  assert(zero && positive, "Guided contractor draft did not retain both zero and positive diesel rows");
+  assert(zero.openingDiesel == null && zero.dieselBalanceInTank == null && positive.openingDiesel == null && positive.dieselBalanceInTank == null, "Guided contractor draft retained hidden tank values");
+  assert(zero.entryType === "daily" && positive.entryType === "daily", "Guided contractor draft did not retain Daily Hire entry type");
+
+  // The actual draft response is reused by the read-only report route.  This
+  // proves the vendor label survives save/view without claiming a production
+  // DPR was written.
+  await navigate("/guided/report?source=contractor", 1440, 1000, false);
+  await waitFor("!!document.querySelector('[data-testid=\"text-fixture-report-title\"]')", "Guided saved report");
+  await waitFor("document.body.innerText.includes('Hired: FASI UDDIN')", "read-only hired vendor label");
+  assert(await evaluate("document.body.innerText.includes('Fixture saved report') && document.body.innerText.includes('not a customer DPR')"), "read-only report was not clearly labelled fixture evidence");
+  assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-opening-tank-\"]').length === 0"), "read-only contractor report exposed tank fields");
+  const readonlyImage = await captureEquipmentEvidence("diesel02-B-guided-contractor-readonly-saved");
+
+  // D: return to the real Guided review page.  The submit control is the
+  // rendered button used below, not a direct mutation or fixture-only control.
+  await navigate("/guided?draftId=6201&section=review", 1440, 1000, false);
+  await waitFor("!!document.querySelector('[data-testid=\"card-review\"]')", "Guided review step");
+  await waitFor("!!document.querySelector('[data-testid=\"button-submit\"]')", "Guided submit button");
+  assert(await evaluate("!document.querySelector('[data-testid=\"button-submit\"]').disabled"), "Guided contractor submit button was disabled for no-meter Daily Hire rows");
+  const reviewImage = await capture("diesel02-D-guided-review-submit");
+  const beforeSubmit = (await fixtureState()).dprSubmitPayloads.length;
+  await clickTestId("button-submit");
+  try {
+    await waitFor(`window.__DprSiteFixture?.dprSubmitPayloads.length >= ${beforeSubmit + 1}`, "Guided contractor submit mutation");
+  } catch (error) {
+    const blocked = await fixtureState();
+    const toast = blocked.toasts.at(-1) || {};
+    throw new Error(`${error.message}; Guided contractor submission blocked by toast ${JSON.stringify(toast)}; captured payloads=${blocked.dprSubmitPayloads.length}`);
+  }
+  const submitted = (await fixtureState()).dprSubmitPayloads.at(-1);
+  const submittedRows = submitted.payload?.equipment || [];
+  assert(submittedRows.some((row) => row.dieselSource === "contractor" && Number(row.diesel) === 0), "Guided zero-diesel contractor row was not submitted");
+  assert(submittedRows.some((row) => row.dieselSource === "contractor" && Number(row.diesel) === 12), "Guided positive-diesel contractor row was not submitted");
+  return { contractorImage, readonlyImage, reviewImage, draft, submitted };
+};
+
+const verifyGuidedPlantStock = async () => {
+  await navigate("/guided?draftId=6202&section=equipment", 1440, 1000, false);
+  await waitFor("!!document.querySelector('[data-testid=\"card-equipment-step\"]')", "Guided plant-stock equipment step");
+  await waitFor("!!document.querySelector('[data-testid=\"equipment-compact-0\"]') && !!document.querySelector('[data-testid=\"equipment-compact-1\"]')", "Guided plant-stock compact rows");
+  await expandGuidedCompact(0);
+  await expandGuidedCompact(1);
+  assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-opening-tank-\"]').length === 2 && document.querySelectorAll('[data-testid^=\"equipment-compact-closing-tank-\"]').length === 2 && document.querySelectorAll('[data-testid^=\"equipment-compact-tank-confirmed-\"]').length === 2"), "Guided plant-stock tank controls were not present exactly once per row");
+  assert(await evaluate("document.querySelectorAll('[data-testid^=\"input-eq-start-\"]').length === 0 && document.querySelectorAll('[data-testid^=\"input-eq-diesel-\"]').length === 0"), "Guided plant-stock retained duplicate setup inputs");
+  const missingImage = await captureEquipmentEvidence("diesel02-C-guided-plant-stock-tanks-required");
+  const beforeInvalid = (await fixtureState()).dprDraftPayloads.length;
+  await clickTestId("button-save-draft");
+  await sleep(120);
+  const invalid = await fixtureState();
+  assert(invalid.dprDraftPayloads.length === beforeInvalid, "Guided positive plant-stock diesel saved without tank observations");
+  assert(invalid.toasts.some((toast) =>
+    String(toast?.title || "").includes("Diesel tank balance required")
+    || String(toast?.description || "").includes("Opening Diesel Tank (L) is required")
+  ), `Guided plant-stock missing-tank blocker toast was not shown; actual toasts=${JSON.stringify(invalid.toasts.slice(-3))}`);
+
+  // Explicit zero readings are valid physical observations.  The second
+  // plant-stock row stays at zero diesel with blank tank fields, proving the
+  // positive-only guard does not become a zero-value blocker.
+  await setInput("equipment-compact-opening-tank-0", "0");
+  await setInput("equipment-compact-closing-tank-0", "0");
+  await clickTestId("equipment-compact-tank-confirmed-0");
+  assert(await evaluate("document.querySelector('[data-testid=\"equipment-compact-opening-tank-1\"]')?.value === '' && document.querySelector('[data-testid=\"equipment-compact-closing-tank-1\"]')?.value === ''"), "Guided zero-stock row unexpectedly received tank readings");
+  const filledImage = await captureEquipmentEvidence("diesel02-C-guided-plant-stock-tanks-filled");
+  const beforeValid = (await fixtureState()).dprDraftPayloads.length;
+  await clickTestId("button-save-draft");
+  await waitFor(`window.__DprSiteFixture?.dprDraftPayloads.length >= ${beforeValid + 1}`, "Guided plant-stock draft mutation");
+  const saved = (await fixtureState()).dprDraftPayloads.at(-1);
+  const plantPositive = saved.payload?.equipment?.find((row) => row.dieselSource === "plant_stock" && Number(row.diesel) === 12);
+  const plantZero = saved.payload?.equipment?.find((row) => row.dieselSource === "plant_stock" && Number(row.diesel) === 0);
+  assert(plantPositive?.openingDiesel === 0 && plantPositive?.dieselBalanceInTank === 0 && plantPositive?.dieselBalanceConfirmed === true, "Guided plant-stock zero tank readings were not saved");
+  assert(plantZero?.openingDiesel == null && plantZero?.dieselBalanceInTank == null, "Guided zero-stock row incorrectly required tank readings");
+  return { missingImage, filledImage, saved };
+};
+
+const verifyGuidedBoqUnit = async () => {
+  await navigate("/guided?draftId=6201&section=activities", 1440, 1000, false);
+  await waitFor("!!document.querySelector('[data-testid=\"card-entry-0\"]')", "Guided BOQ activity card");
+  await waitFor("!!document.querySelector('[data-testid=\"text-boq-qty-0\"]')", "Guided converted BOQ quantity");
+  const text = await bodyText();
+  assert(await evaluate("document.querySelector('[data-testid=\"input-length-0\"]')?.value === '1600.00' && document.querySelector('[data-testid=\"input-width-0\"]')?.value === '1.5' && document.querySelector('[data-testid=\"input-qty-0\"]')?.value === '2400'"), "Guided BOQ fixture inputs were not rendered as 1600m × 1.5m = 2400 SQM");
+  assert(text.includes("Physical Qty (SQM)"), "Guided physical quantity did not retain SQM measurement label");
+  assert(text.includes("BOQ Qty: 0.24 Ha"), "Guided converted 2400 SQM quantity did not display as 0.24 Ha");
+  const image = await capture("diesel02-E-guided-boq-2400sqm-0.24ha");
+  return { image, text: text.match(/BOQ Qty:[^\n]+/)?.[0] || "" };
+};
+
 await cdp("Runtime.enable");
 const dieselDraft = await verifyDprDieselDraft();
 const edit = await verifySiteEdit();
 const plantA = await verifyPlantAStockPositive();
 const plantB = await verifyPlantBContractorPositive();
 const plantC = await verifyPlantCStockZero();
-const state = await fixtureState();
-
-assert(state.requests.some((request) => request.path === "/api/plant-module/equipment-usage" && request.method === "POST"), "Plant POST was not observed");
+const guidedContractor = await verifyGuidedContractor();
+const guidedPlantStock = await verifyGuidedPlantStock();
+const guidedBoq = await verifyGuidedBoqUnit();
 
 console.log(JSON.stringify({
   scenario: "DPR + Plant Equipment isolated browser fixture",
@@ -385,10 +589,20 @@ console.log(JSON.stringify({
     B_contractorPositive: plantB,
     C_stockZeroExempt: plantC,
   },
+  guided: {
+    contractor: guidedContractor,
+    plantStock: guidedPlantStock,
+    boq: guidedBoq,
+  },
   writes: {
-    dprDrafts: 1,
-    dprVersions: 1,
-    plantCreates: state.plantCreatePayloads.length,
+    // Page.navigate performs a real document load for each scenario, so the
+    // fixture's in-memory state is intentionally inspected immediately after
+    // each rendered mutation above.  Count the returned request snapshots
+    // rather than the final BOQ page's freshly initialised state.
+    dprDrafts: [dieselDraft.payload, edit.draft, guidedContractor.draft, guidedPlantStock.saved].filter(Boolean).length,
+    dprVersions: edit.payload ? 1 : 0,
+    dprSubmissions: [edit.submitted, guidedContractor.submitted].filter(Boolean).length,
+    plantCreates: [plantA.payload, plantB.payload, plantC].filter(Boolean).length,
   },
 }, null, 2));
 

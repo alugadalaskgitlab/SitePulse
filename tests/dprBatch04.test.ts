@@ -18,6 +18,8 @@ import {
   formatDprDimensions,
   dprMeasurementSummary,
   formatDprMeasurement,
+  resolveBoqDisplayUnit,
+  resolveBoqUomProfile,
 } from "../shared/dprGeometry";
 import {
   splitGuidedEquipmentRow,
@@ -59,6 +61,82 @@ describe("Batch 04 — measurement & BOQ-unit conversion", () => {
     expect(formatDprMeasurement(summary)).toBe("200 × 1.75 m = 350 SQM → 0.035 Ha");
     expect(summary.boqQty! < 1.468).toBe(true);
     expect(summary.boqQty).toBeCloseTo(summary.measuredQty! * summary.factor, 12);
+  });
+
+  it("BOQ display unit comes from the saved unit, never from the factor", () => {
+    const savedBoqItem = {
+      unit: "Ha",
+      canonicalUnit: "Sqm",
+      dprConversionFactor: 0.0001,
+      dprMeasurementMethod: null,
+    };
+    expect(resolveBoqDisplayUnit(savedBoqItem)).toBe("Ha");
+
+    const summary = dprMeasurementSummary(
+      { length: 1600, width: 1.5, quantity: 2400, uom: "SQM" },
+      savedBoqItem,
+    );
+    expect(summary.measuredQty).toBe(2400);
+    expect(summary.measuredUom).toBe("SQM");
+    expect(summary.boqQty).toBeCloseTo(0.24, 12);
+    expect(summary.boqUom).toBe("Ha");
+    expect(formatDprMeasurement(summary)).toBe("1600 × 1.5 m = 2400 SQM → 0.24 Ha");
+  });
+
+  it("keeps math tied to saved unit when canonicalUnit is stale", () => {
+    const staleCanonical = {
+      unit: "Cum",
+      canonicalUnit: "Ha",
+      dprConversionFactor: 0.0001,
+      dprMeasurementMethod: null,
+    };
+    expect(resolveBoqUomProfile(staleCanonical)).toEqual({
+      dimClass: "volume",
+      uom: "CUM",
+      dims: ["L", "W", "T"],
+    });
+    expect(calculateDprQuantity(10, 2, 3, staleCanonical)).toBe(60);
+    expect(dprMeasurementSummary(
+      { length: 10, width: 2, thickness: 3, quantity: 60, uom: "CUM" },
+      staleCanonical,
+    ).measuredUom).toBe("CUM");
+    expect(resolveBoqDisplayUnit(staleCanonical)).toBe("Cum");
+  });
+
+  it("does not fabricate a hectare label when the saved BOQ unit has no hectare fact", () => {
+    const importedOnly = { unit: "Sqm", canonicalUnit: null, dprConversionFactor: 0.0001 };
+    expect(resolveBoqDisplayUnit(importedOnly)).toBe("Sqm");
+    const summary = dprMeasurementSummary(
+      { length: 1600, width: 1.5, quantity: 2400, uom: "SQM" },
+      importedOnly,
+    );
+    expect(summary.boqUom).toBe("Sqm");
+
+    const missingBoqUnit = dprMeasurementSummary(
+      { length: 1600, width: 1.5, quantity: 2400, uom: "SQM" },
+      { unit: null, canonicalUnit: null, dprConversionFactor: 0.0001 },
+    );
+    expect(missingBoqUnit.boqUom).toBeNull();
+    expect(formatDprMeasurement(missingBoqUnit)).toContain("(BOQ unit unavailable)");
+  });
+
+  it("routes the BOQ unit label through the shared display contract on every DPR surface", () => {
+    for (const page of [
+      "client/src/pages/SiteEntry.tsx",
+      "client/src/pages/SiteEdit.tsx",
+      "client/src/pages/GuidedDpr.tsx",
+    ]) {
+      const source = readFileSync(page, "utf8");
+      expect(source, page).toContain("dprMeasurementSummary");
+      expect(source, page).toContain("measurement.boqUom");
+      expect(source, page).toContain("resolveBoqDisplayUnit");
+    }
+    const details = readFileSync("client/src/pages/DprDetails.tsx", "utf8");
+    expect(details).toContain("dprMeasurementSummary");
+    expect(details).toContain("m.boqUom");
+    expect(details).toContain("resolveBoqDisplayUnit");
+    expect(readFileSync("client/src/components/BillItemPicker.tsx", "utf8"))
+      .toContain("resolveBoqDisplayUnit");
   });
 
   it("reach balance and Plan-vs-Actual aggregate stored physical quantity in BOQ units", () => {

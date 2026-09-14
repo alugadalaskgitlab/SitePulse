@@ -114,7 +114,7 @@ export function buildGuidedEquipmentPayload(row: GuidedEquipmentRow): Record<str
     ...passthrough
   } = row.passthrough;
   const includeAssignment = row.persistedId == null || workAssignmentEdited === true;
-  return {
+  const payload: Record<string, unknown> = {
     ...(row.persistedId != null ? { persistedId: row.persistedId } : {}),
     ...passthrough,
     ...(includeAssignment && Object.prototype.hasOwnProperty.call(row.passthrough, "activitySegments")
@@ -128,6 +128,18 @@ export function buildGuidedEquipmentPayload(row: GuidedEquipmentRow): Record<str
     operator: row.operator,
     task: row.task,
   };
+  // Match Detailed DPR's save policy: legacy contractor rows cannot retain
+  // physical plant-tank observations on write. Direct-purchase history is
+  // intentionally preserved because hydration is not an explicit transition.
+  if (payload.dieselSource === "contractor") {
+    return {
+      ...payload,
+      openingDiesel: null,
+      dieselBalanceInTank: null,
+      dieselBalanceConfirmed: null,
+    };
+  }
+  return payload;
 }
 
 /* ------------------------------------------------------------------ *

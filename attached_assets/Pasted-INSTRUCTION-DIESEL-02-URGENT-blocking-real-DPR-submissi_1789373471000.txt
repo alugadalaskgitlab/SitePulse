@@ -1,0 +1,55 @@
+INSTRUCTION DIESEL-02 (URGENT — blocking real DPR submission): DprEquipmentCompact duplicates the old flat form and completely ignores dieselSource — root cause traced in code, plus a separate BOQ unit-label bug
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This was found testing a REAL, in-progress DPR (not a demo) — a site engineer could not save it. Treat Part 1 as urgent. Unlike earlier reports, this one IS grounded in a direct code read of the latest zip (client/src/pages/SiteEdit.tsx and client/src/components/DprEquipmentCompact.tsx, client/src/components/EquipmentTankBalanceInputs.tsx) — exact lines below. Also check client/src/pages/GuidedDpr.tsx around line 2056, which has the identical "Equipment setup and additional usage details" collapsible pattern and is very likely to have the same bug — fix both if so. Do not touch Vendor Bills (VB-09 through VB-13) — unrelated, confirmed working, leave alone. Do not publish automatically. STOP after this and report back.
+
+PART 1 — ROOT CAUSE, CONFIRMED IN CODE (URGENT)
+
+client/src/pages/SiteEdit.tsx, each equipment row (~line 2410 onward): a `<details>` collapsible titled "Equipment setup and additional usage details" (~line 2421-2422) contains the full flat entry form — Equipment picker, Entry Type, Operator, Start, End, Opening Reading, Closing Reading, Working Hours, Diesel (L), Diesel Source, and (correctly gated on `entry.dieselSource === "plant_stock"`) the DIESEL-01 addition `EquipmentTankBalanceInputs` at ~line 2833-2848, just before `</details>` at ~line 2851.
+
+Immediately after `</details>`, at ~line 2852, `<DprEquipmentCompact .../>` renders — a SEPARATE, ALREADY-EXISTING component (client/src/components/DprEquipmentCompact.tsx) that independently re-renders its OWN editable Opening Meter, Closing Meter/Odometer, Start, and End inputs (lines 141-144 of that file), which is why these fields visibly appear twice. This is NOT something DIESEL-01 added — DprEquipmentCompact already existed and already duplicated these fields before DIESEL-01; DIESEL-01 only made it worse by adding a second, correctly-gated tank-balance block inside the `<details>` form, on top of DprEquipmentCompact's own, ungated one.
+
+The actual bug behind "contractor scope still shows tank balance fields": DprEquipmentCompact.tsx lines 171-176 render its own Fuel/tank-balance block — Opening Tank (L), Closing / Physical Dip (L), Diesel Issued / Added (L), and the Physical Tank Balance Confirmed checkbox — completely UNCONDITIONALLY whenever `editable && onChange` is true. It never checks `row.dieselSource` at all. This is the block visible in the screenshots showing "Diesel source: contractor" text (line 171's exact wording) with tank-balance fields still rendered below it. This is the real DIESEL-01 violation — not the correctly-gated `EquipmentTankBalanceInputs` component, but this separate, older, ungated block inside DprEquipmentCompact that DIESEL-01 never touched because we didn't know it existed.
+
+FIX 1 — MAKE DprEquipmentCompact THE SINGLE SOURCE FOR METER/TIME/FUEL ENTRY, REMOVE THE NOW-REDUNDANT DUPLICATES FROM THE COLLAPSIBLE FORM
+a. In DprEquipmentCompact.tsx, gate the Fuel block (lines 171-176) on `row.dieselSource === "plant_stock"`, exactly like EquipmentTankBalanceInputs already correctly does: when plant_stock, show Opening Tank / Closing Dip / Diesel Issued / Physical Tank Balance Confirmed as today; when NOT plant_stock (contractor or direct_purchase), show ONLY "Diesel Issued / Added (L)" as an editable field (this field already exists at line 174, just needs to render outside/independent of the gated block) — no tank balance fields, no confirmation checkbox.
+b. In SiteEdit.tsx's collapsible (~lines 2422-2851) and the equivalent block in GuidedDpr.tsx (~line 2056 onward, confirm it has the same structure first): remove the now-fully-redundant Start, End, Opening Reading, Closing Reading, Working Hours, and the basic Diesel (L) fields, AND remove the EquipmentTankBalanceInputs usage entirely (~lines 2833-2848) — DprEquipmentCompact, once Fix 1a lands, correctly covers all of this in one place, immediately below. Keep inside the collapsible only what DprEquipmentCompact does NOT already provide: the Equipment picker, Entry Type selector, Operator field, Diesel Source picker, the direct_purchase-only Fuel Station/Bill No./Amount fields, and the trip-based/water-tanker-specific fields (No. of Trips, Trip Distance, Total KM, Water Quantity) — none of those are duplicated in DprEquipmentCompact, they stay exactly where they are.
+c. Result: one equipment row = one place to enter meter readings, times, and fuel/tank data (DprEquipmentCompact, correctly reacting to Diesel Source), plus the collapsible above it for the setup fields DprEquipmentCompact doesn't cover. No field should appear twice anywhere on this screen.
+
+FIX 2 — OWNER / VENDOR NAME NOT DISPLAYED
+Confirmed: DprEquipmentCompact.tsx never references `equipment.vendorName` or `equipment.ownership` anywhere — the `equipment` prop (the full Equipment Master record) is already passed in, the vendor name is just never rendered. Add it: when `equipment?.ownership === "hired"`, show the vendor name (e.g. "Hired: Fasi Uddin") near the existing Registration/Operator detail in BOTH the editable view and the read-only Detail view (the `editable ? ... : ...` branch pattern already used elsewhere in this component, e.g. around the "Registration / equipment no." / "Operator" Detail rows) so it's visible both while editing and after saving.
+
+FIX 3 — SAVE BLOCKED FOR A NO-METER, CONTRACTOR-SCOPE MACHINE
+Once Fix 1a lands (tank balance no longer required/shown for contractor scope in DprEquipmentCompact), re-test whether the save-blocking validation issue persists. If it does, find the actual validation rule blocking submission for this specific case (Daily Hire, no meter reading, Diesel Source = Contractor, Diesel Issued filled or zero) and confirm it does not incorrectly require a meter reading for an entry type that doesn't use one, or tank balance for a non-plant_stock source.
+
+PART 2 — BOQ QUANTITY UNIT LABEL WRONG (SEPARATE, LOWER URGENCY, SAME DPR — NOT YET CODE-VERIFIED, SCREENSHOT EVIDENCE ONLY)
+On the same DPR's Activity Progress, "Clearing and grubbing road": Length 1600m × Width 1.5m correctly computes Physical Qty = 2400, and the BOQ item picker shows the correct conversion factor ("Sqm × 0.0001"). The converted quantity correctly calculates to 0.24, but both the physical quantity field and "BOQ Qty" are labeled "SQM"/"Sqm". Since 0.0001 is a Sqm→Hectare conversion (1 Ha = 10,000 Sqm), the BOQ's actual unit for this item is Hectares — the converted figure should display as "0.24 Ha", not "0.24 Sqm". This is a label/display bug only, the number is correct. Find where the BOQ item's canonical unit is resolved for display after conversion and fix the label to reflect the BOQ's actual unit, not the physical-entry unit.
+
+WHAT NOT TO DO
+- Do not touch Vendor Bills (VB-09 through VB-13) — unrelated, confirmed working, leave alone.
+- Do not touch the "Programme link invalid" message — confirmed expected behavior, not a bug.
+- Do not remove DprEquipmentCompact's Work Assignment or Breakdown/Stoppage sections — those are not duplicated anywhere else and are correct as-is.
+- Do not change the Plant module's own equipment-usage form (PlantEquipmentUsage.tsx) unless you confirm it independently has the same DprEquipmentCompact duplication — it may not use this component at all; check before changing it.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — this is a field-gating fix, dead-duplicate-field removal, a new display line using data already available in props, and a display-label fix. If you find you need any schema change, stop and show the exact proposed change before writing a migration.
+
+TESTS
+A. Open a real DPR's Complete DPR / closing screen for a hired, Daily Hire equipment row with Diesel Source = Contractor and no meter reading. Confirm there is only ONE entry surface for this equipment (no duplicated fields anywhere on screen), tank balance fields are completely absent, and the DPR saves successfully as draft and can be submitted.
+B. Confirm the owner/vendor name is visible both while editing AND after saving/viewing the DPR.
+C. Repeat with Diesel Source = Plant Stock: confirm tank balance fields DO appear (once, not twice) and ARE required, and this still saves correctly once filled.
+D. Confirm GuidedDpr.tsx's equivalent screen (if it has the same duplication pattern) is fixed identically.
+E. Confirm the Activity Progress BOQ quantity for "Clearing and grubbing road" (or any Sqm-to-Ha converted item) displays the converted figure with the correct unit label (Ha), not Sqm.
+F. Confirm Vendor Bills (any recent VB batch) is completely unaffected.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/C/D evidence (screenshots required, given recent reports have claimed fixes that weren't actually live).
+2. Confirm Fix 2 with Test B evidence.
+3. Confirm Fix 3 — state plainly whether the save-blocking issue was actually the ungated DprEquipmentCompact fuel block, or something else, with evidence either way.
+4. Confirm Part 2 with Test E evidence.
+5. Confirm Test F — no Vendor Bills regression.
+6. Confirm no schema change was needed; if one was, stop and show it before applying.
+7. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

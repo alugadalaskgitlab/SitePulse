@@ -23,7 +23,7 @@ import { useDpr } from "@/hooks/use-dprs";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
-import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage, resolveBoqUomProfile, boqProgressQty, dprMeasurementSummary } from "@shared/dprGeometry";
+import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage, resolveBoqUomProfile, boqProgressQty, dprMeasurementSummary, resolveBoqDisplayUnit } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
@@ -63,9 +63,8 @@ import {
 import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
-import { EquipmentTankBalanceInputs } from "@/components/EquipmentTankBalanceInputs";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
-import { calculateEquipmentClockDuration, formatEquipmentDuration, withEquipmentCreationStartTime, meaningfulEquipmentRows } from "@shared/equipmentUsage";
+import { withEquipmentCreationStartTime, meaningfulEquipmentRows } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
 
@@ -188,11 +187,6 @@ const SIDE_OPTIONS = ["LHS", "RHS", "Both Sides", "Full Width"];
 const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS"];
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
-
-function formatTimeDuration(start: string, end: string): string | null {
-  const hours = calculateEquipmentClockDuration(start, end);
-  return hours == null ? null : formatEquipmentDuration(hours);
-}
 
 interface StructureItem {
   structureType: string;
@@ -976,26 +970,6 @@ export default function SiteEdit() {
       entry,
       normalizeExcavationMaterialOutcome(entry.quantity, entry.materialOutcome, entry.reusableQty),
     );
-  };
-
-  const calculateHours = (start: string, end: string): number => {
-    if (!start || !end) return 0;
-    const [sh, sm] = start.split(':').map(Number);
-    const [eh, em] = end.split(':').map(Number);
-    const diff = (eh * 60 + em) - (sh * 60 + sm);
-    return diff > 0 ? diff / 60 : 0;
-  };
-
-  const calculateMeterHours = (openingReading: number | null, closingReading: number | null): number | null => {
-    if (openingReading === null || closingReading === null) return null;
-    const diff = closingReading - openingReading;
-    return diff >= 0 ? diff : null;
-  };
-
-  const getWorkingHours = (entry: EquipmentEntry): number => {
-    const meterHours = calculateMeterHours(entry.openingReading, entry.closingReading);
-    if (meterHours !== null) return meterHours;
-    return calculateHours(entry.startTime, entry.endTime);
   };
 
   const getTotalDiesel = (): number => {
@@ -2138,10 +2112,10 @@ export default function SiteEdit() {
                         },
                         boqItem,
                       );
-                      if (measurement.boqQty == null || !measurement.boqUom) return null;
+                      if (measurement.boqQty == null) return null;
                       return (
                         <p className="text-[11px] font-medium text-teal-700 mt-1" data-testid={`text-boq-qty-${idx}`}>
-                          BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom}
+                          BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom ?? "(BOQ unit unavailable)"}
                         </p>
                       );
                     })()}
@@ -2204,7 +2178,7 @@ export default function SiteEdit() {
                           entry.quantity ?? calculateQuantity(entry),
                           entryBoqItem(entry),
                         )}
-                        executedUom={(siteBoqItems.find((it) => it.id === entry.boqItemId) as any)?.unit ?? entry.uom ?? null}
+                        executedUom={resolveBoqDisplayUnit(siteBoqItems.find((it) => it.id === entry.boqItemId))}
                         readOnly persistedArrangementId={entry.earthworkArrangementId}
                         onArrangementResolved={(id) => setProgress((prev) => prev.map((p, i) => (i === idx ? { ...p, earthworkArrangementId: id } : p)))}
                         activityMaterialHint={entry.activity || null} testIdPrefix={`detailed-receipt-${idx}`} />
@@ -2394,13 +2368,6 @@ export default function SiteEdit() {
             </div>
           )}
           {equipment.map((entry, idx) => {
-            const workingHours = getWorkingHours(entry);
-             const usage = computeEquipmentUsage(
-               activeEquipment.find((item) => item.id === entry.equipmentId) ??
-                 (entry.dieselNorm != null ? { consumptionNorm: entry.dieselNorm } : null),
-               entry,
-             );
-            const isTimeMeter = !entry.entryType || entry.entryType === "time_meter" || entry.entryType === "hourly";
             const isTripBased = entry.entryType === "trip_based";
             const isDailyOrMonthly = entry.entryType === "daily" || entry.entryType === "monthly";
             const calculatedTotalKm = (entry.numberOfTrips && entry.tripDistance) ? entry.numberOfTrips * entry.tripDistance * 2 : 0;
@@ -2562,102 +2529,6 @@ export default function SiteEdit() {
                 />
               </div>
               </div>
-              <>
-                  <p className="text-sm font-semibold text-muted-foreground border-b pb-1">
-                    {entry.entryType === "hourly" ? "Hourly Hire — Time Entry" : "Time / Meter Entry"}
-                  </p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    <div>
-                      <Label className="text-sm">Start</Label>
-                      <Input
-                        type="time"
-                        value={entry.startTime}
-                        disabled={entry.plantUsageId != null}
-                        onChange={(e) => {
-                          const updated = [...equipment];
-                          updated[idx].startTime = e.target.value;
-                          setEquipment(updated);
-                        }}
-                        className="h-12 text-base"
-                        data-testid={`input-equipment-start-${idx}`}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm">End</Label>
-                      <Input
-                        type="time"
-                        value={entry.endTime}
-                        onChange={(e) => {
-                          const updated = [...equipment];
-                          updated[idx].endTime = e.target.value;
-                          setEquipment(updated);
-                        }}
-                        className="h-12 text-base"
-                        data-testid={`input-equipment-end-${idx}`}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm text-muted-foreground">Duration</Label>
-                      <div className="bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded border border-amber-200 dark:border-amber-700 font-semibold text-amber-700 dark:text-amber-400 text-sm" data-testid={`display-time-duration-${idx}`}>
-                        {formatTimeDuration(entry.startTime, entry.endTime) ?? "-"}
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-sm">Opening Reading</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="Meter"
-                        value={entry.openingReading ?? ""}
-                        disabled={entry.plantUsageId != null}
-                        onChange={(e) => {
-                          const updated = [...equipment];
-                          updated[idx].openingReading = e.target.value ? parseFloat(e.target.value) : null;
-                          setEquipment(updated);
-                        }}
-                        data-testid={`input-equipment-opening-${idx}`}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm">Closing Reading</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="Meter"
-                        value={entry.closingReading ?? ""}
-                        onChange={(e) => {
-                          const updated = [...equipment];
-                          updated[idx].closingReading = e.target.value ? parseFloat(e.target.value) : null;
-                          setEquipment(updated);
-                        }}
-                        data-testid={`input-equipment-closing-${idx}`}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm">Working Hours</Label>
-                      <div className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm" data-testid={`display-working-hours-${idx}`}>
-                        {workingHours > 0 ? `${workingHours.toFixed(3)} hrs` : "-"}
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-sm">Diesel (L)</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="0"
-                        value={entry.diesel ?? ""}
-                        disabled={entry.plantUsageId != null}
-                        onChange={(e) => {
-                          const updated = [...equipment];
-                          updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
-                          setEquipment(updated);
-                        }}
-                        data-testid={`input-equipment-diesel-${idx}`}
-                      />
-                    </div>
-                  </div>
-              </>
-
               {isTripBased && (
                 <>
                   <p className="text-sm font-semibold text-muted-foreground border-b pb-1">Trip Based Entry</p>
@@ -2703,22 +2574,6 @@ export default function SiteEdit() {
                       <div className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm" data-testid={`display-total-km-${idx}`}>
                         {calculatedTotalKm > 0 ? `${calculatedTotalKm.toFixed(1)} km` : "-"}
                       </div>
-                    </div>
-                    <div>
-                      <Label className="text-sm">Diesel (L)</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="0"
-                        value={entry.diesel ?? ""}
-                        disabled={entry.plantUsageId != null}
-                        onChange={(e) => {
-                          const updated = [...equipment];
-                          updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
-                          setEquipment(updated);
-                        }}
-                        data-testid={`input-equipment-diesel-${idx}`}
-                      />
                     </div>
                   </div>
                 </>
@@ -2831,22 +2686,6 @@ export default function SiteEdit() {
                     </div>
                   </>
                 )}
-                {entry.dieselSource === "plant_stock" && (
-                  <EquipmentTankBalanceInputs
-                    index={idx}
-                    openingDiesel={entry.openingDiesel}
-                    dieselBalanceInTank={entry.dieselBalanceInTank}
-                    dieselBalanceConfirmed={entry.dieselBalanceConfirmed}
-                    dieselIssued={entry.diesel}
-                    expectedDiesel={usage.expectedDiesel}
-                    runtime={usage.runtime}
-                    onChange={(patch) => {
-                      const updated = [...equipment];
-                      updated[idx] = { ...updated[idx], ...patch };
-                      setEquipment(updated);
-                    }}
-                  />
-                )}
               </div>
                 </details>
                 <DprEquipmentCompact
@@ -2862,7 +2701,6 @@ export default function SiteEdit() {
                     reachLabel: [entry.chainageFrom, entry.chainageTo].filter(Boolean).join("–") || null,
                     side: entry.side || null,
                   }] : [])}
-                   showTankBalance={false}
                    enableTankContinuity={entry.dieselSource === "plant_stock"}
                   onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } : row))}
                   onWorkAssignmentChange={(activitySegments) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? {

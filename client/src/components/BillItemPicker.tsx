@@ -24,6 +24,7 @@ import { Link } from "wouter";
 import { BOQ_WORK_CATEGORIES } from "@shared/boqWorkCategories";
 import { shortItemName } from "@shared/boqItemName";
 import { dprBoqItemDisplayName, dprSelectableBoqItems } from "@shared/dprBoqSelection";
+import { resolveBoqDisplayUnit } from "@shared/dprGeometry";
 
 export type BillItem = {
   id: number;
@@ -31,6 +32,7 @@ export type BillItem = {
   itemCode: string | null;
   itemName: string | null;
   unit: string;
+  canonicalUnit?: string | null;
   dprConversionFactor: number | null;
   categoryName?: string | null;
   categorySourceBillNo?: string | null;
@@ -85,7 +87,7 @@ function ItemSearchList({
       filter={(value, search) => {
         const it = billItems.find((i) => String(i.id) === value);
         if (!it) return 0;
-        const haystack = [it.itemCode, it.displayName, it.itemName, it.description, it.unit]
+        const haystack = [it.itemCode, it.displayName, it.itemName, it.description, resolveBoqDisplayUnit(it)]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -101,7 +103,7 @@ function ItemSearchList({
             — Select item —
           </CommandItem>
           {billItems.map((it) => {
-            const unitSuffix = `(${it.unit}${it.dprConversionFactor != null && it.dprConversionFactor !== 1 ? ` × ${it.dprConversionFactor}` : ""})`;
+            const unitSuffix = `(${resolveBoqDisplayUnit(it) ?? "BOQ unit unavailable"}${it.dprConversionFactor != null && it.dprConversionFactor !== 1 ? ` × ${it.dprConversionFactor}` : ""})`;
             return (
               <CommandItem
                 key={it.id}
@@ -199,7 +201,7 @@ export function BillItemPicker({
   const triggerLabel = selectedItem ? (
     <ItemRow
       it={selectedItem}
-      unitSuffix={`(${selectedItem.unit}${selectedItem.dprConversionFactor != null && selectedItem.dprConversionFactor !== 1 ? ` × ${selectedItem.dprConversionFactor}` : ""})`}
+      unitSuffix={`(${resolveBoqDisplayUnit(selectedItem) ?? "BOQ unit unavailable"}${selectedItem.dprConversionFactor != null && selectedItem.dprConversionFactor !== 1 ? ` × ${selectedItem.dprConversionFactor}` : ""})`}
     />
   ) : (
     <span className="text-muted-foreground">{effectiveBill ? "Select item…" : "Pick a bill first"}</span>

@@ -41,7 +41,7 @@ import { format, subDays } from "date-fns";
 import type { Site, Personnel, DprWithDetails } from "@shared/schema";
 import { barSideLabel, parseChainageKm, QUANTITY_SOURCE_LABELS, allowedDprSides, dprSideOptionsForBar, isDprSideCompatible, isBarSide } from "@shared/barSide";
 import { chainageOutsideBar, suggestGuidedBars, emptySuggestionsReason, normalizeDprSideKey } from "@shared/dprProgrammeLink";
-import { resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage, resolveBoqUomProfile, boqProgressQty, dprMeasurementSummary } from "@shared/dprGeometry";
+import { resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage, resolveBoqUomProfile, boqProgressQty, dprMeasurementSummary, resolveBoqDisplayUnit } from "@shared/dprGeometry";
 import { requiredDims, applyGeometryChange, applyQuantityEdit, overrideMismatch, deriveOverridden, computedQty } from "@/lib/guidedEntryGeometry";
 import { ProgrammeBarPicker, BarLinkFeedback, type PickerBar } from "@/components/ProgrammeBarPicker";
 import { useAutosave } from "@/hooks/use-autosave";
@@ -80,13 +80,14 @@ import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { currentLocalEquipmentTime, isMeaningfulEquipmentRow, isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
+import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
 type SiteBoqItem = {
   id: number; description: string; itemCode: string | null; itemName: string | null;
   displayName?: string | null;
-  unit: string; dprConversionFactor: number | null; dprMeasurementMethod?: string | null;
+  unit: string; canonicalUnit?: string | null; dprConversionFactor: number | null; dprMeasurementMethod?: string | null;
 };
 
 type ProgrammeBar = {
@@ -1127,6 +1128,16 @@ export default function GuidedDpr() {
         toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
         throw new Error("Diesel source is required for positive diesel");
       }
+      const dieselTankError = equipment
+        .map((row, index) => validateDieselTankBalance(
+          row.passthrough,
+          row.machine?.trim() || `Equipment row ${index + 1}`,
+        ))
+        .find((error): error is string => error != null);
+      if (dieselTankError) {
+        toast({ title: "Diesel tank balance required", description: dieselTankError, variant: "destructive" });
+        throw new Error(dieselTankError);
+      }
       const payload = buildPayload(asDraft);
       const payloadRows = equipment.filter((e) =>
         isMeaningfulEquipmentRow({ ...e.passthrough, machine: e.machine, vehicleNo: e.vehicleNo, operator: e.operator, task: e.task }),
@@ -1769,9 +1780,9 @@ export default function GuidedDpr() {
                     <div>
                       <Label>Physical Qty {measurement.measuredUom ? `(${measurement.measuredUom})` : ""}</Label>
                       <Input type="number" inputMode="decimal" value={e.quantity ?? ""} onChange={(ev) => updateQuantity(idx, ev.target.value === "" ? null : Number(ev.target.value))} data-testid={`input-qty-${idx}`} />
-                      {measurement.boqQty != null && measurement.boqUom && (
+                      {measurement.boqQty != null && (
                         <p className="text-xs font-medium text-teal-700 mt-1" data-testid={`text-boq-qty-${idx}`}>
-                          BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom}
+                          BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom ?? "(BOQ unit unavailable)"}
                         </p>
                       )}
                     </div>
@@ -1865,7 +1876,7 @@ export default function GuidedDpr() {
                   boqItemId={e.boqItemId}
                   programmeBarId={e.programmeBarId}
                   executedQty={executedQty}
-                  executedUom={item?.unit ?? e.uom ?? null}
+                  executedUom={resolveBoqDisplayUnit(item)}
                   locationLabel={loc || null}
                   barPlannedQty={linkedBar?.plannedQty ?? null}
                   persistedArrangementId={e.earthworkArrangementId}
@@ -2220,38 +2231,6 @@ export default function GuidedDpr() {
                           <Input placeholder="Operator name" value={eq.operator} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, operator: ev.target.value } : r))} data-testid={`input-eq-operator-${i}`} />
                         </div>
                       </div>
-                      {/* C. Usage — time/meter fields hidden for Trip Based rows
-                          (type-driven presentation); any previously entered
-                          values stay preserved in the passthrough bag. */}
-                      {!isTripBased && (
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Opening{linked ? " (from plant — locked)" : ""}</Label>
-                          <Input type="number" inputMode="decimal" placeholder="Reading" value={pt.openingReading ?? ""} readOnly={linked}
-                            className={linked ? "bg-amber-50 dark:bg-amber-950/30 border-amber-300" : ""}
-                            onChange={(ev) => { if (!linked) setPassthroughField(i, "openingReading", ev.target.value, true); }}
-                            data-testid={`input-eq-opening-${i}`} />
-                        </div>
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Closing</Label>
-                          <Input type="number" inputMode="decimal" placeholder="Reading" value={pt.closingReading ?? ""}
-                            onChange={(ev) => setPassthroughField(i, "closingReading", ev.target.value, true)}
-                            data-testid={`input-eq-closing-${i}`} />
-                        </div>
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Start time</Label>
-                          <Input type="time" value={pt.startTime ?? ""} className="h-12 text-base"
-                            onChange={(ev) => setPassthroughField(i, "startTime", ev.target.value, false)}
-                            data-testid={`input-eq-start-${i}`} />
-                        </div>
-                        <div>
-                          <Label className="text-xs text-muted-foreground">End time</Label>
-                          <Input type="time" value={pt.endTime ?? ""} className="h-12 text-base"
-                            onChange={(ev) => setPassthroughField(i, "endTime", ev.target.value, false)}
-                            data-testid={`input-eq-end-${i}`} />
-                        </div>
-                      </div>
-                      )}
                       {/* Trip Based — same fields and round-trip km rule as Detailed */}
                       {isTripBased && (
                         <div className="grid grid-cols-3 gap-2" data-testid={`section-eq-trip-${i}`}>
@@ -2310,30 +2289,25 @@ export default function GuidedDpr() {
                           </div>
                         </div>
                       )}
-                      {/* D. Fuel — same stored fields (diesel / dieselSource /
-                          purchase details) as Detailed; purchase details are
-                          hidden but preserved when the source changes. */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Diesel (Litres)</Label>
-                          <Input type="number" inputMode="decimal" placeholder="0" value={pt.diesel ?? ""}
-                            onChange={(ev) => setPassthroughField(i, "diesel", ev.target.value, true)}
-                            data-testid={`input-eq-diesel-${i}`} />
-                        </div>
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Diesel Source</Label>
-                          <Select
-                            value={(pt.dieselSource as string) ?? ""}
-                            onValueChange={(v) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, passthrough: { ...r.passthrough, dieselSource: v } } : r))}
-                          >
-                            <SelectTrigger data-testid={`select-eq-diesel-source-${i}`}><SelectValue placeholder="Select diesel source" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="plant_stock">Plant Stock</SelectItem>
-                              <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
-                              <SelectItem value="contractor">Contractor</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                      {/* D. Source and purchase evidence. Diesel quantity and
+                          source-gated tank readings live once in the compact
+                          component below. */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Diesel Source</Label>
+                        <Select
+                          value={(pt.dieselSource as string) ?? ""}
+                          disabled={linked}
+                          onValueChange={(v) => setEquipment((p) => p.map((r, j) => j === i
+                            ? { ...r, passthrough: transitionDieselSource(r.passthrough, v) }
+                            : r))}
+                        >
+                          <SelectTrigger data-testid={`select-eq-diesel-source-${i}`}><SelectValue placeholder="Select diesel source" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="plant_stock">Plant Stock</SelectItem>
+                            <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
+                            <SelectItem value="contractor">Contractor</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                       {isDirectPurchase && (
                         <div className="grid grid-cols-3 gap-2" data-testid={`section-eq-purchase-${i}`}>
@@ -2372,6 +2346,7 @@ export default function GuidedDpr() {
                           id: entry.programmeBarId,
                           boqItemId: entry.boqItemId,
                         }] : [])}
+                        enableTankContinuity={pt.dieselSource === "plant_stock"}
                         onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === i
                           ? { ...row, passthrough: { ...row.passthrough, ...patch } } : row))}
                         onWorkAssignmentChange={(activitySegments) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === i
@@ -2495,8 +2470,8 @@ export default function GuidedDpr() {
                 const quantityText = measurement.measuredQty != null
                   ? [
                       `Physical ${measurement.measuredQty.toLocaleString(undefined, { maximumFractionDigits: 6 })}${measurement.measuredUom ? ` ${measurement.measuredUom}` : ""}`,
-                      measurement.boqQty != null && measurement.boqUom
-                        ? `BOQ ${measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${measurement.boqUom}`
+                      measurement.boqQty != null
+                        ? `BOQ ${measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${measurement.boqUom ?? "(unit unavailable)"}`
                         : null,
                     ].filter(Boolean).join(" · ")
                   : "No quantity";

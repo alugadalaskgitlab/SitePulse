@@ -2,10 +2,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import fs from "node:fs";
 import { EquipmentTankBalanceInputs } from "../client/src/components/EquipmentTankBalanceInputs";
 import { DprEquipmentCompact } from "../client/src/components/DprEquipmentCompact";
 import { transitionDieselSource, validateDieselTankBalance } from "../shared/dieselEntryValidation";
+import { buildGuidedEquipmentPayload, splitGuidedEquipmentRow } from "../shared/guidedEquipment";
 
 afterEach(() => {
   cleanup();
@@ -61,6 +61,50 @@ describe("DIESEL-01 tank validation", () => {
       dieselBalanceConfirmed: true,
     });
   });
+
+  it("clears seeded contractor tank observations in Guided payloads but round-trips direct-purchase history", () => {
+    const staleContractor = splitGuidedEquipmentRow({
+      id: 19,
+      machine: "ROLLER",
+      vehicleNo: "UP-01-AB-1234",
+      operator: "IMRAN",
+      task: "COMPACTION",
+      diesel: 12,
+      dieselSource: "contractor",
+      openingDiesel: 100,
+      dieselBalanceInTank: 85,
+      dieselBalanceConfirmed: true,
+    });
+    expect(buildGuidedEquipmentPayload(staleContractor)).toMatchObject({
+      persistedId: 19,
+      dieselSource: "contractor",
+      diesel: 12,
+      openingDiesel: null,
+      dieselBalanceInTank: null,
+      dieselBalanceConfirmed: null,
+    });
+
+    const historicalDirectPurchase = splitGuidedEquipmentRow({
+      id: 20,
+      machine: "ROLLER",
+      vehicleNo: "UP-01-AB-1234",
+      operator: "IMRAN",
+      task: "COMPACTION",
+      diesel: 12,
+      dieselSource: "direct_purchase",
+      openingDiesel: 100,
+      dieselBalanceInTank: 85,
+      dieselBalanceConfirmed: true,
+    });
+    expect(buildGuidedEquipmentPayload(historicalDirectPurchase)).toMatchObject({
+      persistedId: 20,
+      dieselSource: "direct_purchase",
+      diesel: 12,
+      openingDiesel: 100,
+      dieselBalanceInTank: 85,
+      dieselBalanceConfirmed: true,
+    });
+  });
 });
 
 describe("DIESEL-01 tank controls", () => {
@@ -88,7 +132,11 @@ describe("DIESEL-01 tank controls", () => {
   it("clears the mounted panel state on a real plant-stock to direct-purchase switch", () => {
     function SourcePanel() {
       const [row, setRow] = useState({
+        machine: "ROLLER",
+        equipmentId: 7,
+        entryType: "daily",
         dieselSource: "plant_stock",
+        diesel: 4,
         openingDiesel: 12 as number | null,
         dieselBalanceInTank: 9 as number | null,
         dieselBalanceConfirmed: true,
@@ -104,15 +152,11 @@ describe("DIESEL-01 tank controls", () => {
             <option value="direct_purchase">Direct Site Purchase</option>
             <option value="contractor">Contractor</option>
           </select>
-          {row.dieselSource === "plant_stock" && (
-            <EquipmentTankBalanceInputs
-              index={0}
-              openingDiesel={row.openingDiesel}
-              dieselBalanceInTank={row.dieselBalanceInTank}
-              dieselBalanceConfirmed={row.dieselBalanceConfirmed}
-              onChange={(patch) => setRow((current) => ({ ...current, ...patch }))}
-            />
-          )}
+          <DprEquipmentCompact
+            row={row}
+            equipment={{ meterType: "hour_meter" }}
+            onChange={(patch) => setRow((current) => ({ ...current, ...patch }))}
+          />
           <output data-testid="source-switch-state">
             {`${row.openingDiesel}|${row.dieselBalanceInTank}|${row.dieselBalanceConfirmed}`}
           </output>
@@ -121,13 +165,18 @@ describe("DIESEL-01 tank controls", () => {
     }
 
     render(<SourcePanel />);
-    expect(screen.getByTestId("equipment-tank-balance-0")).toBeTruthy();
+    expect(screen.getByTestId("equipment-compact-opening-tank-0")).toBeTruthy();
+    expect(screen.getByTestId("equipment-compact-closing-tank-0")).toBeTruthy();
+    expect(screen.getByTestId("equipment-compact-tank-confirmed-0")).toBeTruthy();
     fireEvent.change(screen.getByTestId("source-switch"), { target: { value: "direct_purchase" } });
-    expect(screen.queryByTestId("equipment-tank-balance-0")).toBeNull();
+    expect(screen.getByTestId("equipment-compact-diesel-0")).toBeTruthy();
+    expect(screen.queryByTestId("equipment-compact-opening-tank-0")).toBeNull();
+    expect(screen.queryByTestId("equipment-compact-closing-tank-0")).toBeNull();
+    expect(screen.queryByTestId("equipment-compact-tank-confirmed-0")).toBeNull();
     expect(screen.getByTestId("source-switch-state").textContent).toBe("null|null|false");
     fireEvent.change(screen.getByTestId("source-switch"), { target: { value: "plant_stock" } });
-    expect(screen.getByTestId("equipment-tank-balance-0")).toBeTruthy();
-    expect((screen.getByTestId("input-opening-diesel-0") as HTMLInputElement).value).toBe("");
+    expect(screen.getByTestId("equipment-compact-opening-tank-0")).toBeTruthy();
+    expect((screen.getByTestId("equipment-compact-opening-tank-0") as HTMLInputElement).value).toBe("");
   });
 
   it("gates tank continuity when a row switches away from plant stock", async () => {
@@ -152,7 +201,6 @@ describe("DIESEL-01 tank controls", () => {
         equipment={{ meterType: "hour_meter", consumptionNorm: 2 }}
         beforeDate="2026-03-01"
         site="SITE A"
-        showTankBalance={false}
         enableTankContinuity={false}
         onChange={onChange}
       />,
@@ -167,28 +215,11 @@ describe("DIESEL-01 tank controls", () => {
         equipment={{ meterType: "hour_meter", consumptionNorm: 2 }}
         beforeDate="2026-03-01"
         site="SITE A"
-        showTankBalance={false}
         enableTankContinuity
         onChange={onChange}
       />,
     );
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
     expect(onChange).toHaveBeenCalledWith({ openingDiesel: 12 });
-  });
-});
-
-describe("DIESEL-01 DPR wiring", () => {
-  it("keeps source-specific controls and validation on every DPR save path", () => {
-    const entry = fs.readFileSync("client/src/pages/SiteEntry.tsx", "utf8");
-    const edit = fs.readFileSync("client/src/pages/SiteEdit.tsx", "utf8");
-
-    expect(entry).toContain('entry.dieselSource === "plant_stock"');
-    expect(entry).toContain("contractorDieselTankFieldsCleared");
-    expect(entry).toContain("validateDieselBeforeSave");
-    expect(entry).toContain("enableTankContinuity={entry.dieselSource === \"plant_stock\"}");
-    expect(edit).toContain('entry.dieselSource === "plant_stock"');
-    expect(edit).toContain("contractorDieselTankFieldsCleared");
-    expect(edit).toContain("validateDieselBeforeSave");
-    expect(edit).toContain("enableTankContinuity={entry.dieselSource === \"plant_stock\"}");
   });
 });

@@ -12,6 +12,8 @@
  *    containment and side compatibility).
  */
 
+import { canonicalizeUnit } from "./boqNormalise";
+
 // ── UOM derivation (moved verbatim from client/src/lib/dprUom.ts) ───────────
 
 export function deriveDprUom(
@@ -41,6 +43,26 @@ export function computeDprQty(
 }
 
 export type BoqUomProfile = { dimClass: "volume" | "area" | "length" | "count"; uom: string; dims: ("L" | "W" | "T")[] };
+
+export type BoqUnitFields = {
+  /** Imported BOQ unit (the saved contract/source unit). */
+  unit?: string | null;
+  /** Legacy derived alias; accepted for metadata shape but not display authority. */
+  canonicalUnit?: string | null;
+};
+
+/**
+ * Resolve the unit owned by the BOQ item for display.
+ *
+ * `unit` is the saved BOQ contract/source unit and is authoritative. The
+ * persisted `canonicalUnit` is a derived alias and may be stale after an item
+ * edit, so it is deliberately not used to infer a destination unit. A factor
+ * such as 0.0001 must never manufacture "Ha" from a physical "Sqm" source.
+ */
+export function resolveBoqDisplayUnit(item?: BoqUnitFields | null): string | null {
+  const actual = typeof item?.unit === "string" ? item.unit.trim() : "";
+  return actual ? canonicalizeUnit(actual) : null;
+}
 
 export function boqUomProfile(unit?: string | null): BoqUomProfile {
   const u = (unit || "").toLowerCase().replace(/[\s().]/g, "");
@@ -270,7 +292,7 @@ export type DprMeasurementSummary = {
 /** One shared measurement representation for Summary, Detail, and exports. */
 export function dprMeasurementSummary(
   row: DprRowLike,
-  boqItem?: { unit?: string | null; dprMeasurementMethod?: string | null; dprConversionFactor?: number | null } | null,
+  boqItem?: BoqUnitFields & { dprMeasurementMethod?: string | null; dprConversionFactor?: number | null } | null,
 ): DprMeasurementSummary {
   const prof = boqItem ? resolveBoqUomProfile(boqItem) : boqUomProfile(row.uom);
   const measuredQty = row.quantity != null && Number.isFinite(Number(row.quantity)) ? Number(row.quantity) : null;
@@ -287,19 +309,23 @@ export function dprMeasurementSummary(
     measuredUom,
     factor,
     boqQty: boqItem != null && measuredQty != null ? measuredQty * factor : null,
-    boqUom: boqItem?.unit ?? null,
+    boqUom: resolveBoqDisplayUnit(boqItem),
     converted,
   };
 }
 
-/** "150 × 1.5 m = 225 SQM → 0.0225 Ha" (arrow only when a conversion applies). */
+/** "150 × 1.5 m = 225 SQM → 0.0225 Ha" (or an explicit missing-unit marker). */
 export function formatDprMeasurement(s: DprMeasurementSummary): string {
   const parts: string[] = [];
   if (s.dims) parts.push(s.dims);
   if (s.measuredQty != null) {
     const qty = `${fmtNum(s.measuredQty)}${s.measuredUom ? ` ${s.measuredUom}` : ""}`;
     parts.push(parts.length ? `= ${qty}` : qty);
-    if (s.converted && s.boqQty != null && s.boqUom) parts.push(`→ ${fmtNum(s.boqQty, 4)} ${s.boqUom}`);
+    if (s.converted && s.boqQty != null) {
+      parts.push(s.boqUom
+        ? `→ ${fmtNum(s.boqQty, 4)} ${s.boqUom}`
+        : `→ ${fmtNum(s.boqQty, 4)} (BOQ unit unavailable)`);
+    }
   }
   return parts.join(" ") || "-";
 }

@@ -339,3 +339,73 @@ mtime_ms = 1789368232149
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/66695b4b-5cdb-42f3-a9c7-e8e644845420/38b623de-e9d0-431c-86b5-f66048fa0072"
 storage_version_token = "1789368264073221"
 content_type = "image/png"
+
+[[outputs]]
+id = "YKPVZgN32NsELHkdTC6b9"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/diesel02-A-siteedit-contractor-daily.png"
+type = "image"
+title = "Complete DPR — contractor Daily Hire"
+description = "Browser evidence using the real UI components with controlled API data; no customer DPR was modified."
+logical_id = "09e0f3a5-ee87-4431-b4db-66d1a316d9ab"
+content_hash = "sha256:2959d7ce3637e2204a4c0be473fbc5a71fb90e23fadb00d6d5d7612331ad7454"
+size = 89656
+mtime_ms = 1789376012885
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/09e0f3a5-ee87-4431-b4db-66d1a316d9ab/5531c00a-25a1-4aa2-b3d7-e1f3d2610c7c"
+storage_version_token = "1789376047002436"
+content_type = "image/png"
+
+[[outputs]]
+id = "lccPYhacxh2TO6v93Knjv"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/diesel02-A-guided-contractor-no-duplicate.png"
+type = "image"
+title = "Guided DPR — one equipment entry surface"
+description = "Browser evidence using the real UI components with controlled API data; no customer DPR was modified."
+logical_id = "4cbaefd6-ed0d-4f97-a6e0-8dc01544752b"
+content_hash = "sha256:93c6297dbae4738bbdfd42942be72439099d1eebfba9f5a112ae0d5f461f8fcd"
+size = 90910
+mtime_ms = 1789376016229
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4cbaefd6-ed0d-4f97-a6e0-8dc01544752b/742afa51-77fe-4e77-b849-c0f0a0e31bc6"
+storage_version_token = "1789376048610589"
+content_type = "image/png"
+
+[[outputs]]
+id = "Orxom3ejqtnBpdSNtj6Gp"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/diesel02-B-guided-contractor-readonly-saved.png"
+type = "image"
+title = "Read-only equipment — hired vendor displayed"
+description = "Browser evidence using the real UI components with controlled API data; no customer DPR was modified."
+logical_id = "1f48237f-480b-425f-a3e7-e1bde1919316"
+content_hash = "sha256:66e8c2ddf280d73504dfae9cd3894fe9df298147f45a21cf6f29810ee2e62344"
+size = 128350
+mtime_ms = 1789376016813
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1f48237f-480b-425f-a3e7-e1bde1919316/706ff6b8-4a54-4e31-9452-4c86985f8413"
+storage_version_token = "1789376050508609"
+content_type = "image/png"
+
+[[outputs]]
+id = "g8MIEZqNt1YCvb9RyBCdo"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/diesel02-C-guided-plant-stock-tanks-filled.png"
+type = "image"
+title = "Plant Stock — tank readings shown once"
+description = "Browser evidence using the real UI components with controlled API data; no customer DPR was modified."
+logical_id = "be2f9ffd-1496-4f6e-8e2c-82a6aad66534"
+content_hash = "sha256:8c5fd0404e7486a225a511e693518b232a8a4bb6430d5332feea3d09121794d6"
+size = 107208
+mtime_ms = 1789376018169
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/be2f9ffd-1496-4f6e-8e2c-82a6aad66534/1a9f9b8a-5b87-428a-b399-608a255b92e9"
+storage_version_token = "1789376052393179"
+content_type = "image/png"
+
+[[outputs]]
+id = "KoS2DamJ8HHLeJ2Di4LAl"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/diesel02-E-guided-boq-2400sqm-0.24ha.png"
+type = "image"
+title = "BOQ display — 2,400 SQM converts to 0.24 Ha"
+description = "Browser evidence using the real UI components with controlled API data; no customer DPR was modified."
+logical_id = "c5bf5536-4e09-41b4-b0a3-342ee44981e4"
+content_hash = "sha256:8aecd7270f240bca0cc2713011592d2fc88840570030dccaacaed32d98f8c2b3"
+size = 96181
+mtime_ms = 1789376018665
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c5bf5536-4e09-41b4-b0a3-342ee44981e4/b8396586-dd8d-425d-a0d7-c52bfe0b9043"
+storage_version_token = "1789376054231626"
+content_type = "image/png"
