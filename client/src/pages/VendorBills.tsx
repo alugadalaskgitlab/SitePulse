@@ -134,6 +134,7 @@ const BILL_TYPES = [
   { value: "all", label: "All Types (Combined)" },
   { value: "other", label: "OTHER / MISCELLANEOUS" },
 ];
+const FRESH_BILL_TYPE = "all";
 
 const LINE_ITEM_UNITS = ["HRS", "DAYS", "TRIP", "TRIPS", "MT", "KL", "NOS", "KGS", "LITERS", "CFT", "CUM", "MONTHS", "KM", "HEAD-DAY"];
 
@@ -611,7 +612,7 @@ export default function VendorBills() {
 
   const [billDate, setBillDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [billNo, setBillNo] = useState("");
-  const [billType, setBillType] = useState("equipment");
+  const [billType, setBillType] = useState(FRESH_BILL_TYPE);
   const [vendorName, setVendorName] = useState("");
   const [periodFrom, setPeriodFrom] = useState("");
   const [periodTo, setPeriodTo] = useState("");
@@ -978,7 +979,7 @@ export default function VendorBills() {
     activePullContextRef.current = "";
     setBillDate(format(new Date(), "yyyy-MM-dd"));
     setBillNo("");
-    setBillType("equipment");
+    setBillType(FRESH_BILL_TYPE);
     setVendorName("");
     setPeriodFrom("");
     setPeriodTo("");
@@ -1237,7 +1238,9 @@ export default function VendorBills() {
 
   const addLineItem = () => {
     setLineItems(prev => [
-      ...prev,
+      // The seeded row is only an untouched editor affordance. A deliberate
+      // Add Item replaces it, while preserving any row the user has edited.
+      ...prev.filter(item => !item.initialBlank),
       { date: "", category: getDefaultCategory(), description: "", qty: 0, unit: getDefaultUnit(), rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null, suppliedTo: null, transporter: null },
     ]);
   };
@@ -1399,7 +1402,14 @@ export default function VendorBills() {
         qty: result!.quantity, unit, rate: result!.netAmount / (result!.quantity || 1), amount: result!.netAmount,
         source: "hire_group", leadDistance: null, siteName: null, suppliedTo: null, transporter: null } as LineItem;
     });
-    setLineItems(prev => [...prev.filter(i => !["hire_group", "hire_statement"].includes(i.source)), ...generated]);
+    setLineItems(prev => {
+      const withoutGenerated = prev.filter(i => !["hire_group", "hire_statement"].includes(i.source));
+      // A generated monthly line is a real item, so remove only the untouched
+      // seed. User-owned manual rows (including edited seed rows) stay intact.
+      return generated.length
+        ? [...withoutGenerated.filter(i => !i.initialBlank), ...generated]
+        : withoutGenerated;
+    });
   }, [hireCalculated.length, hireCalculated.map(x => `${x.group.id}:${x.result?.netAmount}:${x.result?.quantity}`).join("|")]);
 
   const updateLineItem = (index: number, field: keyof LineItem, value: any) => {

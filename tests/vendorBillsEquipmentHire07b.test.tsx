@@ -55,6 +55,8 @@ let autoItemsForTest: any[] = [autoEquipmentItem];
 let rateCardsForTest: any[] = [];
 let duplicateRowsForTest: Array<{ index: number; billNo: string; billStatus: string }> = [];
 let deferredRateCards: Promise<Response> | null = null;
+let hireActivityRowsForTest: any[] = [];
+let deferredHireActivities: Promise<Response> | null = null;
 
 beforeEach(() => {
   queryClient.clear();
@@ -63,6 +65,8 @@ beforeEach(() => {
   rateCardsForTest = [];
   duplicateRowsForTest = [];
   deferredRateCards = null;
+  hireActivityRowsForTest = [];
+  deferredHireActivities = null;
   Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn().mockReturnValue({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) });
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -85,7 +89,7 @@ beforeEach(() => {
       return new Response(JSON.stringify(historicalBill), { status: 200 });
     }
     if (url.includes("/api/vendor-bills/82")) return new Response(JSON.stringify(itemizedEquipmentBill), { status: 200 });
-    if (url.includes("/api/vendor-bills/hire-activities")) return new Response(JSON.stringify([]));
+    if (url.includes("/api/vendor-bills/hire-activities")) return deferredHireActivities || new Response(JSON.stringify(hireActivityRowsForTest));
     if (url.includes("/api/vendor-bills/auto-items")) return new Response(JSON.stringify(autoItemsForTest));
     if (url.includes("/api/vendor-rate-cards")) return deferredRateCards || new Response(JSON.stringify(rateCardsForTest));
     if (url.includes("/api/vendor-bills/check-duplicates")) return new Response(JSON.stringify(duplicateRowsForTest));
@@ -95,6 +99,18 @@ beforeEach(() => {
 });
 
 afterEach(() => { cleanup(); queryClient.clear(); vi.unstubAllGlobals(); });
+
+async function openFreshPullBill(items: any[]) {
+  autoItemsForTest = items;
+  render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+  fireEvent.click(await screen.findByTestId("button-new-bill"));
+  expect(screen.getByTestId("select-bill-type").textContent).toBe("All Types (Combined)");
+  fireEvent.change(screen.getByTestId("input-period-from"), { target: { value: "2026-09-01" } });
+  fireEvent.change(screen.getByTestId("input-period-to"), { target: { value: "2026-09-30" } });
+  fireEvent.click(await screen.findByTestId("button-show-vendors"));
+  fireEvent.click(await screen.findByTestId("button-select-vendor-ABC EQUIPMENT"));
+  await screen.findByTestId("button-auto-populate");
+}
 
 describe("VB-07B equipment uses the shared itemized bill flow", () => {
   it("Test A: discovers a vendor through the generic activity endpoint and pulls equipment items", async () => {
@@ -240,6 +256,85 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
   });
 });
 
+describe("VB-13 fresh bill defaults and initial blank lifecycle", () => {
+  it("A/B: defaults fresh bills to All Types, including after an explicit choice and reset", async () => {
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("button-new-bill"));
+    expect(screen.getByTestId("select-bill-type").textContent).toBe("All Types (Combined)");
+
+    fireEvent.click(screen.getByTestId("select-bill-type"));
+    fireEvent.click(await screen.findByText("EQUIPMENT HIRE"));
+    expect(screen.getByTestId("select-bill-type").textContent).toBe("EQUIPMENT HIRE");
+
+    fireEvent.click(screen.getByTestId("button-cancel"));
+    fireEvent.click(await screen.findByTestId("button-new-bill"));
+    expect(screen.getByTestId("select-bill-type").textContent).toBe("All Types (Combined)");
+  });
+
+  it("C: removes the untouched seed after an equipment-only pull", async () => {
+    await openFreshPullBill([vb11Items[0]]);
+    fireEvent.click(screen.getByTestId("button-auto-populate"));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(1));
+    expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
+  });
+
+  it("D: removes the untouched seed after a material-only pull", async () => {
+    await openFreshPullBill([vb11Items[3]]);
+    fireEvent.click(screen.getByTestId("button-auto-populate"));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(1));
+    expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
+  });
+
+  it("E: removes the seed after each category in a mixed pull sequence", async () => {
+    await openFreshPullBill(vb11Items.slice(0, 7));
+    fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(3));
+    expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
+
+    fireEvent.click(screen.getByTestId(vb11GroupIds.soil));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(5));
+    expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
+
+    fireEvent.click(screen.getByTestId(vb11GroupIds.transport));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(6));
+    expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
+  });
+
+  it("F: deliberate Add Item replaces only the untouched seed", async () => {
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("button-new-bill"));
+    expect(screen.getAllByTestId(/input-item-desc-/)).toHaveLength(1);
+    fireEvent.click(screen.getByTestId("button-add-item"));
+    expect(screen.getAllByTestId(/input-item-desc-/)).toHaveLength(1);
+  });
+
+  it("removes the seed for generated monthly hire while retaining a user-owned row", async () => {
+    hireActivityRowsForTest = [{
+      source: "equipment_default",
+      equipmentId: 81,
+      equipment: historicalEquipment,
+    }];
+    let releaseHireActivities!: (response: Response) => void;
+    deferredHireActivities = new Promise<Response>(resolve => { releaseHireActivities = resolve; });
+
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("button-new-bill"));
+    fireEvent.change(screen.getByTestId("input-period-from"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByTestId("input-period-to"), { target: { value: "2026-09-30" } });
+    fireEvent.click(await screen.findByTestId("button-show-vendors"));
+    fireEvent.click(await screen.findByTestId("button-select-vendor-ABC EQUIPMENT"));
+
+    const seededDescription = await screen.findByTestId("input-item-desc-0");
+    fireEvent.change(seededDescription, { target: { value: "USER OWNED MONTHLY NOTE" } });
+    releaseHireActivities(new Response(JSON.stringify(hireActivityRowsForTest)));
+
+    await screen.findByTestId("monthly-hire-81");
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(1));
+    expect(screen.getByDisplayValue("USER OWNED MONTHLY NOTE")).toBeTruthy();
+    expect(screen.getByText(/HISTORICAL ROLLER .* MONTHLY HIRE/i)).toBeTruthy();
+  });
+});
+
 const vb11Items = [
   { date: "2026-09-05", category: "equipment", description: "JCB-SITE - HOURLY HIRE", qty: 8, unit: "HRS", rate: 0, sourceId: "plant_usage:1", equipmentId: 100, siteName: "SITE" },
   { date: "2026-09-06", category: "equipment", description: "JCB-SITE - HOURLY HIRE", qty: 7, unit: "HRS", rate: 0, sourceId: "plant_usage:2", equipmentId: 100, siteName: "SITE" },
@@ -263,8 +358,11 @@ const groupRowId = (buttonId: string) => buttonId.replace(/^button-/, "");
 async function openVb11MixedBill() {
   render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
   fireEvent.click(await screen.findByTestId("button-new-bill"));
-  fireEvent.click(screen.getByTestId("select-bill-type"));
-  fireEvent.click(await screen.findByText("All Types (Combined)"));
+  const billType = screen.getByTestId("select-bill-type");
+  if (billType.textContent !== "All Types (Combined)") {
+    fireEvent.click(billType);
+    fireEvent.click(await screen.findByText("All Types (Combined)"));
+  }
   fireEvent.change(screen.getByTestId("input-period-from"), { target: { value: "2026-09-01" } });
   fireEvent.change(screen.getByTestId("input-period-to"), { target: { value: "2026-09-30" } });
   fireEvent.click(await screen.findByTestId("button-show-vendors"));
@@ -343,8 +441,11 @@ describe("VB-11 grouped ordinary activity pull", () => {
     // checks alone cannot distinguish it from the first bill instance.
     fireEvent.click(screen.getByTestId("button-cancel"));
     fireEvent.click(await screen.findByTestId("button-new-bill"));
-    fireEvent.click(screen.getByTestId("select-bill-type"));
-    fireEvent.click(await screen.findByText("All Types (Combined)"));
+    const nextBillType = screen.getByTestId("select-bill-type");
+    if (nextBillType.textContent !== "All Types (Combined)") {
+      fireEvent.click(nextBillType);
+      fireEvent.click(await screen.findByText("All Types (Combined)"));
+    }
     fireEvent.change(screen.getByTestId("input-period-from"), { target: { value: "2026-09-01" } });
     fireEvent.change(screen.getByTestId("input-period-to"), { target: { value: "2026-09-30" } });
     fireEvent.click(await screen.findByTestId("button-show-vendors"));

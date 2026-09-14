@@ -1,0 +1,34 @@
+INSTRUCTION VB-13: Two confirmed regressions — Bill Type still not defaulting to "All Types (Combined)" (VB-12 didn't fully land), and the stray blank line-item row is back
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Both items below were verified live in the deployed preview by the person testing this app, not guessed. Do not touch anything else — vendor discovery, GST/TDS, the grouped pull (VB-11/VB-11-FIX), DIESEL-01, VB-10 are all confirmed working elsewhere and must not be disturbed. Do not publish automatically. STOP after this and report back.
+
+ISSUE 1 — BILL TYPE STILL NOT DEFAULTING TO "ALL TYPES (COMBINED)"
+VB-12 asked for this and was reported complete, but live testing shows Bill Type still opens on something other than "All Types (Combined)" when starting a New Vendor Bill. VB-12 pointed at two specific lines (useState initial value, and the reset value when starting another new bill) — evidently that wasn't the only place this gets set, or the change didn't actually get applied/deployed. Do not just re-apply the same two-line change blindly — search the entire New Vendor Bill flow for every place billType is initialized, reset, or set based on navigation/route/query params (e.g. a "New Bill" link that might pass an explicit type, a draft-resume path, a duplicate/copy-bill action, anything that creates a fresh billing form) and set every one of them to default to "all" unless the user has explicitly chosen otherwise. Confirm with a screenshot of a freshly opened New Vendor Bill showing "All Types (Combined)" pre-selected, from more than one entry point into the form (e.g. both the main "New Bill" button and any other route that opens this form), since the previous narrow fix apparently missed at least one.
+
+ISSUE 2 — THE STRAY BLANK LINE-ITEM ROW IS BACK
+A default blank, manually-editable row (date/type/description/qty/rate all empty, amount 0.00) is appearing at the top of the item list again, sitting above real pulled items, exactly the issue flagged earlier. Find wherever this blank row (the row with source === "manual" / an "initialBlank"-style flag, or however it's currently implemented) is seeded, and wherever items get pulled/added into the bill (via any pull action, any group, Pull All, or manual ADD ITEM), and fix the clearing logic so this blank row is removed the moment ANY real items are added to the bill, regardless of category, regardless of which specific pull action added them. Do not special-case this to only material-category pulls or any other narrow condition — it must clear whenever the bill stops being empty. Confirm with a screenshot: pull items into a fresh bill (test with an equipment-only pull, a material-only pull, and a mixed pull) and show the blank row is gone in every case, not just some.
+
+WHAT NOT TO DO
+- Do not touch vendor discovery, GST/TDS, exports, the grouped pull, DIESEL-01, or VB-10 — all confirmed working, leave them exactly as they are.
+- Do not report either issue as fixed without a screenshot proving it from a fresh bill — the last two reports claimed things were done that weren't, so evidence is required this time, not just a description.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — both are client-side default-value and state-clearing fixes.
+
+TESTS
+A. Open a fresh New Vendor Bill from the main entry point. Confirm Bill Type shows "All Types (Combined)" with no manual switch.
+B. Open a fresh New Vendor Bill from any other entry point that exists in this app (if more than one exists). Confirm the same default holds there too.
+C. Pull only Equipment items into a fresh bill. Confirm no blank row remains.
+D. Pull only Material items into a fresh bill. Confirm no blank row remains.
+E. Pull a mixed set (Equipment + Material + Transport, however your grouped pull currently works) into a fresh bill. Confirm no blank row remains after any of the pulls, at any point in the sequence.
+F. Manually click "Add Item" on a fresh bill with nothing pulled yet. Confirm this still works normally (a blank row appearing here, from a deliberate manual add, is correct and expected — the issue is only about the automatic pre-seeded blank row not clearing after real items land).
+
+REPORT BACK
+1. Confirm Issue 1 with Test A/B evidence (screenshots).
+2. Confirm Issue 2 with Test C/D/E evidence (screenshots), and confirm Test F still works normally.
+3. Explain briefly why the earlier fixes (VB-12, and the blank-row note folded into VB-11) didn't actually take effect, so we know this won't keep recurring.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

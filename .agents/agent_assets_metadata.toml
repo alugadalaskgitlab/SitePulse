@@ -269,3 +269,73 @@ mtime_ms = 1789362491625
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3db3a31c-9387-4d4e-a98a-6bc50196b952/d2f73e74-9b47-4d09-904b-fddb557fa9ea"
 storage_version_token = "1789362585030404"
 content_type = "image/png"
+
+[[outputs]]
+id = "valPeraTCHDEFoh4UFjtD"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb13A.png"
+type = "image"
+title = "A — Main New Bill: All Types selected"
+description = "Fresh form from the main New Bill button. No manual Bill Type change. Real Vendor Bills component with controlled API fixtures, not live vendor data."
+logical_id = "99fa5ca5-9342-4c8c-bd10-4e1670874525"
+content_hash = "sha256:caab16e246a3b18d8e9510619aaa0f8eb7e87025aa2cc23cbe0b0275f5accfa8"
+size = 89031
+mtime_ms = 1789368229113
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/99fa5ca5-9342-4c8c-bd10-4e1670874525/836c4d6b-89dc-4615-8ffc-3cd834e5912d"
+storage_version_token = "1789368256561978"
+content_type = "image/png"
+
+[[outputs]]
+id = "UrR_p6ujPu2jvo4reHssF"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb13B.png"
+type = "image"
+title = "B — Select & Create: All Types selected"
+description = "Fresh form through vendor selection on the Finance entry point; generated monthly items contain no seeded blank row. Real Vendor Bills component with controlled API fixtures, not live vendor data."
+logical_id = "eded9911-60c1-4edd-afb0-5ab5bc572bd3"
+content_hash = "sha256:52eb4e2e00218c32051b972fff2b8c72b0d067b26caf1cfd3e4d94937cdcd342"
+size = 123993
+mtime_ms = 1789368230057
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/eded9911-60c1-4edd-afb0-5ab5bc572bd3/4f2c15ab-172f-4db0-9427-7af068f0b5d4"
+storage_version_token = "1789368258504924"
+content_type = "image/png"
+
+[[outputs]]
+id = "O6yJ57hKj478GAkzsCq4d"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb13C.png"
+type = "image"
+title = "C — Equipment-only pull"
+description = "Two equipment rows, no automatic blank row. Real Vendor Bills component with controlled API fixtures, not live vendor data."
+logical_id = "e359af23-ef7b-4cf4-9c4f-fac5f5fa6bfd"
+content_hash = "sha256:8e42d6a3459580cb85b2e57321b3f477ee480d58d2dc66ef11701f311a825c3a"
+size = 106138
+mtime_ms = 1789368230661
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e359af23-ef7b-4cf4-9c4f-fac5f5fa6bfd/1d32cece-c6da-4640-8b93-ee3fae18cd9d"
+storage_version_token = "1789368260358677"
+content_type = "image/png"
+
+[[outputs]]
+id = "VKbLIQL-qflXM_rQqyHBg"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb13D.png"
+type = "image"
+title = "D — Material-only pull"
+description = "Material pulled into a fresh bill, no automatic blank row. Real Vendor Bills component with controlled API fixtures, not live vendor data."
+logical_id = "e9597f99-1917-4478-86d4-42aec9e98b4d"
+content_hash = "sha256:b52e3daba5d35673a1755dcedac9ee26cdb9b6d9c0019a10d4af6c7b730fadfd"
+size = 98573
+mtime_ms = 1789368231345
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e9597f99-1917-4478-86d4-42aec9e98b4d/63df13d8-8a09-4994-a28a-6143443e0dd1"
+storage_version_token = "1789368262226322"
+content_type = "image/png"
+
+[[outputs]]
+id = "WOYLMFunei7zvuV7kSGme"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb13E.png"
+type = "image"
+title = "E — Sequential mixed pulls"
+description = "Equipment, material and transport added in sequence; no seeded blank remained after any step. Real Vendor Bills component with controlled API fixtures, not live vendor data."
+logical_id = "66695b4b-5cdb-42f3-a9c7-e8e644845420"
+content_hash = "sha256:2920fdc2841bbe22421d212e21ed9bf7f6cf29bedacb03279f9b4bae4dedd3b8"
+size = 120203
+mtime_ms = 1789368232149
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/66695b4b-5cdb-42f3-a9c7-e8e644845420/38b623de-e9d0-431c-86b5-f66048fa0072"
+storage_version_token = "1789368264073221"
+content_type = "image/png"
