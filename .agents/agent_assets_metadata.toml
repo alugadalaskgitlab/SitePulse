@@ -227,3 +227,45 @@ mtime_ms = 1789276537823
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5fda07a4-fbfe-43b1-890a-2adff98c9f5d/9e2141da-f9e7-4793-830b-7b1bfb82cc9e"
 storage_version_token = "1789277455428039"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "7zNNddKqqi0ulmqPjbKFz"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb11fix-A-immediate-before-pull.png"
+type = "image"
+title = "Before pulling: selectable activity subgroups"
+description = "Current Vendor Bills screen with controlled test data: Equipment, Sand, Soil, Transport and Labour each have their own Pull action, plus Pull All."
+logical_id = "628b4d3f-ccad-4fdf-8d90-dece34097db0"
+content_hash = "sha256:146d745cf54cdf525c6efd74b806e216210415158207f5c581d3acd30c3d794e"
+size = 98289
+mtime_ms = 1789362490877
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/628b4d3f-ccad-4fdf-8d90-dece34097db0/019a6782-6a81-4dd1-85a7-601728a2ad79"
+storage_version_token = "1789362580969599"
+content_type = "image/png"
+
+[[outputs]]
+id = "qct1O6vtOTBv36wHIDGKP"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb11fix-B-equipment-only.png"
+type = "image"
+title = "After pulling Equipment only"
+description = "Equipment is marked Added; Sand, Soil, Transport and Labour remain available. Browser checks verified scoped rate-card and duplicate handling."
+logical_id = "b2ce5099-9194-4d4b-8fe7-692b8981997b"
+content_hash = "sha256:73c407a443de85c60c92d53b3062796291180093d3bdcf1998687fec3ecd567d"
+size = 103151
+mtime_ms = 1789362490997
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b2ce5099-9194-4d4b-8fe7-692b8981997b/716cf813-4ef2-4845-83a0-0732c0c805c3"
+storage_version_token = "1789362583155161"
+content_type = "image/png"
+
+[[outputs]]
+id = "VvdBiEDwX62GleszGqsul"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb11fix-D-single-category-before-pull.png"
+type = "image"
+title = "Single-category vendor"
+description = "The same grouped chooser works with just one activity group."
+logical_id = "3db3a31c-9387-4d4e-a98a-6bc50196b952"
+content_hash = "sha256:936cd9c3b6308a2258da38e3822a061ec06b85fbeab2536f7ec605b31f431004"
+size = 97672
+mtime_ms = 1789362491625
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3db3a31c-9387-4d4e-a98a-6bc50196b952/d2f73e74-9b47-4d09-904b-fddb557fa9ea"
+storage_version_token = "1789362585030404"
+content_type = "image/png"

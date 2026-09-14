@@ -228,6 +228,36 @@ const itemByType: Record<string, FixtureBill[]> = {
   }],
 };
 
+// VB-11 browser evidence uses the same raw auto-item contract as the
+// production /api/vendor-bills/auto-items endpoint.  Rates intentionally start
+// at zero so the mounted VendorBills component must perform its rate-card
+// lookup when a group is pulled.  The mixed supplier has two distinct
+// materials and all four billable categories, which makes a broad-category
+// grouping regression visible in the DOM.
+const vb11MixedAutoItems: FixtureBill[] = [
+  { date: "2026-09-01", category: "equipment", description: "EXCAVATOR - DAILY HIRE - EAST ROAD (PLANT)", qty: 8, unit: "HRS", rate: 0, amount: 0, source: "auto", sourceId: 7101, equipmentId: 7701, siteName: "PLANT" },
+  { date: "2026-09-02", category: "equipment", description: "EXCAVATOR - DAILY HIRE - EAST ROAD (PLANT)", qty: 6, unit: "HRS", rate: 0, amount: 0, source: "auto", sourceId: 7102, equipmentId: 7701, siteName: "PLANT" },
+  { date: "2026-09-03", category: "material", description: "SOIL (SITE)", qty: 12, unit: "MT", rate: 0, amount: 0, source: "auto", sourceId: 7201, siteName: "SITE: NARASIMHULU ROAD" },
+  { date: "2026-09-04", category: "material", description: "SOIL (SITE)", qty: 8, unit: "MT", rate: 0, amount: 0, source: "auto", sourceId: 7202, siteName: "SITE: NARASIMHULU ROAD" },
+  { date: "2026-09-05", category: "material", description: "SAND (SITE)", qty: 10, unit: "MT", rate: 0, amount: 0, source: "auto", sourceId: 7203, siteName: "SITE: NARASIMHULU ROAD" },
+  { date: "2026-09-06", category: "transport", description: "TIPPER TRUCK VIA QUARRY (SITE)", qty: 2, unit: "TRIP", rate: 0, amount: 0, source: "auto", sourceId: 7301, leadDistance: 14, siteName: "SITE: NARASIMHULU ROAD" },
+  { date: "2026-09-07", category: "transport", description: "TIPPER TRUCK VIA QUARRY (SITE)", qty: 3, unit: "TRIP", rate: 0, amount: 0, source: "auto", sourceId: 7302, leadDistance: 14, siteName: "SITE: NARASIMHULU ROAD" },
+  { date: "2026-09-08", category: "labour", description: "LABOUR OPERATOR MALE - PLANT", qty: 2, unit: "HEAD-DAY", rate: 0, amount: 0, source: "auto", sourceId: 7401, siteName: "PLANT" },
+];
+
+const vb11SingleCategoryAutoItems: FixtureBill[] = [
+  { date: "2026-09-01", category: "equipment", description: "ROLLER - DAILY HIRE - SOLO (PLANT)", qty: 7, unit: "HRS", rate: 0, amount: 0, source: "auto", sourceId: 7501, equipmentId: 7702, siteName: "PLANT" },
+];
+
+const vb11RateCards: FixtureBill[] = [
+  { itemKey: "EQ_EXCAVATOR_HRS", category: "equipment", rate: 3500 },
+  { itemKey: "MAT_SOIL_MT", category: "material", rate: 1250 },
+  { itemKey: "MAT_SAND_MT", category: "material", rate: 900 },
+  { itemKey: "EQ_QUARRY_TRIP", category: "transport", rate: 2400 },
+  { itemKey: "LAB_OPERATOR_MALE", category: "labour", rate: 800 },
+  { itemKey: "EQ_ROLLER_HRS", category: "equipment", rate: 2800 },
+];
+
 const vb10EquipmentMasters: FixtureBill[] = [
   {
     id: 1001, name: "MONTHLY HLC EXCAVATOR", registrationNumber: "VB10-M-01",
@@ -359,8 +389,12 @@ const vb10PerformanceReport = () => {
   };
 };
 
-const vb10Scenario = () => new URLSearchParams(window.location.search).get("scenario")?.startsWith("vb10") === true;
-const vb10NoPriceScenario = () => new URLSearchParams(window.location.search).get("scenario") === "vb10-no-price";
+const scenarioName = () => new URLSearchParams(window.location.search).get("scenario") || "";
+const vb10Scenario = () => scenarioName().startsWith("vb10");
+const vb10NoPriceScenario = () => scenarioName() === "vb10-no-price";
+const vb11MixedScenario = () => scenarioName().startsWith("vb11fix");
+const vb11SingleCategoryScenario = () => scenarioName() === "singlecategory";
+const vb11Scenario = () => vb11MixedScenario() || vb11SingleCategoryScenario();
 
 function vb10SnapshotForGroup(group: any, status = "draft", billPayload: any = {}): any {
   const equipment = vb10EquipmentMasters.find(row => Number(row.id) === Number(group.equipmentId));
@@ -452,6 +486,9 @@ const fixtureState = {
   downloadFiles: [] as Array<{ name: string; bytes: number; type: string; signature: string }>,
   printDocuments: [] as string[],
   selectedHistorical: [] as number[],
+  rateCardCalls: [] as string[],
+  duplicateChecks: [] as any[],
+  duplicateFlags: [] as any[][],
 };
 
 declare global {
@@ -533,11 +570,33 @@ window.fetch = async (input, init) => {
   }
   if (pathname === "/api/vendor-bills/vendor-names" && method === "GET") {
     if (vb10Scenario()) return json(["VB10 EQUIPMENT HIRE"]);
+    if (vb11MixedScenario()) return json(["VB11 MIXED SUPPLIER"]);
+    if (vb11SingleCategoryScenario()) return json(["VB11 EQUIPMENT SUPPLIER"]);
     return json(["NARASIMHULU", "MATERIAL VENDOR", "TRANSPORT VENDOR", "LABOUR VENDOR"]);
   }
   if (pathname === "/api/vendor-aliases" && method === "GET") return json([]);
-  if (pathname === "/api/vendor-rate-cards" && method === "GET") return json([]);
-  if (pathname === "/api/vendor-bills/check-duplicates") return json([]);
+  if (pathname === "/api/vendor-rate-cards" && method === "GET") {
+    if (vb11Scenario()) {
+      fixtureState.rateCardCalls.push(requestUrl.search);
+      return json(vb11RateCards);
+    }
+    return json([]);
+  }
+  if (pathname === "/api/vendor-bills/check-duplicates") {
+    if (vb11Scenario() && method === "POST") {
+      const payload = init?.body ? JSON.parse(String(init.body)) : {};
+      fixtureState.duplicateChecks.push(payload);
+      // The first item of each explicit pull is marked as already present in
+      // another bill.  This exercises the existing duplicate badge without
+      // changing which candidate group remains pending.
+      const flags = Array.isArray(payload.items) && payload.items.length
+        ? [{ index: 0, billNo: `VB11-DUP-${fixtureState.duplicateChecks.length}`, billStatus: "approved" }]
+        : [];
+      fixtureState.duplicateFlags.push(flags);
+      return json(flags);
+    }
+    return json([]);
+  }
 
   const detailMatch = pathname.match(/^\/api\/vendor-bills\/(\d+)$/);
   if (detailMatch && method === "GET") {
@@ -582,6 +641,18 @@ window.fetch = async (input, init) => {
       categories: ["equipment"],
       existingBill: null,
     }]);
+    if (vb11MixedScenario()) return json([{
+      vendorName: "VB11 MIXED SUPPLIER",
+      recordCount: vb11MixedAutoItems.length,
+      categories: ["equipment", "material", "transport", "labour"],
+      existingBill: null,
+    }]);
+    if (vb11SingleCategoryScenario()) return json([{
+      vendorName: "VB11 EQUIPMENT SUPPLIER",
+      recordCount: vb11SingleCategoryAutoItems.length,
+      categories: ["equipment"],
+      existingBill: null,
+    }]);
     return json([{
       vendorName: "NARASIMHULU",
       recordCount: 1,
@@ -595,6 +666,14 @@ window.fetch = async (input, init) => {
   if (pathname === "/api/vendor-bills/auto-items") {
     const billType = requestUrl.searchParams.get("billType") || "equipment";
     if (vb10Scenario()) return json(["equipment", "all"].includes(billType) ? vb10AutoItems : []);
+    if (vb11MixedScenario()) {
+      return json(billType === "all"
+        ? vb11MixedAutoItems
+        : vb11MixedAutoItems.filter(item => item.category === billType));
+    }
+    if (vb11SingleCategoryScenario()) {
+      return json(["equipment", "all"].includes(billType) ? vb11SingleCategoryAutoItems : []);
+    }
     return json(itemByType[billType] || []);
   }
   if (pathname === "/api/vendor-bills/hire-activities") {

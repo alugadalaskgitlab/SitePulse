@@ -1,0 +1,49 @@
+INSTRUCTION VB-11-FIX: The grouped/sub-grouped selective pull from VB-11 was not actually built — correct it
+
+READ THIS FIRST — SCOPE DISCIPLINE
+VB-11 was reported complete, but verified live in the deployed preview and it does not match the spec — screenshots attached below show the actual current behavior. This instruction corrects it. Do not touch anything else — VB-09/DIESEL-01/VB-10/VB-12 are all confirmed working and must not be disturbed. Do not publish automatically. STOP after this and report back.
+
+WHAT'S ACTUALLY LIVE RIGHT NOW (confirmed by screenshot, not a guess)
+1. Vendor list (after "Show Available Vendors"): each vendor already shows badges for which categories they have activity in — e.g. "NARASIMHULU — 120 records — EQUIP, MATL" clearly shows this vendor has both equipment and material activity.
+2. Clicking "Select & Create" on that vendor takes you into the bill, where the activity banner reads: "All billable records for NARASIMHULU (01-AUG-2026 to 14-SEP-2026) — equipment, materials, transport & labour." with exactly ONE button: "PULL 120 OTHER ITEMS". This is the OLD flat, all-or-nothing pull VB-11 was supposed to replace. There is no per-group breakdown anywhere on this screen, before or after pulling.
+
+WHAT WAS ACTUALLY ASKED FOR IN VB-11 (re-stating precisely, since the first pass missed it)
+The moment the vendor's activity is known (i.e., as soon as you're on this screen — you already know from the vendor list that this vendor has EQUIP and MATL activity, so the groups can be computed immediately, before any pull happens), show one row per sub-group instead of the single flat button:
+- "EQUIPMENT — [machine name], [entry type] — N items — Pull"
+- "MATERIAL — [material name] — N items — Pull" (one row per distinct material, not all material lumped together — if there are multiple distinct materials for this vendor in this period, e.g. Soil and Sand, they must be two separate rows with two separate Pull buttons)
+- "TRANSPORT — [canonical name] — N items — Pull" (if any)
+- "LABOUR — [label] — N items — Pull" (if any)
+Each row's own "Pull" button adds only that group's items into the bill. A "Pull All" action remains available alongside these, equivalent to today's single-button behavor, for the case where the user does want everything.
+
+This must appear INSTEAD OF the current single "PULL N OTHER ITEMS" button — not as a secondary/hidden option, not only after the flat pull has already happened. The whole point is choosing before anything lands in the bill, exactly as the vendor-list badges already hint at (EQUIP, MATL shown per vendor) — carry that same breakdown one screen further, to the item level.
+
+Reuse the existing grouping logic already in this file (the same one powering "SET RATES" — grouping by category + canonical machine/material/transport/labour identity + unit) exactly as VB-11 specified. Do not invent a second grouping scheme. Apply it to the not-yet-pulled candidate items (whatever handleAutoPopulate currently reads before mapping), not to already-pulled line items.
+
+FIX 1 — REPLACE THE SINGLE PULL BUTTON WITH THE GROUPED BREAKDOWN
+a. Where "PULL N OTHER ITEMS" currently renders as one button, replace it with the per-group breakdown described above, computed from the same source data the flat pull currently reads from.
+b. Each group shows its own item count and its own "Pull" action.
+c. Keep one "Pull All" action for convenience.
+d. Once a group is pulled, mark it visibly (e.g. "✓ Added" / greyed out) so it's clear what's left.
+e. Preserve everything the current pull already does correctly per item: rate-card auto-apply, duplicate-in-another-bill detection — both must still run correctly whether triggered via a single group's Pull button or via Pull All.
+
+WHAT NOT TO DO
+- Do not change vendor discovery, the vendor list's badges, GST/TDS, exports, or the default Bill Type (VB-12) — all confirmed working, leave them exactly as they are.
+- Do not add the grouped view as a secondary option alongside the flat button — replace the flat button with it.
+- Do not lump all materials (or all equipment, transport, labour) into one group per category if there are genuinely distinct sub-types within it — sub-group as specified.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected.
+
+TESTS
+A. Select a vendor with multiple categories AND multiple distinct items within a category (e.g. two different materials). Confirm the breakdown shows one row per sub-group — not per broad category — with correct counts, visible immediately on entering the bill (no flat "PULL N ITEMS" button anywhere).
+B. Pull only one group (e.g. Equipment). Confirm only those items land, rate-card and duplicate-check ran correctly, and every other group remains available and clearly marked as not-yet-pulled.
+C. Use "Pull All". Confirm it behaves exactly as the old single-button pull did.
+D. Confirm this works correctly for a vendor with only one category of activity too (the grouped view shouldn't look broken or redundant when there's nothing to sub-group).
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/C/D evidence — include a screenshot this time, not just a text description, since the previous report claimed this was done when it wasn't.
+2. Confirm nothing else (VB-09/DIESEL-01/VB-10/VB-12) regressed.
+3. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
