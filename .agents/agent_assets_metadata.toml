@@ -409,3 +409,45 @@ mtime_ms = 1789376018665
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c5bf5536-4e09-41b4-b0a3-342ee44981e4/b8396586-dd8d-425d-a0d7-c52bfe0b9043"
 storage_version_token = "1789376054231626"
 content_type = "image/png"
+
+[[outputs]]
+id = "BZbz9qOcnMgZ2WWIy9xye"
+uri = "file://tests/fixtures/schedule-revision/evidence/wp01-A-start-jan10-suggests-finish-jan12.png"
+type = "image"
+title = "A — Jan 10 suggests Jan 12"
+description = "Real Revise Schedule dialog with controlled fixture data. No live schedule changes."
+logical_id = "4594c616-097a-4c00-a45c-8e7ec947afee"
+content_hash = "sha256:4794b6826489c4b6cdbe0126b9f209c120671bcd088688dab1e5280e7b88988d"
+size = 134693
+mtime_ms = 1789396263572
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4594c616-097a-4c00-a45c-8e7ec947afee/e6960519-98ea-44ba-ae35-f47586b451cb"
+storage_version_token = "1789396416568571"
+content_type = "image/png"
+
+[[outputs]]
+id = "V6FMyYOTyYbzDCtWtN8B1"
+uri = "file://tests/fixtures/schedule-revision/evidence/wp01-B-finish-override-jan15.png"
+type = "image"
+title = "B — Finish overridden to Jan 15"
+description = "Real Revise Schedule dialog with controlled fixture data. No live schedule changes."
+logical_id = "dce7370b-43e5-4429-a71b-96e47fa6def5"
+content_hash = "sha256:b870204ac9993356083bdf9383bf07f98a75bfb7c6f5259919a1e2d733e97456"
+size = 136304
+mtime_ms = 1789396263908
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/dce7370b-43e5-4429-a71b-96e47fa6def5/99b005cf-93d7-4b78-911e-38cb402f7e2f"
+storage_version_token = "1789396418784191"
+content_type = "image/png"
+
+[[outputs]]
+id = "ctw7RXTbEGShS2I6rctX_"
+uri = "file://tests/fixtures/schedule-revision/evidence/wp01-C-direct-finish-keeps-start.png"
+type = "image"
+title = "C — Finish-only edit keeps Start unchanged"
+description = "Real Revise Schedule dialog with controlled fixture data. No live schedule changes."
+logical_id = "5ed53215-4e0c-4be7-a120-4df39350659e"
+content_hash = "sha256:9d8d3b311d2ef4e86be8c3d15390e0145fd7f6358321408547d941edbbe1b444"
+size = 135627
+mtime_ms = 1789396264260
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5ed53215-4e0c-4be7-a120-4df39350659e/8bf2e6f3-5a83-4f8e-afe2-7218b9ffa2a2"
+storage_version_token = "1789396421023766"
+content_type = "image/png"

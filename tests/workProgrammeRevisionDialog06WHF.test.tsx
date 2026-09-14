@@ -60,6 +60,82 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe("WP-01 original-duration finish suggestion", () => {
+  const threeDayBar = { ...BAR, startDate: "2026-01-01", endDate: "2026-01-03" };
+  const start = () => screen.getByTestId("input-revision-start-77") as HTMLInputElement;
+  const finish = () => screen.getByTestId("input-revision-finish-77") as HTMLInputElement;
+  const change = (input: HTMLInputElement, value: string) => fireEvent.change(input, { target: { value } });
+
+  it("A/B/C: suggests Jan 12 for Jan 10, permits override, and never changes start from finish", () => {
+    render(<ScheduleRevisionActions bar={threeDayBar} projectId={5} />);
+    fireEvent.click(screen.getByText("Revise"));
+    change(start(), "2026-01-10");
+    expect(finish().value).toBe("2026-01-12");
+    change(finish(), "2026-01-15");
+    expect(finish().value).toBe("2026-01-15");
+    expect(finish().disabled).toBe(false);
+    expect(start().value).toBe("2026-01-10");
+    // Another start change still uses the original three days, not the override.
+    change(start(), "2026-01-20");
+    expect(finish().value).toBe("2026-01-22");
+  });
+
+  it("C: a finish-only edit leaves the original start intact", () => {
+    render(<ScheduleRevisionActions bar={threeDayBar} projectId={5} />);
+    fireEvent.click(screen.getByText("Revise"));
+    change(finish(), "2026-01-15");
+    expect(start().value).toBe("2026-01-01");
+  });
+
+  it.each([
+    ["2026-01-01", "2026-01-01", "2026-01-10", "2026-01-10"],
+    ["2026-01-01", "2026-01-03", "2028-02-28", "2028-03-01"],
+    ["2026-01-01", "2026-01-03", "2026-12-31", "2027-01-02"],
+    ["2026-01-01", "2026-01-03", "2026-03-07", "2026-03-09"],
+  ])("preserves inclusive calendar duration %s–%s at %s", (a, b, next, expected) => {
+    render(<ScheduleRevisionActions bar={{ ...BAR, startDate: a, endDate: b }} projectId={5} />);
+    fireEvent.click(screen.getByText("Revise"));
+    change(start(), next);
+    expect(finish().value).toBe(expected);
+  });
+
+  it("captures fresh bar duration on each open and leaves finish intact when start is cleared", () => {
+    const { rerender } = render(<ScheduleRevisionActions bar={threeDayBar} projectId={5} />);
+    fireEvent.click(screen.getByText("Revise"));
+    change(start(), "");
+    expect(finish().value).toBe("2026-01-03");
+    fireEvent.click(screen.getByText("Cancel"));
+    rerender(<ScheduleRevisionActions bar={{ ...threeDayBar, endDate: "2026-01-05" }} projectId={5} />);
+    fireEvent.click(screen.getByText("Revise"));
+    change(start(), "2026-01-10");
+    expect(finish().value).toBe("2026-01-14");
+  });
+
+  it.each(["not_started", "started"])("D/E: preview and commit retain override and cascade for %s", async (executionState) => {
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce({ json: async () => PREVIEW } as any)
+      .mockResolvedValueOnce({ json: async () => ({ ok: true }) } as any);
+    render(<ScheduleRevisionActions bar={{ ...threeDayBar, executionState, actualStartDate: "2026-01-02" }} projectId={5} />);
+    fireEvent.click(screen.getByText("Revise"));
+    if (executionState === "not_started") change(start(), "2026-01-10");
+    else {
+      expect(start().disabled).toBe(true);
+      expect(start().value).toBe("2026-01-02");
+    }
+    change(finish(), "2026-01-15");
+    fireEvent.change(screen.getByTestId("input-revision-reason-77"), { target: { value: "Access delayed" } });
+    fireEvent.click(screen.getByText("Preview revision"));
+    await screen.findByText("Confirm & commit");
+    fireEvent.click(screen.getByText("Confirm & commit"));
+    await waitFor(() => expect(screen.queryByTestId("dialog-revise-schedule-77")).toBeNull());
+    const payload = { ...(executionState === "not_started" ? { startDate: "2026-01-10" } : {}),
+      endDate: "2026-01-15", reason: "Access delayed", cascade: true };
+    expect(apiRequest).toHaveBeenNthCalledWith(1, "POST", "/api/boq/programme/bars/77/revision-preview", payload);
+    expect(apiRequest).toHaveBeenNthCalledWith(2, "POST", "/api/boq/programme/bars/77/revise-schedule",
+      { ...payload, previewToken: "preview-token" });
+  });
+});
+
 function TransientTriggerHarness({ action }: { action: "revise" | "history" }) {
   const [requestedAction, setRequestedAction] = useState<"revise" | "history" | null>(null);
   const [triggerMounted, setTriggerMounted] = useState(true);

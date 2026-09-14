@@ -1,0 +1,40 @@
+INSTRUCTION WP-01: Revise Schedule — auto-suggest Finish Date from Start Date, using the activity's own duration
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a small, dialog-only UX fix confirmed in code — client/src/pages/WorkProgramme.tsx, the ScheduleRevisionActions component (~line 118 onward). Do not touch the cascade logic (shared/programmeRevision.ts), the auto-sequencer, chainage-overlap cascade rules, or anything about how successors shift — all confirmed correct and must not be disturbed. Do not touch Auto-Sequence, Publish Baseline, or the Gantt rendering. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+In ScheduleRevisionActions (~line 118), `startDate` and `endDate` are two completely independent pieces of React state (~lines 135-136), both initialized from the bar's current values when the dialog opens (beginRevision(), ~line 154). There is no link between them today: changing Start Date does nothing to End Date, and the person must set both manually. This caused a real mistake in live use — a person intending a 2-day shift to an activity's finish date accidentally left the finish date 10 days out, because nothing suggested the correct finish once they changed the start.
+
+The activity's duration is already implicitly known — it's just (current endDate − current startDate) at the moment the dialog opens, the exact same duration the app already calculated for that activity from its resource/equipment norms. `inclusiveDays()` (~line 240) already computes exactly this kind of day-count elsewhere in this same component for the read-only "revised duration" preview line.
+
+FIX 1 — SUGGEST FINISH DATE FROM START DATE, KEEPING THE ORIGINAL DURATION
+a. When beginRevision() opens the dialog (~line 154), capture the activity's ORIGINAL duration in calendar days: `originalDurationDays = inclusiveDays(bar.startDate, bar.endDate)` (use the same inclusiveDays function already in this file, or the equivalent day-count math already used for revisedDays). Store this in a ref or state that persists for the lifetime of this dialog session (reset each time beginRevision() runs, so it always reflects the CURRENT activity being revised, not a stale one).
+b. Add an onChange handler to the Start Date input (only relevant when state === "not_started", since started bars lock their effective start): when the user changes Start Date, automatically set End Date to `newStartDate + (originalDurationDays - 1)` calendar days (inclusive counting — matching inclusiveDays' own convention, so a 1-day activity's start+end land on the same date).
+c. End Date remains a normal, independently editable field — the auto-suggestion only PRE-FILLS it the moment Start Date changes; the person can still type or pick a different End Date afterward if they genuinely want a different duration for this revision. Do not lock or disable the End Date field.
+d. If the person edits End Date directly (without having just changed Start Date), do not touch Start Date — this fix is one-directional (Start suggests Finish), not bidirectional. Do not build a reverse suggestion (Finish changing Start) — out of scope.
+e. This applies to calendar days exactly as the app already counts them today — no change to how working days, Sundays, or holidays factor into duration; if the app doesn't currently treat non-working days specially in this calculation, don't add that here.
+
+WHAT NOT TO DO
+- Do not change the cascade/successor-shift logic (shared/programmeRevision.ts) — confirmed correct, chainage-scoped, and must stay exactly as-is.
+- Do not change Auto-Sequence, Publish Baseline, or any other Work Programme feature.
+- Do not make End Date read-only or remove the person's ability to override the suggested date.
+- Do not add a reverse (End → Start) auto-suggestion.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — this is a client-side dialog default-value fix using data (startDate, endDate) already loaded onto the bar.
+
+TESTS
+A. Open Revise Schedule on a not-started activity with a known duration (e.g. currently 3 days: Start Jan 1 → End Jan 3). Change Start Date to Jan 10. Confirm End Date auto-updates to Jan 12 (same 3-day duration), without the person touching End Date.
+B. From that same pre-filled state, manually change End Date to something else (e.g. Jan 15). Confirm it accepts the override and does not snap back.
+C. Confirm Start Date is unaffected when the person edits End Date directly without having just changed Start Date.
+D. Confirm the cascade preview/commit (requestPreview/commit) still works correctly using whatever Start/End values are in the fields at submit time — no change expected here, just confirm no regression.
+E. Confirm this only applies when the activity is not_started — for a started bar (effective start locked to actual start), confirm behavior is unchanged from today.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/C evidence (screenshots).
+2. Confirm Test D/E — no regression to cascade or started-bar handling.
+3. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

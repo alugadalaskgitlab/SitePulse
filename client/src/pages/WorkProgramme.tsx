@@ -135,6 +135,7 @@ export function ScheduleRevisionActions({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [startDate, setStartDate] = useState(String((bar as any).startDate ?? "").slice(0, 10));
   const [endDate, setEndDate] = useState(String((bar as any).endDate ?? "").slice(0, 10));
+  const originalDurationDays = useRef<number | null>(null);
   const [reason, setReason] = useState("");
   const [cascade, setCascade] = useState(true);
   const [preview, setPreview] = useState<RevisionPreview | null>(null);
@@ -153,6 +154,7 @@ export function ScheduleRevisionActions({
 
   function beginRevision() {
     if (locked) return;
+    originalDurationDays.current = inclusiveDays((bar as any).startDate, (bar as any).endDate);
     setStartDate(state === "started"
       ? actualStartDate
       : String((bar as any).startDate ?? "").slice(0, 10));
@@ -161,6 +163,17 @@ export function ScheduleRevisionActions({
     setCascade(true);
     setPreview(null);
     setOpen(true);
+  }
+
+  function changeRevisionStart(value: string) {
+    if (state !== "not_started") return;
+    setStartDate(value);
+    const days = originalDurationDays.current;
+    const startMs = Date.parse(`${value}T00:00:00Z`);
+    if (days == null || !Number.isFinite(days) || days < 1 || !Number.isFinite(startMs)) return;
+    // Match inclusiveDays' UTC calendar arithmetic, independent of local DST.
+    const finish = new Date(startMs + (days - 1) * 86400000);
+    if (Number.isFinite(finish.getTime())) setEndDate(finish.toISOString().slice(0, 10));
   }
 
   // Normal road-row menu content is intentionally transient: Radix unmounts
@@ -288,7 +301,7 @@ export function ScheduleRevisionActions({
               <div className="grid grid-cols-2 gap-3">
                  <div>
                    <Label>{state === "started" ? "ACTUAL START (LOCKED)" : "START DATE"}</Label>
-                   <Input type="date" value={startDate} disabled={state !== "not_started"} onChange={e => setStartDate(e.target.value)} data-testid={`input-revision-start-${bar.id}`} />
+                   <Input type="date" value={startDate} disabled={state !== "not_started"} onChange={e => changeRevisionStart(e.target.value)} data-testid={`input-revision-start-${bar.id}`} />
                  </div>
                 <div><Label>FINISH DATE <span className="text-red-500">*</span></Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} data-testid={`input-revision-finish-${bar.id}`} /></div>
               </div>
