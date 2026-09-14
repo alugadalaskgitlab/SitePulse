@@ -451,3 +451,45 @@ mtime_ms = 1789396264260
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5ed53215-4e0c-4be7-a120-4df39350659e/8bf2e6f3-5a83-4f8e-afe2-7218b9ffa2a2"
 storage_version_token = "1789396421023766"
 content_type = "image/png"
+
+[[outputs]]
+id = "vkbczM4YAVbdQsqFKlid_"
+uri = "file://tests/fixtures/dpr-site-report/evidence/dpr01-A-dpr364-matching-boq-names.png"
+type = "image"
+title = "A — Main and additional BOQ names"
+description = "Real report component in an isolated browser fixture. A uses verified production assignment references; no live DPR was modified."
+logical_id = "68a2d001-7899-4762-805b-21b08d553942"
+content_hash = "sha256:5ee8cdd184c489036cbffb1c0239c133fa98404d4edaa236f4055fbf063127ba"
+size = 283353
+mtime_ms = 1789401287434
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/68a2d001-7899-4762-805b-21b08d553942/3c0a4324-0e43-4925-b89e-c49c176c03ad"
+storage_version_token = "1789401396170370"
+content_type = "image/png"
+
+[[outputs]]
+id = "kykgYDytAXH-psTIdHhr2"
+uri = "file://tests/fixtures/dpr-site-report/evidence/dpr01-B-single-boq-item.png"
+type = "image"
+title = "B — Single BOQ assignment"
+description = "Real report component in an isolated browser fixture. A uses verified production assignment references; no live DPR was modified."
+logical_id = "28270a75-66b1-4930-b646-7ca7dbcacce6"
+content_hash = "sha256:d0c792c2100e6be9ac6a23219a52f6c95a17d9cdb32c531b323f070da5ba2218"
+size = 277075
+mtime_ms = 1789401288214
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/28270a75-66b1-4930-b646-7ca7dbcacce6/89eb85c3-b699-4bc5-960e-80c4c2739609"
+storage_version_token = "1789401398538443"
+content_type = "image/png"
+
+[[outputs]]
+id = "seTmYaQK3e1ppefefeMtW"
+uri = "file://tests/fixtures/dpr-site-report/evidence/dpr01-C-second-physical-segment.png"
+type = "image"
+title = "C — Separate physical work segments"
+description = "Real report component in an isolated browser fixture. A uses verified production assignment references; no live DPR was modified."
+logical_id = "271ea69d-28b2-4d60-a753-bcb739f2b4bd"
+content_hash = "sha256:bd7558cface7a40c5fc5ef5a5f7199137d5b65f6415dffd236b38ff093fa497d"
+size = 300320
+mtime_ms = 1789401289006
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/271ea69d-28b2-4d60-a753-bcb739f2b4bd/22cf776b-9f3d-4b4d-9700-7105ffd4df61"
+storage_version_token = "1789401401008031"
+content_type = "image/png"

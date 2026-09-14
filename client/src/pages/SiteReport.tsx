@@ -31,6 +31,7 @@ import { ProgrammeBarOutcomeHistory } from "@/components/ProgrammeBarOutcomeHist
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
+import { getBaseSiteName } from "@shared/siteName";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -48,7 +49,7 @@ export default function SiteReport() {
     queryKey: ["/api/sites"],
   });
   const { items: reportBoqItems } = useDprBoqItems<any>({
-    siteName: dpr?.site ?? "",
+    siteName: getBaseSiteName(dpr?.site ?? ""),
     sites,
     preferredProjectId: dpr?.boqProjectId ?? null,
   });

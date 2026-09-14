@@ -1,0 +1,42 @@
+INSTRUCTION DPR-01: Work Assignment shows "BOQ activity unavailable" on the read-only DPR view, even though the correct BOQ items are saved
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This was found on a real, in-progress DPR (TAKKADPALLY-SIRUR). Confirmed by direct observation of the app, not guessed — but the exact file/line has NOT been identified yet (no current zip was available when this was written). Your first job is to find the actual cause in code and tell us what it is before changing anything. Do not touch Vendor Bills, Work Programme/Auto-Sequence, or anything else. Do not publish automatically. STOP after diagnosing and report back BEFORE applying a fix, unless the cause is a simple, obvious, narrowly-scoped display bug — in that case fix it and report both the cause and the fix together.
+
+BACKGROUND (confirmed by direct observation of a real DPR — screen recording)
+On a DPR with a JCB assigned to two BOQ activities via Work Assignment (one as the main BOQ item, "roadway excavation," one as an Additional BOQ Item / shared-time item, "embankment - excavated earth"):
+- Opening the EDIT form for this equipment row correctly shows both items by name, in the "BOQ ITEM" field and the "ADDITIONAL BOQ ITEM" field, exactly as they were originally entered. This proves the underlying data (whatever ID or reference is stored) is intact and not lost.
+- Viewing the SAME equipment's Work Assignment on the READ-ONLY DPR view (the page shown after saving / when reopening the DPR to view, not edit) shows "BOQ activity unavailable" in place of the activity name, for BOTH segments — once for the main item, once for the additional item. The Activity Progress section elsewhere on the same report page correctly shows both activity names ("ROADWAY EXCAVATION", "EMBANKMENT - EXCAVATED EARTH") with full quantity detail, so the item data clearly exists and is queryable — just not correctly resolved/displayed inside the Work Assignment card specifically.
+
+This points to the read-only Work Assignment renderer using a different lookup path than either the edit form or the Activity Progress section — likely looking up the BOQ item by the wrong field/id, not handling multiple items assigned to one work-assignment segment correctly, or hitting a lookup that only works when the data is freshly loaded in the edit form's own state (not when reconstructed from what's persisted).
+
+FIX 1 — FIND THE ROOT CAUSE
+a. Locate the component(s) that render the Work Assignment card on the READ-ONLY DPR view (the one showing "BOQ activity unavailable"), and compare it against whatever renders the Activity Progress section and the Edit form's BOQ Item / Additional BOQ Item fields, which both correctly resolve names from the same underlying data.
+b. Identify exactly what the read-only Work Assignment renderer is trying to look up (what field/id it reads) and why that lookup fails for both segments in this case, while the edit form's lookup (presumably starting from the same saved data) succeeds.
+c. Report the exact cause before fixing, unless it is a simple, obviously-scoped bug (e.g. reading the wrong property name, or not iterating a list of assigned items correctly) — in which case fix it and report the cause and fix together.
+
+FIX 2 — CORRECT THE DISPLAY
+Once the cause is found, make the read-only Work Assignment card resolve and display the actual BOQ item name(s) for every assigned segment, exactly as the edit form and Activity Progress section already correctly do. Do not change how the data is stored — this is a display-only fix unless you find (and report) that the underlying reference is genuinely malformed for some records, in which case stop and describe that before changing anything.
+
+WHAT NOT TO DO
+- Do not touch Vendor Bills, Work Programme/Auto-Sequence, Revise Schedule, or any DIESEL-01/DIESEL-02 fix already confirmed working (tank balance gating, owner/vendor name display — both confirmed correct in the current build, leave them exactly as they are).
+- Do not change how BOQ items are assigned or stored in Work Assignment — only how the read-only view resolves and displays them.
+- Do not start any other task on your own initiative — do not touch the equipment log's verbosity/duplication (Meter Working Hours and Clock Duration currently appearing twice on the same report) — that is a separate, upcoming instruction, not part of this one.
+
+SCHEMA SAFETY
+No schema/migration change is expected — this should be a read/lookup or rendering fix using data already persisted. If you find the underlying stored reference is actually wrong or missing for some records, stop and report that precisely (including whether it's isolated to specific DPRs or systemic) before proposing any data fix.
+
+TESTS
+A. Open the real DPR referenced above (TAKKADPALLY-SIRUR, the JCB with roadway excavation + embankment-excavated earth as main/additional Work Assignment items). Confirm the read-only view now shows both activity names correctly in the Work Assignment card, matching what Activity Progress and the edit form already show.
+B. Test a DPR where an equipment row has only a single BOQ item (no Additional BOQ Item) assigned via Work Assignment — confirm the read-only view shows that one name correctly too, no regression.
+C. Test a DPR where an equipment row has a second time segment added via "Add Item" (a separate physical work segment, not an Additional BOQ Item) — confirm the read-only view shows the correct name for that segment as well.
+D. Confirm the edit form still works exactly as before — no regression to how BOQ items are selected, saved, or re-populated on reopening for edit.
+
+REPORT BACK
+1. State the exact root cause found in code (file, component, and what was wrong with the lookup).
+2. Confirm Fix 2 with Test A/B/C evidence (screenshots).
+3. Confirm Test D — no regression to the edit form.
+4. Confirm no schema change was needed; if the underlying data itself was found to be wrong for some records, report that separately before proposing anything.
+5. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
