@@ -5,6 +5,18 @@ description: Durable billing, exception, approval, and concurrency rules for hir
 
 # Hired Equipment Billing
 
+For vendor billing, an explicitly linked Site DPR row is authoritative over its same-equipment Plant mirror. Do not apply Equipment Performance's opposite source preference to billing.
+
+**Why:** The user requires the Site evidence to remain on the bill; Plant mirroring exists for operational visibility, not a second payable event. Date/hour similarity alone is not proof of duplication.
+
+**How to apply:** Cover both ordinary itemized pulls and hire-activity projections when changing billing source selection. Retain independent Plant rows, even on the same date.
+
+Already-billed activity must be pulled and flagged for review, with deliberate exclusion afterward—not skipped automatically.
+
+**Why:** The preparer explicitly reversed the prior skip-first workflow after live use, preferring to see the complete period before deciding what to exclude.
+
+**How to apply:** Keep BILLED informational, allow repeated exclusion after further pulls, and preserve deliberate re-inclusion.
+
 Use the existing Equipment Master and derive hire charges from existing equipment usage/DPR and maintenance records. Never introduce a duplicate attendance source.
 
 **Why:** Usage and downtime already have operational records; a second entry path would create conflicting evidence and weaken the audit trail.

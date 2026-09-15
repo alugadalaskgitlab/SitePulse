@@ -9655,6 +9655,7 @@ export async function registerRoutes(
         paymentStatus: z.literal("paid").optional(),
         paymentMode: z.enum(["cash", "credit", "advance", "upi", "cheque", "rtgs"]).optional(),
         paidBy: z.string().max(120).refine((v) => v.trim().length > 0, "Paid By cannot be blank").optional(),
+        paymentAccountKey: z.string().min(1).nullable().optional(),
       });
       const data = paymentSchema.parse(req.body);
       if (data.paidBy !== undefined) data.paidBy = data.paidBy.trim();
@@ -9674,11 +9675,46 @@ export async function registerRoutes(
         }
       }
 
+      const payer = (data.paidBy ?? (existing as any).paidBy ?? "").trim();
+      const isCompanyPayer = payer.toLowerCase() === "company";
+      const markingPaid = data.paymentStatus === "paid" && (existing as any).paymentStatus !== "paid";
+      const newCompanyCorrection = (existing as any).paymentStatus === "paid"
+        && data.paidBy?.toLowerCase() === "company";
+      const companyAccountEdit = isCompanyPayer && data.paymentAccountKey !== undefined;
+      const legacyAlreadyPaidWithoutAccount = (existing as any).paymentStatus === "paid"
+        && String((existing as any).paidBy || "").toLowerCase() === "company"
+        && data.paidBy === undefined
+        && data.paymentAccountKey === undefined;
+      const effectiveAccountKey = data.paymentAccountKey !== undefined
+        ? data.paymentAccountKey
+        : (existing as any).paymentAccountKey;
+
+      // New company payments and explicit corrections to company payer must
+      // name a configured account. Do not block legacy paid rows that have no
+      // account simply because they are being read or receive another field
+      // correction.
+      if (isCompanyPayer && (markingPaid || newCompanyCorrection || companyAccountEdit) && !legacyAlreadyPaidWithoutAccount && !effectiveAccountKey) {
+        return res.status(400).json({ message: "A Bank / Account is required for a company payment." });
+      }
+      if (isCompanyPayer && effectiveAccountKey) {
+        const accounts = await storage.getVendorBillCompanyAccounts();
+        if (!accounts.some(account => account.id === effectiveAccountKey)) {
+          return res.status(400).json({ message: "Select a configured company bank account." });
+        }
+      }
+
+      // Personal payments must actively clear any company account, including
+      // when the caller omitted the optional field while correcting details.
+      if (!isCompanyPayer) data.paymentAccountKey = null;
+
       const requirement = await storage.updateDieselPaymentStatus(id, data, currentUserName(req));
       res.json(requirement);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
+      }
+      if ((err as any)?.code === "BAD_REQUEST") {
+        return res.status(400).json({ message: (err as any).message });
       }
       console.error("Error updating diesel payment status:", err);
       res.status(500).json({ message: "Failed to update payment status" });
@@ -10190,7 +10226,20 @@ export async function registerRoutes(
   // banking/accounts-payable module. The client receives only selector data.
   app.get("/api/vendor-bills/company-accounts", async (req, res) => {
     try {
-      if (!assertView(req, res, "vendor_bills")) return;
+      if (!req.authUser) {
+        res.status(401).json({ error: "not_authenticated" });
+        return;
+      }
+      const canRead = req.authUser.isAdmin
+        || req.authUser.isOwner
+        || !!req.authPermissions?.vendor_bills?.view
+        // Diesel payment editors need the shared account selector even when
+        // their role is intentionally limited to editing diesel payments.
+        || !!req.authPermissions?.site_diesel?.edit;
+      if (!canRead) {
+        res.status(403).json({ error: "forbidden", sections: ["vendor_bills", "site_diesel"], action: "view" });
+        return;
+      }
       res.json(await storage.getVendorBillCompanyAccounts());
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Failed to fetch company accounts" });

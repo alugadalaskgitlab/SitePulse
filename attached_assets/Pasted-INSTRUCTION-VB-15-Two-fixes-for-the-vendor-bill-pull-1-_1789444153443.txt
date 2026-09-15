@@ -1,0 +1,58 @@
+INSTRUCTION VB-15: Two fixes for the vendor bill pull — (1) an equipment logged once in a Site DPR is being billed twice because of the Site↔Plant usage mirror, (2) change already-billed handling from skip-before-pull to pull-everything-then-let-the-preparer-exclude
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Part 1 is a real, confirmed-in-code billing-accuracy bug — an equipment usage row can appear TWICE on a vendor bill for the exact same physical usage. Part 2 is a deliberate change of direction from VB-14 (already built), based on how the person preparing bills actually wants to work — review everything pulled, then exclude, not choose before pulling. Do not touch DPR-01, WP-01, or any other confirmed-working area. Do not publish automatically. STOP after this and report back.
+
+PART 1 — DUPLICATE BILLABLE ROW: SITE DPR LOG + ITS AUTO-MIRRORED PLANT USAGE ROW BOTH COUNTED
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+server/storage.ts, getVendorBillHireActivities (~line 16204 onward): this function queries `dprRows` from equipmentLogs (source: "dpr_log", joined to dprs) AND separately queries `usageRows` from the equipmentUsage table (source: "plant_usage"), for the SAME equipment IDs and period. It then maps BOTH into the final combined activity list with no deduplication between them.
+
+The dprRows query already selects `plantUsageId: equipmentLogs.plantUsageId` (~line 16231) — this column links a DPR equipment log row to the Plant-side equipmentUsage row that was auto-created/mirrored from it (confirmed elsewhere in this file, e.g. ~line 6669, `tx.update(equipmentLogs).set({ plantUsageId: usage.id })`). This means when a machine is logged once in a Site DPR, the app can auto-create a corresponding Plant Operations usage record for the same event — a legitimate feature for plant visibility — but `plantUsageId` is fetched and never used to exclude that mirrored row from the vendor-bill activity list. The result: one real usage event produces TWO billable rows — one tagged "(SITE)" from dpr_log, one tagged "(PLANT)" from plant_usage — with identical date, hours, and diesel, confirmed directly in a real vendor bill (JCB VISWANATH BODAPALLY, 31-AUG-2026, 5.4 HRS, 10L diesel, appearing as both row 3 "(SITE)" and row 4 "(PLANT)").
+
+FIX 1 — DEDUPE THE MIRRORED ROW
+a. In getVendorBillHireActivities, after fetching both dprRows and usageRows, exclude from usageRows any row whose `id` matches a `plantUsageId` already present among dprRows for the same equipment. In other words: if a dpr_log row says "my mirror is plant_usage row #123", plant_usage row #123 must NOT also be included as its own separate activity — the dpr_log row is authoritative for that event, the plant_usage row is just its mirror.
+b. Apply this filter before both rows are mapped into the returned array (the `...dprRows.map(...)` and `...usageRows.map(...)` spreads, ~line 16289 and ~line 16313).
+c. Do not change how or when a DPR log gets mirrored into equipmentUsage in the first place (that Plant-visibility feature is out of scope) — this fix only affects which rows are counted as billable activity for a vendor bill.
+d. Verify the fix does not accidentally exclude a genuinely independent plant_usage row that has no dpr_log counterpart (i.e. real Plant-only usage with plantUsageId null/not referenced by any DPR log) — those must still appear normally.
+
+TESTS — PART 1
+A. Reproduce the exact case: an equipment logged once in a Site DPR that has an auto-mirrored Plant usage row. Pull that vendor's activity into a bill. Confirm only ONE billable row appears for that date/usage, not two.
+B. Confirm a genuine, independent Plant-only usage record (no DPR mirror) for the same or another equipment still appears normally, unaffected.
+C. Confirm a genuine, independent Site DPR log with no Plant mirror still appears normally, unaffected.
+D. Re-check a handful of other vendors/periods with known activity to confirm no previously-correct single rows got accidentally dropped.
+
+PART 2 — CHANGE ALREADY-BILLED HANDLING FROM "SKIP BEFORE PULL" TO "PULL EVERYTHING, THEN LET THE PREPARER EXCLUDE"
+
+BACKGROUND
+VB-14 (already built) made Pull All / each group's Pull button skip already-billed items by default, with an "INCLUDE ALREADY-BILLED ITEMS (NEXT PULL ONLY)" checkbox to opt into pulling them, and a toast like "4 item(s) pulled — 7 already billed elsewhere were skipped." Live use showed this isn't the preferred flow: the person preparing the bill wants to see ALL billable activity for the vendor/period first — including already-billed/paid rows, clearly flagged — review it, and only then choose to strip out the already-billed ones before saving. Choosing what to exclude AFTER seeing everything is more useful than being asked to decide before anything is even visible.
+
+FIX 2 — REVERSE THE DEFAULT: PULL EVERYTHING, EXCLUDE AFTERWARD
+a. Remove VB-14's skip-before-pull default. Pull All and each group's individual Pull button should once again bring in ALL matching items for the group/vendor/period, exactly as VB-11/VB-13 did — already-billed items included, each still showing its existing "BILLED (billNo - STATUS)" badge (this badge and the underlying check-duplicates call are correct and must stay).
+b. Remove or repurpose the "INCLUDE ALREADY-BILLED ITEMS (NEXT PULL ONLY)" checkbox and the "N already billed elsewhere were skipped" toast — they no longer apply once pulling always includes everything.
+c. Add a new, clearly-labeled action available AFTER items are pulled — e.g. "Exclude Already-Billed Rows" — that removes every line item currently flagged BILLED from the bill's line items in one click, leaving only unbilled rows. This must be a deliberate, visible action the preparer takes when ready, not automatic.
+d. This action should be safely repeatable: if more items are pulled afterward (e.g. from another group) that are also already billed, the same "Exclude Already-Billed Rows" action should catch those too when used again, or the badge/exclude option should otherwise remain available for as long as any BILLED rows are present in the bill.
+e. Manually re-adding a specific already-billed item afterward (e.g. via Add Item, or by not excluding it) must remain possible — this batch does not need to block that, since the flag is informational, not a hard lock; the point is giving the preparer control after seeing the full picture, not before.
+
+WHAT NOT TO DO
+- Do not touch DPR-01, WP-01, DIESEL-01/02/03, or Work Programme — all unrelated, confirmed working, leave them exactly as they are.
+- Do not remove or change the underlying check-duplicates call or the BILLED (billNo - status) badge itself — only what happens automatically before/after pulling.
+- Do not change GST/TDS, rate-card auto-apply, or bill type defaulting.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected for either part — Part 1 is a query/filter fix over existing data, Part 2 is a client-side flow change over data already fetched.
+
+TESTS — PART 2
+E. Select a vendor + period with a mix of billed and unbilled activity. Click Pull All. Confirm ALL matching items land in the bill, including already-billed ones (each showing its BILLED badge) — no items silently skipped.
+F. Click "Exclude Already-Billed Rows." Confirm every BILLED-flagged row is removed, unbilled rows remain untouched and unaffected.
+G. Pull one group at a time (VB-11 grouped pull) instead of Pull All. Confirm the same full-pull-then-exclude flow works per group.
+H. Confirm a vendor + period with NO already-billed activity behaves exactly as before (nothing to exclude, pull works normally).
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/C/D evidence (screenshots), including the specific JCB VISWANATH BODAPALLY 31-AUG-2026 case now showing only once.
+2. Confirm Fix 2 with Test E/F/G/H evidence (screenshots).
+3. Confirm no schema change was needed.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

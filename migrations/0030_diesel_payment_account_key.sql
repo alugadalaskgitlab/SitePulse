@@ -1,0 +1,1 @@
+ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS payment_account_key text DEFAULT NULL;

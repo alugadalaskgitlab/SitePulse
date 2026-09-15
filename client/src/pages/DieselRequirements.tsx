@@ -223,8 +223,21 @@ function MarkAsPaidDialog({ requirement, open, onClose }: { requirement: DieselR
   const { toast } = useToast();
   const [mode, setMode] = useState<string>((requirement as any).paymentMode || "");
   const existingPaidBy = (requirement as any).paidBy as string | null;
-  const [payer, setPayer] = useState<"company" | "personal">(existingPaidBy && existingPaidBy !== "company" ? "personal" : "company");
-  const [payerName, setPayerName] = useState<string>(existingPaidBy && existingPaidBy !== "company" ? existingPaidBy : "");
+  const existingIsCompany = existingPaidBy?.toLowerCase() === "company";
+  const [payer, setPayer] = useState<"company" | "personal">(existingPaidBy && !existingIsCompany ? "personal" : "company");
+  const [payerName, setPayerName] = useState<string>(existingPaidBy && !existingIsCompany ? existingPaidBy : "");
+  const [paymentAccountKey, setPaymentAccountKey] = useState<string>(
+    existingIsCompany ? ((requirement as any).paymentAccountKey || "") : "",
+  );
+  const accountsQuery = useQuery<{ id: string; name: string; type: string }[]>({
+    queryKey: ["/api/vendor-bills/company-accounts"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/vendor-bills/company-accounts");
+      return res.json();
+    },
+    enabled: open && payer === "company",
+    retry: false,
+  });
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -233,6 +246,7 @@ function MarkAsPaidDialog({ requirement, open, onClose }: { requirement: DieselR
         paymentStatus: "paid",
         paymentMode: mode,
         paidBy,
+        paymentAccountKey: payer === "company" ? paymentAccountKey : null,
       });
       return res.json();
     },
@@ -244,7 +258,13 @@ function MarkAsPaidDialog({ requirement, open, onClose }: { requirement: DieselR
     onError: (err: any) => toast({ title: "COULD NOT MARK AS PAID", description: err?.message, variant: "destructive" }),
   });
 
-  const valid = !!mode && (payer === "company" || payerName.trim().length > 0);
+  const accounts = accountsQuery.data;
+  const accountsLoading = accountsQuery.isLoading || accountsQuery.isFetching;
+  const selectedKnownAccount = payer === "company"
+    && !!paymentAccountKey
+    && !!accounts?.some((account) => account.id === paymentAccountKey);
+  const valid = !!mode
+    && (payer === "company" ? selectedKnownAccount && !accountsLoading && !accountsQuery.isError : payerName.trim().length > 0);
 
   return (
     <AlertDialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -274,7 +294,11 @@ function MarkAsPaidDialog({ requirement, open, onClose }: { requirement: DieselR
           </div>
           <div>
             <Label className="text-sm">PAID BY</Label>
-            <Select value={payer} onValueChange={(v) => setPayer(v as "company" | "personal")}>
+            <Select value={payer} onValueChange={(v) => {
+              const nextPayer = v as "company" | "personal";
+              setPayer(nextPayer);
+              if (nextPayer === "personal") setPaymentAccountKey("");
+            }}>
               <SelectTrigger data-testid="select-markpaid-paidby">
                 <SelectValue placeholder="SELECT PAYER" />
               </SelectTrigger>
@@ -284,6 +308,44 @@ function MarkAsPaidDialog({ requirement, open, onClose }: { requirement: DieselR
               </SelectContent>
             </Select>
           </div>
+          {payer === "company" && (
+            <div>
+              <Label className="text-sm">BANK / ACCOUNT</Label>
+              <Select
+                value={paymentAccountKey || undefined}
+                onValueChange={setPaymentAccountKey}
+                disabled={accountsLoading || accountsQuery.isError || !accounts?.length}
+              >
+                <SelectTrigger data-testid="select-markpaid-payment-account">
+                  <SelectValue placeholder="SELECT ACCOUNT" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(accounts || []).map((account) => (
+                    <SelectItem key={account.id} value={account.id}>{account.name} · {account.type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {accountsLoading && (
+                <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" /> LOADING COMPANY ACCOUNTS...
+                </p>
+              )}
+              {accountsQuery.isError && (
+                <div className="mt-1 flex items-center gap-2 text-xs text-destructive">
+                  <span>COULD NOT LOAD COMPANY ACCOUNTS.</span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => accountsQuery.refetch()} data-testid="button-retry-markpaid-accounts">
+                    RETRY
+                  </Button>
+                </div>
+              )}
+              {!accountsLoading && !accountsQuery.isError && accounts && accounts.length === 0 && (
+                <p className="mt-1 text-xs text-destructive">NO COMPANY ACCOUNTS ARE CONFIGURED.</p>
+              )}
+              {!accountsLoading && !accountsQuery.isError && paymentAccountKey && !selectedKnownAccount && (
+                <p className="mt-1 text-xs text-destructive">SELECT A CURRENTLY CONFIGURED COMPANY ACCOUNT.</p>
+              )}
+            </div>
+          )}
           {payer === "personal" && (
             <div>
               <Label className="text-sm">PAYER NAME</Label>
@@ -358,7 +420,7 @@ function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirement
           {paymentMode && <Badge variant="outline" data-testid="badge-payment-mode">MODE: {modeLabels[paymentMode] || paymentMode.toUpperCase()}</Badge>}
           {paidBy && (
             <Badge variant="outline" data-testid="badge-paid-by">
-              PAID BY: {paidBy === "company" ? "COMPANY ACCOUNT" : `PERSONAL${paidBy !== "PERSONAL" ? ` \u2014 ${paidBy}` : ""}`}
+              PAID BY: {paidBy.toLowerCase() === "company" ? "COMPANY ACCOUNT" : `PERSONAL${paidBy !== "PERSONAL" ? ` \u2014 ${paidBy}` : ""}`}
             </Badge>
           )}
         </div>
@@ -908,6 +970,19 @@ export default function DieselRequirements() {
     }
   };
 
+  const formatPaymentTimestamp = (timestamp: string | null | undefined) => {
+    if (!timestamp) return null;
+    try {
+      const d = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(timestamp)
+        ? new Date(timestamp.replace(" ", "T") + "Z")
+        : new Date(timestamp);
+      if (Number.isNaN(d.getTime())) return timestamp;
+      return format(d, "dd-MMM-yy HH:mm").toUpperCase();
+    } catch {
+      return timestamp;
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">
       {/* 06M-C: purchase recorded — physical receipt still pending */}
@@ -1141,9 +1216,18 @@ export default function DieselRequirements() {
                                   : "Planned"}
                             </p>
                           </div>
-                          <div className="flex flex-col items-end gap-1">
+                          <div className="relative flex flex-col items-end gap-1">
                             {getStatusBadge(req.status)}
                             {req.status === "purchased" && receiptStatusBadge(receiptStatusMap?.[req.id])}
+                            {((req as any).paymentStatus || "pending") === "paid" && (
+                              <Badge
+                                variant="outline"
+                                className="absolute top-full right-0 mt-0.5 text-[10px] leading-3 px-1 py-0 whitespace-nowrap bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 border-green-300 dark:border-green-700"
+                                data-testid={`badge-payment-status-${req.id}`}
+                              >
+                                PAID{formatPaymentTimestamp((req as any).paidAt) ? ` · ${formatPaymentTimestamp((req as any).paidAt)}` : ""}
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>

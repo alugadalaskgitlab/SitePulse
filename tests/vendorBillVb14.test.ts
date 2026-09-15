@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-describe("VB-14 duplicate-safe grouped pull wiring", () => {
+describe("VB-15 duplicate-safe grouped pull wiring", () => {
   const client = readFileSync("client/src/pages/VendorBills.tsx", "utf8");
   const shared = readFileSync("shared/hireBilling.ts", "utf8");
 
@@ -13,9 +13,11 @@ describe("VB-14 duplicate-safe grouped pull wiring", () => {
     expect(client).toContain("toPullCount");
   });
 
-  it("keeps the opt-in single-use and preserves the initial blank row when all candidates skip", () => {
-    expect(client).toContain('data-testid="checkbox-include-already-billed"');
-    expect(client).toContain("setIncludeAlreadyBilled(false)");
+  it("pulls billed rows for review and exposes a repeatable exclusion action", () => {
+    expect(client).not.toContain('data-testid="checkbox-include-already-billed"');
+    expect(client).not.toContain("setIncludeAlreadyBilled");
+    expect(client).toContain('data-testid="button-exclude-already-billed"');
+    expect(client).toContain("setLineItems(prev => prev.filter(item => !item.billedIn))");
     expect(client).toContain("if (pulledCount > 0)");
     expect(client).toContain("prev.filter(item => !item.initialBlank)");
   });

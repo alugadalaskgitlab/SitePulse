@@ -1,0 +1,46 @@
+INSTRUCTION DIESEL-03: Add a Bank/Account dropdown to diesel payment (same as Vendor Bills), and show PAID status with timestamp on the Daily Diesel Requirement list
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Two small, independent additions to the diesel payment flow (client/src/pages/DieselRequirements.tsx). Do not touch Vendor Bills, Work Programme, or DPR — only reuse the existing Vendor Bills accounts pattern as a reference/reuse source, do not modify VendorBills.tsx itself. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. Vendor Bills already has a working "Bank / Account" dropdown (client/src/pages/VendorBills.tsx, ~line 499-505): a Select fed by accountsQuery (~line 404), which calls GET /api/vendor-bills/company-accounts (returns [{id, name, type}]), shown only when paidByKind === "company". The selected value is stored on the bill as paymentAccountKey.
+2. DieselRequirements.tsx already has its own Mark-as-Paid flow (MarkAsPaidDialog, ~line 222 onward) with PAYMENT MODE and PAID BY (company/personal) fields, saved via PATCH /api/diesel-requirements/:id/payment-status. It has NO bank/account selection at all today.
+3. DieselRequirements.tsx already tracks and has available paymentStatus, paidAt, and paymentRecordedBy per requirement (~line 319-325) — these are already read into variables in the detail view but are NOT shown anywhere in the list view. The list view (Card rows, ~line 1095-1148) shows the PURCHASED/APPROVED status badge (getStatusBadge) and, when purchased, a receipt badge (receiptStatusBadge) stacked in a small flex-col at the row's right edge (~line 1140-1143).
+
+FIX 1 — ADD A BANK/ACCOUNT DROPDOWN TO DIESEL'S MARK-AS-PAID FLOW
+a. In MarkAsPaidDialog, add a "BANK / ACCOUNT" Select, shown only when payer === "company" (mirroring Vendor Bills' paidByKind === "company" gating), populated from the same source Vendor Bills uses — reuse GET /api/vendor-bills/company-accounts directly (it's a general company-accounts list, not vendor-bill-specific data) rather than duplicating the endpoint. If you judge the endpoint path itself should be renamed/generalized since it's now used by two different areas, that is acceptable — just keep it working for Vendor Bills exactly as before.
+b. Add a new column to store this selection on the diesel requirement's payment record (e.g. paymentAccountKey, matching Vendor Bills' naming) — this IS a schema change, so add the column via a proper migration, default null, and show the exact migration before/while applying it.
+c. Include the selected account in the existing PATCH /api/diesel-requirements/:id/payment-status call alongside paymentStatus, paymentMode, and paidBy.
+d. Required-ness: make it required when payer is company (matching Vendor Bills' expectation that a company payment needs a named account), optional/hidden when payer is personal — same pattern Vendor Bills already uses.
+
+FIX 2 — SHOW PAID STATUS WITH TIMESTAMP ON THE LIST, WITHOUT ENLARGING THE ROW
+a. In the list view's per-row badge stack (~line 1140-1143, the `<div className="flex flex-col items-end gap-1">` holding getStatusBadge and receiptStatusBadge), add a third, compact indicator: when paymentStatus === "paid", show a small badge/line reading something like "PAID · {formatted paidAt date/time}" — keep it small (matching the existing badges' text size/padding, not a larger element) so the row's footprint stays essentially the same as today, not a new multi-line section.
+b. When paymentStatus is not "paid" (pending or absent), show nothing extra — do not add an empty placeholder that reserves space.
+c. This must work correctly for EVERY existing requirement record already in the database, not just newly-created ones going forward — paymentStatus and paidAt already exist as fields (per Background #3) on both historical and new records, so simply reading and displaying them is sufficient; no backfill/migration should be needed for this specific piece (only Fix 1's new paymentAccountKey column is a schema change — a requirement paid before this batch simply won't have an account on file, and that's fine, it just won't be shown for that historical row).
+
+WHAT NOT TO DO
+- Do not modify VendorBills.tsx — only reuse its existing accounts endpoint/data shape as the reference; if you rename the endpoint for generality, keep Vendor Bills' own call site updated and working.
+- Do not change the PURCHASED/APPROVED/receipt badges' existing appearance or logic — only add the new PAID indicator alongside them.
+- Do not enlarge the requirement cards' overall height for the common (unpaid) case — the new indicator only appears when actually paid, and should stay compact even then.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+Fix 1 needs one new column (paymentAccountKey or equivalent) on the diesel requirement's payment-related table — show the exact migration before/while applying it. Fix 2 needs no schema change — paymentStatus and paidAt already exist.
+
+TESTS
+A. Mark a diesel requirement as paid with Paid By = Company. Confirm the Bank/Account dropdown appears, is populated with the same accounts Vendor Bills shows, and is required before confirming.
+B. Mark a diesel requirement as paid with Paid By = Personal. Confirm the Bank/Account dropdown does not appear/is not required.
+C. After marking paid, confirm the list view for that requirement shows a compact "PAID · [date/time]" indicator alongside the existing status badges, without visibly growing the row.
+D. Check an OLDER requirement that was already marked paid before this batch (i.e. already has paymentStatus=paid and paidAt set, but no paymentAccountKey). Confirm it correctly shows the PAID · timestamp indicator in the list (Fix 2 applies retroactively), even though it has no bank account on file (Fix 1's new field is simply empty for it — that's expected and fine).
+E. Check a requirement that is NOT paid (pending/approved/purchased but not paid). Confirm no PAID indicator appears and the row looks exactly as it does today.
+F. Confirm Vendor Bills' own Bank/Account dropdown and payment flow are completely unaffected.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B evidence (screenshots).
+2. Confirm Fix 2 with Test C/D/E evidence (screenshots), specifically showing the row size is not visibly enlarged.
+3. Confirm Test F — no Vendor Bills regression.
+4. Show the exact migration applied for the new column.
+5. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

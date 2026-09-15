@@ -1446,7 +1446,7 @@ export interface IStorage {
   approveDieselRequirement(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string): Promise<DieselRequirementWithItems | undefined>;
   rejectDieselRequirement(id: number, reason: string, rejectedBy: string): Promise<DieselRequirementWithItems | undefined>;
   updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string }): Promise<DieselRequirementWithItems | undefined>;
-  updateDieselPaymentStatus(id: number, data: { paymentStatus?: "paid"; paymentMode?: string; paidBy?: string }, actor: string): Promise<DieselRequirementWithItems | undefined>;
+  updateDieselPaymentStatus(id: number, data: { paymentStatus?: "paid"; paymentMode?: string; paidBy?: string; paymentAccountKey?: string | null }, actor: string): Promise<DieselRequirementWithItems | undefined>;
   getDieselComparisonReport(dateFrom: string, dateTo: string): Promise<{ date: string; totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }[]>;
   updateDieselRequirement(id: number, data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems | undefined>;
   deleteDieselRequirement(id: number): Promise<boolean>;
@@ -16240,6 +16240,17 @@ export class DatabaseStorage implements IStorage {
     const usageRows: EquipmentUsage[] = await executor.select().from(equipmentUsage).where(and(
       inArray(equipmentUsage.equipmentId, ids), gte(equipmentUsage.date, periodFrom), lte(equipmentUsage.date, periodTo),
     ));
+    // A Site DPR can have an explicitly linked Plant Usage mirror for the
+    // same equipment. The DPR row is authoritative for billing; keep
+    // genuinely independent Plant Usage rows, including same-date rows.
+    const mirroredPlantUsageKeys = new Set(
+      dprRows
+        .filter(row => row.plantUsageId != null)
+        .map(row => `${row.equipmentId}:${row.plantUsageId}`),
+    );
+    const billableUsageRows = usageRows.filter(row =>
+      !mirroredPlantUsageKeys.has(`${row.equipmentId}:${row.id}`),
+    );
     // Site Material Trips do not have a DPR/usage foreign key. A vehicle
     // number can identify a possible hired vehicle, but it is never treated
     // as an automatic payable match: every such delivery remains a reviewed
@@ -16313,7 +16324,7 @@ export class DatabaseStorage implements IStorage {
           normBasis: calculated.efficiencyUnit, task: row.task, site: row.site, equipmentName: equipmentDefault?.name,
           equipment: equipmentDefault };
       }),
-      ...usageRows.map((row: EquipmentUsage) => {
+      ...billableUsageRows.map((row: EquipmentUsage) => {
         const equipmentDefault = defaults.get(row.equipmentId);
         const calculated = computeEquipmentUsage(equipmentDefault, row);
         const expectedDiesel = Number(row.expectedDiesel) > 0
@@ -16485,6 +16496,7 @@ export class DatabaseStorage implements IStorage {
           closingReading: equipmentLogs.closingReading,
           numberOfTrips: equipmentLogs.numberOfTrips,
           equipmentId: equipmentLogs.equipmentId,
+          plantUsageId: equipmentLogs.plantUsageId,
           diesel: equipmentLogs.diesel,
           task: equipmentLogs.task,
           site: dprs.site,
@@ -16498,6 +16510,11 @@ export class DatabaseStorage implements IStorage {
           eq(dprs.isSuperseded, false),
         ));
 
+        const mirroredPlantUsageKeys = new Set(
+          dprLogs
+            .filter(row => row.plantUsageId != null)
+            .map(row => `${row.equipmentId}:${row.plantUsageId}`),
+        );
         for (const row of dprLogs) {
           // Billing basis belongs to the machine, not an individual DPR row.
           // A monthly machine is represented once by its generated monthly
@@ -16538,6 +16555,7 @@ export class DatabaseStorage implements IStorage {
           ));
 
         for (const row of plantUsage) {
+          if (mirroredPlantUsageKeys.has(`${row.equipmentId}:${row.id}`)) continue;
           if ((eqMap.get(row.equipmentId)?.hireBillingBasis || "").toLowerCase() === "monthly") continue;
           const et = row.entryType || "time_meter";
           if (!matchesEntryTypeFilter(et)) continue;
@@ -17139,22 +17157,50 @@ export class DatabaseStorage implements IStorage {
   }
 
   // 06M-F §4/§6: explicit payment-status action. Touches ONLY
-  // paymentStatus/paymentMode/paidBy/paidAt/paymentRecordedBy — never
+  // paymentStatus/paymentMode/paidBy/paymentAccountKey/paidAt/paymentRecordedBy — never
   // qtyPurchased/supplier/billNo/rate/amount/purchasedAt/status. paidAt and
   // paymentRecordedBy are server-set exactly once (pending→paid transition);
   // later mode/paidBy corrections (vendor-bill /payment-details pattern)
   // never reset them.
   async updateDieselPaymentStatus(
     id: number,
-    data: { paymentStatus?: "paid"; paymentMode?: string; paidBy?: string },
+    data: { paymentStatus?: "paid"; paymentMode?: string; paidBy?: string; paymentAccountKey?: string | null },
     actor: string,
   ): Promise<DieselRequirementWithItems | undefined> {
     const existing = await this.getDieselRequirement(id);
     if (!existing) return undefined;
 
+    const requestedPaidBy = data.paidBy !== undefined ? data.paidBy.trim() : (existing.paidBy || "");
+    const isCompanyPayer = requestedPaidBy.toLowerCase() === "company";
+    const markingPaid = data.paymentStatus === "paid" && existing.paymentStatus !== "paid";
+    const newCompanyCorrection = existing.paymentStatus === "paid"
+      && data.paidBy !== undefined
+      && isCompanyPayer;
+    const companyAccountEdit = isCompanyPayer && data.paymentAccountKey !== undefined;
+    const effectiveAccountKey = data.paymentAccountKey !== undefined
+      ? data.paymentAccountKey
+      : (existing as any).paymentAccountKey;
+
+    // A new company payment/correction must name a configured account. A
+    // legacy paid row with no account remains readable and can still receive
+    // unrelated corrections.
+    if ((markingPaid || newCompanyCorrection || companyAccountEdit) && isCompanyPayer && !effectiveAccountKey) {
+      throw Object.assign(new Error("A configured company bank account is required for a company payment."), { code: "BAD_REQUEST" });
+    }
+
     const corrections: any = {};
     if (data.paymentMode !== undefined) corrections.paymentMode = data.paymentMode;
     if (data.paidBy !== undefined) corrections.paidBy = data.paidBy.toUpperCase();
+    if (data.paymentAccountKey !== undefined || (data.paidBy !== undefined && !isCompanyPayer)) {
+      if (isCompanyPayer && data.paymentAccountKey != null) {
+        const accounts = await this.getVendorBillCompanyAccounts();
+        if (!accounts.some(account => account.id === data.paymentAccountKey)) {
+          throw Object.assign(new Error("Select a configured company bank account."), { code: "BAD_REQUEST" });
+        }
+      }
+      // Personal payments never retain a stale company account.
+      corrections.paymentAccountKey = isCompanyPayer ? data.paymentAccountKey : null;
+    }
     if (Object.keys(corrections).length > 0) {
       await db.update(dieselRequirements).set(corrections).where(eq(dieselRequirements.id, id));
     }

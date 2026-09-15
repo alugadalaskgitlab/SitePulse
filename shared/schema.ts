@@ -2135,6 +2135,9 @@ export const dieselRequirements = pgTable("diesel_requirements", {
   // paidBy mirrors PI semantics: "company" or the payer's name for personal.
   paymentMode: text("payment_mode"),
   paidBy: text("paid_by"),
+  // Bank/company account used for a company-paid diesel requirement. Nullable
+  // so historical paid requirements remain readable without backfilling.
+  paymentAccountKey: text("payment_account_key"),
   // 06M-F: explicit payment status — NEVER inferred from paymentMode/paidBy
   // being filled in. Only the dedicated mark-as-paid action sets "paid".
   paymentStatus: text("payment_status").default("pending"), // "pending" | "paid"

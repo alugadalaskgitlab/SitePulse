@@ -658,7 +658,6 @@ export default function VendorBills() {
   const activePullContextRef = useRef("");
   const pullInFlightRef = useRef(false);
   const [pullInFlight, setPullInFlight] = useState(false);
-  const [includeAlreadyBilled, setIncludeAlreadyBilled] = useState(false);
   const formGenerationRef = useRef(0);
   const activeEditingBillIdRef = useRef<number | null>(null);
   const pullTokenRef = useRef<{ context: string; controller: AbortController } | null>(null);
@@ -670,7 +669,6 @@ export default function VendorBills() {
     }
     pullInFlightRef.current = false;
     setPullInFlight(false);
-    setIncludeAlreadyBilled(false);
   };
   const updateActivePullContext = (
     type = billType,
@@ -1130,7 +1128,6 @@ export default function VendorBills() {
     const pullContext = `${view}|${editingBillId ?? ""}|${billType}|${vendorName}|${periodFrom}|${periodTo}`;
     const pullGeneration = formGenerationRef.current;
     const pullEditingBillId = editingBillId;
-    const includeBilledForThisPull = includeAlreadyBilled;
     const pullToken = { context: pullContext, controller: new AbortController() };
     const isCurrentPull = () =>
       formGenerationRef.current === pullGeneration &&
@@ -1138,13 +1135,9 @@ export default function VendorBills() {
       activePullContextRef.current === pullContext &&
       pullTokenRef.current === pullToken;
 
-    // The opt-in is deliberately single-use. Clear it before awaiting either
-    // check so a failed or stale pull can never leak the choice into a later
-    // action.
     pullTokenRef.current = pullToken;
     pullInFlightRef.current = true;
     setPullInFlight(true);
-    setIncludeAlreadyBilled(false);
 
     try {
       let mapped: LineItem[] = items.map(item => ({ ...item }));
@@ -1247,21 +1240,14 @@ export default function VendorBills() {
       if (!isCurrentPull()) return;
 
       const dups = uniqueDuplicateBillMatches(duplicateBody as DuplicateBillItemMatch[]);
-      const duplicateIndexes = new Set(dups.map(match => match.index));
       for (const d of dups) {
         mapped[d.index] = { ...mapped[d.index], billedIn: { billNo: d.billNo, billStatus: d.billStatus } };
       }
 
-      // When the correction-only opt-in is off, duplicate rows remain source
-      // candidates for a future explicit pull but never enter lineItems.
-      mapped = mapped.filter((_item, index) => includeBilledForThisPull || !duplicateIndexes.has(index));
       const uniqueMapped = mapped.filter((item, index, all) =>
         all.findIndex(candidate => autoBillItemIdentity(candidate) === autoBillItemIdentity(item)) === index
       );
 
-      // A duplicate response may contain multiple matches for one candidate.
-      // Counts and messages are therefore based on unique candidate indexes.
-      const duplicateCount = duplicateIndexes.size;
       const pulledCount = uniqueMapped.length;
       if (pulledCount > 0) {
         uniqueMapped.sort((a, b) => {
@@ -1279,16 +1265,7 @@ export default function VendorBills() {
         ));
       }
 
-      if (duplicateCount > 0) {
-        toast({
-          title: includeBilledForThisPull
-            ? `${pulledCount} item(s) pulled — ${duplicateCount} already billed elsewhere were included.`
-            : `${pulledCount} item(s) pulled — ${duplicateCount} already billed elsewhere were skipped.`,
-          variant: includeBilledForThisPull ? "default" : "destructive",
-        });
-      } else {
-        toast({ title: `${pulledCount} item(s) added from records` });
-      }
+      toast({ title: `${pulledCount} item(s) added from records` });
     } catch (error: any) {
       // A failed duplicate preflight/fresh check must not fall through to a
       // merge: treating an unknown response as zero duplicates is unsafe.
@@ -1304,7 +1281,6 @@ export default function VendorBills() {
         pullTokenRef.current = null;
         pullInFlightRef.current = false;
         setPullInFlight(false);
-        setIncludeAlreadyBilled(false);
       }
     }
   };
@@ -1423,6 +1399,10 @@ export default function VendorBills() {
     () => availableOtherBillItems(mappedAutoItems, lineItems, hireGroups),
     [mappedAutoItems, lineItems, hireGroups],
   );
+  const billedLineItemCount = useMemo(
+    () => lineItems.filter(item => !!item.billedIn).length,
+    [lineItems],
+  );
   const duplicatePreflightItems = useMemo(
     () => availableOtherItems.map(duplicateBillItemPayload),
     [availableOtherItems],
@@ -1492,8 +1472,7 @@ export default function VendorBills() {
           .filter(item => preflightBilledIdentities.has(autoBillItemIdentity(item))).length
         : null,
       toPullCount: duplicatePreflight.isSuccess
-        ? availableOtherBillItems(group.items, lineItems, hireGroups)
-          .filter(item => !preflightBilledIdentities.has(autoBillItemIdentity(item))).length
+        ? availableOtherBillItems(group.items, lineItems, hireGroups).length
         : null,
     })).sort((a, b) => {
       const categoryDifference = (categoryOrder[a.category] ?? 3) - (categoryOrder[b.category] ?? 3);
@@ -1508,11 +1487,6 @@ export default function VendorBills() {
       cancelActivePull();
     }
     activePullContextRef.current = context;
-  }, [billType, editingBillId, periodFrom, periodTo, vendorName, view]);
-
-  useEffect(() => {
-    // Inclusion is intentionally scoped to one form context and one action.
-    setIncludeAlreadyBilled(false);
   }, [billType, editingBillId, periodFrom, periodTo, vendorName, view]);
 
   useEffect(() => {
@@ -2853,16 +2827,6 @@ export default function VendorBills() {
                   <div className="mt-3 space-y-2">
                     {availableOtherItems.length > 0 && (
                       <div className="flex flex-wrap items-center gap-3 rounded border border-blue-200 bg-background/60 px-2 py-2 text-[11px] dark:border-blue-800">
-                        <label className="flex items-center gap-2 font-semibold uppercase">
-                          <input
-                            type="checkbox"
-                            checked={includeAlreadyBilled}
-                            onChange={event => setIncludeAlreadyBilled(event.target.checked)}
-                            disabled={pullInFlight}
-                            data-testid="checkbox-include-already-billed"
-                          />
-                          Include already-billed items (next pull only)
-                        </label>
                         {duplicatePreflight.isFetching && (
                           <span className="font-semibold text-blue-700 dark:text-blue-300" data-testid="text-duplicate-preflight-checking">
                             CHECKING DUPLICATES…
@@ -2943,6 +2907,17 @@ export default function VendorBills() {
               {isAdmin && (
                 <Button variant="outline" size="sm" onClick={addLineItem} data-testid="button-add-item">
                   <Plus className="w-4 h-4 mr-1" /> ADD ITEM
+                </Button>
+              )}
+              {billedLineItemCount > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLineItems(prev => prev.filter(item => !item.billedIn))}
+                  disabled={pullInFlight}
+                  data-testid="button-exclude-already-billed"
+                >
+                  <X className="w-4 h-4 mr-1" /> EXCLUDE ALREADY-BILLED ROWS ({billedLineItemCount})
                 </Button>
               )}
             </div>

@@ -605,3 +605,185 @@ mtime_ms = 1789438903940
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8ab4f4d0-e5a2-43c3-b2e5-1d9da2ffcad6/daf45329-93f2-4fe5-a7e4-da80a350420d"
 storage_version_token = "1789438956452727"
 content_type = "image/png"
+
+[[outputs]]
+id = "3WF7GDbGXX1SoJmvc1ZsS"
+uri = "file://tests/fixtures/diesel03/evidence/diesel03-A-company-account.png"
+type = "image"
+title = "A — Company account required"
+description = "Actual Diesel Requirements UI with controlled test APIs; no customer payment records were modified."
+logical_id = "dda8395b-f197-4ef0-9cb6-d1889d2cba60"
+content_hash = "sha256:aa7e0a3014bd98da0048e59d8ec7ae6a5d0a87adf561181fcae3a80f2e41bacf"
+size = 103462
+mtime_ms = 1789444641487
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/dda8395b-f197-4ef0-9cb6-d1889d2cba60/4257f48e-94dc-46d6-92c6-2db3a66ab63e"
+storage_version_token = "1789444717339382"
+content_type = "image/png"
+
+[[outputs]]
+id = "5Pi6G5l3vmsvW1OWO9YTe"
+uri = "file://tests/fixtures/diesel03/evidence/diesel03-B-personal-no-account.png"
+type = "image"
+title = "B — Personal payment, no account field"
+description = "Actual Diesel Requirements UI with controlled test APIs; no customer payment records were modified."
+logical_id = "b18fd662-f6bc-4169-8379-b58562b7494c"
+content_hash = "sha256:97001ffd98f9f0b1309ed53ffc5d32eeb4729a676baacf2aee7a74d3bab6b244"
+size = 94501
+mtime_ms = 1789444641951
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b18fd662-f6bc-4169-8379-b58562b7494c/5176d906-de24-452e-a2a0-3de0f4444f76"
+storage_version_token = "1789444718928899"
+content_type = "image/png"
+
+[[outputs]]
+id = "kcNkS7F0ah8aAe7UCf5d9"
+uri = "file://tests/fixtures/diesel03/evidence/diesel03-C-new-paid-timestamp.png"
+type = "image"
+title = "C — New PAID timestamp, unchanged row height"
+description = "Actual Diesel Requirements UI with controlled test APIs; no customer payment records were modified."
+logical_id = "267ba074-8553-45ae-b5d7-8b05ddb2fec7"
+content_hash = "sha256:a2acb744dd40a5288f89556f9d89c4d7f9efb4e7677c94bd3f4c098d043a8781"
+size = 131535
+mtime_ms = 1789444642235
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/267ba074-8553-45ae-b5d7-8b05ddb2fec7/26058911-3646-4ae0-aeee-55ab38f00aab"
+storage_version_token = "1789444722206595"
+content_type = "image/png"
+
+[[outputs]]
+id = "GzCgksHIQwdoZzSp8CSo2"
+uri = "file://tests/fixtures/diesel03/evidence/diesel03-D-historical-paid-no-account.png"
+type = "image"
+title = "D — Historical paid record without account"
+description = "Actual Diesel Requirements UI with controlled test APIs; no customer payment records were modified."
+logical_id = "e12a4c23-649a-4d3e-956c-1db1dcf7622a"
+content_hash = "sha256:a2acb744dd40a5288f89556f9d89c4d7f9efb4e7677c94bd3f4c098d043a8781"
+size = 131535
+mtime_ms = 1789444642491
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e12a4c23-649a-4d3e-956c-1db1dcf7622a/28fb9cd2-1bb6-40d9-a413-a3ff7a53cd00"
+storage_version_token = "1789444724090925"
+content_type = "image/png"
+
+[[outputs]]
+id = "sA8ajGZTFF1Xbb-d2203Y"
+uri = "file://tests/fixtures/diesel03/evidence/diesel03-E-unpaid-no-indicator.png"
+type = "image"
+title = "E — Unpaid row unchanged"
+description = "Actual Diesel Requirements UI with controlled test APIs; no customer payment records were modified."
+logical_id = "51231ce1-2001-419b-9672-71225e07f5ec"
+content_hash = "sha256:a2acb744dd40a5288f89556f9d89c4d7f9efb4e7677c94bd3f4c098d043a8781"
+size = 131535
+mtime_ms = 1789444642675
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/51231ce1-2001-419b-9672-71225e07f5ec/1c581d8f-4e91-45be-afca-176889a844da"
+storage_version_token = "1789444725957868"
+content_type = "image/png"
+
+[[outputs]]
+id = "Um0Z6JGSzYWyN8_OMkB_t"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb15A.png"
+type = "image"
+title = "A — JCB mirror case — one billable row"
+description = "Actual Vendor Bills UI using controlled API fixtures. The JCB source linkage was separately confirmed read-only in production; saved bills were not modified."
+logical_id = "ec634fdc-3c81-4fbd-aa2e-f7bb06c664d4"
+content_hash = "sha256:2a4d5e6e4f028490ed1f95a556a340a27eb43bd2e8837a224ff9428a8f879589"
+size = 121825
+mtime_ms = 1789445319951
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ec634fdc-3c81-4fbd-aa2e-f7bb06c664d4/21b31369-b294-4b9c-8d36-80601ef6abc2"
+storage_version_token = "1789445480127087"
+content_type = "image/png"
+
+[[outputs]]
+id = "toj8xPEU_MkOC9aHXI-Vk"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb15B.png"
+type = "image"
+title = "B — Independent Plant activity retained"
+description = "Actual Vendor Bills UI using controlled API fixtures. The JCB source linkage was separately confirmed read-only in production; saved bills were not modified."
+logical_id = "9aa68dee-f9a5-4b4b-9c33-37e05ced3def"
+content_hash = "sha256:c765b3ed2c92bb1d36ef08fb69fbc15237e7ae379cbdc9f49cbbed6cdb5f5619"
+size = 127765
+mtime_ms = 1789445320795
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9aa68dee-f9a5-4b4b-9c33-37e05ced3def/8309ed25-d3e9-47ce-8ecb-212d43ff2aa4"
+storage_version_token = "1789445482375824"
+content_type = "image/png"
+
+[[outputs]]
+id = "WKb5FxMKSJ2haKyxGVgnt"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb15C.png"
+type = "image"
+title = "C — Independent Site activity retained"
+description = "Actual Vendor Bills UI using controlled API fixtures. The JCB source linkage was separately confirmed read-only in production; saved bills were not modified."
+logical_id = "a78d409c-ada7-4fda-8dc8-e680d5b44524"
+content_hash = "sha256:7c2a00f47c6779bd4dab24b6de60997168489823faca82e50145863a047ac6c6"
+size = 129947
+mtime_ms = 1789445321759
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a78d409c-ada7-4fda-8dc8-e680d5b44524/f3d73a04-9c87-49b1-ab32-10b552a882a7"
+storage_version_token = "1789445484350475"
+content_type = "image/png"
+
+[[outputs]]
+id = "Hp9FNxJM-3N2cDo518Vq-"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb15D.png"
+type = "image"
+title = "D — Other vendor and period checks"
+description = "Actual Vendor Bills UI using controlled API fixtures. The JCB source linkage was separately confirmed read-only in production; saved bills were not modified."
+logical_id = "c5012dd1-66d8-481f-93b1-1ae59c1c5f83"
+content_hash = "sha256:e7034f64e0630e410d838889593ac04b2ffe27d6c6f5c5ceec8a7b0cf2a90a4c"
+size = 105648
+mtime_ms = 1789445322663
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c5012dd1-66d8-481f-93b1-1ae59c1c5f83/098ae9c0-9a45-4f57-b95f-fd5476927737"
+storage_version_token = "1789445486512398"
+content_type = "image/png"
+
+[[outputs]]
+id = "8tttOoorL5ytSDhI8xMK-"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb15E.png"
+type = "image"
+title = "E — Pull All includes BILLED rows"
+description = "Actual Vendor Bills UI using controlled API fixtures. The JCB source linkage was separately confirmed read-only in production; saved bills were not modified."
+logical_id = "94ff0077-2820-46d6-ad7c-3c4caa063bd0"
+content_hash = "sha256:83e2f2d05a51ba3d6107931f648ef89f93e27c4578fc1b4adc88055fe0735ac1"
+size = 137110
+mtime_ms = 1789445323219
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/94ff0077-2820-46d6-ad7c-3c4caa063bd0/331fb3df-fefd-4b99-9cb0-31980400613b"
+storage_version_token = "1789445488454427"
+content_type = "image/png"
+
+[[outputs]]
+id = "PKqfK-d6yCEUexB8PBz3B"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb15F.png"
+type = "image"
+title = "F — Exclude leaves unbilled rows"
+description = "Actual Vendor Bills UI using controlled API fixtures. The JCB source linkage was separately confirmed read-only in production; saved bills were not modified."
+logical_id = "9e61f4e5-3211-4dc8-bc3d-742502a68a76"
+content_hash = "sha256:abf83131fb970eba879f7a6aa739baf0e376f45dda62b3b1f3f8c50b94b3b719"
+size = 143164
+mtime_ms = 1789445323407
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9e61f4e5-3211-4dc8-bc3d-742502a68a76/67cc1f34-15b3-4cd2-8462-9b5d4b87b13e"
+storage_version_token = "1789445490378352"
+content_type = "image/png"
+
+[[outputs]]
+id = "gl2ZGPs9F7RdecqqLQLau"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb15G.png"
+type = "image"
+title = "G — Grouped pull and repeat exclusion"
+description = "Actual Vendor Bills UI using controlled API fixtures. The JCB source linkage was separately confirmed read-only in production; saved bills were not modified."
+logical_id = "ad0f25a4-2fcc-476d-b643-d18f6ddc8ae4"
+content_hash = "sha256:fe8ce849325b8c4309a17ac6fc7ac20a5c732df72dac117d07cc66298431d572"
+size = 107177
+mtime_ms = 1789445324055
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ad0f25a4-2fcc-476d-b643-d18f6ddc8ae4/7be007be-beb2-4d24-8e46-4f630d0fb16d"
+storage_version_token = "1789445492243923"
+content_type = "image/png"
+
+[[outputs]]
+id = "zMiXJAwQOzXJpBHkBKrSu"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb15H.png"
+type = "image"
+title = "H — No-duplicate pull unchanged"
+description = "Actual Vendor Bills UI using controlled API fixtures. The JCB source linkage was separately confirmed read-only in production; saved bills were not modified."
+logical_id = "10783a3a-8a52-4f87-a9f0-c05c2b0c06b0"
+content_hash = "sha256:c3afc277b080485ff28a5a689a3c8a15147562a06b8d1c96b77237aabf5c968d"
+size = 132812
+mtime_ms = 1789445324539
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/10783a3a-8a52-4f87-a9f0-c05c2b0c06b0/993636bb-c4c8-42a1-abab-fa08f8380e74"
+storage_version_token = "1789445494360274"
+content_type = "image/png"

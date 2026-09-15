@@ -38,7 +38,7 @@ vi.mock("../server/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../server/auth")>();
   const inject = (req: any, _res: any, next: any) => {
     req.authUser = { id: 9, username: "test-recorder", fullName: "test-recorder", isAdmin: fx.role === "admin", isActive: true };
-    req.authPermissions = {};
+    req.authPermissions = fx.role === "diesel-pay" ? { site_diesel: { edit: true } } : {};
     req.session = { role: fx.role, username: "test-recorder", userId: 9 };
     next();
   };
@@ -49,7 +49,7 @@ vi.mock("../server/auth", async (importOriginal) => {
 const reqs: Record<number, any> = {
   42: { id: 42, status: "purchased", qtyPurchased: 500, paymentStatus: "pending", paymentMode: null, paidBy: null, items: [] },
   43: { id: 43, status: "approved", qtyPurchased: null, paymentStatus: "pending", items: [] },
-  44: { id: 44, status: "purchased", qtyPurchased: 200, paymentStatus: "paid", paidAt: "2026-08-10 09:00:00", paymentRecordedBy: "EARLIER USER", paymentMode: "cash", paidBy: "company", items: [] },
+  44: { id: 44, status: "purchased", qtyPurchased: 200, paymentStatus: "paid", paidAt: "2026-08-10 09:00:00", paymentRecordedBy: "EARLIER USER", paymentMode: "cash", paidBy: "company", paymentAccountKey: null, items: [] },
 };
 
 vi.mock("../server/storage", () => {
@@ -61,6 +61,10 @@ vi.mock("../server/storage", () => {
     },
   });
   methods.getDieselRequirement = vi.fn(async (id: number) => reqs[id]);
+  methods.getVendorBillCompanyAccounts = vi.fn(async () => [
+    { id: "bank_of_baroda_od", name: "Bank of Baroda - OD", type: "OD" },
+    { id: "hdfc_ca", name: "HDFC - CA", type: "CA" },
+  ]);
   methods.updateDieselPaymentStatus = vi.fn(async (id: number, data: any, actor: string) =>
     reqs[id] ? { ...reqs[id], ...data, paidAt: "SERVER", paymentRecordedBy: actor.toUpperCase() } : undefined,
   );
@@ -94,15 +98,56 @@ describe("06M-F Test B — default pending, never inferred", () => {
 });
 
 describe("06M-F Tests C/D/E/F — PATCH /payment-status", () => {
+  it("personal-paid mark clears the account field even if a stale key is supplied", async () => {
+    const res = await request(app)
+      .patch("/api/diesel-requirements/42/payment-status")
+      .send({ paymentStatus: "paid", paymentMode: "cash", paidBy: "PERSONAL", paymentAccountKey: "hdfc_ca" });
+    expect(res.status).toBe(200);
+    const [, data] = storage.updateDieselPaymentStatus.mock.calls.at(-1);
+    expect(data).toMatchObject({ paidBy: "PERSONAL", paymentAccountKey: null });
+  });
   it("C: marks paid with mode+paidBy; actor comes from authenticated user, never the client", async () => {
     const res = await request(app)
       .patch("/api/diesel-requirements/42/payment-status")
-      .send({ paymentStatus: "paid", paymentMode: "rtgs", paidBy: "company", paymentRecordedBy: "SPOOFED", paidAt: "1999-01-01" });
+      .send({ paymentStatus: "paid", paymentMode: "rtgs", paidBy: "company", paymentAccountKey: "hdfc_ca", paymentRecordedBy: "SPOOFED", paidAt: "1999-01-01" });
     expect(res.status).toBe(200);
     const [, data, actor] = storage.updateDieselPaymentStatus.mock.calls.at(-1);
     // client-supplied recordedBy/paidAt stripped by zod schema
-    expect(data).toEqual({ paymentStatus: "paid", paymentMode: "rtgs", paidBy: "company" });
+    expect(data).toEqual({ paymentStatus: "paid", paymentMode: "rtgs", paidBy: "company", paymentAccountKey: "hdfc_ca" });
     expect(actor).toBe("test-recorder");
+  });
+  it("company-paid mark requires a configured account", async () => {
+    const res = await request(app)
+      .patch("/api/diesel-requirements/42/payment-status")
+      .send({ paymentStatus: "paid", paymentMode: "rtgs", paidBy: "company" });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/Bank.*Account/i);
+  });
+  it("company-paid mark rejects an unknown account", async () => {
+    const res = await request(app)
+      .patch("/api/diesel-requirements/42/payment-status")
+      .send({ paymentStatus: "paid", paymentMode: "rtgs", paidBy: "company", paymentAccountKey: "unknown" });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/configured company bank account/i);
+  });
+  it("already-paid company repeat-paid cannot clear a valid account", async () => {
+    const previousAccount = reqs[44].paymentAccountKey;
+    reqs[44].paymentAccountKey = "hdfc_ca";
+    const writesBefore = storage.updateDieselPaymentStatus.mock.calls.length;
+    const res = await request(app)
+      .patch("/api/diesel-requirements/44/payment-status")
+      .send({ paymentStatus: "paid", paymentMode: "cash", paidBy: "company", paymentAccountKey: null });
+    expect(res.status).toBe(400);
+    expect(storage.updateDieselPaymentStatus.mock.calls.length).toBe(writesBefore);
+    reqs[44].paymentAccountKey = previousAccount;
+  });
+  it("already-paid company correction without paymentStatus requires an account", async () => {
+    const writesBefore = storage.updateDieselPaymentStatus.mock.calls.length;
+    const res = await request(app)
+      .patch("/api/diesel-requirements/44/payment-status")
+      .send({ paidBy: "company", paymentAccountKey: null });
+    expect(res.status).toBe(400);
+    expect(storage.updateDieselPaymentStatus.mock.calls.length).toBe(writesBefore);
   });
   it("D: rejects paid without paymentMode / paidBy", async () => {
     const res = await request(app).patch("/api/diesel-requirements/42/payment-status").send({ paymentStatus: "paid" });
@@ -119,10 +164,10 @@ describe("06M-F Tests C/D/E/F — PATCH /payment-status", () => {
   it("F: purchase/lifecycle fields in the body are stripped, never forwarded", async () => {
     const res = await request(app)
       .patch("/api/diesel-requirements/42/payment-status")
-      .send({ paymentStatus: "paid", paymentMode: "upi", paidBy: "company", qtyPurchased: 9999, supplier: "X", billNo: "Y", rate: 1, amount: 2, purchasedAt: "z", status: "pending" });
+      .send({ paymentStatus: "paid", paymentMode: "upi", paidBy: "company", paymentAccountKey: "hdfc_ca", qtyPurchased: 9999, supplier: "X", billNo: "Y", rate: 1, amount: 2, purchasedAt: "z", status: "pending" });
     expect(res.status).toBe(200);
     const [, data] = storage.updateDieselPaymentStatus.mock.calls.at(-1);
-    expect(Object.keys(data).sort()).toEqual(["paidBy", "paymentMode", "paymentStatus"]);
+    expect(Object.keys(data).sort()).toEqual(["paidBy", "paymentAccountKey", "paymentMode", "paymentStatus"]);
   });
   it("G: mode/paidBy correction after already paid succeeds without re-marking", async () => {
     const res = await request(app)
@@ -131,6 +176,24 @@ describe("06M-F Tests C/D/E/F — PATCH /payment-status", () => {
     expect(res.status).toBe(200);
     const [, data] = storage.updateDieselPaymentStatus.mock.calls.at(-1);
     expect(data).toEqual({ paymentMode: "cheque" });
+  });
+  it("personal correction clears any stale company account", async () => {
+    const res = await request(app)
+      .patch("/api/diesel-requirements/44/payment-status")
+      .send({ paymentMode: "cash", paidBy: "PERSONAL", paymentAccountKey: "hdfc_ca" });
+    expect(res.status).toBe(200);
+    const [, data] = storage.updateDieselPaymentStatus.mock.calls.at(-1);
+    expect(data).toMatchObject({ paidBy: "PERSONAL", paymentAccountKey: null });
+  });
+  it("new company correction after paid requires a configured account", async () => {
+    reqs[44].paidBy = "PERSONAL";
+    reqs[44].paymentAccountKey = null;
+    const res = await request(app)
+      .patch("/api/diesel-requirements/44/payment-status")
+      .send({ paidBy: "company" });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/Bank.*Account/i);
+    reqs[44].paidBy = "company";
   });
 });
 
@@ -194,16 +257,32 @@ describe("06M-F Tests K/L — vendor bill paymentRecordedBy", () => {
 });
 
 describe("06M-F Tests I/J — schema surface + no OCR", () => {
-  it("J: diesel gained exactly paymentStatus/paidAt/paymentRecordedBy; vendor bill gained exactly paymentRecordedBy", () => {
+  it("J: diesel gained paymentStatus/paidAt/paymentRecordedBy/paymentAccountKey; vendor bill gained exactly paymentRecordedBy", () => {
     const d = getTableColumns(dieselRequirements) as any;
     expect(d.paymentStatus).toBeDefined();
     expect(d.paidAt).toBeDefined();
     expect(d.paymentRecordedBy).toBeDefined();
+    expect(d.paymentAccountKey).toBeDefined();
+    expect(d.paymentAccountKey.notNull).toBe(false);
     const v = getTableColumns(vendorBills) as any;
     expect(v.paymentRecordedBy).toBeDefined();
     // no bill-parsing / staging fields anywhere
     const schema = fs.readFileSync("shared/schema.ts", "utf8");
     expect(schema).not.toMatch(/ocr_|ocrText|bill_extract|extracted_values|merchant_qr|merchantQr|duplicate_bill/i);
+  });
+  it("the diesel account column is delivered by the exact nullable migration", () => {
+    expect(fs.readFileSync("migrations/0030_diesel_payment_account_key.sql", "utf8").trim())
+      .toBe("ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS payment_account_key text DEFAULT NULL;");
+  });
+  it("diesel payment editors can read the shared company-account selector", async () => {
+    fx.role = "diesel-pay";
+    const res = await request(app).get("/api/vendor-bills/company-accounts");
+    fx.role = "admin";
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([
+      { id: "bank_of_baroda_od", name: "Bank of Baroda - OD", type: "OD" },
+      { id: "hdfc_ca", name: "HDFC - CA", type: "CA" },
+    ]);
   });
   it("I: no OCR / Smart Bill Read / duplicate-detection code in the touched files", () => {
     for (const f of ["server/routes.ts", "server/storage.ts", "client/src/pages/DieselRequirements.tsx", "client/src/pages/VendorBills.tsx"]) {

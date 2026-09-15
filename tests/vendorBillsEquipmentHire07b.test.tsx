@@ -131,6 +131,7 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     expect(pull.textContent).toContain("PULL ALL 1 ITEM");
     fireEvent.click(pull);
     expect(await screen.findByText(/ABC ROLLER · HOURLY HIRE/i)).toBeTruthy();
+    expect(screen.queryByTestId("button-exclude-already-billed")).toBeNull();
     expect(screen.queryByTestId("equipment-hire-straight-form")).toBeNull();
     expect(screen.queryByTestId("button-add-hire-81")).toBeNull();
   });
@@ -390,16 +391,27 @@ describe("VB-11 grouped ordinary activity pull", () => {
     expect(screen.getByTestId(groupRowId(vb11GroupIds.labour))).toBeTruthy();
 
     fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(2));
-    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("✓ ADDED 2/3");
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(3));
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("✓ ADDED 3/3");
     expect(screen.getByTestId(groupRowId(vb11GroupIds.soil)).textContent).toContain("PULL 2");
-    expect(screen.queryByTestId("badge-billed-1")).toBeNull();
+    expect(screen.getByTestId("badge-billed-1")).toBeTruthy();
     expect((screen.getAllByTestId(/input-item-rate-/)[0] as HTMLInputElement).value).toBe("250");
     expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
 
-    // An already-billed source candidate remains available for an explicit
-    // correction pull, but the default action still skips it.
+    // Pulling always includes the flagged row. The preparer can remove every
+    // billed row after reviewing the complete pulled picture.
+    expect(screen.getByTestId("button-exclude-already-billed").textContent).toContain("(1)");
+    fireEvent.click(screen.getByTestId("button-exclude-already-billed"));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(2));
+    expect(screen.queryByTestId("badge-billed-1")).toBeNull();
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("PULL 1");
+    await waitFor(() => expect((screen.getByTestId(vb11GroupIds.equipment) as HTMLButtonElement).disabled).toBe(false));
+    duplicateRowsForTest = [{ index: 0, billNo: "VB-OTHER-2", billStatus: "approved" }];
     fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(3));
+    expect(screen.getByTestId("badge-billed-2")).toBeTruthy();
+    expect(screen.getByTestId("button-exclude-already-billed").textContent).toContain("(1)");
+    fireEvent.click(screen.getByTestId("button-exclude-already-billed"));
     await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(2));
 
     duplicateRowsForTest = [];
@@ -427,12 +439,15 @@ describe("VB-11 grouped ordinary activity pull", () => {
     await openVb11MixedBill();
 
     fireEvent.click(screen.getByTestId("button-auto-populate"));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(vb11Items.length - 1));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(vb11Items.length));
     expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
     expect(screen.getAllByTestId(/input-item-rate-/).slice(0, 2).every(node => (node as HTMLInputElement).value === "250")).toBe(true);
-    expect(screen.queryByTestId("badge-billed-2")).toBeNull();
+    expect(screen.getByTestId("badge-billed-2")).toBeTruthy();
     Object.values(vb11GroupIds).forEach(id => expect(screen.getByTestId(groupRowId(id)).textContent).toContain("✓ ADDED"));
-    expect(screen.getByTestId("button-auto-populate").textContent).toContain("PULL ALL 1 ITEM");
+    expect(screen.queryByTestId("button-auto-populate")).toBeNull();
+    fireEvent.click(screen.getByTestId("button-exclude-already-billed"));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(vb11Items.length - 1));
+    expect(screen.queryByTestId("badge-billed-2")).toBeNull();
   });
 
   it("does not leak a deferred pull into a new bill with the same vendor, period, and type", async () => {

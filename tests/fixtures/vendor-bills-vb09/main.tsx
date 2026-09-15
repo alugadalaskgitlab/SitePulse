@@ -404,6 +404,107 @@ const vb14CleanScenario = () => scenarioName() === "vb14-clean";
 const vb14DuplicateFailureScenario = () => scenarioName() === "vb14-duplicate-failure";
 const vb14VendorName = () => vb14CleanScenario() ? "VB14 CLEAN SUPPLIER" : "VB14 MIXED SUPPLIER";
 
+// VB-15 keeps the browser contract separate from VB-14.  The JCB case carries
+// an explicit raw DPR→Plant mirror link so the fixture can show exactly what a
+// fixed backend response would contain, while the verifier reports that this
+// remains fixture evidence rather than proof of the production storage query.
+const vb15Part1RawActivities: FixtureBill[] = [
+  {
+    source: "dpr_log", sourceId: 917, plantUsageId: 228, equipmentId: 45,
+    businessDate: "2026-08-31", occurredAt: "2026-08-31T09:00:00Z",
+    hoursOrKmRun: 5.4, actualDiesel: 10, site: "BODAPALLY SITE",
+    equipmentName: "JCB VISWANATH BODAPALLY", entryType: "hourly",
+  },
+  {
+    source: "plant_usage", sourceId: 228, plantUsageId: null, equipmentId: 45,
+    businessDate: "2026-08-31", occurredAt: "2026-08-31T09:00:00Z",
+    hoursOrKmRun: 5.4, actualDiesel: 10, site: "BODAPALLY PLANT",
+    equipmentName: "JCB VISWANATH BODAPALLY", entryType: "hourly",
+  },
+  {
+    source: "plant_usage", sourceId: 81503, plantUsageId: null, equipmentId: 45,
+    businessDate: "2026-09-01", occurredAt: "2026-09-01T08:00:00Z",
+    hoursOrKmRun: 2, actualDiesel: 4, site: "INDEPENDENT PLANT",
+    equipmentName: "JCB VISWANATH BODAPALLY", entryType: "hourly",
+  },
+  {
+    source: "dpr_log", sourceId: 81504, plantUsageId: null, equipmentId: 45,
+    businessDate: "2026-09-02", occurredAt: "2026-09-02T08:00:00Z",
+    hoursOrKmRun: 3, actualDiesel: 5, site: "INDEPENDENT SITE",
+    equipmentName: "JCB VISWANATH BODAPALLY", entryType: "hourly",
+  },
+];
+
+const vb15Part1AutoItems: FixtureBill[] = [
+  {
+    date: "2026-08-31", category: "equipment",
+    description: "JCB VISWANATH BODAPALLY - DAILY HIRE - BODAPALLY SITE (SITE) | 5.4 HRS | DIESEL: 10L",
+    qty: 5.4, unit: "HRS", rate: 0, amount: 0, source: "auto", sourceId: 917,
+    equipmentId: 45, siteName: "SITE: BODAPALLY SITE",
+  },
+  {
+    date: "2026-09-01", category: "equipment",
+    description: "JCB VISWANATH BODAPALLY - DAILY HIRE - INDEPENDENT PLANT (PLANT) | 2 HRS | DIESEL: 4L",
+    qty: 2, unit: "HRS", rate: 0, amount: 0, source: "auto", sourceId: 81503,
+    equipmentId: 45, siteName: "PLANT: INDEPENDENT PLANT",
+  },
+  {
+    date: "2026-09-02", category: "equipment",
+    description: "JCB VISWANATH BODAPALLY - DAILY HIRE - INDEPENDENT SITE (SITE) | 3 HRS | DIESEL: 5L",
+    qty: 3, unit: "HRS", rate: 0, amount: 0, source: "auto", sourceId: 81504,
+    equipmentId: 45, siteName: "SITE: INDEPENDENT SITE",
+  },
+];
+
+const vb15OtherPlantAutoItems: FixtureBill[] = [
+  {
+    date: "2026-07-12", category: "equipment",
+    description: "WHEEL LOADER - DAILY HIRE - OTHER PLANT (PLANT) | 4 HRS",
+    qty: 4, unit: "HRS", rate: 0, amount: 0, source: "auto", sourceId: 81601,
+    equipmentId: 8160, siteName: "PLANT: OTHER PERIOD",
+  },
+  {
+    date: "2026-07-13", category: "equipment",
+    description: "WHEEL LOADER - DAILY HIRE - OTHER PLANT (PLANT) | 3 HRS",
+    qty: 3, unit: "HRS", rate: 0, amount: 0, source: "auto", sourceId: 81602,
+    equipmentId: 8160, siteName: "PLANT: OTHER PERIOD",
+  },
+];
+
+const vb15OtherSiteAutoItems: FixtureBill[] = [
+  {
+    date: "2026-07-21", category: "equipment",
+    description: "BACKHOE OTHER SITE (SITE) | 6 HRS",
+    qty: 6, unit: "HRS", rate: 0, amount: 0, source: "auto", sourceId: 81701,
+    equipmentId: 8170, siteName: "SITE: OTHER PERIOD",
+  },
+];
+
+const vb15Scenario = () => scenarioName().startsWith("vb15");
+const vb15CleanScenario = () => scenarioName() === "vb15-clean";
+const vb15Part1Scenario = () => scenarioName() === "vb15-part1-jcb";
+const vb15OtherPlantScenario = () => scenarioName() === "vb15-other-plant";
+const vb15OtherSiteScenario = () => scenarioName() === "vb15-other-site";
+const vb15VendorName = () => {
+  if (vb15Part1Scenario()) return "JCB VISWANATH BODAPALLY";
+  if (vb15OtherPlantScenario()) return "VB15 OTHER PLANT VENDOR";
+  if (vb15OtherSiteScenario()) return "VB15 OTHER SITE VENDOR";
+  return vb15CleanScenario() ? "VB15 CLEAN SUPPLIER" : "VB15 MIXED SUPPLIER";
+};
+const vb15AutoItems = () => {
+  if (vb15Part1Scenario()) return vb15Part1AutoItems;
+  if (vb15OtherPlantScenario()) return vb15OtherPlantAutoItems;
+  if (vb15OtherSiteScenario()) return vb15OtherSiteAutoItems;
+  return vb11MixedAutoItems;
+};
+const vb15RawActivities = () => vb15Part1Scenario() ? vb15Part1RawActivities : vb15AutoItems();
+const vb15Rates = [
+  { itemKey: "EQ_JCB_VISWANATH_BODAPALLY_HRS", category: "equipment", rate: 3500 },
+  { itemKey: "EQ_WHEEL_LOADER_OTHER_PLANT_HRS", category: "equipment", rate: 2800 },
+  { itemKey: "EQ_BACKHOE_OTHER_SITE_HRS", category: "equipment", rate: 2400 },
+  ...vb11RateCards,
+];
+
 function vb10SnapshotForGroup(group: any, status = "draft", billPayload: any = {}): any {
   const equipment = vb10EquipmentMasters.find(row => Number(row.id) === Number(group.equipmentId));
   const isHlc = Number(group.equipmentId) === 1001;
@@ -499,6 +600,8 @@ const fixtureState = {
   duplicateFlags: [] as any[][],
   duplicateErrors: [] as Array<{ status: number; itemCount: number }>,
   toastMessages: [] as Array<{ title: string; description?: string }>,
+  vb15RawActivities: [] as any[],
+  vb15ReturnedActivities: [] as any[],
 };
 
 declare global {
@@ -583,6 +686,7 @@ window.fetch = async (input, init) => {
     if (vb11MixedScenario()) return json(["VB11 MIXED SUPPLIER"]);
     if (vb11SingleCategoryScenario()) return json(["VB11 EQUIPMENT SUPPLIER"]);
     if (vb14Scenario()) return json([vb14VendorName()]);
+    if (vb15Scenario()) return json([vb15VendorName()]);
     return json(["NARASIMHULU", "MATERIAL VENDOR", "TRANSPORT VENDOR", "LABOUR VENDOR"]);
   }
   if (pathname === "/api/vendor-aliases" && method === "GET") return json([]);
@@ -591,9 +695,33 @@ window.fetch = async (input, init) => {
       fixtureState.rateCardCalls.push(requestUrl.search);
       return json(vb11RateCards);
     }
+    if (vb15Scenario()) {
+      fixtureState.rateCardCalls.push(requestUrl.search);
+      return json(vb15Rates);
+    }
     return json([]);
   }
   if (pathname === "/api/vendor-bills/check-duplicates") {
+    if (vb15Scenario() && method === "POST") {
+      const payload = init?.body ? JSON.parse(String(init.body)) : {};
+      fixtureState.duplicateChecks.push(payload);
+      const noDuplicates = vb15CleanScenario() || vb15Part1Scenario() || vb15OtherPlantScenario() || vb15OtherSiteScenario();
+      const flags = noDuplicates || !Array.isArray(payload.items)
+        ? []
+        : payload.items.reduce((matches: any[], item: any, index: number) => {
+          const description = String(item.description || "").toUpperCase();
+          const date = String(item.date || "");
+          if (item.category === "equipment" && date === "2026-09-01") {
+            matches.push({ index, billNo: "VB15-APPROVED-001", billStatus: "approved" });
+          }
+          if (item.category === "material" && description.includes("SOIL") && date === "2026-09-04") {
+            matches.push({ index, billNo: "VB15-PAID-002", billStatus: "paid" });
+          }
+          return matches;
+        }, []);
+      fixtureState.duplicateFlags.push(flags);
+      return json(flags);
+    }
     if (vb14Scenario() && method === "POST") {
       const payload = init?.body ? JSON.parse(String(init.body)) : {};
       fixtureState.duplicateChecks.push(payload);
@@ -702,6 +830,15 @@ window.fetch = async (input, init) => {
       categories: ["equipment", "material", "transport", "labour"],
       existingBill: null,
     }]);
+    if (vb15Scenario()) {
+      const items = vb15AutoItems();
+      return json([{
+        vendorName: vb15VendorName(),
+        recordCount: items.length,
+        categories: [...new Set(items.map(item => item.category))],
+        existingBill: null,
+      }]);
+    }
     return json([{
       vendorName: "NARASIMHULU",
       recordCount: 1,
@@ -728,6 +865,16 @@ window.fetch = async (input, init) => {
         ? vb11MixedAutoItems
         : vb11MixedAutoItems.filter(item => item.category === billType));
     }
+    if (vb15Scenario()) {
+      const allItems = vb15AutoItems();
+      const from = requestUrl.searchParams.get("periodFrom") || "";
+      const to = requestUrl.searchParams.get("periodTo") || "";
+      const items = allItems.filter(item => (!from || item.date >= from) && (!to || item.date <= to));
+      const returned = billType === "all" ? items : items.filter(item => item.category === billType);
+      fixtureState.vb15RawActivities = vb15RawActivities();
+      fixtureState.vb15ReturnedActivities = returned;
+      return json(returned);
+    }
     return json(itemByType[billType] || []);
   }
   if (pathname === "/api/vendor-bills/hire-activities") {
@@ -748,6 +895,14 @@ window.fetch = async (input, init) => {
           downtimeHours: row.downtimeHours, equipment: vb10EquipmentMasters.find(equipment => equipment.id === row.equipmentId),
         })),
       ]);
+    }
+    if (vb15Scenario()) {
+      const from = requestUrl.searchParams.get("periodFrom") || "";
+      const to = requestUrl.searchParams.get("periodTo") || "";
+      const activities = vb15AutoItems().filter(item => (!from || item.date >= from) && (!to || item.date <= to));
+      fixtureState.vb15RawActivities = vb15RawActivities();
+      fixtureState.vb15ReturnedActivities = activities;
+      return json(activities);
     }
     return json([]);
   }
