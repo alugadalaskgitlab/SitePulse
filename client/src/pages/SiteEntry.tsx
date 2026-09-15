@@ -162,7 +162,7 @@ const contractorDieselTankFieldsCleared = (row: EquipmentEntry): EquipmentEntry 
 interface LabourEntry {
   category: string;
   gender: string;
-  count: number;
+  count: number | null;
   task: string;
   contractor: string;
   // Phase 3: optional link to the planned BOQ item / structure this deployment
@@ -878,9 +878,7 @@ export default function SiteEntry() {
   ]);
   const [otherEquipmentRows, setOtherEquipmentRows] = useState<Set<number>>(() => new Set());
 
-  const [labour, setLabour] = useState<LabourEntry[]>([
-    { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }
-  ]);
+  const [labour, setLabour] = useState<LabourEntry[]>([]);
 
   // Actual material consumption/issue captured against a work item, for Plan
   // vs Actual comparison. Bulk material deliveries by vehicle trip continue to
@@ -1100,7 +1098,7 @@ export default function SiteEntry() {
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }]);
     } else if (section === 'labour') {
-      setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
+      setLabour([...labour, { category: "Skilled", gender: "Male", count: null, task: "", contractor: "", boqItemId: null, structureId: null }]);
     } else if (section === 'materials') {
       setMaterials([...materials, { type: "Issued", material: "", quantity: null, uom: "", vehicleNumber: "", supplier: "", location: "", receiptNumber: "", boqItemId: null, structureId: null }]);
     }
@@ -3354,10 +3352,10 @@ export default function SiteEntry() {
                 <Input
                   type="number"
                   min="0"
-                  value={entry.count || ""}
+                  value={entry.count ?? ""}
                   onChange={(e) => {
                     const updated = [...labour];
-                    updated[idx].count = parseInt(e.target.value) || 0;
+                    updated[idx].count = e.target.value === "" ? null : e.target.valueAsNumber;
                     setLabour(updated);
                   }}
                   data-testid={`input-labour-count-${idx}`}

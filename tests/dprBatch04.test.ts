@@ -345,7 +345,7 @@ describe("Batch 04 — submit readiness (K–V)", () => {
     const r = evaluateDprSubmitReadiness({
       progress: [{ activity: "EMBANKMENT", quantity: null }],
       equipment: [{ machine: "JCB", openingReading: 5 }, { machine: "ROLLER" }],
-      labour: [{ category: "Skilled", count: 0 }],
+      labour: [{ category: "Skilled", count: -1 }],
       materials: [{ material: "CEMENT", quantity: null, uom: "" }],
     });
     expect(r.mandatory.length).toBeGreaterThanOrEqual(4);
@@ -372,9 +372,35 @@ describe("Batch 04 — submit readiness (K–V)", () => {
     expect(r.advisories).toHaveLength(0);
   });
 
-  it("labour with category but zero/blank count is MANDATORY (no masquerading records)", () => {
-    const r = evaluateDprSubmitReadiness({ labour: [{ category: "Unskilled", count: 0 }] });
-    expect(r.mandatory.some((m) => m.section === "labour" && /positive number/i.test(m.message))).toBe(true);
+  it("empty labour rows are valid, and explicit zero is a valid count", () => {
+    expect(evaluateDprSubmitReadiness({ labour: [] }).ready).toBe(true);
+
+    const r = evaluateDprSubmitReadiness({
+      labour: [
+        { category: "Skilled", count: 5 },
+        { category: "Unskilled", count: 0 },
+      ],
+    });
+    expect(r.ready).toBe(true);
+    expect(r.mandatory).toHaveLength(0);
+  });
+
+  it("negative, NaN, and Infinity labour counts are mandatory, including count-only rows", () => {
+    const r = evaluateDprSubmitReadiness({
+      labour: [
+        { count: -1 },
+        { count: Number.NaN },
+        { category: "Unskilled", count: Number.POSITIVE_INFINITY },
+      ],
+    });
+    expect(r.ready).toBe(false);
+    expect(r.mandatory.filter((m) => m.section === "labour")).toHaveLength(5);
+    expect(r.mandatory.filter((m) => /finite non-negative number/i.test(m.message))).toHaveLength(3);
+  });
+
+  it("a populated labour row with a blank count is mandatory", () => {
+    const r = evaluateDprSubmitReadiness({ labour: [{ category: "Skilled", count: null }] });
+    expect(r.mandatory.some((m) => m.section === "labour" && /finite non-negative number/i.test(m.message))).toBe(true);
   });
 
   it("trip-based equipment: trips without distance is MANDATORY; complete trip entry passes", () => {

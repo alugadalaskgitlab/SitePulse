@@ -1,0 +1,31 @@
+ADDENDUM to INSTRUCTION DPR-01 — a specific lead to check first, not a new task
+
+This is a follow-up to DPR-01 (Work Assignment shows "BOQ activity unavailable" on the read-only DPR view). While reviewing the current code, one likely cause was spotted — check this first before searching more broadly, but still confirm it against the actual data before fixing, per DPR-01's original instruction.
+
+client/src/components/DprEquipmentCompact.tsx has a legacy-data fallback: when a DPR row's `activitySegments` field is empty but its older `activityAllocations` field still has data, it runs that legacy data through `groupLegacyEquipmentActivityAllocations()` to reconstruct segments for display. If that reconstruction produces BOQ item IDs that don't match what's in the `boqItems` list the read-only view (DprDetails.tsx / SiteReport.tsx) was given, the lookup in EquipmentActivityAllocationEditor.tsx (`itemName()`, ~line 31, falling back to "BOQ activity unavailable" at ~line 121) would fail exactly the way it does in this bug — resolving fine live in an edit session (fresh data), but showing "unavailable" once the DPR is reloaded from saved data.
+
+Please check specifically: for the real DPR referenced in DPR-01 (TAKKADPALLY-SIRUR, the JCB with roadway excavation + embankment-excavated earth), is `activitySegments` actually empty and `activityAllocations` populated instead (i.e. is this DPR hitting the legacy conversion path)? If so, confirm whether `groupLegacyEquipmentActivityAllocations()` is producing the correct `boqItemId` values, or something invalid/mismatched. Report what you find — this is a lead to confirm or rule out, not an assumption to build on blindly.
+
+SECOND ISSUE — SEPARATE BUG, FOLD INTO THIS SAME BATCH: A NEW DPR CANNOT BE FINAL-SUBMITTED WHEN NO LABOUR WAS LOGGED
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is unrelated to the Work Assignment display bug above — a different, real, blocking bug confirmed by direct use of the app. Fix only this specific validation; do not touch the rest of the DPR submission flow, equipment log, activity progress, or diesel handling.
+
+BACKGROUND (confirmed by direct use, not yet traced to an exact line — this build's zip was checked and the literal message text could not be located, so it may be a dynamically-built validation message or may not exist yet in the zip reviewed; find and confirm the actual source before fixing)
+When creating a new DPR where activity/no-activity and equipment are logged normally, but the Labour Log section is left empty because no labour was used that day, the app refuses to finalize/submit the report — it only allows saving as a draft — and shows an error along the lines of "labour count cannot be negative." This is wrong: having zero labour rows is a completely valid, common day-to-day scenario (not every DPR involves labour), and it should not block submission at all.
+
+FIX
+a. Find wherever DPR submission/finalization is validated (client-side form validation and/or server-side submit endpoint) and locate the rule that is producing this "count cannot be negative" (or similarly worded) error when the Labour Log has zero entries.
+b. The likely cause is a validation step that runs over labour rows and, when there are none, ends up computing or checking a count value incorrectly (e.g. defaulting to -1, or checking a total against a minimum incorrectly) rather than correctly treating "no labour rows" as valid and simply skipping labour validation entirely.
+c. Fix it so that: zero labour rows is always valid and never blocks final submission. If a labour row DOES exist, its count should still be required to be a non-negative number (that part of the validation, if it exists for populated rows, is correct and should stay — only the zero-rows case is broken).
+d. Do not change any other section's validation or submission behavior — equipment log, activity progress, diesel, materials, everything else must continue to work exactly as it does today.
+
+TESTS
+A. Create a new DPR: log an activity, log equipment usage, add zero labour rows (leave Labour Log completely empty). Confirm the report can be fully submitted/finalized, not just saved as draft.
+B. Create a DPR with at least one labour row filled in correctly. Confirm submission still works normally, no regression.
+C. Try entering an actually negative count in a labour row that does exist (if that's possible to enter) — confirm that specific case is still correctly rejected with a validation message, so real bad input is still caught.
+
+REPORT BACK (fold into DPR-01's report)
+1. State the exact file/line and cause of the false "labour count cannot be negative" block on zero labour rows.
+2. Confirm Fix with Test A/B/C evidence.
+3. Confirm no other section's validation was touched.

@@ -493,3 +493,45 @@ mtime_ms = 1789401289006
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/271ea69d-28b2-4d60-a753-bcb739f2b4bd/22cf776b-9f3d-4b4d-9700-7105ffd4df61"
 storage_version_token = "1789401401008031"
 content_type = "image/png"
+
+[[outputs]]
+id = "bXbsDfTHDFBdUicrjodE7"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/labour-A-final-success.png"
+type = "image"
+title = "A — No labour: final submission succeeded"
+description = "Real DPR form with controlled API fixtures. No live customer DPR was created or changed."
+logical_id = "bb41d897-fc7b-4459-bcb9-afdc8c2ba25f"
+content_hash = "sha256:feb5fff49b73901a7ecaec36a72b8bde1b882d93ef7d0200d9a2c07f50664170"
+size = 35710
+mtime_ms = 1789435915353
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/bb41d897-fc7b-4459-bcb9-afdc8c2ba25f/d7c2f3e4-87ea-4ca3-b6cc-db0ce54ef072"
+storage_version_token = "1789436002266430"
+content_type = "image/png"
+
+[[outputs]]
+id = "YYMgujYSpxPdMyng2Cm2z"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/labour-B-readonly-report.png"
+type = "image"
+title = "B — Valid labour: submitted report"
+description = "Real DPR form with controlled API fixtures. No live customer DPR was created or changed."
+logical_id = "d34c66f6-0d4f-4048-b058-d32494619af4"
+content_hash = "sha256:3a6cb7aac4c3097d3b80db6697e8b2aee9634313d9a3f039bdf3e33288ea7001"
+size = 37965
+mtime_ms = 1789435917792
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d34c66f6-0d4f-4048-b058-d32494619af4/54ded2d0-9090-4f56-b0b0-c7ac5a0cee96"
+storage_version_token = "1789436003623984"
+content_type = "image/png"
+
+[[outputs]]
+id = "xqd6Ove6pSD04xOkKoWJt"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/labour-C-negative-validation.png"
+type = "image"
+title = "C — Negative labour count rejected"
+description = "Real DPR form with controlled API fixtures. No live customer DPR was created or changed."
+logical_id = "d9c7abaf-4322-4a91-89fc-18e365fa4ad4"
+content_hash = "sha256:05c0886cdb1b70d24bc524dd48312cf0094a676010bd0230bb5cdbe614c6f365"
+size = 97875
+mtime_ms = 1789435919501
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d9c7abaf-4322-4a91-89fc-18e365fa4ad4/8454bb83-e57f-4f7f-802b-1a153f30a25e"
+storage_version_token = "1789436005525397"
+content_type = "image/png"

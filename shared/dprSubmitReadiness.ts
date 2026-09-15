@@ -235,14 +235,18 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
   // C — labour rows must not masquerade as completed records.
   for (let i = 0; i < (input.labour ?? []).length; i++) {
     const l = (input.labour ?? [])[i];
-    const touched = hasText(l?.category) || pos(l?.count) || hasText(l?.task) || hasText(l?.contractor);
+    // A count value is evidence that the row was touched, including invalid
+    // values such as negatives, NaN, and Infinity. Only null/undefined mean
+    // that the count field was left untouched.
+    const hasCountEvidence = l?.count != null;
+    const touched = hasText(l?.category) || hasCountEvidence || hasText(l?.task) || hasText(l?.contractor);
     if (!touched) continue; // blank placeholder row
     const label = hasText(l.category) ? (l.category as string).trim() : "Labour row";
     if (!hasText(l.category)) {
       mandatory.push({ section: "labour", label, message: "labour category missing", rowIndex: i });
     }
-    if (!pos(l.count)) {
-      mandatory.push({ section: "labour", label, message: "labour count must be a positive number", rowIndex: i });
+    if (!(typeof l.count === "number" && Number.isFinite(l.count) && l.count >= 0)) {
+      mandatory.push({ section: "labour", label, message: "labour count must be a finite non-negative number", rowIndex: i });
     }
   }
 

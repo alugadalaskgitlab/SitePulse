@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import SiteEntry from "../../../client/src/pages/SiteEntry";
 import SiteEdit from "../../../client/src/pages/SiteEdit";
+import SiteSuccess from "../../../client/src/pages/SiteSuccess";
 import PlantEquipmentUsage from "../../../client/src/pages/PlantEquipmentUsage";
 import GuidedDpr from "../../../client/src/pages/GuidedDpr";
 import { DprEquipmentCompact } from "../../../client/src/components/DprEquipmentCompact";
@@ -442,6 +443,7 @@ const siteEditContractorDpr = {
 const fixtureState = {
   requests: [] as RequestRecord[],
   dprCreatePayloads: [] as any[],
+  dprCreateRecords: [] as any[],
   dprDraftPayloads: [] as any[],
   dprVersionPayloads: [] as any[],
   dprSubmitPayloads: [] as any[],
@@ -691,8 +693,28 @@ window.fetch = async (input, init) => {
       fixtureState.dprDraftPayloads.push({ id, payload: body || {} });
       fixtureState.draftPayloads.push({ id, payload: body || {} });
     } else {
-      fixtureState.dprCreatePayloads.push(body || {});
-      fixtureState.createdPayloads.push(body || {});
+      // Keep the request payload as the browser saw it.  The production
+      // contract historically expresses final-vs-draft through dprStatus
+      // (omitting dprStatus:"draft" means final); isDraft is fixture evidence
+      // metadata, not an injected request field.
+      const submittedPayload = body || {};
+      const submittedRecord = {
+        id,
+        payload: submittedPayload,
+        isDraft: body?.isDraft === true ? true : false,
+      };
+      fixtureState.dprCreatePayloads.push(submittedPayload);
+      fixtureState.createdPayloads.push(submittedPayload);
+      fixtureState.dprCreateRecords.push(submittedRecord);
+      try {
+        sessionStorage.setItem(
+          "__dprSiteFixtureLastSubmitted",
+          JSON.stringify(submittedRecord),
+        );
+      } catch {
+        // Session storage is only a cross-navigation convenience for the
+        // fixture's read-only evidence route; the request itself is complete.
+      }
     }
     return json(copyDprWithPayload(id, body || {}, status), 201);
   }
@@ -776,9 +798,73 @@ function FixtureSavedReport() {
   );
 }
 
+function FixtureSubmittedReport() {
+  let record: any = null;
+  try {
+    record = JSON.parse(sessionStorage.getItem("__dprSiteFixtureLastSubmitted") || "null");
+  } catch {
+    record = null;
+  }
+  const payload = record?.payload ?? {};
+  const labour = Array.isArray(payload.labour) ? payload.labour : [];
+  const progress = Array.isArray(payload.progress) ? payload.progress : [];
+  const equipmentRows = Array.isArray(payload.equipment) ? payload.equipment : [];
+  return (
+    <main className="mx-auto w-full max-w-4xl space-y-4 p-6 pb-12">
+      <header className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-emerald-950">
+        <h1 className="text-xl font-bold" data-testid="text-fixture-submitted-report-title">
+          Fixture submitted report — read-only
+        </h1>
+        <p className="mt-1 text-sm">
+          Browser evidence only. This is not a customer DPR and does not write to a production database.
+        </p>
+        <p className="mt-1 text-xs font-semibold uppercase tracking-wide">
+          Final status: {record?.isDraft === false ? "submitted (isDraft:false)" : "submitted"}
+          {" · "}DPR fixture #{record?.id ?? "unknown"}
+        </p>
+      </header>
+      <section className="rounded-lg border p-4" data-testid="fixture-submitted-summary">
+        <h2 className="font-semibold">Submitted sections</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Activities: {progress.length} · Equipment: {equipmentRows.length} · Labour rows: {labour.length}
+        </p>
+      </section>
+      <section className="rounded-lg border p-4" data-testid="fixture-submitted-labour">
+        <h2 className="font-semibold">Labour Log</h2>
+        {labour.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground" data-testid="fixture-submitted-labour-empty">
+            No labour recorded — empty Labour Log accepted for final submission.
+          </p>
+        ) : (
+          <ul className="mt-2 space-y-1 text-sm">
+            {labour.map((row: any, index: number) => (
+              <li key={index} data-testid={`fixture-submitted-labour-row-${index}`}>
+                {row.category || "Labour"} · count {row.count ?? "blank"}
+                {row.task ? ` · ${row.task}` : ""}
+                {row.contractor ? ` · ${row.contractor}` : ""}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </main>
+  );
+}
+
+// wouter's setLocation uses history.pushState. The isolated fixture routes the
+// real SiteEntry success navigation to SiteSuccess without changing production
+// navigation code.
+const originalPushState = window.history.pushState.bind(window.history);
+window.history.pushState = ((state: any, title: string, url?: string | URL | null) => {
+  originalPushState(state, title, url);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}) as typeof window.history.pushState;
+
 const mount = () => {
   queryClient.clear();
   const isEdit = window.location.pathname.startsWith("/site/edit/");
+  const isSiteSuccess = window.location.pathname.startsWith("/site/success/");
+  const isSiteReport = window.location.pathname.startsWith("/site/report/");
   const isPlantEquipmentUsage = window.location.pathname.startsWith("/plant/equipment-usage");
   const isGuidedReport = window.location.pathname.startsWith("/guided/report");
   const isGuided = window.location.pathname.startsWith("/guided");
@@ -788,13 +874,17 @@ const mount = () => {
     <QueryClientProvider client={queryClient}>
       {isGuidedReport
         ? <FixtureSavedReport />
-        : isGuided
-          ? <GuidedDpr />
-          : isPlantEquipmentUsage
-            ? <PlantEquipmentUsage />
-            : isEdit
-              ? <SiteEdit />
-              : <SiteEntry />}
+        : isSiteSuccess
+          ? <SiteSuccess />
+          : isSiteReport
+            ? <FixtureSubmittedReport />
+            : isGuided
+              ? <GuidedDpr />
+              : isPlantEquipmentUsage
+                ? <PlantEquipmentUsage />
+                : isEdit
+                  ? <SiteEdit />
+                  : <SiteEntry />}
     </QueryClientProvider>,
   );
 };

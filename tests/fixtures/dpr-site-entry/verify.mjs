@@ -18,7 +18,7 @@ import WebSocket from "ws";
 const fixtureDir = path.resolve(new URL(".", import.meta.url).pathname);
 const evidenceDir = path.join(fixtureDir, "evidence");
 mkdirSync(evidenceDir, { recursive: true });
-const baseUrl = "http://127.0.0.1:4178";
+const baseUrl = process.env.DPR_FIXTURE_BASE_URL || "http://127.0.0.1:4178";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const page = await (await fetch("http://127.0.0.1:9222/json/new?about:blank", { method: "PUT" })).json();
@@ -259,6 +259,172 @@ const verifyDprDieselDraft = async () => {
   assert(direct?.fuelStation === "HP CENTRAL" && direct?.billNumber === "BILL-42" && direct?.amountPaid === 1250, "DPR direct-purchase details were not retained");
   assert(zero?.diesel === 0 && zero?.openingDiesel == null && zero?.dieselBalanceInTank == null, "DPR zero-stock row did not save without tank readings");
   return { stockVisibleImage, contractorHiddenImage, payload: draft };
+};
+
+const clickProgressBill = async (billName) => {
+  const clicked = await evaluate(`(() => {
+    const row = document.querySelector('[data-testid="progress-row-0"]');
+    const trigger = row?.querySelector('[role="combobox"]');
+    if (!trigger) return false;
+    trigger.click();
+    return true;
+  })()`);
+  assert(clicked, "Could not open the real SiteEntry activity bill picker");
+  await waitFor(
+    `Array.from(document.querySelectorAll('[role="option"]')).some(node => (node.textContent || "").toLowerCase().includes(${quote(billName.toLowerCase())}))`,
+    `activity bill ${billName}`,
+  );
+  await clickOptionContaining(billName);
+};
+
+const prepareLabourSiteEntry = async (scenario) => {
+  await navigate(`/site/new?labour=${scenario}`, 1440, 1000, false);
+  await waitFor("!!document.querySelector('[data-testid=\"input-site\"]')", `Labour ${scenario} SiteEntry header`);
+  await waitFor("!!document.querySelector('[data-testid=\"select-engineer\"]')", `Labour ${scenario} engineer selector`);
+
+  // The fixture intentionally starts each scenario as a clean NEW SiteEntry.
+  // Clearing browser-only draft storage prevents an earlier scenario from
+  // changing the initial Labour Log shape.
+  await evaluate(`(() => {
+    localStorage.clear();
+    return true;
+  })()`);
+  await setInput("input-date", "2026-08-10");
+  await selectOption("input-site", "NARASIMHULU ROAD");
+  await selectOption("select-engineer", "SURESH KUMAR");
+
+  // Real activity: choose the fixture BOQ item and enter a measured road
+  // segment.  The programme-bar mock returns [] for overlap context and a
+  // valid bar for this BOQ item, so this is a genuine activity, not No Site
+  // Work or a fabricated placeholder.
+  await clickProgressBill("Road Work");
+  await clickTestId("progress-0-item-select");
+  await waitFor("!!document.querySelector('[data-testid=\"option-boq-item-8801\"]')", "GSB activity option");
+  await clickTestId("option-boq-item-8801");
+  await sleep(120);
+  await selectOption("select-progress-side-0", "LHS");
+  await setInput("input-progress-from-0", "12+000");
+  await setInput("input-progress-to-0", "12+100");
+  await setInput("input-progress-width-0", "7");
+  await setInput("input-progress-qty-0", "700");
+  await waitFor(
+    "document.querySelector('[data-testid=\"input-progress-qty-0\"]')?.value === '700'",
+    "valid measured activity",
+  );
+
+  // Real equipment usage: a selected JCB with both meter readings and times.
+  // Diesel is deliberately zero so this verifier exercises activity/equipment
+  // readiness without introducing an unrelated tank/source requirement.
+  await selectOption("select-equipment-0", "JCB 3DX");
+  await setInput("input-equipment-start-0", "08:00");
+  await setInput("input-equipment-end-0", "12:00");
+  await setInput("input-equipment-opening-0", "100");
+  await setInput("input-equipment-closing-0", "108");
+  await setInput("input-equipment-diesel-0", "0");
+  await waitFor(
+    "document.querySelector('[data-testid=\"input-equipment-opening-0\"]')?.value === '100' && document.querySelector('[data-testid=\"input-equipment-closing-0\"]')?.value === '108'",
+    "valid equipment usage",
+  );
+};
+
+const submitLabourSiteEntry = async ({ scenario, expectedLabour }) => {
+  await clickTestId("button-preview");
+  await waitFor("!!document.querySelector('[data-testid=\"button-submit-final\"]')", `Labour ${scenario} preview`);
+  const previewImage = await capture(`labour-${scenario}-preview`);
+  const stateBefore = await fixtureState();
+  const beforeCreate = stateBefore.dprCreatePayloads.length;
+  await clickTestId("button-submit-final");
+  await waitFor(
+    `window.__DprSiteFixture?.dprCreatePayloads.length >= ${beforeCreate + 1}`,
+    `Labour ${scenario} final /api/dprs POST`,
+  );
+
+  const state = await fixtureState();
+  const payload = state.dprCreatePayloads.at(-1);
+  const record = state.dprCreateRecords.at(-1);
+  assert(record?.isDraft === false, `Labour ${scenario} final request was not recorded as isDraft:false`);
+  assert(payload?.dprStatus !== "draft", `Labour ${scenario} final payload was marked draft`);
+  assert(Array.isArray(payload?.labour), `Labour ${scenario} payload omitted labour[]`);
+  assert(
+    JSON.stringify(payload.labour) === JSON.stringify(expectedLabour),
+    `Labour ${scenario} payload labour rows were ${JSON.stringify(payload.labour)} instead of ${JSON.stringify(expectedLabour)}`,
+  );
+
+  await waitFor("document.body.innerText.includes('Report Saved Successfully')", `Labour ${scenario} success screen`);
+  const successImage = await capture(`labour-${scenario}-final-success`);
+  const savedRecord = await evaluate("JSON.parse(sessionStorage.getItem('__dprSiteFixtureLastSubmitted') || 'null')");
+  assert(savedRecord?.id != null && savedRecord?.isDraft === false, `Labour ${scenario} did not persist its isDraft:false fixture record`);
+
+  // Reload the fixture's read-only report route, rather than inspecting a
+  // React-only success state, so the final payload is visible as evidence too.
+  await navigate(`/site/report/${savedRecord.id}`, 1440, 1000, false);
+  await waitFor("!!document.querySelector('[data-testid=\"text-fixture-submitted-report-title\"]')", `Labour ${scenario} read-only report`);
+  assert(await evaluate("document.body.innerText.includes('Fixture submitted report')"), `Labour ${scenario} report was not labelled fixture evidence`);
+  assert(await evaluate(`document.body.innerText.includes('Labour rows: ${expectedLabour.length}')`), `Labour ${scenario} read-only labour count was incorrect`);
+  const readonlyImage = await capture(`labour-${scenario}-readonly-report`);
+  return { previewImage, successImage, readonlyImage, payload, record: savedRecord };
+};
+
+const verifyDprLabour = async () => {
+  // A — no labour is a valid, empty Labour Log on a real NEW SiteEntry.
+  await prepareLabourSiteEntry("A");
+  const emptyRows = await evaluate("document.querySelectorAll('[data-testid^=\"labour-row-\"]').length");
+  assert(emptyRows === 0, `Labour A NEW SiteEntry rendered ${emptyRows} placeholder labour rows`);
+  const scenarioA = await submitLabourSiteEntry({ scenario: "A", expectedLabour: [] });
+
+  // B — one correctly populated labour row still submits normally.
+  await prepareLabourSiteEntry("B");
+  await clickTestId("button-add-labour");
+  await waitFor("!!document.querySelector('[data-testid=\"labour-row-0\"]')", "Labour B row");
+  await setInput("input-labour-count-0", "5");
+  await setInput("input-labour-task-0", "GSB LAYING");
+  await setInput("input-labour-contractor-0", "FIXTURE GANG");
+  await waitFor("document.querySelector('[data-testid=\"input-labour-count-0\"]')?.value === '5'", "Labour B count");
+  const scenarioB = await submitLabourSiteEntry({
+    scenario: "B",
+    expectedLabour: [{
+      category: "Skilled",
+      gender: "Male",
+      count: 5,
+      task: "GSB LAYING",
+      contractor: "FIXTURE GANG",
+      boqItemId: null,
+      structureId: null,
+    }],
+  });
+
+  // C — a genuinely negative populated row is blocked by the readiness dialog
+  // and must not issue any final POST.
+  await prepareLabourSiteEntry("C");
+  await clickTestId("button-add-labour");
+  await waitFor("!!document.querySelector('[data-testid=\"labour-row-0\"]')", "Labour C row");
+  await setInput("input-labour-count-0", "-0.5");
+  await setInput("input-labour-task-0", "GSB LAYING");
+  await waitFor("document.querySelector('[data-testid=\"input-labour-count-0\"]')?.value === '-0.5'", "Labour C fractional negative count");
+  await clickTestId("button-preview");
+  await waitFor("!!document.querySelector('[data-testid=\"button-submit-final\"]')", "Labour C preview");
+  const previewImage = await capture("labour-C-preview");
+  const before = await fixtureState();
+  const beforeCreate = before.dprCreatePayloads.length;
+  const beforeApiPosts = before.requests.filter((request) => request.method === "POST" && request.path === "/api/dprs").length;
+  await clickTestId("button-submit-final");
+  await waitFor("!!document.querySelector('[data-testid=\"dialog-dpr-readiness\"]')", "Labour C negative validation dialog");
+  const validationText = await bodyText();
+  assert(/labour/i.test(validationText) && /count/i.test(validationText), "Labour C validation did not identify the labour count");
+  assert(/negative|non-negative|positive|number/i.test(validationText), "Labour C validation did not explain the invalid count");
+  await sleep(120);
+  const after = await fixtureState();
+  assert(after.dprCreatePayloads.length === beforeCreate, "Labour C negative count issued a final /api/dprs POST");
+  assert(
+    after.requests.filter((request) => request.method === "POST" && request.path === "/api/dprs").length === beforeApiPosts,
+    "Labour C negative count changed the final /api/dprs POST count",
+  );
+  const validationImage = await capture("labour-C-negative-validation");
+  return {
+    A: scenarioA,
+    B: scenarioB,
+    C: { previewImage, validationImage, validationText, noFinalPost: true },
+  };
 };
 
 const verifySiteEdit = async () => {
@@ -570,6 +736,7 @@ const verifyGuidedBoqUnit = async () => {
 
 await cdp("Runtime.enable");
 const dieselDraft = await verifyDprDieselDraft();
+const labour = await verifyDprLabour();
 const edit = await verifySiteEdit();
 const plantA = await verifyPlantAStockPositive();
 const plantB = await verifyPlantBContractorPositive();
@@ -583,6 +750,7 @@ console.log(JSON.stringify({
   server: { baseUrl, cdp: "127.0.0.1:9222" },
   evidenceDirectory: evidenceDir,
   dieselDraft,
+  labour,
   edit,
   plant: {
     A_stockPositive: plantA,
