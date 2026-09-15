@@ -2385,10 +2385,8 @@ export default function SiteEdit() {
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
-              <details className="group">
-              <summary className="mb-2 min-h-11 cursor-pointer list-none py-3 text-xs font-semibold text-muted-foreground sm:min-h-0 sm:py-1">Equipment setup and additional usage details</summary>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="col-span-2">
+              <div className="space-y-3">
+              <div>
                 <Label className="text-sm">Equipment</Label>
                 <Select
                   value={entry.equipmentId ? String(entry.equipmentId) : ""}
@@ -2444,7 +2442,9 @@ export default function SiteEdit() {
                   }}
                 >
                   <SelectTrigger data-testid={`select-equipment-${idx}`}>
-                    <SelectValue placeholder="Select equipment..." />
+                    <SelectValue placeholder="Select equipment...">
+                      {entry.equipmentId ? activeEquipment.find(eq => eq.id === entry.equipmentId)?.name || entry.machine : undefined}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {activeEquipment.map((eq) => (
@@ -2473,47 +2473,47 @@ export default function SiteEdit() {
                   const handoff = usage && openUsageHandoffContext(usage);
                   return handoff ? <p className="mt-1 text-xs text-blue-700 dark:text-blue-300">{handoff}</p> : null;
                 })()}
-                {(() => {
-                  const selectedEquipForType = activeEquipment.find(e => e.id === entry.equipmentId);
-                  if (!selectedEquipForType || selectedEquipForType.ownership !== "hired") return null;
-                  return (
-                    <div className="mt-2">
-                      <Label className="text-sm">Entry Type</Label>
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={entry.entryType ?? "time_meter"}
-                          onValueChange={(val) => {
-                            const updated = [...equipment];
-                            updated[idx].entryType = val;
-                            if (val !== "trip_based") {
-                              updated[idx].numberOfTrips = null;
-                              updated[idx].tripDistance = null;
-                              updated[idx].totalKm = null;
-                            }
-                            setEquipment(updated);
-                          }}
-                        >
-                          <SelectTrigger data-testid={`select-entry-type-${idx}`} className="w-48">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="time_meter">Time / Meter Reading</SelectItem>
-                            <SelectItem value="hourly">Hourly Hire</SelectItem>
-                            <SelectItem value="daily">Daily Hire</SelectItem>
-                            <SelectItem value="trip_based">Trip Based</SelectItem>
-                            <SelectItem value="monthly">Monthly Hire</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {isDailyOrMonthly && (
-                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1.5" data-testid={`badge-entry-type-${idx}`}>
-                            {entry.entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
+              {(() => {
+                const selectedEquipForType = activeEquipment.find(e => e.id === entry.equipmentId);
+                if (!selectedEquipForType || selectedEquipForType.ownership !== "hired") return null;
+                return (
+                  <div>
+                    <Label className="text-sm">Entry Type</Label>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={entry.entryType ?? "time_meter"}
+                        onValueChange={(val) => {
+                          const updated = [...equipment];
+                          updated[idx].entryType = val;
+                          if (val !== "trip_based") {
+                            updated[idx].numberOfTrips = null;
+                            updated[idx].tripDistance = null;
+                            updated[idx].totalKm = null;
+                          }
+                          setEquipment(updated);
+                        }}
+                      >
+                        <SelectTrigger data-testid={`select-entry-type-${idx}`} className="w-48">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="time_meter">Time / Meter Reading</SelectItem>
+                          <SelectItem value="hourly">Hourly Hire</SelectItem>
+                          <SelectItem value="daily">Daily Hire</SelectItem>
+                          <SelectItem value="trip_based">Trip Based</SelectItem>
+                          <SelectItem value="monthly">Monthly Hire</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {isDailyOrMonthly && (
+                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1.5" data-testid={`badge-entry-type-${idx}`}>
+                          {entry.entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
               <div>
                 <Label className="text-sm">Operator</Label>
                 <Input
@@ -2528,6 +2528,76 @@ export default function SiteEdit() {
                   data-testid={`input-operator-${idx}`}
                 />
               </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <Label className="text-sm">Diesel Source</Label>
+                  <Select
+                    value={entry.dieselSource ?? ""}
+                    disabled={entry.plantUsageId != null}
+                    onValueChange={(value) => {
+                      const updated = [...equipment];
+                      updated[idx] = transitionDieselSource(updated[idx], value);
+                      setEquipment(updated);
+                    }}
+                  >
+                    <SelectTrigger data-testid={`select-diesel-source-${idx}`}>
+                      <SelectValue placeholder="Select diesel source" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="plant_stock">Plant Stock</SelectItem>
+                      <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
+                      <SelectItem value="contractor">Contractor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {entry.dieselSource === "direct_purchase" && (
+                  <>
+                    <div>
+                      <Label className="text-sm">Fuel Station</Label>
+                      <Input
+                        placeholder="HP / BPCL"
+                        value={entry.fuelStation ?? ""}
+                        onChange={(e) => {
+                          const updated = [...equipment];
+                          updated[idx].fuelStation = e.target.value.toUpperCase();
+                          setEquipment(updated);
+                        }}
+                        className="uppercase"
+                        data-testid={`input-fuel-station-${idx}`}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">Bill No.</Label>
+                      <Input
+                        placeholder="Receipt #"
+                        value={entry.billNumber ?? ""}
+                        onChange={(e) => {
+                          const updated = [...equipment];
+                          updated[idx].billNumber = e.target.value.toUpperCase();
+                          setEquipment(updated);
+                        }}
+                        className="uppercase"
+                        data-testid={`input-bill-number-${idx}`}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">Amount (Rs)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0"
+                        value={entry.amountPaid ?? ""}
+                        onChange={(e) => {
+                          const updated = [...equipment];
+                          updated[idx].amountPaid = e.target.value ? parseFloat(e.target.value) : null;
+                          setEquipment(updated);
+                        }}
+                        data-testid={`input-amount-paid-${idx}`}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
               {isTripBased && (
                 <>
@@ -2617,80 +2687,10 @@ export default function SiteEdit() {
                 </>
               )}
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div>
-                  <Label className="text-sm">Diesel Source</Label>
-                  <Select
-                    value={entry.dieselSource ?? ""}
-                    disabled={entry.plantUsageId != null}
-                    onValueChange={(value) => {
-                      const updated = [...equipment];
-                      updated[idx] = transitionDieselSource(updated[idx], value);
-                      setEquipment(updated);
-                    }}
-                  >
-                    <SelectTrigger data-testid={`select-diesel-source-${idx}`}>
-                      <SelectValue placeholder="Select diesel source" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="plant_stock">Plant Stock</SelectItem>
-                      <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
-                      <SelectItem value="contractor">Contractor</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {entry.dieselSource === "direct_purchase" && (
-                  <>
-                    <div>
-                      <Label className="text-sm">Fuel Station</Label>
-                      <Input
-                        placeholder="HP / BPCL"
-                        value={entry.fuelStation ?? ""}
-                        onChange={(e) => {
-                          const updated = [...equipment];
-                          updated[idx].fuelStation = e.target.value.toUpperCase();
-                          setEquipment(updated);
-                        }}
-                        className="uppercase"
-                        data-testid={`input-fuel-station-${idx}`}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm">Bill No.</Label>
-                      <Input
-                        placeholder="Receipt #"
-                        value={entry.billNumber ?? ""}
-                        onChange={(e) => {
-                          const updated = [...equipment];
-                          updated[idx].billNumber = e.target.value.toUpperCase();
-                          setEquipment(updated);
-                        }}
-                        className="uppercase"
-                        data-testid={`input-bill-number-${idx}`}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm">Amount (Rs)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="0"
-                        value={entry.amountPaid ?? ""}
-                        onChange={(e) => {
-                          const updated = [...equipment];
-                          updated[idx].amountPaid = e.target.value ? parseFloat(e.target.value) : null;
-                          setEquipment(updated);
-                        }}
-                        data-testid={`input-amount-paid-${idx}`}
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-                </details>
                 <DprEquipmentCompact
                   row={entry}
                   equipment={activeEquipment.find((item) => item.id === entry.equipmentId)}
+                  hideIdentity
                   index={idx}
                   beforeDate={header.date}
                   site={header.site}

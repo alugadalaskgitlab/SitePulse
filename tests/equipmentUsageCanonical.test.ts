@@ -6,6 +6,7 @@ import {
   currentLocalEquipmentTime,
   formatEquipmentDuration,
   formatEquipmentTime,
+  resolveEquipmentConsumptionNormRate,
   withEquipmentCreationStartTime,
 } from "../shared/equipmentUsage";
 
@@ -40,6 +41,42 @@ describe("canonical equipment usage calculation", () => {
       { entryType: "trip_based", numberOfTrips: 2, tripDistance: 10 },
     );
     expect(result).toMatchObject({ basis: "trip_based", hoursWorked: null, totalKm: 40, expectedDiesel: 8, efficiencyValue: 0.2 });
+  });
+
+  it("prefers a valid meter delta in trip mode while retaining trips as the fallback", () => {
+    const hourMeter = computeEquipmentUsage(
+      { meterType: "hour_meter", consumptionNorm: 5 },
+      { entryType: "trip_based", openingReading: 100, closingReading: 106, numberOfTrips: 2, tripDistance: 10 },
+    );
+    expect(hourMeter).toMatchObject({ basis: "hour_meter", hoursWorked: 6, totalKm: null, expectedDiesel: 30, efficiencyUnit: "L/hr" });
+
+    const odometer = computeEquipmentUsage(
+      { meterType: "odometer", consumptionNorm: 0.3 },
+      { entryType: "trip_based", openingReading: 1200, closingReading: 1250, numberOfTrips: 2, tripDistance: 10 },
+    );
+    expect(odometer).toMatchObject({ basis: "odometer", hoursWorked: null, totalKm: 50, expectedDiesel: 15, efficiencyUnit: "L/km" });
+  });
+
+  it("uses clock duration when trip mode has neither a meter nor trip distance", () => {
+    const hourMeter = computeEquipmentUsage(
+      { meterType: "hour_meter", consumptionNorm: 5 },
+      { entryType: "trip_based", startTime: "08:00", endTime: "10:00" },
+    );
+    expect(hourMeter).toMatchObject({ basis: "time_fallback", hoursWorked: 2, totalKm: null, expectedDiesel: 10, efficiencyUnit: "L/hr" });
+
+    const odometer = computeEquipmentUsage(
+      { meterType: "odometer", consumptionNorm: 0.3 },
+      { entryType: "trip_based", startTime: "08:00", endTime: "10:00" },
+    );
+    expect(odometer).toMatchObject({ basis: "time_fallback", hoursWorked: null, totalKm: 50, expectedDiesel: 15, efficiencyUnit: "L/km" });
+  });
+
+  it("resolves a trip norm through the canonical L/km conversion when no usage quantity is present", () => {
+    const equipment = { meterType: "hour_meter" as const, consumptionNorm: 5 };
+    const row = { entryType: "trip_based" };
+    const usage = computeEquipmentUsage(equipment, row);
+    expect(usage).toMatchObject({ basis: "none", efficiencyValue: null, efficiencyUnit: "L/km" });
+    expect(resolveEquipmentConsumptionNormRate(equipment, usage)).toEqual({ value: 0.2, unit: "L/km" });
   });
 
   it("computes true physical fuel, variance and an actual hourly rate", () => {

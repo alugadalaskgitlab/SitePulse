@@ -91,10 +91,75 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(compact).toContain("editable={editable}");
   });
 
-  it("keeps collapsed editable rows mounted so assignment behavior cannot change", () => {
+  it("keeps completed-row accordion behavior while setup stays mounted in the two reorganized parents", () => {
     expect(compact).toContain('editable && !expanded ? "hidden" : undefined');
     expect(compact).toContain("<EquipmentActivityAllocationEditor");
-    expect(edit).toContain('<details className="group">');
-    expect(guided).toContain('<details className="group">');
+    for (const source of [edit, guided]) {
+      expect(source).not.toContain("Equipment setup and additional usage details");
+      expect(source).not.toContain('<details className="group">');
+      expect(source).not.toContain("<summary");
+      expect(source).toContain("hideIdentity");
+    }
+    // SiteEntry is intentionally outside Fix 2 and must not opt into the
+    // identity-suppression prop.
+    expect(detailed).not.toContain("hideIdentity");
+  });
+
+  it("renders identity once at the top, then hire type/operator/source before compact usage", () => {
+    const sectionBeforeCompact = (source: string, anchor: string) => {
+      const sectionStart = source.indexOf(anchor);
+      expect(sectionStart, `missing equipment-row anchor: ${anchor}`).toBeGreaterThanOrEqual(0);
+      const compactStart = source.indexOf("<DprEquipmentCompact", sectionStart);
+      expect(compactStart, `missing compact editor after: ${anchor}`).toBeGreaterThan(sectionStart);
+      return source.slice(sectionStart, compactStart);
+    };
+    const guidedEquipment = sectionBeforeCompact(guided, "const master = activeEquipmentMaster.find");
+    const editEquipment = sectionBeforeCompact(edit, "const isTripBased = entry.entryType");
+
+    const guidedMachine = guidedEquipment.indexOf("select-eq-machine-${i}");
+    const guidedRegistration = guidedEquipment.indexOf("text-eq-reg-${i}");
+    const guidedOwner = guidedEquipment.indexOf("badge-eq-owner-${i}");
+    const guidedHireType = guidedEquipment.indexOf("Deployment / Usage Type");
+    const guidedOperator = guidedEquipment.indexOf("input-eq-operator-${i}");
+    const guidedSource = guidedEquipment.indexOf("select-eq-diesel-source-${i}");
+    const guidedPurchase = guidedEquipment.indexOf("section-eq-purchase-${i}");
+    const guidedTrip = guidedEquipment.indexOf("section-eq-trip-${i}");
+    const guidedWater = guidedEquipment.indexOf("section-eq-water-${i}");
+    expect(guidedMachine).toBeGreaterThanOrEqual(0);
+    expect(guidedMachine).toBeLessThan(guidedRegistration);
+    expect(guidedRegistration).toBeLessThan(guidedOwner);
+    expect(guidedOwner).toBeLessThan(guidedHireType);
+    expect(guidedHireType).toBeLessThan(guidedOperator);
+    expect(guidedOperator).toBeLessThan(guidedSource);
+    expect(guidedSource).toBeLessThan(guidedPurchase);
+    expect(guidedPurchase).toBeLessThan(guidedTrip);
+    expect(guidedSource).toBeLessThan(guidedWater);
+
+    const editMachine = editEquipment.indexOf("select-equipment-${idx}");
+    const editRegistration = editEquipment.indexOf("text-equipment-reg-${idx}");
+    const editOwner = editEquipment.indexOf("text-equipment-owner-${idx}");
+    const editHireType = editEquipment.indexOf("select-entry-type-${idx}");
+    const editOperator = editEquipment.indexOf("input-operator-${idx}");
+    const editSource = editEquipment.indexOf("select-diesel-source-${idx}");
+    const editPurchase = editEquipment.indexOf("input-fuel-station-${idx}");
+    const editTrip = editEquipment.indexOf("input-equipment-trips-${idx}");
+    const editWater = editEquipment.indexOf("input-equipment-water-qty-${idx}");
+    expect(editMachine).toBeGreaterThanOrEqual(0);
+    expect(editMachine).toBeLessThan(editRegistration);
+    expect(editRegistration).toBeLessThan(editOwner);
+    expect(editOwner).toBeLessThan(editHireType);
+    expect(editHireType).toBeLessThan(editOperator);
+    expect(editOperator).toBeLessThan(editSource);
+    expect(editSource).toBeLessThan(editPurchase);
+    expect(editPurchase).toBeLessThan(editTrip);
+    expect(editSource).toBeLessThan(editWater);
+
+    // The outer parent owns the identity presentation; compact only receives
+    // hideIdentity here. These exact test ids do not occur in SiteEntry or the
+    // shared compact editor, so this guards against a duplicated outer header.
+    expect((guided.match(/text-eq-reg-/g) ?? []).length).toBe(1);
+    expect((edit.match(/text-equipment-reg-/g) ?? []).length).toBe(1);
+    expect(guided).toContain("hideIdentity");
+    expect(edit).toContain("hideIdentity");
   });
 });

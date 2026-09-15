@@ -2060,12 +2060,8 @@ export default function GuidedDpr() {
                   const isDirectPurchase = pt.dieselSource === "direct_purchase";
                   return (
                     <div key={i} className="mb-3 p-3 border rounded-lg bg-muted/20 space-y-2 transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", i)} data-testid={"equipment-row-" + String(i)}>
-                      {/* The prior closed form was <details className="group">. Empty
-                          rows deliberately open now so the identity selector, not an
-                          Operating placeholder card, is the first visible control. */}
-                      <details className="group" open={!isMeaningfulEquipmentRow({ ...pt, machine: eq.machine, vehicleNo: eq.vehicleNo, operator: eq.operator, task: eq.task })}>
-                      <summary className="min-h-11 cursor-pointer list-none py-3 text-xs font-semibold text-muted-foreground sm:min-h-0 sm:py-1">Equipment setup and additional usage details</summary>
-                      {/* A. Identity */}
+                      {/* Equipment identity and usage setup stay visible while the
+                          compact editor below retains its completed-row accordion. */}
                       <div className="grid grid-cols-[1fr_auto] gap-2">
                         {/* Batch 06C §8: machine comes from the Equipment & Fleet
                             master (same selector as Detailed) — no free-typed
@@ -2181,6 +2177,15 @@ export default function GuidedDpr() {
                       {eq.vehicleNo && (
                         <p className="text-xs text-muted-foreground" data-testid={`text-eq-reg-${i}`}>Reg: {eq.vehicleNo}</p>
                       )}
+                      {master && (
+                        <Badge
+                          variant="outline"
+                          className="w-fit text-[10px] border-amber-300 text-amber-700 dark:text-amber-300"
+                          data-testid={`badge-eq-owner-${i}`}
+                        >
+                          {master.ownership === "hired" ? `HIRED: ${master.vendorName || "VENDOR"}` : "HLC OWN"}
+                        </Badge>
+                      )}
                       {linked && (() => {
                         const usage = openUsages.find((u) => u.id === pt.plantUsageId);
                         const handoff = usage && openUsageHandoffContext(usage);
@@ -2231,6 +2236,48 @@ export default function GuidedDpr() {
                           <Input placeholder="Operator name" value={eq.operator} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, operator: ev.target.value } : r))} data-testid={`input-eq-operator-${i}`} />
                         </div>
                       </div>
+                      {/* D. Source and purchase evidence. Diesel quantity and
+                          source-gated tank readings live once in the compact
+                          component below. */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Diesel Source</Label>
+                        <Select
+                          value={(pt.dieselSource as string) ?? ""}
+                          disabled={linked}
+                          onValueChange={(v) => setEquipment((p) => p.map((r, j) => j === i
+                            ? { ...r, passthrough: transitionDieselSource(r.passthrough, v) }
+                            : r))}
+                        >
+                          <SelectTrigger data-testid={`select-eq-diesel-source-${i}`}><SelectValue placeholder="Select diesel source" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="plant_stock">Plant Stock</SelectItem>
+                            <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
+                            <SelectItem value="contractor">Contractor</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {isDirectPurchase && (
+                        <div className="grid grid-cols-3 gap-2" data-testid={`section-eq-purchase-${i}`}>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Fuel Station</Label>
+                            <Input placeholder="HP / BPCL" value={pt.fuelStation ?? ""}
+                              onChange={(ev) => setPassthroughField(i, "fuelStation", ev.target.value.toUpperCase(), false)}
+                              className="uppercase" data-testid={`input-eq-fuel-station-${i}`} />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Bill No.</Label>
+                            <Input placeholder="Receipt #" value={pt.billNumber ?? ""}
+                              onChange={(ev) => setPassthroughField(i, "billNumber", ev.target.value.toUpperCase(), false)}
+                              className="uppercase" data-testid={`input-eq-bill-number-${i}`} />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Amount (Rs)</Label>
+                            <Input type="number" inputMode="decimal" placeholder="0" value={pt.amountPaid ?? ""}
+                              onChange={(ev) => setPassthroughField(i, "amountPaid", ev.target.value, true)}
+                              data-testid={`input-eq-amount-paid-${i}`} />
+                          </div>
+                        </div>
+                      )}
                       {/* Trip Based — same fields and round-trip km rule as Detailed */}
                       {isTripBased && (
                         <div className="grid grid-cols-3 gap-2" data-testid={`section-eq-trip-${i}`}>
@@ -2289,55 +2336,13 @@ export default function GuidedDpr() {
                           </div>
                         </div>
                       )}
-                      {/* D. Source and purchase evidence. Diesel quantity and
-                          source-gated tank readings live once in the compact
-                          component below. */}
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Diesel Source</Label>
-                        <Select
-                          value={(pt.dieselSource as string) ?? ""}
-                          disabled={linked}
-                          onValueChange={(v) => setEquipment((p) => p.map((r, j) => j === i
-                            ? { ...r, passthrough: transitionDieselSource(r.passthrough, v) }
-                            : r))}
-                        >
-                          <SelectTrigger data-testid={`select-eq-diesel-source-${i}`}><SelectValue placeholder="Select diesel source" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="plant_stock">Plant Stock</SelectItem>
-                            <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
-                            <SelectItem value="contractor">Contractor</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {isDirectPurchase && (
-                        <div className="grid grid-cols-3 gap-2" data-testid={`section-eq-purchase-${i}`}>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Fuel Station</Label>
-                            <Input placeholder="HP / BPCL" value={pt.fuelStation ?? ""}
-                              onChange={(ev) => setPassthroughField(i, "fuelStation", ev.target.value.toUpperCase(), false)}
-                              className="uppercase" data-testid={`input-eq-fuel-station-${i}`} />
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Bill No.</Label>
-                            <Input placeholder="Receipt #" value={pt.billNumber ?? ""}
-                              onChange={(ev) => setPassthroughField(i, "billNumber", ev.target.value.toUpperCase(), false)}
-                              className="uppercase" data-testid={`input-eq-bill-number-${i}`} />
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Amount (Rs)</Label>
-                            <Input type="number" inputMode="decimal" placeholder="0" value={pt.amountPaid ?? ""}
-                              onChange={(ev) => setPassthroughField(i, "amountPaid", ev.target.value, true)}
-                              data-testid={`input-eq-amount-paid-${i}`} />
-                          </div>
-                        </div>
-                      )}
                       {advisory && (
                         <p className="text-xs text-amber-700 dark:text-amber-400" data-testid={`text-eq-dup-advisory-${i}`}>{advisory}</p>
                       )}
-                      </details>
                       <DprEquipmentCompact
                         row={{ ...pt, machine: eq.machine, vehicleNo: eq.vehicleNo }}
                         equipment={master}
+                        hideIdentity
                         index={i}
                         beforeDate={date}
                         site={siteName}

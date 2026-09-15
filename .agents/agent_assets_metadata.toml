@@ -1011,3 +1011,157 @@ mtime_ms = 1789448750293
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c2b44b4d-09e7-4129-9312-dd10448972ef/da92dadc-e8a7-4786-aafa-dcd37f2d0617"
 storage_version_token = "1789448806794402"
 content_type = "image/png"
+
+[[outputs]]
+id = "SgMF_R3QM4xcELHKZ-5Tb"
+uri = "file://tests/fixtures/dpr02/evidence/dpr02-A-guided-monthly-hire-desktop.png"
+type = "image"
+title = "A — Monthly hire meter fields"
+description = "Production components rendered with controlled test fixtures, not customer DPR records. No save or submission performed."
+logical_id = "43c99fe0-4252-4c99-9fc2-421ebdc5489f"
+content_hash = "sha256:8175ba7f00e15887cdaa80aa6d822ec6a9da9332bf932c24e5a84dbb32a26286"
+size = 68318
+mtime_ms = 1789492208971
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/43c99fe0-4252-4c99-9fc2-421ebdc5489f/d6c23d18-4a75-4203-8932-efc7649a4f30"
+storage_version_token = "1789492315088781"
+content_type = "image/png"
+
+[[outputs]]
+id = "Q8QPnsW90ZYIbcoQJbgG7"
+uri = "file://tests/fixtures/dpr02/evidence/dpr02-A-guided-daily-hire-desktop.png"
+type = "image"
+title = "B — Daily hire meter fields"
+description = "Production components rendered with controlled test fixtures, not customer DPR records. No save or submission performed."
+logical_id = "08c22fa5-2651-46c9-b223-312f9ec29af1"
+content_hash = "sha256:db0a29c730f42a9f77c487db43e5ee7765013860dd28fb587153db84bd3e3924"
+size = 66032
+mtime_ms = 1789492209563
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/08c22fa5-2651-46c9-b223-312f9ec29af1/ab8fcb6b-1908-4f73-ba81-64feb36b8c07"
+storage_version_token = "1789492316659701"
+content_type = "image/png"
+
+[[outputs]]
+id = "cdY7Guf1cwo7MmUL27TYl"
+uri = "file://tests/fixtures/dpr02/evidence/dpr02-A-guided-trip-based-desktop.png"
+type = "image"
+title = "B — Trip fields plus odometer"
+description = "Production components rendered with controlled test fixtures, not customer DPR records. No save or submission performed."
+logical_id = "d55eb55a-a50b-4b10-87ac-94f5b8263df8"
+content_hash = "sha256:a89958f2010dcfed6e78b473325b08ea83b7538a01426c8497a38e94aec1ab3c"
+size = 70995
+mtime_ms = 1789492210163
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d55eb55a-a50b-4b10-87ac-94f5b8263df8/b2153562-0174-483f-a864-b44755a8ccb1"
+storage_version_token = "1789492318201360"
+content_type = "image/png"
+
+[[outputs]]
+id = "kYZ7sfnqmOz9nmhSZjPJ2"
+uri = "file://tests/fixtures/dpr02/evidence/dpr02-B-meter-and-clock-calculations.png"
+type = "image"
+title = "C — Meter and clock fallback calculations"
+description = "Production components rendered with controlled test fixtures, not customer DPR records. No save or submission performed."
+logical_id = "d2b0ae5c-8fc1-4e8a-9965-95837b13b960"
+content_hash = "sha256:49b9c201d9876824b040a5ff7cd897babf0deab807d33bcadb13403866d59da5"
+size = 14148
+mtime_ms = 1789492213683
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d2b0ae5c-8fc1-4e8a-9965-95837b13b960/5fc438fe-3e82-461f-9b73-c826fe13ce48"
+storage_version_token = "1789492319403267"
+content_type = "image/png"
+
+[[outputs]]
+id = "KL7DqIasVtPyHTKNlKm0X"
+uri = "file://tests/fixtures/dpr02/evidence/dpr02-D-guided-identity-once.png"
+type = "image"
+title = "D — Guided DPR equipment order"
+description = "Production components rendered with controlled test fixtures, not customer DPR records. No save or submission performed."
+logical_id = "9dec7d8f-98fc-45a4-9c4b-151d8e1a5932"
+content_hash = "sha256:22dda74fdc72cf3b56eec59982f6048ced71b4c7fb795649b8060f8b426ad64b"
+size = 68336
+mtime_ms = 1789492217242
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9dec7d8f-98fc-45a4-9c4b-151d8e1a5932/f23393a5-e1f5-44fe-972a-9cc1a6764242"
+storage_version_token = "1789492321106766"
+content_type = "image/png"
+
+[[outputs]]
+id = "CHNcLTtQlOXnsrTJKM4Uh"
+uri = "file://tests/fixtures/dpr02/evidence/dpr02-D-siteedit-identity-once.png"
+type = "image"
+title = "D — Edit DPR equipment order"
+description = "Production components rendered with controlled test fixtures, not customer DPR records. No save or submission performed."
+logical_id = "72780c31-b353-4753-b489-28160e6ef9a0"
+content_hash = "sha256:d7a7af11806c8778e484c30522fdb60da7f3d6f52e32a6c192445173a9a97303"
+size = 70296
+mtime_ms = 1789492218872
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/72780c31-b353-4753-b489-28160e6ef9a0/866e4ea7-ac29-41a9-b5e7-9b75eaefecb3"
+storage_version_token = "1789492322636155"
+content_type = "image/png"
+
+[[outputs]]
+id = "5DiM4aKgjdSN4Wx4Y9FQO"
+uri = "file://tests/fixtures/dpr02/evidence/dpr02-E-contractor-norm-no-dip.png"
+type = "image"
+title = "E — Expected rate from norm"
+description = "Production components rendered with controlled test fixtures, not customer DPR records. No save or submission performed."
+logical_id = "4bdb6c79-a617-4a87-bbdc-35f746e158c4"
+content_hash = "sha256:acf5a9edebd8e483a0e16933af6953d7e8f189c07f6aff79b389ea706ea97705"
+size = 21743
+mtime_ms = 1789492220092
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4bdb6c79-a617-4a87-bbdc-35f746e158c4/8b75f9db-504a-4fb0-ae96-7f495b9c3476"
+storage_version_token = "1789492323888507"
+content_type = "image/png"
+
+[[outputs]]
+id = "0cPGHfj1pwh3xlp0ajeYP"
+uri = "file://tests/fixtures/dpr02/evidence/dpr02-F-confirmed-actual-rate.png"
+type = "image"
+title = "F — Confirmed actual rate"
+description = "Production components rendered with controlled test fixtures, not customer DPR records. No save or submission performed."
+logical_id = "566dcab2-e4b7-4ca2-b634-7481c2367dca"
+content_hash = "sha256:a4a698b4a157e7ba37c7a813c6418ba1a75b476772d96408afcc609b88f9d6c0"
+size = 20114
+mtime_ms = 1789492220608
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/566dcab2-e4b7-4ca2-b634-7481c2367dca/369b5e50-ba20-48f6-8432-b1f97378f4d3"
+storage_version_token = "1789492325308902"
+content_type = "image/png"
+
+[[outputs]]
+id = "7RyQWHgE0MMOJZW04lMuX"
+uri = "file://tests/fixtures/dpr02/evidence/dpr02-G-historical-monthly-daily-fallback.png"
+type = "image"
+title = "G — Historical-shaped report fallback"
+description = "Production components rendered with controlled test fixtures, not customer DPR records. No save or submission performed."
+logical_id = "f1b08636-152d-477a-babc-f0e19b4dfe77"
+content_hash = "sha256:b5f82b1237d0a2e97770f1355af48fbeb2d920d8b3456fb122d72885f913b567"
+size = 21787
+mtime_ms = 1789492221080
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f1b08636-152d-477a-babc-f0e19b4dfe77/ecbd761b-f2a8-43a9-b408-ff2516a8b022"
+storage_version_token = "1789492326580920"
+content_type = "image/png"
+
+[[outputs]]
+id = "G9QgpJgfKatKdqYHNcKY4"
+uri = "file://tests/fixtures/dpr02/evidence/dpr02-G-historical-trip-stored-rate.png"
+type = "image"
+title = "G — Preserved stored trip rate"
+description = "Production components rendered with controlled test fixtures, not customer DPR records. No save or submission performed."
+logical_id = "0d318a51-b662-456b-b8d9-de270ebe978c"
+content_hash = "sha256:2b45de98738930886bb3a6a91d04c48522e5c60cac966ae93277ffb7132c76fb"
+size = 20254
+mtime_ms = 1789492221544
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0d318a51-b662-456b-b8d9-de270ebe978c/317bf194-b115-464c-aed7-680369bbea08"
+storage_version_token = "1789492327932497"
+content_type = "image/png"
+
+[[outputs]]
+id = "DwF8hKpmlDevFCFSQXagI"
+uri = "file://tests/fixtures/dpr02/evidence/dpr02-H-siteentry-shared-meter-desktop.png"
+type = "image"
+title = "H — SiteEntry shared meter controls"
+description = "Production components rendered with controlled test fixtures, not customer DPR records. No save or submission performed."
+logical_id = "35f9f2b3-0846-4069-94b5-4a549f318c9a"
+content_hash = "sha256:0ff185ea6f1270056044e777867a04e29a0a9e9a35556ee77e1d940c2ff6279e"
+size = 39228
+mtime_ms = 1789492225016
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/35f9f2b3-0846-4069-94b5-4a549f318c9a/f5059616-9d7d-4357-9022-f6eaed211661"
+storage_version_token = "1789492329307352"
+content_type = "image/png"

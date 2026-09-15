@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
-import { calculateEquipmentClockDuration, computeEquipmentFuelSummary, formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
+import { calculateEquipmentClockDuration, computeEquipmentFuelSummary, formatEquipmentDuration, formatEquipmentTime, resolveEquipmentConsumptionNormRate } from "@shared/equipmentUsage";
 import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { EquipmentActivityAllocationEditor, type EquipmentActivitySegment } from "@/components/EquipmentActivityAllocationEditor";
 import { groupLegacyEquipmentActivityAllocations, resolveEquipmentAllocationParentDuration } from "@shared/equipmentActivityAllocations";
@@ -40,7 +40,7 @@ function SectionHeading({ children }: { children: ReactNode }) {
   return <div className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-700 dark:text-slate-200">{children}</div>;
 }
 
-export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true }: {
+export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, hideIdentity = false }: {
   row: DprEquipmentFields;
   equipment?: { meterType?: string | null; consumptionNorm?: number | null; ownership?: string | null; vendorName?: string | null } | null;
   onChange?: (patch: Partial<DprEquipmentFields>) => void;
@@ -57,35 +57,62 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
    * hidden control cannot receive an invisible value.
    */
   enableTankContinuity?: boolean;
+  /**
+   * The surrounding entry form may already render the machine identity. Keep
+   * the compact header's status and expand/collapse controls, while allowing
+   * those callers to avoid showing the same identity twice.
+   */
+  hideIdentity?: boolean;
 }) {
   const visibleRow = isVisibleEquipmentRow(row);
   const continuityAppliedFor = useRef<string | null>(null);
   const preview = useMemo(() => computeEquipmentUsage(equipment, row), [equipment, row]);
   const isPlantStock = row.dieselSource === "plant_stock";
-  const usesMeterReadings = row.entryType !== "daily" && row.entryType !== "monthly" && row.entryType !== "trip_based";
   const hiredVendorLabel = equipment?.ownership === "hired" ? `Hired: ${equipment.vendorName?.trim() || "Vendor not recorded"}` : null;
   const tankNeedsConfirmation = isPlantStock && (row.openingDiesel != null || row.dieselBalanceInTank != null) && !row.dieselBalanceConfirmed;
-  const rowLooksComplete = !!row.machine && !!row.endTime && (!usesMeterReadings || row.closingReading != null) && !row.breakdowns?.length && !preview.warning && !tankNeedsConfirmation;
+  const rowLooksComplete = !!row.machine && !!row.endTime && row.closingReading != null && !row.breakdowns?.length && !preview.warning && !tankNeedsConfirmation;
   const [expanded, setExpanded] = useState(index === 0 || !rowLooksComplete);
   const summaryUsage = useMemo(() => ({
     ...preview,
-    runtime: preview.runtime > 0 ? preview.runtime : Number(row.totalKm ?? row.hoursWorked ?? 0),
-    efficiencyUnit: row.totalKm != null ? "L/km" as const : preview.efficiencyUnit,
-  }), [preview, row.totalKm, row.hoursWorked]);
+    runtime: preview.runtime,
+    efficiencyUnit: preview.efficiencyUnit,
+  }), [preview]);
+  const historicalSummaryUsage = useMemo(() => {
+    const storedTotalKm = row.totalKm == null ? null : Number(row.totalKm);
+    const storedHours = row.hoursWorked == null ? null : Number(row.hoursWorked);
+    const hasStoredTotalKm = storedTotalKm != null && Number.isFinite(storedTotalKm) && storedTotalKm >= 0;
+    const hasStoredHours = storedHours != null && Number.isFinite(storedHours) && storedHours >= 0;
+
+    if (!editable) {
+      if (hasStoredTotalKm) return { ...preview, runtime: storedTotalKm!, efficiencyUnit: "L/km" as const };
+      if (hasStoredHours) return { ...preview, runtime: storedHours!, efficiencyUnit: "L/hr" as const };
+      return summaryUsage;
+    }
+    if (preview.runtime > 0) return summaryUsage;
+    if (preview.efficiencyUnit === "L/km" && hasStoredTotalKm) {
+      return { ...preview, runtime: storedTotalKm!, efficiencyUnit: "L/km" as const };
+    }
+    if (preview.efficiencyUnit === "L/hr" && hasStoredHours) {
+      return { ...preview, runtime: storedHours!, efficiencyUnit: "L/hr" as const };
+    }
+    return summaryUsage;
+  }, [editable, preview, row.totalKm, row.hoursWorked, summaryUsage]);
   // Direct-purchase and contractor diesel never represent the machine's
   // physical tank movement. Legacy rows can still carry stale observations,
   // but they must not manufacture an actual-consumption/variance result.
-  const fuel = useMemo(() => computeEquipmentFuelSummary(summaryUsage, {
+  const fuel = useMemo(() => computeEquipmentFuelSummary(historicalSummaryUsage, {
     openingTank: isPlantStock ? row.openingDiesel : null,
     dieselIssued: row.diesel,
     closingTank: isPlantStock ? row.dieselBalanceInTank : null,
     expectedDiesel: row.expectedDiesel,
-  }), [summaryUsage, isPlantStock, row.openingDiesel, row.diesel, row.dieselBalanceInTank, row.expectedDiesel]);
+  }), [historicalSummaryUsage, isPlantStock, row.openingDiesel, row.diesel, row.dieselBalanceInTank, row.expectedDiesel]);
   const tankKnown = isPlantStock && (row.openingDiesel != null || row.dieselBalanceInTank != null);
   const clockHours = useMemo(() => calculateEquipmentClockDuration(row.startTime, row.endTime), [row.startTime, row.endTime]);
   const usageQuantity = preview.totalKm != null
     ? { label: "Distance", value: `${number(preview.totalKm, 2)} km` }
     : { label: "Working Hours", value: preview.hoursWorked == null ? "—" : `${number(preview.hoursWorked, 3)} h` };
+  const { value: consumptionNorm, unit: consumptionNormUnit } = resolveEquipmentConsumptionNormRate(equipment, historicalSummaryUsage);
+  const hasConfirmedActualRate = row.dieselBalanceConfirmed === true && fuel.actualRate != null;
   const allocationParent = useMemo(() => resolveEquipmentAllocationParentDuration({
     startTime: row.startTime,
     endTime: row.endTime,
@@ -125,10 +152,10 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
   return (
     <article className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_8px_20px_rgba(15,23,42,.055)] dark:border-slate-700 dark:bg-slate-900/50" data-testid={`equipment-compact-${index}`}>
       <header className={`flex flex-wrap items-center justify-between gap-2 bg-slate-100/80 px-3 py-2.5 dark:bg-slate-800/60 ${expanded || !editable ? "border-b border-slate-200 dark:border-slate-700" : ""}`}>
-        <div className="flex min-w-0 items-center gap-2">
+         {!hideIdentity && <div className="flex min-w-0 items-center gap-2">
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-400"><Gauge className="h-4 w-4" /></span>
            <div className="min-w-0"><div className="truncate text-sm font-bold tracking-[0.03em] text-slate-950 dark:text-slate-50 sm:text-base">{dash(row.machine)}</div><div className="truncate text-xs font-medium text-slate-500">{dash(row.vehicleNo)}{row.operator ? ` · ${row.operator}` : ""} · Machine day {index + 1}</div>{hiredVendorLabel && <div className="truncate text-xs font-semibold text-amber-800 dark:text-amber-300" data-testid={`equipment-owner-${index}`}>{hiredVendorLabel}</div>}</div>
-        </div>
+         </div>}
         <div className="flex items-center gap-1.5">
            {row.breakdowns?.length ? <Badge variant="destructive" className="text-xs">{row.breakdowns.length} breakdown{row.breakdowns.length > 1 ? "s" : ""}</Badge> : <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-xs text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">Operating</Badge>}
           {preview.warning && <span title={preview.warning} className="text-amber-700 dark:text-amber-400"><CircleAlert className="h-4 w-4" /></span>}
@@ -145,10 +172,10 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
         <span className="text-right font-semibold text-amber-700 dark:text-amber-300">Open details</span>
       </button>}
 
-      {(!editable || expanded) && <>
-       {editable && <section className={`grid grid-cols-2 border-b border-slate-200 bg-slate-50/70 text-xs dark:border-slate-700 dark:bg-slate-950/20 ${usesMeterReadings ? "sm:grid-cols-6" : "sm:grid-cols-4"}`}>
-         {usesMeterReadings && <><div className="border-b border-r border-slate-200 px-3 py-2 sm:border-b-0 dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Opening Meter</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="number" step="0.1" value={row.openingReading ?? ""} disabled={row.plantUsageId != null} onChange={event => setNumber("openingReading", event.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-opening-meter-${index}`} /></div>
-         <div className="border-b border-slate-200 px-3 py-2 sm:border-b-0 sm:border-r dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{equipment?.meterType === "odometer" ? "Closing Odometer" : "Closing Meter"}</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="number" step="0.1" value={row.closingReading ?? ""} onChange={event => setNumber("closingReading", event.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-closing-meter-${index}`} /></div></>}
+       {(!editable || expanded) && <>
+        {editable && <section className="grid grid-cols-2 border-b border-slate-200 bg-slate-50/70 text-xs dark:border-slate-700 dark:bg-slate-950/20 sm:grid-cols-6">
+          <div className="border-b border-r border-slate-200 px-3 py-2 sm:border-b-0 dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{equipment?.meterType === "odometer" ? "Opening Odometer" : "Opening Meter"}</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="number" step="0.1" value={row.openingReading ?? ""} disabled={row.plantUsageId != null} onChange={event => setNumber("openingReading", event.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-opening-meter-${index}`} /></div>
+          <div className="border-b border-slate-200 px-3 py-2 sm:border-b-0 sm:border-r dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{equipment?.meterType === "odometer" ? "Closing Odometer" : "Closing Meter"}</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="number" step="0.1" value={row.closingReading ?? ""} onChange={event => setNumber("closingReading", event.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-closing-meter-${index}`} /></div>
          <div className="border-r border-slate-200 px-3 py-2 dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Start</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={row.startTime ?? ""} disabled={row.plantUsageId != null} onChange={event => onChange?.({ startTime: event.target.value })} data-testid={`equipment-compact-start-${index}`} /></div>
          <div className="border-r border-slate-200 px-3 py-2 dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">End</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={row.endTime ?? ""} onChange={event => onChange?.({ endTime: event.target.value })} data-testid={`equipment-compact-end-${index}`} /></div>
         <div className="col-span-2 px-3 py-2 sm:col-span-1"><div className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Clock Duration</div><div className="mt-2 text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100">{formatEquipmentDuration(clockHours)}</div></div>
@@ -157,7 +184,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
 
       {!editable && <div className="grid divide-y divide-slate-200 dark:divide-slate-700 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
         <section className="p-4"><SectionHeading>Equipment</SectionHeading><div className="grid grid-cols-2 gap-4"><Detail label="Machine" value={dash(row.machine)} emphasis /><Detail label="Registration / equipment no." value={dash(row.vehicleNo)} /><Detail label="Operator" value={dash(row.operator)} />{hiredVendorLabel && <Detail label="Owner / vendor" value={hiredVendorLabel} />}<Detail label="Entry / Hire Type" value={dash(row.entryType).replaceAll("_", " ")} /></div></section>
-        <section className="p-4"><SectionHeading>Usage Start</SectionHeading><div className="grid grid-cols-2 gap-4"><Detail label="Opening Meter" value={dash(row.openingReading)} /><Detail label="Start Time" value={formatEquipmentTime(row.startTime)} emphasis /></div></section>
+         <section className="p-4"><SectionHeading>Usage Start</SectionHeading><div className="grid grid-cols-2 gap-4"><Detail label={equipment?.meterType === "odometer" ? "Opening Odometer" : "Opening Meter"} value={dash(row.openingReading)} /><Detail label="Start Time" value={formatEquipmentTime(row.startTime)} emphasis /></div></section>
         <section className="p-4"><SectionHeading>Usage End</SectionHeading><div className="grid grid-cols-2 gap-4"><Detail label={equipment?.meterType === "odometer" ? "Closing Odometer" : "Closing Meter"} value={dash(row.closingReading)} /><Detail label="End Time" value={formatEquipmentTime(row.endTime)} emphasis /><Detail label={equipment?.meterType === "odometer" || preview.totalKm != null ? "Distance" : "Meter Working Hours"} value={equipment?.meterType === "odometer" || preview.totalKm != null ? (preview.totalKm == null ? "—" : `${number(preview.totalKm, 2)} km`) : (preview.basis === "hour_meter" && preview.hoursWorked != null ? `${number(preview.hoursWorked)} h` : "—")} emphasis /><Detail label="Clock Duration" value={formatEquipmentDuration(clockHours)} emphasis /></div></section>
       </div>}
 
@@ -192,7 +219,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
           <Detail label="Actual Consumed" value={fuel.actualConsumed == null ? "Awaiting tank dip" : `${number(fuel.actualConsumed)} L`} emphasis />
           <Detail label="Expected" value={fuel.expectedDiesel == null ? "—" : `${number(fuel.expectedDiesel)} L`} />
           <Detail label="Variance" value={fuel.variance == null ? "—" : `${fuel.variance > 0 ? "+" : ""}${number(fuel.variance)} L`} emphasis />
-          <Detail label="Actual Consumption Rate" value={fuel.actualRate == null ? "—" : `${number(fuel.actualRate)} ${fuel.actualRateUnit}`} emphasis />
+           <Detail label={hasConfirmedActualRate ? "Actual Consumption Rate · from confirmed tank dip" : "Expected Consumption Rate · from norm, actual unavailable"} value={hasConfirmedActualRate ? `${number(fuel.actualRate)} ${fuel.actualRateUnit}` : consumptionNorm == null ? "—" : `${number(consumptionNorm)} ${consumptionNormUnit}`} emphasis />
         </div>
         <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">Variance is actual consumed minus expected; a positive value means more fuel was consumed than expected.</p>
       </section>}

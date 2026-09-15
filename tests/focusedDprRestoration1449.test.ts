@@ -36,8 +36,10 @@ describe("focused DPR restoration", () => {
       expect(source).not.toContain("Chainage changed — recalculated length");
     }
     expect(siteEntry).toContain("<details open className=\"group\">");
-    expect(siteEdit).toContain("<details className=\"group\">");
-    expect(guided).toContain("<details className=\"group\">");
+    for (const source of [siteEdit, guided]) {
+      expect(source).not.toContain("Equipment setup and additional usage details");
+      expect(source).toContain("hideIdentity");
+    }
     expect(siteEntry).toMatch(/data-testid=\{`input-progress-length-\$\{idx\}`\}[\s\S]{0,500}?\/>/);
     expect(siteEntry).toMatch(/<Input[\s\S]{0,350}?readOnly[\s\S]{0,350}?data-testid=\{`input-progress-length-\$\{idx\}`\}/);
     expect(siteEdit).toMatch(/<Input[\s\S]{0,350}?readOnly[\s\S]{0,350}?data-testid=\{`input-length-\$\{idx\}`\}/);

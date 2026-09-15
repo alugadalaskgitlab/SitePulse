@@ -1,0 +1,63 @@
+INSTRUCTION DPR-02: Reorganize the equipment log entry form, show meter/KM reading fields for every hire basis (not just hourly), and add a norm-based fallback consumption rate on the report
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a layout and field-visibility fix, not a data change. Every fix below must render correctly for ALL existing/historical DPR records the moment it ships — none of this data is being migrated or backfilled, it is a pure render change on fields that already exist and are already stored. Do not touch VB-14/VB-15/VB-16/VB-17/DIESEL-03, Work Programme, or the DPR-01 labour-submission fix. Do not touch "Physical Tank Balance Confirmed" or the opening-meter/opening-tank continuity seeding — both were investigated separately and are already correct and intentional (see BACKGROUND #4). Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+
+1. client/src/components/DprEquipmentCompact.tsx is the SHARED component that renders equipment usage in three different screens: client/src/pages/GuidedDpr.tsx (~line 2338), client/src/pages/SiteEntry.tsx, and the read-only report view (via SiteReport.tsx → this same component with editable=false). Fixing this one file fixes the entry form and the report together, and — because the report renders live from the stored row each time it's opened rather than from a frozen snapshot — a layout fix here applies automatically to every historical DPR the instant it ships. No backfill needed.
+
+2. Meter/KM fields are currently hidden for most hire types. In DprEquipmentCompact.tsx line 68: `const usesMeterReadings = row.entryType !== "daily" && row.entryType !== "monthly" && row.entryType !== "trip_based";` This gate controls whether Opening/Closing Meter (or KM) inputs appear in the EDITABLE section (~line 148-156). Result: for Daily Hire, Monthly Hire, or Trip Based equipment, the meter/KM fields never appear at all in the entry form — confirmed directly matching the reported screenshot (a Monthly Hire soil compactor showing no meter fields). The READ-ONLY report section (~line 159-161, "Usage Start"/"Usage End") has NO such gate — it always shows Opening Meter/Closing Meter (or "—" if not recorded) regardless of entryType. So this bug is isolated to the entry form only; the report already shows these fields correctly today.
+
+3. The entry form's existing meter/time row (~line 149-156) already places meter fields BEFORE start/end time, in one single row (Opening Meter | Closing Meter | Start | End | Clock Duration | Working Hours/Distance) — this ordering is already correct once the fields are visible; it just needs the entryType gate removed. Whether it reads "Opening/Closing Meter" or "Opening/Closing Odometer" plus a Distance figure instead of Working Hours is already driven correctly by `equipment?.meterType === "odometer"` (~line 151, 161) — this already covers tippers/vehicles with a KM odometer. No new field or new concept is needed for tippers — the existing meterType-driven labeling just needs to actually render for every hire basis.
+
+4. "Physical Tank Balance Confirmed" (the checkbox at ~line 185) is NOT redundant with typing a closing-dip number. shared/equipmentPerformance.ts, resolveDieselPerformance() (~line 390-405) only treats a tank-measured actual-consumption figure as trustworthy when `dieselBalanceConfirmed === true` — an entered number alone is not enough; unconfirmed rows fall back to the cruder issued-fuel-only estimate. This is a deliberate physical-verification attestation, separate from data entry, and is also what the existing opening-tank continuity seeding (DprEquipmentCompact.tsx ~line 100-112, `/api/equipment/:id/latest-confirmed-diesel-tank`) relies on to know a prior closing figure is trustworthy enough to reuse. Leave this exactly as it is.
+
+5. Two screens wrap equipment identity, deployment/usage type, operator, and diesel source inside a collapsible `<details><summary>Equipment setup and additional usage details</summary>...</details>` block that auto-collapses as soon as the row becomes "meaningful" (i.e. right after a machine is picked): client/src/pages/GuidedDpr.tsx (~line 2067) and client/src/pages/SiteEdit.tsx (~line 2389). DprEquipmentCompact then renders AFTER this collapsed block closes, with its OWN identity header (machine name, registration, hired-vendor badge) — so identity is shown twice, the second time only after the confusing collapsed section, and the actual usage/fuel/work-assignment fields end up appearing well below where the person expects the form to start. client/src/pages/SiteEntry.tsx does NOT have this wrapper — it already goes straight from machine identity into DprEquipmentCompact's own header/fields with no collapsed intermediate section, and is not in scope for this fix.
+
+FIX 1 — SHOW METER/KM READING FIELDS FOR EVERY HIRE BASIS
+a. In DprEquipmentCompact.tsx, remove the entryType-based restriction on `usesMeterReadings` (line 68) so Opening/Closing Meter (or Opening/Closing Odometer for meterType === "odometer" equipment) always render in the editable section, for every entryType (time_meter, hourly, daily, monthly, trip_based).
+b. Keep the existing single-row layout and existing field order (meter/KM readings before start/end time) — do not redesign this row, only remove the gate hiding it.
+c. Confirm computeEquipmentUsage (client/src/lib/equipmentUsage.ts and/or shared/equipmentUsage.ts) already correctly derives Working Hours/Distance from the meter/KM delta when both readings are present, and falls back to clock duration (start/end time difference) when a reading is missing, for EVERY entryType — not just time_meter. If any entryType-specific branch currently assumes meter fields are absent and needs adjusting to use them when present, fix it; otherwise this is just confirming existing behavior now reaches these hire types for the first time.
+d. Trip Based equipment keeps its existing Trip/Distance fields (GuidedDpr.tsx isTripBased section, SiteEntry.tsx equivalent) in addition to — not instead of — the meter/KM fields, since a trip-based vehicle can still have an odometer reading worth recording.
+
+FIX 2 — REMOVE THE COLLAPSED "EQUIPMENT SETUP AND ADDITIONAL USAGE DETAILS" WRAPPER; REORGANIZE FIELD ORDER
+a. In GuidedDpr.tsx (~line 2067) and SiteEdit.tsx (~line 2389), remove the `<details>/<summary>` collapse around the machine selector, registration text, Deployment/Usage Type, Operator, and Diesel Source fields — these must always be visible, never auto-collapsed, and never hidden behind a vague label.
+b. Reorganize so the form reads top to bottom as: (1) Equipment identity — machine selector and registration, shown once, at the very top of the row/card; (2) Deployment/Usage Type, Operator, Diesel Source, grouped directly below identity; (3) Time and meter/KM reading (DprEquipmentCompact's existing row, now always showing meter/KM per Fix 1); (4) Fuel; (5) Work Assignment (BOQ); (6) Breakdown/Stoppage. This mirrors the report view's existing Equipment → Usage Start → Usage End ordering (DprEquipmentCompact.tsx ~line 159-161), which already puts identity first and meter-before-time — the entry form should match it.
+c. Eliminate the duplicate identity presentation: DprEquipmentCompact already renders a header with machine name, registration, and hired-vendor badge (~line 128-131). Once the outer collapsed wrapper is removed, decide whichever single presentation of identity reads cleanest at the top of the card — do not show the same machine name/registration twice in one row.
+d. If the fields currently inside the removed `<details>` still benefit from a section label for visual grouping, use a plain, accurate one (e.g. "Equipment" or "Equipment details") — not "Equipment setup and additional usage details" — and it must not be collapsible.
+
+FIX 3 — REPORT: SHOW A FALLBACK CONSUMPTION RATE WHEN NO TANK DIP IS AVAILABLE
+a. In DprEquipmentCompact.tsx's read-only Fuel Performance section (~line 190-199), when `fuel.actualRate` is null (no confirmed tank dip — e.g. contractor-scope diesel, or plant-stock diesel simply not yet dipped), add a fallback line showing the equipment's expected consumption rate from `equipment.consumptionNorm` (already available on the equipment prop), with the correct unit (L/hr or L/km, matching how `actualRateUnit` is already derived from meterType/usage.efficiencyUnit).
+b. Label the two states distinctly so the person always knows which kind of figure they're looking at: when `fuel.actualRate` is present, label it "Actual Consumption Rate · from confirmed tank dip"; when falling back to the norm, label it "Expected Consumption Rate · from norm, actual unavailable". Never show a bare "—" for consumption rate when a norm value exists on the equipment master.
+c. If `equipment.consumptionNorm` is also null/not set on the equipment master, it is correct to show "—" — there is genuinely nothing to compute from.
+
+WHAT NOT TO DO
+- Do not change "Physical Tank Balance Confirmed" — confirmed intentional and load-bearing, see BACKGROUND #4.
+- Do not change the opening-meter or opening-tank continuity seeding logic (fetchLatestPriorClosing, latest-confirmed-diesel-tank) — both already work correctly; only make sure they still fire correctly now that meter fields are visible for every hire basis.
+- Do not touch SiteEntry.tsx's structure — it does not have the collapsed-wrapper problem and is not in scope, though it should still benefit from Fix 1's meter-field visibility since it uses the same DprEquipmentCompact component.
+- Do not touch VB-14/VB-15/VB-16/VB-17/DIESEL-03, Work Programme, or the DPR-01 labour-submission fix.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected. Every field involved (openingReading, closingReading, entryType, consumptionNorm, dieselBalanceConfirmed, etc.) already exists and is already stored — this batch only changes what renders and when.
+
+TESTS
+A. Open the DPR entry form (GuidedDpr) and add a Monthly Hire equipment row. Confirm Opening/Closing Meter (or Odometer, if that equipment's meterType is odometer) fields are now visible and usable, in the same row as Start/End time, matching the layout already used for Time/Meter entryType.
+B. Repeat for Daily Hire and Trip Based entryType. Confirm meter/KM fields appear for all of them, and Trip Based still shows its Trips/Distance fields alongside.
+C. Enter only meter readings (no start/end time) on a row; confirm working hours/distance computes from the meter delta. Enter only start/end time (no meter reading) on another row; confirm it falls back to clock duration. Do this for at least two different entryTypes to confirm the fallback isn't type-specific.
+D. Confirm the collapsed "Equipment setup and additional usage details" section no longer exists in GuidedDpr.tsx and SiteEdit.tsx — identity, deployment type, operator, and diesel source are all visible immediately, with equipment identity presented once, at the top.
+E. Open a report for a piece of contractor-scope diesel equipment with no tank dip. Confirm the Fuel Performance section now shows an "Expected Consumption Rate · from norm, actual unavailable" line instead of a bare "—", using that equipment's consumptionNorm.
+F. Open a report for plant-stock diesel equipment with a confirmed tank dip. Confirm it still shows "Actual Consumption Rate · from confirmed tank dip" as before, unchanged in value.
+G. Open an OLDER, already-submitted DPR report (created before this batch) for a Monthly or Daily Hire equipment item that has stored meter readings. Confirm the report view (which was never gated by entryType) is unaffected/unchanged, and confirm the new consumption-rate fallback also applies to it correctly with no backfill needed.
+H. Confirm SiteEntry.tsx's equipment log still works exactly as before, with meter/KM fields now also visible there for every hire basis.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/C evidence (screenshots), across at least three different entryTypes.
+2. Confirm Fix 2 with Test D evidence (screenshots) for both GuidedDpr.tsx and SiteEdit.tsx.
+3. Confirm Fix 3 with Test E/F/G evidence (screenshots), including one historical/pre-existing DPR report.
+4. Confirm Test H — no regression to SiteEntry.tsx.
+5. Confirm no schema change was needed.
+6. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

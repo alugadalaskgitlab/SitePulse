@@ -15,6 +15,10 @@ export interface EquipmentUsageResult {
   efficiencyValue: number | null; efficiencyLabel: string | null;
   efficiencyUnit: "L/hr" | "L/km"; warning: string | null;
 }
+export interface EquipmentConsumptionNormRate {
+  value: number | null;
+  unit: "L/hr" | "L/km";
+}
 export interface EquipmentFuelSummaryInput {
   openingTank?: number | null;
   dieselIssued?: number | null;
@@ -215,8 +219,19 @@ export function computeEquipmentUsage(equipment: EquipmentUsageEquipment | null 
     efficiencyUnit: unit, warning,
   });
   if (explicitTrip) {
+    // A trip-based row may still have a trustworthy physical meter. Prefer
+    // that reading when present, then retain the legacy trip calculation as
+    // its fallback. This keeps the two inputs additive rather than making
+    // trip mode hide a recorded odometer/hour-meter delta.
+    if (meterType === "hour_meter" && meters != null) return build("hour_meter", meters, null, meters, norm, "L/hr", null);
+    if (meterType === "odometer" && meters != null) return build("odometer", null, meters, meters, norm, "L/km", null);
     if (trips != null) return build("trip_based", null, trips, trips, meterType === "hour_meter" ? (norm != null ? norm / AVERAGE_SPEED_KMPH : null) : norm, "L/km", null);
-    return build("none", null, null, 0, null, "L/km", "Trips / one-way distance not entered — cannot compute KM.");
+    if (time != null) {
+      return meterType === "hour_meter"
+        ? build("time_fallback", time, null, time, norm, "L/hr", "Trips / one-way distance not entered — using start/end time.")
+        : build("time_fallback", null, time * AVERAGE_SPEED_KMPH, time * AVERAGE_SPEED_KMPH, norm, "L/km", `Trips / one-way distance not entered — using time fallback (assumed ${AVERAGE_SPEED_KMPH} km/hr).`);
+    }
+    return build("none", null, null, 0, null, "L/km", "No trip reading, trips, or start/end time entered.");
   }
   if (meterType === "hour_meter") {
     if (meters != null) return build("hour_meter", meters, null, meters, norm, "L/hr", null);
@@ -227,6 +242,26 @@ export function computeEquipmentUsage(equipment: EquipmentUsageEquipment | null 
   if (trips != null) return build("trip_based", null, trips, trips, norm, "L/km", "Odometer not entered — using trips x one-way distance.");
   if (time != null) return build("time_fallback", null, time * AVERAGE_SPEED_KMPH, time * AVERAGE_SPEED_KMPH, norm, "L/km", `KM not entered — using time fallback (assumed ${AVERAGE_SPEED_KMPH} km/hr).`);
   return build("none", null, null, 0, null, "L/km", "No odometer reading, trips, or start/end time entered.");
+}
+
+/**
+ * Resolves the equipment-master norm for display without making the compact
+ * report invent a second usage calculation. Trip-based hour-meter usage is
+ * canonically expressed as L/km; when no trip quantity exists yet, apply the
+ * same speed conversion used by computeEquipmentUsage for that unit.
+ */
+export function resolveEquipmentConsumptionNormRate(
+  equipment: EquipmentUsageEquipment | null | undefined,
+  usage: Pick<EquipmentUsageResult, "efficiencyUnit">,
+): EquipmentConsumptionNormRate {
+  const norm = equipment?.consumptionNorm;
+  if (norm == null || !Number.isFinite(Number(norm))) {
+    return { value: null, unit: usage.efficiencyUnit };
+  }
+  const tripNorm = usage.efficiencyUnit === "L/km" && equipment?.meterType !== "odometer"
+    ? Number(norm) / AVERAGE_SPEED_KMPH
+    : Number(norm);
+  return { value: tripNorm, unit: usage.efficiencyUnit };
 }
 
 function finiteValue(value: number | null | undefined): number | null {
