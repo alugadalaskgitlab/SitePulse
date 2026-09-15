@@ -1,8 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, mergeOtherBillItems, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup } from "../shared/hireBilling";
+import { availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, duplicateBillItemPayload, getHireReviewGaps, isEquipmentHireBillEligible, mergeOtherBillItems, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches } from "../shared/hireBilling";
 import { computeEquipmentUsage } from "../shared/equipmentUsage";
 
 describe("hire billing calculator", () => {
+  it("projects duplicate checks using the existing endpoint contract", () => {
+    expect(duplicateBillItemPayload({
+      date: "2026-07-21",
+      equipmentId: 7,
+      description: "ROLLER",
+      category: "equipment",
+      siteName: "",
+    })).toEqual({
+      date: "2026-07-21",
+      equipmentId: 7,
+      description: "ROLLER",
+      category: "equipment",
+      siteName: null,
+    });
+  });
+
+  it("counts one duplicate per candidate when a source item matches multiple bills", () => {
+    const matches = [
+      { index: 1, billNo: "VB-1", billStatus: "approved" },
+      { index: 1, billNo: "VB-2", billStatus: "paid" },
+      { index: 3, billNo: "VB-3", billStatus: "verified" },
+    ];
+    expect(uniqueDuplicateBillMatches(matches)).toEqual([matches[0], matches[2]]);
+  });
+
   it("appends Pull Other Items without replacing hire-group or manual lines", () => {
     const existing = [
       { source: "hire_group", sourceId: "group:7", date: "2026-07-19", description: "TRACTOR DOZER MONTHLY HIRE" },

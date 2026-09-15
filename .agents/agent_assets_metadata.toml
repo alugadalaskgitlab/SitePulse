@@ -535,3 +535,73 @@ mtime_ms = 1789435919501
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d9c7abaf-4322-4a91-89fc-18e365fa4ad4/8454bb83-e57f-4f7f-802b-1a153f30a25e"
 storage_version_token = "1789436005525397"
 content_type = "image/png"
+
+[[outputs]]
+id = "gHR7JZtm0-LZJDTL3keJ-"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb14A.png"
+type = "image"
+title = "A — Pull All skips already-billed items"
+description = "Real Vendor Bills UI with controlled API fixtures. No live bill was created or modified."
+logical_id = "14e1fba1-0ab3-4cd1-84c2-8df77664b81a"
+content_hash = "sha256:5ebc71474da7252c3b9d7e6025821cb27ff8a9e328789e99b8bb459c5ca98654"
+size = 143284
+mtime_ms = 1789438901460
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/14e1fba1-0ab3-4cd1-84c2-8df77664b81a/7e93a125-dced-4a1d-8413-e910c5e867f2"
+storage_version_token = "1789438948564826"
+content_type = "image/png"
+
+[[outputs]]
+id = "LWQ9sTPzJD9sKgF35FrUB"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb14B.png"
+type = "image"
+title = "B — Group pull skips billed items"
+description = "Real Vendor Bills UI with controlled API fixtures. No live bill was created or modified."
+logical_id = "136abad2-0326-4dbc-8e60-660d0126cdf6"
+content_hash = "sha256:d20d794e073fef6dc0be65c7687211a3a328703d8cd458bdcdfed019893aead7"
+size = 109192
+mtime_ms = 1789438901944
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/136abad2-0326-4dbc-8e60-660d0126cdf6/57644b8e-eec5-4459-b1a9-e2ceeb147efc"
+storage_version_token = "1789438950587674"
+content_type = "image/png"
+
+[[outputs]]
+id = "FwRT2ds1f3LTfhN1C6q01"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb14C.png"
+type = "image"
+title = "C — Billed and to-pull counts"
+description = "Real Vendor Bills UI with controlled API fixtures. No live bill was created or modified."
+logical_id = "3e96aca4-6aef-494b-a5ea-cf1f3a6d995a"
+content_hash = "sha256:3cc00607cdeaf5a32578042450e7de4f7bf1c9b31f003a5fc3de9dcc72768405"
+size = 111745
+mtime_ms = 1789438902364
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3e96aca4-6aef-494b-a5ea-cf1f3a6d995a/4094e760-394e-41fb-9d03-aac1ac3b81df"
+storage_version_token = "1789438952558094"
+content_type = "image/png"
+
+[[outputs]]
+id = "p-SZJFICZtNDH8PrJ8icO"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb14D.png"
+type = "image"
+title = "D — Explicit inclusion keeps BILLED badge"
+description = "Real Vendor Bills UI with controlled API fixtures. No live bill was created or modified."
+logical_id = "4a7dd438-6ec0-4487-8954-3520a639d93b"
+content_hash = "sha256:a8c9a2c9955c1ed7e2999e2b1f3f7c013dd62591cd79bceaeee44da8ea6c9834"
+size = 116169
+mtime_ms = 1789438902932
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4a7dd438-6ec0-4487-8954-3520a639d93b/98f876b3-9e93-4f25-8599-d262b57c88ee"
+storage_version_token = "1789438954545640"
+content_type = "image/png"
+
+[[outputs]]
+id = "Cv2NtP7tEwmVljUNRgjaR"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb14E.png"
+type = "image"
+title = "E — No-duplicate pull unchanged"
+description = "Real Vendor Bills UI with controlled API fixtures. No live bill was created or modified."
+logical_id = "8ab4f4d0-e5a2-43c3-b2e5-1d9da2ffcad6"
+content_hash = "sha256:49846e0c431eb7c535f65373bde1742e51d4598dc5434857a277cb47f4184944"
+size = 132807
+mtime_ms = 1789438903940
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8ab4f4d0-e5a2-43c3-b2e5-1d9da2ffcad6/daf45329-93f2-4fe5-a7e4-da80a350420d"
+storage_version_token = "1789438956452727"
+content_type = "image/png"

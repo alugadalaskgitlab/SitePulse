@@ -395,6 +395,14 @@ const vb10NoPriceScenario = () => scenarioName() === "vb10-no-price";
 const vb11MixedScenario = () => scenarioName().startsWith("vb11fix");
 const vb11SingleCategoryScenario = () => scenarioName() === "singlecategory";
 const vb11Scenario = () => vb11MixedScenario() || vb11SingleCategoryScenario();
+// VB-14 reuses the proven VB-11 mixed candidate shape, but gives the
+// duplicate endpoint a deterministic approved/paid subset.  Keep this behind
+// its own scenario so the earlier VB-11 verifier continues to exercise the
+// old "flag every first item" response contract unchanged.
+const vb14Scenario = () => scenarioName().startsWith("vb14");
+const vb14CleanScenario = () => scenarioName() === "vb14-clean";
+const vb14DuplicateFailureScenario = () => scenarioName() === "vb14-duplicate-failure";
+const vb14VendorName = () => vb14CleanScenario() ? "VB14 CLEAN SUPPLIER" : "VB14 MIXED SUPPLIER";
 
 function vb10SnapshotForGroup(group: any, status = "draft", billPayload: any = {}): any {
   const equipment = vb10EquipmentMasters.find(row => Number(row.id) === Number(group.equipmentId));
@@ -489,6 +497,8 @@ const fixtureState = {
   rateCardCalls: [] as string[],
   duplicateChecks: [] as any[],
   duplicateFlags: [] as any[][],
+  duplicateErrors: [] as Array<{ status: number; itemCount: number }>,
+  toastMessages: [] as Array<{ title: string; description?: string }>,
 };
 
 declare global {
@@ -572,17 +582,50 @@ window.fetch = async (input, init) => {
     if (vb10Scenario()) return json(["VB10 EQUIPMENT HIRE"]);
     if (vb11MixedScenario()) return json(["VB11 MIXED SUPPLIER"]);
     if (vb11SingleCategoryScenario()) return json(["VB11 EQUIPMENT SUPPLIER"]);
+    if (vb14Scenario()) return json([vb14VendorName()]);
     return json(["NARASIMHULU", "MATERIAL VENDOR", "TRANSPORT VENDOR", "LABOUR VENDOR"]);
   }
   if (pathname === "/api/vendor-aliases" && method === "GET") return json([]);
   if (pathname === "/api/vendor-rate-cards" && method === "GET") {
-    if (vb11Scenario()) {
+    if (vb11Scenario() || vb14Scenario()) {
       fixtureState.rateCardCalls.push(requestUrl.search);
       return json(vb11RateCards);
     }
     return json([]);
   }
   if (pathname === "/api/vendor-bills/check-duplicates") {
+    if (vb14Scenario() && method === "POST") {
+      const payload = init?.body ? JSON.parse(String(init.body)) : {};
+      fixtureState.duplicateChecks.push(payload);
+      if (vb14DuplicateFailureScenario()) {
+        fixtureState.duplicateErrors.push({
+          status: 503,
+          itemCount: Array.isArray(payload.items) ? payload.items.length : 0,
+        });
+        return json({ message: "Fixture duplicate preflight unavailable" }, 503);
+      }
+      // VB-14's mixed case has two genuinely billed candidates: the first
+      // equipment activity is in an approved bill and the second SOIL
+      // activity is in a paid bill.  Match by the same fields sent to the
+      // production endpoint rather than relying on array position so a
+      // grouped pull gets the correct per-group index as well as Pull All.
+      // The response is deliberately one flag per candidate index, matching
+      // storage.checkDuplicateBilledItems' break-after-first-match contract.
+      const flags = vb14CleanScenario() || !Array.isArray(payload.items)
+        ? []
+        : payload.items.reduce((matches: any[], item: any, index: number) => {
+          const description = String(item.description || "").toUpperCase();
+          const date = String(item.date || "");
+          const equipmentDuplicate = item.category === "equipment" && date === "2026-09-01";
+          const paidMaterialDuplicate = item.category === "material" &&
+            description.includes("SOIL") && date === "2026-09-04";
+          if (equipmentDuplicate) matches.push({ index, billNo: "VB14-APPROVED-001", billStatus: "approved" });
+          if (paidMaterialDuplicate) matches.push({ index, billNo: "VB14-PAID-002", billStatus: "paid" });
+          return matches;
+        }, []);
+      fixtureState.duplicateFlags.push(flags);
+      return json(flags);
+    }
     if (vb11Scenario() && method === "POST") {
       const payload = init?.body ? JSON.parse(String(init.body)) : {};
       fixtureState.duplicateChecks.push(payload);
@@ -653,6 +696,12 @@ window.fetch = async (input, init) => {
       categories: ["equipment"],
       existingBill: null,
     }]);
+    if (vb14Scenario()) return json([{
+      vendorName: vb14VendorName(),
+      recordCount: vb11MixedAutoItems.length,
+      categories: ["equipment", "material", "transport", "labour"],
+      existingBill: null,
+    }]);
     return json([{
       vendorName: "NARASIMHULU",
       recordCount: 1,
@@ -673,6 +722,11 @@ window.fetch = async (input, init) => {
     }
     if (vb11SingleCategoryScenario()) {
       return json(["equipment", "all"].includes(billType) ? vb11SingleCategoryAutoItems : []);
+    }
+    if (vb14Scenario()) {
+      return json(billType === "all"
+        ? vb11MixedAutoItems
+        : vb11MixedAutoItems.filter(item => item.category === billType));
     }
     return json(itemByType[billType] || []);
   }

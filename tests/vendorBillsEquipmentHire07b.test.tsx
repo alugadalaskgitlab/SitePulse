@@ -54,6 +54,7 @@ let vendorBillWrites: Array<{ method: string; body: any }> = [];
 let autoItemsForTest: any[] = [autoEquipmentItem];
 let rateCardsForTest: any[] = [];
 let duplicateRowsForTest: Array<{ index: number; billNo: string; billStatus: string }> = [];
+let deferredDuplicateChecks: Promise<Response>[] = [];
 let deferredRateCards: Promise<Response> | null = null;
 let hireActivityRowsForTest: any[] = [];
 let deferredHireActivities: Promise<Response> | null = null;
@@ -64,6 +65,7 @@ beforeEach(() => {
   autoItemsForTest = [autoEquipmentItem];
   rateCardsForTest = [];
   duplicateRowsForTest = [];
+  deferredDuplicateChecks = [];
   deferredRateCards = null;
   hireActivityRowsForTest = [];
   deferredHireActivities = null;
@@ -92,7 +94,9 @@ beforeEach(() => {
     if (url.includes("/api/vendor-bills/hire-activities")) return deferredHireActivities || new Response(JSON.stringify(hireActivityRowsForTest));
     if (url.includes("/api/vendor-bills/auto-items")) return new Response(JSON.stringify(autoItemsForTest));
     if (url.includes("/api/vendor-rate-cards")) return deferredRateCards || new Response(JSON.stringify(rateCardsForTest));
-    if (url.includes("/api/vendor-bills/check-duplicates")) return new Response(JSON.stringify(duplicateRowsForTest));
+    if (url.includes("/api/vendor-bills/check-duplicates")) {
+      return deferredDuplicateChecks.shift() || new Response(JSON.stringify(duplicateRowsForTest));
+    }
     if (url.includes("/api/reports/equipment-performance")) return new Response(JSON.stringify({ fleet: [{ equipmentId: 81, dieselConsumed: null, expectedDiesel: null, difference: null, consumptionIncomplete: true, dailyRows: [] }] }));
     throw new Error(`Unexpected request ${url}`);
   }));
@@ -386,29 +390,31 @@ describe("VB-11 grouped ordinary activity pull", () => {
     expect(screen.getByTestId(groupRowId(vb11GroupIds.labour))).toBeTruthy();
 
     fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(3));
-    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("✓ ADDED 3/3");
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(2));
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("✓ ADDED 2/3");
     expect(screen.getByTestId(groupRowId(vb11GroupIds.soil)).textContent).toContain("PULL 2");
-    expect(screen.getByTestId("badge-billed-1").textContent).toContain("VB-OTHER-2 - APPROVED");
+    expect(screen.queryByTestId("badge-billed-1")).toBeNull();
     expect((screen.getAllByTestId(/input-item-rate-/)[0] as HTMLInputElement).value).toBe("250");
     expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
 
-    // A second action on an Added group is disabled and cannot duplicate rows.
+    // An already-billed source candidate remains available for an explicit
+    // correction pull, but the default action still skips it.
     fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
-    expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(3);
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(2));
 
     duplicateRowsForTest = [];
     fireEvent.click(screen.getByTestId(vb11GroupIds.soil));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(5));
-    expect(screen.getAllByTestId(/text-item-desc-/).filter(node => node.textContent?.includes("JCB-SITE"))).toHaveLength(3);
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(4));
+    expect(screen.getAllByTestId(/text-item-desc-/).filter(node => node.textContent?.includes("JCB-SITE"))).toHaveLength(2);
     expect(screen.getByTestId(groupRowId(vb11GroupIds.sand)).textContent).toContain("PULL 1");
 
     // Removing one source row makes that exact source-qualified candidate
     // pullable again; the retained group is not permanently hidden.
     fireEvent.click(screen.getByTestId("button-remove-item-0"));
-    await waitFor(() => expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("PULL 1"));
+    await waitFor(() => expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("PULL 2"));
     fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
     await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(5));
+    expect(screen.getAllByTestId(/text-item-desc-/).filter(node => node.textContent?.includes("JCB-SITE"))).toHaveLength(3);
   });
 
   it("Test D/E/F: Pull All applies rates and duplicate flags, clears the blank row, and retains Added groups", async () => {
@@ -421,25 +427,31 @@ describe("VB-11 grouped ordinary activity pull", () => {
     await openVb11MixedBill();
 
     fireEvent.click(screen.getByTestId("button-auto-populate"));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(vb11Items.length));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(vb11Items.length - 1));
     expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
     expect(screen.getAllByTestId(/input-item-rate-/).slice(0, 2).every(node => (node as HTMLInputElement).value === "250")).toBe(true);
-    expect(screen.getByTestId("badge-billed-2").textContent).toContain("VB-OTHER-3 - VERIFIED");
+    expect(screen.queryByTestId("badge-billed-2")).toBeNull();
     Object.values(vb11GroupIds).forEach(id => expect(screen.getByTestId(groupRowId(id)).textContent).toContain("✓ ADDED"));
-    expect(screen.queryByTestId("button-auto-populate")).toBeNull();
+    expect(screen.getByTestId("button-auto-populate").textContent).toContain("PULL ALL 1 ITEM");
   });
 
   it("does not leak a deferred pull into a new bill with the same vendor, period, and type", async () => {
     autoItemsForTest = [vb11Items[0]];
-    let releaseRateCards!: (response: Response) => void;
-    deferredRateCards = new Promise<Response>(resolve => { releaseRateCards = resolve; });
+    let releaseA!: (response: Response) => void;
+    let releaseB!: (response: Response) => void;
+    deferredRateCards = new Promise<Response>(resolve => { releaseA = resolve; });
     await openVb11MixedBill();
     fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/vendor-rate-cards")));
+    await waitFor(() => expect(
+      (fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url]) => String(url).includes("/api/vendor-rate-cards")),
+    ).toBe(true));
 
     // This deliberately recreates exactly the same fields. Context-string
     // checks alone cannot distinguish it from the first bill instance.
     fireEvent.click(screen.getByTestId("button-cancel"));
+    // B has an independent rate-card request. Keep A's response pending so
+    // the test proves B can start before A resolves.
+    deferredRateCards = null;
     fireEvent.click(await screen.findByTestId("button-new-bill"));
     const nextBillType = screen.getByTestId("select-bill-type");
     if (nextBillType.textContent !== "All Types (Combined)") {
@@ -450,13 +462,22 @@ describe("VB-11 grouped ordinary activity pull", () => {
     fireEvent.change(screen.getByTestId("input-period-to"), { target: { value: "2026-09-30" } });
     fireEvent.click(await screen.findByTestId("button-show-vendors"));
     fireEvent.click(await screen.findByTestId("button-select-vendor-ABC EQUIPMENT"));
-    await screen.findByTestId(vb11GroupIds.equipment);
+    const bPull = await screen.findByTestId(vb11GroupIds.equipment);
+    await waitFor(() => expect((bPull as HTMLButtonElement).disabled).toBe(false));
 
-    releaseRateCards(new Response(JSON.stringify([])));
+    deferredDuplicateChecks.push(new Promise<Response>(resolve => { releaseB = resolve; }));
+    fireEvent.click(bPull);
+    await waitFor(() => expect(deferredDuplicateChecks).toHaveLength(0));
+    expect((screen.getByTestId(vb11GroupIds.equipment) as HTMLButtonElement).disabled).toBe(true);
+
+    // A's abandoned response arrives after B already owns the busy token. It
+    // must not clear B's lock or merge A's stale result.
+    releaseA(new Response(JSON.stringify([])));
     await new Promise(resolve => setTimeout(resolve, 0));
-    expect(
-      (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => String(url).includes("/api/vendor-bills/check-duplicates")),
-    ).toHaveLength(0);
+    expect((screen.getByTestId(vb11GroupIds.equipment) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryAllByTestId(/text-item-desc-/)).toHaveLength(0);
+
+    releaseB(new Response(JSON.stringify([])));
+    await waitFor(() => expect(screen.queryAllByTestId(/text-item-desc-/)).toHaveLength(1));
   });
 });

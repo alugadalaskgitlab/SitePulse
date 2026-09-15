@@ -633,6 +633,39 @@ export interface RawAutoBillItem {
   entryType?: string | null;
 }
 
+export interface DuplicateBillItemMatch {
+  index: number;
+  billNo: string;
+  billStatus: string;
+}
+
+/** The exact item projection accepted by the existing duplicate-check route. */
+export function duplicateBillItemPayload(item: RawAutoBillItem) {
+  return {
+    date: item.date,
+    equipmentId: item.equipmentId,
+    description: item.description,
+    category: item.category,
+    siteName: item.siteName || null,
+  };
+}
+
+/**
+ * A duplicate response can contain more than one matching bill for an item.
+ * Pull UX counts and filters are item-based, so retain only the first match
+ * for each candidate index while preserving the endpoint's response order.
+ */
+export function uniqueDuplicateBillMatches(
+  matches: readonly DuplicateBillItemMatch[] | null | undefined,
+): DuplicateBillItemMatch[] {
+  const seen = new Set<number>();
+  return (matches || []).filter(match => {
+    if (seen.has(match.index)) return false;
+    seen.add(match.index);
+    return true;
+  });
+}
+
 const isAutoBillSource = (source: string | null | undefined) => {
   const normalized = (source || "").toLowerCase();
   return normalized === "auto" || normalized.startsWith("auto:");

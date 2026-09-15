@@ -19,7 +19,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
-import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, mergeOtherBillItems, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
+import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, normalizeHireActivities, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
 import { authoritativeDieselPeriodFromFleet, hasIncludedOperationalTripOnSameDay, initialVendorBillPaidAmount, isPerformanceReadyForHireSubmission } from "@/components/vendor-bills/equipmentHireUi";
@@ -656,15 +656,30 @@ export default function VendorBills() {
   const [showSetRatesDialog, setShowSetRatesDialog] = useState(false);
   const [bulkRates, setBulkRates] = useState<Record<string, { rate: number; leadDistance: number }>>({});
   const activePullContextRef = useRef("");
+  const pullInFlightRef = useRef(false);
+  const [pullInFlight, setPullInFlight] = useState(false);
+  const [includeAlreadyBilled, setIncludeAlreadyBilled] = useState(false);
   const formGenerationRef = useRef(0);
   const activeEditingBillIdRef = useRef<number | null>(null);
+  const pullTokenRef = useRef<{ context: string; controller: AbortController } | null>(null);
+  const cancelActivePull = () => {
+    const activePull = pullTokenRef.current;
+    if (activePull) {
+      activePull.controller.abort();
+      pullTokenRef.current = null;
+    }
+    pullInFlightRef.current = false;
+    setPullInFlight(false);
+    setIncludeAlreadyBilled(false);
+  };
   const updateActivePullContext = (
     type = billType,
     vendor = vendorName,
     from = periodFrom,
     to = periodTo,
   ) => {
-    activePullContextRef.current = `${type}|${vendor}|${from}|${to}`;
+    cancelActivePull();
+    activePullContextRef.current = `${view}|${editingBillId ?? ""}|${type}|${vendor}|${from}|${to}`;
   };
 
   const { data: bills, isLoading } = useQuery<VendorBillWithItems[]>({
@@ -974,6 +989,7 @@ export default function VendorBills() {
   });
 
   const resetForm = () => {
+    cancelActivePull();
     formGenerationRef.current++;
     activeEditingBillIdRef.current = null;
     activePullContextRef.current = "";
@@ -1025,6 +1041,7 @@ export default function VendorBills() {
   };
 
   const loadBillForEdit = (bill: VendorBillWithItems) => {
+    cancelActivePull();
     formGenerationRef.current++;
     activeEditingBillIdRef.current = bill.id;
     updateActivePullContext(bill.billType.toLowerCase(), bill.vendorName, bill.periodFrom || "", bill.periodTo || "");
@@ -1104,18 +1121,38 @@ export default function VendorBills() {
   };
 
   const handleAutoPopulate = async (items = availableOtherItems) => {
-    if (items.length > 0) {
-      const pullContext = `${billType}|${vendorName}|${periodFrom}|${periodTo}`;
-      const pullGeneration = formGenerationRef.current;
-      const pullEditingBillId = editingBillId;
-      const isCurrentPull = () =>
-        formGenerationRef.current === pullGeneration &&
-        activeEditingBillIdRef.current === pullEditingBillId &&
-        activePullContextRef.current === pullContext;
-      const mapped: LineItem[] = items.map(item => ({ ...item }));
+    if (
+      items.length === 0 ||
+      pullInFlightRef.current ||
+      (availableOtherItems.length > 0 && (!duplicatePreflight.isSuccess || duplicatePreflight.isFetching))
+    ) return;
+
+    const pullContext = `${view}|${editingBillId ?? ""}|${billType}|${vendorName}|${periodFrom}|${periodTo}`;
+    const pullGeneration = formGenerationRef.current;
+    const pullEditingBillId = editingBillId;
+    const includeBilledForThisPull = includeAlreadyBilled;
+    const pullToken = { context: pullContext, controller: new AbortController() };
+    const isCurrentPull = () =>
+      formGenerationRef.current === pullGeneration &&
+      activeEditingBillIdRef.current === pullEditingBillId &&
+      activePullContextRef.current === pullContext &&
+      pullTokenRef.current === pullToken;
+
+    // The opt-in is deliberately single-use. Clear it before awaiting either
+    // check so a failed or stale pull can never leak the choice into a later
+    // action.
+    pullTokenRef.current = pullToken;
+    pullInFlightRef.current = true;
+    setPullInFlight(true);
+    setIncludeAlreadyBilled(false);
+
+    try {
+      let mapped: LineItem[] = items.map(item => ({ ...item }));
 
       try {
-        const rcRes = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(vendorName)}`);
+        const rcRes = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(vendorName)}`, {
+          signal: pullToken.controller.signal,
+        });
         if (!isCurrentPull()) return;
         if (rcRes.ok) {
           const rateCards: any[] = await rcRes.json();
@@ -1177,51 +1214,98 @@ export default function VendorBills() {
           }
         }
       } catch (_e) {
+        // Rate-card lookup has always been advisory; the duplicate check below
+        // remains authoritative for whether this pull may proceed.
       }
 
-      try {
-        const dupRes = await fetch("/api/vendor-bills/check-duplicates", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            vendorName,
-            excludeBillId: editingBillId || undefined,
-            items: mapped.map(m => ({ date: m.date, equipmentId: m.equipmentId, description: m.description, category: m.category, siteName: m.siteName || null })),
-          }),
-        });
-        if (!isCurrentPull()) return;
-        if (dupRes.ok) {
-          const dups: { index: number; billNo: string; billStatus: string }[] = await dupRes.json();
-          if (!isCurrentPull()) return;
-          if (dups.length > 0) {
-            for (const d of dups) {
-              mapped[d.index] = { ...mapped[d.index], billedIn: { billNo: d.billNo, billStatus: d.billStatus } };
-            }
-            toast({ title: `${dups.length} item(s) already billed in other bills`, variant: "destructive" });
-          }
-        }
-      } catch (_e) {
-      }
-
-      // A rate-card or duplicate response can resolve after the preparer has
-      // selected another vendor or period. Never let that stale response add
-      // source evidence into the new bill context.
+      // A rate-card response can resolve after the preparer has selected
+      // another vendor or period. Never submit stale source evidence.
       if (!isCurrentPull()) return;
 
-      mapped.sort((a, b) => {
-        const catA = categoryOrder[a.category] ?? 3;
-        const catB = categoryOrder[b.category] ?? 3;
-        if (catA !== catB) return catA - catB;
-        return (a.date || "").localeCompare(b.date || "");
+      const duplicatePayload = mapped.map(duplicateBillItemPayload);
+      const dupRes = await fetch("/api/vendor-bills/check-duplicates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: pullToken.controller.signal,
+        body: JSON.stringify({
+          vendorName,
+          excludeBillId: editingBillId || undefined,
+          items: duplicatePayload,
+        }),
       });
+      if (!isCurrentPull()) return;
+      if (!dupRes.ok) {
+        throw new Error((await dupRes.text()) || "Could not check duplicate billed items");
+      }
+      const duplicateBody: unknown = await dupRes.json();
+      if (!Array.isArray(duplicateBody) || duplicateBody.some((match: any) =>
+        !match || !Number.isInteger(match.index) || match.index < 0 || match.index >= mapped.length ||
+        typeof match.billNo !== "string" || typeof match.billStatus !== "string"
+      )) {
+        throw new Error("Duplicate check returned an invalid response");
+      }
+      if (!isCurrentPull()) return;
 
-      setLineItems(prev => mergeOtherBillItems(
-        // The initial manual row is only a blank editor affordance. Any
-        // successful activity pull, not only a material pull, replaces it.
-        prev.filter(item => !item.initialBlank),
-        mapped,
-      ));
-      toast({ title: `${mapped.length} items added from records` });
+      const dups = uniqueDuplicateBillMatches(duplicateBody as DuplicateBillItemMatch[]);
+      const duplicateIndexes = new Set(dups.map(match => match.index));
+      for (const d of dups) {
+        mapped[d.index] = { ...mapped[d.index], billedIn: { billNo: d.billNo, billStatus: d.billStatus } };
+      }
+
+      // When the correction-only opt-in is off, duplicate rows remain source
+      // candidates for a future explicit pull but never enter lineItems.
+      mapped = mapped.filter((_item, index) => includeBilledForThisPull || !duplicateIndexes.has(index));
+      const uniqueMapped = mapped.filter((item, index, all) =>
+        all.findIndex(candidate => autoBillItemIdentity(candidate) === autoBillItemIdentity(item)) === index
+      );
+
+      // A duplicate response may contain multiple matches for one candidate.
+      // Counts and messages are therefore based on unique candidate indexes.
+      const duplicateCount = duplicateIndexes.size;
+      const pulledCount = uniqueMapped.length;
+      if (pulledCount > 0) {
+        uniqueMapped.sort((a, b) => {
+          const catA = categoryOrder[a.category] ?? 3;
+          const catB = categoryOrder[b.category] ?? 3;
+          if (catA !== catB) return catA - catB;
+          return (a.date || "").localeCompare(b.date || "");
+        });
+        mapped = uniqueMapped;
+        setLineItems(prev => mergeOtherBillItems(
+          // The initial manual row is only a blank editor affordance. Any
+          // successful activity pull, not only a material pull, replaces it.
+          prev.filter(item => !item.initialBlank),
+          mapped,
+        ));
+      }
+
+      if (duplicateCount > 0) {
+        toast({
+          title: includeBilledForThisPull
+            ? `${pulledCount} item(s) pulled — ${duplicateCount} already billed elsewhere were included.`
+            : `${pulledCount} item(s) pulled — ${duplicateCount} already billed elsewhere were skipped.`,
+          variant: includeBilledForThisPull ? "default" : "destructive",
+        });
+      } else {
+        toast({ title: `${pulledCount} item(s) added from records` });
+      }
+    } catch (error: any) {
+      // A failed duplicate preflight/fresh check must not fall through to a
+      // merge: treating an unknown response as zero duplicates is unsafe.
+      if (isCurrentPull()) {
+        toast({
+          title: "Could not check duplicate billed items",
+          description: error?.message || "Retry the pull after the duplicate check succeeds.",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      if (pullTokenRef.current === pullToken) {
+        pullTokenRef.current = null;
+        pullInFlightRef.current = false;
+        setPullInFlight(false);
+        setIncludeAlreadyBilled(false);
+      }
     }
   };
 
@@ -1339,6 +1423,61 @@ export default function VendorBills() {
     () => availableOtherBillItems(mappedAutoItems, lineItems, hireGroups),
     [mappedAutoItems, lineItems, hireGroups],
   );
+  const duplicatePreflightItems = useMemo(
+    () => availableOtherItems.map(duplicateBillItemPayload),
+    [availableOtherItems],
+  );
+  const duplicatePreflight = useQuery<DuplicateBillItemMatch[]>({
+    // Include the exact candidate payload and bill identity in the key. A
+    // changed vendor/period/edit target must never reuse an old preflight.
+    queryKey: [
+      "/api/vendor-bills/check-duplicates",
+      "preflight",
+      view,
+      billType,
+      vendorName,
+      periodFrom,
+      periodTo,
+      editingBillId ?? null,
+      duplicatePreflightItems,
+    ],
+    queryFn: async () => {
+      const response = await fetch("/api/vendor-bills/check-duplicates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorName,
+          excludeBillId: editingBillId || undefined,
+          items: duplicatePreflightItems,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error((await response.text()) || "Could not check duplicate billed items");
+      }
+      const body: unknown = await response.json();
+      if (!Array.isArray(body) || body.some((match: any) =>
+        !match || !Number.isInteger(match.index) || match.index < 0 || match.index >= duplicatePreflightItems.length ||
+        typeof match.billNo !== "string" || typeof match.billStatus !== "string"
+      )) {
+        throw new Error("Duplicate check returned an invalid response");
+      }
+      return uniqueDuplicateBillMatches(body as DuplicateBillItemMatch[]);
+    },
+    enabled: view === "form" && billType !== "other" && !!vendorName && !!periodFrom && !!periodTo && availableOtherItems.length > 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const duplicatePreflightBlocked = availableOtherItems.length > 0 &&
+    (!duplicatePreflight.isSuccess || duplicatePreflight.isFetching);
+  const preflightBilledIdentities = useMemo(() => {
+    if (!duplicatePreflight.isSuccess) return new Set<string>();
+    return new Set(
+      (duplicatePreflight.data || [])
+        .map(match => availableOtherItems[match.index])
+        .filter(Boolean)
+        .map(item => autoBillItemIdentity(item)),
+    );
+  }, [availableOtherItems, duplicatePreflight.data, duplicatePreflight.isSuccess]);
   // Keep every eligible source group visible after it has been pulled. Its
   // pending count is derived separately, so deleting a source-qualified row
   // makes just that row available to pull again without disturbing edits to
@@ -1348,16 +1487,33 @@ export default function VendorBills() {
     return groupRateItems(candidates).map(group => ({
       ...group,
       pendingItems: availableOtherBillItems(group.items, lineItems, hireGroups),
+      alreadyBilledCount: duplicatePreflight.isSuccess
+        ? availableOtherBillItems(group.items, lineItems, hireGroups)
+          .filter(item => preflightBilledIdentities.has(autoBillItemIdentity(item))).length
+        : null,
+      toPullCount: duplicatePreflight.isSuccess
+        ? availableOtherBillItems(group.items, lineItems, hireGroups)
+          .filter(item => !preflightBilledIdentities.has(autoBillItemIdentity(item))).length
+        : null,
     })).sort((a, b) => {
       const categoryDifference = (categoryOrder[a.category] ?? 3) - (categoryOrder[b.category] ?? 3);
       return categoryDifference || a.groupName.localeCompare(b.groupName) || a.entryType.localeCompare(b.entryType);
     });
-  }, [hireGroups, lineItems, mappedAutoItems]);
+  }, [duplicatePreflight.isSuccess, hireGroups, lineItems, mappedAutoItems, preflightBilledIdentities]);
 
   // Keep asynchronous Pull work scoped to the form identity that started it.
   useEffect(() => {
-    activePullContextRef.current = `${billType}|${vendorName}|${periodFrom}|${periodTo}`;
-  }, [billType, periodFrom, periodTo, vendorName]);
+    const context = `${view}|${editingBillId ?? ""}|${billType}|${vendorName}|${periodFrom}|${periodTo}`;
+    if (pullTokenRef.current && pullTokenRef.current.context !== context) {
+      cancelActivePull();
+    }
+    activePullContextRef.current = context;
+  }, [billType, editingBillId, periodFrom, periodTo, vendorName, view]);
+
+  useEffect(() => {
+    // Inclusion is intentionally scoped to one form context and one action.
+    setIncludeAlreadyBilled(false);
+  }, [billType, editingBillId, periodFrom, periodTo, vendorName, view]);
 
   useEffect(() => {
     if (!vendorName || !periodFrom || !periodTo) return;
@@ -2695,20 +2851,58 @@ export default function VendorBills() {
                 </span>
                   {billType !== "equipment" && <span className="mt-1 block text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Other billable activities for this vendor/period are shown here.</span>}
                   <div className="mt-3 space-y-2">
+                    {availableOtherItems.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-3 rounded border border-blue-200 bg-background/60 px-2 py-2 text-[11px] dark:border-blue-800">
+                        <label className="flex items-center gap-2 font-semibold uppercase">
+                          <input
+                            type="checkbox"
+                            checked={includeAlreadyBilled}
+                            onChange={event => setIncludeAlreadyBilled(event.target.checked)}
+                            disabled={pullInFlight}
+                            data-testid="checkbox-include-already-billed"
+                          />
+                          Include already-billed items (next pull only)
+                        </label>
+                        {duplicatePreflight.isFetching && (
+                          <span className="font-semibold text-blue-700 dark:text-blue-300" data-testid="text-duplicate-preflight-checking">
+                            CHECKING DUPLICATES…
+                          </span>
+                        )}
+                        {duplicatePreflight.error && !duplicatePreflight.isFetching && (
+                          <span className="flex flex-wrap items-center gap-2 font-semibold text-red-700 dark:text-red-400" data-testid="text-duplicate-preflight-error">
+                            DUPLICATE CHECK FAILED — PULL DISABLED
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => duplicatePreflight.refetch()}
+                              disabled={duplicatePreflight.isFetching || pullInFlight}
+                              data-testid="button-retry-duplicate-preflight"
+                            >
+                              RETRY DUPLICATE CHECK
+                            </Button>
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {candidatePullGroups.map(group => {
                       const addedCount = group.count - group.pendingItems.length;
                       const categoryLabel = group.category === "equipment" ? "EQUIPMENT" : group.category.toUpperCase();
                       return <div key={group.key} className={`flex flex-wrap items-center gap-2 rounded border px-2 py-2 text-xs ${group.pendingItems.length ? "border-blue-200 bg-background/40 dark:border-blue-800" : "border-muted bg-muted/40 text-muted-foreground"}`} data-testid={`pull-group-${group.key}`}>
                         <Badge variant="outline" className={getCategoryBadgeClass(group.category)}>{categoryLabel}</Badge>
                         <span className="min-w-[12rem] flex-1 font-semibold uppercase">{group.groupName}{group.entryType && group.entryType !== group.unit ? ` · ${group.entryType}` : ""}</span>
-                        <span className="font-medium">{group.count} ITEM{group.count === 1 ? "" : "S"}</span>
+                        <span className="font-medium">
+                          {duplicatePreflight.isSuccess
+                            ? `${group.count} ITEM${group.count === 1 ? "" : "S"} (${group.alreadyBilledCount} ALREADY BILLED, ${group.toPullCount} TO PULL)`
+                            : `${group.count} ITEM${group.count === 1 ? "" : "S"}`}
+                        </span>
                         {addedCount > 0 && <span className="font-semibold text-emerald-700 dark:text-emerald-400">✓ ADDED {addedCount}/{group.count}</span>}
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
                           onClick={() => handleAutoPopulate(group.pendingItems)}
-                          disabled={autoItemsLoading || group.pendingItems.length === 0}
+                          disabled={autoItemsLoading || pullInFlight || duplicatePreflightBlocked || group.pendingItems.length === 0}
                           data-testid={`button-pull-group-${group.key}`}
                         >
                           {group.pendingItems.length ? `PULL ${group.pendingItems.length}` : "✓ ADDED"}
@@ -2720,10 +2914,10 @@ export default function VendorBills() {
                       variant="outline"
                       size="sm"
                       onClick={() => handleAutoPopulate()}
-                      disabled={autoItemsLoading}
+                      disabled={autoItemsLoading || pullInFlight || duplicatePreflightBlocked}
                       data-testid="button-auto-populate"
                     >
-                      {autoItemsLoading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+                      {autoItemsLoading || duplicatePreflight.isFetching || pullInFlight ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
                       {`PULL ALL ${availableOtherItems.length} ITEM${availableOtherItems.length === 1 ? "" : "S"}`}
                     </Button>}
                     {candidatePullGroups.length === 0 && <span className="text-[11px] font-semibold uppercase">{billType === "equipment" ? "No billable activities available" : "No other billable activities available"}</span>}

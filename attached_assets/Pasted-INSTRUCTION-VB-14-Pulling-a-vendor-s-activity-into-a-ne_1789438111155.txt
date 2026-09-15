@@ -1,0 +1,43 @@
+INSTRUCTION VB-14: Pulling a vendor's activity into a new bill should skip items already billed elsewhere by default, instead of requiring manual deletion afterward
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This builds on the grouped pull (VB-11/VB-11-FIX) and the existing duplicate-billed check — do not rebuild either. Do not touch GST/TDS, rate-card auto-apply, bill type defaulting, or anything else about VendorBills.tsx not described below. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+client/src/pages/VendorBills.tsx, handleAutoPopulate (~line 1106) is the single function both "Pull All" (~line 2722) and each group's individual "Pull" button (~line 2710, called as handleAutoPopulate(group.pendingItems)) use. Inside it, after mapping candidate items and applying rate cards, it calls POST /api/vendor-bills/check-duplicates (~line 1181) with the full mapped candidate list, gets back which of those items are already billed elsewhere (billNo + billStatus per item), and currently just tags each one with `billedIn` (~line 1198) before merging ALL of them — billed and unbilled alike — into the bill's line items (~line 1214, mergeOtherBillItems). The "BILLED (billNo - STATUS)" badge (~line 2844) is how this shows up today, but the item still lands in the bill and has to be deleted by hand.
+
+FIX 1 — SKIP ALREADY-BILLED ITEMS ON PULL BY DEFAULT
+a. In handleAutoPopulate, after the check-duplicates response comes back and `dups` is known, split `mapped` into two lists: items NOT in `dups` (unbilled — pull these) and items IN `dups` (already billed — do not merge these into lineItems by default).
+b. Only merge the unbilled list into lineItems (mergeOtherBillItems call, ~line 1214).
+c. Replace or extend the existing toast (~line 1198, "${dups.length} item(s) already billed in other bills") so it clearly states these were skipped, not just flagged — e.g. "${mapped.length - dups.length} item(s) pulled — ${dups.length} already billed elsewhere were skipped."
+d. Do this for BOTH call paths — Pull All and each individual group's Pull button — since both go through this one function; no special-casing needed.
+
+FIX 2 — DON'T HIDE THAT SKIPPED ITEMS EXIST — SURFACE THEM FOR AWARENESS, WITHOUT PULLING THEM
+a. In the pre-pull grouped breakdown (VB-11/VB-11-FIX's per-group rows, e.g. "EQUIPMENT — JCB-SITE, HOURLY HIRE — 2 items"), where the candidate count for a group is shown, if some of that group's candidates are already billed elsewhere, adjust the count/label to make that visible before pulling — e.g. "8 items (2 already billed, 6 to pull)" — so the person preparing the bill isn't confused about why a group's pulled count is lower than what the vendor-list badge originally suggested.
+b. Add a small, clearly-labeled way to still bring in an already-billed item on purpose (for the rare correction case) — a toggle or a secondary action such as "Include already-billed items" that is OFF by default. When off (the default), Fix 1's skip behavior applies. When explicitly turned on, restore today's behavior (pull everything, tag as BILLED) for that pull action only.
+c. Do not remove the "BILLED (billNo - STATUS)" badge or the underlying check-duplicates call — both stay exactly as they are; this batch only changes what happens to the flagged items by default (skip instead of pull-then-flag) and adds visibility before pulling.
+
+WHAT NOT TO DO
+- Do not change how check-duplicates itself determines what counts as "already billed" — reuse it exactly as-is.
+- Do not remove the ability to include an already-billed item when genuinely needed (Fix 2b) — this must remain an explicit, visible choice, never silent.
+- Do not touch GST/TDS, rate-card auto-apply, bill type defaulting (FRESH_BILL_TYPE), or the initialBlank-row clearing logic — all confirmed working, leave them exactly as they are.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — this is client-side filtering of data already returned by the existing check-duplicates endpoint.
+
+TESTS
+A. Select a vendor + period where some activity is already billed in another (approved/paid) bill and some is not. Click Pull All. Confirm only the unbilled items land in the new bill's line items, and the toast clearly states how many were pulled vs. skipped as already billed.
+B. Same setup, but use one group's individual Pull button (VB-11 grouped pull) instead of Pull All. Confirm the same skip behavior applies to that group only, and other groups remain untouched/available.
+C. Confirm the pre-pull group breakdown shows the already-billed count distinctly from the to-pull count for a group that has both.
+D. Use the "Include already-billed items" toggle/action to deliberately pull an already-billed item. Confirm it is added with its BILLED badge exactly as before, and that this was a clear, explicit action, not automatic.
+E. Confirm a vendor + period with NO already-billed activity pulls exactly as it does today — no regression.
+F. Confirm GST/TDS, rate-card auto-apply, and bill type defaulting are all unaffected.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/E evidence (screenshots).
+2. Confirm Fix 2 with Test C/D evidence (screenshots).
+3. Confirm Test F — no regression elsewhere.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
