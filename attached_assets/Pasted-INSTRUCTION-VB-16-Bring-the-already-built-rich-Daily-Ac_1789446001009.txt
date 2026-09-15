@@ -1,0 +1,61 @@
+INSTRUCTION VB-16: Bring the already-built rich Daily Activity view/export to the draft-stage activity calendar, add period totals, and make Export offer Calendar / Bill / Both
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This only applies to EQUIPMENT HIRE bills — the daily activity/calendar concept does not exist for material, labour, or transport bills, and must not be forced onto them. Reuse existing, already-working code wherever possible — do not rebuild the daily-activity table or the bill summary export from scratch, they already exist and are correct for saved bills. Do not touch DPR-01, WP-01, DIESEL-01/02/03, VB-14/VB-15, or Work Programme. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+Two separate, unconnected systems currently exist for equipment hire bill daily detail:
+
+1. client/src/pages/VendorBills.tsx (~line 2649-2664), inside the DRAFT editing view: a plain `<details>` disclosure titled "View activity / breakdown calendar ({calendar.length} days)". `calendar` is a `HireActivityDay[]` (shared/hireBilling.ts, buildHireActivityDays) — each day only has aggregate fields (hours, activityCount, actualDiesel, etc., see the HireActivityDay interface ~line 548). The rendered rows only show the date, a one-line activity status, and breakdown event controls — no opening/closing meter, no times, no diesel breakdown, no totals, no export.
+
+2. client/src/components/vendor-bills/EquipmentHireBillOutput.tsx, used ONLY on already-saved bills with persisted hireStatements (client/src/pages/VendorBills.tsx ~line 3408, `<EquipmentHireBillDetailOutput bill={bill} />`): this already has EVERYTHING you're being asked to add —
+   - `dailyHeaders`/`dailyValues` (~line 130-162): per-day columns for Date, Project/Site, Opening Meter, Closing Meter, Working Hours, Start, End, Clock Duration, Diesel Issued, Opening Tank, Closing Tank, Diesel Consumed, Expected, Difference, Actual Consumption Rate vs Master Norm, Status/Remarks (diesel columns correctly hidden when diesel responsibility is Contractor scope).
+   - `EquipmentHireDailyActivity` (~line 164): the full-detail dialog table using those columns.
+   - `exportEquipmentHireBill` (~line 189): already exports BOTH a Bill Summary (vendor, equipment, period, hire basis, rate, gross hire, breakdown deduction, HSD recovery, other debit/credit, advance adjustment, taxable amount, GST, invoice total, TDS, net payable, paid, balance) AND the full Daily Activity table — as two sheets in one .xlsx, or as a summary page + a landscape Daily Activity page in one .pdf.
+   - `EquipmentHireExportButtons` (~line 262): the existing PDF/Excel trigger for the above.
+
+The only gap: this richer system is gated to bills that already have `hasPersistedHireStatements` — a bill still being drafted (before that snapshot exists) falls back to the old, thin calendar disclosure with no detail, no totals, and no export at all.
+
+FIX 1 — GIVE THE DRAFT-STAGE CALENDAR THE SAME DETAIL, COMPUTED LIVE
+a. Replace (or upgrade) the draft-stage "View activity / breakdown calendar" disclosure so it renders using the SAME dailyHeaders/dailyValues/BillingDailyRow shape and table structure as EquipmentHireDailyActivity — reuse those functions/components directly rather than duplicating their column logic.
+b. Since a draft bill has no frozen hireStatements snapshot yet, build the equivalent BillingDailyRow[] data LIVE from the current draft's in-progress hire group state (the same underlying Equipment Performance daily data that buildSavedEquipmentHireBillOutput reads from a snapshot — read it live instead, for the currently selected equipment/period in the draft). Do not invent a new data shape — match BillingDailyRow exactly so the existing render/export functions work unmodified.
+c. This must update live as the draft's period, decisions (breakdown/exception decisions), or diesel recovery choices change — it is not a frozen snapshot until the bill is actually saved.
+
+FIX 2 — PERIOD TOTALS AT THE TOP
+Add a totals summary directly above the daily table (draft-stage calendar) — total hours worked, total diesel issued, total diesel consumed vs expected (with variance), total trips if applicable, and count of breakdown/no-activity days — computed by summing the same rows shown below. Keep it compact (a single row of labeled figures, not a large card).
+
+FIX 3 — SEPARATE EXPORT FOR THE CALENDAR/DAILY-ACTIVITY TABLE ALONE
+Add a small Export action (PDF/Excel) scoped to just the daily activity table + its period totals — reuse exportEquipmentHireBill's existing "Daily Activity" sheet/page logic (the part that is NOT the Bill Summary) rather than writing new PDF/Excel generation code. This should work both in the draft-stage calendar (Fix 1's live data) and be available as one of the choices described in Fix 4 below for saved bills.
+
+FIX 4 — EXPORT BUTTON BECOMES A CHOICE: CALENDAR / BILL / BOTH
+a. Wherever a bill's Export action currently exists — both `EquipmentHireExportButtons` (saved bills) and the plain "EXPORT PDF" button (~line 3410-3421, for bills without persisted hire statements yet, if applicable to equipment hire) — change it so clicking Export asks the person to choose: "Export Calendar" (daily activity table + totals only), "Export Bill" (the existing Bill Summary + Daily Activity combined output, exactly as exportEquipmentHireBill already produces today — do not change this combined output), or "Export Both" (produce both files, or a single combined file with an additional calendar-totals section — whichever is simpler to implement correctly, your call, just be consistent between PDF and Excel).
+b. "Export Bill" must remain byte-for-byte the same output as today's existing export (Bill Summary page/sheet + Daily Activity page/sheet) — this batch does not change that, only adds the Calendar-only option alongside it.
+c. This choice applies to equipment hire bills only, at whatever stage export is currently available (draft calendar per Fix 3, and saved-bill detail view per the existing gating).
+
+WHAT NOT TO DO
+- Do not rebuild dailyHeaders, dailyValues, EquipmentHireDailyActivity, or exportEquipmentHireBill from scratch — reuse them.
+- Do not change the existing "Export Bill" output's content or layout — only add the new Calendar-only option and the choice step in front of it.
+- Do not add this calendar/export system to material, labour, or transport bills — equipment hire only.
+- Do not touch DPR-01, WP-01, DIESEL-01/02/03, VB-14/VB-15, or Work Programme.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — this reuses existing data (Equipment Performance daily rows, already read live elsewhere in the app) and existing export logic, just makes both available earlier (draft stage) and adds a calendar-only export path. If you find a live-data source for daily rows during drafting does not already exist and requires a new query, describe it before building it.
+
+TESTS
+A. Open a bill still in draft (no persisted hire statements) for equipment hire. Confirm the activity calendar now shows full per-day detail (opening/closing meter, hours, start/end, diesel figures, consumption rate vs norm) matching what a saved bill's "View Daily Activity" shows, computed from live current data.
+B. Confirm period totals appear above the daily table, correctly summing the visible rows.
+C. Change the draft's period or a breakdown/exception decision; confirm the calendar and totals update live, without needing to save first.
+D. Export the calendar alone (PDF and Excel) from the draft stage. Confirm it contains only the daily activity table + totals, no bill summary.
+E. Export "Bill" from a saved bill exactly as before. Confirm the output is unchanged from the existing behavior (Bill Summary + Daily Activity, same content as today).
+F. Export "Both." Confirm both pieces are produced correctly.
+G. Confirm a material/labour/transport bill's export is completely unaffected — no calendar option appears where it doesn't apply.
+
+REPORT BACK
+1. Confirm Fix 1/2 with Test A/B/C evidence (screenshots).
+2. Confirm Fix 3/4 with Test D/E/F evidence (exported files or screenshots of their content).
+3. Confirm Test G — no regression to non-equipment bill types.
+4. Confirm no schema change was needed; if a new live-data query was required, describe it.
+5. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
