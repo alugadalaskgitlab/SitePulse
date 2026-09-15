@@ -1165,3 +1165,73 @@ mtime_ms = 1789492225016
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/35f9f2b3-0846-4069-94b5-4a549f318c9a/f5059616-9d7d-4357-9022-f6eaed211661"
 storage_version_token = "1789492329307352"
 content_type = "image/png"
+
+[[outputs]]
+id = "mGwo7J1ODxhCiyN1zV7H3"
+uri = "file://tests/fixtures/dpr03/evidence/dpr03-A-guided-incidental-task.png"
+type = "image"
+title = "A — Optional incidental-work entry"
+description = "Real application components with controlled test APIs. Draft save occurred only in the isolated fixture; no customer records were changed."
+logical_id = "22f48e93-663b-4b1b-b43d-87569996e460"
+content_hash = "sha256:f261a74c0ad1c8866349f5ab616db2f9265f1c595f52046ef6ca97a9823746b8"
+size = 18386
+mtime_ms = 1789494788642
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/22f48e93-663b-4b1b-b43d-87569996e460/a12f39a0-de6d-4a79-b139-10ccd35e7b9c"
+storage_version_token = "1789494894805312"
+content_type = "image/png"
+
+[[outputs]]
+id = "v4u_v32YK_ckP5ThR8RUp"
+uri = "file://tests/fixtures/dpr03/evidence/dpr03-B-saved-incidental-report.png"
+type = "image"
+title = "B — Saved text labelled non-payable"
+description = "Real application components with controlled test APIs. Draft save occurred only in the isolated fixture; no customer records were changed."
+logical_id = "dee44238-128f-4cd4-881a-602d509e6858"
+content_hash = "sha256:efc9c19c200c7a9ba7e37aee04f663cee43768024ad59a9d68b73f5a0438b19e"
+size = 14536
+mtime_ms = 1789494789646
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/dee44238-128f-4cd4-881a-602d509e6858/d3d4b347-76c0-4a82-8b41-eec0f0a0605c"
+storage_version_token = "1789494896030737"
+content_type = "image/png"
+
+[[outputs]]
+id = "QCHlQrsktVoR-_ACj4GT0"
+uri = "file://tests/fixtures/dpr03/evidence/dpr03-C-boq-only-report.png"
+type = "image"
+title = "C — BOQ-only report without an empty task line"
+description = "Real application components with controlled test APIs. Draft save occurred only in the isolated fixture; no customer records were changed."
+logical_id = "ecf23cc6-0270-40fa-8881-8b46e2041336"
+content_hash = "sha256:5f085346d31ec8ac232b84f581786755f7aa849cfe6180ee8e9c9ec1cbae90d9"
+size = 93767
+mtime_ms = 1789494790330
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ecf23cc6-0270-40fa-8881-8b46e2041336/58a3a015-01c3-4320-93fb-1b5020e7daa9"
+storage_version_token = "1789494897779057"
+content_type = "image/png"
+
+[[outputs]]
+id = "3mvUan_X9jd-NRlM3gilW"
+uri = "file://tests/fixtures/dpr03/evidence/dpr03-D-boq-and-incidental-report.png"
+type = "image"
+title = "D — BOQ assignment and incidental work together"
+description = "Real application components with controlled test APIs. Draft save occurred only in the isolated fixture; no customer records were changed."
+logical_id = "ff3cd2bc-c29c-4341-9446-4cb57920f8a6"
+content_hash = "sha256:3464d540a242d37326260f9d36bc7c2c2885a0b711f757ee95eb2055aa5b96e7"
+size = 115216
+mtime_ms = 1789494791098
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ff3cd2bc-c29c-4341-9446-4cb57920f8a6/01f44eff-fecc-4d9c-9796-04881bd44e7f"
+storage_version_token = "1789494899646372"
+content_type = "image/png"
+
+[[outputs]]
+id = "3z9GZIJUp8TG3iiMYg-dZ"
+uri = "file://tests/fixtures/dpr03/evidence/dpr03-E-siteentry-shared-task.png"
+type = "image"
+title = "SiteEntry — Shared incidental-work field"
+description = "Real application components with controlled test APIs. Draft save occurred only in the isolated fixture; no customer records were changed."
+logical_id = "206dab1d-6fe2-47cc-ac38-aab8044f0634"
+content_hash = "sha256:6364bab21e23aba56599a238151953a617a937dcdda2ea4795615ce6297eea76"
+size = 16055
+mtime_ms = 1789494792806
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/206dab1d-6fe2-47cc-ac38-aab8044f0634/14d8e499-32dd-40ee-89dc-739b1bc77f09"
+storage_version_token = "1789494900917900"
+content_type = "image/png"

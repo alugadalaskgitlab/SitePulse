@@ -1,0 +1,51 @@
+INSTRUCTION DPR-03: Restore a free-text task field for equipment work that has no BOQ item — incidental/non-payable work — and show it clearly on the DPR report
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This restores a field that already exists in the database and was already wired end to end, but lost its UI input when Work Assignment became BOQ-only. Do not touch DPR-02, VB-14/VB-15/VB-16/VB-17/DIESEL-03, or Work Programme. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. shared/schema.ts line 643: `task: text("task"), // Task performed by equipment` — this column already exists on equipmentLogs, is not new, and is already read/written throughout server/storage.ts (e.g. ~line 3107, 3433, 6591, 6638, 11768, 16236, 16324, 16501, 16609 — saved uppercased alongside machine/operator, already flows into equipment performance and vendor-bill activity reads).
+2. There is currently NO input for this field anywhere in the UI. client/src/components/EquipmentActivityAllocationEditor.tsx is the only "work performed" entry point today, and it is strictly BOQ-item based: every segment requires a `boqItemId` (validation at ~line 51: "select a BOQ Item" if missing) and its own label already says so — line 131: "Physical work segments · BOQ only". There is no non-BOQ segment type.
+3. Real-world gap this causes (reported directly): at TAKKADPALLY, a JCB was hired to cut a trench/toe drain along the site road because the existing irrigation drain got covered — genuine work, genuinely incurred, but not a BOQ item and not payable/billable progress. Today there is no way to record what this equipment actually did on that day at all.
+4. Because the column already exists and is already wired through save/read, this is a UI-only restoration — no schema change, no migration.
+
+FIX 1 — ADD A NON-BOQ / INCIDENTAL WORK TEXT FIELD, SEPARATE FROM WORK ASSIGNMENT
+a. Add an optional free-text field to the equipment row in the entry form (GuidedDpr.tsx and SiteEntry.tsx — wherever DprEquipmentCompact/EquipmentActivityAllocationEditor is used) — label it clearly, e.g. "Non-BOQ / Incidental Work (optional)" with helper text such as "Use this only for work that has no BOQ item and is not payable progress — e.g. an incidental repair or diversion." Wire it to the existing `task` field (DprEquipmentFields already has `task?: string` in DprEquipmentCompact.tsx line 14 — the type already carries it, it's just never rendered as an input).
+b. Place it visibly near Work Assignment (immediately above or below the BOQ segment editor) but keep it a clearly separate control, not a segment type inside EquipmentActivityAllocationEditor — this is deliberately NOT a BOQ item, must never be picked up by BOQ progress tracking, quantity consumption, or vendor-bill pulling, and must not require start/end time segmentation the way BOQ work does.
+c. This field is optional — a normal BOQ-only equipment day should not be forced to fill it in, and its absence must not trigger any validation warning.
+
+FIX 2 — SHOW IT ON THE REPORT, CLEARLY LABELED AS NON-PAYABLE
+a. In the read-only report render (DprEquipmentCompact.tsx, non-editable branch), add a line showing this text when present — e.g. under or near the Work Assignment section — labeled distinctly, such as "Non-BOQ / Incidental Work" with a visible note "Not a BOQ item — not payable progress" so nobody downstream (reviewer, billing, audit) mistakes it for priced work.
+b. When absent, show nothing — no empty placeholder line.
+c. Confirm this renders correctly for both new entries going forward and, since equipmentLogs.task already exists and is already populated on some historical rows (per BACKGROUND #1), for any existing DPR that happens to already have a task value stored — no backfill needed, this is a pure render addition reading data that may already be there.
+
+FIX 3 — DO NOT LET THIS FEED ANYTHING FINANCIAL
+a. Explicitly confirm (and if necessary guard) that this free-text field is never read by vendor-bill pull/hire-activity logic, BOQ progress/quantity tracking, or work programme cascade — it is documentation only. server/storage.ts's existing reads of `task` for vendor-bill hire activity (~line 16324, 16340) already treat it as a display-only description string on activity rows, not a payable quantity — confirm this remains the case and nothing new routes it into billing.
+
+WHAT NOT TO DO
+- Do not add a new database column — the field already exists, reuse it.
+- Do not make this field part of Work Assignment's BOQ segment editor, and do not let it require or contribute to BOQ quantity/progress in any way.
+- Do not make this field required.
+- Do not touch DPR-02, VB-14/VB-15/VB-16/VB-17/DIESEL-03, or Work Programme.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change — equipmentLogs.task already exists and is already wired through save and read paths; this batch only adds the missing UI input and report display.
+
+TESTS
+A. On a fresh DPR, add an equipment row with no BOQ work assignment at all, only a Non-BOQ/Incidental Work description (e.g. "Cut trench/toe drain along site road — existing irrigation drain covered"). Save. Confirm it saves without any BOQ-related validation error.
+B. Open that DPR's report. Confirm the incidental work text appears, clearly labeled as non-BOQ/not payable, and that no BOQ progress, quantity, or billing figure was affected by it.
+C. On another equipment row, use BOQ Work Assignment as normal with no incidental-work text. Confirm the report shows no empty incidental-work line.
+D. Use both — a BOQ-assigned segment and an incidental-work description — on the same equipment row in one day. Confirm both show correctly and independently on the report.
+E. Confirm this equipment's usage does not appear as a billable/payable line anywhere in Vendor Bills pull results purely because of the incidental-work text (only actual BOQ/hire activity should ever be pullable, as before).
+F. Check an older DPR record that happens to already have a task value stored (if one exists in test/sample data) — confirm it now displays on the report without needing any backfill.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A evidence (screenshots).
+2. Confirm Fix 2 with Test B/C/D evidence (screenshots).
+3. Confirm Fix 3 with Test E evidence.
+4. Confirm Test F if applicable data exists, or state that no historical row with a task value was available to test.
+5. Confirm no schema change was needed.
+6. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

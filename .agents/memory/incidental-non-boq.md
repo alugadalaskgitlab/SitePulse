@@ -10,3 +10,9 @@ No Site Work is a separate non-physical classification. It requires its own reas
 **Why:** Reusing one classification or filtering only the main Progress Report caused physical incidental records to leak into downstream programme totals and made No Site Work lose its distinct operational meaning.
 
 **How to apply:** Carry the classification through every overlap-candidate mapping and every BOQ/programme aggregation seam. Conversion of already credited work to incidental requires explicit confirmation. Report-to-edit flows must return to the exact reviewed overlap without saving from the report itself.
+
+Equipment incidental task text is documentation, not the progress-entry classification above. “Not payable progress” does not waive an otherwise valid equipment hire charge.
+
+**Why:** The user restored a description for unpriced site work, not a new equipment billing exemption or a non-BOQ allocation type.
+
+**How to apply:** Keep task text independent of BOQ segments and quantities. Billing may retain it as descriptive metadata, but changing the text alone must not change quantity, rate, or contractual eligibility.

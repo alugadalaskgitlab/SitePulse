@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronUp, CircleAlert, Droplets, Fuel, Gauge } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
@@ -122,6 +123,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
     if (Array.isArray(row.activitySegments) && (row.activitySegments.length > 0 || !row.activityAllocations?.length)) return row.activitySegments;
     return groupLegacyEquipmentActivityAllocations(row.activityAllocations);
   }, [row.activitySegments, row.activityAllocations]);
+  const incidentalTask = typeof row.task === "string" ? row.task.trim() : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -226,6 +228,25 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
       {!editable && tankKnown && !row.dieselBalanceConfirmed && <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-300">Physical tank balance has not been confirmed.</div>}
       </>}
       <div className={editable && !expanded ? "hidden" : undefined}>
+       {editable ? <section className="border-t border-slate-200 px-3 py-3 sm:px-4 dark:border-slate-700" data-testid={`equipment-compact-incidental-work-${index}`}>
+         <div>
+           <Label htmlFor={`equipment-compact-incidental-task-${index}`} className="text-xs font-bold uppercase tracking-[0.12em] text-slate-700 dark:text-slate-200">Non-BOQ / Incidental Work (optional)</Label>
+           <Textarea
+             id={`equipment-compact-incidental-task-${index}`}
+             className="mt-1.5 min-h-20 bg-white text-sm dark:bg-slate-950/50"
+             value={row.task ?? ""}
+             onChange={event => onChange?.({ task: event.target.value })}
+             placeholder="Describe work with no BOQ item"
+             aria-describedby={`equipment-compact-incidental-task-help-${index}`}
+             data-testid={`equipment-compact-incidental-task-${index}`}
+           />
+           <p id={`equipment-compact-incidental-task-help-${index}`} className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Use this only for work that has no BOQ item and is not payable progress — e.g. an incidental repair or diversion.</p>
+         </div>
+       </section> : incidentalTask ? <section className="border-t border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-950/20" data-testid={`equipment-compact-incidental-work-${index}`}>
+         <SectionHeading>Non-BOQ / Incidental Work</SectionHeading>
+         <p className="whitespace-pre-wrap text-sm font-medium text-slate-800 dark:text-slate-100" data-testid={`equipment-compact-incidental-task-value-${index}`}>{incidentalTask}</p>
+         <p className="mt-2 text-xs font-semibold text-amber-800 dark:text-amber-300">Not a BOQ item — not payable progress.</p>
+       </section> : null}
       <EquipmentActivityAllocationEditor value={activitySegments} onChange={editable && (onWorkAssignmentChange || onChange) ? activitySegments => onWorkAssignmentChange ? onWorkAssignmentChange(activitySegments) : onChange?.({ activitySegments, activityAllocations: undefined }) : undefined} parentHours={allocationParent.hours} parentStartTime={row.startTime} parentEndTime={row.endTime} boqItems={boqItems} programmeBars={programmeBars} editable={editable} preserveInitialValueUntilChange={usingLegacyActivityAssignment} />
       </div>
     </article>

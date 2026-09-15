@@ -247,6 +247,11 @@ describe("Batch 04 — Guided equipment round-trip (J)", () => {
     const payload = buildGuidedEquipmentPayload({ ...newGuidedEquipmentRow(), machine: "ROLLER" });
     expect(Object.keys(payload).sort()).toEqual(["machine", "operator", "task", "vehicleNo"]);
   });
+
+  it("keeps an incidental task entered on a new Guided row in the payload", () => {
+    const row = { ...newGuidedEquipmentRow(), task: "CUT TRENCH / TOE DRAIN" };
+    expect(buildGuidedEquipmentPayload(row).task).toBe("CUT TRENCH / TOE DRAIN");
+  });
 });
 
 describe("Batch 04 — submit readiness (K–V)", () => {

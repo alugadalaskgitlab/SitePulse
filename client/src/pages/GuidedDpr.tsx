@@ -2340,7 +2340,7 @@ export default function GuidedDpr() {
                         <p className="text-xs text-amber-700 dark:text-amber-400" data-testid={`text-eq-dup-advisory-${i}`}>{advisory}</p>
                       )}
                       <DprEquipmentCompact
-                        row={{ ...pt, machine: eq.machine, vehicleNo: eq.vehicleNo }}
+                        row={{ ...pt, machine: eq.machine, vehicleNo: eq.vehicleNo, task: eq.task }}
                         equipment={master}
                         hideIdentity
                         index={i}
@@ -2352,8 +2352,15 @@ export default function GuidedDpr() {
                           boqItemId: entry.boqItemId,
                         }] : [])}
                         enableTankContinuity={pt.dieselSource === "plant_stock"}
-                        onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === i
-                          ? { ...row, passthrough: { ...row.passthrough, ...patch } } : row))}
+                         onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => {
+                           if (rowIndex !== i) return row;
+                           const { task, ...passthroughPatch } = patch;
+                           return {
+                             ...row,
+                             ...(task === undefined ? {} : { task }),
+                             passthrough: { ...row.passthrough, ...passthroughPatch },
+                           };
+                         }))}
                         onWorkAssignmentChange={(activitySegments) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === i
                           ? {
                               ...row,
