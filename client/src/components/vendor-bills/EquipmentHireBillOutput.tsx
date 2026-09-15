@@ -28,6 +28,17 @@ export type BillingDailyRow = {
   downtimeHours: number;
 };
 
+export type EquipmentHirePeriodTotals = {
+  hours: number | null;
+  dieselIssued: number | null;
+  dieselConsumed: number | null;
+  expectedDiesel: number | null;
+  variance: number | null;
+  trips: number | null;
+  breakdownDays: number;
+  noActivityDays: number;
+};
+
 export type EquipmentHireExportData = {
   billNo: string;
   vendorName: string;
@@ -161,6 +172,117 @@ function dailyValues(row: BillingDailyRow, dieselResponsibility?: string | null,
   ];
 }
 
+type DailyTotalsRow = BillingDailyRow & {
+  /** Kept out of BillingDailyRow so the persisted/live row contract stays unchanged. */
+  trips?: number | null;
+};
+
+const knownNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+/**
+ * Sum a nullable measurement without turning a wholly unavailable series into
+ * a misleading zero.  A measured zero remains a measured zero.
+ */
+function sumKnown(values: Array<number | null | undefined>): number | null {
+  const known = values.filter(knownNumber);
+  return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
+}
+
+function rowTrips(row: BillingDailyRow): number | null {
+  const candidate = row as DailyTotalsRow;
+  if (knownNumber(candidate.trips)) return candidate.trips;
+
+  const performance = candidate.performance as (EquipmentPerformanceDailyRow & {
+    trips?: number | null;
+    numberOfTrips?: number | null;
+  }) | undefined;
+  if (knownNumber(performance?.trips)) return performance.trips;
+  if (knownNumber(performance?.numberOfTrips)) return performance.numberOfTrips;
+
+  const events = performance?.events || [];
+  const eventTrips = events
+    .map(event => {
+      const item = event as typeof event & { numberOfTrips?: number | null };
+      return knownNumber(item.trips) ? item.trips : item.numberOfTrips;
+    })
+    .filter(knownNumber);
+  return eventTrips.length ? eventTrips.reduce((sum, value) => sum + value, 0) : null;
+}
+
+/**
+ * Calculate the compact calendar totals from exactly the rows displayed in the
+ * daily table.  Unknown measurements are omitted from a partial sum; if every
+ * row is unknown the total remains null, rather than becoming zero.
+ */
+export function buildEquipmentHirePeriodTotals(
+  rows: BillingDailyRow[],
+  dieselResponsibility?: string | null,
+): EquipmentHirePeriodTotals {
+  const fuelIsContractorScope = String(dieselResponsibility).toLowerCase() === "vendor";
+  const performanceRows = rows.map(row => row.performance);
+  const measuredRows = performanceRows.map(item => ({
+    hours: item?.workingHours,
+    dieselIssued: fuelIsContractorScope ? null : item?.dieselIssued,
+    dieselConsumed: fuelIsContractorScope || item?.consumptionIncomplete ? null : item?.dieselConsumed,
+    expectedDiesel: fuelIsContractorScope || item?.consumptionIncomplete ? null : item?.expectedDiesel,
+    variance: fuelIsContractorScope || item?.consumptionIncomplete ? null : item?.difference,
+  }));
+  return {
+    hours: sumKnown(measuredRows.map(item => item.hours)),
+    dieselIssued: sumKnown(measuredRows.map(item => item.dieselIssued)),
+    dieselConsumed: sumKnown(measuredRows.map(item => item.dieselConsumed)),
+    expectedDiesel: sumKnown(measuredRows.map(item => item.expectedDiesel)),
+    variance: sumKnown(measuredRows.map(item => item.variance)),
+    trips: sumKnown(rows.map(rowTrips)),
+    breakdownDays: rows.filter(row => row.status === "Breakdown").length,
+    noActivityDays: rows.filter(row => row.status === "No Work").length,
+  };
+}
+
+function periodTotalLabel(value: number | null, suffix = "") {
+  return value == null ? "—" : `${number(value)}${suffix}`;
+}
+
+function EquipmentHirePeriodTotalsSummary({
+  rows,
+  dieselResponsibility,
+}: {
+  rows: BillingDailyRow[];
+  dieselResponsibility?: string | null;
+}) {
+  const fuelIsContractorScope = String(dieselResponsibility).toLowerCase() === "vendor";
+  const totals = buildEquipmentHirePeriodTotals(rows, dieselResponsibility);
+  return <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded border bg-muted/30 px-3 py-2 text-xs" data-testid="equipment-hire-period-totals">
+    <span><strong>Hours:</strong> {periodTotalLabel(totals.hours, " h")}</span>
+    {!fuelIsContractorScope && <>
+      <span><strong>Diesel issued:</strong> {periodTotalLabel(totals.dieselIssued, " L")}</span>
+      <span><strong>Consumed:</strong> {periodTotalLabel(totals.dieselConsumed, " L")}</span>
+      <span><strong>Expected:</strong> {periodTotalLabel(totals.expectedDiesel, " L")}</span>
+      <span><strong>Variance:</strong> {periodTotalLabel(totals.variance, " L")}</span>
+    </>}
+    {totals.trips != null && <span><strong>Trips:</strong> {periodTotalLabel(totals.trips)}</span>}
+    <span><strong>Breakdown days:</strong> {totals.breakdownDays}</span>
+    <span><strong>No-activity days:</strong> {totals.noActivityDays}</span>
+  </div>;
+}
+
+export function EquipmentHireDailyTable({ rows, dieselResponsibility, consumptionNorm }: {
+  rows: BillingDailyRow[];
+  dieselResponsibility?: string | null;
+  consumptionNorm?: number | null;
+}) {
+  const headers = dailyHeaders(dieselResponsibility);
+  return <div className="overflow-x-auto">
+    <table className="w-full min-w-[1780px] text-xs">
+      <thead className="bg-muted text-[10px] uppercase tracking-wide"><tr>{headers.map(header => <th key={header} className="px-2 py-2 text-right first:text-left last:text-left">{header}</th>)}</tr></thead>
+      <tbody>{rows.map(row => <tr key={row.date} className="border-b align-top">
+        {dailyValues(row, dieselResponsibility, consumptionNorm).map((value, index) => <td key={index} className={`px-2 py-2 ${index === 0 || index === 1 || index === headers.length - 1 ? "text-left" : "text-right"}`}>{value}</td>)}
+      </tr>)}</tbody>
+    </table>
+  </div>;
+}
+
 export function EquipmentHireDailyActivity({ open, onOpenChange, rows, dieselResponsibility, consumptionNorm }: {
   open: boolean; onOpenChange: (value: boolean) => void; rows: BillingDailyRow[];
   dieselResponsibility?: string | null; consumptionNorm?: number | null;
@@ -170,20 +292,15 @@ export function EquipmentHireDailyActivity({ open, onOpenChange, rows, dieselRes
   useEffect(() => {
     if (open && scrollRef.current) scrollRef.current.scrollLeft = 0;
   }, [open]);
-  const headers = dailyHeaders(dieselResponsibility);
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-h-[90vh] max-w-[98vw] overflow-y-auto">
       <DialogHeader><DialogTitle>Daily Activity</DialogTitle></DialogHeader>
       <p className="text-xs text-muted-foreground">Performance figures are the precomputed Equipment Performance daily rows for this equipment and bill period. Status and downtime remarks are provided for billing review.</p>
        {fuelIsContractorScope && <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">Fuel / Diesel: Contractor Scope</div>}
-       <div ref={scrollRef} className="overflow-x-auto">
-         <table className="w-full min-w-[1780px] text-xs">
-           <thead className="bg-muted text-[10px] uppercase tracking-wide"><tr>{headers.map(header => <th key={header} className="px-2 py-2 text-right first:text-left last:text-left">{header}</th>)}</tr></thead>
-          <tbody>{rows.map(row => <tr key={row.date} className="border-b align-top">
-             {dailyValues(row, dieselResponsibility, consumptionNorm).map((value, index) => <td key={index} className={`px-2 py-2 ${index === 0 || index === 1 || index === headers.length - 1 ? "text-left" : "text-right"}`}>{value}</td>)}
-          </tr>)}</tbody>
-        </table>
-      </div>
+       <EquipmentHirePeriodTotalsSummary rows={rows} dieselResponsibility={dieselResponsibility} />
+       <div ref={scrollRef}>
+         <EquipmentHireDailyTable rows={rows} dieselResponsibility={dieselResponsibility} consumptionNorm={consumptionNorm} />
+       </div>
     </DialogContent>
   </Dialog>;
 }
@@ -259,15 +376,151 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
   doc.save(`${safeName}.pdf`);
 }
 
-export function EquipmentHireExportButtons({ data, rows, disabled = false }: { data: EquipmentHireExportData; rows: BillingDailyRow[]; disabled?: boolean }) {
-  const [exporting, setExporting] = useState<"pdf" | "xlsx" | null>(null);
-  const download = (kind: "pdf" | "xlsx") => {
-    setExporting(kind);
-    try { exportEquipmentHireBill(data, rows, kind); } finally { setExporting(null); }
+function calendarTotalsRows(
+  totals: EquipmentHirePeriodTotals,
+  fuelIsContractorScope: boolean,
+): Array<Array<string | number | null>> {
+  return [
+    ["Period totals"],
+    ["Total Hours", totals.hours],
+    ...(fuelIsContractorScope ? [] : [
+      ["Total Diesel Issued", totals.dieselIssued],
+      ["Total Diesel Consumed", totals.dieselConsumed],
+      ["Total Expected Diesel", totals.expectedDiesel],
+      ["Total Variance", totals.variance],
+    ]),
+    ...(totals.trips == null ? [] : [["Total Trips", totals.trips]]),
+    ["Breakdown Days", totals.breakdownDays],
+    ["No-Activity Days", totals.noActivityDays],
+  ];
+}
+
+/**
+ * Export only the daily activity calendar and its period totals.  The bill
+ * summary deliberately lives only in exportEquipmentHireBill.
+ */
+export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows: BillingDailyRow[], format: "pdf" | "xlsx") {
+  const fuelIsContractorScope = String(data.dieselResponsibility).toLowerCase() === "vendor";
+  const totals = buildEquipmentHirePeriodTotals(rows, data.dieselResponsibility);
+  const headers = dailyHeaders(data.dieselResponsibility);
+  const safeName = (data.billNo || "equipment-hire-bill").replace(/[^\w-]+/g, "-");
+  const metadata: Array<Array<string | number | null>> = [
+    ["Equipment Hire Daily Activity"],
+    ["Equipment", data.equipmentName],
+    ...(data.projectSite ? [["Project / Site", data.projectSite]] : []),
+    ["Bill period", `${dateLabel(data.periodFrom)} to ${dateLabel(data.periodTo)}`],
+    ...(fuelIsContractorScope ? [["Fuel / Diesel", "Contractor Scope"]] : []),
+  ];
+  if (format === "xlsx") {
+    const workbook = XLSX.utils.book_new();
+    const activitySheet = XLSX.utils.aoa_to_sheet([
+      ...metadata,
+      [],
+      ...calendarTotalsRows(totals, fuelIsContractorScope),
+      [],
+      ...(fuelIsContractorScope ? [["Fuel / Diesel: Contractor Scope"]] : []),
+      headers,
+      ...rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm)),
+    ]);
+    activitySheet["!cols"] = headers.map((header, index) => ({ wch: index === headers.length - 1 ? 52 : Math.max(14, header.length + 2) }));
+    XLSX.utils.book_append_sheet(workbook, activitySheet, "Daily Activity");
+    XLSX.writeFile(workbook, `${safeName}-calendar.xlsx`);
+    return;
+  }
+
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  doc.setFontSize(13);
+  doc.text("DAILY ACTIVITY CALENDAR", 14, 12);
+  doc.setFontSize(8);
+  doc.text(`Equipment: ${pdfText(String(data.equipmentName))}`, 14, 18);
+  doc.text(`Period: ${pdfText(`${dateLabel(data.periodFrom)} to ${dateLabel(data.periodTo)}`)}`, 14, 23);
+  if (data.projectSite) doc.text(`Project / Site: ${pdfText(data.projectSite)}`, 14, 28);
+  const totalsStartY = data.projectSite ? 33 : 28;
+  autoTable(doc, {
+    startY: totalsStartY,
+    head: [["Period Totals", "Value"]],
+    body: calendarTotalsRows(totals, fuelIsContractorScope).slice(1).map(row => row.map(value => pdfText(String(value == null ? "—" : value)))),
+    theme: "grid",
+    styles: { fontSize: 7, cellPadding: 1.5 },
+    headStyles: { fillColor: [180, 83, 9] },
+    columnStyles: { 0: { fontStyle: "bold", cellWidth: 45 }, 1: { cellWidth: 35 } },
+  });
+  doc.addPage("a4", "landscape");
+  doc.setFontSize(13);
+  doc.text("DAILY ACTIVITY", 14, 12);
+  if (fuelIsContractorScope) {
+    doc.setFontSize(9);
+    doc.text("Fuel / Diesel: Contractor Scope", 14, 17);
+  }
+  autoTable(doc, {
+    startY: fuelIsContractorScope ? 21 : 16,
+    head: [headers],
+    body: rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm).map(value => pdfText(String(value)))),
+    theme: "grid",
+    styles: { fontSize: 5.7, cellPadding: 1.2, overflow: "linebreak" },
+    headStyles: { fillColor: [180, 83, 9], fontSize: 5.8 },
+    margin: { left: 6, right: 6 },
+  });
+  doc.save(`${safeName}-calendar.pdf`);
+}
+
+export type EquipmentHireExportFormat = "pdf" | "xlsx";
+type EquipmentHireExportMode = "calendar" | "bill" | "both";
+
+export function EquipmentHireExportButtons({
+  data,
+  rows,
+  disabled = false,
+  onExportBill,
+  availableFormats = ["pdf", "xlsx"],
+}: {
+  data: EquipmentHireExportData;
+  rows: BillingDailyRow[];
+  disabled?: boolean;
+  onExportBill?: (format: EquipmentHireExportFormat) => void | Promise<void>;
+  availableFormats?: EquipmentHireExportFormat[];
+}) {
+  const [exporting, setExporting] = useState<string | null>(null);
+  const [choiceFormat, setChoiceFormat] = useState<EquipmentHireExportFormat | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const formats = availableFormats.filter((kind, index, values) => values.indexOf(kind) === index);
+  const openChoice = (kind: EquipmentHireExportFormat) => {
+    setExportError(null);
+    setChoiceFormat(kind);
+  };
+  const download = async (mode: EquipmentHireExportMode) => {
+    if (!choiceFormat) return;
+    const kind = choiceFormat;
+    setExporting(`${mode}-${kind}`);
+    setChoiceFormat(null);
+    setExportError(null);
+    try {
+      if (mode === "bill" || mode === "both") {
+        if (onExportBill) await onExportBill(kind);
+        else exportEquipmentHireBill(data, rows, kind);
+      }
+      if (mode === "calendar" || mode === "both") exportEquipmentHireCalendar(data, rows, kind);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setExportError(message || "The export could not be completed.");
+    } finally {
+      setExporting(null);
+    }
   };
   return <div className="flex flex-wrap gap-2">
-    <Button type="button" variant="outline" size="sm" disabled={disabled || !!exporting} onClick={() => download("pdf")} data-testid="button-export-equipment-hire-pdf"><FileText className="mr-1 h-4 w-4" />{exporting === "pdf" ? "Preparing…" : "Export PDF"}</Button>
-    <Button type="button" variant="outline" size="sm" disabled={disabled || !!exporting} onClick={() => download("xlsx")} data-testid="button-export-equipment-hire-excel"><Download className="mr-1 h-4 w-4" />{exporting === "xlsx" ? "Preparing…" : "Export Excel"}</Button>
+    <Button type="button" variant="outline" size="sm" disabled={disabled || !!exporting || !formats.includes("pdf")} onClick={() => openChoice("pdf")} data-testid="button-export-equipment-hire-pdf"><FileText className="mr-1 h-4 w-4" />{exporting?.endsWith("-pdf") ? "Preparing…" : "Export PDF"}</Button>
+    <Button type="button" variant="outline" size="sm" disabled={disabled || !!exporting || !formats.includes("xlsx")} onClick={() => openChoice("xlsx")} data-testid="button-export-equipment-hire-excel"><Download className="mr-1 h-4 w-4" />{exporting?.endsWith("-xlsx") ? "Preparing…" : "Export Excel"}</Button>
+    {exportError && <p role="alert" className="basis-full text-xs text-destructive">Export failed: {exportError}</p>}
+    <Dialog open={choiceFormat !== null} onOpenChange={open => !open && setChoiceFormat(null)}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Choose {choiceFormat === "xlsx" ? "Excel" : "PDF"} export</DialogTitle></DialogHeader>
+        <div className="grid gap-2">
+          <Button type="button" variant="outline" disabled={!!exporting} onClick={() => download("calendar")} data-testid="button-export-equipment-hire-choice-calendar">Export Calendar</Button>
+          <Button type="button" variant="outline" disabled={!!exporting} onClick={() => download("bill")} data-testid="button-export-equipment-hire-choice-bill">Export Bill</Button>
+          <Button type="button" disabled={!!exporting} onClick={() => download("both")} data-testid="button-export-equipment-hire-choice-both">Export Both</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   </div>;
 }
 

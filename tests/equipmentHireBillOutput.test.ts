@@ -23,7 +23,14 @@ vi.mock("xlsx", () => ({
   writeFile: (_book: unknown, fileName: string) => excelWrites.push(fileName),
 }));
 
-import { buildBillingDailyRows, buildSavedEquipmentHireBillOutput, exportEquipmentHireBill, type EquipmentHireExportData } from "../client/src/components/vendor-bills/EquipmentHireBillOutput";
+import {
+  buildBillingDailyRows,
+  buildEquipmentHirePeriodTotals,
+  buildSavedEquipmentHireBillOutput,
+  exportEquipmentHireBill,
+  exportEquipmentHireCalendar,
+  type EquipmentHireExportData,
+} from "../client/src/components/vendor-bills/EquipmentHireBillOutput";
 
 const data: EquipmentHireExportData = {
   billNo: "VB/EH/001", vendorName: "Acme Hire", equipmentName: "Excavator · EX-01", projectSite: "North Site",
@@ -91,6 +98,149 @@ describe("equipment hire bill output", () => {
     expect(hlcActivity[0]).toContain("Actual Consumption | Master Norm");
     expect(hlcActivity[1]).toContain("Actual: 3.13 L/hr | Master Norm: 3.5 L/hr");
     expect(hlcActivity[2]).toContain("Tank Readings N/A");
+  });
+
+  it("sums only visible measurements while preserving unknown totals and zero values", () => {
+    const totals = buildEquipmentHirePeriodTotals([
+      rows[0],
+      { date: "2026-01-11", status: "No Work", remarks: "No activity recorded", downtimeHours: 0 },
+      {
+        date: "2026-01-12",
+        status: "Breakdown",
+        remarks: "Maintenance",
+        downtimeHours: 2,
+        performance: {
+          ...rows[0].performance!,
+          key: "12",
+          date: "2026-01-12",
+          workingHours: 0,
+          dieselIssued: 0,
+          dieselConsumed: 0,
+          expectedDiesel: 0,
+          difference: 0,
+          consumptionIncomplete: false,
+          events: [{ ...rows[0].performance!.events[0], trips: 0 }],
+        },
+      },
+    ]);
+    expect(totals).toEqual({
+      hours: 8,
+      dieselIssued: 20,
+      dieselConsumed: 25,
+      expectedDiesel: 24,
+      variance: 1,
+      trips: 0,
+      breakdownDays: 1,
+      noActivityDays: 1,
+    });
+    expect(buildEquipmentHirePeriodTotals([
+      { date: "2026-02-01", status: "No Work", remarks: "No activity recorded", downtimeHours: 0 },
+    ])).toEqual({
+      hours: null,
+      dieselIssued: null,
+      dieselConsumed: null,
+      expectedDiesel: null,
+      variance: null,
+      trips: null,
+      breakdownDays: 0,
+      noActivityDays: 1,
+    });
+    expect(buildEquipmentHirePeriodTotals(rows, "vendor")).toMatchObject({
+      hours: 8,
+      dieselIssued: null,
+      dieselConsumed: null,
+      expectedDiesel: null,
+      variance: null,
+    });
+  });
+
+  it("exports a calendar-only file with totals and no bill summary", () => {
+    excelSheets.length = 0;
+    excelWrites.length = 0;
+    exportEquipmentHireCalendar(data, rows, "xlsx");
+    expect(excelSheets.map(sheet => sheet.name)).toEqual(["Daily Activity"]);
+    expect(excelSheets[0].data).toContainEqual(["Period totals"]);
+    expect(excelSheets[0].data).toContainEqual(["Total Hours", 8]);
+    expect(excelSheets[0].data).not.toContainEqual(["Equipment Hire Bill Summary"]);
+    expect(excelWrites).toEqual(["VB-EH-001-calendar.xlsx"]);
+
+    tables.length = 0;
+    pdfEvents.length = 0;
+    exportEquipmentHireCalendar(data, rows, "pdf");
+    expect(tables).toHaveLength(2);
+    expect(tables[0].body).toContainEqual(["Total Hours", "8"]);
+    expect(tables[1].head[0]).toContain("Status / Remarks");
+    expect(pdfEvents).toContainEqual({ type: "save", value: "VB-EH-001-calendar.pdf" });
+    expect(tables.flatMap(table => table.body.flat()).join("")).not.toContain("Bill Summary");
+  });
+
+  it("omits diesel totals and columns for contractor-scope calendar exports", () => {
+    excelSheets.length = 0;
+    exportEquipmentHireCalendar({ ...data, dieselResponsibility: "vendor" }, rows, "xlsx");
+    const activity = excelSheets[0].data;
+    expect(activity).not.toContainEqual(["Total Diesel Issued", 20]);
+    expect(activity.find(row => row.includes("Date"))).not.toContain("Diesel Issued");
+  });
+
+  it("keeps incomplete tank readings unknown even when stale values are present", () => {
+    const incompleteRow = {
+      date: "2026-01-11",
+      status: "Worked" as const,
+      remarks: "Activity recorded",
+      downtimeHours: 0,
+      performance: {
+        ...rows[0].performance!,
+        key: "11",
+        date: "2026-01-11",
+        workingHours: 2,
+        dieselIssued: 3,
+        dieselConsumed: 99,
+        expectedDiesel: 88,
+        difference: 11,
+        consumptionRate: 49.5,
+        consumptionIncomplete: true,
+      },
+    };
+    expect(buildEquipmentHirePeriodTotals([incompleteRow])).toMatchObject({
+      hours: 2,
+      dieselIssued: 3,
+      dieselConsumed: null,
+      expectedDiesel: null,
+      variance: null,
+    });
+    const zeroRow = {
+      ...incompleteRow,
+      date: "2026-01-12",
+      performance: {
+        ...incompleteRow.performance,
+        key: "12",
+        date: "2026-01-12",
+        workingHours: 0,
+        dieselIssued: 0,
+        dieselConsumed: 0,
+        expectedDiesel: 0,
+        difference: 0,
+        consumptionRate: 0,
+        consumptionIncomplete: false,
+      },
+    };
+    expect(buildEquipmentHirePeriodTotals([zeroRow])).toMatchObject({
+      hours: 0,
+      dieselIssued: 0,
+      dieselConsumed: 0,
+      expectedDiesel: 0,
+      variance: 0,
+    });
+
+    excelSheets.length = 0;
+    exportEquipmentHireCalendar(data, [incompleteRow], "xlsx");
+    const activity = excelSheets[0].data;
+    const renderedRow = activity.find(row => row[0] === "11 Jan 2026");
+    expect(renderedRow).toBeDefined();
+    expect(renderedRow).toContain("Tank Readings N/A");
+    expect(renderedRow).not.toContain("99 L");
+    expect(renderedRow).not.toContain("88 L");
+    expect(renderedRow).not.toContain("Actual: 49.50");
   });
 
   it("uses the immutable storage-shaped snapshot and never double-counts aggregate statement deductions", () => {

@@ -28,8 +28,10 @@ import {
   EquipmentHireDailyActivity,
   EquipmentHireBillDetailOutput,
   EquipmentHireExportButtons,
+  exportEquipmentHireBill,
   type EquipmentHireExportData,
 } from "@/components/vendor-bills/EquipmentHireBillOutput";
+import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -2632,10 +2634,32 @@ export default function VendorBills() {
                   <div className="rounded bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                     Master terms · {String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor" ? "Fuel / Diesel: Contractor Scope" : `Diesel: ${String(equipment?.hireDieselResponsibility || "Not recorded")}`} · Breakdown deductions: {equipment?.hireBreakdownDeductionEnabled ? "Enabled" : "Not enabled"}
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => setShowEquipmentDailyActivity(true)} disabled={equipmentPerformance.isFetching} data-testid="button-view-daily-activity">{equipmentPerformance.isFetching ? "Loading daily activity…" : "View Daily Activity"}</Button>
-                    <EquipmentHireExportButtons data={exportData} rows={dailyRows} disabled={equipmentPerformance.isFetching} />
-                  </div>
+                  {billType === "equipment" ? (
+                    <DraftEquipmentHireCalendar
+                      equipmentId={selection.equipmentId}
+                      equipmentName={formatEquipmentOptionLabel(equipment || {})}
+                      periodFrom={selection.periodFrom}
+                      periodTo={selection.periodTo}
+                      maintenance={maintenance}
+                      dieselResponsibility={equipment?.hireDieselResponsibility}
+                      consumptionNorm={equipment?.consumptionNorm}
+                      exceptionDecisions={selection.exceptionDecisions}
+                      dieselRecoveryDecision={selection.dieselRecoveryDecision}
+                      exportData={exportData}
+                      canExport={canExport}
+                      disabled={equipmentPerformance.isFetching}
+                      mode="detail"
+                    />
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setShowEquipmentDailyActivity(true)} disabled={equipmentPerformance.isFetching} data-testid="button-view-daily-activity">{equipmentPerformance.isFetching ? "Loading daily activity…" : "View Daily Activity"}</Button>
+                        <Button type="button" variant="outline" size="sm" disabled={equipmentPerformance.isFetching} onClick={() => exportEquipmentHireBill(exportData, dailyRows, "pdf")} data-testid="button-export-equipment-hire-pdf">EXPORT PDF</Button>
+                        <Button type="button" variant="outline" size="sm" disabled={equipmentPerformance.isFetching} onClick={() => exportEquipmentHireBill(exportData, dailyRows, "xlsx")} data-testid="button-export-equipment-hire-excel">EXPORT EXCEL</Button>
+                      </div>
+                      <EquipmentHireDailyActivity open={showEquipmentDailyActivity} onOpenChange={setShowEquipmentDailyActivity} rows={dailyRows} dieselResponsibility={equipment?.hireDieselResponsibility} consumptionNorm={equipment?.consumptionNorm} />
+                    </>
+                  )}
                   {selection.basis === "trip" && <div className="space-y-2 border-t pt-3">
                     <div><p className="text-xs font-semibold uppercase tracking-wide">Trip Candidate Review</p><p className="text-xs text-muted-foreground">Confirm each recorded trip before it is billed. If you exclude or correct a trip count, enter the reason/reference.</p></div>
                     {activityForGroup(selection).filter(activity => activity.entryType === "trip_based").map((activity: any) => {
@@ -2699,7 +2723,6 @@ export default function VendorBills() {
                       <div><Label className="text-[10px] uppercase">TDS Rate %</Label><Input type="number" min="0" step="0.01" value={tdsRate || ""} placeholder="0" onChange={event => setTdsRate(Number(event.target.value) || 0)} data-testid="input-tds-rate" /></div>
                     </div>
                   </div>
-                  <EquipmentHireDailyActivity open={showEquipmentDailyActivity} onOpenChange={setShowEquipmentDailyActivity} rows={dailyRows} dieselResponsibility={equipment?.hireDieselResponsibility} consumptionNorm={equipment?.consumptionNorm} />
                 </div>;
               })}
             </CardContent>
@@ -2723,13 +2746,57 @@ export default function VendorBills() {
                 const calendar = buildHireActivityDays(activeFrom, activeTo, activityForGroup(group), maintenance.map((row: any) => ({
                   id: row.sourceId, date: row.businessDate, eventType: row.eventType, description: row.description, downtimeHours: row.downtimeHours,
                 })));
+                 const adjustments = group.adjustments || {};
+                 const hsdRecovery = Number(group.dieselRecoveryFinalAmount || 0);
+                 const otherDebit = Number(adjustments.otherDebit || 0);
+                 const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
+                 const otherCredit = Number(adjustments.otherCredit || 0);
+                 const financials = calculateEquipmentHireFinancials({
+                   grossHire: Number(result?.grossAmount || 0),
+                   breakdownDeduction: Number(result?.deductionAmount || 0),
+                   hsdRecovery, otherDebit, advanceAdjustment, otherCredit,
+                   gstRate: gstRateEquipment, tdsRate, paid: 0,
+                 });
+                 const vendorDieselScope = String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor";
+                 const suggestedExcess = Number.isFinite(Number(diesel?.suggestedExcess)) && Number(diesel?.suggestedExcess) > 0
+                   ? Number(diesel?.suggestedExcess)
+                   : undefined;
+                 const suggestedRecoveryAmount = Number.isFinite(Number(diesel?.suggestedRecoveryAmount))
+                   ? Number(diesel?.suggestedRecoveryAmount)
+                   : undefined;
+                 // Use only the recovery suggestion returned by the shared
+                 // calculation. Never infer a price from raw diesel rows.
+                 const suggestedRate = suggestedExcess && suggestedRecoveryAmount != null && suggestedRecoveryAmount > 0
+                   ? suggestedRecoveryAmount / suggestedExcess
+                   : undefined;
+                 const excessFuelQuantity = suggestedExcess == null ? "Qty unavailable" : `${suggestedExcess.toFixed(2)} L`;
+                 const excessFuelRate = suggestedRate == null || suggestedRate <= 0
+                   ? "Rate unavailable"
+                   : `₹${formatCurrency(suggestedRate)}`;
+                 const showExcessFuelLine = !vendorDieselScope && financials.hsdRecovery > 0;
+                 const exportData: EquipmentHireExportData = {
+                   billNo, vendorName, equipmentName: formatEquipmentOptionLabel(equipment || {}),
+                   periodFrom: group.periodFrom, periodTo: group.periodTo,
+                   hireBasis: HIRE_BASIS_LABELS[group.basis], rate: group.rate,
+                   grossHire: Number(result?.grossAmount || 0),
+                   breakdownDeduction: Number(result?.deductionAmount || 0),
+                   hsdRecovery, otherDebit, otherDebitReason: adjustments.otherDebitReason,
+                   advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
+                   otherCredit, otherCreditReason: adjustments.otherCreditReason,
+                   gstRate: financials.gstRate, gstAmount: financials.gstAmount,
+                   taxableAmount: financials.taxableAmount, invoiceTotal: financials.invoiceTotal,
+                   tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
+                   netPayable: financials.netPayable, paid: financials.paid,
+                   dieselResponsibility: equipment?.hireDieselResponsibility,
+                   consumptionNorm: equipment?.consumptionNorm,
+                 };
                 return (
                   <div key={group.id} className="rounded border p-3 space-y-3" data-testid={`monthly-hire-${group.equipmentId}`}>
                     <div className="grid gap-2 text-sm sm:grid-cols-4">
                       <div><span className="block text-[10px] uppercase text-muted-foreground">Machine</span><strong>{formatEquipmentOptionLabel(equipment || {})}</strong></div>
                       <div><span className="block text-[10px] uppercase text-muted-foreground">Active billable range</span><strong>{formatDate(activeFrom)} – {formatDate(activeTo)}</strong></div>
                       <div><span className="block text-[10px] uppercase text-muted-foreground">Monthly rate</span><strong>₹{formatCurrency(group.rate)}</strong></div>
-                      <div><span className="block text-[10px] uppercase text-muted-foreground">Generated net line</span><strong className="text-orange-700">₹{formatCurrency(result?.netAmount || 0)}</strong></div>
+                      <div><span className="block text-[10px] uppercase text-muted-foreground">Generated taxable / bill amount</span><strong className="text-orange-700" data-testid={`monthly-hire-net-${group.equipmentId}`}>₹{formatCurrency(financials.taxableAmount)}</strong></div>
                     </div>
                     <div className="max-w-xs">
                       <Label className="text-[10px] uppercase">Breakdown grace days for this bill period</Label>
@@ -2737,6 +2804,28 @@ export default function VendorBills() {
                         onChange={event => patchHireGroup(group.id, { breakdownGraceDays: Math.max(0, Math.floor(Number(event.target.value) || 0)) })}
                         data-testid={`input-monthly-grace-${group.equipmentId}`} />
                       <p className="mt-1 text-[11px] text-muted-foreground">Total allowance per machine; default 0. Saved in this bill snapshot, not Equipment Master.</p>
+                    </div>
+                    <div className="rounded border border-amber-300 bg-amber-50/60 p-2 text-xs dark:border-amber-800 dark:bg-amber-950/20" data-testid={`monthly-hire-financial-breakdown-${group.equipmentId}`}>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Monthly hire financial breakdown</p>
+                      <div className="space-y-1">
+                        <div className="flex justify-between gap-3"><span>Gross Hire</span><strong>₹{formatCurrency(financials.grossHire)}</strong></div>
+                        {financials.breakdownDeduction > 0 && <div className="flex justify-between gap-3"><span>− Breakdown Deduction</span><strong>₹{formatCurrency(financials.breakdownDeduction)}</strong></div>}
+                        {showExcessFuelLine && <div className="flex justify-between gap-3" data-testid={`monthly-hire-excess-fuel-${group.equipmentId}`}>
+                          <span>
+                            − Excess Fuel Consumed ({excessFuelQuantity} × {excessFuelRate})
+                            {group.dieselRecoveryDecision === "edit" && (
+                              <span className="block text-[11px] text-muted-foreground">
+                                Original suggested: {suggestedRecoveryAmount == null ? "Unavailable" : `₹${formatCurrency(suggestedRecoveryAmount)}`}
+                              </span>
+                            )}
+                          </span>
+                          <strong>₹{formatCurrency(financials.hsdRecovery)}</strong>
+                        </div>}
+                        {financials.otherDebit > 0 && <div className="flex justify-between gap-3"><span>− Other Debit / Recovery</span><strong>₹{formatCurrency(financials.otherDebit)}</strong></div>}
+                        {financials.advanceAdjustment > 0 && <div className="flex justify-between gap-3"><span>− Advance Adjustment</span><strong>₹{formatCurrency(financials.advanceAdjustment)}</strong></div>}
+                        {financials.otherCredit > 0 && <div className="flex justify-between gap-3"><span>+ Other Credit</span><strong>₹{formatCurrency(financials.otherCredit)}</strong></div>}
+                        <div className="flex justify-between gap-3 border-t pt-1 font-semibold"><span>= Net line (pre-GST / TDS)</span><strong data-testid={`monthly-hire-taxable-${group.equipmentId}`}>₹{formatCurrency(financials.taxableAmount)}</strong></div>
+                      </div>
                     </div>
                     {index === 0 && contractorAdvanceSuggestion && (
                       <div className="rounded border border-amber-200 bg-amber-50/50 p-2 dark:border-amber-900 dark:bg-amber-950/20">
@@ -2780,6 +2869,55 @@ export default function VendorBills() {
                         </div>}
                       </div>
                     )}
+                    {billType === "equipment" ? (
+                      <DraftEquipmentHireCalendar
+                        equipmentId={group.equipmentId}
+                        equipmentName={formatEquipmentOptionLabel(equipment || {})}
+                        periodFrom={group.periodFrom}
+                        periodTo={group.periodTo}
+                        maintenance={maintenance}
+                        dieselResponsibility={equipment?.hireDieselResponsibility}
+                        consumptionNorm={equipment?.consumptionNorm}
+                        exceptionDecisions={group.exceptionDecisions}
+                        dieselRecoveryDecision={group.dieselRecoveryDecision}
+                        exportData={exportData}
+                        canExport={canExport}
+                        testId={`draft-equipment-hire-calendar-${group.equipmentId}`}
+                      >
+                        {maintenance.length > 0 && (
+                          <div className="space-y-2" data-testid={`draft-breakdown-controls-${group.equipmentId}`}>
+                            <p className="text-xs font-semibold uppercase tracking-wide">Breakdown Deduction Review</p>
+                            {maintenance.map((event: any) => {
+                              const current = group.exceptionDecisions.find((decision: any) =>
+                                decision.sourceType === "maintenance" && Number(decision.sourceId) === Number(event.sourceId),
+                              );
+                              const without = group.exceptionDecisions.filter((decision: any) =>
+                                !(decision.sourceType === "maintenance" && Number(decision.sourceId) === Number(event.sourceId)),
+                              );
+                              return <div key={event.sourceId} className="flex flex-wrap items-center gap-2 rounded border p-2 text-xs">
+                                <span>{formatDate(event.businessDate)} · {event.description || "Breakdown"}{event.downtimeHours ? ` · ${event.downtimeHours}h` : ""}</span>
+                                <Select
+                                  value={current?.decision || "__automatic__"}
+                                  onValueChange={decision => patchHireGroup(group.id, {
+                                    exceptionDecisions: decision === "__automatic__"
+                                      ? without
+                                      : [...without, { sourceType: "maintenance", sourceId: event.sourceId, exceptionType: "breakdown", date: event.businessDate, decision }],
+                                  })}
+                                >
+                                  <SelectTrigger className="h-7 w-44"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__automatic__">Automatic after grace</SelectItem>
+                                    <SelectItem value="none">No deduction</SelectItem>
+                                    <SelectItem value="half_day">Half day</SelectItem>
+                                    <SelectItem value="full_day">Full day</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>;
+                            })}
+                          </div>
+                        )}
+                      </DraftEquipmentHireCalendar>
+                    ) : (
                     <details>
                       <summary className="cursor-pointer text-xs font-semibold uppercase">View activity / breakdown calendar ({calendar.length} days)</summary>
                       <div className="mt-2 max-h-64 overflow-auto space-y-1">
@@ -2800,6 +2938,7 @@ export default function VendorBills() {
                         })}
                       </div>
                     </details>
+                    )}
                   </div>
                 );
               })}
@@ -3576,7 +3715,7 @@ export default function VendorBills() {
           </div>
           <div className="flex gap-2 flex-wrap items-center">
             {canExport && String(bill.billType || "").toLowerCase() === "equipment" && hasPersistedHireStatements && <EquipmentHireBillDetailOutput bill={bill} />}
-            {canExport && (String(bill.billType || "").toLowerCase() !== "equipment" || !hasPersistedHireStatements) && ["verified", "approved", "paid"].includes(bill.status) && (
+            {canExport && String(bill.billType || "").toLowerCase() !== "equipment" && ["verified", "approved", "paid"].includes(bill.status) && (
               <Button
                 variant="outline"
                 size="sm"
@@ -3590,6 +3729,18 @@ export default function VendorBills() {
               >
                 <Download className="w-4 h-4 mr-1" /> EXPORT PDF
               </Button>
+            )}
+            {canExport && String(bill.billType || "").toLowerCase() === "equipment" && !hasPersistedHireStatements && ["verified", "approved", "paid"].includes(bill.status) && (
+              <SavedEquipmentCalendarExport
+                bill={bill}
+                onExportBill={(format) => {
+                  if (format !== "pdf") return;
+                  const link = document.createElement("a");
+                  link.href = `/api/vendor-bills/${bill.id}/pdf`;
+                  link.download = `VendorBill-${bill.billNo}.pdf`;
+                  link.click();
+                }}
+              />
             )}
             <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
               <Printer className="w-4 h-4 mr-1" /> PRINT

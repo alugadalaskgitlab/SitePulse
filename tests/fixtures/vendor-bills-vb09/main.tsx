@@ -160,8 +160,218 @@ const nonEquipmentBills: FixtureBill[] = [
   },
 ];
 
+// VB-16 uses a compact three-day period so the browser evidence can inspect
+// every rich daily column without manufacturing a month of empty rows.  The
+// shape is the same Equipment Performance daily-row contract consumed by the
+// production saved-bill output builder.
+const vb16PerformanceDailyRows: FixtureBill[] = [
+  {
+    key: "plant_usage:vb16-01", date: "2026-10-01", projectSite: "VB16 LIVE SITE",
+    openingMeter: 1200, closingMeter: 1205, workingHours: 5, workingHoursIncomplete: false,
+    startTime: "08:00", endTime: "13:00", multipleTimeSegments: false, clockDuration: 5,
+    clockDurationIncomplete: false, dieselIssued: 10, openingTank: 80, closingTank: 70,
+    dieselConsumed: 10, expectedDiesel: 10, difference: 0, consumptionRate: 2,
+    consumptionRateUnit: "L/hr", consumptionIncomplete: false, events: [],
+  },
+  {
+    key: "plant_usage:vb16-02", date: "2026-10-02", projectSite: "VB16 LIVE SITE",
+    openingMeter: 1205, closingMeter: 1211, workingHours: 6, workingHoursIncomplete: false,
+    startTime: "08:30", endTime: "14:30", multipleTimeSegments: false, clockDuration: 6,
+    clockDurationIncomplete: false, dieselIssued: 13, openingTank: 70, closingTank: 57,
+    dieselConsumed: 13, expectedDiesel: 12, difference: 1, consumptionRate: 2.17,
+    consumptionRateUnit: "L/hr", consumptionIncomplete: false, events: [],
+  },
+  {
+    key: "plant_usage:vb16-03", date: "2026-10-03", projectSite: "VB16 LIVE SITE",
+    openingMeter: 1211, closingMeter: 1215, workingHours: 4, workingHoursIncomplete: false,
+    startTime: "09:00", endTime: "13:00", multipleTimeSegments: false, clockDuration: 4,
+    clockDurationIncomplete: false, dieselIssued: 8, openingTank: 57, closingTank: 49,
+    dieselConsumed: 8, expectedDiesel: 8, difference: 0, consumptionRate: 2,
+    consumptionRateUnit: "L/hr", consumptionIncomplete: false, events: [],
+  },
+];
+
+const vb16MaintenanceRows: FixtureBill[] = [{
+  sourceId: 16602, businessDate: "2026-10-02", eventType: "breakdown",
+  description: "HYDRAULIC HOSE INSPECTION", downtimeHours: 1,
+  fromTime: "14:30", toTime: "15:30", remarks: "REVIEWED",
+}];
+
+const vb16SavedBill: FixtureBill = {
+  id: 1601, billDate: "2026-10-03", billNo: "VB16-RICH-SAVED", billType: "equipment",
+  vendorName: "VB16 DAILY EQUIPMENT", periodFrom: "2026-10-01", periodTo: "2026-10-03",
+  status: "approved", totalAmount: 18000, adjustmentAmount: 0, gstRateEquipment: 18,
+  tdsRate: 2, netPayableAmount: 21124.8, amountPaid: 0, createdAt: "2026-10-03T12:00:00.000Z",
+  notes: "VB16 FIXTURE RICH DAILY ACTIVITY — NOT PRODUCTION EVIDENCE",
+  items: [], hireStatements: [{
+    id: 16601, equipmentId: 1601, equipmentName: "VB16 DAILY EXCAVATOR",
+    vendorName: "VB16 DAILY EQUIPMENT", billingBasis: "monthly", rate: 18000,
+    periodFrom: "2026-10-01", periodTo: "2026-10-03", quantity: 1, grossAmount: 18000,
+    deductionAmount: 0, netAmount: 18000, status: "approved",
+    calculationSnapshot: {
+      equipmentId: 1601, equipmentName: "VB16 DAILY EXCAVATOR",
+      terms: { billingBasis: "monthly", rate: 18000, dieselResponsibility: "hlc", consumptionNorm: 2 },
+      diesel: { consumptionNorm: 2, actualDiesel: 31, expectedDiesel: 30, finalRecoveryAmount: 0 },
+      performanceDailyRows: vb16PerformanceDailyRows, dailyRows: vb16PerformanceDailyRows,
+      sourceEvidence: { activities: [], maintenance: vb16MaintenanceRows },
+      adjustments: { breakdownDeduction: 0, hsdRecovery: 0 },
+      financials: {
+        grossHire: 18000, breakdownDeduction: 0, hsdRecovery: 0, taxableAmount: 18000,
+        gstRate: 18, gstAmount: 3240, invoiceTotal: 21240, tdsRate: 2, tdsAmount: 360,
+        netPayable: 20880,
+      },
+    },
+    exceptions: [],
+  }],
+};
+
+const vb16MaterialBill: FixtureBill = {
+  id: 1602, billDate: "2026-10-03", billNo: "VB16-MATERIAL-SAVED", billType: "material",
+  vendorName: "VB16 MATERIAL SUPPLIER", periodFrom: "2026-10-01", periodTo: "2026-10-03",
+  status: "approved", totalAmount: 5000, gstRateMaterial: 18, tdsRate: 2,
+  netPayableAmount: 5800, amountPaid: 0, createdAt: "2026-10-03T12:00:00.000Z",
+  items: [{ id: 16021, billId: 1602, date: "2026-10-02", category: "material", description: "VB16 AGGREGATE", qty: 5, unit: "MT", rate: 1000, amount: 5000, source: "manual" }],
+};
+
+// VB-17 isolates the monthly-hire recovery/breakdown display contract. Three
+// active days produce a 9,000 gross hire line (90,000 / 30 × 3), while the
+// tank equation deliberately produces 56 actual versus 24 expected litres:
+// 32 L excess × the latest accepted purchase rate of ₹95 = ₹3,040.
+const vb17PerformanceDailyRows: FixtureBill[] = [
+  {
+    key: "plant_usage:vb17-01", date: "2026-11-01", projectSite: "VB17 BREAKDOWN SITE",
+    openingMeter: 2000, closingMeter: 2008, workingHours: 8, workingHoursIncomplete: false,
+    startTime: "08:00", endTime: "16:00", multipleTimeSegments: false, clockDuration: 8,
+    clockDurationIncomplete: false, dieselIssued: 18, openingTank: 100, closingTank: 82,
+    dieselConsumed: 18, expectedDiesel: 8, difference: 10, consumptionRate: 2.25,
+    consumptionRateUnit: "L/hr", consumptionIncomplete: false, events: [],
+  },
+  {
+    key: "plant_usage:vb17-02", date: "2026-11-02", projectSite: "VB17 BREAKDOWN SITE",
+    openingMeter: 2008, closingMeter: 2016, workingHours: 8, workingHoursIncomplete: false,
+    startTime: "08:00", endTime: "16:00", multipleTimeSegments: false, clockDuration: 8,
+    clockDurationIncomplete: false, dieselIssued: 18, openingTank: 82, closingTank: 64,
+    dieselConsumed: 18, expectedDiesel: 8, difference: 10, consumptionRate: 2.25,
+    consumptionRateUnit: "L/hr", consumptionIncomplete: false, events: [],
+  },
+  {
+    key: "plant_usage:vb17-03", date: "2026-11-03", projectSite: "VB17 BREAKDOWN SITE",
+    openingMeter: 2016, closingMeter: 2024, workingHours: 8, workingHoursIncomplete: false,
+    startTime: "08:00", endTime: "16:00", multipleTimeSegments: false, clockDuration: 8,
+    clockDurationIncomplete: false, dieselIssued: 20, openingTank: 64, closingTank: 100,
+    dieselConsumed: 20, expectedDiesel: 8, difference: 12, consumptionRate: 2.5,
+    consumptionRateUnit: "L/hr", consumptionIncomplete: false, events: [],
+  },
+];
+const vb17MaintenanceRows: FixtureBill[] = [{
+  id: 17601, sourceId: 17601, equipmentId: 1701, date: "2026-11-02",
+  businessDate: "2026-11-02", eventType: "breakdown", description: "VB17 HYDRAULIC BREAKDOWN",
+  downtimeHours: 3, fromTime: "10:00", toTime: "13:00", remarks: "VB17 BREAKDOWN EVIDENCE",
+}];
+const vb17HlcEquipment = {
+  id: 1701, name: "VB17 MONTHLY HLC EXCAVATOR", registrationNumber: "VB17-HLC-01",
+  ownership: "hired", vendorName: "VB17 HLC HIRE", hireBillingBasis: "monthly",
+  hireRate: 90_000, hireStartDate: "2026-11-01", hireEndDate: null,
+  consumptionNorm: 1, meterType: "hour_meter", hireDieselResponsibility: "hlc",
+  hireBreakdownDeductionEnabled: true, automaticMonthlyBreakdownDeductions: true,
+  hireOperatorResponsibility: null, hireAgreementRemarks: "VB17 accepted recovery evidence",
+  hireMonthlyDivisorType: "30", hireMonthlyDivisor: null,
+};
+const vb17VendorEquipment = {
+  ...vb17HlcEquipment, id: 1702, name: "VB17 CONTRACTOR DIESEL LOADER",
+  registrationNumber: "VB17-VENDOR-02", vendorName: "VB17 VENDOR HIRE",
+  hireDieselResponsibility: "vendor", consumptionNorm: 1,
+};
+const vb17DieselRate: FixtureBill = {
+  source: "diesel_rate", sourceId: 17701, businessDate: "2026-11-01", date: "2026-11-01",
+  rate: 95, qtyPurchased: 100, purchasedAt: "2026-11-01T12:00:00Z",
+};
+const vb17HlcActivities: FixtureBill[] = [
+  { source: "equipment_default", sourceId: 1701, equipmentId: 1701, businessDate: "2026-11-01", equipment: vb17HlcEquipment },
+  ...vb17PerformanceDailyRows.map((row, index) => ({
+    source: "plant_usage", sourceId: 17710 + index, equipmentId: 1701, businessDate: row.date,
+    occurredAt: `${row.date}T08:00:00Z`, entryType: "hourly", status: "closed",
+    hoursOrKmRun: row.workingHours, actualDiesel: row.dieselConsumed, dieselSource: "plant_stock",
+    openingDiesel: row.openingTank, closingDiesel: row.closingTank, expectedDiesel: row.expectedDiesel,
+    expectedDieselAvailable: true, consumptionNorm: 1, equipmentName: vb17HlcEquipment.name,
+    site: row.projectSite, task: "VB17 EXCAVATION",
+  })),
+  ...vb17MaintenanceRows.map(row => ({
+    source: "maintenance", sourceId: row.sourceId, equipmentId: 1701, businessDate: row.businessDate,
+    eventType: row.eventType, description: row.description, downtimeHours: row.downtimeHours,
+    fromTime: row.fromTime, toTime: row.toTime, remarks: row.remarks, equipment: vb17HlcEquipment,
+  })),
+  vb17DieselRate,
+];
+const vb17VendorActivities: FixtureBill[] = [
+  { source: "equipment_default", sourceId: 1702, equipmentId: 1702, businessDate: "2026-11-01", equipment: vb17VendorEquipment },
+  ...vb17PerformanceDailyRows.map((row, index) => ({
+    source: "plant_usage", sourceId: 17720 + index, equipmentId: 1702, businessDate: row.date,
+    occurredAt: `${row.date}T08:00:00Z`, entryType: "hourly", status: "closed",
+    hoursOrKmRun: row.workingHours, actualDiesel: row.dieselConsumed, dieselSource: "contractor",
+    expectedDiesel: row.expectedDiesel, expectedDieselAvailable: true, consumptionNorm: 1,
+    equipmentName: vb17VendorEquipment.name, site: row.projectSite, task: "VB17 LOADING",
+  })),
+];
+const vb17PerformanceReport = (equipment: FixtureBill) => ({
+  filterOptions: {
+    projects: ["VB17 BREAKDOWN SITE"], ownership: ["hired"], owners: [equipment.vendorName],
+    equipmentTypes: ["EXCAVATOR"], scopes: [{ value: "plant", label: "Plant" }, { value: "site", label: "Site" }],
+    equipment: [{ id: equipment.id, name: equipment.name, registrationNumber: equipment.registrationNumber, ownership: "hired", vendorName: equipment.vendorName, meterType: equipment.meterType }],
+  },
+  totals: {
+    eventCount: 3, linkedCount: 3, confirmedLegacyCount: 0, unclassifiedCount: 0,
+    runtimeHours: 24, totalKm: 0, trips: 0, dieselActual: 56, dieselExpected: 24,
+    dieselVariance: 32, activeDays: 3, efficiencyPercent: 233.33,
+    dieselBasis: "tank_measured", dieselComparedActual: 56, dieselComparisonIncomplete: false,
+  },
+  reviewRows: [], events: [], projects: ["VB17 BREAKDOWN SITE"],
+  fleet: [{
+    key: `equipment:${equipment.id}`, equipmentId: equipment.id, machine: equipment.name,
+    registrationNumber: equipment.registrationNumber, equipmentType: "EXCAVATOR", ownership: "hired",
+    confidence: "linked", usageBasis: "hour_meter", currentLocation: "VB17 BREAKDOWN SITE", currentStatus: "active",
+    firstIncludedDate: "2026-11-01", lastUsedDate: "2026-11-03", eventCount: 3, activeDays: 3,
+    runtimeHours: 24, totalKm: 0, trips: 0, dieselActual: 56,
+    dieselBasis: "tank_measured", dieselComparedActual: 56, dieselComparisonIncomplete: false,
+    dieselExpected: 24, dieselVariance: 32, efficiencyPercent: 233.33, dataQualityWarnings: [],
+    hired: { hireStartDate: "2026-11-01", usedDays: 3, gapDays: 0, utilizationPercent: 100 },
+    ownerVendor: equipment.vendorName, meterUnit: "h", openingMeter: 2000, closingMeter: 2024,
+    workingHours: 24, workingHoursIncomplete: false, clockDuration: 24, clockDurationIncomplete: false,
+    dieselIssued: 56, openingTank: 100, closingTank: 100, dieselConsumed: 56, expectedDiesel: 24,
+    difference: 32, consumptionRate: 2.33, consumptionRateUnit: "L/hr",
+    consumptionIncomplete: false, dailyRows: vb17PerformanceDailyRows,
+  }],
+});
+const vb17HistoricalBill: FixtureBill = {
+  id: 1703, billDate: "2026-11-03", billNo: "VB17-HISTORICAL",
+  billType: "equipment", vendorName: "VB17 HLC HIRE", periodFrom: "2026-11-01", periodTo: "2026-11-03",
+  status: "draft", totalAmount: 9000, adjustmentAmount: 0, gstRateEquipment: 18, tdsRate: 2,
+  netPayableAmount: 3312.8, amountPaid: 0, createdAt: "2026-11-03T12:00:00.000Z",
+  notes: "VB17 HISTORICAL HIRE REGRESSION — NOT PRODUCTION EVIDENCE", items: [],
+  hireStatements: [{
+    id: 17703, equipmentId: 1701, equipmentName: vb17HlcEquipment.name, vendorName: "VB17 HLC HIRE",
+    billingBasis: "monthly", rate: 90_000, periodFrom: "2026-11-01", periodTo: "2026-11-03",
+    quantity: 1, grossAmount: 9000, deductionAmount: 3000, netAmount: 2960, status: "draft",
+    calculationSnapshot: {
+      equipmentId: 1701, equipmentName: vb17HlcEquipment.name,
+      terms: { billingBasis: "monthly", rate: 90_000, dieselResponsibility: "hlc", consumptionNorm: 3, hireStartDate: "2026-11-01", breakdownDeductionEnabled: true },
+      diesel: { consumptionNorm: 1, actualDiesel: 56, expectedDiesel: 24, suggestedExcess: 32, applicableRate: 95, suggestedRecoveryAmount: 3040, finalRecoveryAmount: 3040, expectedDieselAvailable: true },
+      performanceDailyRows: vb17PerformanceDailyRows, dailyRows: vb17PerformanceDailyRows,
+      sourceEvidence: { activities: vb17HlcActivities, maintenance: vb17MaintenanceRows },
+      adjustments: { breakdownDeduction: 3000, hsdRecovery: 3040 },
+      financials: { grossHire: 9000, breakdownDeduction: 3000, hsdRecovery: 3040, taxableAmount: 2960, gstRate: 18, gstAmount: 532.8, invoiceTotal: 3492.8, tdsRate: 2, tdsAmount: 180, netPayable: 3312.8 },
+    },
+    exceptions: [],
+  }],
+};
+
 const initialBills = (() => {
-  if (new URLSearchParams(window.location.search).get("scenario")?.startsWith("vb10")) return [];
+  const initialScenario = new URLSearchParams(window.location.search).get("scenario") || "";
+  if (initialScenario.startsWith("vb10") || initialScenario === "vb16-draft") return [];
+  if (initialScenario === "vb16-saved") return [vb16SavedBill];
+  if (initialScenario === "vb16-material") return [vb16MaterialBill];
+  if (initialScenario === "vb17-draft" || initialScenario === "vb17-vendor") return [];
+  if (initialScenario === "vb17-historical") return [vb17HistoricalBill];
   const injected = (window as Window & {
     __VB09_HISTORICAL_BILLS__?: FixtureBill[];
     __VB09_DEV_BILLS__?: FixtureBill[];
@@ -505,6 +715,82 @@ const vb15Rates = [
   ...vb11RateCards,
 ];
 
+const vb16Scenario = () => scenarioName().startsWith("vb16");
+const vb16DraftScenario = () => scenarioName() === "vb16-draft";
+const vb16SavedScenario = () => scenarioName() === "vb16-saved";
+const vb16MaterialScenario = () => scenarioName() === "vb16-material";
+const vb16VendorName = () => vb16MaterialScenario() ? "VB16 MATERIAL SUPPLIER" : "VB16 DAILY EQUIPMENT";
+const vb16Equipment = {
+  id: 1601, name: "VB16 DAILY EXCAVATOR", registrationNumber: "VB16-EX-01",
+  ownership: "hired", vendorName: "VB16 DAILY EQUIPMENT", hireBillingBasis: "monthly",
+  hireRate: 18000, hireStartDate: "2026-10-01", hireEndDate: null,
+  consumptionNorm: 2, meterType: "hour_meter", hireDieselResponsibility: "hlc",
+  hireBreakdownDeductionEnabled: true, hireOperatorResponsibility: null,
+  hireAgreementRemarks: "VB16 fixture live daily activity",
+  hireMonthlyDivisorType: "30", hireMonthlyDivisor: null,
+};
+const vb16HireActivities: FixtureBill[] = [
+  {
+    source: "equipment_default", sourceId: 1601, equipmentId: 1601,
+    businessDate: "2026-10-01", equipment: vb16Equipment,
+  },
+  ...vb16PerformanceDailyRows.map(row => ({
+    source: "plant_usage", sourceId: Number(String(row.key).split(":").pop()?.split("-").pop() || 0) + 16600,
+    equipmentId: 1601, businessDate: row.date, occurredAt: `${row.date}T09:00:00Z`,
+    entryType: "hourly", status: "closed", hoursOrKmRun: row.workingHours,
+    actualDiesel: row.dieselConsumed, dieselSource: "plant_stock",
+    openingDiesel: row.openingTank, closingDiesel: row.closingTank,
+    expectedDiesel: row.expectedDiesel, expectedDieselAvailable: true,
+    consumptionNorm: 2, equipmentName: vb16Equipment.name, site: row.projectSite, task: "EXCAVATION",
+  })),
+  ...vb16MaintenanceRows.map(row => ({
+    source: "maintenance", sourceId: row.sourceId, equipmentId: 1601,
+    businessDate: row.businessDate, eventType: row.eventType, description: row.description,
+    downtimeHours: row.downtimeHours, fromTime: row.fromTime, toTime: row.toTime,
+    remarks: row.remarks, equipment: vb16Equipment,
+  })),
+];
+const vb16PerformanceReport = () => ({
+  filterOptions: {
+    projects: ["VB16 LIVE SITE"], ownership: ["hired"], owners: ["VB16 DAILY EQUIPMENT"],
+    equipmentTypes: ["EXCAVATOR"], scopes: [{ value: "plant", label: "Plant" }, { value: "site", label: "Site" }],
+    equipment: [{ id: vb16Equipment.id, name: vb16Equipment.name, registrationNumber: vb16Equipment.registrationNumber, ownership: "hired", vendorName: vb16Equipment.vendorName, meterType: vb16Equipment.meterType }],
+  },
+  totals: {
+    eventCount: 3, linkedCount: 3, confirmedLegacyCount: 0, unclassifiedCount: 0,
+    runtimeHours: 15, totalKm: 0, trips: 0, dieselActual: 31, dieselExpected: 30,
+    dieselVariance: 1, activeDays: 3, efficiencyPercent: 103.33, dieselBasis: "tank_measured",
+    dieselComparedActual: 31, dieselComparisonIncomplete: false,
+  },
+  reviewRows: [], events: [], projects: ["VB16 LIVE SITE"],
+  fleet: [{
+    key: "equipment:1601", equipmentId: 1601, machine: vb16Equipment.name,
+    registrationNumber: vb16Equipment.registrationNumber, equipmentType: "EXCAVATOR",
+    ownership: "hired", confidence: "linked", usageBasis: "hour_meter",
+    currentLocation: "VB16 LIVE SITE", currentStatus: "active",
+    firstIncludedDate: "2026-10-01", lastUsedDate: "2026-10-03",
+    eventCount: 3, activeDays: 3, runtimeHours: 15, totalKm: 0, trips: 0,
+    dieselActual: 31, dieselBasis: "tank_measured", dieselComparedActual: 31,
+    dieselComparisonIncomplete: false, dieselExpected: 30, dieselVariance: 1,
+    efficiencyPercent: 103.33, dataQualityWarnings: [],
+    hired: { hireStartDate: "2026-10-01", usedDays: 3, gapDays: 0, utilizationPercent: 100 },
+    ownerVendor: "VB16 DAILY EQUIPMENT", meterUnit: "h",
+    openingMeter: 1200, closingMeter: 1215, workingHours: 15, workingHoursIncomplete: false,
+    clockDuration: 15, clockDurationIncomplete: false, dieselIssued: 31,
+    openingTank: 80, closingTank: 49, dieselConsumed: 31, expectedDiesel: 30,
+    difference: 1, consumptionRate: 2.07, consumptionRateUnit: "L/hr",
+    consumptionIncomplete: false, dailyRows: vb16PerformanceDailyRows,
+  }],
+});
+
+const vb17Scenario = () => scenarioName().startsWith("vb17");
+const vb17DraftScenario = () => scenarioName() === "vb17-draft";
+const vb17VendorScenario = () => scenarioName() === "vb17-vendor";
+const vb17HistoricalScenario = () => scenarioName() === "vb17-historical";
+const vb17VendorName = () => vb17VendorScenario() ? "VB17 VENDOR HIRE" : "VB17 HLC HIRE";
+const vb17Equipment = () => vb17VendorScenario() ? vb17VendorEquipment : vb17HlcEquipment;
+const vb17Activities = () => vb17VendorScenario() ? vb17VendorActivities : vb17HlcActivities;
+
 function vb10SnapshotForGroup(group: any, status = "draft", billPayload: any = {}): any {
   const equipment = vb10EquipmentMasters.find(row => Number(row.id) === Number(group.equipmentId));
   const isHlc = Number(group.equipmentId) === 1001;
@@ -683,6 +969,8 @@ window.fetch = async (input, init) => {
   }
   if (pathname === "/api/vendor-bills/vendor-names" && method === "GET") {
     if (vb10Scenario()) return json(["VB10 EQUIPMENT HIRE"]);
+    if (vb16Scenario()) return json([vb16VendorName()]);
+    if (vb17Scenario()) return json([vb17VendorName()]);
     if (vb11MixedScenario()) return json(["VB11 MIXED SUPPLIER"]);
     if (vb11SingleCategoryScenario()) return json(["VB11 EQUIPMENT SUPPLIER"]);
     if (vb14Scenario()) return json([vb14VendorName()]);
@@ -802,6 +1090,24 @@ window.fetch = async (input, init) => {
         meterType: "hour_meter", consumptionNorm: null,
       }],
     }]);
+    if (vb17Scenario()) {
+      const equipment = vb17Equipment();
+      return json([{
+        vendorName: equipment.vendorName, equipmentCount: 1,
+        equipment: [{
+          id: equipment.id, name: equipment.name, registrationNumber: equipment.registrationNumber,
+          hireBillingBasis: equipment.hireBillingBasis, hireRate: equipment.hireRate,
+          hireStartDate: equipment.hireStartDate, hireEndDate: equipment.hireEndDate,
+          hireDieselResponsibility: equipment.hireDieselResponsibility,
+          hireOperatorResponsibility: equipment.hireOperatorResponsibility,
+          hireAgreementRemarks: equipment.hireAgreementRemarks,
+          hireBreakdownDeductionEnabled: equipment.hireBreakdownDeductionEnabled,
+          automaticMonthlyBreakdownDeductions: equipment.automaticMonthlyBreakdownDeductions,
+          hireMonthlyDivisorType: equipment.hireMonthlyDivisorType, hireMonthlyDivisor: equipment.hireMonthlyDivisor,
+          meterType: equipment.meterType, consumptionNorm: equipment.consumptionNorm,
+        }],
+      }]);
+    }
   }
   if (pathname === "/api/vendor-bills/discover-vendors") {
     if (vb10Scenario()) return json([{
@@ -811,6 +1117,12 @@ window.fetch = async (input, init) => {
       recordCount: 8,
       categories: ["equipment"],
       existingBill: null,
+    }]);
+    if (vb16DraftScenario()) return json([{
+      vendorName: vb16VendorName(), recordCount: 3, categories: ["equipment"], existingBill: null,
+    }]);
+    if (vb17DraftScenario() || vb17VendorScenario()) return json([{
+      vendorName: vb17VendorName(), recordCount: 3, categories: ["equipment"], existingBill: null,
     }]);
     if (vb11MixedScenario()) return json([{
       vendorName: "VB11 MIXED SUPPLIER",
@@ -852,6 +1164,8 @@ window.fetch = async (input, init) => {
   if (pathname === "/api/vendor-bills/auto-items") {
     const billType = requestUrl.searchParams.get("billType") || "equipment";
     if (vb10Scenario()) return json(["equipment", "all"].includes(billType) ? vb10AutoItems : []);
+    if (vb16Scenario()) return json([]);
+    if (vb17Scenario()) return json([]);
     if (vb11MixedScenario()) {
       return json(billType === "all"
         ? vb11MixedAutoItems
@@ -896,6 +1210,15 @@ window.fetch = async (input, init) => {
         })),
       ]);
     }
+    if (vb16DraftScenario()) {
+      return json(vb16HireActivities);
+    }
+    if (vb17Scenario()) {
+      const equipment = vb17Equipment();
+      return json(vb17Activities().map(row => row.source === "equipment_default"
+        ? { ...row, equipment }
+        : row.source === "maintenance" ? { ...row, equipment } : row));
+    }
     if (vb15Scenario()) {
       const from = requestUrl.searchParams.get("periodFrom") || "";
       const to = requestUrl.searchParams.get("periodTo") || "";
@@ -908,6 +1231,8 @@ window.fetch = async (input, init) => {
   }
   if (pathname === "/api/reports/equipment-performance") {
     if (vb10Scenario()) return json(vb10PerformanceReport());
+    if (vb16DraftScenario()) return json(vb16PerformanceReport());
+    if (vb17Scenario()) return json(vb17PerformanceReport(vb17Equipment()));
     return json({
       filterOptions: { projects: [], ownership: [], owners: [], equipmentTypes: [], equipment: [], scopes: [] },
       totals: { eventCount: 0, linkedCount: 0, confirmedLegacyCount: 0, unclassifiedCount: 0, runtimeHours: 0, totalKm: 0, trips: 0, dieselActual: 0, dieselExpected: 0, dieselVariance: 0, activeDays: 0, efficiencyPercent: null, dieselBasis: "unavailable", dieselComparedActual: 0, dieselComparisonIncomplete: true },

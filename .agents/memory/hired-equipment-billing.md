@@ -5,6 +5,12 @@ description: Durable billing, exception, approval, and concurrency rules for hir
 
 # Hired Equipment Billing
 
+Calendar export and Bill export are separate contracts: Both produces two files in each format, while Bill retains its existing summary-plus-daily layout without the new calendar totals.
+
+**Why:** The user explicitly requires the established Bill output to remain unchanged while adding an independently usable calendar.
+
+**How to apply:** Reuse the daily-row rendering and column logic, but do not add calendar-only totals to the original Bill exporter. Draft calendars may read live performance; saved frozen evidence must not silently refresh from live data.
+
 For vendor billing, an explicitly linked Site DPR row is authoritative over its same-equipment Plant mirror. Do not apply Equipment Performance's opposite source preference to billing.
 
 **Why:** The user requires the Site evidence to remain on the bill; Plant mirroring exists for operational visibility, not a second payable event. Date/hour similarity alone is not proof of duplication.

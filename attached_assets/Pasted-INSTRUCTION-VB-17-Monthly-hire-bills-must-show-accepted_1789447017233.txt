@@ -1,0 +1,52 @@
+INSTRUCTION VB-17: Monthly-hire bills must show accepted diesel recovery as its own "Excess Fuel Consumed" deduction line, not just fold it silently into one net figure
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a display-only gap, specific to MONTHLY-BASIS equipment hire bills. Do not touch DPR-01, WP-01, DIESEL-01/02/03, VB-14/VB-15, or Work Programme. VB-16 (already sent separately) already covers upgrading the "View activity / breakdown calendar" disclosure inside this same monthly-hire card to show full per-day detail including consumption rate and excess — do not duplicate that work here, only reference/reuse it once VB-16 lands. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+client/src/pages/VendorBills.tsx has TWO separate render blocks that both iterate over the same `hireGroups` state, gated by `isHistoricalHireEdit`:
+
+1. The "Equipment Hire" block (~line 2426-2577, gated `isHistoricalHireEdit && ["equipment","all"].includes(billType)`) — used only when editing a pre-VB-10 historical bill. This block computes `financials = calculateEquipmentHireFinancials({...})` (~line 2470-2474) and renders a full breakdown array (~line 2565) that explicitly lists ["Gross Hire", "− Breakdown Deduction", "− HSD Recovery", "− Other Debit/Recovery", "− Advance Adjustment", "+ Other Credit", "= Taxable/Bill Amount", "+ GST", "= Invoice Total", "− TDS", "= NET PAYABLE", "Paid", "= BALANCE THIS BILL"] as distinct, separately-labeled lines.
+
+2. The "Auto-generated monthly hire" block (~line 2579-2676, titled "Auto-generated monthly hire", gated `!isHistoricalHireEdit && hireGroups.length > 0`) — this is the block used for EVERY normal, current-day monthly-hire bill (confirmed at ~line 1724: for a fresh/non-historical bill, hire groups only auto-populate when `hireGroups.every(group => group.basis === "monthly")` — i.e. monthly-basis hire always renders through this second block, never the first). This block shows the diesel reconciliation figures (Expected/Actual/Excess/Recovery, ~line 2621-2636) and lets the preparer Accept/Edit/No-Recovery the suggested amount (`dieselRecoveryFinalAmount`), but the ONLY dollar figure shown anywhere in this block is a single line: "Generated net line: ₹{result?.netAmount}" (~line 2408/2413). There is no Gross Hire / Breakdown Deduction / HSD Recovery breakdown here at all — once "Accept Suggested" is clicked, the recovery amount is folded invisibly into that one net figure, with nothing on screen showing it was separately deducted. This is exactly the bug reported: "it is deducting directly from the hire charges" — visually true, even though shared/hireBilling.ts's calculateHireGroup() keeps `finalRecoveryAmount` mathematically separate from `deductionAmount` internally (`netAmount = grossAmount - deductionAmount - finalRecoveryAmount`) — the UI for this block simply never surfaces that breakdown.
+
+Diesel rate for "qty × rate" display: shared/hireBilling.ts computes `suggestedRecoveryAmount = suggestedExcess * applicableRate` (~line 908-911, 946-949) but does not currently return `applicableRate` itself in the returned diesel object — only `suggestedExcess`, `rateUnavailable`, and `suggestedRecoveryAmount`.
+
+FIX 1 — ADD A DEDUCTIONS BREAKDOWN TO THE MONTHLY-HIRE CARD
+a. In the "Auto-generated monthly hire" block (~line 2579-2676), for each group, compute the same `financials = calculateEquipmentHireFinancials({...})` used in the historical block (~line 2470-2474) — reuse that function and its existing inputs (grossHire: result?.grossAmount, breakdownDeduction: result?.deductionAmount, hsdRecovery: group.dieselRecoveryFinalAmount, otherDebit/advanceAdjustment/otherCredit from group.adjustments, gstRate/tdsRate). Do not write a new calculation — call the same function the same way.
+b. Replace (or add above/below) the single "Generated net line" figure with a compact breakdown showing at minimum: Gross Hire, − Breakdown Deduction (if any), − Excess Fuel Consumed (see Fix 2 for label/value), − Other Debit/Recovery/Advance Adjustment/Other Credit (only if non-zero, to keep it compact), = Net line (final). Keep this visually compact — a small stacked list or inline row, not a large new card — this is a monthly-hire summary per machine, not the full GST/TDS invoice breakdown from the historical block (GST/TDS/Invoice Total already appear elsewhere for the bill as a whole; do not duplicate them here unless they are not shown anywhere else for monthly-basis bills — if they are missing entirely for monthly bills, flag that in your report rather than guessing whether to add them here).
+c. This must update live as the preparer changes Accept/Edit/No Recovery, breakdown grace days, or other adjustment fields — no save required to see it.
+
+FIX 2 — LABEL THE DIESEL RECOVERY LINE "EXCESS FUEL CONSUMED" WITH QTY × RATE SHOWN
+a. In the diesel breakdown line added by Fix 1, label it "Excess Fuel Consumed" (not "HSD Recovery") specifically in this monthly-hire card, and show it as quantity × rate, e.g. "Excess Fuel Consumed (12.4 L × ₹95.00) = ₹1,178.00" — reuse `diesel.suggestedExcess` for quantity; for rate, either (i) have shared/hireBilling.ts's diesel-reconciliation calculation also return the `applicableRate` it already computes internally (preferred — small, low-risk addition to the returned object, not a new calculation), or (ii) derive it client-side as `diesel.suggestedRecoveryAmount / diesel.suggestedExcess` when `suggestedExcess > 0` — your call on which is cleaner, but do not recompute the rate independently from raw data.
+b. If the preparer uses "Edit" to override the final recovery amount, still show the original suggested qty × rate for reference alongside the edited final ₹ figure, so it's clear what was suggested vs. what was actually applied.
+c. This label change (HSD Recovery → Excess Fuel Consumed) applies ONLY to this monthly-hire card's new breakdown — do not rename anything in the historical/daily-hourly block's existing "− HSD Recovery" line (~line 2565), which stays exactly as it is.
+
+WHAT NOT TO DO
+- Do not change how calculateHireGroup / calculateEquipmentHireFinancials compute netAmount or keep deductionAmount/recovery separate internally — that logic is already correct; this is purely about displaying it.
+- Do not touch the historical-hire-edit block's existing breakdown panel (~line 2565) or its "HSD Recovery" label — leave it as-is.
+- Do not duplicate or redo VB-16's calendar/daily-detail work — if VB-16 has already landed by the time you do this, the "View activity / breakdown calendar" disclosure in this same monthly-hire card should already show per-day consumption rate and excess; just confirm it does, do not rebuild it.
+- Do not change GST/TDS rates, bill type defaulting, or anything about the pull/dedupe logic (VB-14/VB-15) — unrelated.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected. If you choose option (i) in Fix 2a (returning `applicableRate` from the diesel calculation), that is a small addition to an existing computed/returned object, not a schema change.
+
+TESTS
+A. Create or open a draft bill for a monthly-hire equipment item with HLC diesel scope, where actual diesel exceeds expected (a genuine excess exists). Confirm the diesel reconciliation section shows Expected/Actual/Excess/Recovery as today.
+B. Click "Accept Suggested." Confirm the monthly-hire card now shows a breakdown listing Gross Hire, the new "Excess Fuel Consumed (qty × rate)" line with its ₹ amount, and the resulting net line — not just a single lump net figure.
+C. Click "Edit" and change the final recovery amount. Confirm the breakdown updates to the edited ₹ figure while still showing the original suggested qty × rate for reference.
+D. Click "No Recovery." Confirm the Excess Fuel Consumed line is removed/zeroed and the net line reflects no recovery deducted.
+E. Confirm a monthly-hire equipment item with Contractor (vendor) diesel scope — where recovery does not apply — shows no Excess Fuel Consumed line at all, consistent with how the historical block already hides HSD Recovery for vendor-scope diesel.
+F. Confirm the historical-hire-edit block's existing breakdown panel and "HSD Recovery" label are completely unchanged.
+G. Confirm Breakdown Deduction (if any grace-day-exceeding breakdown exists for the period) also still appears as its own line, not folded silently either.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/D/G evidence (screenshots).
+2. Confirm Fix 2 with Test B/C/E evidence (screenshots), and state whether you exposed `applicableRate` from shared/hireBilling.ts or derived it client-side.
+3. Confirm Test F — no regression to the historical/daily-hourly block.
+4. Confirm no schema change was needed.
+5. Confirm whether VB-16's calendar upgrade (if already built) is correctly showing per-day consumption rate and excess inside this same monthly-hire card, or report if it is still pending.
+6. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
