@@ -13,6 +13,10 @@ import {
   usageToGuidedRow,
   type OpenUsageLike,
 } from "../shared/dprPlantLink";
+import {
+  normalizeSiteEditEquipmentPayload,
+  normalizeSiteEditProgressPayload,
+} from "../client/src/lib/siteEditPayload";
 
 const {
   getDprSpy,
@@ -424,6 +428,117 @@ describe("06X-HF6 version-route closure", () => {
     );
     expect(updateEquipmentUsageSpy).not.toHaveBeenCalled();
     expect(createEquipmentUsageSpy).not.toHaveBeenCalled();
+  });
+
+  it("parses a normalized restored legacy payload without weakening version guards", async () => {
+    const original = {
+      id: 26601,
+      date: DATE,
+      site: SITE,
+      engineer: "DINESH SINGH - FOREMAN",
+      role: "manager",
+      dprStatus: "submitted",
+      progress: [],
+      equipment: [],
+    };
+    const legacyData = {
+      date: DATE,
+      site: SITE,
+      engineer: "DINESH SINGH - FOREMAN",
+      role: "manager",
+      workType: "road",
+      progress: [{
+        entryKey: "legacy-no-site-work",
+        activity: "LEGACY NO SITE WORK",
+        side: null,
+        chainageFrom: null,
+        chainageTo: null,
+        length: null,
+        width: null,
+        thickness: null,
+        quantity: null,
+        uom: "SQM",
+        noSiteWork: true,
+        noSiteWorkDescription: null,
+        personnelIds: [],
+        boqItemId: null,
+        programmeBarId: null,
+        earthworkArrangementId: null,
+        quantitySource: null,
+        quantitySourceNote: null,
+        chainageOverrideReason: null,
+        lengthOverrideReason: null,
+        uomOverrideReason: null,
+        executedBy: null,
+        layerNo: null,
+        isIncidental: false,
+        incidentalDescription: null,
+        materialOutcome: null,
+        reusableQty: null,
+      }],
+      equipment: [{
+        persistedId: null,
+        machine: "ROLLER",
+        operator: null,
+        vehicleNo: null,
+        entryType: "daily",
+        startTime: null,
+        endTime: null,
+        openingReading: null,
+        closingReading: null,
+        hoursWorked: null,
+        numberOfTrips: null,
+        tripDistance: null,
+        totalKm: null,
+        diesel: null,
+        dieselNorm: null,
+        expectedDiesel: null,
+        openingDiesel: null,
+        dieselBalanceInTank: null,
+        dieselBalanceConfirmed: null,
+        task: null,
+        equipmentId: null,
+        dieselSource: null,
+        fuelStation: null,
+        billNumber: null,
+        amountPaid: null,
+        waterQuantity: null,
+        boqItemId: null,
+        structureId: null,
+        plantUsageId: null,
+        activitySegments: null,
+        activityAllocations: null,
+        breakdowns: null,
+      }],
+      labour: [],
+      materials: [],
+      sitePurchases: [],
+      structureItems: [],
+    };
+
+    getDprSpy.mockReset().mockResolvedValueOnce(original);
+    const raw = await request(app)
+      .post("/api/dprs/26601/version")
+      .send({ data: legacyData });
+    expect(raw.status).toBe(400);
+    expect(raw.body.field).toBe("data.progress.0.uomOverrideReason");
+    expect(raw.body.message).toContain("Expected string");
+    expect(createVersionDprSpy).not.toHaveBeenCalled();
+
+    getDprSpy.mockReset().mockResolvedValueOnce(original);
+    createVersionDprSpy.mockResolvedValueOnce({ id: 40101, date: DATE, site: SITE });
+    const normalizedData = {
+      ...legacyData,
+      progress: [normalizeSiteEditProgressPayload(legacyData.progress[0])],
+      equipment: [normalizeSiteEditEquipmentPayload(legacyData.equipment[0])],
+    };
+    const normalized = await request(app)
+      .post("/api/dprs/26601/version")
+      .send({ data: normalizedData });
+    expect(normalized.status).toBe(201);
+    expect(createVersionDprSpy).toHaveBeenCalledTimes(1);
+    expect(createVersionDprSpy.mock.calls[0][1].progress[0]).not.toHaveProperty("uomOverrideReason");
+    expect(createVersionDprSpy.mock.calls[0][1].equipment[0]).not.toHaveProperty("activitySegments");
   });
 
   it("admin saves activity, equipment, labour, and header edits while retaining lifecycle and review facts", async () => {

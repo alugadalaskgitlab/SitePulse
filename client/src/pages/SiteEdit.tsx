@@ -67,6 +67,7 @@ import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { withEquipmentCreationStartTime, meaningfulEquipmentRows } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
+import { normalizeSiteEditEquipmentPayload, normalizeSiteEditProgressPayload } from "@/lib/siteEditPayload";
 
 interface ProgressEntry {
   /** Persisted row id used as a server-validated legacy-facts fallback. */
@@ -1118,7 +1119,7 @@ export default function SiteEdit() {
       // column, but lets versioning retain review/scope facts safely.
       const { allocations: _allocations, ...persisted } = p;
       if (p.noSiteWork) {
-        return {
+        return normalizeSiteEditProgressPayload({
           ...persisted,
           side: "", chainageFrom: "", chainageTo: "",
           length: null, width: null, thickness: null, quantity: null,
@@ -1126,13 +1127,13 @@ export default function SiteEdit() {
           quantitySource: null, quantitySourceNote: null,
           chainageOverrideReason: null, lengthOverrideReason: null, uomOverrideReason: null, executedBy: null,
           isIncidental: false, incidentalDescription: null,
-        };
+        });
       }
       const effectiveLength = isAdmin
         ? getEffectiveLength(p)
         : calculateLengthFromChainage(p.chainageFrom, p.chainageTo);
       const effectiveQuantity = p.quantity ?? calculateQuantity(p);
-      return {
+      return normalizeSiteEditProgressPayload({
         ...persisted,
         length: effectiveLength,
         quantity: effectiveQuantity,
@@ -1150,7 +1151,7 @@ export default function SiteEdit() {
         isIncidental: p.isIncidental,
         incidentalDescription: p.isIncidental ? (p.incidentalDescription?.trim() || null) : null,
         ...normalizeExcavationMaterialOutcome(effectiveQuantity, p.materialOutcome, p.reusableQty),
-      };
+      });
     }) : [],
     cutFillConsumptions: flattenCutFillConsumptions(progress),
     equipment: meaningfulEquipmentRows(
@@ -1169,7 +1170,7 @@ export default function SiteEdit() {
           (eq.dieselNorm != null ? { consumptionNorm: eq.dieselNorm } : null),
         eq,
       );
-      return {
+      return normalizeSiteEditEquipmentPayload({
         ...rest,
         ...(workAssignmentEdited || eq.persistedId == null
           ? { activitySegments, activityAllocations }
@@ -1179,7 +1180,7 @@ export default function SiteEdit() {
         hoursWorked: preview.hoursWorked,
         expectedDiesel: preview.expectedDiesel,
         dieselNorm: preview.efficiencyValue ?? eq.dieselNorm ?? null,
-      };
+      });
     }),
     labour: labour.filter(l => l.count > 0),
     materials: materials.filter(m => m.material).map(m => ({
