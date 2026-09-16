@@ -62,8 +62,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
 import { BillItemPicker } from "@/components/BillItemPicker";
+import { DprBoqStatus } from "@/components/DprBoqStatus";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { dprBoqItemDisplayName, dprSelectableBoqItems } from "@shared/dprBoqSelection";
+import { dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import {
@@ -410,11 +411,16 @@ export default function GuidedDpr() {
     // `hasOwn` is intentional. A nullable value returned by the server is a
     // saved fact; an omitted field from an older server response is not a
     // reason to pin a brand-new preference to null.
+    const data = urlDraftDpr;
     const hasSavedBoqProjectId = Object.prototype.hasOwnProperty.call(urlDraftDpr, "boqProjectId");
-    const savedBoqProjectId = urlDraftDpr.boqProjectId;
-    serverBoqProjectPinRef.current = hasSavedBoqProjectId && isSavedBoqProjectId(savedBoqProjectId)
-      ? savedBoqProjectId
-      : undefined;
+    const savedBoqProjectId = data.boqProjectId;
+    // Keep the direct assignment visible here: a nullable server value is
+    // meaningful, while the validation below prevents malformed legacy data
+    // from becoming a project pin.
+    serverBoqProjectPinRef.current = data.boqProjectId;
+    if (!hasSavedBoqProjectId || !isSavedBoqProjectId(serverBoqProjectPinRef.current)) {
+      serverBoqProjectPinRef.current = undefined;
+    }
     localBoqPreferenceScopeRef.current = null;
     if (serverBoqProjectPinRef.current !== undefined) {
       setBoqProjectPreference({ resolved: true, projectId: savedBoqProjectId });
@@ -614,6 +620,22 @@ export default function GuidedDpr() {
     if (activeSites.length === 1 && !siteName) setSiteName(activeSites[0].name);
   }, [activeSites, siteName]);
   const handleSiteChange = (nextSite: string) => {
+    if (serverBoqProjectPinRef.current !== undefined && nextSite !== siteName) {
+      toast({
+        title: "Linked BOQ project is preserved",
+        description: "This saved DPR is linked to its original site/project. Start a new DPR to report against another site.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (nextSite !== siteName && guidedHasBoqReferences) {
+      toast({
+        title: "BOQ references are already in use",
+        description: "This DPR has BOQ-linked activity, equipment, or allocation references. Save it against its current site, or start a new DPR before changing sites.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (nextSite !== siteName) {
       if (localBoqPreferenceScopeRef.current) {
         // A browser-restored pin belongs to the blob's site. Do not carry its
@@ -634,9 +656,17 @@ export default function GuidedDpr() {
 
   const {
     siteId: selectedSiteId,
+    projects: boqProjects,
     projectId: boqProjectId,
     items: boqItems,
     projectsLoaded: boqProjectsLoaded,
+    siteResolutionError: boqSiteResolutionError,
+    projectsLoading: boqProjectsLoading,
+    projectsError: boqProjectsError,
+    itemsLoaded: boqItemsLoaded,
+    itemsLoading: boqItemsLoading,
+    itemsError: boqItemsError,
+    retry: retryBoq,
   } = useDprBoqItems<SiteBoqItem>({
     siteName,
     sites: sitesList,
@@ -644,6 +674,24 @@ export default function GuidedDpr() {
       ? boqProjectPreference.projectId
       : undefined,
   });
+  const guidedHasBoqReferences = useMemo(
+    () => hasDprBoqReferences([entries, labour, equipment]),
+    [entries, labour, equipment],
+  );
+  const handleBoqProjectChange = (nextProjectId: number | null) => {
+    if (serverBoqProjectPinRef.current !== undefined) return;
+    if (guidedHasBoqReferences && nextProjectId !== boqProjectId) {
+      toast({
+        title: "BOQ references are already in use",
+        description: "Save this DPR against its current project, or start a new DPR before choosing another project.",
+        variant: "destructive",
+      });
+      return;
+    }
+    localBoqPreferenceScopeRef.current = { site: siteName };
+    setBoqProjectPreference({ resolved: true, projectId: nextProjectId });
+    setAutosaveBoqProjectId(nextProjectId);
+  };
   // Keep the local recovery record in sync with the project actually resolved
   // by the hook, but never write the hook's initial/loading null as though it
   // were a saved preference.
@@ -653,8 +701,25 @@ export default function GuidedDpr() {
       setAutosaveBoqProjectId(serverBoqProjectPinRef.current);
       return;
     }
+    if (
+      guidedHasBoqReferences
+      && boqProjectId != null
+      && !boqProjectPreference.resolved
+    ) {
+      // Once linked rows exist, the automatically chosen project is no longer
+      // merely a display fallback. Pin it before a later project refetch can
+      // reorder rows and switch the disabled selector underneath the entries.
+      localBoqPreferenceScopeRef.current = { site: siteName };
+      setBoqProjectPreference({ resolved: true, projectId: boqProjectId });
+    }
     setAutosaveBoqProjectId(boqProjectId);
-  }, [boqProjectsLoaded, boqProjectId]);
+  }, [
+    boqProjectsLoaded,
+    boqProjectId,
+    guidedHasBoqReferences,
+    boqProjectPreference.resolved,
+    siteName,
+  ]);
   const { data: cutFillArrangements = [] } = useQuery<any[]>({
     queryKey: ["/api/boq/projects", boqProjectId, "earthwork-arrangements"],
     queryFn: async () => {
@@ -1189,10 +1254,9 @@ export default function GuidedDpr() {
       date, site: siteName, engineer, role: "engineer", workType: "road",
       // An explicitly saved null is meaningful (the DPR has no BOQ project);
       // only an unresolved fresh flow should omit the field.
-      // A server draft's saved pin remains canonical even if its site is
-      // deliberately changed and the current site's project list resolves to
-      // a different fallback; the existing server mismatch guard still owns
-      // whether linked work may be saved under that header.
+      // A server draft's saved pin remains canonical; the site/project
+      // controls are locked for that linked draft so it cannot be replaced by
+      // a different fallback during an asynchronous refresh.
       boqProjectId: serverBoqProjectPinRef.current !== undefined
         ? serverBoqProjectPinRef.current
         : boqProjectId != null
@@ -1512,6 +1576,23 @@ export default function GuidedDpr() {
         <Info className="w-4 h-4 mt-0.5 shrink-0" />
         Records today's road progress against the work programme — same official record as the Detailed DPR, faster entry.
       </p>
+      <DprBoqStatus
+        siteName={siteName}
+        siteId={selectedSiteId}
+        siteResolutionError={boqSiteResolutionError}
+        projects={boqProjects}
+        projectId={boqProjectId}
+        items={boqItems}
+        projectsLoading={boqProjectsLoading}
+        projectsLoaded={boqProjectsLoaded}
+        projectsError={boqProjectsError}
+        itemsLoading={boqItemsLoading}
+        itemsLoaded={boqItemsLoaded}
+        itemsError={boqItemsError}
+        onRetry={retryBoq}
+        onProjectChange={handleBoqProjectChange}
+        projectChangeDisabled={serverBoqProjectPinRef.current !== undefined || guidedHasBoqReferences}
+      />
 
       {/* Task #1409: wizard step indicator */}
       <div className="flex items-center gap-1 mb-4" data-testid="wizard-stepper">

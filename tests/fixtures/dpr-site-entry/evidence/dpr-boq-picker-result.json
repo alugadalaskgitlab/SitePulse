@@ -1,0 +1,276 @@
+{
+  "scenario": "DPR BOQ picker isolated browser regression",
+  "fixture": {
+    "baseUrl": "http://127.0.0.1:4178",
+    "cdp": "127.0.0.1:9222",
+    "productionDatabaseUsed": false,
+    "customerWrites": false,
+    "apiRouteMode": "browser fetch adapter with in-memory fixture state",
+    "backendIntegrationTest": false,
+    "evidenceDirectory": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence"
+  },
+  "assertions": {
+    "guidedDesktop": "Guided fresh activity can discover and select an eligible BOQ item from the All bills view after initial load; item has no programme bar and remains explicitly optional.",
+    "detailedMobile": "Narrow mobile Detailed DPR renders the same all-bill picker and selects the eligible no-bar item through its drawer.",
+    "editDesktop": "Detailed Edit hydrates the saved no-bar BOQ item, keeps it discoverable, and preserves the selection without saving.",
+    "retry": "A failed BOQ item request renders an enabled retry; retry succeeds and the same no-bar item remains selectable."
+  },
+  "evidence": {
+    "guidedDesktop": {
+      "beforeSelectImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-boq-guided-desktop-picker-open.png",
+      "afterSelectImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-boq-guided-desktop-no-bar-selected.png",
+      "optionalStatus": "Programme link:Not linked to a programme bar (optional)",
+      "optionGeometry": {
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "visual": {
+          "width": 1432,
+          "height": 1000,
+          "scale": 1,
+          "devicePixelRatio": 1,
+          "offsetLeft": 0,
+          "offsetTop": 0,
+          "pageLeft": 0,
+          "pageTop": 0,
+          "scrollX": 0,
+          "scrollY": 0
+        },
+        "rect": {
+          "left": 362,
+          "top": 604,
+          "right": 992,
+          "bottom": 659.25,
+          "width": 630,
+          "height": 55.25
+        },
+        "domPoint": {
+          "x": 677,
+          "y": 631.625
+        },
+        "point": {
+          "x": 677,
+          "y": 631.625
+        },
+        "hitTest": true,
+        "hitTag": "SPAN",
+        "hitTestId": null,
+        "ariaDisabled": "false"
+      },
+      "clickMethod": "CDP Input.dispatchMouseEvent at settled hit-tested option center",
+      "allBillsSelected": true,
+      "billOptions": [
+        "— Select bill —",
+        "All bills",
+        "BILL 9 · Shoulder Works",
+        "Road Work",
+        "Structure Work"
+      ],
+      "picker": {
+        "billText": "BILL 9 · Shoulder Works",
+        "itemText": "8.7NO-BAR SHOULDER WORK(Sqm)Shoulder preparation item deliberately has no programme bar",
+        "itemDisabled": false
+      }
+    },
+    "detailedMobile": {
+      "beforeSelectImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-boq-detailed-mobile-picker-open.png",
+      "afterSelectImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-boq-detailed-mobile-no-bar-selected.png",
+      "optionalStatus": "Programme link:Not linked to a programme bar (optional)",
+      "optionGeometry": {
+        "viewport": {
+          "width": 429,
+          "height": 927
+        },
+        "visual": {
+          "width": 390,
+          "height": 844,
+          "scale": 1,
+          "devicePixelRatio": 1,
+          "offsetLeft": 13,
+          "offsetTop": 83,
+          "pageLeft": 13,
+          "pageTop": 739,
+          "scrollX": 0,
+          "scrollY": 656
+        },
+        "rect": {
+          "left": 13,
+          "top": 850.75,
+          "right": 416,
+          "bottom": 906,
+          "width": 403,
+          "height": 55.25
+        },
+        "domPoint": {
+          "x": 214.5,
+          "y": 878.375
+        },
+        "point": {
+          "x": 201.5,
+          "y": 795.375
+        },
+        "hitTest": true,
+        "hitTag": "SPAN",
+        "hitTestId": null,
+        "ariaDisabled": "false"
+      },
+      "clickMethod": "CDP Input.dispatchMouseEvent at settled hit-tested option center",
+      "allBillsSelected": true,
+      "billOptions": [
+        "— Select bill —",
+        "All bills",
+        "BILL 9 · Shoulder Works",
+        "Road Work",
+        "Structure Work"
+      ],
+      "picker": {
+        "billText": "BILL 9 · Shoulder Works",
+        "itemText": "8.7NO-BAR SHOULDER WORK(Sqm)Shoulder preparation item deliberately has no programme bar",
+        "itemDisabled": false
+      }
+    },
+    "editDesktop": {
+      "beforeSelectImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-boq-edit-desktop-picker-open.png",
+      "afterSelectImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-boq-edit-desktop-no-bar-selected.png",
+      "optionalStatus": "Programme link:Not linked to a programme bar (optional)",
+      "optionGeometry": {
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "visual": {
+          "width": 1432,
+          "height": 1000,
+          "scale": 1,
+          "devicePixelRatio": 1,
+          "offsetLeft": 0,
+          "offsetTop": 0,
+          "pageLeft": 0,
+          "pageTop": 0,
+          "scrollX": 0,
+          "scrollY": 0
+        },
+        "rect": {
+          "left": 315,
+          "top": 858,
+          "right": 945,
+          "bottom": 913.25,
+          "width": 630,
+          "height": 55.25
+        },
+        "domPoint": {
+          "x": 630,
+          "y": 885.625
+        },
+        "point": {
+          "x": 630,
+          "y": 885.625
+        },
+        "hitTest": true,
+        "hitTag": "SPAN",
+        "hitTestId": null,
+        "ariaDisabled": "false"
+      },
+      "clickMethod": "CDP Input.dispatchMouseEvent at settled hit-tested option center",
+      "allBillsSelected": true,
+      "billOptions": [
+        "— Select bill —",
+        "All bills",
+        "BILL 9 · Shoulder Works",
+        "Road Work",
+        "Structure Work"
+      ],
+      "picker": {
+        "billText": "BILL 9 · Shoulder Works",
+        "itemText": "8.7NO-BAR SHOULDER WORK(Sqm)Shoulder preparation item deliberately has no programme bar",
+        "itemDisabled": false
+      },
+      "loaded": {
+        "billText": "BILL 9 · Shoulder Works",
+        "itemText": "8.7NO-BAR SHOULDER WORK(Sqm)Shoulder preparation item deliberately has no programme bar",
+        "itemDisabled": false
+      }
+    },
+    "retry": {
+      "failedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-boq-retry-desktop-failure.png",
+      "retryButton": {
+        "testId": "dpr-boq-retry",
+        "text": " Retry"
+      },
+      "beforeSelectImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-boq-retry-desktop-picker-open.png",
+      "afterSelectImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-boq-retry-desktop-no-bar-selected.png",
+      "optionalStatus": "Programme link:Not linked to a programme bar (optional)",
+      "optionGeometry": {
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "visual": {
+          "width": 1432,
+          "height": 1000,
+          "scale": 1,
+          "devicePixelRatio": 1,
+          "offsetLeft": 0,
+          "offsetTop": 0,
+          "pageLeft": 0,
+          "pageTop": 0,
+          "scrollX": 0,
+          "scrollY": 0
+        },
+        "rect": {
+          "left": 362,
+          "top": 682,
+          "right": 992,
+          "bottom": 737.25,
+          "width": 630,
+          "height": 55.25
+        },
+        "domPoint": {
+          "x": 677,
+          "y": 709.625
+        },
+        "point": {
+          "x": 677,
+          "y": 709.625
+        },
+        "hitTest": true,
+        "hitTag": "SPAN",
+        "hitTestId": null,
+        "ariaDisabled": "false"
+      },
+      "clickMethod": "CDP Input.dispatchMouseEvent at settled hit-tested option center",
+      "allBillsSelected": true,
+      "billOptions": [
+        "— Select bill —",
+        "All bills",
+        "BILL 9 · Shoulder Works",
+        "Road Work",
+        "Structure Work"
+      ],
+      "picker": {
+        "billText": "BILL 9 · Shoulder Works",
+        "itemText": "8.7NO-BAR SHOULDER WORK(Sqm)Shoulder preparation item deliberately has no programme bar",
+        "itemDisabled": false
+      },
+      "requests": [
+        {
+          "projectId": 5501,
+          "failed": true,
+          "attempt": 1
+        },
+        {
+          "projectId": 5501,
+          "failed": false,
+          "attempt": 2
+        }
+      ]
+    }
+  },
+  "browserExceptions": [],
+  "limitations": [
+    "All requests and writes stay inside the fixture's in-memory fetch adapter.",
+    "No Save, Save Draft, Submit, or mutation control is clicked.",
+    "This verifies rendered browser behavior, not production Express/database integration."
+  ]
+}

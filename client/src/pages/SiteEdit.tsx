@@ -40,8 +40,9 @@ import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { parseDprError } from "@/lib/dprErrors";
 import { DPR_REGISTER_PATH, resolveReturnTo, withReturnTo } from "@/lib/progressReportNav";
 import { BillItemPicker, type BillItem } from "@/components/BillItemPicker";
+import { DprBoqStatus } from "@/components/DprBoqStatus";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { dprBoqItemDisplayName, dprSelectableBoqItems } from "@shared/dprBoqSelection";
+import { dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import {
   adoptOpenUsageIntoDprRow,
@@ -216,7 +217,15 @@ const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 // Used for initial load, draft comparison, and discard-draft restore.
 function mapDprToFormState(dpr: any) {
   const baseSite = dpr.site.replace(/ – (Edited by|Copy by) .+$/, '').trim();
-  const header = { date: dpr.date, site: baseSite, engineer: dpr.engineer, remarks: dpr.remarks || "" };
+  const header = {
+    date: dpr.date,
+    site: baseSite,
+    engineer: dpr.engineer,
+    remarks: dpr.remarks || "",
+    ...(Object.prototype.hasOwnProperty.call(dpr, "boqProjectId")
+      ? { boqProjectId: dpr.boqProjectId ?? null }
+      : {}),
+  };
   const workType: "road" | "structure" = dpr.workType === "structure" ? "structure" : "road";
   const structureItems: StructureItem[] = dpr.structureItems?.length
     ? dpr.structureItems.map((s: any) => ({
@@ -463,21 +472,59 @@ export default function SiteEdit() {
     engineer: "",
     remarks: "",
   });
+  // Legacy DPRs may not have a saved project field. Once their existing rows
+  // reference BOQ items, pin the deterministic fallback so a later project
+  // refetch cannot silently reorder the selected project under the disabled
+  // project UI.
+  const [boqProjectPreference, setBoqProjectPreference] = useState<{
+    resolved: boolean;
+    projectId: number | null;
+  }>({ resolved: false, projectId: null });
 
   type SiteEditBoqItem = BillItem & {
     dprMeasurementMethod?: string | null;
   };
   const {
+    siteId: siteIdForBoq,
+    projects: siteBoqProjects,
     projectId: siteBoqProjectId,
     items: siteBoqItems,
+    projectsLoaded: boqProjectsLoaded,
+    projectsLoading: boqProjectsLoading,
+    projectsError: boqProjectsError,
+    itemsLoaded: boqItemsLoaded,
+    itemsLoading: boqItemsLoading,
+    itemsError: boqItemsError,
+    siteResolutionError: boqSiteResolutionError,
+    retry: retryBoq,
   } = useDprBoqItems<SiteEditBoqItem>({
     siteName: header.site,
     sites: sitesList,
     // Preserve the distinction between a saved null and a project preference
     // that is not available yet; the shared resolver treats undefined as the
     // normal new/edit fallback.
-    preferredProjectId: dpr?.boqProjectId,
+    preferredProjectId: boqProjectPreference.resolved
+      ? boqProjectPreference.projectId
+      : dpr?.boqProjectId,
   });
+  const handleEditSiteChange = (nextSite: string) => {
+    const hasSavedPositiveProject = dpr?.boqProjectId != null
+      && Number(dpr.boqProjectId) > 0;
+    if (nextSite !== header.site && (hasSavedPositiveProject || siteEditHasBoqReferences)) {
+      toast({
+        title: "Saved DPR site is preserved",
+        description: "An existing DPR cannot be moved to another site while retaining its linked BOQ project and activity references.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (nextSite !== header.site) {
+      // An unlinked legacy DPR may be corrected to another site. Do not carry
+      // a locally pinned fallback into that newly selected site.
+      setBoqProjectPreference({ resolved: false, projectId: null });
+    }
+    setHeader((current) => ({ ...current, site: nextSite }));
+  };
   // Keep labour/material BOQ mappings aligned with BillItemPicker: an item is
   // available to DPR only unless the BOQ explicitly opts it out. Programme
   // dates/bars do not filter this list.
@@ -670,6 +717,28 @@ export default function SiteEdit() {
   const [workType, setWorkType] = useState<"road" | "structure">("road");
   const [structureItems, setStructureItems] = useState<StructureItem[]>([
     { structureType: "Culvert", structureSubType: "Pipe Culvert", structureName: "", stage: "Excavation", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "", boqItemId: null, dprConversionFactor: null, structureId: null }
+  ]);
+  const siteEditHasBoqReferences = useMemo(
+    () => hasDprBoqReferences([progress, structureItems, equipment, labour, materials]),
+    [progress, structureItems, equipment, labour, materials],
+  );
+  useEffect(() => {
+    // A positive server project is already canonical. Only legacy/omitted
+    // project fields need a local pin once linked rows are present.
+    if (
+      !boqProjectsLoaded
+      || siteBoqProjectId == null
+      || !siteEditHasBoqReferences
+      || boqProjectPreference.resolved
+      || dpr?.boqProjectId != null
+    ) return;
+    setBoqProjectPreference({ resolved: true, projectId: siteBoqProjectId });
+  }, [
+    boqProjectsLoaded,
+    siteBoqProjectId,
+    siteEditHasBoqReferences,
+    boqProjectPreference.resolved,
+    dpr?.boqProjectId,
   ]);
 
   useEffect(() => {
@@ -1115,9 +1184,16 @@ export default function SiteEdit() {
     return true;
   };
 
+  const savedDprBoqProjectId = dpr && Object.prototype.hasOwnProperty.call(dpr, "boqProjectId")
+    ? dpr.boqProjectId
+    : undefined;
+
   const buildPayload = () => ({
     ...header,
-    boqProjectId: siteBoqProjectId ?? dpr?.boqProjectId ?? undefined,
+    // Preserve the server link while the site/project request is loading or
+    // has failed. This is the previous contract with a saved-DPR fallback:
+    // boqProjectId: siteBoqProjectId ?? dpr?.boqProjectId ?? undefined
+    boqProjectId: siteBoqProjectId ?? savedDprBoqProjectId,
     workType,
     structureItems: workType === "structure" ? structureItems.filter(s => s.itemOfWork) : [],
     progress: workType === "road" ? progress.filter(p => p.activity).map(p => {
@@ -1542,7 +1618,7 @@ export default function SiteEdit() {
           </div>
           <div>
             <Label>Site Name</Label>
-            <Select value={header.site} onValueChange={(val) => setHeader({ ...header, site: val })}>
+            <Select value={header.site} onValueChange={handleEditSiteChange}>
               <SelectTrigger data-testid="input-site">
                 <SelectValue placeholder="Select Site" />
               </SelectTrigger>
@@ -1599,6 +1675,24 @@ export default function SiteEdit() {
             />
           </div>
         </CardContent>
+        <div className="px-6 pb-4">
+          <DprBoqStatus
+            siteName={header.site}
+            siteId={siteIdForBoq}
+            siteResolutionError={boqSiteResolutionError}
+            projects={siteBoqProjects}
+            projectId={siteBoqProjectId}
+            items={siteBoqItems}
+            projectsLoading={boqProjectsLoading}
+            projectsLoaded={boqProjectsLoaded}
+            projectsError={boqProjectsError}
+            itemsLoading={boqItemsLoading}
+            itemsLoaded={boqItemsLoaded}
+            itemsError={boqItemsError}
+            onRetry={retryBoq}
+            projectChangeDisabled
+          />
+        </div>
       </Card>
 
       <Card>

@@ -52,7 +52,16 @@ const WORK_CAT_LABEL = new Map(BOQ_WORK_CATEGORIES.map(c => [c.code, { label: c.
 export { shortItemName };
 
 const BILL_OTHER = "Other / Unbilled";
+const BILL_ALL = "All bills";
 const NEEDS_MAPPING = "⚠ Needs Mapping";
+
+function itemGroup(it: BillItem | null): string {
+  if (!it) return "";
+  const importedBill = [it.categorySourceBillNo?.trim(), it.categoryName?.trim()].filter(Boolean).join(" · ");
+  if (importedBill) return importedBill;
+  if (!it.workCategory?.trim() || it.needsReview) return NEEDS_MAPPING;
+  return WORK_CAT_LABEL.get(it.workCategory!)?.label ?? it.workCategory!;
+}
 
 function ItemRow({ it, unitSuffix }: { it: BillItem; unitSuffix: string }) {
   const short = dprBoqItemDisplayName(it);
@@ -87,7 +96,14 @@ function ItemSearchList({
       filter={(value, search) => {
         const it = billItems.find((i) => String(i.id) === value);
         if (!it) return 0;
-        const haystack = [it.itemCode, it.displayName, it.itemName, it.description, resolveBoqDisplayUnit(it)]
+        const haystack = [
+          it.itemCode,
+          it.displayName,
+          it.itemName,
+          it.description,
+          resolveBoqDisplayUnit(it),
+          itemGroup(it),
+        ]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -150,8 +166,7 @@ export function BillItemPicker({
     const m = new Map<string, number>();
     for (const it of selectableItems) {
       const importedBill = [it.categorySourceBillNo?.trim(), it.categoryName?.trim()].filter(Boolean).join(" · ");
-      const unmapped = !importedBill && (!it.workCategory?.trim() || it.needsReview);
-      const name = importedBill || (unmapped ? NEEDS_MAPPING : (WORK_CAT_LABEL.get(it.workCategory!)?.label ?? it.workCategory!));
+      const name = itemGroup(it);
       const catSortOrder = importedBill
         ? (it.categorySortOrder ?? Number.MAX_SAFE_INTEGER)
         : it.workCategory
@@ -171,34 +186,35 @@ export function BillItemPicker({
 
   const selectedItem = value != null ? items.find((i) => i.id === value) ?? null : null;
 
-  function itemGroup(it: BillItem | null): string {
-    if (!it) return "";
-    const importedBill = [it.categorySourceBillNo?.trim(), it.categoryName?.trim()].filter(Boolean).join(" · ");
-    if (importedBill) return importedBill;
-    if (!it.workCategory?.trim() || it.needsReview) return NEEDS_MAPPING;
-    return WORK_CAT_LABEL.get(it.workCategory!)?.label ?? it.workCategory!;
-  }
-
   const selectedItemGroup = itemGroup(selectedItem);
-  const [bill, setBill] = useState<string>(selectedItemGroup);
+  const [bill, setBill] = useState<string>(selectedItemGroup || BILL_ALL);
   // A restored row can arrive after the picker mounted (and an edit can
   // replace the selected item from outside this component). Keep the second
   // Bill selector in sync with that restored item. Do not clear a deliberately
   // chosen bill when the parent clears the item: that is the normal
   // bill-then-item interaction.
   useEffect(() => {
-    if (selectedItemGroup) setBill(selectedItemGroup);
-  }, [selectedItemGroup]);
-  const effectiveBill = bill || itemGroup(selectedItem);
+    if (selectedItemGroup && bills.includes(selectedItemGroup)) {
+      setBill(selectedItemGroup);
+    } else if (bill && bill !== BILL_ALL && !bills.includes(bill)) {
+      // A project/site replacement can leave the previous bill in local state.
+      // Return to the unscoped view instead of showing an empty, stale group.
+      setBill(BILL_ALL);
+    }
+  }, [bills, selectedItemGroup]);
+
+  // The all-bills view is the safe default while an async BOQ list is loading.
+  // Narrowing only happens after the user picks a bill or a restored item
+  // supplies a valid bill context.
+  const effectiveBill = !bill
+    ? ""
+    : bill === BILL_ALL || bills.includes(bill)
+      ? bill
+      : BILL_ALL;
 
   const billItems = useMemo(() => {
     return selectableItems
-      .filter((i) => {
-        const importedBill = [i.categorySourceBillNo?.trim(), i.categoryName?.trim()].filter(Boolean).join(" · ");
-        const unmapped = !importedBill && (!i.workCategory?.trim() || i.needsReview);
-        const groupName = importedBill || (unmapped ? NEEDS_MAPPING : (WORK_CAT_LABEL.get(i.workCategory!)?.label ?? i.workCategory!));
-        return groupName === effectiveBill;
-      })
+      .filter((i) => effectiveBill === BILL_ALL || itemGroup(i) === effectiveBill)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   }, [selectableItems, effectiveBill]);
 
@@ -228,11 +244,15 @@ export function BillItemPicker({
           }}
           data-testid={`${testidPrefix}-bill-select`}
         >
-          <SelectTrigger className="h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal">
+          <SelectTrigger
+            className="h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal"
+            data-testid={`${testidPrefix}-bill-select`}
+          >
             <SelectValue placeholder="Select bill…" />
           </SelectTrigger>
           <SelectContent className="max-w-[min(92vw,560px)]">
             <SelectItem value="__none__">— Select bill —</SelectItem>
+            <SelectItem value={BILL_ALL}>{BILL_ALL}</SelectItem>
             {bills.map((b) => (
               <SelectItem key={b} value={b} className="whitespace-normal leading-snug py-2">
                 {b}

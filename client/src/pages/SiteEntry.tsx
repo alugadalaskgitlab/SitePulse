@@ -38,7 +38,7 @@ import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { dprBoqItemDisplayName, dprSelectableBoqItems } from "@shared/dprBoqSelection";
+import { dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
@@ -61,6 +61,7 @@ import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import { openUsageHandoffContext, type OpenUsageLike } from "@shared/dprPlantLink";
 import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
+import { DprBoqStatus } from "@/components/DprBoqStatus";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import {
@@ -453,6 +454,13 @@ export default function SiteEntry() {
     engineer: "",
     boqProjectId: null as number | null,
   });
+  // A fresh DPR has no project preference until the BOQ query resolves.  A
+  // restored autosave may intentionally contain null, which must remain
+  // distinct from that unresolved state.
+  const [boqProjectPreference, setBoqProjectPreference] = useState<{
+    resolved: boolean;
+    projectId: number | null;
+  }>({ resolved: false, projectId: null });
 
   // Resolve numeric siteId from selected site name (must be after `header`)
   const {
@@ -460,17 +468,31 @@ export default function SiteEntry() {
     projects: siteBoqProjects,
     projectId: resolvedBoqProjectId,
     items: siteBoqItems,
+    projectsLoaded: boqProjectsLoaded,
+    projectsLoading: boqProjectsLoading,
+    projectsError: boqProjectsError,
+    itemsLoaded: boqItemsLoaded,
+    itemsLoading: boqItemsLoading,
+    itemsError: boqItemsError,
+    siteResolutionError: boqSiteResolutionError,
+    retry: retryBoq,
   } = useDprBoqItems<SiteBoqItem>({
     siteName: header.site,
     sites: sitesList,
+    preferredProjectId: boqProjectPreference.resolved
+      ? boqProjectPreference.projectId
+      : undefined,
   });
 
   // Sync resolved project explicitly into header state so the DPR carries the
   // right project ID as a first-class field, not an implicit computation at
   // submit time.
   useEffect(() => {
-    setHeader((h) => ({ ...h, boqProjectId: resolvedBoqProjectId }));
-  }, [resolvedBoqProjectId]);
+    if (!boqProjectsLoaded || boqProjectPreference.resolved) return;
+    setHeader((h) => h.boqProjectId === resolvedBoqProjectId
+      ? h
+      : { ...h, boqProjectId: resolvedBoqProjectId });
+  }, [boqProjectsLoaded, boqProjectPreference.resolved, resolvedBoqProjectId]);
 
   // Site Access filtering (part of Task #1247 follow-up): /api/sites already
   // returns only the sites this user is permitted to see. When a restricted
@@ -482,7 +504,9 @@ export default function SiteEntry() {
     }
   }, [activeSites, header.site]);
 
-  const siteBoqProjectId = header.boqProjectId;
+  const siteBoqProjectId = boqProjectPreference.resolved
+    ? boqProjectPreference.projectId
+    : resolvedBoqProjectId;
   // All DPR-owned item mappings use the same opt-out rule as the Bill picker.
   // Scheduling never narrows this list; only an explicit includeInDpr=false
   // on the selected project's BOQ item does.
@@ -903,8 +927,74 @@ export default function SiteEntry() {
     { structureType: "Culvert", structureSubType: "Pipe Culvert", structureName: "", stage: "Excavation", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }
   ]);
 
+  const siteEntryHasBoqReferences = useMemo(
+    () => hasDprBoqReferences([progress, structureItems, equipment, labour, materials]),
+    [progress, structureItems, equipment, labour, materials],
+  );
+  useEffect(() => {
+    if (
+      !boqProjectsLoaded
+      || resolvedBoqProjectId == null
+      || !siteEntryHasBoqReferences
+      || boqProjectPreference.resolved
+    ) return;
+    // A linked row turns the automatic project choice into a persisted
+    // preference. This prevents a later project refetch from reordering the
+    // fallback and changing the project under the disabled selector.
+    setBoqProjectPreference({ resolved: true, projectId: resolvedBoqProjectId });
+  }, [
+    boqProjectsLoaded,
+    resolvedBoqProjectId,
+    siteEntryHasBoqReferences,
+    boqProjectPreference.resolved,
+  ]);
+
+  const handleSiteChange = (nextSite: string) => {
+    if (nextSite !== header.site && siteEntryHasBoqReferences) {
+      toast({
+        title: "BOQ references are already in use",
+        description: "This DPR has BOQ-linked activity, equipment, or allocation references. Save it against its current site, or start a new DPR before changing sites.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (nextSite !== header.site) {
+      setBoqProjectPreference({ resolved: false, projectId: null });
+      // Do not carry the previous site's project into the next request while
+      // it is loading (or if it fails). Existing activity references stay in
+      // their rows; this only clears the header's pending context.
+      setHeader((h) => ({ ...h, site: nextSite, boqProjectId: null }));
+      return;
+    }
+    setHeader((h) => ({ ...h, site: nextSite }));
+  };
+
+  const handleBoqProjectChange = (nextProjectId: number | null) => {
+    if (siteEntryHasBoqReferences && nextProjectId !== (boqProjectPreference.resolved
+      ? boqProjectPreference.projectId
+      : resolvedBoqProjectId)) {
+      toast({
+        title: "BOQ references are already in use",
+        description: "Save this DPR against its current project, or start a new DPR before choosing another project.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setBoqProjectPreference({ resolved: true, projectId: nextProjectId });
+    setHeader((h) => ({ ...h, boqProjectId: nextProjectId }));
+  };
+
   const formData = useMemo<SiteEntryFormData>(() => ({
-    header,
+    // `null` is a deliberate saved preference, not the initial loading
+    // placeholder. Omit the field until the BOQ request resolves so a failed
+    // request cannot be restored later as an accidental "no project" pin.
+    header: boqProjectPreference.resolved || header.boqProjectId != null
+      ? header
+      : {
+          date: header.date,
+          site: header.site,
+          engineer: header.engineer,
+        },
     workType,
     progress,
     structureItems,
@@ -912,10 +1002,23 @@ export default function SiteEntry() {
     labour,
     materials,
     sitePurchases,
-  }), [header, workType, progress, structureItems, equipment, labour, materials, sitePurchases]);
+  }), [header, boqProjectPreference.resolved, workType, progress, structureItems, equipment, labour, materials, sitePurchases]);
 
   const handleRestoreDraft = useCallback((data: SiteEntryFormData) => {
-    setHeader({ ...data.header, boqProjectId: data.header.boqProjectId ?? null });
+    const hasSavedProject = Object.prototype.hasOwnProperty.call(data.header, "boqProjectId");
+    const restoredProjectId = data.header.boqProjectId;
+    if (
+      hasSavedProject
+      && (
+        restoredProjectId === null
+        || (typeof restoredProjectId === "number" && Number.isInteger(restoredProjectId) && restoredProjectId > 0)
+      )
+    ) {
+      setBoqProjectPreference({ resolved: true, projectId: restoredProjectId ?? null });
+    } else {
+      setBoqProjectPreference({ resolved: false, projectId: null });
+    }
+    setHeader({ ...data.header, boqProjectId: restoredProjectId ?? null });
     if (data.workType) setWorkType(data.workType);
     setProgress(data.progress.map((row) => ({
       ...row,
@@ -1228,7 +1331,9 @@ export default function SiteEntry() {
         engineer: header.engineer,
         role: "engineer",
         workType,
-        boqProjectId: header.boqProjectId ?? undefined,
+        boqProjectId: siteBoqProjectId != null
+          ? siteBoqProjectId
+          : (boqProjectPreference.resolved ? null : undefined),
         progress: workType === "structure" ? [] : progressWithCalc,
         cutFillConsumptions: flattenCutFillConsumptions(progress),
         structureItems: workType === "structure"
@@ -1449,7 +1554,9 @@ export default function SiteEntry() {
         engineer: header.engineer,
         role: "engineer",
         workType,
-        boqProjectId: header.boqProjectId ?? undefined,
+        boqProjectId: siteBoqProjectId != null
+          ? siteBoqProjectId
+          : (boqProjectPreference.resolved ? null : undefined),
         dprStatus: "draft",
         progress: workType === "structure" ? [] : progressWithCalc,
         cutFillConsumptions: flattenCutFillConsumptions(progress),
@@ -1831,7 +1938,7 @@ export default function SiteEntry() {
           </div>
           <div>
             <Label>Site Name</Label>
-            <Select value={header.site} onValueChange={(val) => setHeader({ ...header, site: val })}>
+            <Select value={header.site} onValueChange={handleSiteChange}>
               <SelectTrigger data-testid="input-site">
                 <SelectValue placeholder="Select Site" />
               </SelectTrigger>
@@ -1880,6 +1987,25 @@ export default function SiteEntry() {
             </Badge>
           </div>
         )}
+        <div className="px-6 pb-4">
+          <DprBoqStatus
+            siteName={header.site}
+            siteId={selectedSiteId}
+            siteResolutionError={boqSiteResolutionError}
+            projects={siteBoqProjects}
+            projectId={siteBoqProjectId}
+            items={siteBoqItems}
+            projectsLoading={boqProjectsLoading}
+            projectsLoaded={boqProjectsLoaded}
+            projectsError={boqProjectsError}
+            itemsLoading={boqItemsLoading}
+            itemsLoaded={boqItemsLoaded}
+            itemsError={boqItemsError}
+            onRetry={retryBoq}
+            onProjectChange={handleBoqProjectChange}
+            projectChangeDisabled={siteEntryHasBoqReferences}
+          />
+        </div>
       </Card>
       )}
 

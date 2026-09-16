@@ -147,6 +147,23 @@ const boqItems = [
     planningWorkType: "road",
     dprMeasurementMethod: "SQM_LW",
   },
+  {
+    id: 8804,
+    itemCode: "8.7",
+    itemName: "NO-BAR SHOULDER WORK",
+    description: "Shoulder preparation item deliberately has no programme bar",
+    displayName: "NO-BAR SHOULDER WORK",
+    unit: "SQM",
+    canonicalUnit: "SQM",
+    dprConversionFactor: null,
+    categoryName: "Shoulder Works",
+    categorySourceBillNo: "BILL 9",
+    categorySortOrder: 4,
+    sortOrder: 4,
+    planningWorkType: "road",
+    dprMeasurementMethod: "SQM_LW",
+    includeInDpr: true,
+  },
 ];
 
 const programmeBars = [
@@ -552,6 +569,34 @@ const dpr07FreshInvalid = {
   remarks: "DPR-07 H — fresh-create invalid validation fixture.",
 };
 
+// BOQ picker browser regression fixture. This item is deliberately eligible
+// for DPR selection but has no programme bar. Edit loads it already selected,
+// while Guided and Detailed choose it from a fresh activity row.
+const dprBoqNoBarEdit = {
+  ...storedDpr,
+  id: 6216,
+  dprStatus: "draft",
+  remarks: "DPR BOQ picker browser regression — no-bar item; synthetic fixture only.",
+  progress: [{
+    ...storedDpr.progress[0],
+    id: 7316,
+    entryKey: "dpr-boq-picker-no-bar-edit",
+    activity: "NO-BAR SHOULDER WORK",
+    boqItemId: 8804,
+    programmeBarId: null,
+    chainageFrom: "2+000",
+    chainageTo: "2+100",
+    width: 3,
+    quantity: 300,
+    uom: "SQM",
+    quantitySource: "measured",
+  }],
+  equipment: [],
+  labour: [],
+  materials: [],
+  sitePurchases: [],
+};
+
 const fixtureState = {
   requests: [] as RequestRecord[],
   dprCreatePayloads: [] as any[],
@@ -579,6 +624,8 @@ const fixtureState = {
   toasts: [] as unknown[],
   dpr07VersionChecks: [] as any[],
   dpr07FreshCreateChecks: [] as any[],
+  boqItemRequests: [] as any[],
+  boqItemsRetryEnabled: false,
 };
 
 declare global {
@@ -602,6 +649,7 @@ const guidedDprRecords: Record<number, any> = {
   [dpr07LinkedPlantAdmin.id]: dpr07LinkedPlantAdmin,
   [dpr07LegacyInvalid.id]: dpr07LegacyInvalid,
   [dpr07FreshInvalid.id]: dpr07FreshInvalid,
+  [dprBoqNoBarEdit.id]: dprBoqNoBarEdit,
 };
 let nextPlantUsageId = 8102;
 let plantUsageRecords: any[] = [{ ...initialPlantUsage }];
@@ -632,6 +680,9 @@ function parseBody(init?: RequestInit): any {
 
 const isDpr07Route = () =>
   new URLSearchParams(window.location.search).get("dpr07") === "1";
+
+const isDprBoqRoute = () =>
+  new URLSearchParams(window.location.search).get("dprBoq") === "1";
 
 const dpr07ComparableProgress = (row: any) => ({
   id: row?.id ?? row?.persistedId ?? null,
@@ -811,7 +862,20 @@ window.fetch = async (input, init) => {
   }
 
   const projectItemsMatch = pathname.match(/^\/api\/boq\/projects\/(\d+)\/items$/);
-  if (projectItemsMatch && method === "GET") return json(boqItems);
+  if (projectItemsMatch && method === "GET") {
+    const shouldFail = isDprBoqRoute()
+      && new URLSearchParams(window.location.search).get("boqFailure") === "items"
+      && !fixtureState.boqItemsRetryEnabled;
+    fixtureState.boqItemRequests.push({
+      projectId: Number(projectItemsMatch[1]),
+      failed: shouldFail,
+      attempt: fixtureState.boqItemRequests.length + 1,
+    });
+    if (shouldFail) {
+      return json({ code: "BOQ_ITEMS_FIXTURE_FAILURE", message: "Fixture BOQ item request failed; retry is expected." }, 503);
+    }
+    return json(boqItems);
+  }
   const projectEarthworkMatch = pathname.match(/^\/api\/boq\/projects\/(\d+)\/earthwork-arrangements$/);
   if (projectEarthworkMatch && method === "GET") return json([]);
   const projectProgrammeMatch = pathname.match(/^\/api\/boq\/projects\/(\d+)\/programme$/);

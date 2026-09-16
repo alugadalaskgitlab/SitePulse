@@ -17,3 +17,11 @@ Rule: The shared BOQ naming helper is the single source of truth. User-facing pr
 - Guided, Detailed, and Edit DPR activity selectors must share site/project resolution, explicit `includeInDpr:false` exclusion, ID/order semantics, and the same Bill/Item picker.
 - Edit DPR preserves its saved BOQ project when still valid for the site; legacy free-text activity remains editable rather than being silently remapped.
 - Regression tests cover both BOQ-owned naming and the shared DPR selection contract.
+
+## Project selection during asynchronous refresh
+
+Once a DPR contains BOQ-linked work, its automatically resolved project must remain pinned just like an explicitly chosen project. A request failure or an unresolved query is never evidence that a saved project is null.
+
+**Why:** Reordering project responses or changing programme counts can otherwise change the fallback project underneath linked rows, even while project controls are disabled. Testing only initial loading misses this failure.
+
+**How to apply:** Verify refetch/reordering after selecting a BOQ item, including nested equipment allocations. Keep saved project facts distinct from temporary query state, and surface retryable errors rather than empty BOQ messages.

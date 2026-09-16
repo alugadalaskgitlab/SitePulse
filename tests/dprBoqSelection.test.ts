@@ -3,12 +3,44 @@ import { readFileSync } from "node:fs";
 import {
   dprBoqItemDisplayName,
   dprSelectableBoqItems,
+  normalizeDprSiteName,
+  resolveDprSiteId,
   resolveDprBoqProjectId,
+  hasDprBoqReferences,
 } from "../shared/dprBoqSelection";
 import { emptySuggestionsReason } from "../shared/dprProgrammeLink";
 import { creditExecutedEntries } from "../shared/planOutcome";
 
 describe("shared DPR BOQ selection", () => {
+  it("normalizes harmless site formatting but refuses ambiguous exact matches", () => {
+    expect(normalizeDprSiteName("  Takkadpally   Sirur ")).toBe("takkadpally sirur");
+    expect(resolveDprSiteId(
+      [{ id: 7, name: "Takkadpally Sirur" }, { id: 8, name: "Other Site" }],
+      " takkadpally   sirur ",
+    )).toBe(7);
+    expect(resolveDprSiteId(
+      [{ id: 7, name: "Takkadpally Sirur" }, { id: 8, name: "TAKKADPALLY SIRUR" }],
+      "Takkadpally Sirur",
+    )).toBeNull();
+    expect(resolveDprSiteId(
+      [{ id: 7, name: "Takkadpally Sirur" }],
+      "Takkadpally Sirur East",
+    )).toBeNull();
+  });
+
+  it("finds nested BOQ references used by equipment and allocation rows", () => {
+    expect(hasDprBoqReferences({
+      passthrough: { boqItemId: 17 },
+    })).toBe(true);
+    expect(hasDprBoqReferences({
+      segments: [{ allocations: [{ boqItemId: 23 }] }],
+    })).toBe(true);
+    expect(hasDprBoqReferences({
+      passthrough: { boqItemId: null },
+      allocations: [],
+    })).toBe(false);
+  });
+
   it("uses one project rule and lets Edit preserve the DPR's saved project", () => {
     const projects = [
       { id: 30, status: "draft", barCount: 12 },
@@ -73,9 +105,18 @@ describe("shared DPR BOQ selection", () => {
     for (const page of ["GuidedDpr", "SiteEntry", "SiteEdit"]) {
       const source = readFileSync(`client/src/pages/${page}.tsx`, "utf8");
       expect(source, page).toContain("useDprBoqItems");
+      expect(source, page).toContain("<DprBoqStatus");
       expect(source, page).toContain("<BillItemPicker");
       expect(source, page).toContain("dprBoqItemDisplayName");
       expect(source, page).toContain("dprSelectableBoqItems");
     }
+    for (const page of ["GuidedDpr", "SiteEntry"]) {
+      const source = readFileSync(`client/src/pages/${page}.tsx`, "utf8");
+      expect(source, page).toContain("hasDprBoqReferences");
+      expect(source, page).toContain("BOQ references are already in use");
+    }
+    const siteEdit = readFileSync("client/src/pages/SiteEdit.tsx", "utf8");
+    expect(siteEdit).toContain("const hasSavedPositiveProject");
+    expect(siteEdit).toContain("hasSavedPositiveProject || siteEditHasBoqReferences");
   });
 });
