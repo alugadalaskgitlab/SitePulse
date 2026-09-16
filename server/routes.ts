@@ -74,6 +74,7 @@ import { chainageOverlapReadinessIssues, isChainageGuardRow, unchangedChainageRo
 import { blocksExternalReceiptsForBoqItem, mergeMaterialTripLinkage, reusedExcavationConfigurationIssue } from "@shared/materialReceiptSummary";
 import { excavationMaterialOutcomeIssue } from "@shared/cutFillReconciliation";
 import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
+import { hasDprBoqReferences, hasPreservedDprBoqReferences } from "@shared/dprBoqReferences";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import {
   registerAuthRoutes,
@@ -2283,22 +2284,38 @@ export async function registerRoutes(
       if (permittedSiteNames !== null && !siteMatchesPermitted(existing.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
       }
-      const input = createDprRequestSchema.parse(req.body);
+      let input = createDprRequestSchema.parse(req.body);
       if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
       }
       const savedProjectId = (existing as any).boqProjectId != null ? Number((existing as any).boqProjectId) : null;
       const payloadProjectId = (input as any).boqProjectId != null ? Number((input as any).boqProjectId) : null;
       if (savedProjectId !== payloadProjectId) {
-        return res.status(400).json({
-          code: "DPR_PROJECT_MISMATCH",
-          message: "A draft DPR's BOQ project cannot change while it is being edited.",
-          savedProjectId,
-          payloadProjectId,
-        });
+        // A project selected on a no-BOQ DPR is metadata only.  Guided
+        // re-resolution can change that metadata between draft saves, but it
+        // must never be allowed to move a DPR which contains real BOQ-linked
+        // work.  Existing child refs are included because equipment
+        // allocations/segments may be retained by the replacement write when
+        // a compact PATCH omits those child arrays.
+        const hasBoqReferences =
+          hasDprBoqReferences(input) || hasPreservedDprBoqReferences(existing, input);
+        if (!hasBoqReferences) {
+          // Keep the persisted project canonical for the storage transaction.
+          // Storage deliberately retains its unconditional header mismatch
+          // guard; canonicalizing here preserves that defense and avoids
+          // changing the current payload's other fields.
+          input = { ...input, boqProjectId: savedProjectId };
+        } else {
+          return res.status(400).json({
+            code: "DPR_PROJECT_MISMATCH",
+            message: "A draft DPR's BOQ project cannot change while it is being edited.",
+            savedProjectId,
+            payloadProjectId,
+          });
+        }
       }
-      const scopeVersionToken = payloadProjectId != null
-        ? await storage.getProjectScopeVersionToken(payloadProjectId)
+      const scopeVersionToken = (input as any).boqProjectId != null
+        ? await storage.getProjectScopeVersionToken(Number((input as any).boqProjectId))
         : null;
       const linkError = await validateProgressProgrammeLinks(input, { draft: true });
       if (linkError) return res.status(400).json({ message: linkError, code: "PROGRAMME_LINK_INVALID" });
@@ -2348,19 +2365,30 @@ export async function registerRoutes(
       if (permittedSiteNames !== null && !siteMatchesPermitted(existing.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
       }
-      const input = createDprRequestSchema.parse(req.body);
+      let input = createDprRequestSchema.parse(req.body);
       if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
       }
       const savedProjectId = (existing as any).boqProjectId != null ? Number((existing as any).boqProjectId) : null;
       const payloadProjectId = (input as any).boqProjectId != null ? Number((input as any).boqProjectId) : null;
       if (savedProjectId !== payloadProjectId) {
-        return res.status(400).json({
-          code: "DPR_PROJECT_MISMATCH",
-          message: "A DPR's BOQ project cannot change when a draft is submitted.",
-          savedProjectId,
-          payloadProjectId,
-        });
+        // Same narrow carve-out as draft PATCH: a no-BOQ DPR may carry a
+        // newly re-resolved project header, but any real progress, equipment,
+        // allocation/segment, structure, material, or labour BOQ reference
+        // keeps the mismatch protection active.  Existing refs matter because
+        // replacement storage can preserve omitted equipment children.
+        const hasBoqReferences =
+          hasDprBoqReferences(input) || hasPreservedDprBoqReferences(existing, input);
+        if (!hasBoqReferences) {
+          input = { ...input, boqProjectId: savedProjectId };
+        } else {
+          return res.status(400).json({
+            code: "DPR_PROJECT_MISMATCH",
+            message: "A DPR's BOQ project cannot change when a draft is submitted.",
+            savedProjectId,
+            payloadProjectId,
+          });
+        }
       }
       // Scope correction and final submit use the BOQ project row as a
       // transaction mutex. Carry a token from validation into the submit

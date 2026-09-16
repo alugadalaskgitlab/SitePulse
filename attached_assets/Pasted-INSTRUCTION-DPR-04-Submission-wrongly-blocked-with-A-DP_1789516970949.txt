@@ -1,0 +1,48 @@
+INSTRUCTION DPR-04: Submission wrongly blocked with "A DPR's BOQ project cannot change when a draft is submitted" even though the user never touched BOQ project and the DPR has no BOQ item at all
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a real, reproducible bug confirmed by direct code review, not a user mistake. Do not touch DPR-02, DPR-03, VB-14/VB-15/VB-16/VB-17/DIESEL-03, or Work Programme. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. client/src/pages/GuidedDpr.tsx (~line 547-551) resolves the DPR's `boqProjectId` via `useDprBoqItems({ siteName, sites: sitesList })` — no `preferredProjectId` is passed.
+2. client/src/hooks/use-dpr-boq-items.ts calls `resolveDprBoqProjectId(projects, preferredProjectId)` from shared/dprBoqSelection.ts (~line 19-35). With `preferredProjectId` absent (null), it picks: the first active project for that site with `barCount > 0`, else the first active project, else `projects[0]`, else null — i.e. it re-guesses a project purely from whatever the site's current project list looks like, every single time the page loads.
+3. When an existing DRAFT DPR is resumed, GuidedDpr.tsx hydrates many fields from the loaded record (~line 353-424, `urlDraftDpr`) but never reads `urlDraftDpr.boqProjectId` back into `preferredProjectId` for the resolver above. So the boqProjectId used when a draft was first created and the boqProjectId recomputed when that same draft is reopened later can differ — through no action by the user — whenever a site has more than one BOQ project, or a project's status/bar-count changes, or ordering isn't stable.
+
+3b. There is a SECOND, separate hydration path with the identical gap: the local-autosave "Draft available — Restore / Discard" banner (DraftRestoreBanner, wired via `useAutosave`'s `onRestore` callback, ~line 309-330). Clicking Restore sets `siteName` (and other fields) from the browser-local autosave blob, which feeds into the same `useDprBoqItems({ siteName, sites: sitesList })` call with no `preferredProjectId` — so Restore re-triggers the exact same re-guessing behavior as reopening a server draft. This is very likely why the mismatch has been observed "every time" Restore is used — both paths must be fixed together, not just the server-draft one.
+4. server/routes.ts has this exact mismatch check twice: on draft update (~line 2291, "A draft DPR's BOQ project cannot change while it is being edited.") and on submit (~line 2360, "A DPR's BOQ project cannot change when a draft is submitted."). Both compare the DPR's originally-saved `boqProjectId` against whatever the client currently computes and sends — with no allowance for a DPR that has no actual BOQ item referenced anywhere in it.
+5. The reported case makes this unambiguous: the only activity in the DPR is marked "No site work — SIDE DRAIN RESTORATION AT BODAPALLY VILLAGE" — no boqItemId is involved anywhere in this DPR's progress or equipment work assignment — yet submission is blocked by a boqProjectId mismatch the user never caused and that has no bearing on anything actually being submitted.
+
+FIX 1 — STOP RE-GUESSING THE PROJECT: PIN IT TO THE DRAFT'S OWN SAVED VALUE, ON BOTH RESTORE PATHS
+a. In GuidedDpr.tsx, when hydrating an existing draft (`urlDraftDpr`), pass `urlDraftDpr.boqProjectId` into `useDprBoqItems` as `preferredProjectId` (the hook already supports this parameter and already prefers it when the project is still present in the site's project list — shared/dprBoqSelection.ts line 23-28). This must be wired through the same hydration path used for the rest of the draft's fields (~line 353 onward), not just on initial mount, so a reopened draft always resolves back to the exact project it was saved against, as long as that project still exists for the site.
+b. Fix the local-autosave Restore path the same way (BACKGROUND #3b): the `GuidedFormState` autosave blob (~line 289-296) must also carry the DPR's resolved `boqProjectId` at the time it was autosaved, and `onRestore` (~line 309-330) must feed that value into `preferredProjectId` for `useDprBoqItems`, exactly as Fix 1a does for the server-draft path. Both the "Restore" banner and reopening a server draft must resolve to the same stable project.
+c. For a brand-new (not-yet-saved) DPR, behavior is unchanged — there is no saved boqProjectId yet, so the existing re-resolution logic is correct and should stay as-is.
+
+FIX 2 — DON'T BLOCK SUBMISSION OVER A BOQ PROJECT MISMATCH WHEN THE DPR HAS NO BOQ ITEM AT ALL
+a. In server/routes.ts, at both mismatch checks (~line 2291 and ~line 2360), before returning the DPR_PROJECT_MISMATCH error, check whether the submitted payload actually references any BOQ item — any progress row with a non-null boqItemId, or any equipment work-assignment segment with a boqItemId. If none exists (e.g. every progress row is `noSiteWork: true`, and no equipment segment references a BOQ item), the boqProjectId mismatch is immaterial — allow the update/submit to proceed rather than blocking it. This is a deliberate, narrow carve-out: a DPR that has real BOQ-linked progress must still be protected by this check exactly as today.
+b. Fix 1 should make this carve-out rarely needed going forward, but it must still exist as a safety net for any DPR that genuinely has no BOQ scope in play — the check should never have been able to block a report that references no BOQ item to begin with.
+
+WHAT NOT TO DO
+- Do not remove or weaken the mismatch check for DPRs that DO reference real BOQ items and progress — that protection is correct and must stay exactly as it is today for those cases.
+- Do not change how noSiteWork or the incidental/non-BOQ activity toggle work otherwise.
+- Do not touch DPR-02, DPR-03, VB-14/VB-15/VB-16/VB-17/DIESEL-03, or Work Programme.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — this is a resolution/hydration fix (Fix 1) plus a narrow server-side condition addition (Fix 2) over data that already exists.
+
+TESTS
+A. Reproduce the exact reported case: create a draft DPR for a site with more than one BOQ project, save it as a draft (noting which project it resolved to), then reopen it later (ideally after something changes in that site's project list, or simply on a fresh page load) and confirm it resolves to the SAME boqProjectId it was saved with, not a freshly re-guessed one. Repeat via the local-autosave "Restore" banner specifically (not just a server-draft reopen) and confirm the same stability there.
+B. With the same setup, mark the only activity "No site work" with a description and no BOQ item anywhere in progress or equipment. Submit. Confirm it succeeds without the "BOQ project cannot change" error.
+C. Create a DPR that DOES have real BOQ-linked progress (a boqItemId selected), save as draft, then attempt to submit after somehow forcing a genuine project change (if this is testable) — confirm the mismatch check still correctly blocks this case, exactly as before.
+D. Reopen and edit (not just submit) an existing no-BOQ-item draft — confirm the same fix applies to the draft-update endpoint (~line 2291), not just submit.
+E. Confirm a normal DPR with a single BOQ project per site, no ambiguity at all, continues to work exactly as before (no regression for the common case).
+
+REPORT BACK
+1. Confirm Fix 1 with Test A evidence (screenshots or logs showing the resolved boqProjectId stays stable across reload).
+2. Confirm Fix 2 with Test B/D evidence (screenshots), specifically the exact TAKKADPALLY-SIRUR "No site work — SIDE DRAIN RESTORATION AT BODAPALLY VILLAGE" case now submitting successfully.
+3. Confirm Test C — the mismatch check still correctly protects real BOQ-linked DPRs.
+4. Confirm Test E — no regression to the common single-project case.
+5. Confirm no schema change was needed.
+6. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

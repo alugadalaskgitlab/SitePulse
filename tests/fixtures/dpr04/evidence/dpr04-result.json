@@ -1,0 +1,546 @@
+{
+  "scenario": "DPR-04 draft/project resolution isolated browser evidence",
+  "fixture": {
+    "baseUrl": "http://127.0.0.1:4184",
+    "cdp": "127.0.0.1:9222",
+    "productionDatabaseUsed": false,
+    "customerWrites": false,
+    "fixtureData": "Synthetic TAKKADPALLY-SIRUR / Project A+B rows; no customer records.",
+    "evidenceDirectory": "/home/runner/workspace/tests/fixtures/dpr04/evidence"
+  },
+  "screenshots": {
+    "A_serverDraftReopenLocalAutosave": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-A-server-draft-reopen-local-autosave-project-a.png",
+    "A_newLocalAutosaveProjectA": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-A-new-local-autosave-project-a.png",
+    "B_submitReview": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-B-submit-no-site-work-review.png",
+    "B_submitSuccess": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-B-submit-success.png",
+    "B_persistedSuccessReport": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-B-submit-persisted-report.png",
+    "D_editDraftBeforeSave": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-D-edit-draft-before-save.png",
+    "E_singleProjectReport": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-E-single-project-report.png"
+  },
+  "resolvedIds": {
+    "projectA": 8410,
+    "projectBListFirstDistractor": 8420,
+    "A_serverDraftReopen": {
+      "projectRows": [
+        {
+          "route": "/guided?draftId=8460&scenario=server-draft-reopen",
+          "siteId": "8400",
+          "projectIds": [
+            8420,
+            8410
+          ],
+          "scenario": "server-draft-reopen"
+        }
+      ],
+      "itemRows": [
+        {
+          "route": "/guided?draftId=8460&scenario=server-draft-reopen",
+          "projectId": 8410,
+          "scenario": "server-draft-reopen"
+        }
+      ],
+      "loadedDrafts": [
+        {
+          "id": 8460,
+          "boqProjectId": 8410,
+          "site": "TAKKADPALLY-SIRUR",
+          "progressCount": 1
+        }
+      ]
+    },
+    "A_newLocalAutosaveProjectA": {
+      "projectRows": [
+        {
+          "route": "/guided?scenario=local-autosave-project-a",
+          "siteId": "8400",
+          "projectIds": [
+            8420,
+            8410
+          ],
+          "scenario": "local-autosave-project-a"
+        },
+        {
+          "route": "/guided?scenario=local-autosave-project-a",
+          "siteId": "8400",
+          "projectIds": [
+            8420,
+            8410
+          ],
+          "scenario": "local-autosave-project-a"
+        }
+      ],
+      "itemRows": [
+        {
+          "route": "/guided?scenario=local-autosave-project-a",
+          "projectId": 8420,
+          "scenario": "local-autosave-project-a"
+        },
+        {
+          "route": "/guided?scenario=local-autosave-project-a",
+          "projectId": 8420,
+          "scenario": "local-autosave-project-a"
+        },
+        {
+          "route": "/guided?scenario=local-autosave-project-a",
+          "projectId": 8410,
+          "scenario": "local-autosave-project-a"
+        }
+      ],
+      "savePayload": {
+        "method": "POST",
+        "path": "/api/dprs",
+        "id": 8464,
+        "body": {
+          "date": "2026-09-15",
+          "site": "TAKKADPALLY-SIRUR",
+          "engineer": "DPR-04 FIXTURE ENGINEER - ENGINEER",
+          "role": "engineer",
+          "workType": "road",
+          "boqProjectId": 8410,
+          "dprStatus": "draft",
+          "progress": [
+            {
+              "entryKey": "local-new-a",
+              "activity": "LOCAL NEW AUTOSAVE PROJECT A",
+              "side": "",
+              "chainageFrom": "",
+              "chainageTo": "",
+              "length": null,
+              "width": null,
+              "thickness": null,
+              "quantity": null,
+              "uom": "RMT",
+              "noSiteWork": true,
+              "noSiteWorkDescription": "LOCAL NEW AUTOSAVE DESCRIPTION A",
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "personnelIds": [],
+              "boqItemId": null,
+              "programmeBarId": null,
+              "earthworkArrangementId": null,
+              "chainageFromKm": null,
+              "chainageToKm": null,
+              "quantitySource": null,
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "executedBy": null
+            }
+          ],
+          "cutFillConsumptions": [],
+          "structureItems": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "remarks": "LOCAL NEW AUTOSAVE REMARK A",
+          "clientTimestamp": "2026-09-16 00:20:21"
+        }
+      }
+    },
+    "B_submitReport": {
+      "projectRows": [
+        {
+          "route": "/site/report/8463?returnTo=%2Fsite%2Fdashboard",
+          "siteId": "8400",
+          "projectIds": [
+            8420,
+            8410
+          ],
+          "scenario": null
+        }
+      ],
+      "itemRows": [
+        {
+          "route": "/site/report/8463?returnTo=%2Fsite%2Fdashboard",
+          "projectId": 8410,
+          "scenario": null
+        }
+      ],
+      "persistedId": 8463,
+      "submitPayload": {
+        "method": "POST",
+        "path": "/api/dprs/8463/submit",
+        "id": 8463,
+        "body": {
+          "date": "2026-09-15",
+          "site": "TAKKADPALLY-SIRUR",
+          "engineer": "DPR-04 FIXTURE ENGINEER - ENGINEER",
+          "role": "engineer",
+          "workType": "road",
+          "boqProjectId": 8410,
+          "progress": [
+            {
+              "entryKey": "6f2da071-0e7e-4ac1-ae88-7dd6eb71851b",
+              "activity": "SIDE DRAIN RESTORATION AT BODAPALLY VILLAGE",
+              "side": "",
+              "chainageFrom": "",
+              "chainageTo": "",
+              "length": null,
+              "width": null,
+              "thickness": null,
+              "quantity": null,
+              "uom": null,
+              "noSiteWork": true,
+              "noSiteWorkDescription": "NO SITE WORK — SIDE DRAIN RESTORATION AT BODAPALLY VILLAGE",
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "personnelIds": [],
+              "boqItemId": null,
+              "programmeBarId": null,
+              "earthworkArrangementId": null,
+              "chainageFromKm": null,
+              "chainageToKm": null,
+              "quantitySource": null,
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "executedBy": null
+            }
+          ],
+          "cutFillConsumptions": [],
+          "structureItems": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "remarks": "B EXISTING DRAFT fixture baseline",
+          "clientTimestamp": "2026-09-16 00:20:23"
+        }
+      }
+    },
+    "D_editDraft": {
+      "projectRows": [
+        {
+          "route": "/site/edit/8461?draft&scenario=edit-draft-save",
+          "siteId": "8400",
+          "projectIds": [
+            8420,
+            8410
+          ],
+          "scenario": "edit-draft-save"
+        }
+      ],
+      "itemRows": [
+        {
+          "route": "/site/edit/8461?draft&scenario=edit-draft-save",
+          "projectId": 8410,
+          "scenario": "edit-draft-save"
+        }
+      ]
+    },
+    "E_singleProject": {
+      "projectRows": [
+        {
+          "route": "/site/report/8462?scenario=single-project",
+          "siteId": "8400",
+          "projectIds": [
+            8410
+          ],
+          "scenario": "single-project"
+        }
+      ],
+      "itemRows": [
+        {
+          "route": "/site/report/8462?scenario=single-project",
+          "projectId": 8410,
+          "scenario": "single-project"
+        }
+      ]
+    }
+  },
+  "assertions": {
+    "A": "A server draft reopened through GuidedDpr restores local saved-A content while the B-first API list resolves persisted project A.",
+    "localAutosave": "A NEW Guided route with no draftId restores a blob explicitly carrying Project A, changes item resolution from active-list Project B to A, and captures a Project A save payload.",
+    "B": "An EXISTING draft submits through POST /api/dprs/8463/submit (not new create), preserving SIDE DRAIN RESTORATION AT BODAPALLY VILLAGE, TAKKADPALLY-SIRUR, and Project A through success/report.",
+    "D": "SiteEdit reopened the synthetic draft, saved a no-BOQ progress row through the same draft id, and preserved canonical Project A.",
+    "E": "A single-project API response resolves exactly Project A and never loads Project B items.",
+    "writes": "Only in-memory fixture POST /api/dprs (local NEW save), POST /api/dprs/8463/submit (existing B), and PATCH /api/dprs/8461/draft (D) were issued; no customer or production writes occurred.",
+    "browserExceptions": "No Runtime.exceptionThrown events."
+  },
+  "evidence": {
+    "A": {
+      "screenshot": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-A-server-draft-reopen-local-autosave-project-a.png",
+      "projectRows": [
+        {
+          "route": "/guided?draftId=8460&scenario=server-draft-reopen",
+          "siteId": "8400",
+          "projectIds": [
+            8420,
+            8410
+          ],
+          "scenario": "server-draft-reopen"
+        }
+      ],
+      "itemRows": [
+        {
+          "route": "/guided?draftId=8460&scenario=server-draft-reopen",
+          "projectId": 8410,
+          "scenario": "server-draft-reopen"
+        }
+      ],
+      "loadedDrafts": [
+        {
+          "id": 8460,
+          "boqProjectId": 8410,
+          "site": "TAKKADPALLY-SIRUR",
+          "progressCount": 1
+        }
+      ],
+      "localMarker": "LOCAL AUTOSAVE SAVED A"
+    },
+    "Local": {
+      "screenshot": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-A-new-local-autosave-project-a.png",
+      "projectRows": [
+        {
+          "route": "/guided?scenario=local-autosave-project-a",
+          "siteId": "8400",
+          "projectIds": [
+            8420,
+            8410
+          ],
+          "scenario": "local-autosave-project-a"
+        },
+        {
+          "route": "/guided?scenario=local-autosave-project-a",
+          "siteId": "8400",
+          "projectIds": [
+            8420,
+            8410
+          ],
+          "scenario": "local-autosave-project-a"
+        }
+      ],
+      "itemRows": [
+        {
+          "route": "/guided?scenario=local-autosave-project-a",
+          "projectId": 8420,
+          "scenario": "local-autosave-project-a"
+        },
+        {
+          "route": "/guided?scenario=local-autosave-project-a",
+          "projectId": 8420,
+          "scenario": "local-autosave-project-a"
+        },
+        {
+          "route": "/guided?scenario=local-autosave-project-a",
+          "projectId": 8410,
+          "scenario": "local-autosave-project-a"
+        }
+      ],
+      "saved": {
+        "method": "POST",
+        "path": "/api/dprs",
+        "id": 8464,
+        "body": {
+          "date": "2026-09-15",
+          "site": "TAKKADPALLY-SIRUR",
+          "engineer": "DPR-04 FIXTURE ENGINEER - ENGINEER",
+          "role": "engineer",
+          "workType": "road",
+          "boqProjectId": 8410,
+          "dprStatus": "draft",
+          "progress": [
+            {
+              "entryKey": "local-new-a",
+              "activity": "LOCAL NEW AUTOSAVE PROJECT A",
+              "side": "",
+              "chainageFrom": "",
+              "chainageTo": "",
+              "length": null,
+              "width": null,
+              "thickness": null,
+              "quantity": null,
+              "uom": "RMT",
+              "noSiteWork": true,
+              "noSiteWorkDescription": "LOCAL NEW AUTOSAVE DESCRIPTION A",
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "personnelIds": [],
+              "boqItemId": null,
+              "programmeBarId": null,
+              "earthworkArrangementId": null,
+              "chainageFromKm": null,
+              "chainageToKm": null,
+              "quantitySource": null,
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "executedBy": null
+            }
+          ],
+          "cutFillConsumptions": [],
+          "structureItems": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "remarks": "LOCAL NEW AUTOSAVE REMARK A",
+          "clientTimestamp": "2026-09-16 00:20:21"
+        }
+      },
+      "marker": "LOCAL NEW AUTOSAVE PROJECT A"
+    },
+    "B": {
+      "review": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-B-submit-no-site-work-review.png",
+      "success": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-B-submit-success.png",
+      "report": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-B-submit-persisted-report.png",
+      "projectRows": [
+        {
+          "route": "/site/report/8463?returnTo=%2Fsite%2Fdashboard",
+          "siteId": "8400",
+          "projectIds": [
+            8420,
+            8410
+          ],
+          "scenario": null
+        }
+      ],
+      "itemRows": [
+        {
+          "route": "/site/report/8463?returnTo=%2Fsite%2Fdashboard",
+          "projectId": 8410,
+          "scenario": null
+        }
+      ],
+      "persistedId": 8463,
+      "submitPayload": {
+        "method": "POST",
+        "path": "/api/dprs/8463/submit",
+        "id": 8463,
+        "body": {
+          "date": "2026-09-15",
+          "site": "TAKKADPALLY-SIRUR",
+          "engineer": "DPR-04 FIXTURE ENGINEER - ENGINEER",
+          "role": "engineer",
+          "workType": "road",
+          "boqProjectId": 8410,
+          "progress": [
+            {
+              "entryKey": "6f2da071-0e7e-4ac1-ae88-7dd6eb71851b",
+              "activity": "SIDE DRAIN RESTORATION AT BODAPALLY VILLAGE",
+              "side": "",
+              "chainageFrom": "",
+              "chainageTo": "",
+              "length": null,
+              "width": null,
+              "thickness": null,
+              "quantity": null,
+              "uom": null,
+              "noSiteWork": true,
+              "noSiteWorkDescription": "NO SITE WORK — SIDE DRAIN RESTORATION AT BODAPALLY VILLAGE",
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "personnelIds": [],
+              "boqItemId": null,
+              "programmeBarId": null,
+              "earthworkArrangementId": null,
+              "chainageFromKm": null,
+              "chainageToKm": null,
+              "quantitySource": null,
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "executedBy": null
+            }
+          ],
+          "cutFillConsumptions": [],
+          "structureItems": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "remarks": "B EXISTING DRAFT fixture baseline",
+          "clientTimestamp": "2026-09-16 00:20:23"
+        }
+      }
+    },
+    "D": {
+      "edit": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-D-edit-draft-before-save.png",
+      "saved": {
+        "method": "PATCH",
+        "path": "/api/dprs/8461/draft",
+        "id": 8461,
+        "body": {
+          "date": "2026-09-15",
+          "site": "TAKKADPALLY-SIRUR",
+          "engineer": "DPR-04 FIXTURE ENGINEER - ENGINEER",
+          "boqProjectId": 8410,
+          "workType": "road",
+          "structureItems": [],
+          "progress": [
+            {
+              "entryKey": "edit-draft",
+              "activity": "EDIT DRAFT ACTIVITY",
+              "side": "",
+              "chainageFrom": "",
+              "chainageTo": "",
+              "length": null,
+              "width": null,
+              "thickness": null,
+              "quantity": null,
+              "uom": "RMT",
+              "noSiteWork": true,
+              "noSiteWorkDescription": "EDIT DRAFT SAVED BY DPR04",
+              "personnelIds": [],
+              "boqItemId": null,
+              "programmeBarId": null,
+              "earthworkArrangementId": null,
+              "quantitySource": null,
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "executedBy": null,
+              "layerNo": null,
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "materialOutcome": null,
+              "reusableQty": null,
+              "chainageFromKm": null,
+              "chainageToKm": null
+            }
+          ],
+          "cutFillConsumptions": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": []
+        }
+      },
+      "projectRows": [
+        {
+          "route": "/site/edit/8461?draft&scenario=edit-draft-save",
+          "siteId": "8400",
+          "projectIds": [
+            8420,
+            8410
+          ],
+          "scenario": "edit-draft-save"
+        }
+      ],
+      "itemRows": [
+        {
+          "route": "/site/edit/8461?draft&scenario=edit-draft-save",
+          "projectId": 8410,
+          "scenario": "edit-draft-save"
+        }
+      ],
+      "draftId": 8461
+    },
+    "E": {
+      "screenshot": "/home/runner/workspace/tests/fixtures/dpr04/evidence/dpr04-E-single-project-report.png",
+      "projectRows": [
+        {
+          "route": "/site/report/8462?scenario=single-project",
+          "siteId": "8400",
+          "projectIds": [
+            8410
+          ],
+          "scenario": "single-project"
+        }
+      ],
+      "itemRows": [
+        {
+          "route": "/site/report/8462?scenario=single-project",
+          "projectId": 8410,
+          "scenario": "single-project"
+        }
+      ]
+    }
+  }
+}

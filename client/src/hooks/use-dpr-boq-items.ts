@@ -15,7 +15,7 @@ type DprBoqProject = DprBoqProjectChoice & {
 export function useDprBoqItems<T extends DprBoqSelectableItem>({
   siteName,
   sites,
-  preferredProjectId = null,
+  preferredProjectId,
 }: {
   siteName: string;
   sites: readonly SiteChoice[];
@@ -26,14 +26,16 @@ export function useDprBoqItems<T extends DprBoqSelectableItem>({
     [siteName, sites],
   );
 
-  const { data: projects = [] } = useQuery<DprBoqProject[]>({
+  const projectsQuery = useQuery<DprBoqProject[]>({
     queryKey: ["/api/boq/projects", siteId],
     queryFn: async () => {
       const response = await fetch(`/api/boq/projects?siteId=${siteId}`, { credentials: "include" });
-      return response.ok ? response.json() : [];
+      if (!response.ok) throw new Error("boq_projects_load_failed");
+      return response.json();
     },
     enabled: siteId != null,
   });
+  const { data: projects = [] } = projectsQuery;
 
   const projectId = useMemo(
     () => resolveDprBoqProjectId(projects, preferredProjectId),
@@ -49,5 +51,14 @@ export function useDprBoqItems<T extends DprBoqSelectableItem>({
     enabled: projectId != null,
   });
 
-  return { siteId, projects, projectId, items };
+  return {
+    siteId,
+    projects,
+    projectId,
+    items,
+    // Consumers that persist the resolved project need to distinguish an
+    // empty result while the request is still in flight from a completed
+    // request that genuinely returned no projects.
+    projectsLoaded: siteId == null ? false : projectsQuery.isSuccess,
+  };
 }

@@ -14,12 +14,16 @@ export interface DprBoqSelectableItem extends BoqItemNameFields {
 /**
  * One DPR-project rule for Guided, Detailed, and Edit.
  * Edit may prefer the project already saved on the DPR; otherwise every form
- * uses active-with-programme → active → first API row.
+ * uses active-with-programme → active → first API row. `undefined` means that
+ * no saved preference exists yet. An explicit `null` is different: it is a
+ * saved DPR with no BOQ project and must not be replaced by a newly guessed
+ * project.
  */
 export function resolveDprBoqProjectId(
   projects: readonly DprBoqProjectChoice[],
   preferredProjectId?: number | null,
 ): number | null {
+  if (preferredProjectId === null) return null;
   if (
     preferredProjectId != null
     && projects.some((project) => project.id === preferredProjectId)

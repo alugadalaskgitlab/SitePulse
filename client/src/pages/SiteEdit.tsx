@@ -457,7 +457,10 @@ export default function SiteEdit() {
   } = useDprBoqItems<SiteEditBoqItem>({
     siteName: header.site,
     sites: sitesList,
-    preferredProjectId: dpr?.boqProjectId ?? null,
+    // Preserve the distinction between a saved null and a project preference
+    // that is not available yet; the shared resolver treats undefined as the
+    // normal new/edit fallback.
+    preferredProjectId: dpr?.boqProjectId,
   });
   const { data: cutFillArrangements = [] } = useQuery<any[]>({
     queryKey: ["/api/boq/projects", siteBoqProjectId, "earthwork-arrangements"],
