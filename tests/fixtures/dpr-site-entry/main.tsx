@@ -878,6 +878,12 @@ const isDprBoqRoute = () =>
 const isDprNullRoute = () =>
   new URLSearchParams(window.location.search).get("dprNull") === "1";
 
+const isDpr08Route = () =>
+  new URLSearchParams(window.location.search).get("dpr08") === "1";
+
+const isDpr08MultiRoute = () =>
+  isDpr08Route() && new URLSearchParams(window.location.search).get("dpr08Multi") === "1";
+
 const dpr07ComparableProgress = (row: any) => ({
   id: row?.id ?? row?.persistedId ?? null,
   entryKey: row?.entryKey ?? null,
@@ -1107,7 +1113,30 @@ window.fetch = async (input, init) => {
   if (pathname === "/api/plant-module/equipment-usage/open-today" && method === "GET") return json([]);
   if (pathname === "/api/boq/projects" && method === "GET") {
     const isNullRecovery = isDprNullRoute();
-    const projects = isNullRecovery
+    const projects = isDpr08Route()
+      ? [
+          {
+            id: 5501,
+            name: "NARASIMHULU ROAD BOQ",
+            siteId: site.id,
+            itemCount: boqItems.length,
+            status: "active",
+            // The DPR-08 multi-project case must prove the resolver's
+            // active-with-programme priority rather than API order alone.
+            barCount: 2,
+          },
+          ...(isDpr08MultiRoute()
+            ? [{
+                id: 5502,
+                name: "NARASIMHULU ROAD SECOND BOQ",
+                siteId: site.id,
+                itemCount: alternateBoqItems.length,
+                status: "active",
+                barCount: 0,
+              }]
+            : []),
+        ]
+      : isNullRecovery
       ? [
           nullRecoveryBoqProject,
           ...(new URLSearchParams(window.location.search).get("dprNullMulti") === "1"
@@ -1461,6 +1490,26 @@ function DprNullEvidenceBanner() {
   );
 }
 
+function Dpr08EvidenceBanner() {
+  if (!isDpr08Route()) return null;
+  const params = new URLSearchParams(window.location.search);
+  const scenario = params.get("scenario") || "silent BOQ project resolution";
+  return (
+    <header
+      className="mx-auto mb-5 max-w-5xl rounded-lg border border-amber-300 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm"
+      data-testid="dpr08-evidence-banner"
+    >
+      <div className="text-xs font-bold uppercase tracking-[0.18em] text-amber-800">
+        DPR-08 isolated browser evidence
+      </div>
+      <h1 className="mt-1 text-lg font-semibold">Fixture-only API adapter · {scenario}</h1>
+      <p className="mt-1 text-sm">
+        Real Guided and Detailed DPR controls. Synthetic data only; no customer or production writes.
+      </p>
+    </header>
+  );
+}
+
 // wouter's setLocation uses history.pushState. The isolated fixture routes the
 // real SiteEntry success navigation to SiteSuccess without changing production
 // navigation code.
@@ -1486,6 +1535,7 @@ const mount = () => {
   appRoot.render(
     <QueryClientProvider client={queryClient}>
       <Dpr07EvidenceBanner />
+        <Dpr08EvidenceBanner />
         <DprNullEvidenceBanner />
       {isGuidedReport
         ? <FixtureSavedReport />

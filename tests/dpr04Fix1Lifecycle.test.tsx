@@ -194,4 +194,32 @@ describe("DPR-04 BOQ lifecycle", () => {
     expect(projectAttempts).toBe(2);
     expect(fetchMock).toHaveBeenCalled();
   });
+
+  it("does not replace an explicit saved null with the site's automatic fallback", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/items")) return new Response("[]");
+      return new Response(JSON.stringify([
+        { id: 41, name: "First", status: "active", barCount: 0 },
+        { id: 23, name: "Programme", status: "active", barCount: 8 },
+      ]), { headers: { "Content-Type": "application/json" } });
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const { result } = renderHook(
+      () => useDprBoqItems({
+        siteName: "Lifecycle site",
+        sites,
+        preferredProjectId: null,
+      }),
+      { wrapper: wrapperFor(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.projectsLoaded).toBe(true));
+    expect(result.current.projectId).toBeNull();
+    expect(result.current.items).toEqual([]);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/items"))).toBe(false);
+  });
 });

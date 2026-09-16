@@ -40,7 +40,6 @@ import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { parseDprError } from "@/lib/dprErrors";
 import { DPR_REGISTER_PATH, resolveReturnTo, withReturnTo } from "@/lib/progressReportNav";
 import { BillItemPicker, type BillItem } from "@/components/BillItemPicker";
-import { DprBoqStatus } from "@/components/DprBoqStatus";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
@@ -490,28 +489,14 @@ export default function SiteEdit() {
     resolved: boolean;
     projectId: number | null;
   }>({ resolved: false, projectId: null });
-  const [boqProjectRecoveryConfirmed, setBoqProjectRecoveryConfirmed] = useState(false);
-  // Keep an unconfirmed recovery target separate from the selected project so
-  // a refresh can reopen the confirmation without turning linked draft rows
-  // into a projectless save.
-  const [pendingBoqProjectId, setPendingBoqProjectId] = useState<number | null>(null);
 
   type SiteEditBoqItem = BillItem & {
     dprMeasurementMethod?: string | null;
   };
   const {
-    siteId: siteIdForBoq,
-    projects: siteBoqProjects,
     projectId: siteBoqProjectId,
     items: siteBoqItems,
     projectsLoaded: boqProjectsLoaded,
-    projectsLoading: boqProjectsLoading,
-    projectsError: boqProjectsError,
-    itemsLoaded: boqItemsLoaded,
-    itemsLoading: boqItemsLoading,
-    itemsError: boqItemsError,
-    siteResolutionError: boqSiteResolutionError,
-    retry: retryBoq,
   } = useDprBoqItems<SiteEditBoqItem>({
     siteName: header.site,
     sites: sitesList,
@@ -536,8 +521,6 @@ export default function SiteEdit() {
       // An unlinked legacy DPR may be corrected to another site. Do not carry
       // a locally pinned fallback into that newly selected site.
       setBoqProjectPreference({ resolved: false, projectId: null });
-      setBoqProjectRecoveryConfirmed(false);
-      setPendingBoqProjectId(null);
     }
     setHeader((current) => ({ ...current, site: nextSite }));
   };
@@ -738,24 +721,18 @@ export default function SiteEdit() {
     () => hasDprBoqReferences([progress, structureItems, equipment, labour, materials]),
     [progress, structureItems, equipment, labour, materials],
   );
-  const handleBoqProjectChange = (nextProjectId: number | null) => {
-    const savedNullProject = dpr
-      && Object.prototype.hasOwnProperty.call(dpr, "boqProjectId")
-      && dpr.boqProjectId == null;
-    if (!savedNullProject || siteEditHasBoqReferences || nextProjectId == null) return;
-    setBoqProjectPreference({ resolved: true, projectId: nextProjectId });
-    setPendingBoqProjectId(null);
-    setBoqProjectRecoveryConfirmed(true);
-  };
   useEffect(() => {
-    // A positive server project is already canonical. Only legacy/omitted
-    // project fields need a local pin once linked rows are present.
+    // A saved project field is already canonical, including an explicit null.
+    // Only legacy/omitted project fields need a local pin once linked rows are
+    // present.
+    const hasSavedBoqProject = dpr != null
+      && Object.prototype.hasOwnProperty.call(dpr, "boqProjectId");
     if (
       !boqProjectsLoaded
       || siteBoqProjectId == null
       || !siteEditHasBoqReferences
       || boqProjectPreference.resolved
-      || dpr?.boqProjectId != null
+      || hasSavedBoqProject
     ) return;
     setBoqProjectPreference({ resolved: true, projectId: siteBoqProjectId });
   }, [
@@ -763,7 +740,7 @@ export default function SiteEdit() {
     siteBoqProjectId,
     siteEditHasBoqReferences,
     boqProjectPreference.resolved,
-    dpr?.boqProjectId,
+    dpr,
   ]);
 
   useEffect(() => {
@@ -791,31 +768,12 @@ export default function SiteEdit() {
           const draftProjectId = draft.boqProjectId;
           const validDraftProject = draftProjectId === null
             || (typeof draftProjectId === "number" && Number.isInteger(draftProjectId) && draftProjectId > 0);
-          const hasPendingRecovery = typeof draft.pendingBoqProjectId === "number"
-            && Number.isInteger(draft.pendingBoqProjectId)
-            && draft.pendingBoqProjectId > 0;
-          setPendingBoqProjectId(hasPendingRecovery ? draft.pendingBoqProjectId : null);
-          if (hasPendingRecovery) {
-            // A pending target is never a confirmed server link. Keep the
-            // draft rows and reopen the confirmation after reload, even if a
-            // malformed/legacy blob also contains a positive project value.
-            setBoqProjectPreference({ resolved: true, projectId: null });
-            setBoqProjectRecoveryConfirmed(false);
-          } else if (
-            hasDraftProject
-            && validDraftProject
-            && draft.boqProjectRecoveryConfirmed === true
-            && typeof draftProjectId === "number"
-            && draftProjectId > 0
-          ) {
+          if (hasDraftProject && validDraftProject) {
+            // A restored null is an explicit saved pin, not an instruction to
+            // re-guess a project from the current site's project ordering.
             setBoqProjectPreference({ resolved: true, projectId: draftProjectId });
-            setBoqProjectRecoveryConfirmed(true);
-          } else if (hasDraftProject && validDraftProject) {
-            setBoqProjectPreference({ resolved: true, projectId: draftProjectId });
-            setBoqProjectRecoveryConfirmed(false);
           } else {
             setBoqProjectPreference({ resolved: false, projectId: null });
-            setBoqProjectRecoveryConfirmed(false);
           }
           if (draft.progress?.length) setProgress(
             (draft.progress as any[]).map((p: any) => ({
@@ -853,8 +811,6 @@ export default function SiteEdit() {
     setLabour(lab);
     setMaterials(mat);
     setSitePurchases(sp);
-    setPendingBoqProjectId(null);
-    setBoqProjectRecoveryConfirmed(false);
     formInitializedRef.current = true;
   }, [dpr]);
 
@@ -883,8 +839,6 @@ export default function SiteEdit() {
       materials,
       sitePurchases,
       ...(draftProjectId !== undefined ? { boqProjectId: draftProjectId } : {}),
-      ...(boqProjectRecoveryConfirmed ? { boqProjectRecoveryConfirmed: true } : {}),
-      ...(pendingBoqProjectId != null ? { pendingBoqProjectId } : {}),
     };
     const draftJson = JSON.stringify(draft);
     if (draftJson === serverSnapshotRef.current) {
@@ -905,8 +859,6 @@ export default function SiteEdit() {
     sitePurchases,
     boqProjectPreference.resolved,
     boqProjectPreference.projectId,
-    boqProjectRecoveryConfirmed,
-    pendingBoqProjectId,
   ]);
 
   // Batch 06V: ?progressEntryId= deep-link — scroll to and briefly highlight
@@ -1293,7 +1245,6 @@ export default function SiteEdit() {
     // has failed. This is the previous contract with a saved-DPR fallback:
     // boqProjectId: siteBoqProjectId ?? dpr?.boqProjectId ?? undefined
     boqProjectId: siteBoqProjectId ?? savedDprBoqProjectId,
-    ...(boqProjectRecoveryConfirmed ? { boqProjectRecoveryConfirmed: true as const } : {}),
     workType,
     structureItems: workType === "structure" ? structureItems.filter(s => s.itemOfWork) : [],
     progress: workType === "road" ? progress.filter(p => p.activity).map(p => {
@@ -1477,14 +1428,6 @@ export default function SiteEdit() {
       return;
     }
     const payload = buildPayload();
-    if (siteEditHasBoqReferences && payload.boqProjectId == null) {
-      toast({
-        title: "Confirm a BOQ project before saving",
-        description: "This draft has BOQ-linked rows. Choose and confirm the project recovery first; your row edits remain on this screen.",
-        variant: "destructive",
-      });
-      return;
-    }
     draftSaveMutation.mutate(payload);
   };
 
@@ -1517,14 +1460,6 @@ export default function SiteEdit() {
     }
     // Batch 04: same shared readiness rule as Guided/Detailed/server.
     const payload = buildPayload();
-    if (siteEditHasBoqReferences && payload.boqProjectId == null) {
-      toast({
-        title: "Confirm a BOQ project before submitting",
-        description: "This DPR has BOQ-linked rows. Choose and confirm the project recovery first.",
-        variant: "destructive",
-      });
-      return;
-    }
     const r = evaluateDprSubmitReadiness({
       ...payload,
       progress: withCutFillReadinessContext(payload.progress as any, siteBoqItems),
@@ -1558,14 +1493,6 @@ export default function SiteEdit() {
 
     if (!validateCutFillForFinal()) return;
     const payload = buildPayload();
-    if (siteEditHasBoqReferences && payload.boqProjectId == null) {
-      toast({
-        title: "Confirm a BOQ project before saving",
-        description: "This DPR has BOQ-linked rows. Choose and confirm the project recovery first; your row edits remain on this screen.",
-        variant: "destructive",
-      });
-      return;
-    }
     updateMutation.mutate(payload);
   };
 
@@ -1718,8 +1645,6 @@ export default function SiteEdit() {
                     ? { resolved: true, projectId: dpr.boqProjectId ?? null }
                     : { resolved: false, projectId: null },
                 );
-                setBoqProjectRecoveryConfirmed(false);
-                setPendingBoqProjectId(null);
                 setHeader(serverState.header);
                 setProgress(serverState.progress);
                 setEquipment(serverState.equipment);
@@ -1809,37 +1734,6 @@ export default function SiteEdit() {
             />
           </div>
         </CardContent>
-        <div className="px-6 pb-4">
-          <DprBoqStatus
-            siteName={header.site}
-            siteId={siteIdForBoq}
-            siteResolutionError={boqSiteResolutionError}
-            projects={siteBoqProjects}
-            projectId={siteBoqProjectId}
-            items={siteBoqItems}
-            projectsLoading={boqProjectsLoading}
-            projectsLoaded={boqProjectsLoaded}
-            projectsError={boqProjectsError}
-            itemsLoading={boqItemsLoading}
-            itemsLoaded={boqItemsLoaded}
-            itemsError={boqItemsError}
-            sitesLoading={sitesQuery.isLoading}
-            sitesLoaded={sitesQuery.isSuccess}
-            sitesError={sitesQuery.error}
-            onRetrySites={() => sitesQuery.refetch()}
-            onRetry={retryBoq}
-            onProjectChange={handleBoqProjectChange}
-            pendingRecoveryProjectId={pendingBoqProjectId}
-            onRecoveryPendingChange={setPendingBoqProjectId}
-            projectChangeDisabled={siteEditHasBoqReferences || (dpr?.boqProjectId != null)}
-            projectRecoveryRequired={
-              dpr != null
-              && Object.prototype.hasOwnProperty.call(dpr, "boqProjectId")
-              && dpr.boqProjectId == null
-              && (!siteEditHasBoqReferences || pendingBoqProjectId != null)
-            }
-          />
-        </div>
       </Card>
 
       <Card>

@@ -3,17 +3,17 @@ name: DPR null-project recovery
 description: Preserve explicit project intent without permanently trapping old drafts outside their site's BOQ.
 ---
 
-Treat a saved null project as unassigned, not proof that the user deliberately rejected BOQ work. Never auto-guess a replacement; allow explicit, confirmed same-site attachment only when the persisted report has no BOQ references.
+Resolve projects silently from the site for new DPRs; do not expose a manual project picker, project-status panel, or attachment confirmation in the DPR forms. Preserve saved positive and explicit-null project pins on reopen and autosave restore.
 
-**Why:** a live site had a populated BOQ while its newest draft retained a null project, leaving both Guided and Edit unable to offer BOQ work. Pinning null forever fixed accidental reassignment but prevented recovery.
+**Why:** on 2026-09-16 the user rejected the manual recovery panel as an unwanted step and explicitly required silent site resolution while retaining saved-project stability and unscheduled item selection.
 
-**How to apply:** distinguish persisted evidence from newly selected incoming items: a confirmed attachment and first item must save together. Revalidate persisted evidence and site ownership under the transaction lock; positive pins stay immutable. Submitted versions need superseded-source rejection to prevent multiple recovery branches.
+**How to apply:** use existing automatic priority for new/multi-project sites. Do not silently repair old saved-null records or reintroduce a chooser; that needs a separate decision. The server still supports explicit confirmed same-site recovery only without persisted BOQ references; preserve its transaction/site guards and superseded-source checks even though normal forms no longer expose it.
 
 Capture planning-scope tokens before asynchronous validation, not immediately before storage.
 
 **Why:** capturing after validation can accept a newer token even though validation used older scope.
 
-**How to apply:** carry the original token into the target-project lock check. Preserve pending UI recovery intent through unresolved-to-resolved site loading, but invalidate genuine site changes.
+**How to apply:** carry the original token into the target-project lock check. Preserve stable project intent through unresolved-to-resolved site loading, but invalidate genuinely changed site context where allowed.
 
 Use one cross-operation lock order: sorted project rows before the DPR row, including draft replacement, clone, and version.
 

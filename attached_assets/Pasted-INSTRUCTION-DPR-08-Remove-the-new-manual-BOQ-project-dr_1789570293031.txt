@@ -1,0 +1,45 @@
+INSTRUCTION DPR-08: Remove the new manual "BOQ project" dropdown/status panel that was added to the DPR forms — the project must go back to being resolved silently from the Site, the way it always worked. Keep the "any BOQ item selectable even if unscheduled" improvement — that part is correct and must stay.
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This undoes ONE specific UI addition (a new manual project-selection panel) from a recent direct-to-Replit batch, without undoing the useful part of that same batch (BOQ items being selectable even when not linked to a programme bar/date). Do not touch DPR-02 through DPR-07, VB batches, or Work Programme. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review and screen recording — do not re-derive)
+1. A new component, client/src/components/DprBoqStatus.tsx, was added and is now rendered at the top of both the Guided DPR (client/src/pages/GuidedDpr.tsx, imported ~line 65, rendered ~line 1673) and the Detailed DPR form, BEFORE the person even picks a Site in some flows. It shows a "BOQ project" label with a Select dropdown ("Select BOQ project" / "No BOQ project" / a list of project names), plus status text like "This saved DPR has no BOQ project. Choose an available project above to attach it; existing saved references are not changed." and an "Attach this DPR to a BOQ project?" confirmation dialog.
+2. This is a regression in usability: previously, the BOQ project was ALWAYS resolved automatically and silently from the selected Site (client/src/hooks/use-dpr-boq-items.ts, resolveDprBoqProjectId in shared/dprBoqSelection.ts) — the person never had to see or touch a "project" concept at all, they just picked a site and the right BOQ project's items appeared. Now every DPR — new or reopened — surfaces this extra manual step and a confusing "No BOQ project" state, even for sites that only ever had one project.
+3. Separately, and correctly: client/src/components/ProgrammeBarPicker.tsx now shows "Not linked to a programme bar (optional)" when a BOQ item is picked that isn't scheduled for that date/period — meaning any BOQ item in the project can now be recorded even if the programme hasn't scheduled it yet, exactly as intended (the contractor may legitimately execute an item ahead of its planned date). This part is NOT the problem and must be kept exactly as it is.
+4. The person's own words: "I don't want that dropdown of project and no boq things... once we select the project the activity form should show the bill and all boq items of that project though any item is not scheduled." — confirms both halves: remove the manual project dropdown/status UI, keep unscheduled items selectable.
+
+FIX 1 — REMOVE THE MANUAL BOQ PROJECT PANEL
+a. Remove the DprBoqStatus component's rendering from GuidedDpr.tsx (~line 1673) and from wherever it was added to the Detailed DPR form. Do not delete the file outright if any of its logic is reused elsewhere — just stop rendering the visible dropdown/status panel/confirmation dialog to the person.
+b. The BOQ project must go back to being resolved automatically and silently the moment a Site is selected, using the existing resolveDprBoqProjectId logic (shared/dprBoqSelection.ts) exactly as it worked before this component was added — no visible "project" field, no "No BOQ project" message, no confirmation dialog.
+c. Preserve DPR-04's already-correct fix (the resolved project must stay PINNED to whatever the DPR was already saved with when reopening a draft or restoring an autosave — do not reintroduce the earlier bug where reopening could silently re-guess a different project). This removal is about the VISIBLE manual picker only, not about breaking the underlying stable resolution logic.
+d. If a site genuinely has more than one active BOQ project (the reason this manual picker may have been added), resolveDprBoqProjectId's existing priority rules (active project with programme bars first, then any active project, then the first project) already pick one automatically — that is sufficient. Do not add a manual chooser back in for this case.
+
+FIX 2 — KEEP UNSCHEDULED BOQ ITEMS FULLY SELECTABLE
+a. Do not change ProgrammeBarPicker.tsx's "Not linked to a programme bar (optional)" behavior — once a Site (and therefore its BOQ project) is resolved, the Activity/BOQ item picker must continue to show every BOQ item in that project, regardless of whether it's scheduled for the current date/period in the work programme.
+b. Confirm this still works correctly after Fix 1 removes the manual project panel — since project resolution is now silent/automatic again, the item list must populate immediately once Site is chosen, with no separate project-selection step required first.
+
+WHAT NOT TO DO
+- Do not remove or weaken the "select any BOQ item even if unscheduled" capability — that part is correct and wanted.
+- Do not reintroduce DPR-04's original bug (project silently re-guessed differently on reopen) — the automatic resolution must still respect what a draft/autosave already had.
+- Do not touch DPR-02, DPR-03, DPR-05, DPR-06, DPR-07, VB batches, or Work Programme.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — this removes a UI panel and restores prior automatic-resolution behavior; no data model change.
+
+TESTS
+A. Start a brand-new DPR (Guided and Detailed) for a site. Confirm there is NO visible "BOQ project" dropdown or "No BOQ project" message anywhere in the form — the correct project's BOQ items are simply available once the site is picked, exactly as before this regression.
+B. Pick a BOQ item that is not scheduled in the programme for the current date/period (e.g. the ALLADURG "earthen shoulder" case from the report). Confirm it is still selectable, with the "Not linked to a programme bar (optional)" indicator, exactly as it works today.
+C. Save a draft, reopen it, and confirm it silently resolves to the SAME project it was saved with — no visible picker, no re-guessing (this is DPR-04's protection — confirm it still holds after removing the visible panel).
+D. Restore a local autosave (the "Restore" banner) and confirm the same silent, stable project resolution.
+E. Test a site that genuinely has more than one BOQ project (if one exists in test data) — confirm it still resolves to a sensible project automatically without asking the person to choose.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/C/D evidence (screenshots), specifically showing no BOQ-project UI is visible anywhere in the DPR form.
+2. Confirm Fix 2 with Test B evidence (screenshots) — unscheduled BOQ items still selectable.
+3. Confirm Test E if applicable test data exists.
+4. Confirm no schema change was needed.
+5. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

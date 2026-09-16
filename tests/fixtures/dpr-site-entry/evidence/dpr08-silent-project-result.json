@@ -1,0 +1,538 @@
+{
+  "scenario": "DPR-08 silent BOQ project resolution isolated browser regression",
+  "fixture": {
+    "baseUrl": "http://127.0.0.1:4178",
+    "cdp": "127.0.0.1:9222",
+    "viewport": {
+      "width": 1440,
+      "height": 1000,
+      "mobile": false
+    },
+    "productionDatabaseUsed": false,
+    "customerWrites": false,
+    "persistenceMode": "fixture in-memory adapter with sessionStorage records and browser autosave storage",
+    "evidenceDirectory": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence"
+  },
+  "assertions": {
+    "A": "Fresh Guided and Detailed DPRs resolve the site's BOQ automatically with no visible BOQ-project selector/status or No BOQ project copy.",
+    "B": "An unscheduled BOQ item remains selectable and displays the Not linked to a programme bar (optional) hint.",
+    "C": "Positive project pins survive rendered Guided Save Draft and Detailed/Edit Save Progress, then reopen on the same fixture drafts.",
+    "D": "Positive project pins and unscheduled items survive rendered Restore actions from local Guided and Detailed autosaves.",
+    "E": "A site with two active BOQ projects automatically selects the active project with programme bars and does not expose a chooser."
+  },
+  "evidence": {
+    "guidedFresh": {
+      "beforeItem": {
+        "hasStatusPanel": false,
+        "hasProjectSelector": false,
+        "hasNoProjectMessage": false,
+        "hasRecoveryDialog": false,
+        "hasAttachConfirmation": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-08 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr08-guided-new\n\nReal Guided and Detailed DPR controls. Synthetic data only; no customer or production writes.\n\nBack\nDetailed / Advanced view\nGuided DPR\n\nRecords today's road progress against the work programme — same official record as the Detailed DPR, faster entry.\n\nReport\n2\nActivities\n3\nDetails\n4\nLabour\n5\nEquipment\n6\nPhotos\n7\nReview\nTODAY'S LIKELY ACTIVITIES\n\nGSB LAYING\n\nKm 12.000–13.000 · LHS\n\nCLEARING AND GRUBBING ROAD\n\nClearing 0+000–1+600 · LHS\n\nAdd Activity\nBack\nSave Draft\nNext"
+      },
+      "pickerImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-guided-new-picker-open.png",
+      "selectedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-guided-new-no-bar-selected.png",
+      "optionalStatus": "Programme link:Not linked to a programme bar (optional)",
+      "picker": {
+        "text": "8.7NO-BAR SHOULDER WORK(Sqm)Shoulder preparation item deliberately has no programme bar",
+        "value": null,
+        "disabled": false
+      },
+      "projectIds": [
+        5501
+      ]
+    },
+    "detailedFresh": {
+      "beforeItem": {
+        "hasStatusPanel": false,
+        "hasProjectSelector": false,
+        "hasNoProjectMessage": false,
+        "hasRecoveryDialog": false,
+        "hasAttachConfirmation": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-08 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr08-detailed-new\n\nReal Guided and Detailed DPR controls. Synthetic data only; no customer or production writes.\n\nDetailed DPR\n\nFull daily progress report — every section, complete control\n\nGuided DPR\nSet Detailed as my default\nReport Details\nDate\nSite Name\nNARASIMHULU ROAD\nEngineer / Submitted By\nSURESH KUMAR - ENGINEER\nRoad Works Progress\nRoad Works\nAdd Activity\nNo Site Work\nIncidental / Non-BOQ\nBOQ Item / Activity\nAll bills\nSelect item…\nSide\nSide\nFrom (Ch.)\nTo (Ch.)\nL (m)\nW (m)\nT (m)\nUOM\nSQM\nPhysical Qty\nPersonnel:\n+ Add person\nPhotos (0/3):\nCamera\nGallery\nFile\nAdd Activity\nEquipment Log\nAdd Equipment\nEquipment\nSelect equipment...\nOperator\n\nTime / Meter Entry\n\nEnter opening reading and diesel in the morning. Closing reading and end time can be added later.\n\nStart Time\nEnd Time\nDuration\n-\nOpening Hour Meter\nClosing Hour Meter\nWorking Hours\n-\nExpected Diesel\n-\nNorm\n-\nDiesel Issued (L)\n\n⚠ No hour meter reading or start/end time entered.\n\nDiesel Source\nSelect equipment above to add or correct a machine day. Default-only rows are not displayed as Operating.\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage\n\nTotal Diesel\n\n0.000 L\n\nAdd Equipment\nLabour Strength\nAdd Labour\nAdd Labour\nMaterials Consumed / Issued\nAdd\n\nNo materials recorded. Click \"Add\" to record material consumed or issued against a work item. (Bulk deliveries by vehicle trip are still tracked separately in Materials Received.)\n\nSite Purchases\nAdd\n\nNo site purchases added. Click \"Add\" to record direct site purchases like diesel for cleaning, small consumables, etc.\n\nRemarks & Review\nRemarks (optional)\nPhotos\nCamera\nGallery\nNo photos added yet\n\nPhotos are uploaded once you save the report.\n\nReview your entries above, t"
+      },
+      "pickerImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-detailed-new-picker-open.png",
+      "selectedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-detailed-new-no-bar-selected.png",
+      "optionalStatus": "Programme link:Not linked to a programme bar (optional)",
+      "picker": {
+        "text": "8.7NO-BAR SHOULDER WORK(Sqm)Shoulder preparation item deliberately has no programme bar",
+        "value": null,
+        "disabled": false
+      },
+      "projectIds": [
+        5501
+      ]
+    },
+    "guidedPositivePin": {
+      "beforeUi": {
+        "hasStatusPanel": false,
+        "hasProjectSelector": false,
+        "hasNoProjectMessage": false,
+        "hasRecoveryDialog": false,
+        "hasAttachConfirmation": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-08 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr08-guided-save-reopen-positive-pin\n\nReal Guided and Detailed DPR controls. Synthetic data only; no customer or production writes.\n\nBack\nDetailed / Advanced view\nGuided DPRDraft #6201\n\nRecords today's road progress against the work programme — same official record as the Detailed DPR, faster entry.\n\nReport\nActivities\n3\nDetails\n4\nLabour\n5\nEquipment\n6\nPhotos\n7\nReview\n\nCLEARING AND GRUBBING ROAD\n\nPlanned side: LHS\nProgramme-linked\nNo site work\nIncidental / Non-BOQ\nActual execution side *\nLHS\nCh. From\nCh. To\nLength (m)\nWidth (m)\nPhysical Qty (SQM)\n\nBOQ Qty: 0.24 Ha\n\nQuantity source: Calculated from geometry\n\nProgramme context:\nClearing 0+000–1+600 · Ch 0–1.6 · LHS · bal 10000 Ha\nChange planned reach\nLeave unlinked\nSelected reach:\nPlanned 10000 Ha\nDone 0\nBalance 10000\n(BOQ item total: 500 · done 0 · bal 500 Ha)\nAdd details\nPhotos for this activity\nCamera\nGallery\nFile\nAdd Activity\nBack\nSave Draft\nNext"
+      },
+      "beforeImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-guided-save-reopen-positive-pin-before-save.png",
+      "mutation": {
+        "id": 6201,
+        "status": "draft",
+        "payload": {
+          "id": 6201,
+          "date": "2026-08-05",
+          "site": "NARASIMHULU ROAD",
+          "engineer": "SURESH KUMAR - ENGINEER",
+          "role": "engineer",
+          "workType": "road",
+          "boqProjectId": 5501,
+          "dprStatus": "draft",
+          "isSuperseded": false,
+          "lockStatus": "unlocked",
+          "progress": [
+            {
+              "entryKey": "guided-fixture-contractor-progress",
+              "activity": "CLEARING AND GRUBBING ROAD",
+              "side": "LHS",
+              "chainageFrom": "0+000",
+              "chainageTo": "1+600",
+              "length": 1600,
+              "width": 1.5,
+              "thickness": null,
+              "quantity": 2400,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "personnelIds": [],
+              "boqItemId": 8803,
+              "programmeBarId": 9902,
+              "earthworkArrangementId": null,
+              "chainageFromKm": 0,
+              "chainageToKm": 1.6,
+              "quantitySource": "calculated",
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "executedBy": "hlc",
+              "layerNo": null,
+              "materialOutcome": null,
+              "reusableQty": null
+            }
+          ],
+          "equipment": [
+            {
+              "persistedId": 7211,
+              "entryType": "daily",
+              "startTime": "08:00",
+              "endTime": "17:00",
+              "openingReading": null,
+              "closingReading": null,
+              "hoursWorked": null,
+              "diesel": 0,
+              "dieselNorm": 3,
+              "expectedDiesel": null,
+              "equipmentId": 7703,
+              "plantUsageId": null,
+              "dieselSource": "contractor",
+              "openingDiesel": null,
+              "dieselBalanceInTank": null,
+              "dieselBalanceConfirmed": null,
+              "fuelStation": "",
+              "billNumber": "",
+              "amountPaid": null,
+              "numberOfTrips": null,
+              "tripDistance": null,
+              "totalKm": null,
+              "waterQuantity": null,
+              "breakdowns": [],
+              "machine": "DAILY HIRE ROLLER",
+              "vehicleNo": "FIX-HIRE-01",
+              "operator": "IMRAN",
+              "task": "COMPACTION"
+            },
+            {
+              "persistedId": 7212,
+              "entryType": "daily",
+              "startTime": "08:00",
+              "endTime": "17:00",
+              "openingReading": null,
+              "closingReading": null,
+              "hoursWorked": null,
+              "diesel": 12,
+              "dieselNorm": 3,
+              "expectedDiesel": null,
+              "equipmentId": 7704,
+              "plantUsageId": null,
+              "dieselSource": "contractor",
+              "openingDiesel": null,
+              "dieselBalanceInTank": null,
+              "dieselBalanceConfirmed": null,
+              "fuelStation": "",
+              "billNumber": "",
+              "amountPaid": null,
+              "numberOfTrips": null,
+              "tripDistance": null,
+              "totalKm": null,
+              "waterQuantity": null,
+              "breakdowns": [],
+              "machine": "DAILY HIRE LOADER",
+              "vehicleNo": "FIX-HIRE-02",
+              "operator": "KARIM",
+              "task": "LOADING"
+            }
+          ],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "remarks": "DIESEL-02 GUIDED CONTRACTOR FIXTURE — NOT A CUSTOMER DPR.",
+          "cutFillConsumptions": [],
+          "structureItems": [],
+          "clientTimestamp": "2026-09-16 15:01:49"
+        }
+      },
+      "saved": {
+        "id": 6201,
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR - ENGINEER",
+        "role": "engineer",
+        "workType": "road",
+        "boqProjectId": 5501,
+        "dprStatus": "draft",
+        "isSuperseded": false,
+        "lockStatus": "unlocked",
+        "progress": [
+          {
+            "entryKey": "guided-fixture-contractor-progress",
+            "activity": "CLEARING AND GRUBBING ROAD",
+            "side": "LHS",
+            "chainageFrom": "0+000",
+            "chainageTo": "1+600",
+            "length": 1600,
+            "width": 1.5,
+            "thickness": null,
+            "quantity": 2400,
+            "uom": "SQM",
+            "noSiteWork": false,
+            "noSiteWorkDescription": "",
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "personnelIds": [],
+            "boqItemId": 8803,
+            "programmeBarId": 9902,
+            "earthworkArrangementId": null,
+            "chainageFromKm": 0,
+            "chainageToKm": 1.6,
+            "quantitySource": "calculated",
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "executedBy": "hlc",
+            "layerNo": null,
+            "materialOutcome": null,
+            "reusableQty": null
+          }
+        ],
+        "equipment": [
+          {
+            "persistedId": 7211,
+            "entryType": "daily",
+            "startTime": "08:00",
+            "endTime": "17:00",
+            "openingReading": null,
+            "closingReading": null,
+            "hoursWorked": null,
+            "diesel": 0,
+            "dieselNorm": 3,
+            "expectedDiesel": null,
+            "equipmentId": 7703,
+            "plantUsageId": null,
+            "dieselSource": "contractor",
+            "openingDiesel": null,
+            "dieselBalanceInTank": null,
+            "dieselBalanceConfirmed": null,
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "breakdowns": [],
+            "machine": "DAILY HIRE ROLLER",
+            "vehicleNo": "FIX-HIRE-01",
+            "operator": "IMRAN",
+            "task": "COMPACTION"
+          },
+          {
+            "persistedId": 7212,
+            "entryType": "daily",
+            "startTime": "08:00",
+            "endTime": "17:00",
+            "openingReading": null,
+            "closingReading": null,
+            "hoursWorked": null,
+            "diesel": 12,
+            "dieselNorm": 3,
+            "expectedDiesel": null,
+            "equipmentId": 7704,
+            "plantUsageId": null,
+            "dieselSource": "contractor",
+            "openingDiesel": null,
+            "dieselBalanceInTank": null,
+            "dieselBalanceConfirmed": null,
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "breakdowns": [],
+            "machine": "DAILY HIRE LOADER",
+            "vehicleNo": "FIX-HIRE-02",
+            "operator": "KARIM",
+            "task": "LOADING"
+          }
+        ],
+        "labour": [],
+        "materials": [],
+        "sitePurchases": [],
+        "remarks": "DIESEL-02 GUIDED CONTRACTOR FIXTURE — NOT A CUSTOMER DPR.",
+        "cutFillConsumptions": [],
+        "structureItems": [],
+        "clientTimestamp": "2026-09-16 15:01:49"
+      },
+      "reopenedUi": {
+        "hasStatusPanel": false,
+        "hasProjectSelector": false,
+        "hasNoProjectMessage": false,
+        "hasRecoveryDialog": false,
+        "hasAttachConfirmation": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-08 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr08-guided-save-reopen-positive-pin\n\nReal Guided and Detailed DPR controls. Synthetic data only; no customer or production writes.\n\nBack\nDetailed / Advanced view\nGuided DPRDraft #6201\n\nRecords today's road progress against the work programme — same official record as the Detailed DPR, faster entry.\n\nReport\nActivities\n3\nDetails\n4\nLabour\n5\nEquipment\n6\nPhotos\n7\nReview\n\nCLEARING AND GRUBBING ROAD\n\nPlanned side: LHS\nProgramme-linked\nNo site work\nIncidental / Non-BOQ\nActual execution side *\nLHS\nCh. From\nCh. To\nLength (m)\nPhysical Qty (SQM)\n\nQuantity source: Calculated from geometry\n\nProgramme context:\nClearing 0+000–1+600 · Ch 0–1.6 · LHS · bal 10000 Ha\nChange planned reach\nLeave unlinked\nSelected reach:\nPlanned 10000 Ha\nDone 0\nBalance 10000\n(BOQ item total: 500 · done 0 · bal 500 Ha)\nAdd details\nPhotos for this activity\nCamera\nGallery\nFile\nAdd Activity\nBack\nSave Draft\nNext"
+      },
+      "reopenedIds": [
+        5501
+      ],
+      "reopenedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-guided-save-reopen-positive-pin-after-reopen.png"
+    },
+    "detailedPositivePin": {
+      "beforeUi": {
+        "hasStatusPanel": false,
+        "hasProjectSelector": false,
+        "hasNoProjectMessage": false,
+        "hasRecoveryDialog": false,
+        "hasAttachConfirmation": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-08 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr08-save-reopen-positive-pin\n\nReal Guided and Detailed DPR controls. Synthetic data only; no customer or production writes.\n\nDraft DPR — Fill in closing readings and quantities, then tap Submit DPR when done.\nComplete DPR\n\nAdd closing details and submit when ready\n\n← Back to Progress Report\nSave Progress\nSubmit DPR\nReport Details\nDate\nSite Name\nNARASIMHULU ROAD\nEngineer / Submitted By\nSURESH KUMAR (LEGACY)\nRemarks\nActivity Progress\nRoad\nStructure\nAdd Row\nNo Site Work\nIncidental / Non-BOQ\nBOQ Item / Activity\nBILL 9 · Shoulder Works\n8.7\nNO-BAR SHOULDER WORK\n(Sqm)\nShoulder preparation item deliberately has no programme bar\nProgramme link:\nLoading programme context…\nSide\nLHS\nFrom (Km)\nTo (Km)\nLength (m)\nWidth (m)\nThickness (m)\nLayer / Lift\nUOM\nauto\nSQM\nPhysical Qty (SQM)\n\nBOQ Qty: 300 Sqm\n\nDirect measured\nPersonnel:\nSURESH KUMAR\n+ Add person\nPhotos (0/3):\nCamera\nGallery\nFile\nAdd Row\nEquipment Log\nAdd Row\nEquipment\nSelect equipment...\nOperator\nDiesel Source\nSelect diesel source\nSelect equipment above to add or correct a machine day. Default-only rows are not displayed as Operating.\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage\n\nTotal Diesel\n\n0.000 L\n\nAdd Row\nLabour Strength\nAdd Row\nCategory\nSkilled\nGender\nMale\nCount\nTask/Work\nContractor/Gang\nLink to Work Item (optional)\nNot linked\nAdd Row\nMaterials Log\nAdd\n\nNo materials recorded.\n\nSite Purchases\nAdd\n\nNo site purchases added.\n\nCancel\nSave Changes"
+      },
+      "beforeImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-save-reopen-positive-pin-before-save.png",
+      "mutation": {
+        "id": 6216,
+        "status": "draft",
+        "payload": {
+          "id": 6216,
+          "date": "2026-08-05",
+          "site": "NARASIMHULU ROAD",
+          "engineer": "SURESH KUMAR",
+          "role": "engineer",
+          "workType": "road",
+          "boqProjectId": 5501,
+          "dprStatus": "draft",
+          "isSuperseded": false,
+          "lockStatus": "unlocked",
+          "progress": [
+            {
+              "entryKey": "dpr-boq-picker-no-bar-edit",
+              "activity": "NO-BAR SHOULDER WORK",
+              "side": "LHS",
+              "chainageFrom": "2+000",
+              "chainageTo": "2+100",
+              "length": 100,
+              "width": 3,
+              "thickness": 20,
+              "quantity": 300,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "boqItemId": 8804,
+              "programmeBarId": null,
+              "earthworkArrangementId": null,
+              "quantitySource": "measured",
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "lengthOverrideReason": null,
+              "executedBy": "hlc",
+              "layerNo": null,
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "materialOutcome": null,
+              "reusableQty": null,
+              "chainageFromKm": 2,
+              "chainageToKm": 2.1,
+              "persistedId": 7316,
+              "personnelIds": [
+                6101
+              ]
+            }
+          ],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "remarks": "DPR BOQ picker browser regression — no-bar item; synthetic fixture only.",
+          "createdAt": "2026-08-05T16:00:00.000Z",
+          "structureItems": [],
+          "cutFillConsumptions": []
+        }
+      },
+      "saved": {
+        "id": 6216,
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "role": "engineer",
+        "workType": "road",
+        "boqProjectId": 5501,
+        "dprStatus": "draft",
+        "isSuperseded": false,
+        "lockStatus": "unlocked",
+        "progress": [
+          {
+            "entryKey": "dpr-boq-picker-no-bar-edit",
+            "activity": "NO-BAR SHOULDER WORK",
+            "side": "LHS",
+            "chainageFrom": "2+000",
+            "chainageTo": "2+100",
+            "length": 100,
+            "width": 3,
+            "thickness": 20,
+            "quantity": 300,
+            "uom": "SQM",
+            "noSiteWork": false,
+            "noSiteWorkDescription": "",
+            "boqItemId": 8804,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "quantitySource": "measured",
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "lengthOverrideReason": null,
+            "executedBy": "hlc",
+            "layerNo": null,
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "materialOutcome": null,
+            "reusableQty": null,
+            "chainageFromKm": 2,
+            "chainageToKm": 2.1,
+            "persistedId": 7316,
+            "personnelIds": [
+              6101
+            ]
+          }
+        ],
+        "equipment": [],
+        "labour": [],
+        "materials": [],
+        "sitePurchases": [],
+        "remarks": "DPR BOQ picker browser regression — no-bar item; synthetic fixture only.",
+        "createdAt": "2026-08-05T16:00:00.000Z",
+        "structureItems": [],
+        "cutFillConsumptions": []
+      },
+      "reopenedUi": {
+        "hasStatusPanel": false,
+        "hasProjectSelector": false,
+        "hasNoProjectMessage": false,
+        "hasRecoveryDialog": false,
+        "hasAttachConfirmation": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-08 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr08-save-reopen-positive-pin\n\nReal Guided and Detailed DPR controls. Synthetic data only; no customer or production writes.\n\nDraft DPR — Fill in closing readings and quantities, then tap Submit DPR when done.\nComplete DPR\n\nAdd closing details and submit when ready\n\n← Back to Progress Report\nSave Progress\nSubmit DPR\nReport Details\nDate\nSite Name\nNARASIMHULU ROAD\nEngineer / Submitted By\nSURESH KUMAR (LEGACY)\nRemarks\nActivity Progress\nRoad\nStructure\nAdd Row\nNo Site Work\nIncidental / Non-BOQ\nBOQ Item / Activity\nBILL 9 · Shoulder Works\n8.7\nNO-BAR SHOULDER WORK\n(Sqm)\nShoulder preparation item deliberately has no programme bar\nProgramme link:\nLoading programme context…\nSide\nLHS\nFrom (Km)\nTo (Km)\nLength (m)\nWidth (m)\nThickness (m)\nLayer / Lift\nUOM\nauto\nSQM\nPhysical Qty (SQM)\n\nBOQ Qty: 300 Sqm\n\nDirect measured\nPersonnel:\nSURESH KUMAR\n+ Add person\nPhotos (0/3):\nCamera\nGallery\nFile\nAdd Row\nEquipment Log\nAdd Row\nEquipment\nSelect equipment...\nOperator\nDiesel Source\nSelect diesel source\nSelect equipment above to add or correct a machine day. Default-only rows are not displayed as Operating.\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage\n\nTotal Diesel\n\n0.000 L\n\nAdd Row\nLabour Strength\nAdd Row\nCategory\nSkilled\nGender\nMale\nCount\nTask/Work\nContractor/Gang\nLink to Work Item (optional)\nNot linked\nAdd Row\nMaterials Log\nAdd\n\nNo materials recorded.\n\nSite Purchases\nAdd\n\nNo site purchases added.\n\nCancel\nSave Changes"
+      },
+      "reopenedIds": [
+        5501
+      ],
+      "reopenedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-save-reopen-positive-pin-after-reopen.png"
+    },
+    "guidedAutosaveRestore": {
+      "bannerImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-guided-autosave-restore-banner.png",
+      "restoredImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-guided-autosave-restore-after-restore.png",
+      "ui": {
+        "hasStatusPanel": false,
+        "hasProjectSelector": false,
+        "hasNoProjectMessage": false,
+        "hasRecoveryDialog": false,
+        "hasAttachConfirmation": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-08 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr08-guided-autosave-restore\n\nReal Guided and Detailed DPR controls. Synthetic data only; no customer or production writes.\n\nBack\nDetailed / Advanced view\nGuided DPR\n\nRecords today's road progress against the work programme — same official record as the Detailed DPR, faster entry.\n\nReport\nActivities\n3\nDetails\n4\nLabour\n5\nEquipment\n6\nPhotos\n7\nReview\n\nNO-BAR SHOULDER WORK\n\nNo site work\nIncidental / Non-BOQ\nBOQ Item / Activity\nBILL 9 · Shoulder Works\n8.7\nNO-BAR SHOULDER WORK\n(Sqm)\nShoulder preparation item deliberately has no programme bar\nActual execution side *\nLHS\nCh. From\nCh. To\nLength (m)\nWidth (m)\nPhysical Qty (SQM)\n\nBOQ Qty: 300 Sqm\n\nQuantity source: Calculated from geometry\n\nProgramme link:\nNot linked to a programme bar (optional)\nAdd details\nNote\nPhotos for this activity\nCamera\nGallery\nFile\nAdd Activity\nBack\nSave Draft\nNext"
+      },
+      "projectIds": [
+        5501
+      ],
+      "restored": {
+        "text": "8.7NO-BAR SHOULDER WORK(Sqm)Shoulder preparation item deliberately has no programme bar",
+        "value": null,
+        "disabled": false
+      }
+    },
+    "detailedAutosaveRestore": {
+      "bannerImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-detailed-autosave-restore-banner.png",
+      "restoredImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-detailed-autosave-restore-after-restore.png",
+      "ui": {
+        "hasStatusPanel": false,
+        "hasProjectSelector": false,
+        "hasNoProjectMessage": false,
+        "hasRecoveryDialog": false,
+        "hasAttachConfirmation": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-08 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr08-detailed-autosave-restore\n\nReal Guided and Detailed DPR controls. Synthetic data only; no customer or production writes.\n\nDetailed DPR\n\nFull daily progress report — every section, complete control\n\nGuided DPR\nSet Detailed as my default\nReport Details\nDate\nSite Name\nNARASIMHULU ROAD\nEngineer / Submitted By\nSURESH KUMAR - ENGINEER\nRoad Works Progress\nRoad Works\nAdd Activity\nNo Site Work\nIncidental / Non-BOQ\nBOQ Item / Activity\nBILL 9 · Shoulder Works\n8.7\nNO-BAR SHOULDER WORK\n(Sqm)\nShoulder preparation item deliberately has no programme bar\nProgramme link:\nNot linked to a programme bar (optional)\nPlanned: 500 SQM\nDone so far: 0 SQM\nBalance: 500 SQM\nSide\nLHS\nFrom (Ch.)\nTo (Ch.)\nL (m)\nW (m)\nUOM\nauto\nSQM\nPhysical Qty (SQM)\n\nBOQ Qty: 300 Sqm\n\nDirect measured\nPersonnel:\nSURESH KUMAR\n+ Add person\nPhotos (0/3):\nCamera\nGallery\nFile\nAdd Activity\nEquipment Log\nAdd Equipment\n\nTotal Diesel\n\n0.000 L\n\nAdd Equipment\nLabour Strength\nAdd Labour\nAdd Labour\nMaterials Consumed / Issued\nAdd\n\nNo materials recorded. Click \"Add\" to record material consumed or issued against a work item. (Bulk deliveries by vehicle trip are still tracked separately in Materials Received.)\n\nSite Purchases\nAdd\n\nNo site purchases added. Click \"Add\" to record direct site purchases like diesel for cleaning, small consumables, etc.\n\nRemarks & Review\nRemarks (optional)\nPhotos\nCamera\nGallery\nNo photos added yet\n\nPhotos are uploaded once you save the report.\n\nReview your entries above, then tap Preview Report to finish.\n\nCancel\nPreview Report"
+      },
+      "projectIds": [
+        5501
+      ],
+      "restored": {
+        "text": "8.7NO-BAR SHOULDER WORK(Sqm)Shoulder preparation item deliberately has no programme bar",
+        "value": null,
+        "disabled": false
+      }
+    },
+    "multiProject": {
+      "ui": {
+        "hasStatusPanel": false,
+        "hasProjectSelector": false,
+        "hasNoProjectMessage": false,
+        "hasRecoveryDialog": false,
+        "hasAttachConfirmation": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-08 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr08-multi-project-automatic-choice\n\nReal Guided and Detailed DPR controls. Synthetic data only; no customer or production writes.\n\nDetailed DPR\n\nFull daily progress report — every section, complete control\n\nGuided DPR\nSet Detailed as my default\n\nUnsaved draft found\n\nLast saved just now\n\nDiscard\nRestore\nReport Details\nDate\nSite Name\nNARASIMHULU ROAD\nEngineer / Submitted By\nSURESH KUMAR - ENGINEER\nRoad Works Progress\nRoad Works\nAdd Activity\nNo Site Work\nIncidental / Non-BOQ\nBOQ Item / Activity\nAll bills\nSelect item…\nSide\nSide\nFrom (Ch.)\nTo (Ch.)\nL (m)\nW (m)\nT (m)\nUOM\nSQM\nPhysical Qty\nPersonnel:\n+ Add person\nPhotos (0/3):\nCamera\nGallery\nFile\nAdd Activity\nEquipment Log\nAdd Equipment\nEquipment\nSelect equipment...\nOperator\n\nTime / Meter Entry\n\nEnter opening reading and diesel in the morning. Closing reading and end time can be added later.\n\nStart Time\nEnd Time\nDuration\n-\nOpening Hour Meter\nClosing Hour Meter\nWorking Hours\n-\nExpected Diesel\n-\nNorm\n-\nDiesel Issued (L)\n\n⚠ No hour meter reading or start/end time entered.\n\nDiesel Source\nSelect equipment above to add or correct a machine day. Default-only rows are not displayed as Operating.\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage\n\nTotal Diesel\n\n0.000 L\n\nAdd Equipment\nLabour Strength\nAdd Labour\nAdd Labour\nMaterials Consumed / Issued\nAdd\n\nNo materials recorded. Click \"Add\" to record material consumed or issued against a work item. (Bulk deliveries by vehicle trip are still tracked separately in Materials Received.)\n\nSite Purchases\nAdd\n\nNo site purchases added. Click \"Add\" to record direct site purchases like diesel for cleaning, small consumables, etc.\n\nRemarks & Review\nRemarks (optional)\nPhotos\nCamera\nGallery\nNo photos added yet"
+      },
+      "pickerImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-multi-project-automatic-choice-picker-open.png",
+      "selectedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr08-multi-project-automatic-choice-no-bar-selected.png",
+      "optionalStatus": "Programme link:Not linked to a programme bar (optional)",
+      "picker": {
+        "text": "8.7NO-BAR SHOULDER WORK(Sqm)Shoulder preparation item deliberately has no programme bar",
+        "value": null,
+        "disabled": false
+      },
+      "projectIds": [
+        5501
+      ]
+    }
+  },
+  "browserExceptions": [],
+  "writes": {
+    "fixtureOnly": true,
+    "savedDraftId": 6216,
+    "noProductionPersistence": true,
+    "finalFixtureRequestCount": 20
+  },
+  "limitations": [
+    "All GET/PATCH requests and persisted records stay inside the fixture's in-memory/sessionStorage adapter.",
+    "The autosave blob is synthetic browser storage seeded by this verifier; no real customer persistence is exercised.",
+    "The verifier clicks rendered controls and inspects browser requests; it does not call React handlers directly.",
+    "verify-dpr-null-project.mjs and its screenshots intentionally remain excluded because they assert the obsolete manual saved-null recovery chooser."
+  ]
+}

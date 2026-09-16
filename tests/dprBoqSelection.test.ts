@@ -126,7 +126,8 @@ describe("shared DPR BOQ selection", () => {
     for (const page of ["GuidedDpr", "SiteEntry", "SiteEdit"]) {
       const source = readFileSync(`client/src/pages/${page}.tsx`, "utf8");
       expect(source, page).toContain("useDprBoqItems");
-      expect(source, page).toContain("<DprBoqStatus");
+      expect(source, page).not.toContain("<DprBoqStatus");
+      expect(source, page).not.toContain('from "@/components/DprBoqStatus"');
       expect(source, page).toContain("<BillItemPicker");
       expect(source, page).toContain("dprBoqItemDisplayName");
       expect(source, page).toContain("dprSelectableBoqItems");
@@ -139,28 +140,27 @@ describe("shared DPR BOQ selection", () => {
     const siteEdit = readFileSync("client/src/pages/SiteEdit.tsx", "utf8");
     expect(siteEdit).toContain("const hasSavedDpr = dpr != null");
     expect(siteEdit).toContain("if (nextSite !== header.site && hasSavedDpr)");
-    expect(siteEdit).toContain("onProjectChange={handleBoqProjectChange}");
-    expect(siteEdit).toContain("projectRecoveryRequired=");
+    expect(siteEdit).not.toContain("handleBoqProjectChange");
+    expect(siteEdit).not.toContain("projectRecoveryRequired");
   });
 
   it("keeps every saved DPR on its server-owned site and resets recovery on permitted corrections", () => {
     const siteEdit = readFileSync("client/src/pages/SiteEdit.tsx", "utf8");
     expect(siteEdit).toContain("A saved DPR remains tied to its original site.");
     expect(siteEdit).toContain("setBoqProjectPreference({ resolved: false, projectId: null });");
-    expect(siteEdit).toContain("setBoqProjectRecoveryConfirmed(false);");
-    expect(siteEdit).toContain("setPendingBoqProjectId(null);");
+    expect(siteEdit).toContain('Object.prototype.hasOwnProperty.call(dpr, "boqProjectId")');
   });
 
-  it("keeps a positive pin immutable while giving an unlinked saved-null DPR a confirmed recovery path", () => {
+  it("keeps positive and null pins immutable without a visible recovery path", () => {
     const guided = readFileSync("client/src/pages/GuidedDpr.tsx", "utf8");
-    const status = readFileSync("client/src/components/DprBoqStatus.tsx", "utf8");
     const routes = readFileSync("server/routes.ts", "utf8");
     const storage = readFileSync("server/storage.ts", "utf8");
 
-    expect(guided).toContain("serverBoqProjectPinRef.current === null && !guidedHasBoqReferences");
-    expect(guided).toContain("boqProjectRecoveryConfirmed: true");
-    expect(status).toContain("Attach this DPR to a BOQ project?");
-    expect(status).toContain("button-confirm-boq-project-recovery");
+    expect(guided).toContain("serverBoqProjectPinRef.current !== undefined");
+    expect(guided).not.toContain("boqProjectRecoveryConfirmed");
+    expect(guided).not.toContain("<DprBoqStatus");
+    // The server remains responsible for its existing saved-null safety
+    // contract even though the old recovery dialog is no longer rendered.
     expect(routes).toContain("DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED");
     expect(routes).toContain("confirmedNullProjectRecovery");
     expect(storage).toContain("allowConfirmedNullProjectRecovery");

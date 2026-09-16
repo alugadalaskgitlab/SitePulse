@@ -61,7 +61,6 @@ import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import { openUsageHandoffContext, type OpenUsageLike } from "@shared/dprPlantLink";
 import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
-import { DprBoqStatus } from "@/components/DprBoqStatus";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import {
@@ -466,17 +465,9 @@ export default function SiteEntry() {
   // Resolve numeric siteId from selected site name (must be after `header`)
   const {
     siteId: selectedSiteId,
-    projects: siteBoqProjects,
     projectId: resolvedBoqProjectId,
     items: siteBoqItems,
     projectsLoaded: boqProjectsLoaded,
-    projectsLoading: boqProjectsLoading,
-    projectsError: boqProjectsError,
-    itemsLoaded: boqItemsLoaded,
-    itemsLoading: boqItemsLoading,
-    itemsError: boqItemsError,
-    siteResolutionError: boqSiteResolutionError,
-    retry: retryBoq,
   } = useDprBoqItems<SiteBoqItem>({
     siteName: header.site,
     sites: sitesList,
@@ -515,11 +506,6 @@ export default function SiteEntry() {
     () => dprSelectableBoqItems(siteBoqItems),
     [siteBoqItems],
   );
-
-  const siteBoqProjectName = useMemo(() => {
-    if (!siteBoqProjectId) return null;
-    return siteBoqProjects.find((p) => p.id === siteBoqProjectId)?.name ?? null;
-  }, [siteBoqProjectId, siteBoqProjects]);
 
   const { data: cutFillArrangements = [] } = useQuery<any[]>({
     queryKey: ["/api/boq/projects", siteBoqProjectId, "earthwork-arrangements"],
@@ -968,21 +954,6 @@ export default function SiteEntry() {
       return;
     }
     setHeader((h) => ({ ...h, site: nextSite }));
-  };
-
-  const handleBoqProjectChange = (nextProjectId: number | null) => {
-    if (siteEntryHasBoqReferences && nextProjectId !== (boqProjectPreference.resolved
-      ? boqProjectPreference.projectId
-      : resolvedBoqProjectId)) {
-      toast({
-        title: "BOQ references are already in use",
-        description: "Save this DPR against its current project, or start a new DPR before choosing another project.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setBoqProjectPreference({ resolved: true, projectId: nextProjectId });
-    setHeader((h) => ({ ...h, boqProjectId: nextProjectId }));
   };
 
   const formData = useMemo<SiteEntryFormData>(() => ({
@@ -1981,37 +1952,6 @@ export default function SiteEntry() {
             </div>
           </div>
         </CardContent>
-        {siteBoqProjectName && (
-          <div className="px-6 pb-4">
-            <Badge variant="outline" className="text-xs text-muted-foreground gap-1" data-testid="badge-boq-project">
-              <span className="font-medium text-foreground">BOQ:</span> {siteBoqProjectName}
-            </Badge>
-          </div>
-        )}
-        <div className="px-6 pb-4">
-          <DprBoqStatus
-            siteName={header.site}
-            siteId={selectedSiteId}
-            siteResolutionError={boqSiteResolutionError}
-            projects={siteBoqProjects}
-            projectId={siteBoqProjectId}
-            items={siteBoqItems}
-            projectsLoading={boqProjectsLoading}
-            projectsLoaded={boqProjectsLoaded}
-            projectsError={boqProjectsError}
-            itemsLoading={boqItemsLoading}
-            itemsLoaded={boqItemsLoaded}
-            itemsError={boqItemsError}
-            sitesLoading={sitesQuery.isLoading}
-            sitesLoaded={sitesQuery.isSuccess}
-            sitesError={sitesQuery.error}
-            onRetrySites={() => sitesQuery.refetch()}
-            onRetry={retryBoq}
-            onProjectChange={handleBoqProjectChange}
-            projectChangeDisabled={siteEntryHasBoqReferences}
-            projectRecoveryRequired={boqProjectPreference.resolved && boqProjectPreference.projectId === null && !siteEntryHasBoqReferences}
-          />
-        </div>
       </Card>
       )}
 

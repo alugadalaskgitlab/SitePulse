@@ -1263,3 +1263,17 @@ mtime_ms = 1789525456421
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/90f293af-3748-434f-b750-65bc1245498b/2288e967-bb78-4d97-96f4-6b60fdc840f4"
 storage_version_token = "1789525460528863"
 content_type = "text/html"
+
+[[outputs]]
+id = "7yXBBlGtmj1fAWqtQi7Kl"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/dpr08-screenshot-report.html"
+type = "text"
+title = "DPR-08 verification screenshots"
+description = "Screenshots for tests A–E: new forms, unscheduled items, draft reopen, autosave restore, and automatic multi-project selection. Isolated synthetic browser evidence."
+logical_id = "d2805765-f73f-431c-a56f-de7157ac5a26"
+content_hash = "sha256:ac95cb230dd1ec39d73d56631fe83ebc2d2dc1bc5a000c5e5aa20a4c8c3b41d5"
+size = 2393013
+mtime_ms = 1789571007868
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d2805765-f73f-431c-a56f-de7157ac5a26/9dafb49e-42c0-4673-a5a2-432b6e02ff78"
+storage_version_token = "1789571012710498"
+content_type = "text/html"
