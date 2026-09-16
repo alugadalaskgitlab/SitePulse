@@ -26,3 +26,9 @@ Version validation must preserve unchanged historical BOQ IDs when catalogue ite
 **Why:** DPR links intentionally retain raw identity without catalogue foreign keys; treating every missing item as a new invalid selection blocks legitimate historical corrections.
 
 **How to apply:** allow missing IDs only for the exact persisted source-child identity with the same link. Reject new missing IDs and every extant foreign-project ID; never apply this exception to null-project recovery.
+
+Validate raw persisted-reference queries against real PostgreSQL, not solely transaction mocks or browser fetch fixtures.
+
+**Why:** both mock layers passed while a UNION arm referenced a nonexistent column and every confirmed attachment failed on the real database.
+
+**How to apply:** exercise empty and nested-reference reports plus actual route save/reopen in an isolated development schema; include a negative control proving the harness detects invalid SQL.

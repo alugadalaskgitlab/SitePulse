@@ -3530,8 +3530,6 @@ export class DatabaseStorage implements IStorage {
         UNION ALL
         SELECT 1 FROM material_logs WHERE dpr_id = ${dprId} AND boq_item_id > 0
         UNION ALL
-        SELECT 1 FROM site_purchases WHERE dpr_id = ${dprId} AND boq_item_id > 0
-        UNION ALL
         SELECT 1
         FROM equipment_activity_allocations allocation
         JOIN equipment_logs equipment ON equipment.id = allocation.equipment_log_id

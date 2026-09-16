@@ -89,6 +89,7 @@ import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
 import { hasDprBoqReferences, hasPreservedDprBoqReferences } from "@shared/dprBoqReferences";
 import { isConfirmedDprNullProjectRecovery, normalizeDprSiteName } from "@shared/dprBoqSelection";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
+import { dprSaveErrorMetadata } from "./dprSaveError";
 import {
   registerAuthRoutes,
   assertAdmin,
@@ -2505,6 +2506,12 @@ export async function registerRoutes(
       if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message, availableQty: err.availableQty, alreadyUsedQty: err.alreadyUsedQty });
       if (err instanceof CutFillValidationError) return res.status(422).json({ code: err.code, message: err.message });
       if (handleEquipmentActivityAllocationError(err, res)) return;
+      console.error("[DPR draft save] Unexpected failure", {
+        operation: "PATCH /api/dprs/:id/draft",
+        dprId: Number.isSafeInteger(Number(req.params.id)) ? Number(req.params.id) : null,
+        actorUserId: req.authUser?.id ?? null,
+        ...dprSaveErrorMetadata(err),
+      });
       res.status(500).json({ message: "Failed to update draft DPR" });
     }
   });

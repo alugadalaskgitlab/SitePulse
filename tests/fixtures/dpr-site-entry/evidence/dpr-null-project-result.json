@@ -2,7 +2,7 @@
   "scenario": "DPR saved-null project recovery isolated browser regression",
   "fixture": {
     "baseUrl": "http://127.0.0.1:4178",
-    "cdp": "127.0.0.1:9222",
+    "cdp": "127.0.0.1:9231",
     "tablet": {
       "width": 1024,
       "height": 768,
@@ -91,7 +91,7 @@
           "materials": [],
           "sitePurchases": [],
           "remarks": "Saved-null Guided DPR recovery fixture — synthetic and read-only.",
-          "clientTimestamp": "2026-09-16 09:55:05"
+          "clientTimestamp": "2026-09-16 10:57:31"
         }
       },
       "saved": {
@@ -148,7 +148,7 @@
           "boqProjectRecoveryConfirmed": true,
           "cutFillConsumptions": [],
           "structureItems": [],
-          "clientTimestamp": "2026-09-16 09:55:05"
+          "clientTimestamp": "2026-09-16 10:57:31"
         }
       },
       "reopened": {
