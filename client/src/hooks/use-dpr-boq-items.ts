@@ -1,9 +1,11 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import {
+  collectDprBoqItemIds,
   normalizeDprSiteName,
   resolveDprSiteId,
   resolveDprBoqProjectId,
+  resolveDprBoqProjectIdByEvidence,
   type DprBoqProjectChoice,
   type DprBoqSelectableItem,
 } from "@shared/dprBoqSelection";
@@ -18,10 +20,19 @@ export function useDprBoqItems<T extends DprBoqSelectableItem>({
   siteName,
   sites,
   preferredProjectId,
+  allowEvidenceBasedRecovery = false,
+  recoveryEvidence,
 }: {
   siteName: string;
   sites: readonly SiteChoice[];
   preferredProjectId?: number | null;
+  /**
+   * Enables the narrow evidence-based recovery path. The default resolver
+   * remains unchanged unless a caller supplies live BOQ evidence.
+   */
+  allowEvidenceBasedRecovery?: boolean;
+  /** Initial live DPR/form data; later edits use requestEvidenceRecovery. */
+  recoveryEvidence?: unknown;
 }) {
   const siteId = useMemo(() => resolveDprSiteId(sites, siteName), [siteName, sites]);
   const normalizedSiteName = normalizeDprSiteName(siteName);
@@ -53,8 +64,79 @@ export function useDprBoqItems<T extends DprBoqSelectableItem>({
   });
   const { data: projects = [] } = projectsQuery;
 
+  const initialEvidenceIds = useMemo(
+    () => collectDprBoqItemIds(recoveryEvidence),
+    [recoveryEvidence],
+  );
+  // null means no post-mount live-form snapshot has arrived yet. Once a page
+  // reports its current rows, that snapshot replaces (rather than accumulates
+  // with) the initial server/local recovery evidence.
+  const [requestedEvidenceIds, setRequestedEvidenceIds] = useState<number[] | null>(null);
+  const requestEvidenceRecovery = useCallback((evidence: unknown) => {
+    const ids = Array.isArray(evidence) && evidence.every((value) => Number.isInteger(value))
+      ? Array.from(new Set((evidence as number[]).filter((value) => value > 0))).sort((a, b) => a - b)
+      : collectDprBoqItemIds(evidence);
+    setRequestedEvidenceIds((previous) => (
+      previous != null
+      && previous.length === ids.length
+      && previous.every((id, index) => id === ids[index])
+        ? previous
+        : ids
+    ));
+  }, []);
+  const evidenceBoqItemIds = useMemo(
+    () => requestedEvidenceIds ?? initialEvidenceIds,
+    [initialEvidenceIds, requestedEvidenceIds],
+  );
+  const evidenceRecoveryActive = allowEvidenceBasedRecovery
+    && evidenceBoqItemIds.length > 0
+    && preferredProjectId == null;
+
+  // Candidate item lists are fetched only for this recovery path. Normal DPR
+  // entry still follows the deterministic project resolver; a saved-null DPR
+  // must prove that one site project owns every live BOQ reference before its
+  // picker is enabled.
+  const candidateItemQueries = useQueries({
+    queries: projects.map((project) => ({
+      queryKey: ["/api/boq/projects", project.id, "items"],
+      queryFn: async () => {
+        const response = await fetch(`/api/boq/projects/${project.id}/items`, { credentials: "include" });
+        if (!response.ok) throw new Error(`BOQ items request failed (${response.status})`);
+        const data = await response.json();
+        if (!Array.isArray(data)) throw new Error("BOQ items response was invalid");
+        return data as Array<{ id: number }>;
+      },
+      enabled: evidenceRecoveryActive && projectsQuery.isSuccess,
+      retry: false,
+    })),
+  });
+  const candidateItemsByProject = useMemo(() => {
+    const byProject = new Map<number, readonly { id: number }[]>();
+    projects.forEach((project, index) => {
+      const result = candidateItemQueries[index];
+      if (result?.isSuccess) byProject.set(project.id, result.data ?? []);
+    });
+    return byProject;
+  }, [candidateItemQueries, projects]);
+  const candidateQueriesSettled = candidateItemQueries.every(
+    (query) => query.isSuccess || query.isError,
+  );
+  const evidenceProjectId = evidenceRecoveryActive
+    && projectsQuery.isSuccess
+    && candidateQueriesSettled
+    && candidateItemQueries.every((query) => query.isSuccess)
+    ? resolveDprBoqProjectIdByEvidence(projects, evidenceBoqItemIds, candidateItemsByProject)
+    : null;
+  const evidenceRecoveryPending = evidenceRecoveryActive
+    && projectsQuery.isSuccess
+    && !candidateQueriesSettled;
+
   const projectId = useMemo(
     () => {
+      // Never expose the ordinary first-project fallback while evidence
+      // ownership is being checked. A failed/ambiguous recovery stays null
+      // rather than silently assigning the wrong project.
+      if (evidenceRecoveryActive) return evidenceProjectId;
       // An explicit saved project must never be replaced by a fallback merely
       // because the project request is still loading/has failed, or because it
       // is no longer in the accessible project list. Let the status/payload
@@ -70,7 +152,13 @@ export function useDprBoqItems<T extends DprBoqSelectableItem>({
       }
       return resolveDprBoqProjectId(projects, preferredProjectId);
     },
-    [projects, preferredProjectId, projectsQuery.isSuccess],
+    [
+      projects,
+      preferredProjectId,
+      projectsQuery.isSuccess,
+      evidenceRecoveryActive,
+      evidenceProjectId,
+    ],
   );
 
   const itemsQuery = useQuery<T[]>({
@@ -107,6 +195,9 @@ export function useDprBoqItems<T extends DprBoqSelectableItem>({
     itemsLoaded: projectId == null ? projectsQuery.isSuccess : itemsQuery.isSuccess,
     itemsLoading: projectId != null && itemsQuery.isLoading,
     itemsError: itemsQuery.error ?? null,
+    evidenceProjectId,
+    evidenceRecoveryPending,
+    requestEvidenceRecovery,
     isLoading: siteId != null
       && (projectsQuery.isLoading || (projectsQuery.isSuccess && projectId != null && itemsQuery.isLoading)),
     error: projectsQuery.error ?? itemsQuery.error ?? null,

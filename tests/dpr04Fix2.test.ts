@@ -38,7 +38,8 @@ vi.mock("../server/db", () => {
     from: () => query,
     innerJoin: () => query,
     where: () => query,
-    limit: async () => [{ siteName: fx.recoveryProjectSite }],
+      limit: async () => [{ siteId: 19, siteName: fx.recoveryProjectSite }],
+      then: (resolve: any) => resolve([{ id: 19, name: fx.recoveryProjectSite }]),
   };
   return {
     db: {
@@ -199,7 +200,7 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
     expect(patched.body.boqProjectId).toBe(PROJECT_A);
   });
 
-  it("requires an explicit confirmation before a saved null-project draft can be attached", async () => {
+  it("keeps a saved null-project draft null when no BOQ evidence exists", async () => {
     fx.drafts.set(DRAFT_ID, {
       ...noBoqPayload(PROJECT_A),
       id: DRAFT_ID,
@@ -207,13 +208,14 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
       dprStatus: "draft",
     });
 
-    const rejected = await request(app)
+    const saved = await request(app)
       .patch(`/api/dprs/${DRAFT_ID}/draft`)
       .send(noBoqPayload(PROJECT_B));
 
-    expect(rejected.status).toBe(400);
-    expect(rejected.body.code).toBe("DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED");
-    expect(fx.updated).toHaveLength(0);
+    expect(saved.status).toBe(200);
+    expect(saved.body.boqProjectId).toBeNull();
+    expect(fx.updated).toHaveLength(1);
+    expect(fx.updated[0].boqProjectId).toBeNull();
   });
 
   it("does not treat a confirmation as permission to move a saved null-project DPR to another site", async () => {
@@ -237,7 +239,7 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
     expect(fx.updated).toHaveLength(0);
   });
 
-  it("rejects confirmed recovery when the saved null-project draft already has BOQ evidence", async () => {
+  it("does not recover from BOQ evidence that replacement payload clears", async () => {
     fx.drafts.set(DRAFT_ID, {
       ...noBoqPayload(PROJECT_A),
       id: DRAFT_ID,
@@ -246,19 +248,19 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
       materials: [{ material: "CEMENT", boqItemId: 703 }],
     });
 
-    const rejected = await request(app)
+    const recovered = await request(app)
       .patch(`/api/dprs/${DRAFT_ID}/draft`)
       .send({
         ...noBoqPayload(PROJECT_B),
-        boqProjectRecoveryConfirmed: true,
       });
 
-    expect(rejected.status).toBe(400);
-    expect(rejected.body.code).toBe("DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED");
-    expect(fx.updated).toHaveLength(0);
+    expect(recovered.status).toBe(200);
+    expect(recovered.body.boqProjectId).toBeNull();
+    expect(fx.updated).toHaveLength(1);
+    expect(fx.updated[0].boqProjectId).toBeNull();
   });
 
-  it("accepts a confirmed saved-null recovery together with a newly chosen target-project item", async () => {
+  it("accepts an evidence-based saved-null recovery with a target-project item", async () => {
     fx.drafts.set(DRAFT_ID, {
       ...noBoqPayload(PROJECT_A),
       id: DRAFT_ID,
@@ -270,7 +272,6 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
       .patch(`/api/dprs/${DRAFT_ID}/draft`)
       .send({
         ...noBoqPayload(PROJECT_B),
-        boqProjectRecoveryConfirmed: true,
         progress: [{ activity: "NEW TARGET-PROJECT WORK", boqItemId: 707 }],
       });
 
@@ -278,7 +279,6 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
     expect(fx.updated).toHaveLength(1);
     expect(fx.updated[0]).toMatchObject({
       boqProjectId: PROJECT_B,
-      boqProjectRecoveryConfirmed: true,
       progress: [expect.objectContaining({ boqItemId: 707 })],
     });
   });
@@ -334,6 +334,34 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
     expect(rejected.status).toBe(400);
     expect(rejected.body.code).toBe("DPR_PROJECT_MISMATCH");
     expect(fx.submitted).toHaveLength(0);
+  });
+
+  it("submit automatically recovers a saved null when incoming BOQ evidence exists", async () => {
+    fx.drafts.set(DRAFT_ID, {
+      ...noBoqPayload(PROJECT_A),
+      id: DRAFT_ID,
+      boqProjectId: null,
+      dprStatus: "draft",
+    });
+
+    const submitted = await request(app)
+      .post(`/api/dprs/${DRAFT_ID}/submit`)
+      .send({
+        ...noBoqPayload(PROJECT_B, false),
+        progress: [{
+          activity: "RECOVERED SUBMIT WORK",
+          noSiteWork: true,
+          noSiteWorkDescription: "ACCESS BLOCKED",
+          boqItemId: 709,
+        }],
+      });
+
+    expect(submitted.status).toBe(200);
+    expect(fx.submitted).toHaveLength(1);
+    expect(fx.submitted[0]).toMatchObject({
+      boqProjectId: PROJECT_B,
+      progress: [expect.objectContaining({ boqItemId: 709 })],
+    });
   });
 
   it("C: PATCH also rejects a real labour/equipment BOQ reference", async () => {

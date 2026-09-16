@@ -461,6 +461,98 @@ const siteEditNullProjectDpr = {
 };
 
 /*
+ * DPR-09 automatic-recovery fixtures. These deliberately model the state
+ * after a first draft save wrote `boqProjectId: null`, while the currently
+ * hydrated row already contains a real BOQ item reference. The browser
+ * verifier never claims that a literal first-save user could pick an item
+ * while the picker was hidden; it uses this synthetic persisted-null/live-row
+ * shape to exercise the narrow recovery condition directly.
+ */
+const dpr09LiveBoqProgress = {
+  ...nullProjectProgress,
+  activity: "GSB LAYING",
+  entryKey: "dpr09-live-boq-progress",
+  boqItemId: 8801,
+  programmeBarId: null,
+  earthworkArrangementId: null,
+  chainageFrom: "12+000",
+  chainageTo: "12+100",
+  width: 7,
+  thickness: 20,
+  quantity: 700,
+  noSiteWork: false,
+  noSiteWorkDescription: "",
+  isIncidental: false,
+  incidentalDescription: "",
+};
+
+const dpr09GuidedSavedNullLive = {
+  ...guidedNullProjectDpr,
+  id: 6230,
+  progress: [{ ...dpr09LiveBoqProgress, id: 7330, entryKey: "dpr09-guided-live-boq-progress" }],
+  remarks: "DPR-09 Guided saved-null/live-BOQ fixture — synthetic and read-only.",
+};
+
+const dpr09SiteEditSavedNullLive = {
+  ...siteEditNullProjectDpr,
+  id: 6231,
+  progress: [{ ...dpr09LiveBoqProgress, id: 7331, entryKey: "dpr09-site-edit-live-boq-progress" }],
+  remarks: "DPR-09 SiteEdit saved-null/live-BOQ fixture — synthetic and read-only.",
+};
+
+const dpr09GuidedNoSiteWork = {
+  ...guidedNullProjectDpr,
+  id: 6232,
+  progress: [{
+    ...nullProjectProgress,
+    id: 7332,
+    entryKey: "dpr09-guided-no-site-work",
+    activity: "RAIN STOPPAGE",
+    boqItemId: null,
+    programmeBarId: null,
+    noSiteWork: true,
+    noSiteWorkDescription: "RAIN STOPPAGE — NO BILLABLE SITE WORK",
+    isIncidental: false,
+    incidentalDescription: "",
+  }],
+  remarks: "DPR-09 no-site-work null-protection fixture — synthetic and read-only.",
+};
+
+const dpr09SiteEditIncidental = {
+  ...siteEditNullProjectDpr,
+  id: 6233,
+  progress: [{
+    ...nullProjectProgress,
+    id: 7333,
+    entryKey: "dpr09-site-edit-incidental",
+    activity: "TEMPORARY ACCESS WORK",
+    boqItemId: null,
+    programmeBarId: null,
+    noSiteWork: false,
+    noSiteWorkDescription: "",
+    isIncidental: true,
+    incidentalDescription: "TEMPORARY ACCESS WORK — NO BOQ CREDIT",
+  }],
+  remarks: "DPR-09 incidental null-protection fixture — synthetic and read-only.",
+};
+
+const dpr09PositiveProjectPin = {
+  ...storedDpr,
+  id: 6234,
+  site: site.name,
+  boqProjectId: 5501,
+  progress: [{
+    ...storedDpr.progress[0],
+    id: 7334,
+    entryKey: "dpr09-positive-project-pin",
+    activity: "GSB LAYING",
+    boqItemId: 8801,
+    programmeBarId: 9901,
+  }],
+  remarks: "DPR-09 positive project pin fixture — synthetic and read-only.",
+};
+
+/*
  * Guided DPR records are deliberately fixture records.  They have complete
  * activity/header data so the browser verifier can exercise the real Guided
  * wizard's Save Draft and Submit buttons without inventing a production
@@ -826,6 +918,11 @@ const guidedDprRecords: Record<number, any> = {
   [dprBoqNoBarEdit.id]: dprBoqNoBarEdit,
   [guidedNullProjectDpr.id]: guidedNullProjectDpr,
   [siteEditNullProjectDpr.id]: siteEditNullProjectDpr,
+  [dpr09GuidedSavedNullLive.id]: dpr09GuidedSavedNullLive,
+  [dpr09SiteEditSavedNullLive.id]: dpr09SiteEditSavedNullLive,
+  [dpr09GuidedNoSiteWork.id]: dpr09GuidedNoSiteWork,
+  [dpr09SiteEditIncidental.id]: dpr09SiteEditIncidental,
+  [dpr09PositiveProjectPin.id]: dpr09PositiveProjectPin,
 };
 for (const [id, record] of Object.entries(persistedDprState.records)) {
   if (record && typeof record === "object") guidedDprRecords[Number(id)] = record;
@@ -877,6 +974,12 @@ const isDprBoqRoute = () =>
 
 const isDprNullRoute = () =>
   new URLSearchParams(window.location.search).get("dprNull") === "1";
+
+const isDpr09Route = () =>
+  new URLSearchParams(window.location.search).get("dpr09") === "1";
+
+const isDpr09MultiRoute = () =>
+  isDpr09Route() && new URLSearchParams(window.location.search).get("dpr09Multi") === "1";
 
 const isDpr08Route = () =>
   new URLSearchParams(window.location.search).get("dpr08") === "1";
@@ -970,7 +1073,7 @@ window.fetch = async (input, init) => {
   fixtureState.requests.push({ method, path: `${pathname}${url.search}`, body });
 
   if (pathname === "/api/sites" && method === "GET") {
-    return json(isDprNullRoute() ? [site, nullRecoverySite] : [site]);
+    return json(isDprNullRoute() || isDpr09Route() ? [site, nullRecoverySite] : [site]);
   }
   if (pathname === "/api/personnel" && method === "GET") return json(personnel);
   if (pathname === "/api/personnel" && method === "POST") {
@@ -1136,6 +1239,16 @@ window.fetch = async (input, init) => {
               }]
             : []),
         ]
+      : isDpr09Route()
+      ? Number(url.searchParams.get("siteId")) === nullRecoverySite.id
+        ? [
+            { ...nullRecoveryBoqProject, status: "active", barCount: 1 },
+            ...(isDpr09MultiRoute() ? [{ ...alternateNullRecoveryBoqProject, status: "active", barCount: 0 }] : []),
+          ]
+        : [
+            { id: 5501, name: "NARASIMHULU ROAD BOQ", siteId: site.id, itemCount: boqItems.length, status: "active", barCount: 2 },
+            ...(isDpr09MultiRoute() ? [{ ...alternateBoqProject, status: "active", barCount: 0 }] : []),
+          ]
       : isNullRecovery
       ? [
           nullRecoveryBoqProject,
@@ -1510,6 +1623,26 @@ function Dpr08EvidenceBanner() {
   );
 }
 
+function Dpr09EvidenceBanner() {
+  if (!isDpr09Route()) return null;
+  const params = new URLSearchParams(window.location.search);
+  const scenario = params.get("scenario") || "automatic saved-null recovery";
+  return (
+    <header
+      className="mx-auto mb-5 max-w-5xl rounded-lg border border-amber-300 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm"
+      data-testid="dpr09-evidence-banner"
+    >
+      <div className="text-xs font-bold uppercase tracking-[0.18em] text-amber-800">
+        DPR-09 isolated browser evidence
+      </div>
+      <h1 className="mt-1 text-lg font-semibold">Fixture-only API adapter · {scenario}</h1>
+      <p className="mt-1 text-sm">
+        Real Guided, Detailed, and Edit controls. Synthetic data only; no customer or production writes.
+      </p>
+    </header>
+  );
+}
+
 // wouter's setLocation uses history.pushState. The isolated fixture routes the
 // real SiteEntry success navigation to SiteSuccess without changing production
 // navigation code.
@@ -1536,6 +1669,7 @@ const mount = () => {
     <QueryClientProvider client={queryClient}>
       <Dpr07EvidenceBanner />
         <Dpr08EvidenceBanner />
+        <Dpr09EvidenceBanner />
         <DprNullEvidenceBanner />
       {isGuidedReport
         ? <FixtureSavedReport />

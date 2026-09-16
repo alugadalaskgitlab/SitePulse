@@ -1277,3 +1277,17 @@ mtime_ms = 1789571007868
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d2805765-f73f-431c-a56f-de7157ac5a26/9dafb49e-42c0-4673-a5a2-432b6e02ff78"
 storage_version_token = "1789571012710498"
 content_type = "text/html"
+
+[[outputs]]
+id = "awnL9ohTWDYsqrTQ0HPXN"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/dpr09-screenshot-report.html"
+type = "text"
+title = "DPR-09 recovery screenshots and test report"
+description = "Verified live-reference recovery, saved-project persistence and protections. Includes the unresolved empty-draft first-item case explicitly."
+logical_id = "fbd7ed8b-f493-4dc9-8270-544787dee982"
+content_hash = "sha256:2812337c2ffef49a3bb358860a29c17aa57d87e329285f4c2a3f7e98fd74eeb6"
+size = 2160238
+mtime_ms = 1789582938308
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/fbd7ed8b-f493-4dc9-8270-544787dee982/2efa9bf5-766e-4a44-8d27-26a065cc8966"
+storage_version_token = "1789582942890623"
+content_type = "text/html"

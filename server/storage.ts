@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import { normalizeDprSiteName } from "../shared/dprBoqSelection";
+import { hasDprBoqReferences } from "../shared/dprBoqReferences";
 import {
   auditLogs,
   type AuditLog,
@@ -643,8 +644,8 @@ export interface IStorage {
     audit?: DprEquipmentClosureAudit,
     options?: { reuseExistingDraft?: boolean; scopeVersionToken?: string | null },
   ): Promise<Dpr>;
-  updateDraftDpr(id: number, dpr: CreateDprRequest, actorUserId?: number | null, scopeVersionToken?: string | null, allowConfirmedNullProjectRecovery?: boolean): Promise<Dpr | undefined>;
-  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit, scopeVersionToken?: string | null, allowConfirmedNullProjectRecovery?: boolean): Promise<Dpr | undefined>;
+  updateDraftDpr(id: number, dpr: CreateDprRequest, actorUserId?: number | null, scopeVersionToken?: string | null, _legacyRecoveryHint?: boolean): Promise<Dpr | undefined>;
+  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit, scopeVersionToken?: string | null, _legacyRecoveryHint?: boolean): Promise<Dpr | undefined>;
   getProjectScopeVersionToken(boqProjectId: number): Promise<string>;
   assertProjectScopeVersionToken(boqProjectId: number, expectedToken: string): Promise<void>;
   getProjectScopeSegments(boqProjectId: number): Promise<ProjectScopeSegment[]>;
@@ -3241,7 +3242,7 @@ export class DatabaseStorage implements IStorage {
     dprData: CreateDprRequest,
     actorUserId?: number | null,
     scopeVersionToken?: string | null,
-    allowConfirmedNullProjectRecovery = false,
+    _legacyRecoveryHint = false,
   ): Promise<Dpr | undefined> {
     // Canonical draft identity rule (intentionally unchanged): the id returned
     // by the initial POST is the draft's sole identity. Every autosave replaces
@@ -3252,7 +3253,7 @@ export class DatabaseStorage implements IStorage {
     return await this._replaceDprChildRecords(id, dprData, {
       lastEditedByUserId: actorUserId ?? null,
       lastEditedAt: new Date(),
-    }, undefined, scopeVersionToken, allowConfirmedNullProjectRecovery);
+    }, undefined, scopeVersionToken, _legacyRecoveryHint);
   }
 
   private async getProjectScopeVersionTokenTx(tx: any, boqProjectId: number): Promise<string> {
@@ -3361,7 +3362,7 @@ export class DatabaseStorage implements IStorage {
     clientTimestamp?: string,
     audit?: DprEquipmentClosureAudit,
     scopeVersionToken?: string | null,
-    allowConfirmedNullProjectRecovery = false,
+    _legacyRecoveryHint = false,
   ): Promise<Dpr | undefined> {
     const existing = await this.getDpr(id);
     if (!existing || (existing as any).dprStatus !== "draft") return undefined;
@@ -3377,7 +3378,7 @@ export class DatabaseStorage implements IStorage {
       },
       audit,
       scopeVersionToken,
-      allowConfirmedNullProjectRecovery,
+      _legacyRecoveryHint,
     );
   }
 
@@ -3513,39 +3514,92 @@ export class DatabaseStorage implements IStorage {
 
   /**
    * Recovery changes the header of an already saved null-project DPR. Check
-   * the persisted children inside that same transaction rather than trusting
-   * a request-time read: Guided may retain an unmanaged section and equipment
-   * links have historical nested representations.
+   * every persisted child inside that same transaction before a true
+   * replacement recovery rather than trusting a request-time read: Guided may
+   * retain an unmanaged section and equipment links have historical nested
+   * representations, even when ordinary payload sections are being cleared.
    */
-  private async hasPersistedDprBoqReferencesTx(tx: any, dprId: number): Promise<boolean> {
+  private async getPersistedDprBoqItemIdsTx(
+    tx: any,
+    dprId: number,
+  ): Promise<number[]> {
+    // Keep this query limited to tables which actually own a BOQ item link.
+    // In particular, site_purchases has never had a boq_item_id column.
     const result = await tx.execute(sql`
-      SELECT EXISTS (
-        SELECT 1 FROM progress_entries WHERE dpr_id = ${dprId} AND boq_item_id > 0
-        UNION ALL
-        SELECT 1 FROM dpr_structure_items WHERE dpr_id = ${dprId} AND boq_item_id > 0
-        UNION ALL
-        SELECT 1 FROM equipment_logs WHERE dpr_id = ${dprId} AND boq_item_id > 0
-        UNION ALL
-        SELECT 1 FROM labour_logs WHERE dpr_id = ${dprId} AND boq_item_id > 0
-        UNION ALL
-        SELECT 1 FROM material_logs WHERE dpr_id = ${dprId} AND boq_item_id > 0
-        UNION ALL
-        SELECT 1
-        FROM equipment_activity_allocations allocation
-        JOIN equipment_logs equipment ON equipment.id = allocation.equipment_log_id
-        WHERE equipment.dpr_id = ${dprId} AND allocation.boq_item_id > 0
-        UNION ALL
-        SELECT 1
-        FROM equipment_activity_segment_boq_items segment_item
-        JOIN equipment_activity_segments segment ON segment.id = segment_item.segment_id
-        JOIN equipment_logs equipment ON equipment.id = segment.equipment_log_id
-        WHERE equipment.dpr_id = ${dprId} AND segment_item.boq_item_id > 0
-      ) AS has_references
+      SELECT boq_item_id
+      FROM progress_entries
+      WHERE dpr_id = ${dprId} AND boq_item_id > 0
+      UNION
+      SELECT boq_item_id
+      FROM dpr_structure_items
+      WHERE dpr_id = ${dprId} AND boq_item_id > 0
+      UNION
+      SELECT boq_item_id
+      FROM equipment_logs
+      WHERE dpr_id = ${dprId} AND boq_item_id > 0
+      UNION
+      SELECT boq_item_id
+      FROM labour_logs
+      WHERE dpr_id = ${dprId} AND boq_item_id > 0
+      UNION
+      SELECT boq_item_id
+      FROM material_logs
+      WHERE dpr_id = ${dprId} AND boq_item_id > 0
+      UNION
+      SELECT allocation.boq_item_id
+      FROM equipment_activity_allocations allocation
+      JOIN equipment_logs equipment
+        ON equipment.id = allocation.equipment_log_id
+      WHERE equipment.dpr_id = ${dprId} AND allocation.boq_item_id > 0
+      UNION
+      SELECT segment_item.boq_item_id
+      FROM equipment_activity_segment_boq_items segment_item
+      JOIN equipment_activity_segments segment
+        ON segment.id = segment_item.segment_id
+      JOIN equipment_logs equipment
+        ON equipment.id = segment.equipment_log_id
+      WHERE equipment.dpr_id = ${dprId} AND segment_item.boq_item_id > 0
     `);
-    const row = (result.rows as Array<{ has_references?: boolean | string | number }>)[0];
-    return row?.has_references === true
-      || row?.has_references === "true"
-      || Number(row?.has_references) === 1;
+    return Array.from(new Set(
+      (result.rows as Array<{ boq_item_id?: number | string }>)
+        .map((row) => Number(row.boq_item_id))
+        .filter((itemId) => Number.isInteger(itemId) && itemId > 0),
+    ));
+  }
+
+  private async assertBoqItemIdsBelongToProjectTx(
+    tx: any,
+    dprId: number,
+    projectId: number | null,
+    itemIds: number[],
+  ): Promise<void> {
+    const uniqueItemIds = Array.from(new Set(itemIds))
+      .filter((itemId) => Number.isInteger(itemId) && itemId > 0);
+    if (!uniqueItemIds.length) return;
+    if (projectId == null) {
+      throw new DprProjectMismatchError(dprId, null, null, uniqueItemIds);
+    }
+    const rows = await tx.select({
+      id: boqItems.id,
+      projectId: boqItems.boqProjectId,
+    }).from(boqItems).where(inArray(boqItems.id, uniqueItemIds));
+    const byId = new Map(rows.map((row: any) => [Number(row.id), Number(row.projectId)]));
+    const mismatched = uniqueItemIds.filter((itemId) =>
+      !byId.has(itemId) || byId.get(itemId) !== projectId
+    );
+    if (mismatched.length) {
+      throw new DprProjectMismatchError(dprId, projectId, projectId, mismatched);
+    }
+  }
+
+  private async assertPersistedDprProjectLinksTx(
+    tx: any,
+    dprId: number,
+    projectId: number | null,
+  ): Promise<number[]> {
+    const itemIds = await this.getPersistedDprBoqItemIdsTx(tx, dprId);
+    await this.assertBoqItemIdsBelongToProjectTx(tx, dprId, projectId, itemIds);
+    return itemIds;
   }
 
   private async _replaceDprChildRecords(
@@ -3554,7 +3608,7 @@ export class DatabaseStorage implements IStorage {
     headerOverrides: Record<string, any>,
     audit?: DprEquipmentClosureAudit,
     scopeVersionToken?: string | null,
-    allowConfirmedNullProjectRecovery = false,
+    _legacyRecoveryHint = false,
   ): Promise<Dpr | undefined> {
     return await db.transaction(async (tx) => {
       const isSubmitting = headerOverrides.dprStatus === "submitted";
@@ -3600,16 +3654,39 @@ export class DatabaseStorage implements IStorage {
       if (savedProjectId !== optimisticSavedProjectId) {
         throw new DprProjectMismatchError(id, optimisticSavedProjectId, savedProjectId);
       }
-      const confirmedNullProjectRecovery = allowConfirmedNullProjectRecovery
-        && savedProjectId == null
+      // Work out the child rows that this replacement will actually retain
+      // before authorizing a null-project recovery. Progress, labour,
+      // material, and structure arrays are wholesale replacements; only an
+      // addressed equipment row can preserve omitted nested BOQ children.
+      const oldEquipmentRows = await tx.select().from(equipmentLogs)
+        .where(eq(equipmentLogs.dprId, id));
+      const preservedEquipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(
+        tx,
+        oldEquipmentRows,
+        dprData.equipment as any[] | undefined,
+      );
+      const equipmentInputs = meaningfulEquipmentRows(preservedEquipmentInputs);
+      dprData = { ...dprData, equipment: equipmentInputs as any };
+      const hasSurvivingBoqReferences = hasDprBoqReferences(dprData);
+      // The legacy boolean argument is retained for call-site compatibility,
+      // but it is not authorization. A null pin may move only when the
+      // replacement retains actual BOQ evidence.
+      const persistedRecoveryItemIds = savedProjectId == null
         && payloadProjectId != null
         && Number.isInteger(payloadProjectId)
         && payloadProjectId > 0
-        && (dprData as any).boqProjectRecoveryConfirmed === true;
-      if (savedProjectId !== payloadProjectId && !confirmedNullProjectRecovery) {
+        && hasSurvivingBoqReferences
+        ? await this.getPersistedDprBoqItemIdsTx(tx, id)
+        : [];
+      const evidenceBasedNullProjectRecovery = savedProjectId == null
+        && payloadProjectId != null
+        && Number.isInteger(payloadProjectId)
+        && payloadProjectId > 0
+        && hasSurvivingBoqReferences;
+      if (savedProjectId !== payloadProjectId && !evidenceBasedNullProjectRecovery) {
         throw new DprProjectMismatchError(id, savedProjectId, payloadProjectId);
       }
-      const effectiveProjectId = confirmedNullProjectRecovery
+      const effectiveProjectId = evidenceBasedNullProjectRecovery
         ? payloadProjectId
         : savedProjectId;
       if (effectiveProjectId != null) {
@@ -3619,11 +3696,13 @@ export class DatabaseStorage implements IStorage {
         [project] = await tx.select().from(boqProjects)
           .where(eq(boqProjects.id, effectiveProjectId)).limit(1);
         if (!project) throw new Error("PROJECT_NOT_FOUND");
-        if (confirmedNullProjectRecovery) {
-          const [projectSite] = project.siteId != null
-            ? await tx.select({ name: sites.name }).from(sites)
-              .where(eq(sites.id, Number(project.siteId))).limit(1)
-            : [];
+        if (evidenceBasedNullProjectRecovery) {
+          const matchingSites = (await tx.select({
+            id: sites.id,
+            name: sites.name,
+          }).from(sites)).filter((site: any) =>
+            normalizeDprSiteName(site.name) === normalizeDprSiteName(dprData.site),
+          );
           const normalizedDprSite = (value: unknown) => normalizeDprSiteName(
             typeof value === "string"
               ? value.replace(/ – (Edited by|Copy by) .+$/, "")
@@ -3631,11 +3710,20 @@ export class DatabaseStorage implements IStorage {
           );
           if (
             normalizedDprSite(savedHeader?.site) !== normalizedDprSite(dprData.site)
-            || normalizedDprSite(projectSite?.name) !== normalizedDprSite(dprData.site)
-            || await this.hasPersistedDprBoqReferencesTx(tx, id)
+            || matchingSites.length !== 1
+            || Number(matchingSites[0]?.id) !== Number(project.siteId)
           ) {
             throw new DprProjectMismatchError(id, savedProjectId, payloadProjectId);
           }
+          // Validate every persisted link before replacement deletes it. This
+          // closes the compact-patch gap where nested equipment evidence is
+          // omitted from the incoming payload.
+          await this.assertBoqItemIdsBelongToProjectTx(
+            tx,
+            id,
+            effectiveProjectId,
+            persistedRecoveryItemIds,
+          );
         }
       }
       const [updated] = await tx.update(dprs)
@@ -3654,7 +3742,7 @@ export class DatabaseStorage implements IStorage {
         .where(and(
           eq(dprs.id, id),
           eq(dprs.dprStatus, "draft"),
-          ...(confirmedNullProjectRecovery ? [isNull(dprs.boqProjectId)] : []),
+          ...(evidenceBasedNullProjectRecovery ? [isNull(dprs.boqProjectId)] : []),
         ))
         .returning();
       if (!updated) return undefined;
@@ -3663,13 +3751,6 @@ export class DatabaseStorage implements IStorage {
       // the atomic draft -> submitted transition (cleanup also supports
       // historical drafts created before this invariant).
       if (isSubmitting) await this.cleanupDprEquipmentDieselLedger(tx, id);
-      const oldEquipmentRows = await tx.select().from(equipmentLogs).where(eq(equipmentLogs.dprId, id));
-      const preservedEquipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, oldEquipmentRows, dprData.equipment as any[] | undefined);
-      // Preserve linked children before applying the placeholder rule. A
-      // compact client patch may omit allocations, but that must never turn
-      // the persisted evidence row into a deletable placeholder.
-      const equipmentInputs = meaningfulEquipmentRows(preservedEquipmentInputs);
-      dprData = { ...dprData, equipment: equipmentInputs as any };
       await this.assertDprProjectLinksTx(
         tx,
         id,
@@ -4237,20 +4318,42 @@ export class DatabaseStorage implements IStorage {
       if (lockedSourceProjectId !== optimisticSourceProjectId) {
         throw new DprProjectMismatchError(originalId, optimisticSourceProjectId, lockedSourceProjectId);
       }
-      const confirmedNullProjectRecovery = lockedSourceProjectId == null
+      // Version replacement also wholesale-replaces ordinary child arrays.
+      // Resolve the exact retained equipment shape before deciding whether a
+      // saved-null source has evidence that can survive into the new version.
+      const originalEquipmentRows = await tx.select().from(equipmentLogs)
+        .where(eq(equipmentLogs.dprId, originalId));
+      const preservedEquipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(
+        tx,
+        originalEquipmentRows,
+        dprData.equipment as any[] | undefined,
+      );
+      const equipmentInputs = meaningfulEquipmentRows(preservedEquipmentInputs);
+      dprData = { ...dprData, equipment: equipmentInputs as any };
+      const hasSurvivingBoqReferences = hasDprBoqReferences(dprData);
+      const persistedRecoveryItemIds = lockedSourceProjectId == null
         && requestedProjectId != null
         && Number.isInteger(requestedProjectId)
         && requestedProjectId > 0
-        && (dprData as any).boqProjectRecoveryConfirmed === true;
-      if (lockedSourceProjectId !== requestedProjectId && !confirmedNullProjectRecovery) {
+        && hasSurvivingBoqReferences
+        ? await this.getPersistedDprBoqItemIdsTx(tx, originalId)
+        : [];
+      const evidenceBasedNullProjectRecovery = lockedSourceProjectId == null
+        && requestedProjectId != null
+        && Number.isInteger(requestedProjectId)
+        && requestedProjectId > 0
+        && hasSurvivingBoqReferences;
+      if (lockedSourceProjectId !== requestedProjectId && !evidenceBasedNullProjectRecovery) {
         throw new DprProjectMismatchError(originalId, lockedSourceProjectId, requestedProjectId);
       }
-      if (confirmedNullProjectRecovery) {
-        const [project] = await tx.select({ siteId: boqProjects.siteId })
+      if (evidenceBasedNullProjectRecovery) {
+        const [project] = await tx.select({ id: boqProjects.id, siteId: boqProjects.siteId })
           .from(boqProjects).where(eq(boqProjects.id, requestedProjectId)).limit(1);
-        const [projectSite] = project?.siteId != null
-          ? await tx.select({ name: sites.name }).from(sites)
-            .where(eq(sites.id, Number(project.siteId))).limit(1)
+        const matchingSites = project
+          ? (await tx.select({ id: sites.id, name: sites.name }).from(sites))
+            .filter((site: any) =>
+              normalizeDprSiteName(site.name) === normalizeDprSiteName(dprData.site),
+            )
           : [];
         const normalizedDprSite = (value: unknown) => normalizeDprSiteName(
           typeof value === "string"
@@ -4259,11 +4362,17 @@ export class DatabaseStorage implements IStorage {
         );
         if (
           normalizedDprSite(originalAudit.site) !== normalizedDprSite(dprData.site)
-          || normalizedDprSite(projectSite?.name) !== normalizedDprSite(dprData.site)
-          || await this.hasPersistedDprBoqReferencesTx(tx, originalId)
+          || matchingSites.length !== 1
+          || Number(matchingSites[0]?.id) !== Number(project?.siteId)
         ) {
           throw new DprProjectMismatchError(originalId, lockedSourceProjectId, requestedProjectId);
         }
+        await this.assertBoqItemIdsBelongToProjectTx(
+          tx,
+          originalId,
+          requestedProjectId,
+          persistedRecoveryItemIds,
+        );
       }
 
       // Clean up original DPR's diesel ledger entries before creating new version
@@ -4290,11 +4399,6 @@ export class DatabaseStorage implements IStorage {
       const dprId = newDpr.id;
       let insertedEquipLogs: any[] = [];
       let insertedProgress: any[] = [];
-      const originalEquipmentRows = await tx.select().from(equipmentLogs)
-        .where(eq(equipmentLogs.dprId, originalId));
-      const preservedEquipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, originalEquipmentRows, dprData.equipment as any[] | undefined);
-      const equipmentInputs = meaningfulEquipmentRows(preservedEquipmentInputs);
-      dprData = { ...dprData, equipment: equipmentInputs as any };
       // Validate every newly supplied (or preservation-retained) link before
       // any version child is inserted. Recovery may introduce target-project
       // rows, but none may point to another project's BOQ item.

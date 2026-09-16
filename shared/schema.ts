@@ -1009,9 +1009,9 @@ export type PlantVersion = typeof plantVersions.$inferSelect;
 
 // Composite Request Type for Creating a Full DPR
 export const createDprRequestSchema = insertDprSchema.extend({
-  // Transient, user-affirmed recovery signal. It is deliberately not a DPR
-  // column: routes consume it only when a saved null-project DPR is being
-  // explicitly attached to a same-site project with no BOQ references.
+  // Legacy transient field accepted for payload compatibility. Server
+  // recovery never trusts this client assertion; it derives eligibility from
+  // BOQ references, project ownership, and the persisted transaction state.
   boqProjectRecoveryConfirmed: z.literal(true).optional(),
   progress: z.array(insertProgressSchema.extend({
     personnelIds: z.array(z.number()).optional(),

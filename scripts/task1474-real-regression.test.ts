@@ -50,18 +50,35 @@ const ITEM_ID = 1_474_301;
 const BAR_ID = 1_474_401;
 const EMPTY_DPR_ID = 1_474_501;
 const NESTED_DPR_ID = 1_474_502;
+const NOREF_DPR_ID = 1_474_503;
+const FOREIGN_DPR_ID = 1_474_504;
+const PINNED_DPR_ID = 1_474_505;
+const PERSISTED_DPR_ID = 1_474_506;
+const SUBMIT_DPR_ID = 1_474_507;
+const VERSION_DPR_ID = 1_474_508;
+const CLEARED_DPR_ID = 1_474_509;
+const FOREIGN_SITE_ID = 1_474_106;
+const DUPLICATE_SITE_ID = 1_474_107;
+const FOREIGN_PROJECT_ID = 1_474_206;
+const FOREIGN_ITEM_ID = 1_474_306;
 const EQUIPMENT_ID = 1_474_601;
+const PERSISTED_EQUIPMENT_ID = 1_474_602;
 const SEGMENT_ID = 1_474_701;
+const PERSISTED_SEGMENT_ID = 1_474_702;
 const SEGMENT_ITEM_ID = 1_474_801;
+const PERSISTED_SEGMENT_ITEM_ID = 1_474_802;
 const SENTINEL_DPR_ID = 1_474_901;
 const SENTINEL_PLANT_MATERIAL_ID = 1_474_902;
 const SENTINEL_PLANNING_EQUIPMENT_ID = 1_474_903;
 const SENTINEL_SETTING_ID = 1_474_904;
 const SNL_SOURCE_BASE_ID = 1_474_910;
+const CLEARED_PROGRESS_ID = 1_474_920;
 
 const SITE_NAME = "TASK1474-SAME-SITE";
+const FOREIGN_SITE_NAME = "TASK1474-OTHER-SITE";
 const REPORT_DATE = "2026-09-14";
 const NESTED_REPORT_DATE = "2026-09-15";
+const VERSION_REPORT_DATE = "2026-09-16";
 
 let schemaName = "";
 let adminPool: pg.Pool | undefined;
@@ -161,13 +178,22 @@ async function seedSyntheticRows(): Promise<void> {
   }
 
   await insert("sites", "id, name, is_active", [SITE_ID, SITE_NAME, 1]);
+  await insert("sites", "id, name, is_active", [FOREIGN_SITE_ID, FOREIGN_SITE_NAME, 1]);
   await insert("boq_projects", "id, site_id, name, status", [
     PROJECT_ID, SITE_ID, "Task 1474 Same-Site Project", "active",
+  ]);
+  await insert("boq_projects", "id, site_id, name, status", [
+    FOREIGN_PROJECT_ID, FOREIGN_SITE_ID, "Task 1474 Foreign Project", "active",
   ]);
   await insert(
     "boq_items",
     "id, boq_project_id, item_code, description, unit, boq_qty, current_qty, dpr_measurement_method",
     [ITEM_ID, PROJECT_ID, "TASK-300-CUM", "Task 1474 concrete 300 CUM", "CUM", 1_000, 1_000, "CUM_LWT"],
+  );
+  await insert(
+    "boq_items",
+    "id, boq_project_id, item_code, description, unit, boq_qty, current_qty, dpr_measurement_method",
+    [FOREIGN_ITEM_ID, FOREIGN_PROJECT_ID, "TASK-FOREIGN", "Task 1474 foreign item", "CUM", 1_000, 1_000, "CUM_LWT"],
   );
   await insert(
     "work_program_bars",
@@ -186,6 +212,46 @@ async function seedSyntheticRows(): Promise<void> {
     [NESTED_DPR_ID, NESTED_REPORT_DATE, SITE_NAME, "TASK1474 ENGINEER", "draft", "road", null, false, false, false],
   );
   await insert(
+    "dprs",
+    "id, date, site, engineer, dpr_status, work_type, boq_project_id, is_superseded, is_deleted, is_cancelled",
+    [NOREF_DPR_ID, REPORT_DATE, SITE_NAME, "TASK1474 ENGINEER", "draft", "road", null, false, false, false],
+  );
+  await insert(
+    "dprs",
+    "id, date, site, engineer, dpr_status, work_type, boq_project_id, is_superseded, is_deleted, is_cancelled",
+    [FOREIGN_DPR_ID, REPORT_DATE, SITE_NAME, "TASK1474 ENGINEER", "draft", "road", null, false, false, false],
+  );
+  await insert(
+    "dprs",
+    "id, date, site, engineer, dpr_status, work_type, boq_project_id, is_superseded, is_deleted, is_cancelled",
+    [PINNED_DPR_ID, REPORT_DATE, SITE_NAME, "TASK1474 ENGINEER", "draft", "road", PROJECT_ID, false, false, false],
+  );
+  await insert(
+    "dprs",
+    "id, date, site, engineer, dpr_status, work_type, boq_project_id, is_superseded, is_deleted, is_cancelled",
+    [PERSISTED_DPR_ID, NESTED_REPORT_DATE, SITE_NAME, "TASK1474 ENGINEER", "draft", "road", null, false, false, false],
+  );
+  await insert(
+    "dprs",
+    "id, date, site, engineer, dpr_status, work_type, boq_project_id, is_superseded, is_deleted, is_cancelled",
+    [SUBMIT_DPR_ID, REPORT_DATE, SITE_NAME, "TASK1474 ENGINEER", "draft", "road", null, false, false, false],
+  );
+  await insert(
+    "dprs",
+    "id, date, site, engineer, dpr_status, work_type, boq_project_id, is_superseded, is_deleted, is_cancelled",
+    [VERSION_DPR_ID, VERSION_REPORT_DATE, SITE_NAME, "TASK1474 ENGINEER", "submitted", "road", null, false, false, false],
+  );
+  await insert(
+    "dprs",
+    "id, date, site, engineer, dpr_status, work_type, boq_project_id, is_superseded, is_deleted, is_cancelled",
+    [CLEARED_DPR_ID, REPORT_DATE, SITE_NAME, "TASK1474 ENGINEER", "draft", "road", null, false, false, false],
+  );
+  await insert(
+    "progress_entries",
+    "id, dpr_id, activity, boq_item_id",
+    [CLEARED_PROGRESS_ID, CLEARED_DPR_ID, "PERSISTED WORK TO CLEAR", ITEM_ID],
+  );
+  await insert(
     "equipment_logs",
     "id, dpr_id, machine",
     [EQUIPMENT_ID, NESTED_DPR_ID, "TASK1474 PAVER"],
@@ -198,11 +264,42 @@ async function seedSyntheticRows(): Promise<void> {
   await insert(
     "equipment_activity_segment_boq_items",
     "id, segment_id, boq_item_id, programme_bar_id",
-    [SEGMENT_ITEM_ID, SEGMENT_ID, ITEM_ID, BAR_ID],
+    [SEGMENT_ITEM_ID, SEGMENT_ID, FOREIGN_ITEM_ID, null],
+  );
+  await insert(
+    "equipment_logs",
+    "id, dpr_id, machine",
+    [PERSISTED_EQUIPMENT_ID, PERSISTED_DPR_ID, "TASK1474 PAVER"],
+  );
+  await insert(
+    "equipment_activity_segments",
+    "id, equipment_log_id, start_time, end_time, hours_worked",
+    [PERSISTED_SEGMENT_ID, PERSISTED_EQUIPMENT_ID, "08:00", "09:00", 1],
+  );
+  await insert(
+    "equipment_activity_segment_boq_items",
+    "id, segment_id, boq_item_id, programme_bar_id",
+    [PERSISTED_SEGMENT_ITEM_ID, PERSISTED_SEGMENT_ID, ITEM_ID, BAR_ID],
   );
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function targetProgress(activity: string) {
+  return {
+    activity,
+    chainageFrom: "0",
+    chainageTo: "0.8",
+    side: "RHS",
+    length: 800,
+    width: 1.5,
+    thickness: 0.25,
+    quantity: 300,
+    uom: "CUM",
+    boqItemId: ITEM_ID,
+    programmeBarId: BAR_ID,
+  };
+}
 
 suite("Task 1474 real storage/query and route regression", () => {
   beforeAll(async () => {
@@ -286,7 +383,6 @@ suite("Task 1474 real storage/query and route regression", () => {
       dprStatus: "draft",
       workType: "road",
       boqProjectId: PROJECT_ID,
-      boqProjectRecoveryConfirmed: true,
       progress: [{
         activity: "CONCRETE 300 CUM",
         chainageFrom: "0",
@@ -334,14 +430,260 @@ suite("Task 1474 real storage/query and route regression", () => {
     }));
   });
 
-  it("recognises a genuine persisted nested BOQ reference and blocks null-project recovery", async () => {
+  it("submits a saved-null draft with incoming same-project BOQ evidence", async () => {
+    const submitted = await request(app)
+      .post(`/api/dprs/${SUBMIT_DPR_ID}/submit`)
+      .send({
+        date: REPORT_DATE,
+        site: SITE_NAME,
+        engineer: "TASK1474 ENGINEER",
+        dprStatus: "draft",
+        workType: "road",
+        boqProjectId: PROJECT_ID,
+        progress: [targetProgress("SUBMITTED 300 CUM")],
+        equipment: [],
+        labour: [],
+        materials: [],
+        sitePurchases: [],
+        structureItems: [],
+      })
+      .expect(200);
+    expect(submitted.body.boqProjectId).toBe(PROJECT_ID);
+    expect(submitted.body.dprStatus).toBe("submitted");
+
+    const reopened = await request(app)
+      .get(`/api/dprs/${SUBMIT_DPR_ID}`)
+      .expect(200);
+    expect(reopened.body.boqProjectId).toBe(PROJECT_ID);
+    expect(reopened.body.progress[0]).toEqual(expect.objectContaining({
+      boqItemId: ITEM_ID,
+      programmeBarId: BAR_ID,
+      quantity: 300,
+    }));
+  });
+
+  it("versions a saved-null submitted DPR with incoming same-project BOQ evidence", async () => {
+    const versioned = await request(app)
+      .post(`/api/dprs/${VERSION_DPR_ID}/version`)
+      .send({
+        data: {
+          date: VERSION_REPORT_DATE,
+          site: SITE_NAME,
+          engineer: "TASK1474 ENGINEER",
+          role: "manager",
+          workType: "road",
+          boqProjectId: PROJECT_ID,
+          progress: [targetProgress("VERSIONED 300 CUM")],
+          equipment: [],
+          labour: [],
+          materials: [],
+          sitePurchases: [],
+          structureItems: [],
+        },
+      })
+      .expect(201);
+    expect(versioned.body.boqProjectId).toBe(PROJECT_ID);
+
+    const reopened = await request(app)
+      .get(`/api/dprs/${versioned.body.id}`)
+      .expect(200);
+    expect(reopened.body.boqProjectId).toBe(PROJECT_ID);
+    expect(reopened.body.progress[0]).toEqual(expect.objectContaining({
+      boqItemId: ITEM_ID,
+      programmeBarId: BAR_ID,
+      quantity: 300,
+    }));
+  });
+
+   it("keeps a saved null project null when the replacement has no BOQ evidence", async () => {
+     const response = await request(app)
+       .patch(`/api/dprs/${NOREF_DPR_ID}/draft`)
+       .send({
+         date: REPORT_DATE,
+         site: SITE_NAME,
+         engineer: "TASK1474 ENGINEER",
+         dprStatus: "draft",
+         workType: "road",
+         boqProjectId: PROJECT_ID,
+         progress: [],
+         equipment: [],
+         labour: [],
+         materials: [],
+         sitePurchases: [],
+         structureItems: [],
+       })
+       .expect(200);
+     expect(response.body.boqProjectId).toBeNull();
+     const reopened = await request(app).get(`/api/dprs/${NOREF_DPR_ID}`).expect(200);
+     expect(reopened.body.boqProjectId).toBeNull();
+   });
+
+    it("does not recover when replacement clears all persisted BOQ references", async () => {
+      // Startup's normal null-header backfill intentionally repairs simple
+      // progress links. Recreate the saved-null state after startup so this
+      // test exercises replacement clearing rather than migration behavior.
+      await adminPool!.query(
+        `UPDATE ${quoteIdentifier(schemaName)}."dprs"
+         SET boq_project_id = NULL, is_superseded = FALSE
+         WHERE id = $1`,
+        [CLEARED_DPR_ID],
+      );
+      const before = await request(app)
+        .get(`/api/dprs/${CLEARED_DPR_ID}`)
+        .expect(200);
+      expect(before.body.boqProjectId).toBeNull();
+      expect(before.body.progress).toEqual(expect.arrayContaining([
+        expect.objectContaining({ boqItemId: ITEM_ID }),
+      ]));
+
+      const response = await request(app)
+        .patch(`/api/dprs/${CLEARED_DPR_ID}/draft`)
+        .send({
+          date: REPORT_DATE,
+          site: SITE_NAME,
+          engineer: "TASK1474 ENGINEER",
+          dprStatus: "draft",
+          workType: "road",
+          boqProjectId: PROJECT_ID,
+          progress: [],
+          equipment: [],
+          labour: [],
+          materials: [],
+          sitePurchases: [],
+          structureItems: [],
+        })
+        .expect(200);
+      expect(response.body.boqProjectId).toBeNull();
+
+      const reopened = await request(app)
+        .get(`/api/dprs/${CLEARED_DPR_ID}`)
+        .expect(200);
+      expect(reopened.body.boqProjectId).toBeNull();
+      expect(reopened.body.progress).toEqual([]);
+    });
+
+    it("rejects wrong and mixed incoming references which do not all belong to the target project", async () => {
+     await request(app)
+       .patch(`/api/dprs/${FOREIGN_DPR_ID}/draft`)
+       .send({
+         date: REPORT_DATE,
+         site: SITE_NAME,
+         engineer: "TASK1474 ENGINEER",
+         dprStatus: "draft",
+         workType: "road",
+         boqProjectId: PROJECT_ID,
+          progress: [
+            {
+              activity: "FOREIGN ITEM",
+              chainageFrom: "0",
+              chainageTo: "0.8",
+              side: "RHS",
+              length: 800,
+              width: 1.5,
+              thickness: 0.25,
+              quantity: 300,
+              uom: "CUM",
+              boqItemId: FOREIGN_ITEM_ID,
+            },
+            {
+              activity: "TARGET ITEM MIXED WITH FOREIGN ITEM",
+              chainageFrom: "0",
+              chainageTo: "0.8",
+              side: "RHS",
+              length: 800,
+              width: 1.5,
+              thickness: 0.25,
+              quantity: 300,
+              uom: "CUM",
+              boqItemId: ITEM_ID,
+            },
+          ],
+          equipment: [],
+         labour: [],
+         materials: [],
+         sitePurchases: [],
+         structureItems: [],
+       })
+       .expect(400)
+       .expect((response) => {
+         expect(response.body.code).toBe("DPR_PROJECT_MISMATCH");
+       });
+     const reopened = await request(app).get(`/api/dprs/${FOREIGN_DPR_ID}`).expect(200);
+     expect(reopened.body.boqProjectId).toBeNull();
+     expect(reopened.body.progress).toHaveLength(0);
+   });
+
+   it("keeps a positive project pin immutable", async () => {
+     const response = await request(app)
+       .patch(`/api/dprs/${PINNED_DPR_ID}/draft`)
+       .send({
+         date: REPORT_DATE,
+         site: SITE_NAME,
+         engineer: "TASK1474 ENGINEER",
+         dprStatus: "draft",
+         workType: "road",
+         boqProjectId: FOREIGN_PROJECT_ID,
+         progress: [],
+         equipment: [],
+         labour: [],
+         materials: [],
+         sitePurchases: [],
+         structureItems: [],
+       })
+       .expect(200);
+     expect(response.body.boqProjectId).toBe(PROJECT_ID);
+     const reopened = await request(app).get(`/api/dprs/${PINNED_DPR_ID}`).expect(200);
+     expect(reopened.body.boqProjectId).toBe(PROJECT_ID);
+   });
+
+    it("rejects a target project when its normalized site name is not unique", async () => {
+      await adminPool!.query(
+        `INSERT INTO ${quoteIdentifier(schemaName)}."sites" (id, name, is_active)
+         VALUES ($1, $2, $3)`,
+        [DUPLICATE_SITE_ID, ` ${SITE_NAME.toLowerCase()} `, 1],
+      );
+      try {
+        await request(app)
+          .patch(`/api/dprs/${NOREF_DPR_ID}/draft`)
+          .send({
+            date: REPORT_DATE,
+            site: SITE_NAME,
+            engineer: "TASK1474 ENGINEER",
+            dprStatus: "draft",
+            workType: "road",
+            boqProjectId: PROJECT_ID,
+            progress: [{
+              activity: "DUPLICATE SITE GUARD",
+              boqItemId: ITEM_ID,
+            }],
+            equipment: [],
+            labour: [],
+            materials: [],
+            sitePurchases: [],
+            structureItems: [],
+          })
+          .expect(400)
+          .expect((response) => {
+            expect(response.body.code).toBe("DPR_PROJECT_MISMATCH");
+          });
+      } finally {
+        await adminPool!.query(
+          `DELETE FROM ${quoteIdentifier(schemaName)}."sites" WHERE id = $1`,
+          [DUPLICATE_SITE_ID],
+        );
+      }
+      const reopened = await request(app).get(`/api/dprs/${NOREF_DPR_ID}`).expect(200);
+      expect(reopened.body.boqProjectId).toBeNull();
+    });
+
+   it("revalidates a persisted nested foreign BOQ reference and blocks recovery", async () => {
     const nestedBefore = await request(app)
       .get(`/api/dprs/${NESTED_DPR_ID}`)
       .expect(200);
     expect(nestedBefore.body.boqProjectId).toBeNull();
     expect(nestedBefore.body.equipment[0].activitySegments[0].boqItems[0]).toEqual(expect.objectContaining({
-      boqItemId: ITEM_ID,
-      programmeBarId: BAR_ID,
+       boqItemId: FOREIGN_ITEM_ID,
+       programmeBarId: null,
     }));
 
     const nestedPayload = {
@@ -351,7 +693,6 @@ suite("Task 1474 real storage/query and route regression", () => {
       dprStatus: "draft",
       workType: "road",
       boqProjectId: PROJECT_ID,
-      boqProjectRecoveryConfirmed: true,
       progress: [],
       equipment: [{ persistedId: EQUIPMENT_ID, machine: "TASK1474 PAVER" }],
       labour: [],
@@ -365,13 +706,12 @@ suite("Task 1474 real storage/query and route regression", () => {
       .send(nestedPayload)
       .expect(400)
       .expect((response) => {
-        expect(response.body.code).toBe("DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED");
+       expect(response.body.code).toBe("DPR_PROJECT_MISMATCH");
       });
 
     // The route guard above proves the read-model's nested reference. Calling
-    // the real exported storage method additionally exercises the transactional
-    // persisted-reference query (the old invalid site_purchases arm would
-    // reject with 42703 before it could return this project-mismatch result).
+     // the real exported storage method additionally exercises the
+     // transactional persisted-reference query.
     await expect(
       storage.updateDraftDpr(
         NESTED_DPR_ID,
@@ -382,6 +722,50 @@ suite("Task 1474 real storage/query and route regression", () => {
       ),
     ).rejects.toMatchObject({ code: "DPR_PROJECT_MISMATCH" });
   });
+
+   it("automatically recovers a null project from persisted same-project nested BOQ evidence", async () => {
+     const persistedBefore = await request(app)
+       .get(`/api/dprs/${PERSISTED_DPR_ID}`)
+       .expect(200);
+     expect(persistedBefore.body.boqProjectId).toBeNull();
+     expect(persistedBefore.body.equipment[0].activitySegments[0].boqItems[0]).toEqual(expect.objectContaining({
+       boqItemId: ITEM_ID,
+       programmeBarId: BAR_ID,
+     }));
+
+     // Omit activitySegments deliberately. Replacement storage must retain the
+     // persisted nested evidence, validate it under the project lock, and
+     // recover the null header without a client confirmation flag.
+     const persistedPayload = {
+       date: NESTED_REPORT_DATE,
+       site: SITE_NAME,
+       engineer: "TASK1474 ENGINEER",
+       dprStatus: "draft",
+       workType: "road",
+       boqProjectId: PROJECT_ID,
+       progress: [],
+       equipment: [{ persistedId: PERSISTED_EQUIPMENT_ID, machine: "TASK1474 PAVER" }],
+       labour: [],
+       materials: [],
+       sitePurchases: [],
+       structureItems: [],
+     };
+
+     const recovered = await request(app)
+       .patch(`/api/dprs/${PERSISTED_DPR_ID}/draft`)
+       .send(persistedPayload)
+       .expect(200);
+     expect(recovered.body.boqProjectId).toBe(PROJECT_ID);
+
+     const reopened = await request(app)
+       .get(`/api/dprs/${PERSISTED_DPR_ID}`)
+       .expect(200);
+     expect(reopened.body.boqProjectId).toBe(PROJECT_ID);
+     expect(reopened.body.equipment[0].activitySegments[0].boqItems[0]).toEqual(expect.objectContaining({
+       boqItemId: ITEM_ID,
+       programmeBarId: BAR_ID,
+     }));
+   });
 
   it("keeps the generic PATCH response while logging only safe 42703 metadata", async () => {
     const wrappedStorageError = Object.assign(

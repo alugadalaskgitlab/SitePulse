@@ -222,4 +222,104 @@ describe("DPR-04 BOQ lifecycle", () => {
     expect(result.current.items).toEqual([]);
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/items"))).toBe(false);
   });
+
+  it("recovers a saved null only from the project that owns every live BOQ reference", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/api/boq/projects?")) {
+        return new Response(JSON.stringify([
+          { id: 41, name: "First", status: "active", barCount: 0 },
+          { id: 23, name: "Evidence owner", status: "active", barCount: 8 },
+        ]), { headers: { "Content-Type": "application/json" } });
+      }
+      if (url.includes("/api/boq/projects/41/items")) {
+        return new Response(JSON.stringify([{ id: 77, description: "Other project" }]), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/api/boq/projects/23/items")) {
+        return new Response(JSON.stringify([{ id: 99, description: "Linked item" }]), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("[]");
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const { result } = renderHook(
+      () => useDprBoqItems({
+        siteName: "Lifecycle site",
+        sites,
+        preferredProjectId: null,
+        allowEvidenceBasedRecovery: true,
+        recoveryEvidence: { progress: [{ boqItemId: 99 }] },
+      }),
+      { wrapper: wrapperFor(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.projectId).toBe(23));
+    expect(result.current.items).toEqual([{ id: 99, description: "Linked item" }]);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/boq/projects/41/items"))).toBe(true);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/boq/projects/23/items"))).toBe(true);
+  });
+
+  it("keeps a deliberate saved null when live evidence is absent", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/items")) throw new Error("candidate item fetch should not run");
+      return new Response(JSON.stringify([
+        { id: 41, name: "First", status: "active", barCount: 0 },
+      ]), { headers: { "Content-Type": "application/json" } });
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const { result } = renderHook(
+      () => useDprBoqItems({
+        siteName: "Lifecycle site",
+        sites,
+        preferredProjectId: null,
+        allowEvidenceBasedRecovery: true,
+      }),
+      { wrapper: wrapperFor(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.projectsLoaded).toBe(true));
+    expect(result.current.projectId).toBeNull();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/items"))).toBe(false);
+  });
+
+  it("replaces initial recovery evidence when live rows are cleared", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/api/boq/projects?")) {
+        return new Response(JSON.stringify([{ id: 23, name: "Owner", status: "active" }]), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify([{ id: 99 }]), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderHook(
+      () => useDprBoqItems({
+        siteName: "Lifecycle site",
+        sites,
+        preferredProjectId: null,
+        allowEvidenceBasedRecovery: true,
+        recoveryEvidence: { progress: [{ boqItemId: 99 }] },
+      }),
+      { wrapper: wrapperFor(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.projectId).toBe(23));
+    act(() => result.current.requestEvidenceRecovery([]));
+    await waitFor(() => expect(result.current.projectId).toBeNull());
+  });
 });

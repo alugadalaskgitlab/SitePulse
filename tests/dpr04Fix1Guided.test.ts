@@ -38,6 +38,13 @@ describe("DPR-04 Fix 1 — Guided project restoration", () => {
   it("does not turn missing legacy autosave fields into a null preference", () => {
     expect(guided).toContain('Object.prototype.hasOwnProperty.call(d, "boqProjectId")');
     expect(guided).toContain('Object.prototype.hasOwnProperty.call(urlDraftDpr, "boqProjectId")');
-    expect(guided).toContain("autosaveBoqProjectId !== undefined");
+    // Autosave now derives an evidence-recovered pin in the same render
+    // before falling back to the restored state value. Preserve the
+    // undefined-vs-null distinction at the final payload boundary.
+    expect(guided).toContain("const recoveryRevokedBeforeEffect = !guidedHasBoqReferences");
+    expect(guided).toContain("const autosaveProjectId = recoveryRevokedBeforeEffect");
+    expect(guided).toContain("serverBoqProjectPinRef.current === null");
+    expect(guided).toContain("...(autosaveProjectId !== undefined");
+    expect(guided).toContain("? { boqProjectId: autosaveProjectId }");
   });
 });

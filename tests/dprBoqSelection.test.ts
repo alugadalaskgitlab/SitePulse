@@ -6,8 +6,11 @@ import {
   normalizeDprSiteName,
   resolveDprSiteId,
   resolveDprBoqProjectId,
+  resolveDprBoqProjectIdByEvidence,
+  collectDprBoqItemIds,
   hasDprBoqReferences,
   isConfirmedDprNullProjectRecovery,
+  isEvidenceBasedDprNullProjectRecovery,
 } from "../shared/dprBoqSelection";
 import { emptySuggestionsReason } from "../shared/dprProgrammeLink";
 import { creditExecutedEntries } from "../shared/planOutcome";
@@ -42,6 +45,30 @@ describe("shared DPR BOQ selection", () => {
     })).toBe(false);
   });
 
+  it("collects live nested evidence ids and resolves only an unambiguous owner", () => {
+    expect(collectDprBoqItemIds({
+      progress: [{ boqItemId: "23" }],
+      equipment: [{ passthrough: { allocations: [{ boqItemId: 41 }] } }],
+    })).toEqual([23, 41]);
+
+    const projects = [{ id: 10 }, { id: 20 }, { id: 30 }];
+    expect(resolveDprBoqProjectIdByEvidence(
+      projects,
+      [41],
+      new Map([[10, [{ id: 7 }]], [20, [{ id: 41 }]], [30, [{ id: 9 }]]]),
+    )).toBe(20);
+    expect(resolveDprBoqProjectIdByEvidence(
+      projects,
+      [41],
+      new Map([[10, [{ id: 41 }]], [20, [{ id: 41 }]]]),
+    )).toBeNull();
+    expect(resolveDprBoqProjectIdByEvidence(
+      projects,
+      [41, 99],
+      new Map([[20, [{ id: 41 }]], [30, [{ id: 99 }]]]),
+    )).toBeNull();
+  });
+
   it("uses one project rule and lets Edit preserve the DPR's saved project", () => {
     const projects = [
       { id: 30, status: "draft", barCount: 12 },
@@ -72,6 +99,33 @@ describe("shared DPR BOQ selection", () => {
     ]) {
       expect(isConfirmedDprNullProjectRecovery(rejected)).toBe(false);
     }
+  });
+
+  it("recognises only evidence-bearing same-site null-project recovery", () => {
+    expect(isEvidenceBasedDprNullProjectRecovery({
+      savedProjectId: null,
+      requestedProjectId: 2,
+      sameSite: true,
+      hasBoqReferences: true,
+    })).toBe(true);
+    expect(isEvidenceBasedDprNullProjectRecovery({
+      savedProjectId: null,
+      requestedProjectId: 2,
+      sameSite: true,
+      hasBoqReferences: false,
+    })).toBe(false);
+    expect(isEvidenceBasedDprNullProjectRecovery({
+      savedProjectId: 7,
+      requestedProjectId: 2,
+      sameSite: true,
+      hasBoqReferences: true,
+    })).toBe(false);
+    expect(isEvidenceBasedDprNullProjectRecovery({
+      savedProjectId: null,
+      requestedProjectId: 2,
+      sameSite: false,
+      hasBoqReferences: true,
+    })).toBe(false);
   });
 
   it("preserves API ordering and excludes only explicit DPR opt-outs", () => {
@@ -159,10 +213,11 @@ describe("shared DPR BOQ selection", () => {
     expect(guided).toContain("serverBoqProjectPinRef.current !== undefined");
     expect(guided).not.toContain("boqProjectRecoveryConfirmed");
     expect(guided).not.toContain("<DprBoqStatus");
-    // The server remains responsible for its existing saved-null safety
-    // contract even though the old recovery dialog is no longer rendered.
-    expect(routes).toContain("DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED");
-    expect(routes).toContain("confirmedNullProjectRecovery");
-    expect(storage).toContain("allowConfirmedNullProjectRecovery");
+    // The server derives recovery from live/persisted BOQ evidence. The
+    // legacy confirmation field remains parse-compatible but is not trusted.
+    expect(routes).toContain("automaticNullProjectRecovery");
+    expect(routes).toContain("isEvidenceBasedDprNullProjectRecovery");
+    expect(storage).toContain("evidenceBasedNullProjectRecovery");
+    expect(storage).not.toContain("(dprData as any).boqProjectRecoveryConfirmed === true");
   });
 });

@@ -1,0 +1,77 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/dprs/6234"
+    },
+    {
+      "method": "GET",
+      "path": "/api/plant-module/equipment?includeInactive=true"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sites"
+    },
+    {
+      "method": "GET",
+      "path": "/api/personnel"
+    },
+    {
+      "method": "GET",
+      "path": "/api/attachments?moduleType=dpr_progress&linkedRecordId=6234"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/earthwork-arrangements"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dpr/programme-bars?projectId=5501&boqItemId=8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/earthwork-arrangements/item/8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/arrangement-programme-allocations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips?site=NARASIMHULU%20ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-requirements?siteId=6060&dateFrom=2026-08-05&dateTo=2026-08-05"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects?siteId=6060"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dprs/chainage-overlap-context?boqItemIds=8801&excludeDprId=6234"
+    },
+    {
+      "method": "GET",
+      "path": "/api/plant-module/equipment-usage/open-today?date=2026-08-05&site=NARASIMHULU%20ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips/suggestions?site=NARASIMHULU%20ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/procurement/applicable-pi?boqProjectId=5501&boqItemId=8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips?earthworkArrangementId=5701"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/items"
+    }
+  ],
+  "recoveryPayloads": []
+}

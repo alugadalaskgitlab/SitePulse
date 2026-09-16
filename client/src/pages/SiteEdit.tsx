@@ -41,7 +41,7 @@ import { parseDprError } from "@/lib/dprErrors";
 import { DPR_REGISTER_PATH, resolveReturnTo, withReturnTo } from "@/lib/progressReportNav";
 import { BillItemPicker, type BillItem } from "@/components/BillItemPicker";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
+import { collectDprBoqItemIds, dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import {
   adoptOpenUsageIntoDprRow,
@@ -489,6 +489,7 @@ export default function SiteEdit() {
     resolved: boolean;
     projectId: number | null;
   }>({ resolved: false, projectId: null });
+  const evidenceRecoveredProjectRef = useRef<number | null>(null);
 
   type SiteEditBoqItem = BillItem & {
     dprMeasurementMethod?: string | null;
@@ -497,6 +498,8 @@ export default function SiteEdit() {
     projectId: siteBoqProjectId,
     items: siteBoqItems,
     projectsLoaded: boqProjectsLoaded,
+    evidenceProjectId,
+    requestEvidenceRecovery,
   } = useDprBoqItems<SiteEditBoqItem>({
     siteName: header.site,
     sites: sitesList,
@@ -506,6 +509,8 @@ export default function SiteEdit() {
     preferredProjectId: boqProjectPreference.resolved
       ? boqProjectPreference.projectId
       : dpr?.boqProjectId,
+    allowEvidenceBasedRecovery: true,
+    recoveryEvidence: dpr,
   });
   const handleEditSiteChange = (nextSite: string) => {
     const hasSavedDpr = dpr != null;
@@ -520,6 +525,7 @@ export default function SiteEdit() {
     if (nextSite !== header.site) {
       // An unlinked legacy DPR may be corrected to another site. Do not carry
       // a locally pinned fallback into that newly selected site.
+      evidenceRecoveredProjectRef.current = null;
       setBoqProjectPreference({ resolved: false, projectId: null });
     }
     setHeader((current) => ({ ...current, site: nextSite }));
@@ -721,23 +727,54 @@ export default function SiteEdit() {
     () => hasDprBoqReferences([progress, structureItems, equipment, labour, materials]),
     [progress, structureItems, equipment, labour, materials],
   );
+  const siteEditBoqEvidenceIds = useMemo(
+    () => collectDprBoqItemIds([progress, structureItems, equipment, labour, materials]),
+    [progress, structureItems, equipment, labour, materials],
+  );
   useEffect(() => {
-    // A saved project field is already canonical, including an explicit null.
-    // Only legacy/omitted project fields need a local pin once linked rows are
-    // present.
-    const hasSavedBoqProject = dpr != null
-      && Object.prototype.hasOwnProperty.call(dpr, "boqProjectId");
+    if (dpr?.boqProjectId != null) {
+      // A positive server pin supersedes any transient local recovery that
+      // might have completed while the DPR query was still loading.
+      evidenceRecoveredProjectRef.current = null;
+      return;
+    }
+    if (!siteEditHasBoqReferences && evidenceRecoveredProjectRef.current != null) {
+      const recoveredProjectId = evidenceRecoveredProjectRef.current;
+      if (boqProjectPreference.projectId === recoveredProjectId) {
+        setBoqProjectPreference({
+          resolved: dpr != null && Object.prototype.hasOwnProperty.call(dpr, "boqProjectId"),
+          projectId: null,
+        });
+      }
+      evidenceRecoveredProjectRef.current = null;
+      return;
+    }
+    // Positive saved pins remain authoritative. A null/omitted legacy pin is
+    // recoverable only after the hook validates live item ownership.
+    if (boqProjectPreference.projectId != null) return;
+    requestEvidenceRecovery(siteEditBoqEvidenceIds);
+  }, [
+    dpr?.boqProjectId,
+    boqProjectPreference.projectId,
+    requestEvidenceRecovery,
+    siteEditBoqEvidenceIds,
+    siteEditHasBoqReferences,
+  ]);
+  useEffect(() => {
     if (
       !boqProjectsLoaded
       || siteBoqProjectId == null
       || !siteEditHasBoqReferences
+      || evidenceProjectId == null
+      || dpr?.boqProjectId != null
       || boqProjectPreference.resolved
-      || hasSavedBoqProject
     ) return;
+    evidenceRecoveredProjectRef.current = siteBoqProjectId;
     setBoqProjectPreference({ resolved: true, projectId: siteBoqProjectId });
   }, [
     boqProjectsLoaded,
     siteBoqProjectId,
+    evidenceProjectId,
     siteEditHasBoqReferences,
     boqProjectPreference.resolved,
     dpr,
@@ -824,11 +861,22 @@ export default function SiteEdit() {
     // unrelated/null project pin.
     const savedDprHasProject = dpr != null
       && Object.prototype.hasOwnProperty.call(dpr, "boqProjectId");
-    const draftProjectId = boqProjectPreference.resolved
-      ? boqProjectPreference.projectId
-      : savedDprHasProject
-        ? dpr.boqProjectId ?? null
-        : undefined;
+    const liveRecoveredProjectId = siteEditHasBoqReferences
+      && siteBoqProjectId != null
+      && dpr?.boqProjectId == null
+      && boqProjectPreference.projectId == null
+      ? siteBoqProjectId
+      : undefined;
+    const recoveryRevokedBeforeEffect = !siteEditHasBoqReferences
+      && evidenceRecoveredProjectRef.current != null;
+    const draftProjectId = recoveryRevokedBeforeEffect
+      ? (savedDprHasProject ? dpr.boqProjectId ?? null : undefined)
+      : boqProjectPreference.resolved
+        ? boqProjectPreference.projectId
+        : liveRecoveredProjectId
+          ?? (savedDprHasProject
+            ? dpr.boqProjectId ?? null
+            : undefined);
     const draft = {
       header,
       workType,
@@ -1244,7 +1292,9 @@ export default function SiteEdit() {
     // Preserve the server link while the site/project request is loading or
     // has failed. This is the previous contract with a saved-DPR fallback:
     // boqProjectId: siteBoqProjectId ?? dpr?.boqProjectId ?? undefined
-    boqProjectId: siteBoqProjectId ?? savedDprBoqProjectId,
+    boqProjectId: !siteEditHasBoqReferences && evidenceRecoveredProjectRef.current != null
+      ? (savedDprBoqProjectId ?? null)
+      : siteBoqProjectId ?? savedDprBoqProjectId,
     workType,
     structureItems: workType === "structure" ? structureItems.filter(s => s.itemOfWork) : [],
     progress: workType === "road" ? progress.filter(p => p.activity).map(p => {

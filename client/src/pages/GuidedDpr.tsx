@@ -63,7 +63,7 @@ import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/li
 import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
+import { collectDprBoqItemIds, dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import {
@@ -291,6 +291,10 @@ export default function GuidedDpr() {
   // draft's saved project remains canonical for the draft lifecycle.
   const localBoqPreferenceScopeRef = useRef<{ site: string } | null>(null);
   const serverBoqProjectPinRef = useRef<number | null | undefined>(undefined);
+  // Tracks a positive project that was recovered from a stale null. It lets
+  // live-row changes revoke the in-memory recovery before the next save.
+  const evidenceRecoveredProjectRef = useRef<number | null>(null);
+  const evidenceRecoveryRequestedRef = useRef(false);
   // Instruction 06X: when a DPR_NOT_READY error names a row on a different
   // wizard step, we store the highlight target here, navigate to the step,
   // then scroll/highlight on the next render (via useEffect).
@@ -319,80 +323,11 @@ export default function GuidedDpr() {
   // Set true by every restore/hydration generation; consumed by the
   // override-derivation effect once BOQ items are available.
   const deriveNeededRef = useRef(false);
-  const autosaveData: GuidedFormState = {
-    date, siteName, engineer, entries, equipment, labour, remarks, draftId,
-    ...(autosaveBoqProjectId !== undefined
-      ? { boqProjectId: autosaveBoqProjectId }
-      : {}),
-    step,
-  };
   // The server draft is authoritative over a browser-local recovery blob.
   // This ref is set before the server hydration state updates, so a user
   // clicking a stale Restore banner during the same async turn cannot replace
   // the server's saved project preference.
   const serverDraftHydratedRef = useRef(false);
-  const autosave = useAutosave<GuidedFormState>({
-    // A draft with a server id autosaves under its own key so it never
-    // collides with (or duplicates into) the fresh-DPR autosave blob.
-    // Batch 05: the key follows draftId too — the moment a fresh DPR is saved
-    // as a server draft, subsequent autosave writes move to the draft-specific
-    // key and can never recreate a stale "guided-dpr-new" blob.
-    formKey: (urlDraftId ?? draftId) != null ? `guided-dpr-${urlDraftId ?? draftId}` : "guided-dpr-new",
-    data: autosaveData,
-    onRestore: (d) => {
-      setDate(d.date); setSiteName(d.siteName); setEngineer(d.engineer);
-      // Do not turn a missing field in a legacy blob into an explicit null.
-      // New DPRs must retain the normal project fallback, while an explicitly
-      // saved null remains a meaningful preference. If the URL already loaded
-      // a server draft, its saved project wins while the rest of the browser
-      // recovery blob remains available for the existing Restore workflow.
-      localBoqPreferenceScopeRef.current = null;
-      if (!serverDraftHydratedRef.current) serverBoqProjectPinRef.current = undefined;
-      if (!serverDraftHydratedRef.current && Object.prototype.hasOwnProperty.call(d, "boqProjectId")) {
-        const restoredProjectId = d.boqProjectId;
-        if (isSavedBoqProjectId(restoredProjectId)) {
-          // A local restore may contain an explicit null. Keep that saved
-          // choice distinct from an old blob that never resolved a project.
-          localBoqPreferenceScopeRef.current = { site: d.siteName };
-          setBoqProjectPreference({ resolved: true, projectId: restoredProjectId });
-          setAutosaveBoqProjectId(restoredProjectId);
-        } else {
-          setBoqProjectPreference({ resolved: false, projectId: null });
-          setAutosaveBoqProjectId(undefined);
-        }
-      } else if (!serverDraftHydratedRef.current) {
-        setBoqProjectPreference({ resolved: false, projectId: null });
-        setAutosaveBoqProjectId(undefined);
-      }
-      // Legacy blobs predate entryKey / No Work — normalise so old rows keep
-      // working (fresh keys are fine: their photos were session-local anyway).
-      setEntries((d.entries ?? []).map((e) => ({
-        ...e,
-        qtyOverridden: e.qtyOverridden ?? false,
-        layerNo: e.layerNo ?? null,
-        entryKey: e.entryKey || newEntryKey(),
-        noSiteWork: e.noSiteWork ?? false,
-        noSiteWorkDescription: e.noSiteWorkDescription ?? "",
-        isIncidental: e.isIncidental ?? false,
-        incidentalDescription: e.incidentalDescription ?? "",
-         ...normalizeExcavationMaterialOutcome(e.quantity, e.materialOutcome, e.reusableQty),
-         allocations: e.allocations ?? [],
-      })));
-      // Normal restore keeps the stored step; a deliberate Complete entry
-      // computes its own step from the server draft's readiness instead.
-      if (!completeIntent) setStep(clampGuidedStep(d.step));
-      // Legacy autosave blobs predate `passthrough` — normalise so old rows
-      // don't crash the payload builder.
-      setEquipment((d.equipment ?? []).map((e: any) => ({ ...newGuidedEquipmentRow(), ...e, passthrough: e.passthrough ?? {} })));
-      // Legacy autosave blobs predate gender/work-item fields — normalise.
-      setLabour((d.labour ?? []).map((l: any) => ({ ...newLabourRow(), ...l })));
-      setRemarks(d.remarks ?? ""); setDraftId(d.draftId ?? null);
-      // Restored rows (incl. legacy blobs without the flag) get their override
-      // state re-derived from geometry once BOQ items are available.
-      deriveNeededRef.current = true;
-    },
-  });
-
   // Hydrate from an existing server draft (Classic → Guided switch). Only
   // once, and only if the autosave restore hasn't already loaded this draft.
   const hydratedRef = useRef(false);
@@ -419,6 +354,9 @@ export default function GuidedDpr() {
     // meaningful, while the validation below prevents malformed legacy data
     // from becoming a project pin.
     serverBoqProjectPinRef.current = data.boqProjectId;
+    // Server hydration supersedes any browser-local recovery that may have
+    // completed before the draft query returned.
+    evidenceRecoveredProjectRef.current = null;
     if (!hasSavedBoqProjectId || !isSavedBoqProjectId(serverBoqProjectPinRef.current)) {
       serverBoqProjectPinRef.current = undefined;
     }
@@ -639,6 +577,7 @@ export default function GuidedDpr() {
       return;
     }
     if (nextSite !== siteName) {
+      evidenceRecoveredProjectRef.current = null;
       if (localBoqPreferenceScopeRef.current) {
         // A browser-restored pin belongs to the blob's site. Do not carry its
         // project (including an explicit null) into a deliberately chosen site.
@@ -661,30 +600,90 @@ export default function GuidedDpr() {
     projectId: boqProjectId,
     items: boqItems,
     projectsLoaded: boqProjectsLoaded,
+    evidenceProjectId,
+    requestEvidenceRecovery,
   } = useDprBoqItems<SiteBoqItem>({
     siteName,
     sites: sitesList,
     preferredProjectId: boqProjectPreference.resolved
       ? boqProjectPreference.projectId
-      : undefined,
+      : urlDraftDpr && Object.prototype.hasOwnProperty.call(urlDraftDpr, "boqProjectId")
+        ? urlDraftDpr.boqProjectId
+        : undefined,
+    allowEvidenceBasedRecovery: true,
+    recoveryEvidence: urlDraftDpr,
   });
-  const guidedHasBoqReferences = useMemo(
-    () => hasDprBoqReferences([
-      entries, labour, equipment,
+  const guidedBoqEvidenceIds = useMemo(
+    () => collectDprBoqItemIds([
+      entries,
+      labour,
+      equipment,
       unmanagedSectionsRef.current.materials,
       unmanagedSectionsRef.current.sitePurchases,
       unmanagedSectionsRef.current.structureItems,
     ]),
     [entries, labour, equipment],
   );
+  const guidedHasBoqReferences = useMemo(
+    () => guidedBoqEvidenceIds.length > 0 && hasDprBoqReferences([
+      entries,
+      labour,
+      equipment,
+      unmanagedSectionsRef.current.materials,
+      unmanagedSectionsRef.current.sitePurchases,
+      unmanagedSectionsRef.current.structureItems,
+    ]),
+    [guidedBoqEvidenceIds, entries, labour, equipment],
+  );
+  useEffect(() => {
+    // A saved positive project is immutable. A saved null (or an omitted
+    // legacy project) may be recovered only from the current live BOQ-item
+    // references; the hook validates those ids against candidate projects.
+    if (!guidedHasBoqReferences && evidenceRecoveredProjectRef.current != null) {
+      if (serverBoqProjectPinRef.current === evidenceRecoveredProjectRef.current) {
+        serverBoqProjectPinRef.current = null;
+      }
+      if (serverBoqProjectPinRef.current === null || serverBoqProjectPinRef.current === undefined) {
+        setBoqProjectPreference({
+          resolved: serverBoqProjectPinRef.current === null,
+          projectId: null,
+        });
+        setAutosaveBoqProjectId(serverBoqProjectPinRef.current === null ? null : undefined);
+      }
+      evidenceRecoveredProjectRef.current = null;
+      return;
+    }
+    if (serverBoqProjectPinRef.current != null) return;
+    evidenceRecoveryRequestedRef.current = guidedBoqEvidenceIds.length > 0;
+    requestEvidenceRecovery(guidedBoqEvidenceIds);
+  }, [guidedBoqEvidenceIds, guidedHasBoqReferences, requestEvidenceRecovery]);
   // Keep the local recovery record in sync with the project actually resolved
   // by the hook, but never write the hook's initial/loading null as though it
-  // were a saved preference. Existing saved pins (including null) remain
-  // canonical and are never replaced by a fresh fallback.
+  // were a saved preference. Existing positive pins remain canonical and are
+  // never replaced by a fresh fallback. A saved null is the one exception:
+  // live BOQ evidence has passed candidate ownership validation, so the
+  // recovered positive project must replace that stale header on next save.
   useEffect(() => {
     if (!boqProjectsLoaded) return;
-    if (serverBoqProjectPinRef.current !== undefined) {
-      setAutosaveBoqProjectId(serverBoqProjectPinRef.current);
+    const serverPin = serverBoqProjectPinRef.current;
+    const recoverSavedNull = serverPin === null
+      && guidedHasBoqReferences
+      && boqProjectId != null;
+    const recoverLocalNull = serverPin === undefined
+      && boqProjectPreference.resolved
+      && boqProjectPreference.projectId === null
+      && guidedHasBoqReferences
+      && boqProjectId != null;
+    if (recoverSavedNull || recoverLocalNull) {
+      evidenceRecoveredProjectRef.current = boqProjectId;
+      if (recoverSavedNull) serverBoqProjectPinRef.current = boqProjectId;
+      localBoqPreferenceScopeRef.current = { site: siteName };
+      setBoqProjectPreference({ resolved: true, projectId: boqProjectId });
+      setAutosaveBoqProjectId(boqProjectId);
+      return;
+    }
+    if (serverPin !== undefined) {
+      setAutosaveBoqProjectId(serverPin);
       return;
     }
     if (boqProjectPreference.resolved) {
@@ -694,11 +693,13 @@ export default function GuidedDpr() {
     if (
       guidedHasBoqReferences
       && boqProjectId != null
+      && (!evidenceRecoveryRequestedRef.current || evidenceProjectId != null)
       && !boqProjectPreference.resolved
     ) {
       // Once linked rows exist, the automatically chosen project is no longer
       // merely a display fallback. Pin it before a later project refetch can
       // reorder rows and switch the disabled selector underneath the entries.
+      evidenceRecoveredProjectRef.current = boqProjectId;
       localBoqPreferenceScopeRef.current = { site: siteName };
       setBoqProjectPreference({ resolved: true, projectId: boqProjectId });
     }
@@ -706,11 +707,85 @@ export default function GuidedDpr() {
   }, [
     boqProjectsLoaded,
     boqProjectId,
+    evidenceProjectId,
     guidedHasBoqReferences,
     boqProjectPreference.resolved,
     boqProjectPreference.projectId,
     siteName,
   ]);
+  // Part A: local autosave so accidental navigation/refresh loses nothing.
+  // Keep this hook after BOQ recovery resolution so a candidate-owned project
+  // is written directly into the same render's browser payload rather than
+  // briefly autosaving the stale null pin.
+  const recoveryRevokedBeforeEffect = !guidedHasBoqReferences
+    && evidenceRecoveredProjectRef.current != null;
+  const autosaveProjectId = recoveryRevokedBeforeEffect
+    ? null
+    : guidedHasBoqReferences
+      && boqProjectId != null
+      && (
+        serverBoqProjectPinRef.current === null
+        || (serverBoqProjectPinRef.current === undefined
+          && boqProjectPreference.resolved
+          && boqProjectPreference.projectId === null)
+      )
+      ? boqProjectId
+      : autosaveBoqProjectId;
+  const autosaveData: GuidedFormState = {
+    date, siteName, engineer, entries, equipment, labour, remarks, draftId,
+    ...(autosaveProjectId !== undefined
+      ? { boqProjectId: autosaveProjectId }
+      : {}),
+    step,
+  };
+  const autosave = useAutosave<GuidedFormState>({
+    // A draft with a server id autosaves under its own key so it never
+    // collides with (or duplicates into) the fresh-DPR autosave blob.
+    // Batch 05: the key follows draftId too — the moment a fresh DPR is saved
+    // as a server draft, subsequent autosave writes move to the draft-specific
+    // key and can never recreate a stale "guided-dpr-new" blob.
+    formKey: (urlDraftId ?? draftId) != null ? `guided-dpr-${urlDraftId ?? draftId}` : "guided-dpr-new",
+    data: autosaveData,
+    onRestore: (d) => {
+      setDate(d.date); setSiteName(d.siteName); setEngineer(d.engineer);
+      // Do not turn a missing field in a legacy blob into an explicit null.
+      // New DPRs retain the normal project fallback, while an explicitly
+      // saved null remains meaningful until live BOQ evidence recovers it.
+      localBoqPreferenceScopeRef.current = null;
+      if (!serverDraftHydratedRef.current) serverBoqProjectPinRef.current = undefined;
+      if (!serverDraftHydratedRef.current && Object.prototype.hasOwnProperty.call(d, "boqProjectId")) {
+        const restoredProjectId = d.boqProjectId;
+        if (isSavedBoqProjectId(restoredProjectId)) {
+          localBoqPreferenceScopeRef.current = { site: d.siteName };
+          setBoqProjectPreference({ resolved: true, projectId: restoredProjectId });
+          setAutosaveBoqProjectId(restoredProjectId);
+        } else {
+          setBoqProjectPreference({ resolved: false, projectId: null });
+          setAutosaveBoqProjectId(undefined);
+        }
+      } else if (!serverDraftHydratedRef.current) {
+        setBoqProjectPreference({ resolved: false, projectId: null });
+        setAutosaveBoqProjectId(undefined);
+      }
+      setEntries((d.entries ?? []).map((e) => ({
+        ...e,
+        qtyOverridden: e.qtyOverridden ?? false,
+        layerNo: e.layerNo ?? null,
+        entryKey: e.entryKey || newEntryKey(),
+        noSiteWork: e.noSiteWork ?? false,
+        noSiteWorkDescription: e.noSiteWorkDescription ?? "",
+        isIncidental: e.isIncidental ?? false,
+        incidentalDescription: e.incidentalDescription ?? "",
+        ...normalizeExcavationMaterialOutcome(e.quantity, e.materialOutcome, e.reusableQty),
+        allocations: e.allocations ?? [],
+      })));
+      if (!completeIntent) setStep(clampGuidedStep(d.step));
+      setEquipment((d.equipment ?? []).map((e: any) => ({ ...newGuidedEquipmentRow(), ...e, passthrough: e.passthrough ?? {} })));
+      setLabour((d.labour ?? []).map((l: any) => ({ ...newLabourRow(), ...l })));
+      setRemarks(d.remarks ?? ""); setDraftId(d.draftId ?? null);
+      deriveNeededRef.current = true;
+    },
+  });
   const { data: cutFillArrangements = [] } = useQuery<any[]>({
     queryKey: ["/api/boq/projects", boqProjectId, "earthwork-arrangements"],
     queryFn: async () => {
@@ -1241,20 +1316,38 @@ export default function GuidedDpr() {
     });
     const entryRemarks = entries.filter((e) => !e.noSiteWork && e.remark.trim()).map((e) => `${e.activity}: ${e.remark.trim()}`);
     const allRemarks = [...entryRemarks, remarks.trim()].filter(Boolean).join("\n");
+    // The hook's candidate-owned project is allowed to replace only a stale
+    // null pin when the live rows contain BOQ evidence. Positive server pins
+    // remain authoritative, and a genuinely reference-free saved null stays
+    // null.
+    const liveRecoveredProjectId = guidedHasBoqReferences
+      && boqProjectId != null
+      && (
+        serverBoqProjectPinRef.current === null
+        || (serverBoqProjectPinRef.current === undefined
+          && boqProjectPreference.resolved
+          && boqProjectPreference.projectId === null)
+      )
+      ? boqProjectId
+      : undefined;
+    const recoveryRevokedBeforeEffect = !guidedHasBoqReferences
+      && evidenceRecoveredProjectRef.current != null;
     return {
       date, site: siteName, engineer, role: "engineer", workType: "road",
-      // An explicitly saved null is meaningful (the DPR has no BOQ project);
-      // only an unresolved fresh flow should omit the field.
-      // A server draft's saved pin remains canonical; the site/project
-      // controls are locked for that linked draft so it cannot be replaced by
-      // a different fallback during an asynchronous refresh.
-      boqProjectId: serverBoqProjectPinRef.current !== undefined
-        ? serverBoqProjectPinRef.current
-        : boqProjectId != null
-          ? boqProjectId
-          : boqProjectPreference.resolved
-            ? null
-            : undefined,
+      // An explicitly saved null remains meaningful for a genuinely
+      // reference-free DPR; only live evidence may replace that stale null.
+      // Positive server pins remain canonical, and an unresolved fresh flow
+      // omits the field rather than persisting a loading-state null.
+      boqProjectId: recoveryRevokedBeforeEffect
+        ? null
+        : liveRecoveredProjectId
+          ?? (serverBoqProjectPinRef.current !== undefined
+            ? serverBoqProjectPinRef.current
+          : boqProjectId != null
+            ? boqProjectId
+            : boqProjectPreference.resolved
+              ? null
+              : undefined),
       ...(asDraft ? { dprStatus: "draft" } : {}),
       progress,
       cutFillConsumptions: flattenCutFillConsumptions(entries),
@@ -1338,6 +1431,7 @@ export default function GuidedDpr() {
       if (asDraft && Object.prototype.hasOwnProperty.call(data, "boqProjectId")
         && isSavedBoqProjectId(data.boqProjectId)) {
         serverBoqProjectPinRef.current = data.boqProjectId;
+        evidenceRecoveredProjectRef.current = null;
         localBoqPreferenceScopeRef.current = null;
         setBoqProjectPreference({ resolved: true, projectId: data.boqProjectId });
         setAutosaveBoqProjectId(data.boqProjectId);

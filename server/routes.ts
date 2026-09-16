@@ -87,7 +87,7 @@ import { blocksExternalReceiptsForBoqItem, mergeMaterialTripLinkage, reusedExcav
 import { excavationMaterialOutcomeIssue } from "@shared/cutFillReconciliation";
 import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
 import { hasDprBoqReferences, hasPreservedDprBoqReferences } from "@shared/dprBoqReferences";
-import { isConfirmedDprNullProjectRecovery, normalizeDprSiteName } from "@shared/dprBoqSelection";
+import { isEvidenceBasedDprNullProjectRecovery, normalizeDprSiteName } from "@shared/dprBoqSelection";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import { dprSaveErrorMetadata } from "./dprSaveError";
 import {
@@ -2300,41 +2300,57 @@ export async function registerRoutes(
   };
 
   /**
-   * A legacy saved null may be deliberately recovered, never inferred. The
-   * caller's site permission has already been checked; this additionally
-   * proves the selected positive project belongs to the DPR's unchanged site.
-   * The detail object is included so Guided passthrough sections cannot evade
-   * the no-reference condition.
+   * A legacy saved null is repaired only when the replacement will retain real
+   * BOQ evidence: incoming rows or equipment children explicitly preserved by
+   * the replacement. Cleared progress/labour/material/structure rows do not
+   * count. The old confirmation flag is intentionally not consulted: client
+   * confirmation is not proof that a project or an item is valid.
+   * Storage repeats the evidence, item ownership, and site checks under the
+   * project-before-DPR transaction lock.
    */
-  const confirmedNullProjectRecovery = async (
+  const sameDprSiteName = (left: unknown, right: unknown): boolean => {
+    const normalize = (value: unknown) => normalizeDprSiteName(
+      typeof value === "string"
+        ? value.replace(/ – (Edited by|Copy by) .+$/, "")
+        : value,
+    );
+    const normalizedLeft = normalize(left);
+    return normalizedLeft !== "" && normalizedLeft === normalize(right);
+  };
+
+  const automaticNullProjectRecovery = async (
     existing: any,
     input: any,
   ): Promise<boolean> => {
-    const normalizedDprSite = (value: unknown) =>
-      normalizeDprSiteName(
-        typeof value === "string"
-          ? value.replace(/ – (Edited by|Copy by) .+$/, "")
-          : value,
-      );
     const savedProjectId = existing?.boqProjectId != null ? Number(existing.boqProjectId) : null;
     const requestedProjectId = input?.boqProjectId != null ? Number(input.boqProjectId) : null;
-    const sameDprSite = normalizedDprSite(existing?.site)
-      === normalizedDprSite(input?.site)
-      && normalizedDprSite(input?.site) !== "";
-    if (!isConfirmedDprNullProjectRecovery({
+    const sameDprSite = sameDprSiteName(existing?.site, input?.site);
+    if (!isEvidenceBasedDprNullProjectRecovery({
       savedProjectId,
       requestedProjectId,
-      confirmed: input?.boqProjectRecoveryConfirmed === true,
       sameSite: sameDprSite,
-      hasBoqReferences: hasDprBoqReferences(existing)
+      hasBoqReferences: hasDprBoqReferences(input)
         || hasPreservedDprBoqReferences(existing, input),
     })) return false;
-    const [project] = await db.select({ siteName: sitesTable.name })
+    const [project] = await db.select({
+      siteId: boqProjectsTable.siteId,
+      siteName: sitesTable.name,
+    })
       .from(boqProjectsTable)
       .innerJoin(sitesTable, eq(boqProjectsTable.siteId, sitesTable.id))
       .where(eq(boqProjectsTable.id, requestedProjectId!))
       .limit(1);
-    return normalizedDprSite(project?.siteName) === normalizedDprSite(input.site);
+    if (!project || !sameDprSiteName(project.siteName, input.site)) return false;
+    const matchingSites = await db.select({
+      id: sitesTable.id,
+      name: sitesTable.name,
+    }).from(sitesTable);
+    const normalizedInputSite = normalizeDprSiteName(input.site);
+    const normalizedMatches = matchingSites.filter((site) =>
+      normalizeDprSiteName(site.name) === normalizedInputSite,
+    );
+    return normalizedMatches.length === 1
+      && Number(normalizedMatches[0]?.id) === Number(project.siteId);
   };
 
   app.post(api.dprs.create.path, async (req, res) => {
@@ -2440,7 +2456,7 @@ export async function registerRoutes(
       }
       const savedProjectId = (existing as any).boqProjectId != null ? Number((existing as any).boqProjectId) : null;
       const payloadProjectId = (input as any).boqProjectId != null ? Number((input as any).boqProjectId) : null;
-      const projectRecoveryAllowed = await confirmedNullProjectRecovery(existing, input);
+      const projectRecoveryAllowed = await automaticNullProjectRecovery(existing, input);
       if (savedProjectId !== payloadProjectId && !projectRecoveryAllowed) {
         // A project selected on a no-BOQ DPR is metadata only.  Guided
         // re-resolution can change that metadata between draft saves, but it
@@ -2449,18 +2465,17 @@ export async function registerRoutes(
         // allocations/segments may be retained by the replacement write when
         // a compact PATCH omits those child arrays.
         const hasBoqReferences =
-          hasDprBoqReferences(input) || hasPreservedDprBoqReferences(existing, input);
-        if (savedProjectId == null && payloadProjectId != null) {
+            hasDprBoqReferences(input) || hasPreservedDprBoqReferences(existing, input);
+        if (savedProjectId == null && payloadProjectId != null && !sameDprSiteName(existing.site, input.site)) {
           return res.status(400).json({
             code: "DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED",
-            message: "Attach a saved no-project DPR only by confirming a same-site project recovery with no BOQ-linked rows.",
+            message: "A saved no-project DPR can only be recovered on its original site.",
           });
         }
         if (!hasBoqReferences) {
-          // Keep the persisted project canonical for the storage transaction.
-          // Storage deliberately retains its unconditional header mismatch
-          // guard; canonicalizing here preserves that defense and avoids
-          // changing the current payload's other fields.
+          // A saved null with no BOQ evidence remains intentionally null.
+          // Canonicalizing here preserves storage's unconditional header
+          // mismatch guard without allowing a client-side project guess.
           input = { ...input, boqProjectId: savedProjectId };
         } else {
           return res.status(400).json({
@@ -2534,7 +2549,7 @@ export async function registerRoutes(
       }
       const savedProjectId = (existing as any).boqProjectId != null ? Number((existing as any).boqProjectId) : null;
       const payloadProjectId = (input as any).boqProjectId != null ? Number((input as any).boqProjectId) : null;
-      const projectRecoveryAllowed = await confirmedNullProjectRecovery(existing, input);
+      const projectRecoveryAllowed = await automaticNullProjectRecovery(existing, input);
       if (savedProjectId !== payloadProjectId && !projectRecoveryAllowed) {
         // Same narrow carve-out as draft PATCH: a no-BOQ DPR may carry a
         // newly re-resolved project header, but any real progress, equipment,
@@ -2543,10 +2558,10 @@ export async function registerRoutes(
         // replacement storage can preserve omitted equipment children.
         const hasBoqReferences =
           hasDprBoqReferences(input) || hasPreservedDprBoqReferences(existing, input);
-        if (savedProjectId == null && payloadProjectId != null) {
+        if (savedProjectId == null && payloadProjectId != null && !sameDprSiteName(existing.site, input.site)) {
           return res.status(400).json({
             code: "DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED",
-            message: "Attach a saved no-project DPR only by confirming a same-site project recovery with no BOQ-linked rows.",
+            message: "A saved no-project DPR can only be recovered on its original site.",
           });
         }
         if (!hasBoqReferences) {
@@ -3048,7 +3063,7 @@ export async function registerRoutes(
         });
       }
 
-      const input = versionSchema.parse(req.body);
+      let input = versionSchema.parse(req.body);
       {
         const savedProjectId = versionOriginal.boqProjectId != null
           ? Number(versionOriginal.boqProjectId)
@@ -3056,15 +3071,30 @@ export async function registerRoutes(
         const payloadProjectId = (input.data as any).boqProjectId != null
           ? Number((input.data as any).boqProjectId)
           : null;
-        if (
-          savedProjectId == null
-          && payloadProjectId != null
-          && !(await confirmedNullProjectRecovery(versionOriginal, input.data))
-        ) {
-          return res.status(400).json({
-            code: "DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED",
-            message: "A DPR version can attach a saved no-project DPR only after confirming a same-site project recovery with no BOQ-linked rows.",
-          });
+        if (savedProjectId == null && payloadProjectId != null) {
+          const projectRecoveryAllowed = await automaticNullProjectRecovery(versionOriginal, input.data);
+          const hasBoqReferences =
+            hasDprBoqReferences(input.data)
+            || hasPreservedDprBoqReferences(versionOriginal, input.data);
+          if (!projectRecoveryAllowed && hasBoqReferences) {
+            // Keep the route-level response deterministic for an evidence
+            // bearing request. Storage repeats item/project validation inside
+            // its transaction and rejects foreign or missing item ids.
+            return res.status(400).json({
+              code: "DPR_PROJECT_MISMATCH",
+              message: "A DPR version's BOQ references must belong to its same-site project.",
+              savedProjectId,
+              payloadProjectId,
+            });
+          }
+          if (!projectRecoveryAllowed) {
+            // A saved null with no evidence remains null; a guessed positive
+            // header must never create a project pin by itself.
+            input = {
+              ...input,
+              data: { ...input.data, boqProjectId: null },
+            };
+          }
         }
       }
       // Capture the target scope before any async validation. Storage locks the

@@ -44,7 +44,8 @@ vi.mock("../server/db", () => {
     from: () => query,
     innerJoin: () => query,
     where: () => query,
-    limit: async () => [{ siteName: fx.recoveryProjectSite }],
+    limit: async () => [{ siteId: 19, siteName: fx.recoveryProjectSite }],
+    then: (resolve: any) => resolve([{ id: 19, name: fx.recoveryProjectSite }]),
   };
   return { db: { select: vi.fn(() => query), execute: vi.fn().mockResolvedValue({ rows: [] }) } };
 });
@@ -361,7 +362,7 @@ describe("DPR-07 Fix 2 — version validators use changed/new progress only", ()
     expect(fx.versions).toHaveLength(0);
   });
 
-  it("versions a confirmed saved-null source with a newly chosen target-project BOQ row", async () => {
+  it("versions a saved-null source with a newly chosen target-project BOQ row", async () => {
     putVersionFixture([], { boqProjectId: null });
     fx.boqItems.set(3005, { id: 3005, boqProjectId: PROJECT_ID + 1, unit: "MT" });
     const { id: _id, dprId: _dprId, ...newProgress } = sourceRow(105, {
@@ -376,7 +377,6 @@ describe("DPR-07 Fix 2 — version validators use changed/new progress only", ()
         data: {
           ...header({
             boqProjectId: PROJECT_ID + 1,
-            boqProjectRecoveryConfirmed: true,
             progress: [newProgress],
           }),
         },
@@ -387,7 +387,6 @@ describe("DPR-07 Fix 2 — version validators use changed/new progress only", ()
     expect(fx.versions).toHaveLength(1);
     expect(fx.versions[0].input).toMatchObject({
       boqProjectId: PROJECT_ID + 1,
-      boqProjectRecoveryConfirmed: true,
       progress: [expect.objectContaining({ boqItemId: 3005 })],
     });
     expect(fx.versions[0].scopeVersionToken).toBe("version-scope-token");

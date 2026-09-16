@@ -66,8 +66,9 @@ function equipmentRowHasBoqReference(row: unknown): boolean {
  *
  * The route parses the request before calling this helper, so unknown fields
  * have already been removed by the request schema.  The explicit section
- * list mirrors the storage project-link guard and also makes this helper safe
- * to use with stored DPR detail objects.
+ * list mirrors persisted BOQ-link-bearing rows and also makes this helper safe
+ * to use with stored DPR detail objects. Site purchases are intentionally
+ * excluded because that table has no boq_item_id column.
  */
 export function hasDprBoqReferences(payload: unknown): boolean {
   if (!payload || typeof payload !== "object") return false;
@@ -78,7 +79,6 @@ export function hasDprBoqReferences(payload: unknown): boolean {
     dpr.structureItems,
     dpr.labour,
     dpr.materials,
-    dpr.sitePurchases,
   ];
   if (rowSections.some((rows) => Array.isArray(rows) && rows.some(rowHasBoqItemId))) {
     return true;

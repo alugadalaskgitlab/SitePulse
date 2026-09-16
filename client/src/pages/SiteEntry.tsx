@@ -38,7 +38,7 @@ import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
+import { collectDprBoqItemIds, dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
@@ -461,6 +461,7 @@ export default function SiteEntry() {
     resolved: boolean;
     projectId: number | null;
   }>({ resolved: false, projectId: null });
+  const evidenceRecoveredProjectRef = useRef<number | null>(null);
 
   // Resolve numeric siteId from selected site name (must be after `header`)
   const {
@@ -468,12 +469,15 @@ export default function SiteEntry() {
     projectId: resolvedBoqProjectId,
     items: siteBoqItems,
     projectsLoaded: boqProjectsLoaded,
+    evidenceProjectId,
+    requestEvidenceRecovery,
   } = useDprBoqItems<SiteBoqItem>({
     siteName: header.site,
     sites: sitesList,
     preferredProjectId: boqProjectPreference.resolved
       ? boqProjectPreference.projectId
       : undefined,
+    allowEvidenceBasedRecovery: true,
   });
 
   // Sync resolved project explicitly into header state so the DPR carries the
@@ -496,6 +500,10 @@ export default function SiteEntry() {
     }
   }, [activeSites, header.site]);
 
+  // A restored explicit null remains null until current live BOQ evidence
+  // proves ownership. Once the hook validates that evidence, expose its
+  // recovered project immediately so payload/autosave cannot retain null
+  // during the preference-state update.
   const siteBoqProjectId = boqProjectPreference.resolved
     ? boqProjectPreference.projectId
     : resolvedBoqProjectId;
@@ -918,11 +926,59 @@ export default function SiteEntry() {
     () => hasDprBoqReferences([progress, structureItems, equipment, labour, materials]),
     [progress, structureItems, equipment, labour, materials],
   );
+  const siteEntryBoqEvidenceIds = useMemo(
+    () => collectDprBoqItemIds([progress, structureItems, equipment, labour, materials]),
+    [progress, structureItems, equipment, labour, materials],
+  );
+  useEffect(() => {
+    if (!siteEntryHasBoqReferences && evidenceRecoveredProjectRef.current != null) {
+      if (boqProjectPreference.projectId === evidenceRecoveredProjectRef.current) {
+        setBoqProjectPreference({ resolved: true, projectId: null });
+        setHeader((current) => ({ ...current, boqProjectId: null }));
+      }
+      evidenceRecoveredProjectRef.current = null;
+      return;
+    }
+    // A restored null is recoverable only from current live BOQ references;
+    // candidate ownership is validated in the shared BOQ hook first.
+    if (boqProjectPreference.projectId != null) return;
+    requestEvidenceRecovery(siteEntryBoqEvidenceIds);
+  }, [
+    boqProjectPreference.projectId,
+    requestEvidenceRecovery,
+    siteEntryBoqEvidenceIds,
+    siteEntryHasBoqReferences,
+  ]);
+  useEffect(() => {
+    if (
+      !boqProjectsLoaded
+      || !siteEntryHasBoqReferences
+      || resolvedBoqProjectId == null
+      || evidenceProjectId == null
+    ) return;
+    if (boqProjectPreference.resolved && boqProjectPreference.projectId != null) return;
+    evidenceRecoveredProjectRef.current = resolvedBoqProjectId;
+    // Candidate ownership has been validated by the hook. Pin the recovered
+    // project and mirror it into both form/header state before a save or
+    // autosave can retain the stale null.
+    setHeader((current) => current.boqProjectId === resolvedBoqProjectId
+      ? current
+      : { ...current, boqProjectId: resolvedBoqProjectId });
+    setBoqProjectPreference({ resolved: true, projectId: resolvedBoqProjectId });
+  }, [
+    boqProjectsLoaded,
+    boqProjectPreference.projectId,
+    boqProjectPreference.resolved,
+    resolvedBoqProjectId,
+    evidenceProjectId,
+    siteEntryHasBoqReferences,
+  ]);
   useEffect(() => {
     if (
       !boqProjectsLoaded
       || resolvedBoqProjectId == null
       || !siteEntryHasBoqReferences
+      || evidenceProjectId == null
       || boqProjectPreference.resolved
     ) return;
     // A linked row turns the automatic project choice into a persisted
@@ -932,6 +988,7 @@ export default function SiteEntry() {
   }, [
     boqProjectsLoaded,
     resolvedBoqProjectId,
+    evidenceProjectId,
     siteEntryHasBoqReferences,
     boqProjectPreference.resolved,
   ]);
@@ -946,6 +1003,7 @@ export default function SiteEntry() {
       return;
     }
     if (nextSite !== header.site) {
+      evidenceRecoveredProjectRef.current = null;
       setBoqProjectPreference({ resolved: false, projectId: null });
       // Do not carry the previous site's project into the next request while
       // it is loading (or if it fails). Existing activity references stay in
@@ -956,12 +1014,19 @@ export default function SiteEntry() {
     setHeader((h) => ({ ...h, site: nextSite }));
   };
 
+  const siteEntryRecoveryRevokedBeforeEffect = !siteEntryHasBoqReferences
+    && evidenceRecoveredProjectRef.current != null;
   const formData = useMemo<SiteEntryFormData>(() => ({
     // `null` is a deliberate saved preference, not the initial loading
     // placeholder. Omit the field until the BOQ request resolves so a failed
     // request cannot be restored later as an accidental "no project" pin.
-    header: boqProjectPreference.resolved || header.boqProjectId != null
-      ? header
+    header: siteEntryRecoveryRevokedBeforeEffect
+      ? { ...header, boqProjectId: null }
+      : siteEntryHasBoqReferences && siteBoqProjectId != null
+      && boqProjectPreference.projectId == null
+      ? { ...header, boqProjectId: siteBoqProjectId }
+      : boqProjectPreference.resolved || header.boqProjectId != null
+        ? header
       : {
           date: header.date,
           site: header.site,
@@ -974,9 +1039,33 @@ export default function SiteEntry() {
     labour,
     materials,
     sitePurchases,
-  }), [header, boqProjectPreference.resolved, workType, progress, structureItems, equipment, labour, materials, sitePurchases]);
+  }), [
+    header,
+    boqProjectPreference.projectId,
+    boqProjectPreference.resolved,
+    siteBoqProjectId,
+    siteEntryHasBoqReferences,
+    workType,
+    progress,
+    structureItems,
+    equipment,
+    labour,
+    materials,
+    sitePurchases,
+    siteEntryRecoveryRevokedBeforeEffect,
+  ]);
+  const siteEntryPayloadBoqProjectId = siteEntryRecoveryRevokedBeforeEffect
+    ? null
+    : siteBoqProjectId != null
+      ? siteBoqProjectId
+      : boqProjectPreference.resolved
+        ? null
+        : undefined;
 
   const handleRestoreDraft = useCallback((data: SiteEntryFormData) => {
+    // A deliberate restore supersedes any transient project recovered from
+    // the pre-restore form state; current restored rows must prove it again.
+    evidenceRecoveredProjectRef.current = null;
     const hasSavedProject = Object.prototype.hasOwnProperty.call(data.header, "boqProjectId");
     const restoredProjectId = data.header.boqProjectId;
     if (
@@ -1303,9 +1392,7 @@ export default function SiteEntry() {
         engineer: header.engineer,
         role: "engineer",
         workType,
-        boqProjectId: siteBoqProjectId != null
-          ? siteBoqProjectId
-          : (boqProjectPreference.resolved ? null : undefined),
+        boqProjectId: siteEntryPayloadBoqProjectId,
         progress: workType === "structure" ? [] : progressWithCalc,
         cutFillConsumptions: flattenCutFillConsumptions(progress),
         structureItems: workType === "structure"
@@ -1526,9 +1613,7 @@ export default function SiteEntry() {
         engineer: header.engineer,
         role: "engineer",
         workType,
-        boqProjectId: siteBoqProjectId != null
-          ? siteBoqProjectId
-          : (boqProjectPreference.resolved ? null : undefined),
+        boqProjectId: siteEntryPayloadBoqProjectId,
         dprStatus: "draft",
         progress: workType === "structure" ? [] : progressWithCalc,
         cutFillConsumptions: flattenCutFillConsumptions(progress),

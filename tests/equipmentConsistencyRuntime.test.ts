@@ -343,7 +343,7 @@ describe("DPR draft operational side-effect boundary", () => {
     expect(effects.cleanup).not.toHaveBeenCalled();
   });
 
-  it("persists a confirmed null-project recovery with a newly selected target-project BOQ row", async () => {
+  it("persists an evidence-based null-project recovery with a newly selected target-project BOQ row", async () => {
     const storage = new DatabaseStorage();
     storage.getDpr = vi.fn().mockResolvedValue({
       id: 7,
@@ -364,9 +364,9 @@ describe("DPR draft operational side-effect boundary", () => {
       [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
       [{ id: 2, siteId: 19 }],
       [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
-      [{ id: 2, siteId: 19 }],
-      [{ name: "SITE A" }],
       [],
+      [{ id: 2, siteId: 19 }],
+      [{ id: 19, name: "SITE A" }],
       [{ id: 99, projectId: 2 }],
       [],
     );
@@ -378,7 +378,6 @@ describe("DPR draft operational side-effect boundary", () => {
       engineer: "Engineer",
       dprStatus: "draft",
       boqProjectId: 2,
-      boqProjectRecoveryConfirmed: true,
       progress: [{ activity: "NEW BOQ WORK", boqItemId: 99 }],
       equipment: [],
       labour: [],
@@ -395,7 +394,7 @@ describe("DPR draft operational side-effect boundary", () => {
     expect(effects.diesel).not.toHaveBeenCalled();
   });
 
-  it("rejects a confirmed recovery when the target project's scope token changed before its lock", async () => {
+  it("rejects recovery when the target project's scope token changed before its lock", async () => {
     const storage = new DatabaseStorage();
     storage.getDpr = vi.fn().mockResolvedValue({ id: 7, dprStatus: "draft" });
     fx.queue.push(
@@ -424,8 +423,6 @@ describe("DPR draft operational side-effect boundary", () => {
       [{ id: 2, siteId: 19 }],
       [{ name: "SITE A" }],
     );
-    tx.execute.mockResolvedValueOnce({ rows: [{ has_references: true }] });
-
     await expect(storage.updateDraftDpr(7, {
       date: "2026-09-01", site: "SITE A", engineer: "Engineer",
       dprStatus: "draft", boqProjectId: 2, boqProjectRecoveryConfirmed: true,
@@ -441,8 +438,9 @@ describe("DPR draft operational side-effect boundary", () => {
     storage.getDpr = vi.fn().mockResolvedValue({ id: 7, dprStatus: "draft" });
     const recovery = (boqProjectId: number) => ({
       date: "2026-09-01", site: "SITE A", engineer: "Engineer",
-      dprStatus: "draft", boqProjectId, boqProjectRecoveryConfirmed: true,
-      progress: [], equipment: [], labour: [], materials: [], sitePurchases: [], structureItems: [],
+      dprStatus: "draft", boqProjectId,
+      progress: [{ activity: "RECOVERED WORK", boqItemId: 99 }],
+      equipment: [], labour: [], materials: [], sitePurchases: [], structureItems: [],
     });
     fx.queue.push(
       // First transaction: optimistic/locked saved-null headers, target
@@ -450,9 +448,10 @@ describe("DPR draft operational side-effect boundary", () => {
       [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
       [{ id: 2, siteId: 19 }],
       [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
-      [{ id: 2, siteId: 19 }],
-      [{ name: "SITE A" }],
       [],
+      [{ id: 2, siteId: 19 }],
+      [{ id: 19, name: "SITE A" }],
+       [{ id: 99, projectId: 2 }],
       [],
       // Second transaction locks both its optimistic source and requested
       // target before observing the first pin under the DPR lock.

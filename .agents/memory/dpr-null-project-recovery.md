@@ -3,11 +3,17 @@ name: DPR null-project recovery
 description: Preserve explicit project intent without permanently trapping old drafts outside their site's BOQ.
 ---
 
-Resolve projects silently from the site for new DPRs; do not expose a manual project picker, project-status panel, or attachment confirmation in the DPR forms. Preserve saved positive and explicit-null project pins on reopen and autosave restore.
+Resolve projects silently from the site for new DPRs; do not expose a manual project picker, project-status panel, or attachment confirmation. Positive saved pins remain immutable; saved null is recoverable only with live BOQ evidence.
 
-**Why:** on 2026-09-16 the user rejected the manual recovery panel as an unwanted step and explicitly required silent site resolution while retaining saved-project stability and unscheduled item selection.
+**Why:** on 2026-09-16 the user rejected manual project controls, then clarified that real live BOQ references must override a stale null across every editor, while genuinely BOQ-less reports stay null.
 
-**How to apply:** use existing automatic priority for new/multi-project sites. Do not silently repair old saved-null records or reintroduce a chooser; that needs a separate decision. The server still supports explicit confirmed same-site recovery only without persisted BOQ references; preserve its transaction/site guards and superseded-source checks even though normal forms no longer expose it.
+**How to apply:** new reports use existing site priority; null recovery requires a unique same-site project owning every live item. Revalidate ownership server-side and persist the corrected header. No-reference nulls remain null, and positive pins never re-guess. Empty saved-null drafts cannot expose a first-item picker under the strict no-reference rule; changing that needs an explicit decision.
+
+Recovery eligibility must reflect evidence surviving the replacement, not every previously stored child. Resolve site identity unambiguously rather than accepting any same-named site.
+
+**Why:** counting cleared progress as evidence can assign a project to a now-BOQ-less report; normalized site names are not unique and cannot alone authorize cross-project recovery.
+
+**How to apply:** count incoming rows and genuinely preserved equipment children, reject ambiguous site identities, and revoke transient client recovery synchronously when the last live reference is removed before saving.
 
 Capture planning-scope tokens before asynchronous validation, not immediately before storage.
 

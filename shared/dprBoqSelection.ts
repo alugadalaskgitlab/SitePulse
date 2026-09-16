@@ -71,11 +71,84 @@ export function resolveDprBoqProjectId(
   );
 }
 
+function isRealDprBoqItemId(value: unknown): value is number | string {
+  if (value === null || value === undefined || value === "") return false;
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim() !== ""
+      ? Number(value)
+      : NaN;
+  return Number.isInteger(numeric) && numeric > 0;
+}
+
 /**
- * A null header on an existing DPR is never enough to guess a project. The
- * only recoverable transition is an explicitly confirmed null → positive
- * project assignment after callers have established both same-site ownership
- * and the absence of every BOQ reference.
+ * Collect the BOQ item ids currently present in a DPR form/read object.
+ *
+ * Unlike the server's payload-specific reference checker this deliberately
+ * walks arbitrary nested client state. Guided equipment keeps pass-through
+ * assignments in a nested bag, and allocation/segment representations have
+ * changed over time. Recovery must use the live evidence, not just the rows
+ * that one editor happens to render.
+ */
+export function collectDprBoqItemIds(value: unknown): number[] {
+  const visited = new WeakSet<object>();
+  const ids = new Set<number>();
+  const visit = (current: unknown): void => {
+    if (current == null || typeof current !== "object") return;
+    if (visited.has(current)) return;
+    visited.add(current);
+
+    if (Array.isArray(current)) {
+      current.forEach(visit);
+      return;
+    }
+    const record = current as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(record, "boqItemId")
+      && isRealDprBoqItemId(record.boqItemId)) {
+      ids.add(Number(record.boqItemId));
+    }
+    Object.values(record).forEach(visit);
+  };
+  visit(value);
+  return Array.from(ids).sort((a, b) => a - b);
+}
+
+/**
+ * Resolve a project from live BOQ-item evidence.
+ *
+ * The ordinary project resolver intentionally uses deterministic API order.
+ * That is correct for a fresh form, but unsafe when recovering an existing
+ * DPR whose header is null: two projects can belong to the same site and the
+ * first one may not own the already-linked item. A recovery is allowed only
+ * when exactly one candidate owns every referenced item. Partial or ambiguous
+ * matches return null rather than guessing.
+ */
+export function resolveDprBoqProjectIdByEvidence(
+  projects: readonly DprBoqProjectChoice[],
+  evidenceBoqItemIds: readonly number[],
+  candidateItemsByProject: ReadonlyMap<number, readonly { id: number }[]>,
+): number | null {
+  const evidence = Array.from(new Set(
+    evidenceBoqItemIds.filter((id) => Number.isInteger(id) && id > 0),
+  ));
+  if (evidence.length === 0) return null;
+
+  const owners = projects.filter((project) => {
+    const itemIds = new Set(
+      (candidateItemsByProject.get(project.id) ?? [])
+        .map((item) => Number(item.id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    );
+    return evidence.every((id) => itemIds.has(id));
+  });
+  return owners.length === 1 ? owners[0].id : null;
+}
+
+/**
+ * Legacy compatibility predicate for old callers/tests. Server persistence
+ * must use isEvidenceBasedDprNullProjectRecovery instead: client confirmation
+ * is not authorization and a saved null is recoverable only with real BOQ
+ * evidence.
  */
 export function isConfirmedDprNullProjectRecovery({
   savedProjectId,
@@ -99,6 +172,31 @@ export function isConfirmedDprNullProjectRecovery({
 }
 
 /**
+ * A saved null project may be repaired only when the current DPR carries
+ * actual BOQ evidence.  The project/site ownership and item-to-project
+ * checks are deliberately performed by the server; this predicate is only
+ * the shared shape of the evidence-based transition and never trusts a
+ * client confirmation flag.
+ */
+export function isEvidenceBasedDprNullProjectRecovery({
+  savedProjectId,
+  requestedProjectId,
+  sameSite,
+  hasBoqReferences,
+}: {
+  savedProjectId: number | null;
+  requestedProjectId: number | null;
+  sameSite: boolean;
+  hasBoqReferences: boolean;
+}): boolean {
+  return savedProjectId === null
+    && Number.isInteger(requestedProjectId)
+    && Number(requestedProjectId) > 0
+    && sameSite
+    && hasBoqReferences;
+}
+
+/**
  * Return true when any DPR-owned row contains a BOQ item reference.
  *
  * Guided equipment keeps some links in `passthrough`, while equipment
@@ -107,25 +205,7 @@ export function isConfirmedDprNullProjectRecovery({
  * avoids allowing a site/project change to orphan a nested reference.
  */
 export function hasDprBoqReferences(value: unknown): boolean {
-  const visited = new WeakSet<object>();
-  const visit = (current: unknown): boolean => {
-    if (current == null || typeof current !== "object") return false;
-    if (visited.has(current)) return false;
-    visited.add(current);
-
-    if (Array.isArray(current)) return current.some(visit);
-    const record = current as Record<string, unknown>;
-    if (
-      Object.prototype.hasOwnProperty.call(record, "boqItemId")
-      && record.boqItemId != null
-      && record.boqItemId !== ""
-      && Number(record.boqItemId) > 0
-    ) {
-      return true;
-    }
-    return Object.values(record).some(visit);
-  };
-  return visit(value);
+  return collectDprBoqItemIds(value).length > 0;
 }
 
 /** Preserve the server's deterministic order; exclude only explicit DPR opt-outs. */
