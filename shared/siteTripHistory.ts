@@ -91,3 +91,7 @@ export function buildSiteTripSuggestions(
     suppliers: collectSuggestions(rows, "supplier", normalizeSiteTripSupplier),
   };
 }
+
+// Type-only compatibility export for callers that already consume the
+// site-trip history contract.
+export type { SiteMaterialTripSuggestions } from "./vehicleSupplierAssociation";

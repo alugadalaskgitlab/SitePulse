@@ -84,3 +84,4 @@
 - [Empty equipment evidence](equipment-empty-evidence.md) — distinguish defaults from real and child-only evidence; keep clone source/input pairs aligned when filtering.
 - [Admin DPR corrections](admin-dpr-corrections.md) — editable submitted reports retain version history; operational corrections must be scoped and review facts mapped one-to-one.
 - [Modal suggestion menus](modal-suggestion-menus.md) — custom autocomplete needs modal-aware pointer/focus behavior; standalone DOM tests miss Radix restrictions.
+- [Vehicle supplier stability](vehicle-supplier-stability.md) — standing associations override old trip conflicts; seed from full active history, with atomic writes and supplier-plus-version correction checks.

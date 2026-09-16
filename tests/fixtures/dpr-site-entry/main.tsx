@@ -3,9 +3,12 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import SiteEntry from "../../../client/src/pages/SiteEntry";
 import SiteEdit from "../../../client/src/pages/SiteEdit";
 import SiteSuccess from "../../../client/src/pages/SiteSuccess";
+import SiteMaterialTrips from "../../../client/src/pages/SiteMaterialTrips";
+import SiteMaterialsReceived from "../../../client/src/pages/SiteMaterialsReceived";
 import PlantEquipmentUsage from "../../../client/src/pages/PlantEquipmentUsage";
 import GuidedDpr from "../../../client/src/pages/GuidedDpr";
 import { DprEquipmentCompact } from "../../../client/src/components/DprEquipmentCompact";
+import { ActivityReceiptStrip } from "../../../client/src/components/ActivityReceiptStrip";
 import { queryClient } from "../../../client/src/lib/queryClient";
 import "../../../client/src/index.css";
 
@@ -20,6 +23,58 @@ const site = {
   name: "NARASIMHULU ROAD",
   location: "Kurnool District",
   isActive: 1,
+};
+
+/*
+ * Vehicle/supplier browser regression data is deliberately kept in this
+ * fixture rather than in the application API.  The known association uses a
+ * display spelling that exercises the normalized-key contract
+ * (TS15-U1234 -> TS15U1234); the second vehicle is intentionally unlinked so
+ * selecting it must not invent or clear a supplier.
+ */
+const vehicleSupplierSuggestions = {
+  vehicles: ["TS15-U1234", "TS99-V000", "UNKNOWN-99"],
+  suppliers: ["ACME", "OTHER SUPPLIER", "MANUAL SUPPLIER"],
+  vehicleSuppliers: {
+    TS15U1234: { status: "linked", supplier: "ACME", version: "v1" },
+  },
+  canCorrectVehicleSupplier: true,
+};
+
+const inlineReceiptArrangement = {
+  id: 5701,
+  boqProjectId: 5501,
+  boqItemId: 8801,
+  status: "approved",
+  arrangementType: "vendor_material_delivered",
+  agencyName: "ACME",
+  materialLabel: "GSB",
+  workDescription: "GSB material delivery",
+  allocatedQty: 100,
+  plannedDailyOutput: 25,
+  uom: "MT",
+  boqItemAllocations: [],
+  programmeAllocations: [],
+};
+
+const receivedVehicleSupplierTrip = {
+  id: 9701,
+  date: "2026-08-05",
+  time: "10:15",
+  site: site.name,
+  material: "GSB",
+  quantity: 12.5,
+  uom: "MT",
+  vehicleNumber: "TS15-U1234",
+  supplier: "ACME",
+  receiptNumber: "FIXTURE-REC-9701",
+  notes: "Synthetic Materials Received edit row; no production record.",
+  workType: "road",
+  source: "trip",
+  boqProjectId: 5501,
+  boqItemId: 8801,
+  programmeBarId: null,
+  earthworkArrangementId: 5701,
 };
 
 const personnel = [
@@ -626,6 +681,10 @@ const fixtureState = {
   dpr07FreshCreateChecks: [] as any[],
   boqItemRequests: [] as any[],
   boqItemsRetryEnabled: false,
+  vehicleSupplierPatchPayloads: [] as any[],
+  vehicleSupplierPatchFailures: [] as any[],
+  siteMaterialTripCreatePayloads: [] as any[],
+  siteMaterialTripUpdatePayloads: [] as any[],
 };
 
 declare global {
@@ -842,7 +901,57 @@ window.fetch = async (input, init) => {
   }
   if (pathname.startsWith("/api/maintenance/logs/") && method === "PATCH") return json({ id: 8400, ...(body || {}) });
   if (pathname.startsWith("/api/maintenance/logs/") && method === "POST") return json({ ok: true });
+  if (pathname === "/api/site-material-trips/suggestions" && method === "GET") {
+    if (new URLSearchParams(window.location.search).get("suggestionFailure") === "1") {
+      return json({ message: "Synthetic suggestion lookup failure" }, 503);
+    }
+    return json(vehicleSupplierSuggestions);
+  }
+  if (pathname === "/api/materials/suppliers" && method === "GET") {
+    return json(vehicleSupplierSuggestions.suppliers);
+  }
+  if (pathname === "/api/materials-received" && method === "GET") {
+    return json([receivedVehicleSupplierTrip]);
+  }
   if (pathname === "/api/site-material-trips" && method === "GET") return json([]);
+  if (pathname === "/api/site-material-trips" && method === "POST") {
+    // The browser regression never needs a production write. Return a
+    // synthetic row so an accidental click still settles the real mutation,
+    // but deliberately do not append it to any fixture collection.
+    fixtureState.siteMaterialTripCreatePayloads.push(body || {});
+    return json({
+      ...receivedVehicleSupplierTrip,
+      id: 9800 + fixtureState.siteMaterialTripCreatePayloads.length,
+      ...(body || {}),
+    }, 201);
+  }
+  if (pathname === "/api/site-material-trips/vehicle-supplier" && method === "PATCH") {
+    fixtureState.vehicleSupplierPatchPayloads.push(body || {});
+    const valid =
+      body?.site === site.name
+      && String(body?.vehicleNumber || "").trim().toUpperCase().replace(/[\s-]+/g, "") === "TS15U1234"
+      && String(body?.supplier || "").trim().length > 0
+      && body?.expectedVersion === "v1"
+      && body?.expectedSupplier === "ACME";
+    if (!valid) {
+      fixtureState.vehicleSupplierPatchFailures.push(body || {});
+      return json({
+        code: "FIXTURE_VEHICLE_SUPPLIER_VERSION",
+        message: "Fixture correction requires site, known vehicle, supplier, expectedVersion v1, and expectedSupplier ACME.",
+      }, 409);
+    }
+    return json({
+      status: "linked",
+      supplier: String(body.supplier).trim().toUpperCase(),
+      version: "v1",
+    });
+  }
+  const siteMaterialTripUpdateMatch = pathname.match(/^\/api\/site-material-trips\/(\d+)$/);
+  if (siteMaterialTripUpdateMatch && method === "PATCH") {
+    const id = Number(siteMaterialTripUpdateMatch[1]);
+    fixtureState.siteMaterialTripUpdatePayloads.push({ id, payload: body || {} });
+    return json({ ...receivedVehicleSupplierTrip, id, ...(body || {}) });
+  }
   if (pathname === "/api/dprs/with-details" && method === "GET") return json([]);
   if (pathname === "/api/dprs/chainage-overlap-context" && method === "GET") return json({ entries: [] });
   if (pathname === "/api/attachments" && method === "GET") return json([]);
@@ -876,6 +985,16 @@ window.fetch = async (input, init) => {
     }
     return json(boqItems);
   }
+  const projectArrangementItemMatch = pathname.match(/^\/api\/boq\/projects\/(\d+)\/earthwork-arrangements\/item\/(\d+)$/);
+  if (projectArrangementItemMatch && method === "GET") {
+    const projectId = Number(projectArrangementItemMatch[1]);
+    const itemId = Number(projectArrangementItemMatch[2]);
+    return projectId === inlineReceiptArrangement.boqProjectId && itemId === inlineReceiptArrangement.boqItemId
+      ? json([inlineReceiptArrangement])
+      : json([]);
+  }
+  const projectArrangementAllocationsMatch = pathname.match(/^\/api\/boq\/projects\/(\d+)\/arrangement-programme-allocations$/);
+  if (projectArrangementAllocationsMatch && method === "GET") return json([]);
   const projectEarthworkMatch = pathname.match(/^\/api\/boq\/projects\/(\d+)\/earthwork-arrangements$/);
   if (projectEarthworkMatch && method === "GET") return json([]);
   const projectProgrammeMatch = pathname.match(/^\/api\/boq\/projects\/(\d+)\/programme$/);
@@ -1113,6 +1232,34 @@ function FixtureSubmittedReport() {
   );
 }
 
+function VehicleSupplierInlineFixture() {
+  return (
+    <main className="mx-auto w-full max-w-5xl space-y-4 p-6 pb-12">
+      <header
+        className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950"
+        data-testid="vehicle-supplier-fixture-banner"
+      >
+        <h1 className="text-xl font-bold">Vehicle/supplier inline receipt fixture</h1>
+        <p className="mt-1 text-sm">
+          Real ActivityReceiptStrip controls with synthetic API responses. No
+          customer or production rows are written.
+        </p>
+      </header>
+      <ActivityReceiptStrip
+        siteName={site.name}
+        date="2026-08-05"
+        boqProjectId={inlineReceiptArrangement.boqProjectId}
+        boqItemId={inlineReceiptArrangement.boqItemId}
+        programmeBarId={null}
+        executedQty={0}
+        executedUom="MT"
+        locationLabel="KM 12"
+        testIdPrefix="inline"
+      />
+    </main>
+  );
+}
+
 function Dpr07EvidenceBanner() {
   if (!isDpr07Route()) return null;
   const params = new URLSearchParams(window.location.search);
@@ -1150,6 +1297,9 @@ const mount = () => {
   const isEdit = window.location.pathname.startsWith("/site/edit/");
   const isSiteSuccess = window.location.pathname.startsWith("/site/success/");
   const isSiteReport = window.location.pathname.startsWith("/site/report/");
+  const isSiteMaterialTrips = window.location.pathname.startsWith("/site/material-trips");
+  const isSiteMaterialsReceived = window.location.pathname.startsWith("/site/materials-received");
+  const isVehicleSupplierInline = window.location.pathname.startsWith("/fixture/vehicle-supplier-inline");
   const isPlantEquipmentUsage = window.location.pathname.startsWith("/plant/equipment-usage");
   const isGuidedReport = window.location.pathname.startsWith("/guided/report");
   const isGuided = window.location.pathname.startsWith("/guided");
@@ -1164,6 +1314,12 @@ const mount = () => {
           ? <SiteSuccess />
           : isSiteReport
             ? <FixtureSubmittedReport />
+            : isVehicleSupplierInline
+              ? <VehicleSupplierInlineFixture />
+              : isSiteMaterialTrips
+                ? <SiteMaterialTrips />
+                : isSiteMaterialsReceived
+                  ? <SiteMaterialsReceived />
             : isGuided
               ? <GuidedDpr />
               : isPlantEquipmentUsage

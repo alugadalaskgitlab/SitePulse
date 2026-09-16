@@ -23,6 +23,7 @@ import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc,
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { siteMatchesPermitted } from "@shared/siteName";
 import { normalizeSiteTripHistorySite } from "@shared/siteTripHistory";
+import { normalizeVehicleSupplierVehicle } from "@shared/vehicleSupplierAssociation";
 import { calculateHireBilling, planHireRegisterRows, type HireExceptionDecisionInput } from "@shared/hireBilling";
 import { computeItemEntries, computeItemAbstract } from "@shared/progressReport";
 import { isLayerCapableItem } from "@shared/layerDisplay";
@@ -614,10 +615,74 @@ export async function registerRoutes(
       if (!site) return res.status(400).json({ message: "site is required" });
       if (!await assertTripSiteAccess(req, res, site)) return;
       const suggestions = await storage.getSiteMaterialTripSuggestions(site);
-      res.json(suggestions);
+      // Older storage adapters may still return the pre-association shape;
+      // leave that shape untouched for compatibility.  The production
+      // storage implementation always returns the augmented contract.
+      if ("vehicleSuppliers" in suggestions) {
+        res.json({
+          ...suggestions,
+          canCorrectVehicleSupplier: !!(
+            req.authUser?.isAdmin ||
+            req.authUser?.isOwner ||
+            req.authPermissions?.site_materials?.edit
+          ),
+        });
+      } else {
+        res.json(suggestions);
+      }
     } catch (err) {
       console.error("Error fetching site material trip suggestions:", err);
       res.status(500).json({ message: "Failed to fetch site material trip suggestions" });
+    }
+  });
+
+  // Correct the global future vehicle→supplier association.  This is
+  // deliberately separate from ordinary trip edits: historical trip fields
+  // remain factual, while this action requires an explicit optimistic
+  // correction and is audited with before/after values.
+  app.patch("/api/site-material-trips/vehicle-supplier", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_materials")) return;
+      const input = z.object({
+        site: z.string().trim().min(1),
+        vehicleNumber: z.string().trim().min(1),
+        supplier: z.string().trim().min(1),
+        expectedVersion: z.string().nullable(),
+        expectedSupplier: z.string().nullable(),
+      }).strict().parse(req.body);
+      const site = normalizeSiteTripHistorySite(input.site);
+      const vehicleKey = normalizeVehicleSupplierVehicle(input.vehicleNumber);
+      if (!site || !vehicleKey) return res.status(400).json({ message: "site and vehicleNumber are required" });
+      if (!await assertTripSiteAccess(req, res, site)) return;
+      if (await storage.hasActiveSiteMaterialTripVehicle(site, input.vehicleNumber) !== true) {
+        return res.status(403).json({ message: "Vehicle is not present in active history for this site" });
+      }
+      const corrected = await storage.correctVehicleSupplierAssociation({
+        ...input,
+        site,
+        actor: {
+          userId: req.authUser!.id,
+          userName: currentUserName(req),
+          userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        },
+      });
+      res.json(corrected.association);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid vehicle supplier association" });
+      }
+      if ((err as any)?.code === "VEHICLE_SUPPLIER_ASSOCIATION_VERSION_CONFLICT") {
+        return res.status(409).json({
+          message: err.message,
+          code: err.code,
+          currentVersion: err.currentVersion,
+        });
+      }
+      if ((err as any)?.code === "VEHICLE_SUPPLIER_ASSOCIATION_HISTORY_ACCESS") {
+        return res.status(403).json({ message: err.message, code: err.code });
+      }
+      console.error("PATCH /api/site-material-trips/vehicle-supplier:", err);
+      res.status(500).json({ message: "Failed to correct vehicle supplier association" });
     }
   });
 

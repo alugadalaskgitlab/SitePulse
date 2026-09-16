@@ -1,0 +1,355 @@
+{
+  "fixture": "dpr-site-entry",
+  "scenario": "vehicle-supplier-association",
+  "fixtureOnly": true,
+  "productionWrites": false,
+  "startedAt": "2026-09-16T08:31:45.987Z",
+  "finishedAt": "2026-09-16T08:31:52.585Z",
+  "surfaces": [
+    "Quick Materials Entry",
+    "inline ActivityReceiptStrip receipt dialog",
+    "Materials Received edit dialog"
+  ],
+  "desktopPhysicalOptionHitTest": true,
+  "mobilePhysicalOptionHitTest": true,
+  "physicalPointerEvidence": {
+    "desktopQuickKnownOption": {
+      "text": "TS15-U1234",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "visual": {
+        "width": 1432,
+        "height": 1000,
+        "scale": 1,
+        "offsetLeft": 0,
+        "offsetTop": 0
+      },
+      "rect": {
+        "left": 425.5,
+        "top": 363,
+        "right": 703,
+        "bottom": 403,
+        "width": 277.5,
+        "height": 40
+      },
+      "point": {
+        "x": 564.25,
+        "y": 383
+      },
+      "hitTest": true,
+      "hitTag": "DIV",
+      "ariaDisabled": null
+    },
+    "mobileInlineKnownOption": {
+      "text": "TS15-U1234",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "visual": {
+        "width": 390,
+        "height": 844,
+        "scale": 1,
+        "offsetLeft": 0,
+        "offsetTop": 0
+      },
+      "rect": {
+        "left": 191.34375,
+        "top": 315.9921875,
+        "right": 361.34375,
+        "bottom": 355.9921875,
+        "width": 170,
+        "height": 40
+      },
+      "point": {
+        "x": 276.34375,
+        "y": 335.9921875
+      },
+      "hitTest": true,
+      "hitTag": "DIV",
+      "ariaDisabled": null
+    }
+  },
+  "suggestionFailureInputsAndSaveRemainEnabled": true,
+  "confirmedAssociationPatches": [
+    {
+      "site": "NARASIMHULU ROAD",
+      "vehicleNumber": "TS15-U1234",
+      "supplier": "OTHER SUPPLIER",
+      "expectedVersion": "v1",
+      "expectedSupplier": "ACME"
+    }
+  ],
+  "cancelledAssociationPatches": "none beyond the one confirmed correction",
+  "operationalTripCreates": [],
+  "operationalTripUpdates": [],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/sites"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips/suggestions?site=NARASIMHULU%20ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips?dateFrom=2026-09-16&dateTo=2026-09-16&site=NARASIMHULU+ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/plant-module/equipment"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects?siteId=6060"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-requirements?siteId=6060&dateFrom=2026-09-16&dateTo=2026-09-16"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/items"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/arrangement-programme-allocations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/earthwork-arrangements/item/8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dpr/programme-bars?projectId=5501&boqItemId=8801"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/site-material-trips/vehicle-supplier",
+      "body": {
+        "site": "NARASIMHULU ROAD",
+        "vehicleNumber": "TS15-U1234",
+        "supplier": "OTHER SUPPLIER",
+        "expectedVersion": "v1",
+        "expectedSupplier": "ACME"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips/suggestions?site=NARASIMHULU%20ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/earthwork-arrangements/item/8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/arrangement-programme-allocations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips?site=NARASIMHULU%20ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sites"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips/suggestions?site=NARASIMHULU%20ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-requirements?siteId=6060&dateFrom=2026-08-05&dateTo=2026-08-05"
+    },
+    {
+      "method": "GET",
+      "path": "/api/procurement/applicable-pi?boqProjectId=5501&boqItemId=8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips?earthworkArrangementId=5701"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips/suggestions?site=NARASIMHULU%20ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/materials-received?dateFrom=2026-08-05&dateTo=2026-08-05&site=NARASIMHULU+ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/materials/suppliers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sites"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/items"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/earthwork-arrangements/item/8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/arrangement-programme-allocations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dpr/programme-bars?projectId=5501&boqItemId=8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/attachments?moduleType=site_material_trip&linkedRecordId=9701"
+    },
+    {
+      "method": "GET",
+      "path": "/api/edit-requests/check?recordType=site_material_trip&recordId=9701"
+    },
+    {
+      "method": "GET",
+      "path": "/api/edit-requests/mine"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects?siteId=6060"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sites"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips/suggestions?site=NARASIMHULU%20ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips?dateFrom=2026-09-16&dateTo=2026-09-16&site=NARASIMHULU+ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/plant-module/equipment"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects?siteId=6060"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-requirements?siteId=6060&dateFrom=2026-09-16&dateTo=2026-09-16"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/items"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/arrangement-programme-allocations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/earthwork-arrangements/item/8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dpr/programme-bars?projectId=5501&boqItemId=8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/earthwork-arrangements/item/8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/arrangement-programme-allocations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips?site=NARASIMHULU%20ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sites"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips/suggestions?site=NARASIMHULU%20ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-requirements?siteId=6060&dateFrom=2026-08-05&dateTo=2026-08-05"
+    },
+    {
+      "method": "GET",
+      "path": "/api/procurement/applicable-pi?boqProjectId=5501&boqItemId=8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips?earthworkArrangementId=5701"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips/suggestions?site=NARASIMHULU%20ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/materials-received?dateFrom=2026-08-05&dateTo=2026-08-05&site=NARASIMHULU+ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/materials/suppliers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sites"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/items"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/earthwork-arrangements/item/8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/arrangement-programme-allocations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dpr/programme-bars?projectId=5501&boqItemId=8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/attachments?moduleType=site_material_trip&linkedRecordId=9701"
+    },
+    {
+      "method": "GET",
+      "path": "/api/edit-requests/check?recordType=site_material_trip&recordId=9701"
+    },
+    {
+      "method": "GET",
+      "path": "/api/edit-requests/mine"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects?siteId=6060"
+    }
+  ],
+  "browserErrors": [],
+  "requestCount": 62,
+  "evidence": [
+    "vehicle-supplier-quick-known.png",
+    "vehicle-supplier-quick-correction-dialog.png",
+    "vehicle-supplier-inline-mobile-option.png",
+    "vehicle-supplier-materials-received-edit.png",
+    "vehicle-supplier-suggestion-failure-quick.png",
+    "vehicle-supplier-suggestion-failure-received-edit.png"
+  ]
+}

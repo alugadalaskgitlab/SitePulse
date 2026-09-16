@@ -21,8 +21,11 @@ import { ReceiptWorkContext, TripWorkContextSummary, EMPTY_WORK_CONTEXT, hasRequ
 import { findAllocationEntry, receiptSuggestionFromFulfilment, fulfilmentLabel } from "@shared/requirementFulfilment";
 import {
   invalidateSiteMaterialSuggestions,
+  normalizeVehicleSupplierKey,
+  vehicleSupplierAssociationFor,
   useSiteMaterialSuggestions,
 } from "@/hooks/use-site-material-suggestions";
+import { VehicleSupplierAssociationNotice } from "@/components/VehicleSupplierAssociationNotice";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -91,7 +94,25 @@ export default function SiteMaterialTrips() {
     suppliers: supplierSuggestions,
     vehicles: vehicleSuggestions,
     error: suggestionError,
+    vehicleSuppliers,
+    canCorrectVehicleSupplier,
   } = useSiteMaterialSuggestions(newTrip.site);
+
+  const applyVehicleSuggestion = (vehicleNumber: string) => {
+    // FreeTextSuggestionInput calls onChange first and this callback second.
+    // A functional update makes the pair atomic even under React batching and
+    // avoids applying a supplier from a stale form closure.
+    setNewTrip((prev) => {
+      const association = vehicleSupplierAssociationFor(vehicleSuppliers, vehicleNumber);
+      return {
+        ...prev,
+        vehicleNumber: vehicleNumber.toUpperCase(),
+        ...(association?.status === "linked" && association.supplier
+          ? { supplier: association.supplier }
+          : {}),
+      };
+    });
+  };
 
   // Batch 06E-F / DPR-02: standalone trips require project + intended item.
   const [workCtx, setWorkCtx] = useState<TripWorkContext>(EMPTY_WORK_CONTEXT);
@@ -457,7 +478,7 @@ export default function SiteMaterialTrips() {
                   <FreeTextSuggestionInput
                     placeholder="e.g. Sanganna"
                     value={newTrip.supplier}
-                    onChange={(value) => setNewTrip({ ...newTrip, supplier: value.toUpperCase() })}
+                    onChange={(value) => setNewTrip((prev) => ({ ...prev, supplier: value.toUpperCase() }))}
                     suggestions={supplierSuggestions}
                     match="supplier"
                     suggestionsError={suggestionError}
@@ -470,12 +491,30 @@ export default function SiteMaterialTrips() {
                   <FreeTextSuggestionInput
                     placeholder="e.g. TS15U1234"
                     value={newTrip.vehicleNumber}
-                    onChange={(value) => setNewTrip({ ...newTrip, vehicleNumber: value.toUpperCase() })}
+                    onChange={(value) => setNewTrip((prev) => ({ ...prev, vehicleNumber: value.toUpperCase() }))}
+                    onSuggestionSelected={applyVehicleSuggestion}
                     suggestions={vehicleSuggestions}
                     match="vehicle"
                     suggestionsError={suggestionError}
                     className="uppercase"
                     data-testid="input-trip-vehicle"
+                  />
+                  <VehicleSupplierAssociationNotice
+                    site={newTrip.site}
+                    vehicleNumber={newTrip.vehicleNumber}
+                    supplier={newTrip.supplier}
+                    association={vehicleSupplierAssociationFor(vehicleSuppliers, newTrip.vehicleNumber)}
+                    canCorrectVehicleSupplier={canCorrectVehicleSupplier}
+                    onSupplierApplied={(supplier, context) =>
+                      setNewTrip((prev) =>
+                        prev.site === context.site &&
+                        normalizeVehicleSupplierKey(prev.vehicleNumber) ===
+                          normalizeVehicleSupplierKey(context.vehicleNumber)
+                          ? { ...prev, supplier }
+                          : prev,
+                      )
+                    }
+                    testIdPrefix="trip"
                   />
                 </div>
                 <div>

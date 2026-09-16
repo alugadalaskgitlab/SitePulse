@@ -14,6 +14,25 @@ export const SITE_MATERIAL_SUGGESTIONS_QUERY_KEY =
 export interface SiteMaterialSuggestions {
   vehicles: string[];
   suppliers: string[];
+  /**
+   * Associations are deliberately separate from the free-text lists.  A
+   * vehicle is only allowed to fill a supplier after an explicit vehicle
+   * suggestion selection, and only when this entry is stable (`linked`).
+   */
+  vehicleSuppliers: Record<string, VehicleSupplierAssociation>;
+  /** The server decides whether this user may change future associations. */
+  canCorrectVehicleSupplier: boolean;
+}
+
+export type VehicleSupplierAssociationStatus =
+  | "linked"
+  | "conflict"
+  | "unlinked";
+
+export interface VehicleSupplierAssociation {
+  status: VehicleSupplierAssociationStatus;
+  supplier: string | null;
+  version: string | null;
 }
 
 export type SuggestionMatch = "vehicle" | "supplier";
@@ -30,6 +49,32 @@ export function normaliseFreeTextSuggestion(
 }
 
 export const normalizeFreeTextSuggestion = normaliseFreeTextSuggestion;
+
+/** The stable association key: uppercase, with spaces and hyphens removed. */
+export function normalizeVehicleSupplierKey(value: string | null | undefined): string {
+  return typeof value === "string"
+    ? value.trim().toLocaleUpperCase().replace(/[\s-]+/g, "")
+    : "";
+}
+
+/**
+ * Find a server association without ever inferring one from the supplier
+ * suggestion list.  The backend sends normalized keys, but normalizing the
+ * key here also keeps the client safe when a legacy response has display
+ * formatting in its object keys.
+ */
+export function vehicleSupplierAssociationFor(
+  associations: Record<string, VehicleSupplierAssociation> | null | undefined,
+  vehicleNumber: string | null | undefined,
+): VehicleSupplierAssociation | undefined {
+  const key = normalizeVehicleSupplierKey(vehicleNumber);
+  if (!key || !associations) return undefined;
+  if (associations[key]) return associations[key];
+  const matchingKey = Object.keys(associations).find(
+    (candidate) => normalizeVehicleSupplierKey(candidate) === key,
+  );
+  return matchingKey ? associations[matchingKey] : undefined;
+}
 
 export function filterFreeTextSuggestions(
   suggestions: string[],
@@ -61,6 +106,11 @@ export function useSiteMaterialSuggestions(site?: string | null) {
   const query = useQuery<SiteMaterialSuggestions>({
     queryKey: [SITE_MATERIAL_SUGGESTIONS_QUERY_KEY, siteValue],
     enabled: siteValue.trim().length > 0,
+    // Saved associations can be changed by another authorized user/device.
+    // Refreshing never writes form state; only an explicit suggestion
+    // selection or correction confirmation may do that.
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
     queryFn: async ({ signal }) => {
       const response = await fetch(
         `${SITE_MATERIAL_SUGGESTIONS_QUERY_KEY}?site=${encodeURIComponent(siteValue)}`,
@@ -70,7 +120,35 @@ export function useSiteMaterialSuggestions(site?: string | null) {
         throw new Error(`Suggestions unavailable (${response.status})`);
       }
       const body = (await response.json()) as Partial<SiteMaterialSuggestions>;
-      return {
+      const rawAssociations = body.vehicleSuppliers;
+      const vehicleSuppliers: Record<string, VehicleSupplierAssociation> = {};
+      if (rawAssociations && typeof rawAssociations === "object") {
+        for (const [key, value] of Object.entries(rawAssociations)) {
+          if (!value || typeof value !== "object") continue;
+          const association = value as Partial<VehicleSupplierAssociation>;
+          if (
+            association.status !== "linked" &&
+            association.status !== "conflict" &&
+            association.status !== "unlinked"
+          ) {
+            continue;
+          }
+          const normalizedKey = normalizeVehicleSupplierKey(key);
+          if (!normalizedKey) continue;
+          vehicleSuppliers[normalizedKey] = {
+            status: association.status,
+            supplier:
+              typeof association.supplier === "string"
+                ? association.supplier
+                : null,
+            version:
+              typeof association.version === "string"
+                ? association.version
+                : null,
+          };
+        }
+      }
+      const base = {
         vehicles: Array.isArray(body.vehicles)
           ? body.vehicles.filter((value): value is string => typeof value === "string")
           : [],
@@ -78,14 +156,31 @@ export function useSiteMaterialSuggestions(site?: string | null) {
           ? body.suppliers.filter((value): value is string => typeof value === "string")
           : [],
       };
+      // Keep the old two-field result shape for older deployments while
+      // exposing the augmented contract as soon as the server sends it.
+      return (
+        Object.prototype.hasOwnProperty.call(body, "vehicleSuppliers") ||
+        Object.prototype.hasOwnProperty.call(body, "canCorrectVehicleSupplier")
+          ? {
+              ...base,
+              vehicleSuppliers,
+              canCorrectVehicleSupplier: body.canCorrectVehicleSupplier === true,
+            }
+          : base
+      ) as SiteMaterialSuggestions;
     },
   });
 
   return {
     ...query,
+    // Keep the loading/disabled value compatible with the original
+    // two-field suggestion shape; augmented fields are exposed below with
+    // safe empty defaults and arrive in `suggestions` once the server does.
     suggestions: query.data ?? { vehicles: [], suppliers: [] },
     vehicles: query.data?.vehicles ?? [],
     suppliers: query.data?.suppliers ?? [],
+    vehicleSuppliers: query.data?.vehicleSuppliers ?? {},
+    canCorrectVehicleSupplier: query.data?.canCorrectVehicleSupplier ?? false,
   };
 }
 

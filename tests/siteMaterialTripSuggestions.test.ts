@@ -18,6 +18,9 @@ const spies = vi.hoisted(() => ({
   getPermitted: vi.fn(),
   getSites: vi.fn(),
   getSuggestions: vi.fn(),
+  hasActiveVehicle: vi.fn(),
+  correctAssociation: vi.fn(),
+  logAudit: vi.fn(),
 }));
 
 vi.mock("../server/storage", () => {
@@ -25,6 +28,9 @@ vi.mock("../server/storage", () => {
     getUserPermittedSiteIds: spies.getPermitted,
     getSites: spies.getSites,
     getSiteMaterialTripSuggestions: spies.getSuggestions,
+    hasActiveSiteMaterialTripVehicle: spies.hasActiveVehicle,
+    correctVehicleSupplierAssociation: spies.correctAssociation,
+    logAudit: spies.logAudit,
   };
   return {
     StockShortageError: class extends Error {},
@@ -50,7 +56,11 @@ vi.mock("../server/auth", () => ({
       (req as any).authUser = undefined;
       (req as any).authPermissions = undefined;
     } else {
-      (req as any).authUser = { id: 7, isAdmin: false, isOwner: false };
+      (req as any).authUser = {
+        id: 7,
+        isAdmin: mode === "admin",
+        isOwner: mode === "owner",
+      };
       (req as any).authPermissions = mode === "create"
         ? { site_materials: { create: true } }
         : mode === "edit"
@@ -71,7 +81,16 @@ vi.mock("../server/auth", () => ({
 vi.mock("../server/auth-routes", () => ({
   registerAuthRoutes: vi.fn(),
   assertCreate: () => true,
-  assertEdit: () => true,
+  assertEdit: (req: Request, res: Response) => {
+    if (!(req as any).authUser) {
+      res.status(401).json({ message: "Authentication required" });
+      return false;
+    }
+    const user = (req as any).authUser;
+    if (user.isAdmin || user.isOwner || (req as any).authPermissions?.site_materials?.edit) return true;
+    res.status(403).json({ message: "Forbidden" });
+    return false;
+  },
   assertAdmin: () => true,
   assertView: () => true,
   assertAuthed: () => true,
@@ -135,6 +154,13 @@ describe("site trip suggestion route authorization", () => {
     spies.getPermitted.mockResolvedValue([1]);
     spies.getSites.mockResolvedValue([{ id: 1, name: "Site A" }, { id: 2, name: "Site B" }]);
     spies.getSuggestions.mockResolvedValue({ vehicles: ["KA 01 AB-1234"], suppliers: ["ACME HAULAGE"] });
+    spies.hasActiveVehicle.mockResolvedValue(true);
+    spies.correctAssociation.mockResolvedValue({
+      status: "linked",
+      supplier: "ACME HAULAGE",
+      version: "next-version",
+    });
+    spies.logAudit.mockResolvedValue(undefined);
   });
 
   it("requires authentication and a site_materials view/create/edit grant", async () => {
@@ -177,6 +203,76 @@ describe("site trip suggestion route authorization", () => {
       suppliers: ["ACME HAULAGE"],
     });
     expect(spies.getSuggestions).toHaveBeenCalledWith("SITE A");
+  });
+
+  it("authorizes correction by authentication, permission, and permitted-site history", async () => {
+    const body = {
+      site: "Site A",
+      vehicleNumber: "KA 01 AB-1234",
+      supplier: "Acme Haulage",
+      expectedVersion: null,
+      expectedSupplier: null,
+    };
+    expect((await request(app)
+      .patch("/api/site-material-trips/vehicle-supplier")
+      .set("x-test-auth", "none")
+      .send(body)).status).toBe(401);
+    expect((await request(app)
+      .patch("/api/site-material-trips/vehicle-supplier")
+      .set("x-test-auth", "view")
+      .send(body)).status).toBe(403);
+    expect((await request(app)
+      .patch("/api/site-material-trips/vehicle-supplier")
+      .set("x-test-auth", "edit")
+      .send({ ...body, expectedSupplier: undefined })).status).toBe(400);
+
+    const deniedSite = await request(app)
+      .patch("/api/site-material-trips/vehicle-supplier")
+      .set("x-test-auth", "edit")
+      .send({ ...body, site: "Site B" });
+    expect(deniedSite.status).toBe(403);
+    expect(spies.hasActiveVehicle).not.toHaveBeenCalled();
+
+    spies.getPermitted.mockResolvedValue([]);
+    const denyAll = await request(app)
+      .patch("/api/site-material-trips/vehicle-supplier")
+      .set("x-test-auth", "edit")
+      .send(body);
+    expect(denyAll.status).toBe(403);
+    expect(spies.hasActiveVehicle).not.toHaveBeenCalled();
+  });
+
+  it("allows site-material editors and admins, but returns optimistic conflicts", async () => {
+    const body = {
+      site: "Site A",
+      vehicleNumber: "KA 01 AB-1234",
+      supplier: "Acme Haulage",
+      expectedVersion: null,
+      expectedSupplier: null,
+    };
+    const edited = await request(app)
+      .patch("/api/site-material-trips/vehicle-supplier")
+      .set("x-test-auth", "edit")
+      .send(body);
+    expect(edited.status).toBe(200);
+    expect(spies.correctAssociation).toHaveBeenCalledWith(expect.objectContaining({
+      site: "SITE A",
+      expectedVersion: null,
+      actor: expect.objectContaining({ userId: 7, userName: "tester" }),
+    }));
+    expect(spies.logAudit).not.toHaveBeenCalled();
+
+    spies.correctAssociation.mockRejectedValueOnce(Object.assign(new Error("stale"), {
+      code: "VEHICLE_SUPPLIER_ASSOCIATION_VERSION_CONFLICT",
+      currentVersion: "newer-version",
+    }));
+    const conflict = await request(app)
+      .patch("/api/site-material-trips/vehicle-supplier")
+      .set("x-test-auth", "admin")
+      .send({ ...body, expectedVersion: "stale-version" });
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.currentVersion).toBe("newer-version");
+    expect(spies.logAudit).not.toHaveBeenCalled();
   });
 });
 

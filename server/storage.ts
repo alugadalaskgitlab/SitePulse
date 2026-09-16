@@ -111,8 +111,18 @@ import {
   buildSiteTripSuggestions,
   normalizeSiteTripHistorySite,
   SITE_TRIP_HISTORY_SCAN_LIMIT,
-  type SiteTripSuggestions,
 } from "@shared/siteTripHistory";
+import {
+  associationView,
+  isVehicleSupplierAssociationSettingKey,
+  normalizeVehicleSupplierName,
+  normalizeVehicleSupplierVehicle,
+  VEHICLE_SUPPLIER_ASSOCIATIONS_SETTING_KEY,
+  type SiteMaterialTripSuggestions,
+  type VehicleSupplierAssociationRecord,
+  type VehicleSupplierAssociations,
+  type VehicleSupplierAssociationView,
+} from "@shared/vehicleSupplierAssociation";
 import {
   buildMovementSuccessor,
   materializedEquipmentLogChanged,
@@ -157,6 +167,7 @@ import {
   validateEquipmentActivitySegments,
 } from "@shared/equipmentActivityAllocations";
 import { sendPushToAll } from "./push";
+import { randomUUID } from "node:crypto";
 import {
   type CreateDprRequest,
   type Dpr,
@@ -1335,7 +1346,24 @@ export interface IStorage {
   // Adds only nullable, backward-compatible transport fields to existing trips.
   ensureSiteMaterialTripsLinkageColumns(): Promise<void>;
   getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
-  getSiteMaterialTripSuggestions(site: string): Promise<SiteTripSuggestions>;
+  getSiteMaterialTripSuggestions(site: string): Promise<SiteMaterialTripSuggestions>;
+  hasActiveSiteMaterialTripVehicle(site: string, vehicleNumber: string): Promise<boolean>;
+  correctVehicleSupplierAssociation(input: {
+    site: string;
+    vehicleNumber: string;
+    supplier: string;
+    expectedVersion: string | null;
+    expectedSupplier: string | null;
+    actor: {
+      userId: number;
+      userName: string;
+      userRole?: string | null;
+    };
+  }): Promise<{
+    association: VehicleSupplierAssociationView;
+    before: VehicleSupplierAssociationView;
+    after: VehicleSupplierAssociationView;
+  }>;
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
   getSiteMaterialTripById(id: number): Promise<SiteMaterialTrip | undefined>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
@@ -2358,6 +2386,24 @@ export class PushSubscriptionOwnershipError extends Error {
   constructor() {
     super("This push subscription belongs to another account.");
     this.name = "PushSubscriptionOwnershipError";
+  }
+}
+
+/** A correction was based on an association version that is no longer current. */
+export class VehicleSupplierAssociationVersionConflictError extends Error {
+  readonly code = "VEHICLE_SUPPLIER_ASSOCIATION_VERSION_CONFLICT" as const;
+  constructor(readonly expectedVersion: string | null, readonly currentVersion: string | null) {
+    super("The vehicle supplier association changed. Reload it and try again.");
+    this.name = "VehicleSupplierAssociationVersionConflictError";
+  }
+}
+
+/** The explicit correction route may only operate on a site's active history. */
+export class VehicleSupplierAssociationHistoryAccessError extends Error {
+  readonly code = "VEHICLE_SUPPLIER_ASSOCIATION_HISTORY_ACCESS" as const;
+  constructor() {
+    super("The vehicle is not present in active history for this site.");
+    this.name = "VehicleSupplierAssociationHistoryAccessError";
   }
 }
 
@@ -4559,11 +4605,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSetting(key: string): Promise<string | null> {
+    // Vehicle/supplier associations contain operational history-derived data.
+    // Do not allow generic settings consumers to read the namespaced blob.
+    // Association methods below use their own guarded reader instead.
+    if (isVehicleSupplierAssociationSettingKey(key)) return null;
     const setting = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
     return setting.length > 0 ? setting[0].value : null;
   }
 
   async setSetting(key: string, value: string): Promise<void> {
+    if (isVehicleSupplierAssociationSettingKey(key)) {
+      throw new Error("Vehicle supplier associations must be changed through their dedicated operation.");
+    }
     const existing = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
     if (existing.length > 0) {
       await db.update(appSettings)
@@ -11514,9 +11567,141 @@ export class DatabaseStorage implements IStorage {
     return trips;
   }
 
-  async getSiteMaterialTripSuggestions(site: string): Promise<SiteTripSuggestions> {
+  /**
+   * Parse the namespaced association blob.  A missing setting is empty, but
+   * malformed data is an invariant failure: silently treating it as empty
+   * would let the next write erase every previously persisted association.
+   * The optional GET enrichment catches this explicitly; trip writes and
+   * corrections propagate it and roll back.
+   */
+  private parseVehicleSupplierAssociations(raw: string | null | undefined): VehicleSupplierAssociations {
+    if (raw == null) return {};
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error("Vehicle supplier association setting contains malformed JSON");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Vehicle supplier association setting must contain an object");
+    }
+    const result: VehicleSupplierAssociations = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      const row = value as Partial<VehicleSupplierAssociationRecord> | null;
+      const supplier = normalizeVehicleSupplierName(row?.supplier);
+      const version = typeof row?.version === "string" ? row.version.trim() : "";
+      if (
+        !key ||
+        normalizeVehicleSupplierVehicle(key) !== key ||
+        !supplier ||
+        !version
+      ) {
+        throw new Error(`Vehicle supplier association setting contains an invalid entry for "${key}"`);
+      }
+      result[key] = { supplier, version };
+    }
+    return result;
+  }
+
+  private async readVehicleSupplierAssociations(): Promise<VehicleSupplierAssociations> {
+    const [setting] = await db.select({ value: appSettings.value })
+      .from(appSettings)
+      .where(eq(appSettings.key, VEHICLE_SUPPLIER_ASSOCIATIONS_SETTING_KEY))
+      .limit(1);
+    return this.parseVehicleSupplierAssociations(setting?.value);
+  }
+
+  /**
+   * All association mutations use a global settings-row lock as well as a
+   * normalized-vehicle advisory lock.  The latter is deliberately acquired
+   * before the history read and trip write, so concurrent first saves for the
+   * same vehicle have a deterministic first-writer-wins result.
+   */
+  private async lockVehicleSupplierAssociationKey(tx: any, vehicleKey: string): Promise<void> {
+    // Namespace 1430 serializes the single JSON settings row; namespace 1431
+    // serializes the normalized vehicle key itself before history is read.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(1430, 1)`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(1431, hashtext(${vehicleKey}))`);
+  }
+
+  private async readVehicleSupplierAssociationsTx(tx: any): Promise<{
+    associations: VehicleSupplierAssociations;
+    settingExists: boolean;
+  }> {
+    const rows = await tx.select({ value: appSettings.value })
+      .from(appSettings)
+      .where(eq(appSettings.key, VEHICLE_SUPPLIER_ASSOCIATIONS_SETTING_KEY))
+      .limit(1)
+      .for("update");
+    return {
+      associations: this.parseVehicleSupplierAssociations(rows[0]?.value),
+      settingExists: rows.length > 0,
+    };
+  }
+
+  private async writeVehicleSupplierAssociationsTx(
+    tx: any,
+    associations: VehicleSupplierAssociations,
+    settingExists: boolean,
+  ): Promise<void> {
+    const value = JSON.stringify(associations);
+    if (settingExists) {
+      await tx.update(appSettings)
+        .set({ value, updatedAt: new Date() })
+        .where(eq(appSettings.key, VEHICLE_SUPPLIER_ASSOCIATIONS_SETTING_KEY));
+    } else {
+      await tx.insert(appSettings).values({
+        key: VEHICLE_SUPPLIER_ASSOCIATIONS_SETTING_KEY,
+        value,
+      });
+    }
+  }
+
+  private async getActiveVehicleSupplierHistoryTx(tx: any, vehicleKey: string): Promise<{
+    vehicleNumber: string | null;
+    supplier: string | null;
+  }[]> {
+    // This is intentionally unbounded.  Association truth is based on the
+    // complete active history, never on the recent-suggestions scan limit.
+    return await tx.select({
+      vehicleNumber: siteMaterialTrips.vehicleNumber,
+      supplier: siteMaterialTrips.supplier,
+    })
+      .from(siteMaterialTrips)
+      .where(and(
+        eq(siteMaterialTrips.isCancelled, false),
+        eq(siteMaterialTrips.isDeleted, false),
+        sql`upper(regexp_replace(trim(${siteMaterialTrips.vehicleNumber}), '[[:space:]-]+', '', 'g')) = ${vehicleKey}`,
+      ));
+  }
+
+  private async getActiveVehicleSupplierHistory(vehicleKey: string): Promise<{
+    vehicleNumber: string | null;
+    supplier: string | null;
+  }[]> {
+    // Keep this separate from the bounded site suggestion query.  It is a
+    // complete aggregate for only the vehicles already suggested at the site.
+    return await db.select({
+      vehicleNumber: siteMaterialTrips.vehicleNumber,
+      supplier: siteMaterialTrips.supplier,
+    })
+      .from(siteMaterialTrips)
+      .where(and(
+        eq(siteMaterialTrips.isCancelled, false),
+        eq(siteMaterialTrips.isDeleted, false),
+        sql`upper(regexp_replace(trim(${siteMaterialTrips.vehicleNumber}), '[[:space:]-]+', '', 'g')) = ${vehicleKey}`,
+      ));
+  }
+
+  private historySupplierSet(rows: readonly { supplier: string | null }[]): Set<string> {
+    return new Set(rows.map((row) => normalizeVehicleSupplierName(row.supplier)).filter(Boolean));
+  }
+
+  async getSiteMaterialTripSuggestions(site: string): Promise<SiteMaterialTripSuggestions> {
     const siteKey = normalizeSiteTripHistorySite(site);
-    if (!siteKey) return { vehicles: [], suppliers: [] };
+    if (!siteKey) {
+      return { vehicles: [], suppliers: [], vehicleSuppliers: {}, canCorrectVehicleSupplier: false };
+    }
 
     // Keep this query bounded before any application-side de-duplication.
     // Suggestions are read-only history; cancelled/deleted rows must never
@@ -11538,13 +11723,152 @@ export class DatabaseStorage implements IStorage {
       )
       .limit(SITE_TRIP_HISTORY_SCAN_LIMIT);
 
-    return buildSiteTripSuggestions(rows);
+    const suggestions = buildSiteTripSuggestions(rows);
+    const vehicleKeys = Array.from(new Set(suggestions.vehicles.map(normalizeVehicleSupplierVehicle).filter(Boolean)));
+    const vehicleSuppliers: Record<string, VehicleSupplierAssociationView> = {};
+    if (vehicleKeys.length > 0) {
+      try {
+        const [associations, historyRows] = await Promise.all([
+          this.readVehicleSupplierAssociations(),
+          Promise.all(vehicleKeys.map(async (key) => ({
+            key,
+            rows: await this.getActiveVehicleSupplierHistory(key),
+          }))),
+        ]);
+        for (const { key, rows: history } of historyRows) {
+          vehicleSuppliers[key] = associationView(
+            associations[key],
+            this.historySupplierSet(history),
+          );
+        }
+      } catch (error) {
+        // Association enrichment is optional for the quick-entry display.
+        // Do not turn a transient settings/history read failure into a failed
+        // suggestions request; an empty map disables autofill until refresh.
+        console.error("Vehicle supplier association suggestions unavailable:", error);
+      }
+    }
+    return { ...suggestions, vehicleSuppliers, canCorrectVehicleSupplier: false };
+  }
+
+  async hasActiveSiteMaterialTripVehicle(site: string, vehicleNumber: string): Promise<boolean> {
+    const siteKey = normalizeSiteTripHistorySite(site);
+    const vehicleKey = normalizeVehicleSupplierVehicle(vehicleNumber);
+    if (!siteKey || !vehicleKey) return false;
+    const rows = await db.select({ id: siteMaterialTrips.id })
+      .from(siteMaterialTrips)
+      .where(and(
+        eq(siteMaterialTrips.isCancelled, false),
+        eq(siteMaterialTrips.isDeleted, false),
+        sql`upper(regexp_replace(trim(${siteMaterialTrips.site}), '[[:space:]]+', ' ', 'g')) = ${siteKey}`,
+        sql`upper(regexp_replace(trim(${siteMaterialTrips.vehicleNumber}), '[[:space:]-]+', '', 'g')) = ${vehicleKey}`,
+      ))
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  async correctVehicleSupplierAssociation(input: {
+    site: string;
+    vehicleNumber: string;
+    supplier: string;
+    expectedVersion: string | null;
+    expectedSupplier: string | null;
+    actor: {
+      userId: number;
+      userName: string;
+      userRole?: string | null;
+    };
+  }): Promise<{
+    association: VehicleSupplierAssociationView;
+    before: VehicleSupplierAssociationView;
+    after: VehicleSupplierAssociationView;
+  }> {
+    const siteKey = normalizeSiteTripHistorySite(input.site);
+    const vehicleKey = normalizeVehicleSupplierVehicle(input.vehicleNumber);
+    const supplier = normalizeVehicleSupplierName(input.supplier);
+    if (!siteKey || !vehicleKey || !supplier) throw new VehicleSupplierAssociationHistoryAccessError();
+
+    return await db.transaction(async (tx) => {
+      await this.lockVehicleSupplierAssociationKey(tx, vehicleKey);
+      const state = await this.readVehicleSupplierAssociationsTx(tx);
+      const history = await this.getActiveVehicleSupplierHistoryTx(tx, vehicleKey);
+      const permittedSiteRows = await tx.select({ id: siteMaterialTrips.id })
+        .from(siteMaterialTrips)
+        .where(and(
+          eq(siteMaterialTrips.isCancelled, false),
+          eq(siteMaterialTrips.isDeleted, false),
+          sql`upper(regexp_replace(trim(${siteMaterialTrips.site}), '[[:space:]]+', ' ', 'g')) = ${siteKey}`,
+          sql`upper(regexp_replace(trim(${siteMaterialTrips.vehicleNumber}), '[[:space:]-]+', '', 'g')) = ${vehicleKey}`,
+        ))
+        .limit(1);
+      if (permittedSiteRows.length === 0) throw new VehicleSupplierAssociationHistoryAccessError();
+
+      const before = associationView(state.associations[vehicleKey], this.historySupplierSet(history));
+      const currentVersion = before.version;
+      if ((input.expectedVersion ?? null) !== currentVersion) {
+        throw new VehicleSupplierAssociationVersionConflictError(input.expectedVersion ?? null, currentVersion);
+      }
+      if (normalizeVehicleSupplierName(input.expectedSupplier) !== normalizeVehicleSupplierName(before.supplier)) {
+        throw new VehicleSupplierAssociationVersionConflictError(input.expectedVersion ?? null, currentVersion);
+      }
+      const nextVersion = randomUUID();
+      state.associations[vehicleKey] = { supplier, version: nextVersion };
+      await this.writeVehicleSupplierAssociationsTx(tx, state.associations, state.settingExists);
+      const after = associationView(state.associations[vehicleKey], this.historySupplierSet(history));
+      await tx.insert(auditLogs).values({
+        module: "site_material_vehicle_supplier",
+        transactionId: 0,
+        action: "edit",
+        userId: input.actor.userId,
+        userName: input.actor.userName,
+        userRole: input.actor.userRole ?? null,
+        oldValues: { site: siteKey, vehicleNumber: vehicleKey, association: before },
+        newValues: { site: siteKey, vehicleNumber: vehicleKey, association: after },
+        reason: "Explicit vehicle supplier association correction",
+      });
+      return { association: after, before, after };
+    });
   }
 
   async createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip> {
-    const [trip] = await db.insert(siteMaterialTrips).values(data).returning();
+    const [trip] = await db.transaction(async (tx) => {
+        const vehicleKey = normalizeVehicleSupplierVehicle(data.vehicleNumber);
+        const inputSupplier = normalizeVehicleSupplierName(data.supplier);
+        let state: { associations: VehicleSupplierAssociations; settingExists: boolean } | null = null;
+        let history: { vehicleNumber: string | null; supplier: string | null }[] = [];
+
+        if (vehicleKey) {
+          await this.lockVehicleSupplierAssociationKey(tx, vehicleKey);
+          state = await this.readVehicleSupplierAssociationsTx(tx);
+          history = await this.getActiveVehicleSupplierHistoryTx(tx, vehicleKey);
+          const suppliers = this.historySupplierSet(history);
+          // A pre-existing unambiguous history value is stable.  Material-trip
+          // edits/creates may record a factual mismatch, but never replace it.
+          if (!state.associations[vehicleKey] && inputSupplier && suppliers.size === 1) {
+            const stableSupplier = Array.from(suppliers)[0];
+            if (stableSupplier !== inputSupplier) {
+              state.associations[vehicleKey] = { supplier: stableSupplier, version: randomUUID() };
+              await this.writeVehicleSupplierAssociationsTx(tx, state.associations, state.settingExists);
+              state.settingExists = true;
+            }
+          }
+        }
+
+        const [inserted] = await tx.insert(siteMaterialTrips).values(data).returning();
+        // The association for a new pair is committed only in the same
+        // successful transaction as the trip.  Conflicting history remains
+        // conflict and is never silently resolved by the latest row.
+        if (vehicleKey && inputSupplier && state && !state.associations[vehicleKey]) {
+          const suppliers = this.historySupplierSet(history);
+          if (suppliers.size === 0 || (suppliers.size === 1 && suppliers.has(inputSupplier))) {
+            state.associations[vehicleKey] = { supplier: inputSupplier, version: randomUUID() };
+            await this.writeVehicleSupplierAssociationsTx(tx, state.associations, state.settingExists);
+          }
+        }
+        return [inserted] as const;
+    });
     // If this trip is linked to a PI item, recompute receipt completion
-    if (trip.indentItemId) {
+    if (trip?.indentItemId) {
       await this.checkSiteDeliveryCompletion(trip.indentItemId).catch(e =>
         console.error("checkSiteDeliveryCompletion error:", e)
       );
@@ -11605,11 +11929,54 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip> {
-    const [trip] = await db.update(siteMaterialTrips)
-      .set(data)
-      .where(eq(siteMaterialTrips.id, id))
-      .returning();
-    return trip;
+    const [trip] = await db.transaction(async (tx) => {
+        const [existing] = await tx.select().from(siteMaterialTrips)
+          .where(eq(siteMaterialTrips.id, id))
+          .limit(1)
+          .for("update");
+        if (!existing) return [undefined] as const;
+
+        const oldKey = normalizeVehicleSupplierVehicle(existing.vehicleNumber);
+        const nextVehicle = data.vehicleNumber !== undefined ? data.vehicleNumber : existing.vehicleNumber;
+        const nextSupplier = data.supplier !== undefined ? data.supplier : existing.supplier;
+        const nextKey = normalizeVehicleSupplierVehicle(nextVehicle);
+        const keys = Array.from(new Set([oldKey, nextKey].filter(Boolean))).sort();
+        for (const key of keys) await this.lockVehicleSupplierAssociationKey(tx, key);
+        const state = await this.readVehicleSupplierAssociationsTx(tx);
+        const historyByKey = new Map<string, { vehicleNumber: string | null; supplier: string | null }[]>();
+        for (const key of keys) {
+          historyByKey.set(key, await this.getActiveVehicleSupplierHistoryTx(tx, key));
+          const suppliers = this.historySupplierSet(historyByKey.get(key)!);
+          // Preserve every pre-edit unambiguous inference before changing the
+          // factual trip row.  The enclosing transaction rolls this back if
+          // the historical edit itself fails.
+          if (!state.associations[key] && suppliers.size === 1) {
+            state.associations[key] = { supplier: Array.from(suppliers)[0], version: randomUUID() };
+            await this.writeVehicleSupplierAssociationsTx(tx, state.associations, state.settingExists);
+            state.settingExists = true;
+          }
+        }
+
+        const [updated] = await tx.update(siteMaterialTrips)
+          .set(data)
+          .where(eq(siteMaterialTrips.id, id))
+          .returning();
+        if (!updated) return [undefined] as const;
+
+        // For a vehicle with no prior history, save a new pair only after the
+        // factual edit has succeeded.  Existing stable associations are never
+        // overwritten by ordinary edits.
+        const inputSupplier = normalizeVehicleSupplierName(nextSupplier);
+        if (nextKey && inputSupplier && !state.associations[nextKey]) {
+          const suppliers = this.historySupplierSet(historyByKey.get(nextKey) ?? []);
+          if (suppliers.size === 0 || (suppliers.size === 1 && suppliers.has(inputSupplier))) {
+            state.associations[nextKey] = { supplier: inputSupplier, version: randomUUID() };
+            await this.writeVehicleSupplierAssociationsTx(tx, state.associations, state.settingExists);
+          }
+        }
+        return [updated] as const;
+    });
+    return trip!;
   }
 
   async deleteSiteMaterialTrip(id: number): Promise<void> {

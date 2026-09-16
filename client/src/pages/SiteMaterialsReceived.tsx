@@ -30,8 +30,11 @@ import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { useAuth } from "@/lib/auth-context";
 import {
   invalidateSiteMaterialSuggestions,
+  normalizeVehicleSupplierKey,
+  vehicleSupplierAssociationFor,
   useSiteMaterialSuggestions,
 } from "@/hooks/use-site-material-suggestions";
+import { VehicleSupplierAssociationNotice } from "@/components/VehicleSupplierAssociationNotice";
 import type { Site } from "@shared/schema";
 import { isEditableMaterialReceiptSource } from "@shared/materialReceiptSummary";
 
@@ -114,6 +117,8 @@ export default function SiteMaterialsReceived() {
     suppliers: supplierSuggestions,
     vehicles: vehicleSuggestions,
     error: suggestionError,
+    vehicleSuppliers,
+    canCorrectVehicleSupplier,
   } = useSiteMaterialSuggestions(editForm?.site || selectedTrip?.site || filters.site || "");
 
   const hasActiveFilters =
@@ -555,10 +560,41 @@ export default function SiteMaterialsReceived() {
                       <FreeTextSuggestionInput
                         value={editForm.vehicleNumber}
                         onChange={(value) => setEditForm(f => f && { ...f, vehicleNumber: value.toUpperCase() })}
+                        onSuggestionSelected={(vehicleNumber) =>
+                          setEditForm((current) => {
+                            if (!current) return current;
+                            const association = vehicleSupplierAssociationFor(vehicleSuppliers, vehicleNumber);
+                            return {
+                              ...current,
+                              vehicleNumber: vehicleNumber.toUpperCase(),
+                              ...(association?.status === "linked" && association.supplier
+                                ? { supplier: association.supplier }
+                                : {}),
+                            };
+                          })
+                        }
                         suggestions={vehicleSuggestions}
                         match="vehicle"
                         suggestionsError={suggestionError}
                         data-testid="input-edit-vehicle"
+                      />
+                      <VehicleSupplierAssociationNotice
+                        site={editForm.site}
+                        vehicleNumber={editForm.vehicleNumber}
+                        supplier={editForm.supplier}
+                        association={vehicleSupplierAssociationFor(vehicleSuppliers, editForm.vehicleNumber)}
+                        canCorrectVehicleSupplier={canCorrectVehicleSupplier}
+                        onSupplierApplied={(supplier, context) =>
+                          setEditForm((current) =>
+                            current &&
+                            current.site === context.site &&
+                            normalizeVehicleSupplierKey(current.vehicleNumber) ===
+                              normalizeVehicleSupplierKey(context.vehicleNumber)
+                              ? { ...current, supplier }
+                              : current,
+                          )
+                        }
+                        testIdPrefix="received-edit"
                       />
                     </div>
                     <div className="space-y-1">

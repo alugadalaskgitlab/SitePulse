@@ -25,8 +25,11 @@ import { useUpload } from "@/hooks/use-upload";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   invalidateSiteMaterialSuggestions,
+  normalizeVehicleSupplierKey,
+  vehicleSupplierAssociationFor,
   useSiteMaterialSuggestions,
 } from "@/hooks/use-site-material-suggestions";
+import { VehicleSupplierAssociationNotice } from "@/components/VehicleSupplierAssociationNotice";
 import type { SiteMaterialTrip } from "@shared/schema";
 import {
   aggregateReceived,
@@ -787,6 +790,8 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
     suppliers: supplierSuggestions,
     vehicles: vehicleSuggestions,
     error: suggestionError,
+    vehicleSuppliers,
+    canCorrectVehicleSupplier,
   } = useSiteMaterialSuggestions(props.siteName);
   const [form, setForm] = useState({
     time: format(new Date(), "HH:mm"),
@@ -928,19 +933,58 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
               <FreeTextSuggestionInput
                 ref={vehicleRef}
                 value={form.vehicleNumber}
-                onChange={(value) => setForm({ ...form, vehicleNumber: value.toUpperCase() })}
+                onChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    vehicleNumber: value.toUpperCase(),
+                  }))
+                }
+                onSuggestionSelected={(vehicleNumber) =>
+                  setForm((current) => {
+                    const association = vehicleSupplierAssociationFor(vehicleSuppliers, vehicleNumber);
+                    return {
+                      ...current,
+                      vehicleNumber: vehicleNumber.toUpperCase(),
+                      ...(association?.status === "linked" && association.supplier
+                        ? { supplier: association.supplier }
+                        : {}),
+                    };
+                  })
+                }
                 suggestions={vehicleSuggestions}
                 match="vehicle"
                 suggestionsError={suggestionError}
                 className="uppercase"
                 data-testid={`${testIdPrefix}-rr-vehicle`}
               />
+              <VehicleSupplierAssociationNotice
+                site={props.siteName}
+                vehicleNumber={form.vehicleNumber}
+                supplier={form.supplier}
+                association={vehicleSupplierAssociationFor(vehicleSuppliers, form.vehicleNumber)}
+                canCorrectVehicleSupplier={canCorrectVehicleSupplier}
+                onSupplierApplied={(supplier, context) =>
+                  setForm((current) =>
+                    props.siteName === context.site &&
+                    normalizeVehicleSupplierKey(current.vehicleNumber) ===
+                      normalizeVehicleSupplierKey(context.vehicleNumber)
+                      ? { ...current, supplier }
+                      : current,
+                  )
+                }
+                testIdPrefix={`${testIdPrefix}-rr`}
+              />
             </div>
             <div>
               <Label className="text-xs">Supplier / vendor</Label>
               <FreeTextSuggestionInput
                 value={form.supplier}
-                onChange={(value) => setForm({ ...form, supplier: value.toUpperCase() })}
+                onChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    supplier: value.toUpperCase(),
+                  }))
+                }
                 suggestions={supplierSuggestions}
                 match="supplier"
                 suggestionsError={suggestionError}
