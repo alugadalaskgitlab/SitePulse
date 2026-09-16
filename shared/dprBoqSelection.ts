@@ -72,6 +72,33 @@ export function resolveDprBoqProjectId(
 }
 
 /**
+ * A null header on an existing DPR is never enough to guess a project. The
+ * only recoverable transition is an explicitly confirmed null → positive
+ * project assignment after callers have established both same-site ownership
+ * and the absence of every BOQ reference.
+ */
+export function isConfirmedDprNullProjectRecovery({
+  savedProjectId,
+  requestedProjectId,
+  confirmed,
+  sameSite,
+  hasBoqReferences,
+}: {
+  savedProjectId: number | null;
+  requestedProjectId: number | null;
+  confirmed: boolean;
+  sameSite: boolean;
+  hasBoqReferences: boolean;
+}): boolean {
+  return savedProjectId === null
+    && Number.isInteger(requestedProjectId)
+    && Number(requestedProjectId) > 0
+    && confirmed
+    && sameSite
+    && !hasBoqReferences;
+}
+
+/**
  * Return true when any DPR-owned row contains a BOQ item reference.
  *
  * Guided equipment keeps some links in `passthrough`, while equipment

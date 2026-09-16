@@ -425,6 +425,7 @@ describe("06X-HF6 version-route closure", () => {
       "admin",
       "2026-08-24 19:30:00",
       expect.objectContaining({ userId: 42 }),
+      null,
     );
     expect(updateEquipmentUsageSpy).not.toHaveBeenCalled();
     expect(createEquipmentUsageSpy).not.toHaveBeenCalled();

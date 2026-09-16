@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
+import { normalizeDprSiteName } from "../shared/dprBoqSelection";
 import {
   auditLogs,
   type AuditLog,
@@ -642,8 +643,8 @@ export interface IStorage {
     audit?: DprEquipmentClosureAudit,
     options?: { reuseExistingDraft?: boolean; scopeVersionToken?: string | null },
   ): Promise<Dpr>;
-  updateDraftDpr(id: number, dpr: CreateDprRequest, actorUserId?: number | null, scopeVersionToken?: string | null): Promise<Dpr | undefined>;
-  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit, scopeVersionToken?: string | null): Promise<Dpr | undefined>;
+  updateDraftDpr(id: number, dpr: CreateDprRequest, actorUserId?: number | null, scopeVersionToken?: string | null, allowConfirmedNullProjectRecovery?: boolean): Promise<Dpr | undefined>;
+  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit, scopeVersionToken?: string | null, allowConfirmedNullProjectRecovery?: boolean): Promise<Dpr | undefined>;
   getProjectScopeVersionToken(boqProjectId: number): Promise<string>;
   assertProjectScopeVersionToken(boqProjectId: number, expectedToken: string): Promise<void>;
   getProjectScopeSegments(boqProjectId: number): Promise<ProjectScopeSegment[]>;
@@ -666,7 +667,7 @@ export interface IStorage {
   }>;
   updateDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
   cloneDpr(id: number, editedBy: string, clientTimestamp?: string, actorUserId?: number | null): Promise<Dpr | undefined>;
-  createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string, audit?: DprEquipmentClosureAudit): Promise<Dpr>;
+  createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string, audit?: DprEquipmentClosureAudit, scopeVersionToken?: string | null): Promise<Dpr>;
   deleteDpr(id: number): Promise<boolean>;
   /**
    * 06X: Load a single progress entry together with its parent DPR header
@@ -3223,7 +3224,7 @@ export class DatabaseStorage implements IStorage {
       // 7. Insert Structure Items (for workType = "structure")
       if (dprData.structureItems?.length) {
         await tx.insert(dprStructureItems).values(
-          dprData.structureItems.map(s => ({ ...s, dprId }))
+          dprData.structureItems.map(({ persistedId: _persistedId, ...s }: any) => ({ ...s, dprId }))
         );
       }
 
@@ -3240,6 +3241,7 @@ export class DatabaseStorage implements IStorage {
     dprData: CreateDprRequest,
     actorUserId?: number | null,
     scopeVersionToken?: string | null,
+    allowConfirmedNullProjectRecovery = false,
   ): Promise<Dpr | undefined> {
     // Canonical draft identity rule (intentionally unchanged): the id returned
     // by the initial POST is the draft's sole identity. Every autosave replaces
@@ -3250,7 +3252,7 @@ export class DatabaseStorage implements IStorage {
     return await this._replaceDprChildRecords(id, dprData, {
       lastEditedByUserId: actorUserId ?? null,
       lastEditedAt: new Date(),
-    }, undefined, scopeVersionToken);
+    }, undefined, scopeVersionToken, allowConfirmedNullProjectRecovery);
   }
 
   private async getProjectScopeVersionTokenTx(tx: any, boqProjectId: number): Promise<string> {
@@ -3316,6 +3318,32 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  /**
+   * All DPR mutation paths acquire project mutexes in ascending-id order before
+   * taking a DPR row lock. Keeping the scope-bearing target in this helper
+   * prevents clone/version/recovery from inverting each other's lock order.
+   */
+  private async lockProjectsWithScopeTx(
+    tx: any,
+    projectIds: Array<number | null | undefined>,
+    scopeProjectId?: number | null,
+    scopeVersionToken?: string | null,
+  ): Promise<void> {
+    const ids = Array.from(new Set(
+      projectIds
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    )).sort((a, b) => a - b);
+    for (const projectId of ids) {
+      const project = await this.lockProjectAndCheckScopeTx(
+        tx,
+        projectId,
+        projectId === scopeProjectId ? scopeVersionToken : undefined,
+      );
+      if (!project) throw new Error("PROJECT_NOT_FOUND");
+    }
+  }
+
   async getProjectScopeVersionToken(boqProjectId: number): Promise<string> {
     return this.getProjectScopeVersionTokenTx(db, boqProjectId);
   }
@@ -3333,6 +3361,7 @@ export class DatabaseStorage implements IStorage {
     clientTimestamp?: string,
     audit?: DprEquipmentClosureAudit,
     scopeVersionToken?: string | null,
+    allowConfirmedNullProjectRecovery = false,
   ): Promise<Dpr | undefined> {
     const existing = await this.getDpr(id);
     if (!existing || (existing as any).dprStatus !== "draft") return undefined;
@@ -3348,6 +3377,7 @@ export class DatabaseStorage implements IStorage {
       },
       audit,
       scopeVersionToken,
+      allowConfirmedNullProjectRecovery,
     );
   }
 
@@ -3357,26 +3387,167 @@ export class DatabaseStorage implements IStorage {
     projectId: number | null,
     dprData: CreateDprRequest,
     equipmentInputs?: any[],
+    options?: { versionSourceDprId?: number },
   ): Promise<void> {
-    const itemIds = Array.from(new Set([
-      ...(dprData.progress ?? []).map((row: any) => Number(row.boqItemId)),
-      ...(dprData.structureItems ?? []).map((row: any) => Number(row.boqItemId)),
-      ...(dprData.equipment ?? []).map((row: any) => Number(row.boqItemId)),
-      ...(dprData.labour ?? []).map((row: any) => Number(row.boqItemId)),
-      ...(dprData.materials ?? []).map((row: any) => Number(row.boqItemId)),
-      ...(dprData.sitePurchases ?? []).map((row: any) => Number(row.boqItemId)),
-      ...(equipmentInputs ?? []).map((row: any) => Number(row.boqItemId)),
-    ].filter(Number.isInteger).filter((id) => id > 0)));
+    type Link = { itemId: number; sourceKey?: string };
+    const sourceId = (row: any) => {
+      const id = Number(row?.persistedId ?? row?.id);
+      return Number.isInteger(id) && id > 0 ? id : null;
+    };
+    const links: Link[] = [];
+    const addRow = (section: string, row: any, parentId?: number | null) => {
+      const itemId = Number(row?.boqItemId);
+      if (!Number.isInteger(itemId) || itemId <= 0) return;
+      const id = sourceId(row);
+      links.push({
+        itemId,
+        sourceKey: id != null
+          ? `${section}:${parentId != null ? `${parentId}:` : ""}${id}`
+          : undefined,
+      });
+    };
+    const addEquipment = (rows: any[] | undefined) => {
+      for (const equipment of rows ?? []) {
+        const equipmentId = sourceId(equipment);
+        addRow("equipment", equipment);
+        for (const allocation of Array.isArray(equipment?.activityAllocations) ? equipment.activityAllocations : []) {
+          addRow("equipment-allocation", allocation, equipmentId);
+        }
+        for (const segment of Array.isArray(equipment?.activitySegments) ? equipment.activitySegments : []) {
+          // Older read models carried the BOQ id directly on a segment. Its
+          // segment id is the only stable identity available for that shape.
+          addRow("equipment-segment", segment, equipmentId);
+          for (const item of Array.isArray(segment?.boqItems) ? segment.boqItems : []) {
+            addRow("equipment-segment-item", item, equipmentId);
+          }
+        }
+      }
+    };
+    for (const row of dprData.progress ?? []) addRow("progress", row);
+    for (const row of dprData.structureItems ?? []) addRow("structure", row);
+    addEquipment(dprData.equipment as any[] | undefined);
+    for (const row of dprData.labour ?? []) addRow("labour", row);
+    for (const row of dprData.materials ?? []) addRow("material", row);
+    for (const row of dprData.sitePurchases ?? []) addRow("site-purchase", row);
+    // `equipmentInputs` may contain server-retained allocations/segments when
+    // an existing equipment row omits them. Include those links as well.
+    addEquipment(equipmentInputs);
+    const itemIds = Array.from(new Set(links.map(link => link.itemId)));
     if (!itemIds.length) return;
     if (projectId == null) throw new DprProjectMismatchError(dprId, null, null, itemIds);
     const rows = await tx.select({ id: boqItems.id, projectId: boqItems.boqProjectId })
       .from(boqItems)
       .where(inArray(boqItems.id, itemIds));
     const byId = new Map(rows.map((row: any) => [Number(row.id), Number(row.projectId)]));
-    const mismatched = itemIds.filter((itemId) => byId.get(itemId) !== projectId);
+    let historicalMissing = new Map<string, Set<number>>();
+    const missingLinks = links.filter(link => !byId.has(link.itemId));
+    if (missingLinks.length && options?.versionSourceDprId != null) {
+      historicalMissing = await this.getVersionHistoricalBoqLinksTx(tx, options.versionSourceDprId);
+    }
+    const missing = missingLinks
+      .filter(link => !link.sourceKey || !historicalMissing.get(link.sourceKey)?.has(link.itemId))
+      .map(link => link.itemId);
+    // A catalogue row which still exists must always belong to this DPR's
+    // pinned project. Historical tolerance applies only to a deleted row
+    // whose exact source child identity retained the same raw BOQ integer.
+    const foreign = itemIds.filter(itemId => byId.has(itemId) && byId.get(itemId) !== projectId);
+    const mismatched = Array.from(new Set([...missing, ...foreign]));
     if (mismatched.length) {
       throw new DprProjectMismatchError(dprId, projectId, projectId, mismatched);
     }
+  }
+
+  /**
+   * DPR BOQ ids deliberately have no FK so imported BOQ replacement cannot
+   * erase historical execution facts. Versions may retain such a deleted id,
+   * but only when it is attached to the same source child identity. A raw
+   * union keeps every persisted representation (including legacy equipment
+   * allocations and normalized segment links) in one authoritative read.
+   */
+  private async getVersionHistoricalBoqLinksTx(
+    tx: any,
+    dprId: number,
+  ): Promise<Map<string, Set<number>>> {
+    const result = await tx.execute(sql`
+      SELECT 'progress' AS section, id AS child_id, NULL::integer AS parent_id, boq_item_id
+      FROM progress_entries WHERE dpr_id = ${dprId} AND boq_item_id > 0
+      UNION ALL
+      SELECT 'structure', id, NULL::integer, boq_item_id
+      FROM dpr_structure_items WHERE dpr_id = ${dprId} AND boq_item_id > 0
+      UNION ALL
+      SELECT 'labour', id, NULL::integer, boq_item_id
+      FROM labour_logs WHERE dpr_id = ${dprId} AND boq_item_id > 0
+      UNION ALL
+      SELECT 'material', id, NULL::integer, boq_item_id
+      FROM material_logs WHERE dpr_id = ${dprId} AND boq_item_id > 0
+      UNION ALL
+      SELECT 'equipment', id, NULL::integer, boq_item_id
+      FROM equipment_logs WHERE dpr_id = ${dprId} AND boq_item_id > 0
+      UNION ALL
+      SELECT 'equipment-allocation', allocation.id, equipment.id, allocation.boq_item_id
+      FROM equipment_activity_allocations allocation
+      JOIN equipment_logs equipment ON equipment.id = allocation.equipment_log_id
+      WHERE equipment.dpr_id = ${dprId} AND allocation.boq_item_id > 0
+      UNION ALL
+      SELECT 'equipment-segment-item', segment_item.id, equipment.id, segment_item.boq_item_id
+      FROM equipment_activity_segment_boq_items segment_item
+      JOIN equipment_activity_segments segment ON segment.id = segment_item.segment_id
+      JOIN equipment_logs equipment ON equipment.id = segment.equipment_log_id
+      WHERE equipment.dpr_id = ${dprId} AND segment_item.boq_item_id > 0
+    `);
+    const links = new Map<string, Set<number>>();
+    for (const row of execSelectRows<{
+      section: string;
+      child_id: number | string;
+      parent_id: number | string | null;
+      boq_item_id: number | string;
+    }>(result, "getVersionHistoricalBoqLinksTx")) {
+      const parentId = row.parent_id != null ? Number(row.parent_id) : null;
+      const key = `${row.section}:${parentId != null ? `${parentId}:` : ""}${Number(row.child_id)}`;
+      const itemIds = links.get(key) ?? new Set<number>();
+      itemIds.add(Number(row.boq_item_id));
+      links.set(key, itemIds);
+    }
+    return links;
+  }
+
+  /**
+   * Recovery changes the header of an already saved null-project DPR. Check
+   * the persisted children inside that same transaction rather than trusting
+   * a request-time read: Guided may retain an unmanaged section and equipment
+   * links have historical nested representations.
+   */
+  private async hasPersistedDprBoqReferencesTx(tx: any, dprId: number): Promise<boolean> {
+    const result = await tx.execute(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM progress_entries WHERE dpr_id = ${dprId} AND boq_item_id > 0
+        UNION ALL
+        SELECT 1 FROM dpr_structure_items WHERE dpr_id = ${dprId} AND boq_item_id > 0
+        UNION ALL
+        SELECT 1 FROM equipment_logs WHERE dpr_id = ${dprId} AND boq_item_id > 0
+        UNION ALL
+        SELECT 1 FROM labour_logs WHERE dpr_id = ${dprId} AND boq_item_id > 0
+        UNION ALL
+        SELECT 1 FROM material_logs WHERE dpr_id = ${dprId} AND boq_item_id > 0
+        UNION ALL
+        SELECT 1 FROM site_purchases WHERE dpr_id = ${dprId} AND boq_item_id > 0
+        UNION ALL
+        SELECT 1
+        FROM equipment_activity_allocations allocation
+        JOIN equipment_logs equipment ON equipment.id = allocation.equipment_log_id
+        WHERE equipment.dpr_id = ${dprId} AND allocation.boq_item_id > 0
+        UNION ALL
+        SELECT 1
+        FROM equipment_activity_segment_boq_items segment_item
+        JOIN equipment_activity_segments segment ON segment.id = segment_item.segment_id
+        JOIN equipment_logs equipment ON equipment.id = segment.equipment_log_id
+        WHERE equipment.dpr_id = ${dprId} AND segment_item.boq_item_id > 0
+      ) AS has_references
+    `);
+    const row = (result.rows as Array<{ has_references?: boolean | string | number }>)[0];
+    return row?.has_references === true
+      || row?.has_references === "true"
+      || Number(row?.has_references) === 1;
   }
 
   private async _replaceDprChildRecords(
@@ -3385,6 +3556,7 @@ export class DatabaseStorage implements IStorage {
     headerOverrides: Record<string, any>,
     audit?: DprEquipmentClosureAudit,
     scopeVersionToken?: string | null,
+    allowConfirmedNullProjectRecovery = false,
   ): Promise<Dpr | undefined> {
     return await db.transaction(async (tx) => {
       const isSubmitting = headerOverrides.dprStatus === "submitted";
@@ -3392,30 +3564,81 @@ export class DatabaseStorage implements IStorage {
       // project row as a mutex. The route validates the draft before entering
       // this transaction; re-check the scope token after acquiring the lock so
       // a correction committed in that validation window cannot be bypassed.
+      // Read the current pin optimistically, then acquire every potentially
+      // involved project mutex before the DPR row lock. The locked reread
+      // below is authoritative; a changed pin is rejected rather than trying
+      // to continue under a different lock set.
+      const [optimisticHeader] = await tx.select({
+        id: dprs.id,
+        boqProjectId: dprs.boqProjectId,
+      }).from(dprs).where(eq(dprs.id, id)).limit(1);
+      if (!optimisticHeader) return undefined;
+      const optimisticSavedProjectId = optimisticHeader.boqProjectId != null
+        ? Number(optimisticHeader.boqProjectId)
+        : null;
+      const payloadProjectId = (dprData as any).boqProjectId != null ? Number((dprData as any).boqProjectId) : null;
+      try {
+        await this.lockProjectsWithScopeTx(
+          tx,
+          [optimisticSavedProjectId, payloadProjectId],
+          payloadProjectId,
+          scopeVersionToken,
+        );
+      } catch (err: any) {
+        // A stale scope token during final submit is a submit race, not a
+        // planning failure. Preserve the submit-specific route contract.
+        if (isSubmitting && err?.code === "SCOPE_CHANGED_DURING_PLANNING") {
+          throw new ScopeChangedDuringDprSubmitError();
+        }
+        throw err;
+      }
       const [savedHeader] = await tx.select({
         id: dprs.id,
         dprStatus: dprs.dprStatus,
         boqProjectId: dprs.boqProjectId,
-      }).from(dprs).where(eq(dprs.id, id)).limit(1);
+        site: dprs.site,
+      }).from(dprs).where(eq(dprs.id, id)).for("update").limit(1);
       const savedProjectId = savedHeader?.boqProjectId != null ? Number(savedHeader.boqProjectId) : null;
-      const payloadProjectId = (dprData as any).boqProjectId != null ? Number((dprData as any).boqProjectId) : null;
-      if (savedProjectId !== payloadProjectId) {
+      if (savedProjectId !== optimisticSavedProjectId) {
+        throw new DprProjectMismatchError(id, optimisticSavedProjectId, savedProjectId);
+      }
+      const confirmedNullProjectRecovery = allowConfirmedNullProjectRecovery
+        && savedProjectId == null
+        && payloadProjectId != null
+        && Number.isInteger(payloadProjectId)
+        && payloadProjectId > 0
+        && (dprData as any).boqProjectRecoveryConfirmed === true;
+      if (savedProjectId !== payloadProjectId && !confirmedNullProjectRecovery) {
         throw new DprProjectMismatchError(id, savedProjectId, payloadProjectId);
       }
-      if (savedProjectId != null) {
+      const effectiveProjectId = confirmedNullProjectRecovery
+        ? payloadProjectId
+        : savedProjectId;
+      if (effectiveProjectId != null) {
         let project: any;
-        try {
-          project = await this.lockProjectAndCheckScopeTx(tx, savedProjectId, scopeVersionToken);
-        } catch (err: any) {
-          // A stale scope token during final submit is a submit race, not a
-          // planning failure. Preserve the submit-specific contract so the
-          // route can return 409 and the client can revalidate cleanly.
-          if (isSubmitting && err?.code === "SCOPE_CHANGED_DURING_PLANNING") {
-            throw new ScopeChangedDuringDprSubmitError();
-          }
-          throw err;
-        }
+        // The project was locked before this DPR row. Read it under that
+        // mutex for its site identity without reacquiring locks out of order.
+        [project] = await tx.select().from(boqProjects)
+          .where(eq(boqProjects.id, effectiveProjectId)).limit(1);
         if (!project) throw new Error("PROJECT_NOT_FOUND");
+        if (confirmedNullProjectRecovery) {
+          const [projectSite] = project.siteId != null
+            ? await tx.select({ name: sites.name }).from(sites)
+              .where(eq(sites.id, Number(project.siteId))).limit(1)
+            : [];
+          const normalizedDprSite = (value: unknown) => normalizeDprSiteName(
+            typeof value === "string"
+              ? value.replace(/ – (Edited by|Copy by) .+$/, "")
+              : value,
+          );
+          if (
+            normalizedDprSite(savedHeader?.site) !== normalizedDprSite(dprData.site)
+            || normalizedDprSite(projectSite?.name) !== normalizedDprSite(dprData.site)
+            || await this.hasPersistedDprBoqReferencesTx(tx, id)
+          ) {
+            throw new DprProjectMismatchError(id, savedProjectId, payloadProjectId);
+          }
+        }
       }
       const [updated] = await tx.update(dprs)
         .set({
@@ -3430,7 +3653,11 @@ export class DatabaseStorage implements IStorage {
         // PostgreSQL rechecks this predicate after any concurrent row update.
         // A stale PATCH therefore cannot replace children after submit, and
         // only one concurrent submit can own the operational effects.
-        .where(and(eq(dprs.id, id), eq(dprs.dprStatus, "draft")))
+        .where(and(
+          eq(dprs.id, id),
+          eq(dprs.dprStatus, "draft"),
+          ...(confirmedNullProjectRecovery ? [isNull(dprs.boqProjectId)] : []),
+        ))
         .returning();
       if (!updated) return undefined;
 
@@ -3448,7 +3675,7 @@ export class DatabaseStorage implements IStorage {
       await this.assertDprProjectLinksTx(
         tx,
         id,
-        savedHeader?.boqProjectId != null ? Number(savedHeader.boqProjectId) : null,
+        effectiveProjectId,
         dprData,
         equipmentInputs,
       );
@@ -3682,7 +3909,10 @@ export class DatabaseStorage implements IStorage {
         ? Number(lockedSource.boqProjectId)
         : null;
       if (lockedProjectId !== sourceProjectId) {
-        await this.lockProjectsTx(tx, [lockedProjectId]);
+        // Do not acquire a newly discovered project after the DPR row: that
+        // would invert the global project(s) -> DPR lock order. A concurrent
+        // header change is retried by the caller under a fresh lock set.
+        throw new DprProjectMismatchError(id, sourceProjectId, lockedProjectId);
       }
 
       // Create a copy of the DPR with timestamp and role tag
@@ -3953,6 +4183,7 @@ export class DatabaseStorage implements IStorage {
     editedBy: string,
     clientTimestamp?: string,
     audit?: DprEquipmentClosureAudit,
+    scopeVersionToken?: string | null,
   ): Promise<Dpr> {
     // Use client-provided timestamp for accurate local time, fall back to server time
     const dateTime = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
@@ -3963,21 +4194,26 @@ export class DatabaseStorage implements IStorage {
     const newSiteName = `${baseSite.toUpperCase()} – Edited by ${roleName} – ${dateTime}`;
 
     return await db.transaction(async (tx) => {
-      // Read the source project first, then acquire every project mutex in a
-      // stable order before locking/validating the source row. This keeps
-      // version insertion in the same race domain as initial scope correction,
-      // including the (invalid) cross-project payload case.
-      const [sourceProjectRow] = await tx.select({
-        boqProjectId: dprs.boqProjectId,
-      }).from(dprs).where(eq(dprs.id, originalId)).limit(1);
-      if (!sourceProjectRow) throw new Error("DPR_NOT_FOUND");
-      const sourceProjectId = sourceProjectRow.boqProjectId != null
-        ? Number(sourceProjectRow.boqProjectId)
-        : null;
       const requestedProjectId = (dprData as any).boqProjectId != null
         ? Number((dprData as any).boqProjectId)
         : null;
-      await this.lockProjectsTx(tx, [sourceProjectId, requestedProjectId]);
+      // Optimistically read the source pin, then lock every relevant project
+      // before the DPR row. The subsequent FOR UPDATE read is authoritative:
+      // if the pin changed while locks were acquired, fail safely instead of
+      // attempting a second recovery under a different project lock set.
+      const [optimisticSource] = await tx.select({
+        boqProjectId: dprs.boqProjectId,
+      }).from(dprs).where(eq(dprs.id, originalId)).limit(1);
+      if (!optimisticSource) throw new Error("DPR_NOT_FOUND");
+      const optimisticSourceProjectId = optimisticSource.boqProjectId != null
+        ? Number(optimisticSource.boqProjectId)
+        : null;
+      await this.lockProjectsWithScopeTx(
+        tx,
+        [optimisticSourceProjectId, requestedProjectId],
+        requestedProjectId,
+        scopeVersionToken,
+      );
       const [originalAudit] = await tx.select({
         authorUserId: dprs.authorUserId,
         submittedByUserId: dprs.submittedByUserId,
@@ -3985,19 +4221,51 @@ export class DatabaseStorage implements IStorage {
         submittedAt: dprs.submittedAt,
         dprStatus: dprs.dprStatus,
         boqProjectId: dprs.boqProjectId,
+        site: dprs.site,
+        isSuperseded: dprs.isSuperseded,
       }).from(dprs).where(eq(dprs.id, originalId)).for("update").limit(1);
       if (!originalAudit) throw new Error("DPR_NOT_FOUND");
       if (originalAudit.dprStatus === "draft") {
         throw new DprDraftMutationError("version");
       }
+      if (originalAudit.isSuperseded) {
+        const error = new Error("This DPR has already been superseded by a newer version.");
+        (error as any).code = "DPR_ALREADY_SUPERSEDED";
+        throw error;
+      }
       const lockedSourceProjectId = originalAudit.boqProjectId != null
         ? Number(originalAudit.boqProjectId)
         : null;
-      if (lockedSourceProjectId !== sourceProjectId) {
-        await this.lockProjectsTx(tx, [lockedSourceProjectId]);
+      if (lockedSourceProjectId !== optimisticSourceProjectId) {
+        throw new DprProjectMismatchError(originalId, optimisticSourceProjectId, lockedSourceProjectId);
       }
-      if (lockedSourceProjectId !== requestedProjectId) {
+      const confirmedNullProjectRecovery = lockedSourceProjectId == null
+        && requestedProjectId != null
+        && Number.isInteger(requestedProjectId)
+        && requestedProjectId > 0
+        && (dprData as any).boqProjectRecoveryConfirmed === true;
+      if (lockedSourceProjectId !== requestedProjectId && !confirmedNullProjectRecovery) {
         throw new DprProjectMismatchError(originalId, lockedSourceProjectId, requestedProjectId);
+      }
+      if (confirmedNullProjectRecovery) {
+        const [project] = await tx.select({ siteId: boqProjects.siteId })
+          .from(boqProjects).where(eq(boqProjects.id, requestedProjectId)).limit(1);
+        const [projectSite] = project?.siteId != null
+          ? await tx.select({ name: sites.name }).from(sites)
+            .where(eq(sites.id, Number(project.siteId))).limit(1)
+          : [];
+        const normalizedDprSite = (value: unknown) => normalizeDprSiteName(
+          typeof value === "string"
+            ? value.replace(/ – (Edited by|Copy by) .+$/, "")
+            : value,
+        );
+        if (
+          normalizedDprSite(originalAudit.site) !== normalizedDprSite(dprData.site)
+          || normalizedDprSite(projectSite?.name) !== normalizedDprSite(dprData.site)
+          || await this.hasPersistedDprBoqReferencesTx(tx, originalId)
+        ) {
+          throw new DprProjectMismatchError(originalId, lockedSourceProjectId, requestedProjectId);
+        }
       }
 
       // Clean up original DPR's diesel ledger entries before creating new version
@@ -4029,6 +4297,17 @@ export class DatabaseStorage implements IStorage {
       const preservedEquipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, originalEquipmentRows, dprData.equipment as any[] | undefined);
       const equipmentInputs = meaningfulEquipmentRows(preservedEquipmentInputs);
       dprData = { ...dprData, equipment: equipmentInputs as any };
+      // Validate every newly supplied (or preservation-retained) link before
+      // any version child is inserted. Recovery may introduce target-project
+      // rows, but none may point to another project's BOQ item.
+      await this.assertDprProjectLinksTx(
+        tx,
+        originalId,
+        requestedProjectId,
+        dprData,
+        equipmentInputs,
+        { versionSourceDprId: originalId },
+      );
       const originalProgressForRemap = await tx.select()
         .from(progressEntries).where(eq(progressEntries.dprId, originalId));
       const progressSourceResolution = resolveDprProgressSources(
@@ -4106,7 +4385,7 @@ export class DatabaseStorage implements IStorage {
       // Insert edited labour logs
       if (dprData.labour?.length) {
         await tx.insert(labourLogs).values(
-          dprData.labour.map(l => ({ ...l, dprId }))
+          dprData.labour.map(({ persistedId: _persistedId, ...l }: any) => ({ ...l, dprId }))
         );
       }
 
@@ -4116,7 +4395,7 @@ export class DatabaseStorage implements IStorage {
       if (Array.isArray(dprData.materials)) {
         if (dprData.materials.length > 0) {
           await tx.insert(materialLogs).values(
-            dprData.materials.map(m => ({ 
+            dprData.materials.map(({ persistedId: _persistedId, ...m }: any) => ({
               ...m, 
               dprId,
               vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber,
@@ -4194,7 +4473,17 @@ export class DatabaseStorage implements IStorage {
       });
 
       // Mark original DPR as superseded so it no longer appears in listings
-      await tx.update(dprs).set({ isSuperseded: true }).where(eq(dprs.id, originalId));
+      const [superseded] = await tx.update(dprs).set({ isSuperseded: true })
+        .where(and(
+          eq(dprs.id, originalId),
+          or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
+        ))
+        .returning({ id: dprs.id });
+      if (!superseded) {
+        const error = new Error("This DPR has already been superseded by a newer version.");
+        (error as any).code = "DPR_ALREADY_SUPERSEDED";
+        throw error;
+      }
 
       // Carry forward site/progress photo attachments so they remain visible
       // against the new (current) version instead of being orphaned on the

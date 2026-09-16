@@ -47,10 +47,16 @@ function source(overrides: Record<string, unknown> = {}) {
 
 function setupTransaction(status: "draft" | "submitted", mode: "clone" | "version") {
   const events: string[] = [];
-  const lockedSource = { id: DPR_ID, dprStatus: status, boqProjectId: PROJECT_ID };
+  const lockedSource = {
+    id: DPR_ID,
+    dprStatus: status,
+    boqProjectId: PROJECT_ID,
+    site: "ALIPUR",
+    isSuperseded: false,
+  };
   const selectResults = mode === "clone"
     ? [[{ boqProjectId: PROJECT_ID }], [{ id: PROJECT_ID }], [lockedSource]]
-    : [[{ boqProjectId: PROJECT_ID }], [{ id: PROJECT_ID }], [lockedSource]];
+    : [[lockedSource], [{ id: PROJECT_ID }], [lockedSource]];
   let selectCalls = 0;
   const select = vi.fn(() => {
     const result = selectResults[selectCalls] ?? [];
@@ -91,6 +97,7 @@ function setupTransaction(status: "draft" | "submitted", mode: "clone" | "versio
     const q: any = {
       set() { return q; },
       where() { return q; },
+      returning: vi.fn(async () => [{ id: DPR_ID }]),
     };
     return q;
   });
@@ -165,6 +172,26 @@ describe("submitted clone/version project mutex", () => {
     expect(result).toMatchObject({ id: DPR_ID + 1 });
     expect(tx.events.indexOf("project-lock")).toBeGreaterThanOrEqual(0);
     expect(tx.events.indexOf("project-lock")).toBeLessThan(tx.events.indexOf("dpr-insert"));
+  });
+
+  it("keeps clone and version on the identical project-before-DPR lock order for a positive pin", async () => {
+    vi.spyOn(storage, "getDpr").mockResolvedValueOnce(source());
+    const cloneTx = setupTransaction("submitted", "clone");
+    await expect(storage.cloneDpr(DPR_ID, "manager")).resolves.toMatchObject({ id: DPR_ID + 1 });
+
+    const versionTx = setupTransaction("submitted", "version");
+    await expect(storage.createVersionDpr(
+      DPR_ID,
+      source({ id: undefined }),
+      "manager",
+    )).resolves.toMatchObject({ id: DPR_ID + 1 });
+
+    for (const events of [cloneTx.events, versionTx.events]) {
+      expect(events.indexOf("project-lock")).toBeGreaterThanOrEqual(0);
+      expect(events.indexOf("dpr-lock")).toBeGreaterThanOrEqual(0);
+      expect(events.indexOf("project-lock")).toBeLessThan(events.indexOf("dpr-lock"));
+      expect(events.indexOf("dpr-lock")).toBeLessThan(events.indexOf("dpr-insert"));
+    }
   });
 });
 

@@ -1009,6 +1009,10 @@ export type PlantVersion = typeof plantVersions.$inferSelect;
 
 // Composite Request Type for Creating a Full DPR
 export const createDprRequestSchema = insertDprSchema.extend({
+  // Transient, user-affirmed recovery signal. It is deliberately not a DPR
+  // column: routes consume it only when a saved null-project DPR is being
+  // explicitly attached to a same-site project with no BOQ references.
+  boqProjectRecoveryConfirmed: z.literal(true).optional(),
   progress: z.array(insertProgressSchema.extend({
     personnelIds: z.array(z.number()).optional(),
     // Existing DPR editors retain this persisted row identity even when a
@@ -1028,6 +1032,9 @@ export const createDprRequestSchema = insertDprSchema.extend({
     // storage uses it to relink its explicitly source-linked stoppages.
     persistedId: z.number().int().positive().optional(),
     activityAllocations: z.array(z.object({
+      // Source allocation identity is transient. It authorizes retaining a
+      // deleted historical BOQ id only for that same source allocation.
+      persistedId: z.number().int().positive().optional(),
       boqItemId: z.number().int().positive(),
       programmeBarId: z.number().int().positive().nullable().optional(),
       startTime: z.string(),
@@ -1036,9 +1043,11 @@ export const createDprRequestSchema = insertDprSchema.extend({
       hoursWorked: z.number().finite().positive().optional(),
     })).optional(),
     activitySegments: z.array(z.object({
+      persistedId: z.number().int().positive().optional(),
       startTime: z.string(),
       endTime: z.string(),
       boqItems: z.array(z.object({
+        persistedId: z.number().int().positive().optional(),
         boqItemId: z.number().int().positive(),
         programmeBarId: z.number().int().positive().nullable().optional(),
       })).min(1),
@@ -1065,10 +1074,16 @@ export const createDprRequestSchema = insertDprSchema.extend({
       }).optional(),
     })).optional(),
   })).optional(),
-  labour: z.array(insertLabourSchema).optional(),
-  materials: z.array(insertMaterialSchema).optional(),
+  labour: z.array(insertLabourSchema.extend({
+    persistedId: z.number().int().positive().optional(),
+  })).optional(),
+  materials: z.array(insertMaterialSchema.extend({
+    persistedId: z.number().int().positive().optional(),
+  })).optional(),
   sitePurchases: z.array(insertSitePurchaseSchema).optional(),
-  structureItems: z.array(insertDprStructureItemSchema).optional(),
+  structureItems: z.array(insertDprStructureItemSchema.extend({
+    persistedId: z.number().int().positive().optional(),
+  })).optional(),
   // Stable entry keys are used rather than serial progress IDs because draft
   // replacement and versioning recreate progress rows.
   cutFillConsumptions: z.array(z.object({

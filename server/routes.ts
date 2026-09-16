@@ -87,6 +87,7 @@ import { blocksExternalReceiptsForBoqItem, mergeMaterialTripLinkage, reusedExcav
 import { excavationMaterialOutcomeIssue } from "@shared/cutFillReconciliation";
 import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
 import { hasDprBoqReferences, hasPreservedDprBoqReferences } from "@shared/dprBoqReferences";
+import { isConfirmedDprNullProjectRecovery, normalizeDprSiteName } from "@shared/dprBoqSelection";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import {
   registerAuthRoutes,
@@ -2297,6 +2298,44 @@ export async function registerRoutes(
     return true;
   };
 
+  /**
+   * A legacy saved null may be deliberately recovered, never inferred. The
+   * caller's site permission has already been checked; this additionally
+   * proves the selected positive project belongs to the DPR's unchanged site.
+   * The detail object is included so Guided passthrough sections cannot evade
+   * the no-reference condition.
+   */
+  const confirmedNullProjectRecovery = async (
+    existing: any,
+    input: any,
+  ): Promise<boolean> => {
+    const normalizedDprSite = (value: unknown) =>
+      normalizeDprSiteName(
+        typeof value === "string"
+          ? value.replace(/ – (Edited by|Copy by) .+$/, "")
+          : value,
+      );
+    const savedProjectId = existing?.boqProjectId != null ? Number(existing.boqProjectId) : null;
+    const requestedProjectId = input?.boqProjectId != null ? Number(input.boqProjectId) : null;
+    const sameDprSite = normalizedDprSite(existing?.site)
+      === normalizedDprSite(input?.site)
+      && normalizedDprSite(input?.site) !== "";
+    if (!isConfirmedDprNullProjectRecovery({
+      savedProjectId,
+      requestedProjectId,
+      confirmed: input?.boqProjectRecoveryConfirmed === true,
+      sameSite: sameDprSite,
+      hasBoqReferences: hasDprBoqReferences(existing)
+        || hasPreservedDprBoqReferences(existing, input),
+    })) return false;
+    const [project] = await db.select({ siteName: sitesTable.name })
+      .from(boqProjectsTable)
+      .innerJoin(sitesTable, eq(boqProjectsTable.siteId, sitesTable.id))
+      .where(eq(boqProjectsTable.id, requestedProjectId!))
+      .limit(1);
+    return normalizedDprSite(project?.siteName) === normalizedDprSite(input.site);
+  };
+
   app.post(api.dprs.create.path, async (req, res) => {
     let requestedDprStatus: string | undefined;
     try {
@@ -2400,7 +2439,8 @@ export async function registerRoutes(
       }
       const savedProjectId = (existing as any).boqProjectId != null ? Number((existing as any).boqProjectId) : null;
       const payloadProjectId = (input as any).boqProjectId != null ? Number((input as any).boqProjectId) : null;
-      if (savedProjectId !== payloadProjectId) {
+      const projectRecoveryAllowed = await confirmedNullProjectRecovery(existing, input);
+      if (savedProjectId !== payloadProjectId && !projectRecoveryAllowed) {
         // A project selected on a no-BOQ DPR is metadata only.  Guided
         // re-resolution can change that metadata between draft saves, but it
         // must never be allowed to move a DPR which contains real BOQ-linked
@@ -2409,6 +2449,12 @@ export async function registerRoutes(
         // a compact PATCH omits those child arrays.
         const hasBoqReferences =
           hasDprBoqReferences(input) || hasPreservedDprBoqReferences(existing, input);
+        if (savedProjectId == null && payloadProjectId != null) {
+          return res.status(400).json({
+            code: "DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED",
+            message: "Attach a saved no-project DPR only by confirming a same-site project recovery with no BOQ-linked rows.",
+          });
+        }
         if (!hasBoqReferences) {
           // Keep the persisted project canonical for the storage transaction.
           // Storage deliberately retains its unconditional header mismatch
@@ -2437,7 +2483,7 @@ export async function registerRoutes(
       if (scopeError) return res.status(422).json({ message: scopeError.error, code: scopeError.code });
       // storage.updateDraftDpr(id, input, req.authUser?.id ?? null)
       // (scopeVersionToken is the fourth argument for the project-mutex handoff)
-      const updated = await storage.updateDraftDpr(id, input, req.authUser?.id ?? null, scopeVersionToken);
+      const updated = await storage.updateDraftDpr(id, input, req.authUser?.id ?? null, scopeVersionToken, projectRecoveryAllowed);
       if (!updated) return res.status(404).json({ message: "DPR not found or not a draft" });
       res.json(updated);
     } catch (err) {
@@ -2481,7 +2527,8 @@ export async function registerRoutes(
       }
       const savedProjectId = (existing as any).boqProjectId != null ? Number((existing as any).boqProjectId) : null;
       const payloadProjectId = (input as any).boqProjectId != null ? Number((input as any).boqProjectId) : null;
-      if (savedProjectId !== payloadProjectId) {
+      const projectRecoveryAllowed = await confirmedNullProjectRecovery(existing, input);
+      if (savedProjectId !== payloadProjectId && !projectRecoveryAllowed) {
         // Same narrow carve-out as draft PATCH: a no-BOQ DPR may carry a
         // newly re-resolved project header, but any real progress, equipment,
         // allocation/segment, structure, material, or labour BOQ reference
@@ -2489,6 +2536,12 @@ export async function registerRoutes(
         // replacement storage can preserve omitted equipment children.
         const hasBoqReferences =
           hasDprBoqReferences(input) || hasPreservedDprBoqReferences(existing, input);
+        if (savedProjectId == null && payloadProjectId != null) {
+          return res.status(400).json({
+            code: "DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED",
+            message: "Attach a saved no-project DPR only by confirming a same-site project recovery with no BOQ-linked rows.",
+          });
+        }
         if (!hasBoqReferences) {
           input = { ...input, boqProjectId: savedProjectId };
         } else {
@@ -2536,7 +2589,7 @@ export async function registerRoutes(
         userId: req.authUser?.id ?? null,
         userName: req.authUser ? currentUserName(req) : input.engineer,
         closedAt: new Date(),
-      }, scopeVersionToken);
+      }, scopeVersionToken, projectRecoveryAllowed);
       if (!submitted) return res.status(404).json({ message: "DPR not found or not a draft" });
       await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${submitted.engineer || 'Engineer'} submitted DPR for ${submitted.site} (${submitted.date})`, isRead: 0 });
       sendPushToSection("site_dprs", "New DPR Submitted", `${submitted.engineer || 'Engineer'} - ${submitted.site} - ${submitted.date}`, "/site-reports").catch(() => {});
@@ -2981,8 +3034,39 @@ export async function registerRoutes(
           message: "A draft DPR cannot be versioned. Edit, save, or submit the draft instead.",
         });
       }
+      if ((versionOriginal as any).isSuperseded) {
+        return res.status(409).json({
+          code: "DPR_ALREADY_SUPERSEDED",
+          message: "This DPR has already been superseded by a newer version.",
+        });
+      }
 
       const input = versionSchema.parse(req.body);
+      {
+        const savedProjectId = versionOriginal.boqProjectId != null
+          ? Number(versionOriginal.boqProjectId)
+          : null;
+        const payloadProjectId = (input.data as any).boqProjectId != null
+          ? Number((input.data as any).boqProjectId)
+          : null;
+        if (
+          savedProjectId == null
+          && payloadProjectId != null
+          && !(await confirmedNullProjectRecovery(versionOriginal, input.data))
+        ) {
+          return res.status(400).json({
+            code: "DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED",
+            message: "A DPR version can attach a saved no-project DPR only after confirming a same-site project recovery with no BOQ-linked rows.",
+          });
+        }
+      }
+      // Capture the target scope before any async validation. Storage locks the
+      // same target and compares this token in its version transaction, so a
+      // scope correction committed while programme/geometry/overlap checks run
+      // cannot be silently accepted with a freshly fetched token.
+      const scopeVersionToken = (input.data as any).boqProjectId != null
+        ? await storage.getProjectScopeVersionToken(Number((input.data as any).boqProjectId))
+        : null;
       // SiteEdit deliberately sends editable activity fields rather than
       // exposing server-owned review/link facts as controls. Preserve those
       // facts in the version payload before validation so programme approval,
@@ -3185,6 +3269,7 @@ export async function registerRoutes(
           allowMovedSourceCorrection: authenticatedIsAdmin,
           allowUnownedLinkedCorrectionIds: authenticatedIsAdmin ? unownedLinkedConflicts : [],
         },
+        scopeVersionToken,
       );
 
       const actor = currentUserName(req);
@@ -3199,6 +3284,12 @@ export async function registerRoutes(
       res.status(201).json(newVersion);
     } catch (err) {
       if ((err as any)?.code === "DPR_DRAFT_MUTATION_NOT_ALLOWED") {
+        return res.status(409).json({ code: (err as any).code, message: (err as any).message });
+      }
+      if ((err as any)?.code === "DPR_ALREADY_SUPERSEDED") {
+        return res.status(409).json({ code: (err as any).code, message: (err as any).message });
+      }
+      if ((err as any)?.code === "SCOPE_CHANGED_DURING_PLANNING") {
         return res.status(409).json({ code: (err as any).code, message: (err as any).message });
       }
       if ((err as any)?.code === "DPR_PROJECT_MISMATCH") {

@@ -328,6 +328,8 @@ describe("DPR draft operational side-effect boundary", () => {
     const effects = operationalSpies(storage);
     for (let save = 0; save < 2; save++) {
       fx.queue.push(
+        [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
+        [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
         [], // old equipment rows
         [], // old progress rows
         [{ id: 4, meterType: "hour_meter", consumptionNorm: 4 }],
@@ -339,6 +341,260 @@ describe("DPR draft operational side-effect boundary", () => {
     expect(effects.maintenance).not.toHaveBeenCalled();
     expect(effects.canonicalUsage).not.toHaveBeenCalled();
     expect(effects.cleanup).not.toHaveBeenCalled();
+  });
+
+  it("persists a confirmed null-project recovery with a newly selected target-project BOQ row", async () => {
+    const storage = new DatabaseStorage();
+    storage.getDpr = vi.fn().mockResolvedValue({
+      id: 7,
+      dprStatus: "draft",
+      boqProjectId: null,
+      site: "SITE A",
+      progress: [],
+      equipment: [],
+      labour: [],
+      materials: [],
+      sitePurchases: [],
+      structureItems: [],
+    });
+    const effects = operationalSpies(storage);
+    // Optimistic DPR header, target lock, authoritative DPR header, target
+    // reread/site, existing equipment, target item validation, old progress.
+    fx.queue.push(
+      [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
+      [{ id: 2, siteId: 19 }],
+      [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
+      [{ id: 2, siteId: 19 }],
+      [{ name: "SITE A" }],
+      [],
+      [{ id: 99, projectId: 2 }],
+      [],
+    );
+    tx.execute.mockResolvedValueOnce({ rows: [{ has_references: false }] });
+
+    await expect(storage.updateDraftDpr(7, {
+      date: "2026-09-01",
+      site: "SITE A",
+      engineer: "Engineer",
+      dprStatus: "draft",
+      boqProjectId: 2,
+      boqProjectRecoveryConfirmed: true,
+      progress: [{ activity: "NEW BOQ WORK", boqItemId: 99 }],
+      equipment: [],
+      labour: [],
+      materials: [],
+      sitePurchases: [],
+      structureItems: [],
+    } as any, undefined, undefined, true)).resolves.toMatchObject({
+      id: 7,
+      boqProjectId: 2,
+    });
+
+    expect(tx.execute).toHaveBeenCalledTimes(1);
+    expect(fx.writes).toContainEqual(expect.objectContaining({ boqProjectId: 2 }));
+    expect(effects.diesel).not.toHaveBeenCalled();
+  });
+
+  it("rejects a confirmed recovery when the target project's scope token changed before its lock", async () => {
+    const storage = new DatabaseStorage();
+    storage.getDpr = vi.fn().mockResolvedValue({ id: 7, dprStatus: "draft" });
+    fx.queue.push(
+      [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
+      [{ id: 2, siteId: 19 }],
+    );
+    tx.execute.mockResolvedValueOnce({ rows: [{ token: "new-scope-token" }] });
+
+    await expect(storage.updateDraftDpr(7, {
+      date: "2026-09-01", site: "SITE A", engineer: "Engineer",
+      dprStatus: "draft", boqProjectId: 2, boqProjectRecoveryConfirmed: true,
+      progress: [], equipment: [], labour: [], materials: [], sitePurchases: [], structureItems: [],
+    } as any, undefined, "stale-scope-token", true)).rejects.toMatchObject({
+      code: "SCOPE_CHANGED_DURING_PLANNING",
+    });
+    expect(fx.writes).toHaveLength(0);
+  });
+
+  it("rejects recovery inside the transaction when persisted BOQ evidence is found", async () => {
+    const storage = new DatabaseStorage();
+    storage.getDpr = vi.fn().mockResolvedValue({ id: 7, dprStatus: "draft" });
+    fx.queue.push(
+      [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
+      [{ id: 2, siteId: 19 }],
+      [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
+      [{ id: 2, siteId: 19 }],
+      [{ name: "SITE A" }],
+    );
+    tx.execute.mockResolvedValueOnce({ rows: [{ has_references: true }] });
+
+    await expect(storage.updateDraftDpr(7, {
+      date: "2026-09-01", site: "SITE A", engineer: "Engineer",
+      dprStatus: "draft", boqProjectId: 2, boqProjectRecoveryConfirmed: true,
+      progress: [], equipment: [], labour: [], materials: [], sitePurchases: [], structureItems: [],
+    } as any, undefined, undefined, true)).rejects.toMatchObject({
+      code: "DPR_PROJECT_MISMATCH",
+    });
+    expect(fx.writes).toHaveLength(0);
+  });
+
+  it("does not let a second recovery overwrite the first recovered project pin", async () => {
+    const storage = new DatabaseStorage();
+    storage.getDpr = vi.fn().mockResolvedValue({ id: 7, dprStatus: "draft" });
+    const recovery = (boqProjectId: number) => ({
+      date: "2026-09-01", site: "SITE A", engineer: "Engineer",
+      dprStatus: "draft", boqProjectId, boqProjectRecoveryConfirmed: true,
+      progress: [], equipment: [], labour: [], materials: [], sitePurchases: [], structureItems: [],
+    });
+    fx.queue.push(
+      // First transaction: optimistic/locked saved-null headers, target
+      // project reread/site, then old equipment and progress.
+      [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
+      [{ id: 2, siteId: 19 }],
+      [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
+      [{ id: 2, siteId: 19 }],
+      [{ name: "SITE A" }],
+      [],
+      [],
+      // Second transaction locks both its optimistic source and requested
+      // target before observing the first pin under the DPR lock.
+      [{ id: 7, dprStatus: "draft", boqProjectId: 2, site: "SITE A" }],
+      [{ id: 2, siteId: 19 }],
+      [{ id: 3, siteId: 19 }],
+      [{ id: 7, dprStatus: "draft", boqProjectId: 2, site: "SITE A" }],
+    );
+    tx.execute.mockResolvedValueOnce({ rows: [{ has_references: false }] });
+
+    await expect(storage.updateDraftDpr(7, recovery(2) as any, undefined, undefined, true))
+      .resolves.toMatchObject({ id: 7, boqProjectId: 2 });
+    const writesAfterFirst = fx.writes.length;
+
+    await expect(storage.updateDraftDpr(7, recovery(3) as any, undefined, undefined, true))
+      .rejects.toMatchObject({ code: "DPR_PROJECT_MISMATCH" });
+    expect(fx.writes).toHaveLength(writesAfterFirst);
+  });
+
+  it("rejects a version's foreign direct and nested BOQ links before child insertion", async () => {
+    const storage = new DatabaseStorage();
+    fx.queue.push([
+      { id: 10, projectId: 2 },
+      { id: 11, projectId: 2 },
+      { id: 12, projectId: 2 },
+      { id: 13, projectId: 2 },
+      { id: 14, projectId: 3 }, // foreign nested segment item
+      { id: 15, projectId: 2 },
+      { id: 16, projectId: 2 },
+      { id: 17, projectId: 2 },
+    ]);
+    const dprData = {
+      progress: [{ boqItemId: 10 }],
+      structureItems: [{ boqItemId: 11 }],
+      equipment: [{
+        boqItemId: 12,
+        activityAllocations: [{ boqItemId: 13 }],
+        activitySegments: [{ boqItems: [{ boqItemId: 14 }] }],
+      }],
+      labour: [{ boqItemId: 15 }],
+      materials: [{ boqItemId: 16 }],
+      sitePurchases: [{ boqItemId: 17 }],
+    };
+
+    await expect((storage as any).assertDprProjectLinksTx(
+      tx,
+      7,
+      2,
+      dprData,
+      dprData.equipment,
+    )).rejects.toMatchObject({
+      code: "DPR_PROJECT_MISMATCH",
+      itemIds: [14],
+    });
+    expect(fx.writes).toHaveLength(0);
+  });
+
+  it("allows a version to retain a deleted raw BOQ id only on its same persisted source row", async () => {
+    const storage = new DatabaseStorage();
+    // The replacement import removed BOQ item 99. Its persisted progress row
+    // remains a valid historical fact and is retained by this version.
+    fx.queue.push([]);
+    tx.execute.mockResolvedValueOnce({
+      rows: [{ section: "progress", child_id: 41, parent_id: null, boq_item_id: 99 }],
+    });
+
+    await expect((storage as any).assertDprProjectLinksTx(
+      tx,
+      7,
+      2,
+      { progress: [{ persistedId: 41, boqItemId: 99 }] },
+      undefined,
+      { versionSourceDprId: 7 },
+    )).resolves.toBeUndefined();
+  });
+
+  it("rejects a version's newly introduced missing id and every extant foreign-project id", async () => {
+    const storage = new DatabaseStorage();
+    fx.queue.push([{ id: 88, projectId: 3 }]);
+    tx.execute.mockResolvedValueOnce({
+      // 99 did exist on source row 41, but the payload attaches it to a new
+      // row identity.  It is not historical retention.
+      rows: [{ section: "progress", child_id: 41, parent_id: null, boq_item_id: 99 }],
+    });
+
+    await expect((storage as any).assertDprProjectLinksTx(
+      tx,
+      7,
+      2,
+      {
+        progress: [
+          { persistedId: 42, boqItemId: 99 }, // missing, newly introduced
+          { persistedId: 43, boqItemId: 88 }, // extant, but foreign project
+        ],
+      },
+      undefined,
+      { versionSourceDprId: 7 },
+    )).rejects.toMatchObject({
+      code: "DPR_PROJECT_MISMATCH",
+      itemIds: expect.arrayContaining([99, 88]),
+    });
+  });
+
+  it("rejects a stale target scope token before a version writes children", async () => {
+    const storage = new DatabaseStorage();
+    fx.queue.push(
+      [{
+        authorUserId: null, submittedByUserId: null, createdAt: null,
+        submittedAt: "2026-09-01 18:00:00", dprStatus: "submitted",
+        boqProjectId: 2, site: "SITE A", isSuperseded: false,
+      }],
+      [{ id: 2, siteId: 19 }],
+    );
+    tx.execute.mockResolvedValueOnce({ rows: [{ token: "new-scope-token" }] });
+
+    await expect(storage.createVersionDpr(7, {
+      date: "2026-09-01", site: "SITE A", engineer: "Engineer",
+      boqProjectId: 2, progress: [], equipment: [], labour: [],
+      materials: [], sitePurchases: [], structureItems: [],
+    } as any, "manager", undefined, undefined, "stale-scope-token"))
+      .rejects.toMatchObject({ code: "SCOPE_CHANGED_DURING_PLANNING" });
+    expect(fx.writes).toHaveLength(0);
+  });
+
+  it("rejects a second version after the source row lock sees it superseded", async () => {
+    const storage = new DatabaseStorage();
+    fx.queue.push([{
+      boqProjectId: null,
+    }], [{
+      id: 2, siteId: 19,
+    }], [{
+      authorUserId: null, submittedByUserId: null, createdAt: null,
+      submittedAt: "2026-09-01 18:00:00", dprStatus: "submitted",
+      boqProjectId: null, site: "SITE A", isSuperseded: true,
+    }]);
+
+    await expect(storage.createVersionDpr(7, {
+      date: "2026-09-01", site: "SITE A", engineer: "Engineer",
+      boqProjectId: 2, boqProjectRecoveryConfirmed: true,
+      progress: [], equipment: [], labour: [], materials: [], sitePurchases: [], structureItems: [],
+    } as any, "manager")).rejects.toMatchObject({ code: "DPR_ALREADY_SUPERSEDED" });
+    expect(fx.writes).toHaveLength(0);
   });
 
   it("rolls an insufficient submit back exactly, then posts operational effects once on retry", async () => {
@@ -356,6 +612,8 @@ describe("DPR draft operational side-effect boundary", () => {
     effects.diesel.mockRejectedValueOnce(insufficient).mockResolvedValueOnce(undefined);
 
     const queueSubmitReads = () => fx.queue.push(
+      [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
+      [{ id: 7, dprStatus: "draft", boqProjectId: null, site: "SITE A" }],
       [], // cleanup is mocked; old equipment rows
       [], // old progress rows
       [{ id: 4, meterType: "hour_meter", consumptionNorm: 4 }],
@@ -420,6 +678,6 @@ describe("all DPR write paths and route authorization remain wired", () => {
 
   it("keeps start identity and draft state transitions inside transaction guards", () => {
     expect(source).toContain("pg_advisory_xact_lock(1437");
-    expect(source).toContain('and(eq(dprs.id, id), eq(dprs.dprStatus, "draft"))');
+    expect(source).toContain('eq(dprs.dprStatus, "draft")');
   });
 });

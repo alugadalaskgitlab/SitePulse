@@ -440,9 +440,10 @@ export default function SiteEntry() {
   });
 
   // Fetch sites master for dropdown
-  const { data: sitesList = [] } = useQuery<Site[]>({
+  const sitesQuery = useQuery<Site[]>({
     queryKey: ["/api/sites"],
   });
+  const { data: sitesList = [] } = sitesQuery;
   const activeSites = sitesList.filter(s => s.isActive);
 
   // Filter to only active equipment
@@ -2001,9 +2002,14 @@ export default function SiteEntry() {
             itemsLoading={boqItemsLoading}
             itemsLoaded={boqItemsLoaded}
             itemsError={boqItemsError}
+            sitesLoading={sitesQuery.isLoading}
+            sitesLoaded={sitesQuery.isSuccess}
+            sitesError={sitesQuery.error}
+            onRetrySites={() => sitesQuery.refetch()}
             onRetry={retryBoq}
             onProjectChange={handleBoqProjectChange}
             projectChangeDisabled={siteEntryHasBoqReferences}
+            projectRecoveryRequired={boqProjectPreference.resolved && boqProjectPreference.projectId === null && !siteEntryHasBoqReferences}
           />
         </div>
       </Card>

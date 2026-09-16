@@ -25,6 +25,16 @@ const site = {
   isActive: 1,
 };
 
+// The recording's site is kept separate from the older DPR fixture site so
+// existing browser evidence remains stable while the null-project regression
+// follows the reported navigation literally.
+const nullRecoverySite = {
+  id: 6061,
+  name: "ALLADURG PWD ROAD TO PAMPAD",
+  location: "Alladurg District",
+  isActive: 1,
+};
+
 /*
  * Vehicle/supplier browser regression data is deliberately kept in this
  * fixture rather than in the application API.  The known association uses a
@@ -258,6 +268,38 @@ const programmeBars = [
   },
 ];
 
+/*
+ * Multi-project sites are opt-in so the long-running DPR picker evidence
+ * remains deterministic.  The second project is only returned when the
+ * browser verifier asks for `dprNullMulti=1`; selecting it still loads real
+ * fixture BOQ items through the normal project/items endpoint.
+ */
+const alternateBoqProject = {
+  id: 5502,
+  name: "NARASIMHULU ROAD SECOND BOQ",
+  siteId: site.id,
+  itemCount: 1,
+};
+const alternateBoqItems = [{
+  ...boqItems[0],
+  id: 8811,
+  itemCode: "ALT-2.1",
+  itemName: "ALTERNATE GSB LAYING",
+  displayName: "ALTERNATE GSB LAYING",
+}];
+const nullRecoveryBoqProject = {
+  id: 5510,
+  name: "ALLADURG PWD ROAD TO PAMPAD BOQ",
+  siteId: nullRecoverySite.id,
+  itemCount: boqItems.length,
+};
+const alternateNullRecoveryBoqProject = {
+  id: 5511,
+  name: "ALLADURG PWD ROAD TO PAMPAD SECOND BOQ",
+  siteId: nullRecoverySite.id,
+  itemCount: alternateBoqItems.length,
+};
+
 const storedDpr = {
   id: 6101,
   date: "2026-08-05",
@@ -361,6 +403,61 @@ const storedDpr = {
   }],
   remarks: "Fixture DPR — representative data only.",
   createdAt: "2026-08-05T16:00:00.000Z",
+};
+
+/*
+ * The null-project recovery browser scenario intentionally has two separate
+ * server-side draft rows. Both rows contain an explicit `boqProjectId:null`
+ * (rather than omitting the field), and neither has a BOQ item reference.
+ * That is the legacy shape which used to make the real screens report
+ * "No BOQ project" forever even though the site has an eligible project.
+ */
+const nullProjectProgress = {
+  id: 7320,
+  entryKey: "null-project-recovery-progress",
+  activity: "LEGACY SAVED NULL PROJECT",
+  side: "LHS",
+  chainageFrom: "12+000",
+  chainageTo: "12+100",
+  length: 100,
+  width: 7,
+  thickness: 20,
+  quantity: 700,
+  uom: "SQM",
+  noSiteWork: false,
+  noSiteWorkDescription: "",
+  personnelIds: [personnel[0].id],
+  boqItemId: null,
+  programmeBarId: null,
+  earthworkArrangementId: null,
+  quantitySource: "measured",
+  quantitySourceNote: "",
+  chainageOverrideReason: "",
+  executedBy: "hlc",
+  layerNo: null,
+  isIncidental: false,
+  incidentalDescription: "",
+};
+
+const guidedNullProjectDpr = {
+  ...storedDpr,
+  id: 6220,
+  site: nullRecoverySite.name,
+  boqProjectId: null,
+  dprStatus: "draft",
+  progress: [{ ...nullProjectProgress, id: 7320, entryKey: "guided-null-project-progress" }],
+  equipment: [],
+  labour: [],
+  materials: [],
+  sitePurchases: [],
+  remarks: "Saved-null Guided DPR recovery fixture — synthetic and read-only.",
+};
+
+const siteEditNullProjectDpr = {
+  ...guidedNullProjectDpr,
+  id: 6221,
+  progress: [{ ...nullProjectProgress, id: 7321, entryKey: "site-edit-null-project-progress" }],
+  remarks: "Saved-null SiteEdit recovery fixture — synthetic and read-only.",
 };
 
 /*
@@ -685,6 +782,10 @@ const fixtureState = {
   vehicleSupplierPatchFailures: [] as any[],
   siteMaterialTripCreatePayloads: [] as any[],
   siteMaterialTripUpdatePayloads: [] as any[],
+  // The verifier reads these after a rendered Save/Save Progress request.
+  // Records themselves are persisted below so a full browser reopen can
+  // exercise the same GET endpoint instead of a React-only state snapshot.
+  dprRecoveryPayloads: [] as any[],
 };
 
 declare global {
@@ -697,7 +798,21 @@ window.__DprSiteFixture = fixtureState;
 
 let nextDprId = 6103;
 let nextPersonnelId = 6110;
-let currentDpr: any = { ...storedDpr };
+const persistedDprStorageKey = "__dprSiteFixturePersistedDprs";
+const persistedDprState = (() => {
+  try {
+    const raw = sessionStorage.getItem(persistedDprStorageKey);
+    if (!raw) return { records: {} as Record<string, any>, current: null };
+    const parsed = JSON.parse(raw);
+    return {
+      records: parsed?.records && typeof parsed.records === "object" ? parsed.records : {},
+      current: parsed?.current && typeof parsed.current === "object" ? parsed.current : null,
+    };
+  } catch {
+    return { records: {} as Record<string, any>, current: null };
+  }
+})();
+let currentDpr: any = persistedDprState.current ?? { ...storedDpr };
 const guidedDprRecords: Record<number, any> = {
   [guidedContractorDpr.id]: guidedContractorDpr,
   [guidedPlantStockDpr.id]: guidedPlantStockDpr,
@@ -709,10 +824,27 @@ const guidedDprRecords: Record<number, any> = {
   [dpr07LegacyInvalid.id]: dpr07LegacyInvalid,
   [dpr07FreshInvalid.id]: dpr07FreshInvalid,
   [dprBoqNoBarEdit.id]: dprBoqNoBarEdit,
+  [guidedNullProjectDpr.id]: guidedNullProjectDpr,
+  [siteEditNullProjectDpr.id]: siteEditNullProjectDpr,
 };
+for (const [id, record] of Object.entries(persistedDprState.records)) {
+  if (record && typeof record === "object") guidedDprRecords[Number(id)] = record;
+}
 let nextPlantUsageId = 8102;
 let plantUsageRecords: any[] = [{ ...initialPlantUsage }];
 fixtureState.plantUsageRecords = plantUsageRecords;
+
+function persistDprFixtureRecords() {
+  try {
+    sessionStorage.setItem(
+      persistedDprStorageKey,
+      JSON.stringify({ records: guidedDprRecords, current: currentDpr }),
+    );
+  } catch {
+    // The request result remains available in this document. Session storage
+    // is only the fixture's cross-navigation persistence layer.
+  }
+}
 
 function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -742,6 +874,9 @@ const isDpr07Route = () =>
 
 const isDprBoqRoute = () =>
   new URLSearchParams(window.location.search).get("dprBoq") === "1";
+
+const isDprNullRoute = () =>
+  new URLSearchParams(window.location.search).get("dprNull") === "1";
 
 const dpr07ComparableProgress = (row: any) => ({
   id: row?.id ?? row?.persistedId ?? null,
@@ -815,6 +950,8 @@ function copyDprWithPayload(id: number, payload: any, status: string) {
   if (guidedDprRecords[id]) guidedDprRecords[id] = updated;
   else currentDpr = updated;
   fixtureState.guidedSavedReportPayloads.push({ id, status, payload: updated });
+  fixtureState.dprRecoveryPayloads.push({ id, status, payload: updated });
+  persistDprFixtureRecords();
   return updated;
 }
 
@@ -826,7 +963,9 @@ window.fetch = async (input, init) => {
   const pathname = url.pathname;
   fixtureState.requests.push({ method, path: `${pathname}${url.search}`, body });
 
-  if (pathname === "/api/sites" && method === "GET") return json([site]);
+  if (pathname === "/api/sites" && method === "GET") {
+    return json(isDprNullRoute() ? [site, nullRecoverySite] : [site]);
+  }
   if (pathname === "/api/personnel" && method === "GET") return json(personnel);
   if (pathname === "/api/personnel" && method === "POST") {
     const created = { id: nextPersonnelId++, ...(body || {}), isActive: 1 };
@@ -967,7 +1106,21 @@ window.fetch = async (input, init) => {
   }
   if (pathname === "/api/plant-module/equipment-usage/open-today" && method === "GET") return json([]);
   if (pathname === "/api/boq/projects" && method === "GET") {
-    return json([{ id: 5501, name: "NARASIMHULU ROAD BOQ", siteId: site.id, itemCount: boqItems.length }]);
+    const isNullRecovery = isDprNullRoute();
+    const projects = isNullRecovery
+      ? [
+          nullRecoveryBoqProject,
+          ...(new URLSearchParams(window.location.search).get("dprNullMulti") === "1"
+            ? [alternateNullRecoveryBoqProject]
+            : []),
+        ]
+      : [
+          { id: 5501, name: "NARASIMHULU ROAD BOQ", siteId: site.id, itemCount: boqItems.length },
+          ...(new URLSearchParams(window.location.search).get("dprNullMulti") === "1"
+            ? [alternateBoqProject]
+            : []),
+        ];
+    return json(projects);
   }
 
   const projectItemsMatch = pathname.match(/^\/api\/boq\/projects\/(\d+)\/items$/);
@@ -983,7 +1136,12 @@ window.fetch = async (input, init) => {
     if (shouldFail) {
       return json({ code: "BOQ_ITEMS_FIXTURE_FAILURE", message: "Fixture BOQ item request failed; retry is expected." }, 503);
     }
-    return json(boqItems);
+    return json(
+      Number(projectItemsMatch[1]) === alternateBoqProject.id
+        || Number(projectItemsMatch[1]) === alternateNullRecoveryBoqProject.id
+        ? alternateBoqItems
+        : boqItems,
+    );
   }
   const projectArrangementItemMatch = pathname.match(/^\/api\/boq\/projects\/(\d+)\/earthwork-arrangements\/item\/(\d+)$/);
   if (projectArrangementItemMatch && method === "GET") {
@@ -1283,6 +1441,26 @@ function Dpr07EvidenceBanner() {
   );
 }
 
+function DprNullEvidenceBanner() {
+  if (!isDprNullRoute()) return null;
+  const params = new URLSearchParams(window.location.search);
+  const scenario = params.get("scenario") || "saved-null project recovery";
+  return (
+    <header
+      className="mx-auto mb-5 max-w-5xl rounded-lg border border-amber-300 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm"
+      data-testid="dpr-null-evidence-banner"
+    >
+      <div className="text-xs font-bold uppercase tracking-[0.18em] text-amber-800">
+        Saved-null DPR recovery · isolated browser evidence
+      </div>
+      <h1 className="mt-1 text-lg font-semibold">Fixture-only API adapter · {scenario}</h1>
+      <p className="mt-1 text-sm">
+        Real Guided, Detailed, and Edit controls. Synthetic data only; no customer or production writes.
+      </p>
+    </header>
+  );
+}
+
 // wouter's setLocation uses history.pushState. The isolated fixture routes the
 // real SiteEntry success navigation to SiteSuccess without changing production
 // navigation code.
@@ -1308,6 +1486,7 @@ const mount = () => {
   appRoot.render(
     <QueryClientProvider client={queryClient}>
       <Dpr07EvidenceBanner />
+        <DprNullEvidenceBanner />
       {isGuidedReport
         ? <FixtureSavedReport />
         : isSiteSuccess

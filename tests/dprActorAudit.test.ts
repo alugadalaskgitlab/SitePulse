@@ -23,7 +23,7 @@ describe("DPR authenticated actor audit trail", () => {
   });
 
   it("persists only authenticated request IDs for create, draft edit, and submit", () => {
-    expect(routes).toContain("storage.updateDraftDpr(id, input, req.authUser?.id ?? null)");
+    expect(routes).toContain("storage.updateDraftDpr(id, input, req.authUser?.id ?? null, scopeVersionToken");
     expect(routes).toContain("userId: req.authUser?.id ?? null");
     expect(storage).toContain("authorUserId: audit?.userId ?? null");
     expect(storage).toContain("lastEditedByUserId: actorUserId ?? null");

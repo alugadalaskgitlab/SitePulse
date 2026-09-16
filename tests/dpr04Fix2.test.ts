@@ -23,6 +23,7 @@ const fx = vi.hoisted(() => ({
   created: [] as any[],
   updated: [] as any[],
   submitted: [] as any[],
+  recoveryProjectSite: "DPR-04 TEST SITE",
 }));
 
 vi.mock("../server/push", () => ({
@@ -31,6 +32,21 @@ vi.mock("../server/push", () => ({
   sendPushToAudience: vi.fn().mockResolvedValue(undefined),
   initPush: vi.fn(),
 }));
+
+vi.mock("../server/db", () => {
+  const query: any = {
+    from: () => query,
+    innerJoin: () => query,
+    where: () => query,
+    limit: async () => [{ siteName: fx.recoveryProjectSite }],
+  };
+  return {
+    db: {
+      // The accepted-recovery route test reaches only the ownership lookup.
+      select: vi.fn(() => query),
+    },
+  };
+});
 
 vi.mock("../server/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../server/auth")>();
@@ -163,6 +179,10 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
       { equipment: [{ id: 77, activitySegments: [{ boqItems: [{ boqItemId: 704 }] }] }] },
       { equipment: [{ persistedId: 77, machine: "JCB", activitySegments: [] }] },
     )).toBe(false);
+    expect(createDprRequestSchema.parse({
+      ...noBoqPayload(PROJECT_A),
+      boqProjectRecoveryConfirmed: true,
+    }).boqProjectRecoveryConfirmed).toBe(true);
   });
 
   it("B/D: PATCH allows a project mismatch only for a no-BOQ draft and canonicalizes the saved project", async () => {
@@ -177,6 +197,90 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
     expect(fx.updated).toHaveLength(1);
     expect(fx.updated[0].boqProjectId).toBe(PROJECT_A);
     expect(patched.body.boqProjectId).toBe(PROJECT_A);
+  });
+
+  it("requires an explicit confirmation before a saved null-project draft can be attached", async () => {
+    fx.drafts.set(DRAFT_ID, {
+      ...noBoqPayload(PROJECT_A),
+      id: DRAFT_ID,
+      boqProjectId: null,
+      dprStatus: "draft",
+    });
+
+    const rejected = await request(app)
+      .patch(`/api/dprs/${DRAFT_ID}/draft`)
+      .send(noBoqPayload(PROJECT_B));
+
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.code).toBe("DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED");
+    expect(fx.updated).toHaveLength(0);
+  });
+
+  it("does not treat a confirmation as permission to move a saved null-project DPR to another site", async () => {
+    fx.drafts.set(DRAFT_ID, {
+      ...noBoqPayload(PROJECT_A),
+      id: DRAFT_ID,
+      boqProjectId: null,
+      dprStatus: "draft",
+    });
+
+    const rejected = await request(app)
+      .patch(`/api/dprs/${DRAFT_ID}/draft`)
+      .send({
+        ...noBoqPayload(PROJECT_B),
+        site: "OTHER SITE",
+        boqProjectRecoveryConfirmed: true,
+      });
+
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.code).toBe("DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED");
+    expect(fx.updated).toHaveLength(0);
+  });
+
+  it("rejects confirmed recovery when the saved null-project draft already has BOQ evidence", async () => {
+    fx.drafts.set(DRAFT_ID, {
+      ...noBoqPayload(PROJECT_A),
+      id: DRAFT_ID,
+      boqProjectId: null,
+      dprStatus: "draft",
+      materials: [{ material: "CEMENT", boqItemId: 703 }],
+    });
+
+    const rejected = await request(app)
+      .patch(`/api/dprs/${DRAFT_ID}/draft`)
+      .send({
+        ...noBoqPayload(PROJECT_B),
+        boqProjectRecoveryConfirmed: true,
+      });
+
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.code).toBe("DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED");
+    expect(fx.updated).toHaveLength(0);
+  });
+
+  it("accepts a confirmed saved-null recovery together with a newly chosen target-project item", async () => {
+    fx.drafts.set(DRAFT_ID, {
+      ...noBoqPayload(PROJECT_A),
+      id: DRAFT_ID,
+      boqProjectId: null,
+      dprStatus: "draft",
+    });
+
+    const recovered = await request(app)
+      .patch(`/api/dprs/${DRAFT_ID}/draft`)
+      .send({
+        ...noBoqPayload(PROJECT_B),
+        boqProjectRecoveryConfirmed: true,
+        progress: [{ activity: "NEW TARGET-PROJECT WORK", boqItemId: 707 }],
+      });
+
+    expect(recovered.status).toBe(200);
+    expect(fx.updated).toHaveLength(1);
+    expect(fx.updated[0]).toMatchObject({
+      boqProjectId: PROJECT_B,
+      boqProjectRecoveryConfirmed: true,
+      progress: [expect.objectContaining({ boqItemId: 707 })],
+    });
   });
 
   it("B: submit allows a project mismatch only for a no-BOQ draft and preserves the saved project", async () => {

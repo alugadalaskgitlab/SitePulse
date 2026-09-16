@@ -1,0 +1,380 @@
+{
+  "scenario": "DPR saved-null project recovery isolated browser regression",
+  "fixture": {
+    "baseUrl": "http://127.0.0.1:4178",
+    "cdp": "127.0.0.1:9222",
+    "tablet": {
+      "width": 1024,
+      "height": 768,
+      "mobile": true
+    },
+    "productionDatabaseUsed": false,
+    "customerWrites": false,
+    "apiRouteMode": "browser fetch adapter with session-persisted synthetic DPR records",
+    "evidenceDirectory": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence"
+  },
+  "assertions": {
+    "guided": "GuidedDpr opens an explicit saved-null draft, exposes project recovery, saves project/item, and reopens the same draft.",
+    "siteEdit": "SiteEdit opens an explicit saved-null draft, exposes project recovery, saves project/item, and reopens the same draft.",
+    "detailedLocal": "Detailed SiteEntry restores an explicit local null-project blob, persists the corrected choice through autosave, and restores it after reload.",
+    "positivePin": "A previously linked positive project remains visible and its item reference is not remapped.",
+    "multiProject": "A site with two projects exposes an explicit choice and loads the selected project's items.",
+    "intentionalNoBoq": "A fresh Detailed DPR can deliberately choose No BOQ project without it being overwritten by fallback resolution."
+  },
+  "evidence": {
+    "guided": {
+      "beforeImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-null-guided-before-recovery.png",
+      "selectedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-null-guided-project-selected.png",
+      "reopenedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-null-guided-reopened.png",
+      "initial": {
+        "text": "BOQ projectNo BOQ projectThis saved DPR has no BOQ project. Choose an available project above to attach it; existing saved references are not changed.",
+        "projectText": "No BOQ project",
+        "projectValue": null,
+        "projectDisabled": false,
+        "hasSelector": true,
+        "noProject": true
+      },
+      "selected": {
+        "text": "BOQ projectALLADURG PWD ROAD TO PAMPAD BOQ",
+        "projectText": "ALLADURG PWD ROAD TO PAMPAD BOQ",
+        "projectValue": null,
+        "projectDisabled": false,
+        "hasSelector": true,
+        "noProject": false
+      },
+      "mutation": {
+        "id": 6220,
+        "payload": {
+          "date": "2026-08-05",
+          "site": "ALLADURG PWD ROAD TO PAMPAD",
+          "engineer": "SURESH KUMAR",
+          "role": "engineer",
+          "workType": "road",
+          "boqProjectId": 5510,
+          "boqProjectRecoveryConfirmed": true,
+          "dprStatus": "draft",
+          "progress": [
+            {
+              "entryKey": "guided-null-project-progress",
+              "activity": "GSB LAYING",
+              "side": "LHS",
+              "chainageFrom": "12+000",
+              "chainageTo": "12+100",
+              "length": 100,
+              "width": 7,
+              "thickness": 20,
+              "quantity": 700,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "personnelIds": [],
+              "boqItemId": 8801,
+              "programmeBarId": 9901,
+              "earthworkArrangementId": null,
+              "chainageFromKm": 12,
+              "chainageToKm": 12.1,
+              "quantitySource": "calculated",
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "executedBy": "hlc",
+              "layerNo": null,
+              "materialOutcome": null,
+              "reusableQty": null
+            }
+          ],
+          "cutFillConsumptions": [],
+          "structureItems": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "remarks": "Saved-null Guided DPR recovery fixture — synthetic and read-only.",
+          "clientTimestamp": "2026-09-16 09:55:05"
+        }
+      },
+      "saved": {
+        "ok": true,
+        "status": 200,
+        "data": {
+          "id": 6220,
+          "date": "2026-08-05",
+          "site": "ALLADURG PWD ROAD TO PAMPAD",
+          "engineer": "SURESH KUMAR",
+          "role": "engineer",
+          "workType": "road",
+          "boqProjectId": 5510,
+          "dprStatus": "draft",
+          "isSuperseded": false,
+          "lockStatus": "unlocked",
+          "progress": [
+            {
+              "entryKey": "guided-null-project-progress",
+              "activity": "GSB LAYING",
+              "side": "LHS",
+              "chainageFrom": "12+000",
+              "chainageTo": "12+100",
+              "length": 100,
+              "width": 7,
+              "thickness": 20,
+              "quantity": 700,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "personnelIds": [],
+              "boqItemId": 8801,
+              "programmeBarId": 9901,
+              "earthworkArrangementId": null,
+              "chainageFromKm": 12,
+              "chainageToKm": 12.1,
+              "quantitySource": "calculated",
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "executedBy": "hlc",
+              "layerNo": null,
+              "materialOutcome": null,
+              "reusableQty": null
+            }
+          ],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "remarks": "Saved-null Guided DPR recovery fixture — synthetic and read-only.",
+          "createdAt": "2026-08-05T16:00:00.000Z",
+          "boqProjectRecoveryConfirmed": true,
+          "cutFillConsumptions": [],
+          "structureItems": [],
+          "clientTimestamp": "2026-09-16 09:55:05"
+        }
+      },
+      "reopened": {
+        "text": "BOQ projectALLADURG PWD ROAD TO PAMPAD BOQLinked project is preserved Loading BOQ items…",
+        "projectText": "ALLADURG PWD ROAD TO PAMPAD BOQ",
+        "projectValue": null,
+        "projectDisabled": true,
+        "hasSelector": true,
+        "noProject": false
+      }
+    },
+    "siteEdit": {
+      "beforeImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-null-site-edit-before-recovery.png",
+      "selectedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-null-site-edit-project-selected.png",
+      "reopenedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-null-site-edit-reopened.png",
+      "initial": {
+        "text": "BOQ projectNo BOQ projectThis saved DPR has no BOQ project. Choose an available project above to attach it; existing saved references are not changed.",
+        "projectText": "No BOQ project",
+        "projectValue": null,
+        "projectDisabled": false,
+        "hasSelector": true,
+        "noProject": true
+      },
+      "selected": {
+        "text": "BOQ projectALLADURG PWD ROAD TO PAMPAD BOQ",
+        "projectText": "ALLADURG PWD ROAD TO PAMPAD BOQ",
+        "projectValue": null,
+        "projectDisabled": false,
+        "hasSelector": true,
+        "noProject": false
+      },
+      "mutation": {
+        "id": 6221,
+        "payload": {
+          "date": "2026-08-05",
+          "site": "ALLADURG PWD ROAD TO PAMPAD",
+          "engineer": "SURESH KUMAR",
+          "remarks": "Saved-null SiteEdit recovery fixture — synthetic and read-only.",
+          "boqProjectId": 5510,
+          "boqProjectRecoveryConfirmed": true,
+          "workType": "road",
+          "structureItems": [],
+          "progress": [
+            {
+              "entryKey": "site-edit-null-project-progress",
+              "activity": "GSB LAYING",
+              "side": "LHS",
+              "chainageFrom": "12+000",
+              "chainageTo": "12+100",
+              "length": 100,
+              "width": 7,
+              "thickness": 20,
+              "quantity": 700,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "boqItemId": 8801,
+              "programmeBarId": null,
+              "earthworkArrangementId": null,
+              "quantitySource": "measured",
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "lengthOverrideReason": null,
+              "executedBy": "hlc",
+              "layerNo": null,
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "materialOutcome": null,
+              "reusableQty": null,
+              "chainageFromKm": 12,
+              "chainageToKm": 12.1,
+              "persistedId": 7321,
+              "personnelIds": [
+                6101
+              ]
+            }
+          ],
+          "cutFillConsumptions": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": []
+        }
+      },
+      "saved": {
+        "ok": true,
+        "status": 200,
+        "data": {
+          "id": 6221,
+          "date": "2026-08-05",
+          "site": "ALLADURG PWD ROAD TO PAMPAD",
+          "engineer": "SURESH KUMAR",
+          "role": "engineer",
+          "workType": "road",
+          "boqProjectId": 5510,
+          "dprStatus": "draft",
+          "isSuperseded": false,
+          "lockStatus": "unlocked",
+          "progress": [
+            {
+              "entryKey": "site-edit-null-project-progress",
+              "activity": "GSB LAYING",
+              "side": "LHS",
+              "chainageFrom": "12+000",
+              "chainageTo": "12+100",
+              "length": 100,
+              "width": 7,
+              "thickness": 20,
+              "quantity": 700,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "boqItemId": 8801,
+              "programmeBarId": null,
+              "earthworkArrangementId": null,
+              "quantitySource": "measured",
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "lengthOverrideReason": null,
+              "executedBy": "hlc",
+              "layerNo": null,
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "materialOutcome": null,
+              "reusableQty": null,
+              "chainageFromKm": 12,
+              "chainageToKm": 12.1,
+              "persistedId": 7321,
+              "personnelIds": [
+                6101
+              ]
+            }
+          ],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "remarks": "Saved-null SiteEdit recovery fixture — synthetic and read-only.",
+          "createdAt": "2026-08-05T16:00:00.000Z",
+          "boqProjectRecoveryConfirmed": true,
+          "structureItems": [],
+          "cutFillConsumptions": []
+        }
+      },
+      "reopened": {
+        "text": "BOQ projectALLADURG PWD ROAD TO PAMPAD BOQLinked project is preserved",
+        "projectText": "ALLADURG PWD ROAD TO PAMPAD BOQ",
+        "projectValue": null,
+        "projectDisabled": true,
+        "hasSelector": true,
+        "noProject": false
+      }
+    },
+    "detailedLocal": {
+      "beforeImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-null-detailed-local-before-restore.png",
+      "selectedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-null-detailed-local-selected.png",
+      "reopenedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-null-detailed-local-reopened.png",
+      "restoredNull": {
+        "text": "BOQ projectNo BOQ projectThis saved DPR has no BOQ project. Choose an available project above to attach it; existing saved references are not changed.",
+        "projectText": "No BOQ project",
+        "projectValue": null,
+        "projectDisabled": false,
+        "hasSelector": true,
+        "noProject": true
+      },
+      "selected": {
+        "text": "BOQ projectALLADURG PWD ROAD TO PAMPAD BOQ",
+        "projectText": "ALLADURG PWD ROAD TO PAMPAD BOQ",
+        "projectValue": null,
+        "projectDisabled": false,
+        "hasSelector": true,
+        "noProject": false
+      },
+      "reopened": {
+        "text": "BOQ projectALLADURG PWD ROAD TO PAMPAD BOQLinked project is preserved",
+        "projectText": "ALLADURG PWD ROAD TO PAMPAD BOQ",
+        "projectValue": null,
+        "projectDisabled": true,
+        "hasSelector": true,
+        "noProject": false
+      }
+    },
+    "positivePin": {
+      "status": {
+        "text": "BOQ projectNARASIMHULU ROAD BOQLinked project is preserved Loading BOQ items…",
+        "projectText": "NARASIMHULU ROAD BOQ",
+        "projectValue": null,
+        "projectDisabled": true,
+        "hasSelector": true,
+        "noProject": false
+      },
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-null-positive-pin-preserved.png"
+    },
+    "multiProject": {
+      "status": {
+        "text": "BOQ projectALLADURG PWD ROAD TO PAMPAD SECOND BOQ",
+        "projectText": "ALLADURG PWD ROAD TO PAMPAD SECOND BOQ",
+        "projectValue": null,
+        "projectDisabled": false,
+        "hasSelector": true,
+        "noProject": false
+      },
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-null-multi-project-choice.png"
+    },
+    "intentionalNoBoq": {
+      "status": {
+        "text": "BOQ projectNo BOQ projectThis saved DPR has no BOQ project. Choose an available project above to attach it; existing saved references are not changed.",
+        "projectText": "No BOQ project",
+        "projectValue": null,
+        "projectDisabled": false,
+        "hasSelector": true,
+        "noProject": true
+      },
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr-null-intentional-no-boq.png"
+    }
+  },
+  "browserExceptions": [],
+  "writes": {
+    "fixtureOnly": true,
+    "guidedDraftId": 6220,
+    "siteEditDraftId": 6221,
+    "renderedMutationCount": 2
+  },
+  "limitations": [
+    "All GET/PATCH requests and persisted records stay inside the fixture's session storage.",
+    "No operational server, database, customer DPR, or production write is used.",
+    "The verifier clicks real rendered controls; it does not call React handlers directly."
+  ]
+}

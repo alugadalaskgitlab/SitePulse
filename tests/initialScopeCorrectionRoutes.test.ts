@@ -447,6 +447,7 @@ describe("draft submission scope-token handoff", () => {
       undefined,
       expect.objectContaining({ userId: 17 }),
       "scope-token-17",
+      false,
     );
   });
 

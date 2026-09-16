@@ -7,6 +7,7 @@ import {
   resolveDprSiteId,
   resolveDprBoqProjectId,
   hasDprBoqReferences,
+  isConfirmedDprNullProjectRecovery,
 } from "../shared/dprBoqSelection";
 import { emptySuggestionsReason } from "../shared/dprProgrammeLink";
 import { creditExecutedEntries } from "../shared/planOutcome";
@@ -51,6 +52,26 @@ describe("shared DPR BOQ selection", () => {
     expect(resolveDprBoqProjectId(projects)).toBe(10);
     expect(resolveDprBoqProjectId(projects, 20)).toBe(20);
     expect(resolveDprBoqProjectId(projects, 999)).toBe(10);
+  });
+
+  it("permits null-project recovery only after an explicit, same-site, unlinked confirmation", () => {
+    expect(isConfirmedDprNullProjectRecovery({
+      savedProjectId: null,
+      requestedProjectId: 2,
+      confirmed: true,
+      sameSite: true,
+      hasBoqReferences: false,
+    })).toBe(true);
+
+    for (const rejected of [
+      { savedProjectId: 7, requestedProjectId: 2, confirmed: true, sameSite: true, hasBoqReferences: false },
+      { savedProjectId: null, requestedProjectId: 2, confirmed: false, sameSite: true, hasBoqReferences: false },
+      { savedProjectId: null, requestedProjectId: 2, confirmed: true, sameSite: false, hasBoqReferences: false },
+      { savedProjectId: null, requestedProjectId: 2, confirmed: true, sameSite: true, hasBoqReferences: true },
+      { savedProjectId: null, requestedProjectId: null, confirmed: true, sameSite: true, hasBoqReferences: false },
+    ]) {
+      expect(isConfirmedDprNullProjectRecovery(rejected)).toBe(false);
+    }
   });
 
   it("preserves API ordering and excludes only explicit DPR opt-outs", () => {
@@ -116,7 +137,32 @@ describe("shared DPR BOQ selection", () => {
       expect(source, page).toContain("BOQ references are already in use");
     }
     const siteEdit = readFileSync("client/src/pages/SiteEdit.tsx", "utf8");
-    expect(siteEdit).toContain("const hasSavedPositiveProject");
-    expect(siteEdit).toContain("hasSavedPositiveProject || siteEditHasBoqReferences");
+    expect(siteEdit).toContain("const hasSavedDpr = dpr != null");
+    expect(siteEdit).toContain("if (nextSite !== header.site && hasSavedDpr)");
+    expect(siteEdit).toContain("onProjectChange={handleBoqProjectChange}");
+    expect(siteEdit).toContain("projectRecoveryRequired=");
+  });
+
+  it("keeps every saved DPR on its server-owned site and resets recovery on permitted corrections", () => {
+    const siteEdit = readFileSync("client/src/pages/SiteEdit.tsx", "utf8");
+    expect(siteEdit).toContain("A saved DPR remains tied to its original site.");
+    expect(siteEdit).toContain("setBoqProjectPreference({ resolved: false, projectId: null });");
+    expect(siteEdit).toContain("setBoqProjectRecoveryConfirmed(false);");
+    expect(siteEdit).toContain("setPendingBoqProjectId(null);");
+  });
+
+  it("keeps a positive pin immutable while giving an unlinked saved-null DPR a confirmed recovery path", () => {
+    const guided = readFileSync("client/src/pages/GuidedDpr.tsx", "utf8");
+    const status = readFileSync("client/src/components/DprBoqStatus.tsx", "utf8");
+    const routes = readFileSync("server/routes.ts", "utf8");
+    const storage = readFileSync("server/storage.ts", "utf8");
+
+    expect(guided).toContain("serverBoqProjectPinRef.current === null && !guidedHasBoqReferences");
+    expect(guided).toContain("boqProjectRecoveryConfirmed: true");
+    expect(status).toContain("Attach this DPR to a BOQ project?");
+    expect(status).toContain("button-confirm-boq-project-recovery");
+    expect(routes).toContain("DPR_PROJECT_RECOVERY_CONFIRMATION_REQUIRED");
+    expect(routes).toContain("confirmedNullProjectRecovery");
+    expect(storage).toContain("allowConfirmedNullProjectRecovery");
   });
 });

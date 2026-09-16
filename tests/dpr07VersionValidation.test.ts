@@ -25,6 +25,11 @@ const fx = vi.hoisted(() => ({
   equipmentLifecycleCalls: [] as number[][],
   versions: [] as any[],
   created: [] as any[],
+  recoveryProjectSite: "DPR-07 TEST SITE",
+  scopeToken: "version-scope-token",
+  changeScopeDuringValidation: false,
+  scopeChanged: false,
+  events: [] as string[],
 }));
 
 vi.mock("../server/push", () => ({
@@ -33,6 +38,16 @@ vi.mock("../server/push", () => ({
   sendPushToAudience: vi.fn().mockResolvedValue(undefined),
   initPush: vi.fn(),
 }));
+
+vi.mock("../server/db", () => {
+  const query: any = {
+    from: () => query,
+    innerJoin: () => query,
+    where: () => query,
+    limit: async () => [{ siteName: fx.recoveryProjectSite }],
+  };
+  return { db: { select: vi.fn(() => query), execute: vi.fn().mockResolvedValue({ rows: [] }) } };
+});
 
 vi.mock("../server/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../server/auth")>();
@@ -66,14 +81,27 @@ vi.mock("../server/storage", () => {
   methods.getDprs = vi.fn(async () => [{ id: 1 }]);
   methods.getDpr = vi.fn(async (id: number) => fx.dprs.get(id));
   methods.getBoqItem = vi.fn(async (id: number) => fx.boqItems.get(id) ?? null);
-  methods.getWorkProgramBar = vi.fn(async (id: number) => fx.bars.get(id));
+  methods.getWorkProgramBar = vi.fn(async (id: number) => {
+    fx.events.push("programme-validation");
+    if (fx.changeScopeDuringValidation) fx.scopeChanged = true;
+    return fx.bars.get(id);
+  });
   methods.getUserPermittedSiteIds = vi.fn(async () => null);
   methods.getEquipmentUsageLifecycle = vi.fn(async (ids: number[]) => {
     fx.equipmentLifecycleCalls.push(ids.map(Number));
     return ids.map((id) => fx.equipmentLifecycles.get(Number(id))).filter(Boolean);
   });
-  methods.createVersionDpr = vi.fn(async (originalId: number, input: any) => {
-    fx.versions.push({ originalId, input });
+  methods.getProjectScopeVersionToken = vi.fn(async () => {
+    fx.events.push("scope-token");
+    return fx.scopeToken;
+  });
+  methods.createVersionDpr = vi.fn(async (originalId: number, input: any, _editedBy: string, _timestamp: string, _audit: any, scopeVersionToken: string) => {
+    if (scopeVersionToken === "scope-before-validation" && fx.scopeChanged) {
+      const error = new Error("Project scope changed while this DPR version was being validated");
+      (error as any).code = "SCOPE_CHANGED_DURING_PLANNING";
+      throw error;
+    }
+    fx.versions.push({ originalId, input, scopeVersionToken });
     return { id: DPR_ID + fx.versions.length, ...input, dprStatus: "submitted" };
   });
   methods.createDpr = vi.fn(async (input: any) => {
@@ -171,6 +199,10 @@ function reset() {
   fx.equipmentLifecycleCalls.length = 0;
   fx.versions.length = 0;
   fx.created.length = 0;
+  fx.scopeToken = "version-scope-token";
+  fx.changeScopeDuringValidation = false;
+  fx.scopeChanged = false;
+  fx.events.length = 0;
   fx.bars.set(VALID_BAR_ID, {
     id: VALID_BAR_ID,
     boqProjectId: PROJECT_ID,
@@ -326,6 +358,89 @@ describe("DPR-07 Fix 2 — version validators use changed/new progress only", ()
     expect(response.status).toBe(400);
     expect(response.body.code).toBe("PROGRAMME_LINK_INVALID");
     expect(response.body.message).toContain("different BOQ project");
+    expect(fx.versions).toHaveLength(0);
+  });
+
+  it("versions a confirmed saved-null source with a newly chosen target-project BOQ row", async () => {
+    putVersionFixture([], { boqProjectId: null });
+    fx.boqItems.set(3005, { id: 3005, boqProjectId: PROJECT_ID + 1, unit: "MT" });
+    const { id: _id, dprId: _dprId, ...newProgress } = sourceRow(105, {
+      activity: "NEW RECOVERED WORK",
+      boqItemId: 3005,
+      programmeBarId: null,
+    });
+
+    const response = await request(app)
+      .post(`/api/dprs/${DPR_ID}/version`)
+      .send({
+        data: {
+          ...header({
+            boqProjectId: PROJECT_ID + 1,
+            boqProjectRecoveryConfirmed: true,
+            progress: [newProgress],
+          }),
+        },
+      })
+      .set("Content-Type", "application/json");
+
+    expect(response.status).toBe(201);
+    expect(fx.versions).toHaveLength(1);
+    expect(fx.versions[0].input).toMatchObject({
+      boqProjectId: PROJECT_ID + 1,
+      boqProjectRecoveryConfirmed: true,
+      progress: [expect.objectContaining({ boqItemId: 3005 })],
+    });
+    expect(fx.versions[0].scopeVersionToken).toBe("version-scope-token");
+  });
+
+  it("does not route a second version from a source already superseded by the first", async () => {
+    putVersionFixture([], { isSuperseded: true });
+
+    const response = await request(app)
+      .post(`/api/dprs/${DPR_ID}/version`)
+      .send({ data: header() })
+      .set("Content-Type", "application/json");
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("DPR_ALREADY_SUPERSEDED");
+    expect(fx.versions).toHaveLength(0);
+  });
+
+  it("uses the pre-validation target scope token when a correction lands during programme validation", async () => {
+    const linked = sourceRow(106, {
+      activity: "SCOPE TOKEN RACE",
+      boqItemId: 3006,
+      programmeBarId: VALID_BAR_ID,
+      side: "Full Width",
+      chainageFrom: "0",
+      chainageTo: "1",
+      chainageFromKm: 0,
+      chainageToKm: 1,
+    });
+    fx.boqItems.set(3006, { id: 3006, boqProjectId: PROJECT_ID, unit: "MT" });
+    fx.bars.set(VALID_BAR_ID, {
+      id: VALID_BAR_ID,
+      boqProjectId: PROJECT_ID,
+      boqItemId: 3006,
+      side: null,
+      chainageFrom: null,
+      chainageTo: null,
+      startDate: null,
+      endDate: null,
+      status: "planned",
+    });
+    putVersionFixture([linked]);
+    fx.scopeToken = "scope-before-validation";
+    fx.changeScopeDuringValidation = true;
+
+    const response = await request(app)
+      .post(`/api/dprs/${DPR_ID}/version`)
+      .send({ data: header({ progress: [payloadRow(linked, { quantity: 1, quantitySource: "measured" })] }) })
+      .set("Content-Type", "application/json");
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("SCOPE_CHANGED_DURING_PLANNING");
+    expect(fx.events.indexOf("scope-token")).toBeLessThan(fx.events.indexOf("programme-validation"));
     expect(fx.versions).toHaveLength(0);
   });
 

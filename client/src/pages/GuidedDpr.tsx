@@ -286,6 +286,11 @@ export default function GuidedDpr() {
     resolved: boolean;
     projectId: number | null;
   }>({ resolved: false, projectId: null });
+  const [boqProjectRecoveryConfirmed, setBoqProjectRecoveryConfirmed] = useState(false);
+  // A recovery target is kept separately from the confirmed project. This
+  // lets a refresh reopen the confirmation instead of autosaving a project
+  // that the user only selected, but has not yet confirmed.
+  const [pendingBoqProjectId, setPendingBoqProjectId] = useState<number | null>(null);
   const [autosaveBoqProjectId, setAutosaveBoqProjectId] = useState<number | null | undefined>(undefined);
   // A locally restored preference is scoped to the restored site. A deliberate
   // site change clears that pin (including an explicit null), while a server
@@ -315,6 +320,8 @@ export default function GuidedDpr() {
     // an intentionally saved "no project" value, while omission means that
     // the old blob never resolved a BOQ project.
     boqProjectId?: number | null;
+    boqProjectRecoveryConfirmed?: boolean;
+    pendingBoqProjectId?: number | null;
     step?: number;
   };
   // Set true by every restore/hydration generation; consumed by the
@@ -324,6 +331,12 @@ export default function GuidedDpr() {
     date, siteName, engineer, entries, equipment, labour, remarks, draftId,
     ...(autosaveBoqProjectId !== undefined
       ? { boqProjectId: autosaveBoqProjectId }
+      : {}),
+    ...(boqProjectRecoveryConfirmed
+      ? { boqProjectRecoveryConfirmed: true }
+      : {}),
+    ...(pendingBoqProjectId != null
+      ? { pendingBoqProjectId }
       : {}),
     step,
   };
@@ -349,12 +362,36 @@ export default function GuidedDpr() {
       // recovery blob remains available for the existing Restore workflow.
       localBoqPreferenceScopeRef.current = null;
       if (!serverDraftHydratedRef.current) serverBoqProjectPinRef.current = undefined;
+      const restoredPendingProjectId = d.pendingBoqProjectId;
+      const hasRestoredPendingProject = typeof restoredPendingProjectId === "number"
+        && Number.isInteger(restoredPendingProjectId)
+        && restoredPendingProjectId > 0;
+      if (!serverDraftHydratedRef.current) {
+        setPendingBoqProjectId(hasRestoredPendingProject ? restoredPendingProjectId : null);
+        setBoqProjectRecoveryConfirmed(
+          !hasRestoredPendingProject
+          &&
+          d.boqProjectRecoveryConfirmed === true
+          && Object.prototype.hasOwnProperty.call(d, "boqProjectId")
+          && typeof d.boqProjectId === "number"
+          && Number.isInteger(d.boqProjectId)
+          && d.boqProjectId > 0,
+        );
+      }
       if (!serverDraftHydratedRef.current && Object.prototype.hasOwnProperty.call(d, "boqProjectId")) {
         const restoredProjectId = d.boqProjectId;
         if (isSavedBoqProjectId(restoredProjectId)) {
-          localBoqPreferenceScopeRef.current = { site: d.siteName };
-          setBoqProjectPreference({ resolved: true, projectId: restoredProjectId });
-          setAutosaveBoqProjectId(restoredProjectId);
+          if (hasRestoredPendingProject) {
+            // The target was selected but not confirmed. Keep recovery
+            // unresolved and reopen the modal after reload; never trust a
+            // project value that disagrees with the pending intent.
+            setBoqProjectPreference({ resolved: true, projectId: null });
+            setAutosaveBoqProjectId(null);
+          } else {
+            localBoqPreferenceScopeRef.current = { site: d.siteName };
+            setBoqProjectPreference({ resolved: true, projectId: restoredProjectId });
+            setAutosaveBoqProjectId(restoredProjectId);
+          }
         } else {
           setBoqProjectPreference({ resolved: false, projectId: null });
           setAutosaveBoqProjectId(undefined);
@@ -429,6 +466,8 @@ export default function GuidedDpr() {
       setBoqProjectPreference({ resolved: false, projectId: null });
       setAutosaveBoqProjectId(undefined);
     }
+    setPendingBoqProjectId(null);
+    setBoqProjectRecoveryConfirmed(false);
     setDraftId(urlDraftDpr.id);
     setDate(urlDraftDpr.date ?? today);
     setSiteName(String(urlDraftDpr.site ?? "").replace(/ – (Edited by|Copy by) .+$/, "").trim());
@@ -614,7 +653,8 @@ export default function GuidedDpr() {
   };
 
   // ── Master data ────────────────────────────────────────────────────────────
-  const { data: sitesList = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
+  const sitesQuery = useQuery<Site[]>({ queryKey: ["/api/sites"] });
+  const { data: sitesList = [] } = sitesQuery;
   const activeSites = sitesList.filter((s) => s.isActive);
   useEffect(() => {
     if (activeSites.length === 1 && !siteName) setSiteName(activeSites[0].name);
@@ -637,6 +677,8 @@ export default function GuidedDpr() {
       return;
     }
     if (nextSite !== siteName) {
+      setPendingBoqProjectId(null);
+      setBoqProjectRecoveryConfirmed(false);
       if (localBoqPreferenceScopeRef.current) {
         // A browser-restored pin belongs to the blob's site. Do not carry its
         // project (including an explicit null) into a deliberately chosen site.
@@ -675,11 +717,20 @@ export default function GuidedDpr() {
       : undefined,
   });
   const guidedHasBoqReferences = useMemo(
-    () => hasDprBoqReferences([entries, labour, equipment]),
+    () => hasDprBoqReferences([
+      entries, labour, equipment,
+      unmanagedSectionsRef.current.materials,
+      unmanagedSectionsRef.current.sitePurchases,
+      unmanagedSectionsRef.current.structureItems,
+    ]),
     [entries, labour, equipment],
   );
   const handleBoqProjectChange = (nextProjectId: number | null) => {
-    if (serverBoqProjectPinRef.current !== undefined) return;
+    const recoveringSavedNull = (serverBoqProjectPinRef.current === null
+      || (boqProjectPreference.resolved && boqProjectPreference.projectId === null))
+      && nextProjectId != null
+      && !guidedHasBoqReferences;
+    if (serverBoqProjectPinRef.current !== undefined && !recoveringSavedNull) return;
     if (guidedHasBoqReferences && nextProjectId !== boqProjectId) {
       toast({
         title: "BOQ references are already in use",
@@ -691,6 +742,8 @@ export default function GuidedDpr() {
     localBoqPreferenceScopeRef.current = { site: siteName };
     setBoqProjectPreference({ resolved: true, projectId: nextProjectId });
     setAutosaveBoqProjectId(nextProjectId);
+    setPendingBoqProjectId(null);
+    setBoqProjectRecoveryConfirmed(recoveringSavedNull);
   };
   // Keep the local recovery record in sync with the project actually resolved
   // by the hook, but never write the hook's initial/loading null as though it
@@ -698,7 +751,27 @@ export default function GuidedDpr() {
   useEffect(() => {
     if (!boqProjectsLoaded) return;
     if (serverBoqProjectPinRef.current !== undefined) {
-      setAutosaveBoqProjectId(serverBoqProjectPinRef.current);
+      // A saved null remains canonical while recovery is pending. Once the
+      // user confirms a positive target, retain that confirmed local target;
+      // this guard prevents a later project refresh from writing serverPin
+      // (null) over it.
+      const retainingConfirmedRecovery = serverBoqProjectPinRef.current === null
+        && boqProjectRecoveryConfirmed
+        && boqProjectPreference.resolved
+        && boqProjectPreference.projectId != null;
+      if (!retainingConfirmedRecovery) {
+        setAutosaveBoqProjectId(serverBoqProjectPinRef.current);
+      }
+      return;
+    }
+    if (pendingBoqProjectId != null) {
+      // The target is only a pending intent. Persist the saved null (or omit
+      // the field for a fresh DPR), never the unconfirmed target.
+      setAutosaveBoqProjectId(null);
+      return;
+    }
+    if (boqProjectPreference.resolved) {
+      setAutosaveBoqProjectId(boqProjectPreference.projectId);
       return;
     }
     if (
@@ -718,6 +791,9 @@ export default function GuidedDpr() {
     boqProjectId,
     guidedHasBoqReferences,
     boqProjectPreference.resolved,
+    boqProjectPreference.projectId,
+    boqProjectRecoveryConfirmed,
+    pendingBoqProjectId,
     siteName,
   ]);
   const { data: cutFillArrangements = [] } = useQuery<any[]>({
@@ -1257,13 +1333,14 @@ export default function GuidedDpr() {
       // A server draft's saved pin remains canonical; the site/project
       // controls are locked for that linked draft so it cannot be replaced by
       // a different fallback during an asynchronous refresh.
-      boqProjectId: serverBoqProjectPinRef.current !== undefined
+      boqProjectId: serverBoqProjectPinRef.current !== undefined && !boqProjectRecoveryConfirmed
         ? serverBoqProjectPinRef.current
         : boqProjectId != null
           ? boqProjectId
           : boqProjectPreference.resolved
             ? null
             : undefined,
+      ...(boqProjectRecoveryConfirmed ? { boqProjectRecoveryConfirmed: true as const } : {}),
       ...(asDraft ? { dprStatus: "draft" } : {}),
       progress,
       cutFillConsumptions: flattenCutFillConsumptions(entries),
@@ -1324,6 +1401,21 @@ export default function GuidedDpr() {
         toast({ title: "Diesel tank balance required", description: dieselTankError, variant: "destructive" });
         throw new Error(dieselTankError);
       }
+      const recoveryProjectId = serverBoqProjectPinRef.current !== undefined && !boqProjectRecoveryConfirmed
+        ? serverBoqProjectPinRef.current
+        : boqProjectId != null
+          ? boqProjectId
+          : boqProjectPreference.resolved
+            ? boqProjectPreference.projectId
+            : null;
+      if (guidedHasBoqReferences && recoveryProjectId == null) {
+        toast({
+          title: "Confirm a BOQ project before saving",
+          description: "This draft has BOQ-linked rows. Choose and confirm the project recovery first; your row edits remain on this screen.",
+          variant: "destructive",
+        });
+        throw new Error("BOQ project recovery is required for linked rows");
+      }
       const payload = buildPayload(asDraft);
       const payloadRows = equipment.filter((e) =>
         isMeaningfulEquipmentRow({ ...e.passthrough, machine: e.machine, vehicleNo: e.vehicleNo, operator: e.operator, task: e.task }),
@@ -1350,6 +1442,8 @@ export default function GuidedDpr() {
         localBoqPreferenceScopeRef.current = null;
         setBoqProjectPreference({ resolved: true, projectId: data.boqProjectId });
         setAutosaveBoqProjectId(data.boqProjectId);
+        setPendingBoqProjectId(null);
+        setBoqProjectRecoveryConfirmed(false);
       }
       let failedPhotoCount = 0;
       if (stagedPhotoCount > 0) {
@@ -1589,9 +1683,24 @@ export default function GuidedDpr() {
         itemsLoading={boqItemsLoading}
         itemsLoaded={boqItemsLoaded}
         itemsError={boqItemsError}
+        sitesLoading={sitesQuery.isLoading}
+        sitesLoaded={sitesQuery.isSuccess}
+        sitesError={sitesQuery.error}
+        onRetrySites={() => sitesQuery.refetch()}
         onRetry={retryBoq}
         onProjectChange={handleBoqProjectChange}
-        projectChangeDisabled={serverBoqProjectPinRef.current !== undefined || guidedHasBoqReferences}
+        pendingRecoveryProjectId={pendingBoqProjectId}
+        onRecoveryPendingChange={setPendingBoqProjectId}
+        projectChangeDisabled={
+          guidedHasBoqReferences
+          || (serverBoqProjectPinRef.current !== undefined
+            && !(serverBoqProjectPinRef.current === null && !guidedHasBoqReferences))
+        }
+        projectRecoveryRequired={
+          (serverBoqProjectPinRef.current === null
+            || (boqProjectPreference.resolved && boqProjectPreference.projectId === null)
+            || pendingBoqProjectId != null)
+        }
       />
 
       {/* Task #1409: wizard step indicator */}

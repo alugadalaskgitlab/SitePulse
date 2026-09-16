@@ -141,8 +141,8 @@ interface EquipmentEntry {
   boqItemId: number | null;
   structureId: string | null;
   breakdowns?: StagedBreakdown[];
-  activitySegments?: Array<{ startTime: string; endTime: string; hoursWorked?: number; boqItems: Array<{ boqItemId: number; programmeBarId?: number | null }> }>;
-  activityAllocations?: Array<{ boqItemId: number; programmeBarId?: number | null; startTime: string; endTime: string; hoursWorked?: number }>;
+  activitySegments?: Array<{ persistedId?: number; startTime: string; endTime: string; hoursWorked?: number; boqItems: Array<{ persistedId?: number; boqItemId: number; programmeBarId?: number | null }> }>;
+  activityAllocations?: Array<{ persistedId?: number; boqItemId: number; programmeBarId?: number | null; startTime: string; endTime: string; hoursWorked?: number }>;
   workAssignmentEdited?: boolean;
   // 06Q (client-only, stripped from the payload): true for rows added during
   // this edit session — only those get opening-reading continuity. Rows
@@ -161,6 +161,7 @@ const contractorDieselTankFieldsCleared = (row: EquipmentEntry): EquipmentEntry 
     : row;
 
 interface LabourEntry {
+  persistedId?: number;
   category: string;
   gender: string;
   count: number;
@@ -171,6 +172,7 @@ interface LabourEntry {
 }
 
 interface MaterialEntry {
+  persistedId?: number;
   type: string;
   material: string;
   quantity: number | null;
@@ -198,6 +200,7 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
 
 interface StructureItem {
+  persistedId?: number;
   structureType: string;
   structureSubType: string;
   structureName: string;
@@ -229,6 +232,7 @@ function mapDprToFormState(dpr: any) {
   const workType: "road" | "structure" = dpr.workType === "structure" ? "structure" : "road";
   const structureItems: StructureItem[] = dpr.structureItems?.length
     ? dpr.structureItems.map((s: any) => ({
+        persistedId: s.id != null ? Number(s.id) : undefined,
         structureType: s.structureType || "Other",
         structureSubType: s.structureSubType || "",
         structureName: s.structureName || "",
@@ -313,14 +317,17 @@ function mapDprToFormState(dpr: any) {
         activitySegments: Array.isArray(e.activitySegments)
           && (e.activitySegments.length > 0 || !Array.isArray(e.activityAllocations) || e.activityAllocations.length === 0)
           ? e.activitySegments.map((segment: any) => ({
+          persistedId: segment.id != null ? Number(segment.id) : undefined,
           startTime: segment.startTime || "", endTime: segment.endTime || "",
           hoursWorked: segment.hoursWorked != null ? Number(segment.hoursWorked) : undefined,
           boqItems: Array.isArray(segment.boqItems) ? segment.boqItems.map((item: any) => ({
+            persistedId: item.id != null ? Number(item.id) : undefined,
             boqItemId: Number(item.boqItemId), programmeBarId: item.programmeBarId != null ? Number(item.programmeBarId) : null,
           })) : [],
         })) : undefined,
         activityAllocations: (!Array.isArray(e.activitySegments) || e.activitySegments.length === 0)
           && Array.isArray(e.activityAllocations) && e.activityAllocations.length > 0 ? e.activityAllocations.map((a: any) => ({
+          persistedId: a.id != null ? Number(a.id) : undefined,
           boqItemId: Number(a.boqItemId), programmeBarId: a.programmeBarId != null ? Number(a.programmeBarId) : null,
           startTime: a.startTime || "", endTime: a.endTime || "", hoursWorked: a.hoursWorked != null ? Number(a.hoursWorked) : undefined,
         })) : undefined,
@@ -330,6 +337,7 @@ function mapDprToFormState(dpr: any) {
 
   const labour: LabourEntry[] = dpr.labour?.length
     ? dpr.labour.map((l: any) => ({
+        persistedId: l.id != null ? Number(l.id) : undefined,
         category: l.category || "Skilled",
         gender: l.gender || "Male",
         count: l.count,
@@ -342,6 +350,7 @@ function mapDprToFormState(dpr: any) {
 
   const materials: MaterialEntry[] = dpr.materials
     ? dpr.materials.map((m: any) => ({
+        persistedId: m.id != null ? Number(m.id) : undefined,
         type: m.type || "Received",
         material: m.material || "",
         quantity: m.quantity != null ? Number(m.quantity) : null,
@@ -461,9 +470,10 @@ export default function SiteEdit() {
   });
   const activeEquipment = equipmentMaster?.filter(e => e.isActive) || [];
 
-  const { data: sitesList = [] } = useQuery<Site[]>({
+  const sitesQuery = useQuery<Site[]>({
     queryKey: ["/api/sites"],
   });
+  const { data: sitesList = [] } = sitesQuery;
   const activeSites = sitesList.filter(s => s.isActive);
 
   const [header, setHeader] = useState({
@@ -480,6 +490,11 @@ export default function SiteEdit() {
     resolved: boolean;
     projectId: number | null;
   }>({ resolved: false, projectId: null });
+  const [boqProjectRecoveryConfirmed, setBoqProjectRecoveryConfirmed] = useState(false);
+  // Keep an unconfirmed recovery target separate from the selected project so
+  // a refresh can reopen the confirmation without turning linked draft rows
+  // into a projectless save.
+  const [pendingBoqProjectId, setPendingBoqProjectId] = useState<number | null>(null);
 
   type SiteEditBoqItem = BillItem & {
     dprMeasurementMethod?: string | null;
@@ -508,12 +523,11 @@ export default function SiteEdit() {
       : dpr?.boqProjectId,
   });
   const handleEditSiteChange = (nextSite: string) => {
-    const hasSavedPositiveProject = dpr?.boqProjectId != null
-      && Number(dpr.boqProjectId) > 0;
-    if (nextSite !== header.site && (hasSavedPositiveProject || siteEditHasBoqReferences)) {
+    const hasSavedDpr = dpr != null;
+    if (nextSite !== header.site && hasSavedDpr) {
       toast({
         title: "Saved DPR site is preserved",
-        description: "An existing DPR cannot be moved to another site while retaining its linked BOQ project and activity references.",
+        description: "A saved DPR remains tied to its original site. Start a new DPR to report work at another site.",
         variant: "destructive",
       });
       return;
@@ -522,6 +536,8 @@ export default function SiteEdit() {
       // An unlinked legacy DPR may be corrected to another site. Do not carry
       // a locally pinned fallback into that newly selected site.
       setBoqProjectPreference({ resolved: false, projectId: null });
+      setBoqProjectRecoveryConfirmed(false);
+      setPendingBoqProjectId(null);
     }
     setHeader((current) => ({ ...current, site: nextSite }));
   };
@@ -722,6 +738,15 @@ export default function SiteEdit() {
     () => hasDprBoqReferences([progress, structureItems, equipment, labour, materials]),
     [progress, structureItems, equipment, labour, materials],
   );
+  const handleBoqProjectChange = (nextProjectId: number | null) => {
+    const savedNullProject = dpr
+      && Object.prototype.hasOwnProperty.call(dpr, "boqProjectId")
+      && dpr.boqProjectId == null;
+    if (!savedNullProject || siteEditHasBoqReferences || nextProjectId == null) return;
+    setBoqProjectPreference({ resolved: true, projectId: nextProjectId });
+    setPendingBoqProjectId(null);
+    setBoqProjectRecoveryConfirmed(true);
+  };
   useEffect(() => {
     // A positive server project is already canonical. Only legacy/omitted
     // project fields need a local pin once linked rows are present.
@@ -746,7 +771,12 @@ export default function SiteEdit() {
 
     // Compute and store the canonical server-side form state for dirty-checking
     const serverState = mapDprToFormState(dpr);
-    const serverJson = JSON.stringify(serverState);
+    const serverJson = JSON.stringify({
+      ...serverState,
+      ...(Object.prototype.hasOwnProperty.call(dpr, "boqProjectId")
+        ? { boqProjectId: dpr.boqProjectId ?? null }
+        : {}),
+    });
     serverSnapshotRef.current = serverJson;
 
     // Check for a saved draft first — restore it instead of overwriting with server data
@@ -757,6 +787,36 @@ export default function SiteEdit() {
         // Only restore the draft if it actually differs from the server state
         if (JSON.stringify(draft) !== serverJson) {
           setHeader(draft.header || serverState.header);
+          const hasDraftProject = Object.prototype.hasOwnProperty.call(draft, "boqProjectId");
+          const draftProjectId = draft.boqProjectId;
+          const validDraftProject = draftProjectId === null
+            || (typeof draftProjectId === "number" && Number.isInteger(draftProjectId) && draftProjectId > 0);
+          const hasPendingRecovery = typeof draft.pendingBoqProjectId === "number"
+            && Number.isInteger(draft.pendingBoqProjectId)
+            && draft.pendingBoqProjectId > 0;
+          setPendingBoqProjectId(hasPendingRecovery ? draft.pendingBoqProjectId : null);
+          if (hasPendingRecovery) {
+            // A pending target is never a confirmed server link. Keep the
+            // draft rows and reopen the confirmation after reload, even if a
+            // malformed/legacy blob also contains a positive project value.
+            setBoqProjectPreference({ resolved: true, projectId: null });
+            setBoqProjectRecoveryConfirmed(false);
+          } else if (
+            hasDraftProject
+            && validDraftProject
+            && draft.boqProjectRecoveryConfirmed === true
+            && typeof draftProjectId === "number"
+            && draftProjectId > 0
+          ) {
+            setBoqProjectPreference({ resolved: true, projectId: draftProjectId });
+            setBoqProjectRecoveryConfirmed(true);
+          } else if (hasDraftProject && validDraftProject) {
+            setBoqProjectPreference({ resolved: true, projectId: draftProjectId });
+            setBoqProjectRecoveryConfirmed(false);
+          } else {
+            setBoqProjectPreference({ resolved: false, projectId: null });
+            setBoqProjectRecoveryConfirmed(false);
+          }
           if (draft.progress?.length) setProgress(
             (draft.progress as any[]).map((p: any) => ({
               ...p,
@@ -793,6 +853,8 @@ export default function SiteEdit() {
     setLabour(lab);
     setMaterials(mat);
     setSitePurchases(sp);
+    setPendingBoqProjectId(null);
+    setBoqProjectRecoveryConfirmed(false);
     formInitializedRef.current = true;
   }, [dpr]);
 
@@ -800,7 +862,30 @@ export default function SiteEdit() {
   // and only when the state actually differs from what the server provided — prevents stale drafts)
   useEffect(() => {
     if (!formInitializedRef.current) return;
-    const draft = { header, workType, structureItems, progress, equipment, labour, materials, sitePurchases };
+    // Keep project recovery context alongside row edits. In particular, a
+    // pending positive target must survive reload without being mistaken for
+    // a confirmed server project; this prevents restoring linked rows with an
+    // unrelated/null project pin.
+    const savedDprHasProject = dpr != null
+      && Object.prototype.hasOwnProperty.call(dpr, "boqProjectId");
+    const draftProjectId = boqProjectPreference.resolved
+      ? boqProjectPreference.projectId
+      : savedDprHasProject
+        ? dpr.boqProjectId ?? null
+        : undefined;
+    const draft = {
+      header,
+      workType,
+      structureItems,
+      progress,
+      equipment,
+      labour,
+      materials,
+      sitePurchases,
+      ...(draftProjectId !== undefined ? { boqProjectId: draftProjectId } : {}),
+      ...(boqProjectRecoveryConfirmed ? { boqProjectRecoveryConfirmed: true } : {}),
+      ...(pendingBoqProjectId != null ? { pendingBoqProjectId } : {}),
+    };
     const draftJson = JSON.stringify(draft);
     if (draftJson === serverSnapshotRef.current) {
       // Form matches server state — no real edits, remove any stale draft
@@ -808,7 +893,21 @@ export default function SiteEdit() {
       return;
     }
     sessionStorage.setItem(DRAFT_KEY, draftJson);
-  }, [header, workType, structureItems, progress, equipment, labour, materials, sitePurchases]);
+  }, [
+    dpr,
+    header,
+    workType,
+    structureItems,
+    progress,
+    equipment,
+    labour,
+    materials,
+    sitePurchases,
+    boqProjectPreference.resolved,
+    boqProjectPreference.projectId,
+    boqProjectRecoveryConfirmed,
+    pendingBoqProjectId,
+  ]);
 
   // Batch 06V: ?progressEntryId= deep-link — scroll to and briefly highlight
   // the named row after the form is loaded (identified by DB id or entryKey).
@@ -1194,6 +1293,7 @@ export default function SiteEdit() {
     // has failed. This is the previous contract with a saved-DPR fallback:
     // boqProjectId: siteBoqProjectId ?? dpr?.boqProjectId ?? undefined
     boqProjectId: siteBoqProjectId ?? savedDprBoqProjectId,
+    ...(boqProjectRecoveryConfirmed ? { boqProjectRecoveryConfirmed: true as const } : {}),
     workType,
     structureItems: workType === "structure" ? structureItems.filter(s => s.itemOfWork) : [],
     progress: workType === "road" ? progress.filter(p => p.activity).map(p => {
@@ -1376,7 +1476,16 @@ export default function SiteEdit() {
       toast({ title: "Missing Fields", description: "Please fill in date, site name, and engineer name.", variant: "destructive" });
       return;
     }
-    draftSaveMutation.mutate(buildPayload());
+    const payload = buildPayload();
+    if (siteEditHasBoqReferences && payload.boqProjectId == null) {
+      toast({
+        title: "Confirm a BOQ project before saving",
+        description: "This draft has BOQ-linked rows. Choose and confirm the project recovery first; your row edits remain on this screen.",
+        variant: "destructive",
+      });
+      return;
+    }
+    draftSaveMutation.mutate(payload);
   };
 
   const validateCutFillForFinal = () => {
@@ -1408,6 +1517,14 @@ export default function SiteEdit() {
     }
     // Batch 04: same shared readiness rule as Guided/Detailed/server.
     const payload = buildPayload();
+    if (siteEditHasBoqReferences && payload.boqProjectId == null) {
+      toast({
+        title: "Confirm a BOQ project before submitting",
+        description: "This DPR has BOQ-linked rows. Choose and confirm the project recovery first.",
+        variant: "destructive",
+      });
+      return;
+    }
     const r = evaluateDprSubmitReadiness({
       ...payload,
       progress: withCutFillReadinessContext(payload.progress as any, siteBoqItems),
@@ -1440,7 +1557,16 @@ export default function SiteEdit() {
     }
 
     if (!validateCutFillForFinal()) return;
-    updateMutation.mutate(buildPayload());
+    const payload = buildPayload();
+    if (siteEditHasBoqReferences && payload.boqProjectId == null) {
+      toast({
+        title: "Confirm a BOQ project before saving",
+        description: "This DPR has BOQ-linked rows. Choose and confirm the project recovery first; your row edits remain on this screen.",
+        variant: "destructive",
+      });
+      return;
+    }
+    updateMutation.mutate(payload);
   };
 
   if (isLoading) {
@@ -1586,6 +1712,14 @@ export default function SiteEdit() {
               setDraftRestored(false);
               if (dpr) {
                 const serverState = mapDprToFormState(dpr);
+                const hasSavedProject = Object.prototype.hasOwnProperty.call(dpr, "boqProjectId");
+                setBoqProjectPreference(
+                  hasSavedProject
+                    ? { resolved: true, projectId: dpr.boqProjectId ?? null }
+                    : { resolved: false, projectId: null },
+                );
+                setBoqProjectRecoveryConfirmed(false);
+                setPendingBoqProjectId(null);
                 setHeader(serverState.header);
                 setProgress(serverState.progress);
                 setEquipment(serverState.equipment);
@@ -1689,8 +1823,21 @@ export default function SiteEdit() {
             itemsLoading={boqItemsLoading}
             itemsLoaded={boqItemsLoaded}
             itemsError={boqItemsError}
+            sitesLoading={sitesQuery.isLoading}
+            sitesLoaded={sitesQuery.isSuccess}
+            sitesError={sitesQuery.error}
+            onRetrySites={() => sitesQuery.refetch()}
             onRetry={retryBoq}
-            projectChangeDisabled
+            onProjectChange={handleBoqProjectChange}
+            pendingRecoveryProjectId={pendingBoqProjectId}
+            onRecoveryPendingChange={setPendingBoqProjectId}
+            projectChangeDisabled={siteEditHasBoqReferences || (dpr?.boqProjectId != null)}
+            projectRecoveryRequired={
+              dpr != null
+              && Object.prototype.hasOwnProperty.call(dpr, "boqProjectId")
+              && dpr.boqProjectId == null
+              && (!siteEditHasBoqReferences || pendingBoqProjectId != null)
+            }
           />
         </div>
       </Card>
