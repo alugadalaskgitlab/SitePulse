@@ -1,0 +1,60 @@
+INSTRUCTION DPR-10: Three separate problems found on the DPR edit screen (SiteEdit.tsx) while completing a draft — (1) the bottom "Save Changes" button always fails on a draft because it calls the wrong endpoint, while an identical-looking top button works, (2) the chainage-overlap warning that Final Submit is blocking on never actually appears on screen, so there is no way to reach the "Give reason" control it refers to, (3) real material deliveries recorded for the site that day never appear on the DPR's read-only report even though they're visible in Edit mode
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Three independent, precisely-diagnosed problems in one batch because they were all found in the same session on the same screen. Fix 1 and Fix 2 are confirmed, reproducible bugs with an exact code cause identified below — fix them directly. Fix 3 needs your own judgment call first (see below) before deciding whether it's a bug or working as designed. Do not touch DPR-02 through DPR-09 or unrelated screens. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND — FIX 1: BOTTOM "SAVE CHANGES" BUTTON CALLS THE WRONG ENDPOINT ON A DRAFT
+1. client/src/pages/SiteEdit.tsx has THREE separate save paths: `handleDraftSave` → `draftSaveMutation` (saves a draft correctly), `handleSubmitDraft` → `submitDraftMutation` (submits a draft correctly, with its own readiness checks), and `handleSave` → `updateMutation`, which unconditionally calls `POST /api/dprs/:id/version` (~line 1010-1015) — the versioning endpoint, meant ONLY for editing an already-submitted DPR. The server correctly rejects this call for a draft with "A draft DPR cannot be versioned. Edit, save, or submit the draft instead."
+2. Near the top of the screen (~line 1578-1614), the button group is correctly gated by `isDraftMode`: when true, it shows "Save Progress" (→ handleDraftSave, correct) and "Submit DPR" (→ handleSubmitDraft, correct); when false, it shows a single "Save Changes" (→ handleSave, correct for that case).
+3. At the BOTTOM of the same screen (~line 3220), there is a second "Save Changes" button (`data-testid="button-save-bottom"`) that is NOT gated by `isDraftMode` at all — it always renders and always calls `handleSave` → `updateMutation` → the version endpoint, regardless of whether the DPR is still a draft. This is why, on a draft, the top controls work (they're the correct draft-aware buttons) while the bottom button always fails with the "cannot be versioned" conflict — they are not the same control, despite looking similar.
+
+FIX 1
+a. Wrap the bottom button block (~line 3218-3223) in the same `isDraftMode` condition used at the top (~line 1578): when `isDraftMode` is true, render the same "Save Progress" / "Submit DPR" pair (or a single equivalent draft-save action) instead of "Save Changes"; when false, keep the existing "Save Changes" → `handleSave` behavior exactly as it is today.
+b. The bottom and top controls for the same mode must behave identically — a person should never get a different result from what looks like the same action in two places on one screen.
+
+BACKGROUND — FIX 2: THE CHAINAGE-OVERLAP WARNING BLOCKING SUBMIT NEVER APPEARS ON SCREEN
+1. Reproduced directly: submitting a draft DPR (site TAKKADPALLY-SIRUR / ALLADURG-style road DPR, activity "EMBANKMENT - EXCAVATED EARTH", Ch 3.100–3.250) produced the toast "DPR is not ready to submit — EMBANKMENT - EXCAVATED EARTH — Possible chainage overlap requires a reason before submission. ROADWAY EXCAVATION — Possible chainage overlap requires a reason before submission." This check (SiteEdit.tsx ~line 1451-1458) reads `overlapHits.get(i)` and, when non-empty and no `chainageOverrideReason` is set, blocks submission and tells the person to "tap 'Give reason' on the overlap warning."
+2. That inline warning is `<ChainageOverlapWarning hits={overlapHits.get(idx) ?? []} .../>` (client/src/components/ChainageOverlapGuard.tsx ~line 166-241), rendered directly under the BOQ item picker for each row, using the SAME `overlapHits` map the submit check reads. It should show an amber/orange box with the overlap detail and a "Give reason" button whenever `hits.length > 0`.
+3. On screen, for the exact row the submit check flagged ("embankment - excavated earth", Ch 3.100–3.250), that box never appears — the row goes straight from the "Covered so far — LHS: none · RHS: 3.000–3.100, 3.150–3.250" line (which itself shows this row's own chainage genuinely overlapping the already-covered 3.150–3.250 segment) to the Length/Width/Thickness fields, with no warning box and no "Give reason" button anywhere in between. The person has no way to satisfy the requirement the submit check is demanding, because the control that would let them is not visible.
+4. This means `overlapHits.get(idx)` is empty (or the component isn't re-rendering) at the moment the person is looking at the row, but becomes non-empty by the time Submit is pressed and re-evaluates it — most likely a timing/dependency issue in how `useChainageOverlapHits` (built from `overlapCandidateRows`, `overlapPriors`, `unchangedOverlapRowKeys`) recomputes as its inputs (e.g. `overlapPriors`, which loads via `useChainageOverlapContext`) finish loading, versus when the row itself re-renders.
+
+FIX 2
+a. Reproduce exactly: open an existing draft with a genuine chainage overlap on one of its rows (same setup as above, or construct an equivalent one), and confirm whether the inline warning box appears immediately when the BOQ item/chainage is entered, appears only after some delay (e.g. once `overlapPriors` finishes loading), or never appears at all despite the submit-time check firing.
+b. Fix the root cause so the inline "Possible chainage overlap" box and its "Give reason" button are ALWAYS visible for a row whenever the submit-time check would flag that same row — the two must never disagree. If this is a loading-order/race issue, make sure the row's warning updates as soon as the underlying data is ready, without requiring the person to reload or interact with something unrelated first.
+c. If, after investigation, you find a different actual cause (e.g. a key mismatch between the row identity used for the inline map versus the row identity used in the submit check), fix that instead and explain what you found.
+
+BACKGROUND — FIX 3: MATERIAL DELIVERIES RECORDED FOR THE SITE NEVER SHOW ON THE DPR'S OWN REPORT
+1. The DPR edit screen shows a "Bulk deliveries already recorded today (Site Material Trips)" panel listing every material trip logged for the site that day (in the reproduction case: 42 trips of Soil, 600 CFT each, only 1 of the 42 linked to an activity) — this comes from a separate Site Material Trips source, not from the DPR's own saved `materials` array.
+2. The DPR's own "Materials Log" section, both in the Edit screen and in the read-only Site Report / Site Preview view (client/src/pages/SiteReport.tsx ~line 226, 824-831; SitePreview.tsx), reads only `dpr.materials` — which stays empty ("No materials recorded.") unless a person explicitly links one of those trips to an activity's material receipt strip. In the reproduction case, since only 1 of 42 trips had ever been linked, both Edit and the read-only report show "No materials recorded" for all practical purposes — real deliveries the site received that day are effectively invisible on the DPR report.
+3. This may be intentional (materials are meant to be attributed to a specific activity before they count as part of that DPR) or it may be a genuine reporting gap (a manager reading the DPR report has no way to see that 42 truckloads of soil arrived at the site that day, because nothing in the read-only view points to the separate Site Material Trips log at all).
+
+FIX 3 (investigate first, then decide)
+a. Confirm with the existing design intent: is a material trip meant to be invisible on the DPR report until someone deliberately links it to an activity? If yes, this is working as designed — but the read-only Site Report/Site Preview view should still show SOME indicator (even a simple line like "42 material trips recorded for this site today, not yet linked to an activity") rather than flatly saying "No materials recorded," which is misleading when deliveries genuinely happened.
+b. If you determine this is unintentional/a gap rather than a deliberate design choice, propose (but do not implement without confirmation) how the read-only report should reflect same-day site material trips even when unlinked.
+c. Report your finding either way — do not silently change this behavior without explaining what you found and what you propose.
+
+WHAT NOT TO DO
+- Do not change `handleDraftSave`, `handleSubmitDraft`, or the top button group's existing behavior — only the bottom button's gating.
+- Do not weaken the chainage-overlap-reason requirement itself — the rule that Final Submit needs a reason for a real overlap is correct and must stay; only its visibility/reliability is being fixed.
+- Do not implement Fix 3 without first reporting your finding on whether it's a gap or by design.
+- Do not touch DPR-02 through DPR-09 or any other screen.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected for Fix 1 or Fix 2. Fix 3 is investigation-only in this batch — no implementation without a follow-up confirmation.
+
+TESTS
+A. Open a draft DPR, make a change, scroll to the bottom, and click the bottom "Save Changes"/equivalent button. Confirm it now behaves identically to the top draft controls (saves or submits correctly) — no "cannot be versioned" conflict.
+B. Repeat for an already-submitted DPR being edited by admin — confirm the bottom button still correctly creates a new version, exactly as before.
+C. Reproduce a genuine chainage overlap on a row (as described above) and confirm the inline "Possible chainage overlap" box with "Give reason" appears reliably for that row as soon as the data is available — not only surfaced indirectly via the submit-time toast.
+D. Give a reason via that control and confirm Final Submit now proceeds past that check.
+E. Report your Fix 3 investigation finding, with a recommendation, per the instructions above.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B evidence (screenshots).
+2. Confirm Fix 2 with Test C/D evidence (screenshots), and explain what the actual root cause turned out to be.
+3. Report Fix 3's finding and recommendation (Test E) — do not implement changes for it yet.
+4. Confirm no schema change was needed.
+5. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

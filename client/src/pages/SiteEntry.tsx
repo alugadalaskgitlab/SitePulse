@@ -38,7 +38,13 @@ import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { collectDprBoqItemIds, dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
+import {
+  collectDprBoqItemIds,
+  dprBoqItemDisplayName,
+  dprSelectableBoqItems,
+  hasDprBoqReferences,
+  hasDprMeaningfulNonBoqWork,
+} from "@shared/dprBoqSelection";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
@@ -461,6 +467,10 @@ export default function SiteEntry() {
     resolved: boolean;
     projectId: number | null;
   }>({ resolved: false, projectId: null });
+  // Saved/local form rows must hydrate before an explicit-null catalogue
+  // request is eligible; initial placeholders fail closed.
+  const [boqCataloguePreviewReady, setBoqCataloguePreviewReady] = useState(false);
+  const [boqCataloguePreviewEligible, setBoqCataloguePreviewEligible] = useState(false);
   const evidenceRecoveredProjectRef = useRef<number | null>(null);
 
   // Resolve numeric siteId from selected site name (must be after `header`)
@@ -468,6 +478,7 @@ export default function SiteEntry() {
     siteId: selectedSiteId,
     projectId: resolvedBoqProjectId,
     items: siteBoqItems,
+    catalogueItems: siteBoqCatalogueItems,
     projectsLoaded: boqProjectsLoaded,
     evidenceProjectId,
     requestEvidenceRecovery,
@@ -478,6 +489,7 @@ export default function SiteEntry() {
       ? boqProjectPreference.projectId
       : undefined,
     allowEvidenceBasedRecovery: true,
+    cataloguePreviewEligible: boqCataloguePreviewEligible,
   });
 
   // Sync resolved project explicitly into header state so the DPR carries the
@@ -738,8 +750,8 @@ export default function SiteEntry() {
   // Rank BOQ items by relevance to the WHOLE structure context. Never returns empty,
   // and always keeps the already-selected item in the list.
   const structureBoqItemsFor = (row: any) => {
-    const structOnly = siteBoqItems.filter(isStructureBoqItem);
-    const base = structOnly.length ? structOnly : siteBoqItems;
+    const structOnly = siteEntryBoqItemsForPicker.filter(isStructureBoqItem);
+    const base = structOnly.length ? structOnly : siteEntryBoqItemsForPicker;
     const score = (bi: any) => {
       const hay = `${bi.itemCode ?? ""} ${bi.itemName ?? ""} ${bi.description ?? ""} ${(bi as any).categoryName ?? ""}`.toLowerCase();
       let s = 0;
@@ -753,7 +765,7 @@ export default function SiteEntry() {
     const relevant = scored.filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => x.bi);
     let result = relevant.length ? relevant : base;
     if (row.boqItemId != null && !result.some((bi: any) => bi.id === row.boqItemId)) {
-      const sel = siteBoqItems.find((bi) => bi.id === row.boqItemId);
+      const sel = siteEntryBoqItemsForPicker.find((bi) => bi.id === row.boqItemId);
       if (sel) result = [sel, ...result];
     }
     return result;
@@ -930,6 +942,30 @@ export default function SiteEntry() {
     () => collectDprBoqItemIds([progress, structureItems, equipment, labour, materials]),
     [progress, structureItems, equipment, labour, materials],
   );
+  const siteEntryHasMeaningfulNonBoqWork = useMemo(
+    () => hasDprMeaningfulNonBoqWork([progress, structureItems, equipment, labour, materials, sitePurchases]),
+    [progress, structureItems, equipment, labour, materials, sitePurchases],
+  );
+  const siteEntryNullCataloguePreview = boqProjectPreference.resolved
+    && boqProjectPreference.projectId === null
+    && !siteEntryHasBoqReferences
+    && !siteEntryHasMeaningfulNonBoqWork;
+  useEffect(() => {
+    setBoqCataloguePreviewEligible(
+      boqCataloguePreviewReady
+      && !siteEntryHasBoqReferences
+      && !siteEntryHasMeaningfulNonBoqWork,
+    );
+  }, [
+    boqCataloguePreviewReady,
+    siteEntryHasBoqReferences,
+    siteEntryHasMeaningfulNonBoqWork,
+  ]);
+  const siteEntryBoqItemsForPicker = siteBoqItems.length > 0
+    ? siteBoqItems
+    : siteEntryNullCataloguePreview || siteEntryHasBoqReferences
+      ? siteBoqCatalogueItems
+      : [];
   useEffect(() => {
     if (!siteEntryHasBoqReferences && evidenceRecoveredProjectRef.current != null) {
       if (boqProjectPreference.projectId === evidenceRecoveredProjectRef.current) {
@@ -1090,6 +1126,7 @@ export default function SiteEntry() {
     setLabour(data.labour);
     if (data.materials) setMaterials(data.materials);
     if (data.sitePurchases) setSitePurchases(data.sitePurchases);
+    setBoqCataloguePreviewReady(true);
   }, []);
 
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<SiteEntryFormData>({
@@ -2217,7 +2254,7 @@ export default function SiteEntry() {
                     </Select>
                   </div>
                   )}
-                    {siteBoqItems.length > 0 && (
+                    {siteEntryBoqItemsForPicker.length > 0 && (
                   <div className="sm:col-span-2 md:col-span-4 space-y-1">
                     <Label className="text-sm">BOQ Item (Plan vs Actual link)</Label>
                     <BillItemPicker
@@ -2228,7 +2265,7 @@ export default function SiteEntry() {
                                 .find((s) => s.structureId === item.programmeStructureId)
                                 ?.bars.some((b) => b.boqItemId === bi.id),
                             )
-                          : structureBoqItemsFor(item)
+                               : structureBoqItemsFor(item)
                       }
                       value={item.boqItemId ?? null}
                       testidPrefix={`structure-${idx}`}
@@ -2388,10 +2425,10 @@ export default function SiteEntry() {
                   <div className="col-span-2">
                     {/* When site has a BOQ project, Activity becomes a BOQ item selector.
                         boqItemId is stored on the progress entry and sent with the DPR payload. */}
-                    <Label className="text-sm">{siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
-                    {siteBoqItems.length > 0 ? (
+                    <Label className="text-sm">{siteEntryBoqItemsForPicker.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
+                    {siteEntryBoqItemsForPicker.length > 0 ? (
                       <BillItemPicker
-                        items={siteBoqItems}
+                        items={siteEntryBoqItemsForPicker}
                         value={entry.boqItemId ?? null}
                         stacked
                         labels={false}
@@ -2409,7 +2446,7 @@ export default function SiteEntry() {
                         }}
                       />
                     ) : null}
-                    {siteBoqItems.length > 0 && entry.boqItemId != null && siteBoqProjectId != null && (
+                    {siteEntryBoqItemsForPicker.length > 0 && entry.boqItemId != null && siteBoqProjectId != null && (
                       <div data-testid={`activity-execution-status-block-${idx}`}>
                       <ProgrammeBarPicker
                         projectId={siteBoqProjectId}
@@ -2498,8 +2535,8 @@ export default function SiteEntry() {
                       }}
                       testidPrefix={`progress-${idx}`}
                     />
-                    {siteBoqItems.length > 0 && entry.programmeBarId == null && renderBalanceChips(entry.boqItemId, entry.quantity ?? calculateQuantity(entry))}
-                    {siteBoqItems.length === 0 && (
+                    {siteEntryBoqItemsForPicker.length > 0 && entry.programmeBarId == null && renderBalanceChips(entry.boqItemId, entry.quantity ?? calculateQuantity(entry))}
+                    {siteEntryBoqItemsForPicker.length === 0 && (
                       <Input
                         placeholder="Activity name"
                         value={entry.activity}

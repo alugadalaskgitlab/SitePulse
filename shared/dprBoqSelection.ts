@@ -208,6 +208,112 @@ export function hasDprBoqReferences(value: unknown): boolean {
   return collectDprBoqItemIds(value).length > 0;
 }
 
+/**
+ * Return true when the supplied live DPR/form rows contain work that is more
+ * than an untouched editor placeholder.
+ *
+ * This is intentionally narrower than a generic "non-empty object" check:
+ * default progress/equipment/labour rows contain option values and generated
+ * keys, while a blank row added after a special row must not make a
+ * null-project DPR look like ordinary BOQ work.  No-site-work and incidental
+ * rows are meaningful as soon as they are marked, even when their required
+ * description is still being completed.
+ */
+export function hasDprMeaningfulNonBoqWork(value: unknown): boolean {
+  const visited = new WeakSet<object>();
+  const stringKeys = [
+    "activity",
+    "description",
+    "noSiteWorkDescription",
+    "incidentalDescription",
+    "task",
+    "contractor",
+    "machine",
+    "vehicleNo",
+    "operator",
+    "side",
+    "chainageFrom",
+    "chainageTo",
+    "structureName",
+    "location",
+    "material",
+    "itemDescription",
+    "vendor",
+    "billNo",
+    "receiptNumber",
+    "supplier",
+    "remarks",
+    "remark",
+  ] as const;
+  const numericKeys = [
+    "quantity",
+    "length",
+    "width",
+    "thickness",
+    "amount",
+    "amountPaid",
+    "count",
+    "diesel",
+    "openingReading",
+    "closingReading",
+    "numberOfTrips",
+    "tripDistance",
+    "totalKm",
+    "waterQuantity",
+    "reusableQty",
+  ] as const;
+  const idKeys = [
+    "boqItemId",
+    "programmeBarId",
+    "earthworkArrangementId",
+    "equipmentId",
+    "plantUsageId",
+    "structureId",
+  ] as const;
+  const structureDefaults: Record<string, string> = {
+    structureType: "Culvert",
+    structureSubType: "Pipe Culvert",
+    stage: "Excavation",
+    itemOfWork: "Excavation",
+  };
+  const visit = (current: unknown): boolean => {
+    if (current == null || typeof current !== "object") return false;
+    if (visited.has(current)) return false;
+    visited.add(current);
+    if (Array.isArray(current)) return current.some(visit);
+
+    const record = current as Record<string, unknown>;
+    if (record.noSiteWork === true || record.isIncidental === true) return true;
+    for (const key of stringKeys) {
+      if (typeof record[key] === "string" && record[key].trim() !== "") return true;
+    }
+    for (const key of numericKeys) {
+      const numeric = Number(record[key]);
+      if (Number.isFinite(numeric) && numeric > 0) return true;
+    }
+    for (const key of idKeys) {
+      const raw = record[key];
+      if (isRealDprBoqItemId(raw)
+        || (key === "structureId" && typeof raw === "string" && raw.trim() !== "")) {
+        return true;
+      }
+    }
+    for (const key of Object.keys(structureDefaults)) {
+      if (typeof record[key] === "string"
+        && record[key].trim() !== ""
+        && record[key].trim() !== structureDefaults[key]) {
+        return true;
+      }
+    }
+    for (const key of ["personnelIds", "breakdowns", "attachments", "allocations"]) {
+      const nested = record[key];
+      if (Array.isArray(nested) && nested.length > 0) return true;
+    }
+    return Object.values(record).some(visit);
+  };
+  return visit(value);
+}
+
 /** Preserve the server's deterministic order; exclude only explicit DPR opt-outs. */
 export function dprSelectableBoqItems<T extends DprBoqSelectableItem>(
   items: readonly T[],

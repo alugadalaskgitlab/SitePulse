@@ -14,22 +14,128 @@
     "evidenceDirectory": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence"
   },
   "assertions": {
-    "A": "A synthetic server DPR with explicit boqProjectId:null and a live BOQ item reference automatically recovers in Guided, saves project 5510, and retains the live BOQ-linked row/context after reload (the Guided picker may hide once the row is auto-linked to a programme reach).",
+    "A": "A literal fresh Guided save with an unlinked activity/no item is persisted as explicit boqProjectId:null, reopens with the site's BOQ catalogue available, lets the engineer choose GSB LAYING, saves the same draft id with project 5510 + item 8801, and retains both through Detailed/Edit and Guided reload.",
     "B": "The same saved-null/live-reference recovery contract works in Detailed/Edit without a manual project selector and persists after reload.",
     "C": "Guided No Site Work and Detailed/Edit Incidental / Non-BOQ rows retain explicit null and do not request BOQ items or render a picker.",
-    "D": "A Detailed local autosave with explicit null plus a live BOQ item reference recovers automatically and retains the linked row across autosave reload.",
+    "D": "Detailed local autosaves with an empty saved-null state can show the site's BOQ catalogue for the first item, and an explicit-null/live-reference autosave retains its linked row across reload.",
     "E": "A positive saved project pin remains 5501 even when another project is available; no alternate project is guessed."
   },
   "evidence": {
-    "guided": {
-      "original": {
+    "literalA": {
+      "freshUi": {
+        "hasProjectSelector": false,
+        "hasStatusPanel": false,
+        "hasRecoveryDialog": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-09 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr09-A-literal-guided-empty-save-then-live-boq-item\n\nReal Guided, Detailed, and Edit controls. Synthetic data only; no customer or production writes.\n\nBack\nDetailed / Advanced view\nGuided DPR\n\nRecords today's road progress against the work programme — same official record as the Detailed DPR, faster entry.\n\nReport\nActivities\n3\nDetails\n4\nLabour\n5\nEquipment\n6\nPhotos\n7\nReview\n\nNo site work\nIncidental / Non-BOQ\nBOQ Item / Activity\nAll bills\nSelect item…\nActual execution side *\nSelect actual side executed\nCh. From\nCh. To\nLength (m)\nPhysical Qty\nAdd details\nPhotos for this activity\nCamera\nGallery\nFile\nAdd Activity\nBack\nSave Draft\nNext"
+      },
+      "freshImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr09-A-literal-guided-fresh-empty.png",
+      "literalCreate": {
+        "id": 6240,
+        "requestedPayload": {
+          "date": "2026-09-16",
+          "site": "ALLADURG PWD ROAD TO PAMPAD",
+          "engineer": "SURESH KUMAR - ENGINEER",
+          "role": "engineer",
+          "workType": "road",
+          "boqProjectId": 5510,
+          "dprStatus": "draft",
+          "progress": [
+            {
+              "entryKey": "d54645ef-602c-4051-824f-38f85f2ca006",
+              "activity": "",
+              "side": "",
+              "chainageFrom": "",
+              "chainageTo": "",
+              "length": null,
+              "width": null,
+              "thickness": null,
+              "quantity": null,
+              "uom": "",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "personnelIds": [],
+              "boqItemId": null,
+              "programmeBarId": null,
+              "earthworkArrangementId": null,
+              "chainageFromKm": null,
+              "chainageToKm": null,
+              "quantitySource": null,
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "executedBy": null,
+              "layerNo": null,
+              "materialOutcome": null,
+              "reusableQty": null
+            }
+          ],
+          "cutFillConsumptions": [],
+          "structureItems": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "clientTimestamp": "2026-09-16 18:45:27"
+        },
+        "persistedPayload": {
+          "date": "2026-09-16",
+          "site": "ALLADURG PWD ROAD TO PAMPAD",
+          "engineer": "SURESH KUMAR - ENGINEER",
+          "role": "engineer",
+          "workType": "road",
+          "boqProjectId": null,
+          "dprStatus": "draft",
+          "progress": [
+            {
+              "entryKey": "d54645ef-602c-4051-824f-38f85f2ca006",
+              "activity": "",
+              "side": "",
+              "chainageFrom": "",
+              "chainageTo": "",
+              "length": null,
+              "width": null,
+              "thickness": null,
+              "quantity": null,
+              "uom": "",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "personnelIds": [],
+              "boqItemId": null,
+              "programmeBarId": null,
+              "earthworkArrangementId": null,
+              "chainageFromKm": null,
+              "chainageToKm": null,
+              "quantitySource": null,
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "executedBy": null,
+              "layerNo": null,
+              "materialOutcome": null,
+              "reusableQty": null
+            }
+          ],
+          "cutFillConsumptions": [],
+          "structureItems": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "clientTimestamp": "2026-09-16 18:45:27"
+        },
+        "enforcedNull": true
+      },
+      "firstSaved": {
         "ok": true,
         "status": 200,
         "data": {
-          "id": 6230,
-          "date": "2026-08-05",
+          "id": 6240,
+          "date": "2026-09-16",
           "site": "ALLADURG PWD ROAD TO PAMPAD",
-          "engineer": "SURESH KUMAR",
+          "engineer": "SURESH KUMAR - ENGINEER",
           "role": "engineer",
           "workType": "road",
           "boqProjectId": null,
@@ -38,62 +144,73 @@
           "lockStatus": "unlocked",
           "progress": [
             {
-              "id": 7330,
-              "entryKey": "dpr09-guided-live-boq-progress",
-              "activity": "GSB LAYING",
-              "side": "LHS",
-              "chainageFrom": "12+000",
-              "chainageTo": "12+100",
-              "length": 100,
-              "width": 7,
-              "thickness": 20,
-              "quantity": 700,
-              "uom": "SQM",
+              "entryKey": "d54645ef-602c-4051-824f-38f85f2ca006",
+              "activity": "",
+              "side": "",
+              "chainageFrom": "",
+              "chainageTo": "",
+              "length": null,
+              "width": null,
+              "thickness": null,
+              "quantity": null,
+              "uom": "",
               "noSiteWork": false,
               "noSiteWorkDescription": "",
-              "personnelIds": [
-                6101
-              ],
-              "boqItemId": 8801,
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "personnelIds": [],
+              "boqItemId": null,
               "programmeBarId": null,
               "earthworkArrangementId": null,
-              "quantitySource": "measured",
-              "quantitySourceNote": "",
-              "chainageOverrideReason": "",
-              "executedBy": "hlc",
+              "chainageFromKm": null,
+              "chainageToKm": null,
+              "quantitySource": null,
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "executedBy": null,
               "layerNo": null,
-              "isIncidental": false,
-              "incidentalDescription": ""
+              "materialOutcome": null,
+              "reusableQty": null
             }
           ],
           "equipment": [],
           "labour": [],
           "materials": [],
           "sitePurchases": [],
-          "remarks": "DPR-09 Guided saved-null/live-BOQ fixture — synthetic and read-only.",
-          "createdAt": "2026-08-05T16:00:00.000Z"
+          "remarks": "Fixture DPR — representative data only.",
+          "createdAt": "2026-08-05T16:00:00.000Z",
+          "cutFillConsumptions": [],
+          "structureItems": [],
+          "clientTimestamp": "2026-09-16 18:45:27"
         }
       },
-      "ui": {
+      "reopenedBeforeItemUi": {
         "hasProjectSelector": false,
         "hasStatusPanel": false,
         "hasRecoveryDialog": false,
         "visibleManualProjectCopy": false,
-        "bodyExcerpt": "DPR-09 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr09-A-guided-saved-null-live-reference\n\nReal Guided, Detailed, and Edit controls. Synthetic data only; no customer or production writes.\n\nBack\nDetailed / Advanced view\nGuided DPRDraft #6230\n\nRecords today's road progress against the work programme — same official record as the Detailed DPR, faster entry.\n\nReport\nActivities\n3\nDetails\n4\nLabour\n5\nEquipment\n6\nPhotos\n7\nReview\n\nGSB LAYING\n\nNo site work\nIncidental / Non-BOQ\nBOQ Item / Activity\nAll bills\n2.1\nGSB LAYING\n(Sqm)\nProviding and laying granular sub-base\nActual execution side *\nLHS\nCh. From\nCh. To\nLength (m)\nWidth (m)\nLayer / Lift\nPhysical Qty (SQM)\n\nBOQ Qty: 700 Sqm\n\nQuantity source: Calculated from geometry\n\nProgramme link:\nLoading programme context…\nAdd details\nPhotos for this activity\nCamera\nGallery\nFile\nAdd Activity\nBack\nSave Draft\nNext"
+        "bodyExcerpt": "DPR-09 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr09-A-literal-guided-empty-save-then-live-boq-item\n\nReal Guided, Detailed, and Edit controls. Synthetic data only; no customer or production writes.\n\nBack\nDetailed / Advanced view\nGuided DPRDraft #6240\n\nRecords today's road progress against the work programme — same official record as the Detailed DPR, faster entry.\n\nReport\nActivities\n3\nDetails\n4\nLabour\n5\nEquipment\n6\nPhotos\n7\nReview\n\nNo site work\nIncidental / Non-BOQ\nBOQ Item / Activity\nAll bills\nSelect item…\nActual execution side *\nSelect actual side executed\nCh. From\nCh. To\nLength (m)\nPhysical Qty (SQM)\nAdd details\nPhotos for this activity\nCamera\nGallery\nFile\nAdd Activity\nBack\nSave Draft\nNext"
       },
-      "picker": {
-        "present": false,
-        "linkedContext": "Km 12.000–13.000 · Ch 12–13 · LHS · bal 10000 SQM"
+      "reopenedBeforeItemPicker": {
+        "present": true,
+        "text": "Select item…",
+        "value": null,
+        "disabled": false
       },
-      "beforeImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr09-A-guided-live-reference.png",
+      "beforeItemImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr09-A-literal-guided-reopened-null.png",
+      "catalogue": {
+        "present": true,
+        "text": "2.1GSB LAYING(Sqm)Providing and laying granular sub-base"
+      },
+      "catalogueImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr09-A-literal-guided-boq-catalogue.png",
       "mutation": {
-        "id": 6230,
+        "id": 6240,
         "status": "draft",
         "payload": {
-          "id": 6230,
-          "date": "2026-08-05",
+          "id": 6240,
+          "date": "2026-09-16",
           "site": "ALLADURG PWD ROAD TO PAMPAD",
-          "engineer": "SURESH KUMAR",
+          "engineer": "SURESH KUMAR - ENGINEER",
           "role": "engineer",
           "workType": "road",
           "boqProjectId": 5510,
@@ -102,15 +219,15 @@
           "lockStatus": "unlocked",
           "progress": [
             {
-              "entryKey": "dpr09-guided-live-boq-progress",
+              "entryKey": "d54645ef-602c-4051-824f-38f85f2ca006",
               "activity": "GSB LAYING",
-              "side": "LHS",
+              "side": "",
               "chainageFrom": "12+000",
-              "chainageTo": "12+100",
-              "length": 100,
-              "width": 7,
-              "thickness": 20,
-              "quantity": 700,
+              "chainageTo": "",
+              "length": null,
+              "width": null,
+              "thickness": null,
+              "quantity": null,
               "uom": "SQM",
               "noSiteWork": false,
               "noSiteWorkDescription": "",
@@ -121,11 +238,11 @@
               "programmeBarId": 9901,
               "earthworkArrangementId": null,
               "chainageFromKm": 12,
-              "chainageToKm": 12.1,
-              "quantitySource": "calculated",
+              "chainageToKm": null,
+              "quantitySource": null,
               "quantitySourceNote": null,
               "chainageOverrideReason": null,
-              "executedBy": "hlc",
+              "executedBy": null,
               "layerNo": null,
               "materialOutcome": null,
               "reusableQty": null
@@ -135,21 +252,21 @@
           "labour": [],
           "materials": [],
           "sitePurchases": [],
-          "remarks": "DPR-09 Guided saved-null/live-BOQ fixture — synthetic and read-only.",
+          "remarks": "Fixture DPR — representative data only.",
           "createdAt": "2026-08-05T16:00:00.000Z",
           "cutFillConsumptions": [],
           "structureItems": [],
-          "clientTimestamp": "2026-09-16 18:20:00"
+          "clientTimestamp": "2026-09-16 18:45:29"
         }
       },
-      "saved": {
+      "selectedSaved": {
         "ok": true,
         "status": 200,
         "data": {
-          "id": 6230,
-          "date": "2026-08-05",
+          "id": 6240,
+          "date": "2026-09-16",
           "site": "ALLADURG PWD ROAD TO PAMPAD",
-          "engineer": "SURESH KUMAR",
+          "engineer": "SURESH KUMAR - ENGINEER",
           "role": "engineer",
           "workType": "road",
           "boqProjectId": 5510,
@@ -158,15 +275,15 @@
           "lockStatus": "unlocked",
           "progress": [
             {
-              "entryKey": "dpr09-guided-live-boq-progress",
+              "entryKey": "d54645ef-602c-4051-824f-38f85f2ca006",
               "activity": "GSB LAYING",
-              "side": "LHS",
+              "side": "",
               "chainageFrom": "12+000",
-              "chainageTo": "12+100",
-              "length": 100,
-              "width": 7,
-              "thickness": 20,
-              "quantity": 700,
+              "chainageTo": "",
+              "length": null,
+              "width": null,
+              "thickness": null,
+              "quantity": null,
               "uom": "SQM",
               "noSiteWork": false,
               "noSiteWorkDescription": "",
@@ -177,11 +294,11 @@
               "programmeBarId": 9901,
               "earthworkArrangementId": null,
               "chainageFromKm": 12,
-              "chainageToKm": 12.1,
-              "quantitySource": "calculated",
+              "chainageToKm": null,
+              "quantitySource": null,
               "quantitySourceNote": null,
               "chainageOverrideReason": null,
-              "executedBy": "hlc",
+              "executedBy": null,
               "layerNo": null,
               "materialOutcome": null,
               "reusableQty": null
@@ -191,25 +308,95 @@
           "labour": [],
           "materials": [],
           "sitePurchases": [],
-          "remarks": "DPR-09 Guided saved-null/live-BOQ fixture — synthetic and read-only.",
+          "remarks": "Fixture DPR — representative data only.",
           "createdAt": "2026-08-05T16:00:00.000Z",
           "cutFillConsumptions": [],
           "structureItems": [],
-          "clientTimestamp": "2026-09-16 18:20:00"
+          "clientTimestamp": "2026-09-16 18:45:29"
         }
       },
-      "reopenedUi": {
+      "editUi": {
         "hasProjectSelector": false,
         "hasStatusPanel": false,
         "hasRecoveryDialog": false,
         "visibleManualProjectCopy": false,
-        "bodyExcerpt": "DPR-09 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr09-A-guided-saved-null-live-reference\n\nReal Guided, Detailed, and Edit controls. Synthetic data only; no customer or production writes.\n\nBack\nDetailed / Advanced view\nGuided DPRDraft #6230\n\nRecords today's road progress against the work programme — same official record as the Detailed DPR, faster entry.\n\nReport\nActivities\n3\nDetails\n4\nLabour\n5\nEquipment\n6\nPhotos\n7\nReview\n\nGSB LAYING\n\nPlanned side: LHS\nProgramme-linked\nNo site work\nIncidental / Non-BOQ\nActual execution side *\nLHS\nCh. From\nCh. To\nLength (m)\nWidth (m)\nLayer / Lift\nPhysical Qty (SQM)\n\nBOQ Qty: 700 Sqm\n\nQuantity source: Calculated from geometry\n\nProgramme context:\nKm 12.000–13.000 · Ch 12–13 · LHS · bal 10000 SQM\nChange planned reach\nLeave unlinked\nSelected reach:\nPlanned 10000 SQM\nDone 0\nBalance 10000\n(BOQ item total: 10000 · done 0 · bal 10000 SQM)\nAdd details\nPhotos for this activity\nCamera\nGallery\nFile\nAdd Activity\nBack\nSave Draft\nNext"
+        "bodyExcerpt": "DPR-09 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr09-A-literal-guided-empty-save-then-live-boq-item-edit\n\nReal Guided, Detailed, and Edit controls. Synthetic data only; no customer or production writes.\n\nDraft DPR — Fill in closing readings and quantities, then tap Submit DPR when done.\nComplete DPR\n\nAdd closing details and submit when ready\n\nGuided DPR\nSave Progress\nReport Details\nDate\nSite Name\nALLADURG PWD ROAD TO PAMPAD\nEngineer / Submitted By\nSURESH KUMAR - ENGINEER\nRemarks\nActivity Progress\nRoad\nStructure\nAdd Row\nNo Site Work\nIncidental / Non-BOQ\nActivity\nSelected reach:\nPlanned 10000 SQM\nDone 0\nBalance 10000\nSide\nSelect\nFrom (Km)\nTo (Km)\nLength (m)\nWidth (m)\nThickness (m)\nLayer / Lift\nUOM\nSQM\nPhysical Qty (SQM)\nPersonnel:\n+ Add person\nPhotos (0/3):\nCamera\nGallery\nFile\nAdd Row\nEquipment Log\nAdd Row\nEquipment\nSelect equipment...\nOperator\nDiesel Source\nSelect diesel source\nSelect equipment above to add or correct a machine day. Default-only rows are not displayed as Operating.\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage\n\nTotal Diesel\n\n0.000 L\n\nAdd Row\nLabour Strength\nAdd Row\nCategory\nSkilled\nGender\nMale\nCount\nTask/Work\nContractor/Gang\nAdd Row\nMaterials Log\nAdd\n\nNo materials recorded.\n\nSite Purchases\nAdd\n\nNo site purchases added.\n\nCancel\nSave Changes"
       },
-      "reopenedPicker": {
+      "editPicker": {
+        "present": true,
+        "text": "2.1GSB LAYING(Sqm)Providing and laying granular sub-base",
+        "value": null,
+        "disabled": false
+      },
+      "editImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr09-A-literal-site-edit-same-id.png",
+      "guidedReloadUi": {
+        "hasProjectSelector": false,
+        "hasStatusPanel": false,
+        "hasRecoveryDialog": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-09 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr09-A-literal-guided-empty-save-then-live-boq-item-guided-reload\n\nReal Guided, Detailed, and Edit controls. Synthetic data only; no customer or production writes.\n\nBack\nDetailed / Advanced view\nGuided DPRDraft #6240\n\nRecords today's road progress against the work programme — same official record as the Detailed DPR, faster entry.\n\nReport\nActivities\n3\nDetails\n4\nLabour\n5\nEquipment\n6\nPhotos\n7\nReview\n\nGSB LAYING\n\nPlanned side: LHS\nProgramme-linked\nNo site work\nIncidental / Non-BOQ\nActual execution side *\nSelect actual side executed\nCh. From\nCh. To\nLength (m)\nWidth (m)\nLayer / Lift\nPhysical Qty (SQM)\nProgramme context:\nKm 12.000–13.000 · Ch 12–13 · LHS · bal 10000 SQM\nChange planned reach\nLeave unlinked\nSelected reach:\nPlanned 10000 SQM\nDone 0\nBalance 10000\n(BOQ item total: 10000 · done 0 · bal 10000 SQM)\nAdd details\nPhotos for this activity\nCamera\nGallery\nFile\nAdd Activity\nBack\nSave Draft\nNext"
+      },
+      "guidedReloadReference": {
         "present": false,
         "linkedContext": "Km 12.000–13.000 · Ch 12–13 · LHS · bal 10000 SQM"
       },
-      "reopenedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr09-A-guided-live-reference-reopened.png",
+      "guidedReloadImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr09-A-literal-guided-same-id-reload.png",
+      "guidedReload": {
+        "ok": true,
+        "status": 200,
+        "data": {
+          "id": 6240,
+          "date": "2026-09-16",
+          "site": "ALLADURG PWD ROAD TO PAMPAD",
+          "engineer": "SURESH KUMAR - ENGINEER",
+          "role": "engineer",
+          "workType": "road",
+          "boqProjectId": 5510,
+          "dprStatus": "draft",
+          "isSuperseded": false,
+          "lockStatus": "unlocked",
+          "progress": [
+            {
+              "entryKey": "d54645ef-602c-4051-824f-38f85f2ca006",
+              "activity": "GSB LAYING",
+              "side": "",
+              "chainageFrom": "12+000",
+              "chainageTo": "",
+              "length": null,
+              "width": null,
+              "thickness": null,
+              "quantity": null,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "personnelIds": [],
+              "boqItemId": 8801,
+              "programmeBarId": 9901,
+              "earthworkArrangementId": null,
+              "chainageFromKm": 12,
+              "chainageToKm": null,
+              "quantitySource": null,
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "executedBy": null,
+              "layerNo": null,
+              "materialOutcome": null,
+              "reusableQty": null
+            }
+          ],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "remarks": "Fixture DPR — representative data only.",
+          "createdAt": "2026-08-05T16:00:00.000Z",
+          "cutFillConsumptions": [],
+          "structureItems": [],
+          "clientTimestamp": "2026-09-16 18:45:29"
+        }
+      },
       "projectIds": [
         5510
       ]
@@ -272,7 +459,7 @@
         "hasStatusPanel": false,
         "hasRecoveryDialog": false,
         "visibleManualProjectCopy": false,
-        "bodyExcerpt": "DPR-09 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr09-B-site-edit-saved-null-live-reference\n\nReal Guided, Detailed, and Edit controls. Synthetic data only; no customer or production writes.\n\nDraft DPR — Fill in closing readings and quantities, then tap Submit DPR when done.\nComplete DPR\n\nAdd closing details and submit when ready\n\nSave Progress\nSubmit DPR\nReport Details\nDate\nSite Name\nALLADURG PWD ROAD TO PAMPAD\nEngineer / Submitted By\nSURESH KUMAR (LEGACY)\nRemarks\nActivity Progress\nRoad\nStructure\nAdd Row\nNo Site Work\nIncidental / Non-BOQ\nBOQ Item / Activity\nRoad Work\n2.1\nGSB LAYING\n(Sqm)\nProviding and laying granular sub-base\nProgramme link:\nLoading programme context…\nSide\nLHS\nFrom (Km)\nTo (Km)\nLength (m)\nWidth (m)\nThickness (m)\nLayer / Lift\nUOM\nauto\nSQM\nPhysical Qty (SQM)\n\nBOQ Qty: 700 Sqm\n\nDirect measured\nPersonnel:\nSURESH KUMAR\n+ Add person\nPhotos (0/3):\nCamera\nGallery\nFile\nAdd Row\nEquipment Log\nAdd Row\nEquipment\nSelect equipment...\nOperator\nDiesel Source\nSelect diesel source\nSelect equipment above to add or correct a machine day. Default-only rows are not displayed as Operating.\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage\n\nTotal Diesel\n\n0.000 L\n\nAdd Row\nLabour Strength\nAdd Row\nCategory\nSkilled\nGender\nMale\nCount\nTask/Work\nContractor/Gang\nLink to Work Item (optional)\nNot linked\nAdd Row\nMaterials Log\nAdd\n\nNo materials recorded.\n\nSite Purchases\nAdd\n\nNo site purchases added.\n\nCancel\nSave Changes"
+        "bodyExcerpt": "DPR-09 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr09-B-site-edit-saved-null-live-reference\n\nReal Guided, Detailed, and Edit controls. Synthetic data only; no customer or production writes.\n\nDraft DPR — Fill in closing readings and quantities, then tap Submit DPR when done.\nComplete DPR\n\nAdd closing details and submit when ready\n\nSave Progress\nSubmit DPR\nReport Details\nDate\nSite Name\nALLADURG PWD ROAD TO PAMPAD\nEngineer / Submitted By\nSURESH KUMAR (LEGACY)\nRemarks\nActivity Progress\nRoad\nStructure\nAdd Row\nNo Site Work\nIncidental / Non-BOQ\nActivity\nSide\nLHS\nFrom (Km)\nTo (Km)\nLength (m)\nWidth (m)\nThickness (m)\nLayer / Lift\nUOM\nauto\nSQM\nPhysical Qty (SQM)\nDirect measured\nPersonnel:\nSURESH KUMAR\n+ Add person\nPhotos (0/3):\nCamera\nGallery\nFile\nAdd Row\nEquipment Log\nAdd Row\nEquipment\nSelect equipment...\nOperator\nDiesel Source\nSelect diesel source\nSelect equipment above to add or correct a machine day. Default-only rows are not displayed as Operating.\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage\n\nTotal Diesel\n\n0.000 L\n\nAdd Row\nLabour Strength\nAdd Row\nCategory\nSkilled\nGender\nMale\nCount\nTask/Work\nContractor/Gang\nAdd Row\nMaterials Log\nAdd\n\nNo materials recorded.\n\nSite Purchases\nAdd\n\nNo site purchases added.\n\nCancel\nSave Changes"
       },
       "picker": {
         "present": true,
@@ -625,7 +812,7 @@
           "materials": [],
           "sitePurchases": []
         },
-        "savedAt": 1789582811574,
+        "savedAt": 1789584342538,
         "version": 1
       },
       "reopenedUi": {
@@ -691,7 +878,144 @@
           "materials": [],
           "sitePurchases": []
         },
-        "savedAt": 1789582812204,
+        "savedAt": 1789584343550,
+        "version": 1
+      }
+    },
+    "detailedEmptyLocal": {
+      "beforeImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr09-D-empty-detailed-local-before-restore.png",
+      "beforeItemAutosave": null,
+      "ui": {
+        "hasProjectSelector": false,
+        "hasStatusPanel": false,
+        "hasRecoveryDialog": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-09 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr09-D-empty-detailed-local-autosave-catalogue\n\nReal Guided, Detailed, and Edit controls. Synthetic data only; no customer or production writes.\n\nDetailed DPR\n\nFull daily progress report — every section, complete control\n\nGuided DPR\nSet Detailed as my default\nReport Details\nDate\nSite Name\nALLADURG PWD ROAD TO PAMPAD\nEngineer / Submitted By\nSURESH KUMAR - ENGINEER\nRoad Works Progress\nRoad Works\nAdd Activity\nNo Site Work\nIncidental / Non-BOQ\nBOQ Item / Activity\nAll bills\nSelect item…\nSide\nSide\nFrom (Ch.)\nTo (Ch.)\nL (m)\nW (m)\nT (m)\nUOM\nSQM\nPhysical Qty\nPersonnel:\n+ Add person\nPhotos (0/3):\nCamera\nGallery\nFile\nAdd Activity\nEquipment Log\nAdd Equipment\n\nTotal Diesel\n\n0.000 L\n\nAdd Equipment\nLabour Strength\nAdd Labour\nAdd Labour\nMaterials Consumed / Issued\nAdd\n\nNo materials recorded. Click \"Add\" to record material consumed or issued against a work item. (Bulk deliveries by vehicle trip are still tracked separately in Materials Received.)\n\nSite Purchases\nAdd\n\nNo site purchases added. Click \"Add\" to record direct site purchases like diesel for cleaning, small consumables, etc.\n\nRemarks & Review\nRemarks (optional)\nPhotos\nCamera\nGallery\nNo photos added yet\n\nPhotos are uploaded once you save the report.\n\nReview your entries above, then tap Preview Report to finish.\n\nUnsaved changes\nCancel\nPreview Report"
+      },
+      "catalogue": {
+        "present": true,
+        "text": "2.1GSB LAYING(Sqm)Providing and laying granular sub-base"
+      },
+      "catalogueImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr09-D-empty-detailed-local-catalogue.png",
+      "selectedPicker": {
+        "present": true,
+        "text": "2.1GSB LAYING(Sqm)Providing and laying granular sub-base",
+        "value": null,
+        "disabled": false
+      },
+      "selectedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr09-D-empty-detailed-local-selected.png",
+      "persisted": {
+        "formKey": "site-entry-new",
+        "data": {
+          "header": {
+            "date": "2026-08-12",
+            "site": "ALLADURG PWD ROAD TO PAMPAD",
+            "engineer": "SURESH KUMAR - ENGINEER",
+            "boqProjectId": 5510
+          },
+          "workType": "road",
+          "progress": [
+            {
+              "entryKey": "pe_1789584360589_ve1jd029",
+              "activity": "GSB LAYING",
+              "side": "",
+              "chainageFrom": "12",
+              "chainageTo": "13",
+              "length": 1000,
+              "width": 7,
+              "thickness": null,
+              "quantity": 7000,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "isIncidental": false,
+              "incidentalDescription": "",
+              "personnelIds": [],
+              "boqItemId": 8801,
+              "programmeBarId": 9901,
+              "earthworkArrangementId": null,
+              "quantitySource": "calculated",
+              "quantitySourceNote": "",
+              "chainageOverrideReason": "",
+              "executedBy": "",
+              "layerNo": null,
+              "materialOutcome": null,
+              "reusableQty": null
+            }
+          ],
+          "structureItems": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": []
+        },
+        "savedAt": 1789584362124,
+        "version": 1
+      },
+      "projectIds": [
+        5510,
+        5510
+      ],
+      "reopenedUi": {
+        "hasProjectSelector": false,
+        "hasStatusPanel": false,
+        "hasRecoveryDialog": false,
+        "visibleManualProjectCopy": false,
+        "bodyExcerpt": "DPR-09 ISOLATED BROWSER EVIDENCE\nFixture-only API adapter · dpr09-D-empty-detailed-local-autosave-catalogue\n\nReal Guided, Detailed, and Edit controls. Synthetic data only; no customer or production writes.\n\nDetailed DPR\n\nFull daily progress report — every section, complete control\n\nGuided DPR\nSet Detailed as my default\nReport Details\nDate\nSite Name\nALLADURG PWD ROAD TO PAMPAD\nEngineer / Submitted By\nSURESH KUMAR - ENGINEER\nRoad Works Progress\nRoad Works\nAdd Activity\nNo Site Work\nIncidental / Non-BOQ\nBOQ Item / Activity\nRoad Work\n2.1\nGSB LAYING\n(Sqm)\nProviding and laying granular sub-base\nProgramme context:\nKm 12.000–13.000 · Ch 12–13 · LHS · bal 10000 SQM\nChange planned reach\nLeave unlinked\nSelected reach:\nPlanned 10000 SQM\nDone 0\nBalance 10000\n(BOQ item total: 10000 · done 0 · bal 10000 SQM)\nSide\nSide\nFrom (Ch.)\nTo (Ch.)\nL (m)\nW (m)\nLayer / Lift\nUOM\nauto\nSQM\nPhysical Qty (SQM)\n\nBOQ Qty: 7,000 Sqm\n\nQuantity source: Calculated from geometry (automatic)\n\nPersonnel:\n+ Add person\nPhotos (0/3):\nCamera\nGallery\nFile\nAdd Activity\nEquipment Log\nAdd Equipment\n\nTotal Diesel\n\n0.000 L\n\nAdd Equipment\nLabour Strength\nAdd Labour\nAdd Labour\nMaterials Consumed / Issued\nAdd\n\nNo materials recorded. Click \"Add\" to record material consumed or issued against a work item. (Bulk deliveries by vehicle trip are still tracked separately in Materials Received.)\n\nSite Purchases\nAdd\n\nNo site purchases added. Click \"Add\" to record direct site purchases like diesel for cleaning, small consumables, etc.\n\nRemarks & Review\nRemarks (optional)\nPhotos\nCamera\nGallery\nNo photos added yet\n\nPhotos are uploaded once you save the report.\n\nReview your entries above, then tap Preview Report to finish.\n\nCancel\nPreview Report"
+      },
+      "reopenedPicker": {
+        "present": true,
+        "text": "2.1GSB LAYING(Sqm)Providing and laying granular sub-base",
+        "value": null,
+        "disabled": false
+      },
+      "reopenedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr09-D-empty-detailed-local-reopened.png",
+      "restoredAgain": {
+        "formKey": "site-entry-new",
+        "data": {
+          "header": {
+            "date": "2026-08-12",
+            "site": "ALLADURG PWD ROAD TO PAMPAD",
+            "engineer": "SURESH KUMAR - ENGINEER",
+            "boqProjectId": 5510
+          },
+          "workType": "road",
+          "progress": [
+            {
+              "entryKey": "pe_1789584360589_ve1jd029",
+              "activity": "GSB LAYING",
+              "side": "",
+              "chainageFrom": "12",
+              "chainageTo": "13",
+              "length": 1000,
+              "width": 7,
+              "thickness": null,
+              "quantity": 7000,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "isIncidental": false,
+              "incidentalDescription": "",
+              "personnelIds": [],
+              "boqItemId": 8801,
+              "programmeBarId": 9901,
+              "earthworkArrangementId": null,
+              "quantitySource": "calculated",
+              "quantitySourceNote": "",
+              "chainageOverrideReason": "",
+              "executedBy": "",
+              "layerNo": null,
+              "materialOutcome": null,
+              "reusableQty": null
+            }
+          ],
+          "structureItems": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": []
+        },
+        "savedAt": 1789584362804,
         "version": 1
       }
     },
@@ -836,13 +1160,14 @@
   "browserExceptions": [],
   "writes": {
     "fixtureOnly": true,
-    "guidedDraftId": 6230,
+    "guidedDraftId": 6240,
     "siteEditDraftId": 6231,
     "noProductionPersistence": true,
     "finalFixtureRequestCount": 18
   },
   "investigation": {
-    "literalFirstSaveLimitation": "A literal first save with no BOQ references cannot expose a BOQ picker: the current protection correctly keeps an explicit null unresolved. The verifier therefore uses a synthetic server-null/live-row fixture plus a browser-local null/live-row fixture to exercise the post-save state after real references exist; it does not claim that an end user can add the first BOQ item from a hidden picker.",
+    "literalFirstSave": "The literal first-save path is covered: a fresh Guided POST with one unlinked activity and no BOQ item is fixture-enforced to persist explicit boqProjectId:null, the same draft id reopens with the site's catalogue, and selecting GSB LAYING then persists project 5510 + item 8801 through Detailed/Edit and Guided reload.",
+    "fixtureNullPostDisclosure": "literalA.literalCreate records requestedPayload separately from persistedPayload. The fixture adapter's literal POST branch enforces boqProjectId:null for the empty/no-item save and marks enforcedNull:true; that adapter mutation is fixture evidence only and is not a claim about a production server first-save response.",
     "realDatabaseEvidence": "Server-worker real-DB validation is independent evidence and is not represented as fixture traffic here.",
     "manualSelector": "No manual BOQ-project selector, status panel, recovery dialog, or project confirmation is used or expected."
   },

@@ -1,0 +1,958 @@
+{
+  "scenario": "DPR-10 SiteEdit bottom gating, submitted version, delayed-prior overlap reason",
+  "fixture": {
+    "baseUrl": "http://127.0.0.1:4187",
+    "cdp": "127.0.0.1:9227",
+    "productionDatabaseUsed": false,
+    "customerWrites": false,
+    "apiRouteMode": "browser fetch adapter with in-memory fixture state",
+    "backendIntegrationTest": false,
+    "evidenceDirectory": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence"
+  },
+  "evidenceClassification": {
+    "browserFixture": "Rendered SiteEdit controls over the fixture's in-memory API adapter.",
+    "actualBackendTests": "None in this verifier; production Express/database route coverage remains separate."
+  },
+  "assertions": {
+    "A": "Draft bottom Save Progress used PATCH /api/dprs/:id/draft and did not attempt POST /version.",
+    "B": "Submitted admin bottom Save Changes continued to use POST /api/dprs/:id/version.",
+    "C": "An unchanged saved programme-linked draft row received delayed prior context and rendered an inline overlap warning with Give reason.",
+    "D": "Submit was blocked without a reason; saving the row reason allowed POST /api/dprs/:id/submit."
+  },
+  "evidence": {
+    "A": {
+      "scenario": "dpr10-A-bottom-draft-save",
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr10-A-draft-bottom-controls.png",
+      "controls": [
+        {
+          "testId": "button-save-draft-progress",
+          "text": "Save Progress"
+        },
+        {
+          "testId": "button-save-bottom",
+          "text": "Save Progress"
+        }
+      ],
+      "mutation": {
+        "id": 6250,
+        "payload": {
+          "date": "2026-08-05",
+          "site": "NARASIMHULU ROAD",
+          "engineer": "SURESH KUMAR",
+          "remarks": "DPR10 BOTTOM SAVE VERIFIED",
+          "boqProjectId": 5501,
+          "workType": "road",
+          "structureItems": [],
+          "progress": [
+            {
+              "entryKey": "dpr10-bottom-save-progress",
+              "activity": "GSB LAYING",
+              "side": "LHS",
+              "chainageFrom": "12+000",
+              "chainageTo": "12+100",
+              "length": 100,
+              "width": 7,
+              "thickness": 20,
+              "quantity": 700,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "boqItemId": 8801,
+              "programmeBarId": 9901,
+              "earthworkArrangementId": 5701,
+              "quantitySource": "measured",
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "lengthOverrideReason": null,
+              "executedBy": "hlc",
+              "layerNo": null,
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "materialOutcome": null,
+              "reusableQty": null,
+              "chainageFromKm": 12,
+              "chainageToKm": 12.1,
+              "persistedId": 7350,
+              "personnelIds": [
+                6101
+              ]
+            }
+          ],
+          "cutFillConsumptions": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": []
+        }
+      },
+      "request": {
+        "method": "PATCH",
+        "path": "/api/dprs/6250/draft",
+        "body": {
+          "date": "2026-08-05",
+          "site": "NARASIMHULU ROAD",
+          "engineer": "SURESH KUMAR",
+          "remarks": "DPR10 BOTTOM SAVE VERIFIED",
+          "boqProjectId": 5501,
+          "workType": "road",
+          "structureItems": [],
+          "progress": [
+            {
+              "entryKey": "dpr10-bottom-save-progress",
+              "activity": "GSB LAYING",
+              "side": "LHS",
+              "chainageFrom": "12+000",
+              "chainageTo": "12+100",
+              "length": 100,
+              "width": 7,
+              "thickness": 20,
+              "quantity": 700,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "boqItemId": 8801,
+              "programmeBarId": 9901,
+              "earthworkArrangementId": 5701,
+              "quantitySource": "measured",
+              "quantitySourceNote": null,
+              "chainageOverrideReason": null,
+              "lengthOverrideReason": null,
+              "executedBy": "hlc",
+              "layerNo": null,
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "materialOutcome": null,
+              "reusableQty": null,
+              "chainageFromKm": 12,
+              "chainageToKm": 12.1,
+              "persistedId": 7350,
+              "personnelIds": [
+                6101
+              ]
+            }
+          ],
+          "cutFillConsumptions": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": []
+        }
+      },
+      "versionCount": 0,
+      "draftVersionAttempts": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/dprs/6250"
+        },
+        {
+          "method": "GET",
+          "path": "/api/plant-module/equipment?includeInactive=true"
+        },
+        {
+          "method": "GET",
+          "path": "/api/sites"
+        },
+        {
+          "method": "GET",
+          "path": "/api/personnel"
+        },
+        {
+          "method": "GET",
+          "path": "/api/attachments?moduleType=dpr_progress&linkedRecordId=6250"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects/5501/earthwork-arrangements"
+        },
+        {
+          "method": "GET",
+          "path": "/api/dpr/programme-bars?projectId=5501&boqItemId=8801"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects/5501/earthwork-arrangements/item/8801"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects/5501/arrangement-programme-allocations"
+        },
+        {
+          "method": "GET",
+          "path": "/api/site-material-trips?site=NARASIMHULU%20ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        },
+        {
+          "method": "GET",
+          "path": "/api/site-requirements?siteId=6060&dateFrom=2026-08-05&dateTo=2026-08-05"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects?siteId=6060"
+        },
+        {
+          "method": "GET",
+          "path": "/api/dprs/chainage-overlap-context?boqItemIds=8801&excludeDprId=6250"
+        },
+        {
+          "method": "GET",
+          "path": "/api/plant-module/equipment-usage/open-today?date=2026-08-05&site=NARASIMHULU%20ROAD"
+        },
+        {
+          "method": "GET",
+          "path": "/api/site-material-trips/suggestions?site=NARASIMHULU%20ROAD"
+        },
+        {
+          "method": "GET",
+          "path": "/api/procurement/applicable-pi?boqProjectId=5501&boqItemId=8801"
+        },
+        {
+          "method": "GET",
+          "path": "/api/site-material-trips?earthworkArrangementId=5701"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects/5501/items"
+        },
+        {
+          "method": "PATCH",
+          "path": "/api/dprs/6250/draft",
+          "body": {
+            "date": "2026-08-05",
+            "site": "NARASIMHULU ROAD",
+            "engineer": "SURESH KUMAR",
+            "remarks": "DPR10 BOTTOM SAVE VERIFIED",
+            "boqProjectId": 5501,
+            "workType": "road",
+            "structureItems": [],
+            "progress": [
+              {
+                "entryKey": "dpr10-bottom-save-progress",
+                "activity": "GSB LAYING",
+                "side": "LHS",
+                "chainageFrom": "12+000",
+                "chainageTo": "12+100",
+                "length": 100,
+                "width": 7,
+                "thickness": 20,
+                "quantity": 700,
+                "uom": "SQM",
+                "noSiteWork": false,
+                "noSiteWorkDescription": "",
+                "boqItemId": 8801,
+                "programmeBarId": 9901,
+                "earthworkArrangementId": 5701,
+                "quantitySource": "measured",
+                "quantitySourceNote": null,
+                "chainageOverrideReason": null,
+                "lengthOverrideReason": null,
+                "executedBy": "hlc",
+                "layerNo": null,
+                "isIncidental": false,
+                "incidentalDescription": null,
+                "materialOutcome": null,
+                "reusableQty": null,
+                "chainageFromKm": 12,
+                "chainageToKm": 12.1,
+                "persistedId": 7350,
+                "personnelIds": [
+                  6101
+                ]
+              }
+            ],
+            "cutFillConsumptions": [],
+            "equipment": [],
+            "labour": [],
+            "materials": [],
+            "sitePurchases": []
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/dprs/6250"
+        },
+        {
+          "method": "GET",
+          "path": "/api/plant-module/equipment?includeInactive=true"
+        },
+        {
+          "method": "GET",
+          "path": "/api/sites"
+        },
+        {
+          "method": "GET",
+          "path": "/api/personnel"
+        }
+      ]
+    },
+    "B": {
+      "scenario": "dpr10-B-submitted-admin-version",
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr10-B-submitted-bottom-controls.png",
+      "reportImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr10-B-submitted-version-created.png",
+      "controls": [
+        {
+          "testId": "button-save",
+          "text": "Save Changes"
+        },
+        {
+          "testId": "button-save-bottom",
+          "text": "Save Changes"
+        }
+      ],
+      "version": {
+        "id": 6251,
+        "payload": {
+          "pin": "complete",
+          "editedBy": "admin",
+          "data": {
+            "date": "2026-08-05",
+            "site": "NARASIMHULU ROAD",
+            "engineer": "SURESH KUMAR",
+            "remarks": "DPR10 ADMIN VERSION VERIFIED",
+            "boqProjectId": 5501,
+            "workType": "road",
+            "structureItems": [],
+            "progress": [
+              {
+                "entryKey": "dpr10-submitted-admin-version",
+                "activity": "GSB LAYING",
+                "side": "LHS",
+                "chainageFrom": "12+000",
+                "chainageTo": "12+100",
+                "length": 100,
+                "width": 7,
+                "thickness": 20,
+                "quantity": 700,
+                "uom": "SQM",
+                "noSiteWork": false,
+                "noSiteWorkDescription": "",
+                "boqItemId": 8801,
+                "programmeBarId": 9901,
+                "earthworkArrangementId": 5701,
+                "quantitySource": "measured",
+                "quantitySourceNote": null,
+                "chainageOverrideReason": null,
+                "lengthOverrideReason": null,
+                "executedBy": "hlc",
+                "layerNo": null,
+                "isIncidental": false,
+                "incidentalDescription": null,
+                "materialOutcome": null,
+                "reusableQty": null,
+                "chainageFromKm": 12,
+                "chainageToKm": 12.1,
+                "persistedId": 7351,
+                "personnelIds": [
+                  6101
+                ]
+              }
+            ],
+            "cutFillConsumptions": [],
+            "equipment": [],
+            "labour": [],
+            "materials": [],
+            "sitePurchases": []
+          },
+          "clientTimestamp": "2026-09-16 18:56:01"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/dprs/6251/version",
+        "body": {
+          "pin": "complete",
+          "editedBy": "admin",
+          "data": {
+            "date": "2026-08-05",
+            "site": "NARASIMHULU ROAD",
+            "engineer": "SURESH KUMAR",
+            "remarks": "DPR10 ADMIN VERSION VERIFIED",
+            "boqProjectId": 5501,
+            "workType": "road",
+            "structureItems": [],
+            "progress": [
+              {
+                "entryKey": "dpr10-submitted-admin-version",
+                "activity": "GSB LAYING",
+                "side": "LHS",
+                "chainageFrom": "12+000",
+                "chainageTo": "12+100",
+                "length": 100,
+                "width": 7,
+                "thickness": 20,
+                "quantity": 700,
+                "uom": "SQM",
+                "noSiteWork": false,
+                "noSiteWorkDescription": "",
+                "boqItemId": 8801,
+                "programmeBarId": 9901,
+                "earthworkArrangementId": 5701,
+                "quantitySource": "measured",
+                "quantitySourceNote": null,
+                "chainageOverrideReason": null,
+                "lengthOverrideReason": null,
+                "executedBy": "hlc",
+                "layerNo": null,
+                "isIncidental": false,
+                "incidentalDescription": null,
+                "materialOutcome": null,
+                "reusableQty": null,
+                "chainageFromKm": 12,
+                "chainageToKm": 12.1,
+                "persistedId": 7351,
+                "personnelIds": [
+                  6101
+                ]
+              }
+            ],
+            "cutFillConsumptions": [],
+            "equipment": [],
+            "labour": [],
+            "materials": [],
+            "sitePurchases": []
+          },
+          "clientTimestamp": "2026-09-16 18:56:01"
+        }
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/dprs/6251"
+        },
+        {
+          "method": "GET",
+          "path": "/api/plant-module/equipment?includeInactive=true"
+        },
+        {
+          "method": "GET",
+          "path": "/api/sites"
+        },
+        {
+          "method": "GET",
+          "path": "/api/personnel"
+        },
+        {
+          "method": "GET",
+          "path": "/api/attachments?moduleType=dpr_progress&linkedRecordId=6251"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects/5501/earthwork-arrangements"
+        },
+        {
+          "method": "GET",
+          "path": "/api/dpr/programme-bars?projectId=5501&boqItemId=8801"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects/5501/earthwork-arrangements/item/8801"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects/5501/arrangement-programme-allocations"
+        },
+        {
+          "method": "GET",
+          "path": "/api/site-material-trips?site=NARASIMHULU%20ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        },
+        {
+          "method": "GET",
+          "path": "/api/site-requirements?siteId=6060&dateFrom=2026-08-05&dateTo=2026-08-05"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects?siteId=6060"
+        },
+        {
+          "method": "GET",
+          "path": "/api/dprs/chainage-overlap-context?boqItemIds=8801&excludeDprId=6251"
+        },
+        {
+          "method": "GET",
+          "path": "/api/plant-module/equipment-usage/open-today?date=2026-08-05&site=NARASIMHULU%20ROAD"
+        },
+        {
+          "method": "GET",
+          "path": "/api/site-material-trips/suggestions?site=NARASIMHULU%20ROAD"
+        },
+        {
+          "method": "GET",
+          "path": "/api/procurement/applicable-pi?boqProjectId=5501&boqItemId=8801"
+        },
+        {
+          "method": "GET",
+          "path": "/api/site-material-trips?earthworkArrangementId=5701"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects/5501/items"
+        },
+        {
+          "method": "POST",
+          "path": "/api/dprs/6251/version",
+          "body": {
+            "pin": "complete",
+            "editedBy": "admin",
+            "data": {
+              "date": "2026-08-05",
+              "site": "NARASIMHULU ROAD",
+              "engineer": "SURESH KUMAR",
+              "remarks": "DPR10 ADMIN VERSION VERIFIED",
+              "boqProjectId": 5501,
+              "workType": "road",
+              "structureItems": [],
+              "progress": [
+                {
+                  "entryKey": "dpr10-submitted-admin-version",
+                  "activity": "GSB LAYING",
+                  "side": "LHS",
+                  "chainageFrom": "12+000",
+                  "chainageTo": "12+100",
+                  "length": 100,
+                  "width": 7,
+                  "thickness": 20,
+                  "quantity": 700,
+                  "uom": "SQM",
+                  "noSiteWork": false,
+                  "noSiteWorkDescription": "",
+                  "boqItemId": 8801,
+                  "programmeBarId": 9901,
+                  "earthworkArrangementId": 5701,
+                  "quantitySource": "measured",
+                  "quantitySourceNote": null,
+                  "chainageOverrideReason": null,
+                  "lengthOverrideReason": null,
+                  "executedBy": "hlc",
+                  "layerNo": null,
+                  "isIncidental": false,
+                  "incidentalDescription": null,
+                  "materialOutcome": null,
+                  "reusableQty": null,
+                  "chainageFromKm": 12,
+                  "chainageToKm": 12.1,
+                  "persistedId": 7351,
+                  "personnelIds": [
+                    6101
+                  ]
+                }
+              ],
+              "cutFillConsumptions": [],
+              "equipment": [],
+              "labour": [],
+              "materials": [],
+              "sitePurchases": []
+            },
+            "clientTimestamp": "2026-09-16 18:56:01"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/dprs/6251"
+        }
+      ]
+    },
+    "C_D": {
+      "scenario": "dpr10-C-D-delayed-prior-overlap-reasoned-submit",
+      "unchangedClaim": {
+        "from": "3+100",
+        "to": "3+250"
+      },
+      "beforePriors": false,
+      "pendingImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr10-C-overlap-before-delayed-prior.png",
+      "warningText": "Part of this chainage overlaps previously recorded progress.\n\nPossible overlap with DPR-6249 (2026-08-04) LHS Ch. 3+150–3+250 — 140 SQM · overlapping segment 3+150–3+250\n\nLegitimate reasons include another layer, another lift, rework, correction or a repeated operation.\n\nA reason is required before Final Submit (draft save is not blocked).\n\nGive reason",
+      "warningImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr10-C-overlap-warning-give-reason.png",
+      "blockedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr10-D-submit-blocked-no-reason.png",
+      "blockedToast": {
+        "title": "Row 1: reason required",
+        "description": "Possible chainage overlap requires a reason before submission — tap “Give reason” on the overlap warning.",
+        "variant": "destructive"
+      },
+      "modalImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr10-D-overlap-reason-modal.png",
+      "reasonText": "Reason on record (also covers any outside-planned-reach warning): Genuine separately payable repeated operation",
+      "reasonImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr10-D-overlap-reason-saved.png",
+      "submittedImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr10-D-submit-success.png",
+      "submit": {
+        "id": 6253,
+        "payload": {
+          "date": "2026-08-05",
+          "site": "NARASIMHULU ROAD",
+          "engineer": "SURESH KUMAR",
+          "remarks": "DPR-10 delayed-prior overlap fixture — synthetic only.",
+          "boqProjectId": 5501,
+          "workType": "road",
+          "structureItems": [],
+          "progress": [
+            {
+              "entryKey": "dpr10-delayed-overlap-programme-row",
+              "activity": "GSB LAYING",
+              "side": "LHS",
+              "chainageFrom": "3+100",
+              "chainageTo": "3+250",
+              "length": 150,
+              "width": 7,
+              "thickness": 0.2,
+              "quantity": 210,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "boqItemId": 8801,
+              "programmeBarId": 9903,
+              "earthworkArrangementId": 5701,
+              "quantitySource": "measured",
+              "quantitySourceNote": null,
+              "chainageOverrideReason": "Genuine separately payable repeated operation",
+              "lengthOverrideReason": null,
+              "executedBy": "hlc",
+              "layerNo": null,
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "materialOutcome": null,
+              "reusableQty": null,
+              "chainageFromKm": 3.1,
+              "chainageToKm": 3.25,
+              "persistedId": 7353,
+              "personnelIds": [
+                6101
+              ]
+            }
+          ],
+          "cutFillConsumptions": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "clientTimestamp": "2026-09-16 18:56:03"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/dprs/6253/submit",
+        "body": {
+          "date": "2026-08-05",
+          "site": "NARASIMHULU ROAD",
+          "engineer": "SURESH KUMAR",
+          "remarks": "DPR-10 delayed-prior overlap fixture — synthetic only.",
+          "boqProjectId": 5501,
+          "workType": "road",
+          "structureItems": [],
+          "progress": [
+            {
+              "entryKey": "dpr10-delayed-overlap-programme-row",
+              "activity": "GSB LAYING",
+              "side": "LHS",
+              "chainageFrom": "3+100",
+              "chainageTo": "3+250",
+              "length": 150,
+              "width": 7,
+              "thickness": 0.2,
+              "quantity": 210,
+              "uom": "SQM",
+              "noSiteWork": false,
+              "noSiteWorkDescription": "",
+              "boqItemId": 8801,
+              "programmeBarId": 9903,
+              "earthworkArrangementId": 5701,
+              "quantitySource": "measured",
+              "quantitySourceNote": null,
+              "chainageOverrideReason": "Genuine separately payable repeated operation",
+              "lengthOverrideReason": null,
+              "executedBy": "hlc",
+              "layerNo": null,
+              "isIncidental": false,
+              "incidentalDescription": null,
+              "materialOutcome": null,
+              "reusableQty": null,
+              "chainageFromKm": 3.1,
+              "chainageToKm": 3.25,
+              "persistedId": 7353,
+              "personnelIds": [
+                6101
+              ]
+            }
+          ],
+          "cutFillConsumptions": [],
+          "equipment": [],
+          "labour": [],
+          "materials": [],
+          "sitePurchases": [],
+          "clientTimestamp": "2026-09-16 18:56:03"
+        }
+      },
+      "overlapContextRequests": [
+        {
+          "boqItemIds": "8801",
+          "excludeDprId": "6253",
+          "delayed": true
+        }
+      ],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/dprs/6253"
+        },
+        {
+          "method": "GET",
+          "path": "/api/plant-module/equipment?includeInactive=true"
+        },
+        {
+          "method": "GET",
+          "path": "/api/sites"
+        },
+        {
+          "method": "GET",
+          "path": "/api/personnel"
+        },
+        {
+          "method": "GET",
+          "path": "/api/attachments?moduleType=dpr_progress&linkedRecordId=6253"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects/5501/earthwork-arrangements"
+        },
+        {
+          "method": "GET",
+          "path": "/api/dpr/programme-bars?projectId=5501&boqItemId=8801"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects/5501/earthwork-arrangements/item/8801"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects/5501/arrangement-programme-allocations"
+        },
+        {
+          "method": "GET",
+          "path": "/api/site-material-trips?site=NARASIMHULU%20ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        },
+        {
+          "method": "GET",
+          "path": "/api/site-requirements?siteId=6060&dateFrom=2026-08-05&dateTo=2026-08-05"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects?siteId=6060"
+        },
+        {
+          "method": "GET",
+          "path": "/api/dprs/chainage-overlap-context?boqItemIds=8801&excludeDprId=6253"
+        },
+        {
+          "method": "GET",
+          "path": "/api/plant-module/equipment-usage/open-today?date=2026-08-05&site=NARASIMHULU%20ROAD"
+        },
+        {
+          "method": "GET",
+          "path": "/api/site-material-trips/suggestions?site=NARASIMHULU%20ROAD"
+        },
+        {
+          "method": "GET",
+          "path": "/api/procurement/applicable-pi?boqProjectId=5501&boqItemId=8801"
+        },
+        {
+          "method": "GET",
+          "path": "/api/site-material-trips?earthworkArrangementId=5701"
+        },
+        {
+          "method": "GET",
+          "path": "/api/boq/projects/5501/items"
+        },
+        {
+          "method": "POST",
+          "path": "/api/dprs/6253/submit",
+          "body": {
+            "date": "2026-08-05",
+            "site": "NARASIMHULU ROAD",
+            "engineer": "SURESH KUMAR",
+            "remarks": "DPR-10 delayed-prior overlap fixture — synthetic only.",
+            "boqProjectId": 5501,
+            "workType": "road",
+            "structureItems": [],
+            "progress": [
+              {
+                "entryKey": "dpr10-delayed-overlap-programme-row",
+                "activity": "GSB LAYING",
+                "side": "LHS",
+                "chainageFrom": "3+100",
+                "chainageTo": "3+250",
+                "length": 150,
+                "width": 7,
+                "thickness": 0.2,
+                "quantity": 210,
+                "uom": "SQM",
+                "noSiteWork": false,
+                "noSiteWorkDescription": "",
+                "boqItemId": 8801,
+                "programmeBarId": 9903,
+                "earthworkArrangementId": 5701,
+                "quantitySource": "measured",
+                "quantitySourceNote": null,
+                "chainageOverrideReason": "Genuine separately payable repeated operation",
+                "lengthOverrideReason": null,
+                "executedBy": "hlc",
+                "layerNo": null,
+                "isIncidental": false,
+                "incidentalDescription": null,
+                "materialOutcome": null,
+                "reusableQty": null,
+                "chainageFromKm": 3.1,
+                "chainageToKm": 3.25,
+                "persistedId": 7353,
+                "personnelIds": [
+                  6101
+                ]
+              }
+            ],
+            "cutFillConsumptions": [],
+            "equipment": [],
+            "labour": [],
+            "materials": [],
+            "sitePurchases": [],
+            "clientTimestamp": "2026-09-16 18:56:03"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/dprs/6253"
+        }
+      ]
+    }
+  },
+  "finalDocumentRequests": [
+    {
+      "method": "GET",
+      "path": "/api/dprs/6253"
+    },
+    {
+      "method": "GET",
+      "path": "/api/plant-module/equipment?includeInactive=true"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sites"
+    },
+    {
+      "method": "GET",
+      "path": "/api/personnel"
+    },
+    {
+      "method": "GET",
+      "path": "/api/attachments?moduleType=dpr_progress&linkedRecordId=6253"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/earthwork-arrangements"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dpr/programme-bars?projectId=5501&boqItemId=8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/earthwork-arrangements/item/8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/arrangement-programme-allocations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips?site=NARASIMHULU%20ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-requirements?siteId=6060&dateFrom=2026-08-05&dateTo=2026-08-05"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects?siteId=6060"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dprs/chainage-overlap-context?boqItemIds=8801&excludeDprId=6253"
+    },
+    {
+      "method": "GET",
+      "path": "/api/plant-module/equipment-usage/open-today?date=2026-08-05&site=NARASIMHULU%20ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips/suggestions?site=NARASIMHULU%20ROAD"
+    },
+    {
+      "method": "GET",
+      "path": "/api/procurement/applicable-pi?boqProjectId=5501&boqItemId=8801"
+    },
+    {
+      "method": "GET",
+      "path": "/api/site-material-trips?earthworkArrangementId=5701"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boq/projects/5501/items"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dprs/6253/submit",
+      "body": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "remarks": "DPR-10 delayed-prior overlap fixture — synthetic only.",
+        "boqProjectId": 5501,
+        "workType": "road",
+        "structureItems": [],
+        "progress": [
+          {
+            "entryKey": "dpr10-delayed-overlap-programme-row",
+            "activity": "GSB LAYING",
+            "side": "LHS",
+            "chainageFrom": "3+100",
+            "chainageTo": "3+250",
+            "length": 150,
+            "width": 7,
+            "thickness": 0.2,
+            "quantity": 210,
+            "uom": "SQM",
+            "noSiteWork": false,
+            "noSiteWorkDescription": "",
+            "boqItemId": 8801,
+            "programmeBarId": 9903,
+            "earthworkArrangementId": 5701,
+            "quantitySource": "measured",
+            "quantitySourceNote": null,
+            "chainageOverrideReason": "Genuine separately payable repeated operation",
+            "lengthOverrideReason": null,
+            "executedBy": "hlc",
+            "layerNo": null,
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "materialOutcome": null,
+            "reusableQty": null,
+            "chainageFromKm": 3.1,
+            "chainageToKm": 3.25,
+            "persistedId": 7353,
+            "personnelIds": [
+              6101
+            ]
+          }
+        ],
+        "cutFillConsumptions": [],
+        "equipment": [],
+        "labour": [],
+        "materials": [],
+        "sitePurchases": [],
+        "clientTimestamp": "2026-09-16 18:56:03"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/dprs/6253"
+    }
+  ],
+  "limitations": [
+    "This is isolated browser evidence, not production backend/database evidence.",
+    "The material-trip fixture data is available to SiteEdit's existing read-only day-trips panel; Fix 3 report composition is intentionally not changed here."
+  ],
+  "browserExceptions": []
+}

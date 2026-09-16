@@ -266,6 +266,23 @@ const programmeBars = [
     plannedWidthM: 1.5,
     plannedThicknessMm: null,
   },
+  {
+    id: 9903,
+    boqItemId: 8801,
+    reachLabel: "Km 3.000–3.500",
+    chainageFrom: 3,
+    chainageTo: 3.5,
+    startDate: "2026-01-01",
+    endDate: "2026-12-31",
+    plannedQty: 5000,
+    planningMode: "road",
+    structureId: null,
+    structureLocType: null,
+    boqSubItem: null,
+    side: "LHS",
+    plannedWidthM: 7,
+    plannedThicknessMm: 200,
+  },
 ];
 
 /*
@@ -461,12 +478,9 @@ const siteEditNullProjectDpr = {
 };
 
 /*
- * DPR-09 automatic-recovery fixtures. These deliberately model the state
- * after a first draft save wrote `boqProjectId: null`, while the currently
- * hydrated row already contains a real BOQ item reference. The browser
- * verifier never claims that a literal first-save user could pick an item
- * while the picker was hidden; it uses this synthetic persisted-null/live-row
- * shape to exercise the narrow recovery condition directly.
+ * DPR-09 automatic-recovery fixtures. These include the literal empty Guided
+ * first-save route below, plus persisted-null/live-row shapes used to exercise
+ * the narrow recovery condition directly in Guided and Detailed/Edit.
  */
 const dpr09LiveBoqProgress = {
   ...nullProjectProgress,
@@ -551,6 +565,140 @@ const dpr09PositiveProjectPin = {
   }],
   remarks: "DPR-09 positive project pin fixture — synthetic and read-only.",
 };
+
+/*
+ * DPR-10 edit-screen fixtures. These are deliberately separate records so the
+ * bottom draft-save, submitted-admin version, and delayed-prior overlap checks
+ * can each start from an untouched server shape in one browser run.
+ */
+const dpr10BottomDraft = {
+  ...storedDpr,
+  id: 6250,
+  date: "2026-08-05",
+  site: site.name,
+  engineer: personnel[0].name,
+  role: "engineer",
+  boqProjectId: 5501,
+  dprStatus: "draft",
+  progress: [{
+    ...storedDpr.progress[0],
+    id: 7350,
+    entryKey: "dpr10-bottom-save-progress",
+    chainageFrom: "12+000",
+    chainageTo: "12+100",
+    programmeBarId: 9901,
+    quantity: 700,
+  }],
+  equipment: [],
+  labour: [],
+  materials: [],
+  sitePurchases: [],
+  remarks: "DPR-10 bottom draft-save fixture — synthetic only.",
+};
+
+const dpr10OverlapDraft = {
+  ...storedDpr,
+  id: 6253,
+  date: "2026-08-05",
+  site: site.name,
+  engineer: personnel[0].name,
+  role: "engineer",
+  boqProjectId: 5501,
+  dprStatus: "draft",
+  progress: [{
+    ...storedDpr.progress[0],
+    id: 7353,
+    entryKey: "dpr10-delayed-overlap-programme-row",
+    activity: "GSB LAYING",
+    side: "LHS",
+    chainageFrom: "3+100",
+    chainageTo: "3+250",
+    length: 150,
+    width: 7,
+    thickness: 0.2,
+    quantity: 210,
+    uom: "SQM",
+    programmeBarId: 9903,
+    quantitySource: "measured",
+    quantitySourceNote: "",
+    chainageOverrideReason: "",
+  }],
+  equipment: [],
+  labour: [],
+  materials: [],
+  sitePurchases: [],
+  remarks: "DPR-10 delayed-prior overlap fixture — synthetic only.",
+};
+
+const dpr10SubmittedAdmin = {
+  ...storedDpr,
+  id: 6251,
+  date: "2026-08-05",
+  site: site.name,
+  engineer: personnel[0].name,
+  role: "engineer",
+  boqProjectId: 5501,
+  dprStatus: "submitted",
+  progress: [{
+    ...storedDpr.progress[0],
+    id: 7351,
+    entryKey: "dpr10-submitted-admin-version",
+    programmeBarId: 9901,
+    quantity: 700,
+  }],
+  equipment: [],
+  labour: [],
+  materials: [],
+  sitePurchases: [],
+  remarks: "DPR-10 submitted-admin version fixture — synthetic only.",
+};
+
+const dpr10OverlapPriors = [{
+  entryId: 7354,
+  dprId: 6249,
+  dprDate: "2026-08-04",
+  boqItemId: 8801,
+  side: "LHS",
+  fromKm: 3.15,
+  toKm: 3.25,
+  quantity: 140,
+  uom: "SQM",
+}];
+
+const dpr10DayTrips = [
+  {
+    id: 10401,
+    date: "2026-08-05",
+    site: site.name,
+    material: "SOIL",
+    quantity: 600,
+    uom: "CFT",
+    vehicleNumber: "DPR10-TRUCK-01",
+    supplier: "FIXTURE EARTHWORKS",
+    location: "Km 3.200",
+    receiptNumber: "DPR10-REC-01",
+    boqItemId: null,
+    earthworkArrangementId: null,
+    isCancelled: false,
+    isDeleted: false,
+  },
+  {
+    id: 10402,
+    date: "2026-08-05",
+    site: site.name,
+    material: "SOIL",
+    quantity: 600,
+    uom: "CFT",
+    vehicleNumber: "DPR10-TRUCK-02",
+    supplier: "FIXTURE EARTHWORKS",
+    location: "Km 3.200",
+    receiptNumber: "DPR10-REC-02",
+    boqItemId: 8801,
+    earthworkArrangementId: null,
+    isCancelled: false,
+    isDeleted: false,
+  },
+];
 
 /*
  * Guided DPR records are deliberately fixture records.  They have complete
@@ -845,6 +993,7 @@ const fixtureState = {
   requests: [] as RequestRecord[],
   dprCreatePayloads: [] as any[],
   dprCreateRecords: [] as any[],
+  dpr09LiteralCreatePayloads: [] as any[],
   dprDraftPayloads: [] as any[],
   dprVersionPayloads: [] as any[],
   dprSubmitPayloads: [] as any[],
@@ -868,6 +1017,8 @@ const fixtureState = {
   toasts: [] as unknown[],
   dpr07VersionChecks: [] as any[],
   dpr07FreshCreateChecks: [] as any[],
+  dpr10DraftVersionAttempts: [] as any[],
+  dpr10OverlapContextRequests: [] as any[],
   boqItemRequests: [] as any[],
   boqItemsRetryEnabled: false,
   vehicleSupplierPatchPayloads: [] as any[],
@@ -923,6 +1074,9 @@ const guidedDprRecords: Record<number, any> = {
   [dpr09GuidedNoSiteWork.id]: dpr09GuidedNoSiteWork,
   [dpr09SiteEditIncidental.id]: dpr09SiteEditIncidental,
   [dpr09PositiveProjectPin.id]: dpr09PositiveProjectPin,
+  [dpr10BottomDraft.id]: dpr10BottomDraft,
+  [dpr10OverlapDraft.id]: dpr10OverlapDraft,
+  [dpr10SubmittedAdmin.id]: dpr10SubmittedAdmin,
 };
 for (const [id, record] of Object.entries(persistedDprState.records)) {
   if (record && typeof record === "object") guidedDprRecords[Number(id)] = record;
@@ -966,6 +1120,18 @@ function parseBody(init?: RequestInit): any {
   }
 }
 
+function hasPositiveBoqItemReference(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasPositiveBoqItemReference);
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  const itemId = record.boqItemId;
+  if (
+    (typeof itemId === "number" && Number.isInteger(itemId) && itemId > 0)
+    || (typeof itemId === "string" && /^\d+$/.test(itemId) && Number(itemId) > 0)
+  ) return true;
+  return Object.values(record).some(hasPositiveBoqItemReference);
+}
+
 const isDpr07Route = () =>
   new URLSearchParams(window.location.search).get("dpr07") === "1";
 
@@ -978,8 +1144,17 @@ const isDprNullRoute = () =>
 const isDpr09Route = () =>
   new URLSearchParams(window.location.search).get("dpr09") === "1";
 
+const isDpr09LiteralRoute = () =>
+  isDpr09Route() && new URLSearchParams(window.location.search).get("dpr09Literal") === "1";
+
 const isDpr09MultiRoute = () =>
   isDpr09Route() && new URLSearchParams(window.location.search).get("dpr09Multi") === "1";
+
+const isDpr10Route = () =>
+  new URLSearchParams(window.location.search).get("dpr10") === "1";
+
+const isDpr10DelayedPriorRoute = () =>
+  isDpr10Route() && new URLSearchParams(window.location.search).get("dpr10DelayedPriors") === "1";
 
 const isDpr08Route = () =>
   new URLSearchParams(window.location.search).get("dpr08") === "1";
@@ -1073,7 +1248,13 @@ window.fetch = async (input, init) => {
   fixtureState.requests.push({ method, path: `${pathname}${url.search}`, body });
 
   if (pathname === "/api/sites" && method === "GET") {
-    return json(isDprNullRoute() || isDpr09Route() ? [site, nullRecoverySite] : [site]);
+    return json(
+      isDpr09LiteralRoute()
+        ? [nullRecoverySite]
+        : isDprNullRoute() || isDpr09Route()
+          ? [site, nullRecoverySite]
+          : [site],
+    );
   }
   if (pathname === "/api/personnel" && method === "GET") return json(personnel);
   if (pathname === "/api/personnel" && method === "POST") {
@@ -1161,7 +1342,9 @@ window.fetch = async (input, init) => {
   if (pathname === "/api/materials-received" && method === "GET") {
     return json([receivedVehicleSupplierTrip]);
   }
-  if (pathname === "/api/site-material-trips" && method === "GET") return json([]);
+  if (pathname === "/api/site-material-trips" && method === "GET") {
+    return json(isDpr10Route() ? dpr10DayTrips : []);
+  }
   if (pathname === "/api/site-material-trips" && method === "POST") {
     // The browser regression never needs a production write. Return a
     // synthetic row so an accidental click still settles the real mutation,
@@ -1201,7 +1384,20 @@ window.fetch = async (input, init) => {
     return json({ ...receivedVehicleSupplierTrip, id, ...(body || {}) });
   }
   if (pathname === "/api/dprs/with-details" && method === "GET") return json([]);
-  if (pathname === "/api/dprs/chainage-overlap-context" && method === "GET") return json({ entries: [] });
+  if (pathname === "/api/dprs/chainage-overlap-context" && method === "GET") {
+    if (isDpr10Route()) {
+      fixtureState.dpr10OverlapContextRequests.push({
+        boqItemIds: url.searchParams.get("boqItemIds") || "",
+        excludeDprId: url.searchParams.get("excludeDprId") || null,
+        delayed: isDpr10DelayedPriorRoute(),
+      });
+      if (isDpr10DelayedPriorRoute()) {
+        await new Promise((resolve) => setTimeout(resolve, 850));
+      }
+      return json({ entries: dpr10OverlapPriors });
+    }
+    return json({ entries: [] });
+  }
   if (pathname === "/api/attachments" && method === "GET") return json([]);
   if (pathname === "/api/attachments" && method === "POST") {
     fixtureState.attachmentPayloads.push(body || {});
@@ -1364,17 +1560,31 @@ window.fetch = async (input, init) => {
         message: "Fresh DPR progress row fails quantity-source, material-outcome, or programme-link validation.",
       }, 422);
     }
-    const id = nextDprId++;
     const status = String(body?.dprStatus || "").toLowerCase() === "draft" ? "draft" : "submitted";
+    const literalEmptyDraft = isDpr09LiteralRoute()
+      && status === "draft"
+      && !hasPositiveBoqItemReference(body);
+    const id = literalEmptyDraft ? 6240 : nextDprId++;
+    const persistedBody = literalEmptyDraft
+      ? { ...(body || {}), boqProjectId: null }
+      : body || {};
+    if (literalEmptyDraft) {
+      fixtureState.dpr09LiteralCreatePayloads.push({
+        id,
+        requestedPayload: body || {},
+        persistedPayload: persistedBody,
+        enforcedNull: persistedBody.boqProjectId === null,
+      });
+    }
     if (status === "draft") {
-      fixtureState.dprDraftPayloads.push({ id, payload: body || {} });
-      fixtureState.draftPayloads.push({ id, payload: body || {} });
+      fixtureState.dprDraftPayloads.push({ id, payload: persistedBody });
+      fixtureState.draftPayloads.push({ id, payload: persistedBody });
     } else {
       // Keep the request payload as the browser saw it.  The production
       // contract historically expresses final-vs-draft through dprStatus
       // (omitting dprStatus:"draft" means final); isDraft is fixture evidence
       // metadata, not an injected request field.
-      const submittedPayload = body || {};
+      const submittedPayload = persistedBody;
       const submittedRecord = {
         id,
         payload: submittedPayload,
@@ -1393,7 +1603,7 @@ window.fetch = async (input, init) => {
         // fixture's read-only evidence route; the request itself is complete.
       }
     }
-    return json(copyDprWithPayload(id, body || {}, status), 201);
+    return json(copyDprWithPayload(id, persistedBody, status), 201);
   }
 
   const draftMatch = pathname.match(/^\/api\/dprs\/(\d+)\/draft$/);
@@ -1404,6 +1614,18 @@ window.fetch = async (input, init) => {
   }
   const versionMatch = pathname.match(/^\/api\/dprs\/(\d+)\/version$/);
   if (versionMatch && method === "POST") {
+    const sourceId = Number(versionMatch[1]);
+    const sourceRecord = guidedDprRecords[sourceId];
+    if (
+      isDpr10Route()
+      && sourceRecord?.dprStatus === "draft"
+    ) {
+      fixtureState.dpr10DraftVersionAttempts.push({ id: sourceId, payload: body || {} });
+      return json({
+        code: "DPR_DRAFT_VERSION_CONFLICT",
+        message: "A draft DPR cannot be versioned. Edit, save, or submit the draft instead.",
+      }, 409);
+    }
     if (isDpr07Route()) {
       const validationResponse = dpr07VersionValidation(Number(versionMatch[1]), body);
       if (validationResponse) return validationResponse;
@@ -1411,13 +1633,61 @@ window.fetch = async (input, init) => {
     const id = nextDprId++;
     fixtureState.dprVersionPayloads.push({ id: Number(versionMatch[1]), payload: body || {} });
     fixtureState.versionPayloads.push({ id: Number(versionMatch[1]), payload: body || {} });
-    return json(copyDprWithPayload(id, body?.data || {}, "submitted"), 201);
+    const version = copyDprWithPayload(id, body?.data || {}, "submitted");
+    if (isDpr10Route()) {
+      try {
+        sessionStorage.setItem(
+          "__dprSiteFixtureLastSubmitted",
+          JSON.stringify({ id, payload: version, isDraft: false }),
+        );
+      } catch {
+        // Session storage is only a fixture report convenience.
+      }
+    }
+    return json(version, 201);
   }
   const submitMatch = pathname.match(/^\/api\/dprs\/(\d+)\/submit$/);
   if (submitMatch && method === "POST") {
-    fixtureState.dprSubmitPayloads.push({ id: Number(submitMatch[1]), payload: body || {} });
-    fixtureState.submittedPayloads.push({ id: Number(submitMatch[1]), payload: body || {} });
-    return json(copyDprWithPayload(Number(submitMatch[1]), body || {}, "submitted"));
+    const sourceId = Number(submitMatch[1]);
+    if (isDpr10Route() && sourceId === dpr10OverlapDraft.id) {
+      const hasReasonedOverlap = (body?.progress ?? []).some((row: any) =>
+        Number(row?.boqItemId) === 8801
+        && String(row?.side || "").toUpperCase() === "LHS"
+        && Number(row?.chainageFromKm) < 3.25
+        && Number(row?.chainageToKm) > 3.15
+        && String(row?.chainageOverrideReason || "").trim() !== "",
+      );
+      const hasOverlap = (body?.progress ?? []).some((row: any) =>
+        Number(row?.boqItemId) === 8801
+        && String(row?.side || "").toUpperCase() === "LHS"
+        && Number(row?.chainageFromKm) < 3.25
+        && Number(row?.chainageToKm) > 3.15,
+      );
+      if (hasOverlap && !hasReasonedOverlap) {
+        return json({
+          code: "DPR_NOT_READY",
+          issues: [{
+            section: "activities",
+            activity: "GSB LAYING",
+            description: "Possible chainage overlap requires a reason before submission.",
+          }],
+        }, 422);
+      }
+    }
+    fixtureState.dprSubmitPayloads.push({ id: sourceId, payload: body || {} });
+    fixtureState.submittedPayloads.push({ id: sourceId, payload: body || {} });
+    const submitted = copyDprWithPayload(sourceId, body || {}, "submitted");
+    if (isDpr10Route()) {
+      try {
+        sessionStorage.setItem(
+          "__dprSiteFixtureLastSubmitted",
+          JSON.stringify({ id: sourceId, payload: submitted, isDraft: false }),
+        );
+      } catch {
+        // Session storage is only a fixture report convenience.
+      }
+    }
+    return json(submitted);
   }
 
   if (pathname === "/api/uploads/request-url" && method === "POST") {
@@ -1643,6 +1913,26 @@ function Dpr09EvidenceBanner() {
   );
 }
 
+function Dpr10EvidenceBanner() {
+  if (!isDpr10Route()) return null;
+  const params = new URLSearchParams(window.location.search);
+  const scenario = params.get("scenario") || "SiteEdit bottom gating and overlap warning";
+  return (
+    <header
+      className="mx-auto mb-5 max-w-5xl rounded-lg border border-amber-300 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm"
+      data-testid="dpr10-evidence-banner"
+    >
+      <div className="text-xs font-bold uppercase tracking-[0.18em] text-amber-800">
+        DPR-10 isolated browser evidence
+      </div>
+      <h1 className="mt-1 text-lg font-semibold">Fixture-only API adapter · {scenario}</h1>
+      <p className="mt-1 text-sm">
+        Real SiteEdit controls over delayed synthetic overlap data. No customer or production writes.
+      </p>
+    </header>
+  );
+}
+
 // wouter's setLocation uses history.pushState. The isolated fixture routes the
 // real SiteEntry success navigation to SiteSuccess without changing production
 // navigation code.
@@ -1668,6 +1958,7 @@ const mount = () => {
   appRoot.render(
     <QueryClientProvider client={queryClient}>
       <Dpr07EvidenceBanner />
+        <Dpr10EvidenceBanner />
         <Dpr08EvidenceBanner />
         <Dpr09EvidenceBanner />
         <DprNullEvidenceBanner />

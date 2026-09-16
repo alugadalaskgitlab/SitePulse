@@ -63,7 +63,13 @@ import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/li
 import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { collectDprBoqItemIds, dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
+import {
+  collectDprBoqItemIds,
+  dprBoqItemDisplayName,
+  dprSelectableBoqItems,
+  hasDprBoqReferences,
+  hasDprMeaningfulNonBoqWork,
+} from "@shared/dprBoqSelection";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import {
@@ -285,6 +291,10 @@ export default function GuidedDpr() {
     resolved: boolean;
     projectId: number | null;
   }>({ resolved: false, projectId: null });
+  // Catalogue preview is fail-closed until the server/local form has
+  // hydrated; the eligibility state is then derived from the current rows.
+  const [boqCataloguePreviewReady, setBoqCataloguePreviewReady] = useState(false);
+  const [boqCataloguePreviewEligible, setBoqCataloguePreviewEligible] = useState(false);
   const [autosaveBoqProjectId, setAutosaveBoqProjectId] = useState<number | null | undefined>(undefined);
   // A locally restored preference is scoped to the restored site. A deliberate
   // site change clears that pin (including an explicit null), while a server
@@ -423,6 +433,7 @@ export default function GuidedDpr() {
       contractor: l.contractor || "", task: l.task || "",
       boqItemId: l.boqItemId ?? null, structureId: l.structureId ?? null,
     })));
+    setBoqCataloguePreviewReady(true);
     // Batch 05 (spec §10): this server draft is authoritative — silence any
     // stale "new DPR" autosave blob that belongs to the same draft/context.
     reconcileNewDprAutosaves({
@@ -599,6 +610,7 @@ export default function GuidedDpr() {
     siteId: selectedSiteId,
     projectId: boqProjectId,
     items: boqItems,
+    catalogueItems: boqCatalogueItems,
     projectsLoaded: boqProjectsLoaded,
     evidenceProjectId,
     requestEvidenceRecovery,
@@ -612,6 +624,7 @@ export default function GuidedDpr() {
         : undefined,
     allowEvidenceBasedRecovery: true,
     recoveryEvidence: urlDraftDpr,
+    cataloguePreviewEligible: boqCataloguePreviewEligible,
   });
   const guidedBoqEvidenceIds = useMemo(
     () => collectDprBoqItemIds([
@@ -635,6 +648,40 @@ export default function GuidedDpr() {
     ]),
     [guidedBoqEvidenceIds, entries, labour, equipment],
   );
+  const guidedHasMeaningfulNonBoqWork = useMemo(
+    () => hasDprMeaningfulNonBoqWork([
+      entries,
+      labour,
+      equipment,
+      unmanagedSectionsRef.current.materials,
+      unmanagedSectionsRef.current.sitePurchases,
+      unmanagedSectionsRef.current.structureItems,
+    ]),
+    [entries, labour, equipment],
+  );
+  const guidedNullCataloguePreview = boqProjectPreference.resolved
+    && boqProjectPreference.projectId === null
+    && !guidedHasBoqReferences
+    && !guidedHasMeaningfulNonBoqWork;
+  useEffect(() => {
+    setBoqCataloguePreviewEligible(
+      boqCataloguePreviewReady
+      && !guidedHasBoqReferences
+      && !guidedHasMeaningfulNonBoqWork,
+    );
+  }, [
+    boqCataloguePreviewReady,
+    guidedHasBoqReferences,
+    guidedHasMeaningfulNonBoqWork,
+  ]);
+  // During ownership recovery keep the preview list available until the
+  // selected project's real query completes. The preview never changes the
+  // persisted project preference by itself.
+  const guidedBoqItemsForPicker = boqItems.length > 0
+    ? boqItems
+    : guidedNullCataloguePreview || guidedHasBoqReferences
+      ? boqCatalogueItems
+      : [];
   useEffect(() => {
     // A saved positive project is immutable. A saved null (or an omitted
     // legacy project) may be recovered only from the current live BOQ-item
@@ -783,6 +830,7 @@ export default function GuidedDpr() {
       setEquipment((d.equipment ?? []).map((e: any) => ({ ...newGuidedEquipmentRow(), ...e, passthrough: e.passthrough ?? {} })));
       setLabour((d.labour ?? []).map((l: any) => ({ ...newLabourRow(), ...l })));
       setRemarks(d.remarks ?? ""); setDraftId(d.draftId ?? null);
+      if (urlDraftId == null) setBoqCataloguePreviewReady(true);
       deriveNeededRef.current = true;
     },
   });
@@ -810,9 +858,9 @@ export default function GuidedDpr() {
       : null;
   const itemById = useMemo(() => {
     const m = new Map<number, SiteBoqItem>();
-    boqItems.forEach((i) => m.set(i.id, i));
+    guidedBoqItemsForPicker.forEach((i) => m.set(i.id, i));
     return m;
-  }, [boqItems]);
+  }, [guidedBoqItemsForPicker]);
   // Labour work-item mapping follows the same selected-project, explicit
   // opt-out-only rule as the activity Bill picker. A missing/future programme
   // bar must never hide a valid BOQ item.
@@ -1940,11 +1988,11 @@ export default function GuidedDpr() {
                 right here — programme-suggested rows keep their item fixed
                 (the bar defines it), so the selector shows only for unlinked
                 rows. Changing the item resets the bar link. */}
-            {e.programmeBarId == null && (
+            {e.programmeBarId == null && guidedBoqItemsForPicker.length > 0 && (
               <div>
                 <Label>BOQ Item / Activity</Label>
                 <BillItemPicker
-                  items={boqItems}
+                  items={guidedBoqItemsForPicker}
                   value={e.boqItemId}
                   stacked
                   labels={false}

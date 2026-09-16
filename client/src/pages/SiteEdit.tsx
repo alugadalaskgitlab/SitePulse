@@ -41,7 +41,13 @@ import { parseDprError } from "@/lib/dprErrors";
 import { DPR_REGISTER_PATH, resolveReturnTo, withReturnTo } from "@/lib/progressReportNav";
 import { BillItemPicker, type BillItem } from "@/components/BillItemPicker";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { collectDprBoqItemIds, dprBoqItemDisplayName, dprSelectableBoqItems, hasDprBoqReferences } from "@shared/dprBoqSelection";
+import {
+  collectDprBoqItemIds,
+  dprBoqItemDisplayName,
+  dprSelectableBoqItems,
+  hasDprBoqReferences,
+  hasDprMeaningfulNonBoqWork,
+} from "@shared/dprBoqSelection";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import {
   adoptOpenUsageIntoDprRow,
@@ -489,6 +495,10 @@ export default function SiteEdit() {
     resolved: boolean;
     projectId: number | null;
   }>({ resolved: false, projectId: null });
+  // Keep catalogue preview fail-closed until the saved/local form has
+  // hydrated; eligibility is recalculated from all live persisted sections.
+  const [boqCataloguePreviewReady, setBoqCataloguePreviewReady] = useState(false);
+  const [boqCataloguePreviewEligible, setBoqCataloguePreviewEligible] = useState(false);
   const evidenceRecoveredProjectRef = useRef<number | null>(null);
 
   type SiteEditBoqItem = BillItem & {
@@ -497,6 +507,7 @@ export default function SiteEdit() {
   const {
     projectId: siteBoqProjectId,
     items: siteBoqItems,
+    catalogueItems: siteBoqCatalogueItems,
     projectsLoaded: boqProjectsLoaded,
     evidenceProjectId,
     requestEvidenceRecovery,
@@ -511,6 +522,7 @@ export default function SiteEdit() {
       : dpr?.boqProjectId,
     allowEvidenceBasedRecovery: true,
     recoveryEvidence: dpr,
+    cataloguePreviewEligible: boqCataloguePreviewEligible,
   });
   const handleEditSiteChange = (nextSite: string) => {
     const hasSavedDpr = dpr != null;
@@ -585,6 +597,7 @@ export default function SiteEdit() {
   const [progress, setProgress] = useState<ProgressEntry[]>([
     { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", lengthOverrideReason: "", uomOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }
   ]);
+  const isDraftDpr = (dpr as any)?.dprStatus === "draft";
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
   // as Guided/Detailed entry, Progress Report and the server recheck). The
@@ -622,7 +635,13 @@ export default function SiteEdit() {
         layerNo: p.layerNo != null && Number.isFinite(Number(p.layerNo)) ? Number(p.layerNo) : null,
       }))
     : [];
-  const unchangedOverlapRowKeys = unchangedChainageRowKeys(overlapCandidateRows, persistedOverlapRows);
+  // A draft has not made a submitted chainage claim yet. Its hydrated rows
+  // must therefore remain actionable against prior submitted DPRs; applying
+  // the submitted-version exemption here made the inline warning disappear
+  // while the server's final-submit recheck still required its reason.
+  const unchangedOverlapRowKeys = isDraftDpr
+    ? new Set<string | number>()
+    : unchangedChainageRowKeys(overlapCandidateRows, persistedOverlapRows);
   const overlapHits = useChainageOverlapHits(overlapCandidateRows, overlapPriors, unchangedOverlapRowKeys);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
@@ -731,6 +750,30 @@ export default function SiteEdit() {
     () => collectDprBoqItemIds([progress, structureItems, equipment, labour, materials]),
     [progress, structureItems, equipment, labour, materials],
   );
+  const siteEditHasMeaningfulNonBoqWork = useMemo(
+    () => hasDprMeaningfulNonBoqWork([progress, structureItems, equipment, labour, materials, sitePurchases]),
+    [progress, structureItems, equipment, labour, materials, sitePurchases],
+  );
+  const siteEditNullCataloguePreview = boqProjectPreference.resolved
+    && boqProjectPreference.projectId === null
+    && !siteEditHasBoqReferences
+    && !siteEditHasMeaningfulNonBoqWork;
+  useEffect(() => {
+    setBoqCataloguePreviewEligible(
+      boqCataloguePreviewReady
+      && !siteEditHasBoqReferences
+      && !siteEditHasMeaningfulNonBoqWork,
+    );
+  }, [
+    boqCataloguePreviewReady,
+    siteEditHasBoqReferences,
+    siteEditHasMeaningfulNonBoqWork,
+  ]);
+  const siteEditBoqItemsForPicker = siteBoqItems.length > 0
+    ? siteBoqItems
+    : siteEditNullCataloguePreview || siteEditHasBoqReferences
+      ? siteBoqCatalogueItems
+      : [];
   useEffect(() => {
     if (dpr?.boqProjectId != null) {
       // A positive server pin supersedes any transient local recovery that
@@ -829,6 +872,7 @@ export default function SiteEdit() {
           if (draft.structureItems?.length) setStructureItems(draft.structureItems);
           setDraftRestored(true);
           formInitializedRef.current = true;
+           setBoqCataloguePreviewReady(true);
           return;
         }
         // Draft matches server — treat as stale, remove it
@@ -849,6 +893,7 @@ export default function SiteEdit() {
     setMaterials(mat);
     setSitePurchases(sp);
     formInitializedRef.current = true;
+    setBoqCataloguePreviewReady(true);
   }, [dpr]);
 
   // Auto-save draft to sessionStorage whenever form state changes (only after initial load,
@@ -1123,7 +1168,9 @@ export default function SiteEdit() {
   // SiteEntry, Guided and the server (calculateDprQuantity) — a manual-
   // measurement BOQ item (MT/NOS/LS) never produces a "calculated" quantity.
   const entryBoqItem = (entry: ProgressEntry) =>
-    entry.boqItemId != null ? (siteBoqItems.find(i => i.id === entry.boqItemId) as any) ?? null : null;
+    entry.boqItemId != null
+      ? (siteEditBoqItemsForPicker.find(i => i.id === entry.boqItemId) as any) ?? null
+      : null;
 
   const progressUom = (entry: ProgressEntry): string =>
     isAdmin && entry.uom?.trim()
@@ -1246,7 +1293,7 @@ export default function SiteEdit() {
     setMaterials(updated);
   };
 
-  const isDraftMode = !!(dpr as any)?.dprStatus && (dpr as any).dprStatus === "draft";
+  const isDraftMode = isDraftDpr;
 
   // Classic → Guided is only offered when the draft carries nothing the
   // Guided screen can't represent — otherwise a later Guided save would
@@ -1895,6 +1942,28 @@ export default function SiteEdit() {
                     </Select>
                     {isOtherItem && <Input placeholder="Specify item…" value={item.itemOfWork !== "Other" ? item.itemOfWork : ""} onChange={(e) => updateField("itemOfWork", e.target.value || "Other")} data-testid={`input-structure-item-other-${idx}`} />}
                   </div>
+                  {siteEditBoqItemsForPicker.length > 0 && (
+                    <div className="sm:col-span-2 md:col-span-4">
+                      <Label className="text-sm">BOQ Item (Plan vs Actual link)</Label>
+                      <BillItemPicker
+                        items={siteEditBoqItemsForPicker}
+                        value={item.boqItemId ?? null}
+                        testidPrefix={`edit-structure-${idx}`}
+                        reviewPath={siteBoqProjectId ? `/work-program/${siteBoqProjectId}/item-review` : undefined}
+                        onChange={(boqItemId, boqItem) => {
+                          setStructureItems((current) => current.map((structure, structureIndex) =>
+                            structureIndex === idx
+                              ? {
+                                  ...structure,
+                                  boqItemId,
+                                  dprConversionFactor: boqItem?.dprConversionFactor ?? structure.dprConversionFactor ?? null,
+                                }
+                              : structure,
+                          ));
+                        }}
+                      />
+                    </div>
+                  )}
                   <div>
                     <Label className="text-sm">Quantity</Label>
                     <Input type="number" placeholder="0" value={item.quantity ?? ""} onChange={(e) => updateField("quantity", e.target.value ? parseFloat(e.target.value) : null)} data-testid={`input-structure-qty-${idx}`} />
@@ -2037,10 +2106,10 @@ export default function SiteEdit() {
                         - If activity is empty: show BOQ dropdown for new selection
                         - If free-text activity exists (legacy data): show text input with option to switch to BOQ
                         boqItemId is saved with the DPR payload and persisted to progress_entries.boq_item_id */}
-                    <Label className="text-sm">{siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
-                    {siteBoqItems.length > 0 && (entry.boqItemId != null || !entry.activity) ? (
+                    <Label className="text-sm">{siteEditBoqItemsForPicker.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
+                    {siteEditBoqItemsForPicker.length > 0 && (entry.boqItemId != null || !entry.activity) ? (
                       <BillItemPicker
-                        items={siteBoqItems}
+                        items={siteEditBoqItemsForPicker}
                         value={entry.boqItemId}
                         stacked
                         labels={false}
@@ -2071,7 +2140,7 @@ export default function SiteEdit() {
                           className="uppercase"
                           data-testid={`input-activity-${idx}`}
                         />
-                        {siteBoqItems.length > 0 && (
+                        {siteEditBoqItemsForPicker.length > 0 && (
                           <p className="text-[12px] text-muted-foreground">
                             Free-text entry.{" "}
                             <button
@@ -3267,10 +3336,36 @@ export default function SiteEdit() {
         <Button variant="outline" onClick={() => setLocation(editBackHref)} data-testid="button-cancel">
           Cancel
         </Button>
-        <Button onClick={handleSave} disabled={updateMutation.isPending} className="gap-2" data-testid="button-save-bottom">
-          {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Save Changes
-        </Button>
+        {isDraftMode ? (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleDraftSave}
+              disabled={draftSaveMutation.isPending || submitDraftMutation.isPending}
+              className="gap-2"
+              data-testid="button-save-bottom"
+            >
+              {draftSaveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save Progress
+            </Button>
+            {isEditFormComplete() && (
+              <Button
+                onClick={handleSubmitDraft}
+                disabled={submitDraftMutation.isPending || draftSaveMutation.isPending}
+                className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                data-testid="button-submit-dpr-bottom"
+              >
+                {submitDraftMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                Submit DPR
+              </Button>
+            )}
+          </div>
+        ) : (
+          <Button onClick={handleSave} disabled={updateMutation.isPending} className="gap-2" data-testid="button-save-bottom">
+            {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Save Changes
+          </Button>
+        )}
       </div>
 
       <Dialog open={addPersonnelOpen} onOpenChange={setAddPersonnelOpen}>

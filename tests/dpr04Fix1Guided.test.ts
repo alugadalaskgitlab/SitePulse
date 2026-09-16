@@ -29,6 +29,9 @@ describe("DPR-04 Fix 1 — Guided project restoration", () => {
     expect(guided).toContain("serverBoqProjectPinRef.current = data.boqProjectId");
     expect(guided).toContain("onValueChange={handleSiteChange}");
     expect(guided).toContain("localBoqPreferenceScopeRef.current = null");
+    expect(guided).toContain("catalogueItems: boqCatalogueItems");
+    expect(guided).toContain("guidedNullCataloguePreview");
+    expect(guided).toContain("guidedHasMeaningfulNonBoqWork");
     expect(boqHook).toContain("preferredProjectId?: number | null");
     expect(boqHook).toContain("resolveDprBoqProjectId(projects, preferredProjectId)");
     expect(boqHook).toContain("if (!response.ok) throw new Error");

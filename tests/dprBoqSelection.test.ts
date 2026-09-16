@@ -9,6 +9,7 @@ import {
   resolveDprBoqProjectIdByEvidence,
   collectDprBoqItemIds,
   hasDprBoqReferences,
+  hasDprMeaningfulNonBoqWork,
   isConfirmedDprNullProjectRecovery,
   isEvidenceBasedDprNullProjectRecovery,
 } from "../shared/dprBoqSelection";
@@ -43,6 +44,49 @@ describe("shared DPR BOQ selection", () => {
       passthrough: { boqItemId: null },
       allocations: [],
     })).toBe(false);
+  });
+
+  it("distinguishes untouched placeholders from meaningful special-only work", () => {
+    expect(hasDprMeaningfulNonBoqWork([
+      {
+        entryKey: "blank",
+        activity: "",
+        noSiteWork: false,
+        isIncidental: false,
+        quantity: null,
+        chainageFrom: "",
+        chainageTo: "",
+      },
+      {
+        category: "Skilled",
+        gender: "Male",
+        count: 0,
+        task: "",
+        contractor: "",
+      },
+      {
+        structureType: "Culvert",
+        structureSubType: "Pipe Culvert",
+        structureName: "",
+        stage: "Excavation",
+        itemOfWork: "Excavation",
+        quantity: null,
+        uom: "m³",
+        remarks: "",
+      },
+    ])).toBe(false);
+    expect(hasDprMeaningfulNonBoqWork([
+      { noSiteWork: true, activity: "", noSiteWorkDescription: "" },
+      { activity: "", noSiteWork: false, isIncidental: false },
+    ])).toBe(true);
+    expect(hasDprMeaningfulNonBoqWork([
+      { isIncidental: true, activity: "", incidentalDescription: "" },
+      { activity: "", noSiteWork: false, isIncidental: false },
+    ])).toBe(true);
+    expect(hasDprMeaningfulNonBoqWork([{ activity: "CLEARING VEGETATION" }])).toBe(true);
+    expect(hasDprMeaningfulNonBoqWork([
+      { itemDescription: "DIESEL", vendor: "", amount: null, quantity: null },
+    ])).toBe(true);
   });
 
   it("collects live nested evidence ids and resolves only an unambiguous owner", () => {
@@ -185,7 +229,13 @@ describe("shared DPR BOQ selection", () => {
       expect(source, page).toContain("<BillItemPicker");
       expect(source, page).toContain("dprBoqItemDisplayName");
       expect(source, page).toContain("dprSelectableBoqItems");
+      expect(source, page).toContain("hasDprMeaningfulNonBoqWork");
+      expect(source, page).toContain("catalogueItems");
     }
+    expect(readFileSync("client/src/pages/SiteEntry.tsx", "utf8"))
+      .toContain("materials, sitePurchases");
+    expect(readFileSync("client/src/pages/SiteEdit.tsx", "utf8"))
+      .toContain("materials, sitePurchases");
     for (const page of ["GuidedDpr", "SiteEntry"]) {
       const source = readFileSync(`client/src/pages/${page}.tsx`, "utf8");
       expect(source, page).toContain("hasDprBoqReferences");

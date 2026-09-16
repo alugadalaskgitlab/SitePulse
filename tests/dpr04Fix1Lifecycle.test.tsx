@@ -213,6 +213,7 @@ describe("DPR-04 BOQ lifecycle", () => {
         siteName: "Lifecycle site",
         sites,
         preferredProjectId: null,
+        cataloguePreviewEligible: true,
       }),
       { wrapper: wrapperFor(queryClient) },
     );
@@ -220,6 +221,90 @@ describe("DPR-04 BOQ lifecycle", () => {
     await waitFor(() => expect(result.current.projectsLoaded).toBe(true));
     expect(result.current.projectId).toBeNull();
     expect(result.current.items).toEqual([]);
+    expect(result.current.catalogueProjectId).toBe(23);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/boq/projects/23/items"))).toBe(true);
+  });
+
+  it("previews an empty saved-null catalogue without pinning, then recovers after first item evidence", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/api/boq/projects?")) {
+        return new Response(JSON.stringify([
+          { id: 41, name: "First", status: "active", barCount: 0 },
+          { id: 23, name: "Programme", status: "active", barCount: 8 },
+        ]), { headers: { "Content-Type": "application/json" } });
+      }
+      if (url.includes("/api/boq/projects/41/items")) {
+        return new Response(JSON.stringify([{ id: 77, description: "Other project" }]), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/api/boq/projects/23/items")) {
+        return new Response(JSON.stringify([{ id: 99, description: "First selectable item" }]), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("[]");
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const { result } = renderHook(
+      () => useDprBoqItems({
+        siteName: "Lifecycle site",
+        sites,
+        preferredProjectId: null,
+        allowEvidenceBasedRecovery: true,
+        cataloguePreviewEligible: true,
+      }),
+      { wrapper: wrapperFor(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.catalogueItems).toEqual([
+      { id: 99, description: "First selectable item" },
+    ]));
+    expect(result.current.projectId).toBeNull();
+    expect(result.current.catalogueProjectId).toBe(23);
+
+    // The preview itself is not a pin. A real first-item selection is
+    // represented by live evidence and is the only event that starts recovery.
+    act(() => result.current.requestEvidenceRecovery([99]));
+    await waitFor(() => expect(result.current.projectId).toBe(23));
+    expect(result.current.catalogueProjectId).toBe(23);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/boq/projects/41/items"))).toBe(true);
+  });
+
+  it("does not request catalogue items when the hydrated rows are meaningful non-BOQ work", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/items")) {
+        throw new Error("catalogue item request should stay disabled");
+      }
+      return new Response(JSON.stringify([
+        { id: 23, name: "Programme", status: "active", barCount: 8 },
+      ]), { headers: { "Content-Type": "application/json" } });
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const { result } = renderHook(
+      () => useDprBoqItems({
+        siteName: "Lifecycle site",
+        sites,
+        preferredProjectId: null,
+        allowEvidenceBasedRecovery: true,
+        // Pages derive this only after hydration confirms special-only,
+        // site-purchase-only, or other meaningful non-BOQ rows.
+        cataloguePreviewEligible: false,
+      }),
+      { wrapper: wrapperFor(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.projectsLoaded).toBe(true));
+    expect(result.current.projectId).toBeNull();
+    expect(result.current.catalogueProjectId).toBeNull();
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/items"))).toBe(false);
   });
 
@@ -268,7 +353,11 @@ describe("DPR-04 BOQ lifecycle", () => {
   it("keeps a deliberate saved null when live evidence is absent", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.includes("/items")) throw new Error("candidate item fetch should not run");
+      if (url.includes("/items")) {
+        return new Response(JSON.stringify([{ id: 41, description: "Preview-only item" }]), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       return new Response(JSON.stringify([
         { id: 41, name: "First", status: "active", barCount: 0 },
       ]), { headers: { "Content-Type": "application/json" } });
@@ -283,13 +372,16 @@ describe("DPR-04 BOQ lifecycle", () => {
         sites,
         preferredProjectId: null,
         allowEvidenceBasedRecovery: true,
+        cataloguePreviewEligible: true,
       }),
       { wrapper: wrapperFor(queryClient) },
     );
 
     await waitFor(() => expect(result.current.projectsLoaded).toBe(true));
     expect(result.current.projectId).toBeNull();
-    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/items"))).toBe(false);
+    expect(result.current.catalogueProjectId).toBe(41);
+    expect(result.current.catalogueItems).toEqual([{ id: 41, description: "Preview-only item" }]);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/boq/projects/41/items"))).toBe(true);
   });
 
   it("replaces initial recovery evidence when live rows are cleared", async () => {

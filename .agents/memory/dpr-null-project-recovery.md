@@ -7,7 +7,13 @@ Resolve projects silently from the site for new DPRs; do not expose a manual pro
 
 **Why:** on 2026-09-16 the user rejected manual project controls, then clarified that real live BOQ references must override a stale null across every editor, while genuinely BOQ-less reports stay null.
 
-**How to apply:** new reports use existing site priority; null recovery requires a unique same-site project owning every live item. Revalidate ownership server-side and persist the corrected header. No-reference nulls remain null, and positive pins never re-guess. Empty saved-null drafts cannot expose a first-item picker under the strict no-reference rule; changing that needs an explicit decision.
+**How to apply:** new reports use existing site priority; null recovery requires a unique same-site project owning every live item. Revalidate ownership server-side and persist the corrected header. No-reference nulls remain null in storage, and positive pins never re-guess.
+
+Empty saved-null drafts may preview their site's BOQ catalogue automatically so the first real item can be selected; catalogue visibility alone is not project assignment.
+
+**Why:** the user explicitly approved this exception after the strict no-reference/no-picker rule made first-item entry impossible. No Site Work/Incidental-only reports must still remain protected, and manual project controls remain unwanted.
+
+**How to apply:** distinguish empty/default placeholder rows from meaningful non-BOQ content. Persist a recovered project only once actual BOQ evidence exists; leave a still-empty saved-null draft null when saved.
 
 Recovery eligibility must reflect evidence surviving the replacement, not every previously stored child. Resolve site identity unambiguously rather than accepting any same-named site.
 

@@ -2,9 +2,12 @@
  * DPR-09 automatic saved-null recovery browser evidence.
  *
  * This verifier is intentionally separate from the older saved-null verifier.
- * DPR-08 removed the manual BOQ-project chooser; DPR-09 must recover only when
- * the currently hydrated DPR data contains a real BOQ item reference. A
- * genuinely BOQ-less saved-null DPR remains null and does not render a picker.
+ * DPR-08 removed the manual BOQ-project chooser. DPR-09 covers both the
+ * literal empty-draft path (saved null stays null until the first item is
+ * chosen, while the site's catalogue is available) and evidence-based
+ * recovery when the currently hydrated DPR data already contains a real BOQ
+ * item reference. No-reference No Site Work / Incidental rows remain null and
+ * do not render a picker.
  *
  * The fixture adapter is browser-only and session-persisted. It does not call
  * an operational server or database and it does not write customer data.
@@ -40,6 +43,7 @@ const siteEditLiveDraftId = 6231;
 const guidedNoSiteWorkDraftId = 6232;
 const siteEditIncidentalDraftId = 6233;
 const positiveProjectDraftId = 6234;
+const literalFreshDraftId = 6240;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const quote = (value) => JSON.stringify(String(value));
@@ -136,6 +140,41 @@ const clickTestId = async (testId) => {
     return true;
   })()`);
   assert(clicked, `Could not click enabled [data-testid=${testId}]`);
+};
+
+const chooseSelectOption = async (triggerTestId, optionText, stage) => {
+  await clickTestId(triggerTestId);
+  await waitFor(
+    `Array.from(document.querySelectorAll('[role="option"]')).some((node) => (node.textContent || "").toLowerCase().includes(${quote(optionText.toLowerCase())}))`,
+    `${stage} ${triggerTestId} options`,
+  );
+  const selected = await evaluate(`(() => {
+    const expected = ${quote(optionText.toLowerCase())};
+    const option = Array.from(document.querySelectorAll('[role="option"]'))
+      .find((node) => (node.textContent || "").toLowerCase().includes(expected));
+    if (!option) return false;
+    option.click();
+    return true;
+  })()`);
+  assert(selected, `${stage} could not choose ${optionText} from ${triggerTestId}`);
+};
+
+const chooseBoqItem = async (prefix, stage) => {
+  await clickTestId(`${prefix}-item-select`);
+  await waitFor(
+    `!!document.querySelector('[data-testid="option-boq-item-${liveBoqItemId}"]')`,
+    `${stage} BOQ item catalogue`,
+  );
+  const catalogue = await evaluate(`(() => {
+    const node = document.querySelector('[data-testid="option-boq-item-${liveBoqItemId}"]');
+    return { present: !!node, text: node?.textContent?.trim() || "" };
+  })()`);
+  assert(
+    catalogue.text.toLowerCase().includes(liveBoqItemName.toLowerCase()),
+    `${stage} catalogue omitted ${liveBoqItemName}: ${JSON.stringify(catalogue)}`,
+  );
+  await clickTestId(`option-boq-item-${liveBoqItemId}`);
+  return catalogue;
 };
 
 const capture = async (name) => {
@@ -277,6 +316,141 @@ const assertRecoveredProjects = async (requestStart, stage, { reject = [] } = {}
   return projectIds;
 };
 
+const verifyLiteralGuidedEmptyDraftRecovery = async () => {
+  const scenario = "dpr09-A-literal-guided-empty-save-then-live-boq-item";
+  const freshPath = `/guided?dpr09=1&dpr09Literal=1&scenario=${scenario}&section=report`;
+  await navigate(freshPath);
+  await waitFor(
+    `((document.querySelector('[data-testid="select-site"]')?.textContent || "").toLowerCase().includes(${quote(recoverySiteName.toLowerCase())}))`,
+    "literal fresh Guided site",
+  );
+  await chooseSelectOption("select-engineer", "SURESH KUMAR", scenario);
+  await clickTestId("button-step-next");
+  await waitFor("!!document.querySelector('[data-testid=\"button-add-activity\"]')", "literal empty activity step");
+  await clickTestId("button-add-activity");
+  await waitFor("!!document.querySelector('[data-testid=\"guided-progress-0-item-select\"]')", "literal empty activity picker");
+  const freshUi = await assertNoManualProjectUi(`${scenario} before save`);
+  const freshImage = await capture("dpr09-A-literal-guided-fresh-empty");
+  const beforeCreates = (await fixtureState()).dpr09LiteralCreatePayloads?.length || 0;
+
+  // This is the literal first save: the activity row exists but has no BOQ
+  // item evidence. The fixture's POST route deliberately persists an explicit
+  // null even if the fresh client sends its deterministic site fallback.
+  await clickTestId("button-save-draft");
+  await waitFor(
+    `window.__DprSiteFixture?.dpr09LiteralCreatePayloads?.length >= ${beforeCreates + 1}`,
+    "literal empty Guided POST save",
+  );
+  const literalCreate = (await fixtureState()).dpr09LiteralCreatePayloads.at(-1);
+  assert(literalCreate?.id === literalFreshDraftId, `Literal empty save used unexpected id: ${JSON.stringify(literalCreate)}`);
+  assert(
+    literalCreate?.requestedPayload?.progress?.length === 1
+      && literalCreate.requestedPayload.progress.every((row) => row?.boqItemId == null && !String(row?.activity || "").trim()),
+    `Literal empty save did not contain exactly one unlinked, empty progress row: ${JSON.stringify(literalCreate)}`,
+  );
+  assert(
+    literalCreate?.persistedPayload?.boqProjectId === null && literalCreate?.enforcedNull === true,
+    `Fixture did not enforce explicit null for literal empty POST: ${JSON.stringify(literalCreate)}`,
+  );
+  const firstSaved = await getDpr(literalFreshDraftId);
+  assert(
+    firstSaved.ok
+      && firstSaved.data.boqProjectId === null
+      && firstSaved.data.progress?.length === 1
+      && firstSaved.data.progress[0]?.boqItemId == null,
+    `Literal empty saved draft was not null/no-item: ${JSON.stringify(firstSaved)}`,
+  );
+
+  // Reopen the same server draft. It must stay null before the first real BOQ
+  // selection, but its site's catalogue must now be available to choose from.
+  const reopenPath = `/guided?draftId=${literalFreshDraftId}&dpr09=1&dpr09Literal=1&scenario=${scenario}&section=activities`;
+  await navigate(reopenPath);
+  await waitFor("!!document.querySelector('[data-testid=\"card-entry-0\"]')", "literal null draft before item");
+  const reopenedBeforeItemUi = await assertNoManualProjectUi(`${scenario} before item`);
+  await waitFor("!!document.querySelector('[data-testid=\"guided-progress-0-item-select\"]')", "literal reopened empty-row catalogue");
+  const reopenedBeforeItemPicker = await readPicker("guided-progress-0-item-select");
+  assert(
+    reopenedBeforeItemPicker.present
+      && !reopenedBeforeItemPicker.text.toLowerCase().includes(liveBoqItemName.toLowerCase()),
+    `Literal null draft unexpectedly had a selected BOQ item before first selection: ${JSON.stringify(reopenedBeforeItemPicker)}`,
+  );
+  const beforeItemImage = await capture("dpr09-A-literal-guided-reopened-null");
+
+  const catalogue = await chooseBoqItem("guided-progress-0", scenario);
+  const catalogueImage = await capture("dpr09-A-literal-guided-boq-catalogue");
+  const beforeMutations = (await fixtureState()).dprRecoveryPayloads?.length || 0;
+
+  await clickTestId("button-save-draft");
+  await waitFor(
+    `window.__DprSiteFixture?.dprRecoveryPayloads?.length >= ${beforeMutations + 1}`,
+    "literal selected-item PATCH save",
+  );
+  const mutation = (await fixtureState()).dprRecoveryPayloads.at(-1);
+  assert(mutation?.id === literalFreshDraftId, `Literal selected-item save used wrong id: ${JSON.stringify(mutation)}`);
+  assert(
+    mutation?.payload?.boqProjectId === recoveryProjectId,
+    `Literal selected-item save did not persist project ${recoveryProjectId}: ${JSON.stringify(mutation?.payload)}`,
+  );
+  assert(
+    mutation?.payload?.progress?.[0]?.boqItemId === liveBoqItemId,
+    `Literal selected-item save did not persist BOQ item ${liveBoqItemId}: ${JSON.stringify(mutation?.payload)}`,
+  );
+  const selectedSaved = await getDpr(literalFreshDraftId);
+  assert(
+    selectedSaved.ok
+      && selectedSaved.data.boqProjectId === recoveryProjectId
+      && selectedSaved.data.progress?.[0]?.boqItemId === liveBoqItemId,
+    `Literal selected-item record was not durable: ${JSON.stringify(selectedSaved)}`,
+  );
+
+  // The same id must reopen in Detailed/Edit, then remain positive when Guided
+  // is loaded again. No route-local or duplicate draft may satisfy this check.
+  const editPath = `/site/edit/${literalFreshDraftId}?draft&dpr09=1&dpr09Literal=1&scenario=${scenario}-edit`;
+  await navigate(editPath);
+  await waitFor("!!document.querySelector('[data-testid=\"progress-row-0\"]')", "literal same-id Detailed/Edit row");
+  const editUi = await assertNoManualProjectUi(`${scenario} Detailed/Edit`);
+  const editPicker = await assertLivePicker("edit-progress-0", `${scenario} Detailed/Edit`);
+  const editImage = await capture("dpr09-A-literal-site-edit-same-id");
+
+  const guidedReloadPath = `/guided?draftId=${literalFreshDraftId}&dpr09=1&dpr09Literal=1&scenario=${scenario}-guided-reload&section=activities`;
+  await navigate(guidedReloadPath);
+  await waitFor("!!document.querySelector('[data-testid=\"card-entry-0\"]')", "literal same-id Guided reload row");
+  const guidedReloadUi = await assertNoManualProjectUi(`${scenario} Guided reload`);
+  const guidedReloadReference = await assertGuidedLiveReference(`${scenario} Guided reload`);
+  const guidedReloadImage = await capture("dpr09-A-literal-guided-same-id-reload");
+  const guidedReload = await getDpr(literalFreshDraftId);
+  assert(
+    guidedReload.ok
+      && guidedReload.data.boqProjectId === recoveryProjectId
+      && guidedReload.data.progress?.[0]?.boqItemId === liveBoqItemId,
+    `Literal same-id Guided reload lost project/item: ${JSON.stringify(guidedReload)}`,
+  );
+  const projectIds = await requestProjectIdsSince(0);
+  assert(projectIds.includes(recoveryProjectId), `Literal selected-item reload did not request recovery project items: ${JSON.stringify(projectIds)}`);
+
+  return {
+    freshUi,
+    freshImage,
+    literalCreate,
+    firstSaved,
+    reopenedBeforeItemUi,
+    reopenedBeforeItemPicker,
+    beforeItemImage,
+    catalogue,
+    catalogueImage,
+    mutation,
+    selectedSaved,
+    editUi,
+    editPicker,
+    editImage,
+    guidedReloadUi,
+    guidedReloadReference,
+    guidedReloadImage,
+    guidedReload,
+    projectIds,
+  };
+};
+
 const verifyGuidedSavedNullLiveReference = async () => {
   const scenario = "dpr09-A-guided-saved-null-live-reference";
   const pathName = `/guided?draftId=${guidedLiveDraftId}&dpr09=1&scenario=${scenario}&section=activities`;
@@ -395,12 +569,40 @@ const verifyNoBoqReferenceProtection = async () => {
   };
 };
 
-const seedDetailedLocalNullWithLiveReference = async () => {
-  const localDraft = {
-    formKey: "site-entry-new",
-    savedAt: Date.now(),
-    version: 1,
-    data: {
+const seedDetailedLocalDraft = async (localDraft, label) => {
+  // Leave the mounted React form before changing browser-only storage. Delete
+  // IndexedDB first so an older verifier's value cannot shadow this fixture.
+  await cdp("Page.navigate", { url: `${baseUrl}/favicon.ico?dpr09-storage=${Date.now()}&label=${encodeURIComponent(label)}` });
+  await waitFor("document.readyState === 'complete'", `${label} local storage document`);
+  await evaluate(`(async () => {
+    await new Promise((resolve) => {
+      const request = indexedDB.open("keyval-store");
+      request.onerror = request.onupgradeneeded = () => resolve();
+      request.onsuccess = () => {
+        const database = request.result;
+        if (!database.objectStoreNames.contains("keyval")) {
+          database.close();
+          resolve();
+          return;
+        }
+        const transaction = database.transaction("keyval", "readwrite");
+        transaction.objectStore("keyval").delete("autosave_site-entry-new");
+        transaction.oncomplete = transaction.onerror = transaction.onabort = () => {
+          database.close();
+          resolve();
+        };
+      };
+    });
+    localStorage.setItem("autosave_site-entry-new", ${quote(JSON.stringify(localDraft))});
+    return true;
+  })()`);
+};
+
+const seedDetailedLocalNullWithLiveReference = async () => seedDetailedLocalDraft({
+  formKey: "site-entry-new",
+  savedAt: Date.now(),
+  version: 1,
+  data: {
       header: {
         date: "2026-08-12",
         site: recoverySiteName,
@@ -441,35 +643,28 @@ const seedDetailedLocalNullWithLiveReference = async () => {
       materials: [],
       sitePurchases: [],
     },
-  };
+  }, "Detailed local live-reference");
 
-  // Leave the mounted React form before changing browser-only storage. Delete
-  // IndexedDB first so an older verifier's value cannot shadow this fixture.
-  await cdp("Page.navigate", { url: `${baseUrl}/favicon.ico?dpr09-storage=${Date.now()}` });
-  await waitFor("document.readyState === 'complete'", "DPR-09 local storage document");
-  await evaluate(`(async () => {
-    await new Promise((resolve) => {
-      const request = indexedDB.open("keyval-store");
-      request.onerror = request.onupgradeneeded = () => resolve();
-      request.onsuccess = () => {
-        const database = request.result;
-        if (!database.objectStoreNames.contains("keyval")) {
-          database.close();
-          resolve();
-          return;
-        }
-        const transaction = database.transaction("keyval", "readwrite");
-        transaction.objectStore("keyval").delete("autosave_site-entry-new");
-        transaction.oncomplete = transaction.onerror = transaction.onabort = () => {
-          database.close();
-          resolve();
-        };
-      };
-    });
-    localStorage.setItem("autosave_site-entry-new", ${quote(JSON.stringify(localDraft))});
-    return true;
-  })()`);
-};
+const seedDetailedLocalEmptyDraft = async () => seedDetailedLocalDraft({
+  formKey: "site-entry-new",
+  savedAt: Date.now(),
+  version: 1,
+  data: {
+    header: {
+      date: "2026-08-12",
+      site: recoverySiteName,
+      engineer: "SURESH KUMAR - ENGINEER",
+      boqProjectId: null,
+    },
+    workType: "road",
+    progress: [],
+    structureItems: [],
+    equipment: [],
+    labour: [],
+    materials: [],
+    sitePurchases: [],
+  },
+}, "Detailed local empty");
 
 const readDetailedLocalAutosave = async () => evaluate(`(async () => {
   try {
@@ -549,6 +744,66 @@ const verifyDetailedLocalRestoreLiveReference = async () => {
   };
 };
 
+const verifyDetailedLocalEmptyDraftCatalogue = async () => {
+  const scenario = "dpr09-D-empty-detailed-local-autosave-catalogue";
+  const pathName = `/site/new?dpr09=1&dpr09Literal=1&scenario=${scenario}&type=road`;
+  await seedDetailedLocalEmptyDraft();
+  const requestStart = (await fixtureState()).requests.length;
+  await navigate(pathName);
+  await waitFor("!!document.querySelector('[data-testid=\"button-restore-draft\"]')", "Detailed empty local restore banner");
+  const beforeImage = await capture("dpr09-D-empty-detailed-local-before-restore");
+  await clickTestId("button-restore-draft");
+  const beforeItemAutosave = await readDetailedLocalAutosave();
+  assert(
+    (beforeItemAutosave?.data?.progress || []).length === 0,
+    `Detailed empty local restore unexpectedly contained a progress item: ${JSON.stringify(beforeItemAutosave)}`,
+  );
+  await clickTestId("button-add-progress");
+  await waitFor("!!document.querySelector('[data-testid=\"progress-row-0\"]')", "Detailed empty local activity row");
+  const ui = await assertNoManualProjectUi(scenario);
+  await waitFor("!!document.querySelector('[data-testid=\"progress-0-item-select\"]')", "Detailed empty local BOQ catalogue");
+  const catalogueImage = await capture("dpr09-D-empty-detailed-local-catalogue");
+  const catalogue = await chooseBoqItem("progress-0", scenario);
+  const selectedPicker = await assertLivePicker("progress-0", `${scenario} after item selection`);
+  const selectedImage = await capture("dpr09-D-empty-detailed-local-selected");
+
+  await sleep(1300);
+  const persisted = await readDetailedLocalAutosave();
+  assert(
+    persisted?.data?.progress?.[0]?.boqItemId === liveBoqItemId,
+    `Detailed empty local autosave did not retain ${liveBoqItemName}: ${JSON.stringify(persisted)}`,
+  );
+  const projectIds = await assertRecoveredProjects(requestStart, scenario);
+
+  await navigate(pathName);
+  await waitFor("!!document.querySelector('[data-testid=\"button-restore-draft\"]')", "Detailed empty local reload banner");
+  await clickTestId("button-restore-draft");
+  await waitFor("!!document.querySelector('[data-testid=\"progress-row-0\"]')", "Detailed empty local row after reload");
+  const reopenedUi = await assertNoManualProjectUi(`${scenario} after reload`);
+  const reopenedPicker = await assertLivePicker("progress-0", `${scenario} after reload`);
+  const reopenedImage = await capture("dpr09-D-empty-detailed-local-reopened");
+  const restoredAgain = await readDetailedLocalAutosave();
+  assert(
+    restoredAgain?.data?.progress?.[0]?.boqItemId === liveBoqItemId,
+    `Detailed empty local reload lost ${liveBoqItemName}: ${JSON.stringify(restoredAgain)}`,
+  );
+  return {
+    beforeImage,
+    beforeItemAutosave,
+    ui,
+    catalogue,
+    catalogueImage,
+    selectedPicker,
+    selectedImage,
+    persisted,
+    projectIds,
+    reopenedUi,
+    reopenedPicker,
+    reopenedImage,
+    restoredAgain,
+  };
+};
+
 const verifyPositiveProjectPin = async () => {
   const scenario = "dpr09-E-positive-project-pin-preserved";
   const pathName = `/site/edit/${positiveProjectDraftId}?draft&dpr09=1&dpr09Multi=1&scenario=${scenario}`;
@@ -598,10 +853,11 @@ await evaluate(`(async () => {
   return true;
 })()`);
 
-const guided = await verifyGuidedSavedNullLiveReference();
+const literalA = await verifyLiteralGuidedEmptyDraftRecovery();
 const siteEdit = await verifySiteEditSavedNullLiveReference();
 const noBoqReference = await verifyNoBoqReferenceProtection();
 const detailedLocal = await verifyDetailedLocalRestoreLiveReference();
+const detailedEmptyLocal = await verifyDetailedLocalEmptyDraftCatalogue();
 const positivePin = await verifyPositiveProjectPin();
 
 assert(browserErrors.length === 0, `Browser exceptions: ${browserErrors.join(" | ")}`);
@@ -618,23 +874,24 @@ const result = {
     evidenceDirectory: evidenceDir,
   },
   assertions: {
-    A: "A synthetic server DPR with explicit boqProjectId:null and a live BOQ item reference automatically recovers in Guided, saves project 5510, and retains the live BOQ-linked row/context after reload (the Guided picker may hide once the row is auto-linked to a programme reach).",
+    A: "A literal fresh Guided save with an unlinked activity/no item is persisted as explicit boqProjectId:null, reopens with the site's BOQ catalogue available, lets the engineer choose GSB LAYING, saves the same draft id with project 5510 + item 8801, and retains both through Detailed/Edit and Guided reload.",
     B: "The same saved-null/live-reference recovery contract works in Detailed/Edit without a manual project selector and persists after reload.",
     C: "Guided No Site Work and Detailed/Edit Incidental / Non-BOQ rows retain explicit null and do not request BOQ items or render a picker.",
-    D: "A Detailed local autosave with explicit null plus a live BOQ item reference recovers automatically and retains the linked row across autosave reload.",
+    D: "Detailed local autosaves with an empty saved-null state can show the site's BOQ catalogue for the first item, and an explicit-null/live-reference autosave retains its linked row across reload.",
     E: "A positive saved project pin remains 5501 even when another project is available; no alternate project is guessed.",
   },
-  evidence: { guided, siteEdit, noBoqReference, detailedLocal, positivePin },
+  evidence: { literalA, siteEdit, noBoqReference, detailedLocal, detailedEmptyLocal, positivePin },
   browserExceptions: browserErrors,
   writes: {
     fixtureOnly: true,
-    guidedDraftId: guidedLiveDraftId,
+    guidedDraftId: literalFreshDraftId,
     siteEditDraftId: siteEditLiveDraftId,
     noProductionPersistence: true,
     finalFixtureRequestCount: finalState?.requests?.length || 0,
   },
   investigation: {
-    literalFirstSaveLimitation: "A literal first save with no BOQ references cannot expose a BOQ picker: the current protection correctly keeps an explicit null unresolved. The verifier therefore uses a synthetic server-null/live-row fixture plus a browser-local null/live-row fixture to exercise the post-save state after real references exist; it does not claim that an end user can add the first BOQ item from a hidden picker.",
+    literalFirstSave: "The literal first-save path is covered: a fresh Guided POST with one unlinked activity and no BOQ item is fixture-enforced to persist explicit boqProjectId:null, the same draft id reopens with the site's catalogue, and selecting GSB LAYING then persists project 5510 + item 8801 through Detailed/Edit and Guided reload.",
+    fixtureNullPostDisclosure: "literalA.literalCreate records requestedPayload separately from persistedPayload. The fixture adapter's literal POST branch enforces boqProjectId:null for the empty/no-item save and marks enforcedNull:true; that adapter mutation is fixture evidence only and is not a claim about a production server first-save response.",
     realDatabaseEvidence: "Server-worker real-DB validation is independent evidence and is not represented as fixture traffic here.",
     manualSelector: "No manual BOQ-project selector, status panel, recovery dialog, or project confirmation is used or expected.",
   },

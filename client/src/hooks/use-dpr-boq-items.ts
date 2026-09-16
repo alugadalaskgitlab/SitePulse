@@ -22,6 +22,7 @@ export function useDprBoqItems<T extends DprBoqSelectableItem>({
   preferredProjectId,
   allowEvidenceBasedRecovery = false,
   recoveryEvidence,
+  cataloguePreviewEligible = false,
 }: {
   siteName: string;
   sites: readonly SiteChoice[];
@@ -33,6 +34,13 @@ export function useDprBoqItems<T extends DprBoqSelectableItem>({
   allowEvidenceBasedRecovery?: boolean;
   /** Initial live DPR/form data; later edits use requestEvidenceRecovery. */
   recoveryEvidence?: unknown;
+  /**
+   * Explicit opt-in from the page after its live form state has hydrated and
+   * proved that only untouched placeholders remain. Keep this false until
+   * hydration so a saved-null special-only DPR cannot trigger a catalogue
+   * request during the initial render.
+   */
+  cataloguePreviewEligible?: boolean;
 }) {
   const siteId = useMemo(() => resolveDprSiteId(sites, siteName), [siteName, sites]);
   const normalizedSiteName = normalizeDprSiteName(siteName);
@@ -131,6 +139,29 @@ export function useDprBoqItems<T extends DprBoqSelectableItem>({
     && projectsQuery.isSuccess
     && !candidateQueriesSettled;
 
+  // An explicit saved null still needs a read-only catalogue preview so the
+  // engineer can choose the first BOQ item. This intentionally does not feed
+  // `projectId` or any persistence state: selecting a real item creates live
+  // evidence, after which the ownership recovery path above resolves the
+  // project's ID.
+  const catalogueProjectId = preferredProjectId === null
+    && cataloguePreviewEligible
+    && projectsQuery.isSuccess
+    ? resolveDprBoqProjectId(projects, undefined)
+    : null;
+  const catalogueItemsQuery = useQuery<T[]>({
+    queryKey: ["/api/boq/projects", catalogueProjectId, "items", "catalogue-preview"],
+    queryFn: async () => {
+      const response = await fetch(`/api/boq/projects/${catalogueProjectId}/items`, { credentials: "include" });
+      if (!response.ok) throw new Error(`BOQ catalogue request failed (${response.status})`);
+      const data = await response.json();
+      if (!Array.isArray(data)) throw new Error("BOQ catalogue response was invalid");
+      return data;
+    },
+    enabled: catalogueProjectId != null,
+    retry: false,
+  });
+
   const projectId = useMemo(
     () => {
       // Never expose the ordinary first-project fallback while evidence
@@ -186,6 +217,12 @@ export function useDprBoqItems<T extends DprBoqSelectableItem>({
     projects,
     projectId,
     items,
+    // Preview-only items for an explicit saved-null DPR. Pages must keep these
+    // separate from `items`: selecting one is what supplies live evidence for
+    // ownership validation and durable project recovery.
+    catalogueProjectId,
+    catalogueItems: catalogueItemsQuery.data ?? [],
+    catalogueItemsLoading: catalogueProjectId != null && catalogueItemsQuery.isLoading,
     // Consumers that persist the resolved project need to distinguish an
     // empty result while the request is still in flight from a completed
     // request that genuinely returned no projects.
